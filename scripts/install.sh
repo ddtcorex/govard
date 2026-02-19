@@ -22,6 +22,7 @@ Options:
 Environment variables:
   BINARY_NAME   Name of the installed binary (default: govard)
   INSTALL_DIR   Installation directory (default: /usr/local/bin)
+  BUILD_VERSION Embedded version string (default: git describe output)
 EOF
 }
 
@@ -34,6 +35,15 @@ can_write_dir() {
   local parent
   parent="$(dirname "$dir")"
   [[ -d "$parent" && -w "$parent" ]]
+}
+
+resolve_build_version() {
+  if command -v git >/dev/null 2>&1 &&
+    git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$REPO_ROOT" describe --tags --dirty --always 2>/dev/null || echo "1.0.0"
+    return
+  fi
+  echo "1.0.0"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -114,8 +124,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+build_version="${BUILD_VERSION:-$(resolve_build_version)}"
+if [[ "${build_version}" == v* ]]; then
+  build_version="${build_version#v}"
+fi
+ldflags="-s -w -X govard/internal/cmd.Version=${build_version}"
+
 echo "Building ${BINARY_NAME}..."
-go build -o "${tmp_dir}/${BINARY_NAME}" ./cmd/govard/main.go
+go build -ldflags "${ldflags}" -o "${tmp_dir}/${BINARY_NAME}" ./cmd/govard/main.go
 
 target_dir="$INSTALL_DIR"
 target_path="${target_dir%/}/${BINARY_NAME}"
@@ -135,6 +151,7 @@ else
 fi
 
 echo "Installed ${BINARY_NAME} to ${target_path}"
+echo "Embedded version: ${build_version}"
 if ! command -v "${BINARY_NAME}" >/dev/null 2>&1; then
   echo "Add '${target_dir}' to your PATH if needed:"
   echo "  export PATH=\"${target_dir}:\$PATH\""
