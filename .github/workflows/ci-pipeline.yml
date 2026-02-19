@@ -117,7 +117,7 @@ jobs:
         run: make build
 
       - name: Upload binary artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: govard-binaries
           path: bin/
