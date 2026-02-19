@@ -2,14 +2,17 @@ BINARY_NAME=govard
 BUILD_DIR=bin
 TEST_BINARY=$(BUILD_DIR)/govard-test
 UNIT_PACKAGES=$(shell go list ./... | grep -v '^govard/tests/integration$$')
+VERSION_RAW ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo 1.0.0)
+VERSION ?= $(patsubst v%,%,$(VERSION_RAW))
+LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION)
 
 .PHONY: build clean test test-fast test-unit test-integration test-integration-ci test-frontend build-test-binary install lint fmt vet
 
 build:
 	@echo "Building Govard..."
 	mkdir -p $(BUILD_DIR)
-	GOOS=darwin GOARCH=arm64 go build -o $(BUILD_DIR)/govard-darwin-arm64 cmd/govard/main.go
-	GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/govard-linux-amd64 cmd/govard/main.go
+	GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/govard-darwin-arm64 cmd/govard/main.go
+	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/govard-linux-amd64 cmd/govard/main.go
 
 test: test-frontend test-unit test-integration
 
@@ -34,7 +37,7 @@ test-frontend:
 build-test-binary:
 	@echo "Building test binary..."
 	mkdir -p $(BUILD_DIR)
-	go build -tags integration -o $(TEST_BINARY) cmd/govard/main.go
+	go build -ldflags "$(LDFLAGS)" -tags integration -o $(TEST_BINARY) cmd/govard/main.go
 
 lint:
 	@echo "Running linter..."
@@ -49,7 +52,7 @@ vet:
 	go vet ./...
 
 install:
-	go build -o $(BINARY_NAME) cmd/govard/main.go
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) cmd/govard/main.go
 	sudo mv $(BINARY_NAME) /usr/local/bin/
 
 clean:
