@@ -59,7 +59,7 @@ func TestRenderBlueprintWithOpensearch(t *testing.T) {
 		},
 	})
 
-	if !strings.Contains(content, "opensearchproject/opensearch:2.19.0") {
+	if !strings.Contains(content, "govard/opensearch:2.19.0") {
 		t.Fatalf("Expected opensearch image with default version")
 	}
 }

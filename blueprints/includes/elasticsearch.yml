@@ -6,19 +6,19 @@ services:
   {{ if or (eq $search "elasticsearch") (eq $search "opensearch") }}
   elasticsearch:
     image: >-
-      {{- if eq .Config.Recipe "magento2" -}}
+      {{ if eq .Config.Recipe "magento2" -}}
         {{- if eq $search "elasticsearch" -}}
           govard/elasticsearch:{{ $searchVersion }}
         {{- else -}}
           govard/opensearch:{{ $searchVersion }}
         {{- end -}}
-      {{- else -}}
+      {{ else -}}
         {{- if eq $search "elasticsearch" -}}
           docker.elastic.co/elasticsearch/elasticsearch:{{ $searchVersion }}
         {{- else -}}
           opensearchproject/opensearch:{{ $searchVersion }}
         {{- end -}}
-      {{- end -}}
+      {{ end -}}
 
     environment:
       - discovery.type=single-node
