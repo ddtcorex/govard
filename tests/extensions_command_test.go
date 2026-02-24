@@ -43,7 +43,7 @@ func TestExtensionsInitCreatesContract(t *testing.T) {
 	}
 
 	required := []string{
-		".govard/govard.local.yml",
+		".govard/.govard.local.yml",
 		".govard/docker-compose.override.yml",
 		".govard/hooks/pre_up.sh",
 		".govard/commands/hello",

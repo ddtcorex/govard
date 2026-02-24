@@ -255,7 +255,7 @@ func TestConfigLayeringIntegration(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "base-project",
 			"recipe":       "magento2",
 			"stack": map[string]interface{}{
@@ -271,7 +271,7 @@ func TestConfigLayeringIntegration(t *testing.T) {
 				},
 			},
 		}),
-		"govard.local.yml": MustMarshalYAML(t, map[string]interface{}{
+		".govard.local.yml": MustMarshalYAML(t, map[string]interface{}{
 			"stack": map[string]interface{}{
 				"features": map[string]interface{}{
 					"xdebug": false,

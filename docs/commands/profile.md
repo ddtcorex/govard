@@ -15,7 +15,7 @@ govard config profile apply --framework magento2 --framework-version 2.4.7
 ## Behavior
 
 - `govard config profile` is read-only.
-- `govard config profile apply` writes the selected profile into `govard.yml`.
+- `govard config profile apply` writes the selected profile into `.govard.yml`.
 - This command does not modify application dependency files (`composer.json`, lockfiles, `package.json`, lockfiles).
 - `--json` outputs a stable machine-readable payload for automation/desktop integration.
 

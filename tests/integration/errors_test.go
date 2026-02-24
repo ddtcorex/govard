@@ -45,7 +45,7 @@ func TestLoadConfigInvalidYAML(t *testing.T) {
 	env := NewTestEnvironment(t)
 
 	files := map[string]string{
-		"govard.yml": `
+		".govard.yml": `
 project_name: test
 recipe: magento2
 stack:
@@ -67,7 +67,7 @@ func TestLoadConfigEmptyYAML(t *testing.T) {
 	env := NewTestEnvironment(t)
 
 	files := map[string]string{
-		"govard.yml": "",
+		".govard.yml": "",
 	}
 
 	projectDir := env.CreateTestProject(t, "empty-yaml", files)
@@ -270,7 +270,7 @@ func TestConfigLayeringWithEmptyLocalFile(t *testing.T) {
 	env := NewTestEnvironment(t)
 
 	files := map[string]string{
-		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "base",
 			"recipe":       "magento2",
 			"domain":       "base.test",
@@ -284,7 +284,7 @@ func TestConfigLayeringWithEmptyLocalFile(t *testing.T) {
 				},
 			},
 		}),
-		"govard.local.yml": "",
+		".govard.local.yml": "",
 	}
 
 	projectDir := env.CreateTestProject(t, "empty-local", files)
@@ -303,7 +303,7 @@ func TestConfigLayeringMissingBaseFile(t *testing.T) {
 	env := NewTestEnvironment(t)
 
 	files := map[string]string{
-		"govard.local.yml": MustMarshalYAML(t, map[string]interface{}{
+		".govard.local.yml": MustMarshalYAML(t, map[string]interface{}{
 			"stack": map[string]interface{}{
 				"features": map[string]interface{}{
 					"xdebug": true,
@@ -316,7 +316,7 @@ func TestConfigLayeringMissingBaseFile(t *testing.T) {
 
 	_, _, err := engine.LoadConfigFromDir(projectDir, true)
 	if err == nil {
-		t.Error("Expected error when base govard.yml is missing")
+		t.Error("Expected error when base .govard.yml is missing")
 	}
 }
 

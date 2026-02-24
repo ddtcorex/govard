@@ -18,7 +18,7 @@ Lightweight dashboard features:
 - Environment list with start/stop/open
 - Quick actions (Mailpit, PHPMyAdmin, Xdebug toggle, health)
 - Embedded Mailpit inbox panel with refresh/open controls
-- Project onboarding panel (folder picker + add/init when `govard.yml` is missing)
+- Project onboarding panel (folder picker + add/init when `.govard.yml` is missing)
 - Remotes tab (list/add remotes, connectivity test, and sync plan presets)
 - Resource monitor (CPU/RAM/NET per project, OOM hints, refresh + auto-refresh)
 - Logs with multi-service (`all`) selection, severity filtering, text search, and live streaming

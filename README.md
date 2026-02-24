@@ -102,7 +102,7 @@ Navigate to your project root and run:
 govard init
 ```
 
-This scans your project (via `composer.json` or `package.json`) and generates a `govard.yml` configuration.
+This scans your project (via `composer.json` or `package.json`) and generates a `.govard.yml` configuration.
 
 ### 2. Start the Environment
 
@@ -262,7 +262,7 @@ _Note: Once trusted, all `*.test` domains managed by Govard will show a "Green L
 │   ├── ui/          # Styled terminal output logic
 │   └── updater/     # Background update checking
 ├── Makefile         # Build and installation automation
-└── govard.yml       # Project-specific configuration (Generated)
+└── .govard.yml       # Project-specific configuration (Generated)
 ```
 
 ---
@@ -284,7 +284,7 @@ _Note: Once trusted, all `*.test` domains managed by Govard will show a "Green L
 | `govard sync`       | Synchronize files, media, and databases between environments |
 | `govard status`     | List running project environments across workspace           |
 | `govard doctor`     | Run system diagnostics and remediation helpers               |
-| `govard config`     | Manage `govard.yml` configuration from CLI                   |
+| `govard config`     | Manage `.govard.yml` configuration from CLI                   |
 | `govard deploy`     | Deploy the application                                       |
 | `govard snapshot`   | Manage local snapshots for database and media                |
 | `govard lock`       | Generate and validate `govard.lock` snapshots               |
@@ -305,7 +305,7 @@ Documentation is organized by audience:
 
 **For Users:**
 - [Getting Started](./docs/user/getting-started.md) - Installation and basic workflow
-- [Configuration](./docs/user/configuration.md) - `govard.yml` and blueprints
+- [Configuration](./docs/user/configuration.md) - `.govard.yml` and blueprints
 - [CLI Commands](./docs/user/commands.md) - Complete command reference
 - [SSL & HTTPS](./docs/user/ssl-https.md) - Local HTTPS setup
 

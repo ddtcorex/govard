@@ -137,7 +137,7 @@ func TestResolveRemoteConfigSecretsForTest(t *testing.T) {
 
 func TestSyncPlanResolvesRemoteSecrets(t *testing.T) {
 	tempDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(`project_name: demo
+	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(`project_name: demo
 
 domain: demo.test
 recipe: laravel
@@ -187,7 +187,7 @@ remotes:
 
 func TestSyncPlanFailsWhenSecretResolutionFails(t *testing.T) {
 	tempDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(`project_name: demo
+	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(`project_name: demo
 
 domain: demo.test
 recipe: laravel

@@ -11,7 +11,7 @@ import (
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Manage govard.yml configuration from CLI",
+	Short: "Manage .govard.yml configuration from CLI",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -19,7 +19,7 @@ var configCmd = &cobra.Command{
 
 var configGetCmd = &cobra.Command{
 	Use:   "get [key]",
-	Short: "Read a config value from govard.yml",
+	Short: "Read a config value from .govard.yml",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config := loadFullConfig()
@@ -34,7 +34,7 @@ var configGetCmd = &cobra.Command{
 
 var configSetCmd = &cobra.Command{
 	Use:   "set [key] [value]",
-	Short: "Write a config value into govard.yml",
+	Short: "Write a config value into .govard.yml",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config := loadWritableConfig()

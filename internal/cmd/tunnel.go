@@ -158,7 +158,7 @@ func resolveTunnelTarget(config engine.Config, targetFlag string, args []string)
 
 	domain := strings.TrimSpace(config.Domain)
 	if domain == "" {
-		return "", fmt.Errorf("domain is required to infer tunnel URL; set domain in govard.yml or pass --url")
+		return "", fmt.Errorf("domain is required to infer tunnel URL; set domain in .govard.yml or pass --url")
 	}
 	if strings.HasPrefix(strings.ToLower(domain), "http://") || strings.HasPrefix(strings.ToLower(domain), "https://") {
 		return domain, nil

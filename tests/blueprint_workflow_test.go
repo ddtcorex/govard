@@ -40,7 +40,7 @@ func TestFullSetupLogic(t *testing.T) {
 	}
 
 	data, _ := yaml.Marshal(&config)
-	os.WriteFile(filepath.Join(tempDir, "govard.yml"), data, 0644)
+	os.WriteFile(filepath.Join(tempDir, ".govard.yml"), data, 0644)
 
 	err := engine.RenderBlueprint(tempDir, config)
 	if err != nil {

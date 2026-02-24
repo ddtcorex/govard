@@ -24,9 +24,9 @@ func TestProfileCommandJSONAndApply(t *testing.T) {
 	applyResult := env.RunGovard(t, projectDir, "config", "profile", "apply")
 	applyResult.AssertSuccess(t)
 
-	configBytes, err := os.ReadFile(filepath.Join(projectDir, "govard.yml"))
+	configBytes, err := os.ReadFile(filepath.Join(projectDir, ".govard.yml"))
 	if err != nil {
-		t.Fatalf("failed to read govard.yml: %v", err)
+		t.Fatalf("failed to read .govard.yml: %v", err)
 	}
 	config := string(configBytes)
 	assertContains(t, config, "project_name: m2-clone-basic")
@@ -136,9 +136,9 @@ func TestStopCommandRunsHooksWithShims(t *testing.T) {
     - name: post stop marker
       run: "echo post >> .govard-stop-hooks.log"
 `
-	overridePath := filepath.Join(projectDir, "govard.local.yml")
+	overridePath := filepath.Join(projectDir, ".govard.local.yml")
 	if err := os.WriteFile(overridePath, []byte(localOverride), 0o644); err != nil {
-		t.Fatalf("failed to write govard.local.yml: %v", err)
+		t.Fatalf("failed to write .govard.local.yml: %v", err)
 	}
 
 	result := env.RunGovardWithEnv(t, projectDir, shim.Env(), "env", "stop")
@@ -190,9 +190,9 @@ func TestServiceWrapperCommandsWithShims(t *testing.T) {
 
 	t.Run("RedisSwitchesToValkeyCLI", func(t *testing.T) {
 		projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "service-redis-valkey-m2")
-		overridePath := filepath.Join(projectDir, "govard.local.yml")
+		overridePath := filepath.Join(projectDir, ".govard.local.yml")
 		if err := os.WriteFile(overridePath, []byte("stack:\n  services:\n    cache: valkey\n"), 0o644); err != nil {
-			t.Fatalf("failed to write govard.local.yml: %v", err)
+			t.Fatalf("failed to write .govard.local.yml: %v", err)
 		}
 
 		shim := env.SetupRuntimeShims(t, map[string]int{"docker": 0, "ssh": 0, "rsync": 0})
@@ -205,9 +205,9 @@ func TestServiceWrapperCommandsWithShims(t *testing.T) {
 
 	t.Run("ValkeyGuardAndRuntime", func(t *testing.T) {
 		projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "service-valkey-m2")
-		overridePath := filepath.Join(projectDir, "govard.local.yml")
+		overridePath := filepath.Join(projectDir, ".govard.local.yml")
 		if err := os.WriteFile(overridePath, []byte("stack:\n  services:\n    cache: redis\n"), 0o644); err != nil {
-			t.Fatalf("failed to write govard.local.yml: %v", err)
+			t.Fatalf("failed to write .govard.local.yml: %v", err)
 		}
 
 		guardResult := env.RunGovard(t, projectDir, "env", "valkey", "PING")
@@ -215,7 +215,7 @@ func TestServiceWrapperCommandsWithShims(t *testing.T) {
 		assertContains(t, guardResult.Stdout+guardResult.Stderr, "Valkey is not enabled")
 
 		if err := os.WriteFile(overridePath, []byte("stack:\n  services:\n    cache: valkey\n"), 0o644); err != nil {
-			t.Fatalf("failed to write govard.local.yml: %v", err)
+			t.Fatalf("failed to write .govard.local.yml: %v", err)
 		}
 
 		shim := env.SetupRuntimeShims(t, map[string]int{"docker": 0, "ssh": 0, "rsync": 0})

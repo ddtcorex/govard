@@ -127,7 +127,7 @@ env.CleanupProject(t, "test-name")
 ### Helpers
 
 - `CopyBlueprints(t, src, dst)` - Copy blueprints to test project
-- `CreateGovardConfig(t, dir, config)` - Create govard.yml file
+- `CreateGovardConfig(t, dir, config)` - Create .govard.yml file
 - `MustMarshalJSON(t, data)` - Marshal data to JSON
 - `MustMarshalYAML(t, data)` - Marshal data to YAML
 - `SkipIfNoDocker(t)` - Skip test if Docker unavailable

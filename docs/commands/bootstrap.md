@@ -14,7 +14,7 @@ govard bootstrap --fresh --version 2.4.8
 
 `govard bootstrap` can orchestrate:
 
-1. `govard init` automatically if `govard.yml` is missing
+1. `govard init` automatically if `.govard.yml` is missing
 2. `govard env up` (unless `--skip-up`)
 3. Clone flow (`sync` + DB import + configure + admin setup)
 4. Fresh install flow (`composer create-project` + setup install + optional sample/Hyva)
@@ -44,7 +44,7 @@ govard bootstrap --fresh --version 2.4.8
 
 ## Notes
 
-- Requires `remotes.<environment>` configured in `govard.yml` for clone flow.
+- Requires `remotes.<environment>` configured in `.govard.yml` for clone flow.
 - Fresh flow works as a single command (`govard bootstrap --fresh ...`) without needing `--clone=false`.
 - `govard init` preserves existing `remotes` and `hooks`.
 - Clone DB import:

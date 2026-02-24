@@ -61,7 +61,7 @@ func TestExtensionsAndCustomCommandsLifecycle(t *testing.T) {
 	assertContains(t, initResult.Stdout+initResult.Stderr, "Extension contract scaffolded")
 
 	requiredFiles := []string{
-		filepath.Join(projectDir, ".govard", "govard.local.yml"),
+		filepath.Join(projectDir, ".govard", ".govard.local.yml"),
 		filepath.Join(projectDir, ".govard", "docker-compose.override.yml"),
 		filepath.Join(projectDir, ".govard", "hooks", "pre_up.sh"),
 		filepath.Join(projectDir, ".govard", "commands", "hello"),

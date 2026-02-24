@@ -20,7 +20,7 @@ You'll be prompted for:
 
 ## Resulting Configuration
 
-The prompt generates a `govard.yml` that you can edit later. The key fields are:
+The prompt generates a `.govard.yml` that you can edit later. The key fields are:
 
 ```yaml
 recipe: custom

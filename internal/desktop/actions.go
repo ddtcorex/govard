@@ -92,7 +92,7 @@ func toggleXdebug(project string) (string, error) {
 		return "", err
 	}
 	if !info.configLoaded {
-		return "", fmt.Errorf("govard.yml not found for %s", info.name)
+		return "", fmt.Errorf(".govard.yml not found for %s", info.name)
 	}
 	config := info.config
 	if config.ProjectName == "" {
@@ -101,7 +101,7 @@ func toggleXdebug(project string) (string, error) {
 	config.Stack.Features.Xdebug = !config.Stack.Features.Xdebug
 
 	if info.configPath == "" {
-		return "", fmt.Errorf("govard.yml path unavailable")
+		return "", fmt.Errorf(".govard.yml path unavailable")
 	}
 	writableConfig := engine.PrepareConfigForWrite(config)
 
