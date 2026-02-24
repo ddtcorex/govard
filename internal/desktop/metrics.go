@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
+
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 )
@@ -159,12 +162,31 @@ func buildResourceMetrics() (ResourceMetricsSnapshot, error) {
 	summary.NetRxMB = roundMetric(summary.NetRxMB)
 	summary.NetTxMB = roundMetric(summary.NetTxMB)
 
+	systemCPU, systemMemory := getSystemMetrics()
+
 	return ResourceMetricsSnapshot{
-		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
-		Summary:   summary,
-		Projects:  projects,
-		Warnings:  buildMetricsWarnings(projects, warnings),
+		UpdatedAt:    time.Now().UTC().Format(time.RFC3339),
+		SystemCPU:    systemCPU,
+		SystemMemory: systemMemory,
+		Summary:      summary,
+		Projects:     projects,
+		Warnings:     buildMetricsWarnings(projects, warnings),
 	}, nil
+}
+
+func getSystemMetrics() (float64, float64) {
+	var systemCPU float64
+	var systemMemory float64
+
+	if percents, err := cpu.Percent(0, false); err == nil && len(percents) > 0 {
+		systemCPU = roundMetric(percents[0])
+	}
+
+	if v, err := mem.VirtualMemory(); err == nil {
+		systemMemory = roundMetric(bytesToMB(v.Used))
+	}
+
+	return systemCPU, systemMemory
 }
 
 func readContainerStatsOneShot(ctx context.Context, cli *client.Client, containerID string) (containertypes.StatsResponse, error) {

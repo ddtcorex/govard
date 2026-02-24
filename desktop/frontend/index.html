@@ -14,6 +14,9 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script>
       tailwind.config = {
         darkMode: "class",
@@ -325,13 +328,15 @@
                 class="flex items-center gap-2 pl-2 pr-1 py-1 rounded-full hover:bg-[#22492f] transition-colors group"
               >
                 <div
+                  id="userAvatar"
                   class="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center text-background-dark font-bold text-xs shadow-lg shadow-primary/20"
                 >
-                  JD
+                  ??
                 </div>
                 <span
+                  id="userName"
                   class="hidden xl:block text-xs font-medium text-slate-300 group-hover:text-white pr-2"
-                  >John Dev</span
+                  >Loading...</span
                 >
               </button>
             </div>
@@ -1250,62 +1255,9 @@ Select an environment to view logs.</pre
                     </div>
                   </div>
                   <div
-                    class="flex-1 p-4 terminal-text text-sm overflow-y-auto bg-[#0c1810]"
-                  >
-                    <div class="text-slate-300 mb-1">
-                      Welcome to Govard Shell v2.4.1
-                    </div>
-                    <div class="text-slate-500 mb-2">
-                      Type 'help' for a list of available commands.
-                    </div>
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="text-primary">dev@govard</span>
-                      <span class="text-slate-500">:</span>
-                      <span class="text-blue-400">~/project-alpha</span>
-                      <span class="text-slate-500">$</span>
-                      <span class="text-slate-200">ls -la</span>
-                    </div>
-                    <div
-                      class="text-slate-300 mb-2 whitespace-pre font-mono text-xs leading-relaxed"
-                    >
-                      drwxr-xr-x 8 root root 256 Oct 24 10:00 . drwxr-xr-x 3
-                      root root 96 Oct 24 09:55 .. -rw-r--r-- 1 root root 452
-                      Oct 24 10:00 .env -rw-r--r-- 1 root root 1240 Oct 24 10:00
-                      docker-compose.yml drwxr-xr-x 4 root root 128 Oct 24 10:00
-                      nginx drwxr-xr-x 5 root root 160 Oct 24 10:00 php
-                      drwxr-xr-x 3 root root 96 Oct 24 10:00 src
-                    </div>
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="text-primary">dev@govard</span>
-                      <span class="text-slate-500">:</span>
-                      <span class="text-blue-400">~/project-alpha</span>
-                      <span class="text-slate-500">$</span>
-                      <span class="text-slate-200"
-                        >php artisan migrate:status</span
-                      >
-                    </div>
-                    <div
-                      class="text-slate-300 mb-2 whitespace-pre font-mono text-xs leading-relaxed"
-                    >
-                      +------+-------------------------------------------------------+-------+
-                      | Ran? | Migration | Batch |
-                      +------+-------------------------------------------------------+-------+
-                      | Yes | 2014_10_12_000000_create_users_table | 1 | | Yes |
-                      2014_10_12_100000_create_password_reset_tokens_table | 1 |
-                      | Yes | 2019_08_19_000000_create_failed_jobs_table | 1 | |
-                      Yes |
-                      2019_12_14_000001_create_personal_access_tokens_table | 1
-                      |
-                      +------+-------------------------------------------------------+-------+
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <span class="text-primary">dev@govard</span>
-                      <span class="text-slate-500">:</span>
-                      <span class="text-blue-400">~/project-alpha</span>
-                      <span class="text-slate-500">$</span>
-                      <span class="text-slate-200 blink-cursor">_</span>
-                    </div>
-                  </div>
+                    id="terminalContainer"
+                    class="flex-1 overflow-hidden bg-[#0c1810]"
+                  ></div>
                 </div>
               </div>
             </div>
@@ -1815,6 +1767,17 @@ Select an environment to view logs.</pre
                 id="proxyTarget"
                 type="text"
                 placeholder="govard.test"
+                class="bg-[#102316] border border-[#2e573a] rounded-lg px-4 py-3 text-white outline-none focus:border-primary/50"
+              />
+            </label>
+            <label
+              class="flex flex-col gap-2 text-sm font-medium text-slate-300"
+            >
+              Code Editor (IDE)
+              <input
+                id="codeEditor"
+                type="text"
+                placeholder="code"
                 class="bg-[#102316] border border-[#2e573a] rounded-lg px-4 py-3 text-white outline-none focus:border-primary/50"
               />
             </label>

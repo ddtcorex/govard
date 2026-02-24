@@ -8,6 +8,8 @@ import {
   setMetricText,
   syncProjectSelectors,
   renderEnvVars,
+  renderMetricSkeletons as renderDashboardSkeletons,
+  renderEnvironmentSkeletons,
 } from "./modules/dashboard.js";
 import {
   createLogsController,
@@ -15,7 +17,10 @@ import {
   syncServiceSelector,
   syncSeveritySelector,
 } from "./modules/logs.js";
-import { createMetricsController } from "./modules/metrics.js";
+import {
+  createMetricsController,
+  renderMetricSkeletons as renderServiceSkeletons,
+} from "./modules/metrics.js";
 import { createOnboardingController } from "./modules/onboarding.js";
 import { createRemotesController } from "./modules/remotes.js";
 import { createSettingsController } from "./modules/settings.js";
@@ -82,6 +87,10 @@ const refs = {
   themeSelect: byId("themeSelect"),
   proxyTarget: byId("proxyTarget"),
   preferredBrowser: byId("preferredBrowser"),
+  codeEditor: byId("codeEditor"),
+  userAvatar: byId("userAvatar"),
+  userName: byId("userName"),
+  terminalContainer: byId("terminalContainer"),
   toastContainer: byId("toastContainer"),
   onboardingModal: byId("onboardingModal"),
   projectTitle: byId("projectTitle"),
@@ -100,6 +109,24 @@ const toast = createToast(refs.toastContainer);
 
 const setStatus = (message) => {
   setText(refs.status, message);
+};
+
+const loadUser = async () => {
+  try {
+    const user = await desktopBridge.getCurrentUser();
+    if (refs.userName) setText(refs.userName, user.name || user.username);
+    if (refs.userAvatar) {
+      const initials = (user.name || user.username || "??")
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+      setText(refs.userAvatar, initials);
+    }
+  } catch (_err) {
+    if (refs.userName) setText(refs.userName, "Unknown User");
+  }
 };
 
 const showToast = (message, type = "success") => {
@@ -260,6 +287,7 @@ const metricsController = createMetricsController({
   bridge: desktopBridge,
   refs,
   onStatus: setStatus,
+  getProject: () => getState().selectedProject,
 });
 
 const remotesController = createRemotesController({
@@ -271,8 +299,17 @@ const remotesController = createRemotesController({
   onToast: showToast,
 });
 
-const refreshDashboard = async () => {
+const renderAllSkeletons = () => {
+  renderDashboardSkeletons(refs);
+  renderEnvironmentSkeletons(refs.envList);
+  renderServiceSkeletons(refs.metricsList);
+};
+
+const refreshDashboard = async (options = {}) => {
   setStatus("Status: syncing dashboard...");
+  if (!options.silent) {
+    renderAllSkeletons();
+  }
   const dashboard = await loadDashboard();
   setMetricText(dashboard, refs);
   renderWarnings(refs.warningList, dashboard.warnings);
@@ -328,6 +365,7 @@ const actionsController = createActionsController({
   bridge: desktopBridge,
   getProject: () => getState().selectedProject,
   refreshDashboard,
+  renderSkeletons: renderAllSkeletons,
   onStatus: setStatus,
   onToast: showToast,
 });
@@ -569,6 +607,12 @@ if (refs.themeSelect) {
   });
 }
 
+if (refs.codeEditor) {
+  refs.codeEditor.addEventListener("change", () => {
+    settingsController.save();
+  });
+}
+
 if (refs.proxyTarget) {
   refs.proxyTarget.addEventListener("change", async () => {
     await settingsController.save();
@@ -593,6 +637,7 @@ if (window.matchMedia) {
 
 setStatus("Status: Ready");
 setState({ selectedService: "all", selectedSeverity: "all", logQuery: "" });
+await loadUser();
 await settingsController.load();
 await refreshDashboard();
 metricsController.startAutoRefresh();

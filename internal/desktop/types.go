@@ -15,6 +15,12 @@ type DesktopSettings struct {
 	Theme            string `json:"theme"`
 	ProxyTarget      string `json:"proxyTarget"`
 	PreferredBrowser string `json:"preferredBrowser"`
+	CodeEditor       string `json:"codeEditor"`
+}
+
+type UserInfo struct {
+	Username string `json:"username"`
+	Name     string `json:"name"`
 }
 
 type Environment struct {
@@ -30,10 +36,12 @@ type Environment struct {
 }
 
 type ResourceMetricsSnapshot struct {
-	UpdatedAt string                  `json:"updatedAt"`
-	Summary   ResourceMetricsSummary  `json:"summary"`
-	Projects  []ProjectResourceMetric `json:"projects"`
-	Warnings  []string                `json:"warnings"`
+	UpdatedAt    string                  `json:"updatedAt"`
+	SystemCPU    float64                 `json:"systemCPU"`
+	SystemMemory float64                 `json:"systemMemory"`
+	Summary      ResourceMetricsSummary  `json:"summary"`
+	Projects     []ProjectResourceMetric `json:"projects"`
+	Warnings     []string                `json:"warnings"`
 }
 
 type ResourceMetricsSummary struct {

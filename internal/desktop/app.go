@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"os/user"
 	"strings"
 	"sync"
 	"time"
@@ -54,6 +55,21 @@ func (app *App) Shutdown(ctx context.Context) {
 
 func (app *App) Status() string {
 	return "Govard Desktop bootstrap is ready."
+}
+
+func (app *App) GetCurrentUser() UserInfo {
+	u, err := user.Current()
+	if err != nil {
+		return UserInfo{Username: "unknown", Name: "Unknown User"}
+	}
+	name := u.Name
+	if name == "" {
+		name = u.Username
+	}
+	return UserInfo{
+		Username: u.Username,
+		Name:     name,
+	}
 }
 
 func (app *App) GetDashboard() Dashboard {
@@ -324,11 +340,12 @@ func (app *App) GetSettings() DesktopSettings {
 	return settings
 }
 
-func (app *App) UpdateSettings(theme string, proxyTarget string, preferredBrowser string) string {
+func (app *App) UpdateSettings(theme string, proxyTarget string, preferredBrowser string, codeEditor string) string {
 	settings := DesktopSettings{
 		Theme:            theme,
 		ProxyTarget:      proxyTarget,
 		PreferredBrowser: preferredBrowser,
+		CodeEditor:       codeEditor,
 	}
 	if err := setSettings(settings); err != nil {
 		return "Failed to save settings: " + err.Error()

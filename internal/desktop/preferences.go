@@ -166,6 +166,7 @@ func normalizeSettings(settings DesktopSettings) DesktopSettings {
 	}
 	settings.ProxyTarget = sanitizeProxyTarget(settings.ProxyTarget)
 	settings.PreferredBrowser = strings.TrimSpace(settings.PreferredBrowser)
+	settings.CodeEditor = strings.TrimSpace(settings.CodeEditor)
 	if settings.ProxyTarget == "" {
 		settings.ProxyTarget = "govard.test"
 	}

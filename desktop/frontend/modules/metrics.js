@@ -37,6 +37,8 @@ export const normalizeMetricsPayload = (payload = {}) => {
 
   return {
     updatedAt: String(payload.updatedAt || payload.UpdatedAt || "").trim(),
+    systemCPU: asNumber(payload.systemCPU ?? payload.SystemCPU),
+    systemMemory: asNumber(payload.systemMemory ?? payload.SystemMemory),
     summary: {
       activeProjects: asNumber(
         summary.activeProjects ?? summary.ActiveProjects,
@@ -56,8 +58,6 @@ const renderMetricSummary = (refs, summary = {}) => {
   setText(refs.metricActiveProjects, String(summary.activeProjects ?? 0));
   setText(refs.metricCPU, formatMetricPercent(summary.cpuPercent));
   setText(refs.metricMemory, formatMetricMB(summary.memoryMB));
-  setText(refs.footerCPU, formatMetricPercent(summary.cpuPercent));
-  setText(refs.footerMemory, formatMetricMB(summary.memoryMB));
   setText(refs.metricNetRx, formatMetricMB(summary.netRxMB));
   setText(refs.metricNetTx, formatMetricMB(summary.netTxMB));
   setText(refs.metricOOM, String(summary.oomProjects ?? 0));
@@ -75,16 +75,41 @@ const renderMetricWarnings = (container, warnings = []) => {
   });
 };
 
-const renderMetricProjects = (container, projects = []) => {
+export const renderMetricSkeletons = (container) => {
+  if (!container) return;
+  container.innerHTML = Array(3)
+    .fill(0)
+    .map(
+      () => `
+    <div class="glass-panel p-4 rounded-xl border border-[#2e573a] flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div class="p-2 rounded bg-[#1a3322] border border-[#2e573a] h-10 w-10 skeleton"></div>
+        <div class="space-y-2">
+          <div class="h-4 w-32 skeleton"></div>
+          <div class="h-3 w-48 skeleton"></div>
+        </div>
+      </div>
+    </div>
+  `,
+    )
+    .join("");
+};
+
+const renderMetricProjects = (container, projects = [], selectedProject = "") => {
   if (!container) {
     return;
   }
-  if (!projects.length) {
+
+  const filtered = projects.filter(
+    (p) => !selectedProject || p.project.startsWith(selectedProject + "-"),
+  );
+
+  if (!filtered.length) {
     container.innerHTML = `<div class="p-6 text-center text-slate-500 border border-dashed border-[#22492f] rounded-xl">No active services detected for this environment.</div>`;
     return;
   }
 
-  container.innerHTML = projects
+  container.innerHTML = filtered
     .map((project) => {
       const name = project.project || "unknown";
       const healthy = project.status === "running";
@@ -138,14 +163,42 @@ const renderMetricProjects = (container, projects = []) => {
     .join("");
 };
 
-export const createMetricsController = ({ bridge, refs, onStatus }) => {
+export const createMetricsController = ({
+  bridge,
+  refs,
+  onStatus,
+  getProject,
+}) => {
   let refreshTimer = null;
 
   const renderPayload = (payload) => {
     const metrics = normalizeMetricsPayload(payload);
-    renderMetricSummary(refs, metrics.summary);
+    const selectedProject = getProject();
+
+    let summary = metrics.summary;
+    if (selectedProject) {
+      const projectMetric = metrics.projects.find(
+        (p) => p.project === selectedProject,
+      );
+      if (projectMetric) {
+        summary = {
+          ...summary,
+          cpuPercent: projectMetric.cpuPercent,
+          memoryMB: projectMetric.memoryMB,
+        };
+      }
+    }
+
+    renderMetricSummary(refs, summary);
     renderMetricWarnings(refs.metricsWarnings, metrics.warnings);
-    renderMetricProjects(refs.metricsList, metrics.projects);
+    renderMetricProjects(refs.metricsList, metrics.projects, selectedProject);
+
+    // Footer always shows system metrics
+    if (refs.footerCPU)
+      setText(refs.footerCPU, formatMetricPercent(metrics.systemCPU));
+    if (refs.footerMemory)
+      setText(refs.footerMemory, formatMetricMB(metrics.systemMemory));
+
     return metrics;
   };
 

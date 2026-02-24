@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"govard/internal/engine"
@@ -26,9 +27,63 @@ func quickAction(ctx context.Context, action string, project string) (string, er
 		return toggleXdebug(project)
 	case "check-health":
 		return checkHealth()
+	case "open-folder":
+		return openFolder(project)
+	case "open-ide":
+		return openIDE(project)
 	default:
 		return "", fmt.Errorf("unknown action")
 	}
+}
+
+func openFolder(project string) (string, error) {
+	info, err := loadProjectInfo(project)
+	if err != nil {
+		return "", err
+	}
+	dir := info.workingDir
+	if dir == "" {
+		return "", fmt.Errorf("project directory not found")
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", dir)
+	case "darwin":
+		cmd = exec.Command("open", dir)
+	default: // linux
+		cmd = exec.Command("xdg-open", dir)
+	}
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("failed to open folder: %w", err)
+	}
+	return "Opening folder: " + dir, nil
+}
+
+func openIDE(project string) (string, error) {
+	info, err := loadProjectInfo(project)
+	if err != nil {
+		return "", err
+	}
+	dir := info.workingDir
+	if dir == "" {
+		return "", fmt.Errorf("project directory not found")
+	}
+
+	settings, _ := getSettings()
+	editor := strings.TrimSpace(settings.CodeEditor)
+	if editor == "" {
+		editor = "code" // Default to VS Code
+	}
+
+	// For some editors like VS Code, we might need to handle it specifically if they are not in PATH,
+	// but usually they are.
+	cmd := exec.Command(editor, dir)
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("failed to launch IDE (%s): %w", editor, err)
+	}
+	return fmt.Sprintf("Opening %s in %s", filepath.Base(dir), editor), nil
 }
 
 func toggleXdebug(project string) (string, error) {

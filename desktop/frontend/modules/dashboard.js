@@ -34,6 +34,17 @@ export const serviceTargets = (env = {}) => {
   return values.length ? values : ["web"];
 };
 
+export const renderMetricSkeletons = (refs) => {
+  const skeleton = `<div class="h-6 w-12 skeleton mb-1"></div>`;
+  const hintSkeleton = `<div class="h-3 w-24 skeleton"></div>`;
+  if (refs.statActive) refs.statActive.innerHTML = skeleton;
+  if (refs.statServices) refs.statServices.innerHTML = skeleton;
+  if (refs.statQueue) refs.statQueue.innerHTML = skeleton;
+  if (refs.statActiveHint) refs.statActiveHint.innerHTML = hintSkeleton;
+  if (refs.statServicesHint) refs.statServicesHint.innerHTML = hintSkeleton;
+  if (refs.statQueueHint) refs.statQueueHint.innerHTML = hintSkeleton;
+};
+
 export const setMetricText = (
   { active, services, queued, activeSummary, servicesSummary, queueSummary },
   refs,
@@ -56,6 +67,26 @@ export const renderWarnings = (warningList, warnings = []) => {
     item.textContent = String(warning);
     warningList.appendChild(item);
   });
+};
+
+export const renderEnvironmentSkeletons = (container) => {
+  if (!container) return;
+  const header = `<div class="px-3 mb-2 text-xs font-semibold text-[#90cba4] uppercase tracking-wider">Environments</div>`;
+  const items = Array(3)
+    .fill(0)
+    .map(
+      () => `
+    <div class="w-full mb-1 flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent">
+      <div class="h-6 w-6 rounded-full skeleton"></div>
+      <div class="flex-1 space-y-2">
+        <div class="h-3 w-24 skeleton"></div>
+        <div class="h-2 w-12 skeleton"></div>
+      </div>
+    </div>
+  `,
+    )
+    .join("");
+  container.innerHTML = header + items;
 };
 
 export const renderEnvironmentList = (container, environments = []) => {

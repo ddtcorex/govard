@@ -114,3 +114,25 @@ select::-ms-expand {
 .tab-content.active {
   display: flex;
 }
+
+/* Skeletons */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(34, 73, 47, 0.4) 25%,
+    rgba(34, 73, 47, 0.8) 50%,
+    rgba(34, 73, 47, 0.4) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

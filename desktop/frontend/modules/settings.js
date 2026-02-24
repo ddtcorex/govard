@@ -3,6 +3,7 @@ export const normalizeSettingsPayload = (settings = {}) => ({
   proxyTarget: settings.proxyTarget || settings.ProxyTarget || "",
   preferredBrowser:
     settings.preferredBrowser || settings.PreferredBrowser || "",
+  codeEditor: settings.codeEditor || settings.CodeEditor || "",
 });
 
 export const applyTheme = (theme) => {
@@ -54,6 +55,7 @@ export const createSettingsController = ({
       if (refs.proxyTarget) refs.proxyTarget.value = settings.proxyTarget;
       if (refs.preferredBrowser)
         refs.preferredBrowser.value = settings.preferredBrowser;
+      if (refs.codeEditor) refs.codeEditor.value = settings.codeEditor;
       applyTheme(settings.theme);
     } catch (_err) {
       applyTheme("system");
@@ -64,11 +66,13 @@ export const createSettingsController = ({
     const theme = refs.themeSelect?.value || "system";
     const proxyTarget = refs.proxyTarget?.value || "";
     const preferredBrowser = refs.preferredBrowser?.value || "";
+    const codeEditor = refs.codeEditor?.value || "";
     try {
       const message = await bridge.updateSettings(
         theme,
         proxyTarget,
         preferredBrowser,
+        codeEditor,
       );
       applyTheme(theme);
       onStatus(message);

@@ -2,6 +2,7 @@ export const createActionsController = ({
   bridge,
   getProject,
   refreshDashboard,
+  renderSkeletons,
   onStatus,
   onToast,
 }) => {
@@ -11,10 +12,12 @@ export const createActionsController = ({
       return;
     }
     try {
+      onStatus(`Processing ${project}...`);
+      renderSkeletons();
       const message = await fn(project);
       onStatus(message || fallbackMessage);
       onToast(message || fallbackMessage, "success");
-      await refreshDashboard();
+      await refreshDashboard({ silent: true });
     } catch (err) {
       const message = `${fallbackMessage}: ${err}`;
       onStatus(message);

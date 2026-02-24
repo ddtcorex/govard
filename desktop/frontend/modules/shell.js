@@ -1,4 +1,63 @@
-export const createShellController = ({ bridge, refs, readSelection, onStatus, onToast }) => {
+export const createShellController = ({
+  bridge,
+  refs,
+  readSelection,
+  onStatus,
+  onToast,
+}) => {
+  let term = null;
+  let fitAddon = null;
+  let currentSessionID = null;
+
+  const initTerminal = () => {
+    if (term || !refs.terminalContainer) return;
+
+    term = new window.Terminal({
+      cursorBlink: true,
+      fontSize: 13,
+      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      theme: {
+        background: "#0c1810",
+        foreground: "#cbd5e1",
+        cursor: "#0df259",
+        selection: "rgba(13, 242, 89, 0.3)",
+      },
+    });
+
+    fitAddon = new window.FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(refs.terminalContainer);
+    fitAddon.fit();
+
+    term.onData((data) => {
+      if (currentSessionID) {
+        bridge.writeTerminal(currentSessionID, data);
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      fitAddon?.fit();
+      if (currentSessionID && term) {
+        bridge.resizeTerminal(currentSessionID, term.cols, term.rows);
+      }
+    });
+
+    if (bridge.runtime?.EventsOn) {
+      bridge.runtime.EventsOn("terminal:output", (payload) => {
+        if (payload.id === currentSessionID) {
+          term.write(payload.data);
+        }
+      });
+
+      bridge.runtime.EventsOn("terminal:exit", (payload) => {
+        if (payload.id === currentSessionID) {
+          term.write("\r\n[Process completed]\r\n");
+          currentSessionID = null;
+        }
+      });
+    }
+  };
+
   const loadShellUser = async () => {
     const project = readSelection().project
     if (!project || !refs.shellUser) {
@@ -25,23 +84,46 @@ export const createShellController = ({ bridge, refs, readSelection, onStatus, o
   }
 
   const openShell = async () => {
-    const { project, service } = readSelection()
+    const { project, service } = readSelection();
     if (!project) {
-      onStatus("Select an environment to open shell.")
-      return
+      onStatus("Select an environment to open shell.");
+      return;
     }
-    const shellUser = refs.shellUser?.value || ""
-    const shell = refs.shellCommand?.value || "bash"
+
+    if (!term) initTerminal();
+
+    const shellUser = refs.shellUser?.value || "";
+    const shell = refs.shellCommand?.value || "bash";
+
     try {
-      const message = await bridge.openShellForService(project, service, shellUser, shell)
-      onStatus(message)
-      onToast(message, "success")
+      term.reset();
+      term.write(`Connecting to ${project} (${service || "default"})...\r\n`);
+
+      const sessionID = await bridge.startTerminal(
+        project,
+        service,
+        shellUser,
+        shell,
+      );
+
+      if (sessionID.startsWith("error:")) {
+        throw new Error(sessionID.replace("error: ", ""));
+      }
+
+      currentSessionID = sessionID;
+      setTimeout(() => {
+        fitAddon?.fit();
+        bridge.resizeTerminal(currentSessionID, term.cols, term.rows);
+      }, 100);
+
+      onStatus(`Terminal opened: ${sessionID}`);
     } catch (err) {
-      const message = `Failed to open shell: ${err}`
-      onStatus(message)
-      onToast(message, "error")
+      const message = `Failed to open terminal: ${err}`;
+      onStatus(message);
+      onToast(message, "error");
+      term?.write(`\r\nError: ${err.message || err}\r\n`);
     }
-  }
+  };
 
   const resetShellUsers = async () => {
     try {
