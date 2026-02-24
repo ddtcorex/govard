@@ -81,7 +81,7 @@ images:
 	docker build --pull -f docker/php/Dockerfile -t govard/php:8.4 --build-arg PHP_VERSION=8.4 docker/php
 	docker build --pull -f docker/php/Dockerfile -t govard/php:8.3 --build-arg PHP_VERSION=8.3 docker/php
 	docker build --pull -f docker/php/Dockerfile -t govard/php:8.2 --build-arg PHP_VERSION=8.2 docker/php
-	docker build --pull -f docker/php/Dockerfile -t govard/php:8.1 --build-arg PHP_VERSION=8.1 --build-arg PHP_MEMORY_LIMIT=2G docker/php
+	docker build --pull -f docker/php/Dockerfile -t govard/php:8.1 --build-arg PHP_VERSION=8.1 docker/php
 	docker build --pull -f docker/php/Dockerfile -t govard/php:7.4 --build-arg PHP_VERSION=7.4 docker/php
 	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.4 --build-arg PHP_VERSION=8.4 docker/php
 	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.3 --build-arg PHP_VERSION=8.3 docker/php
