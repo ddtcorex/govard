@@ -3,9 +3,9 @@ ARG PHP_MEMORY_LIMIT=4G
 ARG PHP_MAX_EXECUTION_TIME=3600
 
 FROM php:${PHP_VERSION}-fpm-alpine
-
-LABEL dev.govard.image.name="php"
-LABEL dev.govard.php.version="${PHP_VERSION}"
+ARG PHP_VERSION
+ARG PHP_MEMORY_LIMIT
+ARG PHP_MAX_EXECUTION_TIME
 
 # Set environment variables
 ENV COMPOSER_ALLOW_SUPERUSER=1
@@ -97,7 +97,6 @@ RUN set -eux; \
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Install Mailpit sendmail as a replacement for mhsendmail
-COPY --from=govard/nginx:latest /usr/local/bin/envsubst /usr/local/bin/envsubst
 RUN curl -sL https://raw.githubusercontent.com/axllent/mailpit/develop/install.sh | sh
 
 # Copy custom PHP configuration

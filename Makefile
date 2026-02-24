@@ -80,7 +80,7 @@ images:
 	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.6.2 --build-arg ELASTICSEARCH_VERSION=7.6.2 docker/elasticsearch
 	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:6.8.23 --build-arg ELASTICSEARCH_VERSION=6.8.23 docker/elasticsearch
 	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:5.6.16 --build-arg ELASTICSEARCH_VERSION=5.6.16 docker/elasticsearch
-	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:2.4.6 --build-arg ELASTICSEARCH_VERSION=2.4.6 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:2.4.6 --build-arg ELASTICSEARCH_VERSION=2.4.6 --build-arg ELASTICSEARCH_IMAGE=elasticsearch docker/elasticsearch
 	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:11.4 --build-arg MARIADB_VERSION=11.4 docker/mariadb
 	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.11 --build-arg MARIADB_VERSION=10.11 docker/mariadb
 	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.6 --build-arg MARIADB_VERSION=10.6 docker/mariadb
