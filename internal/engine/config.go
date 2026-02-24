@@ -20,9 +20,10 @@ type Stack struct {
 	DBType        string   `yaml:"db_type"`
 	DBVersion     string   `yaml:"db_version"`
 	WebRoot       string   `yaml:"web_root"`
-	CacheVersion  string   `yaml:"cache_version"`
-	SearchVersion string   `yaml:"search_version"`
-	QueueVersion  string   `yaml:"queue_version,omitempty"`
+	CacheVersion   string   `yaml:"cache_version"`
+	SearchVersion  string   `yaml:"search_version"`
+	VarnishVersion string   `yaml:"varnish_version,omitempty"`
+	QueueVersion   string   `yaml:"queue_version,omitempty"`
 	XdebugSession string   `yaml:"xdebug_session,omitempty"`
 	WebServer     string   `yaml:"web_server,omitempty"`
 	UserID        int      `yaml:"user_id,omitempty"`

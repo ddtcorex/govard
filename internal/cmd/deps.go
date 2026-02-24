@@ -157,7 +157,7 @@ func RequiredRuntimeImages(config engine.Config) []string {
 	}
 
 	if config.Stack.Features.Varnish {
-		push(fmt.Sprintf("%s/varnish:latest", imageRepo))
+		push(fmt.Sprintf("%s/varnish:%s", imageRepo, config.Stack.VarnishVersion))
 	}
 
 	seen := make(map[string]struct{}, len(images))

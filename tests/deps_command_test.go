@@ -36,7 +36,7 @@ func TestRequiredRuntimeImagesMagento(t *testing.T) {
 		"govard/redis:7.4":           true,
 		"govard/opensearch:2.12.0":   true,
 		"govard/rabbitmq:3.13.7":     true,
-		"govard/varnish:latest":      true,
+		"govard/varnish:7.6":         true,
 	}
 
 	for _, image := range images {

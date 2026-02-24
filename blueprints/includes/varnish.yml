@@ -3,7 +3,7 @@
 services:
   {{ if .Config.Stack.Features.Varnish }}
   varnish:
-    image: {{ $.ImageRepository }}/varnish:latest
+    image: {{ $.ImageRepository }}/varnish:{{ .Config.Stack.VarnishVersion }}
     volumes:
       - './varnish/default.vcl:/etc/varnish/default.vcl:ro'
     networks:

@@ -95,7 +95,11 @@ images:
 	docker build --pull -f docker/redis/Dockerfile -t govard/redis:6.2 --build-arg REDIS_VERSION=6.2 docker/redis
 	docker build --pull -f docker/valkey/Dockerfile -t govard/valkey:8.0 --build-arg VALKEY_VERSION=8.0 docker/valkey
 	docker build --pull -f docker/valkey/Dockerfile -t govard/valkey:7.2 --build-arg VALKEY_VERSION=7.2 docker/valkey
-	docker build --pull -t govard/varnish:latest --build-arg VARNISH_VERSION=7.4 docker/varnish
+	docker build --pull -t govard/varnish:7.6 --build-arg VARNISH_VERSION=7.6 docker/varnish
+	docker build --pull -t govard/varnish:7.4 --build-arg VARNISH_VERSION=7.4 docker/varnish
+	docker build --pull -t govard/varnish:7.0 --build-arg VARNISH_VERSION=7.0 docker/varnish
+	docker build --pull -t govard/varnish:6.0 --build-arg VARNISH_VERSION=6.0 docker/varnish
+	docker build --pull -t govard/varnish:latest --build-arg VARNISH_VERSION=7.6 docker/varnish
 
 push:
 	@echo "Pushing Govard Docker Images..."
@@ -125,5 +129,9 @@ push:
 	docker push govard/redis:6.2
 	docker push govard/valkey:8.0
 	docker push govard/valkey:7.2
+	docker push govard/varnish:7.6
+	docker push govard/varnish:7.4
+	docker push govard/varnish:7.0
+	docker push govard/varnish:6.0
 	docker push govard/varnish:latest
 

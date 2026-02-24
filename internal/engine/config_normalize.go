@@ -172,6 +172,18 @@ func NormalizeConfig(config *Config) {
 		}
 	}
 
+	if !config.Stack.Features.Varnish {
+		config.Stack.VarnishVersion = ""
+	} else if config.Stack.VarnishVersion == "" &&
+		profileAvailable &&
+		profile.VarnishVersion != "" {
+		config.Stack.VarnishVersion = profile.VarnishVersion
+	} else if config.Stack.VarnishVersion == "" && ok && fwConfig.DefaultVarnishVer != "" {
+		config.Stack.VarnishVersion = fwConfig.DefaultVarnishVer
+	} else if config.Stack.VarnishVersion == "" {
+		config.Stack.VarnishVersion = "7.4"
+	}
+
 	if config.Stack.Services.Queue == "none" {
 		config.Stack.QueueVersion = ""
 	} else if config.Stack.QueueVersion == "" &&

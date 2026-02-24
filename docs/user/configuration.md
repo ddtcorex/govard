@@ -191,6 +191,11 @@ Registry behavior:
 - **Description**: Queue image version (e.g. `3.13.7` for RabbitMQ)
 - **Default**: Framework-dependent
 
+#### `stack.varnish_version`
+- **Type**: string
+- **Description**: Varnish image version (e.g. `7.4`)
+- **Default**: Framework-dependent
+
 #### `stack.xdebug_session`
 - **Type**: string
 - **Description**: Cookie value used to route requests to the Xdebug container
