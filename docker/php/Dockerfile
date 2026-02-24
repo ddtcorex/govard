@@ -7,6 +7,9 @@ ARG PHP_VERSION
 ARG PHP_MEMORY_LIMIT
 ARG PHP_MAX_EXECUTION_TIME
 
+LABEL dev.govard.image.name="php"
+LABEL dev.govard.php.version="${PHP_VERSION}"
+
 # Set environment variables
 ENV COMPOSER_ALLOW_SUPERUSER=1
 ENV PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT}
