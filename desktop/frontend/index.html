@@ -290,6 +290,7 @@
                   >
                 </div>
                 <input
+                  aria-label="Search"
                   class="block w-full pl-10 pr-12 py-2 bg-[#1a3322] border border-transparent focus:border-primary/30 text-white placeholder-[#5d856b] rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30 sm:text-sm transition-all"
                   placeholder="Search in Govard..."
                   type="text"
@@ -306,6 +307,7 @@
             </div>
             <div class="flex items-center gap-4 ml-6">
               <button
+                aria-label="Notifications"
                 class="relative p-2 text-[#90cba4] hover:text-white hover:bg-[#22492f] rounded-lg transition-colors"
               >
                 <span class="material-symbols-outlined">notifications</span>
@@ -314,6 +316,7 @@
                 ></span>
               </button>
               <button
+                aria-label="Settings"
                 class="p-2 text-[#90cba4] hover:text-white hover:bg-[#22492f] rounded-lg transition-colors"
                 id="openSettings"
                 data-action="open-settings"
@@ -440,6 +443,7 @@
                     Restart
                   </button>
                   <button
+                    aria-label="Stop environment"
                     data-action="env-stop"
                     id="heroStopBtn"
                     class="h-12 w-12 bg-[#1a3322] text-[#90cba4] hover:text-white border border-[#2e573a] rounded-lg hover:bg-red-500/20 hover:border-red-500/30 transition-all active:scale-95 flex items-center justify-center"
@@ -1142,6 +1146,7 @@
                         />
                       </div>
                       <button
+                        aria-label="Clear logs"
                         data-action="clear-logs"
                         class="text-[#90cba4] hover:text-primary transition-colors"
                         title="Clear Logs"
@@ -1151,6 +1156,7 @@
                         >
                       </button>
                       <button
+                        aria-label="Download logs"
                         data-action="download-logs"
                         class="text-[#90cba4] hover:text-primary transition-colors"
                         title="Download Logs"
@@ -1346,6 +1352,7 @@ Select an environment to view logs.</pre
               </div>
             </div>
             <button
+              aria-label="Close"
               data-action="close-onboarding"
               class="text-slate-400 hover:text-white transition-colors"
             >
@@ -1785,6 +1792,7 @@ Select an environment to view logs.</pre
           >
             <h3 class="text-white text-lg font-bold">Govard Settings</h3>
             <button
+              aria-label="Close settings"
               class="p-2 rounded hover:bg-white/5 text-slate-400 hover:text-white flex items-center justify-center h-9 w-9"
               id="closeSettings"
               type="button"
