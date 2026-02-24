@@ -32,16 +32,16 @@ var blueprintRegistryHTTPClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-func resolveBlueprintsDirForConfig(root string, config Config) (string, error) {
+func resolveBlueprintsDirForConfig(root string, config Config) (fs.FS, error) {
 	if strings.TrimSpace(config.BlueprintRegistry.URL) == "" {
-		return findBlueprintsDir(root)
+		return findBlueprintsFS(root)
 	}
 
 	path, err := resolveBlueprintRegistryBlueprintsDir(config.BlueprintRegistry)
 	if err != nil {
-		return "", fmt.Errorf("resolve blueprint registry: %w", err)
+		return nil, fmt.Errorf("resolve blueprint registry: %w", err)
 	}
-	return path, nil
+	return os.DirFS(path), nil
 }
 
 func resolveBlueprintRegistryBlueprintsDir(cfg BlueprintRegistryConfig) (string, error) {

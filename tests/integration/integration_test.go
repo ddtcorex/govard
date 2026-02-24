@@ -63,7 +63,7 @@ func NewTestEnvironment(t *testing.T) *TestEnvironment {
 		ProjectRoot:    projectRoot,
 		TestProjects:   make(map[string]string),
 		BinaryPath:     binaryPath,
-		BlueprintsPath: filepath.Join(projectRoot, "blueprints"),
+		BlueprintsPath: filepath.Join(projectRoot, "internal", "blueprints", "files"),
 	}
 }
 

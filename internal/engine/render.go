@@ -3,8 +3,11 @@ package engine
 import (
 	"bytes"
 	"fmt"
+	"govard/internal/blueprints"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -41,9 +44,15 @@ func findBlueprintsDir(startDir string) (string, error) {
 
 	curr := abs
 	for {
-		target := filepath.Join(curr, "blueprints")
-		if _, err := os.Stat(target); err == nil {
-			return target, nil
+		// Check both legacy root path and new internal path
+		candidates := []string{
+			filepath.Join(curr, "blueprints"),
+			filepath.Join(curr, "internal", "blueprints", "files"),
+		}
+		for _, target := range candidates {
+			if _, err := os.Stat(target); err == nil {
+				return target, nil
+			}
 		}
 
 		parent := filepath.Dir(curr)
@@ -82,9 +91,18 @@ func findBlueprintsDir(startDir string) (string, error) {
 	return "", fmt.Errorf("blueprints directory not found")
 }
 
+func findBlueprintsFS(startDir string) (fs.FS, error) {
+	dir, err := findBlueprintsDir(startDir)
+	if err == nil {
+		return os.DirFS(dir), nil
+	}
+
+	return blueprints.FS, nil
+}
+
 // RenderBlueprint renders layered blueprints into a single docker-compose file
 func RenderBlueprint(root string, config Config) error {
-	blueprintsDir, err := resolveBlueprintsDirForConfig(root, config)
+	blueprintsFS, err := resolveBlueprintsDirForConfig(root, config)
 	if err != nil {
 		return fmt.Errorf("resolve blueprints directory: %w", err)
 	}
@@ -95,7 +113,7 @@ func RenderBlueprint(root string, config Config) error {
 	fwConfig, ok := GetFrameworkConfig(config.Recipe)
 	if !ok {
 		// Fallback to old single-file approach for backward compatibility
-		return renderLegacyBlueprint(root, blueprintsDir, config)
+		return renderLegacyBlueprint(root, blueprintsFS, config)
 	}
 
 	// Determine image repository
@@ -127,11 +145,11 @@ func RenderBlueprint(root string, config Config) error {
 
 	// Ensure support assets (Varnish, etc)
 	if config.Stack.Features.Varnish {
-		vclSrc := filepath.Join(blueprintsDir, config.Recipe, "varnish", "default.vcl")
+		vclSrc := path.Join(config.Recipe, "varnish", "default.vcl")
 		vclDestDir := filepath.Join(root, "varnish")
 		vclDest := filepath.Join(vclDestDir, "default.vcl")
 
-		rendered, err := renderTemplate(vclSrc, renderData)
+		rendered, err := renderTemplateFS(blueprintsFS, vclSrc, renderData)
 		if err != nil {
 			return fmt.Errorf("failed to render varnish vcl: %w", err)
 		}
@@ -146,14 +164,14 @@ func RenderBlueprint(root string, config Config) error {
 	// Render each include file and merge YAML content
 	merged := map[string]interface{}{}
 	for _, include := range fwConfig.Includes {
-		tmplPath := filepath.Join(blueprintsDir, include)
+		tmplPath := include
 
 		// Check if file exists
-		if _, err := os.Stat(tmplPath); os.IsNotExist(err) {
+		if _, err := fs.Stat(blueprintsFS, tmplPath); os.IsNotExist(err) {
 			continue // Skip missing includes
 		}
 
-		rendered, err := renderTemplate(tmplPath, renderData)
+		rendered, err := renderTemplateFS(blueprintsFS, tmplPath, renderData)
 		if err != nil {
 			return fmt.Errorf("failed to render %s: %w", include, err)
 		}
@@ -226,7 +244,22 @@ func mergeProjectComposeOverride(root string, merged map[string]interface{}) err
 	return nil
 }
 
-// renderTemplate renders a single template file
+// renderTemplateFS renders a single template from an fs.FS
+func renderTemplateFS(bfs fs.FS, tmplPath string, data RenderData) (string, error) {
+	tmpl, err := template.ParseFS(bfs, tmplPath)
+	if err != nil {
+		return "", fmt.Errorf("parse template %s: %w", tmplPath, err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("execute template %s: %w", tmplPath, err)
+	}
+
+	return buf.String(), nil
+}
+
+// renderTemplate renders a single template file (legacy helper for external callers if any)
 func renderTemplate(tmplPath string, data RenderData) (string, error) {
 	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
@@ -300,10 +333,10 @@ func mergeComposeMap(dst, src map[string]interface{}) {
 }
 
 // renderLegacyBlueprint renders using the old single-file approach
-func renderLegacyBlueprint(root, blueprintsDir string, config Config) error {
-	tmplPath := filepath.Join(blueprintsDir, config.Recipe+".tmpl")
+func renderLegacyBlueprint(root string, blueprintsFS fs.FS, config Config) error {
+	tmplPath := config.Recipe + ".tmpl"
 
-	tmpl, err := template.ParseFiles(tmplPath)
+	tmpl, err := template.ParseFS(blueprintsFS, tmplPath)
 	if err != nil {
 		return fmt.Errorf("parse legacy template %s: %w", tmplPath, err)
 	}

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,14 +58,13 @@ func EnsureGlobalProxy() error {
 		tempDir := filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
 		os.MkdirAll(tempDir, 0755)
 
-		blueprintsDir, err := findBlueprintsDir(".")
+		blueprintsFS, err := findBlueprintsFS(".")
 		if err != nil {
 			return err
 		}
-		proxySource := filepath.Join(blueprintsDir, "proxy.yml")
-		content, err := os.ReadFile(proxySource)
+		content, err := fs.ReadFile(blueprintsFS, "proxy.yml")
 		if err != nil {
-			return fmt.Errorf("could not find proxy blueprint at %s", proxySource)
+			return fmt.Errorf("could not find proxy blueprint")
 		}
 
 		proxyFile := filepath.Join(tempDir, "docker-compose.yml")

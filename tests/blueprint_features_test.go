@@ -86,7 +86,7 @@ func renderComposeWithConfig(t *testing.T, config engine.Config) string {
 
 	_, filename, _, _ := runtime.Caller(0)
 	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "blueprints")
+	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
 
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
 	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {

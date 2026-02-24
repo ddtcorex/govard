@@ -12,13 +12,14 @@ import (
 	"govard/internal/engine"
 )
 
-func TestRenderBlueprintMissingBlueprintsDir(t *testing.T) {
+func TestRenderBlueprintWorksWithFallback(t *testing.T) {
 	projectDir := t.TempDir()
 
+	// No blueprints in projectDir/blueprints, should use embedded fallback
 	config := engine.Config{
-		ProjectName: "test-missing",
+		ProjectName: "test-fallback",
 		Recipe:      "magento2",
-		Domain:      "test-missing.test",
+		Domain:      "test-fallback.test",
 		Stack: engine.Stack{
 			PHPVersion: "8.3",
 			WebServer:  "nginx",
@@ -32,12 +33,13 @@ func TestRenderBlueprintMissingBlueprintsDir(t *testing.T) {
 	}
 
 	err := engine.RenderBlueprint(projectDir, config)
-	if err == nil {
-		t.Error("Expected error when blueprints directory is missing")
+	if err != nil {
+		t.Fatalf("Expected success with embedded fallback, got error: %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "blueprints") {
-		t.Errorf("Error message should mention blueprints, got: %v", err)
+	composePath := engine.ComposeFilePath(projectDir, config.ProjectName)
+	if _, err := os.Stat(composePath); os.IsNotExist(err) {
+		t.Error("Compose file was not created via fallback")
 	}
 }
 
