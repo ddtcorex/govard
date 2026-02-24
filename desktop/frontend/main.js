@@ -133,6 +133,33 @@ const showToast = (message, type = "success") => {
   toast.show(message, type);
 };
 
+const switchTab = (tabId) => {
+  const tabLinks = document.querySelectorAll('[data-action="switch-tab"]');
+  const tabContents = document.querySelectorAll(".tab-content");
+
+  tabLinks.forEach((l) => {
+    l.classList.remove("border-primary", "text-primary");
+    l.classList.add("border-transparent", "text-[#90cba4]");
+    if (l instanceof HTMLElement && l.dataset.tab === tabId) {
+      l.classList.remove("border-transparent", "text-[#90cba4]");
+      l.classList.add("border-primary", "text-primary");
+    }
+  });
+
+  tabContents.forEach((c) => {
+    c.classList.remove("active", "flex", "block");
+    c.classList.add("hidden");
+  });
+
+  const content = byId("tab-" + tabId);
+  if (content) {
+    content.classList.remove("hidden");
+    content.classList.add("active");
+    if (tabId === "logs") content.classList.add("flex");
+    else content.classList.add("block");
+  }
+};
+
 const showSystemNotification = (title, body) => {
   if (
     typeof window === "undefined" ||
@@ -230,8 +257,9 @@ const loadDashboard = async () => {
 };
 
 const syncProjectState = () => {
+  const state = getState();
   const selectedProject =
-    refs.envSelector?.value || refs.logSelector?.value || "";
+    refs.envSelector?.value || refs.logSelector?.value || state.selectedProject || "";
   setState({ selectedProject });
 };
 
@@ -313,7 +341,11 @@ const refreshDashboard = async (options = {}) => {
   const dashboard = await loadDashboard();
   setMetricText(dashboard, refs);
   renderWarnings(refs.warningList, dashboard.warnings);
-  renderEnvironmentList(refs.envList, dashboard.environments);
+  renderEnvironmentList(
+    refs.envList,
+    dashboard.environments,
+    getState().selectedProject,
+  );
 
   const previousProject = getState().selectedProject;
   syncProjectSelectors(
@@ -322,7 +354,7 @@ const refreshDashboard = async (options = {}) => {
     previousProject,
   );
 
-  const selectedProject = refs.envSelector?.value || "";
+  const selectedProject = refs.envSelector?.value || getState().selectedProject || "";
   setState({ environments: dashboard.environments, selectedProject });
   if (!selectedProject && dashboard.environments.length > 0) {
     setState({ selectedProject: projectKey(dashboard.environments[0]) });
@@ -344,6 +376,11 @@ const refreshDashboard = async (options = {}) => {
   refreshServiceSelector();
   refreshSeveritySelector();
   syncLogFiltersState();
+  renderEnvironmentList(
+    refs.envList,
+    dashboard.environments,
+    getState().selectedProject,
+  );
   renderProjectHero(refs, dashboard.environments, getState().selectedProject);
   await metricsController.refresh({ silent: true });
   await remotesController.refresh({ silent: true });
@@ -391,10 +428,12 @@ document.addEventListener("click", async (event) => {
 
   if (action === "select-environment") {
     const project = targetElement.dataset.env || "";
+    setState({ selectedProject: project });
     if (refs.envSelector) refs.envSelector.value = project;
     if (refs.logSelector) refs.logSelector.value = project;
+    switchTab("dashboard");
     await syncProjectSelectorsFrom("env");
-    await refreshDashboard();
+    await refreshDashboard({ silent: true });
     return;
   }
 
@@ -494,29 +533,7 @@ document.addEventListener("click", async (event) => {
 
   if (action === "switch-tab") {
     const tabId = targetElement.dataset.tab;
-    const tabLinks = document.querySelectorAll('[data-action="switch-tab"]');
-    const tabContents = document.querySelectorAll(".tab-content");
-
-    tabLinks.forEach((l) => {
-      l.classList.remove("border-primary", "text-primary");
-      l.classList.add("border-transparent", "text-[#90cba4]");
-    });
-
-    targetElement.classList.remove("border-transparent", "text-[#90cba4]");
-    targetElement.classList.add("border-primary", "text-primary");
-
-    tabContents.forEach((c) => {
-      c.classList.remove("active", "flex", "block");
-      c.classList.add("hidden");
-    });
-
-    const content = byId("tab-" + tabId);
-    if (content) {
-      content.classList.remove("hidden");
-      content.classList.add("active");
-      if (tabId === "logs") content.classList.add("flex");
-      else content.classList.add("block");
-    }
+    if (tabId) switchTab(tabId);
     return;
   }
 
