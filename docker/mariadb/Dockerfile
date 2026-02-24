@@ -1,5 +1,6 @@
 ARG MARIADB_VERSION=11.4
 FROM mariadb:${MARIADB_VERSION}
+ARG MARIADB_VERSION
 
 LABEL dev.govard.image.name="mariadb"
 LABEL dev.govard.mariadb.version="${MARIADB_VERSION}"

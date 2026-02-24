@@ -1,5 +1,6 @@
 ARG APACHE_VERSION=2.4.66
 FROM httpd:${APACHE_VERSION}-alpine
+ARG APACHE_VERSION
 
 LABEL dev.govard.image.name="apache"
 LABEL dev.govard.apache.version="${APACHE_VERSION}"

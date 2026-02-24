@@ -1,6 +1,7 @@
 ARG PHP_VERSION=8.4
 
 FROM govard/php:${PHP_VERSION}
+ARG PHP_VERSION
 
 USER root
 

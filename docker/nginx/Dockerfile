@@ -1,5 +1,6 @@
 ARG NGINX_VERSION=1.28.0
 FROM nginx:${NGINX_VERSION}-alpine
+ARG NGINX_VERSION
 
 LABEL dev.govard.image.name="nginx"
 LABEL dev.govard.nginx.version="${NGINX_VERSION}"
