@@ -82,7 +82,7 @@ Sets `system/full_page_cache/caching_application` to `2` (Varnish).
 ### PHP-FPM
 
 Pre-configured with:
-- PHP 8.1, 8.3, or 8.4 (default 8.4)
+- PHP 7.4, 8.1, 8.2, 8.3, or 8.4 (default 8.4)
 - Required extensions: intl, gd, bcmath, soap, xsl, zip, sockets
 - Optimized `memory_limit` (4G)
 - Xdebug 3 support (toggle with `govard debug`)

@@ -40,7 +40,13 @@ RUN apk add --no-cache \
     linux-headers \
     patch \
     openssh-client \
-    shadow
+    shadow \
+    pv \
+    socat \
+    bind-tools \
+    mariadb-client \
+    postgresql-client \
+    jq
 
 # Install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -70,6 +76,10 @@ RUN pecl install redis imagick amqp \
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Install Mailpit sendmail as a replacement for mhsendmail
+COPY --from=govard/nginx:latest /usr/local/bin/envsubst /usr/local/bin/envsubst
+RUN curl -sL https://raw.githubusercontent.com/axllent/mailpit/develop/install.sh | sh
 
 # Copy custom PHP configuration
 COPY etc/php.ini /usr/local/etc/php/conf.d/govard.ini

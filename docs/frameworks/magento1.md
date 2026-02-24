@@ -4,7 +4,7 @@ Govard supports Magento 1/OpenMage projects with a lightweight stack and simple 
 
 ## Requirements
 
-- PHP 8.1
+- PHP 7.4 or 8.1 (default 8.1)
 - MariaDB 10.11
 - A Magento 1/OpenMage codebase (e.g. OpenMage LTS or a legacy Magento 1 project)
 
