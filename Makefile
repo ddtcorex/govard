@@ -69,6 +69,7 @@ clean:
 
 images:
 	@echo "Building Govard Docker Images..."
+	docker build --pull -t govard/apache:2.4 --build-arg APACHE_VERSION=2.4.66 docker/apache
 	docker build --pull -t govard/apache:latest --build-arg APACHE_VERSION=2.4.66 docker/apache
 	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.17.10 --build-arg ELASTICSEARCH_VERSION=7.17.10 docker/elasticsearch
 	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:11.4 --build-arg MARIADB_VERSION=11.4 docker/mariadb
@@ -76,6 +77,7 @@ images:
 	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.6 --build-arg MARIADB_VERSION=10.6 docker/mariadb
 	docker build --pull -f docker/mysql/Dockerfile -t govard/mysql:8.4 --build-arg MYSQL_VERSION=8.4 docker/mysql
 	docker build --pull -f docker/mysql/Dockerfile -t govard/mysql:8.0 --build-arg MYSQL_VERSION=8.0 docker/mysql
+	docker build --pull -t govard/nginx:1.28 --build-arg NGINX_VERSION=1.28.0 docker/nginx
 	docker build --pull -t govard/nginx:latest --build-arg NGINX_VERSION=1.28.0 docker/nginx
 	docker build --pull -f docker/opensearch/Dockerfile -t govard/opensearch:2.12.0 --build-arg OPENSEARCH_VERSION=2.12.0 docker/opensearch
 	docker build --pull -f docker/php/Dockerfile -t govard/php:8.4 --build-arg PHP_VERSION=8.4 docker/php
@@ -103,6 +105,7 @@ images:
 
 push:
 	@echo "Pushing Govard Docker Images..."
+	docker push govard/apache:2.4
 	docker push govard/apache:latest
 	docker push govard/elasticsearch:7.17.10
 	docker push govard/mariadb:11.4
@@ -110,6 +113,7 @@ push:
 	docker push govard/mariadb:10.6
 	docker push govard/mysql:8.4
 	docker push govard/mysql:8.0
+	docker push govard/nginx:1.28
 	docker push govard/nginx:latest
 	docker push govard/opensearch:2.12.0
 	docker push govard/php:8.4

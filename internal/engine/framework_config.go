@@ -7,10 +7,12 @@ type FrameworkConfig struct {
 	NGINXTemplate    string
 	DatabaseName     string
 	DefaultPHP       string
-	DefaultNodeVer   string
-	DefaultDB        string
-	DefaultDBVer     string
-	DefaultMySQLVer  string
+	DefaultNodeVer    string
+	DefaultDB         string
+	DefaultDBVer      string
+	DefaultMySQLVer   string
+	DefaultNginxVer   string
+	DefaultApacheVer  string
 	DefaultCacheVer   string
 	DefaultSearchVer  string
 	DefaultVarnishVer string
@@ -25,15 +27,17 @@ type FrameworkConfig struct {
 // FrameworkConfigs maps framework names to their configurations
 var FrameworkConfigs = map[string]FrameworkConfig{
 	"magento2": {
-		Name:             "magento2",
-		NGINXPUBLIC:      "/pub",
-		NGINXTemplate:    "magento2.conf",
-		DatabaseName:     "magento",
-		DefaultPHP:       "8.4",
-		DefaultNodeVer:   "24",
-		DefaultDB:        "mariadb",
-		DefaultDBVer:     "11.4",
-		DefaultMySQLVer:  "8.4",
+		Name:              "magento2",
+		NGINXPUBLIC:       "/pub",
+		NGINXTemplate:     "magento2.conf",
+		DatabaseName:      "magento",
+		DefaultPHP:        "8.4",
+		DefaultNodeVer:    "24",
+		DefaultDB:         "mariadb",
+		DefaultDBVer:      "11.4",
+		DefaultMySQLVer:   "8.4",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "8.0.0",
 		DefaultSearchVer:  "2.19.0",
 		DefaultVarnishVer: "7.6",
@@ -51,14 +55,16 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		},
 	},
 	"laravel": {
-		Name:             "laravel",
-		NGINXPUBLIC:      "/public",
-		NGINXTemplate:    "laravel.conf",
-		DatabaseName:     "laravel",
-		DefaultPHP:       "8.4",
-		DefaultDB:        "mariadb",
-		DefaultDBVer:     "11.4",
-		DefaultMySQLVer:  "8.4",
+		Name:              "laravel",
+		NGINXPUBLIC:       "/public",
+		NGINXTemplate:     "laravel.conf",
+		DatabaseName:      "laravel",
+		DefaultPHP:        "8.4",
+		DefaultDB:         "mariadb",
+		DefaultDBVer:      "11.4",
+		DefaultMySQLVer:   "8.4",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.4",
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.4",
@@ -76,15 +82,17 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		},
 	},
 	"nextjs": {
-		Name:             "nextjs",
-		NGINXPUBLIC:      "",
-		NGINXTemplate:    "nodejs.conf",
-		DatabaseName:     "",
-		DefaultPHP:       "",
-		DefaultNodeVer:   "24",
-		DefaultDB:        "",
-		DefaultDBVer:     "",
-		DefaultQueueVer:  "3.13.7",
+		Name:              "nextjs",
+		NGINXPUBLIC:       "",
+		NGINXTemplate:     "nodejs.conf",
+		DatabaseName:      "",
+		DefaultPHP:        "",
+		DefaultNodeVer:    "24",
+		DefaultDB:         "",
+		DefaultDBVer:      "",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
+		DefaultQueueVer:   "3.13.7",
 		DefaultWebServer: "nginx",
 		DefaultSearch:    "none",
 		DefaultCache:     "none",
@@ -102,6 +110,8 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultDB:         "mariadb",
 		DefaultDBVer:      "11.4",
 		DefaultMySQLVer:   "8.4",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.4",
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.4",
@@ -127,6 +137,8 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultDB:         "mariadb",
 		DefaultDBVer:      "11.4",
 		DefaultMySQLVer:   "8.4",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.4",
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.4",
@@ -152,6 +164,8 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultDB:         "mariadb",
 		DefaultDBVer:      "10.11",
 		DefaultMySQLVer:   "8.0",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.0",
 		DefaultVarnishVer: "6.0",
 		DefaultQueueVer:   "3.13.7",
@@ -173,6 +187,8 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultDB:         "mariadb",
 		DefaultDBVer:      "10.11",
 		DefaultMySQLVer:   "8.0",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.0",
 		DefaultVarnishVer: "6.0",
 		DefaultQueueVer:   "3.13.7",
@@ -194,6 +210,8 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultDB:         "mariadb",
 		DefaultDBVer:      "11.4",
 		DefaultMySQLVer:   "8.4",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.4",
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.4",
@@ -219,6 +237,8 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultDB:         "mariadb",
 		DefaultDBVer:      "11.4",
 		DefaultMySQLVer:   "8.4",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.4",
 		DefaultVarnishVer: "7.4",
 		DefaultQueueVer:   "3.13.7",
@@ -242,6 +262,8 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultDB:         "mariadb",
 		DefaultDBVer:      "11.4",
 		DefaultMySQLVer:   "8.4",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.4",
 		DefaultVarnishVer: "7.4",
 		DefaultQueueVer:   "3.13.7",
@@ -265,6 +287,8 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultDB:         "mariadb",
 		DefaultDBVer:      "11.4",
 		DefaultMySQLVer:   "8.4",
+		DefaultNginxVer:   "1.28",
+		DefaultApacheVer:  "2.4",
 		DefaultCacheVer:   "7.4",
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.6",

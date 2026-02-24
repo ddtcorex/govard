@@ -3,7 +3,7 @@
 
 services:
   web:
-    image: {{ $.ImageRepository }}/nginx:latest
+    image: {{ $.ImageRepository }}/nginx:{{ .Config.Stack.NginxVersion }}
     volumes:
       - .:/var/www/html
     networks:

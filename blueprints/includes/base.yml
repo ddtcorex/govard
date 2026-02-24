@@ -7,7 +7,7 @@
 
 services:
   web:
-    image: {{ if $isApache }}{{ $.ImageRepository }}/apache:latest{{ else }}{{ $.ImageRepository }}/nginx:latest{{ end }}
+    image: {{ if $isApache }}{{ $.ImageRepository }}/apache:{{ .Config.Stack.ApacheVersion }}{{ else }}{{ $.ImageRepository }}/nginx:{{ .Config.Stack.NginxVersion }}{{ end }}
     volumes:
       - .:/var/www/html
     networks:
@@ -35,7 +35,7 @@ services:
 
   {{ if $isHybrid }}
   apache:
-    image: {{ $.ImageRepository }}/apache:latest
+    image: {{ $.ImageRepository }}/apache:{{ .Config.Stack.ApacheVersion }}
     volumes:
       - .:/var/www/html
     networks:

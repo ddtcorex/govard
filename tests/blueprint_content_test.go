@@ -13,7 +13,7 @@ import (
 
 func TestRenderMagento2Blueprint(t *testing.T) {
 	testBlueprintRender(t, "magento2", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php-magento2:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: magento",
@@ -22,7 +22,7 @@ func TestRenderMagento2Blueprint(t *testing.T) {
 
 func TestRenderLaravelBlueprint(t *testing.T) {
 	testBlueprintRender(t, "laravel", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: laravel",
@@ -41,7 +41,7 @@ func TestRenderNextjsBlueprint(t *testing.T) {
 
 func TestRenderMagento1Blueprint(t *testing.T) {
 	testBlueprintRender(t, "magento1", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: magento",
@@ -50,7 +50,7 @@ func TestRenderMagento1Blueprint(t *testing.T) {
 
 func TestRenderDrupalBlueprint(t *testing.T) {
 	testBlueprintRender(t, "drupal", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: drupal",
@@ -59,7 +59,7 @@ func TestRenderDrupalBlueprint(t *testing.T) {
 
 func TestRenderSymfonyBlueprint(t *testing.T) {
 	testBlueprintRender(t, "symfony", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: symfony",
@@ -68,7 +68,7 @@ func TestRenderSymfonyBlueprint(t *testing.T) {
 
 func TestRenderShopwareBlueprint(t *testing.T) {
 	testBlueprintRender(t, "shopware", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: shopware",
@@ -77,7 +77,7 @@ func TestRenderShopwareBlueprint(t *testing.T) {
 
 func TestRenderCakephpBlueprint(t *testing.T) {
 	testBlueprintRender(t, "cakephp", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: cakephp",
@@ -86,7 +86,7 @@ func TestRenderCakephpBlueprint(t *testing.T) {
 
 func TestRenderWordpressBlueprint(t *testing.T) {
 	testBlueprintRender(t, "wordpress", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: wordpress",
@@ -95,7 +95,7 @@ func TestRenderWordpressBlueprint(t *testing.T) {
 
 func TestRenderCustomBlueprint(t *testing.T) {
 	testBlueprintRender(t, "custom", []string{
-		"image: govard/nginx:latest",
+		"image: govard/nginx:1.28",
 		"image: govard/php:",
 		"image: govard/mariadb:",
 		"MYSQL_DATABASE: app",
@@ -207,7 +207,7 @@ func TestRenderMagento2BlueprintHybridWebServer(t *testing.T) {
 	if !strings.Contains(contentStr, "apache:") || !strings.Contains(contentStr, "APACHE_DOCUMENT_ROOT=/var/www/html/pub") {
 		t.Fatalf("expected apache sidecar service in hybrid mode, got:\n%s", contentStr)
 	}
-	if !strings.Contains(contentStr, "image: govard/apache:latest") {
+	if !strings.Contains(contentStr, "image: govard/apache:2.4") {
 		t.Fatalf("expected apache image in hybrid mode, got:\n%s", contentStr)
 	}
 }

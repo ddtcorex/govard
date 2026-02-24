@@ -18,6 +18,8 @@ type RuntimeProfile struct {
 	WebServer        string
 	Cache            string
 	CacheVersion     string
+	NginxVersion     string
+	ApacheVersion    string
 	Search           string
 	SearchVersion    string
 	VarnishVersion   string
@@ -41,7 +43,9 @@ type runtimeProfileOverride struct {
 	WebRoot       string
 	WebServer     string
 	Cache         string
-	CacheVersion  string
+	CacheVersion   string
+	NginxVersion   string
+	ApacheVersion  string
 	Search         string
 	SearchVersion  string
 	VarnishVersion string
@@ -94,6 +98,8 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 			DBVersion:        fwConfig.DefaultDBVer,
 			WebRoot:          fwConfig.NGINXPUBLIC,
 			WebServer:        normalizeProfileValue(fwConfig.DefaultWebServer, "nginx"),
+			NginxVersion:     fwConfig.DefaultNginxVer,
+			ApacheVersion:    fwConfig.DefaultApacheVer,
 			Cache:            normalizeProfileValue(fwConfig.DefaultCache, "none"),
 			CacheVersion:     fwConfig.DefaultCacheVer,
 			Search:           normalizeProfileValue(fwConfig.DefaultSearch, "none"),
@@ -219,6 +225,12 @@ func applyRuntimeProfileOverride(profile *RuntimeProfile, override runtimeProfil
 	}
 	if override.CacheVersion != "" {
 		profile.CacheVersion = override.CacheVersion
+	}
+	if override.NginxVersion != "" {
+		profile.NginxVersion = override.NginxVersion
+	}
+	if override.ApacheVersion != "" {
+		profile.ApacheVersion = override.ApacheVersion
 	}
 	if override.Search != "" {
 		profile.Search = override.Search

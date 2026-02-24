@@ -20,6 +20,8 @@ type Stack struct {
 	DBType        string   `yaml:"db_type"`
 	DBVersion     string   `yaml:"db_version"`
 	WebRoot       string   `yaml:"web_root"`
+	NginxVersion   string   `yaml:"nginx_version,omitempty"`
+	ApacheVersion  string   `yaml:"apache_version,omitempty"`
 	CacheVersion   string   `yaml:"cache_version"`
 	SearchVersion  string   `yaml:"search_version"`
 	VarnishVersion string   `yaml:"varnish_version,omitempty"`

@@ -30,7 +30,7 @@ func TestRequiredRuntimeImagesMagento(t *testing.T) {
 	})
 
 	expected := map[string]bool{
-		"govard/nginx:latest":        true,
+		"govard/nginx:1.28":          true,
 		"govard/php-magento2:8.3":    true,
 		"govard/mariadb:10.6":       true,
 		"govard/redis:7.4":           true,
@@ -97,8 +97,8 @@ func TestRequiredRuntimeImagesMagentoHybrid(t *testing.T) {
 	})
 
 	expected := map[string]bool{
-		"govard/nginx:latest":     true,
-		"govard/apache:latest":    true,
+		"govard/nginx:1.28":       true,
+		"govard/apache:2.4":       true,
 		"govard/php-magento2:8.3": true,
 		"govard/mariadb:10.6":     true,
 	}

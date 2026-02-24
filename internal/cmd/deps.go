@@ -120,12 +120,12 @@ func RequiredRuntimeImages(config engine.Config) []string {
 	} else {
 		switch strings.ToLower(config.Stack.Services.WebServer) {
 		case "apache":
-			push(fmt.Sprintf("%s/apache:latest", imageRepo))
+			push(fmt.Sprintf("%s/apache:%s", imageRepo, config.Stack.ApacheVersion))
 		case "hybrid":
-			push(fmt.Sprintf("%s/nginx:latest", imageRepo))
-			push(fmt.Sprintf("%s/apache:latest", imageRepo))
+			push(fmt.Sprintf("%s/nginx:%s", imageRepo, config.Stack.NginxVersion))
+			push(fmt.Sprintf("%s/apache:%s", imageRepo, config.Stack.ApacheVersion))
 		default:
-			push(fmt.Sprintf("%s/nginx:latest", imageRepo))
+			push(fmt.Sprintf("%s/nginx:%s", imageRepo, config.Stack.NginxVersion))
 		}
 		if config.Recipe == "magento2" {
 			push(fmt.Sprintf("%s/php-magento2:%s", imageRepo, config.Stack.PHPVersion))
