@@ -2,11 +2,11 @@ package engine
 
 // FrameworkConfig defines the configuration for a specific framework
 type FrameworkConfig struct {
-	Name             string
-	NGINXPUBLIC      string
-	NGINXTemplate    string
-	DatabaseName     string
-	DefaultPHP       string
+	Name              string
+	NGINXPUBLIC       string
+	NGINXTemplate     string
+	DatabaseName      string
+	DefaultPHP        string
 	DefaultNodeVer    string
 	DefaultDB         string
 	DefaultDBVer      string
@@ -17,11 +17,11 @@ type FrameworkConfig struct {
 	DefaultSearchVer  string
 	DefaultVarnishVer string
 	DefaultQueueVer   string
-	DefaultWebServer string
-	DefaultSearch    string
-	DefaultCache     string
-	DefaultQueue     string
-	Includes         []string // List of include files to load
+	DefaultWebServer  string
+	DefaultSearch     string
+	DefaultCache      string
+	DefaultQueue      string
+	Includes          []string // List of include files to load
 }
 
 // FrameworkConfigs maps framework names to their configurations
@@ -42,10 +42,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultSearchVer:  "2.19.0",
 		DefaultVarnishVer: "7.6",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "opensearch",
-		DefaultCache:     "valkey",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "opensearch",
+		DefaultCache:      "valkey",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"includes/base.yml",
 			"includes/redis.yml",
@@ -69,10 +69,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.4",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"includes/base.yml",
 			"includes/redis.yml",
@@ -82,17 +82,17 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		},
 	},
 	"nextjs": {
-		Name:              "nextjs",
-		NGINXPUBLIC:       "",
-		NGINXTemplate:     "nodejs.conf",
-		DatabaseName:      "",
-		DefaultPHP:        "",
-		DefaultNodeVer:    "24",
-		DefaultDB:         "",
-		DefaultDBVer:      "",
-		DefaultNginxVer:   "1.28",
-		DefaultApacheVer:  "2.4",
-		DefaultQueueVer:   "3.13.7",
+		Name:             "nextjs",
+		NGINXPUBLIC:      "",
+		NGINXTemplate:    "nodejs.conf",
+		DatabaseName:     "",
+		DefaultPHP:       "",
+		DefaultNodeVer:   "24",
+		DefaultDB:        "",
+		DefaultDBVer:     "",
+		DefaultNginxVer:  "1.28",
+		DefaultApacheVer: "2.4",
+		DefaultQueueVer:  "3.13.7",
 		DefaultWebServer: "nginx",
 		DefaultSearch:    "none",
 		DefaultCache:     "none",
@@ -116,10 +116,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.4",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"includes/base.yml",
 			"includes/redis.yml",
@@ -143,10 +143,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.4",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"includes/base.yml",
 			"includes/redis.yml",
@@ -170,9 +170,9 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultVarnishVer: "6.0",
 		DefaultQueueVer:   "3.13.7",
 		DefaultWebServer:  "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"magento1/services.yml",
 			"includes/rabbitmq.yml",
@@ -192,10 +192,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultCacheVer:   "7.0",
 		DefaultVarnishVer: "6.0",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"magento1/services.yml",
 			"includes/rabbitmq.yml",
@@ -216,10 +216,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.4",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"includes/base.yml",
 			"includes/redis.yml",
@@ -242,10 +242,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultCacheVer:   "7.4",
 		DefaultVarnishVer: "7.4",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"includes/base.yml",
 			"includes/redis.yml",
@@ -267,10 +267,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultCacheVer:   "7.4",
 		DefaultVarnishVer: "7.4",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"includes/base.yml",
 			"includes/redis.yml",
@@ -293,10 +293,10 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultSearchVer:  "3.4.0",
 		DefaultVarnishVer: "7.6",
 		DefaultQueueVer:   "3.13.7",
-		DefaultWebServer: "nginx",
-		DefaultSearch:    "none",
-		DefaultCache:     "none",
-		DefaultQueue:     "none",
+		DefaultWebServer:  "nginx",
+		DefaultSearch:     "none",
+		DefaultCache:      "none",
+		DefaultQueue:      "none",
 		Includes: []string{
 			"includes/base.yml",
 			"includes/redis.yml",

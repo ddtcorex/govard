@@ -71,30 +71,67 @@ images:
 	@echo "Building Govard Docker Images..."
 	docker build --pull -t govard/apache:2.4 --build-arg APACHE_VERSION=2.4.66 docker/apache
 	docker build --pull -t govard/apache:latest --build-arg APACHE_VERSION=2.4.66 docker/apache
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:8.15.0 --build-arg ELASTICSEARCH_VERSION=8.15.0 docker/elasticsearch
 	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.17.10 --build-arg ELASTICSEARCH_VERSION=7.17.10 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.16.3 --build-arg ELASTICSEARCH_VERSION=7.16.3 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.10.2 --build-arg ELASTICSEARCH_VERSION=7.10.2 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.9.3 --build-arg ELASTICSEARCH_VERSION=7.9.3 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.7.1 --build-arg ELASTICSEARCH_VERSION=7.7.1 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.6.2 --build-arg ELASTICSEARCH_VERSION=7.6.2 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:6.8.23 --build-arg ELASTICSEARCH_VERSION=6.8.23 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:5.6.16 --build-arg ELASTICSEARCH_VERSION=5.6.16 docker/elasticsearch
+	docker build --pull -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:2.4.6 --build-arg ELASTICSEARCH_VERSION=2.4.6 docker/elasticsearch
 	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:11.4 --build-arg MARIADB_VERSION=11.4 docker/mariadb
 	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.11 --build-arg MARIADB_VERSION=10.11 docker/mariadb
 	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.6 --build-arg MARIADB_VERSION=10.6 docker/mariadb
+	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.5 --build-arg MARIADB_VERSION=10.5 docker/mariadb
+	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.4 --build-arg MARIADB_VERSION=10.4 docker/mariadb
+	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.3 --build-arg MARIADB_VERSION=10.3 docker/mariadb
+	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.2 --build-arg MARIADB_VERSION=10.2 docker/mariadb
+	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.1 --build-arg MARIADB_VERSION=10.1 docker/mariadb
+	docker build --pull -f docker/mariadb/Dockerfile -t govard/mariadb:10.0 --build-arg MARIADB_VERSION=10.0 docker/mariadb
 	docker build --pull -f docker/mysql/Dockerfile -t govard/mysql:8.4 --build-arg MYSQL_VERSION=8.4 docker/mysql
 	docker build --pull -f docker/mysql/Dockerfile -t govard/mysql:8.0 --build-arg MYSQL_VERSION=8.0 docker/mysql
+	docker build --pull -f docker/mysql/Dockerfile -t govard/mysql:5.7 --build-arg MYSQL_VERSION=5.7 docker/mysql
 	docker build --pull -t govard/nginx:1.28 --build-arg NGINX_VERSION=1.28.0 docker/nginx
 	docker build --pull -t govard/nginx:latest --build-arg NGINX_VERSION=1.28.0 docker/nginx
+	docker build --pull -f docker/opensearch/Dockerfile -t govard/opensearch:3.0.0 --build-arg OPENSEARCH_VERSION=3.0.0 docker/opensearch
+	docker build --pull -f docker/opensearch/Dockerfile -t govard/opensearch:2.19.0 --build-arg OPENSEARCH_VERSION=2.19.0 docker/opensearch
 	docker build --pull -f docker/opensearch/Dockerfile -t govard/opensearch:2.12.0 --build-arg OPENSEARCH_VERSION=2.12.0 docker/opensearch
+	docker build --pull -f docker/opensearch/Dockerfile -t govard/opensearch:2.5.0 --build-arg OPENSEARCH_VERSION=2.5.0 docker/opensearch
+	docker build --pull -f docker/opensearch/Dockerfile -t govard/opensearch:1.3.20 --build-arg OPENSEARCH_VERSION=1.3.20 docker/opensearch
+	docker build --pull -f docker/opensearch/Dockerfile -t govard/opensearch:1.2.0 --build-arg OPENSEARCH_VERSION=1.2.0 docker/opensearch
 	docker build --pull -f docker/php/Dockerfile -t govard/php:8.4 --build-arg PHP_VERSION=8.4 docker/php
 	docker build --pull -f docker/php/Dockerfile -t govard/php:8.3 --build-arg PHP_VERSION=8.3 docker/php
 	docker build --pull -f docker/php/Dockerfile -t govard/php:8.2 --build-arg PHP_VERSION=8.2 docker/php
 	docker build --pull -f docker/php/Dockerfile -t govard/php:8.1 --build-arg PHP_VERSION=8.1 docker/php
 	docker build --pull -f docker/php/Dockerfile -t govard/php:7.4 --build-arg PHP_VERSION=7.4 docker/php
+	docker build --pull -f docker/php/Dockerfile -t govard/php:7.3 --build-arg PHP_VERSION=7.3 docker/php
+	docker build --pull -f docker/php/Dockerfile -t govard/php:7.2 --build-arg PHP_VERSION=7.2 docker/php
+	docker build --pull -f docker/php/Dockerfile -t govard/php:7.1 --build-arg PHP_VERSION=7.1 docker/php
 	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.4 --build-arg PHP_VERSION=8.4 docker/php
 	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.3 --build-arg PHP_VERSION=8.3 docker/php
 	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.2 --build-arg PHP_VERSION=8.2 docker/php
 	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.1 --build-arg PHP_VERSION=8.1 docker/php
 	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:7.4 --build-arg PHP_VERSION=7.4 docker/php
+	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:7.3 --build-arg PHP_VERSION=7.3 docker/php
+	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:7.2 --build-arg PHP_VERSION=7.2 docker/php
+	docker build --pull -f docker/php/magento2/Dockerfile -t govard/php-magento2:7.1 --build-arg PHP_VERSION=7.1 docker/php
+	docker build --pull -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:4.1 --build-arg RABBITMQ_VERSION=4.1 docker/rabbitmq
 	docker build --pull -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:3.13 --build-arg RABBITMQ_VERSION=3.13 docker/rabbitmq
 	docker build --pull -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:3.12 --build-arg RABBITMQ_VERSION=3.12 docker/rabbitmq
+	docker build --pull -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:3.11 --build-arg RABBITMQ_VERSION=3.11 docker/rabbitmq
+	docker build --pull -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:3.9 --build-arg RABBITMQ_VERSION=3.9 docker/rabbitmq
+	docker build --pull -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:3.8 --build-arg RABBITMQ_VERSION=3.8 docker/rabbitmq
+	docker build --pull -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:3.7 --build-arg RABBITMQ_VERSION=3.7 docker/rabbitmq
 	docker build --pull -f docker/redis/Dockerfile -t govard/redis:7.4 --build-arg REDIS_VERSION=7.4 docker/redis
+	docker build --pull -f docker/redis/Dockerfile -t govard/redis:7.2 --build-arg REDIS_VERSION=7.2 docker/redis
 	docker build --pull -f docker/redis/Dockerfile -t govard/redis:7.0 --build-arg REDIS_VERSION=7.0 docker/redis
 	docker build --pull -f docker/redis/Dockerfile -t govard/redis:6.2 --build-arg REDIS_VERSION=6.2 docker/redis
+	docker build --pull -f docker/redis/Dockerfile -t govard/redis:6.0 --build-arg REDIS_VERSION=6.0 docker/redis
+	docker build --pull -f docker/redis/Dockerfile -t govard/redis:5.0 --build-arg REDIS_VERSION=5.0 docker/redis
+	docker build --pull -f docker/redis/Dockerfile -t govard/redis:4.0 --build-arg REDIS_VERSION=4.0 docker/redis
+	docker build --pull -f docker/redis/Dockerfile -t govard/redis:3.2 --build-arg REDIS_VERSION=3.2 docker/redis
 	docker build --pull -f docker/valkey/Dockerfile -t govard/valkey:8.0 --build-arg VALKEY_VERSION=8.0 docker/valkey
 	docker build --pull -f docker/valkey/Dockerfile -t govard/valkey:7.2 --build-arg VALKEY_VERSION=7.2 docker/valkey
 	docker build --pull -t govard/varnish:7.6 --build-arg VARNISH_VERSION=7.6 docker/varnish
@@ -107,30 +144,67 @@ push:
 	@echo "Pushing Govard Docker Images..."
 	docker push govard/apache:2.4
 	docker push govard/apache:latest
+	docker push govard/elasticsearch:8.15.0
 	docker push govard/elasticsearch:7.17.10
+	docker push govard/elasticsearch:7.16.3
+	docker push govard/elasticsearch:7.10.2
+	docker push govard/elasticsearch:7.9.3
+	docker push govard/elasticsearch:7.7.1
+	docker push govard/elasticsearch:7.6.2
+	docker push govard/elasticsearch:6.8.23
+	docker push govard/elasticsearch:5.6.16
+	docker push govard/elasticsearch:2.4.6
 	docker push govard/mariadb:11.4
 	docker push govard/mariadb:10.11
 	docker push govard/mariadb:10.6
+	docker push govard/mariadb:10.5
+	docker push govard/mariadb:10.4
+	docker push govard/mariadb:10.3
+	docker push govard/mariadb:10.2
+	docker push govard/mariadb:10.1
+	docker push govard/mariadb:10.0
 	docker push govard/mysql:8.4
 	docker push govard/mysql:8.0
+	docker push govard/mysql:5.7
 	docker push govard/nginx:1.28
 	docker push govard/nginx:latest
+	docker push govard/opensearch:3.0.0
+	docker push govard/opensearch:2.19.0
 	docker push govard/opensearch:2.12.0
+	docker push govard/opensearch:2.5.0
+	docker push govard/opensearch:1.3.20
+	docker push govard/opensearch:1.2.0
 	docker push govard/php:8.4
 	docker push govard/php:8.3
 	docker push govard/php:8.2
 	docker push govard/php:8.1
 	docker push govard/php:7.4
+	docker push govard/php:7.3
+	docker push govard/php:7.2
+	docker push govard/php:7.1
 	docker push govard/php-magento2:8.4
 	docker push govard/php-magento2:8.3
 	docker push govard/php-magento2:8.2
 	docker push govard/php-magento2:8.1
 	docker push govard/php-magento2:7.4
+	docker push govard/php-magento2:7.3
+	docker push govard/php-magento2:7.2
+	docker push govard/php-magento2:7.1
+	docker push govard/rabbitmq:4.1
 	docker push govard/rabbitmq:3.13
 	docker push govard/rabbitmq:3.12
+	docker push govard/rabbitmq:3.11
+	docker push govard/rabbitmq:3.9
+	docker push govard/rabbitmq:3.8
+	docker push govard/rabbitmq:3.7
 	docker push govard/redis:7.4
+	docker push govard/redis:7.2
 	docker push govard/redis:7.0
 	docker push govard/redis:6.2
+	docker push govard/redis:6.0
+	docker push govard/redis:5.0
+	docker push govard/redis:4.0
+	docker push govard/redis:3.2
 	docker push govard/valkey:8.0
 	docker push govard/valkey:7.2
 	docker push govard/varnish:7.6
@@ -138,4 +212,3 @@ push:
 	docker push govard/varnish:7.0
 	docker push govard/varnish:6.0
 	docker push govard/varnish:latest
-

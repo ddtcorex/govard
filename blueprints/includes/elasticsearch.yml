@@ -6,6 +6,7 @@ services:
   {{ if or (eq $search "elasticsearch") (eq $search "opensearch") }}
   elasticsearch:
     image: {{ if eq $search "elasticsearch" }}{{ $.ImageRepository }}/elasticsearch:{{ $searchVersion }}{{ else }}{{ $.ImageRepository }}/opensearch:{{ $searchVersion }}{{ end }}
+
     environment:
       - discovery.type=single-node
       {{ if eq $search "elasticsearch" }}

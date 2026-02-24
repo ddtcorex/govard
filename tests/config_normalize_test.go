@@ -102,8 +102,8 @@ func TestNormalizeConfigVersionAwareDefaultsMagento2(t *testing.T) {
 	if config.Stack.Services.Queue != "rabbitmq" {
 		t.Fatalf("Expected Queue rabbitmq, got %s", config.Stack.Services.Queue)
 	}
-	if config.Stack.QueueVersion != "3.13.7" {
-		t.Fatalf("Expected QueueVersion 3.13.7, got %s", config.Stack.QueueVersion)
+	if config.Stack.QueueVersion != "3.13" {
+		t.Fatalf("Expected QueueVersion 3.13, got %s", config.Stack.QueueVersion)
 	}
 	if config.Stack.WebRoot != "/pub" {
 		t.Fatalf("Expected WebRoot /pub, got %s", config.Stack.WebRoot)
