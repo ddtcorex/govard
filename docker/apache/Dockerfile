@@ -1,4 +1,8 @@
-FROM httpd:2.4.66-alpine
+ARG APACHE_VERSION=2.4.66
+FROM httpd:${APACHE_VERSION}-alpine
+
+LABEL dev.govard.image.name="apache"
+LABEL dev.govard.apache.version="${APACHE_VERSION}"
 
 RUN apk add --no-cache bash gettext shadow
 

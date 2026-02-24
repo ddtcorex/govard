@@ -4,6 +4,9 @@ ARG PHP_MAX_EXECUTION_TIME=3600
 
 FROM php:${PHP_VERSION}-fpm-alpine
 
+LABEL dev.govard.image.name="php"
+LABEL dev.govard.php.version="${PHP_VERSION}"
+
 # Set environment variables
 ENV COMPOSER_ALLOW_SUPERUSER=1
 ENV PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT}

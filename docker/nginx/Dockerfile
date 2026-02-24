@@ -1,4 +1,8 @@
-FROM nginx:1.28.0-alpine
+ARG NGINX_VERSION=1.28.0
+FROM nginx:${NGINX_VERSION}-alpine
+
+LABEL dev.govard.image.name="nginx"
+LABEL dev.govard.nginx.version="${NGINX_VERSION}"
 
 # Copy custom nginx configuration
 COPY etc/nginx.conf /etc/nginx/nginx.conf
