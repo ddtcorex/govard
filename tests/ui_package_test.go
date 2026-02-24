@@ -7,7 +7,7 @@ import (
 )
 
 func TestUIPkgPrintBrandDoesNotPanic(t *testing.T) {
-	ui.PrintBrand("1.2.3")
+	ui.PrintBrand("1.3.0")
 }
 
 func TestUIPkgPrintHelpersDoNotPanic(t *testing.T) {

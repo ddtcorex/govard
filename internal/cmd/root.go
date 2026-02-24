@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var Version = "1.2.0"
+var Version = "1.3.0"
 
 var rootCmd = &cobra.Command{
 	Use:   "govard",

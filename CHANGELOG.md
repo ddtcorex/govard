@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-24
+
+### Added
+- **Local Snapshots**: Introduced the `snapshot` command to create, list, and restore database and media snapshots for rapid environment switching.
+- **Public Tunnels**: New `tunnel` command with Cloudflare Tunnel integration to securely expose local projects to the internet.
+- **Project Extensions**: Support for project-specific custom commands and extensions in `.govard/commands`.
+- **Enhanced SSL Trust**: Automated root CA management and browser trust via `govard doctor trust`.
+- **Deployment & Sync**: Improved `deploy` and `sync` commands for better remote environment orchestration.
+- **Observability**: New events tracking for better CLI audit and telemetry.
+
+### Changed
+- **Proxy Architecture**: Significant refactor of Caddy route management for better performance and flexibility.
+- **Framework Discovery**: Refined detection logic and runtime profiles for Magento 2, Laravel, Symfony, and WordPress.
+- **CLI Robustness**: Added comprehensive input validation and clearer error messaging across all commands.
+
+### Fixed
+- Improved handling of `sudo` requirements for certificate installation.
+- Fixed numerous edge cases in Docker Compose template rendering and service dependency management.
+- Corrected various stability issues in remote environment synchronization.
+
+### Quality & Testing
+- **Massive Test Suite Expansion**: Added over 50,000 lines of unit, integration, and frontend tests.
+- **Automated Quality Gates**: Integrated comprehensive coverage analysis and enhanced CI pipelines.
+
 ## [1.2.0] - 2026-02-24
 
 ### Added

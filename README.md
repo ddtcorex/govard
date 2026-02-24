@@ -48,7 +48,7 @@ Common options:
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/scripts/install-release.sh | bash -s -- --local
 
 # Install a specific version
-curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/scripts/install-release.sh | bash -s -- --version v1.2.0
+curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/scripts/install-release.sh | bash -s -- --version v1.3.0
 ```
 
 By default this installs `govard` to `/usr/local/bin` and uses `sudo` when needed.

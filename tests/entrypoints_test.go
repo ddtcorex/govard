@@ -12,7 +12,7 @@ func TestEntrypointGovardVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go run govard version failed: %v\n%s", err, string(output))
 	}
-	if !strings.Contains(string(output), "v1.2.0") {
+	if !strings.Contains(string(output), "v1.3.0") {
 		t.Fatalf("expected version output, got %q", string(output))
 	}
 }
