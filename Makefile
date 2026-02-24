@@ -71,13 +71,29 @@ images:
 	@echo "Building Govard Docker Images..."
 	docker build -f docker/php/Dockerfile -t govard/php:8.4 --build-arg PHP_VERSION=8.4 docker/php
 	docker build -f docker/php/Dockerfile -t govard/php:8.3 --build-arg PHP_VERSION=8.3 docker/php
+	docker build -f docker/php/Dockerfile -t govard/php:8.2 --build-arg PHP_VERSION=8.2 docker/php
 	docker build -f docker/php/Dockerfile -t govard/php:8.1 --build-arg PHP_VERSION=8.1 --build-arg PHP_MEMORY_LIMIT=2G docker/php
+	docker build -f docker/php/Dockerfile -t govard/php:7.4 --build-arg PHP_VERSION=7.4 docker/php
 	docker build -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.4 --build-arg PHP_VERSION=8.4 docker/php
 	docker build -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.3 --build-arg PHP_VERSION=8.3 docker/php
+	docker build -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.2 --build-arg PHP_VERSION=8.2 docker/php
 	docker build -f docker/php/magento2/Dockerfile -t govard/php-magento2:8.1 --build-arg PHP_VERSION=8.1 docker/php
+	docker build -f docker/php/magento2/Dockerfile -t govard/php-magento2:7.4 --build-arg PHP_VERSION=7.4 docker/php
 	docker build -t govard/nginx:latest docker/nginx
 	docker build -t govard/apache:latest docker/apache
 	docker build -t govard/varnish:latest docker/varnish
+	docker build -f docker/redis/Dockerfile -t govard/redis:7.4 --build-arg REDIS_VERSION=7.4 docker/redis
+	docker build -f docker/redis/Dockerfile -t govard/redis:7.0 --build-arg REDIS_VERSION=7.0 docker/redis
+	docker build -f docker/redis/Dockerfile -t govard/redis:6.2 --build-arg REDIS_VERSION=6.2 docker/redis
+	docker build -f docker/valkey/Dockerfile -t govard/valkey:8.0 --build-arg VALKEY_VERSION=8.0 docker/valkey
+	docker build -f docker/valkey/Dockerfile -t govard/valkey:7.2 --build-arg VALKEY_VERSION=7.2 docker/valkey
+	docker build -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:3.13 --build-arg RABBITMQ_VERSION=3.13 docker/rabbitmq
+	docker build -f docker/rabbitmq/Dockerfile -t govard/rabbitmq:3.12 --build-arg RABBITMQ_VERSION=3.12 docker/rabbitmq
+	docker build -f docker/mariadb/Dockerfile -t govard/mariadb:11.4 --build-arg MARIADB_VERSION=11.4 docker/mariadb
+	docker build -f docker/mariadb/Dockerfile -t govard/mariadb:10.11 --build-arg MARIADB_VERSION=10.11 docker/mariadb
+	docker build -f docker/mariadb/Dockerfile -t govard/mariadb:10.6 --build-arg MARIADB_VERSION=10.6 docker/mariadb
+	docker build -f docker/mysql/Dockerfile -t govard/mysql:8.4 --build-arg MYSQL_VERSION=8.4 docker/mysql
+	docker build -f docker/mysql/Dockerfile -t govard/mysql:8.0 --build-arg MYSQL_VERSION=8.0 docker/mysql
 	docker build -f docker/elasticsearch/Dockerfile -t govard/elasticsearch:7.17.10 --build-arg SEARCH_VERSION=7.17.10 docker/elasticsearch
 	docker build -f docker/opensearch/Dockerfile -t govard/opensearch:2.12.0 --build-arg SEARCH_VERSION=2.12.0 docker/opensearch
 

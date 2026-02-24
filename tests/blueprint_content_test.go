@@ -15,7 +15,7 @@ func TestRenderMagento2Blueprint(t *testing.T) {
 	testBlueprintRender(t, "magento2", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php-magento2:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: magento",
 	})
 }
@@ -24,7 +24,7 @@ func TestRenderLaravelBlueprint(t *testing.T) {
 	testBlueprintRender(t, "laravel", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: laravel",
 		"queue:",
 		"php artisan queue:work",
@@ -43,7 +43,7 @@ func TestRenderMagento1Blueprint(t *testing.T) {
 	testBlueprintRender(t, "magento1", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: magento",
 	})
 }
@@ -52,7 +52,7 @@ func TestRenderDrupalBlueprint(t *testing.T) {
 	testBlueprintRender(t, "drupal", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: drupal",
 	})
 }
@@ -61,7 +61,7 @@ func TestRenderSymfonyBlueprint(t *testing.T) {
 	testBlueprintRender(t, "symfony", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: symfony",
 	})
 }
@@ -70,7 +70,7 @@ func TestRenderShopwareBlueprint(t *testing.T) {
 	testBlueprintRender(t, "shopware", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: shopware",
 	})
 }
@@ -79,7 +79,7 @@ func TestRenderCakephpBlueprint(t *testing.T) {
 	testBlueprintRender(t, "cakephp", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: cakephp",
 	})
 }
@@ -88,7 +88,7 @@ func TestRenderWordpressBlueprint(t *testing.T) {
 	testBlueprintRender(t, "wordpress", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: wordpress",
 	})
 }
@@ -97,7 +97,7 @@ func TestRenderCustomBlueprint(t *testing.T) {
 	testBlueprintRender(t, "custom", []string{
 		"image: govard/nginx:latest",
 		"image: govard/php:",
-		"image: mariadb:",
+		"image: govard/mariadb:",
 		"MYSQL_DATABASE: app",
 	})
 }

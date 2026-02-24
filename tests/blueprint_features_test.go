@@ -25,7 +25,7 @@ func TestRenderBlueprintWithRabbitMQ(t *testing.T) {
 	if !strings.Contains(content, "rabbitmq:") {
 		t.Fatalf("Expected rabbitmq service in compose output")
 	}
-	if !strings.Contains(content, "rabbitmq:3.13.7-management-alpine") {
+	if !strings.Contains(content, "govard/rabbitmq:3.13.7") {
 		t.Fatalf("Expected rabbitmq image to use default version")
 	}
 }
@@ -42,7 +42,7 @@ func TestRenderBlueprintWithValkey(t *testing.T) {
 		},
 	})
 
-	if !strings.Contains(content, "valkey/valkey:8.0.0") {
+	if !strings.Contains(content, "govard/valkey:8.0.0") {
 		t.Fatalf("Expected valkey image with default version")
 	}
 }
@@ -59,7 +59,7 @@ func TestRenderBlueprintWithOpensearch(t *testing.T) {
 		},
 	})
 
-	if !strings.Contains(content, "opensearchproject/opensearch:2.19.0") {
+	if !strings.Contains(content, "govard/opensearch:2.19.0") {
 		t.Fatalf("Expected opensearch image with default version")
 	}
 }

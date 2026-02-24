@@ -3,7 +3,7 @@
 
 services:
   web:
-    image: govard/nginx:latest
+    image: {{ $.ImageRepository }}/nginx:latest
     volumes:
       - .:/var/www/html
     networks:
@@ -16,7 +16,7 @@ services:
       - NGINX_TEMPLATE=magento1.conf
 
   php:
-    image: govard/php:{{ .Config.Stack.PHPVersion }}
+    image: {{ $.ImageRepository }}/php:{{ .Config.Stack.PHPVersion }}
     volumes:
       - .:/var/www/html
     networks:
@@ -26,7 +26,7 @@ services:
 
   {{ if .Config.Stack.Features.Xdebug }}
   php-debug:
-    image: govard/php:{{ .Config.Stack.PHPVersion }}
+    image: {{ $.ImageRepository }}/php:{{ .Config.Stack.PHPVersion }}
     volumes:
       - .:/var/www/html
     networks:
@@ -38,7 +38,7 @@ services:
 
   {{ if ne .Config.Stack.DBType "none" }}
   db:
-    image: {{ .Config.Stack.DBType }}:{{ .Config.Stack.DBVersion }}
+    image: {{ $.ImageRepository }}/{{ .Config.Stack.DBType }}:{{ .Config.Stack.DBVersion }}
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: magento
@@ -54,7 +54,7 @@ services:
   {{ $cacheVersion := .Config.Stack.CacheVersion }}
   {{ if or (eq $cache "redis") (eq $cache "valkey") }}
   redis:
-    image: {{ if eq $cache "valkey" }}valkey/valkey:{{ $cacheVersion }}{{ else }}redis:{{ $cacheVersion }}-alpine{{ end }}
+    image: {{ if eq $cache "valkey" }}{{ $.ImageRepository }}/valkey:{{ $cacheVersion }}{{ else }}{{ $.ImageRepository }}/redis:{{ $cacheVersion }}{{ end }}
     networks:
       - govard-net
     {{ end }}
@@ -63,7 +63,7 @@ services:
   {{ $queueVersion := .Config.Stack.QueueVersion }}
   {{ if eq $queue "rabbitmq" }}
   rabbitmq:
-    image: rabbitmq:{{ $queueVersion }}-management-alpine
+    image: {{ $.ImageRepository }}/rabbitmq:{{ $queueVersion }}
     networks:
       - govard-net
     {{ end }}

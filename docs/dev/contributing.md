@@ -290,21 +290,21 @@ func init() {
 
 ## Blueprint Creation
 
-Blueprints use Go `text/template`:
+Blueprints use Go `text/template`. Use `{{ $.ImageRepository }}` for image names to support custom repositories.
 
 ```yaml
 version: '3.8'
 
 services:
   web:
-    image: govard/nginx:latest
+    image: {{ $.ImageRepository }}/nginx:latest
     volumes:
       - .:/var/www/html
     networks: [govard-net]
     depends_on: [php]
 
   php:
-    image: {{ if eq .Config.Recipe "magento2" }}govard/php-magento2:{{ .Config.Stack.PHPVersion }}{{ else }}govard/php:{{ .Config.Stack.PHPVersion }}{{ end }}
+    image: {{ if eq .Config.Recipe "magento2" }}{{ $.ImageRepository }}/php-magento2:{{ .Config.Stack.PHPVersion }}{{ else }}{{ $.ImageRepository }}/php:{{ .Config.Stack.PHPVersion }}{{ end }}
     volumes:
       - .:/var/www/html
     environment:

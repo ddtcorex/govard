@@ -23,6 +23,12 @@ govard env up
 
 When `GOVARD_ENV=staging`, Govard will additionally load `govard.staging.yml` and `.govard/govard.staging.yml` if they exist.
 
+## Global Environment Variables
+
+- `GOVARD_IMAGE_REPOSITORY`: The Docker image repository prefix (default: `govard`). Change this to use custom managed images.
+- `GOVARD_BLUEPRINTS_DIR`: Override the location where Govard looks for blueprints.
+- `GOVARD_HOME_DIR`: Override the base directory for Govard runtime data (default: `~/.govard`).
+
 `govard config set ...` writes only to `govard.yml` (base file). Override files are read-only from the CLI perspective.
 
 ## govard.yml
@@ -144,7 +150,7 @@ Registry behavior:
 #### `stack.php_version`
 - **Type**: string
 - **Description**: PHP version for the container
-- **Options**: `8.1`, `8.3`, `8.4`
+- **Options**: `7.4`, `8.1`, `8.2`, `8.3`, `8.4`
 - **Default**: `8.4` (framework-dependent; Magento 1 uses `8.1`, WordPress uses `8.3`)
 
 #### `stack.node_version`

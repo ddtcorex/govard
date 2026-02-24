@@ -1,0 +1,1 @@
+ARG VALKEY_VERSION=8.0\nFROM valkey/valkey:${VALKEY_VERSION}

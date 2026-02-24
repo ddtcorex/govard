@@ -7,7 +7,7 @@
 
 services:
   web:
-    image: {{ if $isApache }}govard/apache:latest{{ else }}govard/nginx:latest{{ end }}
+    image: {{ if $isApache }}{{ $.ImageRepository }}/apache:latest{{ else }}{{ $.ImageRepository }}/nginx:latest{{ end }}
     volumes:
       - .:/var/www/html
     networks:
@@ -35,7 +35,7 @@ services:
 
   {{ if $isHybrid }}
   apache:
-    image: govard/apache:latest
+    image: {{ $.ImageRepository }}/apache:latest
     volumes:
       - .:/var/www/html
     networks:
@@ -50,7 +50,7 @@ services:
   {{ end }}
 
   php:
-    image: {{ if eq .Config.Recipe "magento2" }}govard/php-magento2:{{ .Config.Stack.PHPVersion }}{{ else }}govard/php:{{ .Config.Stack.PHPVersion }}{{ end }}
+    image: {{ if eq .Config.Recipe "magento2" }}{{ $.ImageRepository }}/php-magento2:{{ .Config.Stack.PHPVersion }}{{ else }}{{ $.ImageRepository }}/php:{{ .Config.Stack.PHPVersion }}{{ end }}
     volumes:
       - .:/var/www/html
       {{ if .HostSSHDir }}
@@ -72,7 +72,7 @@ services:
 
   {{ if .Config.Stack.Features.Xdebug }}
   php-debug:
-    image: {{ if eq .Config.Recipe "magento2" }}govard/php-magento2:{{ .Config.Stack.PHPVersion }}{{ else }}govard/php:{{ .Config.Stack.PHPVersion }}{{ end }}
+    image: {{ if eq .Config.Recipe "magento2" }}{{ $.ImageRepository }}/php-magento2:{{ .Config.Stack.PHPVersion }}{{ else }}{{ $.ImageRepository }}/php:{{ .Config.Stack.PHPVersion }}{{ end }}
     volumes:
       - .:/var/www/html
       {{ if .HostSSHDir }}
@@ -96,7 +96,7 @@ services:
 
   {{ if ne .Config.Stack.DBType "none" }}
   db:
-    image: {{ .Config.Stack.DBType }}:{{ .Config.Stack.DBVersion }}
+    image: {{ $.ImageRepository }}/{{ .Config.Stack.DBType }}:{{ .Config.Stack.DBVersion }}
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: {{ .DatabaseName }}

@@ -3,7 +3,7 @@
 
 services:
   web:
-    image: govard/nginx:latest
+    image: {{ $.ImageRepository }}/nginx:latest
     volumes:
       - .:/var/www/html
     networks:
@@ -15,7 +15,7 @@ services:
       - NGINX_TEMPLATE=magento2.conf
 
   php:
-    image: govard/php:{{ .Stack.PHPVersion }}
+    image: {{ $.ImageRepository }}/php:{{ .Stack.PHPVersion }}
     volumes:
       - .:/var/www/html
     networks:
@@ -24,7 +24,7 @@ services:
       XDEBUG_MODE: {{ if .Stack.Features.Xdebug }}debug{{ else }}off{{ end }}
 
   db:
-    image: {{ .Stack.DBType }}:{{ .Stack.DBVersion }}
+    image: {{ $.ImageRepository }}/{{ .Stack.DBType }}:{{ .Stack.DBVersion }}
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: magento
@@ -37,14 +37,14 @@ services:
 
   {{ if .Stack.Features.Redis }}
   redis:
-    image: redis:7.0-alpine
+    image: {{ $.ImageRepository }}/redis:7.0
     networks:
       - govard-net
       {{ end }}
 
   {{ if .Stack.Features.Elasticsearch }}
   elasticsearch:
-    image: opensearchproject/opensearch:2.11.0
+    image: {{ $.ImageRepository }}/opensearch:2.11.0
     environment:
       - discovery.type=single-node
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
@@ -58,7 +58,7 @@ services:
 
   {{ if .Stack.Features.Varnish }}
   varnish:
-    image: govard/varnish:latest
+    image: {{ $.ImageRepository }}/varnish:latest
     volumes:
       - './varnish/default.vcl:/etc/varnish/default.vcl:ro'
     networks:

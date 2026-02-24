@@ -30,13 +30,13 @@ func TestRequiredRuntimeImagesMagento(t *testing.T) {
 	})
 
 	expected := map[string]bool{
-		"govard/nginx:latest":                 true,
-		"govard/php-magento2:8.3":             true,
-		"mariadb:10.6":                        true,
-		"redis:7.4-alpine":                    true,
-		"opensearchproject/opensearch:2.12.0": true,
-		"rabbitmq:3.13.7-management-alpine":   true,
-		"govard/varnish:latest":               true,
+		"govard/nginx:latest":        true,
+		"govard/php-magento2:8.3":    true,
+		"govard/mariadb:10.6":       true,
+		"govard/redis:7.4":           true,
+		"govard/opensearch:2.12.0":   true,
+		"govard/rabbitmq:3.13.7":     true,
+		"govard/varnish:latest":      true,
 	}
 
 	for _, image := range images {
@@ -63,9 +63,9 @@ func TestRequiredRuntimeImagesNextjs(t *testing.T) {
 	})
 
 	expected := map[string]bool{
-		"node:24-alpine":                    true,
-		"redis:7.4-alpine":                  true,
-		"rabbitmq:3.13.7-management-alpine": true,
+		"node:24-alpine":        true,
+		"govard/redis:7.4":      true,
+		"govard/rabbitmq:3.13.7": true,
 	}
 
 	for _, image := range images {
@@ -100,7 +100,7 @@ func TestRequiredRuntimeImagesMagentoHybrid(t *testing.T) {
 		"govard/nginx:latest":     true,
 		"govard/apache:latest":    true,
 		"govard/php-magento2:8.3": true,
-		"mariadb:10.6":            true,
+		"govard/mariadb:10.6":     true,
 	}
 
 	for _, image := range images {

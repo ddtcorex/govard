@@ -3,7 +3,7 @@
 {{ if or (eq $cache "redis") (eq $cache "valkey") }}
 services:
   redis:
-    image: {{ if eq $cache "valkey" }}valkey/valkey:{{ $cacheVersion }}{{ else }}redis:{{ $cacheVersion }}-alpine{{ end }}
+    image: {{ if eq $cache "valkey" }}{{ $.ImageRepository }}/valkey:{{ $cacheVersion }}{{ else }}{{ $.ImageRepository }}/redis:{{ $cacheVersion }}{{ end }}
     networks:
       - govard-net
 {{ end }}

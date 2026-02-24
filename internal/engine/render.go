@@ -19,6 +19,7 @@ type RenderData struct {
 	NGINXPublic          string
 	NGINXTemplate        string
 	DatabaseName         string
+	ImageRepository      string
 	XdebugSessionPattern string
 	SSHAuthSock          string
 	HostSSHDir           string
@@ -97,12 +98,19 @@ func RenderBlueprint(root string, config Config) error {
 		return renderLegacyBlueprint(root, blueprintsDir, config)
 	}
 
+	// Determine image repository
+	imageRepo := strings.TrimSpace(os.Getenv("GOVARD_IMAGE_REPOSITORY"))
+	if imageRepo == "" {
+		imageRepo = "govard"
+	}
+
 	// Prepare render data
 	renderData := RenderData{
 		Config:               config,
 		NGINXPublic:          fwConfig.NGINXPUBLIC,
 		NGINXTemplate:        fwConfig.NGINXTemplate,
 		DatabaseName:         fwConfig.DatabaseName,
+		ImageRepository:      imageRepo,
 		XdebugSessionPattern: buildXdebugSessionPattern(config.Stack.XdebugSession),
 	}
 	if config.Stack.WebRoot != "" {
