@@ -116,7 +116,7 @@ remotes:
 		t.Fatalf("unexpected shell reset message: %q", resetShellMessage)
 	}
 
-	settingsMessage := app.UpdateSettings("dark", "https://smoke.test/", "firefox")
+	settingsMessage := app.UpdateSettings("dark", "https://smoke.test/", "firefox", "code")
 	if settingsMessage != "Settings updated" {
 		t.Fatalf("unexpected settings message: %q", settingsMessage)
 	}

@@ -57,6 +57,18 @@ func (app *App) Status() string {
 	return "Govard Desktop bootstrap is ready."
 }
 
+func (app *App) GetUserInfo() UserInfo {
+	return app.GetCurrentUser()
+}
+
+func (app *App) GetSystemMetrics() SystemMetrics {
+	cpu, mem := getSystemMetrics()
+	return SystemMetrics{
+		CPUUsage:    cpu,
+		MemoryUsage: mem,
+	}
+}
+
 func (app *App) GetCurrentUser() UserInfo {
 	u, err := user.Current()
 	if err != nil {

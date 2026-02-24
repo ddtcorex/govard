@@ -21,7 +21,7 @@ func TestDesktopPkgGetMailpitURLUsesCustomProxyTarget(t *testing.T) {
 	desktop.ResetStateForTest()
 
 	app := desktop.NewApp()
-	if message := app.UpdateSettings("system", "https://workspace.internal/", ""); message != "Settings updated" {
+	if message := app.UpdateSettings("system", "https://workspace.internal/", "", ""); message != "Settings updated" {
 		t.Fatalf("unexpected settings update message: %s", message)
 	}
 

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 )
 
@@ -65,12 +64,7 @@ func isPortBoundByGovardProxy(port string) bool {
 		_ = cli.Close()
 	}()
 
-	// Optimize: only fetch containers that match our proxy names
-	args := filters.NewArgs()
-	args.Add("name", "proxy-caddy-1")
-	args.Add("name", "govard-proxy-caddy")
-
-	containers, err := cli.ContainerList(ctx, container.ListOptions{Filters: args})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
 		return false
 	}

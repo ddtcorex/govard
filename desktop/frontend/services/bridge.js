@@ -13,6 +13,12 @@ export const desktopBridge = {
   async getDashboard() {
     return call(bridge?.GetDashboard?.bind(bridge));
   },
+  async getCurrentUser() {
+    return call(bridge?.GetUserInfo?.bind(bridge));
+  },
+  async getSystemMetrics() {
+    return call(bridge?.GetSystemMetrics?.bind(bridge));
+  },
   async getResourceMetrics() {
     return call(bridge?.GetResourceMetrics?.bind(bridge));
   },
@@ -112,6 +118,21 @@ export const desktopBridge = {
   async stopLogStream() {
     return call(bridge?.StopLogStream?.bind(bridge));
   },
+  async startTerminal(project, service, user, shell) {
+    return call(
+      bridge?.StartTerminal?.bind(bridge),
+      project,
+      service,
+      user,
+      shell,
+    );
+  },
+  async writeTerminal(id, data) {
+    return call(bridge?.WriteTerminal?.bind(bridge), id, data);
+  },
+  async resizeTerminal(id, cols, rows) {
+    return call(bridge?.ResizeTerminal?.bind(bridge), id, cols, rows);
+  },
   async openShellForService(project, service, user, shell) {
     return call(
       bridge?.OpenShellForService?.bind(bridge),
@@ -136,12 +157,13 @@ export const desktopBridge = {
   async getMailpitURL() {
     return call(bridge?.GetMailpitURL?.bind(bridge));
   },
-  async updateSettings(theme, proxyTarget, preferredBrowser) {
+  async updateSettings(theme, proxyTarget, preferredBrowser, codeEditor) {
     return call(
       bridge?.UpdateSettings?.bind(bridge),
       theme,
       proxyTarget,
       preferredBrowser,
+      codeEditor,
     );
   },
   async resetSettings() {

@@ -41,7 +41,7 @@ func TestDesktopPkgSettingsNormalizationViaApp(t *testing.T) {
 	desktop.ResetStateForTest()
 
 	app := desktop.NewApp()
-	msg := app.UpdateSettings("dark", "https://govard.test/", "firefox")
+	msg := app.UpdateSettings("dark", "https://govard.test/", "firefox", "code")
 	if msg != "Settings updated" {
 		t.Fatalf("unexpected update settings message: %s", msg)
 	}

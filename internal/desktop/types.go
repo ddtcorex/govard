@@ -44,6 +44,11 @@ type ResourceMetricsSnapshot struct {
 	Warnings     []string                `json:"warnings"`
 }
 
+type SystemMetrics struct {
+	CPUUsage    float64 `json:"cpuUsage"`
+	MemoryUsage float64 `json:"memoryUsage"`
+}
+
 type ResourceMetricsSummary struct {
 	ActiveProjects int     `json:"activeProjects"`
 	CPUPercent     float64 `json:"cpuPercent"`

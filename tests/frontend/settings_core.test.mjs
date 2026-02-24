@@ -13,6 +13,7 @@ test("normalizeSettingsPayload maps settings payload", () => {
     theme: "dark",
     proxyTarget: "govard.test",
     preferredBrowser: "firefox",
+    codeEditor: "",
   })
 })
 
@@ -22,6 +23,7 @@ test("normalizeSettingsPayload falls back to defaults", () => {
     theme: "system",
     proxyTarget: "",
     preferredBrowser: "",
+    codeEditor: "",
   })
 })
 
