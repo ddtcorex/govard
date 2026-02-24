@@ -16,7 +16,7 @@ var valkeyCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config := loadConfig()
 		if config.Stack.Services.Cache != "valkey" {
-			pterm.Warning.Println("Valkey is not enabled in govard.yml (stack.services.cache=valkey)")
+			pterm.Warning.Println("Valkey is not enabled in .govard.yml (stack.services.cache=valkey)")
 			return nil
 		}
 		return runServiceCLI("redis", "valkey-cli", args)

@@ -6,7 +6,7 @@ Welcome to the Govard documentation. This directory is organized by audience and
 
 ### For Users
 - **[Getting Started](user/getting-started.md)** - Install, init, up, and basic workflow
-- **[Configuration](user/configuration.md)** - `govard.yml` and blueprints
+- **[Configuration](user/configuration.md)** - `.govard.yml` and blueprints
 - **[CLI Commands](user/commands.md)** - Complete command reference
 - **[SSL & HTTPS](user/ssl-https.md)** - Local HTTPS setup
 

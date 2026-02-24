@@ -55,7 +55,7 @@ govard config profile --json
 # Force framework/version selection explicitly
 govard config profile --framework laravel --framework-version ^11.0 --json
 
-# Apply selected profile into govard.yml
+# Apply selected profile into .govard.yml
 govard config profile apply --framework laravel --framework-version 11
 ```
 

@@ -41,7 +41,7 @@ Technical specification and architecture of Govard.
   - CakePHP: `cakephp/cakephp`
   - WordPress: `johnpbloch/wordpress`
 
-**Output:** Generates `govard.yml` configuration file
+**Output:** Generates `.govard.yml` configuration file
 
 ### 3.2 Environment Liftoff (`internal/engine/render.go`)
 

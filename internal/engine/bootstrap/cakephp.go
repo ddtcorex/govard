@@ -47,7 +47,7 @@ func (c *CakePHPBootstrap) CreateProject(projectDir string) error {
 	if len(entries) > 0 {
 		pterm.Warning.Println("Project directory is not empty. Cleaning up...")
 		for _, entry := range entries {
-			if entry.Name() == ".govard" || entry.Name() == "govard.yml" {
+			if entry.Name() == ".govard" || entry.Name() == ".govard.yml" {
 				continue
 			}
 			path := filepath.Join(projectDir, entry.Name())

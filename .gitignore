@@ -8,6 +8,7 @@
 
 # Govard generated files
 /.govard/
+.govard.local.yml
 **/.govard-compose.yml
 **/.govard-compose.yaml
 **/varnish/

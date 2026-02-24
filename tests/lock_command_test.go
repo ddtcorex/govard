@@ -42,7 +42,7 @@ func TestLockCommandExists(t *testing.T) {
 
 func TestLockGenerateCommandWritesLockFile(t *testing.T) {
 	tempDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(`project_name: demo
+	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(`project_name: demo
 domain: demo.test
 recipe: magento2
 `), 0o644); err != nil {
@@ -88,7 +88,7 @@ recipe: magento2
 
 func TestLockCheckCommandReturnsErrorOnMismatch(t *testing.T) {
 	tempDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(`project_name: demo
+	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(`project_name: demo
 domain: demo.test
 recipe: magento2
 `), 0o644); err != nil {

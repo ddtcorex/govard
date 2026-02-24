@@ -13,7 +13,7 @@ const (
 	ProjectExtensionsDir       = ".govard"
 	ProjectCommandsDir         = ".govard/commands"
 	ProjectHooksDir            = ".govard/hooks"
-	ProjectLocalConfigPath     = ".govard/govard.local.yml"
+	ProjectLocalConfigPath     = ".govard/.govard.local.yml"
 	ProjectComposeOverridePath = ".govard/docker-compose.override.yml"
 	GlobalCommandsDirEnvVar    = "GOVARD_GLOBAL_COMMANDS_DIR"
 )
@@ -47,7 +47,7 @@ func EnsureExtensionContract(root string, force bool) ([]string, error) {
 			Path: filepath.Join(cleanRoot, ProjectLocalConfigPath),
 			Mode: 0644,
 			Content: `# Project-local Govard overrides (recommended to keep uncommitted).
-# This file is loaded after govard.yml.
+# This file is loaded after .govard.yml.
 #
 # Example:
 # stack:

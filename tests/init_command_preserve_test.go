@@ -14,7 +14,7 @@ import (
 
 func TestInitPreservesExistingRemotesAndHooks(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "govard.yml")
+	configPath := filepath.Join(tempDir, ".govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: magento2
@@ -88,7 +88,7 @@ func TestInitOmitsRuntimeUserAndGroupFromConfigFile(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	configPath := filepath.Join(tempDir, "govard.yml")
+	configPath := filepath.Join(tempDir, ".govard.yml")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -96,10 +96,10 @@ func TestInitOmitsRuntimeUserAndGroupFromConfigFile(t *testing.T) {
 
 	content := string(data)
 	if strings.Contains(content, "user_id:") {
-		t.Fatalf("expected govard.yml to omit user_id, got:\n%s", content)
+		t.Fatalf("expected .govard.yml to omit user_id, got:\n%s", content)
 	}
 	if strings.Contains(content, "group_id:") {
-		t.Fatalf("expected govard.yml to omit group_id, got:\n%s", content)
+		t.Fatalf("expected .govard.yml to omit group_id, got:\n%s", content)
 	}
 	for _, key := range []string{
 		"php_version:",
@@ -115,7 +115,7 @@ func TestInitOmitsRuntimeUserAndGroupFromConfigFile(t *testing.T) {
 		"varnish:",
 	} {
 		if !strings.Contains(content, key) {
-			t.Fatalf("expected govard.yml to include %q, got:\n%s", key, content)
+			t.Fatalf("expected .govard.yml to include %q, got:\n%s", key, content)
 		}
 	}
 	if strings.Contains(content, "redis:") {
@@ -159,7 +159,7 @@ func TestInitOmitsEmptyQueueVersionAndHooks(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	configPath := filepath.Join(tempDir, "govard.yml")
+	configPath := filepath.Join(tempDir, ".govard.yml")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -167,9 +167,9 @@ func TestInitOmitsEmptyQueueVersionAndHooks(t *testing.T) {
 
 	content := string(data)
 	if strings.Contains(content, "queue_version:") {
-		t.Fatalf("expected govard.yml to omit empty queue_version, got:\n%s", content)
+		t.Fatalf("expected .govard.yml to omit empty queue_version, got:\n%s", content)
 	}
 	if strings.Contains(content, "hooks:") {
-		t.Fatalf("expected govard.yml to omit empty hooks, got:\n%s", content)
+		t.Fatalf("expected .govard.yml to omit empty hooks, got:\n%s", content)
 	}
 }

@@ -31,7 +31,7 @@ Navigate to your project root and run:
 govard init
 ```
 
-This scans your project (via `composer.json` or `package.json`) and generates a `govard.yml` configuration.
+This scans your project (via `composer.json` or `package.json`) and generates a `.govard.yml` configuration.
 
 **Supported Frameworks:**
 - Magento 1 (OpenMage)
@@ -111,6 +111,6 @@ govard doctor trust       # Install Root CA for HTTPS
 
 ## Next Steps
 
-- **[Configuration](configuration.md)** - Customize your `govard.yml`
+- **[Configuration](configuration.md)** - Customize your `.govard.yml`
 - **[CLI Commands](commands.md)** - Full command reference
 - **[SSL & HTTPS](ssl-https.md)** - Set up local HTTPS

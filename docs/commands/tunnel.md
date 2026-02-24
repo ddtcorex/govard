@@ -19,7 +19,7 @@ Builds and runs a provider tunnel command for the target URL.
 
 Defaults:
 - Provider: `cloudflare`
-- Target URL: `https://<domain>` from `govard.yml`
+- Target URL: `https://<domain>` from `.govard.yml`
 - TLS verification: disabled (`--no-tls-verify=true`)
 
 ## Options

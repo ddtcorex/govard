@@ -134,8 +134,8 @@ remotes:
     path: /var/www/stage
     environment: staging
 `) + "\n"
-	if err := os.WriteFile(filepath.Join(root, "govard.yml"), []byte(baseConfig), 0o644); err != nil {
-		t.Fatalf("write govard.yml: %v", err)
+	if err := os.WriteFile(filepath.Join(root, ".govard.yml"), []byte(baseConfig), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
 	}
 
 	before, err := desktop.ListProjectRemotesForPathForTest(root)

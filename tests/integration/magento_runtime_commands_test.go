@@ -125,9 +125,9 @@ func TestDeployHooksExecute(t *testing.T) {
     - name: post deploy marker
       run: "echo post >> .govard-deploy-hooks.log"
 `
-	overridePath := filepath.Join(projectDir, "govard.local.yml")
+	overridePath := filepath.Join(projectDir, ".govard.local.yml")
 	if err := os.WriteFile(overridePath, []byte(localOverride), 0o644); err != nil {
-		t.Fatalf("failed to write govard.local.yml: %v", err)
+		t.Fatalf("failed to write .govard.local.yml: %v", err)
 	}
 
 	result := env.RunGovard(t, projectDir, "deploy")
