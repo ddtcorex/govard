@@ -42,7 +42,7 @@ func TestDesktopPkgLooksLikeGovardForTest(t *testing.T) {
 		if !desktop.LooksLikeGovardForTest(
 			"m2govard",
 			[]string{"web"},
-			[]string{`C:\Users\kai\.govard\compose\m2.govard.yml`},
+			[]string{`C:\Users\kai\.govard\compose\m2govard.yml`},
 			false,
 		) {
 			t.Fatal("windows govard compose path should be treated as Govard")

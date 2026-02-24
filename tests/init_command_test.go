@@ -44,7 +44,7 @@ func TestInitCommandLogic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	configFile := filepath.Join(tempDir, ".govard.yml")
+	configFile := filepath.Join(tempDir, "govard.yml")
 	err = os.WriteFile(configFile, data, 0644)
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestInitCommandLogic(t *testing.T) {
 
 	// Verify the file exists and content is correct
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		t.Error(".govard.yml was not created")
+		t.Error("govard.yml was not created")
 	}
 
 	var savedConfig engine.Config

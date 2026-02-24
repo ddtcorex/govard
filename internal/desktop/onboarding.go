@@ -99,8 +99,8 @@ func onboardProjectWithOptions(
 			return "", err
 		}
 		if !hasConfig {
-			message = ".govard.yml not found after init"
-			return "", fmt.Errorf(".govard.yml not found after init")
+			message = "govard.yml not found after init"
+			return "", fmt.Errorf("govard.yml not found after init")
 		}
 	}
 

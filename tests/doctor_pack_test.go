@@ -21,7 +21,7 @@ func TestCreateDoctorDiagnosticsPack(t *testing.T) {
 	}
 
 	baseConfig := []byte("project_name: demo\ndomain: demo.test\n")
-	if err := os.WriteFile(filepath.Join(projectDir, ".govard.yml"), baseConfig, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, "govard.yml"), baseConfig, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	compose := []byte("services:\n  web:\n    image: nginx:alpine\n")
@@ -71,8 +71,8 @@ func TestCreateDoctorDiagnosticsPack(t *testing.T) {
 		"environment.json",
 		"config_layers.txt",
 		"runtime_commands.txt",
-		".govard.yml",
-		".govard-compose.yml",
+		"govard.yml",
+		"govard-compose.yml",
 		"remote-audit.log",
 		"README.txt",
 	}

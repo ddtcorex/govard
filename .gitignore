@@ -8,12 +8,13 @@
 
 # Govard generated files
 /.govard/
-.govard.local.yml
 **/.govard-compose.yml
 **/.govard-compose.yaml
 **/varnish/
 !blueprints/**/varnish/
 !blueprints/**/varnish/**
+!internal/blueprints/files/**/varnish/
+!internal/blueprints/files/**/varnish/**
 
 # Environment files
 .env

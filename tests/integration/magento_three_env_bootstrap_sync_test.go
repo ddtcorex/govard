@@ -55,8 +55,8 @@ func addTestRemotesToGovardConfig(t *testing.T, projectDir string) {
 	if err != nil {
 		t.Fatalf("marshal updated govard config: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectDir, ".govard.yml"), encoded, 0o644); err != nil {
-		t.Fatalf("write .govard.yml remotes: %v", err)
+	if err := os.WriteFile(filepath.Join(projectDir, "govard.yml"), encoded, 0o644); err != nil {
+		t.Fatalf("write govard.yml remotes: %v", err)
 	}
 }
 
@@ -72,10 +72,10 @@ func TestMagentoThreeEnvironmentInitBootstrapAndSyncOptions(t *testing.T) {
 		initResult := env.RunGovard(t, projectDir, "init", "--recipe", "magento2")
 		initResult.AssertSuccess(t)
 
-		configPath := filepath.Join(projectDir, ".govard.yml")
+		configPath := filepath.Join(projectDir, "govard.yml")
 		configData, err := os.ReadFile(configPath)
 		if err != nil {
-			t.Fatalf("expected .govard.yml after init at %s: %v", configPath, err)
+			t.Fatalf("expected govard.yml after init at %s: %v", configPath, err)
 		}
 		assertContains(t, string(configData), "recipe: magento2")
 

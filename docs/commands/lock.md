@@ -20,7 +20,7 @@ Captures current values into a lock file:
 - Host OS/architecture
 - Docker version
 - Docker Compose version
-- Project/stack metadata from `.govard.yml`
+- Project/stack metadata from `govard.yml`
 - Service image references from rendered compose (when available)
 
 ### `check`
@@ -34,7 +34,7 @@ Current behavior:
 
 ## Strict Mode (`govard env up`)
 
-Enable strict lock enforcement in `.govard.yml`:
+Enable strict lock enforcement in `govard.yml`:
 
 ```yaml
 lock:

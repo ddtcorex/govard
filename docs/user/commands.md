@@ -6,7 +6,7 @@ Complete reference for all Govard commands.
 
 ### `govard init`
 
-Scans for `composer.json` or `package.json`, detects framework, and generates `.govard.yml`.
+Scans for `composer.json` or `package.json`, detects framework, and generates `govard.yml`.
 
 ```bash
 govard init
@@ -41,7 +41,7 @@ govard bootstrap --fresh --version 2.4.8
 ```
 
 Highlights:
-- Auto-runs `govard init` if `.govard.yml` is missing
+- Auto-runs `govard init` if `govard.yml` is missing
 - Clone flow: file sync, optional composer install, DB/media sync, Magento configure, admin create
 - Fresh flow: create-project, setup install, optional sample data, optional Hyva install
 - Fresh mode does not require `--clone=false`; use `govard bootstrap --fresh ...` directly
@@ -522,7 +522,7 @@ Behavior:
 - `lock generate` captures current Govard/Docker toolchain values and runtime stack metadata.
 - `lock check` compares current environment values against the lock file and reports mismatches.
 - `govard env up` performs a non-blocking lockfile warning check when `govard.lock` exists.
-- Set `lock.strict: true` in `.govard.yml` to make `govard env up` fail on lock mismatches
+- Set `lock.strict: true` in `govard.yml` to make `govard env up` fail on lock mismatches
   (and fail when the lock file is missing).
 
 See `docs/commands/lock.md`.

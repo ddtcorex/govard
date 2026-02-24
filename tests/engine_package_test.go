@@ -22,7 +22,7 @@ func TestEnginePkgLoadConfigFromDirLayeredMerge(t *testing.T) {
 	t.Setenv("GOVARD_ENV", "staging")
 	root := t.TempDir()
 
-	mustWriteTestFile(t, filepath.Join(root, ".govard.yml"), `project_name: demo
+	mustWriteTestFile(t, filepath.Join(root, "govard.yml"), `project_name: demo
 recipe: laravel
 domain: demo.test
 stack:
@@ -35,12 +35,12 @@ remotes:
     user: deploy
     path: /srv/www/app
 `)
-	mustWriteTestFile(t, filepath.Join(root, ".govard.local.yml"), `stack:
+	mustWriteTestFile(t, filepath.Join(root, "govard.local.yml"), `stack:
   php_version: "8.4"
 `)
-	mustWriteTestFile(t, filepath.Join(root, ".govard.staging.yml"), `domain: legacy-staging.test
+	mustWriteTestFile(t, filepath.Join(root, "govard.staging.yml"), `domain: legacy-staging.test
 `)
-	mustWriteTestFile(t, filepath.Join(root, ".govard", ".govard.staging.yml"), `domain: extension-staging.test
+	mustWriteTestFile(t, filepath.Join(root, ".govard", "govard.staging.yml"), `domain: extension-staging.test
 stack:
   services:
     cache: valkey

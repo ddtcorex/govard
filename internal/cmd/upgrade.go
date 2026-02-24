@@ -11,7 +11,7 @@ var upgradeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		config := loadFullConfig()
 		if config.Recipe == "" {
-			pterm.Warning.Println("No recipe configured in .govard.yml.")
+			pterm.Warning.Println("No recipe configured in govard.yml.")
 			return
 		}
 		pterm.Info.Printf("Upgrade for %s is not implemented yet.\n", config.Recipe)

@@ -14,7 +14,7 @@ import (
 
 func TestBootstrapNoCloneDoesNotRequireRemote(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: magento2
@@ -41,7 +41,7 @@ recipe: magento2
 
 func TestBootstrapCloneRequiresConfiguredRemote(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: magento2
@@ -73,7 +73,7 @@ remotes: {}
 
 func TestBootstrapRejectsFreshAndCloneTogether(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: magento2
@@ -131,7 +131,7 @@ func TestBootstrapSupportsSymfony(t *testing.T) {
 
 func TestBootstrapRejectsUnsupportedRecipe(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: custom

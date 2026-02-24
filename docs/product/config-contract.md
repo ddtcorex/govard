@@ -4,29 +4,29 @@
 
 Govard loads config layers in this order:
 
-1. `.govard.yml`
-2. `.govard.local.yml` (legacy local override)
-3. `.govard/.govard.local.yml` (project extension local override, preferred)
-4. `.govard.<env>.yml` (legacy env override, enabled by `GOVARD_ENV`)
-5. `.govard/.govard.<env>.yml` (project extension env override, preferred)
+1. `govard.yml`
+2. `govard.local.yml` (legacy local override)
+3. `.govard/govard.local.yml` (project extension local override, preferred)
+4. `govard.<env>.yml` (legacy env override, enabled by `GOVARD_ENV`)
+5. `.govard/govard.<env>.yml` (project extension env override, preferred)
 
 Later layers override earlier layers.
 
 ## Ownership Model
 
-- `.govard.yml`:
+- `govard.yml`:
   - Source of truth committed to repository.
   - Writable by Govard commands (`init`, `config set`, `profile apply`, etc.).
-- `.govard.local.yml`:
+- `govard.local.yml`:
   - Developer-local overrides (legacy path).
   - Not managed by Govard write operations.
-- `.govard/.govard.local.yml`:
+- `.govard/govard.local.yml`:
   - Project extension local overrides (preferred path).
   - Not managed by Govard write operations.
-- `.govard.<env>.yml`:
+- `govard.<env>.yml`:
   - Environment-specific overrides (legacy path).
   - Not managed by Govard write operations.
-- `.govard/.govard.<env>.yml`:
+- `.govard/govard.<env>.yml`:
   - Environment-specific overrides (preferred path).
   - Not managed by Govard write operations.
 

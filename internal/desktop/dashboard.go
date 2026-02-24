@@ -91,7 +91,7 @@ func buildDashboard() (Dashboard, error) {
 			continue
 		}
 		if configErr != nil && hasGovardComposeConfigFile(info.configFiles) {
-			warnings = append(warnings, "Missing .govard.yml for "+info.name+".")
+			warnings = append(warnings, "Missing govard.yml for "+info.name+".")
 		}
 
 		env := buildEnvironment(info)
@@ -240,17 +240,17 @@ func loadProjectConfig(info *projectInfo) error {
 		info.workingDir = filepath.Dir(path)
 		return nil
 	}
-	return fmt.Errorf(".govard.yml not found")
+	return fmt.Errorf("govard.yml not found")
 }
 
 func candidateConfigPaths(info *projectInfo) []string {
 	var paths []string
 	if info.workingDir != "" {
-		paths = append(paths, filepath.Join(info.workingDir, ".govard.yml"))
+		paths = append(paths, filepath.Join(info.workingDir, "govard.yml"))
 	}
 	for _, file := range info.configFiles {
 		dir := filepath.Dir(file)
-		paths = append(paths, filepath.Join(dir, ".govard.yml"))
+		paths = append(paths, filepath.Join(dir, "govard.yml"))
 	}
 	return uniqueStrings(paths)
 }

@@ -103,7 +103,7 @@ func TestEdgeCaseDomainWithMultipleSubdomains(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "test",
 			"recipe":       "magento2",
 			"domain":       "sub1.sub2.example.test",

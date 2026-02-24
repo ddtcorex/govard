@@ -17,10 +17,10 @@ func TestInitPreservesRemotesAndHooks(t *testing.T) {
 	env := NewTestEnvironment(t)
 	projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "init-merge-m2")
 
-	configPath := filepath.Join(projectDir, ".govard.yml")
+	configPath := filepath.Join(projectDir, "govard.yml")
 	original, err := os.ReadFile(configPath)
 	if err != nil {
-		t.Fatalf("failed to read .govard.yml: %v", err)
+		t.Fatalf("failed to read govard.yml: %v", err)
 	}
 
 	original = append(original, []byte(`
@@ -30,7 +30,7 @@ hooks:
       run: "echo before-up"
 `)...)
 	if err := os.WriteFile(configPath, original, 0o644); err != nil {
-		t.Fatalf("failed to update .govard.yml: %v", err)
+		t.Fatalf("failed to update govard.yml: %v", err)
 	}
 
 	result := env.RunGovard(t, projectDir, "init", "--recipe", "magento2", "--framework-version", "2.4.7-p3")
@@ -153,9 +153,9 @@ func TestFrameworkCommandRuntimeForMagentoProject(t *testing.T) {
   user_id: 2000
   group_id: 2001
 `
-		overridePath := filepath.Join(projectDir, ".govard.local.yml")
+		overridePath := filepath.Join(projectDir, "govard.local.yml")
 		if err := os.WriteFile(overridePath, []byte(localOverride), 0o644); err != nil {
-			t.Fatalf("failed to write .govard.local.yml: %v", err)
+			t.Fatalf("failed to write govard.local.yml: %v", err)
 		}
 
 		shim := env.SetupRuntimeShims(t, map[string]int{"docker": 0, "ssh": 0, "rsync": 0})

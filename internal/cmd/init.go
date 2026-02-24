@@ -45,31 +45,7 @@ var initCmd = &cobra.Command{
 			}
 		}()
 		existingConfig, hasExistingConfig := loadExistingInitConfig(cwd)
-		var migrated engine.MigrationResult
-		if migrateFrom != "" {
-			var migrateErr error
-			handled := false
-			switch strings.ToLower(migrateFrom) {
-			case "ddev":
-				migrated, migrateErr = engine.MigrateFromDDEV(cwd)
-				handled = true
-			case "warden":
-				migrated, migrateErr = engine.MigrateFromWarden(cwd)
-				handled = true
-			default:
-				pterm.Warning.Printf("Unknown migration source: %s. Skipping migration.\n", migrateFrom)
-			}
-			if migrateErr != nil {
-				pterm.Warning.Printf("Migration from %s failed: %v\n", migrateFrom, migrateErr)
-			} else if handled {
-				pterm.Success.Printf("Migrated configuration from %s\n", migrateFrom)
-			}
-		}
-
 		metadata := engine.DetectFramework(cwd)
-		if migrated.Recipe != "" {
-			metadata.Framework = migrated.Recipe
-		}
 		if initRecipe != "" {
 			metadata.Framework = strings.ToLower(initRecipe)
 		}
@@ -156,39 +132,11 @@ var initCmd = &cobra.Command{
 				},
 			},
 		}
-
-		if migrated.ProjectName != "" {
-			config.ProjectName = migrated.ProjectName
-			config.Domain = fmt.Sprintf("%s.test", migrated.ProjectName)
-		}
-		if migrated.PHPVersion != "" {
-			config.Stack.PHPVersion = migrated.PHPVersion
-		}
-		if migrated.DBType != "" {
-			config.Stack.DBType = migrated.DBType
-		}
-		if migrated.DBVersion != "" {
-			config.Stack.DBVersion = migrated.DBVersion
-		}
-		if migrated.WebRoot != "" {
-			config.Stack.WebRoot = migrated.WebRoot
-		}
-		if len(migrated.Remotes) > 0 {
-			config.Remotes = migrated.Remotes
-		}
-
 		if config.Stack.DBType == "none" {
 			config.Stack.DBVersion = ""
 		}
 		if hasExistingConfig {
-			if existingConfig.Remotes != nil {
-				if config.Remotes == nil {
-					config.Remotes = make(map[string]engine.RemoteConfig)
-				}
-				for k, v := range existingConfig.Remotes {
-					config.Remotes[k] = v
-				}
-			}
+			config.Remotes = existingConfig.Remotes
 			config.Hooks = existingConfig.Hooks
 		}
 		configForObservability = config
@@ -202,7 +150,7 @@ var initCmd = &cobra.Command{
 		if err := os.WriteFile(engine.BaseConfigFile, data, 0644); err != nil {
 			return fmt.Errorf("write %s: %w", engine.BaseConfigFile, err)
 		}
-		pterm.Success.Println("✅ Generated .govard.yml")
+		pterm.Success.Println("✅ Generated govard.yml")
 
 		if err := engine.RenderBlueprint(cwd, config); err != nil {
 			pterm.Warning.Printf("Failed to render compose file: %v\n", err)
@@ -231,13 +179,11 @@ func loadExistingInitConfig(cwd string) (engine.Config, bool) {
 var (
 	initRecipe           string
 	initFrameworkVersion string
-	migrateFrom          string
 )
 
 func init() {
 	initCmd.Flags().StringVarP(&initRecipe, "recipe", "r", "", "Override detected framework (e.g., magento2)")
 	initCmd.Flags().StringVar(&initFrameworkVersion, "framework-version", "", "Override detected framework version (e.g., 11)")
-	initCmd.Flags().StringVar(&migrateFrom, "migrate-from", "", "Migrate configuration from another tool (ddev, warden)")
 }
 
 func selectOption(title string, options []string, defaultOption string) string {

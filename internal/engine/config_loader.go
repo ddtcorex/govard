@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	BaseConfigFile  = ".govard.yml"
-	LocalConfigFile = ".govard.local.yml"
+	BaseConfigFile  = "govard.yml"
+	LocalConfigFile = "govard.local.yml"
 )
 
 var validEnvNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
@@ -34,8 +34,8 @@ func ResolveConfigLayerPaths(root string) []string {
 		return paths
 	}
 
-	paths = append(paths, filepath.Join(root, fmt.Sprintf(".govard.%s.yml", envName)))
-	paths = append(paths, filepath.Join(root, ProjectExtensionsDir, fmt.Sprintf(".govard.%s.yml", envName)))
+	paths = append(paths, filepath.Join(root, fmt.Sprintf("govard.%s.yml", envName)))
+	paths = append(paths, filepath.Join(root, ProjectExtensionsDir, fmt.Sprintf("govard.%s.yml", envName)))
 	return paths
 }
 

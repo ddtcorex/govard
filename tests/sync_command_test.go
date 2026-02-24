@@ -13,7 +13,7 @@ import (
 
 func TestSyncCommandPlan(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: laravel
@@ -62,7 +62,7 @@ remotes:
 
 func TestSyncCommandPlanIncludeExclude(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: laravel
@@ -109,7 +109,7 @@ remotes:
 
 func TestSyncCommandPlanNoResume(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: laravel
@@ -150,7 +150,7 @@ remotes:
 
 func TestSyncCommandPlanNoCompress(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: laravel
@@ -191,7 +191,7 @@ remotes:
 
 func TestSyncCommandProtectedRemoteDestination(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: laravel
@@ -228,7 +228,7 @@ remotes:
 
 func TestSyncCommandProductionEnvironmentDestinationBlocked(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: laravel
@@ -265,7 +265,7 @@ remotes:
 
 func TestSyncCommandRejectsCapabilityMismatch(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: laravel
@@ -306,7 +306,7 @@ remotes:
 
 func TestSyncCommandRejectsRemoteToRemote(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	config := `project_name: test
 domain: test.test
 recipe: laravel

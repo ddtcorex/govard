@@ -89,11 +89,7 @@ export const renderEnvironmentSkeletons = (container) => {
   container.innerHTML = header + items;
 };
 
-export const renderEnvironmentList = (
-  container,
-  environments = [],
-  selectedProject = "",
-) => {
+export const renderEnvironmentList = (container, environments = []) => {
   if (!container) {
     return;
   }
@@ -110,7 +106,6 @@ export const renderEnvironmentList = (
       .map((env) => {
         const key = projectKey(env);
         const domain = domainLabel(env);
-        const isSelected = key === selectedProject;
         const status = String(
           env.Status || env.status || "stopped",
         ).toLowerCase();
@@ -122,39 +117,40 @@ export const renderEnvironmentList = (
             ? "Running"
             : "Stopped";
 
-        const itemClass = isSelected
-          ? "w-full mb-1 flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[#22492f] border border-primary/30 group transition-all relative overflow-hidden shadow-[0_0_15px_rgba(13,242,89,0.1)]"
-          : "w-full mb-1 flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#22492f]/50 border border-transparent transition-all relative overflow-hidden group";
-
-        const selectionIndicator = isSelected
-          ? `<div class="absolute inset-y-0 left-0 w-1 bg-primary"></div>`
-          : "";
-
-        let iconClass = "text-slate-400";
-        let iconName = "stop_circle";
-
         if (running) {
-          iconClass = "text-primary fill-1";
-          iconName = "play_circle";
-        } else if (warning) {
-          iconClass = "text-amber-500";
-          iconName = "warning";
-        }
-
-        const iconStyle = running
-          ? "style=\"font-variation-settings: 'FILL' 1;\""
-          : "";
-
-        return `
-          <button data-action="select-environment" data-env="${escapeHTML(key)}" class="${itemClass}" title="Select ${escapeHTML(domain)}">
-            ${selectionIndicator}
-            <span data-action="toggle-env" data-env="${escapeHTML(key)}" class="material-symbols-outlined ${iconClass} hover:text-white transition-colors z-10" ${iconStyle}>${iconName}</span>
-            <div class="flex flex-col items-start min-w-0 pointer-events-none">
-              <span class="text-white text-sm font-medium truncate w-full text-left">${escapeHTML(domain)}</span>
-              <span class="text-xs ${running ? "text-primary" : warning ? "text-amber-500" : "text-slate-500"}">${statusText}</span>
+          return `
+          <button data-action="env-open" data-env="${escapeHTML(key)}" class="w-full mb-1 flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[#22492f] border border-[#366b47]/50 group transition-all relative overflow-hidden" title="Click to open, or double-click to toggle">
+            <div class="absolute inset-y-0 left-0 w-1 bg-primary"></div>
+            <span data-action="toggle-env" data-env="${escapeHTML(key)}" class="material-symbols-outlined text-primary fill-1 hover:text-white transition-colors z-10" style="font-variation-settings: 'FILL' 1;">play_circle</span>
+            <div class="flex flex-col items-start min-w-0" data-action="env-open" data-env="${escapeHTML(key)}">
+              <span class="text-white text-sm font-medium truncate w-full text-left" data-action="env-open" data-env="${escapeHTML(key)}">${escapeHTML(domain)}</span>
+              <span class="text-xs text-primary" data-action="env-open" data-env="${escapeHTML(key)}">${statusText}</span>
             </div>
           </button>
-        `;
+         `;
+        }
+
+        if (warning) {
+          return `
+          <button data-action="env-open" data-env="${escapeHTML(key)}" class="w-full mb-1 flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#22492f]/50 transition-colors group" title="Click to open, or double-click to toggle">
+            <span data-action="toggle-env" data-env="${escapeHTML(key)}" class="material-symbols-outlined text-amber-500 hover:text-primary transition-colors z-10">warning</span>
+            <div class="flex flex-col items-start min-w-0" data-action="env-open" data-env="${escapeHTML(key)}">
+              <span class="text-slate-300 text-sm font-medium group-hover:text-white truncate w-full text-left" data-action="env-open" data-env="${escapeHTML(key)}">${escapeHTML(domain)}</span>
+              <span class="text-xs text-amber-500" data-action="env-open" data-env="${escapeHTML(key)}">${statusText}</span>
+            </div>
+          </button>
+          `;
+        }
+
+        return `
+        <button data-action="env-open" data-env="${escapeHTML(key)}" class="w-full mb-1 flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#22492f]/50 transition-colors group" title="Click to open, or double-click to toggle">
+          <span data-action="toggle-env" data-env="${escapeHTML(key)}" class="material-symbols-outlined text-slate-400 hover:text-primary transition-colors z-10">stop_circle</span>
+          <div class="flex flex-col items-start min-w-0" data-action="env-open" data-env="${escapeHTML(key)}">
+            <span class="text-slate-300 text-sm font-medium group-hover:text-white truncate w-full text-left" data-action="env-open" data-env="${escapeHTML(key)}">${escapeHTML(domain)}</span>
+            <span class="text-xs text-slate-500" data-action="env-open" data-env="${escapeHTML(key)}">${statusText}</span>
+          </div>
+        </button>
+      `;
       })
       .join("");
 };

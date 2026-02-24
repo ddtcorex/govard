@@ -125,7 +125,7 @@ var profileCmd = &cobra.Command{
 
 var profileApplyCmd = &cobra.Command{
 	Use:   "apply",
-	Short: "Apply the recommended runtime profile to .govard.yml",
+	Short: "Apply the recommended runtime profile to govard.yml",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		_, result, err := resolveProfileForCurrentProject()
 		if err != nil {
@@ -141,7 +141,7 @@ var profileApplyCmd = &cobra.Command{
 		engine.ApplyRuntimeProfileToConfig(&config, result.Profile)
 		engine.NormalizeConfig(&config)
 		saveConfig(config)
-		pterm.Success.Println("Applied profile to .govard.yml")
+		pterm.Success.Println("Applied profile to govard.yml")
 		return nil
 	},
 }

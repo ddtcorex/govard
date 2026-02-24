@@ -88,7 +88,7 @@ func CreateDoctorDiagnosticsPack(outputDir string, cwd string, report engine.Doc
 	if cfg, _, cfgErr := engine.LoadConfigFromDir(cwd, false); cfgErr == nil {
 		composeProjectName = cfg.ProjectName
 	}
-	_ = copyIfExists(engine.ComposeFilePath(cwd, composeProjectName), filepath.Join(packDir, ".govard-compose.yml"))
+	_ = copyIfExists(engine.ComposeFilePath(cwd, composeProjectName), filepath.Join(packDir, "govard-compose.yml"))
 	_ = copyIfExists(remote.AuditLogPath(), filepath.Join(packDir, "remote-audit.log"))
 
 	readme := []byte(
@@ -97,7 +97,7 @@ func CreateDoctorDiagnosticsPack(outputDir string, cwd string, report engine.Doc
 			"- environment.json: runtime environment metadata\n" +
 			"- config_layers.txt: resolved layered config file list\n" +
 			"- runtime_commands.txt: docker/proxy command snapshots (best effort)\n" +
-			"- .govard.yml / .govard-compose.yml: optional project snapshots\n" +
+			"- govard.yml / govard-compose.yml: optional project snapshots\n" +
 			"- remote-audit.log: optional remote audit history snapshot\n",
 	)
 	if err := os.WriteFile(filepath.Join(packDir, "README.txt"), readme, 0o600); err != nil {

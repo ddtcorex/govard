@@ -28,7 +28,7 @@ var debugCmd = &cobra.Command{
 			}
 			config.Stack.Features.Xdebug = true
 			saveConfig(config)
-			pterm.Success.Println("Xdebug enabled in .govard.yml. Running 'govard up' to apply...")
+			pterm.Success.Println("Xdebug enabled in govard.yml. Running 'govard up' to apply...")
 			runUp()
 		case "off":
 			config = loadWritableConfig()
@@ -38,7 +38,7 @@ var debugCmd = &cobra.Command{
 			}
 			config.Stack.Features.Xdebug = false
 			saveConfig(config)
-			pterm.Success.Println("Xdebug disabled in .govard.yml. Running 'govard up' to apply...")
+			pterm.Success.Println("Xdebug disabled in govard.yml. Running 'govard up' to apply...")
 			runUp()
 		case "status":
 			status := "disabled"

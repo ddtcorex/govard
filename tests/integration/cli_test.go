@@ -34,9 +34,9 @@ func TestCLIInitCommand(t *testing.T) {
 	result := env.RunGovard(t, projectDir, "init", "--recipe", "magento2")
 	result.AssertSuccess(t)
 
-	configPath := filepath.Join(projectDir, ".govard.yml")
+	configPath := filepath.Join(projectDir, "govard.yml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Error(".govard.yml was not created")
+		t.Error("govard.yml was not created")
 	}
 }
 
@@ -49,7 +49,7 @@ func TestCLIStatusCommand(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "status-test",
 			"recipe":       "magento2",
 			"domain":       "status-test.test",
@@ -104,7 +104,7 @@ func TestCLIDebugCommand(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "debug-cmd-test",
 			"recipe":       "magento2",
 			"domain":       "debug-cmd-test.test",
@@ -136,7 +136,7 @@ func TestCLILogsCommand(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "logs-cmd-test",
 			"recipe":       "magento2",
 			"domain":       "logs-cmd-test.test",
@@ -168,7 +168,7 @@ func TestCLIShellCommand(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "shell-cmd-test",
 			"recipe":       "magento2",
 			"domain":       "shell-cmd-test.test",
@@ -200,7 +200,7 @@ func TestCLIDbCommand(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "db-cmd-test",
 			"recipe":       "magento2",
 			"domain":       "db-cmd-test.test",
@@ -232,7 +232,7 @@ func TestCLIRedisCommand(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "redis-cmd-test",
 			"recipe":       "magento2",
 			"domain":       "redis-cmd-test.test",
@@ -273,7 +273,7 @@ func TestCLIConfigureCommand(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "configure-cmd-test",
 			"recipe":       "magento2",
 			"domain":       "configure-cmd-test.test",
@@ -305,7 +305,7 @@ func TestCLIStopCommand(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "stop-cmd-test",
 			"recipe":       "magento2",
 			"domain":       "stop-cmd-test.test",
@@ -395,7 +395,7 @@ func TestCLIShortcutsHelp(t *testing.T) {
 				"magento/product-community-edition": "2.4.7",
 			},
 		}),
-		".govard.yml": MustMarshalYAML(t, map[string]interface{}{
+		"govard.yml": MustMarshalYAML(t, map[string]interface{}{
 			"project_name": "shortcuts-test",
 			"recipe":       "magento2",
 			"domain":       "shortcuts-test.test",

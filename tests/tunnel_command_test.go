@@ -83,7 +83,7 @@ func TestCloudflareTunnelProviderBuildStartPlan(t *testing.T) {
 
 func TestTunnelStartPlanUsesConfigDomainByDefault(t *testing.T) {
 	tempDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(`project_name: demo
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(`project_name: demo
 domain: demo.test
 recipe: laravel
 `), 0o644); err != nil {
@@ -150,7 +150,7 @@ recipe: laravel
 
 func TestTunnelStartRejectsConflictingURLInputs(t *testing.T) {
 	tempDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(`project_name: demo
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(`project_name: demo
 domain: demo.test
 recipe: laravel
 `), 0o644); err != nil {

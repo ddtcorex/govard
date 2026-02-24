@@ -220,7 +220,7 @@ Groups: stdlib → 3rd party → internal
 
 ```go
 if err != nil {
-    pterm.Error.Printf("Failed to parse .govard.yml: %v\n", err)
+    pterm.Error.Printf("Failed to parse govard.yml: %v\n", err)
     return
 }
 ```

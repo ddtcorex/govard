@@ -28,7 +28,7 @@ project_name: demo
 recipe: laravel
 domain: demo.test
 `) + "\n"
-		if err := os.WriteFile(filepath.Join(dir, ".govard.yml"), []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "govard.yml"), []byte(content), 0o644); err != nil {
 			return "", err
 		}
 		return "ok", nil
@@ -40,7 +40,7 @@ domain: demo.test
 		t.Fatalf("onboard project: %v", err)
 	}
 	if !called {
-		t.Fatal("expected init command to run for missing .govard.yml")
+		t.Fatal("expected init command to run for missing govard.yml")
 	}
 	if gotDir != root {
 		t.Fatalf("expected init dir %s, got %s", root, gotDir)
@@ -81,8 +81,8 @@ project_name: shop
 recipe: magento2
 domain: shop.test
 `) + "\n"
-	if err := os.WriteFile(filepath.Join(root, ".govard.yml"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write .govard.yml: %v", err)
+	if err := os.WriteFile(filepath.Join(root, "govard.yml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write govard.yml: %v", err)
 	}
 
 	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
@@ -138,8 +138,8 @@ stack:
     xdebug: true
     varnish: false
 `) + "\n"
-	if err := os.WriteFile(filepath.Join(root, ".govard.yml"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write .govard.yml: %v", err)
+	if err := os.WriteFile(filepath.Join(root, "govard.yml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write govard.yml: %v", err)
 	}
 
 	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {

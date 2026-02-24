@@ -15,7 +15,7 @@ import (
 
 func TestRemoteAddWritesConfig(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	if err := os.WriteFile(configPath, []byte("project_name: test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestRemoteAddWritesConfig(t *testing.T) {
 
 func TestRemoteAddKnownHostsEnablesStrictHostKey(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	if err := os.WriteFile(configPath, []byte("project_name: test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestRemoteAddKnownHostsEnablesStrictHostKey(t *testing.T) {
 
 func TestRemoteAddKeychainStoresKeyPathInAuthStore(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	if err := os.WriteFile(configPath, []byte("project_name: test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestRemoteAddKeychainStoresKeyPathInAuthStore(t *testing.T) {
 
 func TestRemoteAuditTailCommand(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	if err := os.WriteFile(configPath, []byte("project_name: test\ndomain: test.test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestRemoteAuditTailCommand(t *testing.T) {
 
 func TestRemoteAuditStatsCommand(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	if err := os.WriteFile(configPath, []byte("project_name: test\ndomain: test.test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestRemoteAuditStatsCommand(t *testing.T) {
 
 func TestRemoteAuditStatsCommandJSON(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	if err := os.WriteFile(configPath, []byte("project_name: test\ndomain: test.test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestRemoteAuditStatsCommandJSON(t *testing.T) {
 
 func TestRemoteAuditTailCommandSinceFilter(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	if err := os.WriteFile(configPath, []byte("project_name: test\ndomain: test.test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ func TestRemoteAuditTailCommandSinceFilter(t *testing.T) {
 
 func TestRemoteAuditStatsCommandSinceUntilFilter(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".govard.yml")
+	configPath := filepath.Join(tempDir, "govard.yml")
 	if err := os.WriteFile(configPath, []byte("project_name: test\ndomain: test.test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}

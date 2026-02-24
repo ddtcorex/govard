@@ -38,13 +38,13 @@ stack:
     search: elasticsearch
 `
 
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(base), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(base), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.local.yml"), []byte(local), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.local.yml"), []byte(local), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.staging.yml"), []byte(envOverride), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.staging.yml"), []byte(envOverride), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,10 +82,10 @@ stack:
 
 func TestLoadBaseConfigFromDirIgnoresOverrides(t *testing.T) {
 	tempDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte("project_name: demo\ndomain: base.test\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte("project_name: demo\ndomain: base.test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.local.yml"), []byte("domain: local.test\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.local.yml"), []byte("domain: local.test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,16 +135,16 @@ stack:
     cache: valkey
 `
 
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(base), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(base), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.local.yml"), []byte(legacyLocal), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.local.yml"), []byte(legacyLocal), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(tempDir, ".govard"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard", ".govard.local.yml"), []byte(projectLocal), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, ".govard", "govard.local.yml"), []byte(projectLocal), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -173,16 +173,16 @@ recipe: laravel
 	projectEnv := `domain: extension-staging.test
 `
 
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(base), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(base), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.staging.yml"), []byte(legacyEnv), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.staging.yml"), []byte(legacyEnv), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(tempDir, ".govard"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard", ".govard.staging.yml"), []byte(projectEnv), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, ".govard", "govard.staging.yml"), []byte(projectEnv), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -207,7 +207,7 @@ lock:
   strict: true
 `
 
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(base), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(base), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -233,7 +233,7 @@ blueprint_registry:
   trusted: true
 `
 
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(base), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(base), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -264,7 +264,7 @@ blueprint_registry:
   trusted: true
 `
 
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(base), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(base), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -290,7 +290,7 @@ blueprint_registry:
   trusted: true
 `
 
-	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(base), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "govard.yml"), []byte(base), 0644); err != nil {
 		t.Fatal(err)
 	}
 
