@@ -15,8 +15,28 @@ import (
 )
 
 var upCmd = &cobra.Command{
-	Use:   "up",
+	Use:   "up [flags]",
 	Short: "Start the development environment",
+	Long: `Starts all Docker containers required for the current project.
+It automatically handles framework detection, configuration validation,
+Docker Compose blueprint rendering, host mapping, and proxy registration.
+
+The startup process follows these stages:
+1. Detect: Identifies framework context from project files.
+2. Validate: Checks Docker status, port conflicts, and layered config.
+3. Render: Generates the specialized Docker Compose file.
+4. Start: Runs 'docker compose up' in detached mode.
+5. Verify: Maps the .test domain to 127.0.0.1 and registers it with the Govard Proxy.
+
+Case Studies:
+- Standard Startup: Simply run 'govard up' to get your full stack running.
+- Low Resource Mode: Use --quickstart if you have limited RAM or only need PHP/Web server.
+- Fresh Install Recovery: If containers are broken, 'govard up' re-renders and restarts them.`,
+	Example: `  # Start the environment normally
+  govard up
+
+  # Fast startup: skip heavy services like Elasticsearch, Varnish, Redis
+  govard up --quickstart`,
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		updater.CheckForUpdates(Version)
 		pterm.DefaultHeader.Println("Govard Environment Liftoff")

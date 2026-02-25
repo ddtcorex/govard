@@ -20,9 +20,25 @@ type RecipeCommand struct {
 }
 
 var toolCmd = &cobra.Command{
-	Use:   "tool",
+	Use:   "tool [command]",
 	Short: "Run framework/tooling commands inside project containers",
-	Long:  "Project-scoped wrappers for framework CLIs and common package manager commands.",
+	Long: `Run framework CLIs and common package manager commands directly inside the project containers.
+This eliminates the need to install PHP, Composer, or Node.js on your host machine.
+Govard automatically routes commands to the correct container (usually PHP) and
+executes them as the appropriate user (e.g., www-data).
+
+Case Studies:
+- Clean Workspace: Run 'govard tool magento setup:upgrade' without needing PHP/MySQL on your laptop.
+- Unified Workflow: Use the same command regardless of which PHP version the project requires.
+- Package Management: Use 'govard tool composer install' to ensure dependencies match the container environment.`,
+	Example: `  # Run Magento CLI
+  govard tool magento cache:flush
+
+  # Install a composer package
+  govard tool composer require monolog/monolog
+
+  # Run npm install
+  govard tool npm install`,
 }
 
 var frameworkCommands = []RecipeCommand{
@@ -125,9 +141,15 @@ var frameworkCommands = []RecipeCommand{
 
 func initFrameworkCommands() {
 	for _, fc := range frameworkCommands {
+		usage := fmt.Sprintf("%s [args]", fc.Name)
+		longDesc := fc.Short
+		if fc.Recipe != "" {
+			longDesc = fmt.Sprintf("%s (Requires %s project)", fc.Short, fc.Recipe)
+		}
 		cmd := &cobra.Command{
-			Use:                fmt.Sprintf("%s [args]", fc.Name),
+			Use:                usage,
 			Short:              fc.Short,
+			Long:               longDesc,
 			DisableFlagParsing: true,
 			RunE: func(c *cobra.Command, args []string) error {
 				// Find which command we are running

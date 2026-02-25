@@ -30,6 +30,19 @@ type downOptions struct {
 var downCmd = &cobra.Command{
 	Use:   "down",
 	Short: "Tear down project containers and networks",
+	Long: `Stops and removes containers, networks, and optionally volumes created by 'govard up'.
+This is a destructive operation that completely cleans up the Docker resources
+associated with the current project.
+
+Case Studies:
+- Fresh Start: Use 'govard down -v' to wipe out all local data (including database and media) for a clean reinstall.
+- Troubleshooting: If networks or containers are in a ghost state, 'govard down' ensures they are fully purged.
+- Workspace Cleanup: Use 'govard down' when you are finished with a project to free up system resources.`,
+	Example: `  # Tear down containers and networks
+  govard down
+
+  # Wipe everything including database/media volumes
+  govard down --volumes`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DefaultHeader.Println("Tearing Down Govard Environment")
 

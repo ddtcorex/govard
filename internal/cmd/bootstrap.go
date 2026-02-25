@@ -78,8 +78,31 @@ var bootstrapRemoteDirExists = func(remoteName string, remoteCfg engine.RemoteCo
 }
 
 var bootstrapCmd = &cobra.Command{
-	Use:   "bootstrap",
+	Use:   "bootstrap [flags]",
 	Short: "Bootstrap local project setup and clone a remote environment",
+	Long: `Quickly set up a project by cloning from a remote environment or creating a fresh installation.
+Ideal for onboarding new team members or starting a new project from scratch.
+
+Framework Specifics:
+- Magento 2: Automates auth.json, env.php, database import, media sync, and admin user creation.
+- Symfony/Laravel: Handles .env generation and composer install.
+- WordPress: Configures wp-config.php and imports database.
+
+Case Studies:
+- New Team Member: Run 'govard bootstrap --environment staging' to get a carbon copy of the staging site.
+- Fresh Start: Run 'govard bootstrap --fresh --version 2.4.7' to start a clean Magento 2.4.7 project.
+- Fast Sync: Use --code-only to skip DB and media if you only need the source code.`,
+	Example: `  # Clone from staging environment (auto-detects framework)
+  govard bootstrap --environment staging
+
+  # Fresh Magento 2.4.7 install with sample data
+  govard bootstrap --fresh --version 2.4.7 --include-sample
+
+  # Clone from production but skip media files
+  govard bootstrap --environment prod --no-media
+
+  # Clone code only (skip DB and media)
+  govard bootstrap --code-only`,
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		pterm.DefaultHeader.Println("Govard Bootstrap")
 		startedAt := time.Now()
@@ -747,21 +770,21 @@ func init() {
 	bootstrapCmd.Flags().BoolVar(&bootstrapSkipDB, "no-db", false, "Skip database import")
 	bootstrapCmd.Flags().BoolVar(&bootstrapSkipMedia, "no-media", false, "Skip media sync")
 	bootstrapCmd.Flags().BoolVar(&bootstrapSkipComposer, "no-composer", false, "Skip composer install")
-	bootstrapCmd.Flags().BoolVar(&bootstrapSkipAdmin, "no-admin", false, "Skip admin user creation")
+	bootstrapCmd.Flags().BoolVar(&bootstrapSkipAdmin, "no-admin", false, "Skip admin user creation (Magento only)")
 	bootstrapCmd.Flags().BoolVar(&bootstrapNoStreamDB, "no-stream-db", false, "Disable stream-db import mode")
-	bootstrapCmd.Flags().StringVar(&bootstrapVersion, "version", "", "Magento version for fresh install")
+	bootstrapCmd.Flags().StringVar(&bootstrapVersion, "version", "", "Framework version for fresh install (e.g. 2.4.7 for Magento, 11 for Laravel)")
 	bootstrapCmd.Flags().StringVarP(&bootstrapEnv, "environment", "e", "dev", "Source environment")
 	bootstrapCmd.Flags().StringVar(&bootstrapEnv, "remote", "dev", "Alias for --environment")
 	bootstrapCmd.Flags().StringVarP(&bootstrapRecipe, "recipe", "r", "", "Recipe to use when init is required")
 	bootstrapCmd.Flags().StringVar(&bootstrapFrameworkVersion, "framework-version", "", "Framework version when init is required")
 	bootstrapCmd.Flags().BoolVar(&bootstrapSkipUp, "skip-up", false, "Skip starting local containers before bootstrap steps")
-	bootstrapCmd.Flags().StringVarP(&bootstrapMetaPackage, "meta-package", "p", defaultBootstrapMetaPackage, "Magento package for fresh install")
+	bootstrapCmd.Flags().StringVarP(&bootstrapMetaPackage, "meta-package", "p", defaultBootstrapMetaPackage, "Composer meta-package for fresh install (Magento only)")
 	bootstrapCmd.Flags().StringVar(&bootstrapDBDump, "db-dump", "", "Import database from a local dump file")
 	bootstrapCmd.Flags().BoolVar(&bootstrapFixDeps, "fix-deps", false, "Run project custom fix-deps command before bootstrap")
-	bootstrapCmd.Flags().BoolVar(&bootstrapHyvaInstall, "hyva-install", false, "Install Hyva default theme on fresh install")
-	bootstrapCmd.Flags().StringVar(&bootstrapHyvaToken, "hyva-token", defaultBootstrapHyvaToken, "Hyva repository token")
-	bootstrapCmd.Flags().StringVar(&bootstrapMageUsername, "mage-username", "", "Magento repo username for auth.json bootstrap")
-	bootstrapCmd.Flags().StringVar(&bootstrapMagePassword, "mage-password", "", "Magento repo password for auth.json bootstrap")
+	bootstrapCmd.Flags().BoolVar(&bootstrapHyvaInstall, "hyva-install", false, "Install Hyva default theme (Magento only)")
+	bootstrapCmd.Flags().StringVar(&bootstrapHyvaToken, "hyva-token", defaultBootstrapHyvaToken, "Hyva repository token (Magento only)")
+	bootstrapCmd.Flags().StringVar(&bootstrapMageUsername, "mage-username", "", "Magento repo username for auth.json bootstrap (Magento only)")
+	bootstrapCmd.Flags().StringVar(&bootstrapMagePassword, "mage-password", "", "Magento repo password for auth.json bootstrap (Magento only)")
 	bootstrapCmd.Flags().BoolVarP(&bootstrapAssumeYes, "yes", "y", false, "Assume yes for non-critical bootstrap prompts")
 	bootstrapCmd.Flags().BoolVar(&bootstrapIncludeProduct, "include-product", false, "Include catalog product images during media sync (Magento only)")
 }

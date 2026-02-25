@@ -15,6 +15,18 @@ var errorFilter bool
 var logsCmd = &cobra.Command{
 	Use:   "logs",
 	Short: "View project logs",
+	Long: `Streams real-time logs from all services in the current project environment.
+It automatically aggregates logs from PHP, Web, MySQL, Redis, and other active containers.
+
+Case Studies:
+- Real-time Debugging: Watch the log stream while browsing the site to catch errors as they happen.
+- Post-Mortem: Check the last 100 lines (default) to see why a container crashed.
+- Error Hunting: Use --errors to filter out noise and only show critical failure messages.`,
+	Example: `  # Follow all project logs
+  govard logs
+
+  # Show only error messages
+  govard logs --errors`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DefaultHeader.Println("Govard Log Stream")
 		config := loadConfig()

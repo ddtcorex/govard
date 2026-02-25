@@ -17,8 +17,37 @@ import (
 )
 
 var syncCmd = &cobra.Command{
-	Use:   "sync",
+	Use:   "sync [flags]",
 	Short: "Synchronize files, media, and databases between environments",
+	Long: `Synchronize your local development environment with a remote server (e.g., staging, production).
+This command uses rsync for file/media transfers and mysqldump/mysql for database synchronization.
+It supports bi-directional sync (local to remote, remote to local), but prevents accidental
+overwrites on protected remotes.
+
+Framework Notes:
+- Magento 2: Media sync defaults to 'pub/media', excluding large generated/cache directories.
+- Laravel: File sync includes 'storage/app/public' if media is requested.
+- General: You can use --include/--exclude to fine-tune rsync behavior.
+
+Case Studies:
+- Daily Data Refresh: Fetch the latest DB and media from staging to work on a fresh dataset.
+- Single File Fix: Push a hotfix file to a dev remote for quick verification.
+- Media Sync Only: Sync product images from production without affecting your local code or DB.
+- Full Onboarding: Use --full to get code, media, and DB in one command.`,
+	Example: `  # Sync everything from staging to local (default behavior)
+  govard sync --source staging --full
+
+  # Sync only the database from production
+  govard sync --source prod --db
+
+  # Sync media from dev, but exclude specific folders
+  govard sync --source dev --media --exclude "catalog/product/cache/*"
+
+  # Sync a specific path (e.g., a theme folder) from local to dev
+  govard sync --destination dev --file --path "app/design/frontend/MyTheme"
+
+  # Dry-run: Show what would be synced without actually doing it
+  govard sync --source staging --full --plan`,
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		startedAt := time.Now()
 		config := loadFullConfig()

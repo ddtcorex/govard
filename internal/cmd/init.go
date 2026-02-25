@@ -14,8 +14,33 @@ import (
 )
 
 var initCmd = &cobra.Command{
-	Use:   "init",
+	Use:   "init [flags]",
 	Short: "Initialize a new project configuration",
+	Long: `Initialize a Govard project configuration in the current directory.
+It automatically detects the framework (Magento, Laravel, Symfony, etc.) and generates a .govard.yml file.
+If detection fails, it falls back to a 'custom' recipe with interactive prompts.
+
+Common Framework Versions:
+- Magento: 2.4.4, 2.4.5, 2.4.6, 2.4.7
+- Laravel: 10, 11
+- Symfony: 6.4, 7.0
+- Shopware: 6.5, 6.6
+
+Case Studies:
+- New Project: Run 'govard init' in an empty folder to start a new app from scratch.
+- Existing Project: Run 'govard init' to containerize an existing codebase.
+- Migrate from DDEV: Use --migrate-from ddev to import settings from an existing DDEV setup.`,
+	Example: `  # Auto-detect framework and initialize
+  govard init
+
+  # Explicitly set the framework/recipe
+  govard init --recipe magento2
+
+  # Initialize from a DDEV configuration
+  govard init --migrate-from ddev
+
+  # Specify framework version during init
+  govard init --recipe laravel --framework-version 11`,
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		pterm.DefaultHeader.Println("Govard Initialization")
 		startedAt := time.Now()

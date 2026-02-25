@@ -12,7 +12,19 @@ var Version = "1.4.0"
 
 var rootCmd = &cobra.Command{
 	Use:   "govard",
-	Short: "Govard is a high-performance local development orchestrator",
+	Short: "Govard: Professional local development orchestrator for PHP & Web projects",
+	Long: `Govard is a high-performance orchestrator designed to manage complex containerized environments.
+It replaces legacy bash-based tools with a native Go binary, focusing on stability, speed,
+and a premium developer experience.
+
+Main Features:
+- Zero-config startup for Magento, Laravel, Symfony, Drupal, and more.
+- Automated SSL (HTTPS) for all .test domains.
+- Deep integration with Xdebug 3.
+- Fast file/database synchronization with remote environments.
+- Built-in desktop dashboard for visual management.
+
+Documentation: https://github.com/ddtcorex/govard`,
 	CompletionOptions: cobra.CompletionOptions{
 		DisableDefaultCmd: true,
 	},
@@ -49,6 +61,11 @@ func init() {
 	rootCmd.AddCommand(dbCmd)
 	rootCmd.AddCommand(debugCmd)
 	rootCmd.AddCommand(desktopCmd)
+
+	rootCmd.AddCommand(upCmd)
+	rootCmd.AddCommand(stopCmd)
+	rootCmd.AddCommand(downCmd)
+	rootCmd.AddCommand(logsCmd)
 
 	// Framework & Tooling Shortcuts
 	initFrameworkCommands()

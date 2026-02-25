@@ -23,7 +23,29 @@ import (
 var dbCmd = &cobra.Command{
 	Use:   "db [connect|import|dump]",
 	Short: "Interact with the database container",
-	Args:  cobra.ExactArgs(1),
+	Long: `Manage your project's database. Supports connecting to the container shell,
+importing SQL dumps, and creating backups. Works for both local and remote environments.
+
+Case Studies:
+- Remote Debugging: Connect directly to the staging database to inspect live data.
+- Quick Backup: Create a local SQL dump before performing risky operations.
+- Data Refresh: Stream a database dump from production directly into your local DB.
+- Sanitized Backup: Use --exclude-sensitive-data to remove DEFINER and GTID from dumps.`,
+	Example: `  # Open an interactive MySQL shell locally
+  govard db connect
+
+  # Connect to the staging database via SSH tunnel
+  govard db connect --environment staging
+
+  # Import a local SQL file
+  govard db import --file backup.sql
+
+  # Stream a dump from production into your local database (Wipe local DB first)
+  govard db import --stream-db --environment prod
+
+  # Create a database dump with routines and triggers
+  govard db dump --full --file my_backup.sql`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		subcommand := strings.ToLower(strings.TrimSpace(args[0]))
 		if err := runDBSubcommand(cmd, subcommand); err != nil {

@@ -12,9 +12,28 @@ import (
 )
 
 var envCmd = &cobra.Command{
-	Use:   "env",
+	Use:   "env [command]",
 	Short: "Control project environment via docker compose",
-	Long:  "Project-scoped environment lifecycle and service commands.",
+	Long: `Manage the lifecycle and services of your project's development environment.
+All commands are scoped to the project in the current working directory.
+It provides wrappers around common Docker Compose operations and specialized service interactions.
+
+Case Studies:
+- Maintenance: Use 'govard env stop' to pause work and 'govard env start' to resume later.
+- Troubleshooting: Check 'govard env ps' and 'govard env logs' to identify failing services.
+- Cache Management: Run 'govard env redis-cli flushall' to clear local cache.
+- Cleanup: Run 'govard env down -v' to completely remove the environment and its data.`,
+	Example: `  # Start the project environment
+  govard env up
+
+  # List running containers for this project
+  govard env ps
+
+  # View real-time logs for all services
+  govard env logs
+
+  # Enter a Redis shell for the current project
+  govard env redis`,
 }
 
 var envUpCmd = &cobra.Command{

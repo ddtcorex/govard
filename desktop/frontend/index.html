@@ -1020,6 +1020,31 @@
                   <section
                     class="rounded-xl border border-[#2e573a] bg-[#1a3322]/50 p-4 space-y-4"
                   >
+                    <h4 class="text-sm font-medium text-white">Common Scenarios</h4>
+                    <div class="space-y-4">
+                      <div>
+                        <h5 class="text-xs font-bold text-primary mb-1 uppercase tracking-tight">Daily Data Refresh</h5>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">
+                          Pull the latest database and media from staging to stay in sync with real content. Recommended with <b>Sanitization</b> enabled.
+                        </p>
+                      </div>
+                      <div>
+                        <h5 class="text-xs font-bold text-primary mb-1 uppercase tracking-tight">Media Sync Only</h5>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">
+                          Fetch product images from production without affecting your local code or database. Saves bandwidth by skipping heavy tables.
+                        </p>
+                      </div>
+                      <div>
+                        <h5 class="text-xs font-bold text-primary mb-1 uppercase tracking-tight">Quick Hotfix Push</h5>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">
+                          Push a single file/folder to a dev remote to verify a fix in a real environment. Requires <b>unprotecting</b> the remote temporarily.
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                  <section
+                    class="rounded-xl border border-[#2e573a] bg-[#1a3322]/50 p-4 space-y-4"
+                  >
                     <h4 class="text-sm font-medium text-white">Sync Flow</h4>
                     <p class="text-xs text-slate-400 leading-relaxed">
                       Data flows strictly from
@@ -1529,6 +1554,23 @@ Select an environment to view logs.</pre
                     </div>
                   </div>
                 </section>
+
+                <div class="bg-primary/10 border border-primary/20 rounded-lg p-4">
+                    <h4 class="text-xs font-bold text-primary uppercase mb-2 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[14px]">info</span>
+                        Recipe Guide & Best Practices
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <ul class="text-[11px] text-slate-400 space-y-1 list-disc pl-4">
+                            <li><b>Magento 2:</b> Best with PHP 8.1/8.2 and MariaDB 10.6. Varnish & Redis highly recommended for performance.</li>
+                            <li><b>Laravel:</b> Optimized for PHP 8.3. Supports Vite hot-reloading out of the box.</li>
+                        </ul>
+                        <ul class="text-[11px] text-slate-400 space-y-1 list-disc pl-4">
+                            <li><b>WordPress:</b> Pre-configured with WP-CLI and optimized Nginx rules.</li>
+                            <li><b>Custom:</b> Mix and match any services. Ideal for specialized microservices.</li>
+                        </ul>
+                    </div>
+                </div>
 
                 <hr class="border-slate-200 dark:border-white/5" />
 
