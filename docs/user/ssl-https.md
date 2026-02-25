@@ -102,13 +102,7 @@ This installs the Caddy root certificate into your system trust store.
 
 macOS note:
 
-`govard doctor trust` currently expects the Caddy root certificate at `/tmp/govard-ca.crt`.
-Export it from the proxy container first:
-
-```bash
-docker cp proxy-caddy-1:/data/caddy/pki/authorities/local/root.crt /tmp/govard-ca.crt
-govard doctor trust
-```
+This command will automatically extract the certificate from the proxy container and prompt for your password to add it to the System Keychain.
 
 ### 2. Browser Configuration (Chrome/Edge/Brave)
 
@@ -142,10 +136,12 @@ Linux:
     └── root.crt    # Root CA certificate
 ```
 
-macOS (current trust flow):
+macOS:
 
 ```
-/tmp/govard-ca.crt
+~/.govard/
+└── ssl/
+    └── root.crt
 ```
 
 ### Troubleshooting
@@ -155,9 +151,8 @@ macOS (current trust flow):
 **Solutions**:
 1. Ensure proxy is running: `govard svc up`
 2. Run `govard doctor trust` again
-3. On macOS, re-export `/tmp/govard-ca.crt` then rerun `govard doctor trust`
-4. Manually import the certificate in your browser (see step 2 above)
-5. On Linux, check that `~/.govard/ssl/root.crt` exists after `govard doctor trust`
+3. Manually import the certificate in your browser (see step 2 above)
+4. Check that `~/.govard/ssl/root.crt` exists after `govard doctor trust`
 
 **Issue**: Certificate not generated
 

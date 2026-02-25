@@ -503,8 +503,7 @@ govard doctor trust
 ```
 
 Notes:
-- On Linux, this exports certs to `~/.govard/ssl/root.crt`.
-- On macOS, export the cert first: `docker cp proxy-caddy-1:/data/caddy/pki/authorities/local/root.crt /tmp/govard-ca.crt`.
+- On Linux and macOS, this automatically exports certs to `~/.govard/ssl/root.crt` before adding to the trust store.
 
 ## Utility Commands
 

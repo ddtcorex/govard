@@ -224,13 +224,7 @@ govard doctor trust
 
 macOS note:
 
-`govard doctor trust` currently expects the Caddy root certificate at `/tmp/govard-ca.crt`.
-Export it from the proxy container first:
-
-```bash
-docker cp proxy-caddy-1:/data/caddy/pki/authorities/local/root.crt /tmp/govard-ca.crt
-govard doctor trust
-```
+This command will automatically extract the certificate from the proxy container and prompt for your password to add it to the System Keychain.
 
 ### 3. Browser Configuration (Chrome/Edge/Brave)
 
