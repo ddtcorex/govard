@@ -5,6 +5,7 @@ package realenv
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -148,4 +149,61 @@ func TestDBOperationsWithTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dump file with timestamp should exist: %v", err)
 	}
+}
+
+func TestDBImportGzipped(t *testing.T) {
+	env := NewRealEnvTest(t)
+	env.Setup(t)
+
+	localDir := env.CreateTempProject(t, "local")
+
+	// Create a test dump file
+	dumpContent := "CREATE TABLE IF NOT EXISTS test_gzip (id INT);"
+	sqlFile := filepath.Join(t.TempDir(), "test.sql")
+	if err := os.WriteFile(sqlFile, []byte(dumpContent), 0644); err != nil {
+		t.Fatalf("Failed to create sql file: %v", err)
+	}
+
+	// Gzip it
+	gzipFile := sqlFile + ".gz"
+	cmd := exec.Command("gzip", "-c", sqlFile)
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to gzip file: %v", err)
+	}
+	if err := os.WriteFile(gzipFile, output, 0644); err != nil {
+		t.Fatalf("Failed to write gzip file: %v", err)
+	}
+
+	result := env.RunGovard(t, localDir, "db", "import",
+		"--environment", "local",
+		"--file", gzipFile,
+	)
+	result.AssertSuccess(t)
+}
+
+func TestDBQuery(t *testing.T) {
+	env := NewRealEnvTest(t)
+	env.Setup(t)
+
+	localDir := env.CreateTempProject(t, "local")
+
+	// Test local query
+	result := env.RunGovard(t, localDir, "db", "query", "SELECT 1", "--environment", "local")
+	result.AssertSuccess(t)
+
+	// Test remote query
+	result = env.RunGovard(t, localDir, "db", "query", "SELECT 1", "--environment", "dev")
+	result.AssertSuccess(t)
+}
+
+func TestDBInfo(t *testing.T) {
+	env := NewRealEnvTest(t)
+	env.Setup(t)
+
+	localDir := env.CreateTempProject(t, "local")
+
+	result := env.RunGovard(t, localDir, "db", "info")
+	result.AssertSuccess(t)
+	result.AssertOutputContains(t, "Database Connection Info")
 }
