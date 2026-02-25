@@ -31,7 +31,6 @@ type RemoteConfig struct {
 	User         string             `yaml:"user"`
 	Port         int                `yaml:"port"`
 	Path         string             `yaml:"path"`
-	URL          string             `yaml:"url,omitempty"`
 	Environment  string             `yaml:"environment"`
 	Protected    bool               `yaml:"protected"`
 	Capabilities RemoteCapabilities `yaml:"capabilities"`
