@@ -167,3 +167,86 @@ func TestSyncFull(t *testing.T) {
 	result.AssertOutputContains(t, "media")
 	result.AssertOutputContains(t, "db")
 }
+
+func TestSyncDataIntegrity(t *testing.T) {
+	env := NewRealEnvTest(t)
+	env.Setup(t)
+
+	localDir := env.CreateTempProject(t, "local")
+
+	// 1. Create unique file on DEV
+	filename := "integrity_test.txt"
+	content := "INTEGRITY_CHECK_" + time.Now().Format("20060102_150405")
+	sshCmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", "-i", env.SSHKeyPath,
+		"-p", "9023", "linuxserver.io@localhost",
+		"echo '"+content+"' > /var/www/html/"+filename)
+	if err := sshCmd.Run(); err != nil {
+		t.Fatalf("Failed to create integrity test file on DEV: %v", err)
+	}
+
+	// 2. Sync to LOCAL
+	result := env.RunGovard(t, localDir, "sync", "--source", "dev", "--destination", "local", "--file")
+	result.AssertSuccess(t)
+
+	// 3. Verify file content locally
+	localPath := filepath.Join(localDir, filename)
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Errorf("Synced file not found at %s: %v", localPath, err)
+	} else if string(data) != content+"\n" && string(data) != content {
+		t.Errorf("Content mismatch. Expected %q, got %q", content, string(data))
+	}
+}
+
+func TestSyncComplexPatterns(t *testing.T) {
+	env := NewRealEnvTest(t)
+	env.Setup(t)
+
+	localDir := env.CreateTempProject(t, "local")
+
+	// Create a bunch of files
+	sshCmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", "-i", env.SSHKeyPath,
+		"-p", "9023", "linuxserver.io@localhost",
+		"mkdir -p /var/www/html/pattern_test && touch /var/www/html/pattern_test/keep.txt /var/www/html/pattern_test/skip.log /var/www/html/pattern_test/skip.tmp")
+	if err := sshCmd.Run(); err != nil {
+		t.Fatalf("Failed to create pattern test files on DEV: %v", err)
+	}
+
+	result := env.RunGovard(t, localDir, "sync",
+		"--source", "dev",
+		"--destination", "local",
+		"--file",
+		"--path", "pattern_test",
+		"--include", "*.txt",
+		"--exclude", "*.log",
+		"--exclude", "*.tmp",
+	)
+	result.AssertSuccess(t)
+
+	result.AssertOutputContains(t, "--include='*.txt'")
+	result.AssertOutputContains(t, "--exclude='*.log'")
+	result.AssertOutputContains(t, "--exclude='*.tmp'")
+}
+
+func TestSyncStagingToLocal(t *testing.T) {
+	env := NewRealEnvTest(t)
+	env.Setup(t)
+
+	localDir := env.CreateTempProject(t, "local")
+
+	// Create test file in STAGING
+	sshCmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", "-i", env.SSHKeyPath,
+		"-p", "9024", "linuxserver.io@localhost",
+		"echo 'STAGING_DATA' > /var/www/html/staging_test.txt")
+	if err := sshCmd.Run(); err != nil {
+		t.Fatalf("Failed to create test file on STAGING: %v", err)
+	}
+
+	result := env.RunGovard(t, localDir, "sync",
+		"--source", "staging",
+		"--destination", "local",
+		"--file",
+	)
+	result.AssertSuccess(t)
+	result.AssertOutputContains(t, "staging")
+}

@@ -22,9 +22,16 @@ error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >&2
 }
 
+# Determine docker compose command
+if docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+else
+    DOCKER_COMPOSE="docker-compose"
+fi
+
 cleanup() {
     log "Cleaning up existing environment..."
-    docker-compose -f "${SCRIPT_DIR}/docker-compose.three-env.yml" down -v 2>/dev/null || true
+    $DOCKER_COMPOSE -f "${SCRIPT_DIR}/docker-compose.three-env.yml" down -v 2>/dev/null || true
     docker network rm govard-test-net 2>/dev/null || true
     log "Cleanup complete"
 }
@@ -107,7 +114,7 @@ start_environment() {
     docker volume create govard-test_ssh 2>/dev/null || true
     
     # Start services
-    docker-compose -f "${SCRIPT_DIR}/docker-compose.three-env.yml" up -d
+    $DOCKER_COMPOSE -f "${SCRIPT_DIR}/docker-compose.three-env.yml" up -d
     
     log "Waiting for services to be healthy..."
     

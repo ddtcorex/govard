@@ -189,6 +189,9 @@ Case Studies:
 		if migrated.PHPVersion != "" {
 			config.Stack.PHPVersion = migrated.PHPVersion
 		}
+		if migrated.NodeVersion != "" {
+			config.Stack.NodeVersion = migrated.NodeVersion
+		}
 		if migrated.DBType != "" {
 			config.Stack.DBType = migrated.DBType
 		}
@@ -198,6 +201,25 @@ Case Studies:
 		if migrated.WebRoot != "" {
 			config.Stack.WebRoot = migrated.WebRoot
 		}
+		if migrated.SearchService != "" {
+			config.Stack.Services.Search = migrated.SearchService
+			config.Stack.SearchVersion = migrated.SearchVersion
+		}
+		if migrated.CacheService != "" {
+			config.Stack.Services.Cache = migrated.CacheService
+			config.Stack.CacheVersion = migrated.CacheVersion
+		}
+		if migrated.QueueService != "" {
+			config.Stack.Services.Queue = migrated.QueueService
+			config.Stack.QueueVersion = migrated.QueueVersion
+		}
+		if migrated.VarnishEnabled {
+			config.Stack.Features.Varnish = true
+			if migrated.VarnishVersion != "" {
+				config.Stack.VarnishVersion = migrated.VarnishVersion
+			}
+		}
+
 		if len(migrated.Remotes) > 0 {
 			config.Remotes = migrated.Remotes
 		}
@@ -206,6 +228,45 @@ Case Studies:
 			config.Stack.DBVersion = ""
 		}
 		if hasExistingConfig {
+			if existingConfig.ProjectName != "" {
+				config.ProjectName = existingConfig.ProjectName
+				config.Domain = existingConfig.Domain
+			}
+			if existingConfig.Stack.PHPVersion != "" {
+				config.Stack.PHPVersion = existingConfig.Stack.PHPVersion
+			}
+			if existingConfig.Stack.NodeVersion != "" {
+				config.Stack.NodeVersion = existingConfig.Stack.NodeVersion
+			}
+			if existingConfig.Stack.DBType != "" {
+				config.Stack.DBType = existingConfig.Stack.DBType
+			}
+			if existingConfig.Stack.DBVersion != "" {
+				config.Stack.DBVersion = existingConfig.Stack.DBVersion
+			}
+			if existingConfig.Stack.WebRoot != "" {
+				config.Stack.WebRoot = existingConfig.Stack.WebRoot
+			}
+			if existingConfig.Stack.Services.WebServer != "" {
+				config.Stack.Services.WebServer = existingConfig.Stack.Services.WebServer
+			}
+			if existingConfig.Stack.Services.Search != "" {
+				config.Stack.Services.Search = existingConfig.Stack.Services.Search
+				config.Stack.SearchVersion = existingConfig.Stack.SearchVersion
+			}
+			if existingConfig.Stack.Services.Cache != "" {
+				config.Stack.Services.Cache = existingConfig.Stack.Services.Cache
+				config.Stack.CacheVersion = existingConfig.Stack.CacheVersion
+			}
+			if existingConfig.Stack.Services.Queue != "" {
+				config.Stack.Services.Queue = existingConfig.Stack.Services.Queue
+				config.Stack.QueueVersion = existingConfig.Stack.QueueVersion
+			}
+			if existingConfig.Stack.Features.Varnish {
+				config.Stack.Features.Varnish = true
+				config.Stack.VarnishVersion = existingConfig.Stack.VarnishVersion
+			}
+
 			if existingConfig.Remotes != nil {
 				if config.Remotes == nil {
 					config.Remotes = make(map[string]engine.RemoteConfig)
