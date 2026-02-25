@@ -12,6 +12,29 @@ type ProjectMetadata struct {
 	Version   string
 }
 
+// frameworkChecks defines the priority order for framework detection.
+// We use a slice instead of a map to ensure deterministic behavior.
+var frameworkChecks = []struct {
+	pkg       string
+	framework string
+}{
+	{"magento/product-community-edition", "magento2"},
+	{"magento/product-enterprise-edition", "magento2"},
+	{"magento/framework", "magento2"},
+	{"openmage/magento-lts", "magento1"},
+	{"magento-hackathon/magento-composer-installer", "magento1"},
+	{"laravel/framework", "laravel"},
+	{"drupal/core", "drupal"},
+	{"symfony/framework-bundle", "symfony"},
+	{"symfony/symfony", "symfony"},
+	{"shopware/core", "shopware"},
+	{"shopware/platform", "shopware"},
+	{"cakephp/cakephp", "cakephp"},
+	{"johnpbloch/wordpress", "wordpress"},
+	{"roots/wordpress", "wordpress"},
+	{"wordpress/wordpress", "wordpress"},
+}
+
 func DetectFramework(root string) ProjectMetadata {
 	metadata := ProjectMetadata{Framework: "generic"}
 
@@ -19,53 +42,13 @@ func DetectFramework(root string) ProjectMetadata {
 	composerPath := filepath.Join(root, "composer.json")
 	if _, err := os.Stat(composerPath); err == nil {
 		if require, ok := readComposerRequirements(composerPath); ok {
-			for pkg, raw := range require {
-				version := dependencyVersionString(raw)
-				if strings.Contains(pkg, "magento/product-community-edition") ||
-					strings.Contains(pkg, "magento/product-enterprise-edition") ||
-					strings.Contains(pkg, "magento/framework") {
-					metadata.Framework = "magento2"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "openmage/magento-lts") ||
-					strings.Contains(pkg, "magento-hackathon/magento-composer-installer") {
-					metadata.Framework = "magento1"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "laravel/framework") {
-					metadata.Framework = "laravel"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "drupal/core") {
-					metadata.Framework = "drupal"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "symfony/framework-bundle") ||
-					strings.Contains(pkg, "symfony/symfony") {
-					metadata.Framework = "symfony"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "shopware/core") ||
-					strings.Contains(pkg, "shopware/platform") {
-					metadata.Framework = "shopware"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "cakephp/cakephp") {
-					metadata.Framework = "cakephp"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "johnpbloch/wordpress") ||
-					strings.Contains(pkg, "roots/wordpress") ||
-					strings.Contains(pkg, "wordpress/wordpress") {
-					metadata.Framework = "wordpress"
-					metadata.Version = version
+			// Optimization: Iterate through known framework packages instead of
+			// iterating through all project dependencies.
+			// This changes complexity from O(N) (dependencies) to O(M) (frameworks).
+			for _, check := range frameworkChecks {
+				if raw, ok := require[check.pkg]; ok {
+					metadata.Framework = check.framework
+					metadata.Version = dependencyVersionString(raw)
 					return metadata
 				}
 			}
