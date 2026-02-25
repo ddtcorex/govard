@@ -310,6 +310,7 @@
             <div class="flex items-center gap-4 ml-6">
               <button
                 class="relative p-2 text-[#90cba4] hover:text-white hover:bg-[#22492f] rounded-lg transition-colors"
+                aria-label="View notifications"
               >
                 <span class="material-symbols-outlined">notifications</span>
                 <span
@@ -320,12 +321,14 @@
                 class="p-2 text-[#90cba4] hover:text-white hover:bg-[#22492f] rounded-lg transition-colors"
                 id="openSettings"
                 data-action="open-settings"
+                aria-label="Open settings"
               >
                 <span class="material-symbols-outlined">settings</span>
               </button>
               <div class="h-8 w-px bg-[#22492f] mx-1"></div>
               <button
                 class="flex items-center gap-2 pl-2 pr-1 py-1 rounded-full hover:bg-[#22492f] transition-colors group"
+                aria-label="User Profile"
               >
                 <div
                   id="userAvatar"
@@ -340,7 +343,7 @@
                 >
               </button>
             </div>
-            <button id="refresh" class="hidden"></button>
+            <button id="refresh" class="hidden" aria-label="Refresh dashboard"></button>
           </header>
 
           <section id="projectHero" class="px-6 lg:px-10 pt-6">
@@ -449,6 +452,7 @@
                     id="heroStopBtn"
                     class="h-12 w-12 bg-[#1a3322] text-[#90cba4] hover:text-white border border-[#2e573a] rounded-lg hover:bg-red-500/20 hover:border-red-500/30 transition-all active:scale-95 flex items-center justify-center"
                     title="Stop Environment"
+                    aria-label="Stop environment"
                   >
                     <span
                       class="material-symbols-outlined fill-1"
@@ -627,7 +631,7 @@
                       >
                         <button
                           class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors"
-                          title="View Logs"
+                          title="View Logs" aria-label="View logs"
                         >
                           <span class="material-symbols-outlined text-lg"
                             >list_alt</span
@@ -635,7 +639,7 @@
                         </button>
                         <button
                           class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors"
-                          title="Terminal"
+                          title="Terminal" aria-label="Open terminal"
                         >
                           <span class="material-symbols-outlined text-lg"
                             >terminal</span
@@ -672,7 +676,7 @@
                       >
                         <button
                           class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors"
-                          title="View Logs"
+                          title="View Logs" aria-label="View logs"
                         >
                           <span class="material-symbols-outlined text-lg"
                             >list_alt</span
@@ -680,7 +684,7 @@
                         </button>
                         <button
                           class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors"
-                          title="Terminal"
+                          title="Terminal" aria-label="Open terminal"
                         >
                           <span class="material-symbols-outlined text-lg"
                             >terminal</span
@@ -715,7 +719,7 @@
                       >
                         <button
                           class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors"
-                          title="View Logs"
+                          title="View Logs" aria-label="View logs"
                         >
                           <span class="material-symbols-outlined text-lg"
                             >list_alt</span
@@ -723,7 +727,7 @@
                         </button>
                         <button
                           class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors"
-                          title="Terminal"
+                          title="Terminal" aria-label="Open terminal"
                         >
                           <span class="material-symbols-outlined text-lg"
                             >terminal</span
@@ -1174,7 +1178,7 @@
                       <button
                         data-action="clear-logs"
                         class="text-[#90cba4] hover:text-primary transition-colors"
-                        title="Clear Logs"
+                        title="Clear Logs" aria-label="Clear logs"
                       >
                         <span class="material-symbols-outlined text-lg"
                           >block</span
@@ -1183,7 +1187,7 @@
                       <button
                         data-action="download-logs"
                         class="text-[#90cba4] hover:text-primary transition-colors"
-                        title="Download Logs"
+                        title="Download Logs" aria-label="Download logs"
                       >
                         <span class="material-symbols-outlined text-lg"
                           >download</span
@@ -1325,6 +1329,7 @@ Select an environment to view logs.</pre
             <button
               data-action="close-onboarding"
               class="text-slate-400 hover:text-white transition-colors"
+              aria-label="Close onboarding"
             >
               <span class="material-symbols-outlined">close</span>
             </button>
@@ -1782,6 +1787,7 @@ Select an environment to view logs.</pre
               class="p-2 rounded hover:bg-white/5 text-slate-400 hover:text-white flex items-center justify-center h-9 w-9"
               id="closeSettings"
               type="button"
+              aria-label="Close settings"
             >
               <span class="material-symbols-outlined">close</span>
             </button>
@@ -1884,7 +1890,7 @@ Select an environment to view logs.</pre
             <span id="footerMemory">0 MB</span>
           </div>
           <div class="h-8 w-px bg-[#2e573a]"></div>
-          <button class="text-[#90cba4] hover:text-white transition-colors">
+          <button class="text-[#90cba4] hover:text-white transition-colors" aria-label="Sync status">
             <span class="material-symbols-outlined text-[16px]">sync</span>
           </button>
         </div>

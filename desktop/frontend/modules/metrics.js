@@ -150,10 +150,10 @@ const renderMetricProjects = (container, projects = [], selectedProject = "") =>
           </div>
         </div>
         <div class="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button data-action="switch-tab" data-tab="logs" data-service="${escapeHTML(name)}" class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors" title="View Logs">
+          <button data-action="switch-tab" data-tab="logs" data-service="${escapeHTML(name)}" class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors" title="View Logs" aria-label="View logs">
             <span class="material-symbols-outlined text-lg">list_alt</span>
           </button>
-          <button data-action="switch-tab" data-tab="logs" data-service="${escapeHTML(name)}" class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors" title="Terminal">
+          <button data-action="switch-tab" data-tab="logs" data-service="${escapeHTML(name)}" class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors" title="Terminal" aria-label="Open terminal">
             <span class="material-symbols-outlined text-lg">terminal</span>
           </button>
         </div>
