@@ -200,6 +200,10 @@ func ensureOpenRemote(config engine.Config, name string, capability string) (eng
 }
 
 func buildRemoteAdminURL(remoteCfg engine.RemoteConfig, adminPath string) string {
+	if remoteCfg.URL != "" {
+		return joinURLWithPath(remoteCfg.URL, adminPath)
+	}
+
 	base := strings.TrimSpace(remoteCfg.Host)
 	if base == "" {
 		base = "localhost"
