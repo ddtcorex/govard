@@ -38,8 +38,7 @@ jobs:
         run: make vet
 
       - name: Run golangci-lint
-        # v6.3.2
-        uses: golangci/golangci-lint-action@051d91933864810ecd5e2ea2cfd98f6a5bca5347
+        uses: golangci/golangci-lint-action@v6
         with:
           version: latest
 
