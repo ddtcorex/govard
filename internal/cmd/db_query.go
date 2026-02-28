@@ -13,12 +13,8 @@ import (
 
 func runDBQuery(cmd *cobra.Command, config engine.Config, options dbCommandOptions, extraArgs []string) error {
 	return runDBHooks(config, engine.HookPreDBConnect, engine.HookPostDBConnect, cmd, func() error {
-		// Get the query from remaining args (after subcommand)
-		query := ""
-		if query == "" {
-			// Try to get from positional args passed to the command
-			query = strings.Join(extraArgs, " ")
-		}
+		// Get the query from positional args passed to the command
+		query := strings.Join(extraArgs, " ")
 
 		// If still empty, check if there are any non-flag arguments
 		if query == "" {
