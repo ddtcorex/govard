@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"govard/internal/engine"
+
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"govard/internal/engine"
 )
 
 var trustCmd = &cobra.Command{

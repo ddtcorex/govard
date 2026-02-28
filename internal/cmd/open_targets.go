@@ -30,6 +30,7 @@ func runOpenAdminTarget(config engine.Config, requestedEnvironment string) error
 	}
 
 	url := openAdminURL(config)
+	_ = url
 	if isRemote {
 		remoteCfg, err := ensureOpenRemote(config, environment, engine.RemoteCapabilityFiles)
 		if err != nil {

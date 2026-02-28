@@ -46,7 +46,11 @@ var tunnelStartCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		startedAt := time.Now()
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		cwd, _ := os.Getwd()
 		operationStatus := engine.OperationStatusFailure
 		operationMessage := ""

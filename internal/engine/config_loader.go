@@ -80,7 +80,7 @@ func LoadConfigFromDirWithProfile(root string, requireBase bool, profile string)
 			layer = map[string]interface{}{}
 		}
 
-		mergeMap(merged, layer)
+		MergeMap(merged, layer)
 		loaded = append(loaded, path)
 	}
 
@@ -156,19 +156,4 @@ func inferProjectName(root string) string {
 	base := strings.TrimSpace(filepath.Base(root))
 	base = strings.ToLower(strings.ReplaceAll(base, " ", "-"))
 	return base
-}
-
-func mergeMap(dst, src map[string]interface{}) {
-	for key, val := range src {
-		srcMap, srcIsMap := val.(map[string]interface{})
-		dstMap, dstIsMap := dst[key].(map[string]interface{})
-
-		if srcIsMap && dstIsMap {
-			mergeMap(dstMap, srcMap)
-			dst[key] = dstMap
-			continue
-		}
-
-		dst[key] = val
-	}
 }

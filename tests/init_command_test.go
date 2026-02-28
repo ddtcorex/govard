@@ -1,11 +1,12 @@
 package tests
 
 import (
-	"gopkg.in/yaml.v3"
 	"govard/internal/engine"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestInitCommandLogic(t *testing.T) {
@@ -18,7 +19,7 @@ func TestInitCommandLogic(t *testing.T) {
 
 	// Simulate Magento 2 project
 	composerJson := `{"require": {"magento/product-community-edition": "2.4.7"}}`
-	os.WriteFile(filepath.Join(tempDir, "composer.json"), []byte(composerJson), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "composer.json"), []byte(composerJson), 0644)
 
 	// Detect framework
 	metadata := engine.DetectFramework(tempDir)
@@ -57,7 +58,7 @@ func TestInitCommandLogic(t *testing.T) {
 
 	var savedConfig engine.Config
 	savedData, _ := os.ReadFile(configFile)
-	yaml.Unmarshal(savedData, &savedConfig)
+	_ = yaml.Unmarshal(savedData, &savedConfig)
 
 	if savedConfig.Framework != "magento2" {
 		t.Errorf("Expected framework magento2, got %s", savedConfig.Framework)

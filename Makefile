@@ -26,9 +26,9 @@ build-test-binary:
 	mkdir -p $(BUILD_DIR)
 	go build -mod=mod -ldflags "$(LDFLAGS)" -tags integration -o $(TEST_BINARY) cmd/govard/main.go
 
-test: fmt-check vet test-frontend test-unit test-integration ## Run all tests
+test: lint fmt-check vet test-frontend test-unit test-integration ## Run all tests
 
-test-fast: fmt-check vet test-frontend test-unit
+test-fast: lint fmt-check vet test-frontend test-unit
 
 fmt-check:
 	@echo "Checking code formatting..."
@@ -63,7 +63,11 @@ test-frontend:
 
 lint:
 	@echo "Running linter..."
-	golangci-lint run ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		$$(go env GOPATH)/bin/golangci-lint run ./...; \
+	fi
 
 fmt:
 	@echo "Formatting code..."
@@ -101,148 +105,8 @@ clean: ## Remove build artifacts and clean test cache
 
 images:
 	@echo "Building Govard Docker Images..."
-	docker build -t $(DOCKER_ORG)apache:2.4 --build-arg APACHE_VERSION=2.4.66 docker/apache
-	docker build -t $(DOCKER_ORG)apache:latest --build-arg APACHE_VERSION=2.4.66 docker/apache
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:8.15.0 --build-arg ELASTICSEARCH_VERSION=8.15.0 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:7.17.10 --build-arg ELASTICSEARCH_VERSION=7.17.10 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:7.16.3 --build-arg ELASTICSEARCH_VERSION=7.16.3 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:7.10.2 --build-arg ELASTICSEARCH_VERSION=7.10.2 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:7.9.3 --build-arg ELASTICSEARCH_VERSION=7.9.3 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:7.7.1 --build-arg ELASTICSEARCH_VERSION=7.7.1 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:7.6.2 --build-arg ELASTICSEARCH_VERSION=7.6.2 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:6.8.23 --build-arg ELASTICSEARCH_VERSION=6.8.23 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:5.6.16 --build-arg ELASTICSEARCH_VERSION=5.6.16 docker/elasticsearch
-	docker build -f docker/elasticsearch/Dockerfile -t $(DOCKER_ORG)elasticsearch:2.4.6 --build-arg ELASTICSEARCH_VERSION=2.4.6 --build-arg ELASTICSEARCH_IMAGE=elasticsearch docker/elasticsearch
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:11.4 --build-arg MARIADB_VERSION=11.4 docker/mariadb
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:10.11 --build-arg MARIADB_VERSION=10.11 docker/mariadb
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:10.6 --build-arg MARIADB_VERSION=10.6 docker/mariadb
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:10.5 --build-arg MARIADB_VERSION=10.5 docker/mariadb
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:10.4 --build-arg MARIADB_VERSION=10.4 docker/mariadb
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:10.3 --build-arg MARIADB_VERSION=10.3 docker/mariadb
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:10.2 --build-arg MARIADB_VERSION=10.2 docker/mariadb
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:10.1 --build-arg MARIADB_VERSION=10.1 docker/mariadb
-	docker build -f docker/mariadb/Dockerfile -t $(DOCKER_ORG)mariadb:10.0 --build-arg MARIADB_VERSION=10.0 docker/mariadb
-	docker build -f docker/mysql/Dockerfile -t $(DOCKER_ORG)mysql:8.4 --build-arg MYSQL_VERSION=8.4 docker/mysql
-	docker build -f docker/mysql/Dockerfile -t $(DOCKER_ORG)mysql:8.0 --build-arg MYSQL_VERSION=8.0 docker/mysql
-	docker build -f docker/mysql/Dockerfile -t $(DOCKER_ORG)mysql:5.7 --build-arg MYSQL_VERSION=5.7 docker/mysql
-	docker build -t $(DOCKER_ORG)nginx:1.28 --build-arg NGINX_VERSION=1.28.0 docker/nginx
-	docker build -t $(DOCKER_ORG)nginx:latest --build-arg NGINX_VERSION=1.28.0 docker/nginx
-	docker build -f docker/opensearch/Dockerfile -t $(DOCKER_ORG)opensearch:3.0.0 --build-arg OPENSEARCH_VERSION=3.0.0 docker/opensearch
-	docker build -f docker/opensearch/Dockerfile -t $(DOCKER_ORG)opensearch:2.19.0 --build-arg OPENSEARCH_VERSION=2.19.0 docker/opensearch
-	docker build -f docker/opensearch/Dockerfile -t $(DOCKER_ORG)opensearch:2.12.0 --build-arg OPENSEARCH_VERSION=2.12.0 docker/opensearch
-	docker build -f docker/opensearch/Dockerfile -t $(DOCKER_ORG)opensearch:2.5.0 --build-arg OPENSEARCH_VERSION=2.5.0 docker/opensearch
-	docker build -f docker/opensearch/Dockerfile -t $(DOCKER_ORG)opensearch:1.3.20 --build-arg OPENSEARCH_VERSION=1.3.20 docker/opensearch
-	docker build -f docker/opensearch/Dockerfile -t $(DOCKER_ORG)opensearch:1.2.0 --build-arg OPENSEARCH_VERSION=1.2.0 docker/opensearch
-	docker build -f docker/php/Dockerfile -t $(DOCKER_ORG)php:8.4 --build-arg PHP_VERSION=8.4 docker/php
-	docker build -f docker/php/Dockerfile -t $(DOCKER_ORG)php:8.3 --build-arg PHP_VERSION=8.3 docker/php
-	docker build -f docker/php/Dockerfile -t $(DOCKER_ORG)php:8.2 --build-arg PHP_VERSION=8.2 docker/php
-	docker build -f docker/php/Dockerfile -t $(DOCKER_ORG)php:8.1 --build-arg PHP_VERSION=8.1 docker/php
-	docker build -f docker/php/Dockerfile -t $(DOCKER_ORG)php:7.4 --build-arg PHP_VERSION=7.4 docker/php
-	docker build -f docker/php/Dockerfile -t $(DOCKER_ORG)php:7.3 --build-arg PHP_VERSION=7.3 docker/php
-	docker build -f docker/php/Dockerfile -t $(DOCKER_ORG)php:7.2 --build-arg PHP_VERSION=7.2 docker/php
-	docker build -f docker/php/Dockerfile -t $(DOCKER_ORG)php:7.1 --build-arg PHP_VERSION=7.1 docker/php
-	docker build -f docker/php/magento2/Dockerfile -t $(DOCKER_ORG)php-magento2:8.4 --build-arg PHP_VERSION=8.4 docker/php
-	docker build -f docker/php/magento2/Dockerfile -t $(DOCKER_ORG)php-magento2:8.3 --build-arg PHP_VERSION=8.3 docker/php
-	docker build -f docker/php/magento2/Dockerfile -t $(DOCKER_ORG)php-magento2:8.2 --build-arg PHP_VERSION=8.2 docker/php
-	docker build -f docker/php/magento2/Dockerfile -t $(DOCKER_ORG)php-magento2:8.1 --build-arg PHP_VERSION=8.1 docker/php
-	docker build -f docker/php/magento2/Dockerfile -t $(DOCKER_ORG)php-magento2:7.4 --build-arg PHP_VERSION=7.4 docker/php
-	docker build -f docker/php/magento2/Dockerfile -t $(DOCKER_ORG)php-magento2:7.3 --build-arg PHP_VERSION=7.3 docker/php
-	docker build -f docker/php/magento2/Dockerfile -t $(DOCKER_ORG)php-magento2:7.2 --build-arg PHP_VERSION=7.2 docker/php
-	docker build -f docker/php/magento2/Dockerfile -t $(DOCKER_ORG)php-magento2:7.1 --build-arg PHP_VERSION=7.1 docker/php
-	docker build -f docker/rabbitmq/Dockerfile -t $(DOCKER_ORG)rabbitmq:4.1 --build-arg RABBITMQ_VERSION=4.1 docker/rabbitmq
-	docker build -f docker/rabbitmq/Dockerfile -t $(DOCKER_ORG)rabbitmq:3.13 --build-arg RABBITMQ_VERSION=3.13 docker/rabbitmq
-	docker build -f docker/rabbitmq/Dockerfile -t $(DOCKER_ORG)rabbitmq:3.12 --build-arg RABBITMQ_VERSION=3.12 docker/rabbitmq
-	docker build -f docker/rabbitmq/Dockerfile -t $(DOCKER_ORG)rabbitmq:3.11 --build-arg RABBITMQ_VERSION=3.11 docker/rabbitmq
-	docker build -f docker/rabbitmq/Dockerfile -t $(DOCKER_ORG)rabbitmq:3.9 --build-arg RABBITMQ_VERSION=3.9 docker/rabbitmq
-	docker build -f docker/rabbitmq/Dockerfile -t $(DOCKER_ORG)rabbitmq:3.8 --build-arg RABBITMQ_VERSION=3.8 docker/rabbitmq
-	docker build -f docker/rabbitmq/Dockerfile -t $(DOCKER_ORG)rabbitmq:3.7 --build-arg RABBITMQ_VERSION=3.7 docker/rabbitmq
-	docker build -f docker/redis/Dockerfile -t $(DOCKER_ORG)redis:7.4 --build-arg REDIS_VERSION=7.4 docker/redis
-	docker build -f docker/redis/Dockerfile -t $(DOCKER_ORG)redis:7.2 --build-arg REDIS_VERSION=7.2 docker/redis
-	docker build -f docker/redis/Dockerfile -t $(DOCKER_ORG)redis:7.0 --build-arg REDIS_VERSION=7.0 docker/redis
-	docker build -f docker/redis/Dockerfile -t $(DOCKER_ORG)redis:6.2 --build-arg REDIS_VERSION=6.2 docker/redis
-	docker build -f docker/redis/Dockerfile -t $(DOCKER_ORG)redis:6.0 --build-arg REDIS_VERSION=6.0 docker/redis
-	docker build -f docker/redis/Dockerfile -t $(DOCKER_ORG)redis:5.0 --build-arg REDIS_VERSION=5.0 docker/redis
-	docker build -f docker/redis/Dockerfile -t $(DOCKER_ORG)redis:4.0 --build-arg REDIS_VERSION=4.0 docker/redis
-	docker build -f docker/redis/Dockerfile -t $(DOCKER_ORG)redis:3.2 --build-arg REDIS_VERSION=3.2 docker/redis
-	docker build -f docker/valkey/Dockerfile -t $(DOCKER_ORG)valkey:8.0 --build-arg VALKEY_VERSION=8.0 docker/valkey
-	docker build -f docker/valkey/Dockerfile -t $(DOCKER_ORG)valkey:7.2 --build-arg VALKEY_VERSION=7.2 docker/valkey
-	docker build -t $(DOCKER_ORG)varnish:7.6 --build-arg VARNISH_VERSION=7.6 docker/varnish
-	docker build -t $(DOCKER_ORG)varnish:7.4 --build-arg VARNISH_VERSION=7.4 docker/varnish
-	docker build -t $(DOCKER_ORG)varnish:7.0 --build-arg VARNISH_VERSION=7.0 docker/varnish
-	docker build -t $(DOCKER_ORG)varnish:6.0 --build-arg VARNISH_VERSION=6.0 --build-arg VARNISH_IMAGE_TAG=6.0 docker/varnish
-	docker build -t $(DOCKER_ORG)varnish:latest --build-arg VARNISH_VERSION=7.6 docker/varnish
-	docker build -t $(DOCKER_ORG)dnsmasq:latest docker/dnsmasq
+	DOCKER_ORG=$(DOCKER_ORG) docker buildx bake -f docker/docker-bake.hcl
 
 push:
 	@echo "Pushing Govard Docker Images..."
-	docker push $(DOCKER_ORG)apache:2.4
-	docker push $(DOCKER_ORG)apache:latest
-	docker push $(DOCKER_ORG)elasticsearch:8.15.0
-	docker push $(DOCKER_ORG)elasticsearch:7.17.10
-	docker push $(DOCKER_ORG)elasticsearch:7.16.3
-	docker push $(DOCKER_ORG)elasticsearch:7.10.2
-	docker push $(DOCKER_ORG)elasticsearch:7.9.3
-	docker push $(DOCKER_ORG)elasticsearch:7.7.1
-	docker push $(DOCKER_ORG)elasticsearch:7.6.2
-	docker push $(DOCKER_ORG)elasticsearch:6.8.23
-	docker push $(DOCKER_ORG)elasticsearch:5.6.16
-	docker push $(DOCKER_ORG)elasticsearch:2.4.6
-	docker push $(DOCKER_ORG)mariadb:11.4
-	docker push $(DOCKER_ORG)mariadb:10.11
-	docker push $(DOCKER_ORG)mariadb:10.6
-	docker push $(DOCKER_ORG)mariadb:10.5
-	docker push $(DOCKER_ORG)mariadb:10.4
-	docker push $(DOCKER_ORG)mariadb:10.3
-	docker push $(DOCKER_ORG)mariadb:10.2
-	docker push $(DOCKER_ORG)mariadb:10.1
-	docker push $(DOCKER_ORG)mariadb:10.0
-	docker push $(DOCKER_ORG)mysql:8.4
-	docker push $(DOCKER_ORG)mysql:8.0
-	docker push $(DOCKER_ORG)mysql:5.7
-	docker push $(DOCKER_ORG)nginx:1.28
-	docker push $(DOCKER_ORG)nginx:latest
-	docker push $(DOCKER_ORG)opensearch:3.0.0
-	docker push $(DOCKER_ORG)opensearch:2.19.0
-	docker push $(DOCKER_ORG)opensearch:2.12.0
-	docker push $(DOCKER_ORG)opensearch:2.5.0
-	docker push $(DOCKER_ORG)opensearch:1.3.20
-	docker push $(DOCKER_ORG)opensearch:1.2.0
-	docker push $(DOCKER_ORG)php:8.4
-	docker push $(DOCKER_ORG)php:8.3
-	docker push $(DOCKER_ORG)php:8.2
-	docker push $(DOCKER_ORG)php:8.1
-	docker push $(DOCKER_ORG)php:7.4
-	docker push $(DOCKER_ORG)php:7.3
-	docker push $(DOCKER_ORG)php:7.2
-	docker push $(DOCKER_ORG)php:7.1
-	docker push $(DOCKER_ORG)php-magento2:8.4
-	docker push $(DOCKER_ORG)php-magento2:8.3
-	docker push $(DOCKER_ORG)php-magento2:8.2
-	docker push $(DOCKER_ORG)php-magento2:8.1
-	docker push $(DOCKER_ORG)php-magento2:7.4
-	docker push $(DOCKER_ORG)php-magento2:7.3
-	docker push $(DOCKER_ORG)php-magento2:7.2
-	docker push $(DOCKER_ORG)php-magento2:7.1
-	docker push $(DOCKER_ORG)rabbitmq:4.1
-	docker push $(DOCKER_ORG)rabbitmq:3.13
-	docker push $(DOCKER_ORG)rabbitmq:3.12
-	docker push $(DOCKER_ORG)rabbitmq:3.11
-	docker push $(DOCKER_ORG)rabbitmq:3.9
-	docker push $(DOCKER_ORG)rabbitmq:3.8
-	docker push $(DOCKER_ORG)rabbitmq:3.7
-	docker push $(DOCKER_ORG)redis:7.4
-	docker push $(DOCKER_ORG)redis:7.2
-	docker push $(DOCKER_ORG)redis:7.0
-	docker push $(DOCKER_ORG)redis:6.2
-	docker push $(DOCKER_ORG)redis:6.0
-	docker push $(DOCKER_ORG)redis:5.0
-	docker push $(DOCKER_ORG)redis:4.0
-	docker push $(DOCKER_ORG)redis:3.2
-	docker push $(DOCKER_ORG)valkey:8.0
-	docker push $(DOCKER_ORG)valkey:7.2
-	docker push $(DOCKER_ORG)varnish:7.6
-	docker push $(DOCKER_ORG)varnish:7.4
-	docker push $(DOCKER_ORG)varnish:7.0
-	docker push $(DOCKER_ORG)varnish:6.0
-	docker push $(DOCKER_ORG)varnish:latest
-	docker push $(DOCKER_ORG)dnsmasq:latest
+	DOCKER_ORG=$(DOCKER_ORG) docker buildx bake -f docker/docker-bake.hcl --push

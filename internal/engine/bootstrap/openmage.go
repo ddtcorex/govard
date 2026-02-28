@@ -92,13 +92,13 @@ func (o *OpenMageBootstrap) Install(projectDir string) error {
 	}
 
 	varPath := filepath.Join(projectDir, "var")
-	os.MkdirAll(varPath, 0777)
-	os.MkdirAll(filepath.Join(varPath, "cache"), 0777)
-	os.MkdirAll(filepath.Join(varPath, "session"), 0777)
-	os.MkdirAll(filepath.Join(varPath, "log"), 0777)
+	_ = os.MkdirAll(varPath, 0777)
+	_ = os.MkdirAll(filepath.Join(varPath, "cache"), 0777)
+	_ = os.MkdirAll(filepath.Join(varPath, "session"), 0777)
+	_ = os.MkdirAll(filepath.Join(varPath, "log"), 0777)
 
 	mediaPath := filepath.Join(projectDir, "media")
-	os.MkdirAll(mediaPath, 0777)
+	_ = os.MkdirAll(mediaPath, 0777)
 
 	pterm.Success.Println("OpenMage installation completed")
 	return nil
@@ -133,9 +133,9 @@ func (o *OpenMageBootstrap) PostClone(projectDir string) error {
 	}
 
 	varPath := filepath.Join(projectDir, "var")
-	os.MkdirAll(varPath, 0777)
-	os.MkdirAll(filepath.Join(varPath, "cache"), 0777)
-	os.MkdirAll(filepath.Join(varPath, "session"), 0777)
+	_ = os.MkdirAll(varPath, 0777)
+	_ = os.MkdirAll(filepath.Join(varPath, "cache"), 0777)
+	_ = os.MkdirAll(filepath.Join(varPath, "session"), 0777)
 
 	pterm.Success.Println("Post-clone setup completed")
 	return nil

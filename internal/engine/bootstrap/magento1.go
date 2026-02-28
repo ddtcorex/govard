@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/pterm/pterm"
@@ -59,32 +58,14 @@ func (m *Magento1Bootstrap) PostClone(projectDir string) error {
 	pterm.Info.Println("Setting up cloned Magento 1 project...")
 
 	varPath := filepath.Join(projectDir, "var")
-	os.MkdirAll(varPath, 0777)
+	_ = os.MkdirAll(varPath, 0777)
 
 	cachePath := filepath.Join(varPath, "cache")
-	os.MkdirAll(cachePath, 0777)
+	_ = os.MkdirAll(cachePath, 0777)
 
 	sessionPath := filepath.Join(varPath, "session")
-	os.MkdirAll(sessionPath, 0777)
+	_ = os.MkdirAll(sessionPath, 0777)
 
 	pterm.Success.Println("Post-clone setup completed")
 	return nil
-}
-
-func (m *Magento1Bootstrap) runN98Magerun(projectDir string, args ...string) error {
-	magerunPath := filepath.Join(projectDir, "n98-magerun.phar")
-	if _, err := os.Stat(magerunPath); os.IsNotExist(err) {
-		magerunPath = filepath.Join(projectDir, "vendor", "bin", "n98-magerun")
-		if _, err := os.Stat(magerunPath); os.IsNotExist(err) {
-			pterm.Warning.Println("n98-magerun not found, skipping magerun commands")
-			return nil
-		}
-	}
-
-	args = append([]string{magerunPath}, args...)
-	cmd := exec.Command("php", args...)
-	cmd.Dir = projectDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }

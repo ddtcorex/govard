@@ -162,9 +162,7 @@ func normalizeMagentoVersion(raw string) string {
 	}
 
 	cleaned = strings.TrimLeft(cleaned, "^~>=< ")
-	if strings.HasPrefix(cleaned, "v") {
-		cleaned = strings.TrimPrefix(cleaned, "v")
-	}
+	cleaned = strings.TrimPrefix(cleaned, "v")
 	cleaned = strings.TrimSpace(cleaned)
 	if strings.ContainsAny(cleaned, "xX*") {
 		return cleaned

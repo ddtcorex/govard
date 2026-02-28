@@ -61,13 +61,13 @@ type DoctorDependencies struct {
 
 func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 	if dependencies.CheckDockerStatus == nil {
-		dependencies.CheckDockerStatus = CheckDockerStatus
+		dependencies.CheckDockerStatus = func() error { return CheckDockerStatus(context.Background()) }
 	}
 	if dependencies.CheckDockerComposePlugin == nil {
-		dependencies.CheckDockerComposePlugin = CheckDockerComposePlugin
+		dependencies.CheckDockerComposePlugin = func() error { return CheckDockerComposePlugin(context.Background()) }
 	}
 	if dependencies.CheckPortAvailable == nil {
-		dependencies.CheckPortAvailable = CheckPortForGovardProxy
+		dependencies.CheckPortAvailable = func(port string) bool { return CheckPortForGovardProxy(context.Background(), port) }
 	}
 	if dependencies.CheckDiskScratch == nil {
 		dependencies.CheckDiskScratch = CheckDiskScratchWrite

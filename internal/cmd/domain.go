@@ -21,7 +21,10 @@ var domainAddCmd = &cobra.Command{
 	Short: "Add an extra domain to the project",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config := loadWritableConfig()
+		config, err := loadWritableConfig()
+		if err != nil {
+			return err
+		}
 		newDomain := strings.TrimSpace(args[0])
 		if newDomain == "" {
 			return fmt.Errorf("domain cannot be empty")
@@ -51,7 +54,10 @@ var domainRemoveCmd = &cobra.Command{
 	Short: "Remove an extra domain from the project",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config := loadWritableConfig()
+		config, err := loadWritableConfig()
+		if err != nil {
+			return err
+		}
 		toRemove := strings.TrimSpace(args[0])
 
 		var updated []string
@@ -86,7 +92,7 @@ var domainListCmd = &cobra.Command{
 		if len(config.ExtraDomains) > 0 {
 			pterm.Info.Println("Extra Domains:")
 			for _, d := range config.ExtraDomains {
-				pterm.DefaultBulletList.WithItems([]pterm.BulletListItem{
+				_ = pterm.DefaultBulletList.WithItems([]pterm.BulletListItem{
 					{Level: 0, Text: d},
 				}).Render()
 			}

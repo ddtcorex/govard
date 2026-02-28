@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.in/yaml.v3"
 	"govard/internal/cmd"
 	"govard/internal/engine"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestInitPreservesExistingRemotesAndHooks(t *testing.T) {
@@ -34,7 +35,7 @@ hooks:
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestInitOmitsRuntimeUserAndGroupFromConfigFile(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +147,7 @@ func TestInitOmitsEmptyQueueVersionAndHooks(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}

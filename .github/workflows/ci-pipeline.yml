@@ -37,6 +37,11 @@ jobs:
       - name: Run go vet
         run: make vet
 
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
       - name: Check gofmt formatting
         run: |
           unformatted="$(find . -type f -name '*.go' -not -path './vendor/*' -print0 | xargs -0 gofmt -s -l)"

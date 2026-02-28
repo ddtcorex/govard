@@ -19,53 +19,28 @@ func DetectFramework(root string) ProjectMetadata {
 	composerPath := filepath.Join(root, "composer.json")
 	if _, err := os.Stat(composerPath); err == nil {
 		if require, ok := readComposerRequirements(composerPath); ok {
+			frameworkMap := map[string]string{
+				"magento/product-community-edition":            "magento2",
+				"magento/product-enterprise-edition":           "magento2",
+				"magento/framework":                            "magento2",
+				"openmage/magento-lts":                         "magento1",
+				"magento-hackathon/magento-composer-installer": "magento1",
+				"laravel/framework":                            "laravel",
+				"drupal/core":                                  "drupal",
+				"symfony/framework-bundle":                     "symfony",
+				"symfony/symfony":                              "symfony",
+				"shopware/core":                                "shopware",
+				"shopware/platform":                            "shopware",
+				"cakephp/cakephp":                              "cakephp",
+				"johnpbloch/wordpress":                         "wordpress",
+				"roots/wordpress":                              "wordpress",
+				"wordpress/wordpress":                          "wordpress",
+			}
+
 			for pkg, raw := range require {
-				version := dependencyVersionString(raw)
-				if strings.Contains(pkg, "magento/product-community-edition") ||
-					strings.Contains(pkg, "magento/product-enterprise-edition") ||
-					strings.Contains(pkg, "magento/framework") {
-					metadata.Framework = "magento2"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "openmage/magento-lts") ||
-					strings.Contains(pkg, "magento-hackathon/magento-composer-installer") {
-					metadata.Framework = "magento1"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "laravel/framework") {
-					metadata.Framework = "laravel"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "drupal/core") {
-					metadata.Framework = "drupal"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "symfony/framework-bundle") ||
-					strings.Contains(pkg, "symfony/symfony") {
-					metadata.Framework = "symfony"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "shopware/core") ||
-					strings.Contains(pkg, "shopware/platform") {
-					metadata.Framework = "shopware"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "cakephp/cakephp") {
-					metadata.Framework = "cakephp"
-					metadata.Version = version
-					return metadata
-				}
-				if strings.Contains(pkg, "johnpbloch/wordpress") ||
-					strings.Contains(pkg, "roots/wordpress") ||
-					strings.Contains(pkg, "wordpress/wordpress") {
-					metadata.Framework = "wordpress"
-					metadata.Version = version
+				if fw, exists := frameworkMap[pkg]; exists {
+					metadata.Framework = fw
+					metadata.Version = dependencyVersionString(raw)
 					return metadata
 				}
 			}

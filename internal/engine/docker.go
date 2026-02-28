@@ -10,20 +10,16 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 )
 
-func CheckDockerStatus() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func CheckDockerStatus(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := GetDockerClient()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = cli.Close()
-	}()
 
 	_, err = cli.Ping(ctx)
 	return err
@@ -42,7 +38,7 @@ func CheckPort(port string) error {
 // bound by the Govard proxy container (proxy-caddy), which is an expected state.
 // It includes a retry logic to handle race conditions during container restarts
 // and properly handles permission errors for privileged ports.
-func CheckPortForGovardProxy(port string) bool {
+func CheckPortForGovardProxy(ctx context.Context, port string) bool {
 	maxRetries := 10
 	for i := 0; i < maxRetries; i++ {
 		err := CheckPort(port)
@@ -53,53 +49,58 @@ func CheckPortForGovardProxy(port string) bool {
 		// If it's a permission denied error, we can't listen on this port,
 		// but it doesn't necessarily mean it's in use. We rely on Docker check.
 		if strings.Contains(err.Error(), "permission denied") {
-			if isPortBoundByGovardProxy(port) {
+			if isPortBoundByGovardProxy(ctx, port) {
 				return true
 			}
 			// If not bound by our proxy, but we can't check further,
 			// we check if ANY other container is binding it.
-			if isPortBoundByOtherContainer(port) {
+			if isPortBoundByOtherContainer(ctx, port) {
 				return false
 			}
 			// If no other container is binding it, we assume we might be good
 			// but we still wait a bit in case of transition.
-			time.Sleep(200 * time.Millisecond)
 			if i == maxRetries-1 {
 				return true // Best effort: assume it's free if Docker says so
+			}
+			select {
+			case <-ctx.Done():
+				return false
+			case <-time.After(200 * time.Millisecond):
 			}
 			continue
 		}
 
 		// If the error is "address already in use", check if it's our proxy
-		if isPortBoundByGovardProxy(port) {
+		if isPortBoundByGovardProxy(ctx, port) {
 			return true
 		}
 
 		// If we are here, port is in use but not by Govard proxy (yet).
 		// Give it a moment to settle (e.g., during restart) before failing.
 		if i < maxRetries-1 {
-			time.Sleep(500 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				return false
+			case <-time.After(500 * time.Millisecond):
+			}
 		}
 	}
 	return false
 }
 
-func isPortBoundByOtherContainer(port string) bool {
+func isPortBoundByOtherContainer(ctx context.Context, port string) bool {
 	targetPort, err := strconv.Atoi(strings.TrimSpace(port))
 	if err != nil {
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := GetDockerClient()
 	if err != nil {
 		return false
 	}
-	defer func() {
-		_ = cli.Close()
-	}()
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
@@ -121,22 +122,19 @@ func isPortBoundByOtherContainer(port string) bool {
 	return false
 }
 
-func isPortBoundByGovardProxy(port string) bool {
+func isPortBoundByGovardProxy(ctx context.Context, port string) bool {
 	targetPort, err := strconv.Atoi(strings.TrimSpace(port))
 	if err != nil {
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := GetDockerClient()
 	if err != nil {
 		return false
 	}
-	defer func() {
-		_ = cli.Close()
-	}()
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
@@ -167,17 +165,14 @@ func isGovardProxyContainer(names []string) bool {
 	return false
 }
 
-func IsContainerRunning(name string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func IsContainerRunning(ctx context.Context, name string) bool {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := GetDockerClient()
 	if err != nil {
 		return false
 	}
-	defer func() {
-		_ = cli.Close()
-	}()
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
@@ -195,8 +190,8 @@ func IsContainerRunning(name string) bool {
 	return false
 }
 
-func CheckDockerComposePlugin() error {
-	command := exec.Command("docker", "compose", "version")
+func CheckDockerComposePlugin(ctx context.Context) error {
+	command := exec.CommandContext(ctx, "docker", "compose", "version")
 	output, err := command.CombinedOutput()
 	if err == nil {
 		return nil
@@ -208,21 +203,18 @@ func CheckDockerComposePlugin() error {
 	return fmt.Errorf("docker compose plugin is not available: %w (%s)", err, trimmed)
 }
 
-func GetRunningProjectNames() ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func GetRunningProjectNames(ctx context.Context) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := GetDockerClient()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to connect to Docker: %w", err)
+		return nil, fmt.Errorf("failed to connect to Docker: %w", err)
 	}
-	defer func() {
-		_ = cli.Close()
-	}()
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to list containers: %w", err)
+		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
 	projectMap := make(map[string]bool)

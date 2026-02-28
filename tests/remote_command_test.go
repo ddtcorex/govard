@@ -22,7 +22,7 @@ func TestRemoteAddWritesConfig(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestRemoteAddKnownHostsEnablesStrictHostKey(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestRemoteAddKeychainStoresKeyPathInAuthStore(t *testing.T) {
 	t.Setenv("GOVARD_AUTH_STORE_PATH", storePath)
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestRemoteAuditTailCommand(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestRemoteAuditStatsCommand(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestRemoteAuditStatsCommandJSON(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestRemoteAuditTailCommandSinceFilter(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestRemoteAuditStatsCommandSinceUntilFilter(t *testing.T) {
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}

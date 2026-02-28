@@ -143,6 +143,17 @@ func selfUpdateRepo() string {
 }
 
 func fetchLatestReleaseTag(client *http.Client, repo string) (string, error) {
+	cacheFile := filepath.Join(os.TempDir(), "govard-latest-release.json")
+	var cacheData struct {
+		Tag       string    `json:"tag"`
+		FetchedAt time.Time `json:"fetched_at"`
+	}
+	if b, err := os.ReadFile(cacheFile); err == nil {
+		if json.Unmarshal(b, &cacheData) == nil && time.Since(cacheData.FetchedAt) < time.Hour {
+			return cacheData.Tag, nil
+		}
+	}
+
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 	body, err := downloadText(client, url)
 	if err != nil {
@@ -160,6 +171,13 @@ func fetchLatestReleaseTag(client *http.Client, repo string) (string, error) {
 	if tag == "" {
 		return "", errors.New("latest release response did not include tag_name")
 	}
+
+	cacheData.Tag = tag
+	cacheData.FetchedAt = time.Now()
+	if b, err := json.Marshal(cacheData); err == nil {
+		_ = os.WriteFile(cacheFile, b, 0644)
+	}
+
 	return tag, nil
 }
 

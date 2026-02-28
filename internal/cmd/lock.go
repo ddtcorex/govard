@@ -27,7 +27,11 @@ var lockGenerateCmd = &cobra.Command{
 	Short: "Generate govard.lock from current environment",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		startedAt := time.Now()
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		cwd, _ := os.Getwd()
 		status := engine.OperationStatusFailure
 		message := ""
@@ -83,7 +87,11 @@ var lockCheckCmd = &cobra.Command{
 	Short: "Compare current environment with govard.lock",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		startedAt := time.Now()
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		cwd, _ := os.Getwd()
 		status := engine.OperationStatusFailure
 		message := ""

@@ -21,7 +21,11 @@ var snapshotCreateCmd = &cobra.Command{
 	Short: "Create a snapshot of local database and media",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		cwd, _ := os.Getwd()
 
 		name := ""
@@ -73,7 +77,11 @@ var snapshotRestoreCmd = &cobra.Command{
 	Short: "Restore a snapshot",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		cwd, _ := os.Getwd()
 		name := args[0]
 

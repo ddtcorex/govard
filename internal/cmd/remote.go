@@ -45,7 +45,11 @@ var remoteAddCmd = &cobra.Command{
 				trackProjectRegistryBestEffort(configForObservability, cwd, "remote-add")
 			}
 		}()
-		config := loadWritableConfig()
+		config, err := loadWritableConfig()
+		if err != nil {
+
+			return err
+		}
 		configForObservability = config
 		name := args[0]
 
@@ -201,7 +205,11 @@ var remoteExecCmd = &cobra.Command{
 				trackProjectRegistryBestEffort(configForObservability, cwd, "remote-exec")
 			}
 		}()
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		configForObservability = config
 		remoteCfg, err := ensureRemoteKnown(config, remoteName)
 		if err != nil {
@@ -299,7 +307,11 @@ var remoteTestCmd = &cobra.Command{
 				trackProjectRegistryBestEffort(configForObservability, cwd, "remote-test")
 			}
 		}()
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		configForObservability = config
 		remoteCfg, err := ensureRemoteKnown(config, remoteName)
 		if err != nil {

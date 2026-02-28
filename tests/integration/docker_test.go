@@ -4,13 +4,14 @@
 package integration
 
 import (
+	"context"
 	"testing"
 
 	"govard/internal/engine"
 )
 
 func TestDockerStatusCheck(t *testing.T) {
-	err := engine.CheckDockerStatus()
+	err := engine.CheckDockerStatus(context.Background())
 
 	if err != nil {
 		t.Skipf("Docker not available: %v", err)
@@ -18,7 +19,7 @@ func TestDockerStatusCheck(t *testing.T) {
 }
 
 func TestDockerComposePluginCheck(t *testing.T) {
-	err := engine.CheckDockerComposePlugin()
+	err := engine.CheckDockerComposePlugin(context.Background())
 
 	if err != nil {
 		t.Skipf("Docker Compose plugin not available: %v", err)

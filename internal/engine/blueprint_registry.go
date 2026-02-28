@@ -254,7 +254,7 @@ func extractTarGzArchive(payload []byte, dest string) error {
 			if err := os.MkdirAll(targetPath, 0o755); err != nil {
 				return err
 			}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return err
 			}

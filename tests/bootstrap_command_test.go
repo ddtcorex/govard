@@ -26,7 +26,7 @@ framework: magento2
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ remotes: {}
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ framework: magento2
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ framework: custom
 	}
 
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}

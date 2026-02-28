@@ -11,7 +11,11 @@ var deployCmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "Deploy the application",
 	Run: func(cmd *cobra.Command, args []string) {
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+			pterm.Error.Println(err)
+			return
+		}
 		if err := engine.RunHooks(config, engine.HookPreDeploy, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
 			pterm.Error.Printf("Pre-deploy hooks failed: %v\n", err)
 			return

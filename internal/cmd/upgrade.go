@@ -9,7 +9,11 @@ var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
 	Short: "Upgrade the framework version",
 	Run: func(cmd *cobra.Command, args []string) {
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+			pterm.Error.Println(err)
+			return
+		}
 		if config.Framework == "" {
 			pterm.Warning.Println("No framework configured in .govard.yml.")
 			return

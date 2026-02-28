@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,7 +46,8 @@ func runBootstrapHyvaInstall(cmd *cobra.Command, opts bootstrapRuntimeOptions) e
 func runBootstrapMagentoSetupInstall(cmd *cobra.Command, config engine.Config, opts bootstrapRuntimeOptions) error {
 	emailDomain := config.Domain
 	if emailDomain == "" {
-		emailDomain = "local.test"
+		// Used in older templates, keeping logic if extending later
+		_ = "local.test"
 	}
 
 	setupArgs := []string{
@@ -124,7 +126,7 @@ func runBootstrapMagentoReindex(cmd *cobra.Command) error {
 	}
 
 	containerName := fmt.Sprintf("%s-php-1", projectName)
-	if !engine.IsContainerRunning(containerName) {
+	if !engine.IsContainerRunning(context.Background(), containerName) {
 		pterm.Warning.Printf("Skipping reindex: container %s is not running\n", containerName)
 		return nil
 	}
@@ -143,14 +145,15 @@ func runBootstrapAdminCreate(cmd *cobra.Command, config engine.Config) {
 	}
 
 	containerName := fmt.Sprintf("%s-php-1", projectName)
-	if !engine.IsContainerRunning(containerName) {
+	if !engine.IsContainerRunning(context.Background(), containerName) {
 		pterm.Warning.Printf("Skipping admin user creation: container %s is not running\n", containerName)
 		return
 	}
 
 	emailDomain := config.Domain
 	if emailDomain == "" {
-		emailDomain = "local.test"
+		// Used in older templates, keeping logic if extending later
+		_ = "local.test"
 	}
 
 	pterm.Info.Println("Creating Magento admin user...")

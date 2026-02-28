@@ -22,12 +22,16 @@ var configGetCmd = &cobra.Command{
 	Short: "Read a config value from .govard.yml",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		value, ok := getConfigValue(config, args[0])
 		if !ok {
 			return fmt.Errorf("unknown config key: %s", args[0])
 		}
-		_, err := io.WriteString(cmd.OutOrStdout(), value+"\n")
+		_, err = io.WriteString(cmd.OutOrStdout(), value+"\n")
 		return err
 	},
 }
@@ -37,14 +41,17 @@ var configSetCmd = &cobra.Command{
 	Short: "Write a config value into .govard.yml",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config := loadWritableConfig()
+		config, err := loadWritableConfig()
+		if err != nil {
+			return err
+		}
 		key, value := args[0], args[1]
 		if !setConfigValue(&config, key, value) {
 			return fmt.Errorf("unknown config key: %s", key)
 		}
 		engine.NormalizeConfig(&config)
 		saveConfig(config)
-		_, err := io.WriteString(cmd.OutOrStdout(), fmt.Sprintf("Config updated: %s = %s\n", key, value))
+		_, err = io.WriteString(cmd.OutOrStdout(), fmt.Sprintf("Config updated: %s = %s\n", key, value))
 		return err
 	},
 }

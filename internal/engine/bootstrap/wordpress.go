@@ -134,7 +134,7 @@ func (w *WordPressBootstrap) Configure(projectDir string) error {
 					return os.Getenv(key)
 				}
 			})
-			os.WriteFile(configPath, []byte(content), 0644)
+			_ = os.WriteFile(configPath, []byte(content), 0644)
 		}
 	}
 
@@ -165,7 +165,7 @@ func (w *WordPressBootstrap) PostClone(projectDir string) error {
 					return os.Getenv(key)
 				}
 			})
-			os.WriteFile(configPath, []byte(content), 0644)
+			_ = os.WriteFile(configPath, []byte(content), 0644)
 		}
 	}
 

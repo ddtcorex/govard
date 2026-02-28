@@ -49,7 +49,11 @@ Case Studies:
   govard open db --pma`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+
+			return err
+		}
 		target := strings.ToLower(strings.TrimSpace(args[0]))
 
 		switch target {

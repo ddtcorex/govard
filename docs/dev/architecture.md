@@ -29,6 +29,7 @@ Technical specification and architecture of Govard.
 ### 3.1 Initialization & Discovery (`internal/engine/discovery.go`)
 
 **Logic:**
+
 - Scans project root for `composer.json` or `package.json`
 - Detects framework by checking package names:
   - Magento 1/OpenMage: `openmage/magento-lts` or `app/Mage.php`
@@ -46,6 +47,7 @@ Technical specification and architecture of Govard.
 ### 3.2 Environment Liftoff (`internal/engine/render.go`)
 
 **Process:**
+
 1. `Detect` project framework context
 2. `Validate` layered config and startup prerequisites (Docker/Compose, port, disk, network sanity)
 3. `Render` per-project compose file in `~/.govard/compose/` from selected Blueprint
@@ -63,6 +65,7 @@ Blueprints are Go templates stored in `blueprints/`:
 ### 3.4 Diagnostic Suite (`internal/engine/docker.go`)
 
 Checks for common local development friction points:
+
 - Docker Desktop/Daemon connectivity
 - Docker Compose plugin availability
 - Port conflicts on host machine (80, 443)
@@ -72,6 +75,7 @@ Checks for common local development friction points:
 ### 3.5 Automated Configuration (`internal/engine/magento.go`)
 
 For Magento 2:
+
 - Injects DB credentials, Redis hostnames, Varnish settings into `app/etc/env.php`
 - Uses the configured runtime user (`stack.user_id:stack.group_id` when set, otherwise `www-data`) to preserve file permissions
 
@@ -96,6 +100,11 @@ For Magento 2:
 ├── cmd/govard-desktop/  # Desktop entry point (Wails)
 ├── internal/
 │   ├── cmd/             # CLI command definitions (Cobra)
+│   │   ├── bootstrap/   # Project initialization commands (bootstrap_*.go)
+│   │   ├── db/          # Database management (db_*.go)
+│   │   ├── remote/      # Remote environment handling
+│   │   ├── sync/        # File synchronization operations (sync_*.go)
+│   │   └── services/    # App lifecycle and proxies
 │   ├── engine/          # Business logic, Docker SDK, rendering
 │   ├── desktop/         # Desktop app bindings (Wails)
 │   ├── proxy/           # Caddy proxy management
@@ -110,6 +119,7 @@ For Magento 2:
 ### 4.1 CLI Architecture
 
 Commands organized by domain:
+
 - **Environment**: `up`, `stop`, `status`
 - **Development**: `shell`, `logs`, `debug`
 - **Frameworks**: `magento`, `artisan`, `composer`, `npm`, etc.
@@ -119,12 +129,15 @@ Commands organized by domain:
 ### 4.2 Engine Architecture
 
 Key packages:
+
 - `config.go` - Configuration structures
 - `discovery.go` - Framework detection
 - `render.go` - Blueprint rendering
-- `docker.go` - Docker SDK integration
+- `docker.go` - Docker SDK orchestration and diagnostics
+- `docker_client.go` - Managed Docker API singleton connection
 - `hosts.go` - Host file management
 - `magento.go` - Magento-specific configuration
+- `map_utils.go` - Global utilities for configuration payload merging
 - `proxy.go` - Caddy integration
 - `trust.go` - SSL certificate handling
 
@@ -167,6 +180,7 @@ Key packages:
 ### 6.2 Service Discovery
 
 Services accessible by hostname within `govard-net`:
+
 - `web`: Nginx
 - `apache`: Apache sidecar (hybrid mode only)
 - `php`: PHP-FPM
@@ -218,6 +232,7 @@ redis:
 ```
 
 Available variables:
+
 - `{{ .Config.ProjectName }}`
 - `{{ .Config.Framework }}`
 - `{{ .Config.Domain }}`

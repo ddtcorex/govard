@@ -101,7 +101,7 @@ func (l *LaravelBootstrap) Install(projectDir string) error {
 		examplePath := filepath.Join(projectDir, ".env.example")
 		if _, err := os.Stat(examplePath); err == nil {
 			data, _ := os.ReadFile(examplePath)
-			os.WriteFile(envPath, data, 0600)
+			_ = os.WriteFile(envPath, data, 0600)
 		}
 	}
 
@@ -113,7 +113,7 @@ func (l *LaravelBootstrap) Install(projectDir string) error {
 		content = strings.ReplaceAll(content, "DB_DATABASE=laravel", "DB_DATABASE=laravel")
 		content = strings.ReplaceAll(content, "DB_USERNAME=root", "DB_USERNAME=laravel")
 		content = strings.ReplaceAll(content, "DB_PASSWORD=", "DB_PASSWORD=laravel")
-		os.WriteFile(envPath, []byte(content), 0600)
+		_ = os.WriteFile(envPath, []byte(content), 0600)
 	}
 
 	if err := l.runArtisanCommand(projectDir, "key:generate"); err != nil {
@@ -144,13 +144,13 @@ func (l *LaravelBootstrap) Configure(projectDir string) error {
 			if !strings.Contains(updated, "DB_HOST=db") {
 				updated = strings.ReplaceAll(updated, "DB_HOST=127.0.0.1", "DB_HOST=db")
 				updated = strings.ReplaceAll(updated, "DB_HOST=localhost", "DB_HOST=db")
-				os.WriteFile(envPath, []byte(updated), 0600)
+				_ = os.WriteFile(envPath, []byte(updated), 0600)
 			}
 		}
 	}
 
-	l.runArtisanCommand(projectDir, "config:clear")
-	l.runArtisanCommand(projectDir, "cache:clear")
+	_ = l.runArtisanCommand(projectDir, "config:clear")
+	_ = l.runArtisanCommand(projectDir, "cache:clear")
 
 	pterm.Success.Println("Laravel configured successfully")
 	return nil
@@ -171,7 +171,7 @@ func (l *LaravelBootstrap) PostClone(projectDir string) error {
 			content := string(data)
 			content = strings.ReplaceAll(content, "APP_ENV=production", "APP_ENV=local")
 			content = strings.ReplaceAll(content, "APP_DEBUG=false", "APP_DEBUG=true")
-			os.WriteFile(envPath, []byte(content), 0600)
+			_ = os.WriteFile(envPath, []byte(content), 0600)
 		}
 	}
 
@@ -180,7 +180,7 @@ func (l *LaravelBootstrap) PostClone(projectDir string) error {
 			content := string(data)
 			content = strings.ReplaceAll(content, "DB_HOST=127.0.0.1", "DB_HOST=db")
 			content = strings.ReplaceAll(content, "DB_HOST=localhost", "DB_HOST=db")
-			os.WriteFile(envPath, []byte(content), 0600)
+			_ = os.WriteFile(envPath, []byte(content), 0600)
 		}
 	}
 
@@ -188,7 +188,7 @@ func (l *LaravelBootstrap) PostClone(projectDir string) error {
 		pterm.Warning.Printf("Key generation warning: %v\n", err)
 	}
 
-	l.runArtisanCommand(projectDir, "migrate", "--force")
+	_ = l.runArtisanCommand(projectDir, "migrate", "--force")
 
 	pterm.Success.Println("Post-clone setup completed")
 	return nil

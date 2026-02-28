@@ -32,11 +32,6 @@ var fixDepsCmd = &cobra.Command{
 	},
 }
 
-func missingDependencies() []string {
-	missing, _ := missingDependenciesWithWarnings()
-	return missing
-}
-
 func missingDependenciesWithWarnings() ([]string, []string) {
 	missing := missingSystemDependencies()
 	if len(missing) > 0 {

@@ -12,7 +12,7 @@ var statusCmd = &cobra.Command{
 	Short: "List running Govard project environments across the workspace",
 	Long:  "Workspace-wide environment overview. Use `govard env ps` for the current project only.",
 	Run: func(cmd *cobra.Command, args []string) {
-		running, err := engine.GetRunningProjectNames()
+		running, err := engine.GetRunningProjectNames(cmd.Context())
 		if err != nil {
 			pterm.Error.Println(err)
 			return
@@ -46,6 +46,6 @@ var statusCmd = &cobra.Command{
 			})
 		}
 
-		pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 	},
 }

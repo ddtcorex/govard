@@ -128,7 +128,7 @@ func openDBClient(ctx context.Context, project string) (string, error) {
 	}
 
 	urlStr := fmt.Sprintf("%s://%s:%s@%s:%s/%s", scheme, user, pass, host, port, db)
-	browser.OpenURL(urlStr)
+	_ = browser.OpenURL(urlStr)
 
 	return "Opening DB Client...", nil
 }

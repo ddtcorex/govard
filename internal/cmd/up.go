@@ -152,17 +152,17 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 					return lockErr
 				}
 
-				if err := engine.CheckDockerStatus(); err != nil {
+				if err := engine.CheckDockerStatus(cmd.Context()); err != nil {
 					return fmt.Errorf("docker daemon is not ready: %w", err)
 				}
-				if err := engine.CheckDockerComposePlugin(); err != nil {
+				if err := engine.CheckDockerComposePlugin(cmd.Context()); err != nil {
 					return err
 				}
 
-				if !engine.CheckPortForGovardProxy("80") {
+				if !engine.CheckPortForGovardProxy(cmd.Context(), "80") {
 					pterm.Warning.Println("Port 80 is currently in use. Proxy routing may fail.")
 				}
-				if !engine.CheckPortForGovardProxy("443") {
+				if !engine.CheckPortForGovardProxy(cmd.Context(), "443") {
 					pterm.Warning.Println("Port 443 is currently in use. HTTPS proxy routing may fail.")
 				}
 				if err := engine.CheckDiskScratchWrite(); err != nil {

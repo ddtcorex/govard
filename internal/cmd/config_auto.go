@@ -14,7 +14,10 @@ var configAutoCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pterm.DefaultHeader.Println("Govard Auto-Configuration")
 
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+			return err
+		}
 		if err := applyFrameworkAutoConfiguration(config); err != nil {
 			return fmt.Errorf("configuration failed: %w", err)
 		}

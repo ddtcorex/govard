@@ -54,7 +54,7 @@ func EnsureGlobalProxy() error {
 	}
 
 	tempDir := filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
-	os.MkdirAll(tempDir, 0755)
+	_ = os.MkdirAll(tempDir, 0755)
 
 	blueprintsFS, err := findBlueprintsFS(".")
 	if err != nil {
@@ -118,7 +118,6 @@ if ($projectsJson) {
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("docker compose up: %w\n%s", err, string(output))
 		}
-		caddyFound = true
 	} else {
 		// If found but stopped, start it
 		pterm.Debug.Println("Global proxy already exists, ensuring it is started...")
@@ -136,8 +135,8 @@ if ($projectsJson) {
 
 	// 3. Register global domains (ensure they are always set)
 	pterm.Debug.Println("Registering global service domains...")
-	proxy.RegisterDomain("mail.govard.test", "govard-proxy-mail:8025")
-	proxy.RegisterDomain("pma.govard.test", "govard-proxy-pma:80")
+	_ = proxy.RegisterDomain("mail.govard.test", "govard-proxy-mail:8025")
+	_ = proxy.RegisterDomain("pma.govard.test", "govard-proxy-pma:80")
 
 	return nil
 }

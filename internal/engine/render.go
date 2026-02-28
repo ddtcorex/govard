@@ -2,9 +2,11 @@ package engine
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"govard/internal/blueprints"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -13,6 +15,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/pterm/pterm"
 	"gopkg.in/yaml.v3"
 )
 
@@ -114,6 +117,18 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 
 	NormalizeConfig(&config)
 
+	outputPath := ComposeFilePathWithProfile(root, config.ProjectName, profile)
+	hashPath := outputPath + ".hash"
+
+	hashData, _ := json.Marshal(config)
+	hashSum := sha256.Sum256(append(hashData, []byte(profile)...))
+	currentHash := hex.EncodeToString(hashSum[:])
+
+	if existingHash, err := os.ReadFile(hashPath); err == nil && string(existingHash) == currentHash {
+		pterm.Info.Println("Blueprint unchanged, skipping render")
+		return nil
+	}
+
 	// Get framework configuration
 	fwConfig, ok := GetFrameworkConfig(config.Framework)
 	if !ok {
@@ -205,7 +220,7 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 			continue
 		}
 
-		mergeComposeMap(merged, part)
+		MergeMap(merged, part)
 	}
 
 	if err := mergeProjectComposeOverride(root, merged); err != nil {
@@ -214,7 +229,7 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 
 	// Merge all parts into final output
 	config.Profile = profile
-	outputPath := ComposeFilePathWithProfile(root, config.ProjectName, profile)
+	outputPath = ComposeFilePathWithProfile(root, config.ProjectName, profile)
 	if err := EnsureComposePathReady(outputPath); err != nil {
 		return fmt.Errorf("failed to prepare compose output path: %w", err)
 	}
@@ -233,6 +248,8 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 	if err != nil {
 		return fmt.Errorf("write compose output %s: %w", outputPath, err)
 	}
+
+	_ = os.WriteFile(hashPath, []byte(currentHash), 0644)
 
 	return nil
 }
@@ -258,28 +275,13 @@ func mergeProjectComposeOverride(root string, merged map[string]interface{}) err
 		return nil
 	}
 
-	mergeComposeMap(merged, override)
+	MergeMap(merged, override)
 	return nil
 }
 
 // renderTemplateFS renders a single template from an fs.FS
 func renderTemplateFS(bfs fs.FS, tmplPath string, data RenderData) (string, error) {
 	tmpl, err := template.ParseFS(bfs, tmplPath)
-	if err != nil {
-		return "", fmt.Errorf("parse template %s: %w", tmplPath, err)
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("execute template %s: %w", tmplPath, err)
-	}
-
-	return buf.String(), nil
-}
-
-// renderTemplate renders a single template file (legacy helper for external callers if any)
-func renderTemplate(tmplPath string, data RenderData) (string, error) {
-	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
 		return "", fmt.Errorf("parse template %s: %w", tmplPath, err)
 	}
@@ -321,35 +323,6 @@ func BuildXdebugSessionPatternForTest(raw string) string {
 	return buildXdebugSessionPattern(raw)
 }
 
-func mergeComposeMap(dst, src map[string]interface{}) {
-	for key, val := range src {
-		if val == nil {
-			continue
-		}
-
-		existing, ok := dst[key]
-		if !ok {
-			dst[key] = val
-			continue
-		}
-
-		dstMap, dstOk := existing.(map[string]interface{})
-		srcMap, srcOk := val.(map[string]interface{})
-		if srcOk && len(srcMap) == 0 && ok {
-			continue
-		}
-		if dstOk && srcOk {
-			for childKey, childVal := range srcMap {
-				dstMap[childKey] = childVal
-			}
-			dst[key] = dstMap
-			continue
-		}
-
-		dst[key] = val
-	}
-}
-
 // renderLegacyBlueprint renders using the old single-file approach
 func renderLegacyBlueprint(root string, blueprintsFS fs.FS, config Config) error {
 	tmplPath := config.Framework + ".tmpl"
@@ -373,25 +346,5 @@ func renderLegacyBlueprint(root string, blueprintsFS fs.FS, config Config) error
 		return fmt.Errorf("execute legacy template %s: %w", tmplPath, err)
 	}
 
-	return nil
-}
-
-func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("open source file %s: %w", src, err)
-	}
-	defer sourceFile.Close()
-
-	newFile, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("create destination file %s: %w", dst, err)
-	}
-	defer newFile.Close()
-
-	_, err = io.Copy(newFile, sourceFile)
-	if err != nil {
-		return fmt.Errorf("copy %s to %s: %w", src, dst, err)
-	}
 	return nil
 }

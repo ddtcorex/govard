@@ -43,11 +43,6 @@ func evaluateUpLockPolicy(cwd string, config engine.Config) ([]string, error) {
 	return warnings, fmt.Errorf("lock strict mode enabled: found %d mismatch(es); run `govard lock check`", len(warnings))
 }
 
-func evaluateUpLockWarnings(cwd string, config engine.Config) []string {
-	warnings, _ := evaluateUpLockPolicy(cwd, config)
-	return warnings
-}
-
 func buildUpLockWarnings(expected engine.LockFile, current engine.LockFile) []string {
 	result := engine.CompareLockFile(expected, current)
 	if result.Compliant {

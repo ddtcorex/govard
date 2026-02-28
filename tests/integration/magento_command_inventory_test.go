@@ -34,7 +34,4 @@ func TestMagentoRelevantCommandsPresent(t *testing.T) {
 	if strings.Contains(result.Stdout, "\n  deps") {
 		t.Fatalf("expected root help to exclude deps command, got:\n%s", result.Stdout)
 	}
-	if strings.Contains(result.Stdout, "\n  completion") {
-		t.Fatalf("expected root help to exclude completion command, got:\n%s", result.Stdout)
-	}
 }

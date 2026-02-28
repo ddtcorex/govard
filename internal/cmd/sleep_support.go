@@ -341,7 +341,7 @@ func runSleep() error {
 			pterm.Error.Printf("Failed to sleep %s: %v\n", target.Name, err)
 			continue
 		}
-		stopped = append(stopped, sleepProjectState{Name: target.Name, Path: target.Path})
+		stopped = append(stopped, sleepProjectState(target))
 	}
 
 	if len(stopped) > 0 {

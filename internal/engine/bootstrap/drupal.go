@@ -99,17 +99,17 @@ func (d *DrupalBootstrap) Install(projectDir string) error {
 	}
 
 	sitePath := filepath.Join(projectDir, "web", "sites", "default")
-	os.MkdirAll(sitePath, 0755)
+	_ = os.MkdirAll(sitePath, 0755)
 
 	filesPath := filepath.Join(sitePath, "files")
-	os.MkdirAll(filesPath, 0777)
+	_ = os.MkdirAll(filesPath, 0777)
 
 	settingsPath := filepath.Join(sitePath, "settings.php")
 	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
 		defaultSettings := filepath.Join(sitePath, "default.settings.php")
 		if _, err := os.Stat(defaultSettings); err == nil {
 			data, _ := os.ReadFile(defaultSettings)
-			os.WriteFile(settingsPath, data, 0644)
+			_ = os.WriteFile(settingsPath, data, 0644)
 		}
 	}
 
@@ -150,12 +150,12 @@ func (d *DrupalBootstrap) Configure(projectDir string) error {
 			if !strings.Contains(updated, "'host' => 'db'") {
 				updated = strings.ReplaceAll(updated, "'host' => 'localhost'", "'host' => 'db'")
 				updated = strings.ReplaceAll(updated, "'host' => '127.0.0.1'", "'host' => 'db'")
-				os.WriteFile(settingsPath, []byte(updated), 0644)
+				_ = os.WriteFile(settingsPath, []byte(updated), 0644)
 			}
 		}
 	}
 
-	d.runDrushCommand(projectDir, "cache:rebuild")
+	_ = d.runDrushCommand(projectDir, "cache:rebuild")
 
 	pterm.Success.Println("Drupal configured successfully")
 	return nil
@@ -170,14 +170,14 @@ func (d *DrupalBootstrap) PostClone(projectDir string) error {
 
 	sitePath := filepath.Join(projectDir, "web", "sites", "default")
 	filesPath := filepath.Join(sitePath, "files")
-	os.MkdirAll(filesPath, 0777)
+	_ = os.MkdirAll(filesPath, 0777)
 
 	settingsPath := filepath.Join(sitePath, "settings.php")
 	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
 		defaultSettings := filepath.Join(sitePath, "default.settings.php")
 		if _, err := os.Stat(defaultSettings); err == nil {
 			data, _ := os.ReadFile(defaultSettings)
-			os.WriteFile(settingsPath, data, 0644)
+			_ = os.WriteFile(settingsPath, data, 0644)
 		}
 	}
 
@@ -186,11 +186,11 @@ func (d *DrupalBootstrap) PostClone(projectDir string) error {
 			content := string(data)
 			content = strings.ReplaceAll(content, "'host' => 'localhost'", "'host' => 'db'")
 			content = strings.ReplaceAll(content, "'host' => '127.0.0.1'", "'host' => 'db'")
-			os.WriteFile(settingsPath, []byte(content), 0644)
+			_ = os.WriteFile(settingsPath, []byte(content), 0644)
 		}
 	}
 
-	d.runDrushCommand(projectDir, "cache:rebuild")
+	_ = d.runDrushCommand(projectDir, "cache:rebuild")
 
 	pterm.Success.Println("Post-clone setup completed")
 	return nil

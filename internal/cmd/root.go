@@ -2,13 +2,19 @@ package cmd
 
 import (
 	"fmt"
-	"govard/internal/ui"
+	"io"
+	"log/slog"
 	"os"
+	"path/filepath"
+
+	"govard/internal/ui"
 
 	"github.com/spf13/cobra"
 )
 
 var Version = "1.8.0"
+
+var verbose bool
 
 var rootCmd = &cobra.Command{
 	Use:   "govard",
@@ -26,9 +32,21 @@ Main Features:
 
 Documentation: https://github.com/ddtcorex/govard`,
 	CompletionOptions: cobra.CompletionOptions{
-		DisableDefaultCmd: true,
+		DisableDefaultCmd: false,
 	},
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if verbose {
+			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+		} else {
+			// Write background logs to temp file for audits/diagnostics
+			logFile := filepath.Join(os.TempDir(), "govard.log")
+			if file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
+				slog.SetDefault(slog.New(slog.NewJSONHandler(file, &slog.HandlerOptions{Level: slog.LevelInfo})))
+			} else {
+				slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+			}
+		}
+
 		if cmd.Name() == "help" {
 			ui.PrintBrand(Version)
 		}
@@ -51,6 +69,8 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable verbose structured logging")
+
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(envCmd)

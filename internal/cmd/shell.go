@@ -33,7 +33,7 @@ var shellCmd = &cobra.Command{
 			execArgs[len(execArgs)-1] = "sh"
 			c = exec.Command("docker", execArgs...)
 			c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-			c.Run()
+			_ = c.Run()
 		}
 	},
 }

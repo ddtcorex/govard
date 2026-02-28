@@ -137,12 +137,12 @@ func (s *SymfonyBootstrap) Configure(projectDir string) error {
 				updated = strings.ReplaceAll(updated,
 					"DATABASE_URL=",
 					"DATABASE_URL=\"mysql://symfony:symfony@db:3306/symfony?serverVersion=11.4.0-MariaDB&charset=utf8mb4\"")
-				os.WriteFile(envLocalPath, []byte(updated), 0600)
+				_ = os.WriteFile(envLocalPath, []byte(updated), 0600)
 			}
 		}
 	}
 
-	s.runSymfonyConsole(projectDir, "cache:clear")
+	_ = s.runSymfonyConsole(projectDir, "cache:clear")
 
 	pterm.Success.Println("Symfony configured successfully")
 	return nil
@@ -162,11 +162,11 @@ func (s *SymfonyBootstrap) PostClone(projectDir string) error {
 			localContent := string(data)
 			localContent = strings.ReplaceAll(localContent, "APP_ENV=prod", "APP_ENV=dev")
 			localContent = strings.ReplaceAll(localContent, "APP_DEBUG=0", "APP_DEBUG=1")
-			os.WriteFile(envLocalPath, []byte(localContent), 0600)
+			_ = os.WriteFile(envLocalPath, []byte(localContent), 0600)
 		}
 	}
 
-	s.runSymfonyConsole(projectDir, "doctrine:database:create", "--if-not-exists")
+	_ = s.runSymfonyConsole(projectDir, "doctrine:database:create", "--if-not-exists")
 
 	dumpPath := filepath.Join(projectDir, "dump.sql")
 	if _, err := os.Stat(dumpPath); err == nil {

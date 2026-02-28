@@ -76,7 +76,7 @@ func TestStatusHandlesDockerConnectionErrors(t *testing.T) {
 	result.AssertSuccess(t)
 
 	output := result.Stdout + result.Stderr
-	if !strings.Contains(output, "Failed to connect to Docker") && !strings.Contains(output, "Failed to list containers") {
+	if !strings.Contains(output, "failed to connect to Docker") && !strings.Contains(output, "failed to list containers") {
 		t.Fatalf("expected docker connection error output, got:\n%s", output)
 	}
 }

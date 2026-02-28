@@ -109,13 +109,11 @@ func findDesktopBinary() (string, error) {
 	}
 
 	if runtime.GOOS == "windows" {
-		for _, candidate := range []string{
+		candidates = append(candidates, []string{
 			filepath.Join(root, "desktop", "build", "bin", "govard-desktop.exe"),
 			filepath.Join(root, "bin", "govard-desktop.exe"),
 			filepath.Join(root, "govard-desktop.exe"),
-		} {
-			candidates = append(candidates, candidate)
-		}
+		}...)
 	}
 
 	for _, candidate := range candidates {

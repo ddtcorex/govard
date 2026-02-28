@@ -89,7 +89,7 @@ MAILER_URL=smtp://mailpit:1025
 		content := string(data)
 		content = strings.ReplaceAll(content, "DATABASE_URL=mysql://root@127.0.0.1", "DATABASE_URL=mysql://shopware:shopware@db")
 		content = strings.ReplaceAll(content, "DATABASE_URL=mysql://shopware:shopware@127.0.0.1", "DATABASE_URL=mysql://shopware:shopware@db")
-		os.WriteFile(envPath, []byte(content), 0600)
+		_ = os.WriteFile(envPath, []byte(content), 0600)
 	}
 
 	if err := s.runComposerCommand(projectDir, "install", "--no-interaction"); err != nil {
@@ -115,12 +115,12 @@ func (s *ShopwareBootstrap) Configure(projectDir string) error {
 			updated := string(content)
 			if !strings.Contains(updated, "@db") {
 				updated = strings.ReplaceAll(updated, "DATABASE_URL=mysql://", "DATABASE_URL=mysql://shopware:shopware@db:3306/shopware")
-				os.WriteFile(envPath, []byte(updated), 0600)
+				_ = os.WriteFile(envPath, []byte(updated), 0600)
 			}
 		}
 	}
 
-	s.runBinConsole(projectDir, "cache:clear")
+	_ = s.runBinConsole(projectDir, "cache:clear")
 
 	pterm.Success.Println("Shopware configured successfully")
 	return nil
@@ -140,11 +140,11 @@ func (s *ShopwareBootstrap) PostClone(projectDir string) error {
 			data, _ := os.ReadFile(envLocalPath)
 			content := string(data)
 			content = strings.ReplaceAll(content, "DATABASE_URL=mysql://", "DATABASE_URL=mysql://shopware:shopware@db:3306/shopware")
-			os.WriteFile(envPath, []byte(content), 0600)
+			_ = os.WriteFile(envPath, []byte(content), 0600)
 		}
 	}
 
-	s.runBinConsole(projectDir, "cache:clear")
+	_ = s.runBinConsole(projectDir, "cache:clear")
 
 	pterm.Success.Println("Post-clone setup completed")
 	return nil

@@ -20,7 +20,7 @@
 - **Magento 2 Optimized**: Deep integration for Magento 2, including automated `env.php` configuration, Varnish 7.x support, and Redis caching.
 - **SSL Management**: Professional CA management for "Green Lock" HTTPS on local `.test` domains.
 - **Zero-Config Debugging**: Seamless Xdebug 3 integration with one-click toggling.
-- **Rich CLI UX**: Powered by `pterm` for beautiful terminal output, progress bars, and interactive prompts.
+- **Rich CLI UX**: Powered by `pterm` for beautiful terminal output, progress bars, and interactive prompts. Use `--verbose` for deeper diagnostic trace logging via `log/slog`.
 - **Desktop Dashboard**: Wails-based UI with live logs, quick actions, and settings.
 
 ---

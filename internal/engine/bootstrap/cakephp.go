@@ -90,7 +90,7 @@ return [
     ],
 ];
 `
-		os.MkdirAll(filepath.Dir(appConfigPath), 0755)
+		_ = os.MkdirAll(filepath.Dir(appConfigPath), 0755)
 		if err := os.WriteFile(appConfigPath, []byte(content), 0644); err != nil {
 			return fmt.Errorf("failed to create app_local.php: %w", err)
 		}
@@ -116,7 +116,7 @@ func (c *CakePHPBootstrap) Configure(projectDir string) error {
 			if !strings.Contains(updated, "'host' => 'db'") {
 				updated = strings.ReplaceAll(updated, "'host' => 'localhost'", "'host' => 'db'")
 				updated = strings.ReplaceAll(updated, "'host' => '127.0.0.1'", "'host' => 'db'")
-				os.WriteFile(appConfigPath, []byte(updated), 0644)
+				_ = os.WriteFile(appConfigPath, []byte(updated), 0644)
 			}
 		}
 	}
@@ -140,7 +140,7 @@ func (c *CakePHPBootstrap) PostClone(projectDir string) error {
 			content := string(data)
 			content = strings.ReplaceAll(content, "'host' => 'localhost'", "'host' => 'db'")
 			content = strings.ReplaceAll(content, "'host' => '127.0.0.1'", "'host' => 'db'")
-			os.WriteFile(appConfigPath, []byte(content), 0644)
+			_ = os.WriteFile(appConfigPath, []byte(content), 0644)
 		}
 	}
 

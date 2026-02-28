@@ -11,7 +11,7 @@ import (
 func TestRunHooksExecutesCommands(t *testing.T) {
 	tempDir := t.TempDir()
 	cwd, _ := os.Getwd()
-	defer os.Chdir(cwd)
+	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}

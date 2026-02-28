@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.in/yaml.v3"
 	"govard/internal/engine"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestFullSetupLogic(t *testing.T) {
@@ -40,7 +41,7 @@ func TestFullSetupLogic(t *testing.T) {
 	}
 
 	data, _ := yaml.Marshal(&config)
-	os.WriteFile(filepath.Join(tempDir, "govard.yml"), data, 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "govard.yml"), data, 0644)
 
 	err := engine.RenderBlueprint(tempDir, config)
 	if err != nil {

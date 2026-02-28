@@ -12,7 +12,11 @@ var debugCmd = &cobra.Command{
 	Short: "Toggle Xdebug for the current environment",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		config := loadFullConfig()
+		config, err := loadFullConfig()
+		if err != nil {
+			pterm.Error.Println(err)
+			return
+		}
 
 		subcommand := "status"
 		if len(args) > 0 {
@@ -21,7 +25,11 @@ var debugCmd = &cobra.Command{
 
 		switch subcommand {
 		case "on":
-			config = loadWritableConfig()
+			config, err = loadWritableConfig()
+			if err != nil {
+				pterm.Error.Println(err)
+				return
+			}
 			if config.Stack.Features.Xdebug {
 				pterm.Info.Println("Xdebug is already enabled")
 				return
@@ -31,7 +39,11 @@ var debugCmd = &cobra.Command{
 			pterm.Success.Println("Xdebug enabled in .govard.yml. Running 'govard env up' to apply...")
 			runUp()
 		case "off":
-			config = loadWritableConfig()
+			config, err = loadWritableConfig()
+			if err != nil {
+				pterm.Error.Println(err)
+				return
+			}
 			if !config.Stack.Features.Xdebug {
 				pterm.Info.Println("Xdebug is already disabled")
 				return

@@ -2,11 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 	"os"
 	"os/exec"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -85,11 +86,11 @@ func runSvcUp(cmd *cobra.Command, args []string) error {
 	pterm.DefaultHeader.Println("Starting Govard Global Services")
 
 	// Check for port conflicts before starting
-	if !engine.CheckPortForGovardProxy("80") {
+	if !engine.CheckPortForGovardProxy(cmd.Context(), "80") {
 		pterm.Warning.Println("Port 80 is already in use by another process. Govard Proxy might fail to start or route traffic.")
 		pterm.Info.Println("Tip: Run `sudo lsof -i :80` to find the conflicting process.")
 	}
-	if !engine.CheckPortForGovardProxy("443") {
+	if !engine.CheckPortForGovardProxy(cmd.Context(), "443") {
 		pterm.Warning.Println("Port 443 is already in use by another process. Govard HTTPS Proxy might fail to start.")
 		pterm.Info.Println("Tip: Run `sudo lsof -i :443` to find the conflicting process.")
 	}
@@ -130,7 +131,7 @@ func runSvcUp(cmd *cobra.Command, args []string) error {
 }
 
 func reviveRunningProjectRoutes() error {
-	running, err := engine.GetRunningProjectNames()
+	running, err := engine.GetRunningProjectNames(context.Background())
 	if err != nil {
 		return fmt.Errorf("get running projects: %w", err)
 	}

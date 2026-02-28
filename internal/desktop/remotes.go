@@ -206,15 +206,6 @@ func testRemote(project string, remoteName string) (string, error) {
 	return output, nil
 }
 
-func runRemoteSyncPreset(project string, remoteName string, preset string) (string, error) {
-	return runRemoteSyncPresetWithOptions(
-		project,
-		remoteName,
-		preset,
-		map[string]bool{"compress": true},
-	)
-}
-
 func runRemoteSyncPresetWithOptions(
 	project string,
 	remoteName string,
@@ -524,16 +515,12 @@ func buildRemoteSyncArgsWithOptions(
 	// or wait, it's safer to just check if it's set to true or false.
 	// We'll mimic the previous behavior where `options.Compress` defaults to true.
 	compress, hasCompress := options["compress"]
-	if !hasCompress || compress {
-		// compression is default in rsync, only append no-compress if false
-	}
+	// compression is default in rsync, only append no-compress if false
 	if hasCompress && !compress {
 		args = append(args, "--no-compress")
 	}
 
-	if options["noStreamDb"] {
-		// we don't have a no-stream-db flag on `sync` command yet! The `sync` command uses db internally.
-	}
+	// we don't have a no-stream-db flag on `sync` command yet! The `sync` command uses db internally.
 	if options["delete"] {
 		args = append(args, "--delete")
 	}
