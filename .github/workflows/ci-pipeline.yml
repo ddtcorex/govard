@@ -39,7 +39,7 @@ jobs:
 
       - name: Run golangci-lint
         # v6.3.2
-        uses: golangci/golangci-lint-action@098644e5a1616cc1a11192f90c3afa69ad3a5fe7
+        uses: golangci/golangci-lint-action@051d91933864810ecd5e2ea2cfd98f6a5bca5347
         with:
           version: latest
 
