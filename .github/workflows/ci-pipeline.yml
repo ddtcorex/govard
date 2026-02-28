@@ -73,7 +73,7 @@ jobs:
         run: go mod download
 
       - name: Run fast test suite
-        run: make test-fast
+        run: make test-unit test-frontend
 
   integration_tests:
     name: Integration Tests
