@@ -196,7 +196,7 @@ export const renderRemotes = (container, remotes = []) => {
             </div>
             <!-- Inline sync config removed in favor of modal -->
           </div>
-          ${remote.protected ? `<div class="mt-4 flex items-center gap-2 p-2 bg-amber-900/10 border border-amber-900/30 rounded text-amber-500/80 text-xs"><span class="material-symbols-outlined text-[16px]">info</span>Syncing from Production creates a local backup automatically.</div>` : ""}
+          ${remote.protected ? `<div class="mt-4 flex items-center gap-2 p-2 bg-amber-900/10 border border-amber-900/30 rounded text-amber-500/80 text-xs"><span class="material-symbols-outlined text-[16px]">info</span>Syncing from Production can overwrite local data. Consider creating a snapshot before syncing.</div>` : ""}
         </div>
       </div>
     `;
