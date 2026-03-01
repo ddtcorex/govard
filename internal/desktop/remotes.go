@@ -17,6 +17,7 @@ import (
 )
 
 const remoteMagentoAdminProbeScript = `$c=@include "app/etc/env.php"; if(!is_array($c)){fwrite(STDERR,"env.php not found"); exit(2);} echo (string)($c["backend"]["frontName"] ?? "admin");`
+const remoteLastSyncReadLimit = 5000
 
 type SyncInput struct {
 	Project    string          `json:"project"`
@@ -72,9 +73,15 @@ func listProjectRemotesByPath(root string) (RemoteSnapshot, error) {
 		return RemoteSnapshot{}, fmt.Errorf("load config for remotes: %w", err)
 	}
 
+	projectName := strings.TrimSpace(cfg.ProjectName)
+	if projectName == "" {
+		projectName = filepath.Base(cleanRoot)
+	}
+	lastSyncByEnvironment := buildRemoteLastSyncLabels(projectName, time.Now().UTC())
+
 	return RemoteSnapshot{
-		Project:  strings.TrimSpace(cfg.ProjectName),
-		Remotes:  buildRemoteEntries(cfg.Remotes),
+		Project:  projectName,
+		Remotes:  buildRemoteEntries(cfg.Remotes, lastSyncByEnvironment),
 		Warnings: []string{},
 	}, nil
 }
@@ -506,7 +513,10 @@ func pathHasBaseConfig(root string) bool {
 	return !info.IsDir()
 }
 
-func buildRemoteEntries(remotes map[string]engine.RemoteConfig) []RemoteEntry {
+func buildRemoteEntries(
+	remotes map[string]engine.RemoteConfig,
+	lastSyncByEnvironment map[string]string,
+) []RemoteEntry {
 	if len(remotes) == 0 {
 		return []RemoteEntry{}
 	}
@@ -520,6 +530,7 @@ func buildRemoteEntries(remotes map[string]engine.RemoteConfig) []RemoteEntry {
 	entries := make([]RemoteEntry, 0, len(names))
 	for _, name := range names {
 		cfg := remotes[name]
+		environment := engine.NormalizeRemoteEnvironment(name)
 		port := cfg.Port
 		if port <= 0 {
 			port = 22
@@ -538,7 +549,8 @@ func buildRemoteEntries(remotes map[string]engine.RemoteConfig) []RemoteEntry {
 			User:         strings.TrimSpace(cfg.User),
 			Path:         strings.TrimSpace(cfg.Path),
 			Port:         port,
-			Environment:  engine.NormalizeRemoteEnvironment(name),
+			Environment:  environment,
+			LastSync:     strings.TrimSpace(lastSyncByEnvironment[environment]),
 			Protected:    effectiveProtected,
 			AuthMethod:   engineremote.NormalizeAuthMethod(cfg.Auth.Method),
 			Capabilities: append([]string{}, capabilities...),
@@ -549,6 +561,110 @@ func buildRemoteEntries(remotes map[string]engine.RemoteConfig) []RemoteEntry {
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+func buildRemoteLastSyncLabels(project string, now time.Time) map[string]string {
+	events, err := engine.ReadOperationEvents(remoteLastSyncReadLimit)
+	if err != nil {
+		return map[string]string{}
+	}
+	return buildRemoteLastSyncLabelsFromEvents(project, events, now)
+}
+
+func buildRemoteLastSyncLabelsFromEvents(
+	project string,
+	events []engine.OperationEvent,
+	now time.Time,
+) map[string]string {
+	trimmedProject := strings.TrimSpace(project)
+	latestByEnvironment := map[string]time.Time{}
+
+	for _, event := range events {
+		if !isRemoteSyncOperation(event.Operation) {
+			continue
+		}
+		if event.Status != engine.OperationStatusSuccess {
+			continue
+		}
+
+		eventProject := strings.TrimSpace(event.Project)
+		if trimmedProject != "" && eventProject != "" && !strings.EqualFold(eventProject, trimmedProject) {
+			continue
+		}
+
+		source := strings.TrimSpace(event.Source)
+		if source == "" || strings.EqualFold(source, "local") {
+			continue
+		}
+
+		timestamp, ok := parseOperationTimestamp(event.Timestamp)
+		if !ok {
+			continue
+		}
+
+		environment := engine.NormalizeRemoteEnvironment(source)
+		current, exists := latestByEnvironment[environment]
+		if !exists || timestamp.After(current) {
+			latestByEnvironment[environment] = timestamp
+		}
+	}
+
+	labels := make(map[string]string, len(latestByEnvironment))
+	for environment, timestamp := range latestByEnvironment {
+		labels[environment] = formatLastSyncLabel(timestamp, now)
+	}
+	return labels
+}
+
+func isRemoteSyncOperation(operation string) bool {
+	switch strings.TrimSpace(operation) {
+	case "sync.run", "bootstrap.run":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseOperationTimestamp(raw string) (time.Time, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+
+	if parsed, err := time.Parse(time.RFC3339Nano, trimmed); err == nil {
+		return parsed.UTC(), true
+	}
+	if parsed, err := time.Parse(time.RFC3339, trimmed); err == nil {
+		return parsed.UTC(), true
+	}
+	return time.Time{}, false
+}
+
+func formatLastSyncLabel(timestamp time.Time, now time.Time) string {
+	ts := timestamp.UTC()
+	ref := now.UTC()
+	if ref.IsZero() {
+		ref = time.Now().UTC()
+	}
+	if ref.Before(ts) {
+		return "just now"
+	}
+
+	elapsed := ref.Sub(ts)
+	switch {
+	case elapsed < time.Minute:
+		return "just now"
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%dm ago", int(elapsed/time.Minute))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(elapsed/time.Hour))
+	case elapsed < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(elapsed/(24*time.Hour)))
+	case elapsed < 30*24*time.Hour:
+		return fmt.Sprintf("%dw ago", int(elapsed/(7*24*time.Hour)))
+	default:
+		return ts.Format("2006-01-02")
+	}
 }
 
 func buildRemoteSyncPlanArgs(remoteName string, preset string) ([]string, error) {

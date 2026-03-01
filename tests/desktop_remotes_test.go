@@ -3,8 +3,10 @@ package tests
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"govard/internal/desktop"
+	"govard/internal/engine"
 )
 
 func TestDesktopPkgBuildRemoteEntriesForTest(t *testing.T) {
@@ -239,4 +241,92 @@ func TestBuildBootstrapArgsWithOptions(t *testing.T) {
 			t.Fatalf("expected --plan in args: %v", args)
 		}
 	})
+}
+
+func TestDesktopPkgBuildRemoteEntriesWithLastSyncForTest(t *testing.T) {
+	entries := desktop.BuildRemoteEntriesWithLastSyncForTest(
+		map[string]desktop.RemoteConfigSnapshot{
+			"development": {
+				Host: "dev.example.com",
+			},
+		},
+		map[string]string{
+			"dev": "2m ago",
+		},
+	)
+
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 remote, got %d", len(entries))
+	}
+	if entries[0].Environment != "dev" {
+		t.Fatalf("expected normalized environment dev, got %s", entries[0].Environment)
+	}
+	if entries[0].LastSync != "2m ago" {
+		t.Fatalf("expected last sync '2m ago', got %q", entries[0].LastSync)
+	}
+}
+
+func TestDesktopPkgBuildRemoteLastSyncLabelsFromEventsForTest(t *testing.T) {
+	now := time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
+	project := "magento2-test-instance"
+	events := []engine.OperationEvent{
+		{
+			Timestamp: now.Add(-4 * time.Minute).Format(time.RFC3339Nano),
+			Operation: "sync.run",
+			Status:    engine.OperationStatusSuccess,
+			Project:   project,
+			Source:    "development",
+		},
+		{
+			Timestamp: now.Add(-2 * time.Minute).Format(time.RFC3339Nano),
+			Operation: "sync.run",
+			Status:    engine.OperationStatusSuccess,
+			Project:   project,
+			Source:    "development",
+		},
+		{
+			Timestamp: now.Add(-2 * time.Hour).Format(time.RFC3339Nano),
+			Operation: "bootstrap.run",
+			Status:    engine.OperationStatusSuccess,
+			Project:   project,
+			Source:    "production",
+		},
+		{
+			Timestamp: now.Add(-1 * time.Minute).Format(time.RFC3339Nano),
+			Operation: "sync.run",
+			Status:    engine.OperationStatusFailure,
+			Project:   project,
+			Source:    "staging",
+		},
+		{
+			Timestamp: now.Add(-20 * time.Second).Format(time.RFC3339Nano),
+			Operation: "proxy.start",
+			Status:    engine.OperationStatusSuccess,
+			Project:   project,
+			Source:    "development",
+		},
+		{
+			Timestamp: now.Add(-30 * time.Second).Format(time.RFC3339Nano),
+			Operation: "sync.run",
+			Status:    engine.OperationStatusSuccess,
+			Project:   "other-project",
+			Source:    "development",
+		},
+		{
+			Timestamp: now.Add(-1 * time.Minute).Format(time.RFC3339Nano),
+			Operation: "sync.run",
+			Status:    engine.OperationStatusSuccess,
+			Project:   project,
+			Source:    "local",
+		},
+	}
+
+	labels := desktop.BuildRemoteLastSyncLabelsFromEventsForTest(project, events, now)
+	expected := map[string]string{
+		"dev":  "2m ago",
+		"prod": "2h ago",
+	}
+	if !reflect.DeepEqual(labels, expected) {
+		t.Fatalf("unexpected labels: got %#v, want %#v", labels, expected)
+	}
 }

@@ -31,6 +31,7 @@ const normalizeRemote = (remote = {}) => ({
   authMethod: String(remote.authMethod || remote.AuthMethod || "keychain")
     .trim()
     .toLowerCase(),
+  lastSync: String(remote.lastSync || remote.LastSync || "").trim(),
   capabilities: normalizeCapabilities(
     remote.capabilities || remote.Capabilities,
   ),

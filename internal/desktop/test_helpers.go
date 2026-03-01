@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"strings"
+	"time"
 
 	"govard/internal/engine"
 )
@@ -79,7 +80,44 @@ func BuildRemoteEntriesForTest(remotes map[string]RemoteConfigSnapshot) []Remote
 			},
 		}
 	}
-	return buildRemoteEntries(engineRemotes)
+	return buildRemoteEntries(engineRemotes, map[string]string{})
+}
+
+// BuildRemoteEntriesWithLastSyncForTest exposes remote entry rendering with Last Sync labels.
+func BuildRemoteEntriesWithLastSyncForTest(
+	remotes map[string]RemoteConfigSnapshot,
+	lastSyncByEnvironment map[string]string,
+) []RemoteEntry {
+	engineRemotes := map[string]engine.RemoteConfig{}
+	for name, snapshot := range remotes {
+		engineRemotes[name] = engine.RemoteConfig{
+			Host:      strings.TrimSpace(snapshot.Host),
+			User:      strings.TrimSpace(snapshot.User),
+			Path:      strings.TrimSpace(snapshot.Path),
+			Port:      snapshot.Port,
+			URL:       strings.TrimSpace(snapshot.URL),
+			Protected: engine.BoolPtr(snapshot.Protected),
+			Capabilities: engine.RemoteCapabilities{
+				Files:  containsCapability(snapshot.Capabilities, engine.RemoteCapabilityFiles),
+				Media:  containsCapability(snapshot.Capabilities, engine.RemoteCapabilityMedia),
+				DB:     containsCapability(snapshot.Capabilities, engine.RemoteCapabilityDB),
+				Deploy: containsCapability(snapshot.Capabilities, engine.RemoteCapabilityDeploy),
+			},
+			Auth: engine.RemoteAuth{
+				Method: strings.TrimSpace(snapshot.AuthMethod),
+			},
+		}
+	}
+	return buildRemoteEntries(engineRemotes, lastSyncByEnvironment)
+}
+
+// BuildRemoteLastSyncLabelsFromEventsForTest exposes operation-event to last-sync label mapping.
+func BuildRemoteLastSyncLabelsFromEventsForTest(
+	project string,
+	events []engine.OperationEvent,
+	now time.Time,
+) map[string]string {
+	return buildRemoteLastSyncLabelsFromEvents(project, events, now)
 }
 
 // NormalizeRemoteSyncPresetForTest exposes preset normalization for tests.

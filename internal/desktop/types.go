@@ -64,6 +64,7 @@ type RemoteEntry struct {
 	Path         string   `json:"path"`
 	Port         int      `json:"port"`
 	Environment  string   `json:"environment"`
+	LastSync     string   `json:"lastSync,omitempty"`
 	Protected    bool     `json:"protected"`
 	AuthMethod   string   `json:"authMethod"`
 	Capabilities []string `json:"capabilities"`

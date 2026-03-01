@@ -28,6 +28,7 @@ test("normalizeRemotesPayload maps mixed-case payload fields", () => {
         Environment: "staging",
         Protected: false,
         AuthMethod: "keychain",
+        LastSync: "2m ago",
         Capabilities: ["files", "media"],
       },
     ],
@@ -38,6 +39,7 @@ test("normalizeRemotesPayload maps mixed-case payload fields", () => {
   assert.equal(payload.remotes.length, 1);
   assert.equal(payload.remotes[0].name, "staging");
   assert.equal(payload.remotes[0].authMethod, "keychain");
+  assert.equal(payload.remotes[0].lastSync, "2m ago");
   assert.deepEqual(payload.remotes[0].capabilities, ["files", "media"]);
   assert.deepEqual(payload.warnings, ["warn"]);
 });
