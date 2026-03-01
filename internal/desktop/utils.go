@@ -160,13 +160,54 @@ func formatDatabase(dbType, dbVersion string) string {
 	return fmt.Sprintf("%s %s", label, dbVersion)
 }
 
-func deriveServices(config engine.Config) []Service {
+func mergeServiceState(current, candidate string) string {
+	next := strings.ToLower(strings.TrimSpace(candidate))
+	if next == "" {
+		return strings.ToLower(strings.TrimSpace(current))
+	}
+	cur := strings.ToLower(strings.TrimSpace(current))
+	if serviceStatePriority(next) > serviceStatePriority(cur) {
+		return next
+	}
+	return cur
+}
+
+func serviceStatePriority(state string) int {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "running":
+		return 100
+	case "restarting":
+		return 90
+	case "paused":
+		return 80
+	case "created":
+		return 70
+	case "exited":
+		return 60
+	case "dead", "removing":
+		return 50
+	default:
+		return 0
+	}
+}
+
+func serviceStatus(states map[string]string, target string, fallback string) string {
+	if states != nil {
+		if status := strings.ToLower(strings.TrimSpace(states[target])); status != "" {
+			return status
+		}
+	}
+	return fallback
+}
+
+func deriveServices(config engine.Config, states map[string]string) []Service {
 	var services []Service
 	if config.Stack.Services.WebServer != "" {
 		services = append(services, Service{
 			Name:   titleCase(config.Stack.Services.WebServer),
-			Status: "stopped",
+			Status: serviceStatus(states, "web", "stopped"),
 			Port:   "80",
+			Target: "web",
 		})
 	}
 	if config.Stack.DBType != "" && config.Stack.DBType != "none" {
@@ -181,35 +222,71 @@ func deriveServices(config engine.Config) []Service {
 		}
 		services = append(services, Service{
 			Name:   label,
-			Status: "stopped",
+			Status: serviceStatus(states, "db", "stopped"),
 			Port:   "3306",
+			Target: "db",
 		})
 	}
 	if config.Stack.PHPVersion != "" {
-		services = append(services, Service{Name: "PHP", Status: "stopped", Port: "9000"})
+		services = append(services, Service{
+			Name:   "PHP",
+			Status: serviceStatus(states, "php", "stopped"),
+			Port:   "9000",
+			Target: "php",
+		})
 	}
 	switch config.Stack.Services.Cache {
 	case "redis":
-		services = append(services, Service{Name: "Redis", Status: "stopped", Port: "6379"})
+		services = append(services, Service{
+			Name:   "Redis",
+			Status: serviceStatus(states, "redis", "stopped"),
+			Port:   "6379",
+			Target: "redis",
+		})
 	case "valkey":
-		services = append(services, Service{Name: "Valkey", Status: "stopped", Port: "6379"})
+		services = append(services, Service{
+			Name:   "Valkey",
+			Status: serviceStatus(states, "valkey", "stopped"),
+			Port:   "6379",
+			Target: "valkey",
+		})
 	}
 	switch config.Stack.Services.Search {
 	case "opensearch":
-		services = append(services, Service{Name: "OpenSearch", Status: "stopped", Port: "9200"})
+		services = append(services, Service{
+			Name:   "OpenSearch",
+			Status: serviceStatus(states, "opensearch", "stopped"),
+			Port:   "9200",
+			Target: "opensearch",
+		})
 	case "elasticsearch":
-		services = append(services, Service{Name: "Elasticsearch", Status: "stopped", Port: "9200"})
+		services = append(services, Service{
+			Name:   "Elasticsearch",
+			Status: serviceStatus(states, "elasticsearch", "stopped"),
+			Port:   "9200",
+			Target: "elasticsearch",
+		})
 	}
 	if config.Stack.Services.Queue == "rabbitmq" {
-		services = append(services, Service{Name: "RabbitMQ", Status: "stopped", Port: "5672"})
+		services = append(services, Service{
+			Name:   "RabbitMQ",
+			Status: serviceStatus(states, "rabbitmq", "stopped"),
+			Port:   "5672",
+			Target: "rabbitmq",
+		})
 	}
 	if config.Stack.Features.Varnish {
-		services = append(services, Service{Name: "Varnish", Status: "stopped", Port: "80"})
+		services = append(services, Service{
+			Name:   "Varnish",
+			Status: serviceStatus(states, "varnish", "stopped"),
+			Port:   "80",
+			Target: "varnish",
+		})
 	}
 	return services
 }
 
-func fallbackServices(services map[string]bool) []Service {
+func fallbackServices(services map[string]bool, states map[string]string) []Service {
 	var out []Service
 	var keys []string
 	for name := range services {
@@ -220,13 +297,61 @@ func fallbackServices(services map[string]bool) []Service {
 	for _, name := range keys {
 		switch name {
 		case "redis":
-			out = append(out, Service{Name: "Redis", Status: "running", Port: "6379"})
+			out = append(out, Service{
+				Name:   "Redis",
+				Status: serviceStatus(states, "redis", "running"),
+				Port:   "6379",
+				Target: "redis",
+			})
 		case "elasticsearch":
-			out = append(out, Service{Name: "Search", Status: "running", Port: "9200"})
+			out = append(out, Service{
+				Name:   "Elasticsearch",
+				Status: serviceStatus(states, "elasticsearch", "running"),
+				Port:   "9200",
+				Target: "elasticsearch",
+			})
+		case "opensearch":
+			out = append(out, Service{
+				Name:   "OpenSearch",
+				Status: serviceStatus(states, "opensearch", "running"),
+				Port:   "9200",
+				Target: "opensearch",
+			})
 		case "varnish":
-			out = append(out, Service{Name: "Varnish", Status: "running", Port: "80"})
+			out = append(out, Service{
+				Name:   "Varnish",
+				Status: serviceStatus(states, "varnish", "running"),
+				Port:   "80",
+				Target: "varnish",
+			})
 		case "rabbitmq":
-			out = append(out, Service{Name: "RabbitMQ", Status: "running", Port: "5672"})
+			out = append(out, Service{
+				Name:   "RabbitMQ",
+				Status: serviceStatus(states, "rabbitmq", "running"),
+				Port:   "5672",
+				Target: "rabbitmq",
+			})
+		case "web":
+			out = append(out, Service{
+				Name:   "Web",
+				Status: serviceStatus(states, "web", "running"),
+				Port:   "80",
+				Target: "web",
+			})
+		case "php":
+			out = append(out, Service{
+				Name:   "PHP",
+				Status: serviceStatus(states, "php", "running"),
+				Port:   "9000",
+				Target: "php",
+			})
+		case "db":
+			out = append(out, Service{
+				Name:   "Database",
+				Status: serviceStatus(states, "db", "running"),
+				Port:   "3306",
+				Target: "db",
+			})
 		}
 	}
 	return out
@@ -311,8 +436,9 @@ func collectServiceTargets(info *projectInfo) []string {
 
 func loadProjectInfoFromPath(path string) (*projectInfo, error) {
 	info := &projectInfo{
-		name:     filepath.Base(path),
-		services: map[string]bool{},
+		name:         filepath.Base(path),
+		services:     map[string]bool{},
+		serviceState: map[string]string{},
 	}
 	info.workingDir = path
 	err := loadProjectConfig(info)

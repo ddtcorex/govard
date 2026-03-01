@@ -11,8 +11,12 @@ export const formatMetricMB = (value = 0) => `${asNumber(value).toFixed(1)} MB`;
 
 export const normalizeMetricsPayload = (payload = {}) => {
   return {
-    systemCPU: asNumber(payload.systemCPU ?? payload.CPUUsage ?? 0),
-    systemMemory: asNumber(payload.systemMemory ?? payload.MemoryUsage ?? 0),
+    systemCPU: asNumber(
+      payload.systemCPU ?? payload.cpuUsage ?? payload.CPUUsage ?? 0,
+    ),
+    systemMemory: asNumber(
+      payload.systemMemory ?? payload.memoryUsage ?? payload.MemoryUsage ?? 0,
+    ),
   };
 };
 
@@ -42,7 +46,7 @@ export const createMetricsController = ({
   const refresh = async ({ silent = false } = {}) => {
     try {
       // Use the lightweight GetSystemMetrics instead of the heavyweight GetResourceMetrics
-      const payload = await bridge.system.GetSystemMetrics();
+      const payload = await bridge.getSystemMetrics();
       const metrics = renderPayload(payload);
       if (!silent) {
         onStatus(

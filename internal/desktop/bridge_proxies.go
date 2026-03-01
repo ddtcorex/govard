@@ -46,7 +46,14 @@ func (app *App) ToggleEnvironment(project string) (string, error) {
 }
 
 func (app *App) OpenEnvironment(project string) (string, error) {
-	return app.Environment.GetEnvironmentURL(project)
+	url, err := app.Environment.GetEnvironmentURL(project)
+	if err != nil {
+		return "", err
+	}
+	if err := openURLWithPreferences(app.ctx, url); err != nil {
+		return "Open " + url + " manually", nil
+	}
+	return "Opening " + url + "...", nil
 }
 
 // -- SystemService Proxies --

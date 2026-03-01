@@ -17,6 +17,16 @@ test("normalizeMetricsPayload maps system metrics", () => {
   assert.equal(payload.systemMemory, 1536.2);
 });
 
+test("normalizeMetricsPayload supports lowercase metric keys", () => {
+  const payload = normalizeMetricsPayload({
+    cpuUsage: 7.6,
+    memoryUsage: 4096.4,
+  });
+
+  assert.equal(payload.systemCPU, 7.6);
+  assert.equal(payload.systemMemory, 4096.4);
+});
+
 test("normalizeMetricsPayload falls back to safe defaults", () => {
   const payload = normalizeMetricsPayload({});
   assert.equal(payload.systemCPU, 0);

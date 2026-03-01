@@ -18,6 +18,7 @@ export const createShellController = ({
     term = new window.Terminal({
       cursorBlink: true,
       fontSize: 13,
+      lineHeight: 1.25,
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
       theme: {
         background: "#0c1810",
@@ -31,6 +32,7 @@ export const createShellController = ({
     term.loadAddon(fitAddon);
     term.open(refs.terminalContainer);
     fitAddon.fit();
+    requestAnimationFrame(() => fitAddon?.fit());
 
     term.onData((data) => {
       if (currentSessionID) {

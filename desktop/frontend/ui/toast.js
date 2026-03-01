@@ -62,12 +62,16 @@ export const createToast = (container) => {
   };
 
   // showStreaming creates a persistent toast that can be updated externally for streams
-  const showStreaming = (title = "Syncing...", type = "info") => {
+  const showStreaming = (title = "Syncing...", type = "info", options = {}) => {
     if (!container) return null;
 
     const msg = String(title).trim();
-    if (activeMessages.has(msg)) return null;
-    activeMessages.add(msg);
+    const dedupeKey =
+      options?.dedupeKey === undefined ? msg : options?.dedupeKey;
+    const shouldDedupe = dedupeKey !== false && dedupeKey !== null;
+
+    if (shouldDedupe && activeMessages.has(dedupeKey)) return null;
+    if (shouldDedupe) activeMessages.add(dedupeKey);
 
     const item = document.createElement("div");
     item.className = `toast toast--${type} group`;
@@ -117,7 +121,9 @@ export const createToast = (container) => {
       item.classList.remove("is-visible");
       setTimeout(() => {
         item.remove();
-        activeMessages.delete(msg);
+        if (shouldDedupe) {
+          activeMessages.delete(dedupeKey);
+        }
       }, 500);
     };
 

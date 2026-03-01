@@ -94,6 +94,33 @@ test("project management workspace keeps core IDs for controllers", async () => 
     true,
     "missing onboarding open action",
   );
+  assert.equal(
+    html.includes("Edit .env"),
+    false,
+    "legacy Edit .env action should not be rendered",
+  );
+});
+
+test("footer exposes system metrics refresh control", async () => {
+  const html = await readFile(
+    new URL("../../desktop/frontend/index.html", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    html.includes('data-action="refresh-metrics"'),
+    true,
+    "missing refresh-metrics action in footer",
+  );
+  assert.equal(
+    html.includes('id="footerCPU"'),
+    true,
+    "missing footer CPU metric field",
+  );
+  assert.equal(
+    html.includes('id="footerMemory"'),
+    true,
+    "missing footer memory metric field",
+  );
 });
 
 test("logs section exposes filtering and streaming controls", async () => {
@@ -122,5 +149,45 @@ test("logs section exposes filtering and streaming controls", async () => {
     combined.includes('data-action="toggle-live"'),
     true,
     "missing toggle live action",
+  );
+});
+
+test("active services cards expose service actions and always-visible controls", async () => {
+  const dashboardJS = await readFile(
+    new URL("../../desktop/frontend/modules/dashboard.js", import.meta.url),
+    "utf8",
+  );
+
+  assert.equal(
+    dashboardJS.includes('data-action="open-service-logs"'),
+    true,
+    "missing service logs action",
+  );
+  assert.equal(
+    dashboardJS.includes('data-action="open-service-shell"'),
+    true,
+    "missing service shell action",
+  );
+  assert.equal(
+    dashboardJS.includes("group-hover:opacity-100"),
+    false,
+    "service controls should not depend on hover visibility",
+  );
+});
+
+test("project hero uses Start action when environment is not running", async () => {
+  const dashboardJS = await readFile(
+    new URL("../../desktop/frontend/modules/dashboard.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    dashboardJS.includes('const action = isStopped ? "env-start" : "env-restart";'),
+    true,
+    "project hero should switch restart action to env-start when stopped",
+  );
+  assert.equal(
+    dashboardJS.includes('const icon = isStopped ? "play_arrow" : "restart_alt";'),
+    true,
+    "project hero should use play icon for stopped environments",
   );
 });

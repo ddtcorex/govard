@@ -36,6 +36,7 @@ export const createTerminalController = ({
       },
       fontFamily: "monospace",
       fontSize: 13,
+      lineHeight: 1.25,
       cursorBlink: true,
     });
 
@@ -43,6 +44,7 @@ export const createTerminalController = ({
     activeTerminal.loadAddon(fitAddon);
     activeTerminal.open(refs.terminalContainer);
     fitAddon.fit();
+    requestAnimationFrame(() => fitAddon?.fit());
 
     activeTerminal.onData((data) => {
       if (activeSessionId) {

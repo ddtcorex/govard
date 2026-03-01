@@ -28,6 +28,7 @@ type Service struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Port   string `json:"port"`
+	Target string `json:"target,omitempty"`
 }
 
 type Environment struct {

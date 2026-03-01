@@ -216,7 +216,7 @@ export const renderRemotes = (container, remotes = []) => {
                   <span class="material-symbols-outlined text-blue-400 text-3xl">cloud</span>
                   <div class="text-left">
                     <div class="text-white text-sm font-bold">Remote</div>
-                    <div class="text-slate-500 text-xs">Staging/Prod</div>
+                    <div class="text-slate-500 text-xs">Dev/Staging/Prod</div>
                   </div>
                 </div>
               </div>

@@ -1,5 +1,5 @@
 console.log("==> main.js top level loaded! <==");
-import { createActionsController } from "./modules/actions.js";
+import { createActionsController } from "./modules/actions.js?v=20260301";
 import {
   normalizeDashboardPayload,
   projectKey,
@@ -20,7 +20,10 @@ import {
   renderLogsTab,
 } from "./modules/logs.js";
 import { createMetricsController } from "./modules/metrics.js";
-import { createOnboardingController } from "./modules/onboarding.js";
+import {
+  createOnboardingController,
+  renderOnboardingModal,
+} from "./modules/onboarding.js";
 import {
   createRemotesController,
   renderRemotes,
@@ -34,12 +37,13 @@ import { createShellController } from "./modules/shell.js";
 import { createTerminalController } from "./modules/terminal.js";
 import { desktopBridge } from "./services/bridge.js";
 import { getState, setState } from "./state/store.js";
-import { createToast } from "./ui/toast.js";
+import { createToast } from "./ui/toast.js?v=20260301";
 import { byId, setText } from "./utils/dom.js";
 console.log("==> Finished imports <==");
 
 const initUI = () => {
   renderLogsTab(byId("tab-logs"));
+  renderOnboardingModal(byId("onboardingModalMount"));
   // NOTE: do NOT call renderRemotes(tab-remotes) here — it wipes the remotesList/remotesWarnings
   // containers. The remotesController.refresh() handles rendering when the tab is opened.
   renderSyncModal(byId("syncOptionsModalMount"));
@@ -48,6 +52,7 @@ const initUI = () => {
 };
 
 const getLiveRefs = () => ({
+  refresh: byId("refresh"),
   status: byId("status"),
   envList: byId("envList"),
   envSelector: byId("envSelector"),
@@ -65,11 +70,23 @@ const getLiveRefs = () => ({
   proxyTarget: byId("proxyTarget"),
   preferredBrowser: byId("preferredBrowser"),
   codeEditor: byId("codeEditor"),
+  shellUser: byId("shellUser"),
   userAvatar: byId("userAvatar"),
   userName: byId("userName"),
   terminalContainer: byId("terminalContainer"),
+  terminalPanel: byId("terminalPanel"),
+  terminalBackdrop: byId("terminalBackdrop"),
+  terminalExpandIcon: byId("terminalExpandIcon"),
   toastContainer: byId("toastContainer"),
   onboardingModal: byId("onboardingModal"),
+  projectPath: byId("projectPath"),
+  displayProjectPath: byId("displayProjectPath"),
+  projectDomain: byId("projectDomain"),
+  projectFramework: byId("projectFramework"),
+  onboardVarnish: byId("onboardVarnish"),
+  onboardRedis: byId("onboardRedis"),
+  onboardRabbitMQ: byId("onboardRabbitMQ"),
+  onboardElasticsearch: byId("onboardElasticsearch"),
   newRemoteModal: byId("newRemoteModal"),
   projectTitle: byId("projectTitle"),
   projectStatusBadge: byId("projectStatusBadge"),
@@ -79,6 +96,7 @@ const getLiveRefs = () => ({
   projectTechnologies: byId("projectTechnologies"),
   heroRestartBtn: byId("heroRestartBtn"),
   heroStopBtn: byId("heroStopBtn"),
+  footerVersion: byId("footerVersion"),
   footerCPU: byId("footerCPU"),
   footerMemory: byId("footerMemory"),
   envVarsList: byId("envVarsList"),
@@ -134,8 +152,126 @@ const loadUser = async () => {
   }
 };
 
+const loadFooterVersion = async () => {
+  const footerVersionEl = byId("footerVersion");
+  if (!footerVersionEl) return;
+  const maxAttempts = 15;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const getVersion = window.go?.desktop?.App?.GetVersion;
+      if (!getVersion) {
+        throw new Error("version bridge not ready");
+      }
+      const version = String(await getVersion()).trim();
+      if (version) {
+        const normalized = version.startsWith("v") ? version : `v${version}`;
+        setText(footerVersionEl, normalized);
+        if (refs.footerVersion && refs.footerVersion !== footerVersionEl) {
+          setText(refs.footerVersion, normalized);
+        }
+        return;
+      }
+    } catch (_err) {
+      // Bridge may not be fully ready during early bootstrap.
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+
+  setText(footerVersionEl, "v--");
+};
+
 const showToast = (message, type = "success") => {
   toast.show(message, type);
+};
+
+const showLoadingToast = (
+  title = "Processing...",
+  type = "info",
+  initialLine = "Please wait...",
+) => {
+  const loadingToast = toast.showStreaming(title, type, { dedupeKey: false });
+  if (loadingToast && initialLine) {
+    loadingToast.update(initialLine);
+    return loadingToast;
+  }
+
+  const container = refs.toastContainer;
+  if (!container) {
+    return null;
+  }
+
+  const item = document.createElement("div");
+  item.className = `toast toast--${type} group`;
+  item.innerHTML = `
+    <div class="toast-indicator"></div>
+    <div class="toast-icon-wrapper">
+      <span class="material-symbols-outlined toast-icon">info</span>
+    </div>
+    <div class="toast-content">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <p class="toast-message" style="font-weight:600; margin:0;">${String(title)}</p>
+        <span class="toast-spinner inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+      </div>
+      <p class="toast-stream-line text-xs font-mono opacity-80 mt-1">${String(initialLine || "Please wait...")}</p>
+    </div>
+    <button class="toast-close" aria-label="Close">
+      <span class="material-symbols-outlined">close</span>
+    </button>
+  `;
+  container.appendChild(item);
+  requestAnimationFrame(() => item.classList.add("is-visible"));
+
+  const lineEl = item.querySelector(".toast-stream-line");
+  const spinnerEl = item.querySelector(".toast-spinner");
+  const iconEl = item.querySelector(".toast-icon");
+  const closeBtn = item.querySelector(".toast-close");
+
+  let removed = false;
+  const remove = () => {
+    if (removed || item.classList.contains("is-removing")) return;
+    removed = true;
+    item.classList.add("is-removing");
+    item.classList.remove("is-visible");
+    setTimeout(() => {
+      item.remove();
+    }, 500);
+  };
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      remove();
+    });
+  }
+
+  return {
+    update: (line) => {
+      if (lineEl && line) {
+        lineEl.textContent = String(line);
+      }
+    },
+    close: (finalLabel, finalType = "success") => {
+      if (spinnerEl) spinnerEl.style.display = "none";
+      if (lineEl && finalLabel) {
+        lineEl.textContent = String(finalLabel);
+      }
+      const iconByType = {
+        success: "check_circle",
+        error: "report",
+        warning: "warning",
+        info: "info",
+      };
+      if (iconEl) {
+        iconEl.textContent = iconByType[finalType] || "check_circle";
+      }
+      item.className = `toast toast--${finalType} group is-visible`;
+      setTimeout(remove, 4000);
+    },
+  };
 };
 
 const switchTab = (tabId) => {
@@ -169,7 +305,11 @@ const switchTab = (tabId) => {
   const tabsInner = byId("tabsHeaderInner");
 
   if (scrollContainer && hero && tabs && tabsInner) {
-    hero.classList.remove("hidden");
+    const showHero = ["dashboard", "remotes", "logs"].includes(tabId);
+    hero.classList.toggle("hidden", !showHero);
+    if (tabId !== "logs" && getState().terminalModalOpen) {
+      toggleTerminalModal(false);
+    }
 
     if (tabId === "dashboard") {
       scrollContainer.classList.add("overflow-y-auto");
@@ -182,6 +322,8 @@ const switchTab = (tabId) => {
     } else if (tabId === "logs") {
       scrollContainer.classList.remove("overflow-y-auto");
       scrollContainer.classList.add("overflow-hidden");
+      setState({ selectedService: "all" });
+      refreshServiceSelector();
       logsController.refresh();
     }
 
@@ -332,6 +474,42 @@ const refreshServiceSelector = () => {
   setState({ selectedService });
 };
 
+const setSelectedProject = (project) => {
+  const value = String(project || "").trim();
+  if (!value) return;
+  setState({ selectedProject: value });
+  if (refs.logSelector && refs.logSelector.value !== value) {
+    refs.logSelector.value = value;
+  }
+  if (refs.envSelector && refs.envSelector.value !== value) {
+    refs.envSelector.value = value;
+  }
+};
+
+const openServiceContext = async (project, service, mode = "logs") => {
+  const selectedProject = String(project || getState().selectedProject || "")
+    .trim();
+  if (!selectedProject) {
+    setStatus("Select an environment first.");
+    return;
+  }
+
+  setSelectedProject(selectedProject);
+  switchTab("logs");
+
+  const selectedService = String(service || "all")
+    .trim()
+    .toLowerCase() || "all";
+  setState({ selectedService });
+  refreshServiceSelector();
+
+  if (mode === "shell") {
+    await shellController.openShell();
+    return;
+  }
+  await logsController.refresh();
+};
+
 const logsController = createLogsController({
   bridge: desktopBridge,
   runtime: desktopBridge.runtime,
@@ -373,6 +551,131 @@ const embeddedTerminalController = createTerminalController({
   onToast: showToast,
   readSelection,
 });
+
+const TERMINAL_MODAL_ANIMATION_MS = 360;
+let terminalModalAnimationTimer = null;
+let terminalModalAnimationId = 0;
+let terminalModalTransitionHandler = null;
+
+const clearTerminalPanelAnimation = (panel) => {
+  if (terminalModalAnimationTimer) {
+    clearTimeout(terminalModalAnimationTimer);
+    terminalModalAnimationTimer = null;
+  }
+  if (panel && terminalModalTransitionHandler) {
+    panel.removeEventListener("transitionend", terminalModalTransitionHandler);
+    terminalModalTransitionHandler = null;
+  }
+};
+
+const setTerminalModalLayout = (panel, isOpen) => {
+  if (!panel) return;
+  if (isOpen) {
+    panel.classList.remove("h-1/3", "relative", "z-10");
+    panel.classList.add(
+      "fixed",
+      "inset-4",
+      "h-auto",
+      "z-[140]",
+      "border-primary/40",
+      "shadow-2xl",
+    );
+    return;
+  }
+
+  panel.classList.remove(
+    "fixed",
+    "inset-4",
+    "h-auto",
+    "z-[140]",
+    "border-primary/40",
+    "shadow-2xl",
+  );
+  panel.classList.add("h-1/3", "relative", "z-10");
+};
+
+const animateTerminalPanelLayout = (panel, isOpen) => {
+  if (!panel) return;
+
+  clearTerminalPanelAnimation(panel);
+  const animationId = ++terminalModalAnimationId;
+  const firstRect = panel.getBoundingClientRect();
+  setTerminalModalLayout(panel, isOpen);
+  const lastRect = panel.getBoundingClientRect();
+
+  const width = Math.max(lastRect.width, 1);
+  const height = Math.max(lastRect.height, 1);
+  const deltaX = firstRect.left - lastRect.left;
+  const deltaY = firstRect.top - lastRect.top;
+  const scaleX = firstRect.width / width;
+  const scaleY = firstRect.height / height;
+
+  panel.style.willChange = "transform, box-shadow, border-color";
+  panel.style.transformOrigin = "top left";
+  panel.style.transition = "none";
+  panel.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`;
+  // Force reflow so the browser applies the inverted transform before animation.
+  void panel.offsetWidth;
+  panel.style.transition =
+    `transform ${TERMINAL_MODAL_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), ` +
+    `box-shadow ${TERMINAL_MODAL_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), ` +
+    `border-color ${TERMINAL_MODAL_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+  panel.style.transform = "translate(0px, 0px) scale(1, 1)";
+
+  const finishAnimation = () => {
+    if (animationId !== terminalModalAnimationId) return;
+    clearTerminalPanelAnimation(panel);
+    panel.style.transition = "";
+    panel.style.transform = "";
+    panel.style.transformOrigin = "";
+    panel.style.willChange = "";
+    embeddedTerminalController.resize();
+    requestAnimationFrame(() => embeddedTerminalController.resize());
+  };
+
+  terminalModalTransitionHandler = (event) => {
+    if (event.target !== panel || event.propertyName !== "transform") return;
+    finishAnimation();
+  };
+  panel.addEventListener("transitionend", terminalModalTransitionHandler);
+  terminalModalAnimationTimer = setTimeout(
+    finishAnimation,
+    TERMINAL_MODAL_ANIMATION_MS + 80,
+  );
+};
+
+const toggleTerminalModal = (forceOpen) => {
+  const panel = refs.terminalPanel;
+  const backdrop = refs.terminalBackdrop;
+  const icon = refs.terminalExpandIcon;
+  if (!panel) return;
+
+  const current = Boolean(getState().terminalModalOpen);
+  const next = typeof forceOpen === "boolean" ? forceOpen : !current;
+  if (next === current) return;
+
+  setState({ terminalModalOpen: next });
+
+  if (next) {
+    if (backdrop) {
+      backdrop.classList.remove("hidden");
+      requestAnimationFrame(() => backdrop.classList.remove("opacity-0"));
+    }
+    if (icon) icon.textContent = "close_fullscreen";
+    animateTerminalPanelLayout(panel, true);
+  } else {
+    if (backdrop) {
+      backdrop.classList.add("opacity-0");
+      setTimeout(() => {
+        if (!getState().terminalModalOpen) {
+          backdrop.classList.add("hidden");
+        }
+      }, TERMINAL_MODAL_ANIMATION_MS);
+    }
+    if (icon) icon.textContent = "open_in_full";
+    animateTerminalPanelLayout(panel, false);
+  }
+};
 
 const renderAllSkeletons = () => {
   renderDashboardSkeletons(refs);
@@ -496,6 +799,7 @@ const refreshDashboard = async (options = {}) => {
     await remotesController.refresh({ silent: true });
     await shellController.loadShellUser();
     await logsController.refresh();
+    await loadFooterVersion();
 
     setStatus(`Status: Ready`);
   } catch (e) {
@@ -519,6 +823,7 @@ const actionsController = createActionsController({
   renderSkeletons: renderAllSkeletons,
   onStatus: setStatus,
   onToast: showToast,
+  onToastLoading: showLoadingToast,
 });
 
 const settingsController = createSettingsController({
@@ -571,9 +876,9 @@ document.addEventListener("click", async (event) => {
     if (text) {
       try {
         await navigator.clipboard.writeText(text);
-        onToast("Copied to clipboard!", "success");
+        showToast("Copied to clipboard!", "success");
       } catch (err) {
-        onToast(`Failed to copy: ${err}`, "error");
+        showToast(`Failed to copy: ${err}`, "error");
       }
     }
     return;
@@ -612,25 +917,30 @@ document.addEventListener("click", async (event) => {
     const svc = targetElement.dataset.service;
     if (svc) {
       setState({ selectedService: svc });
-      logsController.applyFilters();
       refreshServiceSelector();
+      if (logsController.isLiveEnabled()) {
+        await logsController.stopLive();
+        await logsController.toggleLive();
+      } else {
+        await logsController.refresh();
+      }
     }
     return;
   }
-  if (action === "toggle-sync-config") {
-    const remote = targetElement.dataset.remote;
-    const config = targetElement.dataset.config;
-    if (remote && config) {
-      const state = getState();
-      const presetConfigs = state.syncConfigs || {};
-      const currentPreset = state.currentSyncPreset || "full";
-      let presetConfig = presetConfigs[currentPreset] || {};
-      presetConfig[config] = targetElement.checked;
-      setState({
-        syncConfigs: { ...presetConfigs, [currentPreset]: presetConfig },
-      });
-      onStatus(`Sync option "${config}" updated.`);
-    }
+  if (action === "open-service-logs") {
+    await openServiceContext(
+      targetElement.dataset.project,
+      targetElement.dataset.service,
+      "logs",
+    );
+    return;
+  }
+  if (action === "open-service-shell") {
+    await openServiceContext(
+      targetElement.dataset.project,
+      targetElement.dataset.service,
+      "shell",
+    );
     return;
   }
   if (action === "open-onboarding") {
@@ -856,6 +1166,14 @@ document.addEventListener("click", async (event) => {
     await embeddedTerminalController.startSession();
     return;
   }
+  if (action === "toggle-terminal-modal") {
+    toggleTerminalModal();
+    return;
+  }
+  if (action === "close-terminal-modal") {
+    toggleTerminalModal(false);
+    return;
+  }
   if (action === "download-logs") {
     logsController.downloadLogs();
     return;
@@ -911,7 +1229,7 @@ document.addEventListener("click", async (event) => {
     // Setup one-time streaming event listeners
     let offStream, offCompleted, offFailed;
     if (desktopBridge.runtime?.EventsOn) {
-      offStream = desktopBridge.runtime.EventsOn("sync:stream", (line) => {
+      offStream = desktopBridge.runtime.EventsOn("sync:output", (line) => {
         if (streamingToast) streamingToast.update(String(line || ""));
       });
       offCompleted = desktopBridge.runtime.EventsOn("sync:completed", (msg) => {
@@ -948,31 +1266,33 @@ document.addEventListener("click", async (event) => {
   await actionsController.handle(action, targetElement.dataset.env || "");
 });
 
-if (refs.refresh) {
-  refs.refresh.addEventListener("click", () => {
-    refreshDashboard();
-  });
-}
+const bindRuntimeListeners = () => {
+  if (refs.refresh) {
+    refs.refresh.addEventListener("click", () => {
+      refreshDashboard();
+    });
+  }
 
-if (refs.openSettings) {
-  refs.openSettings.addEventListener("click", () =>
-    settingsController.toggleDrawer(true),
-  );
-}
+  if (refs.openSettings) {
+    refs.openSettings.addEventListener("click", () =>
+      settingsController.toggleDrawer(true),
+    );
+  }
 
-if (refs.closeSettings) {
-  refs.closeSettings.addEventListener("click", () =>
-    settingsController.toggleDrawer(false),
-  );
-}
+  if (refs.closeSettings) {
+    refs.closeSettings.addEventListener("click", () =>
+      settingsController.toggleDrawer(false),
+    );
+  }
 
-if (refs.settingsDrawer) {
-  refs.settingsDrawer.addEventListener("click", (event) => {
-    if (event.target === refs.settingsDrawer) {
-      settingsController.toggleDrawer(false);
-    }
-  });
-}
+  if (refs.settingsDrawer) {
+    refs.settingsDrawer.addEventListener("click", (event) => {
+      if (event.target === refs.settingsDrawer) {
+        settingsController.toggleDrawer(false);
+      }
+    });
+  }
+};
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
@@ -1000,55 +1320,57 @@ const syncProjectSelectorsFrom = async (source) => {
   await remotesController.refresh({ silent: true });
 };
 
-if (refs.envSelector) {
-  refs.envSelector.addEventListener("change", async () => {
-    await syncProjectSelectorsFrom("env");
-  });
-}
+const bindDynamicControlListeners = () => {
+  if (refs.envSelector) {
+    refs.envSelector.addEventListener("change", async () => {
+      await syncProjectSelectorsFrom("env");
+    });
+  }
 
-if (refs.logSeverity) {
-  refs.logSeverity.addEventListener("change", () => {
-    syncLogFiltersState();
-    logsController.applyFilters();
-  });
-}
+  if (refs.logSeverity) {
+    refs.logSeverity.addEventListener("change", () => {
+      syncLogFiltersState();
+      logsController.applyFilters();
+    });
+  }
 
-if (refs.logSearch) {
-  refs.logSearch.addEventListener("input", () => {
-    syncLogFiltersState();
-    logsController.applyFilters();
-  });
-}
+  if (refs.logSearch) {
+    refs.logSearch.addEventListener("input", () => {
+      syncLogFiltersState();
+      logsController.applyFilters();
+    });
+  }
 
-if (refs.shellUser) {
-  refs.shellUser.addEventListener("change", () => {
-    shellController.saveShellUser();
-  });
-}
+  if (refs.shellUser) {
+    refs.shellUser.addEventListener("change", () => {
+      shellController.saveShellUser();
+    });
+  }
 
-if (refs.themeSelect) {
-  refs.themeSelect.addEventListener("change", () => {
-    settingsController.save();
-  });
-}
+  if (refs.themeSelect) {
+    refs.themeSelect.addEventListener("change", () => {
+      settingsController.save();
+    });
+  }
 
-if (refs.codeEditor) {
-  refs.codeEditor.addEventListener("change", () => {
-    settingsController.save();
-  });
-}
+  if (refs.codeEditor) {
+    refs.codeEditor.addEventListener("change", () => {
+      settingsController.save();
+    });
+  }
 
-if (refs.proxyTarget) {
-  refs.proxyTarget.addEventListener("change", async () => {
-    await settingsController.save();
-  });
-}
+  if (refs.proxyTarget) {
+    refs.proxyTarget.addEventListener("change", async () => {
+      await settingsController.save();
+    });
+  }
 
-if (refs.preferredBrowser) {
-  refs.preferredBrowser.addEventListener("change", () => {
-    settingsController.save();
-  });
-}
+  if (refs.preferredBrowser) {
+    refs.preferredBrowser.addEventListener("change", () => {
+      settingsController.save();
+    });
+  }
+};
 
 if (window.matchMedia) {
   window
@@ -1072,9 +1394,14 @@ const bootstrap = async () => {
     // Run core loads in parallel
     await Promise.allSettled([
       loadUser(),
+      loadFooterVersion(),
       settingsController.load(),
       refreshDashboard(),
     ]).catch((e) => console.error("Parallel bootstrap error:", e));
+    await loadFooterVersion();
+    setTimeout(() => {
+      loadFooterVersion();
+    }, 1500);
 
     metricsController.startAutoRefresh();
     setStatus("Status: Ready");
@@ -1088,6 +1415,8 @@ const initApp = () => {
   console.log("==> App Initializing! <==");
   try {
     initUI();
+    bindRuntimeListeners();
+    bindDynamicControlListeners();
     switchTab("dashboard");
     bootstrap();
   } catch (err) {

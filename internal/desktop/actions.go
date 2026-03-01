@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"govard/internal/engine"
@@ -431,13 +432,40 @@ func normalizeShellUser(info *projectInfo, service string, user string) string {
 // End of actions.go
 
 func resolveShellContainer(info *projectInfo, service string) string {
-	target := resolveServiceName(info, service, "php")
+	target := resolveShellServiceName(info, service)
 	return fmt.Sprintf("%s-%s-1", info.name, target)
+}
+
+func resolveShellServiceName(info *projectInfo, service string) string {
+	return resolveServiceName(info, service, defaultShellService(info))
+}
+
+func defaultShellService(info *projectInfo) string {
+	if info == nil || len(info.services) == 0 {
+		return "php"
+	}
+
+	for _, preferred := range []string{"web", "php", "app"} {
+		if info.services[preferred] {
+			return preferred
+		}
+	}
+
+	candidates := make([]string, 0, len(info.services))
+	for name := range info.services {
+		candidates = append(candidates, name)
+	}
+	sort.Strings(candidates)
+	if len(candidates) > 0 {
+		return candidates[0]
+	}
+
+	return "php"
 }
 
 func resolveServiceName(info *projectInfo, service string, fallback string) string {
 	candidate := strings.TrimSpace(service)
-	if candidate != "" {
+	if candidate != "" && candidate != "all" {
 		if info == nil || info.services[candidate] {
 			return candidate
 		}

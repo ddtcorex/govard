@@ -29,7 +29,7 @@
         <!-- Sidebar -->
 
         <aside
-          class="w-64 bg-background-dark border-r border-[#22492f] flex flex-col justify-between shrink-0 transition-all duration-300"
+          class="w-80 bg-background-dark border-r border-[#22492f] flex flex-col justify-between shrink-0 transition-all duration-300"
         >
           <div class="flex flex-col h-full">
             <div class="p-6 pb-2">
@@ -48,12 +48,12 @@
                   <h1
                     class="text-white text-xl font-bold leading-none tracking-tight"
                   >
-                    Govard
+                    GOVARD
                   </h1>
                   <p
-                    class="text-[#90cba4] text-[10px] font-mono uppercase tracking-widest mt-1.5 opacity-80"
+                    class="text-[#90cba4] text-[10px] font-mono uppercase tracking-widest mt-1.5 opacity-80 whitespace-nowrap"
                   >
-                    Container Mgr
+                    Local Dev Orchestrator
                   </p>
                 </div>
               </div>
@@ -111,14 +111,6 @@
             </div>
             <div class="flex items-center gap-4 ml-6">
               <button
-                class="relative p-2 text-[#90cba4] hover:text-white hover:bg-[#22492f] rounded-lg transition-colors"
-              >
-                <span class="material-symbols-outlined">notifications</span>
-                <span
-                  class="absolute top-2 right-2 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-[#102316]"
-                ></span>
-              </button>
-              <button
                 class="p-2 text-[#90cba4] hover:text-white hover:bg-[#22492f] rounded-lg transition-colors"
                 id="openSettings"
                 data-action="open-settings"
@@ -154,7 +146,7 @@
               class="px-6 lg:px-10 pt-6 max-w-[1248px] w-full mx-auto"
             >
               <div
-                class="relative rounded-2xl overflow-hidden min-h-[280px] flex flex-col justify-end group border border-[#22492f] w-full"
+                class="relative rounded-2xl overflow-hidden group border border-[#22492f] w-full"
               >
                 <div class="absolute inset-0 z-0">
                   <div
@@ -174,7 +166,7 @@
                   </div>
                 </div>
                 <div
-                  class="relative z-20 p-8 flex flex-col md:flex-row md:items-end justify-between gap-6"
+                  class="relative z-20 px-8 py-6 flex flex-col md:flex-row md:items-end justify-between gap-6"
                 >
                   <div class="flex items-start gap-6">
                     <div
@@ -240,7 +232,7 @@
                     <button
                       data-action="env-stop"
                       id="heroStopBtn"
-                      class="h-12 w-12 bg-[#1a3322] text-[#90cba4] hover:text-white border border-[#2e573a] rounded-lg hover:bg-red-500/20 hover:border-red-500/30 transition-all active:scale-95 flex items-center justify-center"
+                      class="h-12 w-12 bg-red-600 text-white border border-red-500 rounded-lg hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/20"
                       title="Stop Environment"
                     >
                       <span
@@ -402,14 +394,6 @@
                           <!-- Environment vars dynamically rendered here -->
                           <div class="text-xs text-slate-500 italic">No variables loaded</div>
                         </div>
-                        <button
-                          class="w-full mt-4 py-2 rounded bg-[#22492f] hover:bg-[#2e573a] text-xs font-medium text-white border border-[#366b47] transition-all flex items-center justify-center gap-2"
-                        >
-                          <span class="material-symbols-outlined text-sm"
-                            >edit</span
-                          >
-                          Edit .env
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -461,7 +445,6 @@
                   </div>
                 </div>
               </div>
-            </div>
             <div
               id="tab-logs"
               class="flex-1 flex flex-col overflow-hidden tab-content hidden"
@@ -522,7 +505,11 @@
             <span id="footerMemory">0 MB</span>
           </div>
           <div class="h-8 w-px bg-[#2e573a]"></div>
-          <button class="text-[#90cba4] hover:text-white transition-colors">
+          <button
+            data-action="refresh-metrics"
+            title="Refresh system metrics"
+            class="text-[#90cba4] hover:text-white transition-colors"
+          >
             <span class="material-symbols-outlined text-[16px]">sync</span>
           </button>
         </div>
@@ -530,7 +517,6 @@
     </div>
     <!-- End #app Root Container -->
 
-    <div id="settingsDrawerMount"></div>
     <script type="module" src="main.js"></script>
   </body>
 </html>

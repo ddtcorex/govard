@@ -5,23 +5,56 @@ export const createActionsController = ({
   renderSkeletons,
   onStatus,
   onToast,
+  onToastLoading,
 }) => {
-  const runEnvironmentAction = async (fn, project, fallbackMessage) => {
+  const MIN_LOADING_TOAST_MS = 700;
+
+  const runEnvironmentAction = async (
+    fn,
+    project,
+    fallbackMessage,
+    loadingLabel = "Processing environment...",
+  ) => {
     if (!project) {
       onStatus("Please select an environment first.");
       return;
     }
+    let loadingToast = null;
+    let loadingStartedAt = 0;
+    const waitForToastVisibility = async () => {
+      if (!loadingToast || loadingStartedAt <= 0) {
+        return;
+      }
+      const elapsed = Date.now() - loadingStartedAt;
+      const remaining = Math.max(0, MIN_LOADING_TOAST_MS - elapsed);
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+    };
+
     try {
       onStatus(`Processing ${project}...`);
       renderSkeletons();
+      loadingToast = onToastLoading?.(loadingLabel, "info", "Please wait...");
+      loadingStartedAt = Date.now();
       const message = await fn(project);
       onStatus(message || fallbackMessage);
-      onToast(message || fallbackMessage, "success");
+      if (loadingToast) {
+        await waitForToastVisibility();
+        loadingToast.close(message || fallbackMessage, "success");
+      } else {
+        onToast(message || fallbackMessage, "success");
+      }
       await refreshDashboard({ silent: true });
     } catch (err) {
       const message = `${fallbackMessage}: ${err}`;
       onStatus(message);
-      onToast(message, "error");
+      if (loadingToast) {
+        await waitForToastVisibility();
+        loadingToast.close(message, "error");
+      } else {
+        onToast(message, "error");
+      }
     }
   };
 
@@ -33,6 +66,7 @@ export const createActionsController = ({
         bridge.startEnvironment,
         project,
         `Started ${project} successfully`,
+        `Starting ${project}...`,
       );
       return;
     }
@@ -41,6 +75,7 @@ export const createActionsController = ({
         bridge.restartEnvironment,
         project,
         `Restarted ${project} successfully`,
+        `Restarting ${project}...`,
       );
       return;
     }
@@ -49,6 +84,7 @@ export const createActionsController = ({
         bridge.stopEnvironment,
         project,
         `Stopped ${project} successfully`,
+        `Stopping ${project}...`,
       );
       return;
     }

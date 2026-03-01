@@ -24,6 +24,19 @@ func PrefixServiceLogLinesForTest(service string, raw string) string {
 	return prefixServiceLogLines(service, raw)
 }
 
+// ResolveShellServiceNameForTest exposes shell target service resolution for tests.
+func ResolveShellServiceNameForTest(requested string, available []string) string {
+	info := &projectInfo{services: map[string]bool{}}
+	for _, service := range available {
+		trimmed := strings.TrimSpace(service)
+		if trimmed == "" {
+			continue
+		}
+		info.services[trimmed] = true
+	}
+	return resolveShellServiceName(info, requested)
+}
+
 // NormalizeOnboardingDomainForTest exposes domain normalization for tests.
 func NormalizeOnboardingDomainForTest(domain string) string {
 	return normalizeOnboardingDomain(domain)
@@ -105,6 +118,16 @@ func BuildPresetSyncOptionDefsForTest(preset string) presetSyncOptions {
 // BuildBootstrapArgsWithOptionsForTest exposes bootstrap arguments builder for tests.
 func BuildBootstrapArgsWithOptionsForTest(remoteName string, options map[string]bool, planOnly bool) ([]string, error) {
 	return buildBootstrapArgsWithOptions(remoteName, options, planOnly)
+}
+
+// BuildDerivedServicesForTest exposes desktop service rendering from config/state.
+func BuildDerivedServicesForTest(config engine.Config, serviceState map[string]string) []Service {
+	return deriveServices(config, serviceState)
+}
+
+// BuildFallbackServicesForTest exposes fallback service rendering from discovered targets.
+func BuildFallbackServicesForTest(services map[string]bool, serviceState map[string]string) []Service {
+	return fallbackServices(services, serviceState)
 }
 
 // ListProjectRemotesForPathForTest exposes path-based remotes loading for tests.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -116,7 +117,7 @@ func scanLogPipe(ctx context.Context, pipe interface{}, event string, done chan<
 }
 
 func resolveLogContainer(info *projectInfo, service string) string {
-	if service != "" {
+	if service != "" && service != "all" {
 		return info.name + "-" + service + "-1"
 	}
 	// Pick first running service or default to php
@@ -144,9 +145,41 @@ func getLogsForService(project string, service string, lines int) (string, error
 	if err != nil {
 		return "", err
 	}
-	containerName := resolveLogContainer(info, service)
-	output, err := exec.Command("docker", "logs", "--tail", fmt.Sprintf("%d", lines), containerName).CombinedOutput()
-	return string(output), err
+
+	discovered := discoveredLogTargets(info)
+	targets := resolveRequestedLogTargets(service, discovered)
+	var chunks []string
+	successCount := 0
+
+	for _, target := range targets {
+		containerName := resolveLogContainer(info, target)
+		output, err := exec.Command("docker", "logs", "--tail", fmt.Sprintf("%d", lines), containerName).CombinedOutput()
+		if err != nil {
+			continue
+		}
+		successCount++
+
+		text := strings.TrimSpace(string(output))
+		if text == "" {
+			continue
+		}
+
+		if len(targets) > 1 {
+			text = prefixServiceLogLines(target, text)
+		}
+		chunks = append(chunks, text)
+	}
+
+	if len(chunks) == 0 {
+		if successCount > 0 {
+			return "", nil
+		}
+		containerName := resolveLogContainer(info, service)
+		output, err := exec.Command("docker", "logs", "--tail", fmt.Sprintf("%d", lines), containerName).CombinedOutput()
+		return string(output), err
+	}
+
+	return strings.Join(chunks, "\n"), nil
 }
 
 func resolveRequestedLogTargets(service string, discovered []string) []string {
@@ -158,6 +191,22 @@ func resolveRequestedLogTargets(service string, discovered []string) []string {
 		return discovered
 	}
 	return []string{requested}
+}
+
+func discoveredLogTargets(info *projectInfo) []string {
+	if info == nil || len(info.services) == 0 {
+		return nil
+	}
+	targets := make([]string, 0, len(info.services))
+	for service := range info.services {
+		service = strings.TrimSpace(service)
+		if service == "" {
+			continue
+		}
+		targets = append(targets, service)
+	}
+	sort.Strings(targets)
+	return targets
 }
 
 func prefixServiceLogLines(service string, raw string) string {

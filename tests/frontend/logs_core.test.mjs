@@ -74,11 +74,19 @@ test("logs tab exposes shell controls contract", async () => {
       `missing shell control ${id}`,
     );
   }
-  for (const action of ["start-embedded-terminal", "reset-shell-users"]) {
-    assert.equal(
-      combined.includes(`data-action="${action}"`),
-      true,
-      `missing shell action ${action}`,
-    );
-  }
+  assert.equal(
+    combined.includes('data-action="start-embedded-terminal"'),
+    true,
+    "missing shell action start-embedded-terminal",
+  );
+  assert.equal(
+    combined.includes('data-action="toggle-terminal-modal"'),
+    true,
+    "missing shell action toggle-terminal-modal",
+  );
+  assert.equal(
+    combined.includes('data-action="reset-shell-users"'),
+    false,
+    "shell reset/settings action should not be rendered",
+  );
 });

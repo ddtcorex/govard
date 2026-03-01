@@ -22,6 +22,10 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.GetUserInfo?.bind(bridge));
   },
+  async getVersion() {
+    const bridge = getBridge();
+    return call(bridge?.GetVersion?.bind(bridge));
+  },
   async getSystemMetrics() {
     const bridge = getBridge();
     return call(bridge?.GetSystemMetrics?.bind(bridge));
@@ -176,15 +180,16 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.GetMailpitURL?.bind(bridge));
   },
-  async updateSettings(theme, proxyTarget, preferredBrowser, codeEditor) {
+  async updateSettings(settings = {}) {
     const bridge = getBridge();
-    return call(
-      bridge?.UpdateSettings?.bind(bridge),
-      theme,
-      proxyTarget,
-      preferredBrowser,
-      codeEditor,
-    );
+    const payload = {
+      theme: String(settings.theme || "system"),
+      proxyTarget: String(settings.proxyTarget || ""),
+      preferredBrowser: String(settings.preferredBrowser || ""),
+      codeEditor: String(settings.codeEditor || ""),
+      dbClientPreference: String(settings.dbClientPreference || "desktop"),
+    };
+    return call(bridge?.UpdateSettings?.bind(bridge), payload);
   },
   async resetSettings() {
     const bridge = getBridge();

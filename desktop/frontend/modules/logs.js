@@ -81,10 +81,11 @@ export const syncServiceSelector = (
     .map((target) => {
       const isActive = target === selectedService;
       const baseClass =
-        "px-2.5 py-1 rounded text-xs font-medium transition-colors";
-      const activeClass = "bg-[#2e573a] text-white";
+        "h-7 px-3 rounded-md text-xs font-semibold whitespace-nowrap border transition-colors";
+      const activeClass =
+        "bg-[#2e573a] text-white border-[#3f7a52] shadow-[0_0_0_1px_rgba(63,122,82,0.45)]";
       const inactiveClass =
-        "text-[#90cba4] hover:text-white hover:bg-[#2e573a]/50";
+        "text-[#90cba4] border-transparent hover:text-white hover:bg-[#2e573a]/60";
 
       return `<button 
       data-action="filter-service" 
@@ -112,14 +113,12 @@ export const syncSeveritySelector = (container, selectedSeverity = "all") => {
     const sev = btn.dataset.severity;
     const isActive = sev === selectedSeverity;
     const baseClass =
-      "px-3 py-1 text-[10px] font-bold uppercase transition-colors";
-    const activeClass = "bg-[#2e573a] text-primary";
-    const inactiveClass = "bg-[#102316] text-[#90cba4] hover:bg-[#1a3322]";
+      "h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors";
+    const activeClass = "bg-[#2e573a] text-primary border-[#3f7a52]";
+    const inactiveClass =
+      "bg-[#102316] text-[#90cba4] border-transparent hover:bg-[#1a3322] hover:text-white";
 
     btn.className = `${baseClass} ${isActive ? activeClass : inactiveClass}`;
-    if (sev !== "all") {
-      btn.classList.add("border-l", "border-[#2e573a]");
-    }
   });
 
   return selectedSeverity;
@@ -307,122 +306,142 @@ export const renderLogsTab = (container) => {
         class="px-6 lg:px-10 py-6 max-w-[1248px] w-full mx-auto flex-1 flex flex-col gap-6 overflow-hidden h-full"
       >
         <div
-          class="flex-1 flex flex-col gap-4 overflow-hidden h-full min-h-[500px]"
+          id="terminalBackdrop"
+          data-action="close-terminal-modal"
+          class="hidden fixed inset-0 bg-black/60 backdrop-blur-[2px] z-[135] opacity-0 transition-opacity duration-300"
+        ></div>
+        <div
+          class="flex-1 flex flex-col gap-4 overflow-hidden h-full min-h-0"
         >
           <div
             class="flex-1 flex flex-col rounded-xl border border-[#2e573a] bg-[#0c1810] overflow-hidden shadow-lg relative"
           >
             <div
-              class="flex items-center justify-between p-3 border-b border-[#2e573a] bg-[#1a3322]"
+              class="p-3 border-b border-[#2e573a] bg-[#1a3322]"
             >
-              <div class="flex items-center gap-4">
-                <h3
-                  class="text-sm font-semibold text-white flex items-center gap-2"
-                >
-                  <span
-                    class="material-symbols-outlined text-primary text-lg"
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="material-symbols-outlined text-primary text-lg"
                     >receipt_long</span
                   >
-                  Live Logs
-                </h3>
-                <div class="h-4 w-px bg-[#2e573a]"></div>
-                <div
-                  id="logServiceSelector"
-                  class="flex bg-[#102316] rounded-lg p-0.5 border border-[#2e573a]"
-                >
-                  <!-- Service buttons will be rendered here -->
-                  <button
-                    data-action="filter-service"
-                    data-service="all"
-                    class="px-2.5 py-1 rounded text-xs font-medium bg-[#2e573a] text-white"
-                  >
-                    All
-                  </button>
-                </div>
-                <div class="h-4 w-px bg-[#2e573a]"></div>
-                <div
-                  id="logSeverity"
-                  class="flex bg-[#102316] rounded-lg p-0.5 border border-[#2e573a]"
-                >
-                  <button
-                    data-action="filter-severity"
-                    data-severity="all"
-                    class="px-3 py-1 text-[10px] font-bold uppercase transition-colors bg-[#2e573a] text-primary"
-                  >
-                    All
-                  </button>
-                  <button
-                    data-action="filter-severity"
-                    data-severity="error"
-                    class="px-3 py-1 text-[10px] font-bold uppercase transition-colors text-[#90cba4] hover:bg-[#1a3322] border-l border-[#2e573a]"
-                  >
-                    Error
-                  </button>
-                  <button
-                    data-action="filter-severity"
-                    data-severity="warn"
-                    class="px-3 py-1 text-[10px] font-bold uppercase transition-colors text-[#90cba4] hover:bg-[#1a3322] border-l border-[#2e573a]"
-                  >
-                    Warn
-                  </button>
-                </div>
-                <button
-                  id="toggleLive"
-                  data-action="toggle-live"
-                  class="ml-2 px-2.5 py-1 rounded text-xs font-medium bg-[#2e573a] text-white hover:bg-[#366b47]"
-                >
-                  Live: Off
-                </button>
-                <button
-                  data-action="refresh-logs"
-                  class="ml-2 px-2.5 py-1 rounded text-xs font-medium text-[#90cba4] hover:text-white hover:bg-[#2e573a]/50"
-                >
-                  Refresh
-                </button>
-              </div>
-              <div class="flex items-center gap-3">
-                <div class="relative">
+                  <h3 class="text-sm font-semibold text-white">Logs</h3>
                   <span
-                    class="absolute inset-y-0 left-2 flex items-center"
+                    class="text-[10px] uppercase tracking-wide text-[#90cba4] bg-[#102316] border border-[#2e573a] px-2 py-0.5 rounded-full"
+                    >Live Stream</span
                   >
-                    <span
-                      class="material-symbols-outlined text-[#5d856b] text-base"
-                      >search</span
-                    >
-                  </span>
-                  <input
-                    class="bg-[#102316] text-xs text-white pl-8 pr-3 py-1.5 rounded border border-[#2e573a] focus:border-primary/50 focus:outline-none placeholder-[#5d856b] w-48"
-                    placeholder="Filter logs..."
-                    type="text"
-                    id="logSearch"
-                  />
                 </div>
-                <button
-                  data-action="clear-logs"
-                  class="text-[#90cba4] hover:text-primary transition-colors"
-                  title="Clear Logs"
-                >
-                  <span class="material-symbols-outlined text-lg"
-                    >block</span
+                <div class="flex items-center gap-2 ml-auto">
+                  <div class="relative">
+                    <span class="absolute inset-y-0 left-2 flex items-center">
+                      <span
+                        class="material-symbols-outlined text-[#5d856b] text-base"
+                        >search</span
+                      >
+                    </span>
+                    <input
+                      class="bg-[#102316] text-xs text-white pl-8 pr-3 py-2 rounded-md border border-[#2e573a] focus:border-primary/50 focus:outline-none placeholder-[#5d856b] w-44 md:w-56"
+                      placeholder="Filter logs..."
+                      type="text"
+                      id="logSearch"
+                    />
+                  </div>
+                  <button
+                    data-action="clear-logs"
+                    class="p-2 rounded-md text-[#90cba4] hover:text-primary hover:bg-[#2e573a]/50 transition-colors"
+                    title="Clear Logs"
                   >
-                </button>
-                <button
-                  data-action="download-logs"
-                  class="text-[#90cba4] hover:text-primary transition-colors"
-                  title="Download Logs"
-                >
-                  <span class="material-symbols-outlined text-lg"
-                    >download</span
+                    <span class="material-symbols-outlined text-lg"
+                      >block</span
+                    >
+                  </button>
+                  <button
+                    data-action="download-logs"
+                    class="p-2 rounded-md text-[#90cba4] hover:text-primary hover:bg-[#2e573a]/50 transition-colors"
+                    title="Download Logs"
                   >
-                </button>
+                    <span class="material-symbols-outlined text-lg"
+                      >download</span
+                    >
+                  </button>
+                </div>
+              </div>
+              <div class="mt-3 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                <div class="flex flex-col gap-2 min-w-0 flex-1 lg:flex-row lg:items-center">
+                  <div
+                    class="flex items-center gap-2 bg-[#102316] rounded-lg p-1.5 border border-[#2e573a] min-w-0 flex-1"
+                  >
+                    <span class="text-[10px] uppercase tracking-wide text-[#5d856b] px-1 shrink-0"
+                      >Service</span
+                    >
+                    <div
+                      id="logServiceSelector"
+                      class="flex gap-1 min-w-0 flex-1 overflow-x-auto"
+                    >
+                      <!-- Service buttons will be rendered here -->
+                      <button
+                        data-action="filter-service"
+                        data-service="all"
+                        class="h-7 px-3 rounded-md text-xs font-semibold whitespace-nowrap border bg-[#2e573a] text-white border-[#3f7a52]"
+                      >
+                        all
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    class="flex items-center gap-2 bg-[#102316] rounded-lg p-1.5 border border-[#2e573a] shrink-0"
+                  >
+                    <span class="text-[10px] uppercase tracking-wide text-[#5d856b] px-1 shrink-0"
+                      >Severity</span
+                    >
+                    <div
+                      id="logSeverity"
+                      class="flex gap-1"
+                    >
+                      <button
+                        data-action="filter-severity"
+                        data-severity="all"
+                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#2e573a] text-primary border-[#3f7a52]"
+                      >
+                        All
+                      </button>
+                      <button
+                        data-action="filter-severity"
+                        data-severity="error"
+                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#102316] text-[#90cba4] border-transparent hover:bg-[#1a3322] hover:text-white"
+                      >
+                        Error
+                      </button>
+                      <button
+                        data-action="filter-severity"
+                        data-severity="warn"
+                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#102316] text-[#90cba4] border-transparent hover:bg-[#1a3322] hover:text-white"
+                      >
+                        Warn
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button
+                    id="toggleLive"
+                    data-action="toggle-live"
+                    class="h-8 px-3 rounded-md text-xs font-semibold bg-[#2e573a] text-white hover:bg-[#366b47] transition-colors"
+                  >
+                    Live: Off
+                  </button>
+                  <button
+                    data-action="refresh-logs"
+                    class="h-8 px-3 rounded-md text-xs font-semibold text-[#90cba4] hover:text-white hover:bg-[#2e573a]/50 transition-colors"
+                  >
+                    Refresh
+                  </button>
+                </div>
               </div>
             </div>
             <div
-              class="flex-1 overflow-y-auto p-4 terminal-text text-xs space-y-1 bg-[#0c1810] custom-scrollbar"
+              class="flex-1 overflow-y-auto px-4 pb-4 pt-2 terminal-text text-xs bg-[#0c1810] custom-scrollbar"
             >
-              <pre id="logOutput" class="font-mono whitespace-pre-wrap">
-Select an environment to view logs.</pre
-              >
+              <pre id="logOutput" class="m-0 font-mono whitespace-pre-wrap">Select an environment to view logs.</pre>
             </div>
           </div>
           <div
@@ -433,7 +452,8 @@ Select an environment to view logs.</pre
             ></div>
           </div>
           <div
-            class="h-1/3 flex flex-col rounded-xl border border-[#2e573a] bg-[#0c1810] overflow-hidden shadow-lg"
+            id="terminalPanel"
+            class="h-1/3 min-h-0 flex flex-col rounded-xl border border-[#2e573a] bg-[#0c1810] overflow-hidden shadow-lg relative z-10 transform-gpu"
           >
             <div
               class="flex items-center justify-between p-2 pl-3 border-b border-[#2e573a] bg-[#1a3322]"
@@ -447,55 +467,41 @@ Select an environment to view logs.</pre
                   >Terminal — bash</span
                 >
               </div>
-              <div class="flex items-center gap-3">
-                <div class="flex gap-2">
-                  <button
-                    data-action="start-embedded-terminal"
-                    class="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors"
-                    title="Open Shell"
+              <div class="flex items-center gap-2">
+                <button
+                  data-action="start-embedded-terminal"
+                  class="px-2.5 py-1 rounded text-xs font-medium bg-[#22492f] text-slate-100 hover:bg-[#2e573a] transition-colors border border-[#366b47]"
+                  title="Open Shell"
+                >
+                  Open Shell
+                </button>
+                <button
+                  data-action="toggle-terminal-modal"
+                  class="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                  title="Expand Terminal"
+                >
+                  <span
+                    id="terminalExpandIcon"
+                    class="material-symbols-outlined text-sm"
+                    >open_in_full</span
                   >
-                    <span class="material-symbols-outlined text-sm"
-                      >add</span
-                    >
-                  </button>
-                  <button
-                    data-action="reset-shell-users"
-                    class="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors flex items-center"
-                    title="Terminal Settings"
-                  >
-                    <span class="material-symbols-outlined text-sm"
-                      >settings</span
-                    >
-                  </button>
-                  <select id="shellUser" class="hidden">
-                    <option value="">Auto</option>
-                  </select>
-                  <select id="shellCommand" class="hidden">
-                    <option value="bash">bash</option>
-                  </select>
-                  <button
-                    class="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors"
-                    title="Expand"
-                  >
-                    <span class="material-symbols-outlined text-sm"
-                      >open_in_full</span
-                    >
-                  </button>
-                  <button
-                    class="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors"
-                    title="Close"
-                  >
-                    <span class="material-symbols-outlined text-sm"
-                      >close</span
-                    >
-                  </button>
-                </div>
+                </button>
+                <select id="shellUser" class="hidden">
+                  <option value="">Auto</option>
+                </select>
+                <select id="shellCommand" class="hidden">
+                  <option value="bash">bash</option>
+                </select>
               </div>
             </div>
             <div
-              id="terminalContainer"
-              class="flex-1 overflow-hidden bg-[#0c1810]"
-            ></div>
+              class="flex-1 min-h-0 overflow-hidden bg-[#0c1810] p-4 pb-6"
+            >
+              <div
+                id="terminalContainer"
+                class="h-full min-h-0 w-full overflow-hidden bg-[#0c1810]"
+              ></div>
+            </div>
           </div>
         </div>
       </div>

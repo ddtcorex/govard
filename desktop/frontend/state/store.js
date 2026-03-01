@@ -5,6 +5,7 @@ const state = {
   selectedSeverity: "all",
   logQuery: "",
   liveLogsEnabled: false,
+  terminalModalOpen: false,
   syncConfigs: {},
 };
 

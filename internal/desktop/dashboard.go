@@ -19,6 +19,7 @@ import (
 type projectInfo struct {
 	name         string
 	services     map[string]bool
+	serviceState map[string]string
 	runningCount int
 	totalCount   int
 	containers   []string
@@ -49,8 +50,9 @@ func buildDashboardInternal() (Dashboard, error) {
 				info := projects[projectName]
 				if info == nil {
 					info = &projectInfo{
-						name:     projectName,
-						services: map[string]bool{},
+						name:         projectName,
+						services:     map[string]bool{},
+						serviceState: map[string]string{},
 					}
 					projects[projectName] = info
 				}
@@ -62,6 +64,7 @@ func buildDashboardInternal() (Dashboard, error) {
 				}
 				if serviceName != "" {
 					info.services[serviceName] = true
+					info.serviceState[serviceName] = mergeServiceState(info.serviceState[serviceName], c.State)
 				}
 
 				if info.workingDir == "" {
@@ -157,7 +160,7 @@ func buildDashboardInternal() (Dashboard, error) {
 				env.Framework = displayFramework(info.config.Framework)
 				env.PHP = info.config.Stack.PHPVersion
 				env.Database = formatDatabase(info.config.Stack.DBType, info.config.Stack.DBVersion)
-				env.Services = deriveServices(info.config)
+				env.Services = deriveServices(info.config, info.serviceState)
 				env.Technologies = buildTechnologies(env)
 				if entry.Domain != "" {
 					env.Name = entry.Domain
@@ -357,7 +360,7 @@ func buildEnvironment(info *projectInfo) Environment {
 		env.Framework = displayFramework(info.config.Framework)
 		env.PHP = info.config.Stack.PHPVersion
 		env.Database = formatDatabase(info.config.Stack.DBType, info.config.Stack.DBVersion)
-		env.Services = deriveServices(info.config)
+		env.Services = deriveServices(info.config, info.serviceState)
 		env.ServiceTargets = collectServiceTargets(info)
 		if info.workingDir != "" {
 			env.EnvVars = engine.ParseDotEnv(filepath.Join(info.workingDir, ".env"))
@@ -369,7 +372,7 @@ func buildEnvironment(info *projectInfo) Environment {
 		env.Framework = "Unknown"
 		env.PHP = "-"
 		env.Database = "-"
-		env.Services = fallbackServices(info.services)
+		env.Services = fallbackServices(info.services, info.serviceState)
 		env.ServiceTargets = collectServiceTargets(info)
 	}
 
@@ -475,14 +478,16 @@ func loadProjectInfo(project string) (*projectInfo, error) {
 	}
 
 	info := &projectInfo{
-		name:     projectName,
-		services: map[string]bool{},
+		name:         projectName,
+		services:     map[string]bool{},
+		serviceState: map[string]string{},
 	}
 
 	for _, c := range containers {
 		_, service := extractProjectAndService(c)
 		if service != "" {
 			info.services[service] = true
+			info.serviceState[service] = mergeServiceState(info.serviceState[service], c.State)
 		}
 		if c.State == "running" {
 			info.runningCount++

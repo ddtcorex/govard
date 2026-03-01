@@ -286,10 +286,29 @@ export const renderProjectHero = (
     }
   }
   if (refs.heroRestartBtn) {
+    const isStopped = status !== "running" && status !== "warning";
+    const action = isStopped ? "env-start" : "env-restart";
+    const label = isStopped ? "Start" : "Restart";
+    const icon = isStopped ? "play_arrow" : "restart_alt";
+
+    refs.heroRestartBtn.dataset.action = action;
     refs.heroRestartBtn.dataset.env = selectedProject;
+    refs.heroRestartBtn.title = `${label} Environment`;
+    refs.heroRestartBtn.innerHTML = `
+      <span class="material-symbols-outlined text-lg">${icon}</span>
+      ${label}
+    `;
   }
   if (refs.heroStopBtn) {
     refs.heroStopBtn.dataset.env = selectedProject;
+    const isStopped = status !== "running" && status !== "warning";
+    refs.heroStopBtn.disabled = isStopped;
+    refs.heroStopBtn.title = isStopped
+      ? "Environment is not running"
+      : "Stop Environment";
+    refs.heroStopBtn.className = isStopped
+      ? "h-12 w-12 bg-[#13261a] text-slate-500 border border-[#2e573a] rounded-lg transition-all flex items-center justify-center cursor-not-allowed opacity-70"
+      : "h-12 w-12 bg-red-600 text-white border border-red-500 rounded-lg hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/20";
   }
 
   if (refs.envVarsList) {
@@ -302,8 +321,49 @@ export const renderProjectHero = (
   }
 };
 
+const inferServiceTarget = (service = {}) => {
+  const explicit = String(service.Target || service.target || "")
+    .trim()
+    .toLowerCase();
+  if (explicit) {
+    return explicit;
+  }
+
+  const name = String(service.Name || service.name || "")
+    .trim()
+    .toLowerCase();
+
+  if (name.includes("php")) return "php";
+  if (
+    name.includes("maria") ||
+    name.includes("mysql") ||
+    name.includes("postgres") ||
+    name.includes("database") ||
+    name.includes("db")
+  ) {
+    return "db";
+  }
+  if (name.includes("opensearch")) return "opensearch";
+  if (name.includes("elastic")) return "elasticsearch";
+  if (name.includes("redis")) return "redis";
+  if (name.includes("valkey")) return "valkey";
+  if (name.includes("rabbit")) return "rabbitmq";
+  if (name.includes("varnish")) return "varnish";
+  if (
+    name.includes("nginx") ||
+    name.includes("apache") ||
+    name.includes("proxy") ||
+    name.includes("web")
+  ) {
+    return "web";
+  }
+
+  return "web";
+};
+
 export const renderActiveServices = (container, env) => {
   if (!container) return;
+  const project = projectKey(env);
 
   const services = Array.isArray(env?.Services)
     ? env.Services
@@ -325,6 +385,7 @@ export const renderActiveServices = (container, env) => {
       const status = String(
         service.Status || service.status || "stopped",
       ).toLowerCase();
+      const serviceTarget = inferServiceTarget(service);
       const isHealthy =
         status === "healthy" || status === "running" || status === "up";
       const statusColor = isHealthy ? "text-green-400" : "text-amber-400";
@@ -363,7 +424,7 @@ export const renderActiveServices = (container, env) => {
       }
 
       return `
-        <div class="glass-panel p-4 rounded-xl border border-[#2e573a] hover:border-primary/30 transition-all flex items-center justify-between group">
+        <div class="glass-panel p-4 rounded-xl border border-[#2e573a] hover:border-primary/30 transition-all flex items-center justify-between">
           <div class="flex items-center gap-4">
             <div class="p-2 rounded ${iconBg} ${iconText} border ${iconBorder}">
               <span class="material-symbols-outlined">${icon}</span>
@@ -377,11 +438,23 @@ export const renderActiveServices = (container, env) => {
               </div>
             </div>
           </div>
-          <div class="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors" title="View Logs" data-action="switch-tab" data-tab="logs">
+          <div class="flex items-center gap-3">
+            <button
+              class="p-1.5 rounded bg-[#13261a] border border-[#2e573a] text-slate-300 hover:text-white hover:bg-[#22492f] transition-colors"
+              title="View Logs"
+              data-action="open-service-logs"
+              data-project="${escapeHTML(project)}"
+              data-service="${escapeHTML(serviceTarget)}"
+            >
               <span class="material-symbols-outlined text-lg">list_alt</span>
             </button>
-            <button class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors" title="Terminal" data-action="switch-tab" data-tab="logs">
+            <button
+              class="p-1.5 rounded bg-[#13261a] border border-[#2e573a] text-slate-300 hover:text-white hover:bg-[#22492f] transition-colors"
+              title="Open Terminal"
+              data-action="open-service-shell"
+              data-project="${escapeHTML(project)}"
+              data-service="${escapeHTML(serviceTarget)}"
+            >
               <span class="material-symbols-outlined text-lg">terminal</span>
             </button>
           </div>

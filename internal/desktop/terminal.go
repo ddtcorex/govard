@@ -39,9 +39,10 @@ func (s *LogService) StartTerminal(project string, service string, user string, 
 		return "", err
 	}
 
-	containerName := resolveShellContainer(info, service)
+	targetService := resolveShellServiceName(info, service)
+	containerName := resolveShellContainer(info, targetService)
 	chosenShell := normalizeShell(shell)
-	chosenUser := normalizeShellUser(info, service, user)
+	chosenUser := normalizeShellUser(info, targetService, user)
 
 	args := []string{"exec", "-it"}
 	if chosenUser != "" {
@@ -52,7 +53,7 @@ func (s *LogService) StartTerminal(project string, service string, user string, 
 	cmd := exec.Command("docker", args...)
 	cmd.Dir = filepath.Clean(info.workingDir)
 
-	sessionID := fmt.Sprintf("%s-%s", project, service)
+	sessionID := fmt.Sprintf("%s-%s", project, targetService)
 	return s.startSession(sessionID, cmd)
 }
 
