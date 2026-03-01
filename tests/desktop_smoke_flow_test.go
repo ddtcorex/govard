@@ -75,7 +75,7 @@ remotes:
 	defer restore()
 
 	app := desktop.NewApp()
-	planMessage := app.RunRemoteSyncPreset(
+	planMessage, _ := app.Remote.RunRemoteSyncPreset(
 		projectRoot,
 		"staging",
 		"db",
@@ -106,38 +106,62 @@ remotes:
 		}
 	}
 
-	saveShellMessage := app.SetShellUser("smoke", "www-data")
+	saveShellMessage, err := app.SetShellUser("smoke", "www-data")
+	if err != nil {
+		t.Fatalf("set shell user: %v", err)
+	}
 	if !strings.Contains(strings.ToLower(saveShellMessage), "saved shell user") {
 		t.Fatalf("unexpected shell save message: %q", saveShellMessage)
 	}
-	if got := app.GetShellUser("smoke"); got != "www-data" {
-		t.Fatalf("expected shell user www-data, got %q", got)
+	if got, err := app.GetShellUser("smoke"); err != nil || got != "www-data" {
+		t.Fatalf("expected shell user www-data, got %q (err: %v)", got, err)
 	}
-	resetShellMessage := app.ResetShellUsers()
+	resetShellMessage, err := app.ResetShellUsers()
+	if err != nil {
+		t.Fatalf("reset shell users: %v", err)
+	}
 	if !strings.Contains(strings.ToLower(resetShellMessage), "reset") {
 		t.Fatalf("unexpected shell reset message: %q", resetShellMessage)
 	}
 
-	settingsMessage := app.UpdateSettings("dark", "smoke.test", "firefox", "vscode", "desktop")
+	settingsMessage, err := app.Settings.UpdateSettings(desktop.DesktopSettings{
+		Theme:              "dark",
+		ProxyTarget:        "smoke.test",
+		PreferredBrowser:   "default",
+		CodeEditor:         "code",
+		DBClientPreference: "desktop",
+	})
+	if err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
 	if settingsMessage != "Settings updated" {
 		t.Fatalf("unexpected settings message: %q", settingsMessage)
 	}
-	settings := app.GetSettings()
+	settings, _ := app.Settings.GetSettings()
 	if settings.ProxyTarget != "smoke.test" {
 		t.Fatalf("expected normalized proxy target smoke.test, got %q", settings.ProxyTarget)
 	}
 
-	mailAction := app.QuickAction("open-mail-client")
+	mailAction, err := app.QuickAction("open-mail-client")
+	if err != nil {
+		t.Fatalf("quick action mail: %v", err)
+	}
 	if !strings.Contains(strings.ToLower(mailAction), "mailpit") {
 		t.Fatalf("expected mail quick action message, got %q", mailAction)
 	}
-	dbAction := app.QuickActionForProject("open-db-client", "smoke")
+	dbAction, err := app.QuickActionForProject("open-db-client", "smoke")
+	if err != nil {
+		t.Fatalf("quick action db: %v", err)
+	}
 	if !strings.Contains(strings.ToLower(dbAction), "opening db client") {
 		t.Fatalf("expected db quick action message, got %q", dbAction)
 	}
-	unsupportedAction := app.QuickActionForProject("open-folder", "smoke")
-	if !strings.Contains(unsupportedAction, "unsupported action open-folder") {
-		t.Fatalf("expected explicit unsupported action message, got %q", unsupportedAction)
+	unsupportedAction, err := app.QuickActionForProject("other", "smoke")
+	if err == nil {
+		t.Fatalf("expected error for unsupported action, got message: %q", unsupportedAction)
+	}
+	if !strings.Contains(err.Error(), "unknown action") {
+		t.Fatalf("expected explicit unknown action error, got %q", err.Error())
 	}
 }
 

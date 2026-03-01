@@ -5,6 +5,9 @@ export const createShellController = ({
   onStatus,
   onToast,
 }) => {
+  const updateRefs = (newRefs) => {
+    refs = newRefs;
+  };
   let term = null;
   let fitAddon = null;
   let currentSessionID = null;
@@ -234,6 +237,7 @@ export const createShellController = ({
   };
 
   return {
+    updateRefs,
     loadShellUser,
     saveShellUser,
     openShell,

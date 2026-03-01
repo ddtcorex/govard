@@ -36,6 +36,9 @@ export const createSettingsController = ({
   onStatus,
   onToast,
 }) => {
+  const updateRefs = (newRefs) => {
+    refs = newRefs;
+  };
   const toggleDrawer = (open) => {
     if (!refs.settingsDrawer) {
       return;
@@ -73,13 +76,13 @@ export const createSettingsController = ({
     const codeEditor = refs.codeEditor?.value || "";
     const dbClientPreference = refs.dbClientPreference?.value || "desktop";
     try {
-      const message = await bridge.updateSettings(
+      const message = await bridge.updateSettings({
         theme,
         proxyTarget,
         preferredBrowser,
         codeEditor,
         dbClientPreference,
-      );
+      });
       applyTheme(theme);
       onStatus("Settings saved successfully.");
       onToast("Settings saved successfully.", "success");
@@ -104,4 +107,101 @@ export const createSettingsController = ({
   };
 
   return { toggleDrawer, load, save, reset };
+};
+
+export const renderSettingsDrawer = (container) => {
+  if (!container) return;
+  container.innerHTML = `
+      <div
+        class="drawer hidden fixed inset-0 z-[100] bg-[#0c1810]/40 backdrop-blur-sm"
+        id="settingsDrawer"
+        aria-hidden="true"
+      >
+        <div
+          class="bg-[#1a3322] border-l border-[#2e573a] h-full ml-auto w-[420px] p-8 flex flex-col gap-6 shadow-2xl"
+        >
+          <div
+            class="flex justify-between items-center mb-4 border-b border-[#2e573a] pb-4"
+          >
+            <h3 class="text-white text-lg font-bold">Govard Settings</h3>
+            <button
+              class="p-2 rounded hover:bg-white/5 text-slate-400 hover:text-white flex items-center justify-center h-9 w-9"
+              id="closeSettings"
+              type="button"
+            >
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+          <!-- Settings fields -->
+          <div class="flex flex-col gap-6 overflow-y-auto pr-2">
+            <label
+              class="flex flex-col gap-2 text-sm font-medium text-slate-300"
+            >
+              Theme
+              <select
+                id="themeSelect"
+                class="bg-[#102316] border border-[#2e573a] rounded-lg px-4 py-3 text-white outline-none focus:border-primary/50"
+              >
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label
+              class="flex flex-col gap-2 text-sm font-medium text-slate-300"
+            >
+              Proxy target
+              <input
+                id="proxyTarget"
+                type="text"
+                placeholder="govard.test"
+                class="bg-[#102316] border border-[#2e573a] rounded-lg px-4 py-3 text-white outline-none focus:border-primary/50"
+              />
+            </label>
+            <label
+              class="flex flex-col gap-2 text-sm font-medium text-slate-300"
+            >
+              Code Editor (IDE)
+              <input
+                id="codeEditor"
+                type="text"
+                placeholder="code"
+                class="bg-[#102316] border border-[#2e573a] rounded-lg px-4 py-3 text-white outline-none focus:border-primary/50"
+              />
+            </label>
+            <label
+              class="flex flex-col gap-2 text-sm font-medium text-slate-300"
+            >
+              Preferred browser
+              <input
+                id="preferredBrowser"
+                type="text"
+                placeholder="firefox"
+                class="bg-[#102316] border border-[#2e573a] rounded-lg px-4 py-3 text-white outline-none focus:border-primary/50"
+              />
+            </label>
+            <label
+              class="flex flex-col gap-2 text-sm font-medium text-slate-300"
+            >
+              Database Client
+              <select
+                id="dbClientPreference"
+                class="bg-[#102316] border border-[#2e573a] rounded-lg px-4 py-3 text-white outline-none focus:border-primary/50 appearance-none cursor-pointer"
+              >
+                <option value="desktop">Local Client (e.g. TablePlus)</option>
+                <option value="pma">PHPMyAdmin (Proxy Container)</option>
+              </select>
+            </label>
+          </div>
+          <div class="mt-auto">
+            <button
+              class="w-full px-5 py-3 bg-[#22492f] border border-[#366b47] rounded-lg text-sm text-white hover:bg-[#2e573a] transition-all"
+              data-action="reset-settings"
+            >
+              Reset Settings
+            </button>
+          </div>
+        </div>
+      </div>
+  `;
 };

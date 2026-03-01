@@ -61,16 +61,22 @@ test("logs tab exposes shell controls contract", async () => {
     new URL("../../desktop/frontend/index.html", import.meta.url),
     "utf8",
   );
+  const logsJS = await readFile(
+    new URL("../../desktop/frontend/modules/logs.js", import.meta.url),
+    "utf8",
+  );
+  const combined = html + logsJS;
+
   for (const id of ["shellUser", "shellCommand"]) {
     assert.equal(
-      html.includes(`id="${id}"`),
+      combined.includes(`id="${id}"`),
       true,
       `missing shell control ${id}`,
     );
   }
   for (const action of ["start-embedded-terminal", "reset-shell-users"]) {
     assert.equal(
-      html.includes(`data-action="${action}"`),
+      combined.includes(`data-action="${action}"`),
       true,
       `missing shell action ${action}`,
     );

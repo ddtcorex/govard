@@ -24,6 +24,11 @@ func PrefixServiceLogLinesForTest(service string, raw string) string {
 	return prefixServiceLogLines(service, raw)
 }
 
+// NormalizeOnboardingDomainForTest exposes domain normalization for tests.
+func NormalizeOnboardingDomainForTest(domain string) string {
+	return normalizeOnboardingDomain(domain)
+}
+
 // BuildOperationNotificationForTest exposes operation notification formatting for tests.
 func BuildOperationNotificationForTest(event engine.OperationEvent) (OperationNotification, bool) {
 	return buildOperationNotification(event)
@@ -37,35 +42,6 @@ func SelectOperationEventsSinceForTest(events []engine.OperationEvent, cursor st
 // OperationEventSignatureForTest exposes operation event signature generation for tests.
 func OperationEventSignatureForTest(event engine.OperationEvent) string {
 	return operationEventSignature(event)
-}
-
-// CalculateCPUPercentForTest exposes CPU percentage math for tests.
-func CalculateCPUPercentForTest(
-	currentUsage uint64,
-	previousUsage uint64,
-	currentSystem uint64,
-	previousSystem uint64,
-	onlineCPUs uint32,
-	perCPUCount int,
-) float64 {
-	return calculateCPUPercentFromDeltas(
-		currentUsage,
-		previousUsage,
-		currentSystem,
-		previousSystem,
-		onlineCPUs,
-		perCPUCount,
-	)
-}
-
-// BuildMetricsWarningsForTest exposes metrics warning generation for tests.
-func BuildMetricsWarningsForTest(projects []ProjectResourceMetric, input []string) []string {
-	return buildMetricsWarnings(projects, input)
-}
-
-// BytesToMBForTest exposes bytes-to-MB conversion for tests.
-func BytesToMBForTest(bytes uint64) float64 {
-	return bytesToMB(bytes)
 }
 
 // BuildRemoteEntriesForTest exposes remote snapshot rendering for tests.
@@ -164,16 +140,17 @@ func OnboardProjectWithOptionsForPathForTest(
 	rabbitMQEnabled bool,
 	elasticsearchEnabled bool,
 ) (string, error) {
-	return onboardProjectWithOptions(
-		projectPath,
-		framework,
-		domain,
-		varnishEnabled,
-		redisEnabled,
-		rabbitMQEnabled,
-		elasticsearchEnabled,
-		true,
-	)
+	return onboardProjectWithOptionsInternal(OnboardInput{
+		ProjectPath:          projectPath,
+		Framework:            framework,
+		Domain:               domain,
+		VarnishEnabled:       varnishEnabled,
+		RedisEnabled:         redisEnabled,
+		RabbitMQEnabled:      rabbitMQEnabled,
+		ElasticsearchEnabled: elasticsearchEnabled,
+		ApplyOverrides:       true,
+		SkipIDE:              false,
+	})
 }
 
 // LooksLikeGovardForTest exposes desktop project filtering for tests.

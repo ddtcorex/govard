@@ -1,5 +1,4 @@
-const bridge = window.go?.desktop?.App;
-const runtime = window.runtime;
+const getBridge = () => window.go?.desktop?.App;
 
 const call = async (fn, ...args) => {
   if (!fn) {
@@ -9,20 +8,30 @@ const call = async (fn, ...args) => {
 };
 
 export const desktopBridge = {
-  runtime,
-  async getDashboard() {
-    return call(bridge?.GetDashboard?.bind(bridge));
+  get runtime() {
+    return window.runtime;
+  },
+  async getDashboard(...args) {
+    if (args && args.length > 0) {
+      console.warn("ROGUE ARGS SENT TO GETDASHBOARD:", args);
+    }
+    const bridge = getBridge();
+    return call(bridge?.GetDashboard?.bind(bridge)); // explicitly drop args
   },
   async getCurrentUser() {
+    const bridge = getBridge();
     return call(bridge?.GetUserInfo?.bind(bridge));
   },
   async getSystemMetrics() {
+    const bridge = getBridge();
     return call(bridge?.GetSystemMetrics?.bind(bridge));
   },
   async getResourceMetrics() {
+    const bridge = getBridge();
     return call(bridge?.GetResourceMetrics?.bind(bridge));
   },
   async pickProjectDirectory() {
+    const bridge = getBridge();
     return call(bridge?.PickProjectDirectory?.bind(bridge));
   },
   async onboardProject(
@@ -31,25 +40,28 @@ export const desktopBridge = {
     domain = "",
     serviceOptions = {},
   ) {
-    const options = serviceOptions || {};
-    return call(
-      bridge?.OnboardProject?.bind(bridge),
+    const bridge = getBridge();
+    const opts = serviceOptions || {};
+    return call(bridge?.OnboardProject?.bind(bridge), {
       projectPath,
       framework,
       domain,
-      Boolean(options.varnish),
-      Boolean(options.redis),
-      Boolean(options.rabbitmq),
-      Boolean(options.elasticsearch),
-    );
+      varnishEnabled: Boolean(opts.varnish),
+      redisEnabled: Boolean(opts.redis),
+      rabbitMQEnabled: Boolean(opts.rabbitmq),
+      elasticsearchEnabled: Boolean(opts.elasticsearch),
+    });
   },
   async getRemotes(project) {
+    const bridge = getBridge();
     return call(bridge?.GetRemotes?.bind(bridge), project);
   },
   async testRemote(project, remoteName) {
+    const bridge = getBridge();
     return call(bridge?.TestRemote?.bind(bridge), project, remoteName);
   },
   async runRemoteSyncPreset(project, remoteName, preset, syncConfig = {}) {
+    const bridge = getBridge();
     return call(
       bridge?.RunRemoteSyncPreset?.bind(bridge),
       project,
@@ -59,6 +71,7 @@ export const desktopBridge = {
     );
   },
   async runRemoteSyncBackground(project, remoteName, preset, syncConfig = {}) {
+    const bridge = getBridge();
     return call(
       bridge?.RunRemoteSyncBackground?.bind(bridge),
       project,
@@ -68,30 +81,39 @@ export const desktopBridge = {
     );
   },
   async getSyncPresetOptions(preset) {
+    const bridge = getBridge();
     return call(bridge?.GetSyncPresetOptions?.bind(bridge), preset);
   },
   async startEnvironment(project) {
+    const bridge = getBridge();
     return call(bridge?.StartEnvironment?.bind(bridge), project);
   },
   async stopEnvironment(project) {
+    const bridge = getBridge();
     return call(bridge?.StopEnvironment?.bind(bridge), project);
   },
   async restartEnvironment(project) {
+    const bridge = getBridge();
     return call(bridge?.RestartEnvironment?.bind(bridge), project);
   },
   async toggleEnvironment(project) {
+    const bridge = getBridge();
     return call(bridge?.ToggleEnvironment?.bind(bridge), project);
   },
   async openEnvironment(project) {
+    const bridge = getBridge();
     return call(bridge?.OpenEnvironment?.bind(bridge), project);
   },
   async quickActionForProject(action, project) {
+    const bridge = getBridge();
     return call(bridge?.QuickActionForProject?.bind(bridge), action, project);
   },
   async getLogsForService(project, service) {
+    const bridge = getBridge();
     return call(bridge?.GetLogsForService?.bind(bridge), project, service);
   },
   async startLogStreamForService(project, service) {
+    const bridge = getBridge();
     return call(
       bridge?.StartLogStreamForService?.bind(bridge),
       project,
@@ -99,9 +121,11 @@ export const desktopBridge = {
     );
   },
   async stopLogStream() {
+    const bridge = getBridge();
     return call(bridge?.StopLogStream?.bind(bridge));
   },
   async startTerminal(project, service, user, shell) {
+    const bridge = getBridge();
     return call(
       bridge?.StartTerminal?.bind(bridge),
       project,
@@ -111,15 +135,19 @@ export const desktopBridge = {
     );
   },
   async startGovardTerminal(project, argsList) {
+    const bridge = getBridge();
     return call(bridge?.StartGovardTerminal?.bind(bridge), project, argsList);
   },
   async writeTerminal(id, data) {
+    const bridge = getBridge();
     return call(bridge?.WriteTerminal?.bind(bridge), id, data);
   },
   async resizeTerminal(id, cols, rows) {
+    const bridge = getBridge();
     return call(bridge?.ResizeTerminal?.bind(bridge), id, cols, rows);
   },
   async openShellForService(project, service, user, shell) {
+    const bridge = getBridge();
     return call(
       bridge?.OpenShellForService?.bind(bridge),
       project,
@@ -129,21 +157,27 @@ export const desktopBridge = {
     );
   },
   async getShellUser(project) {
+    const bridge = getBridge();
     return call(bridge?.GetShellUser?.bind(bridge), project);
   },
   async setShellUser(project, user) {
+    const bridge = getBridge();
     return call(bridge?.SetShellUser?.bind(bridge), project, user);
   },
   async resetShellUsers() {
+    const bridge = getBridge();
     return call(bridge?.ResetShellUsers?.bind(bridge));
   },
   async getSettings() {
+    const bridge = getBridge();
     return call(bridge?.GetSettings?.bind(bridge));
   },
   async getMailpitURL() {
+    const bridge = getBridge();
     return call(bridge?.GetMailpitURL?.bind(bridge));
   },
   async updateSettings(theme, proxyTarget, preferredBrowser, codeEditor) {
+    const bridge = getBridge();
     return call(
       bridge?.UpdateSettings?.bind(bridge),
       theme,
@@ -153,6 +187,7 @@ export const desktopBridge = {
     );
   },
   async resetSettings() {
+    const bridge = getBridge();
     return call(bridge?.ResetSettings?.bind(bridge));
   },
 };

@@ -24,6 +24,12 @@ type UserInfo struct {
 	Name     string `json:"name"`
 }
 
+type Service struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Port   string `json:"port"`
+}
+
 type Environment struct {
 	Project        string            `json:"project"`
 	Domain         string            `json:"domain"`
@@ -33,44 +39,15 @@ type Environment struct {
 	Technologies   []string          `json:"technologies"`
 	PHP            string            `json:"php"`
 	Database       string            `json:"database"`
-	Services       []string          `json:"services"`
+	Services       []Service         `json:"services"`
 	ServiceTargets []string          `json:"serviceTargets"`
 	Status         string            `json:"status"`
 	EnvVars        map[string]string `json:"envVars,omitempty"`
 }
 
-type ResourceMetricsSnapshot struct {
-	UpdatedAt    string                  `json:"updatedAt"`
-	SystemCPU    float64                 `json:"systemCPU"`
-	SystemMemory float64                 `json:"systemMemory"`
-	Summary      ResourceMetricsSummary  `json:"summary"`
-	Projects     []ProjectResourceMetric `json:"projects"`
-	Warnings     []string                `json:"warnings"`
-}
-
 type SystemMetrics struct {
 	CPUUsage    float64 `json:"cpuUsage"`
 	MemoryUsage float64 `json:"memoryUsage"`
-}
-
-type ResourceMetricsSummary struct {
-	ActiveProjects int     `json:"activeProjects"`
-	CPUPercent     float64 `json:"cpuPercent"`
-	MemoryMB       float64 `json:"memoryMB"`
-	NetRxMB        float64 `json:"netRxMB"`
-	NetTxMB        float64 `json:"netTxMB"`
-	OOMProjects    int     `json:"oomProjects"`
-}
-
-type ProjectResourceMetric struct {
-	Project       string  `json:"project"`
-	Status        string  `json:"status"`
-	CPUPercent    float64 `json:"cpuPercent"`
-	MemoryMB      float64 `json:"memoryMB"`
-	MemoryPercent float64 `json:"memoryPercent"`
-	NetRxMB       float64 `json:"netRxMB"`
-	NetTxMB       float64 `json:"netTxMB"`
-	OOMKilled     bool    `json:"oomKilled"`
 }
 
 type RemoteSnapshot struct {

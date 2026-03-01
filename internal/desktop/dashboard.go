@@ -29,55 +29,57 @@ type projectInfo struct {
 	configLoaded bool
 }
 
-func buildDashboard() (Dashboard, error) {
+func buildDashboardInternal() (Dashboard, error) {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return Dashboard{}, err
-	}
-
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
-	if err != nil {
-		return Dashboard{}, err
-	}
 
 	projects := map[string]*projectInfo{}
 	warnings := []string{}
-	proxyRunning := isProxyRunning(containers)
-	for _, c := range containers {
-		projectName, serviceName := extractProjectAndService(c)
-		if projectName == "" {
-			continue
-		}
+	proxyRunning := false
 
-		info := projects[projectName]
-		if info == nil {
-			info = &projectInfo{
-				name:     projectName,
-				services: map[string]bool{},
-			}
-			projects[projectName] = info
-		}
+	// Docker connectivity is optional — if unavailable, fall back to registry-only mode
+	if cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation()); err == nil {
+		if containers, err := cli.ContainerList(ctx, container.ListOptions{All: true}); err == nil {
+			proxyRunning = isProxyRunning(containers)
+			for _, c := range containers {
+				projectName, serviceName := extractProjectAndService(c)
+				if projectName == "" {
+					continue
+				}
 
-		info.totalCount++
-		info.containers = append(info.containers, c.ID)
-		if c.State == "running" {
-			info.runningCount++
-		}
-		if serviceName != "" {
-			info.services[serviceName] = true
-		}
+				info := projects[projectName]
+				if info == nil {
+					info = &projectInfo{
+						name:     projectName,
+						services: map[string]bool{},
+					}
+					projects[projectName] = info
+				}
 
-		if info.workingDir == "" {
-			if wd := c.Labels["com.docker.compose.project.working_dir"]; wd != "" {
-				info.workingDir = wd
+				info.totalCount++
+				info.containers = append(info.containers, c.ID)
+				if c.State == "running" {
+					info.runningCount++
+				}
+				if serviceName != "" {
+					info.services[serviceName] = true
+				}
+
+				if info.workingDir == "" {
+					if wd := c.Labels["com.docker.compose.project.working_dir"]; wd != "" {
+						info.workingDir = wd
+					}
+				}
+				if len(info.configFiles) == 0 {
+					if files := c.Labels["com.docker.compose.project.config_files"]; files != "" {
+						info.configFiles = parseConfigFiles(files)
+					}
+				}
 			}
+		} else {
+			warnings = append(warnings, "Docker unavailable: "+err.Error())
 		}
-		if len(info.configFiles) == 0 {
-			if files := c.Labels["com.docker.compose.project.config_files"]; files != "" {
-				info.configFiles = parseConfigFiles(files)
-			}
-		}
+	} else {
+		warnings = append(warnings, "Docker client error: "+err.Error())
 	}
 
 	var environments []Environment
@@ -99,7 +101,7 @@ func buildDashboard() (Dashboard, error) {
 		runningServices += info.runningCount
 
 		for _, svc := range env.Services {
-			serviceSummary[svc] = true
+			serviceSummary[svc.Name] = true
 		}
 
 		if containsService(env.Services, "RabbitMQ") && env.Status == "running" {
@@ -125,6 +127,18 @@ func buildDashboard() (Dashboard, error) {
 				continue
 			}
 
+			// Check if we have dynamic info from registry entry
+			entryServices := map[string]bool{}
+			if entry.Framework != "" {
+				// Stub services if we know the framework but it's stopped
+				if entry.Framework == "magento2" {
+					entryServices["web"] = true
+					entryServices["php"] = true
+					entryServices["db"] = true
+					entryServices["redis"] = true
+				}
+			}
+
 			env := Environment{
 				Project:        projectName,
 				Domain:         entry.Domain,
@@ -132,16 +146,30 @@ func buildDashboard() (Dashboard, error) {
 				Framework:      "Unknown",
 				PHP:            "-",
 				Database:       "-",
-				Services:       []string{},
+				Services:       []Service{},
 				ServiceTargets: []string{"web"},
 				Status:         "stopped",
 			}
+
+			// Try to load detailed info from path if available
+			if info, err := loadProjectInfoFromPath(entry.Path); err == nil {
+				env.Domain = info.config.Domain
+				env.Framework = displayFramework(info.config.Framework)
+				env.PHP = info.config.Stack.PHPVersion
+				env.Database = formatDatabase(info.config.Stack.DBType, info.config.Stack.DBVersion)
+				env.Services = deriveServices(info.config)
+				env.Technologies = buildTechnologies(env)
+				if entry.Domain != "" {
+					env.Name = entry.Domain
+				}
+			}
+
 			if entry.Domain != "" {
 				env.Name = entry.Domain
 			}
 			env.ExtraDomains = entry.ExtraDomains
-			if framework := strings.TrimSpace(entry.Framework); framework != "" {
-				env.Framework = displayFramework(framework)
+			if env.Framework == "Unknown" && entry.Framework != "" {
+				env.Framework = displayFramework(entry.Framework)
 			}
 			environments = append(environments, env)
 			knownProjects[projectName] = true
@@ -182,6 +210,32 @@ func buildDashboard() (Dashboard, error) {
 		Environments:       environments,
 		Warnings:           uniqueStrings(warnings),
 	}, nil
+}
+
+// EnvironmentService methods
+
+func (s *EnvironmentService) GetDashboard() (Dashboard, error) {
+	return buildDashboardInternal()
+}
+
+func (s *EnvironmentService) StartEnvironment(project string) (string, error) {
+	return startEnvironment(project)
+}
+
+func (s *EnvironmentService) StopEnvironment(project string) (string, error) {
+	return stopEnvironment(project)
+}
+
+func (s *EnvironmentService) RestartEnvironment(project string) (string, error) {
+	return restartEnvironment(project)
+}
+
+func (s *EnvironmentService) ToggleEnvironment(project string) (string, error) {
+	return toggleEnvironment(project)
+}
+
+func (s *EnvironmentService) GetEnvironmentURL(project string) (string, error) {
+	return environmentURL(project)
 }
 
 func extractProjectAndService(c container.Summary) (string, string) {
@@ -319,220 +373,9 @@ func buildEnvironment(info *projectInfo) Environment {
 		env.ServiceTargets = collectServiceTargets(info)
 	}
 
-	var techs []string
-	if env.PHP != "" && env.PHP != "-" {
-		techs = append(techs, "PHP "+env.PHP)
-	}
-	if env.Database != "" && env.Database != "-" && env.Database != "No database" && env.Database != "None" {
-		techs = append(techs, env.Database)
-	}
-	for _, svc := range env.Services {
-		// Avoid duplicating the database since it's already in the list with version
-		svcLower := strings.ToLower(svc)
-		if svcLower != "mysql" && svcLower != "mariadb" && svcLower != "postgres" && svcLower != "postgresql" {
-			techs = append(techs, svc)
-		}
-	}
-	env.Technologies = uniqueStrings(techs)
+	env.Technologies = buildTechnologies(env)
 
 	return env
-}
-
-func titleCase(s string) string {
-	if s == "" {
-		return ""
-	}
-	return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
-}
-
-func displayFramework(framework string) string {
-	switch framework {
-	case "magento1":
-		return "Magento 1"
-	case "magento2":
-		return "Magento 2"
-	case "nextjs":
-		return "Next.js"
-	case "cakephp":
-		return "CakePHP"
-	default:
-		return titleCase(framework)
-	}
-}
-
-func formatDatabase(dbType, dbVersion string) string {
-	if dbType == "" || dbType == "none" {
-		return "No database"
-	}
-	label := titleCase(dbType)
-	lower := strings.ToLower(label)
-	if lower == "mariadb" {
-		label = "MariaDB"
-	} else if lower == "mysql" {
-		label = "MySQL"
-	} else if lower == "postgres" || lower == "postgresql" {
-		label = "PostgreSQL"
-	}
-
-	if dbVersion == "" {
-		return label
-	}
-	return fmt.Sprintf("%s %s", label, dbVersion)
-}
-
-func deriveServices(config engine.Config) []string {
-	var services []string
-	if config.Stack.Services.WebServer != "" {
-		services = append(services, titleCase(config.Stack.Services.WebServer))
-	}
-	if config.Stack.DBType != "" && config.Stack.DBType != "none" {
-		label := titleCase(config.Stack.DBType)
-		lower := strings.ToLower(label)
-		if lower == "mariadb" {
-			label = "MariaDB"
-		} else if lower == "mysql" {
-			label = "MySQL"
-		} else if lower == "postgres" || lower == "postgresql" {
-			label = "PostgreSQL"
-		}
-		services = append(services, label)
-	}
-	switch config.Stack.Services.Cache {
-	case "redis":
-		services = append(services, "Redis")
-	case "valkey":
-		services = append(services, "Valkey")
-	}
-	switch config.Stack.Services.Search {
-	case "opensearch":
-		services = append(services, "OpenSearch")
-	case "elasticsearch":
-		services = append(services, "Elasticsearch")
-	}
-	if config.Stack.Services.Queue == "rabbitmq" {
-		services = append(services, "RabbitMQ")
-	}
-	if config.Stack.Features.Varnish {
-		services = append(services, "Varnish")
-	}
-	return services
-}
-
-func fallbackServices(services map[string]bool) []string {
-	var out []string
-	for name := range services {
-		switch name {
-		case "redis":
-			out = append(out, "Redis")
-		case "elasticsearch":
-			out = append(out, "Search")
-		case "varnish":
-			out = append(out, "Varnish")
-		case "rabbitmq":
-			out = append(out, "RabbitMQ")
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func summarizeNames(environments []Environment) string {
-	var names []string
-	for _, env := range environments {
-		label := env.Domain
-		if label == "" {
-			label = env.Project
-		}
-		names = append(names, label)
-		if len(names) == 3 {
-			break
-		}
-	}
-	if len(names) == 0 {
-		return "No environments detected"
-	}
-	if len(environments) > len(names) {
-		return strings.Join(names, ", ") + "..."
-	}
-	return strings.Join(names, ", ")
-}
-
-func summarizeServices(services map[string]bool) string {
-	if len(services) == 0 {
-		return "No services detected"
-	}
-	ordered := []string{"PHP", "Nginx", "Apache", "MariaDB", "MySQL", "Redis", "Valkey", "OpenSearch", "Elasticsearch", "Varnish", "RabbitMQ"}
-	var present []string
-	for _, svc := range ordered {
-		if services[svc] {
-			present = append(present, svc)
-		}
-	}
-	for svc := range services {
-		found := false
-		for _, existing := range present {
-			if existing == svc {
-				found = true
-				break
-			}
-		}
-		if !found {
-			present = append(present, svc)
-		}
-	}
-	return strings.Join(present, ", ")
-}
-
-func collectServiceTargets(info *projectInfo) []string {
-	if info == nil {
-		return nil
-	}
-
-	ordered := []string{"web", "php", "db", "redis", "valkey", "elasticsearch", "opensearch", "varnish", "rabbitmq", "mail", "pma"}
-	var targets []string
-	for _, name := range ordered {
-		if info.services[name] {
-			targets = append(targets, name)
-		}
-	}
-	for name := range info.services {
-		found := false
-		for _, existing := range targets {
-			if existing == name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			targets = append(targets, name)
-		}
-	}
-	if len(targets) == 0 {
-		targets = append(targets, "web")
-	}
-	return targets
-}
-
-func uniqueStrings(values []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, value := range values {
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	return out
-}
-
-func containsService(services []string, target string) bool {
-	for _, svc := range services {
-		if svc == target {
-			return true
-		}
-	}
-	return false
 }
 
 func isProxyRunning(containers []container.Summary) bool {
@@ -541,15 +384,6 @@ func isProxyRunning(containers []container.Summary) bool {
 			continue
 		}
 		if nameMatches(c.Names, "proxy-caddy-1") {
-			return true
-		}
-	}
-	return false
-}
-
-func nameMatches(names []string, target string) bool {
-	for _, name := range names {
-		if strings.TrimPrefix(name, "/") == target {
 			return true
 		}
 	}

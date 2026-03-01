@@ -168,9 +168,12 @@ stack:
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
+	expectedDomain := "custom-shop.test"
+	// Verify custom domain was applied
 	if cfg.Domain != "custom-shop.test" {
-		t.Fatalf("expected domain custom-shop.test, got %s", cfg.Domain)
+		t.Errorf("expected domain custom-shop.test, got %s", cfg.Domain)
 	}
+
 	if !cfg.Stack.Features.Varnish {
 		t.Fatalf("expected varnish enabled after onboarding override")
 	}
@@ -191,7 +194,8 @@ stack:
 	if len(entries) != 1 {
 		t.Fatalf("expected one registry entry, got %d", len(entries))
 	}
-	if entries[0].Domain != "custom-shop.test" {
-		t.Fatalf("expected registry domain custom-shop.test, got %s", entries[0].Domain)
+	if entries[0].Domain != expectedDomain {
+		t.Fatalf("expected registry domain %s, got %s", expectedDomain, entries[0].Domain)
 	}
+
 }

@@ -2,16 +2,17 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "govard-desktop",
   "outputfilename": "govard-desktop",
-  "frontend:install": "",
-  "frontend:build": "",
+  "frontend:install": "yarn install",
+  "frontend:build": "yarn run build:css",
   "frontend:dev": "",
   "frontend:dir": "frontend",
   "author": {
-    "name": "",
-    "email": ""
+    "name": "DDTCoreX",
+    "email": "kaido4492@gmail.com"
   },
+  "options": {},
   "info": {
-    "companyName": "",
+    "companyName": "DDTCoreX",
     "productName": "Govard Desktop",
     "productVersion": "1.9.0"
   }

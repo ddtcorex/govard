@@ -16,6 +16,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type SyncInput struct {
+	Project    string          `json:"project"`
+	RemoteName string          `json:"remoteName"`
+	Preset     string          `json:"preset"`
+	Options    map[string]bool `json:"options"`
+}
+
 var defaultRunGovardCommandForDesktop = func(root string, args []string) (string, error) {
 	binary, err := exec.LookPath("govard")
 	if err != nil {
@@ -266,8 +273,8 @@ func runRemoteSyncBackgroundWithOptions(
 	}
 
 	done := make(chan struct{}, 2)
-	go scanPipe(ctx, stdout, "sync:stream", done)
-	go scanPipe(ctx, stderr, "sync:stream", done)
+	go scanLogPipe(ctx, stdout, "sync:output", done)
+	go scanLogPipe(ctx, stderr, "sync:output", done)
 
 	go func() {
 		<-done
@@ -585,6 +592,52 @@ func hasRemoteName(remotes []RemoteEntry, name string) bool {
 		}
 	}
 	return false
+}
+
+// RemoteService methods
+
+func (s *RemoteService) GetRemotes(project string) (RemoteSnapshot, error) {
+	snapshot, err := listProjectRemotes(project)
+	if err != nil {
+		return RemoteSnapshot{
+			Project:  project,
+			Remotes:  []RemoteEntry{},
+			Warnings: []string{},
+		}, err
+	}
+	return snapshot, nil
+}
+
+func (s *RemoteService) TestRemote(project string, remoteName string) (string, error) {
+	message, err := testRemote(project, remoteName)
+	if err != nil {
+		return "", err
+	}
+	return message, nil
+}
+
+func (s *RemoteService) GetSyncOptions(preset string) presetSyncOptions {
+	return buildPresetSyncOptionDefs(preset)
+}
+
+func (s *RemoteService) RunRemoteSyncPreset(project string, remoteName string, preset string, options map[string]bool) (string, error) {
+	message, err := runRemoteSyncPresetWithOptions(project, remoteName, preset, options)
+	if err != nil {
+		return "", err
+	}
+	return message, nil
+}
+
+func (s *RemoteService) RunRemoteSync(project string, remoteName string, preset string, options map[string]bool) (string, error) {
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	err := runRemoteSyncBackgroundWithOptions(ctx, project, remoteName, preset, options)
+	if err != nil {
+		return "", err
+	}
+	return "Sync started", nil
 }
 
 func writeDesktopOperationEvent(

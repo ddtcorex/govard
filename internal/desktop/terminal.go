@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/creack/pty"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type terminalSession struct {
@@ -20,15 +21,22 @@ type terminalSession struct {
 	cancel context.CancelFunc
 }
 
+type TerminalOptions struct {
+	User  string `json:"user"`
+	Shell string `json:"shell"`
+}
+
 var (
 	sessions   = make(map[string]*terminalSession)
 	sessionsMu sync.Mutex
 )
 
-func (app *App) StartTerminal(project string, service string, user string, shell string) string {
+// LogService methods
+
+func (s *LogService) StartTerminal(project string, service string, user string, shell string) (string, error) {
 	info, err := loadProjectInfo(project)
 	if err != nil {
-		return "error: " + err.Error()
+		return "", err
 	}
 
 	containerName := resolveShellContainer(info, service)
@@ -44,68 +52,14 @@ func (app *App) StartTerminal(project string, service string, user string, shell
 	cmd := exec.Command("docker", args...)
 	cmd.Dir = filepath.Clean(info.workingDir)
 
-	f, err := pty.Start(cmd)
-	if err != nil {
-		return "error: " + err.Error()
-	}
-
 	sessionID := fmt.Sprintf("%s-%s", project, service)
-	ctx, cancel := context.WithCancel(app.ctx)
-
-	sessionsMu.Lock()
-	if old, ok := sessions[sessionID]; ok {
-		old.cancel()
-		old.pty.Close()
-	}
-	sessions[sessionID] = &terminalSession{
-		id:     sessionID,
-		pty:    f,
-		cmd:    cmd,
-		ctx:    ctx,
-		cancel: cancel,
-	}
-	sessionsMu.Unlock()
-
-	// Read from PTY and emit to frontend
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			n, err := f.Read(buf)
-			if n > 0 {
-				emitEvent(app.ctx, "terminal:output", map[string]interface{}{
-					"id":   sessionID,
-					"data": string(buf[:n]),
-				})
-			}
-			if err != nil {
-				break
-			}
-		}
-		sessionsMu.Lock()
-		delete(sessions, sessionID)
-		sessionsMu.Unlock()
-		emitEvent(app.ctx, "terminal:exit", map[string]interface{}{
-			"id": sessionID,
-		})
-	}()
-
-	return sessionID
+	return s.startSession(sessionID, cmd)
 }
 
-func (app *App) WriteTerminal(sessionID string, data string) {
-	sessionsMu.Lock()
-	session, ok := sessions[sessionID]
-	sessionsMu.Unlock()
-
-	if ok {
-		_, _ = session.pty.Write([]byte(data))
-	}
-}
-
-func (app *App) StartGovardTerminal(project string, args []string) string {
+func (s *LogService) StartGovardTerminal(project string, args []string) (string, error) {
 	info, err := loadProjectInfo(project)
 	if err != nil {
-		return "error: " + err.Error()
+		return "", err
 	}
 
 	binary, err := exec.LookPath("govard")
@@ -116,12 +70,6 @@ func (app *App) StartGovardTerminal(project string, args []string) string {
 	cmd := exec.Command(binary, args...)
 	cmd.Dir = filepath.Clean(info.workingDir)
 
-	f, err := pty.Start(cmd)
-	if err != nil {
-		return "error: " + err.Error()
-	}
-
-	// Use a unique session ID for remote commands to allow multiple sessions
 	remoteName := "exec"
 	for i, arg := range args {
 		if arg == "-e" || arg == "--environment" {
@@ -132,7 +80,57 @@ func (app *App) StartGovardTerminal(project string, args []string) string {
 		}
 	}
 	sessionID := fmt.Sprintf("remote-%s-%s", project, remoteName)
-	ctx, cancel := context.WithCancel(app.ctx)
+	return s.startSession(sessionID, cmd)
+}
+
+func (s *LogService) WriteTerminal(sessionID string, data string) {
+	sessionsMu.Lock()
+	session, ok := sessions[sessionID]
+	sessionsMu.Unlock()
+
+	if ok {
+		_, _ = session.pty.Write([]byte(data))
+	}
+}
+
+func (s *LogService) ResizeTerminal(sessionID string, cols int, rows int) {
+	sessionsMu.Lock()
+	session, ok := sessions[sessionID]
+	sessionsMu.Unlock()
+
+	if ok {
+		_ = pty.Setsize(session.pty.(*os.File), &pty.Winsize{
+			Cols: uint16(cols),
+			Rows: uint16(rows),
+		})
+	}
+}
+
+func (s *LogService) GetLogs(project string, lines int) (string, error) {
+	output, err := getLogs(project, lines)
+	if err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+func (s *LogService) GetLogsForService(project string, service string, lines int) (string, error) {
+	output, err := getLogsForService(project, service, lines)
+	if err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+// Internal session management
+
+func (s *LogService) startSession(sessionID string, cmd *exec.Cmd) (string, error) {
+	f, err := pty.Start(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	ctx, cancel := context.WithCancel(s.ctx)
 
 	sessionsMu.Lock()
 	if old, ok := sessions[sessionID]; ok {
@@ -148,13 +146,12 @@ func (app *App) StartGovardTerminal(project string, args []string) string {
 	}
 	sessionsMu.Unlock()
 
-	// Read from PTY and emit to frontend
 	go func() {
 		buf := make([]byte, 1024)
 		for {
 			n, err := f.Read(buf)
 			if n > 0 {
-				emitEvent(app.ctx, "terminal:output", map[string]interface{}{
+				runtime.EventsEmit(s.ctx, "terminal:output", map[string]interface{}{
 					"id":   sessionID,
 					"data": string(buf[:n]),
 				})
@@ -164,25 +161,14 @@ func (app *App) StartGovardTerminal(project string, args []string) string {
 			}
 		}
 		sessionsMu.Lock()
-		delete(sessions, sessionID)
+		if sess, ok := sessions[sessionID]; ok && sess.pty == f {
+			delete(sessions, sessionID)
+		}
 		sessionsMu.Unlock()
-		emitEvent(app.ctx, "terminal:exit", map[string]interface{}{
+		runtime.EventsEmit(s.ctx, "terminal:exit", map[string]interface{}{
 			"id": sessionID,
 		})
 	}()
 
-	return sessionID
-}
-
-func (app *App) ResizeTerminal(sessionID string, cols int, rows int) {
-	sessionsMu.Lock()
-	session, ok := sessions[sessionID]
-	sessionsMu.Unlock()
-
-	if ok {
-		_ = pty.Setsize(session.pty.(*os.File), &pty.Winsize{
-			Cols: uint16(cols),
-			Rows: uint16(rows),
-		})
-	}
+	return sessionID, nil
 }

@@ -6,7 +6,7 @@ UNIT_PACKAGES=$(shell go list ./... | grep -v '^govard/tests/integration$$')
 COVER_PACKAGES=$(shell go list ./internal/... | tr '\n' ',' | sed 's/,$$//')
 VERSION_RAW ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo 1.0.0)
 VERSION ?= $(patsubst v%,%,$(VERSION_RAW))
-LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION)
+LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 
 .PHONY: help install build-test-binary build clean test test-fast test-unit test-coverage test-integration test-integration-ci test-frontend lint fmt fmt-check vet push test-realenv-setup test-realenv test-realenv-clean
 
@@ -16,12 +16,16 @@ help: ## Show this help
 install: ## Build and install Govard binary to system (via install.sh)
 	./install.sh --source -y
 
-build: ## Build Govard binary for the current platform
+build-frontend:
+	@echo "Building frontend assets..."
+	@cd desktop/frontend && npm install && npm run build:css
+
+build: build-frontend ## Build Govard binary for the current platform
 	@echo "Building Govard..."
 	mkdir -p $(BUILD_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) cmd/govard/main.go
 
-build-test-binary:
+build-test-binary: build-frontend
 	@echo "Building test binary..."
 	mkdir -p $(BUILD_DIR)
 	go build -mod=mod -ldflags "$(LDFLAGS)" -tags integration -o $(TEST_BINARY) cmd/govard/main.go

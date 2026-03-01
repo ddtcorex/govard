@@ -59,7 +59,7 @@ func resetShellUsers() error {
 	return savePreferences(prefs)
 }
 
-func getSettings() (DesktopSettings, error) {
+func getSettingsInternal() (DesktopSettings, error) {
 	prefs, err := loadPreferences()
 	if err != nil {
 		return DesktopSettings{}, err
@@ -68,10 +68,10 @@ func getSettings() (DesktopSettings, error) {
 }
 
 func ReadDesktopSettings() (DesktopSettings, error) {
-	return getSettings()
+	return getSettingsInternal()
 }
 
-func setSettings(settings DesktopSettings) error {
+func setSettingsInternal(settings DesktopSettings) error {
 	prefs, err := loadPreferences()
 	if err != nil {
 		return err
@@ -80,13 +80,37 @@ func setSettings(settings DesktopSettings) error {
 	return savePreferences(prefs)
 }
 
-func resetSettings() error {
+func resetSettingsInternal() error {
 	prefs, err := loadPreferences()
 	if err != nil {
 		return err
 	}
 	prefs.Settings = normalizeSettings(DesktopSettings{})
 	return savePreferences(prefs)
+}
+
+// SettingsService methods
+
+func (s *SettingsService) GetSettings() (DesktopSettings, error) {
+	return getSettingsInternal()
+}
+
+func (s *SettingsService) GetMailpitURL() string {
+	return buildProxyURL("mail")
+}
+
+func (s *SettingsService) UpdateSettings(settings DesktopSettings) (string, error) {
+	if err := setSettingsInternal(settings); err != nil {
+		return "", err
+	}
+	return "Settings updated", nil
+}
+
+func (s *SettingsService) ResetSettings() (string, error) {
+	if err := resetSettingsInternal(); err != nil {
+		return "", err
+	}
+	return "Settings reset", nil
 }
 
 func loadPreferences() (*preferences, error) {

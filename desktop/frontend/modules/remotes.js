@@ -89,7 +89,7 @@ const renderWarnings = (container, warnings = []) => {
   });
 };
 
-const renderRemotes = (container, remotes = []) => {
+export const renderRemotes = (container, remotes = []) => {
   if (!container) {
     return;
   }
@@ -102,7 +102,7 @@ const renderRemotes = (container, remotes = []) => {
     return;
   }
 
-  container.innerHTML = remotes
+  const cardsHtml = remotes
     .map((remote) => {
       const isProd =
         remote.environment === "prod" || remote.environment === "production";
@@ -142,8 +142,7 @@ const renderRemotes = (container, remotes = []) => {
             </button>
           </div>
         </div>
-      </div>
-      <div class="p-6">
+        <div class="p-6">
           <div class="grid grid-cols-2 gap-4 mb-6">
             <div class="bg-[#102316]/50 rounded-lg p-3 border border-[#2e573a]">
               <div class="text-xs text-slate-500 mb-1">Database Size</div>
@@ -183,6 +182,7 @@ const renderRemotes = (container, remotes = []) => {
                     Open SFTP
                 </button>
             </div>
+            <!-- Inline sync config removed in favor of modal -->
           </div>
           ${remote.protected ? `<div class="mt-4 flex items-center gap-2 p-2 bg-amber-900/10 border border-amber-900/30 rounded text-amber-500/80 text-xs"><span class="material-symbols-outlined text-[16px]">info</span>Syncing from Production creates a local backup automatically.</div>` : ""}
         </div>
@@ -190,6 +190,65 @@ const renderRemotes = (container, remotes = []) => {
     `;
     })
     .join("");
+
+  container.innerHTML = `
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+      <div class="lg:col-span-3 space-y-6">
+        <div class="flex items-center justify-between pb-2">
+          <h3 class="text-white text-lg font-semibold flex items-center gap-2">
+            Connected Remotes
+          </h3>
+        </div>
+        ${cardsHtml}
+      </div>
+      <div class="lg:col-span-2">
+        <div class="sticky top-6">
+          <h3 class="text-white text-lg font-semibold flex items-center gap-2 mb-6">
+            <span class="material-symbols-outlined text-primary">account_tree</span>
+            Sync Flow
+          </h3>
+          <div class="glass-panel rounded-xl p-8 border border-[#2e573a] relative overflow-hidden flex flex-col items-center justify-center min-h-[400px]">
+            <div class="absolute inset-0 z-0 opacity-10" style="background-image: radial-gradient(#90cba4 1px, transparent 1px); background-size: 20px 20px;"></div>
+            <div class="relative z-10 w-full max-w-[200px]">
+              <div class="bg-[#1a3322] border border-blue-500/30 rounded-lg p-4 shadow-lg shadow-blue-500/5 relative">
+                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#102316] px-2 text-[10px] text-blue-400 border border-blue-500/30 rounded-full uppercase font-bold tracking-wider">Source</div>
+                <div class="flex items-center justify-center gap-3">
+                  <span class="material-symbols-outlined text-blue-400 text-3xl">cloud</span>
+                  <div class="text-left">
+                    <div class="text-white text-sm font-bold">Remote</div>
+                    <div class="text-slate-500 text-xs">Staging/Prod</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="h-24 w-px dashed-line relative my-2">
+              <div class="absolute top-0 left-1/2 -translate-x-1/2 -ml-[2px] w-1 h-3 bg-primary rounded-full animate-[bounce_2s_infinite]"></div>
+            </div>
+            <div class="relative z-10">
+              <div class="bg-[#102316] border border-[#366b47] rounded-full h-12 w-12 flex items-center justify-center shadow-[0_0_15px_rgba(13,242,89,0.2)]">
+                <span class="material-symbols-outlined text-primary animate-pulse">lock_open</span>
+              </div>
+            </div>
+            <div class="h-24 w-px dashed-line relative my-2">
+              <div class="absolute bottom-0 left-1/2 -translate-x-1/2 -ml-[2px] w-1 h-3 bg-primary rounded-full animate-[bounce_2s_infinite_reverse]"></div>
+            </div>
+            <div class="relative z-10 w-full max-w-[200px]">
+              <div class="bg-[#22492f] border border-primary/40 rounded-lg p-4 shadow-lg shadow-primary/10 relative">
+                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#102316] px-2 text-[10px] text-primary border border-primary/30 rounded-full uppercase font-bold tracking-wider">Destination</div>
+                <div class="flex items-center justify-center gap-3">
+                  <span class="material-symbols-outlined text-primary text-3xl">laptop_mac</span>
+                  <div class="text-left">
+                    <div class="text-white text-sm font-bold">Local App</div>
+                    <div class="text-slate-500 text-xs">Your Machine</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 };
 
 const safeRemotes = {
@@ -222,6 +281,9 @@ export const createRemotesController = ({
   onStatus,
   onToast,
 }) => {
+  const updateRefs = (newRefs) => {
+    refs = newRefs;
+  };
   const refresh = async ({ silent = false } = {}) => {
     const project = String(getProject?.() || "").trim();
     if (!project) {
@@ -273,22 +335,11 @@ export const createRemotesController = ({
 
     try {
       const message = await bridge.testRemote(project, remoteName);
-      const response = String(message || "");
-      const isError = response.toLowerCase().includes("failed");
-      onStatus(
-        isError
-          ? `Remote ${remoteName} connection failed`
-          : `Remote ${remoteName} connection successful`,
-      );
-      onToast(
-        isError
-          ? `Connection to ${remoteName} failed.`
-          : `Connection to ${remoteName} successful!`,
-        isError ? "error" : "success",
-      );
+      onStatus(`Remote ${remoteName} connection successful`);
+      onToast(message || `Connection to ${remoteName} successful!`, "success");
     } catch (err) {
-      onStatus(`Error testing connection to ${remoteName}`);
-      onToast(`Error: ${err}`, "error");
+      onStatus(`Remote ${remoteName} connection failed: ${err}`);
+      onToast(`Connection to ${remoteName} failed.`, "error");
     } finally {
       if (icon) {
         icon.classList.remove("animate-spin");
@@ -306,29 +357,23 @@ export const createRemotesController = ({
     }
 
     const syncConfig = getSyncConfig?.() || {};
-    const message = await bridge.runRemoteSyncPreset(
-      project,
-      remoteName,
-      normalizedPreset,
-      {
-        sanitize: Boolean(syncConfig.sanitize),
-        excludeLogs: Boolean(syncConfig.excludeLogs),
-        compress: Boolean(syncConfig.compress),
-      },
-    );
-    const response = String(message || "");
-    const isError = response.toLowerCase().includes("failed");
-    onStatus(
-      isError
-        ? `Failed to generate sync plan for ${remoteName}`
-        : `Sync plan for ${remoteName} is ready`,
-    );
-    onToast(
-      isError
-        ? `Failed to prepare sync for ${remoteName}.`
-        : `Sync plan for ${remoteName} prepared.`,
-      isError ? "error" : "success",
-    );
+    try {
+      const message = await bridge.runRemoteSyncPreset(
+        project,
+        remoteName,
+        normalizedPreset,
+        {
+          sanitize: Boolean(syncConfig.sanitize),
+          excludeLogs: Boolean(syncConfig.excludeLogs),
+          compress: Boolean(syncConfig.compress),
+        },
+      );
+      onStatus(`Sync plan for ${remoteName} is ready`);
+      onToast(message || `Sync plan for ${remoteName} prepared.`, "success");
+    } catch (err) {
+      onStatus(`Failed to generate sync plan for ${remoteName}: ${err}`);
+      onToast(`Failed to prepare sync for ${remoteName}.`, "error");
+    }
   };
 
   const renderSyncOptions = (container, preset, optionsDef, currentConfig) => {
@@ -381,4 +426,133 @@ export const createRemotesController = ({
     renderSyncOptions,
     toggleSyncConfig,
   };
+};
+
+export const renderSyncModal = (container) => {
+  if (!container) return;
+  container.innerHTML = `
+      <div
+        id="syncOptionsModal"
+        class="hidden fixed inset-0 z-[150] bg-[#0c1810]/60 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-300"
+      >
+        <div
+          class="bg-[#1a3322] border border-[#2e573a] rounded-xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden scale-95 transition-transform duration-300"
+        >
+          <div
+            class="px-6 py-4 border-b border-[#2e573a] flex justify-between items-center bg-[#102316]/50"
+          >
+            <h3 class="text-white text-lg font-bold flex items-center gap-2">
+              <span
+                class="material-symbols-outlined text-primary"
+                id="syncModalIcon"
+                >sync</span
+              >
+              <span id="syncModalTitle">Sync Options</span>
+            </h3>
+            <button
+              class="text-slate-400 hover:text-white transition-colors"
+              data-action="close-sync-modal"
+            >
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          <!-- Step 1: Options -->
+          <div id="syncModalStep1" class="p-6 space-y-4">
+            <p class="text-slate-300 text-sm">
+              You are about to sync data from the
+              <strong id="syncModalRemoteName" class="text-white"></strong>
+              environment. Configure your sync options below:
+            </p>
+
+            <div id="syncModalOptionsContainer" class="space-y-4">
+              <!-- Options injected dynamically based on preset -->
+            </div>
+
+            <div
+              class="px-0 pt-4 flex gap-3 justify-end items-center border-t border-[#2e573a]"
+            >
+              <button
+                class="px-4 py-2 rounded-lg text-sm text-slate-300 font-medium hover:bg-white/5 transition-colors"
+                data-action="close-sync-modal"
+              >
+                Cancel
+              </button>
+              <button
+                data-action="preview-sync-plan"
+                id="previewSyncPlanBtn"
+                class="px-5 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-500 rounded-lg text-sm text-white font-medium transition-all group flex items-center gap-2"
+              >
+                <span
+                  class="material-symbols-outlined text-[16px] group-hover:text-primary transition-colors"
+                  >preview</span
+                >
+                <span>Preview Plan</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2: Plan Preview -->
+          <div id="syncModalStep2" class="hidden p-6 space-y-4">
+            <div class="flex items-center gap-2 text-sm text-slate-300">
+              <span class="material-symbols-outlined text-[18px] text-primary"
+                >fact_check</span
+              >
+              Review the actions below, then confirm to proceed:
+            </div>
+
+            <!-- Plan output -->
+            <div
+              id="syncPlanOutput"
+              class="bg-[#0c1810] border border-[#2e573a]/60 rounded-lg p-4 font-mono text-xs text-slate-300 max-h-64 overflow-y-auto leading-relaxed whitespace-pre-wrap"
+            >
+              <!-- Plan output injected here -->
+            </div>
+
+            <div
+              id="syncPlanLoading"
+              class="hidden flex items-center gap-3 text-sm text-slate-400 py-2"
+            >
+              <span
+                class="inline-block w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin flex-shrink-0"
+              ></span>
+              Generating plan...
+            </div>
+
+            <div
+              class="pt-4 flex gap-3 justify-between items-center border-t border-[#2e573a]"
+            >
+              <button
+                data-action="back-to-sync-options"
+                class="px-4 py-2 rounded-lg text-sm text-slate-300 font-medium hover:bg-white/5 transition-colors flex items-center gap-1"
+              >
+                <span class="material-symbols-outlined text-[16px]"
+                  >arrow_back</span
+                >
+                Back
+              </button>
+              <div class="flex gap-3">
+                <button
+                  class="px-4 py-2 rounded-lg text-sm text-slate-300 font-medium hover:bg-white/5 transition-colors"
+                  data-action="close-sync-modal"
+                >
+                  Cancel
+                </button>
+                <button
+                  data-action="confirm-sync"
+                  id="confirmSyncBtn"
+                  class="px-5 py-2 bg-primary hover:bg-primary/80 border border-primary/50 rounded-lg text-sm text-white font-bold transition-all group flex items-center gap-2"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px] group-hover:text-white transition-colors"
+                    >play_arrow</span
+                  >
+                  <span>Execute Sync</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+  `;
 };

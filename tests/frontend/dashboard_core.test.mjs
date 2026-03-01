@@ -81,13 +81,13 @@ test("project management workspace keeps core IDs for controllers", async () => 
   );
   assert.equal(
     html.includes('id="metricsList"'),
-    true,
-    "missing metrics list container",
+    false,
+    "metrics list container should be removed from dashboard tab",
   );
   assert.equal(
-    html.includes('id="onboardingModal"'),
+    html.includes('id="onboardingModalMount"'),
     true,
-    "missing onboarding modal",
+    "missing onboarding mount point",
   );
   assert.equal(
     html.includes('data-action="open-onboarding"'),
@@ -101,34 +101,26 @@ test("logs section exposes filtering and streaming controls", async () => {
     new URL("../../desktop/frontend/index.html", import.meta.url),
     "utf8",
   );
-  assert.equal(html.includes('id="tab-logs"'), true, "missing logs tab");
+  const logsJS = await readFile(
+    new URL("../../desktop/frontend/modules/logs.js", import.meta.url),
+    "utf8",
+  );
+  const combined = html + logsJS;
+
+  assert.equal(combined.includes('id="tab-logs"'), true, "missing logs tab");
   assert.equal(
-    html.includes('id="logServiceSelector"'),
+    combined.includes('id="logServiceSelector"'),
     true,
     "missing log service selector",
   );
   assert.equal(
-    html.includes('data-action="refresh-logs"'),
+    combined.includes('data-action="refresh-logs"'),
     true,
     "missing refresh logs action",
   );
   assert.equal(
-    html.includes('data-action="toggle-live"'),
+    combined.includes('data-action="toggle-live"'),
     true,
     "missing toggle live action",
   );
-});
-
-test("metrics section is present for resource monitoring", async () => {
-  const html = await readFile(
-    new URL("../../desktop/frontend/index.html", import.meta.url),
-    "utf8",
-  );
-  for (const id of ["metricCPU", "metricMemory", "metricsList"]) {
-    assert.equal(
-      html.includes(`id="${id}"`),
-      true,
-      `missing metrics field ${id}`,
-    );
-  }
 });

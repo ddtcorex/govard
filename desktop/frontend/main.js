@@ -1,3 +1,4 @@
+console.log("==> main.js top level loaded! <==");
 import { createActionsController } from "./modules/actions.js";
 import {
   normalizeDashboardPayload,
@@ -16,73 +17,38 @@ import {
   resolveLogTarget,
   syncServiceSelector,
   syncSeveritySelector,
+  renderLogsTab,
 } from "./modules/logs.js";
-import {
-  createMetricsController,
-  renderMetricSkeletons as renderServiceSkeletons,
-} from "./modules/metrics.js";
+import { createMetricsController } from "./modules/metrics.js";
 import { createOnboardingController } from "./modules/onboarding.js";
-import { createRemotesController } from "./modules/remotes.js";
-import { createSettingsController } from "./modules/settings.js";
+import {
+  createRemotesController,
+  renderRemotes,
+  renderSyncModal,
+} from "./modules/remotes.js";
+import {
+  createSettingsController,
+  renderSettingsDrawer,
+} from "./modules/settings.js";
 import { createShellController } from "./modules/shell.js";
 import { createTerminalController } from "./modules/terminal.js";
 import { desktopBridge } from "./services/bridge.js";
 import { getState, setState } from "./state/store.js";
 import { createToast } from "./ui/toast.js";
 import { byId, setText } from "./utils/dom.js";
+console.log("==> Finished imports <==");
 
-const refs = {
+const initUI = () => {
+  renderLogsTab(byId("tab-logs"));
+  // NOTE: do NOT call renderRemotes(tab-remotes) here — it wipes the remotesList/remotesWarnings
+  // containers. The remotesController.refresh() handles rendering when the tab is opened.
+  renderSyncModal(byId("syncOptionsModalMount"));
+  renderSettingsDrawer(byId("settingsDrawerMount"));
+  refreshRefs();
+};
+
+const getLiveRefs = () => ({
   status: byId("status"),
-  refresh: byId("refresh"),
-  statActive: byId("statActive"),
-  statServices: byId("statServices"),
-  statQueue: byId("statQueue"),
-  statActiveHint: byId("statActiveHint"),
-  statServicesHint: byId("statServicesHint"),
-  statQueueHint: byId("statQueueHint"),
-  metricActiveProjects: byId("metricActiveProjects"),
-  metricCPU: byId("metricCPU"),
-  metricMemory: byId("metricMemory"),
-  metricNetRx: byId("metricNetRx"),
-  metricNetTx: byId("metricNetTx"),
-  metricOOM: byId("metricOOM"),
-  metricsList: byId("metricsList"),
-  metricsWarnings: byId("metricsWarnings"),
-  remotesList: byId("remotesList"),
-  remotesWarnings: byId("remotesWarnings"),
-  envVarsList: byId("envVarsList"),
-  projectPath: byId("projectPath"),
-  projectDomain: byId("projectDomain"),
-  displayProjectPath: byId("displayProjectPath"),
-  projectFramework: byId("projectFramework"),
-  onboardVarnish: byId("onboardVarnish"),
-  onboardRedis: byId("onboardRedis"),
-  onboardRabbitMQ: byId("onboardRabbitMQ"),
-  onboardElasticsearch: byId("onboardElasticsearch"),
-  syncToggleSanitize: byId("syncToggleSanitize"),
-  syncToggleExcludeLogs: byId("syncToggleExcludeLogs"),
-  syncToggleCompress: byId("syncToggleCompress"),
-  syncOptionsModal: byId("syncOptionsModal"),
-  syncModalRemoteName: byId("syncModalRemoteName"),
-  syncModalStep1: byId("syncModalStep1"),
-  syncModalStep2: byId("syncModalStep2"),
-  syncPlanOutput: byId("syncPlanOutput"),
-  syncPlanLoading: byId("syncPlanLoading"),
-  syncModalTitle: byId("syncModalTitle"),
-  syncModalIcon: byId("syncModalIcon"),
-  syncModalSanitize: byId("syncModalSanitize"),
-  syncModalExcludeLogs: byId("syncModalExcludeLogs"),
-  syncModalCompress: byId("syncModalCompress"),
-  syncModalConfirmBtn: byId("syncModalConfirmBtn"),
-  remoteName: byId("remoteName"),
-  remoteHost: byId("remoteHost"),
-  remoteUser: byId("remoteUser"),
-  remotePath: byId("remotePath"),
-  remotePort: byId("remotePort"),
-  remoteEnvironment: byId("remoteEnvironment"),
-  remoteCapabilities: byId("remoteCapabilities"),
-  remoteAuthMethod: byId("remoteAuthMethod"),
-  remoteProtected: byId("remoteProtected"),
   envList: byId("envList"),
   envSelector: byId("envSelector"),
   logSelector: byId("logSelector"),
@@ -91,8 +57,6 @@ const refs = {
   logSearch: byId("logSearch"),
   logOutput: byId("logOutput"),
   toggleLive: byId("toggleLive"),
-  shellUser: byId("shellUser"),
-  shellCommand: byId("shellCommand"),
   warningList: byId("warningList"),
   openSettings: byId("openSettings"),
   closeSettings: byId("closeSettings"),
@@ -117,6 +81,33 @@ const refs = {
   heroStopBtn: byId("heroStopBtn"),
   footerCPU: byId("footerCPU"),
   footerMemory: byId("footerMemory"),
+  envVarsList: byId("envVarsList"),
+  remotesList: byId("remotesList"),
+  remotesWarnings: byId("remotesWarnings"),
+  syncOptionsModal: byId("syncOptionsModal"),
+  syncModalStep1: byId("syncModalStep1"),
+  syncModalStep2: byId("syncModalStep2"),
+  syncModalTitle: byId("syncModalTitle"),
+  syncModalIcon: byId("syncModalIcon"),
+  syncModalRemoteName: byId("syncModalRemoteName"),
+  syncPlanOutput: byId("syncPlanOutput"),
+  syncPlanLoading: byId("syncPlanLoading"),
+});
+
+let refs = getLiveRefs();
+
+const refreshRefs = () => {
+  const newRefs = getLiveRefs();
+  Object.assign(refs, newRefs);
+  // Propagate updated refs to controllers if they don't hold the object by reference
+  // (Most do, but we keep this for safety and explicit update triggers)
+  if (logsController?.updateRefs) logsController.updateRefs(refs);
+  if (shellController?.updateRefs) shellController.updateRefs(refs);
+  if (metricsController?.updateRefs) metricsController.updateRefs(refs);
+  if (remotesController?.updateRefs) remotesController.updateRefs(refs);
+  if (settingsController?.updateRefs) settingsController.updateRefs(refs);
+  if (embeddedTerminalController?.updateRefs)
+    embeddedTerminalController.updateRefs(refs);
 };
 
 const toast = createToast(refs.toastContainer);
@@ -183,12 +174,15 @@ const switchTab = (tabId) => {
     if (tabId === "dashboard") {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
+      refreshDashboard();
     } else if (tabId === "remotes") {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
+      remotesController.refresh();
     } else if (tabId === "logs") {
       scrollContainer.classList.remove("overflow-y-auto");
       scrollContainer.classList.add("overflow-hidden");
+      logsController.refresh();
     }
 
     // Standardize header styling across all tabs
@@ -290,7 +284,10 @@ const loadDashboard = async () => {
     const data = await desktopBridge.getDashboard();
     return normalizeDashboardPayload(data);
   } catch (_err) {
-    return normalizeDashboardPayload(safeDashboard);
+    console.error("Dashboard fetch error caught!", _err);
+    const result = normalizeDashboardPayload(safeDashboard);
+    console.log("Returning safe payload:", result);
+    return result;
   }
 };
 
@@ -371,7 +368,7 @@ const remotesController = createRemotesController({
 const embeddedTerminalController = createTerminalController({
   bridge: desktopBridge,
   runtime: desktopBridge.runtime,
-  container: refs.terminalContainer,
+  refs,
   onStatus: setStatus,
   onToast: showToast,
   readSelection,
@@ -380,65 +377,131 @@ const embeddedTerminalController = createTerminalController({
 const renderAllSkeletons = () => {
   renderDashboardSkeletons(refs);
   renderEnvironmentSkeletons(refs.envList);
-  renderServiceSkeletons(refs.metricsList);
 };
 
 const refreshDashboard = async (options = {}) => {
-  setStatus("Status: syncing dashboard...");
-  if (!options.silent) {
-    renderAllSkeletons();
-  }
-  const dashboard = await loadDashboard();
-  setMetricText(dashboard, refs);
-  renderWarnings(refs.warningList, dashboard.warnings);
-  renderEnvironmentList(
-    refs.envList,
-    dashboard.environments,
-    getState().selectedProject,
-  );
+  try {
+    setStatus("Status: syncing dashboard...");
+    if (!options.silent) {
+      renderAllSkeletons();
+    }
 
-  const previousProject = getState().selectedProject;
-  syncProjectSelectors(
-    { envSelector: refs.envSelector, logSelector: refs.logSelector },
-    dashboard.environments,
-    previousProject,
-  );
+    console.log("[refreshDashboard] Fetching dashboard...");
+    const dashboard = await loadDashboard();
+    console.log(
+      "[refreshDashboard] Got dashboard, environments:",
+      dashboard.environments?.length,
+    );
 
-  const selectedProject =
-    refs.envSelector?.value || getState().selectedProject || "";
-  setState({ environments: dashboard.environments, selectedProject });
-  if (!selectedProject && dashboard.environments.length > 0) {
-    setState({ selectedProject: projectKey(dashboard.environments[0]) });
-  }
+    try {
+      setMetricText(dashboard, refs);
+    } catch (e) {
+      console.error("[refreshDashboard] setMetricText error:", e);
+    }
+    try {
+      renderWarnings(refs.warningList, dashboard.warnings);
+    } catch (e) {
+      console.error("[refreshDashboard] renderWarnings error:", e);
+    }
+    try {
+      renderEnvironmentList(
+        refs.envList,
+        dashboard.environments,
+        getState().selectedProject,
+      );
+      console.log(
+        "[refreshDashboard] renderEnvironmentList called with",
+        dashboard.environments?.length,
+        "envs",
+      );
+    } catch (e) {
+      console.error("[refreshDashboard] renderEnvironmentList error:", e);
+    }
 
-  if (
-    refs.logSelector &&
-    refs.logSelector.value !== getState().selectedProject
-  ) {
-    refs.logSelector.value = getState().selectedProject;
-  }
-  if (
-    refs.envSelector &&
-    refs.envSelector.value !== getState().selectedProject
-  ) {
-    refs.envSelector.value = getState().selectedProject;
-  }
+    const previousProject = getState().selectedProject;
+    try {
+      syncProjectSelectors(
+        { envSelector: refs.envSelector, logSelector: refs.logSelector },
+        dashboard.environments,
+        previousProject,
+      );
+    } catch (e) {
+      console.error("[refreshDashboard] syncProjectSelectors error:", e);
+    }
 
-  refreshServiceSelector();
-  refreshSeveritySelector();
-  syncLogFiltersState();
-  renderEnvironmentList(
-    refs.envList,
-    dashboard.environments,
-    getState().selectedProject,
-  );
-  renderProjectHero(refs, dashboard.environments, getState().selectedProject);
-  await metricsController.refresh({ silent: true });
-  await remotesController.refresh({ silent: true });
-  remotesController.syncSyncConfigUI(getState().syncConfig);
-  await shellController.loadShellUser();
-  await logsController.refresh();
-  setStatus(`Status: Ready`);
+    const selectedProject =
+      refs.envSelector?.value || getState().selectedProject || "";
+    setState({ environments: dashboard.environments, selectedProject });
+    if (!selectedProject && dashboard.environments.length > 0) {
+      setState({ selectedProject: projectKey(dashboard.environments[0]) });
+    }
+
+    if (
+      refs.logSelector &&
+      refs.logSelector.value !== getState().selectedProject
+    ) {
+      refs.logSelector.value = getState().selectedProject;
+    }
+    if (
+      refs.envSelector &&
+      refs.envSelector.value !== getState().selectedProject
+    ) {
+      refs.envSelector.value = getState().selectedProject;
+    }
+
+    try {
+      refreshServiceSelector();
+    } catch (e) {
+      console.error("[refreshDashboard] refreshServiceSelector error:", e);
+    }
+    try {
+      refreshSeveritySelector();
+    } catch (e) {
+      console.error("[refreshDashboard] refreshSeveritySelector error:", e);
+    }
+    try {
+      syncLogFiltersState();
+    } catch (e) {
+      console.error("[refreshDashboard] syncLogFiltersState error:", e);
+    }
+    try {
+      renderEnvironmentList(
+        refs.envList,
+        dashboard.environments,
+        getState().selectedProject,
+      );
+    } catch (e) {
+      console.error(
+        "[refreshDashboard] second renderEnvironmentList error:",
+        e,
+      );
+    }
+    try {
+      const { environments, selectedProject: project } = getState();
+      const env = environments.find((item) => projectKey(item) === project);
+
+      // Sync "Active Services" block as well
+      const servicesContainer = document.getElementById("activeServicesList");
+      if (servicesContainer && env) {
+        import("./modules/dashboard.js").then((mod) => {
+          mod.renderActiveServices(servicesContainer, env);
+        });
+      }
+
+      renderProjectHero(refs, environments, project);
+    } catch (e) {
+      console.error("[refreshDashboard] renderProjectHero error:", e);
+    }
+    await metricsController.refresh({ silent: true });
+    await remotesController.refresh({ silent: true });
+    await shellController.loadShellUser();
+    await logsController.refresh();
+
+    setStatus(`Status: Ready`);
+  } catch (e) {
+    console.error("[refreshDashboard] error:", e);
+    setStatus(`Status: Error`);
+  }
 };
 
 const onboardingController = createOnboardingController({
@@ -482,9 +545,24 @@ document.addEventListener("click", async (event) => {
     setState({ selectedProject: project });
     if (refs.envSelector) refs.envSelector.value = project;
     if (refs.logSelector) refs.logSelector.value = project;
-    switchTab("dashboard");
+
+    const currentTab = document.querySelector(".tab-content.active")?.id;
+    if (!currentTab || currentTab === "tab-dashboard") {
+      switchTab("dashboard");
+    }
+
     await syncProjectSelectorsFrom("env");
     await refreshDashboard({ silent: true });
+
+    // Ensure controllers refresh if they are on the active tab
+    const activeTabId = document
+      .querySelector(".tab-content.active")
+      ?.id?.replace("tab-", "");
+    if (activeTabId === "logs") {
+      logsController.refresh();
+    } else if (activeTabId === "remotes") {
+      remotesController.refresh();
+    }
     return;
   }
 
@@ -521,8 +599,38 @@ document.addEventListener("click", async (event) => {
     await remotesController.refresh();
     return;
   }
-  if (action === "refresh-remotes") {
-    await remotesController.refresh();
+  if (action === "filter-severity") {
+    const sev = targetElement.dataset.severity;
+    if (sev) {
+      setState({ selectedSeverity: sev });
+      logsController.applyFilters();
+      refreshSeveritySelector();
+    }
+    return;
+  }
+  if (action === "filter-service") {
+    const svc = targetElement.dataset.service;
+    if (svc) {
+      setState({ selectedService: svc });
+      logsController.applyFilters();
+      refreshServiceSelector();
+    }
+    return;
+  }
+  if (action === "toggle-sync-config") {
+    const remote = targetElement.dataset.remote;
+    const config = targetElement.dataset.config;
+    if (remote && config) {
+      const state = getState();
+      const presetConfigs = state.syncConfigs || {};
+      const currentPreset = state.currentSyncPreset || "full";
+      let presetConfig = presetConfigs[currentPreset] || {};
+      presetConfig[config] = targetElement.checked;
+      setState({
+        syncConfigs: { ...presetConfigs, [currentPreset]: presetConfig },
+      });
+      onStatus(`Sync option "${config}" updated.`);
+    }
     return;
   }
   if (action === "open-onboarding") {
@@ -561,6 +669,25 @@ document.addEventListener("click", async (event) => {
     await shellController.openRemoteSFTP(
       String(targetElement.dataset.remote || ""),
     );
+    return;
+  }
+  if (action === "open-settings") {
+    settingsController.toggleDrawer(true);
+    return;
+  }
+  if (action === "close-settings") {
+    settingsController.toggleDrawer(false);
+    return;
+  }
+  if (action === "reset-settings") {
+    await settingsController.reset();
+    return;
+  }
+  if (action === "switch-tab") {
+    const tab = targetElement.dataset.tab;
+    if (tab) {
+      switchTab(tab);
+    }
     return;
   }
   if (action === "open-sync-modal") {
@@ -741,20 +868,7 @@ document.addEventListener("click", async (event) => {
     await shellController.resetShellUsers();
     return;
   }
-  if (action === "filter-service") {
-    const service = targetElement.dataset.service || "all";
-    setState({ selectedService: service });
-    refreshServiceSelector();
-    await logsController.refresh();
-    return;
-  }
-  if (action === "filter-severity") {
-    const severity = targetElement.dataset.severity || "all";
-    setState({ selectedSeverity: severity });
-    refreshSeveritySelector();
-    await logsController.refresh();
-    return;
-  }
+  // (filter-service and filter-severity are handled above)
   if (action === "reset-settings") {
     await settingsController.reset();
     return;
@@ -946,12 +1060,46 @@ if (window.matchMedia) {
     });
 }
 
-setStatus("Status: Ready");
-setState({ selectedService: "all", selectedSeverity: "all", logQuery: "" });
-await loadUser();
-await settingsController.load();
-await refreshDashboard();
-metricsController.startAutoRefresh();
+const bootstrap = async () => {
+  try {
+    setStatus("Status: Initializing...");
+    setState({
+      selectedService: "all",
+      selectedSeverity: "all",
+      logQuery: "",
+    });
+
+    // Run core loads in parallel
+    await Promise.allSettled([
+      loadUser(),
+      settingsController.load(),
+      refreshDashboard(),
+    ]).catch((e) => console.error("Parallel bootstrap error:", e));
+
+    metricsController.startAutoRefresh();
+    setStatus("Status: Ready");
+  } catch (err) {
+    console.error("Bootstrap fatal error:", err);
+    setStatus("Status: Error");
+  }
+};
+
+const initApp = () => {
+  console.log("==> App Initializing! <==");
+  try {
+    initUI();
+    switchTab("dashboard");
+    bootstrap();
+  } catch (err) {
+    console.error("Error in app initialization:", err);
+  }
+};
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initApp);
+} else {
+  initApp();
+}
 
 window.addEventListener("beforeunload", () => {
   metricsController.stopAutoRefresh();

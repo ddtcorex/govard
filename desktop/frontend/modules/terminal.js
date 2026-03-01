@@ -1,7 +1,7 @@
 export const createTerminalController = ({
   bridge,
   runtime,
-  container,
+  refs,
   onStatus,
   onToast,
   readSelection,
@@ -11,12 +11,20 @@ export const createTerminalController = ({
   let fitAddon = null;
   let resizeObserver = null;
 
-  const initTerminal = () => {
-    if (activeTerminal) return;
+  const updateRefs = (newRefs) => {
+    refs = newRefs;
+  };
 
-    // Check if xterm.js loaded from CDN
+  const initTerminal = () => {
+    if (activeTerminal || !refs.terminalContainer) return;
+
+    // Check if xterm.js loaded from vendor
     if (!window.Terminal || !window.FitAddon) {
-      if (onToast) onToast("Terminal emulator not loaded yet", "warn");
+      if (onToast)
+        onToast(
+          "Terminal emulator failed to load from vendor scripts",
+          "warning",
+        );
       return;
     }
 
@@ -33,7 +41,7 @@ export const createTerminalController = ({
 
     fitAddon = new window.FitAddon.FitAddon();
     activeTerminal.loadAddon(fitAddon);
-    activeTerminal.open(container);
+    activeTerminal.open(refs.terminalContainer);
     fitAddon.fit();
 
     activeTerminal.onData((data) => {
@@ -56,7 +64,7 @@ export const createTerminalController = ({
           .catch(() => {});
       }
     });
-    resizeObserver.observe(container);
+    resizeObserver.observe(refs.terminalContainer);
 
     if (runtime?.EventsOn) {
       runtime.EventsOn("terminal:output", (payload) => {
@@ -82,6 +90,11 @@ export const createTerminalController = ({
         return;
       }
 
+      if (!refs.terminalContainer) {
+        onToast("Terminal requires a parent element.", "error");
+        return;
+      }
+
       const userSelect = document.getElementById("shellUser");
       const cmdSelect = document.getElementById("shellCommand");
       const user = userSelect?.value || "";
@@ -96,18 +109,14 @@ export const createTerminalController = ({
       activeTerminal.clear();
       activeTerminal.write(`Connecting to ${service}...\r\n`);
 
-      const sessionOrError = await bridge.startTerminal(
+      const sessionID = await bridge.startTerminal(
         project,
         service,
         user,
         shell,
       );
-      if (sessionOrError.startsWith("error:")) {
-        activeTerminal.write(`\r\n${sessionOrError}\r\n`);
-        throw new Error(sessionOrError.substring(6));
-      }
 
-      activeSessionId = sessionOrError;
+      activeSessionId = sessionID;
 
       if (fitAddon) {
         fitAddon.fit();
@@ -148,13 +157,9 @@ export const createTerminalController = ({
       activeTerminal.clear();
       activeTerminal.write(`Running govard ${commandName}...\r\n`);
 
-      const sessionOrError = await bridge.startGovardTerminal(project, argsList);
-      if (sessionOrError.startsWith("error:")) {
-        activeTerminal.write(`\r\n${sessionOrError}\r\n`);
-        throw new Error(sessionOrError.substring(6));
-      }
+      const sessionID = await bridge.startGovardTerminal(project, argsList);
 
-      activeSessionId = sessionOrError;
+      activeSessionId = sessionID;
 
       if (fitAddon) {
         fitAddon.fit();
@@ -167,11 +172,13 @@ export const createTerminalController = ({
 
       if (onStatus) onStatus(`Status: Running govard ${commandName}`);
     } catch (err) {
-      if (onToast) onToast(err.message || `Failed to run govard ${commandName}`, "error");
+      if (onToast)
+        onToast(err.message || `Failed to run govard ${commandName}`, "error");
     }
   };
 
   return {
+    updateRefs,
     startSession,
     startGovardSession,
     resize,

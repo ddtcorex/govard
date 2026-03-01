@@ -1,5 +1,11 @@
 import { clearChildren, escapeHTML, setText } from "../utils/dom.js";
 
+export const createDashboardController = ({ bridge, refs, onStatus }) => {
+  const updateRefs = (newRefs) => {
+    refs = newRefs;
+  };
+};
+
 export const normalizeDashboardPayload = (data = {}) => ({
   active: data.ActiveEnvironments ?? data.active ?? 0,
   services: data.RunningServices ?? data.services ?? 0,
@@ -289,6 +295,99 @@ export const renderProjectHero = (
   if (refs.envVarsList) {
     renderEnvVars(refs.envVarsList, env);
   }
+
+  const servicesContainer = document.getElementById("activeServicesList");
+  if (servicesContainer) {
+    renderActiveServices(servicesContainer, env);
+  }
+};
+
+export const renderActiveServices = (container, env) => {
+  if (!container) return;
+
+  const services = Array.isArray(env?.Services)
+    ? env.Services
+    : Array.isArray(env?.services)
+      ? env.services
+      : [];
+
+  if (services.length === 0) {
+    container.innerHTML = `
+      <div class="p-6 text-center text-slate-400 border border-dashed border-[#2e573a] rounded-xl bg-[#1a3322]/30">
+        <span class="material-symbols-outlined text-3xl mb-2 opacity-20">inventory_2</span>
+        <div class="text-sm italic">No active services detected</div>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = services
+    .map((service) => {
+      const status = String(
+        service.Status || service.status || "stopped",
+      ).toLowerCase();
+      const isHealthy =
+        status === "healthy" || status === "running" || status === "up";
+      const statusColor = isHealthy ? "text-green-400" : "text-amber-400";
+
+      let icon = "bolt";
+      let iconBg = "bg-blue-500/10";
+      let iconText = "text-blue-400";
+      let iconBorder = "border-blue-500/20";
+
+      const name = String(
+        service.Name || service.name || "unknown",
+      ).toLowerCase();
+      if (name.includes("php")) {
+        icon = "php";
+        iconBg = "bg-indigo-500/10";
+        iconText = "text-indigo-400";
+        iconBorder = "border-indigo-500/20";
+      } else if (
+        name.includes("mysql") ||
+        name.includes("db") ||
+        name.includes("maria")
+      ) {
+        icon = "database";
+        iconBg = "bg-yellow-500/10";
+        iconText = "text-yellow-400";
+        iconBorder = "border-yellow-500/20";
+      } else if (
+        name.includes("nginx") ||
+        name.includes("proxy") ||
+        name.includes("web")
+      ) {
+        icon = "language";
+        iconBg = "bg-green-500/10";
+        iconText = "text-green-400";
+        iconBorder = "border-green-500/20";
+      }
+
+      return `
+        <div class="glass-panel p-4 rounded-xl border border-[#2e573a] hover:border-primary/30 transition-all flex items-center justify-between group">
+          <div class="flex items-center gap-4">
+            <div class="p-2 rounded ${iconBg} ${iconText} border ${iconBorder}">
+              <span class="material-symbols-outlined">${icon}</span>
+            </div>
+            <div>
+              <h4 class="text-white font-medium text-sm">${escapeHTML(service.Name || service.name || "Service")}</h4>
+              <div class="flex items-center gap-2 text-xs mt-1">
+                <span class="text-slate-400">Port: ${service.Port || service.port || "N/A"}</span>
+                <span class="w-1 h-1 rounded-full bg-slate-600"></span>
+                <span class="${statusColor}">${escapeHTML(service.Status || service.status || "Unknown")}</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors" title="View Logs" data-action="switch-tab" data-tab="logs">
+              <span class="material-symbols-outlined text-lg">list_alt</span>
+            </button>
+            <button class="p-1.5 rounded hover:bg-[#22492f] text-slate-400 hover:text-white transition-colors" title="Terminal" data-action="switch-tab" data-tab="logs">
+              <span class="material-symbols-outlined text-lg">terminal</span>
+            </button>
+          </div>
+        </div>`;
+    })
+    .join("");
 };
 
 export const renderEnvVars = (container, env) => {

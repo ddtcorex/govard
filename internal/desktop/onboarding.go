@@ -11,7 +11,19 @@ import (
 	"govard/internal/engine"
 )
 
-func pickProjectDirectory(ctx context.Context) (string, error) {
+type OnboardInput struct {
+	ProjectPath          string `json:"projectPath"`
+	Framework            string `json:"framework"`
+	Domain               string `json:"domain"`
+	VarnishEnabled       bool   `json:"varnishEnabled"`
+	RedisEnabled         bool   `json:"redisEnabled"`
+	RabbitMQEnabled      bool   `json:"rabbitMQEnabled"`
+	ElasticsearchEnabled bool   `json:"elasticsearchEnabled"`
+	ApplyOverrides       bool   `json:"applyOverrides"`
+	SkipIDE              bool   `json:"skipIDE"`
+}
+
+func pickProjectDirectoryInternal(ctx context.Context) (string, error) {
 	defaultDir := ""
 	if home, err := os.UserHomeDir(); err == nil {
 		defaultDir = home
@@ -29,28 +41,30 @@ func pickProjectDirectory(ctx context.Context) (string, error) {
 }
 
 func onboardProject(projectPath string, framework string) (string, error) {
-	return onboardProjectWithOptions(
-		projectPath,
-		framework,
-		"",
-		false,
-		false,
-		false,
-		false,
-		false,
-	)
+	return onboardProjectWithOptionsInternal(OnboardInput{
+		ProjectPath:          projectPath,
+		Framework:            framework,
+		Domain:               "",
+		VarnishEnabled:       false,
+		RedisEnabled:         false,
+		RabbitMQEnabled:      false,
+		ElasticsearchEnabled: false,
+		ApplyOverrides:       false,
+		SkipIDE:              false,
+	})
 }
 
-func onboardProjectWithOptions(
-	projectPath string,
-	framework string,
-	domain string,
-	varnishEnabled bool,
-	redisEnabled bool,
-	rabbitMQEnabled bool,
-	elasticsearchEnabled bool,
-	applyOverrides bool,
+func onboardProjectWithOptionsInternal(
+	input OnboardInput,
 ) (string, error) {
+	projectPath := input.ProjectPath
+	framework := input.Framework
+	varnishEnabled := input.VarnishEnabled
+	redisEnabled := input.RedisEnabled
+	rabbitMQEnabled := input.RabbitMQEnabled
+	elasticsearchEnabled := input.ElasticsearchEnabled
+	applyOverrides := input.ApplyOverrides
+
 	startedAt := time.Now()
 	status := engine.OperationStatusFailure
 	category := "runtime"
@@ -107,7 +121,7 @@ func onboardProjectWithOptions(
 	if applyOverrides &&
 		applyOnboardingOverrides(
 			&config,
-			domain,
+			input.Domain,
 			varnishEnabled,
 			redisEnabled,
 			rabbitMQEnabled,
@@ -142,29 +156,18 @@ func onboardProjectWithOptions(
 	return fmt.Sprintf("Project %s added.", entry.ProjectName), nil
 }
 
-func normalizeProjectPath(projectPath string) (string, error) {
-	path := strings.TrimSpace(projectPath)
-	if path == "" {
-		return "", fmt.Errorf("project path is required")
-	}
+// OnboardingService methods
 
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("resolve project path: %w", err)
+func (s *OnboardingService) PickProjectDirectory() (string, error) {
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
 	}
+	return pickProjectDirectoryInternal(ctx)
+}
 
-	info, err := os.Stat(absPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("project path does not exist: %s", absPath)
-		}
-		return "", fmt.Errorf("inspect project path: %w", err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("project path is not a directory: %s", absPath)
-	}
-
-	return filepath.Clean(absPath), nil
+func (s *OnboardingService) OnboardProject(input OnboardInput) (string, error) {
+	return onboardProjectWithOptionsInternal(input)
 }
 
 func loadProjectConfigForOnboarding(root string) (engine.Config, bool, error) {
@@ -187,21 +190,6 @@ func buildInitArgs(framework string) []string {
 	return args
 }
 
-func normalizeOnboardingFramework(framework string) string {
-	switch strings.ToLower(strings.TrimSpace(framework)) {
-	case "", "auto", "detect":
-		return ""
-	case "m2":
-		return "magento2"
-	case "m1":
-		return "magento1"
-	case "wp":
-		return "wordpress"
-	default:
-		return strings.ToLower(strings.TrimSpace(framework))
-	}
-}
-
 func applyOnboardingOverrides(
 	config *engine.Config,
 	domain string,
@@ -217,7 +205,7 @@ func applyOnboardingOverrides(
 	changed := false
 
 	if normalizedDomain := normalizeOnboardingDomain(domain); normalizedDomain != "" {
-		if strings.TrimSpace(config.Domain) != normalizedDomain {
+		if config.Domain != normalizedDomain {
 			config.Domain = normalizedDomain
 			changed = true
 		}
@@ -232,7 +220,7 @@ func applyOnboardingOverrides(
 	if redisEnabled {
 		cacheTarget = "redis"
 	}
-	if strings.ToLower(strings.TrimSpace(config.Stack.Services.Cache)) != cacheTarget {
+	if config.Stack.Services.Cache != cacheTarget {
 		config.Stack.Services.Cache = cacheTarget
 		changed = true
 	}
@@ -241,7 +229,7 @@ func applyOnboardingOverrides(
 	if rabbitMQEnabled {
 		queueTarget = "rabbitmq"
 	}
-	if strings.ToLower(strings.TrimSpace(config.Stack.Services.Queue)) != queueTarget {
+	if config.Stack.Services.Queue != queueTarget {
 		config.Stack.Services.Queue = queueTarget
 		changed = true
 	}
@@ -250,23 +238,12 @@ func applyOnboardingOverrides(
 	if elasticsearchEnabled {
 		searchTarget = "elasticsearch"
 	}
-	if strings.ToLower(strings.TrimSpace(config.Stack.Services.Search)) != searchTarget {
+	if config.Stack.Services.Search != searchTarget {
 		config.Stack.Services.Search = searchTarget
 		changed = true
 	}
 
 	return changed
-}
-
-func normalizeOnboardingDomain(domain string) string {
-	normalized := strings.ToLower(strings.TrimSpace(domain))
-	if normalized == "" {
-		return ""
-	}
-	if !strings.Contains(normalized, ".") {
-		normalized += ".test"
-	}
-	return normalized
 }
 
 func buildProjectRegistryEntry(root string, config engine.Config, command string) engine.ProjectRegistryEntry {

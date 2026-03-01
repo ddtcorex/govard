@@ -40,7 +40,7 @@ func quickAction(ctx context.Context, action string, project string) (string, er
 }
 
 func openDBClient(ctx context.Context, project string) (string, error) {
-	settings, err := getSettings()
+	settings, err := getSettingsInternal()
 	if err == nil && settings.DBClientPreference == "pma" {
 		if err := browser.OpenURL("https://pma.govard.test/?db=" + project); err != nil {
 			return "", fmt.Errorf("failed to open PHPMyAdmin URL: %w", err)
@@ -168,7 +168,7 @@ func openIDE(project string) (string, error) {
 		return "", fmt.Errorf("project directory not found")
 	}
 
-	settings, _ := getSettings()
+	settings, _ := getSettingsInternal()
 	editor := strings.TrimSpace(settings.CodeEditor)
 	if editor == "" {
 		editor = "code" // Default to VS Code
@@ -296,7 +296,7 @@ func restartEnvironment(project string) (string, error) {
 }
 
 func checkHealth() (string, error) {
-	dashboard, err := buildDashboard()
+	dashboard, err := buildDashboardInternal()
 	if err != nil {
 		return "", err
 	}
@@ -308,7 +308,7 @@ func selectProject(project string) (*projectInfo, error) {
 		return loadProjectInfo(project)
 	}
 
-	dashboard, err := buildDashboard()
+	dashboard, err := buildDashboardInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +351,7 @@ func openDestination(ctx context.Context, url string, message string) (string, e
 }
 
 func openURLWithPreferences(ctx context.Context, url string) error {
-	settings, err := getSettings()
+	settings, err := getSettingsInternal()
 	if err == nil && settings.PreferredBrowser != "" {
 		cmd := exec.Command(settings.PreferredBrowser, url)
 		if err := cmd.Start(); err == nil {
@@ -367,7 +367,7 @@ func buildProxyURL(host string) string {
 }
 
 func resolveProxyDomain() string {
-	settings, err := getSettings()
+	settings, err := getSettingsInternal()
 	if err != nil {
 		return "govard.test"
 	}
@@ -375,7 +375,7 @@ func resolveProxyDomain() string {
 	if target == "" {
 		return "govard.test"
 	}
-	if strings.Contains(target, ".") {
+	if strings.Contains(target, ".") || strings.Contains(target, ":") {
 		return target
 	}
 	return target + ".test"
@@ -394,144 +394,11 @@ func openDocs(ctx context.Context, docPath string) error {
 	return openURLWithPreferences(ctx, "file://"+fullPath)
 }
 
-func getLogs(project string, lines int) (string, error) {
-	return getLogsForService(project, "", lines)
-}
+// Log helpers moved to stream.go
 
-func getLogsForService(project string, service string, lines int) (string, error) {
-	info, err := loadProjectInfo(project)
-	if err != nil {
-		return "", err
-	}
+// Log helpers moved to stream.go
 
-	targets := resolveLogTargets(info, service)
-	if len(targets) == 0 {
-		targets = []string{"php"}
-	}
-
-	var sections []string
-	var failures []string
-	for _, target := range targets {
-		containerName := resolveLogContainer(info, target)
-		output, readErr := readContainerLogs(info, containerName, lines)
-		if readErr != nil {
-			failures = append(failures, fmt.Sprintf("%s: %v", target, readErr))
-			continue
-		}
-		trimmed := strings.TrimSpace(output)
-		if trimmed == "" {
-			continue
-		}
-		if len(targets) > 1 {
-			sections = append(sections, prefixServiceLogLines(target, trimmed))
-		} else {
-			sections = append(sections, output)
-		}
-	}
-	if len(sections) > 0 {
-		return strings.Join(sections, "\n"), nil
-	}
-
-	// Preserve legacy fallback behavior for single-service requests.
-	if len(targets) == 1 && targets[0] != "php" {
-		containerName := resolveLogContainer(info, "php")
-		output, readErr := readContainerLogs(info, containerName, lines)
-		if readErr == nil {
-			return output, nil
-		}
-		failures = append(failures, fmt.Sprintf("php: %v", readErr))
-	}
-	if len(failures) > 0 {
-		return "", fmt.Errorf("%s", strings.Join(failures, "; "))
-	}
-	return "", fmt.Errorf("no logs available for %s", info.name)
-}
-
-func readContainerLogs(info *projectInfo, containerName string, lines int) (string, error) {
-	args := []string{"logs", "--tail", fmt.Sprintf("%d", lines), containerName}
-	cmd := exec.Command("docker", args...)
-	cmd.Dir = filepath.Clean(info.workingDir)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		details := strings.TrimSpace(string(out))
-		if details == "" {
-			return "", err
-		}
-		return "", fmt.Errorf("%s", details)
-	}
-	return string(out), nil
-}
-
-func resolveLogTargets(info *projectInfo, service string) []string {
-	return resolveRequestedLogTargets(service, collectServiceTargets(info))
-}
-
-func resolveRequestedLogTargets(service string, discovered []string) []string {
-	requested := strings.ToLower(strings.TrimSpace(service))
-	if requested == "" || requested == "all" {
-		if len(discovered) == 0 {
-			return []string{"web"}
-		}
-		return discovered
-	}
-	return []string{requested}
-}
-
-func prefixServiceLogLines(service string, raw string) string {
-	trimmedService := strings.TrimSpace(service)
-	lines := strings.Split(strings.TrimSpace(raw), "\n")
-	for index, line := range lines {
-		lines[index] = fmt.Sprintf("[%s] %s", trimmedService, line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func openShell(project string) error {
-	return openShellForService(project, "", "", "bash")
-}
-
-func openShellForService(project string, service string, user string, shell string) error {
-	info, err := loadProjectInfo(project)
-	if err != nil {
-		return err
-	}
-
-	containerName := resolveShellContainer(info, service)
-	chosenShell := normalizeShell(shell)
-	chosenUser := normalizeShellUser(info, service, user)
-
-	if err := execShell(info, containerName, chosenUser, chosenShell); err == nil {
-		return nil
-	}
-
-	if chosenShell != "sh" {
-		if err := execShell(info, containerName, chosenUser, "sh"); err == nil {
-			return nil
-		}
-	}
-
-	if chosenUser != "" {
-		if err := execShell(info, containerName, "", chosenShell); err == nil {
-			return nil
-		}
-		if chosenShell != "sh" {
-			return execShell(info, containerName, "", "sh")
-		}
-	}
-	return fmt.Errorf("failed to open shell for %s", project)
-}
-
-func execShell(info *projectInfo, containerName string, user string, shell string) error {
-	args := []string{"exec", "-it"}
-	if user != "" {
-		args = append(args, "-u", user)
-	}
-	args = append(args, containerName, shell)
-	cmd := exec.Command("docker", args...)
-	cmd.Dir = filepath.Clean(info.workingDir)
-	cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
-	return cmd.Run()
-}
+// Shell functions moved to LogService/SystemService
 
 func normalizeShell(shell string) string {
 	if shell == "sh" {
@@ -561,10 +428,7 @@ func normalizeShellUser(info *projectInfo, service string, user string) string {
 	return ""
 }
 
-func resolveLogContainer(info *projectInfo, service string) string {
-	target := resolveServiceName(info, service, "web")
-	return fmt.Sprintf("%s-%s-1", info.name, target)
-}
+// End of actions.go
 
 func resolveShellContainer(info *projectInfo, service string) string {
 	target := resolveServiceName(info, service, "php")

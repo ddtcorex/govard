@@ -133,6 +133,9 @@ export const createLogsController = ({
   onStatus,
   onToast,
 }) => {
+  const updateRefs = (newRefs) => {
+    refs = newRefs;
+  };
   let livePoll = null;
   let liveEnabled = false;
   let rawLogOutput = "";
@@ -189,7 +192,9 @@ export const createLogsController = ({
       renderFilteredOutput();
     } catch (err) {
       rawLogOutput = "";
-      refs.logOutput.textContent = `Failed to load logs: ${err}`;
+      if (refs.logOutput) {
+        refs.logOutput.textContent = `Failed to load logs: ${err}`;
+      }
     }
   };
 
@@ -293,4 +298,206 @@ export const createLogsController = ({
     stopLive,
     isLiveEnabled: () => liveEnabled,
   };
+};
+
+export const renderLogsTab = (container) => {
+  if (!container) return;
+  container.innerHTML = `
+      <div
+        class="px-6 lg:px-10 py-6 max-w-[1248px] w-full mx-auto flex-1 flex flex-col gap-6 overflow-hidden h-full"
+      >
+        <div
+          class="flex-1 flex flex-col gap-4 overflow-hidden h-full min-h-[500px]"
+        >
+          <div
+            class="flex-1 flex flex-col rounded-xl border border-[#2e573a] bg-[#0c1810] overflow-hidden shadow-lg relative"
+          >
+            <div
+              class="flex items-center justify-between p-3 border-b border-[#2e573a] bg-[#1a3322]"
+            >
+              <div class="flex items-center gap-4">
+                <h3
+                  class="text-sm font-semibold text-white flex items-center gap-2"
+                >
+                  <span
+                    class="material-symbols-outlined text-primary text-lg"
+                    >receipt_long</span
+                  >
+                  Live Logs
+                </h3>
+                <div class="h-4 w-px bg-[#2e573a]"></div>
+                <div
+                  id="logServiceSelector"
+                  class="flex bg-[#102316] rounded-lg p-0.5 border border-[#2e573a]"
+                >
+                  <!-- Service buttons will be rendered here -->
+                  <button
+                    data-action="filter-service"
+                    data-service="all"
+                    class="px-2.5 py-1 rounded text-xs font-medium bg-[#2e573a] text-white"
+                  >
+                    All
+                  </button>
+                </div>
+                <div class="h-4 w-px bg-[#2e573a]"></div>
+                <div
+                  id="logSeverity"
+                  class="flex bg-[#102316] rounded-lg p-0.5 border border-[#2e573a]"
+                >
+                  <button
+                    data-action="filter-severity"
+                    data-severity="all"
+                    class="px-3 py-1 text-[10px] font-bold uppercase transition-colors bg-[#2e573a] text-primary"
+                  >
+                    All
+                  </button>
+                  <button
+                    data-action="filter-severity"
+                    data-severity="error"
+                    class="px-3 py-1 text-[10px] font-bold uppercase transition-colors text-[#90cba4] hover:bg-[#1a3322] border-l border-[#2e573a]"
+                  >
+                    Error
+                  </button>
+                  <button
+                    data-action="filter-severity"
+                    data-severity="warn"
+                    class="px-3 py-1 text-[10px] font-bold uppercase transition-colors text-[#90cba4] hover:bg-[#1a3322] border-l border-[#2e573a]"
+                  >
+                    Warn
+                  </button>
+                </div>
+                <button
+                  id="toggleLive"
+                  data-action="toggle-live"
+                  class="ml-2 px-2.5 py-1 rounded text-xs font-medium bg-[#2e573a] text-white hover:bg-[#366b47]"
+                >
+                  Live: Off
+                </button>
+                <button
+                  data-action="refresh-logs"
+                  class="ml-2 px-2.5 py-1 rounded text-xs font-medium text-[#90cba4] hover:text-white hover:bg-[#2e573a]/50"
+                >
+                  Refresh
+                </button>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="relative">
+                  <span
+                    class="absolute inset-y-0 left-2 flex items-center"
+                  >
+                    <span
+                      class="material-symbols-outlined text-[#5d856b] text-base"
+                      >search</span
+                    >
+                  </span>
+                  <input
+                    class="bg-[#102316] text-xs text-white pl-8 pr-3 py-1.5 rounded border border-[#2e573a] focus:border-primary/50 focus:outline-none placeholder-[#5d856b] w-48"
+                    placeholder="Filter logs..."
+                    type="text"
+                    id="logSearch"
+                  />
+                </div>
+                <button
+                  data-action="clear-logs"
+                  class="text-[#90cba4] hover:text-primary transition-colors"
+                  title="Clear Logs"
+                >
+                  <span class="material-symbols-outlined text-lg"
+                    >block</span
+                  >
+                </button>
+                <button
+                  data-action="download-logs"
+                  class="text-[#90cba4] hover:text-primary transition-colors"
+                  title="Download Logs"
+                >
+                  <span class="material-symbols-outlined text-lg"
+                    >download</span
+                  >
+                </button>
+              </div>
+            </div>
+            <div
+              class="flex-1 overflow-y-auto p-4 terminal-text text-xs space-y-1 bg-[#0c1810] custom-scrollbar"
+            >
+              <pre id="logOutput" class="font-mono whitespace-pre-wrap">
+Select an environment to view logs.</pre
+              >
+            </div>
+          </div>
+          <div
+            class="h-1.5 bg-[#1a3322] hover:bg-primary/50 cursor-row-resize flex items-center justify-center rounded transition-colors group/resizer"
+          >
+            <div
+              class="w-10 h-1 bg-[#2e573a] rounded-full group-hover/resizer:bg-white/50"
+            ></div>
+          </div>
+          <div
+            class="h-1/3 flex flex-col rounded-xl border border-[#2e573a] bg-[#0c1810] overflow-hidden shadow-lg"
+          >
+            <div
+              class="flex items-center justify-between p-2 pl-3 border-b border-[#2e573a] bg-[#1a3322]"
+            >
+              <div class="flex items-center gap-2">
+                <span
+                  class="material-symbols-outlined text-slate-400 text-sm"
+                  >terminal</span
+                >
+                <span class="text-xs font-semibold text-slate-300"
+                  >Terminal — bash</span
+                >
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex gap-2">
+                  <button
+                    data-action="start-embedded-terminal"
+                    class="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors"
+                    title="Open Shell"
+                  >
+                    <span class="material-symbols-outlined text-sm"
+                      >add</span
+                    >
+                  </button>
+                  <button
+                    data-action="reset-shell-users"
+                    class="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors flex items-center"
+                    title="Terminal Settings"
+                  >
+                    <span class="material-symbols-outlined text-sm"
+                      >settings</span
+                    >
+                  </button>
+                  <select id="shellUser" class="hidden">
+                    <option value="">Auto</option>
+                  </select>
+                  <select id="shellCommand" class="hidden">
+                    <option value="bash">bash</option>
+                  </select>
+                  <button
+                    class="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors"
+                    title="Expand"
+                  >
+                    <span class="material-symbols-outlined text-sm"
+                      >open_in_full</span
+                    >
+                  </button>
+                  <button
+                    class="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors"
+                    title="Close"
+                  >
+                    <span class="material-symbols-outlined text-sm"
+                      >close</span
+                    >
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div
+              id="terminalContainer"
+              class="flex-1 overflow-hidden bg-[#0c1810]"
+            ></div>
+          </div>
+        </div>
+      </div>
+  `;
 };
