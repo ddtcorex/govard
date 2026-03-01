@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"govard/internal/desktop"
 	"govard/internal/engine"
@@ -198,4 +199,46 @@ stack:
 		t.Fatalf("expected registry domain %s, got %s", expectedDomain, entries[0].Domain)
 	}
 
+}
+
+func TestDesktopPkgOnboardProjectWithOptionsForPathForTestRejectsDuplicateDomain(t *testing.T) {
+	root := t.TempDir()
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+
+	content := strings.TrimSpace(`
+project_name: shop
+framework: magento2
+domain: shop.test
+`) + "\n"
+	if err := os.WriteFile(filepath.Join(root, ".govard.yml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
+	}
+
+	if err := engine.UpsertProjectRegistryEntry(engine.ProjectRegistryEntry{
+		Path:        filepath.Join(t.TempDir(), "existing"),
+		ProjectName: "existing",
+		Domain:      "existing.test",
+		Framework:   "laravel",
+		LastSeenAt:  time.Now().UTC(),
+		LastCommand: "desktop-onboard",
+	}); err != nil {
+		t.Fatalf("seed registry: %v", err)
+	}
+
+	_, err := desktop.OnboardProjectWithOptionsForPathForTest(
+		root,
+		"magento2",
+		"existing.test",
+		false,
+		true,
+		false,
+		true,
+	)
+	if err == nil {
+		t.Fatal("expected duplicate domain onboarding error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "already used") {
+		t.Fatalf("expected duplicate domain error, got %v", err)
+	}
 }

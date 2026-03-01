@@ -38,22 +38,41 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.PickProjectDirectory?.bind(bridge));
   },
-  async onboardProject(
-    projectPath,
-    framework,
-    domain = "",
-    serviceOptions = {},
-  ) {
+  async onboardProject(inputOrPath, framework, domain = "", serviceOptions = {}) {
     const bridge = getBridge();
+
+    // Support both object payload (current onboarding flow) and legacy positional args.
+    if (
+      inputOrPath &&
+      typeof inputOrPath === "object" &&
+      !Array.isArray(inputOrPath)
+    ) {
+      const input = inputOrPath;
+      return call(bridge?.OnboardProject?.bind(bridge), {
+        projectPath: String(input.projectPath || "").trim(),
+        framework: String(input.framework || "").trim(),
+        domain: String(input.domain || "").trim(),
+        varnishEnabled: Boolean(input.varnishEnabled),
+        redisEnabled: Boolean(input.redisEnabled),
+        rabbitMQEnabled: Boolean(input.rabbitMQEnabled),
+        elasticsearchEnabled: Boolean(input.elasticsearchEnabled),
+        applyOverrides:
+          input.applyOverrides === undefined ? true : Boolean(input.applyOverrides),
+        skipIDE: Boolean(input.skipIDE),
+      });
+    }
+
     const opts = serviceOptions || {};
     return call(bridge?.OnboardProject?.bind(bridge), {
-      projectPath,
-      framework,
-      domain,
+      projectPath: String(inputOrPath || "").trim(),
+      framework: String(framework || "").trim(),
+      domain: String(domain || "").trim(),
       varnishEnabled: Boolean(opts.varnish),
       redisEnabled: Boolean(opts.redis),
       rabbitMQEnabled: Boolean(opts.rabbitmq),
       elasticsearchEnabled: Boolean(opts.elasticsearch),
+      applyOverrides: false,
+      skipIDE: false,
     });
   },
   async getRemotes(project) {

@@ -23,7 +23,7 @@ import { createMetricsController } from "./modules/metrics.js";
 import {
   createOnboardingController,
   renderOnboardingModal,
-} from "./modules/onboarding.js";
+} from "./modules/onboarding.js?v=20260302";
 import {
   createRemotesController,
   renderRemotes,
@@ -81,8 +81,15 @@ const getLiveRefs = () => ({
   onboardingModal: byId("onboardingModal"),
   projectPath: byId("projectPath"),
   displayProjectPath: byId("displayProjectPath"),
+  projectPathHint: byId("projectPathHint"),
   projectDomain: byId("projectDomain"),
+  projectDomainHint: byId("projectDomainHint"),
   projectFramework: byId("projectFramework"),
+  onboardingSummaryProject: byId("onboardingSummaryProject"),
+  onboardingSummaryFramework: byId("onboardingSummaryFramework"),
+  onboardingSummaryDomain: byId("onboardingSummaryDomain"),
+  onboardingSubmitHint: byId("onboardingSubmitHint"),
+  onboardingSubmit: byId("onboardingSubmit"),
   onboardVarnish: byId("onboardVarnish"),
   onboardRedis: byId("onboardRedis"),
   onboardRabbitMQ: byId("onboardRabbitMQ"),
@@ -814,6 +821,21 @@ const onboardingController = createOnboardingController({
   onStatus: setStatus,
   onToast: showToast,
   onProjectAdded: refreshDashboard,
+  getExistingDomains: () =>
+    (getState().environments || [])
+      .map((item) => ({
+        domain: String(item?.domain || item?.Domain || "").trim().toLowerCase(),
+        project: String(
+          item?.project ||
+            item?.Project ||
+            item?.name ||
+            item?.Name ||
+            "",
+        )
+          .trim()
+          .toLowerCase(),
+      }))
+      .filter((entry) => entry.domain),
 });
 
 const actionsController = createActionsController({
@@ -1295,6 +1317,21 @@ const bindRuntimeListeners = () => {
 };
 
 document.addEventListener("keydown", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLElement) {
+    const isNativeControl = Boolean(
+      target.closest("button, input, select, textarea, a"),
+    );
+    if (!isNativeControl && (event.key === "Enter" || event.key === " ")) {
+      const actionTarget = target.closest('[data-action][role="button"]');
+      if (actionTarget instanceof HTMLElement) {
+        event.preventDefault();
+        actionTarget.click();
+        return;
+      }
+    }
+  }
+
   if (event.key === "Escape") {
     settingsController.toggleDrawer(false);
   }
@@ -1368,6 +1405,18 @@ const bindDynamicControlListeners = () => {
   if (refs.preferredBrowser) {
     refs.preferredBrowser.addEventListener("change", () => {
       settingsController.save();
+    });
+  }
+
+  if (refs.projectDomain) {
+    refs.projectDomain.addEventListener("input", () => {
+      onboardingController.handleInputChange();
+    });
+  }
+
+  if (refs.projectFramework) {
+    refs.projectFramework.addEventListener("change", () => {
+      onboardingController.handleInputChange();
     });
   }
 };

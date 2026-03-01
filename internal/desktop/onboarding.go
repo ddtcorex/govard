@@ -140,6 +140,11 @@ func onboardProjectWithOptionsInternal(
 	}
 
 	entry := buildProjectRegistryEntry(root, config, "desktop-onboard")
+	if err := validateUniqueOnboardingDomain(root, entry.Domain); err != nil {
+		category = "validation"
+		message = err.Error()
+		return "", err
+	}
 	project = entry.ProjectName
 	if err := engine.UpsertProjectRegistryEntry(entry); err != nil {
 		message = err.Error()
@@ -265,4 +270,43 @@ func buildProjectRegistryEntry(root string, config engine.Config, command string
 		LastSeenAt:  time.Now().UTC(),
 		LastCommand: strings.TrimSpace(strings.ToLower(command)),
 	}
+}
+
+func validateUniqueOnboardingDomain(projectPath string, domain string) error {
+	normalizedDomain := strings.TrimSpace(strings.ToLower(domain))
+	if normalizedDomain == "" {
+		return nil
+	}
+
+	entries, err := engine.ReadProjectRegistryEntries()
+	if err != nil {
+		return fmt.Errorf("read project registry: %w", err)
+	}
+
+	cleanPath := filepath.Clean(strings.TrimSpace(projectPath))
+	for _, entry := range entries {
+		if filepath.Clean(strings.TrimSpace(entry.Path)) == cleanPath {
+			continue
+		}
+
+		if strings.EqualFold(strings.TrimSpace(entry.Domain), normalizedDomain) {
+			return fmt.Errorf(
+				"domain %s is already used by project %s",
+				normalizedDomain,
+				strings.TrimSpace(entry.ProjectName),
+			)
+		}
+
+		for _, extraDomain := range entry.ExtraDomains {
+			if strings.EqualFold(strings.TrimSpace(extraDomain), normalizedDomain) {
+				return fmt.Errorf(
+					"domain %s is already used by project %s",
+					normalizedDomain,
+					strings.TrimSpace(entry.ProjectName),
+				)
+			}
+		}
+	}
+
+	return nil
 }
