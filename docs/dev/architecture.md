@@ -100,18 +100,14 @@ For Magento 2:
 ├── cmd/govard-desktop/  # Desktop entry point (Wails)
 ├── internal/
 │   ├── cmd/             # CLI command definitions (Cobra)
-│   │   ├── bootstrap/   # Project initialization commands (bootstrap_*.go)
-│   │   ├── db/          # Database management (db_*.go)
-│   │   ├── remote/      # Remote environment handling
-│   │   ├── sync/        # File synchronization operations (sync_*.go)
-│   │   └── services/    # App lifecycle and proxies
+│   │   └── *.go         # Flat command files grouped by prefix (e.g. bootstrap_*, db_*, remote_*)
+│   ├── blueprints/      # Docker Compose templates
 │   ├── engine/          # Business logic, Docker SDK, rendering
 │   ├── desktop/         # Desktop app bindings (Wails)
 │   ├── proxy/           # Caddy proxy management
 │   ├── ui/              # Terminal UI (pterm)
 │   └── updater/         # Self-update mechanism
 ├── desktop/             # Desktop app assets (frontend/config)
-├── blueprints/          # Docker Compose templates
 ├── docker/              # Docker image definitions
 └── tests/               # Test files and fixtures
 ```
@@ -124,7 +120,7 @@ Commands organized by domain:
 - **Development**: `shell`, `logs`, `debug`
 - **Frameworks**: `magento`, `artisan`, `composer`, `npm`, etc.
 - **Services**: `db`, `redis`, `varnish`, `elasticsearch`
-- **Diagnostics**: `doctor`, `trust`
+- **Diagnostics**: `doctor` (including `doctor trust` and `doctor fix-deps`)
 
 ### 4.2 Engine Architecture
 

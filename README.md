@@ -54,6 +54,30 @@ curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh |
 
 By default this installs `govard` to `/usr/local/bin` and uses `sudo` when needed.
 
+### Release Installers (CLI + Desktop)
+
+Every tagged release now publishes installer packages that install both:
+
+- `govard` (CLI)
+- `govard-desktop` (Desktop runtime used by `govard desktop`)
+
+From the release page:
+
+- Linux: `govard_<version>_linux_<arch>.deb`
+- macOS: `govard_<version>_Darwin_<arch>.pkg`
+
+Linux (`.deb`) example:
+
+```bash
+sudo dpkg -i govard_<version>_linux_amd64.deb
+```
+
+macOS (`.pkg`) example:
+
+```bash
+sudo installer -pkg govard_<version>_Darwin_arm64.pkg -target /
+```
+
 ### Quick Install from Source
 
 Ensure you have Go 1.24+ installed, then run:
@@ -245,13 +269,13 @@ _Note: Once trusted, all `*.test` domains managed by Govard will show a "Green L
 
 ```text
 .
-├── blueprints/      # Docker Compose templates for specific frameworks
 ├── cmd/
 │   ├── govard/      # CLI entry point
 │   └── govard-desktop/ # Desktop entry point (Wails)
 ├── desktop/         # Desktop app assets (Wails frontend/config)
 ├── internal/
 │   ├── cmd/         # CLI Command definitions (Cobra)
+│   ├── blueprints/  # Docker Compose templates for specific frameworks
 │   ├── engine/      # Core logic (Docker SDK, Discovery, Rendering)
 │   ├── desktop/     # Desktop app glue (Wails bindings)
 │   ├── ui/          # Styled terminal output logic

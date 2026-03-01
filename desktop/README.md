@@ -16,7 +16,10 @@ Quick start (build):
 1. `wails build -tags desktop` (from `desktop/`)
 2. `govard desktop`
 
-The `frontend:install/build/dev` commands in `wails.json` are intentionally blank.
+`wails.json` currently wires:
+- `frontend:install`: `yarn install`
+- `frontend:build`: `yarn run build:css`
+- `frontend:dev`: empty (frontend is served through Wails dev runtime)
 
 Lightweight dashboard highlights:
 - Environment list with start/stop/open

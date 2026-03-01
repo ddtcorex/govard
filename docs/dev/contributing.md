@@ -22,7 +22,7 @@ Guide for contributing to Govard development.
 │   ├── ui/              # Terminal UI
 │   └── updater/         # Self-update mechanism
 ├── desktop/             # Desktop app assets (Wails frontend/config)
-├── blueprints/          # Docker Compose templates
+├── internal/blueprints/ # Docker Compose templates
 ├── docker/              # Docker image definitions
 ├── tests/               # Test files
 ├── scripts/             # Dev helper scripts (for example pre-push)
@@ -56,7 +56,7 @@ export PATH="$HOME/go/bin:$PATH"
 # Build for development
 go build -o govard cmd/govard/main.go
 
-# Build all platforms
+# Build for current platform
 make build
 
 # Install locally

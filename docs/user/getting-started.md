@@ -38,6 +38,25 @@ cd govard
 ./install.sh --source
 ```
 
+### 4. Install from Release Packages (CLI + Desktop)
+
+Tagged releases publish installer packages that install both `govard` and `govard-desktop`.
+
+- Linux: `govard_<version>_linux_<arch>.deb`
+- macOS: `govard_<version>_Darwin_<arch>.pkg`
+
+Linux example:
+
+```bash
+sudo dpkg -i govard_<version>_linux_amd64.deb
+```
+
+macOS example:
+
+```bash
+sudo installer -pkg govard_<version>_Darwin_arm64.pkg -target /
+```
+
 ## Basic Workflow
 
 ### 1. Initialize a Project

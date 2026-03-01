@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Govard Desktop Icon</title>
+  <desc id="desc">Rounded square icon with a stylized G and terminal prompt motif.</desc>
+  <defs>
+    <linearGradient id="bg" x1="24" y1="20" x2="232" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f2a1b"/>
+      <stop offset="1" stop-color="#09180f"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="64" y1="58" x2="206" y2="196" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2dff8b"/>
+      <stop offset="1" stop-color="#0ddf62"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#bg)"/>
+  <rect x="22" y="22" width="212" height="212" rx="46" fill="none" stroke="#2dff8b" stroke-opacity="0.22" stroke-width="4"/>
+
+  <path d="M173 98c-9-16-26-26-46-26-29 0-52 24-52 53s23 53 52 53c24 0 43-15 49-37h-30"
+        fill="none" stroke="url(#accent)" stroke-linecap="round" stroke-linejoin="round" stroke-width="18"/>
+  <path d="M172 141h-40" fill="none" stroke="url(#accent)" stroke-linecap="round" stroke-width="18"/>
+
+  <path d="M69 182l18 16 22-25" fill="none" stroke="#2dff8b" stroke-linecap="round" stroke-linejoin="round" stroke-width="10" stroke-opacity="0.95"/>
+</svg>

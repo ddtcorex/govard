@@ -42,7 +42,7 @@ docker --version
 
 - `cmd/govard/main.go`: CLI entrypoint
 - `cmd/govard-desktop/`: Desktop app entrypoint (built by Wails)
-- `desktop/`: Wails desktop app codebase (Go backend bridge + React/HTML frontend in `desktop/frontend/`)
+- `desktop/`: Wails desktop app codebase (Go backend bridge + HTML/vanilla JS frontend in `desktop/frontend/`)
 - `docs/`: Project documentation, architectural decisions, and AI agent test reports
 - `internal/cmd/`: Cobra command implementations
 - `internal/engine/`: orchestration, config, blueprint logic
@@ -54,8 +54,8 @@ docker --version
 - `tests/`: unit/contract tests (default location for tests)
 - `tests/integration/`: integration tests (tagged and heavier)
 - `tests/frontend/`: Node test runner suite for frontend pieces
-- `scripts/install.sh`: build-from-source installer
-- `scripts/install-release.sh`: release-binary one-line installer
+- `install.sh`: unified installer (release binary by default, `--source` for source build)
+- `scripts/build-macos-pkg.sh`: helper script to build macOS `.pkg` installer artifacts
 - `.goreleaser.yml`: release artifact config
 - `.github/workflows/`: CI/release/security automation
 
@@ -70,7 +70,7 @@ make test-integration    # integration tests (requires build + docker)
 make test                # full test suite
 make vet                 # go vet
 make fmt                 # go fmt ./...
-make build               # build release binaries (linux amd64, darwin arm64)
+make build               # build Govard for the current platform
 ```
 
 Useful direct commands:
@@ -86,7 +86,7 @@ go test -tags integration ./tests/integration/... -v -timeout 30m
 Key workflows:
 
 - `ci-pipeline.yml`: vet + gofmt check + fast tests + integration + binary build
-- `release.yml`: triggered by tag `v*.*.*`, runs GoReleaser
+- `release.yml`: triggered by tag `v*.*.*`, runs GoReleaser and uploads macOS `.pkg` installers
 - `codeql.yml`: code scanning
 - `govulncheck.yml`: weekly vulnerability scan
 
@@ -137,22 +137,21 @@ For update/release-sensitive commands:
 
 ### Release artifacts
 
-Current GoReleaser naming (non-Windows):
+Current release artifacts include:
 
-`govard_<version>_<OS>_<arch>.tar.gz`
-
-Windows:
-
-`govard_<version>_<OS>_<arch>.zip`
-
-Checksum file:
-
-`checksums.txt`
+- CLI archives from GoReleaser:
+  - non-Windows: `govard_<version>_<OS>_<arch>.tar.gz`
+  - Windows: `govard_<version>_<OS>_<arch>.zip`
+- Linux installer (GoReleaser nfpm): `govard_<version>_linux_<arch>.deb`
+  - includes both `govard` and `govard-desktop`
+- macOS installer (release workflow): `govard_<version>_Darwin_<arch>.pkg`
+  - includes both `govard` and `govard-desktop`
+- Checksum file: `checksums.txt`
 
 ### Installer scripts
 
-- `scripts/install.sh`: source build install
-- `scripts/install-release.sh`: download release asset + checksum verification
+- `install.sh`: unified installer (download release binary by default, `--source` for source build)
+- `scripts/build-macos-pkg.sh`: macOS package artifact builder used by release workflow
 
 ### Self-update behavior
 
@@ -270,4 +269,4 @@ This is the **mandatory approach for agents to test the real desktop UI**.
 
 ### Test Reports
 
-Desktop UI test plans and results are saved to `docs/desktop-test-plan.md` and `docs/desktop-test-results.md`.
+Desktop UI test plans and results should be stored under `docs/desktop/`.

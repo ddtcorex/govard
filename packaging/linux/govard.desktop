@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Govard Desktop
+GenericName=Local Development Orchestrator
+Comment=Manage Govard environments from a desktop dashboard
+Exec=govard-desktop
+Icon=govard
+Terminal=false
+StartupNotify=true
+Categories=Development;Utility;
+Keywords=govard;docker;php;local;development;

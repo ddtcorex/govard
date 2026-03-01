@@ -16,7 +16,22 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X govard/internal/cmd.Version={{ .Version }}
+      - -s -w -X govard/internal/cmd.Version={{ .Version }} -X govard/internal/desktop.Version={{ .Version }}
+
+  - id: govard-desktop
+    main: ./cmd/govard-desktop/main.go
+    binary: govard-desktop
+    tags:
+      - desktop
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X govard/internal/cmd.Version={{ .Version }} -X govard/internal/desktop.Version={{ .Version }}
 
 archives:
   - id: govard-archive
@@ -33,6 +48,31 @@ archives:
 
 checksum:
   name_template: checksums.txt
+
+nfpms:
+  - id: govard-installer
+    package_name: govard
+    ids:
+      - govard
+      - govard-desktop
+    formats:
+      - deb
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    bindir: /usr/bin
+    maintainer: DDTCoreX <kaido4492@gmail.com>
+    vendor: DDTCoreX
+    homepage: https://github.com/ddtcorex/govard
+    description: Govard local development orchestrator with CLI and Desktop modes
+    license: MIT
+    section: utils
+    priority: optional
+    dependencies:
+      - ca-certificates
+    contents:
+      - src: ./packaging/linux/govard.desktop
+        dst: /usr/share/applications/govard.desktop
+      - src: ./packaging/icons/govard.svg
+        dst: /usr/share/icons/hicolor/scalable/apps/govard.svg
 
 changelog:
   use: github

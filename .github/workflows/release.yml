@@ -27,3 +27,28 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  macos-pkg:
+    name: macOS Installer (${{ matrix.arch }})
+    needs: release
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+
+      - name: Build macOS pkg
+        run: ./scripts/build-macos-pkg.sh "${GITHUB_REF_NAME}" "${{ matrix.arch }}" dist
+
+      - name: Upload macOS pkg asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/*.pkg --clobber
