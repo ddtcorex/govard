@@ -18,7 +18,7 @@ install: ## Build and install Govard binary to system (via install.sh)
 
 build-frontend:
 	@echo "Building frontend assets..."
-	@cd desktop/frontend && npm install && npm run build:css
+	@cd desktop/frontend && yarn install && yarn run build:css
 
 build: build-frontend ## Build Govard binary for the current platform
 	@echo "Building Govard..."
