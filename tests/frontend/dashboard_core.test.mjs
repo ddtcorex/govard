@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { normalizeDashboardPayload } from "../../desktop/frontend/modules/dashboard.js";
+import {
+  localEnvironmentURL,
+  normalizeDashboardPayload,
+  renderProjectHero,
+} from "../../desktop/frontend/modules/dashboard.js";
 
 test("normalizeDashboardPayload maps core values", () => {
   const value = normalizeDashboardPayload({
@@ -189,5 +193,79 @@ test("project hero uses Start action when environment is not running", async () 
     dashboardJS.includes('const icon = isStopped ? "play_arrow" : "restart_alt";'),
     true,
     "project hero should use play icon for stopped environments",
+  );
+});
+
+test("localEnvironmentURL resolves local domain to HTTPS URL", () => {
+  const url = localEnvironmentURL({
+    Domain: "magento2-test-instance.test",
+  });
+  assert.equal(url, "https://magento2-test-instance.test");
+});
+
+test("renderProjectHero unhides and sets local URL under environment title", () => {
+  const classValues = new Set(["hidden"]);
+  const classList = {
+    add: (...tokens) => tokens.forEach((token) => classValues.add(token)),
+    remove: (...tokens) => tokens.forEach((token) => classValues.delete(token)),
+    contains: (token) => classValues.has(token),
+  };
+
+  const refs = {
+    projectUrl: {
+      href: "#",
+      dataset: {},
+      classList,
+    },
+    projectUrlText: {
+      textContent: "",
+    },
+  };
+
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    getElementById: () => null,
+  };
+
+  try {
+    renderProjectHero(
+      refs,
+      [
+        {
+          Project: "magento2-test-instance",
+          Domain: "magento2-test-instance.test",
+          Status: "running",
+        },
+      ],
+      "magento2-test-instance",
+    );
+  } finally {
+    globalThis.document = previousDocument;
+  }
+
+  assert.equal(
+    refs.projectUrl.href,
+    "https://magento2-test-instance.test",
+    "expected hero URL to use local environment domain",
+  );
+  assert.equal(
+    refs.projectUrlText.textContent,
+    "https://magento2-test-instance.test",
+    "expected hero URL text to match local URL",
+  );
+  assert.equal(
+    refs.projectUrl.classList.contains("hidden"),
+    false,
+    "expected project URL link to be visible",
+  );
+  assert.equal(
+    refs.projectUrl.dataset.action,
+    "env-open",
+    "expected project URL to trigger env-open action",
+  );
+  assert.equal(
+    refs.projectUrl.dataset.env,
+    "magento2-test-instance",
+    "expected project URL action to target selected environment",
   );
 });

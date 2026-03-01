@@ -99,6 +99,10 @@ func (app *App) TestRemote(project, remoteName string) (string, error) {
 	return app.Remote.TestRemote(project, remoteName)
 }
 
+func (app *App) OpenRemoteURL(project, remoteName string) (string, error) {
+	return app.Remote.OpenRemoteURL(project, remoteName)
+}
+
 func (app *App) RunRemoteSyncPreset(project, remoteName, presetName string, config map[string]bool) (string, error) {
 	return app.Remote.RunRemoteSyncPreset(project, remoteName, presetName, config)
 }

@@ -230,6 +230,9 @@ func toggleXdebug(project string) (string, error) {
 func startEnvironment(project string) (string, error) {
 	info, err := loadProjectInfo(project)
 	if err != nil {
+		if isNoContainersError(err) {
+			return startEnvironmentFromConfig(project)
+		}
 		return "", err
 	}
 	ctx := context.Background()
@@ -254,6 +257,46 @@ func startEnvironment(project string) (string, error) {
 		}
 	}
 	return "Started environment " + info.name, nil
+}
+
+func startEnvironmentFromConfig(project string) (string, error) {
+	root, err := resolveProjectRootForRemotes(project)
+	if err != nil {
+		return "", err
+	}
+
+	info, err := loadProjectInfoFromPath(root)
+	if err != nil {
+		return "", err
+	}
+
+	config := info.config
+	if strings.TrimSpace(config.ProjectName) == "" {
+		config.ProjectName = filepath.Base(root)
+	}
+	engine.NormalizeConfig(&config)
+
+	composePath := engine.ComposeFilePath(root, config.ProjectName)
+	if _, err := os.Stat(composePath); err != nil {
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("inspect compose file: %w", err)
+		}
+		if err := engine.RenderBlueprint(root, config); err != nil {
+			return "", fmt.Errorf("render compose blueprint: %w", err)
+		}
+	}
+
+	if err := runCompose(root, config.ProjectName, composePath); err != nil {
+		return "", err
+	}
+	return "Started environment " + config.ProjectName, nil
+}
+
+func isNoContainersError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "no containers found")
 }
 
 func stopEnvironment(project string) (string, error) {

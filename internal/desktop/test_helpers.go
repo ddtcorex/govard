@@ -66,6 +66,7 @@ func BuildRemoteEntriesForTest(remotes map[string]RemoteConfigSnapshot) []Remote
 			User:      strings.TrimSpace(snapshot.User),
 			Path:      strings.TrimSpace(snapshot.Path),
 			Port:      snapshot.Port,
+			URL:       strings.TrimSpace(snapshot.URL),
 			Protected: engine.BoolPtr(snapshot.Protected),
 			Capabilities: engine.RemoteCapabilities{
 				Files:  containsCapability(snapshot.Capabilities, engine.RemoteCapabilityFiles),
@@ -128,6 +129,52 @@ func BuildDerivedServicesForTest(config engine.Config, serviceState map[string]s
 // BuildFallbackServicesForTest exposes fallback service rendering from discovered targets.
 func BuildFallbackServicesForTest(services map[string]bool, serviceState map[string]string) []Service {
 	return fallbackServices(services, serviceState)
+}
+
+// BuildRemoteAdminURLForTest exposes remote admin URL formatting for tests.
+func BuildRemoteAdminURLForTest(remote RemoteConfigSnapshot, adminPath string) string {
+	return buildRemoteAdminURLForDesktop(engine.RemoteConfig{
+		Host: strings.TrimSpace(remote.Host),
+		URL:  strings.TrimSpace(remote.URL),
+	}, adminPath)
+}
+
+// ResolveRemoteNameForOpenForTest exposes remote lookup by name/environment alias for tests.
+func ResolveRemoteNameForOpenForTest(
+	remotes map[string]RemoteConfigSnapshot,
+	requestedRemoteName string,
+) (string, error) {
+	engineRemotes := map[string]engine.RemoteConfig{}
+	for name, snapshot := range remotes {
+		engineRemotes[name] = engine.RemoteConfig{
+			Host: strings.TrimSpace(snapshot.Host),
+			User: strings.TrimSpace(snapshot.User),
+			Path: strings.TrimSpace(snapshot.Path),
+			Port: snapshot.Port,
+			URL:  strings.TrimSpace(snapshot.URL),
+			Capabilities: engine.RemoteCapabilities{
+				Files:  containsCapability(snapshot.Capabilities, engine.RemoteCapabilityFiles),
+				Media:  containsCapability(snapshot.Capabilities, engine.RemoteCapabilityMedia),
+				DB:     containsCapability(snapshot.Capabilities, engine.RemoteCapabilityDB),
+				Deploy: containsCapability(snapshot.Capabilities, engine.RemoteCapabilityDeploy),
+			},
+		}
+	}
+
+	resolved, _, err := resolveRemoteConfigForOpen(
+		engine.Config{
+			ProjectName: "test",
+			Domain:      "example.test",
+			Framework:   "magento2",
+			Remotes:     engineRemotes,
+		},
+		requestedRemoteName,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return resolved, nil
 }
 
 // ListProjectRemotesForPathForTest exposes path-based remotes loading for tests.

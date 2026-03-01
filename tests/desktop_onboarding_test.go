@@ -242,3 +242,140 @@ domain: shop.test
 		t.Fatalf("expected duplicate domain error, got %v", err)
 	}
 }
+
+func TestDesktopPkgOnboardProjectForPathForTestAutoMigrateFromWarden(t *testing.T) {
+	root := t.TempDir()
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+
+	envContent := strings.TrimSpace(`
+WARDEN_ENV_NAME=warden-demo
+WARDEN_ENV_TYPE=magento2
+`) + "\n"
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte(envContent), 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	var initArgs []string
+	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+		if dir != root {
+			t.Fatalf("unexpected command dir %s", dir)
+		}
+		initArgs = append([]string{}, args...)
+		content := strings.TrimSpace(`
+project_name: warden-demo
+framework: magento2
+domain: warden-demo.test
+`) + "\n"
+		if err := os.WriteFile(filepath.Join(dir, ".govard.yml"), []byte(content), 0o644); err != nil {
+			return "", err
+		}
+		return "init ok", nil
+	})
+	defer restore()
+
+	message, err := desktop.OnboardProjectForPathForTest(root, "magento2")
+	if err != nil {
+		t.Fatalf("onboard project: %v", err)
+	}
+	expected := []string{"init", "--framework", "magento2", "--migrate-from", "warden"}
+	if !reflect.DeepEqual(initArgs, expected) {
+		t.Fatalf("unexpected init args: %#v", initArgs)
+	}
+	if !strings.Contains(strings.ToLower(message), "initialized") {
+		t.Fatalf("expected initialized message, got %q", message)
+	}
+}
+
+func TestDesktopPkgOnboardProjectForPathForTestAutoBootstrapFromStagingRemote(t *testing.T) {
+	root := t.TempDir()
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+	t.Setenv("GOVARD_DESKTOP_BOOTSTRAP_SYNC", "1")
+
+	content := strings.TrimSpace(`
+project_name: shop
+framework: magento2
+domain: shop.test
+remotes:
+  staging:
+    host: staging.example.com
+    user: deploy
+    port: 22
+    path: /var/www/staging
+    capabilities:
+      files: true
+      media: true
+      db: true
+      deploy: false
+`) + "\n"
+	if err := os.WriteFile(filepath.Join(root, ".govard.yml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
+	}
+
+	var calls [][]string
+	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+		if dir != root {
+			t.Fatalf("unexpected command dir %s", dir)
+		}
+		calls = append(calls, append([]string{}, args...))
+		return "bootstrap completed", nil
+	})
+	defer restore()
+
+	message, err := desktop.OnboardProjectForPathForTest(root, "")
+	if err != nil {
+		t.Fatalf("onboard project: %v", err)
+	}
+
+	if len(calls) != 1 {
+		t.Fatalf("expected exactly one post-onboarding command, got %d", len(calls))
+	}
+	expectedBootstrap := []string{"bootstrap", "--environment", "staging"}
+	if !reflect.DeepEqual(calls[0], expectedBootstrap) {
+		t.Fatalf("unexpected bootstrap args: %#v", calls[0])
+	}
+	if !strings.Contains(strings.ToLower(message), "auto bootstrap") {
+		t.Fatalf("expected auto bootstrap summary in message, got %q", message)
+	}
+}
+
+func TestDesktopPkgOnboardProjectForPathForTestSkipsAutoBootstrapWithoutStagingRemote(t *testing.T) {
+	root := t.TempDir()
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+
+	content := strings.TrimSpace(`
+project_name: shop
+framework: magento2
+domain: shop.test
+remotes:
+  production:
+    host: prod.example.com
+    user: deploy
+    port: 22
+    path: /var/www/prod
+    capabilities:
+      files: true
+      media: true
+      db: true
+      deploy: false
+`) + "\n"
+	if err := os.WriteFile(filepath.Join(root, ".govard.yml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
+	}
+
+	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+		t.Fatalf("did not expect bootstrap command when staging remote is missing; dir=%s args=%#v", dir, args)
+		return "", nil
+	})
+	defer restore()
+
+	message, err := desktop.OnboardProjectForPathForTest(root, "")
+	if err != nil {
+		t.Fatalf("onboard project: %v", err)
+	}
+	if strings.Contains(strings.ToLower(message), "auto bootstrap") {
+		t.Fatalf("did not expect auto bootstrap summary in message, got %q", message)
+	}
+}

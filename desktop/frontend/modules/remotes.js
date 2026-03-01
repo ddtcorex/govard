@@ -110,49 +110,60 @@ export const renderRemotes = (container, remotes = []) => {
       const themeIcon = isProd ? "rocket_launch" : "science";
       const borderColor = isProd ? "border-amber-500/20" : "border-[#22492f]";
       const statusText = isProd ? "Protected" : "Connected";
+      const environmentLabel = String(remote.environment || "staging")
+        .trim()
+        .toUpperCase();
+      const lastSyncText = String(remote.lastSync || "never")
+        .trim()
+        .toLowerCase();
+      const lastSyncTone =
+        lastSyncText === "never" ? "text-amber-300" : "text-slate-200";
 
       return `
       <div class="glass-card rounded-xl p-0 overflow-hidden group mb-6 border ${borderColor}">
-        <div class="p-6 border-b border-[#22492f] flex justify-between items-start bg-gradient-to-r from-[#1a3322] to-[#1a3322]/50 relative overflow-hidden">
+        <div class="p-6 border-b border-[#22492f] bg-gradient-to-r from-[#1a3322] to-[#1a3322]/50 relative overflow-hidden">
           ${isProd ? `<div class="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-amber-500/10 to-transparent pointer-events-none"></div>` : ""}
-          <div class="flex items-start gap-4 z-10">
-            <div class="p-3 rounded-lg bg-${themeColor}-500/10 border border-${themeColor}-500/20 text-${themeColor}-400">
-              <span class="material-symbols-outlined">${themeIcon}</span>
+          <div class="relative z-10 flex flex-col gap-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex items-center gap-4">
+                <div class="h-14 w-14 shrink-0 rounded-xl bg-${themeColor}-500/10 border border-${themeColor}-500/30 text-${themeColor}-400 flex items-center justify-center shadow-[0_0_0_1px_rgba(63,122,82,0.45)]">
+                  <span class="material-symbols-outlined text-[26px]">${themeIcon}</span>
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center flex-wrap gap-2">
+                    <h3 class="text-white text-[1.4rem] leading-none font-semibold">
+                      ${escapeHTML(remote.name)}
+                    </h3>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-${themeColor}-500/20 text-${themeColor}-400 border border-${themeColor}-500/30 uppercase tracking-wide">${statusText}</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#102316]/80 border border-[#366b47] text-[#90cba4] uppercase tracking-wide">${escapeHTML(environmentLabel)}</span>
+                  </div>
+                  <p class="mt-1 text-[11px] uppercase tracking-[0.08em] text-[#90cba4]/70">Remote endpoint</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 p-1 rounded-lg border border-[#2e573a] bg-[#102316]/60 backdrop-blur-sm shadow-[0_0_15px_rgba(13,242,89,0.1)]">
+                <button data-action="open-remote-url" data-remote="${escapeHTML(remote.name)}" class="h-8 w-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#22492f] rounded-md transition-all" title="Open Remote URL">
+                  <span class="material-symbols-outlined text-[18px]">open_in_new</span>
+                </button>
+                <button data-action="remote-test" data-remote="${escapeHTML(remote.name)}" class="h-8 w-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#22492f] rounded-md transition-all" title="Test Connection">
+                  <span class="material-symbols-outlined text-[18px]">wifi_tethering</span>
+                </button>
+              </div>
             </div>
-            <div>
-              <h3 class="text-white text-lg font-semibold flex items-center gap-2">
-                  ${escapeHTML(remote.name)}
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-${themeColor}-500/20 text-${themeColor}-400 border border-${themeColor}-500/30 uppercase tracking-wide">${statusText}</span>
-              </h3>
-              <div class="flex items-center gap-4 mt-1 text-xs text-slate-400 font-mono">
-                  <span class="flex items-center gap-1">
-                      <span class="material-symbols-outlined text-[14px]">dns</span>
-                      ${escapeHTML(remote.host)}
-                  </span>
-                  <span class="flex items-center gap-1">
-                      <span class="material-symbols-outlined text-[14px]">schedule</span>
-                      Last sync: ${remote.lastSync || "never"}
-                  </span>
+            <div class="flex flex-col lg:flex-row gap-2.5">
+              <div class="min-w-0 flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2e573a] bg-[#102316]/50 lg:flex-1">
+                <span class="material-symbols-outlined text-[16px] text-slate-400">dns</span>
+                <span class="text-[11px] uppercase tracking-wide text-slate-500">Host</span>
+                <span class="ml-auto min-w-0 truncate text-xs font-mono text-slate-200" title="${escapeHTML(remote.host)}">${escapeHTML(remote.host)}</span>
+              </div>
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2e573a] bg-[#102316]/50 lg:flex-1">
+                <span class="material-symbols-outlined text-[16px] text-slate-400">schedule</span>
+                <span class="text-[11px] uppercase tracking-wide text-slate-500">Last sync</span>
+                <span class="ml-auto text-xs font-mono ${lastSyncTone}">${escapeHTML(remote.lastSync || "never")}</span>
               </div>
             </div>
           </div>
-          <div class="flex items-center gap-1 group/dropdown">
-            <button data-action="remote-test" data-remote="${escapeHTML(remote.name)}" class="p-1.5 text-slate-500 hover:text-white hover:bg-white/5 rounded-lg transition-all" title="Test Connection">
-                <span class="material-symbols-outlined text-[20px]">wifi_tethering</span>
-            </button>
-          </div>
         </div>
         <div class="p-6">
-          <div class="grid grid-cols-2 gap-4 mb-6">
-            <div class="bg-[#102316]/50 rounded-lg p-3 border border-[#2e573a]">
-              <div class="text-xs text-slate-500 mb-1">Database Size</div>
-              <div class="text-white font-mono font-medium">${remote.dbSize || "0 MB"}</div>
-            </div>
-            <div class="bg-[#102316]/50 rounded-lg p-3 border border-[#2e573a]">
-              <div class="text-xs text-slate-500 mb-1">Media Files</div>
-              <div class="text-white font-mono font-medium">${remote.mediaSize || "0 MB"}</div>
-            </div>
-          </div>
           <div class="flex flex-col gap-3">
             <div class="flex flex-wrap gap-3">
                 <button data-action="open-sync-modal" data-remote="${escapeHTML(remote.name)}" data-preset="full" class="flex-1 px-4 py-2.5 bg-[#22492f] hover:bg-[#2e573a] border border-[#366b47] rounded-lg text-sm text-white font-medium transition-all flex items-center justify-center gap-2 group/btn">

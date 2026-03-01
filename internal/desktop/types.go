@@ -85,6 +85,7 @@ type RemoteConfigSnapshot struct {
 	User         string
 	Path         string
 	Port         int
+	URL          string
 	Protected    bool
 	AuthMethod   string
 	Capabilities []string

@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"govard/internal/engine"
 )
+
+const desktopBootstrapSyncEnvVar = "GOVARD_DESKTOP_BOOTSTRAP_SYNC"
 
 type OnboardInput struct {
 	ProjectPath          string `json:"projectPath"`
@@ -100,7 +103,8 @@ func onboardProjectWithOptionsInternal(
 
 	ranInit := false
 	if !hasConfig {
-		args := buildInitArgs(framework)
+		migrateFrom := detectOnboardingMigrationSource(root)
+		args := buildInitArgs(framework, migrateFrom)
 		if _, err := runGovardCommandForDesktop(root, args); err != nil {
 			message = err.Error()
 			return "", fmt.Errorf("project init failed: %w", err)
@@ -151,14 +155,89 @@ func onboardProjectWithOptionsInternal(
 		return "", err
 	}
 
+	bootstrapSummary := ""
+	if stagingRemote, ok := resolveStagingBootstrapRemote(config.Remotes); ok {
+		if shouldRunDesktopBootstrapSynchronously() {
+			bootstrapOutput, bootstrapErr := runGovardCommandForDesktop(root, []string{
+				"bootstrap",
+				"--environment",
+				stagingRemote,
+			})
+			if bootstrapErr != nil {
+				bootstrapSummary = fmt.Sprintf(
+					" Auto bootstrap from '%s' failed (%v). Run `govard bootstrap --environment %s` manually.",
+					stagingRemote,
+					bootstrapErr,
+					stagingRemote,
+				)
+				message = "project added; staging bootstrap failed"
+			} else if strings.TrimSpace(bootstrapOutput) != "" {
+				bootstrapSummary = fmt.Sprintf(" Auto bootstrap from '%s' completed: %s", stagingRemote, strings.TrimSpace(bootstrapOutput))
+			} else {
+				bootstrapSummary = fmt.Sprintf(" Auto bootstrap from '%s' completed.", stagingRemote)
+			}
+		} else {
+			runStagingBootstrapInBackground(root, entry.ProjectName, stagingRemote)
+			bootstrapSummary = fmt.Sprintf(" Auto bootstrap from '%s' started in background.", stagingRemote)
+		}
+	}
+
 	status = engine.OperationStatusSuccess
 	category = ""
 	if ranInit {
-		message = "project initialized and added"
-		return fmt.Sprintf("Project %s initialized and added.", entry.ProjectName), nil
+		if message == "" {
+			message = "project initialized and added"
+		}
+		return fmt.Sprintf("Project %s initialized and added.%s", entry.ProjectName, bootstrapSummary), nil
 	}
-	message = "project added"
-	return fmt.Sprintf("Project %s added.", entry.ProjectName), nil
+	if message == "" {
+		message = "project added"
+	}
+	return fmt.Sprintf("Project %s added.%s", entry.ProjectName, bootstrapSummary), nil
+}
+
+func shouldRunDesktopBootstrapSynchronously() bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(desktopBootstrapSyncEnvVar)))
+	return value == "1" || value == "true" || value == "yes"
+}
+
+func runStagingBootstrapInBackground(root string, project string, stagingRemote string) {
+	go func() {
+		startedAt := time.Now()
+		status := engine.OperationStatusFailure
+		category := "runtime"
+		message := ""
+		defer func() {
+			writeDesktopOperationEvent(
+				"desktop.project.bootstrap",
+				status,
+				project,
+				stagingRemote,
+				"",
+				message,
+				category,
+				time.Since(startedAt),
+			)
+		}()
+
+		output, err := runGovardCommandForDesktop(root, []string{
+			"bootstrap",
+			"--environment",
+			stagingRemote,
+		})
+		if err != nil {
+			message = fmt.Sprintf("auto bootstrap from %s failed: %v", stagingRemote, err)
+			return
+		}
+		status = engine.OperationStatusSuccess
+		category = ""
+		trimmedOutput := strings.TrimSpace(output)
+		if trimmedOutput == "" {
+			message = fmt.Sprintf("auto bootstrap from %s completed", stagingRemote)
+			return
+		}
+		message = fmt.Sprintf("auto bootstrap from %s completed: %s", stagingRemote, trimmedOutput)
+	}()
 }
 
 // OnboardingService methods
@@ -187,12 +266,76 @@ func loadProjectConfigForOnboarding(root string) (engine.Config, bool, error) {
 	return cfg, true, nil
 }
 
-func buildInitArgs(framework string) []string {
+func buildInitArgs(framework string, migrateFrom string) []string {
 	args := []string{"init"}
 	if normalized := normalizeOnboardingFramework(framework); normalized != "" {
 		args = append(args, "--framework", normalized)
 	}
+	if normalized := normalizeOnboardingMigrationSource(migrateFrom); normalized != "" {
+		args = append(args, "--migrate-from", normalized)
+	}
 	return args
+}
+
+func detectOnboardingMigrationSource(root string) string {
+	if hasWardenProjectSignals(root) {
+		return "warden"
+	}
+	return ""
+}
+
+func normalizeOnboardingMigrationSource(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "warden":
+		return "warden"
+	default:
+		return ""
+	}
+}
+
+func hasWardenProjectSignals(root string) bool {
+	cleanRoot := filepath.Clean(strings.TrimSpace(root))
+	if cleanRoot == "" {
+		return false
+	}
+
+	if info, err := os.Stat(filepath.Join(cleanRoot, ".warden", "warden-env.yml")); err == nil && !info.IsDir() {
+		return true
+	}
+
+	env := engine.ParseDotEnv(filepath.Join(cleanRoot, ".env"))
+	for key := range env {
+		normalized := strings.ToUpper(strings.TrimSpace(key))
+		if strings.HasPrefix(normalized, "WARDEN_") || strings.HasPrefix(normalized, "REMOTE_") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func resolveStagingBootstrapRemote(remotes map[string]engine.RemoteConfig) (string, bool) {
+	if len(remotes) == 0 {
+		return "", false
+	}
+
+	if _, ok := remotes[engine.RemoteEnvStaging]; ok {
+		return engine.RemoteEnvStaging, true
+	}
+
+	names := make([]string, 0, len(remotes))
+	for name := range remotes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		if engine.NormalizeRemoteEnvironment(name) == engine.RemoteEnvStaging {
+			return name, true
+		}
+	}
+
+	return "", false
 }
 
 func applyOnboardingOverrides(

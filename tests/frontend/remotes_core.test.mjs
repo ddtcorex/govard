@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import {
   normalizeRemotePreset,
   normalizeRemotesPayload,
+  renderRemotes,
 } from "../../desktop/frontend/modules/remotes.js";
 
 test("normalizeRemotePreset canonicalizes aliases", () => {
@@ -51,5 +52,28 @@ test("desktop layout exposes remotes section and actions", async () => {
     html.includes('data-action="refresh-remotes"'),
     true,
     "missing remotes refresh action",
+  );
+});
+
+test("remote card renders open-url button to the left of test connection", () => {
+  const container = { innerHTML: "" };
+  renderRemotes(container, [
+    {
+      name: "staging",
+      host: "staging.example.com",
+      environment: "staging",
+      protected: false,
+    },
+  ]);
+
+  const openIndex = container.innerHTML.indexOf('data-action="open-remote-url"');
+  const testIndex = container.innerHTML.indexOf('data-action="remote-test"');
+
+  assert.equal(openIndex >= 0, true, "missing open-remote-url action button");
+  assert.equal(testIndex >= 0, true, "missing remote-test action button");
+  assert.equal(
+    openIndex < testIndex,
+    true,
+    "open-remote-url button should be rendered to the left of remote-test",
   );
 });

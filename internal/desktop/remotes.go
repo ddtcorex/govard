@@ -16,6 +16,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const remoteMagentoAdminProbeScript = `$c=@include "app/etc/env.php"; if(!is_array($c)){fwrite(STDERR,"env.php not found"); exit(2);} echo (string)($c["backend"]["frontName"] ?? "admin");`
+
 type SyncInput struct {
 	Project    string          `json:"project"`
 	RemoteName string          `json:"remoteName"`
@@ -133,6 +135,168 @@ func testRemote(project string, remoteName string) (string, error) {
 	category = ""
 	message = "remote test completed"
 	return output, nil
+}
+
+func openRemoteURL(project string, remoteName string, ctx context.Context) (string, error) {
+	startedAt := time.Now()
+	status := engine.OperationStatusFailure
+	category := "runtime"
+	message := ""
+	defer func() {
+		writeDesktopOperationEvent(
+			"desktop.remote.open_url",
+			status,
+			project,
+			remoteName,
+			"",
+			message,
+			category,
+			time.Since(startedAt),
+		)
+	}()
+
+	targetURL, resolvedRemoteName, err := resolveRemoteAdminURL(project, remoteName)
+	if err != nil {
+		category = "validation"
+		message = err.Error()
+		return "", err
+	}
+
+	result, err := openDestination(
+		ctx,
+		targetURL,
+		fmt.Sprintf("Opening %s...", targetURL),
+	)
+	if err != nil {
+		message = err.Error()
+		return "", err
+	}
+
+	status = engine.OperationStatusSuccess
+	category = ""
+	message = fmt.Sprintf("remote URL opened for %s", resolvedRemoteName)
+	return result, nil
+}
+
+func resolveRemoteAdminURL(project string, remoteName string) (string, string, error) {
+	trimmedRemoteName := strings.TrimSpace(remoteName)
+	if trimmedRemoteName == "" {
+		return "", "", fmt.Errorf("remote name is required")
+	}
+
+	root, err := resolveProjectRootForRemotes(project)
+	if err != nil {
+		return "", "", err
+	}
+
+	cfg, _, err := engine.LoadConfigFromDir(root, true)
+	if err != nil {
+		return "", "", fmt.Errorf("load config for remotes: %w", err)
+	}
+
+	resolvedRemoteName, remoteCfg, err := resolveRemoteConfigForOpen(cfg, trimmedRemoteName)
+	if err != nil {
+		return "", "", err
+	}
+
+	adminPath := "admin"
+	if strings.EqualFold(strings.TrimSpace(cfg.Framework), "magento2") {
+		detectedPath, probeErr := detectRemoteMagentoAdminPathForDesktop(resolvedRemoteName, remoteCfg)
+		if probeErr == nil {
+			adminPath = detectedPath
+		}
+	}
+
+	return buildRemoteAdminURLForDesktop(remoteCfg, adminPath), resolvedRemoteName, nil
+}
+
+func resolveRemoteConfigForOpen(
+	cfg engine.Config,
+	requestedRemoteName string,
+) (string, engine.RemoteConfig, error) {
+	trimmedRequested := strings.TrimSpace(requestedRemoteName)
+	if trimmedRequested == "" {
+		return "", engine.RemoteConfig{}, fmt.Errorf("remote name is required")
+	}
+
+	if remoteCfg, ok := cfg.Remotes[trimmedRequested]; ok {
+		if !engine.RemoteCapabilityEnabled(remoteCfg, engine.RemoteCapabilityFiles) {
+			return "", engine.RemoteConfig{}, fmt.Errorf(
+				"remote '%s' does not allow files operations (capabilities: %s)",
+				trimmedRequested,
+				strings.Join(engine.RemoteCapabilityList(remoteCfg), ","),
+			)
+		}
+		return trimmedRequested, remoteCfg, nil
+	}
+
+	normalizedRequested := engine.NormalizeRemoteEnvironment(trimmedRequested)
+	for name, remoteCfg := range cfg.Remotes {
+		if engine.NormalizeRemoteEnvironment(name) != normalizedRequested {
+			continue
+		}
+		if !engine.RemoteCapabilityEnabled(remoteCfg, engine.RemoteCapabilityFiles) {
+			return "", engine.RemoteConfig{}, fmt.Errorf(
+				"remote '%s' does not allow files operations (capabilities: %s)",
+				name,
+				strings.Join(engine.RemoteCapabilityList(remoteCfg), ","),
+			)
+		}
+		return name, remoteCfg, nil
+	}
+
+	return "", engine.RemoteConfig{}, fmt.Errorf("unknown remote: %s", trimmedRequested)
+}
+
+func detectRemoteMagentoAdminPathForDesktop(
+	remoteName string,
+	remoteCfg engine.RemoteConfig,
+) (string, error) {
+	remoteCommand := "php -r " + shellQuoteForDesktop(remoteMagentoAdminProbeScript)
+	if path := strings.TrimSpace(remoteCfg.Path); path != "" {
+		remoteCommand = "cd " + shellQuoteForDesktop(path) + " && " + remoteCommand
+	}
+
+	probeCmd := engineremote.BuildSSHExecCommand(remoteName, remoteCfg, true, remoteCommand)
+	output, err := probeCmd.CombinedOutput()
+	if err != nil {
+		return "admin", fmt.Errorf("probe failed: %w", err)
+	}
+
+	value := strings.Trim(strings.TrimSpace(string(output)), "/")
+	if value == "" {
+		value = "admin"
+	}
+	return value, nil
+}
+
+func buildRemoteAdminURLForDesktop(remoteCfg engine.RemoteConfig, adminPath string) string {
+	base := strings.TrimSpace(remoteCfg.URL)
+	if base == "" {
+		base = strings.TrimSpace(remoteCfg.Host)
+		if base == "" {
+			base = "localhost"
+		}
+		if !strings.HasPrefix(strings.ToLower(base), "http://") &&
+			!strings.HasPrefix(strings.ToLower(base), "https://") {
+			base = "https://" + base
+		}
+	}
+
+	base = strings.TrimRight(base, "/")
+	trimmedPath := strings.Trim(strings.TrimSpace(adminPath), "/")
+	if trimmedPath == "" {
+		trimmedPath = "admin"
+	}
+
+	return base + "/" + trimmedPath
+}
+
+func shellQuoteForDesktop(raw string) string {
+	if raw == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(raw, "'", `'"'"'`) + "'"
 }
 
 func runRemoteSyncPresetWithOptions(
@@ -610,6 +774,14 @@ func (s *RemoteService) GetRemotes(project string) (RemoteSnapshot, error) {
 
 func (s *RemoteService) TestRemote(project string, remoteName string) (string, error) {
 	message, err := testRemote(project, remoteName)
+	if err != nil {
+		return "", err
+	}
+	return message, nil
+}
+
+func (s *RemoteService) OpenRemoteURL(project string, remoteName string) (string, error) {
+	message, err := openRemoteURL(project, remoteName, s.ctx)
 	if err != nil {
 		return "", err
 	}

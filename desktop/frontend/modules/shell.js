@@ -238,6 +238,49 @@ export const createShellController = ({
     }
   };
 
+  const openRemoteURL = async (remoteName) => {
+    console.log("[Shell] openRemoteURL", remoteName);
+    const project = readSelection().project;
+    console.log("[Shell] project:", project);
+    if (!project || !remoteName) return;
+
+    try {
+      const message = await bridge.openRemoteURL(project, remoteName);
+      onStatus(message || `Opening remote URL for ${remoteName}...`);
+      return;
+    } catch (_err) {
+      // Fallback for older backend bridge versions that don't expose OpenRemoteURL.
+    }
+
+    if (!term) initTerminal();
+
+    try {
+      term.reset();
+      term.write(`Opening remote URL via CLI fallback: ${remoteName}...\r\n`);
+      const sessionID = await bridge.startGovardTerminal(project, [
+        "open",
+        "admin",
+        "-e",
+        remoteName,
+      ]);
+      if (String(sessionID).startsWith("error:")) {
+        throw new Error(String(sessionID).replace("error: ", ""));
+      }
+      currentSessionID = sessionID;
+      setTimeout(() => {
+        fitAddon?.fit();
+        if (currentSessionID && term) {
+          bridge.resizeTerminal(currentSessionID, term.cols, term.rows);
+        }
+      }, 100);
+      onStatus(`Opening remote URL for ${remoteName} (CLI fallback)...`);
+    } catch (err) {
+      onStatus(`Failed to open remote URL for ${remoteName}.`);
+      onToast(`Error opening remote URL: ${err}`, "error");
+      term?.write(`\r\nError: ${err.message || err}\r\n`);
+    }
+  };
+
   return {
     updateRefs,
     loadShellUser,
@@ -247,5 +290,6 @@ export const createShellController = ({
     openRemoteShell,
     openRemoteDB,
     openRemoteSFTP,
+    openRemoteURL,
   };
 };

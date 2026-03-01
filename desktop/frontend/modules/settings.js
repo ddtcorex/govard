@@ -188,7 +188,7 @@ export const renderSettingsDrawer = (container) => {
                 id="dbClientPreference"
                 class="bg-[#102316] border border-[#2e573a] rounded-lg px-4 py-3 text-white outline-none focus:border-primary/50 appearance-none cursor-pointer"
               >
-                <option value="desktop">Local Client (e.g. TablePlus)</option>
+                <option value="desktop">Local Client (e.g. BeeKeeper Studio)</option>
                 <option value="pma">PHPMyAdmin (Proxy Container)</option>
               </select>
             </label>

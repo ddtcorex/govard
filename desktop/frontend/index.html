@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <title>Govard Dashboard</title>
-    
+
     <link
       href="vendor/material-symbols/material-symbols.css"
       rel="stylesheet"
@@ -12,10 +12,10 @@
     <link rel="stylesheet" href="vendor/inter/inter.css" />
     <link rel="stylesheet" href="tailwind-output.css" />
     <link rel="stylesheet" href="vendor/xterm.css" />
-    
+
     <script src="vendor/xterm.js"></script>
     <script src="vendor/xterm-addon-fit.js"></script>
-    
+
     <!-- All styles loaded from styles-src.css via tailwind-output.css -->
   </head>
   <body class="bg-[#102316] text-slate-100 h-screen overflow-hidden">
@@ -202,9 +202,7 @@
                         href="#"
                         target="_blank"
                       >
-                        <span id="projectUrlText"
-                          ></span
-                        >
+                        <span id="projectUrlText"></span>
                         <span
                           class="material-symbols-outlined text-sm group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5 transition-transform"
                           >open_in_new</span
@@ -306,7 +304,9 @@
                       </h3>
                       <div id="activeServicesList" class="space-y-4">
                         <!-- Services dynamically rendered here -->
-                        <div class="h-16 border border-[#2e573a] border-dashed rounded-xl flex items-center justify-center text-slate-500 text-sm">
+                        <div
+                          class="h-16 border border-[#2e573a] border-dashed rounded-xl flex items-center justify-center text-slate-500 text-sm"
+                        >
                           Loading services...
                         </div>
                       </div>
@@ -360,7 +360,7 @@
                             >database</span
                           >
                           <span class="block text-slate-200 text-sm font-medium"
-                            >TablePlus</span
+                            >Open DB</span
                           >
                           <span class="block text-slate-500 text-[10px] mt-1"
                             >Connect DB</span
@@ -392,7 +392,9 @@
                         </h4>
                         <div id="envVarsList" class="space-y-3">
                           <!-- Environment vars dynamically rendered here -->
-                          <div class="text-xs text-slate-500 italic">No variables loaded</div>
+                          <div class="text-xs text-slate-500 italic">
+                            No variables loaded
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -441,10 +443,10 @@
                         </div>
                       </div>
                     </div>
-                    </div>
                   </div>
                 </div>
               </div>
+            </div>
             <div
               id="tab-logs"
               class="flex-1 flex flex-col overflow-hidden tab-content hidden"

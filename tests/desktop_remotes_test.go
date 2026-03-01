@@ -49,6 +49,58 @@ func TestDesktopPkgBuildRemoteEntriesForTest(t *testing.T) {
 	}
 }
 
+func TestDesktopPkgBuildRemoteAdminURLForTest(t *testing.T) {
+	withConfiguredURL := desktop.BuildRemoteAdminURLForTest(
+		desktop.RemoteConfigSnapshot{URL: "https://admin.remote.example/"},
+		"backend_xyz",
+	)
+	if withConfiguredURL != "https://admin.remote.example/backend_xyz" {
+		t.Fatalf("unexpected URL with configured base: %s", withConfiguredURL)
+	}
+
+	withHostFallback := desktop.BuildRemoteAdminURLForTest(
+		desktop.RemoteConfigSnapshot{Host: "staging.example.com"},
+		"",
+	)
+	if withHostFallback != "https://staging.example.com/admin" {
+		t.Fatalf("unexpected URL with host fallback: %s", withHostFallback)
+	}
+}
+
+func TestDesktopPkgResolveRemoteNameForOpenForTest(t *testing.T) {
+	remotes := map[string]desktop.RemoteConfigSnapshot{
+		"development": {
+			Host:         "dev.example.com",
+			Capabilities: []string{"files", "db"},
+		},
+		"production": {
+			Host:         "prod.example.com",
+			Capabilities: []string{"files"},
+		},
+	}
+
+	resolved, err := desktop.ResolveRemoteNameForOpenForTest(remotes, "dev")
+	if err != nil {
+		t.Fatalf("unexpected error resolving dev alias: %v", err)
+	}
+	if resolved != "development" {
+		t.Fatalf("expected development remote, got %s", resolved)
+	}
+
+	_, err = desktop.ResolveRemoteNameForOpenForTest(
+		map[string]desktop.RemoteConfigSnapshot{
+			"staging": {
+				Host:         "staging.example.com",
+				Capabilities: []string{"db"},
+			},
+		},
+		"staging",
+	)
+	if err == nil {
+		t.Fatalf("expected error when files capability is missing")
+	}
+}
+
 func TestDesktopPkgNormalizeRemoteSyncPresetForTest(t *testing.T) {
 	cases := map[string]string{
 		"file":     "files",

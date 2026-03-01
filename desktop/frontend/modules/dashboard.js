@@ -31,6 +31,59 @@ export const projectKey = (env = {}) =>
 export const domainLabel = (env = {}) =>
   env.Domain || env.domain || env.Name || env.name || projectKey(env);
 
+const withScheme = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+
+  const host = raw.split("/")[0].trim();
+  const isLoopback = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host);
+  const scheme = isLoopback ? "http" : "https";
+  return `${scheme}://${raw.replace(/^\/+/, "")}`;
+};
+
+export const localEnvironmentURL = (env = {}) => {
+  const explicitURL =
+    env.LocalURL ||
+    env.localURL ||
+    env.URL ||
+    env.Url ||
+    env.url ||
+    "";
+  const explicitResolved = withScheme(explicitURL);
+  if (explicitResolved) {
+    return explicitResolved;
+  }
+
+  const candidate = String(
+    env.Domain ||
+      env.domain ||
+      env.Name ||
+      env.name ||
+      env.Project ||
+      env.project ||
+      "",
+  ).trim();
+  if (!candidate) {
+    return "";
+  }
+
+  let host = candidate;
+  if (
+    !/^https?:\/\//i.test(host) &&
+    !host.includes(".") &&
+    !host.includes(":")
+  ) {
+    host = `${host}.test`;
+  }
+
+  return withScheme(host);
+};
+
 export const serviceTargets = (env = {}) => {
   const values = Array.isArray(env.ServiceTargets)
     ? env.ServiceTargets
@@ -203,8 +256,7 @@ export const renderProjectHero = (
 
   const title = domainLabel(env);
   const status = String(env.Status || env.status || "stopped").toLowerCase();
-  const baseUrl = title.endsWith(".test") ? title : `${title}.test`;
-  const url = env.Url || env.url || `http://${baseUrl}`;
+  const url = localEnvironmentURL(env);
 
   if (refs.projectTitle) refs.projectTitle.textContent = title;
   if (refs.projectStatusText) {
@@ -234,7 +286,16 @@ export const renderProjectHero = (
   }
 
   if (refs.projectUrl) {
-    refs.projectUrl.href = url;
+    refs.projectUrl.href = url || "#";
+    refs.projectUrl.dataset.action = "env-open";
+    refs.projectUrl.dataset.env = selectedProject;
+    if (refs.projectUrl.classList) {
+      if (url) {
+        refs.projectUrl.classList.remove("hidden");
+      } else {
+        refs.projectUrl.classList.add("hidden");
+      }
+    }
   }
   if (refs.projectUrlText) {
     refs.projectUrlText.textContent = url;

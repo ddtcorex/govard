@@ -17,7 +17,7 @@ var openCmd = &cobra.Command{
 	Use:   "open [target]",
 	Short: "Open common service URLs",
 	Long: `Quickly open web interfaces for various services in your default browser.
-Supported targets: admin, db (PMA/TablePlus), mail (Mailpit), portainer, sftp, elasticsearch, opensearch.
+Supported targets: admin, db (PMA/DB Client), mail (Mailpit), portainer, sftp, elasticsearch, opensearch.
 
 Targets:
 - admin: The web application's admin panel.
@@ -90,5 +90,5 @@ func init() {
 		"Environment for open targets (local or configured remote name/env)",
 	)
 	openCmd.Flags().BoolVar(&openPma, "pma", false, "Open PHPMyAdmin (for db target)")
-	openCmd.Flags().BoolVar(&openClient, "client", false, "Open local DB client like TablePlus (for db target)")
+	openCmd.Flags().BoolVar(&openClient, "client", false, "Open local DB client like Beekeeper Studio (for db target)")
 }

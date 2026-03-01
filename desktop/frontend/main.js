@@ -866,6 +866,7 @@ document.addEventListener("click", async (event) => {
   if (!action) {
     return;
   }
+  event.preventDefault();
 
   if (action === "select-environment") {
     const project = targetElement.dataset.env || "";
@@ -975,6 +976,13 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "remote-test") {
     await remotesController.testRemote(
+      String(targetElement.dataset.remote || ""),
+    );
+    return;
+  }
+  if (action === "open-remote-url") {
+    console.log("[Main] open-remote-url", targetElement.dataset.remote);
+    await shellController.openRemoteURL(
       String(targetElement.dataset.remote || ""),
     );
     return;

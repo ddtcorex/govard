@@ -83,6 +83,10 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.TestRemote?.bind(bridge), project, remoteName);
   },
+  async openRemoteURL(project, remoteName) {
+    const bridge = getBridge();
+    return call(bridge?.OpenRemoteURL?.bind(bridge), project, remoteName);
+  },
   async runRemoteSyncPreset(project, remoteName, preset, syncConfig = {}) {
     const bridge = getBridge();
     return call(
