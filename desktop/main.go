@@ -21,12 +21,13 @@ func main() {
 	}
 
 	err = wails.Run(&options.App{
-		Title:       "Govard Desktop",
-		Width:       1200,
-		Height:      800,
-		AssetServer: &assetserver.Options{Assets: assets},
-		OnStartup:   app.Startup,
-		OnShutdown:  app.Shutdown,
+		Title:         "Govard Desktop",
+		Width:         1200,
+		Height:        800,
+		AssetServer:   &assetserver.Options{Assets: assets},
+		OnStartup:     app.Startup,
+		OnBeforeClose: app.BeforeClose,
+		OnShutdown:    app.Shutdown,
 		Bind: []interface{}{
 			app,
 		},

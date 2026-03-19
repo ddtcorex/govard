@@ -85,7 +85,7 @@ func resetSettingsInternal() error {
 	if err != nil {
 		return err
 	}
-	prefs.Settings = normalizeSettings(DesktopSettings{})
+	prefs.Settings = normalizeSettings(DesktopSettings{RunInBackground: true})
 	return savePreferences(prefs)
 }
 
@@ -131,7 +131,7 @@ func loadPreferences() (*preferences, error) {
 		if os.IsNotExist(err) {
 			cachedPrefs = &preferences{
 				ShellUsers: map[string]string{},
-				Settings:   normalizeSettings(DesktopSettings{}),
+				Settings:   normalizeSettings(DesktopSettings{RunInBackground: true}),
 			}
 			return cachedPrefs, nil
 		}
@@ -139,6 +139,7 @@ func loadPreferences() (*preferences, error) {
 	}
 
 	var prefs preferences
+	prefs.Settings.RunInBackground = true
 	if err := json.Unmarshal(data, &prefs); err != nil {
 		return nil, err
 	}

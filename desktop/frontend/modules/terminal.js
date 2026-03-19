@@ -44,9 +44,9 @@ export const createTerminalController = ({
 
     activeTerminal = new window.Terminal({
       theme: {
-        background: "#0c1810",
+        background: "var(--bg-primary)",
         foreground: "#f8fafc",
-        cursor: "#0df259",
+        cursor: "var(--primary)",
       },
       fontFamily: "monospace",
       fontSize: 13,

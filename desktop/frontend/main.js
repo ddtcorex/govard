@@ -100,6 +100,7 @@ const getLiveRefs = () => ({
   preferredBrowser: byId("preferredBrowser"),
   codeEditor: byId("codeEditor"),
   dbClientPreference: byId("dbClientPreference"),
+  runInBackgroundToggle: byId("runInBackgroundToggle"),
   settingsUpdateStatus: byId("settingsUpdateStatus"),
   settingsUpdateBadge: byId("settingsUpdateBadge"),
   checkUpdatesButton: byId("checkUpdatesButton"),
@@ -510,11 +511,9 @@ const switchTab = (tabId) => {
   const tabContents = document.querySelectorAll(".tab-content");
 
   tabLinks.forEach((l) => {
-    l.classList.remove("border-primary", "text-primary");
-    l.classList.add("border-transparent", "text-[#90cba4]");
+    l.className = "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-500 whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all";
     if (l instanceof HTMLElement && l.dataset.tab === tabId) {
-      l.classList.remove("border-transparent", "text-[#90cba4]");
-      l.classList.add("border-primary", "text-primary");
+      l.className = "border-primary text-primary dark:text-white whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all active";
     }
   });
 
@@ -759,8 +758,9 @@ const setSelectedProject = (project) => {
 };
 
 const openServiceContext = async (project, service, mode = "logs") => {
-  const selectedProject = String(project || getState().selectedProject || "")
-    .trim();
+  const selectedProject = String(
+    project || getState().selectedProject || "",
+  ).trim();
   if (!selectedProject) {
     setStatus("Select an environment first.");
     return;
@@ -769,9 +769,10 @@ const openServiceContext = async (project, service, mode = "logs") => {
   setSelectedProject(selectedProject);
   switchTab("logs");
 
-  const selectedService = String(service || "all")
-    .trim()
-    .toLowerCase() || "all";
+  const selectedService =
+    String(service || "all")
+      .trim()
+      .toLowerCase() || "all";
   setState({ selectedService });
   refreshServiceSelector();
 
@@ -1096,7 +1097,9 @@ const onboardingController = createOnboardingController({
   onRunBootstrapSync: async ({ projectPath, remoteName, preset, config }) => {
     const normalizedProjectPath = String(projectPath || "").trim();
     const normalizedRemote = String(remoteName || "").trim();
-    const normalizedPreset = String(preset || "full").trim().toLowerCase();
+    const normalizedPreset = String(preset || "full")
+      .trim()
+      .toLowerCase();
     if (!normalizedProjectPath || !normalizedRemote) {
       return;
     }
@@ -1115,13 +1118,11 @@ const onboardingController = createOnboardingController({
   getExistingDomains: () =>
     (getState().environments || [])
       .map((item) => ({
-        domain: String(item?.domain || item?.Domain || "").trim().toLowerCase(),
+        domain: String(item?.domain || item?.Domain || "")
+          .trim()
+          .toLowerCase(),
         project: String(
-          item?.project ||
-            item?.Project ||
-            item?.name ||
-            item?.Name ||
-            "",
+          item?.project || item?.Project || item?.name || item?.Name || "",
         )
           .trim()
           .toLowerCase(),
@@ -1676,6 +1677,13 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (action === "quit-app") {
+    if (window.go?.desktop?.App?.Quit) {
+      window.go.desktop.App.Quit();
+    }
+    return;
+  }
+
   if (action === "switch-tab") {
     const tabId = targetElement.dataset.tab;
     if (tabId) switchTab(tabId);
@@ -1726,11 +1734,15 @@ const bindRuntimeListeners = () => {
   }
 
   if (refs.openSettings) {
-    refs.openSettings.addEventListener("click", () => setSettingsDrawerOpen(true));
+    refs.openSettings.addEventListener("click", () =>
+      setSettingsDrawerOpen(true),
+    );
   }
 
   if (refs.closeSettings) {
-    refs.closeSettings.addEventListener("click", () => setSettingsDrawerOpen(false));
+    refs.closeSettings.addEventListener("click", () =>
+      setSettingsDrawerOpen(false),
+    );
   }
 
   if (refs.settingsDrawer) {
@@ -1843,6 +1855,11 @@ const bindDynamicControlListeners = () => {
 
   if (refs.dbClientPreference) {
     refs.dbClientPreference.addEventListener("change", () => {
+      settingsController.save();
+    });
+  }
+  if (refs.runInBackgroundToggle) {
+    refs.runInBackgroundToggle.addEventListener("change", () => {
       settingsController.save();
     });
   }

@@ -91,6 +91,18 @@ func (app *App) hideWindow(ctx context.Context) {
 	hideApplication(targetCtx)
 }
 
+func (app *App) BeforeClose(ctx context.Context) bool {
+	settings, err := app.Settings.GetSettings()
+	if err != nil {
+		return false
+	}
+	if settings.RunInBackground {
+		app.hideWindow(ctx)
+		return true // prevent close
+	}
+	return false // allow close
+}
+
 func (app *App) Shutdown(ctx context.Context) {
 	_ = ctx
 	app.stopOperationNotificationWatcher()
