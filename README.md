@@ -114,7 +114,7 @@ Ensure you have the following prerequisites installed:
 - **Go 1.25+**
 - **Node.js 20+**
 - **Yarn (v1.x)**
-- **golangci-lint (v1.64+)**
+- **golangci-lint (v2.11+)**
 - **Docker & Docker Compose**
 - **Wails v2.11+** (required for desktop app development)
 
