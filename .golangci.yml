@@ -1,5 +1,5 @@
+version: "2"
 run:
-  version: "2"
   timeout: 5m
 
 linters:
