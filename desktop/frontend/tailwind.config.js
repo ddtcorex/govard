@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./*.html",
     "./*.js",
@@ -13,17 +14,36 @@ module.exports = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#0df259",
-          hover: "#0bd34d",
-          light: "rgba(13, 242, 89, 0.15)",
+          DEFAULT: "var(--primary)",
+          hover: "var(--primary-hover)",
+          glow: "var(--primary-glow)",
         },
         background: {
-          dark: "#0c1810",
+          primary: "var(--bg-primary)",
+          secondary: "var(--bg-secondary)",
+          tertiary: "var(--bg-tertiary)",
+          accent: "var(--bg-accent)",
+        },
+        text: {
+          primary: "var(--text-primary)",
+          secondary: "var(--text-secondary)",
+          tertiary: "var(--text-tertiary)",
+        },
+        border: {
+          primary: "var(--border-primary)",
+          secondary: "var(--border-secondary)",
+          accent: "var(--border-accent)",
         },
         surface: {
-          dark: "rgba(16, 35, 22, 0.6)",
-          light: "rgba(34, 73, 47, 0.5)",
-          hover: "rgba(46, 87, 58, 0.9)",
+          primary: "var(--surface-primary)",
+          secondary: "var(--surface-secondary)",
+        },
+        glass: {
+          bg: "var(--glass-bg)",
+          border: "var(--glass-border)",
+        },
+        card: {
+          bg: "var(--card-bg)",
         },
       },
       fontFamily: {

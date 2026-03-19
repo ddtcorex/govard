@@ -107,8 +107,7 @@ func TestDoctorCommandFixModeRepairsGovardHomeWarning(t *testing.T) {
 	}
 	if homeCheck == nil {
 		t.Fatal("expected host.govard.home check in report")
-	}
-	if homeCheck.Status != engine.DoctorStatusPass {
+	} else if homeCheck.Status != engine.DoctorStatusPass {
 		t.Fatalf("expected host.govard.home to pass after fix, got %s", homeCheck.Status)
 	}
 

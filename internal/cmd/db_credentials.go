@@ -118,7 +118,7 @@ func parseEnvMap(raw string) map[string]string {
 func buildRemoteMySQLDumpCommandString(credentials dbCredentials, full bool) string {
 	credentials = credentials.withDefaults()
 
-	args := []string{"mysqldump", "--no-tablespaces"}
+	args := []string{"mysqldump", "--max-allowed-packet=512M", "--no-tablespaces"}
 	if host := strings.TrimSpace(credentials.Host); host != "" {
 		args = append(args, "-h"+shellQuote(host))
 	}
@@ -153,7 +153,7 @@ func buildRemoteMySQLConnectCommandString(credentials dbCredentials) string {
 func buildRemoteMySQLImportCommandString(credentials dbCredentials) string {
 	credentials = credentials.withDefaults()
 
-	args := []string{"mysql"}
+	args := []string{"mysql", "--max-allowed-packet=512M"}
 	if host := strings.TrimSpace(credentials.Host); host != "" {
 		args = append(args, "-h"+shellQuote(host))
 	}
@@ -198,7 +198,7 @@ func buildLocalDBDumpCommand(containerName string, credentials dbCredentials, fu
 
 func buildMySQLDumpCommandArgsWithCredentials(credentials dbCredentials, full bool) []string {
 	credentials = credentials.withDefaults()
-	args := []string{"mysqldump", "--no-tablespaces", "-u", credentials.Username}
+	args := []string{"mysqldump", "--max-allowed-packet=512M", "--no-tablespaces", "-u", credentials.Username}
 	if full {
 		args = append(args, "--routines", "--events", "--triggers")
 	}
@@ -216,9 +216,10 @@ func mysqlPasswordExportPrefix(password string) string {
 func buildLocalMySQLClientCommandScript(credentials dbCredentials, force bool) string {
 	credentials = credentials.withDefaults()
 
-	query := "exec \"$DB_CLI\" -u " + shellQuote(credentials.Username) + " " + shellQuote(credentials.Database)
+	query := "exec \"$DB_CLI\" --max-allowed-packet=512M -u " + shellQuote(credentials.Username) + " " + shellQuote(credentials.Database)
 	if force {
 		query += " -f"
+		query = "{ echo \"SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET AUTOCOMMIT=0;\"; cat; echo \"COMMIT; SET FOREIGN_KEY_CHECKS=1; SET UNIQUE_CHECKS=1; SET AUTOCOMMIT=1;\"; } | " + query
 	}
 
 	return strings.Join([]string{
