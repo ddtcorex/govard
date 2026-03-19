@@ -23,7 +23,7 @@ Primary goals for contributions:
 
 ## 2. Runtime and Toolchain Requirements
 
-- Go: `1.24+` (module uses `go 1.24.0`)
+- Go: `1.25+` (module uses `go 1.25.0`)
 - Node.js: `20` (for frontend UI and frontend tests)
 - Wails: `v2.11+` (for desktop app development)
 - Docker: required for integration tests and runtime orchestration
