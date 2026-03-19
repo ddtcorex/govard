@@ -1,5 +1,5 @@
 <!doctype html>
-<html class="dark" lang="en">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
@@ -12,37 +12,39 @@
 
     <!-- All styles loaded from assets/styles-src.css via assets/styles.css -->
   </head>
-  <body class="bg-[#102316] text-slate-100 h-screen overflow-hidden">
+  <body
+    class="bg-background-primary text-slate-900 dark:text-slate-100 h-screen overflow-hidden"
+  >
     <!-- App Container -->
     <div
       id="app"
-      class="flex flex-col h-screen w-full max-w-[1440px] mx-auto border-x border-[#22492f] shadow-2xl relative bg-background-dark overflow-hidden"
+      class="flex flex-col h-screen w-full max-w-[1440px] mx-auto border-x border-border-primary shadow-2xl relative bg-background-primary overflow-hidden"
     >
       <!-- Top Content (Header + Sidebar + View) -->
       <div class="flex flex-1 overflow-hidden">
         <!-- Sidebar -->
 
         <aside
-          class="w-80 bg-background-dark border-r border-[#22492f] flex flex-col justify-between shrink-0 transition-all duration-300 relative overflow-hidden"
+          class="w-80 bg-background-secondary border-r border-border-primary flex flex-col justify-between shrink-0 transition-all duration-300 relative overflow-hidden shadow-sm"
         >
           <div class="flex flex-col h-full relative">
             <div class="p-4">
               <div
-                class="p-3 rounded-xl border border-primary/25 bg-[#13261a]/80 neon-glow flex items-center gap-3"
+                class="p-3 rounded-xl border border-border-primary bg-background-primary shadow-sm neon-glow flex items-center gap-3"
               >
                 <img
                   src="assets/govard-logo.svg"
                   alt="Govard logo"
-                  class="w-11 h-11 rounded-lg shadow-[0_0_20px_rgba(13,242,89,0.25)] shrink-0"
+                  class="w-11 h-11 rounded-lg shadow-[0_0_20px_rgba(var(--primary-rgb),0.25)] shrink-0"
                 />
                 <div class="flex flex-col min-w-0">
                   <h1
-                    class="text-white text-xl leading-none font-bold tracking-tight whitespace-nowrap"
+                    class="text-text-primary text-xl leading-none font-bold tracking-tight whitespace-nowrap"
                   >
                     GOVARD
                   </h1>
                   <p
-                    class="text-[#90cba4]/80 text-[10px] font-mono uppercase tracking-widest mt-1.5 whitespace-nowrap"
+                    class="text-text-tertiary text-[10px] font-mono uppercase tracking-widest mt-1.5 whitespace-nowrap"
                   >
                     Local Dev Orchestrator
                   </p>
@@ -57,32 +59,35 @@
             <div id="sidebarEnvActions" class="px-4 pb-4">
               <button
                 data-action="open-onboarding"
-                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-[#90cba4]/30 hover:border-primary/50 hover:bg-[#22492f]/30 text-[#90cba4] hover:text-primary transition-all text-sm font-medium"
+                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-border-primary hover:border-primary/50 hover:bg-primary/5 text-text-secondary hover:text-primary transition-all text-sm font-medium"
               >
                 <span class="material-symbols-outlined text-lg">add</span>
                 New Environment
               </button>
             </div>
-            <div class="absolute -bottom-20 -left-20 w-64 h-64 bg-primary/5 blur-[100px] pointer-events-none">
-            </div>
+            <div
+              class="absolute -bottom-20 -left-20 w-64 h-64 bg-primary/5 blur-[100px] pointer-events-none"
+            ></div>
           </div>
         </aside>
         <main class="flex-1 flex flex-col h-full overflow-hidden relative">
           <header
-            class="h-16 border-b border-[#22492f] bg-background-dark/95 backdrop-blur flex items-center justify-between px-6 shrink-0 z-20"
+            class="h-16 border-b border-border-primary bg-background-primary/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-20 sticky top-0"
           >
             <div class="flex-1 max-w-xl">
               <!-- Search and global info -->
-              <div class="relative group">
-                <div
-                  class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
+              <div class="relative w-full group">
+                <span
+                  class="absolute inset-y-0 left-4 flex items-center pointer-events-none"
                 >
-                  <span class="material-symbols-outlined text-[#90cba4]"
+                  <span
+                    class="material-symbols-outlined text-slate-500 dark:text-[var(--text-tertiary)] text-xl transition-colors group-focus-within:text-primary"
                     >search</span
                   >
-                </div>
+                </span>
                 <input
-                  class="block w-full pl-10 pr-12 py-2 bg-[#1a3322] border border-transparent focus:border-primary/30 text-white placeholder-[#5d856b] rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30 sm:text-sm transition-all"
+                  id="globalSearch"
+                  class="w-full bg-white dark:bg-background-tertiary/20 text-slate-900 dark:text-white pl-12 pr-12 py-3 rounded-2xl border border-slate-200 dark:border-border-primary focus:border-primary/50 focus:outline-none placeholder-slate-400 dark:placeholder-slate-500 transition-all font-medium text-sm group-hover:border-slate-300 dark:group-hover:border-primary/20"
                   placeholder="Search in Govard..."
                   type="text"
                 />
@@ -90,7 +95,7 @@
                   class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none"
                 >
                   <span
-                    class="text-[#5d856b] text-xs border border-[#2e573a] rounded px-1.5 py-0.5"
+                    class="text-text-tertiary text-xs border border-border-primary rounded px-1.5 py-0.5 shadow-sm"
                     >⌘K</span
                   >
                 </div>
@@ -98,25 +103,27 @@
             </div>
             <div class="flex items-center gap-4 ml-6">
               <button
-                class="h-8 w-8 inline-flex items-center justify-center text-[#90cba4] hover:text-white hover:bg-[#22492f] rounded-lg transition-colors"
+                class="h-8 w-8 inline-flex items-center justify-center text-text-tertiary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                 id="openSettings"
                 data-action="open-settings"
               >
-                <span class="material-symbols-outlined leading-none">settings</span>
+                <span class="material-symbols-outlined leading-none"
+                  >settings</span
+                >
               </button>
-              <div class="h-8 w-px bg-[#22492f] mx-1"></div>
+              <div class="h-8 w-px bg-border-primary mx-1"></div>
               <button
-                class="flex items-center gap-2 pl-2 pr-1 py-1 rounded-full hover:bg-[#22492f] transition-colors group"
+                class="flex items-center gap-2 pl-2 pr-1 py-1 rounded-full hover:bg-primary/10 transition-colors group"
               >
                 <div
                   id="userAvatar"
-                  class="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center text-background-dark font-bold text-xs shadow-lg shadow-primary/20"
+                  class="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-[#059669] flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-primary/20"
                 >
                   ??
                 </div>
                 <span
                   id="userName"
-                  class="hidden xl:block text-xs font-medium text-slate-300 group-hover:text-white pr-2"
+                  class="hidden xl:block text-xs font-medium text-text-secondary group-hover:text-primary pr-2"
                   >Loading...</span
                 >
               </button>
@@ -133,19 +140,19 @@
               class="px-6 lg:px-10 pt-6 max-w-[1248px] w-full mx-auto"
             >
               <div
-                class="relative rounded-2xl overflow-hidden group border border-[#22492f] w-full"
+                class="relative rounded-2xl overflow-hidden group border border-slate-200 dark:border-border-primary w-full"
               >
                 <div class="absolute inset-0 z-0">
                   <div
-                    class="absolute inset-0 bg-gradient-to-t from-[#102316] via-[#102316]/80 to-[#102316]/30 z-10"
+                    class="absolute inset-0 bg-gradient-to-t from-surface-secondary via-surface-secondary/80 to-surface-secondary/30 z-10"
                   ></div>
                   <!-- CSS-based decorative background for offline compatibility -->
                   <div class="absolute inset-0 opacity-30 overflow-hidden">
                     <div
-                      class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,#0df25911_0%,transparent_70%)]"
+                      class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(var(--primary-rgb),0.07)_0%,transparent_70%)]"
                     ></div>
                     <div
-                      class="absolute inset-0 bg-[linear-gradient(45deg,#0c1810_25%,transparent_25%,transparent_50%,#0c1810_50%,#0c1810_75%,transparent_75%,transparent)] bg-[length:48px_48px]"
+                      class="absolute inset-0 bg-[linear-gradient(45deg,var(--bg-primary)_25%,transparent_25%,transparent_50%,var(--bg-primary)_50%,var(--bg-primary)_75%,transparent_75%,transparent)] bg-[length:48px_48px]"
                     ></div>
                     <div
                       class="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#0df25905_1px,#0df25905_2px)] bg-[length:100%_4px]"
@@ -157,10 +164,10 @@
                 >
                   <div class="flex items-start gap-6">
                     <div
-                      class="h-24 w-24 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center shadow-2xl shrink-0 group-hover:scale-105 transition-transform duration-500"
+                      class="h-24 w-24 rounded-xl bg-surface-primary dark:bg-white/5 backdrop-blur-md border border-border-primary dark:border-white/10 flex items-center justify-center shadow-2xl shrink-0 group-hover:scale-105 transition-transform duration-500"
                     >
                       <span
-                        class="material-symbols-outlined text-primary drop-shadow-[0_0_15px_rgba(13,242,89,0.3)]"
+                        class="material-symbols-outlined text-primary drop-shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]"
                         style="font-size: 48px"
                         >layers</span
                       >
@@ -169,7 +176,7 @@
                       <div class="flex items-center gap-3 mb-2">
                         <h2
                           id="projectTitle"
-                          class="text-4xl font-bold text-white tracking-tight"
+                          class="text-4xl font-bold text-slate-900 dark:text-white tracking-tight"
                         >
                           Loading...
                         </h2>
@@ -186,9 +193,9 @@
                       </div>
                       <a
                         id="projectUrl"
-                        class="text-[#90cba4] hover:text-primary flex items-center gap-1.5 text-sm transition-colors mb-4 group/link hidden"
                         href="#"
                         target="_blank"
+                        class="text-emerald-700 dark:text-primary hover:text-emerald-800 dark:hover:text-primary/80 transition-colors text-sm font-bold flex items-center gap-1 leading-none"
                       >
                         <span id="projectUrlText"></span>
                         <span
@@ -198,7 +205,7 @@
                       </a>
                       <div
                         id="projectTechnologies"
-                        class="flex flex-wrap gap-2 text-xs text-slate-400 min-h-[26px]"
+                        class="flex flex-wrap gap-2 text-xs text-text-secondary dark:text-slate-400 min-h-[26px]"
                       >
                         <!-- Technologies will be added here -->
                       </div>
@@ -206,9 +213,8 @@
                   </div>
                   <div class="flex items-center gap-3">
                     <button
-                      data-action="env-restart"
-                      id="heroRestartBtn"
-                      class="h-12 px-6 bg-primary text-background-dark rounded-lg text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95"
+                      data-action="open-url"
+                      class="h-12 px-6 bg-primary text-white dark:text-background-dark rounded-lg text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95"
                     >
                       <span class="material-symbols-outlined text-lg"
                         >restart_alt</span
@@ -230,7 +236,7 @@
                     <button
                       data-action="env-pull"
                       id="heroPullBtn"
-                      class="h-12 w-12 bg-[#13261a] text-[#90cba4] border border-[#2e573a] rounded-lg hover:bg-[#173325] hover:text-primary transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-primary/10"
+                      class="h-12 w-12 bg-surface-secondary text-primary border border-border-primary rounded-lg hover:bg-surface-primary hover:text-primary transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-primary/10"
                       title="Pull Images"
                     >
                       <span class="material-symbols-outlined">download</span>
@@ -242,46 +248,39 @@
 
             <div
               id="tabsHeader"
-              class="border-b border-[#22492f] shrink-0 bg-background-dark sticky top-0 z-10"
+              class="border-b border-slate-200 dark:border-border-primary shrink-0 bg-white/95 dark:bg-background-dark/95 backdrop-blur-sm sticky top-0 z-[45]"
             >
               <div id="tabsHeaderInner">
                 <nav
-                  aria-label="Tabs"
-                  class="-mb-px flex space-x-6 px-6 lg:px-10"
+                  class="-mb-px flex px-2 lg:px-6"
                 >
-                  <a
-                    class="border-primary text-primary whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition-colors active"
-                    href="#"
-                    data-action="switch-tab"
-                    data-tab="dashboard"
-                  >
-                    <span class="material-symbols-outlined text-[18px]"
-                      >dashboard</span
+                    <a
+                      class="border-primary text-primary dark:text-white whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all active"
+                      href="#"
+                      data-action="switch-tab"
+                      data-tab="dashboard"
                     >
-                    Dashboard
-                  </a>
-                  <a
-                    class="border-transparent text-[#90cba4] hover:border-[#90cba4] hover:text-white whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition-colors"
-                    href="#"
-                    data-action="switch-tab"
-                    data-tab="remotes"
-                  >
-                    <span class="material-symbols-outlined text-[18px]"
-                      >cloud_sync</span
+                      <span class="material-symbols-outlined text-lg">dashboard</span>
+                      Dashboard
+                    </a>
+                    <a
+                      class="border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-500 whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all"
+                      href="#"
+                      data-action="switch-tab"
+                      data-tab="remotes"
                     >
-                    Remotes
-                  </a>
-                  <a
-                    class="border-transparent text-[#90cba4] hover:border-[#90cba4] hover:text-white whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition-colors"
-                    href="#"
-                    data-action="switch-tab"
-                    data-tab="logs"
-                  >
-                    <span class="material-symbols-outlined text-[18px]"
-                      >terminal</span
+                      <span class="material-symbols-outlined text-lg">cloud_sync</span>
+                      Remotes
+                    </a>
+                    <a
+                      class="border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-500 whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all"
+                      href="#"
+                      data-action="switch-tab"
+                      data-tab="logs"
                     >
-                    Logs &amp; Shell
-                  </a>
+                      <span class="material-symbols-outlined text-lg">terminal</span>
+                      Logs & Shell
+                    </a>
                 </nav>
               </div>
             </div>
@@ -294,25 +293,27 @@
               >
                 <div class="flex flex-col gap-6 h-full min-h-0">
                   <div
-                    class="relative rounded-2xl overflow-hidden border border-[#22492f]"
+                    class="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-border-primary"
                   >
                     <div class="absolute inset-0 z-0">
                       <div
-                        class="absolute inset-0 bg-gradient-to-t from-[#102316] via-[#102316]/80 to-[#102316]/30"
+                        class="absolute inset-0 bg-gradient-to-t from-surface-secondary via-surface-secondary/80 to-surface-secondary/30 z-10"
                       ></div>
-                      <div class="absolute inset-0 opacity-25">
+                      <div class="absolute inset-0 opacity-25 overflow-hidden">
                         <div
-                          class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,#0df25911_0%,transparent_70%)]"
+                          class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(var(--primary-rgb),0.07)_0%,transparent_70%)]"
                         ></div>
                         <div
-                          class="absolute inset-0 bg-[linear-gradient(45deg,#0c1810_25%,transparent_25%,transparent_50%,#0c1810_50%,#0c1810_75%,transparent_75%,transparent)] bg-[length:48px_48px]"
+                          class="absolute inset-0 bg-[linear-gradient(45deg,var(--bg-primary)_25%,transparent_25%,transparent_50%,var(--bg-primary)_50%,var(--bg-primary)_75%,transparent_75%,transparent)] bg-[length:48px_48px]"
                         ></div>
                       </div>
                     </div>
-                    <div class="relative z-10 p-4 space-y-4 global-control-deck">
+                    <div
+                      class="relative z-10 p-4 space-y-4 global-control-deck"
+                    >
                       <div class="flex items-center justify-between gap-2">
                         <p
-                          class="text-[11px] uppercase tracking-[0.18em] text-[#90cba4]/70 flex items-center gap-1.5"
+                          class="text-[11px] uppercase tracking-[0.18em] text-primary font-bold flex items-center gap-1.5 dark:drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
                         >
                           <span class="material-symbols-outlined text-[14px]"
                             >space_dashboard</span
@@ -320,16 +321,18 @@
                           Ops Control Deck
                         </p>
                         <span
-                          class="text-[10px] uppercase tracking-[0.14em] text-slate-500"
+                          class="text-[11px] uppercase tracking-[0.12em] text-slate-600 dark:text-slate-400 font-bold"
                           >Global Services</span
                         >
                       </div>
-                      <div class="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)]">
+                      <div
+                        class="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)]"
+                      >
                         <section
-                          class="rounded-xl border border-[#2e573a] bg-[#0e1f14]/80 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] global-control-card"
+                          class="rounded-xl border border-border-primary bg-surface-primary/80 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] global-control-card"
                         >
                           <p
-                            class="text-[11px] uppercase tracking-[0.16em] text-[#90cba4]/80 flex items-center gap-1.5"
+                            class="text-[11px] uppercase tracking-[0.16em] text-slate-600 dark:text-white/80 font-bold flex items-center gap-1.5"
                           >
                             <span class="material-symbols-outlined text-[13px]"
                               >monitoring</span
@@ -339,21 +342,21 @@
                           <div class="mt-2 flex items-end gap-2">
                             <span
                               id="globalServiceHealthPercent"
-                              class="text-4xl font-black text-white leading-none ops-kpi-value"
+                              class="text-4xl font-black text-slate-800 dark:text-white leading-none ops-kpi-value"
                               >--%</span
                             >
                             <span
                               id="globalServiceCount"
-                              class="text-xs font-semibold text-[#90cba4]"
+                              class="text-xs font-semibold text-primary"
                               >0/0 running</span
                             >
                           </div>
                           <div
-                            class="mt-3 h-2 rounded-full bg-[#1a3322] overflow-hidden"
+                            class="mt-3 h-2 rounded-full bg-surface-primary overflow-hidden"
                           >
                             <div
                               id="globalServiceHealthBar"
-                              class="h-full w-0 rounded-full bg-gradient-to-r from-primary/70 via-primary to-[#7dffad] transition-all duration-500"
+                              class="h-full w-0 rounded-full bg-gradient-to-r from-primary/70 via-primary to-primary-hover transition-all duration-500"
                             ></div>
                           </div>
                           <div
@@ -371,18 +374,21 @@
                           </div>
                         </section>
                         <section
-                          class="rounded-xl border border-[#2e573a] bg-[#102316]/75 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.2)] global-control-card"
+                          class="rounded-xl border border-border-primary bg-surface-secondary/75 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.2)] global-control-card"
                         >
-                          <div class="flex items-center justify-between gap-2 mb-2">
+                          <div
+                            class="flex items-center justify-between gap-2 mb-2"
+                          >
                             <p
-                              class="text-[11px] uppercase tracking-[0.16em] text-[#90cba4]/80 flex items-center gap-1.5"
+                              class="text-[11px] uppercase tracking-[0.16em] text-primary font-semibold flex items-center gap-1.5"
                             >
-                              <span class="material-symbols-outlined text-[13px]"
+                              <span
+                                class="material-symbols-outlined text-[13px]"
                                 >tune</span
                               >
                               All Actions
                             </p>
-                            <span class="text-[10px] text-slate-400"
+                            <span class="text-[10px] text-slate-500 dark:text-slate-300"
                               >Applies to every global service</span
                             >
                           </div>
@@ -391,9 +397,10 @@
                               id="globalBulkStart"
                               data-action="global-bulk-start"
                               data-loading-label="Starting All..."
-                              class="h-10 min-w-[118px] px-3 bg-primary text-background-dark rounded-lg text-xs font-bold hover:bg-primary/90 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-primary/10 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
+                              class="h-10 min-w-[118px] px-3 bg-primary text-white dark:text-background-dark rounded-lg text-xs font-bold hover:bg-primary/90 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-primary/10 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
                             >
-                              <span class="material-symbols-outlined text-[16px]"
+                              <span
+                                class="material-symbols-outlined text-[16px]"
                                 >play_arrow</span
                               >
                               Start All
@@ -402,9 +409,10 @@
                               id="globalBulkRestart"
                               data-action="global-bulk-restart"
                               data-loading-label="Restarting All..."
-                              class="h-10 min-w-[118px] px-3 bg-primary text-background-dark rounded-lg text-xs font-bold hover:bg-primary/90 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-primary/10 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
+                              class="h-10 min-w-[118px] px-3 bg-slate-600 text-white border border-slate-500 rounded-lg text-xs font-bold hover:bg-slate-500 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-black/20 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                             >
-                              <span class="material-symbols-outlined text-[16px]"
+                              <span
+                                class="material-symbols-outlined text-[16px]"
                                 >restart_alt</span
                               >
                               Restart All
@@ -413,11 +421,13 @@
                               id="globalBulkStop"
                               data-action="global-bulk-stop"
                               data-loading-label="Stopping All..."
-                              class="h-10 min-w-[118px] px-3 bg-red-600 text-white border border-red-500 rounded-lg text-xs font-bold hover:bg-red-500 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-red-500/20 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
+                              class="h-10 min-w-[118px] px-3 bg-red-600 text-white border border-red-400 rounded-lg text-xs font-bold hover:bg-red-500 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-red-700/40 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                             >
                               <span
                                 class="material-symbols-outlined text-[16px] fill-1"
-                                style="font-variation-settings: &quot;FILL&quot; 1"
+                                style="
+                                  font-variation-settings: &quot;FILL&quot; 1;
+                                "
                                 >stop</span
                               >
                               Stop All
@@ -426,9 +436,10 @@
                               id="globalBulkPull"
                               data-action="global-bulk-pull"
                               data-loading-label="Pulling All..."
-                              class="h-10 min-w-[118px] px-3 bg-[#22492f] text-white border border-[#366b47] rounded-lg text-xs font-bold hover:bg-[#2e573a] transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-primary/10 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
+                              class="h-10 min-w-[118px] px-3 bg-primary text-background-secondary border border-primary/20 rounded-lg text-xs font-bold hover:bg-primary-hover transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-primary/10 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
                             >
-                              <span class="material-symbols-outlined text-[16px]"
+                              <span
+                                class="material-symbols-outlined text-[16px]"
                                 >download</span
                               >
                               Pull All
@@ -437,36 +448,40 @@
                         </section>
                       </div>
                       <section
-                        class="rounded-xl border border-[#2e573a] bg-[#0d1d13]/75 p-2.5 global-control-card"
+                        class="rounded-xl border border-border-primary bg-background-secondary/75 p-2.5 global-control-card"
                       >
                         <div class="flex items-center gap-1.5 mb-2">
                           <span
-                            class="material-symbols-outlined text-[14px] text-[#90cba4]"
+                            class="material-symbols-outlined text-[14px] text-primary"
                             >lan</span
                           >
                           <p
-                            class="text-[11px] uppercase tracking-[0.12em] text-[#90cba4]/80"
+                            class="text-[11px] uppercase tracking-[0.12em] text-primary font-bold"
                           >
                             Service Mesh Snapshot
                           </p>
                         </div>
-                        <div id="globalServiceStatusStrip" class="flex flex-wrap gap-1.5">
-                          <span
-                            class="inline-flex items-center gap-1 rounded-md border border-[#2e573a] bg-[#13261a] px-2 py-1 text-[10px] text-slate-400"
+                        <div
+                          id="globalServiceStatusStrip"
+                          class="flex flex-wrap gap-1.5"
+                        >
+                            class="inline-flex items-center gap-1 rounded-md border border-border-primary bg-background-primary px-2 py-1 text-[10px] text-slate-600 dark:text-slate-400 font-medium"
                             >Loading services...</span
                           >
                         </div>
                       </section>
                       <section
                         id="globalActionFeedback"
-                        class="rounded-xl border border-[#2e573a] bg-[#0f2015]/80 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-slate-300 global-feedback-ping"
+                        class="rounded-xl border border-slate-200 dark:border-border-primary bg-slate-50 dark:bg-background-dark/80 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-slate-700 dark:text-slate-300 global-feedback-ping"
                       >
                         <span
                           id="globalActionFeedbackIcon"
-                          class="material-symbols-outlined text-[15px] leading-none self-start mt-px text-[#90cba4]"
+                          class="material-symbols-outlined text-[15px] leading-none self-start mt-px text-primary"
                           >info</span
                         >
-                        <span id="globalActionFeedbackText" class="min-w-0 whitespace-pre-line leading-relaxed"
+                        <span
+                          id="globalActionFeedbackText"
+                          class="min-w-0 whitespace-pre-line leading-relaxed"
                           >Ready for global operations.</span
                         >
                       </section>
@@ -476,10 +491,12 @@
                     class="grid grid-cols-1 md:grid-cols-[minmax(0,3fr)_minmax(0,7fr)] md:grid-rows-1 gap-6 flex-1 min-h-0"
                   >
                     <div
-                      class="glass-panel relative rounded-2xl overflow-hidden border border-[#22492f] min-h-0 min-w-0 h-full"
+                      class="glass-panel relative rounded-2xl overflow-hidden border border-slate-200 dark:border-border-primary min-h-0 min-w-0 h-full"
                     >
-                      <div class="relative z-10 p-3 h-full min-h-0 flex flex-col gap-2">
-                        <h3 class="text-sm font-semibold text-[#90cba4]">
+                      <div
+                        class="relative z-10 p-3 h-full min-h-0 flex flex-col gap-2"
+                      >
+                        <h3 class="text-sm font-semibold text-primary">
                           Services
                         </h3>
                         <div
@@ -487,7 +504,7 @@
                           class="space-y-2 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1"
                         >
                           <div
-                            class="rounded-xl border border-dashed border-[#2e573a] bg-[#102316] p-3 text-sm text-slate-400"
+                            class="rounded-xl border border-dashed border-border-primary bg-surface-secondary p-3 text-sm text-slate-400"
                           >
                             Loading global services...
                           </div>
@@ -495,76 +512,103 @@
                       </div>
                     </div>
                     <div
-                      class="glass-panel relative rounded-2xl overflow-hidden border border-[#22492f] min-h-0 min-w-0 h-full"
+                      class="glass-panel relative rounded-2xl overflow-hidden border border-border-primary min-h-0 min-w-0 h-full"
                     >
-                      <div class="relative z-10 p-3 h-full min-h-0 flex flex-col gap-2">
-                        <h3 class="text-sm font-semibold text-[#90cba4]">
-                          Logs
-                        </h3>
+                      <div
+                        class="relative z-10 p-3 h-full min-h-0 flex flex-col gap-2"
+                      >
+                        <h3 class="text-sm font-semibold text-primary">Logs</h3>
                         <div
-                          class="rounded-xl border border-[#2e573a] bg-[#0c1810] overflow-hidden flex-1 min-h-0 flex flex-col"
+                          class="rounded-xl border border-border-primary bg-background-primary overflow-hidden flex-1 min-h-0 flex flex-col"
                         >
-                          <div class="p-3 border-b border-[#2e573a] bg-[#1a3322]">
-                            <div class="flex flex-wrap items-center justify-between gap-3">
-                              <div class="flex items-center gap-2 min-w-0">
-                                <span class="material-symbols-outlined text-primary text-[16px]">receipt_long</span>
-                                <span class="text-xs font-semibold text-white">Global Logs</span>
+                          <div
+                            class="p-3 border-b border-border-primary bg-surface-primary"
+                          >
+                            <div
+                              class="flex flex-wrap items-center justify-between gap-3"
+                            >
+                              <div class="flex items-center gap-4 min-w-0 font-bold">
+                                <span
+                                  class="material-symbols-outlined text-primary text-[18px]"
+                                  >receipt_long</span
+                                >
+                                <span class="text-xs font-bold text-slate-800 dark:text-white"
+                                  >Global Logs</span
+                                >
                                 <span
                                   id="globalLogServiceName"
-                                  class="text-[10px] text-slate-400 truncate"
+                                  class="text-[10px] text-slate-500 truncate"
                                   >Select service</span
                                 >
                               </div>
                               <div class="flex items-center gap-2 ml-auto">
                                 <div class="relative">
-                                  <span class="absolute inset-y-0 left-2 flex items-center">
-                                    <span class="material-symbols-outlined text-[#5d856b] text-base">search</span>
+                                  <span
+                                    class="absolute inset-y-0 left-2 flex items-center"
+                                  >
+                                    <span
+                                      class="material-symbols-outlined text-text-tertiary text-base"
+                                      >search</span
+                                    >
                                   </span>
                                   <input
                                     id="globalLogSearch"
-                                    class="bg-[#102316] text-xs text-white pl-8 pr-3 py-2 rounded-md border border-[#2e573a] focus:border-primary/50 focus:outline-none placeholder-[#5d856b] w-40 md:w-52"
+                                    class="bg-surface-secondary text-xs text-white pl-8 pr-3 py-2 rounded-md border border-border-primary focus:border-primary/50 focus:outline-none placeholder-text-tertiary w-40 md:w-52"
                                     placeholder="Filter logs..."
                                     type="text"
                                   />
                                 </div>
                                 <button
                                   data-action="clear-global-logs"
-                                  class="p-2 rounded-md text-[#90cba4] hover:text-primary hover:bg-[#2e573a]/50 transition-colors"
+                                  class="p-2 rounded-md text-primary hover:text-primary hover:bg-primary/10 transition-colors"
                                   title="Clear Logs"
                                 >
-                                  <span class="material-symbols-outlined text-lg">block</span>
+                                  <span
+                                    class="material-symbols-outlined text-lg"
+                                    >block</span
+                                  >
                                 </button>
                                 <button
                                   data-action="download-global-logs"
-                                  class="p-2 rounded-md text-[#90cba4] hover:text-primary hover:bg-[#2e573a]/50 transition-colors"
+                                  class="p-2 rounded-md text-primary hover:text-primary hover:bg-primary/10 transition-colors"
                                   title="Download Logs"
                                 >
-                                  <span class="material-symbols-outlined text-lg">download</span>
+                                  <span
+                                    class="material-symbols-outlined text-lg"
+                                    >download</span
+                                  >
                                 </button>
                               </div>
                             </div>
-                            <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-                              <div class="flex items-center gap-2 bg-[#102316] rounded-lg p-1.5 border border-[#2e573a] shrink-0">
-                                <span class="text-[10px] uppercase tracking-wide text-[#5d856b] px-1 shrink-0">Severity</span>
+                            <div
+                              class="mt-3 flex flex-wrap items-center justify-between gap-2"
+                            >
+                              <div
+                                class="flex items-center gap-2 bg-surface-secondary rounded-lg p-1.5 border border-border-primary shrink-0"
+                              >
+                                <span
+                                  class="text-[10px] uppercase tracking-wide text-text-tertiary px-1 shrink-0"
+                                  >Severity</span
+                                >
                                 <div id="globalLogSeverity" class="flex gap-1">
                                   <button
                                     data-action="filter-global-severity"
                                     data-severity="all"
-                                    class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#2e573a] text-primary border-[#3f7a52]"
+                                    class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-primary/20 dark:bg-[#2e573a] text-primary border-primary/30"
                                   >
                                     All
                                   </button>
                                   <button
                                     data-action="filter-global-severity"
                                     data-severity="error"
-                                    class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#102316] text-[#90cba4] border-transparent hover:bg-[#1a3322] hover:text-white"
+                                    class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-surface-secondary dark:bg-[#1a1c1e] text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20"
                                   >
                                     Error
                                   </button>
                                   <button
                                     data-action="filter-global-severity"
                                     data-severity="warn"
-                                    class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#102316] text-[#90cba4] border-transparent hover:bg-[#1a3322] hover:text-white"
+                                    class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-surface-secondary dark:bg-[#1a1c1e] text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30 hover:bg-amber-50 dark:hover:bg-amber-900/20"
                                   >
                                     Warn
                                   </button>
@@ -574,13 +618,13 @@
                                 <button
                                   id="globalToggleLive"
                                   data-action="toggle-global-live"
-                                  class="h-7 px-2.5 rounded-md text-[10px] font-semibold bg-[#2e573a] text-white hover:bg-[#366b47] transition-colors"
+                                  class="h-7 px-2.5 rounded-md text-[10px] font-semibold bg-primary/20 dark:bg-[#2e573a] text-primary dark:text-white hover:bg-primary-hover hover:text-white transition-colors"
                                 >
                                   Live: Off
                                 </button>
                                 <button
                                   data-action="refresh-global-logs"
-                                  class="h-7 px-2.5 rounded-md text-[10px] font-semibold text-[#90cba4] hover:text-white hover:bg-[#2e573a]/60 transition-colors"
+                                  class="h-7 px-2.5 rounded-md text-[10px] font-semibold text-primary dark:text-primary hover:bg-primary/10 dark:hover:bg-[#2e573a] transition-colors"
                                 >
                                   Refresh
                                 </button>
@@ -593,8 +637,10 @@
                           >
                             <pre
                               id="globalLogOutput"
-                              class="m-0 font-mono whitespace-pre-wrap break-words text-[11px] text-slate-300"
-                            >Select a global service to view logs.</pre>
+                              class="m-0 font-mono whitespace-pre-wrap break-words text-[11px] text-text-secondary"
+                            >
+Select a global service to view logs.</pre
+                            >
                           </div>
                         </div>
                       </div>
@@ -609,7 +655,7 @@
                   <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-4">
                     <div class="lg:col-span-2 space-y-6">
                       <h3
-                        class="text-white text-lg font-semibold flex items-center gap-2 pt-4"
+                        class="text-slate-900 dark:text-white text-lg font-semibold flex items-center gap-2 pt-4"
                       >
                         <span class="material-symbols-outlined text-primary"
                           >view_agenda</span
@@ -619,7 +665,7 @@
                       <div id="activeServicesList" class="space-y-4">
                         <!-- Services dynamically rendered here -->
                         <div
-                          class="h-16 border border-[#2e573a] border-dashed rounded-xl flex items-center justify-center text-slate-500 text-sm"
+                          class="h-16 border border-border-primary border-dashed rounded-xl flex items-center justify-center text-slate-500 text-sm"
                         >
                           Loading services...
                         </div>
@@ -627,7 +673,7 @@
                     </div>
                     <div class="lg:col-span-1 space-y-6">
                       <h3
-                        class="text-white text-lg font-semibold flex items-center gap-2"
+                        class="text-slate-900 dark:text-white text-lg font-semibold flex items-center gap-2"
                       >
                         <span class="material-symbols-outlined text-primary"
                           >bolt</span
@@ -637,67 +683,67 @@
                       <div class="grid grid-cols-2 gap-3">
                         <button
                           data-action="open-folder"
-                          class="p-4 bg-[#1a3322] border border-[#2e573a] rounded-xl hover:bg-[#22492f] hover:border-primary/40 transition-all group text-left"
+                          class="p-4 bg-surface-primary border border-border-primary rounded-xl hover:bg-background-secondary hover:border-primary/40 transition-all group text-left"
                         >
                           <span
                             class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2"
                             >folder_open</span
                           >
-                          <span class="block text-slate-200 text-sm font-medium"
+                          <span class="block text-slate-900 dark:text-slate-200 text-sm font-medium"
                             >Reveal File</span
                           >
-                          <span class="block text-slate-500 text-[10px] mt-1"
+                          <span class="block text-text-secondary dark:text-slate-500 text-[10px] mt-1"
                             >Show in Finder</span
                           >
                         </button>
                         <button
                           data-action="open-ide"
-                          class="p-4 bg-[#1a3322] border border-[#2e573a] rounded-xl hover:bg-[#22492f] hover:border-primary/40 transition-all group text-left"
+                          class="p-4 bg-surface-primary border border-border-primary rounded-xl hover:bg-background-secondary hover:border-primary/40 transition-all group text-left"
                         >
                           <span
                             class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2"
                             >code</span
                           >
-                          <span class="block text-slate-200 text-sm font-medium"
+                          <span class="block text-slate-900 dark:text-slate-200 text-sm font-medium"
                             >Open IDE</span
                           >
-                          <span class="block text-slate-500 text-[10px] mt-1"
+                          <span class="block text-text-secondary dark:text-slate-500 text-[10px] mt-1"
                             >Launch VS Code</span
                           >
                         </button>
                         <button
                           data-action="open-db-client"
-                          class="p-4 bg-[#1a3322] border border-[#2e573a] rounded-xl hover:bg-[#22492f] hover:border-primary/40 transition-all group text-left"
+                          class="p-4 bg-surface-primary border border-border-primary rounded-xl hover:bg-background-secondary hover:border-primary/40 transition-all group text-left"
                         >
                           <span
                             class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2"
                             >database</span
                           >
-                          <span class="block text-slate-200 text-sm font-medium"
+                          <span class="block text-slate-900 dark:text-slate-200 text-sm font-medium"
                             >Open DB</span
                           >
-                          <span class="block text-slate-500 text-[10px] mt-1"
+                          <span class="block text-text-secondary dark:text-slate-500 text-[10px] mt-1"
                             >Connect DB</span
                           >
                         </button>
                         <button
                           data-action="open-mail-client"
-                          class="p-4 bg-[#1a3322] border border-[#2e573a] rounded-xl hover:bg-[#22492f] hover:border-primary/40 transition-all group text-left"
+                          class="p-4 bg-surface-primary border border-border-primary rounded-xl hover:bg-background-secondary hover:border-primary/40 transition-all group text-left"
                         >
                           <span
                             class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2"
                             >email</span
                           >
-                          <span class="block text-slate-200 text-sm font-medium"
+                          <span class="block text-slate-900 dark:text-slate-200 text-sm font-medium"
                             >Mailpit</span
                           >
-                          <span class="block text-slate-500 text-[10px] mt-1"
+                          <span class="block text-text-secondary dark:text-slate-500 text-[10px] mt-1"
                             >View Emails</span
                           >
                         </button>
                       </div>
                       <div
-                        class="glass-panel p-5 rounded-xl border border-[#2e573a] mt-6"
+                        class="glass-panel p-5 rounded-xl border border-border-primary mt-6"
                       >
                         <h4
                           class="text-white text-sm font-semibold mb-4 border-b border-[#22492f] pb-2"
@@ -724,7 +770,7 @@
                 <div class="space-y-8">
                   <div class="flex items-center justify-between">
                     <h2
-                      class="text-white text-xl font-semibold flex items-center gap-2"
+                      class="text-slate-900 dark:text-white text-xl font-semibold flex items-center gap-2"
                     >
                       <span class="material-symbols-outlined text-primary"
                         >cloud_sync</span
@@ -734,7 +780,7 @@
                     <div class="flex items-center gap-3">
                       <button
                         data-action="refresh-remotes"
-                        class="px-4 py-2 bg-[#22492f] text-white rounded-lg text-sm font-medium hover:bg-[#2e573a] transition-colors border border-[#366b47] flex items-center gap-2"
+                        class="px-4 py-2 bg-background-secondary text-text-primary dark:text-white rounded-lg text-sm font-medium hover:bg-primary/20 dark:hover:bg-[#2e573a] transition-colors border border-border-primary dark:border-[#366b47] flex items-center gap-2"
                       >
                         <span class="material-symbols-outlined text-lg"
                           >refresh</span
@@ -777,25 +823,20 @@
         class="hidden fixed z-[140] right-4 bottom-[52px] w-[min(380px,calc(100%-24px))] md:right-6 md:bottom-[56px]"
         aria-hidden="true"
       >
-        <div
-          class="update-prompt-panel p-4 rounded-2xl"
-        >
+        <div class="update-prompt-panel p-4 rounded-2xl">
           <div class="flex items-start gap-3">
             <div
-              class="h-10 w-10 rounded-xl bg-[#193524] border border-[#356b47] text-primary inline-flex items-center justify-center shrink-0"
+              class="h-10 w-10 rounded-xl bg-surface-secondary border border-border-primary text-primary inline-flex items-center justify-center shrink-0"
             >
               <span class="material-symbols-outlined text-[18px]"
                 >system_update_alt</span
               >
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-white text-sm font-semibold tracking-[0.01em]">
+              <p class="text-slate-900 dark:text-white text-sm font-semibold tracking-[0.01em]">
                 Update available
               </p>
-              <p
-                id="updatePromptMessage"
-                class="update-message-text mt-1"
-              >
+              <p id="updatePromptMessage" class="update-message-text mt-1">
                 A newer Govard Desktop version is available.
               </p>
               <div
@@ -803,23 +844,25 @@
               >
                 <span>Current:</span>
                 <span id="updatePromptCurrent" class="text-slate-300">-</span>
-                <span class="text-[#366b47]">→</span>
+                <span class="text-primary">→</span>
                 <span id="updatePromptLatest" class="text-primary">-</span>
               </div>
             </div>
             <button
               data-action="dismiss-update-prompt"
-              class="h-8 w-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 inline-flex items-center justify-center transition-colors"
+              class="h-8 w-8 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 inline-flex items-center justify-center transition-colors"
               type="button"
               aria-label="Dismiss update prompt"
             >
               <span class="material-symbols-outlined text-[18px]">close</span>
             </button>
           </div>
-          <div class="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+          <div
+            class="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2"
+          >
             <button
               data-action="dismiss-update-prompt"
-              class="px-3 py-2 text-xs font-medium rounded-lg border border-[#356b47] text-slate-200 hover:text-white hover:bg-[#22492f]/50 transition-colors"
+              class="px-3 py-2 text-xs font-medium rounded-lg border border-border-primary text-text-secondary hover:text-primary hover:bg-primary/10 transition-colors"
               type="button"
             >
               Later
@@ -827,10 +870,12 @@
             <button
               data-action="install-update-from-prompt"
               id="installUpdatePromptButton"
-              class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-[#0a1c11] hover:bg-primary/90 inline-flex items-center justify-center gap-1.5 disabled:opacity-70 disabled:cursor-not-allowed shadow-[0_10px_24px_rgba(13,242,89,0.24)]"
+              class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-background-primary hover:bg-primary/90 inline-flex items-center justify-center gap-1.5 disabled:opacity-70 disabled:cursor-not-allowed shadow-[0_10px_24px_rgba(var(--primary-rgb),0.24)]"
               type="button"
             >
-              <span class="material-symbols-outlined text-[18px]">download</span>
+              <span class="material-symbols-outlined text-[18px]"
+                >download</span
+              >
               <span>Download &amp; Install</span>
             </button>
           </div>
@@ -848,16 +893,16 @@
       <div id="settingsDrawerMount"></div>
 
       <footer
-        class="h-8 bg-[#0c1810] border-t border-[#2e573a] flex items-center justify-between px-4 shrink-0 z-[60]"
+        class="h-8 bg-background-primary border-t border-border-primary flex items-center justify-between px-4 shrink-0 z-[60]"
       >
         <div class="flex items-center min-w-0 flex-1">
           <div class="flex items-center gap-1.5 min-w-0 flex-1">
             <span
-              class="w-2 h-2 rounded-full bg-primary shadow-[0_0_5px_rgba(13,242,89,0.5)]"
+              class="w-2 h-2 rounded-full bg-primary shadow-[0_0_5px_rgba(var(--primary-rgb),0.5)]"
             ></span>
             <span
               id="status"
-              class="text-[10px] font-mono text-[#90cba4] uppercase tracking-wider truncate"
+              class="text-[10px] font-mono text-primary uppercase tracking-wider truncate"
               >Status: Ready</span
             >
           </div>
@@ -869,7 +914,7 @@
             <span class="material-symbols-outlined text-[14px]">terminal</span>
             Govard Engine <span id="footerVersion">v--</span>
           </div>
-          <div class="h-3 w-px bg-[#2e573a] shrink-0"></div>
+          <div class="h-3 w-px bg-border-primary shrink-0"></div>
           <div
             class="flex items-center gap-1 text-[10px] text-slate-500 font-mono"
           >
@@ -884,11 +929,10 @@
             >
             <span id="footerMemory">0 MB</span>
           </div>
-          <div class="h-8 w-px bg-[#2e573a]"></div>
+          <div class="h-8 w-px bg-border-primary"></div>
           <button
             data-action="refresh-metrics"
-            title="Refresh system metrics"
-            class="h-6 w-6 inline-flex items-center justify-center text-[#90cba4] hover:text-white transition-colors shrink-0"
+            class="h-6 w-6 inline-flex items-center justify-center text-primary hover:text-primary-hover dark:hover:text-white transition-colors shrink-0"
           >
             <span class="material-symbols-outlined text-[16px]">sync</span>
           </button>

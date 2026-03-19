@@ -8,6 +8,10 @@ import (
 )
 
 func FindRepoRoot() (string, error) {
+	if override := os.Getenv("GOVARD_TEST_REPO_ROOT"); override != "" {
+		return override, nil
+	}
+
 	start, err := os.Getwd()
 	if err != nil {
 		return "", err

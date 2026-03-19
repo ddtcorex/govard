@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,7 +38,12 @@ func ensureBootstrapMagentoEnvPHP(config engine.Config, opts bootstrapRuntimeOpt
 		return fmt.Errorf("failed to create app/etc: %w", err)
 	}
 
-	cryptKey := "00000000000000000000000000000000"
+	randomBytes := make([]byte, 16)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+	cryptKey := hex.EncodeToString(randomBytes)
+
 	if remoteCfg, ok := config.Remotes[opts.Source]; ok {
 		if metadata, err := remote.ProbeMagento2Environment(opts.Source, remoteCfg); err == nil {
 			if strings.TrimSpace(metadata.CryptKey) != "" {

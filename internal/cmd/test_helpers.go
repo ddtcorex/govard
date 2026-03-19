@@ -42,5 +42,5 @@ func ExecLookPathForTest(file string) (string, error) {
 
 // DesktopProductionBuildTagsForTest exposes desktop production build tags.
 func DesktopProductionBuildTagsForTest() string {
-	return desktopProductionBuildTags()
+	return desktopBuildTags(true)
 }
