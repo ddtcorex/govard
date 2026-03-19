@@ -42,8 +42,7 @@ func TestCommandsUseRunEForErrorPropagation(t *testing.T) {
 			}
 			if command == nil {
 				t.Fatalf("command %v not found", tt.path)
-			}
-			if command.RunE == nil {
+			} else if command.RunE == nil {
 				t.Fatalf("expected command %v to use RunE for proper non-zero exit codes", tt.path)
 			}
 		})

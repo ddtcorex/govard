@@ -132,8 +132,8 @@ const renderSyncPresetButton = ({
   disabledReason,
 }) => {
   const buttonClasses = enabled
-    ? "flex-1 px-4 py-2.5 bg-[#22492f] hover:bg-[#2e573a] border border-[#366b47] rounded-lg text-sm text-white font-medium transition-all flex items-center justify-center gap-2 group/btn"
-    : "flex-1 px-4 py-2.5 bg-[#13231a] border border-[#2b3d31] rounded-lg text-sm text-slate-500 font-medium transition-all flex items-center justify-center gap-2 opacity-70 cursor-not-allowed";
+    ? "flex-1 px-4 py-2.5 bg-background-secondary hover:bg-[var(--border-primary)] border border-border-primary dark:border-[#366b47] rounded-lg text-sm text-text-primary dark:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn"
+    : "flex-1 px-4 py-2.5 bg-background-secondary dark:bg-[#13231a] border border-border-primary dark:border-[#2b3d31] rounded-lg text-sm text-slate-500 font-medium transition-all flex items-center justify-center gap-2 opacity-70 cursor-not-allowed";
   const iconClasses = enabled
     ? `material-symbols-outlined text-[18px] ${iconHoverClass} transition-colors`
     : "material-symbols-outlined text-[18px] text-slate-500";
@@ -155,7 +155,7 @@ export const renderRemotes = (container, remotes = []) => {
 
   if (!remotes.length) {
     container.innerHTML = `
-      <div class="p-8 text-center text-slate-500 border border-dashed border-[#22492f] rounded-xl">
+      <div class="p-8 text-center text-slate-500 border border-dashed border-[var(--bg-secondary)] rounded-xl">
         No remotes configured for this project.
       </div>`;
     return;
@@ -168,12 +168,12 @@ export const renderRemotes = (container, remotes = []) => {
       const themeIcon = isProtected ? "rocket_launch" : "science";
       const borderColor = isProtected
         ? "border-amber-500/20"
-        : "border-[#22492f]";
+        : "border-[var(--bg-secondary)]";
       const lastSyncText = String(remote.lastSync || "never")
         .trim()
         .toLowerCase();
       const lastSyncTone =
-        lastSyncText === "never" ? "text-amber-300" : "text-slate-200";
+        lastSyncText === "never" ? "text-amber-600 dark:text-amber-300" : "text-text-secondary dark:text-slate-200";
       const canPullDB = canUseSyncPreset(remote, "db");
       const canPullMedia = canUseSyncPreset(remote, "media");
       const dbDisabledReason =
@@ -183,8 +183,8 @@ export const renderRemotes = (container, remotes = []) => {
       const authMethodLabel = formatAuthMethodLabel(remote.authMethod);
 
       return `
-      <div class="glass-card rounded-xl p-0 overflow-hidden group mb-6 border ${borderColor}">
-        <div class="p-6 border-b border-[#22492f] bg-gradient-to-r from-[#1a3322] to-[#1a3322]/50 relative overflow-hidden">
+      <div class="glass-card rounded-xl p-0 overflow-hidden group mb-6 border ${borderColor} dark:bg-card-bg">
+        <div class="p-6 border-b border-border-primary dark:border-[var(--bg-secondary)] bg-gradient-to-r from-surface-primary to-surface-primary/50 dark:from-[var(--surface-primary)] dark:to-[var(--surface-primary)]/50 relative overflow-hidden">
           ${isProtected ? `<div class="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-amber-500/10 to-transparent pointer-events-none"></div>` : ""}
           <div class="relative z-10 flex flex-col gap-4">
             <div class="flex items-start justify-between gap-4">
@@ -194,35 +194,36 @@ export const renderRemotes = (container, remotes = []) => {
                 </div>
                 <div class="min-w-0">
                   <div class="flex items-center flex-wrap gap-2">
-                    <h3 class="text-white text-[1.4rem] leading-none font-semibold">
+                    <h3 class="text-text-primary dark:text-white text-[1.4rem] leading-none font-semibold">
                       ${escapeHTML(remote.name)}
                     </h3>
                     ${isProtected ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-${themeColor}-500/20 text-${themeColor}-400 border border-${themeColor}-500/30 uppercase tracking-wide">Protected</span>` : ""}
                   </div>
-                  <p class="mt-1 text-[11px] uppercase tracking-[0.08em] text-[#90cba4]/70">Auth: ${escapeHTML(authMethodLabel)}</p>
+                  <p class="mt-1 text-[11px] uppercase tracking-[0.08em] text-primary/70">Auth: ${escapeHTML(authMethodLabel)}</p>
                 </div>
               </div>
-              <div class="flex items-center gap-1.5 p-1 rounded-lg border border-[#2e573a] bg-[#102316]/60 backdrop-blur-sm shadow-[0_0_15px_rgba(13,242,89,0.1)]">
-                <button data-action="open-remote-url" data-remote="${escapeHTML(remote.name)}" class="h-8 w-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#22492f] rounded-md transition-all" title="Open Remote URL">
+              <div class="flex items-center gap-1.5 p-1 rounded-lg border border-border-primary bg-surface-secondary/60 backdrop-blur-sm shadow-[0_0_15px_rgba(13,242,89,0.1)]">
+                <button data-action="open-remote-url" data-remote="${escapeHTML(remote.name)}" class="h-8 w-8 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary rounded-md transition-all" title="Open Remote URL">
                   <span class="material-symbols-outlined text-[18px]">open_in_new</span>
                 </button>
-                <button data-action="remote-test" data-remote="${escapeHTML(remote.name)}" class="h-8 w-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#22492f] rounded-md transition-all" title="Test Connection">
+                <button data-action="remote-test" data-remote="${escapeHTML(remote.name)}" class="h-8 w-8 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary rounded-md transition-all" title="Test Connection">
                   <span class="material-symbols-outlined text-[18px]">wifi_tethering</span>
                 </button>
               </div>
             </div>
             <div class="flex flex-col lg:flex-row gap-2.5">
-              <div class="min-w-0 flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2e573a] bg-[#102316]/50 lg:flex-1">
+              <div class="min-w-0 flex items-center gap-2 px-3 py-2 rounded-lg border border-border-primary bg-surface-secondary/50 lg:flex-1">
                 <span class="material-symbols-outlined text-[16px] text-slate-400">dns</span>
                 <span class="text-[11px] uppercase tracking-wide text-slate-500">Host</span>
-                <span class="ml-auto min-w-0 truncate text-xs font-mono text-slate-200" title="${escapeHTML(remote.host)}">${escapeHTML(remote.host)}</span>
+                <span class="ml-auto min-w-0 truncate text-xs font-mono text-text-primary dark:text-slate-200" title="${escapeHTML(remote.host)}">${escapeHTML(remote.host)}</span>
               </div>
-              <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2e573a] bg-[#102316]/50 lg:flex-1">
-                <span class="material-symbols-outlined text-[16px] text-slate-400">schedule</span>
-                <span class="text-[11px] uppercase tracking-wide text-slate-500">Last sync</span>
-                <span class="ml-auto text-xs font-mono ${lastSyncTone}">${escapeHTML(remote.lastSync || "never")}</span>
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border-primary bg-surface-secondary/50 lg:flex-1 min-w-0 overflow-hidden">
+                <span class="material-symbols-outlined text-[16px] text-slate-400">history</span>
+                <span class="text-[11px] uppercase tracking-wide text-slate-500 shrink-0">Last sync</span>
+                <span class="ml-auto text-xs font-mono ${lastSyncTone} truncate ml-2">${escapeHTML(remote.lastSync || "never")}</span>
               </div>
             </div>
+
           </div>
         </div>
         <div class="p-6">
@@ -257,15 +258,15 @@ export const renderRemotes = (container, remotes = []) => {
                 })}
             </div>
             <div class="flex flex-wrap gap-3">
-                <button data-action="open-remote-shell" data-remote="${escapeHTML(remote.name)}" data-loading-label="Opening SSH..." class="flex-1 min-h-[42px] px-4 py-2.5 bg-[#102316] hover:bg-[#1a3322] border border-[#2e573a] rounded-lg text-sm text-slate-300 hover:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn">
+                <button data-action="open-remote-shell" data-remote="${escapeHTML(remote.name)}" data-loading-label="Opening SSH..." class="flex-1 min-h-[42px] px-4 py-2.5 bg-background-secondary hover:bg-surface-primary border border-border-primary rounded-lg text-sm text-text-secondary dark:text-slate-300 hover:text-text-primary dark:hover:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn">
                     <span class="material-symbols-outlined inline-flex h-[18px] w-[18px] items-center justify-center text-[18px] opacity-70 group-hover/btn:opacity-100">terminal</span>
                     <span data-role="label">Open SSH</span>
                 </button>
-                <button data-action="open-remote-db" data-remote="${escapeHTML(remote.name)}" data-loading-label="Opening Database..." class="flex-1 min-h-[42px] px-4 py-2.5 bg-[#102316] hover:bg-[#1a3322] border border-[#2e573a] rounded-lg text-sm text-slate-300 hover:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn">
+                <button data-action="open-remote-db" data-remote="${escapeHTML(remote.name)}" data-loading-label="Opening Database..." class="flex-1 min-h-[42px] px-4 py-2.5 bg-background-secondary hover:bg-surface-primary border border-border-primary rounded-lg text-sm text-text-secondary dark:text-slate-300 hover:text-text-primary dark:hover:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn">
                     <span class="material-symbols-outlined inline-flex h-[18px] w-[18px] items-center justify-center text-[18px] opacity-70 group-hover/btn:opacity-100">database</span>
                     <span data-role="label">Open Database</span>
                 </button>
-                <button data-action="open-remote-sftp" data-remote="${escapeHTML(remote.name)}" data-loading-label="Opening SFTP..." class="flex-1 min-h-[42px] px-4 py-2.5 bg-[#102316] hover:bg-[#1a3322] border border-[#2e573a] rounded-lg text-sm text-slate-300 hover:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn">
+                <button data-action="open-remote-sftp" data-remote="${escapeHTML(remote.name)}" data-loading-label="Opening SFTP..." class="flex-1 min-h-[42px] px-4 py-2.5 bg-background-secondary hover:bg-surface-primary border border-border-primary rounded-lg text-sm text-text-secondary dark:text-slate-300 hover:text-text-primary dark:hover:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn">
                     <span class="material-symbols-outlined inline-flex h-[18px] w-[18px] items-center justify-center text-[18px] opacity-70 group-hover/btn:opacity-100">folder_open</span>
                     <span data-role="label">Open SFTP</span>
                 </button>
@@ -283,51 +284,46 @@ export const renderRemotes = (container, remotes = []) => {
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
       <div class="lg:col-span-3 space-y-6">
         <div class="flex items-center justify-between pb-2">
-          <h3 class="text-white text-lg font-semibold flex items-center gap-2">
+          <h3 class="text-text-primary dark:text-white text-lg font-semibold flex items-center gap-2">
             Connected Remotes
           </h3>
         </div>
         ${cardsHtml}
       </div>
       <div class="lg:col-span-2">
-        <div class="sticky top-6">
-          <h3 class="text-white text-lg font-semibold flex items-center gap-2 mb-6">
-            <span class="material-symbols-outlined text-primary">account_tree</span>
-            Sync Flow
-          </h3>
-          <div class="glass-panel rounded-xl p-8 border border-[#2e573a] relative overflow-hidden flex flex-col items-center justify-center min-h-[400px]">
-            <div class="absolute inset-0 z-0 opacity-10" style="background-image: radial-gradient(#90cba4 1px, transparent 1px); background-size: 20px 20px;"></div>
+        <div class="sticky top-6 flex flex-col items-center justify-center bg-white dark:bg-background-primary border border-border-primary rounded-xl overflow-hidden shadow-xl py-8">
+            <div class="absolute inset-0 z-0 opacity-10" style="background-image: radial-gradient(var(--primary) 1px, transparent 1px); background-size: 20px 20px;"></div>
             <div class="relative z-10 w-full max-w-[200px]">
-              <div class="bg-[#1a3322] border border-blue-500/30 rounded-lg p-4 shadow-lg shadow-blue-500/5 relative">
-                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#102316] px-2 text-[10px] text-blue-400 border border-blue-500/30 rounded-full uppercase font-bold tracking-wider">Source</div>
+              <div class="bg-surface-primary border border-blue-500/30 rounded-lg p-4 shadow-lg shadow-blue-500/5 relative">
+                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 dark:bg-blue-500 px-3 py-0.5 text-[10px] text-white border border-blue-400 rounded-full uppercase font-black tracking-wider shadow-sm">Source</div>
                 <div class="flex items-center justify-center gap-3">
                   <span class="material-symbols-outlined text-blue-400 text-3xl">cloud</span>
                   <div class="text-left">
-                    <div class="text-white text-sm font-bold">Remote</div>
-                    <div class="text-slate-500 text-xs">Dev/Staging/Prod</div>
+                    <div class="text-slate-900 dark:text-white text-sm font-black">Remote</div>
+                    <div class="text-slate-600 dark:text-slate-500 text-xs">Dev/Staging/Prod</div>
                   </div>
                 </div>
               </div>
             </div>
-            <div class="h-24 w-px dashed-line relative my-2">
+            <div class="h-12 w-px dashed-line relative my-2">
               <div class="absolute top-0 left-1/2 -translate-x-1/2 -ml-[2px] w-1 h-3 bg-primary rounded-full animate-[bounce_2s_infinite]"></div>
             </div>
             <div class="relative z-10">
-              <div class="bg-[#102316] border border-[#366b47] rounded-full h-12 w-12 flex items-center justify-center shadow-[0_0_15px_rgba(13,242,89,0.2)]">
+              <div class="bg-surface-secondary border border-[#366b47] rounded-full h-12 w-12 flex items-center justify-center shadow-[0_0_15px_rgba(13,242,89,0.2)]">
                 <span class="material-symbols-outlined text-primary animate-pulse">lock_open</span>
               </div>
             </div>
-            <div class="h-24 w-px dashed-line relative my-2">
+            <div class="h-12 w-px dashed-line relative my-2">
               <div class="absolute bottom-0 left-1/2 -translate-x-1/2 -ml-[2px] w-1 h-3 bg-primary rounded-full animate-[bounce_2s_infinite_reverse]"></div>
             </div>
             <div class="relative z-10 w-full max-w-[200px]">
-              <div class="bg-[#22492f] border border-primary/40 rounded-lg p-4 shadow-lg shadow-primary/10 relative">
-                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#102316] px-2 text-[10px] text-primary border border-primary/30 rounded-full uppercase font-bold tracking-wider">Destination</div>
+              <div class="bg-background-secondary border border-primary/40 rounded-lg p-4 shadow-lg shadow-primary/10 relative">
+                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-600 dark:bg-primary px-3 py-0.5 text-[10px] text-white border border-emerald-400 rounded-full uppercase font-black tracking-wider shadow-sm">Destination</div>
                 <div class="flex items-center justify-center gap-3">
                   <span class="material-symbols-outlined text-primary text-3xl">laptop_mac</span>
                   <div class="text-left">
-                    <div class="text-white text-sm font-bold">Local App</div>
-                    <div class="text-slate-500 text-xs">Your Machine</div>
+                    <div class="text-slate-900 dark:text-white text-sm font-black">Local App</div>
+                    <div class="text-slate-600 dark:text-slate-500 text-xs">Your Machine</div>
                   </div>
                 </div>
               </div>
@@ -591,10 +587,10 @@ export const createRemotesController = ({
             : opt.defaultValue;
 
         return `
-        <label class="flex items-center justify-between cursor-pointer group">
-          <div>
-            <div class="text-sm font-medium text-white mb-0.5">${escapeHTML(opt.label)}</div>
-            <div class="text-xs text-slate-400">${escapeHTML(opt.description)}</div>
+        <label class="flex items-center justify-between cursor-pointer group p-3 rounded-lg border border-border-primary bg-background-secondary/30 hover:bg-background-secondary/50 transition-all">
+          <div class="flex-1">
+            <div class="text-xs font-bold text-slate-800 dark:text-white">${escapeHTML(opt.label)}</div>
+            <div class="text-[10px] text-slate-500 dark:text-slate-400">${escapeHTML(opt.description)}</div>
           </div>
           <div class="relative inline-block w-10 h-6 align-middle select-none transition duration-200 ease-in">
             <input
@@ -640,13 +636,13 @@ export const renderSyncModal = (container) => {
   container.innerHTML = `
       <div
         id="syncOptionsModal"
-        class="hidden fixed inset-0 z-[150] bg-[#0c1810]/60 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-300"
+        class="hidden fixed inset-0 z-[150] bg-background-primary/60 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-300"
       >
         <div
-          class="bg-[#1a3322] border border-[#2e573a] rounded-xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden scale-95 transition-transform duration-300"
+          class="bg-surface-primary border border-border-primary rounded-xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden scale-95 transition-transform duration-300"
         >
           <div
-            class="px-6 py-4 border-b border-[#2e573a] flex justify-between items-center bg-[#102316]/50"
+            class="px-6 py-4 border-b border-border-primary flex justify-between items-center bg-surface-secondary/50"
           >
             <h3 class="text-white text-lg font-bold flex items-center gap-2">
               <span
@@ -657,7 +653,7 @@ export const renderSyncModal = (container) => {
               <span id="syncModalTitle">Sync Options</span>
             </h3>
             <button
-              class="text-slate-400 hover:text-white transition-colors"
+              class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
               data-action="close-sync-modal"
             >
               <span class="material-symbols-outlined">close</span>
@@ -677,7 +673,7 @@ export const renderSyncModal = (container) => {
             </div>
 
             <div
-              class="px-0 pt-4 flex gap-3 justify-end items-center border-t border-[#2e573a]"
+              class="px-0 pt-4 flex gap-3 justify-end items-center border-t border-border-primary"
             >
               <button
                 class="px-4 py-2 rounded-lg text-sm text-slate-300 font-medium hover:bg-white/5 transition-colors"
@@ -711,7 +707,7 @@ export const renderSyncModal = (container) => {
             <!-- Plan output -->
             <div
               id="syncPlanOutput"
-              class="bg-[#0c1810] border border-[#2e573a]/60 rounded-lg p-4 font-mono text-xs text-slate-300 max-h-64 overflow-y-auto leading-relaxed whitespace-pre-wrap"
+              class="bg-background-primary border border-border-primary/60 rounded-lg p-4 font-mono text-xs text-slate-300 max-h-64 overflow-y-auto leading-relaxed whitespace-pre-wrap"
             >
               <!-- Plan output injected here -->
             </div>
@@ -727,7 +723,7 @@ export const renderSyncModal = (container) => {
             </div>
 
             <div
-              class="pt-4 flex gap-3 justify-between items-center border-t border-[#2e573a]"
+              class="pt-4 flex gap-3 justify-between items-center border-t border-border-primary"
             >
               <button
                 data-action="back-to-sync-options"

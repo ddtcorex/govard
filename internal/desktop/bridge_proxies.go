@@ -211,3 +211,7 @@ func (app *App) StopGlobalServiceLogStream() (string, error) {
 func (app *App) SaveLogsToFile(content string, suggestedName string) (string, error) {
 	return saveLogsToFile(app.ctx, content, suggestedName)
 }
+
+func (app *App) Quit() {
+	quitApplication(app.ctx)
+}

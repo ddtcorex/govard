@@ -10,6 +10,8 @@ func BuildSSHArgs(remoteName string, remoteCfg engine.RemoteConfig, forwardAgent
 	args := []string{
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=60",
+		"-o", "ServerAliveCountMax=10",
 	}
 	if !interactive {
 		args = append(args, "-o", "BatchMode=yes")

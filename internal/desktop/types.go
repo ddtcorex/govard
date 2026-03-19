@@ -39,6 +39,7 @@ type DesktopSettings struct {
 	PreferredBrowser   string `json:"preferredBrowser"`
 	CodeEditor         string `json:"codeEditor"`
 	DBClientPreference string `json:"dbClientPreference"`
+	RunInBackground    bool   `json:"runInBackground"`
 }
 
 type UpdateCheckResult struct {
