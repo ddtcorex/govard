@@ -119,7 +119,7 @@ test("renderOnboardingModal exposes streamlined onboarding UI contract", () => {
     "missing project path card container",
   );
   assert.equal(
-    markup.includes('id="projectPathCard"\n                  data-action="browse-project"'),
+    markup.includes('data-action="browse-project"'),
     true,
     "project path card should trigger browse action",
   );

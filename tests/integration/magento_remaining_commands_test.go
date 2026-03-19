@@ -87,7 +87,9 @@ func TestDesktopCommandRuntimePaths(t *testing.T) {
 		result.AssertSuccess(t)
 
 		logs := shim.ReadLog(t)
-		assertContains(t, logs, "wails|dev -tags desktop")
+		if !strings.Contains(logs, "wails|dev -tags desktop") {
+			t.Fatalf("expected 'wails|dev -tags desktop' in logs, got: %s\n\nstdout: %s\nstderr: %s", logs, result.Stdout, result.Stderr)
+		}
 	})
 }
 

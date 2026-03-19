@@ -34,6 +34,7 @@ func init() {
 	deployCmd.Flags().String("strategy", "native", "Deployment strategy (native or deployer)")
 	deployCmd.Flags().Bool("deployer", false, "Use Deployer strategy")
 	deployCmd.Flags().String("deployer-config", "", "Path to Deployer config")
+	deployCmd.Flags().StringP("locales", "l", "", "Space-separated locales to deploy (e.g. \"en_US fr_FR\")")
 
 	rootCmd.AddCommand(deployCmd)
 }
