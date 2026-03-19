@@ -73,7 +73,7 @@ Common options:
 # Install to ~/.local/bin (no sudo)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --local
 
-# Install building from source (auto-installs Go 1.24 if needed)
+# Install building from source (auto-installs Go 1.25 if needed)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --source
 ```
 
@@ -111,7 +111,7 @@ sudo installer -pkg govard_<version>_Darwin_arm64.pkg -target /
 
 Ensure you have the following prerequisites installed:
 
-- **Go 1.24+**
+- **Go 1.25+**
 - **Node.js 20+**
 - **Yarn (v1.x)**
 - **golangci-lint (v1.64+)**
@@ -132,7 +132,7 @@ cd govard
 
 If you are contributing to Govard, follow these steps to set up your environment:
 
-1. **Go 1.24+**: Install from [go.dev](https://go.dev/dl/).
+1. **Go 1.25+**: Install from [go.dev](https://go.dev/dl/).
 2. **Yarn**: Enable with `corepack enable` or `npm install -g yarn`.
 3. **golangci-lint**: Install the latest version:
    ```bash
