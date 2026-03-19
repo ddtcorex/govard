@@ -27,17 +27,17 @@ const PORT_CONFLICT_WARNING_PREFIX = "port conflict ";
 const BULK_START_ENABLED_CLASS =
   "h-10 min-w-[118px] px-3 bg-primary text-background-dark rounded-xl text-xs font-bold uppercase tracking-[0.08em] hover:bg-primary/90 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-[0_8px_22px_rgba(13,242,89,0.18)] ring-1 ring-primary/30 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100";
 const BULK_START_DISABLED_CLASS =
-  "h-10 min-w-[118px] px-3 bg-[#13261a] text-slate-400 border border-[#2e573a] rounded-xl text-xs font-bold uppercase tracking-[0.08em] transition-all inline-flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed";
+  "h-10 min-w-[118px] px-3 bg-background-secondary text-slate-500 dark:text-text-tertiary/70 border border-border-primary rounded-xl text-xs font-bold uppercase tracking-[0.08em] transition-all inline-flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed";
 const BULK_RESTART_ENABLED_CLASS =
   "h-10 min-w-[118px] px-3 bg-primary text-background-dark rounded-xl text-xs font-bold uppercase tracking-[0.08em] hover:bg-primary/90 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-[0_8px_22px_rgba(13,242,89,0.18)] ring-1 ring-primary/30 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100";
 const BULK_RESTART_DISABLED_CLASS =
-  "h-10 min-w-[118px] px-3 bg-[#13261a] text-slate-400 border border-[#2e573a] rounded-xl text-xs font-bold uppercase tracking-[0.08em] transition-all inline-flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed";
+  "h-10 min-w-[118px] px-3 bg-background-secondary text-slate-500 dark:text-text-tertiary/70 border border-border-primary rounded-xl text-xs font-bold uppercase tracking-[0.08em] transition-all inline-flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed";
 const BULK_STOP_ENABLED_CLASS =
   "h-10 min-w-[118px] px-3 bg-red-600 text-white border border-red-500 rounded-xl text-xs font-bold uppercase tracking-[0.08em] hover:bg-red-500 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-[0_8px_24px_rgba(239,68,68,0.25)] ring-1 ring-red-400/30 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100";
 const BULK_STOP_DISABLED_CLASS =
-  "h-10 min-w-[118px] px-3 bg-[#2b1414] text-red-300/60 border border-red-900/40 rounded-xl text-xs font-bold uppercase tracking-[0.08em] transition-all inline-flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed";
+  "h-10 min-w-[118px] px-3 bg-red-500/10 text-red-700 dark:text-red-500/60 border border-red-500/20 rounded-xl text-xs font-bold uppercase tracking-[0.08em] transition-all inline-flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed";
 const BULK_PULL_CLASS =
-  "h-10 min-w-[118px] px-3 bg-[#22492f] text-white border border-[#366b47] rounded-xl text-xs font-bold uppercase tracking-[0.08em] hover:bg-[#2e573a] transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-[0_8px_20px_rgba(34,73,47,0.35)] ring-1 ring-[#3e7d53]/40 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100";
+  "h-10 min-w-[118px] px-3 bg-background-secondary text-text-primary border border-border-primary rounded-xl text-xs font-bold uppercase tracking-[0.08em] hover:bg-background-primary transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100";
 const BULK_ERROR_MESSAGE_MAX_LENGTH = 180;
 
 const collapseWhitespace = (value = "") =>
@@ -99,12 +99,19 @@ export const formatBulkGlobalActionErrorForTest = (action, err) =>
   formatBulkGlobalActionError(action, err);
 
 const isServiceActive = (service = {}) =>
-  ACTIVE_STATUSES.has(String(service.status || "").trim().toLowerCase()) ||
-  Boolean(service.running);
+  ACTIVE_STATUSES.has(
+    String(service.status || "")
+      .trim()
+      .toLowerCase(),
+  ) || Boolean(service.running);
 
 const isStopLikeState = (service = {}) => {
-  const status = String(service.status || "").trim().toLowerCase();
-  const state = String(service.state || "").trim().toLowerCase();
+  const status = String(service.status || "")
+    .trim()
+    .toLowerCase();
+  const state = String(service.state || "")
+    .trim()
+    .toLowerCase();
   return (
     status === "stopped" ||
     status === "exited" ||
@@ -180,7 +187,9 @@ const summarizeRoutingConflicts = (warnings = []) => {
       /^(\d+\/[a-z]+):\s+(.+?) is running but .+ is not published on host$/i,
     );
     if (missingMatch) {
-      const port = String(missingMatch[1] || "").trim().toLowerCase();
+      const port = String(missingMatch[1] || "")
+        .trim()
+        .toLowerCase();
       const serviceName = String(missingMatch[2] || "").trim();
       if (!missingPortsByService.has(serviceName)) {
         missingPortsByService.set(serviceName, new Set());
@@ -193,7 +202,9 @@ const summarizeRoutingConflicts = (warnings = []) => {
       /^(\d+\/[a-z]+):\s+docker container\s+(.+)$/i,
     );
     if (dockerOwnerMatch) {
-      const port = String(dockerOwnerMatch[1] || "").trim().toLowerCase();
+      const port = String(dockerOwnerMatch[1] || "")
+        .trim()
+        .toLowerCase();
       const ownerRaw = String(dockerOwnerMatch[2] || "").trim();
       const ownerName = ownerRaw.replace(/\s+\([^)]*\)\s*$/, "").trim();
       if (!ownerPortsByName.has(ownerName)) {
@@ -207,7 +218,9 @@ const summarizeRoutingConflicts = (warnings = []) => {
       /^(\d+\/[a-z]+):\s+host process\s+(.+)$/i,
     );
     if (hostOwnerMatch) {
-      const port = String(hostOwnerMatch[1] || "").trim().toLowerCase();
+      const port = String(hostOwnerMatch[1] || "")
+        .trim()
+        .toLowerCase();
       const ownerRaw = String(hostOwnerMatch[2] || "").trim();
       const ownerName = ownerRaw.replace(/\s+\([^)]*\)\s*$/, "").trim();
       if (!ownerPortsByName.has(ownerName)) {
@@ -225,11 +238,12 @@ const summarizeRoutingConflicts = (warnings = []) => {
   let notesLine = "";
 
   if (missingPortsByService.size > 0) {
-    const missingSummaryList = Array.from(missingPortsByService.entries())
-      .map(([serviceName, ports]) => {
+    const missingSummaryList = Array.from(missingPortsByService.entries()).map(
+      ([serviceName, ports]) => {
         const portList = Array.from(ports).sort().join(", ");
         return `${serviceName} (${portList})`;
-      });
+      },
+    );
     const cappedMissing = missingSummaryList.slice(0, 2);
     const remainingMissing = missingSummaryList.length - cappedMissing.length;
     missingLine = `Missing bindings: ${cappedMissing.join("; ")}${remainingMissing > 0 ? `; +${remainingMissing} more` : ""}.`;
@@ -268,7 +282,9 @@ export const buildRoutingWarningMessage = (services = [], warnings = []) => {
       : `${baseMessage} Check Docker/host processes using ports 80/443/53, then click Start All.`;
 
   if (!Array.isArray(services) || services.length === 0) {
-    return appendGuidance("Routing guard triggered: Caddy Proxy or DNSMasq is stopped.");
+    return appendGuidance(
+      "Routing guard triggered: Caddy Proxy or DNSMasq is stopped.",
+    );
   }
 
   const caddy = services.find((service) => service.id === "caddy");
@@ -288,14 +304,20 @@ export const buildRoutingWarningMessage = (services = [], warnings = []) => {
   }
 
   if (hasConflicts) {
-    return appendGuidance("Routing services are running but port bindings are degraded.");
+    return appendGuidance(
+      "Routing services are running but port bindings are degraded.",
+    );
   }
 
-  return appendGuidance("Routing guard triggered: Caddy Proxy or DNSMasq is stopped.");
+  return appendGuidance(
+    "Routing guard triggered: Caddy Proxy or DNSMasq is stopped.",
+  );
 };
 
 const normalizeGlobalService = (service = {}) => ({
-  id: String(service.id || service.ID || "").trim().toLowerCase(),
+  id: String(service.id || service.ID || "")
+    .trim()
+    .toLowerCase(),
   name: String(service.name || service.Name || "").trim() || "Unknown",
   composeService: String(
     service.composeService || service.ComposeService || "",
@@ -366,13 +388,15 @@ const statusChipClass = (status = "missing") => {
     return "bg-amber-500/20 border-amber-500/30 text-amber-500";
   }
   if (status === "missing") {
-    return "bg-slate-500/20 border-slate-500/30 text-slate-400";
+    return "bg-slate-500/20 border-slate-500/30 text-slate-600 dark:text-slate-400";
   }
-  return "bg-red-500/20 border-red-500/30 text-red-400";
+  return "bg-red-500/20 border-red-500/30 text-red-600 dark:text-red-400";
 };
 
 const formatStatusLabel = (status = "missing") => {
-  const normalized = String(status || "missing").trim().toLowerCase();
+  const normalized = String(status || "missing")
+    .trim()
+    .toLowerCase();
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
@@ -386,14 +410,14 @@ const renderServiceCard = (service, selectedService) => {
   const primaryIcon = isActive ? "restart_alt" : "play_arrow";
   const showRoutingWarning = hasRoutingImpact(service);
   const routingWarning = showRoutingWarning
-    ? `<div class="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-300 font-medium flex items-start gap-1.5">
+    ? `<div class="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 font-medium flex items-start gap-1.5">
           <span class="material-symbols-outlined text-[13px] leading-none mt-[1px]">warning</span>
           <span>Routing warning: ${escapeHTML(service.name)} is stopped. Proxy/domain routing may fail.</span>
         </div>`
     : "";
   const rowClass = selected
-    ? "bg-transparent border border-primary/40 shadow-[0_0_0_1px_rgba(13,242,89,0.25)]"
-    : "bg-transparent border border-[#2e573a] hover:border-primary/30 hover:bg-[#22492f]/20";
+    ? "bg-primary/5 dark:bg-primary/10 border border-primary/40 shadow-[0_0_0_1px_rgba(13,242,89,0.25)]"
+    : "bg-white dark:bg-transparent border border-slate-200 dark:border-border-primary hover:border-primary/30 hover:bg-slate-50 dark:hover:bg-background-secondary/20";
   const serviceName = escapeHTML(service.name);
   const containerName = escapeHTML(service.containerName);
   const statusLabel = escapeHTML(formatStatusLabel(service.status));
@@ -409,9 +433,9 @@ const renderServiceCard = (service, selectedService) => {
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             <span class="material-symbols-outlined text-primary text-[18px]">${icon}</span>
-            <h4 class="text-sm font-semibold text-white truncate">${serviceName}</h4>
+            <h4 class="text-sm font-semibold text-slate-900 dark:text-white truncate">${serviceName}</h4>
           </div>
-          <p class="text-[11px] text-slate-400 mt-1 truncate">${containerName}</p>
+          <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-1 truncate font-medium">${containerName}</p>
         </div>
         <span class="px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide shrink-0 ${statusClass}">
           ${statusLabel}
@@ -424,7 +448,7 @@ const renderServiceCard = (service, selectedService) => {
           data-service="${service.id}"
           data-operation="${primaryAction}"
           data-loading-label="${primaryAction === "restart" ? "Restarting..." : "Starting..."}"
-          class="h-9 rounded-lg text-[10px] font-bold bg-primary text-background-dark hover:bg-primary/90 transition-all active:scale-95 flex items-center justify-center gap-1 disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
+          class="h-9 rounded-lg text-[10px] font-bold bg-primary text-background-secondary hover:bg-primary-hover transition-all active:scale-95 flex items-center justify-center gap-1 disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
         >
           <span class="material-symbols-outlined text-[14px]">${primaryIcon}</span>
           ${primaryLabel}
@@ -433,7 +457,7 @@ const renderServiceCard = (service, selectedService) => {
           data-action="global-service-stop"
           data-service="${service.id}"
           data-loading-label="Stopping..."
-          class="${isActive ? "h-9 rounded-lg text-[10px] font-bold bg-red-600 text-white border border-red-500 hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center gap-1 disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100" : "h-9 rounded-lg text-[10px] font-bold bg-[#13261a] text-slate-500 border border-[#2e573a] cursor-not-allowed opacity-70 flex items-center justify-center gap-1"}"
+          class="${isActive ? "h-9 rounded-lg text-[10px] font-bold bg-red-600 text-white border border-red-500 hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center gap-1 disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm" : "h-9 rounded-lg text-[10px] font-bold bg-background-secondary text-slate-500 dark:text-text-tertiary border border-border-primary opacity-90 dark:opacity-60 flex items-center justify-center gap-1"}"
           ${isActive ? "" : "disabled"}
         >
           <span class="material-symbols-outlined text-[14px] fill-1" style="font-variation-settings: &quot;FILL&quot; 1">stop</span>
@@ -443,7 +467,7 @@ const renderServiceCard = (service, selectedService) => {
           data-action="global-service-open"
           data-service="${service.id}"
           data-loading-label="Opening..."
-          class="${service.openable ? "h-9 rounded-lg text-[10px] font-bold bg-[#22492f] text-white border border-[#366b47] hover:bg-[#2e573a] transition-all active:scale-95 flex items-center justify-center gap-1 disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100" : "h-9 rounded-lg text-[10px] font-bold border border-[#2a4231] text-slate-500 cursor-not-allowed bg-[#13261a] opacity-70 flex items-center justify-center gap-1"}"
+          class="${service.openable ? "h-9 rounded-lg text-[10px] font-bold bg-background-primary text-text-primary border border-border-primary hover:bg-background-secondary transition-all active:scale-95 flex items-center justify-center gap-1 disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm" : "h-9 rounded-lg text-[10px] font-bold border border-border-primary text-slate-500 dark:text-text-tertiary bg-background-secondary opacity-90 dark:opacity-60 flex items-center justify-center gap-1"}"
           ${service.openable ? "" : "disabled"}
         >
           <span class="material-symbols-outlined text-[14px]">open_in_new</span>
@@ -464,7 +488,7 @@ export const renderGlobalServices = (
   }
   if (!Array.isArray(services) || services.length === 0) {
     container.innerHTML = `
-      <div class="rounded-xl border border-dashed border-[#2e573a] bg-[#102316] p-4 text-sm text-slate-400">
+      <div class="rounded-xl border border-dashed border-border-primary bg-background-secondary p-4 text-sm text-text-tertiary">
         Global services data unavailable.
       </div>
     `;
@@ -477,10 +501,12 @@ export const renderGlobalServices = (
 };
 
 const statusStripClass = (service = {}) => {
-  const status = String(service.status || "").trim().toLowerCase();
+  const status = String(service.status || "")
+    .trim()
+    .toLowerCase();
   if (isServiceActive(service)) {
     return {
-      chip: "border-primary/30 bg-primary/10 text-primary",
+      chip: "border-primary/30 bg-primary/10 text-emerald-700 dark:text-primary",
       dot: "bg-primary shadow-[0_0_8px_rgba(13,242,89,0.85)]",
     };
   }
@@ -492,12 +518,12 @@ const statusStripClass = (service = {}) => {
   }
   if (status === "missing") {
     return {
-      chip: "border-slate-500/30 bg-slate-500/10 text-slate-300",
+      chip: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
       dot: "bg-slate-400",
     };
   }
   return {
-    chip: "border-red-500/35 bg-red-500/10 text-red-300",
+    chip: "border-red-500/35 bg-red-500/10 text-red-700 dark:text-red-300",
     dot: "bg-red-400",
   };
 };
@@ -508,7 +534,7 @@ const renderStatusStrip = (container, services = []) => {
   }
   if (!Array.isArray(services) || services.length === 0) {
     container.innerHTML =
-      '<span class="inline-flex items-center gap-1 rounded-md border border-[#2e573a] bg-[#13261a] px-2 py-1 text-[10px] text-slate-400">Loading services...</span>';
+      '<span class="inline-flex items-center gap-1 rounded-md border border-border-primary bg-background-secondary px-2 py-1 text-[10px] text-text-tertiary">Loading services...</span>';
     return;
   }
   container.innerHTML = services
@@ -517,11 +543,11 @@ const renderStatusStrip = (container, services = []) => {
       const name = escapeHTML(service.name);
       const label = escapeHTML(formatStatusLabel(service.status));
       const icon = globalServiceIcons[service.id] || "widgets";
-      return `<span class="global-status-chip inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium ${tone.chip}" style="--chip-order:${index}">
+      return `<span class="global-status-chip inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium shadow-sm ${tone.chip}" style="--chip-order:${index}">
           <span class="w-1.5 h-1.5 rounded-full ${tone.dot}"></span>
           <span class="material-symbols-outlined text-[11px] leading-none opacity-90">${icon}</span>
-          <span class="text-white/95">${name}</span>
-          <span class="opacity-85">${label}</span>
+          <span class="text-text-primary/95">${name}</span>
+          <span class="opacity-80">${label}</span>
         </span>`;
     })
     .join("");
@@ -541,12 +567,11 @@ const withButtonLoading = async (buttonLike, fallbackLabel, operation) => {
   const isButtonElement =
     hasHTMLButtonElement && buttonLike instanceof HTMLButtonElement;
   const isHTMLElement = hasHTMLElement && buttonLike instanceof HTMLElement;
-  const button =
-    isButtonElement
-      ? buttonLike
-      : isHTMLElement
-        ? buttonLike.closest("button")
-        : null;
+  const button = isButtonElement
+    ? buttonLike
+    : isHTMLElement
+      ? buttonLike.closest("button")
+      : null;
 
   if (!(hasHTMLButtonElement && button instanceof HTMLButtonElement)) {
     return operation();
@@ -560,8 +585,9 @@ const withButtonLoading = async (buttonLike, fallbackLabel, operation) => {
   const previousDisabled = button.disabled;
   const previousAriaBusy = button.getAttribute("aria-busy");
   const loadingLabel =
-    String(button.dataset.loadingLabel || fallbackLabel || "Processing...")
-      .trim() || "Processing...";
+    String(
+      button.dataset.loadingLabel || fallbackLabel || "Processing...",
+    ).trim() || "Processing...";
 
   button.dataset.busy = "true";
   button.disabled = true;
@@ -679,27 +705,31 @@ export const createGlobalServicesController = ({
     const toneMap = {
       success: {
         icon: "check_circle",
-        iconClass: "material-symbols-outlined text-[15px] leading-none self-start mt-px text-primary",
+        iconClass:
+          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-primary shadow-sm",
         textClass:
-          "rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-primary/95",
+          "rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-primary dark:text-primary/95",
       },
       warning: {
         icon: "warning",
-        iconClass: "material-symbols-outlined text-[15px] leading-none self-start mt-px text-amber-300",
+        iconClass:
+          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-amber-600 dark:text-amber-300",
         textClass:
-          "rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-amber-200",
+          "rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-amber-700 dark:text-amber-200",
       },
       error: {
         icon: "error",
-        iconClass: "material-symbols-outlined text-[15px] leading-none self-start mt-px text-red-300",
+        iconClass:
+          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-red-600 dark:text-red-300",
         textClass:
-          "rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-red-200",
+          "rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-red-700 dark:text-red-200",
       },
       info: {
         icon: "info",
-        iconClass: "material-symbols-outlined text-[15px] leading-none self-start mt-px text-[#90cba4]",
+        iconClass:
+          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-slate-600 dark:text-primary",
         textClass:
-          "rounded-xl border border-[#2e573a] bg-[#0f2015]/80 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-slate-300",
+          "rounded-xl border border-slate-200 dark:border-border-primary bg-slate-100 dark:bg-[#0f2015]/80 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-slate-700 dark:text-slate-300",
       },
     };
     const toneConfig = toneMap[tone] || toneMap.info;
@@ -721,7 +751,10 @@ export const createGlobalServicesController = ({
       refs.globalActionFeedbackIcon.className = toneConfig.iconClass;
       refs.globalActionFeedbackIcon.textContent = toneConfig.icon;
     }
-    setText(refs.globalActionFeedbackText, message || "Ready for global operations.");
+    setText(
+      refs.globalActionFeedbackText,
+      message || "Ready for global operations.",
+    );
   };
 
   const syncBulkActionButtons = (snapshot) => {
@@ -737,8 +770,16 @@ export const createGlobalServicesController = ({
       canStart ? BULK_START_ENABLED_CLASS : BULK_START_DISABLED_CLASS,
       canStart,
     );
-    applyButtonState(refs.globalBulkRestart, anyRunning ? BULK_RESTART_ENABLED_CLASS : BULK_RESTART_DISABLED_CLASS, anyRunning);
-    applyButtonState(refs.globalBulkStop, anyRunning ? BULK_STOP_ENABLED_CLASS : BULK_STOP_DISABLED_CLASS, anyRunning);
+    applyButtonState(
+      refs.globalBulkRestart,
+      anyRunning ? BULK_RESTART_ENABLED_CLASS : BULK_RESTART_DISABLED_CLASS,
+      anyRunning,
+    );
+    applyButtonState(
+      refs.globalBulkStop,
+      anyRunning ? BULK_STOP_ENABLED_CLASS : BULK_STOP_DISABLED_CLASS,
+      anyRunning,
+    );
     applyButtonState(refs.globalBulkPull, BULK_PULL_CLASS, true);
   };
 
@@ -749,7 +790,8 @@ export const createGlobalServicesController = ({
       : [];
     const total = Number(snapshot.total || services.length);
     const active = Number(
-      snapshot.active || services.filter((service) => isServiceActive(service)).length,
+      snapshot.active ||
+        services.filter((service) => isServiceActive(service)).length,
     );
     const runningSafe = Math.max(0, Math.min(active, total || active));
     const percent = total > 0 ? Math.round((runningSafe / total) * 100) : 0;
@@ -760,10 +802,7 @@ export const createGlobalServicesController = ({
         ? `${runningSafe}/${total} global services running`
         : "No global services detected";
 
-    setText(
-      refs.globalServicesSummary,
-      snapshot.summary || defaultSummary,
-    );
+    setText(refs.globalServicesSummary, snapshot.summary || defaultSummary);
     setText(refs.globalServiceCount, `${runningSafe}/${total} running`);
     setText(refs.globalServiceHealthPercent, `${percent}%`);
 
@@ -780,22 +819,22 @@ export const createGlobalServicesController = ({
     if (refs.globalServiceHealthLabel instanceof HTMLElement) {
       if (hasRoutingWarning) {
         refs.globalServiceHealthLabel.className =
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-200";
+          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-600 dark:text-amber-200";
         setText(refs.globalServiceHealthLabelIcon, "warning");
         setText(refs.globalServiceHealthLabelText, "Routing degraded");
       } else if (percent >= 100 && total > 0) {
         refs.globalServiceHealthLabel.className =
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary";
+          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] font-bold text-emerald-600 dark:text-primary";
         setText(refs.globalServiceHealthLabelIcon, "task_alt");
         setText(refs.globalServiceHealthLabelText, "All systems nominal");
       } else if (runningSafe === 0 && total > 0) {
         refs.globalServiceHealthLabel.className =
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-red-500/35 bg-red-500/10 px-2 py-1 text-[10px] font-semibold text-red-200";
+          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-red-500/35 bg-red-500/10 px-2 py-1 text-[10px] font-bold text-red-600 dark:text-red-200";
         setText(refs.globalServiceHealthLabelIcon, "error");
         setText(refs.globalServiceHealthLabelText, "Service mesh offline");
       } else {
         refs.globalServiceHealthLabel.className =
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-200";
+          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-600 dark:text-amber-200";
         setText(refs.globalServiceHealthLabelIcon, "monitor_heart");
         setText(
           refs.globalServiceHealthLabelText,
@@ -851,7 +890,8 @@ export const createGlobalServicesController = ({
     if (services.some((item) => item.id === selected)) {
       return selected;
     }
-    const preferred = services.find((item) => isServiceActive(item)) || services[0];
+    const preferred =
+      services.find((item) => isServiceActive(item)) || services[0];
     setState({ selectedGlobalService: preferred.id });
     return preferred.id;
   };
@@ -859,7 +899,7 @@ export const createGlobalServicesController = ({
   const refresh = async ({ silent = false } = {}) => {
     if (!silent && refs.globalServicesList) {
       refs.globalServicesList.innerHTML = `
-        <div class="rounded-xl border border-dashed border-[#2e573a] bg-[#102316] p-4 text-sm text-slate-400">Loading global services...</div>
+        <div class="rounded-xl border border-dashed border-border-primary bg-surface-secondary p-4 text-sm text-slate-400">Loading global services...</div>
       `;
     }
     if (!silent) {
@@ -911,7 +951,9 @@ export const createGlobalServicesController = ({
       refs.globalLogOutput.textContent = "Loading logs...";
     }
     try {
-      rawLogOutput = String(await bridge.getGlobalServiceLogs(serviceID, 300) || "");
+      rawLogOutput = String(
+        (await bridge.getGlobalServiceLogs(serviceID, 300)) || "",
+      );
       renderLogOutput({ forceScroll: true });
     } catch (err) {
       rawLogOutput = `Failed to load logs: ${err}`;
@@ -973,7 +1015,9 @@ export const createGlobalServicesController = ({
   };
 
   const selectService = async (serviceID) => {
-    const normalized = String(serviceID || "").trim().toLowerCase();
+    const normalized = String(serviceID || "")
+      .trim()
+      .toLowerCase();
     if (!normalized) {
       return;
     }
@@ -992,7 +1036,9 @@ export const createGlobalServicesController = ({
   };
 
   const runServiceAction = async (action, serviceID, triggerButton = null) => {
-    const normalized = String(serviceID || "").trim().toLowerCase();
+    const normalized = String(serviceID || "")
+      .trim()
+      .toLowerCase();
     if (!normalized) {
       return;
     }
@@ -1029,7 +1075,8 @@ export const createGlobalServicesController = ({
         return snapshot;
       }
 
-      const isRoutingService = normalized === "caddy" || normalized === "dnsmasq";
+      const isRoutingService =
+        normalized === "caddy" || normalized === "dnsmasq";
       if (!isRoutingService) {
         return snapshot;
       }
@@ -1135,37 +1182,41 @@ export const createGlobalServicesController = ({
       return nextSnapshot;
     };
 
-    await withButtonLoading(triggerButton, loadingLabelByAction[action], async () => {
-      setActionFeedback(
-        `${actionVerbByAction[action] || "Processing"} all global services...`,
-        "info",
-      );
-      try {
-        const message = await fn();
-        const compactMessage = summarizeActionMessage(
-          message,
-          `Global ${action} completed successfully.`,
+    await withButtonLoading(
+      triggerButton,
+      loadingLabelByAction[action],
+      async () => {
+        setActionFeedback(
+          `${actionVerbByAction[action] || "Processing"} all global services...`,
+          "info",
         );
-        onStatus(compactMessage);
-        onToast(compactMessage, "success");
-        const snapshot = await settleRoutingIfNeeded(
-          await refresh({ silent: true }),
-        );
-        if (snapshot && hasRoutingWarningInSnapshot(snapshot)) {
-          setActionFeedback(
-            buildRoutingWarningMessage(snapshot.services, snapshot.warnings),
-            "warning",
+        try {
+          const message = await fn();
+          const compactMessage = summarizeActionMessage(
+            message,
+            `Global ${action} completed successfully.`,
           );
-        } else {
-          setActionFeedback(compactMessage, "success");
+          onStatus(compactMessage);
+          onToast(compactMessage, "success");
+          const snapshot = await settleRoutingIfNeeded(
+            await refresh({ silent: true }),
+          );
+          if (snapshot && hasRoutingWarningInSnapshot(snapshot)) {
+            setActionFeedback(
+              buildRoutingWarningMessage(snapshot.services, snapshot.warnings),
+              "warning",
+            );
+          } else {
+            setActionFeedback(compactMessage, "success");
+          }
+        } catch (err) {
+          const compactError = formatBulkGlobalActionError(action, err);
+          onStatus(`Global ${action} failed: ${err}`);
+          onToast(compactError, "error");
+          setActionFeedback(compactError, "error");
         }
-      } catch (err) {
-        const compactError = formatBulkGlobalActionError(action, err);
-        onStatus(`Global ${action} failed: ${err}`);
-        onToast(compactError, "error");
-        setActionFeedback(compactError, "error");
-      }
-    });
+      },
+    );
   };
 
   const clearLogs = async () => {

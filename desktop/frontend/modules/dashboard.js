@@ -48,12 +48,7 @@ const withScheme = (value) => {
 
 export const localEnvironmentURL = (env = {}) => {
   const explicitURL =
-    env.LocalURL ||
-    env.localURL ||
-    env.URL ||
-    env.Url ||
-    env.url ||
-    "";
+    env.LocalURL || env.localURL || env.URL || env.Url || env.url || "";
   const explicitResolved = withScheme(explicitURL);
   if (explicitResolved) {
     return explicitResolved;
@@ -61,12 +56,12 @@ export const localEnvironmentURL = (env = {}) => {
 
   const candidate = String(
     env.Domain ||
-      env.domain ||
-      env.Name ||
-      env.name ||
-      env.Project ||
-      env.project ||
-      "",
+    env.domain ||
+    env.Name ||
+    env.name ||
+    env.Project ||
+    env.project ||
+    "",
   ).trim();
   if (!candidate) {
     return "";
@@ -137,7 +132,8 @@ const inferServiceTargetForFilter = (service = {}) => {
   if (name === "opensearch") return "opensearch";
   if (name === "varnish") return "varnish";
   if (name === "rabbitmq") return "rabbitmq";
-  if (name === "mailhog" || name === "mailpit" || name === "mail") return "mail";
+  if (name === "mailhog" || name === "mailpit" || name === "mail")
+    return "mail";
   if (name === "pma" || name === "phpmyadmin") return "pma";
   return "";
 };
@@ -148,7 +144,9 @@ const orderedUniqueTargets = (values = []) => {
   const known = new Set(SERVICE_TARGET_ORDER);
 
   values.forEach((value) => {
-    const normalized = String(value || "").trim().toLowerCase();
+    const normalized = String(value || "")
+      .trim()
+      .toLowerCase();
     if (!normalized || seen.has(normalized)) {
       return;
     }
@@ -295,36 +293,30 @@ const renderEnvironmentItem = (env, { selectedProject, sidebarMode }) => {
   const meta = classifyEnvironmentStatus(env);
   const isSelected = sidebarMode === "environments" && key === selectedProject;
 
-  const baseClass =
-    "w-full mb-1 flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all relative overflow-hidden text-left";
-  let stateClass = meta.active
-    ? "border-transparent hover:bg-[#173325]/40 hover:border-primary/20"
-    : "border-transparent hover:bg-[#16241b]/80 hover:border-[#2e573a] opacity-60";
-
-  if (isSelected) {
-    stateClass = "bg-[#173325] border-primary/35 shadow-[0_0_14px_rgba(13,242,89,0.12)] opacity-100";
-  }
+  const baseClass = `group flex items-center justify-start gap-4 py-2.5 px-3 rounded-lg cursor-pointer relative overflow-hidden transition-all ${isSelected
+      ? "active-env bg-primary/10 border border-primary/20 text-slate-900 shadow-[0_2px_8px_rgba(var(--primary-rgb),0.08)]"
+      : "text-slate-600 hover:bg-background-primary/80"
+    } ${env.Status !== "running" ? "dark:opacity-60" : ""}`;
 
   const selectionIndicator = isSelected
     ? `<div class="absolute inset-y-0 left-0 w-1 bg-primary"></div>`
     : "";
 
-  const titleClass = meta.active ? "text-white" : "text-slate-400";
+  const titleClass = meta.active ? "text-text-primary" : "text-text-secondary";
 
   return `
-    <button data-action="select-environment" data-env="${escapeHTML(key)}" class="${baseClass} ${stateClass}" title="Select ${escapeHTML(domain)}">
+    <button data-action="select-environment" data-env="${escapeHTML(key)}" class="${baseClass}" title="Select ${escapeHTML(domain)}">
       ${selectionIndicator}
       <div class="relative shrink-0 z-10">
-        <span data-action="toggle-env" data-env="${escapeHTML(key)}" class="material-symbols-outlined ${meta.iconClass} transition-colors hover:text-white text-[20px]" ${meta.iconStyle}>${meta.iconName}</span>
-        ${
-          meta.showPulseDot
-            ? `<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary border border-[#0c1810] animate-pulse"></span>`
-            : ""
-        }
+        <span data-action="toggle-env" data-env="${escapeHTML(key)}" class="material-symbols-outlined ${meta.iconClass} transition-colors hover:text-slate-900 dark:hover:text-white text-[20px]" ${meta.iconStyle}>${meta.iconName}</span>
+        ${meta.showPulseDot
+      ? `<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary border border-[var(--bg-primary)] animate-pulse"></span>`
+      : ""
+    }
       </div>
       <div class="min-w-0 pointer-events-none">
         <div class="text-sm font-semibold truncate ${titleClass}">${escapeHTML(domain)}</div>
-        <div class="text-[11px] ${meta.detailClass} flex items-center gap-1">
+        <div class="text-[11px] ${meta.active ? meta.detailClass : "text-slate-600 dark:text-slate-500"} flex items-center gap-1 font-medium">
           <span class="w-1 h-1 rounded-full ${meta.dotClass}"></span>
           <span>${escapeHTML(meta.detailText)}</span>
         </div>
@@ -336,7 +328,7 @@ const renderEnvironmentItem = (env, { selectedProject, sidebarMode }) => {
 export const renderEnvironmentSkeletons = (container) => {
   if (!container) return;
   const globalRow = `
-    <div class="w-full mt-3 mb-4 flex items-center gap-3 px-3 py-3 rounded-xl border border-[#2e573a] bg-[#13261a]">
+    <div class="w-full mt-3 mb-4 flex items-center gap-3 px-3 py-3 rounded-xl border border-border-primary bg-background-secondary">
       <div class="h-8 w-8 rounded-lg skeleton"></div>
       <div class="flex-1 space-y-2">
         <div class="h-3 w-28 skeleton"></div>
@@ -361,11 +353,7 @@ export const renderEnvironmentSkeletons = (container) => {
     .join("");
   const inactiveHeader = `<div class="px-1 mt-4 pb-4 text-[10px] font-semibold text-slate-500 uppercase tracking-[0.12em]">Inactive Environments</div>`;
   container.innerHTML =
-    globalRow +
-    activeHeader +
-    items +
-    inactiveHeader +
-    items;
+    globalRow + activeHeader + items + inactiveHeader + items;
 };
 
 export const renderEnvironmentList = (
@@ -384,20 +372,20 @@ export const renderEnvironmentList = (
 
   const globalSelected = sidebarMode === "global-services";
   const globalClass = globalSelected
-    ? "w-full mt-3 mb-4 text-left p-3 rounded-xl bg-[#173325] border-l-4 border-primary border border-primary/25 transition-all relative overflow-hidden shadow-[0_0_16px_rgba(13,242,89,0.1)]"
-    : "w-full mt-3 mb-4 text-left p-3 rounded-xl bg-[#0f1d15] border border-[#1f3d2a]/80 hover:bg-[#13261a] hover:border-primary/20 transition-all relative overflow-hidden group";
+    ? "w-full mt-3 mb-4 text-left p-3 rounded-xl bg-primary/10 border-l-4 border-primary border border-primary/25 transition-all relative overflow-hidden shadow-[0_0_16px_var(--primary-glow)]"
+    : "w-full mt-3 mb-4 text-left p-3 rounded-xl bg-background-secondary border border-border-primary hover:bg-background-primary hover:border-primary/20 transition-all relative overflow-hidden group";
   const globalIndicator = globalSelected
     ? `<div class="absolute inset-y-0 left-0 w-1 bg-primary/80"></div>`
     : "";
   const globalIconWrapClass = globalSelected
-    ? "h-9 w-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary"
-    : "h-9 w-9 rounded-lg bg-[#13261a] border border-[#2e573a]/80 flex items-center justify-center text-[#90cba4]/70 group-hover:text-primary transition-colors";
+    ? "h-9 w-9 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center text-primary"
+    : "h-9 w-9 rounded-lg bg-background-primary border border-border-primary flex items-center justify-center text-text-tertiary group-hover:text-primary transition-colors";
   const globalTitleClass = globalSelected
-    ? "text-white text-sm font-semibold truncate w-full text-left"
-    : "text-[#d5e8dd] text-sm font-semibold truncate w-full text-left group-hover:text-white transition-colors";
+    ? "text-text-primary text-sm font-semibold truncate w-full text-left"
+    : "text-text-secondary text-sm font-semibold truncate w-full text-left group-hover:text-primary transition-colors";
   const globalSubtitleClass = globalSelected
-    ? "text-xs text-[#90cba4]/60"
-    : "text-xs text-[#90cba4]/40 group-hover:text-[#90cba4]/60 transition-colors";
+    ? "text-xs text-text-secondary"
+    : "text-xs text-text-tertiary group-hover:text-text-secondary transition-colors";
   const globalRow = `
     <button data-action="switch-sidebar-mode" data-mode="global-services" class="${globalClass}" title="Open Global Services">
       ${globalIndicator}
@@ -415,67 +403,51 @@ export const renderEnvironmentList = (
 
   const active = [];
   const inactive = [];
+  const pDomains = new Set();
+
   environments.forEach((env) => {
+    const label = domainLabel(env);
+    if (pDomains.has(label)) return;
     const status = classifyEnvironmentStatus(env);
     if (status.active) {
       active.push(env);
-    } else {
-      inactive.push(env);
+      pDomains.add(label);
     }
   });
 
-  const renderGroup = (
-    title,
-    items,
-    emptyText,
-    tone = "text-slate-400",
-    spacingClass = "mt-4 pb-4",
-  ) => `
-    <div class="px-1 ${spacingClass} text-[10px] font-semibold ${tone} uppercase tracking-[0.12em]">${title}</div>
-    ${
-      items.length
-        ? items
-            .map((env) =>
-              renderEnvironmentItem(env, { selectedProject, sidebarMode }),
-            )
-            .join("")
-        : `<div class="px-3 py-4 mb-1 text-xs text-slate-500">${emptyText}</div>`
+  environments.forEach((env) => {
+    const label = domainLabel(env);
+    if (pDomains.has(label)) return;
+    inactive.push(env);
+    pDomains.add(label);
+  });
+
+  const rdGrp = (title, items, empty, tone, mt) => `
+    <div class="px-1 ${mt || "mt-6"} pb-2 text-[10px] font-bold ${tone || "text-slate-400"} uppercase tracking-[0.12em]">${title}</div>
+    ${items.length
+      ? items
+        .map((env) =>
+          renderEnvironmentItem(env, { selectedProject, sidebarMode }),
+        )
+        .join("")
+      : `<div class="px-3 py-2 text-xs text-slate-400 italic">${empty}</div>`
     }
   `;
 
-  if (!environments.length) {
-    container.innerHTML =
-      globalRow +
-      renderGroup(
-        "Active Environments",
-        [],
-        "No active environments.",
-        "text-primary/80",
-      ) +
-      renderGroup(
-        "Inactive Environments",
-        [],
-        "No environments detected.",
-        "text-slate-400",
-        "mt-4 pb-4",
-      );
-    return;
-  }
-
   container.innerHTML =
     globalRow +
-    renderGroup(
+    rdGrp(
       "Active Environments",
       active,
       "No active environments.",
-      "text-primary/80",
+      "text-primary/70",
     ) +
-    renderGroup(
+    rdGrp(
       "Inactive Environments",
       inactive,
-      "No inactive environments.",
-      "text-slate-400",
-      "mt-4 pb-4",
+      "No projects found.",
+      "text-slate-400/80",
+      "mt-8",
     );
 };
 
@@ -553,9 +525,10 @@ export const renderProjectHero = (
       }
     } else {
       badge.classList.add(
-        "bg-slate-500/20",
-        "border-slate-500/30",
-        "text-slate-400",
+        "bg-slate-500/10",
+        "border-slate-500/20",
+        "text-slate-600",
+        "dark:text-slate-400",
       );
       if (dot instanceof HTMLElement) {
         dot.classList.add("bg-slate-500");
@@ -614,10 +587,10 @@ export const renderProjectHero = (
             shadow = "rgba(34, 197, 94, 0.5)";
           }
 
-          return `<span class="flex items-center gap-1 bg-[#1a3322] px-2 py-0.5 rounded border border-[#2e573a]">
-          <span class="w-1.5 h-1.5 rounded-full ${color}" style="box-shadow: 0 0 8px ${shadow}"></span>
-          ${escapeHTML(tech)}
-        </span>`;
+          return `<span class="flex items-center gap-1.5 bg-slate-100 dark:bg-surface-secondary px-2 py-0.5 rounded border border-slate-300 dark:border-border-primary">
+            <span class="w-1.5 h-1.5 rounded-full ${color}" style="box-shadow: 0 0 8px ${shadow}"></span>
+            <span class="text-[11px] font-black text-slate-800 dark:text-slate-200">${escapeHTML(tech)}</span>
+          </span>`;
         })
         .join("");
     } else {
@@ -646,7 +619,7 @@ export const renderProjectHero = (
       ? "Environment is not running"
       : "Stop Environment";
     refs.heroStopBtn.className = isStopped
-      ? "h-12 w-12 bg-[#13261a] text-slate-500 border border-[#2e573a] rounded-lg transition-all flex items-center justify-center cursor-not-allowed opacity-70"
+      ? "h-12 w-12 bg-slate-100 dark:bg-[var(--surface-secondary)] text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-border-primary rounded-lg transition-all flex items-center justify-center cursor-not-allowed opacity-70"
       : "h-12 w-12 bg-red-600 text-white border border-red-500 rounded-lg hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/20";
   }
   if (refs.heroPullBtn) {
@@ -716,7 +689,7 @@ export const renderActiveServices = (container, env) => {
 
   if (services.length === 0) {
     container.innerHTML = `
-      <div class="p-6 text-center text-slate-400 border border-dashed border-[#2e573a] rounded-xl bg-[#1a3322]/30">
+      <div class="p-6 text-center text-slate-400 border border-dashed border-border-primary rounded-xl bg-surface-primary/30">
         <span class="material-symbols-outlined text-3xl mb-2 opacity-20">inventory_2</span>
         <div class="text-sm italic">No active services detected</div>
       </div>`;
@@ -767,23 +740,23 @@ export const renderActiveServices = (container, env) => {
       }
 
       return `
-        <div class="glass-panel p-4 rounded-xl border border-[#2e573a] hover:border-primary/30 transition-all flex items-center justify-between">
+        <div class="glass-panel p-4 rounded-xl border border-slate-200 dark:border-border-primary hover:border-primary/30 transition-all flex items-center justify-between">
           <div class="flex items-center gap-4">
             <div class="p-2 rounded ${iconBg} ${iconText} border ${iconBorder}">
               <span class="material-symbols-outlined">${icon}</span>
             </div>
             <div>
-              <h4 class="text-white font-medium text-sm">${escapeHTML(service.Name || service.name || "Service")}</h4>
+              <h4 class="text-slate-800 dark:text-white font-medium text-sm">${escapeHTML(service.Name || service.name || "Service")}</h4>
               <div class="flex items-center gap-2 text-xs mt-1">
-                <span class="text-slate-400">Port: ${service.Port || service.port || "N/A"}</span>
-                <span class="w-1 h-1 rounded-full bg-slate-600"></span>
+                <span class="text-slate-500 dark:text-slate-400">Port: ${service.Port || service.port || "N/A"}</span>
+                <span class="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600"></span>
                 <span class="${statusColor}">${escapeHTML(service.Status || service.status || "Unknown")}</span>
               </div>
             </div>
           </div>
           <div class="flex items-center gap-3">
             <button
-              class="p-1.5 rounded bg-[#13261a] border border-[#2e573a] text-slate-300 hover:text-white hover:bg-[#22492f] transition-colors"
+              class="p-1.5 rounded bg-slate-100 dark:bg-[var(--surface-secondary)] border border-slate-200 dark:border-border-primary text-slate-500 dark:text-slate-300 hover:text-primary dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary transition-colors"
               title="View Logs"
               data-action="open-service-logs"
               data-project="${escapeHTML(project)}"
@@ -792,7 +765,7 @@ export const renderActiveServices = (container, env) => {
               <span class="material-symbols-outlined text-lg">list_alt</span>
             </button>
             <button
-              class="p-1.5 rounded bg-[#13261a] border border-[#2e573a] text-slate-300 hover:text-white hover:bg-[#22492f] transition-colors"
+              class="p-1.5 rounded bg-slate-100 dark:bg-[var(--surface-secondary)] border border-slate-200 dark:border-border-primary text-slate-500 dark:text-slate-300 hover:text-primary dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary transition-colors"
               title="Open Terminal"
               data-action="open-service-shell"
               data-project="${escapeHTML(project)}"
@@ -821,9 +794,9 @@ export const renderEnvVars = (container, env) => {
     .map((key) => {
       const value = envVars[key];
       return `
-      <div data-action="copy-text" data-text="${escapeHTML(value)}" class="flex justify-between items-center group cursor-pointer hover:bg-[#22492f]/50 p-1.5 -mx-1.5 rounded transition-colors" title="Click to copy">
-        <span class="text-xs text-[#90cba4] font-mono">${escapeHTML(key)}</span>
-        <span class="text-xs text-white font-mono bg-[#102316] px-2 py-0.5 rounded border border-[#2e573a] break-all max-w-[60%]">${escapeHTML(value)}</span>
+      <div data-action="copy-text" data-text="${escapeHTML(value)}" class="flex justify-between items-center group cursor-pointer hover:bg-background-secondary/50 p-1.5 -mx-1.5 rounded transition-colors" title="Click to copy">
+        <span class="text-xs text-emerald-700 dark:text-primary font-mono font-bold">${escapeHTML(key)}</span>
+        <span class="text-xs text-slate-800 dark:text-white font-mono bg-surface-secondary px-2 py-0.5 rounded border border-border-primary break-all max-w-[60%] font-medium">${escapeHTML(value)}</span>
       </div>`;
     })
     .join("");

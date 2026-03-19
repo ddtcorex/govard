@@ -55,7 +55,7 @@ func BuildWailsOptions(app *App, assets fs.FS, launch LaunchOptions) *options.Ap
 	wailsOptions.HideWindowOnClose = true
 	wailsOptions.OnBeforeClose = func(ctx context.Context) bool {
 		app.hideWindow(ctx)
-		return true
+		return true // prevent close; hide to tray instead
 	}
 	wailsOptions.SingleInstanceLock = &options.SingleInstanceLock{
 		UniqueId: desktopSingleInstanceLockID,

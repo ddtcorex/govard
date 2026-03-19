@@ -60,10 +60,13 @@ func NewTestEnvironment(t *testing.T) *TestEnvironment {
 		t.Fatalf("Failed to build integration test binary: %v", buildGovardBinaryErr)
 	}
 
+	isolatedBinary := filepath.Join(t.TempDir(), "govard-test")
+	copyBinaryForTest(t, binaryPath, isolatedBinary)
+
 	return &TestEnvironment{
 		ProjectRoot:    projectRoot,
 		TestProjects:   make(map[string]string),
-		BinaryPath:     binaryPath,
+		BinaryPath:     isolatedBinary,
 		BlueprintsPath: filepath.Join(projectRoot, "internal", "blueprints", "files"),
 	}
 }
@@ -184,9 +187,11 @@ func (env *TestEnvironment) RunGovard(t *testing.T, projectDir string, args ...s
 func (env *TestEnvironment) RunGovardWithEnv(t *testing.T, projectDir string, extraEnv []string, args ...string) *CommandResult {
 	t.Helper()
 
+	extraEnv = append(extraEnv, "GOVARD_TEST_REPO_ROOT="+env.ProjectRoot)
+
 	cmd := exec.Command(env.BinaryPath, args...)
 	cmd.Dir = projectDir
-	cmd.Env = append(os.Environ(), extraEnv...)
+	cmd.Env = envWithOverrides(os.Environ(), extraEnv...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

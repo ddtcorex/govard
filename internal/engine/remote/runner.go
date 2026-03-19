@@ -46,7 +46,7 @@ func BuildRsyncCommand(
 	if !noCompress {
 		rsyncMode = "-az"
 	}
-	args := []string{rsyncMode}
+	args := []string{rsyncMode, "--timeout=60"}
 	if deleteFiles {
 		args = append(args, "--delete")
 	}

@@ -29,220 +29,361 @@
 
 /* inter-cyrillic-ext-wght-normal */
 @font-face {
-  font-family: 'Inter Variable';
+  font-family: "Inter Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url(./files/inter-cyrillic-ext-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+  src: url(./files/inter-cyrillic-ext-wght-normal.woff2)
+    format("woff2-variations");
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
 }
 
 /* inter-cyrillic-wght-normal */
 @font-face {
-  font-family: 'Inter Variable';
+  font-family: "Inter Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url(./files/inter-cyrillic-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+  src: url(./files/inter-cyrillic-wght-normal.woff2) format("woff2-variations");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
 }
 
 /* inter-greek-ext-wght-normal */
 @font-face {
-  font-family: 'Inter Variable';
+  font-family: "Inter Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url(./files/inter-greek-ext-wght-normal.woff2) format('woff2-variations');
+  src: url(./files/inter-greek-ext-wght-normal.woff2) format("woff2-variations");
   unicode-range: U+1F00-1FFF;
 }
 
 /* inter-greek-wght-normal */
 @font-face {
-  font-family: 'Inter Variable';
+  font-family: "Inter Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url(./files/inter-greek-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0370-0377,U+037A-037F,U+0384-038A,U+038C,U+038E-03A1,U+03A3-03FF;
+  src: url(./files/inter-greek-wght-normal.woff2) format("woff2-variations");
+  unicode-range:
+    U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
 }
 
 /* inter-vietnamese-wght-normal */
 @font-face {
-  font-family: 'Inter Variable';
+  font-family: "Inter Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url(./files/inter-vietnamese-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+  src: url(./files/inter-vietnamese-wght-normal.woff2)
+    format("woff2-variations");
+  unicode-range:
+    U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1,
+    U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329,
+    U+1EA0-1EF9, U+20AB;
 }
 
 /* inter-latin-ext-wght-normal */
 @font-face {
-  font-family: 'Inter Variable';
+  font-family: "Inter Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url(./files/inter-latin-ext-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  src: url(./files/inter-latin-ext-wght-normal.woff2) format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 /* inter-latin-wght-normal */
 @font-face {
-  font-family: 'Inter Variable';
+  font-family: "Inter Variable";
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url(./files/inter-latin-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  src: url(./files/inter-latin-wght-normal.woff2) format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
 }
 
 /**
  * XTERM.JS
  */
 .xterm {
-    cursor: text;
-    position: relative;
-    user-select: none;
-    -ms-user-select: none;
-    -webkit-user-select: none;
+  cursor: text;
+  position: relative;
+  user-select: none;
+  -ms-user-select: none;
+  -webkit-user-select: none;
 }
 .xterm.focus,
 .xterm:focus {
-    outline: none;
+  outline: none;
 }
 .xterm .xterm-helpers {
-    position: absolute;
-    top: 0;
-    z-index: 5;
+  position: absolute;
+  top: 0;
+  z-index: 5;
 }
 .xterm .xterm-helper-textarea {
-    padding: 0;
-    border: 0;
-    margin: 0;
-    position: absolute;
-    opacity: 0;
-    left: -9999em;
-    top: 0;
-    width: 0;
-    height: 0;
-    z-index: -5;
-    white-space: nowrap;
-    overflow: hidden;
-    resize: none;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  position: absolute;
+  opacity: 0;
+  left: -9999em;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: -5;
+  white-space: nowrap;
+  overflow: hidden;
+  resize: none;
 }
 .xterm .composition-view {
-    background: #000;
-    color: #FFF;
-    display: none;
-    position: absolute;
-    white-space: nowrap;
-    z-index: 1;
+  background: #000;
+  color: #fff;
+  display: none;
+  position: absolute;
+  white-space: nowrap;
+  z-index: 1;
 }
 .xterm .composition-view.active {
-    display: block;
+  display: block;
 }
 .xterm .xterm-viewport {
-    background-color: #000;
-    overflow-y: scroll;
-    cursor: default;
-    position: absolute;
-    right: 0;
-    left: 0;
-    top: 0;
-    bottom: 0;
+  background-color: #000;
+  overflow-y: scroll;
+  cursor: default;
+  position: absolute;
+  right: 0;
+  left: 0;
+  top: 0;
+  bottom: 0;
 }
 .xterm .xterm-screen {
-    position: relative;
+  position: relative;
 }
 .xterm .xterm-screen canvas {
-    position: absolute;
-    left: 0;
-    top: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
 }
 .xterm .xterm-scroll-area {
-    visibility: hidden;
+  visibility: hidden;
 }
 .xterm-char-measure-element {
-    display: inline-block;
-    visibility: hidden;
-    position: absolute;
-    top: 0;
-    left: -9999em;
-    line-height: normal;
+  display: inline-block;
+  visibility: hidden;
+  position: absolute;
+  top: 0;
+  left: -9999em;
+  line-height: normal;
 }
 .xterm.enable-mouse-events {
-    cursor: default;
+  cursor: default;
 }
 .xterm.xterm-cursor-pointer,
 .xterm .xterm-cursor-pointer {
-    cursor: pointer;
+  cursor: pointer;
 }
 .xterm.column-select.focus {
-    cursor: crosshair;
+  cursor: crosshair;
 }
 .xterm .xterm-accessibility,
 .xterm .xterm-message {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    right: 0;
-    z-index: 10;
-    color: transparent;
-    pointer-events: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 10;
+  color: transparent;
+  pointer-events: none;
 }
 .xterm .live-region {
-    position: absolute;
-    left: -9999px;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
 }
 .xterm-dim {
-    opacity: 1 !important;
+  opacity: 1 !important;
 }
-.xterm-underline-1 { text-decoration: underline; }
-.xterm-underline-2 { text-decoration: double underline; }
-.xterm-underline-3 { text-decoration: wavy underline; }
-.xterm-underline-4 { text-decoration: dotted underline; }
-.xterm-underline-5 { text-decoration: dashed underline; }
+.xterm-underline-1 {
+  text-decoration: underline;
+}
+.xterm-underline-2 {
+  text-decoration: double underline;
+}
+.xterm-underline-3 {
+  text-decoration: wavy underline;
+}
+.xterm-underline-4 {
+  text-decoration: dotted underline;
+}
+.xterm-underline-5 {
+  text-decoration: dashed underline;
+}
 .xterm-overline {
-    text-decoration: overline;
+  text-decoration: overline;
 }
-.xterm-overline.xterm-underline-1 { text-decoration: overline underline; }
-.xterm-overline.xterm-underline-2 { text-decoration: overline double underline; }
-.xterm-overline.xterm-underline-3 { text-decoration: overline wavy underline; }
-.xterm-overline.xterm-underline-4 { text-decoration: overline dotted underline; }
-.xterm-overline.xterm-underline-5 { text-decoration: overline dashed underline; }
+.xterm-overline.xterm-underline-1 {
+  text-decoration: overline underline;
+}
+.xterm-overline.xterm-underline-2 {
+  text-decoration: overline double underline;
+}
+.xterm-overline.xterm-underline-3 {
+  text-decoration: overline wavy underline;
+}
+.xterm-overline.xterm-underline-4 {
+  text-decoration: overline dotted underline;
+}
+.xterm-overline.xterm-underline-5 {
+  text-decoration: overline dashed underline;
+}
 .xterm-strikethrough {
-    text-decoration: line-through;
+  text-decoration: line-through;
 }
 .xterm-screen .xterm-decoration-container .xterm-decoration {
-	z-index: 6;
-	position: absolute;
+  z-index: 6;
+  position: absolute;
 }
-.xterm-screen .xterm-decoration-container .xterm-decoration.xterm-decoration-top-layer {
-	z-index: 7;
+.xterm-screen
+  .xterm-decoration-container
+  .xterm-decoration.xterm-decoration-top-layer {
+  z-index: 7;
 }
 .xterm-decoration-overview-ruler {
-    z-index: 8;
-    position: absolute;
-    top: 0;
-    right: 0;
-    pointer-events: none;
+  z-index: 8;
+  position: absolute;
+  top: 0;
+  right: 0;
+  pointer-events: none;
 }
 .xterm-decoration-top {
-    z-index: 2;
-    position: relative;
+  z-index: 2;
+  position: relative;
 }
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Common */
+  --primary-rgb: 16, 185, 129; /* Emerald 500 */
+  --primary: #10b981;
+  --primary-hover: #059669;
+  --primary-glow: rgba(16, 185, 129, 0.15);
+  --primary-text: #047857; /* Emerald 700 for Light Theme Text */
+
+  /* Light Theme */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-accent: #ecfdf5;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155; /* Darker Slate 700 */
+  --text-tertiary: #64748b;  /* Darker Slate 500 */
+
+  --border-primary: #e2e8f0;
+  --border-secondary: #f1f5f9;
+  --border-accent: rgba(16, 185, 129, 0.2);
+
+  --surface-primary: #ffffff;
+  --surface-secondary: #f8fafc;
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.5);
+
+  --card-bg: #ffffff;
+  --card-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --input-bg: #f1f5f9;
+
+  /* Component-specific */
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-accent: rgba(16, 185, 129, 0.35);
+  --scrollbar-thumb-strong: rgba(16, 185, 129, 0.55);
+  --dashed-line: #94a3b8;
+  --skeleton-from: rgba(226, 232, 240, 0.5);
+  --skeleton-via: rgba(226, 232, 240, 0.8);
+  --toast-bg: rgba(255, 255, 255, 0.92);
+  --toast-text: #1e293b;
+  --toast-border: rgba(0, 0, 0, 0.06);
+  --toast-shadow: rgba(0, 0, 0, 0.1);
+  --toast-close: rgba(0, 0, 0, 0.3);
+  --toast-close-hover-bg: rgba(0, 0, 0, 0.08);
+  --toast-progress-bg: rgba(0, 0, 0, 0.1);
+  --toast-indicator-default: #94a3b8;
+  --toast-error-bg: rgba(254, 242, 242, 0.95);
+  --toast-warning-bg: rgba(255, 251, 235, 0.95);
+  --update-message-text: #475569;
+}
+
+.dark {
+  /* Common override if needed */
+  --primary-rgb: 13, 242, 89;
+  --primary: #0df259;
+  --primary-hover: #0bc448;
+  --primary-glow: rgba(13, 242, 89, 0.15);
+
+  /* Dark Theme */
+  --bg-primary: #0c1810; /* Deeper green-black */
+  --bg-secondary: #102316; /* Sidebar / Header */
+  --bg-tertiary: #13261a;
+  --bg-accent: rgba(13, 242, 89, 0.03);
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #5d856b;
+  --primary-text: #0df259; /* Back to bright primary for Dark Theme */
+
+  --border-primary: #1a3322;
+  --border-secondary: #22492f;
+  --border-accent: rgba(13, 242, 89, 0.15);
+
+  --surface-primary: #112618;
+  --surface-secondary: #0c1810;
+  --glass-bg: rgba(16, 35, 22, 0.7);
+  --glass-border: rgba(var(--primary-rgb), 0.1);
+
+  --card-bg: rgba(26, 51, 34, 0.4);
+  --card-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+  --input-bg: #0c1810;
+
+  /* Component-specific */
+  --scrollbar-thumb: #22492f;
+  --scrollbar-thumb-accent: rgba(13, 242, 89, 0.28);
+  --scrollbar-thumb-strong: rgba(54, 107, 71, 0.85);
+  --dashed-line: #366b47;
+  --skeleton-from: rgba(34, 73, 47, 0.4);
+  --skeleton-via: rgba(34, 73, 47, 0.8);
+  --toast-bg: rgba(12, 18, 14, 0.85);
+  --toast-text: #ffffff;
+  --toast-border: rgba(255, 255, 255, 0.03);
+  --toast-shadow: rgba(0, 0, 0, 0.6);
+  --toast-close: rgba(255, 255, 255, 0.3);
+  --toast-close-hover-bg: rgba(255, 255, 255, 0.1);
+  --toast-progress-bg: rgba(255, 255, 255, 0.1);
+  --toast-indicator-default: #366b47;
+  --toast-error-bg: rgba(30, 12, 12, 0.9);
+  --toast-warning-bg: rgba(30, 25, 10, 0.9);
+  --update-message-text: rgba(226, 232, 240, 0.95);
+}
+
 body {
   font-family: "Inter", sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 ::-webkit-scrollbar {
@@ -250,45 +391,40 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #102316;
+  background: var(--bg-primary);
 }
 ::-webkit-scrollbar-thumb {
-  background: #22492f;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
   transition: none;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #22492f;
+  background: var(--scrollbar-thumb);
 }
 
 /* Utilities */
 .glass-panel {
-  background: rgba(34, 73, 47, 0.4);
+  background: var(--glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(144, 203, 164, 0.1);
+  border: 1px solid var(--border-accent);
 }
 .glass-card {
-  background: rgba(26, 51, 34, 0.6);
+  background: var(--card-bg);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(144, 203, 164, 0.15);
+  border: 1px solid var(--border-accent);
 }
 .update-prompt-panel {
-  background: linear-gradient(
-    150deg,
-    rgba(10, 24, 16, 0.98) 0%,
-    rgba(12, 31, 20, 0.98) 55%,
-    rgba(17, 42, 27, 0.96) 100%
-  );
-  border: 1px solid rgba(86, 157, 109, 0.45);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-accent);
   box-shadow:
-    0 24px 56px rgba(3, 10, 6, 0.58),
-    inset 0 1px 0 rgba(208, 255, 221, 0.06);
-  backdrop-filter: blur(12px) saturate(125%);
-  -webkit-backdrop-filter: blur(12px) saturate(125%);
+    0 24px 56px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .update-message-text {
-  color: rgba(226, 232, 240, 0.95);
+  color: var(--update-message-text);
   font-size: 0.75rem;
   line-height: 1.45;
   letter-spacing: 0.01em;
@@ -302,7 +438,7 @@ body {
   inset: 0;
   background: radial-gradient(
     70% 120% at 8% 0%,
-    rgba(13, 242, 89, 0.1) 0%,
+    rgba(var(--primary-rgb), 0.1) 0%,
     rgba(13, 242, 89, 0) 60%
   );
   pointer-events: none;
@@ -318,7 +454,7 @@ body {
   inset: 0;
   background: linear-gradient(
     120deg,
-    rgba(13, 242, 89, 0.06) 0%,
+    rgba(var(--primary-rgb), 0.06) 0%,
     rgba(13, 242, 89, 0) 55%
   );
   pointer-events: none;
@@ -326,10 +462,10 @@ body {
 .ops-kpi-value {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
-  text-shadow: 0 0 18px rgba(13, 242, 89, 0.2);
+  text-shadow: 0 0 18px rgba(var(--primary-rgb), 0.2);
 }
 .neon-glow {
-  box-shadow: 0 0 10px rgba(13, 242, 89, 0.2);
+  box-shadow: 0 0 10px var(--primary-glow);
 }
 .global-status-chip {
   animation: global-chip-enter 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
@@ -341,7 +477,7 @@ body {
 
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(13, 242, 89, 0.28) transparent;
+  scrollbar-color: var(--scrollbar-thumb-accent) transparent;
   scrollbar-gutter: stable both-edges;
 }
 .custom-scrollbar::-webkit-scrollbar {
@@ -353,14 +489,14 @@ body {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(54, 107, 71, 0.85);
+  background: var(--scrollbar-thumb-strong);
   border-radius: 999px;
   border: 1px solid transparent;
   background-clip: padding-box;
   transition: none;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(54, 107, 71, 0.85);
+  background: var(--scrollbar-thumb-strong);
   border: 1px solid transparent;
 }
 .log-pane-scroll {
@@ -370,7 +506,7 @@ body {
 }
 .service-strip-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(54, 107, 71, 0.75) transparent;
+  scrollbar-color: var(--scrollbar-thumb-strong) transparent;
   scrollbar-gutter: stable;
   overflow-x: auto !important;
   overflow-y: hidden;
@@ -391,18 +527,18 @@ body {
   background: transparent;
 }
 .service-strip-scroll::-webkit-scrollbar-thumb {
-  background: rgba(54, 107, 71, 0.72);
+  background: var(--scrollbar-thumb-strong);
   border-radius: 999px;
   border: 1px solid transparent;
   background-clip: padding-box;
   transition: none;
 }
 .service-strip-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(54, 107, 71, 0.72);
+  background: var(--scrollbar-thumb-strong);
   border: 1px solid transparent;
 }
 .service-strip-scroll::-webkit-scrollbar-thumb:active {
-  background: rgba(54, 107, 71, 0.72);
+  background: var(--scrollbar-thumb-strong);
   border: 1px solid transparent;
 }
 .sidebar-scroll::-webkit-scrollbar {
@@ -412,17 +548,17 @@ body {
   background: transparent;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(13, 242, 89, 0.2);
+  background: var(--scrollbar-thumb-accent);
   border-radius: 999px;
   transition: none;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(13, 242, 89, 0.2);
+  background: var(--scrollbar-thumb-accent);
 }
 .dashed-line {
   background-image: linear-gradient(
     to bottom,
-    #366b47 50%,
+    var(--dashed-line) 50%,
     rgba(255, 255, 255, 0) 0%
   );
   background-position: left;
@@ -432,7 +568,7 @@ body {
 .dashed-line-h {
   background-image: linear-gradient(
     to right,
-    #366b47 50%,
+    var(--dashed-line) 50%,
     rgba(255, 255, 255, 0) 0%
   );
   background-position: top;
@@ -506,17 +642,17 @@ select::-ms-expand {
   position: relative;
   border-radius: 12px;
   padding: 14px 18px;
-  background: rgba(12, 18, 14, 0.85);
+  background: var(--toast-bg);
   backdrop-filter: blur(24px) saturate(200%);
   -webkit-backdrop-filter: blur(24px) saturate(200%);
-  color: #ffffff;
+  color: var(--toast-text);
   opacity: 0;
   transform: translateY(20px) scale(0.95);
   transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
   box-shadow:
-    0 10px 40px -10px rgba(0, 0, 0, 0.6),
+    0 10px 40px -10px var(--toast-shadow),
     0 0 0 1px rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--toast-border);
   display: flex;
   align-items: center;
   gap: 14px;
@@ -540,7 +676,7 @@ select::-ms-expand {
   bottom: 0;
   left: 0;
   width: 4px;
-  background: #366b47;
+  background: var(--toast-indicator-default);
 }
 
 .toast-icon-wrapper {
@@ -564,7 +700,7 @@ select::-ms-expand {
   font-size: 14px;
   font-weight: 500;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--toast-text);
   margin: 0;
 }
 
@@ -573,7 +709,7 @@ select::-ms-expand {
   flex-shrink: 0;
   padding: 4px;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--toast-close);
   transition: all 0.2s ease;
   background: transparent;
   border: none;
@@ -588,8 +724,8 @@ select::-ms-expand {
 }
 
 .toast-close:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  background: var(--toast-close-hover-bg);
+  color: var(--toast-text);
   transform: scale(1.1);
 }
 
@@ -599,7 +735,7 @@ select::-ms-expand {
   left: 4px;
   right: 0;
   height: 2px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--toast-progress-bg);
   transform-origin: left;
 }
 
@@ -620,7 +756,7 @@ select::-ms-expand {
   filter: drop-shadow(0 0 8px rgba(255, 77, 77, 0.4));
 }
 .toast--error {
-  background: rgba(30, 12, 12, 0.9);
+  background: var(--toast-error-bg);
 }
 
 .toast--warning .toast-indicator {
@@ -631,7 +767,7 @@ select::-ms-expand {
   filter: drop-shadow(0 0 8px rgba(255, 204, 0, 0.4));
 }
 .toast--warning {
-  background: rgba(30, 25, 10, 0.9);
+  background: var(--toast-warning-bg);
 }
 
 .toast--info .toast-indicator {
@@ -694,9 +830,9 @@ select::-ms-expand {
 .skeleton {
   background: linear-gradient(
     90deg,
-    rgba(34, 73, 47, 0.4) 25%,
-    rgba(34, 73, 47, 0.8) 50%,
-    rgba(34, 73, 47, 0.4) 75%
+    var(--skeleton-from) 25%,
+    var(--skeleton-via) 50%,
+    var(--skeleton-from) 75%
   );
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s infinite;

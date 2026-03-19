@@ -35,10 +35,10 @@ export const createShellController = ({
       lineHeight: 1.25,
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
       theme: {
-        background: "#0c1810",
+        background: "var(--bg-primary)",
         foreground: "#cbd5e1",
-        cursor: "#0df259",
-        selection: "rgba(13, 242, 89, 0.3)",
+        cursor: "var(--primary)",
+        selection: "rgba(16, 185, 129, 0.3)",
       },
     });
 
