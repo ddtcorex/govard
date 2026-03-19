@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  applyTheme,
   createSettingsController,
   normalizeSettingsPayload,
   renderSettingsDrawer,
@@ -19,6 +20,7 @@ test("normalizeSettingsPayload maps settings payload", () => {
     preferredBrowser: "firefox",
     codeEditor: "",
     dbClientPreference: "pma",
+    runInBackground: true,
   });
 });
 
@@ -30,6 +32,7 @@ test("normalizeSettingsPayload falls back to defaults", () => {
     preferredBrowser: "",
     codeEditor: "",
     dbClientPreference: "pma",
+    runInBackground: true,
   });
 });
 
@@ -128,4 +131,37 @@ test("checkForUpdates normalizes redundant update message in settings", async ()
     refs.settingsUpdateStatus.textContent,
     "A new Govard Desktop version is ready to install (v1.16.0 -> v1.15.0).",
   );
+});
+
+/* ---------- applyTheme tests ---------- */
+
+test("applyTheme adds dark class for theme=dark", () => {
+  const classList = createClassList();
+  globalThis.document = { documentElement: { classList } };
+  applyTheme("dark");
+  assert.equal(classList.contains("dark"), true, "dark class should be present");
+  delete globalThis.document;
+});
+
+test("applyTheme removes dark class for theme=light", () => {
+  const classList = createClassList();
+  classList.add("dark"); // start in dark mode
+  globalThis.document = { documentElement: { classList } };
+  applyTheme("light");
+  assert.equal(classList.contains("dark"), false, "dark class should be removed");
+  delete globalThis.document;
+});
+
+test("applyTheme respects prefers-color-scheme for theme=system", () => {
+  const classList = createClassList();
+  globalThis.document = { documentElement: { classList } };
+  globalThis.window = {
+    matchMedia: (query) => ({
+      matches: query === "(prefers-color-scheme: dark)",
+    }),
+  };
+  applyTheme("system");
+  assert.equal(classList.contains("dark"), true, "should detect dark from matchMedia");
+  delete globalThis.document;
+  delete globalThis.window;
 });

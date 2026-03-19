@@ -29,6 +29,7 @@ func TestBuildRemoteMySQLDumpCommandForTest(t *testing.T) {
 	checks := []string{
 		"export MYSQL_PWD='s3cret';",
 		"mysqldump",
+		"--max-allowed-packet=512M",
 		"-h'db.internal'",
 		"-P3307",
 		"-u'remote_user'",
@@ -72,9 +73,10 @@ func TestBuildLocalDBImportCommandSupportsMariaDBClient(t *testing.T) {
 		"command -v mysql",
 		"command -v mariadb",
 		"DB_CLI",
-		"-u 'etl'",
+		"--max-allowed-packet=512M -u 'etl'",
 		"'etl_dev' -f",
 		"MYSQL_PWD=secret",
+		"SET FOREIGN_KEY_CHECKS=0",
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("expected import command to contain %q, got: %s", expected, joined)

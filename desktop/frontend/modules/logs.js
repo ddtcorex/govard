@@ -22,7 +22,10 @@ export const buildLogFilename = ({
   return `govard-${sanitizeLogFilenameToken(scope, "logs")}-${sanitizeLogFilenameToken(project, "project")}-${sanitizeLogFilenameToken(service, "all")}-${stamp}.log`;
 };
 
-export const downloadTextAsFile = (content = "", filename = "govard-logs.log") => {
+export const downloadTextAsFile = (
+  content = "",
+  filename = "govard-logs.log",
+) => {
   const output = String(content || "");
   if (!output.trim()) {
     return false;
@@ -37,7 +40,8 @@ export const downloadTextAsFile = (content = "", filename = "govard-logs.log") =
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = href;
-    anchor.download = String(filename || "govard-logs.log").trim() || "govard-logs.log";
+    anchor.download =
+      String(filename || "govard-logs.log").trim() || "govard-logs.log";
     anchor.style.display = "none";
     document.body.appendChild(anchor);
     anchor.click();
@@ -50,7 +54,10 @@ export const downloadTextAsFile = (content = "", filename = "govard-logs.log") =
       }
       anchor.remove();
     };
-    if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.setTimeout === "function"
+    ) {
       window.setTimeout(cleanup, 1500);
     } else {
       cleanup();
@@ -141,9 +148,9 @@ export const syncServiceSelector = (
       const baseClass =
         "h-7 px-3 rounded-md text-xs font-semibold whitespace-nowrap border transition-colors";
       const activeClass =
-        "bg-[#2e573a] text-white border-[#3f7a52] shadow-[0_0_0_1px_rgba(63,122,82,0.45)]";
+        "bg-primary/20 text-primary border-primary/30 shadow-[0_0_12px_rgba(13,242,89,0.1)]";
       const inactiveClass =
-        "text-[#90cba4] border-transparent hover:text-white hover:bg-[#2e573a]/60";
+        "text-slate-500 dark:text-primary border-transparent hover:text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[var(--border-primary)]/60";
 
       return `<button 
       data-action="filter-service" 
@@ -172,9 +179,9 @@ export const syncSeveritySelector = (container, selectedSeverity = "all") => {
     const isActive = sev === selectedSeverity;
     const baseClass =
       "h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors";
-    const activeClass = "bg-[#2e573a] text-primary border-[#3f7a52]";
+    const activeClass = "bg-primary/20 text-primary border-primary/30";
     const inactiveClass =
-      "bg-[#102316] text-[#90cba4] border-transparent hover:bg-[#1a3322] hover:text-white";
+      "bg-slate-50 dark:bg-surface-secondary text-slate-500 dark:text-primary border-transparent hover:bg-slate-100 dark:hover:bg-surface-primary hover:text-primary dark:hover:text-white";
 
     btn.className = `${baseClass} ${isActive ? activeClass : inactiveClass}`;
   });
@@ -405,32 +412,29 @@ export const renderLogsTab = (container) => {
           class="flex-1 flex flex-col gap-4 overflow-hidden h-full min-h-0"
         >
           <div
-            class="flex-1 flex flex-col rounded-xl border border-[#2e573a] bg-[#0c1810] overflow-hidden shadow-lg relative"
+            class="flex-1 flex flex-col rounded-xl border border-slate-200 dark:border-border-primary bg-white dark:bg-background-primary overflow-hidden shadow-lg relative"
           >
             <div
-              class="p-3 border-b border-[#2e573a] bg-[#1a3322]"
+              class="p-3 border-b border-slate-200 dark:border-border-primary bg-slate-50 dark:bg-surface-primary"
             >
               <div class="flex flex-wrap items-center justify-between gap-3">
-                <div class="flex items-center gap-2 min-w-0">
+                <div class="flex items-center gap-4 min-w-0">
                   <span class="material-symbols-outlined text-primary text-lg"
                     >receipt_long</span
                   >
-                  <h3 class="text-sm font-semibold text-white">Logs</h3>
-                  <span
-                    class="text-[10px] uppercase tracking-wide text-[#90cba4] bg-[#102316] border border-[#2e573a] px-2 py-0.5 rounded-full"
-                    >Live Stream</span
-                  >
+                  <h3 class="text-sm font-semibold text-slate-800 dark:text-white">Logs</h3>
+                  <span class="text-[10px] uppercase tracking-wide text-slate-600 dark:text-primary bg-slate-100 dark:bg-surface-secondary border border-slate-200 dark:border-border-primary px-3 py-1 rounded-full font-bold">Live Stream</span>
                 </div>
                 <div class="flex items-center gap-2 ml-auto">
                   <div class="relative">
                     <span class="absolute inset-y-0 left-2 flex items-center">
                       <span
-                        class="material-symbols-outlined text-[#5d856b] text-base"
+                        class="material-symbols-outlined text-text-tertiary text-base"
                         >search</span
                       >
                     </span>
                     <input
-                      class="bg-[#102316] text-xs text-white pl-8 pr-3 py-2 rounded-md border border-[#2e573a] focus:border-primary/50 focus:outline-none placeholder-[#5d856b] w-44 md:w-56"
+                      class="bg-slate-50 dark:bg-surface-secondary text-xs text-slate-900 dark:text-white pl-8 pr-3 py-2 rounded-md border border-slate-200 dark:border-border-primary focus:border-primary/50 focus:outline-none placeholder-slate-400 dark:placeholder-[var(--text-tertiary)] w-44 md:w-56"
                       placeholder="Filter logs..."
                       type="text"
                       id="logSearch"
@@ -438,7 +442,7 @@ export const renderLogsTab = (container) => {
                   </div>
                   <button
                     data-action="clear-logs"
-                    class="p-2 rounded-md text-[#90cba4] hover:text-primary hover:bg-[#2e573a]/50 transition-colors"
+                    class="p-2 rounded-md text-primary hover:text-primary hover:bg-[var(--border-primary)]/50 transition-colors"
                     title="Clear Logs"
                   >
                     <span class="material-symbols-outlined text-lg"
@@ -447,7 +451,7 @@ export const renderLogsTab = (container) => {
                   </button>
                   <button
                     data-action="download-logs"
-                    class="p-2 rounded-md text-[#90cba4] hover:text-primary hover:bg-[#2e573a]/50 transition-colors"
+                    class="p-2 rounded-md text-slate-500 dark:text-primary hover:text-primary hover:bg-slate-100 dark:hover:bg-[var(--border-primary)]/50 transition-colors"
                     title="Download Logs"
                   >
                     <span class="material-symbols-outlined text-lg"
@@ -459,9 +463,9 @@ export const renderLogsTab = (container) => {
               <div class="mt-3 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
                 <div class="flex flex-col gap-2 min-w-0 flex-1 lg:flex-row lg:items-center">
                   <div
-                    class="flex items-center gap-2 bg-[#102316] rounded-lg p-1.5 border border-[#2e573a] min-w-0 flex-1"
+                    class="flex items-center gap-2 bg-slate-50 dark:bg-surface-secondary rounded-lg p-1.5 border border-slate-200 dark:border-border-primary min-w-0 flex-1"
                   >
-                    <span class="h-7 inline-flex items-center leading-none text-[10px] uppercase tracking-wide text-[#5d856b] px-1 shrink-0"
+                    <span class="h-7 inline-flex items-center leading-none text-[10px] uppercase tracking-wide text-text-tertiary px-1 shrink-0"
                       >Service</span
                     >
                     <div
@@ -472,16 +476,16 @@ export const renderLogsTab = (container) => {
                       <button
                         data-action="filter-service"
                         data-service="all"
-                        class="h-7 px-3 rounded-md text-xs font-semibold whitespace-nowrap border bg-[#2e573a] text-white border-[#3f7a52]"
+                        class="h-7 px-3 rounded-md text-xs font-semibold whitespace-nowrap border bg-primary/20 text-primary border-primary/30"
                       >
                         all
                       </button>
                     </div>
                   </div>
                   <div
-                    class="flex items-center gap-2 bg-[#102316] rounded-lg p-1.5 border border-[#2e573a] shrink-0"
+                    class="flex items-center gap-2 bg-slate-50 dark:bg-surface-secondary rounded-lg p-1.5 border border-slate-200 dark:border-border-primary shrink-0"
                   >
-                    <span class="text-[10px] uppercase tracking-wide text-[#5d856b] px-1 shrink-0"
+                    <span class="text-[10px] uppercase tracking-wide text-text-tertiary px-1 shrink-0"
                       >Severity</span
                     >
                     <div
@@ -491,21 +495,21 @@ export const renderLogsTab = (container) => {
                       <button
                         data-action="filter-severity"
                         data-severity="all"
-                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#2e573a] text-primary border-[#3f7a52]"
+                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-primary/20 text-primary border-primary/30"
                       >
                         All
                       </button>
                       <button
                         data-action="filter-severity"
                         data-severity="error"
-                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#102316] text-[#90cba4] border-transparent hover:bg-[#1a3322] hover:text-white"
+                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-slate-50 dark:bg-surface-secondary text-slate-500 dark:text-primary border-transparent hover:bg-slate-100 dark:hover:bg-surface-primary hover:text-primary dark:hover:text-white"
                       >
                         Error
                       </button>
                       <button
                         data-action="filter-severity"
                         data-severity="warn"
-                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-[#102316] text-[#90cba4] border-transparent hover:bg-[#1a3322] hover:text-white"
+                        class="h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors bg-slate-50 dark:bg-surface-secondary text-slate-500 dark:text-primary border-transparent hover:bg-slate-100 dark:hover:bg-surface-primary hover:text-primary dark:hover:text-white"
                       >
                         Warn
                       </button>
@@ -516,13 +520,13 @@ export const renderLogsTab = (container) => {
                   <button
                     id="toggleLive"
                     data-action="toggle-live"
-                    class="h-8 px-3 rounded-md text-xs font-semibold bg-[#2e573a] text-white hover:bg-[#366b47] transition-colors"
+                    class="h-8 px-3 rounded-md text-xs font-semibold bg-primary text-background-dark hover:bg-primary/90 transition-colors"
                   >
                     Live: Off
                   </button>
                   <button
                     data-action="refresh-logs"
-                    class="h-8 px-3 rounded-md text-xs font-semibold text-[#90cba4] hover:text-white hover:bg-[#2e573a]/50 transition-colors"
+                    class="h-8 px-3 rounded-md text-xs font-semibold text-slate-600 dark:text-primary hover:text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[var(--border-primary)]/50 transition-colors"
                   >
                     Refresh
                   </button>
@@ -531,52 +535,52 @@ export const renderLogsTab = (container) => {
             </div>
             <div
               id="logOutputViewport"
-              class="flex-1 overflow-y-auto px-4 pb-4 pt-2 terminal-text text-xs bg-[#0c1810] custom-scrollbar log-pane-scroll"
+              class="flex-1 overflow-y-auto px-4 pb-4 pt-2 terminal-text text-xs bg-slate-900 dark:bg-background-primary custom-scrollbar log-pane-scroll text-slate-300 dark:text-slate-300"
             >
               <pre id="logOutput" class="m-0 font-mono whitespace-pre-wrap">Select an environment to view logs.</pre>
             </div>
           </div>
           <div
-            class="h-1.5 bg-[#1a3322] hover:bg-primary/50 cursor-row-resize flex items-center justify-center rounded transition-colors group/resizer"
+            class="h-1.5 bg-slate-200 dark:bg-surface-primary hover:bg-primary/50 cursor-row-resize flex items-center justify-center rounded transition-colors group/resizer"
           >
             <div
-              class="w-10 h-1 bg-[#2e573a] rounded-full group-hover/resizer:bg-white/50"
+              class="w-10 h-1 bg-slate-400 dark:bg-[var(--border-primary)] rounded-full group-hover/resizer:bg-white/50"
             ></div>
           </div>
           <div
             id="terminalPanel"
-            class="h-1/3 min-h-0 flex flex-col rounded-xl border border-[#2e573a] bg-[#0c1810] overflow-hidden shadow-lg relative z-10 transform-gpu"
+            class="h-1/3 min-h-0 flex flex-col rounded-xl border border-slate-200 dark:border-border-primary bg-slate-900 dark:bg-background-primary overflow-hidden shadow-lg relative z-10 transform-gpu"
           >
             <div
-              class="flex items-center justify-between p-2 pl-3 border-b border-[#2e573a] bg-[#1a3322]"
+              class="flex items-center justify-between p-2 pl-3 border-b border-slate-200 dark:border-border-primary bg-slate-50 dark:bg-surface-primary"
             >
               <div class="flex items-center gap-2">
                 <span
                   class="material-symbols-outlined text-slate-400 text-sm"
                   >terminal</span
                 >
-                <span class="text-xs font-semibold text-slate-300"
+                <span class="text-xs font-semibold text-slate-800 dark:text-slate-300"
                   >Terminal</span
                 >
               </div>
               <div class="flex items-center gap-2">
                 <button
                   data-action="start-embedded-terminal"
-                  class="px-2.5 py-1 rounded text-xs font-medium bg-[#22492f] text-slate-100 hover:bg-[#2e573a] transition-colors border border-[#366b47]"
+                  class="px-2.5 py-1 rounded text-xs font-medium bg-primary text-background-dark hover:bg-primary/90 transition-colors border border-primary/30"
                   title="Open Shell"
                 >
                   Open Shell
                 </button>
                 <button
                   data-action="restart-terminal-session"
-                  class="px-2.5 py-1 rounded text-xs font-medium bg-[#13261a] text-slate-100 hover:bg-[#22492f] transition-colors border border-[#2e573a]"
+                  class="px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-surface-secondary text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-background-secondary transition-colors border border-slate-200 dark:border-border-primary"
                   title="Terminate current session and open a new one"
                 >
                   Restart Session
                 </button>
                 <button
                   data-action="toggle-terminal-modal"
-                  class="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                  class="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                   title="Expand Terminal"
                 >
                   <span
@@ -594,11 +598,11 @@ export const renderLogsTab = (container) => {
               </div>
             </div>
             <div
-              class="flex-1 min-h-0 overflow-hidden bg-[#0c1810] p-4 pb-6"
+              class="flex-1 min-h-0 overflow-hidden bg-slate-900 dark:bg-background-primary"
             >
               <div
                 id="terminalContainer"
-                class="h-full min-h-0 w-full overflow-hidden bg-[#0c1810]"
+                class="h-full min-h-0 w-full overflow-hidden bg-background-primary"
               ></div>
             </div>
           </div>

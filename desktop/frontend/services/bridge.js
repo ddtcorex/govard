@@ -90,7 +90,12 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.PickProjectDirectory?.bind(bridge));
   },
-  async onboardProject(inputOrPath, framework, domain = "", serviceOptions = {}) {
+  async onboardProject(
+    inputOrPath,
+    framework,
+    domain = "",
+    serviceOptions = {},
+  ) {
     const bridge = getBridge();
 
     // Support both object payload (current onboarding flow) and legacy positional args.
@@ -113,7 +118,9 @@ export const desktopBridge = {
         rabbitMQEnabled: Boolean(input.rabbitMQEnabled),
         elasticsearchEnabled: Boolean(input.elasticsearchEnabled),
         applyOverrides:
-          input.applyOverrides === undefined ? true : Boolean(input.applyOverrides),
+          input.applyOverrides === undefined
+            ? true
+            : Boolean(input.applyOverrides),
         skipIDE: Boolean(input.skipIDE),
       });
     }
@@ -299,6 +306,7 @@ export const desktopBridge = {
       preferredBrowser: String(settings.preferredBrowser || ""),
       codeEditor: String(settings.codeEditor || ""),
       dbClientPreference: String(settings.dbClientPreference || "pma"),
+      runInBackground: Boolean(settings.runInBackground),
     };
     return call(bridge?.UpdateSettings?.bind(bridge), payload);
   },
