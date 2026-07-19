@@ -417,3 +417,57 @@ func TestRunBootstrapRemoteSyncsVendorWithTrailingSlash(t *testing.T) {
 		t.Fatal("expected vendor sync with trailing slash 'vendor/', but it was not found in subcommand calls")
 	}
 }
+
+func TestRunBootstrapRemoteSkipsComposerInstallWhenVendorSatisfiesLock(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	config := engine.Config{
+		ProjectName: "sample-project",
+		Framework:   "magento2",
+	}
+
+	opts := cmd.DefaultBootstrapRuntimeOptionsForTest()
+	opts.ComposerInstall = true
+	opts.AssumeYes = true
+	// Avoid triggering the unrelated "remote is required" gate at the top of
+	// runBootstrapRemote (requiresRemote), which is orthogonal to the
+	// composer-install-skip behavior under test here.
+	opts.DBImport = false
+	opts.MediaSync = ""
+
+	if err := os.WriteFile(filepath.Join(tempDir, "composer.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "composer.lock"), []byte(`{
+  "packages": [{"name": "psr/log", "version": "1.1.4"}],
+  "packages-dev": []
+}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	installedDir := filepath.Join(tempDir, "vendor", "composer")
+	if err := os.MkdirAll(installedDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(installedDir, "installed.json"), []byte(`{
+  "packages": [{"name": "psr/log", "version": "1.1.4"}]
+}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	composerInstallCalls := 0
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		if len(args) >= 3 && args[0] == "tool" && args[1] == "composer" && args[2] == "install" {
+			composerInstallCalls++
+		}
+		return nil
+	})()
+
+	if err := cmd.RunBootstrapRemoteForTest(&cobra.Command{}, config, opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if composerInstallCalls != 0 {
+		t.Fatalf("expected composer install to be skipped, but it was called %d time(s)", composerInstallCalls)
+	}
+}

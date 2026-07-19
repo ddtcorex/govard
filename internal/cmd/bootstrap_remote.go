@@ -89,27 +89,31 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 				}
 			}
 
-			skipped, installErr := runGovardSubcommandSkippable(cmd, govardComposerSubcommandArgs("install", "-n")...)
-			if skipped {
-				fmt.Println()
-				pterm.Warning.Println("Composer install skipped by user (SIGINT).")
-			} else if installErr != nil {
-				autoloadPath := filepath.Join(cwd, "vendor", "autoload.php")
-
-				// If the error specifically mentions that the container is not running, we must stop.
-				errText := installErr.Error()
-				if strings.Contains(errText, "not running") || strings.Contains(errText, "No such container") {
-					return fmt.Errorf("composer install failed because the container is not running. Please check 'govard status' and 'docker ps': %w", installErr)
-				}
-
-				if fileExists(autoloadPath) {
+			if satisfied, _ := engine.VendorSatisfiesComposerLock(cwd); satisfied {
+				pterm.Info.Println("vendor/ already satisfies composer.lock. Skipping composer install.")
+			} else {
+				skipped, installErr := runGovardSubcommandSkippable(cmd, govardComposerSubcommandArgs("install", "-n")...)
+				if skipped {
 					fmt.Println()
-					pterm.Warning.Printf("composer install failed, but %s exists. Continuing bootstrap (%v).\n", autoloadPath, installErr)
-				} else {
-					fmt.Println()
-					pterm.Warning.Printf("composer install failed (%v). Attempting to sync vendor from remote '%s'...\n", installErr, opts.Source)
-					if err := runGovardSubcommand(cmd, "sync", "--source", opts.Source, "--file", "--path", "vendor/", "--yes"); err != nil {
-						return fmt.Errorf("composer install failed (%v) and vendor sync failed (%v)", installErr, err)
+					pterm.Warning.Println("Composer install skipped by user (SIGINT).")
+				} else if installErr != nil {
+					autoloadPath := filepath.Join(cwd, "vendor", "autoload.php")
+
+					// If the error specifically mentions that the container is not running, we must stop.
+					errText := installErr.Error()
+					if strings.Contains(errText, "not running") || strings.Contains(errText, "No such container") {
+						return fmt.Errorf("composer install failed because the container is not running. Please check 'govard status' and 'docker ps': %w", installErr)
+					}
+
+					if fileExists(autoloadPath) {
+						fmt.Println()
+						pterm.Warning.Printf("composer install failed, but %s exists. Continuing bootstrap (%v).\n", autoloadPath, installErr)
+					} else {
+						fmt.Println()
+						pterm.Warning.Printf("composer install failed (%v). Attempting to sync vendor from remote '%s'...\n", installErr, opts.Source)
+						if err := runGovardSubcommand(cmd, "sync", "--source", opts.Source, "--file", "--path", "vendor/", "--yes"); err != nil {
+							return fmt.Errorf("composer install failed (%v) and vendor sync failed (%v)", installErr, err)
+						}
 					}
 				}
 			}

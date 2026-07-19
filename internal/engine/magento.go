@@ -89,12 +89,7 @@ func ConfigureMagento(projectName string, config Config, force bool, shiftInfo *
 		}
 	}
 
-	pterm.Info.Println("Running composer install for the new profile environment...")
-	if compErr := runMagentoComposerInstall(projectName, config, nil, nil); compErr != nil {
-		pterm.Warning.Printf("Composer install failed (continuing): %v\n", compErr)
-	} else {
-		pterm.Success.Println("Composer dependencies synchronized.")
-	}
+	maybeRunMagentoComposerInstall(projectName, config)
 
 	containerName := fmt.Sprintf("%s%s", projectName, conventions.PHPSuffix)
 	lockedKeys, _ := CheckMagentoEnvPHPLockedKeys(containerName, config)
@@ -851,6 +846,48 @@ func wipeMagentoGeneratedCaches(projectName string, config Config) error {
 		return fmt.Errorf("wipe failed: %w\nOutput: %s", err, string(output))
 	}
 	return nil
+}
+
+// runMagentoComposerInstallFn is a package-level indirection so tests can observe/stub
+// composer-install invocations without shelling out to docker.
+var runMagentoComposerInstallFn = runMagentoComposerInstall
+
+// SetMagentoComposerInstallRunnerForTest overrides the composer-install runner used by
+// maybeRunMagentoComposerInstall for tests.
+func SetMagentoComposerInstallRunnerForTest(fn func(projectName string, config Config, stdout, stderr io.Writer) error) func() {
+	prev := runMagentoComposerInstallFn
+	runMagentoComposerInstallFn = fn
+	return func() {
+		runMagentoComposerInstallFn = prev
+	}
+}
+
+// MaybeRunMagentoComposerInstallForTest exposes maybeRunMagentoComposerInstall for tests in /tests.
+func MaybeRunMagentoComposerInstallForTest(projectName string, config Config) {
+	maybeRunMagentoComposerInstall(projectName, config)
+}
+
+// maybeRunMagentoComposerInstall runs composer install for the given project unless the
+// current working directory's vendor/ already satisfies composer.lock, in which case it is
+// skipped (this is what previously made `govard config auto` retry a private-repo
+// authentication failure that a remote vendor-sync fallback had already recovered from).
+func maybeRunMagentoComposerInstall(projectName string, config Config) {
+	skipComposerInstall := false
+	if projectRoot, rootErr := os.Getwd(); rootErr == nil {
+		skipComposerInstall, _ = VendorSatisfiesComposerLock(projectRoot)
+	}
+
+	if skipComposerInstall {
+		pterm.Info.Println("vendor/ already satisfies composer.lock. Skipping composer install.")
+		return
+	}
+
+	pterm.Info.Println("Running composer install for the new profile environment...")
+	if compErr := runMagentoComposerInstallFn(projectName, config, nil, nil); compErr != nil {
+		pterm.Warning.Printf("Composer install failed (continuing): %v\n", compErr)
+	} else {
+		pterm.Success.Println("Composer dependencies synchronized.")
+	}
 }
 
 func runMagentoComposerInstall(projectName string, config Config, stdout, stderr io.Writer) error {
