@@ -4,11 +4,14 @@ import (
 	"testing"
 
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/cakephp"
 	"govard/internal/frameworks/drupal"
 	"govard/internal/frameworks/laravel"
 	"govard/internal/frameworks/magento1"
 	"govard/internal/frameworks/magento2"
 	"govard/internal/frameworks/openmage"
+	"govard/internal/frameworks/prestashop"
+	"govard/internal/frameworks/shopware"
 	"govard/internal/frameworks/symfony"
 	"govard/internal/frameworks/types"
 	"govard/internal/frameworks/wordpress"
@@ -79,5 +82,32 @@ func TestMainstreamPHPFrameworkDefinitions(t *testing.T) {
 
 	if wordpress.Definition().Aliases[0] != "wp" {
 		t.Errorf("wordpress Aliases = %v, want first alias %q", wordpress.Definition().Aliases, "wp")
+	}
+}
+
+func TestRemainingPHPFrameworkDefinitions(t *testing.T) {
+	cases := []struct {
+		name string
+		def  types.FrameworkDefinition
+	}{
+		{"shopware", shopware.Definition()},
+		{"cakephp", cakephp.Definition()},
+		{"prestashop", prestashop.Definition()},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.def.Name != tc.name {
+				t.Errorf("Name = %q, want %q", tc.def.Name, tc.name)
+			}
+			if tc.def.Bootstrap == nil {
+				t.Fatalf("%s Bootstrap should not be nil", tc.name)
+			}
+			// prestashop's bootstrapper legitimately returns an empty
+			// command list (SupportsFreshInstall() is false) - confirmed
+			// in Plan 1's golden snapshot, so don't assert len > 0 here.
+			_ = tc.def.Bootstrap(bootstrap.Options{}).FreshCommands()
+		})
 	}
 }
