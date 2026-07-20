@@ -1,0 +1,22 @@
+package wordpress
+
+import (
+	"govard/internal/engine"
+	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/types"
+)
+
+func Definition() types.FrameworkDefinition {
+	config, _ := engine.GetFrameworkConfig("wordpress")
+	manifest, _ := engine.GetFrameworkManifestConfig("wordpress")
+	return types.FrameworkDefinition{
+		Name:        "wordpress",
+		Aliases:     []string{"wp"},
+		DisplayName: "WordPress",
+		Config:      config,
+		Manifest:    manifest,
+		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
+			return bootstrap.NewWordPressBootstrap(opts)
+		},
+	}
+}

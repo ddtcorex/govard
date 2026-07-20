@@ -4,9 +4,14 @@ import (
 	"testing"
 
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/drupal"
+	"govard/internal/frameworks/laravel"
 	"govard/internal/frameworks/magento1"
 	"govard/internal/frameworks/magento2"
 	"govard/internal/frameworks/openmage"
+	"govard/internal/frameworks/symfony"
+	"govard/internal/frameworks/types"
+	"govard/internal/frameworks/wordpress"
 )
 
 func TestMagentoFamilyDefinitions(t *testing.T) {
@@ -43,5 +48,36 @@ func TestMagentoFamilyDefinitions(t *testing.T) {
 	}
 	if cmds := om.Bootstrap(bootstrap.Options{}).FreshCommands(); len(cmds) == 0 {
 		t.Error("openmage Bootstrap factory should produce at least one fresh command")
+	}
+}
+
+func TestMainstreamPHPFrameworkDefinitions(t *testing.T) {
+	cases := []struct {
+		name string
+		def  types.FrameworkDefinition
+	}{
+		{"laravel", laravel.Definition()},
+		{"symfony", symfony.Definition()},
+		{"drupal", drupal.Definition()},
+		{"wordpress", wordpress.Definition()},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.def.Name != tc.name {
+				t.Errorf("Name = %q, want %q", tc.def.Name, tc.name)
+			}
+			if tc.def.Bootstrap == nil {
+				t.Fatalf("%s Bootstrap should not be nil", tc.name)
+			}
+			if cmds := tc.def.Bootstrap(bootstrap.Options{}).FreshCommands(); len(cmds) == 0 {
+				t.Errorf("%s Bootstrap factory should produce at least one fresh command", tc.name)
+			}
+		})
+	}
+
+	if wordpress.Definition().Aliases[0] != "wp" {
+		t.Errorf("wordpress Aliases = %v, want first alias %q", wordpress.Definition().Aliases, "wp")
 	}
 }
