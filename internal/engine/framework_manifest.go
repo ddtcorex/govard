@@ -103,6 +103,13 @@ func getFrameworkManifestConfig(framework string) (FrameworkManifestConfig, bool
 	return config, ok
 }
 
+// GetFrameworkManifestConfig returns the raw manifest configuration for
+// framework (sync/media excludes, sensitive tables, feature flags), as
+// loaded from framework_manifest.json.
+func GetFrameworkManifestConfig(framework string) (FrameworkManifestConfig, bool) {
+	return getFrameworkManifestConfig(framework)
+}
+
 func appendStrings(dst []string, values []string) []string {
 	if len(values) == 0 {
 		return dst
