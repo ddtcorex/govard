@@ -19,6 +19,15 @@ type Options struct {
 	// Environment configuration
 	Domain      string
 	ProjectName string
+
+	// PrestaShop encryption secrets carried over from a remote's parameters.php, so a
+	// fabricated local parameters.php can reuse them instead of generating fresh ones
+	// (module data encrypted under the remote's keys would otherwise be undecryptable
+	// after a DB clone). Left empty when no remote secrets were available/probed.
+	PrestaShopSecret       string
+	PrestaShopCookieKey    string
+	PrestaShopCookieIV     string
+	PrestaShopNewCookieKey string
 }
 
 func DefaultOptions() Options {

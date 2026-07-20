@@ -9,10 +9,22 @@ import (
 	"govard/internal/engine"
 )
 
-// PrestaShopEnvironment holds DB credentials extracted remotely from a
-// PrestaShop app/config/parameters.php.
+// PrestaShopEnvironment holds DB credentials and encryption secrets extracted
+// remotely from a PrestaShop app/config/parameters.php.
 type PrestaShopEnvironment struct {
-	DB MagentoDBInfo
+	DB      MagentoDBInfo
+	Secrets PrestaShopSecrets
+}
+
+// PrestaShopSecrets holds the encryption-related parameters.php keys. These are
+// carried over (rather than regenerated) when fabricating a local parameters.php
+// after a clone, so that any module data encrypted under the remote's keys stays
+// decryptable locally.
+type PrestaShopSecrets struct {
+	Secret       string
+	CookieKey    string
+	CookieIV     string
+	NewCookieKey string
 }
 
 // ProbePrestaShopEnvironment SSHs to the remote environment and includes
@@ -42,11 +54,15 @@ func decodePrestaShopEnvironmentPayload(encoded string) (PrestaShopEnvironment, 
 	}
 
 	var payload struct {
-		Host        string `json:"host"`
-		Username    string `json:"username"`
-		Password    string `json:"password"`
-		DBName      string `json:"dbname"`
-		TablePrefix string `json:"table_prefix"`
+		Host         string `json:"host"`
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+		DBName       string `json:"dbname"`
+		TablePrefix  string `json:"table_prefix"`
+		Secret       string `json:"secret"`
+		CookieKey    string `json:"cookie_key"`
+		CookieIV     string `json:"cookie_iv"`
+		NewCookieKey string `json:"new_cookie_key"`
 	}
 	if err := json.Unmarshal(decoded, &payload); err != nil {
 		return PrestaShopEnvironment{}, fmt.Errorf("parse remote probe payload: %w", err)
@@ -68,6 +84,12 @@ func decodePrestaShopEnvironmentPayload(encoded string) (PrestaShopEnvironment, 
 			Database:    database,
 			TablePrefix: engine.SafeTablePrefix(payload.TablePrefix),
 		},
+		Secrets: PrestaShopSecrets{
+			Secret:       strings.TrimSpace(payload.Secret),
+			CookieKey:    strings.TrimSpace(payload.CookieKey),
+			CookieIV:     strings.TrimSpace(payload.CookieIV),
+			NewCookieKey: strings.TrimSpace(payload.NewCookieKey),
+		},
 	}, nil
 }
 
@@ -76,6 +98,7 @@ func decodePrestaShopEnvironmentPayload(encoded string) (PrestaShopEnvironment, 
 // reads the database_* keys out of the returned array.
 const prestashopParametersProbePHP = `
 $dbhost=""; $dbport=""; $dbuser=""; $dbpass=""; $dbname=""; $dbprefix="";
+$secret=""; $cookieKey=""; $cookieIV=""; $newCookieKey="";
 $f = "app/config/parameters.php";
 if (@is_file($f)) {
     $config = include $f;
@@ -87,9 +110,13 @@ if (@is_file($f)) {
         $dbpass = isset($p['database_password']) ? (string)$p['database_password'] : "";
         $dbname = isset($p['database_name']) ? (string)$p['database_name'] : "";
         $dbprefix = isset($p['database_prefix']) ? (string)$p['database_prefix'] : "";
+        $secret = isset($p['secret']) ? (string)$p['secret'] : "";
+        $cookieKey = isset($p['cookie_key']) ? (string)$p['cookie_key'] : "";
+        $cookieIV = isset($p['cookie_iv']) ? (string)$p['cookie_iv'] : "";
+        $newCookieKey = isset($p['new_cookie_key']) ? (string)$p['new_cookie_key'] : "";
     }
 }
 $host = $dbhost;
 if ($dbport !== "") { $host = $dbhost . ":" . $dbport; }
-$r = ["host"=>$host, "username"=>$dbuser, "password"=>$dbpass, "dbname"=>$dbname, "table_prefix"=>$dbprefix];
+$r = ["host"=>$host, "username"=>$dbuser, "password"=>$dbpass, "dbname"=>$dbname, "table_prefix"=>$dbprefix, "secret"=>$secret, "cookie_key"=>$cookieKey, "cookie_iv"=>$cookieIV, "new_cookie_key"=>$newCookieKey];
 echo base64_encode(json_encode($r));`

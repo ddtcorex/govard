@@ -149,6 +149,37 @@ func (p *PrestaShopBootstrap) resolveDBConfig() (host, user, pass, name, prefix 
 	return host, user, pass, name, prefix
 }
 
+// resolveSecrets returns the secret/cookie_key/cookie_iv/new_cookie_key values to write
+// into a fabricated parameters.php. Each one is taken from the remote-probed value on
+// Options when present (so any module data encrypted under the remote's keys stays
+// decryptable locally), falling back to a freshly generated random value otherwise.
+func (p *PrestaShopBootstrap) resolveSecrets() (secret, cookieKey, cookieIV, newCookieKey string, err error) {
+	secret, err = resolveOrGeneratePrestaShopSecret(p.Options.PrestaShopSecret)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("generate secret: %w", err)
+	}
+	cookieKey, err = resolveOrGeneratePrestaShopSecret(p.Options.PrestaShopCookieKey)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("generate cookie_key: %w", err)
+	}
+	cookieIV, err = resolveOrGeneratePrestaShopSecret(p.Options.PrestaShopCookieIV)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("generate cookie_iv: %w", err)
+	}
+	newCookieKey, err = resolveOrGeneratePrestaShopSecret(p.Options.PrestaShopNewCookieKey)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("generate new_cookie_key: %w", err)
+	}
+	return secret, cookieKey, cookieIV, newCookieKey, nil
+}
+
+func resolveOrGeneratePrestaShopSecret(remoteValue string) (string, error) {
+	if trimmed := strings.TrimSpace(remoteValue); trimmed != "" {
+		return trimmed, nil
+	}
+	return generatePrestaShopSecret()
+}
+
 func (p *PrestaShopBootstrap) patchParametersFile(parametersPath string) error {
 	data, err := os.ReadFile(parametersPath)
 	if err != nil {
@@ -177,21 +208,9 @@ func (p *PrestaShopBootstrap) patchParametersFile(parametersPath string) error {
 func (p *PrestaShopBootstrap) createParametersFile(parametersPath string) error {
 	host, user, pass, name, prefix := p.resolveDBConfig()
 
-	secret, err := generatePrestaShopSecret()
+	secret, cookieKey, cookieIV, newCookieKey, err := p.resolveSecrets()
 	if err != nil {
-		return fmt.Errorf("generate secret: %w", err)
-	}
-	cookieKey, err := generatePrestaShopSecret()
-	if err != nil {
-		return fmt.Errorf("generate cookie_key: %w", err)
-	}
-	cookieIV, err := generatePrestaShopSecret()
-	if err != nil {
-		return fmt.Errorf("generate cookie_iv: %w", err)
-	}
-	newCookieKey, err := generatePrestaShopSecret()
-	if err != nil {
-		return fmt.Errorf("generate new_cookie_key: %w", err)
+		return err
 	}
 
 	content := fmt.Sprintf(`<?php

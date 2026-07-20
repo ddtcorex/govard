@@ -57,6 +57,42 @@ func TestBootstrapPkgPrestaShopPostCloneGeneratesParametersFile(t *testing.T) {
 	}
 }
 
+func TestBootstrapPkgPrestaShopPostCloneReusesRemoteSecretsWhenProvided(t *testing.T) {
+	projectDir := t.TempDir()
+	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{
+		DBHost:                 "db",
+		DBUser:                 "shopuser",
+		DBPass:                 "shoppass",
+		DBName:                 "shopdb",
+		TablePrefix:            "shop_",
+		PrestaShopSecret:       "remote-secret",
+		PrestaShopCookieKey:    "remote-cookie-key",
+		PrestaShopCookieIV:     "remote-cookie-iv",
+		PrestaShopNewCookieKey: "remote-new-cookie-key",
+	})
+
+	if err := prestashop.PostClone(projectDir); err != nil {
+		t.Fatalf("PostClone() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(projectDir, "app", "config", "parameters.php"))
+	if err != nil {
+		t.Fatalf("read parameters.php: %v", err)
+	}
+	generated := string(content)
+
+	for _, expected := range []string{
+		"'secret' => 'remote-secret'",
+		"'cookie_key' => 'remote-cookie-key'",
+		"'cookie_iv' => 'remote-cookie-iv'",
+		"'new_cookie_key' => 'remote-new-cookie-key'",
+	} {
+		if !strings.Contains(generated, expected) {
+			t.Fatalf("expected generated parameters.php to reuse remote secret %q, got:\n%s", expected, generated)
+		}
+	}
+}
+
 func TestBootstrapPkgPrestaShopPostClonePatchesExistingParametersFile(t *testing.T) {
 	projectDir := t.TempDir()
 	configDir := filepath.Join(projectDir, "app", "config")
