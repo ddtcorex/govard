@@ -176,12 +176,18 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 		if config.Framework == "prestashop" {
 			if remoteCfg, ok := config.Remotes[opts.Source]; ok {
 				if psEnv, err := remote.ProbePrestaShopEnvironment(opts.Source, remoteCfg); err == nil {
+					// The remote's actual table prefix reflects the DB that was just
+					// imported and takes priority over local config, same precedence as
+					// resolveRemoteDBCredentials uses for every other framework.
+					if remotePrefix := engine.SafeTablePrefix(psEnv.DB.TablePrefix); remotePrefix != "" {
+						bootstrapOpts.TablePrefix = remotePrefix
+					}
 					bootstrapOpts.PrestaShopSecret = psEnv.Secrets.Secret
 					bootstrapOpts.PrestaShopCookieKey = psEnv.Secrets.CookieKey
 					bootstrapOpts.PrestaShopCookieIV = psEnv.Secrets.CookieIV
 					bootstrapOpts.PrestaShopNewCookieKey = psEnv.Secrets.NewCookieKey
 				} else {
-					pterm.Warning.Printf("Could not probe remote PrestaShop secrets, generating new ones: %v\n", err)
+					pterm.Warning.Printf("Could not probe remote PrestaShop secrets/table prefix, falling back to local config: %v\n", err)
 				}
 			}
 		}

@@ -50,10 +50,15 @@ func TestBootstrapPkgPrestaShopPostCloneGeneratesParametersFile(t *testing.T) {
 		"'database_password' => 'shoppass'",
 		"'database_name' => 'shopdb'",
 		"'database_prefix' => 'shop_'",
+		"'mailer_host' => 'mail'",
+		"'mailer_port' => 1025",
 	} {
 		if !strings.Contains(generated, expected) {
 			t.Fatalf("expected generated parameters.php to contain %q, got:\n%s", expected, generated)
 		}
+	}
+	if strings.Contains(generated, "mailpit") {
+		t.Fatalf("expected parameters.php to point at the govard mail service ('mail'), not 'mailpit', got:\n%s", generated)
 	}
 }
 
