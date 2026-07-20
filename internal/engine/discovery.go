@@ -93,6 +93,14 @@ func DetectFramework(root string) ProjectMetadata {
 		return metadata
 	}
 
+	// Heuristic: PrestaShop files. config/defines.inc.php is present in every
+	// PrestaShop version (1.6 through 9.x) and PrestaShop isn't reliably a composer
+	// "require" entry since it's the root package, not a dependency.
+	if _, err := os.Stat(filepath.Join(root, "config", "defines.inc.php")); err == nil {
+		metadata.Framework = "prestashop"
+		return metadata
+	}
+
 	return metadata
 }
 
