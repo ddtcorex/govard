@@ -1,0 +1,58 @@
+{
+  "framework_config": {
+    "Name": "emdash",
+    "Runtime": "node",
+    "AppService": "web",
+    "AppWorkdir": "/app",
+    "NGINXPUBLIC": "",
+    "NGINXTemplate": "",
+    "DatabaseName": "",
+    "DefaultPHP": "",
+    "DefaultNodeVer": "22",
+    "DefaultDB": "none",
+    "DefaultDBVer": "",
+    "DefaultMySQLVer": "",
+    "DefaultNginxVer": "1.28",
+    "DefaultApacheVer": "2.4",
+    "DefaultCacheVer": "",
+    "DefaultSearchVer": "",
+    "DefaultVarnishVer": "",
+    "DefaultQueueVer": "4.2",
+    "DefaultWebServer": "none",
+    "DefaultSearch": "none",
+    "DefaultCache": "none",
+    "DefaultQueue": "none",
+    "DefaultComposerVer": "",
+    "Includes": [
+      "emdash/services.yml"
+    ]
+  },
+  "runtime_profile": {
+    "Profile": {
+      "Framework": "emdash",
+      "FrameworkVersion": "",
+      "PHPVersion": "",
+      "NodeVersion": "22",
+      "DB": "none",
+      "DBVersion": "",
+      "WebRoot": "",
+      "WebServer": "none",
+      "Cache": "none",
+      "CacheVersion": "",
+      "NginxVersion": "1.28",
+      "ApacheVersion": "2.4",
+      "Search": "none",
+      "SearchVersion": "",
+      "VarnishVersion": "",
+      "Queue": "none",
+      "QueueVersion": "",
+      "ComposerVersion": "",
+      "XdebugSession": "PHPSTORM"
+    },
+    "Source": "framework-defaults",
+    "Notes": [
+      "Framework version is not detected. Using framework defaults."
+    ],
+    "Warnings": null
+  }
+}

@@ -1,0 +1,43 @@
+networks:
+    govard-net:
+        driver: bridge
+    govard-proxy:
+        external: true
+services:
+    php:
+        environment:
+            CHOWN_DIR_LIST: /bash_history
+            COMPOSER_CACHE_DIR: /home/www-data/.cache/composer
+            COMPOSER_HOME: /home/www-data/.composer
+            COMPOSER_VERSION: latest
+            GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+            NODE_VERSION: "24"
+            PGID: 1000
+            PUID: 1000
+            XDEBUG_MODE: "off"
+        extra_hosts:
+            - host.docker.internal:host-gateway
+            - mail:host-gateway
+        hostname: snapshot-wordpress-php-fpm
+        image: ddtcorex/govard-php:8.3
+        networks:
+            - govard-net
+        volumes:
+            - .:/var/www/html
+    web:
+        depends_on:
+            - php
+        environment:
+            - NGINX_PUBLIC=
+            - NGINX_TEMPLATE=wordpress.conf
+            - PUID=1000
+            - PGID=1000
+            - CHOWN_DIR_LIST="/bash_history"
+        hostname: snapshot-wordpress-web
+        image: ddtcorex/govard-nginx:1.28
+        networks:
+            - govard-net
+            - govard-proxy
+        volumes:
+            - .:/var/www/html
+            - <GOVARD_HOME>/nginx/snapshot-wordpress/default.conf:/etc/nginx/templates/wordpress.conf:ro

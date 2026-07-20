@@ -1,0 +1,61 @@
+{
+  "framework_config": {
+    "Name": "drupal",
+    "Runtime": "php",
+    "AppService": "php",
+    "AppWorkdir": "/var/www/html",
+    "NGINXPUBLIC": "/web",
+    "NGINXTemplate": "drupal.conf",
+    "DatabaseName": "drupal",
+    "DefaultPHP": "8.4",
+    "DefaultNodeVer": "",
+    "DefaultDB": "mariadb",
+    "DefaultDBVer": "11.4",
+    "DefaultMySQLVer": "8.4",
+    "DefaultNginxVer": "1.28",
+    "DefaultApacheVer": "2.4",
+    "DefaultCacheVer": "7.4",
+    "DefaultSearchVer": "3.0",
+    "DefaultVarnishVer": "8.0",
+    "DefaultQueueVer": "4.2",
+    "DefaultWebServer": "nginx",
+    "DefaultSearch": "none",
+    "DefaultCache": "none",
+    "DefaultQueue": "none",
+    "DefaultComposerVer": "latest",
+    "Includes": [
+      "includes/base.yml",
+      "includes/redis.yml",
+      "includes/elasticsearch.yml",
+      "includes/rabbitmq.yml"
+    ]
+  },
+  "runtime_profile": {
+    "Profile": {
+      "Framework": "drupal",
+      "FrameworkVersion": "",
+      "PHPVersion": "8.4",
+      "NodeVersion": "",
+      "DB": "mariadb",
+      "DBVersion": "11.4",
+      "WebRoot": "/web",
+      "WebServer": "nginx",
+      "Cache": "none",
+      "CacheVersion": "",
+      "NginxVersion": "1.28",
+      "ApacheVersion": "2.4",
+      "Search": "none",
+      "SearchVersion": "",
+      "VarnishVersion": "8.0",
+      "Queue": "none",
+      "QueueVersion": "",
+      "ComposerVersion": "latest",
+      "XdebugSession": "PHPSTORM"
+    },
+    "Source": "framework-defaults",
+    "Notes": [
+      "Framework version is not detected. Using framework defaults."
+    ],
+    "Warnings": null
+  }
+}

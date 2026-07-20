@@ -1,0 +1,24 @@
+networks:
+    govard-net:
+        driver: bridge
+    govard-proxy:
+        external: true
+services:
+    web:
+        command: |
+            sh -lc 'if [ ! -d node_modules ] || [ -z "$$(ls -A node_modules 2>/dev/null)" ]; then npm install; fi; exec npm run dev -- --host 0.0.0.0 --port 80 --allowed-hosts snapshot-emdash.test;'
+        environment:
+            - GOVARD_TRUSTED_DOMAIN=snapshot-emdash.test
+            - NODE_ENV=development
+            - PORT=80
+        image: node:22
+        networks:
+            - govard-net
+            - govard-proxy
+        user: root
+        volumes:
+            - .:/app
+            - node-modules:/app/node_modules
+        working_dir: /app
+volumes:
+    node-modules: null

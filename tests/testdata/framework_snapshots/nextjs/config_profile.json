@@ -1,0 +1,60 @@
+{
+  "framework_config": {
+    "Name": "nextjs",
+    "Runtime": "node",
+    "AppService": "web",
+    "AppWorkdir": "/app",
+    "NGINXPUBLIC": "",
+    "NGINXTemplate": "nodejs.conf",
+    "DatabaseName": "",
+    "DefaultPHP": "",
+    "DefaultNodeVer": "24",
+    "DefaultDB": "none",
+    "DefaultDBVer": "",
+    "DefaultMySQLVer": "",
+    "DefaultNginxVer": "1.28",
+    "DefaultApacheVer": "2.4",
+    "DefaultCacheVer": "",
+    "DefaultSearchVer": "",
+    "DefaultVarnishVer": "",
+    "DefaultQueueVer": "4.2",
+    "DefaultWebServer": "none",
+    "DefaultSearch": "none",
+    "DefaultCache": "none",
+    "DefaultQueue": "none",
+    "DefaultComposerVer": "",
+    "Includes": [
+      "nextjs/services.yml",
+      "includes/redis.yml",
+      "includes/rabbitmq.yml"
+    ]
+  },
+  "runtime_profile": {
+    "Profile": {
+      "Framework": "nextjs",
+      "FrameworkVersion": "",
+      "PHPVersion": "",
+      "NodeVersion": "24",
+      "DB": "none",
+      "DBVersion": "",
+      "WebRoot": "",
+      "WebServer": "none",
+      "Cache": "none",
+      "CacheVersion": "",
+      "NginxVersion": "1.28",
+      "ApacheVersion": "2.4",
+      "Search": "none",
+      "SearchVersion": "",
+      "VarnishVersion": "",
+      "Queue": "none",
+      "QueueVersion": "",
+      "ComposerVersion": "",
+      "XdebugSession": "PHPSTORM"
+    },
+    "Source": "framework-defaults",
+    "Notes": [
+      "Framework version is not detected. Using framework defaults."
+    ],
+    "Warnings": null
+  }
+}

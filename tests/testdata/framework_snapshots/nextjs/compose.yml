@@ -1,0 +1,19 @@
+networks:
+    govard-net:
+        driver: bridge
+    govard-proxy:
+        external: true
+services:
+    web:
+        command: npm run dev -- --hostname 0.0.0.0 --port 80
+        environment:
+            - NODE_ENV=development
+            - PORT=80
+        image: node:24
+        networks:
+            - govard-net
+            - govard-proxy
+        user: root
+        volumes:
+            - .:/app
+        working_dir: /app

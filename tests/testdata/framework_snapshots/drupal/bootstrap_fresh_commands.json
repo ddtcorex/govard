@@ -1,0 +1,3 @@
+[
+  "composer create-project drupal/recommended-project:^10 ."
+]

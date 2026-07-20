@@ -1,0 +1,62 @@
+{
+  "framework_config": {
+    "Name": "magento1",
+    "Runtime": "php",
+    "AppService": "php",
+    "AppWorkdir": "/var/www/html",
+    "NGINXPUBLIC": "",
+    "NGINXTemplate": "magento1.conf",
+    "DatabaseName": "magento",
+    "DefaultPHP": "8.1",
+    "DefaultNodeVer": "",
+    "DefaultDB": "mariadb",
+    "DefaultDBVer": "10.11",
+    "DefaultMySQLVer": "8.0",
+    "DefaultNginxVer": "1.28",
+    "DefaultApacheVer": "2.4",
+    "DefaultCacheVer": "7.0",
+    "DefaultSearchVer": "1.3",
+    "DefaultVarnishVer": "6.0",
+    "DefaultQueueVer": "4.2",
+    "DefaultWebServer": "nginx",
+    "DefaultSearch": "none",
+    "DefaultCache": "none",
+    "DefaultQueue": "none",
+    "DefaultComposerVer": "2.2",
+    "Includes": [
+      "includes/base.yml",
+      "includes/redis.yml",
+      "includes/elasticsearch.yml",
+      "magento1/services.yml",
+      "includes/rabbitmq.yml"
+    ]
+  },
+  "runtime_profile": {
+    "Profile": {
+      "Framework": "magento1",
+      "FrameworkVersion": "",
+      "PHPVersion": "8.1",
+      "NodeVersion": "",
+      "DB": "mariadb",
+      "DBVersion": "10.11",
+      "WebRoot": "",
+      "WebServer": "nginx",
+      "Cache": "none",
+      "CacheVersion": "",
+      "NginxVersion": "1.28",
+      "ApacheVersion": "2.4",
+      "Search": "none",
+      "SearchVersion": "",
+      "VarnishVersion": "6.0",
+      "Queue": "none",
+      "QueueVersion": "",
+      "ComposerVersion": "2.2",
+      "XdebugSession": "PHPSTORM"
+    },
+    "Source": "framework-defaults",
+    "Notes": [
+      "Framework version is not detected. Using framework defaults."
+    ],
+    "Warnings": null
+  }
+}

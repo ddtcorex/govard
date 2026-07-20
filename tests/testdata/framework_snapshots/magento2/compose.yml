@@ -1,0 +1,44 @@
+networks:
+    govard-net:
+        driver: bridge
+    govard-proxy:
+        external: true
+services:
+    php:
+        environment:
+            CHOWN_DIR_LIST: /bash_history /var/www/html /home/www-data/.cache/composer
+            COMPOSER_CACHE_DIR: /home/www-data/.cache/composer
+            COMPOSER_HOME: /home/www-data/.composer
+            COMPOSER_VERSION: latest
+            GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+            NODE_VERSION: "24"
+            PGID: 1000
+            PUID: 1000
+            XDEBUG_MODE: "off"
+        extra_hosts:
+            - host.docker.internal:host-gateway
+            - mail:host-gateway
+        hostname: snapshot-magento2-php-fpm
+        image: ddtcorex/govard-php-magento2:8.5
+        networks:
+            - govard-net
+        volumes:
+            - .:/var/www/html
+    web:
+        depends_on:
+            - php
+        environment:
+            - NGINX_PUBLIC=/pub
+            - NGINX_TEMPLATE=magento2.conf
+            - PUID=1000
+            - PGID=1000
+            - CHOWN_DIR_LIST="/bash_history /var/www/html /home/www-data/.cache/composer"
+        hostname: snapshot-magento2-web
+        image: ddtcorex/govard-nginx:1.28
+        networks:
+            - govard-net
+            - govard-proxy
+        volumes:
+            - .:/var/www/html
+            - <GOVARD_HOME>/nginx/snapshot-magento2/default.conf:/etc/nginx/templates/magento2.conf:ro
+            - <GOVARD_HOME>/nginx/snapshot-magento2/mage-run-map.conf:/etc/nginx/conf.d/mage-run-map.conf:ro
