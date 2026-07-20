@@ -409,6 +409,7 @@ govard tool symfony [command]    # Symfony
 govard tool shopware [command]   # Shopware
 govard tool cake [command]       # CakePHP
 govard tool wp [command]         # WordPress
+govard tool prestashop [command] # PrestaShop
 
 # General tools
 govard tool composer [command]

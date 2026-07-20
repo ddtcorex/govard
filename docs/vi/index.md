@@ -19,7 +19,7 @@ features:
   - title: Docker SDK Orchestration
     details: Tích hợp trực tiếp Docker SDK giúp hành vi lifecycle có thể dự đoán — không dùng shell-script chắp vá, chỉ có orchestration Go native.
   - title: Framework Auto-Detection
-    details: Tự động nhận diện Magento 1/2, Laravel, Next.js, Drupal, Symfony, Shopware, CakePHP, WordPress và nhiều framework khác từ project files.
+    details: Tự động nhận diện Magento 1/2, Laravel, Next.js, Drupal, Symfony, Shopware, CakePHP, PrestaShop, WordPress và nhiều framework khác từ project files.
   - title: Local HTTPS & DNS
     details: Tích hợp sẵn Caddy proxy + dnsmasq + Root CA auto-trust cho các domain *.test — phát triển local an toàn với zero-config.
   - title: Remote Management

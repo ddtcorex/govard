@@ -411,6 +411,7 @@ govard tool symfony [command]    # Symfony
 govard tool shopware [command]   # Shopware
 govard tool cake [command]       # CakePHP
 govard tool wp [command]         # WordPress
+govard tool prestashop [command] # PrestaShop
 
 # Các công cụ quản lý package & build dùng chung
 govard tool composer [command]
