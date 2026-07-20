@@ -28,10 +28,11 @@ const (
 )
 
 const (
-	Magento1LocalXml = "app/etc/local.xml"
-	Magento2EnvPhp   = "app/etc/env.php"
-	DotEnvFile       = ".env"
-	WordPressConfig  = "wp-config.php"
+	Magento1LocalXml         = "app/etc/local.xml"
+	Magento2EnvPhp           = "app/etc/env.php"
+	DotEnvFile               = ".env"
+	WordPressConfig          = "wp-config.php"
+	PrestaShopParametersFile = "app/config/parameters.php"
 
 	// Lifecycle directories
 	MagentoGeneratedDir = "generated"

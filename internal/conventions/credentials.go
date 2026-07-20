@@ -27,4 +27,9 @@ const (
 	DefaultWordPressDBUser = "wordpress"
 	DefaultWordPressDBPass = "wordpress"
 	DefaultWordPressDBName = "wordpress"
+
+	DefaultPrestaShopDBUser      = "prestashop"
+	DefaultPrestaShopDBPass      = "prestashop"
+	DefaultPrestaShopDBName      = "prestashop"
+	DefaultPrestaShopTablePrefix = "ps_"
 )
