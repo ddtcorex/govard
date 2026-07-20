@@ -160,7 +160,8 @@ return array (
 func TestBuildPrestaShopShopURLSQL(t *testing.T) {
 	sql := bootstrap.BuildPrestaShopShopURLSQLForTest("shop_", "castelas-sutunam.test")
 
-	expected := "UPDATE shop_shop_url SET domain = 'castelas-sutunam.test', domain_ssl = 'castelas-sutunam.test' WHERE id_shop_url = 1;"
+	expected := "UPDATE shop_shop_url SET domain = 'castelas-sutunam.test', domain_ssl = 'castelas-sutunam.test' WHERE id_shop_url = 1; " +
+		"UPDATE shop_configuration SET value = 'castelas-sutunam.test' WHERE name IN ('PS_SHOP_DOMAIN', 'PS_SHOP_DOMAIN_SSL');"
 	if sql != expected {
 		t.Fatalf("expected SQL:\n%s\ngot:\n%s", expected, sql)
 	}
@@ -170,7 +171,10 @@ func TestBuildPrestaShopShopURLSQLEscapesQuotes(t *testing.T) {
 	sql := bootstrap.BuildPrestaShopShopURLSQLForTest("ps_", "o'brien.test")
 
 	if !strings.Contains(sql, `domain = 'o\'brien.test'`) {
-		t.Fatalf("expected escaped domain in SQL, got:\n%s", sql)
+		t.Fatalf("expected escaped domain in shop_url SQL, got:\n%s", sql)
+	}
+	if !strings.Contains(sql, `value = 'o\'brien.test'`) {
+		t.Fatalf("expected escaped domain in configuration SQL, got:\n%s", sql)
 	}
 }
 

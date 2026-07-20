@@ -105,11 +105,14 @@ func (p *PrestaShopBootstrap) PostClone(projectDir string) error {
 	return nil
 }
 
-// updateShopURL points the shop's primary domain (ps_shop_url, id_shop_url = 1) at the
-// local govard domain. Without this, PrestaShop keeps serving/redirecting to whatever
-// domain was set on the source environment the project was cloned from, since (unlike
-// WordPress's siteurl/home options or Shopware's sales channel domain) nothing else in
-// the bootstrap flow touches this table.
+// updateShopURL points the shop's primary domain at the local govard domain. Without
+// this, PrestaShop keeps serving/redirecting to whatever domain was set on the source
+// environment the project was cloned from, since (unlike WordPress's siteurl/home
+// options or Shopware's sales channel domain) nothing else in the bootstrap flow touches
+// this. PrestaShop keeps the domain in two separate places that don't auto-sync with
+// each other: the ps_shop_url table (id_shop_url = 1) and a denormalized copy in
+// ps_configuration (PS_SHOP_DOMAIN/PS_SHOP_DOMAIN_SSL, read by Tools::getShopDomain*())
+// — both need updating or pages/redirects keep resolving against the old domain.
 func (p *PrestaShopBootstrap) updateShopURL() error {
 	domain := strings.TrimSpace(p.Options.Domain)
 	projectName := strings.TrimSpace(p.Options.ProjectName)
@@ -127,13 +130,15 @@ func BuildPrestaShopShopURLSQLForTest(prefix, domain string) string {
 	return buildPrestaShopShopURLSQL(prefix, domain)
 }
 
-// buildPrestaShopShopURLSQL returns the SQL statement that sets ps_shop_url's domain and
-// domain_ssl columns for the shop's primary entry (id_shop_url = 1) to the given domain.
+// buildPrestaShopShopURLSQL returns the SQL statements that set the shop's primary
+// domain in both ps_shop_url (id_shop_url = 1) and its ps_configuration denormalized
+// copy (PS_SHOP_DOMAIN/PS_SHOP_DOMAIN_SSL) to the given domain.
 func buildPrestaShopShopURLSQL(prefix, domain string) string {
 	quoted := singleQuoteEscape(domain)
 	return fmt.Sprintf(
-		"UPDATE %sshop_url SET domain = %s, domain_ssl = %s WHERE id_shop_url = 1;",
-		prefix, quoted, quoted,
+		"UPDATE %[1]sshop_url SET domain = %[2]s, domain_ssl = %[2]s WHERE id_shop_url = 1; "+
+			"UPDATE %[1]sconfiguration SET value = %[2]s WHERE name IN ('PS_SHOP_DOMAIN', 'PS_SHOP_DOMAIN_SSL');",
+		prefix, quoted,
 	)
 }
 
