@@ -731,6 +731,55 @@
       "ignored": [],
       "sensitive": []
     },
+    "prestashop": {
+      "paths": {
+        "local_media": "img",
+        "remote_media": "img",
+        "web_root_candidates": []
+      },
+      "sync": {
+        "noise_excludes": [
+          "var/cache/",
+          "var/logs/",
+          "log/"
+        ],
+        "media_excludes": {
+          "non_all": [],
+          "optimized": [],
+          "minimal": []
+        }
+      },
+      "features": {
+        "requires_running_env_for_fresh_install": true,
+        "supports_post_clone": true
+      },
+      "ignored": [
+        "connections",
+        "connections_page",
+        "connections_source",
+        "guest",
+        "statssearch",
+        "search_index",
+        "search_word",
+        "log",
+        "mail"
+      ],
+      "sensitive": [
+        "customer",
+        "address",
+        "orders",
+        "order_detail",
+        "order_payment",
+        "order_invoice",
+        "order_return",
+        "cart",
+        "customer_thread",
+        "customer_message",
+        "employee",
+        "wishlist",
+        "wishlist_product"
+      ]
+    },
     "nextjs": {
       "paths": {
         "local_media": "public/media",
