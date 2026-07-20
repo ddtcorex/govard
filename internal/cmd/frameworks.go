@@ -105,6 +105,14 @@ var frameworkCommands = []FrameworkCommand{
 		DefaultUser: "",
 	},
 	{
+		Name:        "prestashop",
+		Short:       "Run PrestaShop CLI commands (Symfony console)",
+		Frameworks:  []string{"prestashop"},
+		Binary:      "php",
+		PrependArgs: []string{"bin/console"},
+		DefaultUser: "",
+	},
+	{
 		Name:        "composer",
 		Short:       "Run composer commands",
 		Binary:      "composer",

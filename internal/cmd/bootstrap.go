@@ -154,7 +154,7 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 		}
 		configForObservability = config
 
-		supportedFrameworks := []string{"magento2", "magento1", "openmage", "laravel", "symfony", "wordpress"}
+		supportedFrameworks := []string{"magento2", "magento1", "openmage", "laravel", "symfony", "wordpress", "prestashop"}
 		if opts.Fresh {
 			supportedFrameworks = []string{"magento2", "magento1", "laravel", "symfony", "openmage", "drupal", "wordpress", "nextjs", "emdash", "shopware", "cakephp"}
 		}
@@ -398,6 +398,10 @@ func shouldIgnoreFrameworkPostCloneError(config engine.Config, err error, cwd st
 	// WordPress config might already exist or fail in non-critical ways
 	if config.Framework == "wordpress" {
 		return fileExists(filepath.Join(cwd, "wp-config.php"))
+	}
+
+	if config.Framework == "prestashop" {
+		return fileExists(filepath.Join(cwd, "app", "config", "parameters.php"))
 	}
 
 	if !strings.Contains(errText, "composer install failed") {

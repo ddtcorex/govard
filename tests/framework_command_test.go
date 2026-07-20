@@ -30,3 +30,15 @@ func TestMagerunFrameworkSupport(t *testing.T) {
 		})
 	}
 }
+
+func TestPrestaShopToolCommand(t *testing.T) {
+	err := cmd.ValidateFrameworkForCommandForTest("prestashop", engine.Config{Framework: "prestashop"})
+	if err != nil {
+		t.Errorf("ValidateFrameworkForCommandForTest(prestashop, prestashop) error = %v, want nil", err)
+	}
+
+	err = cmd.ValidateFrameworkForCommandForTest("prestashop", engine.Config{Framework: "laravel"})
+	if err == nil {
+		t.Error("ValidateFrameworkForCommandForTest(prestashop, laravel) expected error, got nil")
+	}
+}

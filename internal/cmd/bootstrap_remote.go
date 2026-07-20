@@ -185,6 +185,8 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 			frameworkBootstrap = bootstrap.NewLaravelBootstrap(bootstrapOpts)
 		case "wordpress":
 			frameworkBootstrap = bootstrap.NewWordPressBootstrap(bootstrapOpts)
+		case "prestashop":
+			frameworkBootstrap = bootstrap.NewPrestaShopBootstrap(bootstrapOpts)
 		}
 
 		if frameworkBootstrap != nil {
@@ -196,7 +198,7 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 				}
 			}
 		}
-	} else if config.Framework == "symfony" || config.Framework == "laravel" || config.Framework == "wordpress" || config.Framework == "magento1" || config.Framework == "openmage" {
+	} else if config.Framework == "symfony" || config.Framework == "laravel" || config.Framework == "wordpress" || config.Framework == "magento1" || config.Framework == "openmage" || config.Framework == "prestashop" {
 		pterm.Info.Printf("Skipping %s post-clone setup because composer install is disabled.\n", config.Framework)
 	}
 
