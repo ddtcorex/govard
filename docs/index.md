@@ -19,7 +19,7 @@ features:
   - title: Docker SDK Orchestration
     details: Direct Docker SDK integration for predictable lifecycle behavior — no shell-script glue, just native Go orchestration.
   - title: Framework Auto-Detection
-    details: Automatically detects Magento 1/2, Laravel, Next.js, Drupal, Symfony, Shopware, CakePHP, WordPress, and more from your project files.
+    details: Automatically detects Magento 1/2, Laravel, Next.js, Drupal, Symfony, Shopware, CakePHP, PrestaShop, WordPress, and more from your project files.
   - title: Local HTTPS & DNS
     details: Built-in Caddy proxy + dnsmasq + Root CA auto-trust for *.test domains — zero-config secure local development.
   - title: Remote Management
