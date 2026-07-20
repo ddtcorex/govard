@@ -62,6 +62,9 @@ func (p *PrestaShopBootstrap) Configure(projectDir string) error {
 	if err := p.updateShopURL(); err != nil {
 		pterm.Warning.Printf("Failed to update shop URL: %v\n", err)
 	}
+	if err := p.enableSSL(); err != nil {
+		pterm.Warning.Printf("Failed to enable SSL: %v\n", err)
+	}
 
 	pterm.Success.Println("PrestaShop configured successfully")
 	return nil
@@ -87,6 +90,9 @@ func (p *PrestaShopBootstrap) PostClone(projectDir string) error {
 
 	if err := p.updateShopURL(); err != nil {
 		pterm.Warning.Printf("Failed to update shop URL: %v\n", err)
+	}
+	if err := p.enableSSL(); err != nil {
+		pterm.Warning.Printf("Failed to enable SSL: %v\n", err)
 	}
 
 	pterm.Success.Println("Post-clone setup completed")
@@ -122,6 +128,33 @@ func buildPrestaShopShopURLSQL(prefix, domain string) string {
 	return fmt.Sprintf(
 		"UPDATE %sshop_url SET domain = %s, domain_ssl = %s WHERE id_shop_url = 1;",
 		prefix, quoted, quoted,
+	)
+}
+
+// enableSSL forces PS_SSL_ENABLED/PS_SSL_ENABLED_EVERYWHERE on. Govard always serves
+// projects over HTTPS via its Caddy proxy, so this is a safe, universal default for any
+// govard-managed PrestaShop project rather than something project-specific.
+func (p *PrestaShopBootstrap) enableSSL() error {
+	projectName := strings.TrimSpace(p.Options.ProjectName)
+	if projectName == "" {
+		return nil
+	}
+
+	_, user, pass, name, prefix := p.resolveDBConfig()
+	containerName := projectName + conventions.DBSuffix
+
+	return RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopEnableSSLSQL(prefix))
+}
+
+func BuildPrestaShopEnableSSLSQLForTest(prefix string) string {
+	return buildPrestaShopEnableSSLSQL(prefix)
+}
+
+// buildPrestaShopEnableSSLSQL returns the SQL statement that forces SSL on for the shop.
+func buildPrestaShopEnableSSLSQL(prefix string) string {
+	return fmt.Sprintf(
+		"UPDATE %sconfiguration SET value = 1 WHERE name IN ('PS_SSL_ENABLED', 'PS_SSL_ENABLED_EVERYWHERE');",
+		prefix,
 	)
 }
 

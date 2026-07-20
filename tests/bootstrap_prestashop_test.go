@@ -174,6 +174,15 @@ func TestBuildPrestaShopShopURLSQLEscapesQuotes(t *testing.T) {
 	}
 }
 
+func TestBuildPrestaShopEnableSSLSQL(t *testing.T) {
+	sql := bootstrap.BuildPrestaShopEnableSSLSQLForTest("shop_")
+
+	expected := "UPDATE shop_configuration SET value = 1 WHERE name IN ('PS_SSL_ENABLED', 'PS_SSL_ENABLED_EVERYWHERE');"
+	if sql != expected {
+		t.Fatalf("expected SQL:\n%s\ngot:\n%s", expected, sql)
+	}
+}
+
 func TestBootstrapPkgPrestaShopUpdateShopURLNoOpWithoutDomainOrProjectName(t *testing.T) {
 	projectDir := t.TempDir()
 
