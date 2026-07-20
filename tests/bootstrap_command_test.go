@@ -186,3 +186,12 @@ framework: custom
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestShouldRunFrameworkPostClonePrestaShop(t *testing.T) {
+	if !cmd.ShouldRunFrameworkPostCloneForTest("prestashop", true) {
+		t.Fatal("expected PrestaShop post-clone to run when composer install is enabled")
+	}
+	if cmd.ShouldRunFrameworkPostCloneForTest("prestashop", false) {
+		t.Fatal("expected PrestaShop post-clone to be skipped when composer install is disabled")
+	}
+}

@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	tablePrefixPattern        = regexp.MustCompile(`^[A-Za-z0-9_]*$`)
-	magentoEnvTablePrefixExpr = regexp.MustCompile(`(?i)['"]table_prefix['"]\s*=>\s*['"]([^'"]*)['"]`)
+	tablePrefixPattern           = regexp.MustCompile(`^[A-Za-z0-9_]*$`)
+	magentoEnvTablePrefixExpr    = regexp.MustCompile(`(?i)['"]table_prefix['"]\s*=>\s*['"]([^'"]*)['"]`)
+	prestashopEnvTablePrefixExpr = regexp.MustCompile(`(?i)['"]database_prefix['"]\s*=>\s*['"]([^'"]*)['"]`)
 )
 
 func NormalizeTablePrefix(prefix string) string {
@@ -31,7 +32,7 @@ func SafeTablePrefix(prefix string) string {
 
 func FrameworkSupportsTablePrefix(framework string) bool {
 	switch normalizeFrameworkManifestKey(framework) {
-	case "magento2", "magento1", "openmage":
+	case "magento2", "magento1", "openmage", "prestashop":
 		return true
 	default:
 		return false
@@ -47,6 +48,8 @@ func DetectMagentoTablePrefix(root string, framework string) string {
 		return DetectMagento2TablePrefix(root)
 	case "magento1", "openmage":
 		return DetectMagento1TablePrefix(root)
+	case "prestashop":
+		return DetectPrestaShopTablePrefix(root)
 	default:
 		return ""
 	}
@@ -83,4 +86,16 @@ func DetectMagento1TablePrefix(root string) string {
 		return ""
 	}
 	return NormalizeTablePrefix(localXML.Global.Resources.DB.TablePrefix)
+}
+
+func DetectPrestaShopTablePrefix(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "app", "config", "parameters.php"))
+	if err != nil {
+		return ""
+	}
+	matches := prestashopEnvTablePrefixExpr.FindStringSubmatch(string(data))
+	if len(matches) != 2 {
+		return ""
+	}
+	return NormalizeTablePrefix(matches[1])
 }

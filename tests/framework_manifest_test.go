@@ -57,6 +57,29 @@ func assertContains(t *testing.T, values []string, want string) {
 	t.Fatalf("expected %q in %v", want, values)
 }
 
+func TestPrestaShopFrameworkManifest(t *testing.T) {
+	if engine.ResolveFrameworkLocalMediaSubpath("prestashop") != "img" {
+		t.Fatalf("expected prestashop local media subpath 'img', got %q", engine.ResolveFrameworkLocalMediaSubpath("prestashop"))
+	}
+	if engine.ResolveFrameworkRemoteMediaSubpath("prestashop") != "img" {
+		t.Fatalf("expected prestashop remote media subpath 'img', got %q", engine.ResolveFrameworkRemoteMediaSubpath("prestashop"))
+	}
+
+	noiseExcludes := engine.GetFrameworkSyncNoiseExcludes("prestashop")
+	assertContains(t, noiseExcludes, "var/cache/")
+	assertContains(t, noiseExcludes, "var/logs/")
+
+	tables := engine.GetFrameworkIgnoredTables("prestashop", true, true)
+	assertContains(t, tables, "connections")
+	assertContains(t, tables, "guest")
+	assertContains(t, tables, "customer")
+	assertContains(t, tables, "orders")
+
+	if !engine.FrameworkSupportsPostClone("prestashop") {
+		t.Fatal("expected prestashop to support post-clone steps")
+	}
+}
+
 func assertNotContains(t *testing.T, values []string, unwanted string) {
 	t.Helper()
 	for _, value := range values {

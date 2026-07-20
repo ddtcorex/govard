@@ -44,6 +44,13 @@ func defaultDBCredentialsForFramework(framework string) dbCredentials {
 			Password: conventions.DefaultWordPressDBPass,
 			Database: conventions.DefaultWordPressDBName,
 		}
+	case conventions.FrameworkPrestaShop:
+		return dbCredentials{
+			Port:     conventions.MySQLPort,
+			Username: conventions.DefaultPrestaShopDBUser,
+			Password: conventions.DefaultPrestaShopDBPass,
+			Database: conventions.DefaultPrestaShopDBName,
+		}
 	case conventions.FrameworkMagento2, conventions.FrameworkMagento1, conventions.FrameworkOpenMage:
 		return dbCredentials{
 			Port:     conventions.MySQLPort,
@@ -99,6 +106,19 @@ func resolveRemoteDBCredentials(config engine.Config, remoteName string, remoteC
 		}.withDefaults(), nil
 	case conventions.FrameworkMagento1, conventions.FrameworkOpenMage:
 		metadata, err := remote.ProbeMagento1Environment(remoteName, remoteCfg)
+		if err != nil {
+			return fallback, err
+		}
+		return dbCredentials{
+			Host:        metadata.DB.Host,
+			Port:        metadata.DB.Port,
+			Username:    metadata.DB.Username,
+			Password:    metadata.DB.Password,
+			Database:    metadata.DB.Database,
+			TablePrefix: firstNonEmpty(metadata.DB.TablePrefix, config.TablePrefix),
+		}.withDefaults(), nil
+	case conventions.FrameworkPrestaShop:
+		metadata, err := remote.ProbePrestaShopEnvironment(remoteName, remoteCfg)
 		if err != nil {
 			return fallback, err
 		}
@@ -223,6 +243,10 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func DefaultDBCredentialsForFrameworkForTest(framework string) dbCredentials {
+	return defaultDBCredentialsForFramework(framework)
 }
 
 func buildRemoteMySQLDumpCommandString(credentials dbCredentials, noNoise bool, noPII bool, framework string, compress bool) string {

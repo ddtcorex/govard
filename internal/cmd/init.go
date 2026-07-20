@@ -117,18 +117,19 @@ Case Studies:
 		}
 		if metadata.Framework == "" || metadata.Framework == "generic" {
 			frameworkMap := map[string]string{
-				"CakePHP":   "cakephp",
-				"Custom":    "custom",
-				"Drupal":    "drupal",
-				"Emdash":    "emdash",
-				"Laravel":   "laravel",
-				"Magento 1": "magento1",
-				"Magento 2": "magento2",
-				"Next.js":   "nextjs",
-				"OpenMage":  "openmage",
-				"Shopware":  "shopware",
-				"Symfony":   "symfony",
-				"WordPress": "wordpress",
+				"CakePHP":    "cakephp",
+				"Custom":     "custom",
+				"Drupal":     "drupal",
+				"Emdash":     "emdash",
+				"Laravel":    "laravel",
+				"Magento 1":  "magento1",
+				"Magento 2":  "magento2",
+				"Next.js":    "nextjs",
+				"OpenMage":   "openmage",
+				"PrestaShop": "prestashop",
+				"Shopware":   "shopware",
+				"Symfony":    "symfony",
+				"WordPress":  "wordpress",
 			}
 
 			frameworkDisplayOptions := make([]string, 0, len(frameworkMap))

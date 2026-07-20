@@ -35,7 +35,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Redis & Valkey Management**: Full support for Redis and Valkey CLI, flushing, and info across local and remote environments.
 - **Database Observability**: Live query monitoring with `govard db top` and real-time progress bars for imports and syncs.
 - **Zero-Config Debugging**: Seamless Xdebug 2 & 3 integration with one-click toggling, project-specific isolation (`<project>-docker`), and structured subcommands.
-- **Framework Discovery**: Automatically detects Magento 1/OpenMage, Magento 2, Laravel, Next.js, Emdash, Drupal, Symfony, Shopware, CakePHP, and WordPress to generate tailored configurations.
+- **Framework Discovery**: Automatically detects Magento 1/OpenMage, Magento 2, Laravel, Next.js, Emdash, Drupal, Symfony, Shopware, CakePHP, PrestaShop, and WordPress to generate tailored configurations.
 - **Custom Framework**: Interactive prompt to pick web server, database, cache, search, queue, and varnish for bespoke stacks.
 - **Xdebug Routing**: Dedicated `php-debug` container, activated only when `XDEBUG_SESSION` cookie is present.
 - **Inter-Project Connectivity**: Projects can securely communicate with each other (e.g., `curl https://other-project.test`) by explicitly declaring dependencies via `linked_projects`. This ensures network isolation by default and enables targeted container refreshes.

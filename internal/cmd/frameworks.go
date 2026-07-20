@@ -46,6 +46,9 @@ Case Studies:
   # Install a composer package
   govard tool composer require monolog/monolog
 
+  # Run a PHP script or vendor binary directly (e.g. for editor integrations)
+  govard tool php vendor/bin/phpstan analyze
+
   # Run npm install
   govard tool npm install`,
 }
@@ -105,9 +108,23 @@ var frameworkCommands = []FrameworkCommand{
 		DefaultUser: "",
 	},
 	{
+		Name:        "prestashop",
+		Short:       "Run PrestaShop CLI commands (Symfony console)",
+		Frameworks:  []string{"prestashop"},
+		Binary:      "php",
+		PrependArgs: []string{"bin/console"},
+		DefaultUser: "",
+	},
+	{
 		Name:        "composer",
 		Short:       "Run composer commands",
 		Binary:      "composer",
+		DefaultUser: "",
+	},
+	{
+		Name:        "php",
+		Short:       "Run the php CLI directly",
+		Binary:      "php",
 		DefaultUser: "",
 	},
 	{

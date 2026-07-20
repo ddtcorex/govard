@@ -1,6 +1,6 @@
 ---
 title: Supported Frameworks — Magento, Laravel, Symfony, WordPress & More
-description: Govard auto-detects Magento 1/2, Laravel, Symfony, Drupal, Shopware, CakePHP, WordPress, Next.js, and applies framework-specific runtime defaults.
+description: Govard auto-detects Magento 1/2, Laravel, Symfony, Drupal, Shopware, CakePHP, PrestaShop, WordPress, Next.js, and applies framework-specific runtime defaults.
 ---
 
 # Frameworks
@@ -22,6 +22,7 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | Symfony | ✅ | ✅ | `/public` |
 | Shopware | ✅ | framework defaults | `/public` |
 | CakePHP | ✅ | framework defaults | `/webroot` |
+| PrestaShop | ✅ | framework defaults | project root |
 | WordPress | ✅ | ✅ | `/` |
 | Custom | manual | manual | project root |
 
@@ -40,6 +41,7 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | Symfony | 8.4 | — | mariadb 11.4 | none | none | none |
 | Shopware | 8.4 | — | mariadb 11.4 | none | none | none |
 | CakePHP | 8.4 | — | mariadb 11.4 | none | none | none |
+| PrestaShop | 8.1 | — | mariadb 10.11 | none | none | none |
 | WordPress | 8.3 | — | mariadb 11.4 | none | none | none |
 | Custom | 8.4 | — | mariadb 11.4 | none | none | none |
 
@@ -277,6 +279,16 @@ govard tool cake [command]
 ```
 
 Defaults: web root `/webroot`, MariaDB 11.4.
+
+---
+
+## 🏪 PrestaShop
+
+```bash
+govard tool prestashop [command]
+```
+
+Defaults: web root project root, MariaDB 10.11, PHP 8.1. Govard auto-detects PrestaShop projects and clones/configures existing installs; there is no fresh-install bootstrap or native upgrade pipeline for PrestaShop yet.
 
 ---
 

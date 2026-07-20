@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var Version = "1.57.1"
+var Version = "1.58.0"
 
 var verbose bool
 
@@ -107,6 +107,7 @@ func init() {
 
 	// Framework & Tooling Shortcuts
 	initFrameworkCommands()
+	initVSCodeCommands()
 
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(configCmd)

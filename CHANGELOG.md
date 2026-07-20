@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.58.0] - 2026-07-20
+
+### ✨ New Features
+
+- **PrestaShop Support:** Govard now auto-detects PrestaShop projects (via `config/defines.inc.php`) and applies framework-specific runtime defaults (PHP 8.1, MariaDB 10.11, no forced cache/search/queue). Adds a dedicated nginx blueprint template handling PrestaShop's friendly-URL product/category image rewrites, plus Docker Compose service wiring. `govard bootstrap` supports detecting and cloning/configuring an existing PrestaShop install (no fresh-install pipeline yet): it patches or fabricates `app/config/parameters.php` (reusing the remote's real encryption secrets and table prefix when available rather than generating fresh ones against a cloned database), points the shop's domain, SSL, and mail relay at the local govard environment, and syncs remote DB credentials automatically. `govard tool prestashop [command]` runs the PrestaShop CLI (Symfony console) inside the PHP container.
+
 ## [1.57.1] - 2026-07-17
 
 ### 🐛 Bug Fixes

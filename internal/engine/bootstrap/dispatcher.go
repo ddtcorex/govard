@@ -26,6 +26,8 @@ func Run(framework string, opts Options) error {
 		return BootstrapShopware(opts)
 	case "cakephp":
 		return BootstrapCakePHP(opts)
+	case "prestashop":
+		return BootstrapPrestaShop(opts)
 	default:
 		return fmt.Errorf("unsupported framework: %s", framework)
 	}
@@ -92,6 +94,12 @@ func BootstrapShopware(opts Options) error {
 
 func BootstrapCakePHP(opts Options) error {
 	bootstrap := NewCakePHPBootstrap(opts)
+	_ = bootstrap.FreshCommands()
+	return nil
+}
+
+func BootstrapPrestaShop(opts Options) error {
+	bootstrap := NewPrestaShopBootstrap(opts)
 	_ = bootstrap.FreshCommands()
 	return nil
 }

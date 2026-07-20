@@ -177,6 +177,25 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 			Domain:      config.Domain,
 		}
 
+		if config.Framework == "prestashop" {
+			if remoteCfg, ok := config.Remotes[opts.Source]; ok {
+				if psEnv, err := remote.ProbePrestaShopEnvironment(opts.Source, remoteCfg); err == nil {
+					// The remote's actual table prefix reflects the DB that was just
+					// imported and takes priority over local config, same precedence as
+					// resolveRemoteDBCredentials uses for every other framework.
+					if remotePrefix := engine.SafeTablePrefix(psEnv.DB.TablePrefix); remotePrefix != "" {
+						bootstrapOpts.TablePrefix = remotePrefix
+					}
+					bootstrapOpts.PrestaShopSecret = psEnv.Secrets.Secret
+					bootstrapOpts.PrestaShopCookieKey = psEnv.Secrets.CookieKey
+					bootstrapOpts.PrestaShopCookieIV = psEnv.Secrets.CookieIV
+					bootstrapOpts.PrestaShopNewCookieKey = psEnv.Secrets.NewCookieKey
+				} else {
+					pterm.Warning.Printf("Could not probe remote PrestaShop secrets/table prefix, falling back to local config: %v\n", err)
+				}
+			}
+		}
+
 		var frameworkBootstrap bootstrap.FrameworkBootstrap
 		switch config.Framework {
 		case "magento1":
@@ -189,6 +208,8 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 			frameworkBootstrap = bootstrap.NewLaravelBootstrap(bootstrapOpts)
 		case "wordpress":
 			frameworkBootstrap = bootstrap.NewWordPressBootstrap(bootstrapOpts)
+		case "prestashop":
+			frameworkBootstrap = bootstrap.NewPrestaShopBootstrap(bootstrapOpts)
 		}
 
 		if frameworkBootstrap != nil {
@@ -200,7 +221,7 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 				}
 			}
 		}
-	} else if config.Framework == "symfony" || config.Framework == "laravel" || config.Framework == "wordpress" || config.Framework == "magento1" || config.Framework == "openmage" {
+	} else if config.Framework == "symfony" || config.Framework == "laravel" || config.Framework == "wordpress" || config.Framework == "magento1" || config.Framework == "openmage" || config.Framework == "prestashop" {
 		pterm.Info.Printf("Skipping %s post-clone setup because composer install is disabled.\n", config.Framework)
 	}
 

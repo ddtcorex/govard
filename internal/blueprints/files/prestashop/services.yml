@@ -1,0 +1,5 @@
+# PrestaShop specific services
+# Common services (PHP, Web, MySQL, Redis, Elasticsearch) are provided by includes
+
+services:
+  # Framework specific overrides can go here
