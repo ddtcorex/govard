@@ -116,6 +116,43 @@ return array (
 	}
 }
 
+func TestBuildPrestaShopShopURLSQL(t *testing.T) {
+	sql := bootstrap.BuildPrestaShopShopURLSQLForTest("shop_", "castelas-sutunam.test")
+
+	expected := "UPDATE shop_shop_url SET domain = 'castelas-sutunam.test', domain_ssl = 'castelas-sutunam.test' WHERE id_shop_url = 1;"
+	if sql != expected {
+		t.Fatalf("expected SQL:\n%s\ngot:\n%s", expected, sql)
+	}
+}
+
+func TestBuildPrestaShopShopURLSQLEscapesQuotes(t *testing.T) {
+	sql := bootstrap.BuildPrestaShopShopURLSQLForTest("ps_", "o'brien.test")
+
+	if !strings.Contains(sql, `domain = 'o\'brien.test'`) {
+		t.Fatalf("expected escaped domain in SQL, got:\n%s", sql)
+	}
+}
+
+func TestBootstrapPkgPrestaShopUpdateShopURLNoOpWithoutDomainOrProjectName(t *testing.T) {
+	projectDir := t.TempDir()
+
+	// No Domain and no ProjectName set: updateShopURL must no-op rather than attempt a
+	// real docker exec (which would fail/hang in a unit test with no running container).
+	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{
+		DBHost: "db",
+		DBUser: "shopuser",
+		DBPass: "shoppass",
+		DBName: "shopdb",
+	})
+
+	if err := prestashop.PostClone(projectDir); err != nil {
+		t.Fatalf("PostClone() error = %v", err)
+	}
+	if err := prestashop.Configure(projectDir); err != nil {
+		t.Fatalf("Configure() error = %v", err)
+	}
+}
+
 func TestBootstrapPkgPrestaShopPostCloneCreatesWritableDirs(t *testing.T) {
 	projectDir := t.TempDir()
 	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{})

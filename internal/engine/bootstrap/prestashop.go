@@ -59,6 +59,10 @@ func (p *PrestaShopBootstrap) Configure(projectDir string) error {
 		}
 	}
 
+	if err := p.updateShopURL(); err != nil {
+		pterm.Warning.Printf("Failed to update shop URL: %v\n", err)
+	}
+
 	pterm.Success.Println("PrestaShop configured successfully")
 	return nil
 }
@@ -81,8 +85,44 @@ func (p *PrestaShopBootstrap) PostClone(projectDir string) error {
 		}
 	}
 
+	if err := p.updateShopURL(); err != nil {
+		pterm.Warning.Printf("Failed to update shop URL: %v\n", err)
+	}
+
 	pterm.Success.Println("Post-clone setup completed")
 	return nil
+}
+
+// updateShopURL points the shop's primary domain (ps_shop_url, id_shop_url = 1) at the
+// local govard domain. Without this, PrestaShop keeps serving/redirecting to whatever
+// domain was set on the source environment the project was cloned from, since (unlike
+// WordPress's siteurl/home options or Shopware's sales channel domain) nothing else in
+// the bootstrap flow touches this table.
+func (p *PrestaShopBootstrap) updateShopURL() error {
+	domain := strings.TrimSpace(p.Options.Domain)
+	projectName := strings.TrimSpace(p.Options.ProjectName)
+	if domain == "" || projectName == "" {
+		return nil
+	}
+
+	_, user, pass, name, prefix := p.resolveDBConfig()
+	containerName := projectName + conventions.DBSuffix
+
+	return RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopShopURLSQL(prefix, domain))
+}
+
+func BuildPrestaShopShopURLSQLForTest(prefix, domain string) string {
+	return buildPrestaShopShopURLSQL(prefix, domain)
+}
+
+// buildPrestaShopShopURLSQL returns the SQL statement that sets ps_shop_url's domain and
+// domain_ssl columns for the shop's primary entry (id_shop_url = 1) to the given domain.
+func buildPrestaShopShopURLSQL(prefix, domain string) string {
+	quoted := singleQuoteEscape(domain)
+	return fmt.Sprintf(
+		"UPDATE %sshop_url SET domain = %s, domain_ssl = %s WHERE id_shop_url = 1;",
+		prefix, quoted, quoted,
+	)
 }
 
 func (p *PrestaShopBootstrap) resolveDBConfig() (host, user, pass, name, prefix string) {
@@ -180,9 +220,9 @@ return array (
   ),
 );
 `,
-		phpQuote(host), phpQuote(name), phpQuote(user), phpQuote(pass), phpQuote(prefix),
-		phpQuote(secret), phpQuote(cookieKey), phpQuote(cookieIV), phpQuote(newCookieKey),
-		phpQuote(time.Now().Format("2006-01-02")))
+		singleQuoteEscape(host), singleQuoteEscape(name), singleQuoteEscape(user), singleQuoteEscape(pass), singleQuoteEscape(prefix),
+		singleQuoteEscape(secret), singleQuoteEscape(cookieKey), singleQuoteEscape(cookieIV), singleQuoteEscape(newCookieKey),
+		singleQuoteEscape(time.Now().Format("2006-01-02")))
 
 	if err := os.MkdirAll(filepath.Dir(parametersPath), conventions.DefaultDirPerm); err != nil {
 		return fmt.Errorf("create app/config directory: %w", err)
@@ -215,7 +255,11 @@ func (p *PrestaShopBootstrap) ensureWritableDirs(projectDir string) {
 	}
 }
 
-func phpQuote(value string) string {
+// singleQuoteEscape escapes backslashes and single quotes for embedding a value inside
+// a single-quoted literal — the escaping rules are identical for a PHP array literal
+// and a MySQL string literal, so this is shared by both parameters.php generation/patching
+// and the shop URL SQL statement.
+func singleQuoteEscape(value string) string {
 	escaped := strings.ReplaceAll(value, `\`, `\\`)
 	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
 	return "'" + escaped + "'"
@@ -227,7 +271,7 @@ func phpQuote(value string) string {
 // want to guess at a schema we can't fully verify.
 func patchPrestaShopParameter(content, key, value string) string {
 	pattern := regexp.MustCompile(`'` + regexp.QuoteMeta(key) + `'\s*=>\s*'(?:[^'\\]|\\.)*'`)
-	replacement := "'" + key + "' => " + phpQuote(value)
+	replacement := "'" + key + "' => " + singleQuoteEscape(value)
 	return pattern.ReplaceAllStringFunc(content, func(string) string {
 		return replacement
 	})

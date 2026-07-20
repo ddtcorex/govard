@@ -214,11 +214,14 @@ FROM %sadmin_role WHERE role_type = 'G' AND role_name = 'Administrators' LIMIT 1
 		dbPrefix, conventions.DefaultAdminUser, adminEmail, saltedPass, saltedPass,
 		dbPrefix, dbPrefix, dbPrefix, dbPrefix, dbPrefix, conventions.DefaultAdminUser, conventions.DefaultAdminUser, dbPrefix)
 
-	return RunMagento1SQL(containerName, dbUser, dbPassword, dbName, insertSQL)
+	return RunSQLViaDockerExec(containerName, dbUser, dbPassword, dbName, insertSQL)
 }
 
-// RunMagento1SQL executes a SQL statement via docker exec on the given DB container.
-func RunMagento1SQL(containerName string, dbUser string, dbPassword string, dbName string, sql string) error {
+// RunSQLViaDockerExec executes a SQL statement via docker exec on the given DB container.
+// This is framework-agnostic (no Magento-specific logic in the body) and is reused by
+// other frameworks' bootstrap code that need to run a one-off SQL statement against the
+// project's local DB container.
+func RunSQLViaDockerExec(containerName string, dbUser string, dbPassword string, dbName string, sql string) error {
 	script := fmt.Sprintf(
 		`if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb; else exit 1; fi && echo %s | "$DB_CLI" -u %s %s -f`,
 		conventions.ShellQuote(sql), conventions.ShellQuote(dbUser), conventions.ShellQuote(dbName),
