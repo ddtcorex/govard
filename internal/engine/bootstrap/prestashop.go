@@ -65,6 +65,9 @@ func (p *PrestaShopBootstrap) Configure(projectDir string) error {
 	if err := p.enableSSL(); err != nil {
 		pterm.Warning.Printf("Failed to enable SSL: %v\n", err)
 	}
+	if err := p.configureMail(); err != nil {
+		pterm.Warning.Printf("Failed to configure mail relay: %v\n", err)
+	}
 
 	pterm.Success.Println("PrestaShop configured successfully")
 	return nil
@@ -93,6 +96,9 @@ func (p *PrestaShopBootstrap) PostClone(projectDir string) error {
 	}
 	if err := p.enableSSL(); err != nil {
 		pterm.Warning.Printf("Failed to enable SSL: %v\n", err)
+	}
+	if err := p.configureMail(); err != nil {
+		pterm.Warning.Printf("Failed to configure mail relay: %v\n", err)
 	}
 
 	pterm.Success.Println("Post-clone setup completed")
@@ -154,6 +160,40 @@ func BuildPrestaShopEnableSSLSQLForTest(prefix string) string {
 func buildPrestaShopEnableSSLSQL(prefix string) string {
 	return fmt.Sprintf(
 		"UPDATE %sconfiguration SET value = 1 WHERE name IN ('PS_SSL_ENABLED', 'PS_SSL_ENABLED_EVERYWHERE');",
+		prefix,
+	)
+}
+
+// configureMail points the shop's customer-facing mail relay (PS_MAIL_SERVER/
+// PS_MAIL_USER/PS_MAIL_SMTP_PORT — distinct from parameters.php's Symfony-mailer keys
+// already handled by patchParametersFile/createParametersFile) at govard's shared local
+// mail catcher. Universal for any govard-managed PrestaShop project, same reasoning as
+// enableSSL: govard always provides this catcher, regardless of project-specific
+// payment/module configuration.
+func (p *PrestaShopBootstrap) configureMail() error {
+	projectName := strings.TrimSpace(p.Options.ProjectName)
+	if projectName == "" {
+		return nil
+	}
+
+	_, user, pass, name, prefix := p.resolveDBConfig()
+	containerName := projectName + conventions.DBSuffix
+
+	return RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopMailSQL(prefix))
+}
+
+func BuildPrestaShopMailSQLForTest(prefix string) string {
+	return buildPrestaShopMailSQL(prefix)
+}
+
+// buildPrestaShopMailSQL returns the SQL statements that point PS_MAIL_SERVER/
+// PS_MAIL_USER/PS_MAIL_SMTP_PORT at govard's shared local mail catcher ('mail', no auth,
+// port 1025 — matching the mailer_host/mailer_port fabricated into parameters.php).
+func buildPrestaShopMailSQL(prefix string) string {
+	return fmt.Sprintf(
+		"UPDATE %[1]sconfiguration SET value = 'mail' WHERE name LIKE 'PS_MAIL_SERVER'; "+
+			"UPDATE %[1]sconfiguration SET value = '' WHERE name LIKE 'PS_MAIL_USER'; "+
+			"UPDATE %[1]sconfiguration SET value = 1025 WHERE name LIKE 'PS_MAIL_SMTP_PORT';",
 		prefix,
 	)
 }

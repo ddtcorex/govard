@@ -183,6 +183,17 @@ func TestBuildPrestaShopEnableSSLSQL(t *testing.T) {
 	}
 }
 
+func TestBuildPrestaShopMailSQL(t *testing.T) {
+	sql := bootstrap.BuildPrestaShopMailSQLForTest("shop_")
+
+	expected := "UPDATE shop_configuration SET value = 'mail' WHERE name LIKE 'PS_MAIL_SERVER'; " +
+		"UPDATE shop_configuration SET value = '' WHERE name LIKE 'PS_MAIL_USER'; " +
+		"UPDATE shop_configuration SET value = 1025 WHERE name LIKE 'PS_MAIL_SMTP_PORT';"
+	if sql != expected {
+		t.Fatalf("expected SQL:\n%s\ngot:\n%s", expected, sql)
+	}
+}
+
 func TestBootstrapPkgPrestaShopUpdateShopURLNoOpWithoutDomainOrProjectName(t *testing.T) {
 	projectDir := t.TempDir()
 
