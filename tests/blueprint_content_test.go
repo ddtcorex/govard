@@ -653,6 +653,15 @@ func TestRenderWordpressBlueprint(t *testing.T) {
 	})
 }
 
+func TestRenderPrestaShopBlueprint(t *testing.T) {
+	testBlueprintRender(t, "prestashop", []string{
+		"image: ddtcorex/govard-nginx:1.28",
+		"image: ddtcorex/govard-php:",
+		"image: ddtcorex/govard-mariadb:",
+		"MYSQL_DATABASE: prestashop",
+	})
+}
+
 func TestRenderCustomBlueprint(t *testing.T) {
 	testBlueprintRender(t, "custom", []string{
 		"image: ddtcorex/govard-nginx:1.28",
