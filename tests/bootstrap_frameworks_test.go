@@ -196,6 +196,7 @@ func TestBootstrapDispatcherAllFrameworks(t *testing.T) {
 		"emdash",
 		"shopware",
 		"cakephp",
+		"prestashop",
 	}
 
 	opts := bootstrap.DefaultOptions()
