@@ -238,7 +238,8 @@ $dbMap = [
     'wordpress' => 'wordpress',
     'drupal' => 'drupal',
     'cakephp' => 'cakephp',
-    'openmage' => 'openmage'
+    'openmage' => 'openmage',
+    'prestashop' => 'prestashop'
 ];
 
 $activeProjects = [];
