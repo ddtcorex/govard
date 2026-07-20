@@ -8,7 +8,9 @@ import (
 
 // Registry holds a set of FrameworkDefinitions indexed by canonical name,
 // with alias resolution. The zero value is not usable - construct with
-// NewRegistry.
+// NewRegistry. Not safe for concurrent Register calls; intended usage is
+// to populate a Registry once (e.g. from an init() function) and only
+// read from it afterward.
 type Registry struct {
 	byName  map[string]types.FrameworkDefinition
 	aliases map[string]string
@@ -26,9 +28,10 @@ func NewRegistry() *Registry {
 
 // Register adds def to the registry, indexing its aliases for Normalize.
 func (r *Registry) Register(def types.FrameworkDefinition) {
-	r.byName[def.Name] = def
+	name := strings.ToLower(strings.TrimSpace(def.Name))
+	r.byName[name] = def
 	for _, alias := range def.Aliases {
-		r.aliases[strings.ToLower(strings.TrimSpace(alias))] = def.Name
+		r.aliases[strings.ToLower(strings.TrimSpace(alias))] = name
 	}
 }
 
@@ -45,12 +48,18 @@ func (r *Registry) Normalize(raw string) string {
 }
 
 // Get returns the registered definition for name (resolving aliases first).
+// The returned value shares backing arrays (e.g. Config.Includes,
+// Manifest.Ignored/Sensitive) with the stored entry - callers must treat it
+// as read-only and must not mutate any of its slice fields.
 func (r *Registry) Get(name string) (types.FrameworkDefinition, bool) {
 	def, ok := r.byName[r.Normalize(name)]
 	return def, ok
 }
 
-// All returns every registered definition, in no particular order.
+// All returns every registered definition, in no particular order. Each
+// returned value shares backing arrays with the stored entry - callers
+// must treat every definition as read-only and must not mutate any of
+// its slice fields.
 func (r *Registry) All() []types.FrameworkDefinition {
 	all := make([]types.FrameworkDefinition, 0, len(r.byName))
 	for _, def := range r.byName {
