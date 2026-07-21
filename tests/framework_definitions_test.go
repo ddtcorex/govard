@@ -6,9 +6,11 @@ import (
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks/cakephp"
 	"govard/internal/frameworks/drupal"
+	"govard/internal/frameworks/emdash"
 	"govard/internal/frameworks/laravel"
 	"govard/internal/frameworks/magento1"
 	"govard/internal/frameworks/magento2"
+	"govard/internal/frameworks/nextjs"
 	"govard/internal/frameworks/openmage"
 	"govard/internal/frameworks/prestashop"
 	"govard/internal/frameworks/shopware"
@@ -108,6 +110,34 @@ func TestRemainingPHPFrameworkDefinitions(t *testing.T) {
 			// command list (SupportsFreshInstall() is false) - confirmed
 			// in Plan 1's golden snapshot, so don't assert len > 0 here.
 			_ = tc.def.Bootstrap(bootstrap.Options{}).FreshCommands()
+		})
+	}
+}
+
+func TestNodeFrameworkDefinitions(t *testing.T) {
+	cases := []struct {
+		name string
+		def  types.FrameworkDefinition
+	}{
+		{"nextjs", nextjs.Definition()},
+		{"emdash", emdash.Definition()},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.def.Name != tc.name {
+				t.Errorf("Name = %q, want %q", tc.def.Name, tc.name)
+			}
+			if tc.def.Config.Runtime != "node" {
+				t.Errorf("%s Config.Runtime = %q, want %q", tc.name, tc.def.Config.Runtime, "node")
+			}
+			if tc.def.Bootstrap == nil {
+				t.Fatalf("%s Bootstrap should not be nil", tc.name)
+			}
+			if cmds := tc.def.Bootstrap(bootstrap.Options{}).FreshCommands(); len(cmds) == 0 {
+				t.Errorf("%s Bootstrap factory should produce at least one fresh command", tc.name)
+			}
 		})
 	}
 }
