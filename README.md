@@ -35,6 +35,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Redis & Valkey Management**: Full support for Redis and Valkey CLI, flushing, and info across local and remote environments.
 - **Database Observability**: Live query monitoring with `govard db top` and real-time progress bars for imports and syncs.
 - **Zero-Config Debugging**: Seamless Xdebug 2 & 3 integration with one-click toggling, project-specific isolation (`<project>-docker`), and structured subcommands.
+- **VSCode Integration**: `govard vscode setup [--global]` wires Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHPUnit, and Xdebug to run inside the project container instead of requiring PHP on the host, prompting to install any missing extension along the way.
 - **Framework Discovery**: Automatically detects Magento 1/OpenMage, Magento 2, Laravel, Next.js, Emdash, Drupal, Symfony, Shopware, CakePHP, PrestaShop, and WordPress to generate tailored configurations.
 - **Custom Framework**: Interactive prompt to pick web server, database, cache, search, queue, and varnish for bespoke stacks.
 - **Xdebug Routing**: Dedicated `php-debug` container, activated only when `XDEBUG_SESSION` cookie is present.
@@ -497,6 +498,7 @@ Common command aliases:
 | `govard domain`     | Manage additional domains for the project                          |
 | `govard svc`        | Manage global services (`proxy`, `mail`, `pma`, `portainer`)       |
 | `govard tool`        | Run framework/tooling CLIs inside project containers               |
+| `govard vscode`      | Run PHP tooling for editor integrations; `govard vscode setup [--global]` wires VSCode to use the container instead of the host |
 | `govard shell`       | Enter the application container                                    |
 | `govard db`          | Database operations (`connect`, `dump`, `import`, `query`, `info`) |
 | `govard debug`       | Toggle Xdebug for the current environment                          |

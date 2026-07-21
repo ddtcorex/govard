@@ -26,6 +26,53 @@ func TestNormalizeIntelephensePHPVersion(t *testing.T) {
 	}
 }
 
+func TestPhpstanDefaultOptionsMagento2(t *testing.T) {
+	got := cmd.PhpstanDefaultOptionsForTest("magento2")
+	want := []string{"--level=0", "--autoload-file=vendor/autoload.php", "app/code", "app/design"}
+	if !slicesEqual(got, want) {
+		t.Errorf("PhpstanDefaultOptionsForTest(magento2) = %v, want %v", got, want)
+	}
+}
+
+func TestPhpstanDefaultOptionsNonMagento(t *testing.T) {
+	got := cmd.PhpstanDefaultOptionsForTest("laravel")
+	want := []string{"--level=0", "--autoload-file=vendor/autoload.php", "app", "src"}
+	if !slicesEqual(got, want) {
+		t.Errorf("PhpstanDefaultOptionsForTest(laravel) = %v, want %v", got, want)
+	}
+}
+
+func TestHasPHPStanConfig(t *testing.T) {
+	root := t.TempDir()
+	if cmd.HasPHPStanConfigForTest(root) {
+		t.Error("expected no config to be found in an empty directory")
+	}
+
+	for _, name := range []string{"phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("parameters: {}\n"), 0o644); err != nil {
+				t.Fatalf("seed %s: %v", name, err)
+			}
+			if !cmd.HasPHPStanConfigForTest(dir) {
+				t.Errorf("expected %s to be recognized as an existing PHPStan config", name)
+			}
+		})
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestExtensionInstalledInDirs(t *testing.T) {
 	dir := t.TempDir()
 	manifest := `[

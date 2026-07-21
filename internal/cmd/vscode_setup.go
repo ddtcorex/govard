@@ -22,6 +22,7 @@ const (
 	extPHPStan      = "sanderronde.phpstan-vscode"
 	extPHPCSFixer   = "junstyle.php-cs-fixer"
 	extPHPCS        = "shevaua.phpcs"
+	extPHPUnit      = "recca0120.vscode-phpunit"
 	extXdebug       = "xdebug.php-debug"
 )
 
@@ -36,13 +37,21 @@ project's container instead of the host machine.
 
 Without --global, run this from inside a project (or any subdirectory of one)
 to write .vscode/settings.json (Intelephense PHP version, PHPStan path mapping,
-and — if vendor/bin/phpcs is present — a PHPCS coding standard) and
-.vscode/launch.json (a "Listen for Xdebug" configuration).
+a PHPUnit path mapping if vendor/bin/phpunit is present, and — if
+vendor/bin/phpcs is present — a PHPCS coding standard) and .vscode/launch.json
+(a "Listen for Xdebug" configuration). If vendor/bin/phpstan is present but the
+project has no phpstan.neon/.dist config of its own, phpstan.options is set to
+a --level=0 default instead — kept in .vscode/settings.json rather than
+writing a phpstan.neon at the project root, which is normally git-tracked.
+
+Uses the project's last-used profile (e.g. an upgrade profile pinning a newer
+PHP version) if one is registered, so settings match what's actually running
+rather than always the base .govard.yml.
 
 With --global, updates VSCode's user settings.json once for every project:
 creates the govard-php / govard-php-cs-fixer / govard-phpcs wrapper scripts
 under ~/.govard/bin and points php.validate.executablePath, phpstan.binCommand,
-php-cs-fixer.executablePath, and phpcs.executablePath at them.
+php-cs-fixer.executablePath, phpcs.executablePath, and phpunit.command at them.
 
 Existing keys in either file are preserved; only the keys this command manages
 are added or overwritten. Note: settings.json is parsed as plain JSON, so any
@@ -73,10 +82,15 @@ func runVSCodeSetupProject() error {
 		return fmt.Errorf("switch to project root %q: %w", root, err)
 	}
 
-	config := loadConfig()
+	// loadConfigWithProfile("") resolves to the project's last-used profile
+	// (e.g. an upgrade profile pinning a newer PHP version) if one is
+	// registered, rather than always reading the base .govard.yml — so
+	// settings match whichever profile is actually running right now.
+	config := loadConfigWithProfile("")
 	workdir := engine.ResolveFrameworkAppWorkdir(config.Framework)
 
 	set := map[string]interface{}{}
+	var unset []string
 
 	if ensureVSCodeExtension(extIntelephense, "Intelephense PHP version") {
 		if version := normalizeIntelephensePHPVersion(config.Stack.PHPVersion); version != "" {
@@ -84,9 +98,23 @@ func runVSCodeSetupProject() error {
 		}
 	}
 
-	if ensureVSCodeExtension(extPHPStan, "PHPStan path mapping") {
+	if phpstanAvailable(root) && ensureVSCodeExtension(extPHPStan, "PHPStan path mapping") {
 		set["phpstan.paths"] = map[string]interface{}{
 			root: workdir,
+		}
+		if hasPHPStanConfig(root) {
+			// The project has its own phpstan.neon/.dist — let the
+			// extension's config-file auto-detection use it, and clear any
+			// phpstan.options default a previous run may have set before
+			// that config existed so it can't override the project's rules.
+			unset = append(unset, "phpstan.options")
+		} else {
+			// No phpstan.neon/.dist of the project's own — fall back to
+			// --level=0 and default paths via phpstan.options instead of
+			// writing a phpstan.neon at the project root, which is normally
+			// git-tracked and not ours to create.
+			set["phpstan.options"] = phpstanDefaultOptions(config.Framework)
+			pterm.Info.Println("No phpstan.neon/.dist found — using phpstan.options (level 0) instead of writing a project file")
 		}
 	}
 
@@ -98,9 +126,15 @@ func runVSCodeSetupProject() error {
 		set["phpcs.standard"] = detectPHPCSStandard(root)
 	}
 
-	if len(set) > 0 {
+	if phpunitAvailable(root) && ensureVSCodeExtension(extPHPUnit, "PHPUnit path mapping") {
+		set["phpunit.paths"] = map[string]interface{}{
+			root: workdir,
+		}
+	}
+
+	if len(set) > 0 || len(unset) > 0 {
 		settingsPath := filepath.Join(root, ".vscode", "settings.json")
-		if err := mergeJSONObjectFile(settingsPath, set, nil); err != nil {
+		if err := mergeJSONObjectFile(settingsPath, set, unset); err != nil {
 			return fmt.Errorf("write %s: %w", settingsPath, err)
 		}
 		pterm.Success.Printf("Updated %s\n", settingsPath)
@@ -161,6 +195,14 @@ func runVSCodeSetupGlobal() error {
 		}
 		set["phpcs.executablePath"] = phpcsWrapper
 		wrapperPaths = append(wrapperPaths, phpcsWrapper)
+	}
+
+	if ensureVSCodeExtension(extPHPUnit, "phpunit.command") {
+		// phpunit.command is a template the extension tokenizes itself
+		// (quote-aware, like a shell command line), so no wrapper script is
+		// needed — "govard vscode phpunit" already prepends memory_limit=-1
+		// and vendor/bin/phpunit; ${phpunitargs} supplies the actual CLI args.
+		set["phpunit.command"] = "govard vscode phpunit ${phpunitargs}"
 	}
 
 	pterm.Success.Printf("Wrote %s%s\n", phpWrapper, joinWithLeadingComma(wrapperPaths))
@@ -360,6 +402,66 @@ func normalizeIntelephensePHPVersion(version string) string {
 // Composer.
 func phpcsAvailable(root string) bool {
 	_, err := os.Stat(filepath.Join(root, "vendor", "bin", "phpcs"))
+	return err == nil
+}
+
+// phpstanAvailable reports whether the project at root has phpstan installed
+// via Composer.
+func phpstanAvailable(root string) bool {
+	_, err := os.Stat(filepath.Join(root, "vendor", "bin", "phpstan"))
+	return err == nil
+}
+
+// phpstanDefaultConfigFilenames are the config filenames PHPStan itself looks
+// for by default (and what phpstan-vscode's own default phpcs.configFile
+// search list matches), in priority order.
+var phpstanDefaultConfigFilenames = []string{"phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon"}
+
+// phpstanDefaultPaths mirrors the framework/paths convention `govard test
+// phpstan` already uses when no paths are given on the command line, so this
+// doesn't invent a new, inconsistent convention.
+func phpstanDefaultPaths(framework string) []string {
+	if framework == "magento2" {
+		return []string{"app/code", "app/design"}
+	}
+	return []string{"app", "src"}
+}
+
+// hasPHPStanConfig reports whether the project at root already has one of
+// PHPStan's own default config filenames.
+func hasPHPStanConfig(root string) bool {
+	for _, name := range phpstanDefaultConfigFilenames {
+		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// phpstanDefaultOptions returns the --level/--autoload-file/paths CLI
+// arguments to set as phpstan.options when the project has no phpstan.neon/
+// .dist config of its own. This is set in .vscode/settings.json rather than
+// written as a phpstan.neon at the project root, since that file is normally
+// git-tracked and not ours to create.
+func phpstanDefaultOptions(framework string) []string {
+	options := []string{"--level=0", "--autoload-file=vendor/autoload.php"}
+	return append(options, phpstanDefaultPaths(framework)...)
+}
+
+// HasPHPStanConfigForTest exposes hasPHPStanConfig to the tests package.
+func HasPHPStanConfigForTest(root string) bool {
+	return hasPHPStanConfig(root)
+}
+
+// PhpstanDefaultOptionsForTest exposes phpstanDefaultOptions to the tests package.
+func PhpstanDefaultOptionsForTest(framework string) []string {
+	return phpstanDefaultOptions(framework)
+}
+
+// phpunitAvailable reports whether the project at root has phpunit installed
+// via Composer.
+func phpunitAvailable(root string) bool {
+	_, err := os.Stat(filepath.Join(root, "vendor", "bin", "phpunit"))
 	return err == nil
 }
 

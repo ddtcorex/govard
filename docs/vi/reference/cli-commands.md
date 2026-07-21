@@ -439,6 +439,7 @@ Ghi (hoặc merge vào) các cấu hình VSCode cần thiết để chạy công
 # Chạy từ trong project (hoặc bất kỳ thư mục con nào của project)
 govard vscode setup
 #   -> .vscode/settings.json: intelephense.environment.phpVersion, phpstan.paths,
+#                             phpunit.paths (nếu có vendor/bin/phpunit),
 #                             và (nếu có vendor/bin/phpcs) phpcs.standard + phpcs.autoConfigSearch=false
 #   -> .vscode/launch.json:   cấu hình "Listen for Xdebug (Govard)" (port 9003)
 
@@ -446,12 +447,18 @@ govard vscode setup
 govard vscode setup --global
 #   -> tạo wrapper script ~/.govard/bin/govard-php, govard-php-cs-fixer, và govard-phpcs
 #   -> user settings.json: php.validate.executablePath, phpstan.binCommand,
-#                          php-cs-fixer.executablePath, phpcs.executablePath
+#                          php-cs-fixer.executablePath, phpcs.executablePath, phpunit.command
 ```
+
+Settings phản ánh đúng profile đang dùng gần nhất của project (vd. profile upgrade ghim version PHP mới hơn) nếu có đăng ký, thay vì luôn đọc `.govard.yml` gốc — nên `intelephense.environment.phpVersion` khớp với thực tế đang chạy.
 
 Coding standard cho PHPCS được tự nhận diện từ `composer.json` (`magento/magento-coding-standard` -> `Magento2`, `wp-coding-standards/wpcs` -> `WordPress`, `drupal/coder` -> `Drupal`), fallback về `PSR12` nếu không khớp gói nào. `phpcs.autoConfigSearch` bị tắt vì nếu không, extension sẽ tự dò file `phpcs.xml`/`.dist` và truyền path tuyệt đối *trên host* làm `--standard` — container không đọc được path đó.
 
-Mỗi nhóm cấu hình cần đúng 1 extension VSCode tương ứng (Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHP Debug). Nếu chưa cài, `setup` sẽ cảnh báo và hỏi có muốn cài ngay qua `code --install-extension` không — đồng ý thì setting tương ứng vẫn được wire luôn trong lần chạy đó. Truyền `--yes` để tự cài hết những gì thiếu mà không hỏi (hữu ích khi chạy script); nếu không có TTY và không có `--yes`, các extension còn thiếu sẽ tự bị bỏ qua, không hỏi.
+Nếu có `vendor/bin/phpstan` nhưng project **chưa có** config `phpstan.neon`/`.dist`/`dist.neon` riêng, `setup` sẽ set `phpstan.options` với mặc định `--level=0` (`--autoload-file=vendor/autoload.php` cộng `app/code`+`app/design` cho Magento 2 hoặc `app`+`src` cho framework khác — đúng convention `govard test phpstan` đã dùng khi fallback) để PHPStan có gì đó mà phân tích. Cái này cố tình nằm trong `.vscode/settings.json`, không phải tạo file `phpstan.neon` ở root project — file đó thường bị git track và không phải của mình để tạo ra. Ngay khi project có config riêng, chạy lại `setup` sẽ tự xoá `phpstan.options` để không bao giờ đè lên rule thật của project — config của project luôn được ưu tiên.
+
+`phpunit.command` (recca0120.vscode-phpunit) không cần wrapper script — đây là template mà extension tự tokenize, nên được set thẳng thành `govard vscode phpunit ${phpunitargs}`. Bạn có panel Testing (chạy/rerun từng test) mà không cần cài PHPUnit trên host. Debug từng test qua extension này chưa được wire — cần forward biến môi trường Xdebug vào lệnh `docker exec`.
+
+Mỗi nhóm cấu hình cần đúng 1 extension VSCode tương ứng (Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHPUnit, PHP Debug). Nếu chưa cài, `setup` sẽ cảnh báo và hỏi có muốn cài ngay qua `code --install-extension` không — đồng ý thì setting tương ứng vẫn được wire luôn trong lần chạy đó. Truyền `--yes` để tự cài hết những gì thiếu mà không hỏi (hữu ích khi chạy script); nếu không có TTY và không có `--yes`, các extension còn thiếu sẽ tự bị bỏ qua, không hỏi.
 
 Các key hiện có và các configuration khác trong `launch.json` được giữ nguyên — chỉ những key do Govard quản lý mới bị thêm/ghi đè. Lưu ý: settings.json được parse như JSON thuần, nên comment (nếu có) sẽ bị mất khi ghi lại.
 

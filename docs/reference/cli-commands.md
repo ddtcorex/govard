@@ -437,6 +437,7 @@ Writes (or merges into) the VSCode settings needed to run PHP tooling inside the
 # Run from inside a project (or any subdirectory of one)
 govard vscode setup
 #   -> .vscode/settings.json: intelephense.environment.phpVersion, phpstan.paths,
+#                             phpunit.paths (if vendor/bin/phpunit exists),
 #                             and (if vendor/bin/phpcs exists) phpcs.standard + phpcs.autoConfigSearch=false
 #   -> .vscode/launch.json:   a "Listen for Xdebug (Govard)" configuration (port 9003)
 
@@ -444,12 +445,18 @@ govard vscode setup
 govard vscode setup --global
 #   -> creates ~/.govard/bin/govard-php, govard-php-cs-fixer, and govard-phpcs wrapper scripts
 #   -> user settings.json: php.validate.executablePath, phpstan.binCommand,
-#                          php-cs-fixer.executablePath, phpcs.executablePath
+#                          php-cs-fixer.executablePath, phpcs.executablePath, phpunit.command
 ```
+
+Settings reflect the project's last-used profile (e.g. an upgrade profile pinning a newer PHP version) if one is registered, rather than always the base `.govard.yml` — so `intelephense.environment.phpVersion` matches whatever's actually running.
 
 The PHPCS coding standard is auto-detected from `composer.json` (`magento/magento-coding-standard` -> `Magento2`, `wp-coding-standards/wpcs` -> `WordPress`, `drupal/coder` -> `Drupal`), falling back to `PSR12`. `phpcs.autoConfigSearch` is disabled because it would otherwise auto-detect a `phpcs.xml`/`.dist` ruleset and pass its *host* absolute path as `--standard`, which the container can't read.
 
-Each setting group requires a specific VSCode extension (Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHP Debug). If one isn't installed, `setup` warns and asks whether to install it now via `code --install-extension` — accept and the corresponding setting is still wired up in that same run. Pass `--yes` to install everything missing without asking (useful for scripting); with no TTY attached and no `--yes`, missing extensions are skipped without prompting.
+If `vendor/bin/phpstan` exists but the project has **no** `phpstan.neon`/`.dist`/`dist.neon` of its own, `setup` sets `phpstan.options` to a `--level=0` default (`--autoload-file=vendor/autoload.php` plus `app/code`+`app/design` for Magento 2 or `app`+`src` otherwise — the same convention `govard test phpstan` already falls back to) so PHPStan has something to analyze. This intentionally lives in `.vscode/settings.json`, not a generated `phpstan.neon` at the project root — that file is normally git-tracked and not ours to create. As soon as the project gets its own config, re-running `setup` removes `phpstan.options` again so it can never override the project's real rules — the project's config always wins.
+
+`phpunit.command` (recca0120.vscode-phpunit) needs no wrapper script — it's a template the extension tokenizes itself, so it's set directly to `govard vscode phpunit ${phpunitargs}`. This gives you the Testing sidebar (run/rerun individual tests) without installing PHPUnit on the host. Debugging an individual test through this extension isn't wired up yet — it would need Xdebug environment variables forwarded into the `docker exec` call.
+
+Each setting group requires a specific VSCode extension (Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHPUnit, PHP Debug). If one isn't installed, `setup` warns and asks whether to install it now via `code --install-extension` — accept and the corresponding setting is still wired up in that same run. Pass `--yes` to install everything missing without asking (useful for scripting); with no TTY attached and no `--yes`, missing extensions are skipped without prompting.
 
 Existing keys and unrelated `launch.json` configurations are preserved — only the keys Govard manages are added or overwritten. Note: settings.json is parsed as plain JSON, so any comments in it are dropped when rewritten.
 

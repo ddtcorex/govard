@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.59.0] - 2026-07-21
+
+### ✨ New Features
+
+- **VSCode Integration:** Added a `govard vscode` command group (`php`, `composer`, `phpstan`, `phpcs`, `php-cs-fixer`, `phpunit`) that runs PHP tooling inside the project's container for editor use, resolving the project by walking up from the current directory rather than requiring an exact match like `govard tool`. Added `govard vscode setup [--global]` to auto-generate/merge the VSCode settings needed to point Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHPUnit, and Xdebug at the container instead of the host: project scope writes `.vscode/settings.json` (PHP version, PHPStan path mapping, PHPCS coding standard auto-detected from `composer.json`, PHPUnit path mapping) and `.vscode/launch.json` (a ready-made "Listen for Xdebug" configuration); `--global` instead wires VSCode's user settings once for every project via small wrapper scripts under `~/.govard/bin`. Before wiring any setting group, `setup` checks whether the corresponding VSCode extension is actually installed (via its `extensions.json` manifest) and, if not, offers to install it via `code --install-extension` (`--yes` installs everything missing without asking). If a project has no `phpstan.neon`/`.dist` of its own, `setup` falls back to a `--level=0` default via `phpstan.options` in `.vscode/settings.json` instead of writing a git-tracked `phpstan.neon` at the project root — removed again automatically once the project gains its own config, so the project's real rules always win.
+- **Magento 2 PHP Images Pinned to Alpine 3.19:** libxml2 >= 2.12 (shipped in Alpine 3.20+) enforces XSD Unique Particle Attribution strictly, which makes Magento 2's own `module-elasticsearch/etc/esconfig.xsd` fail schema validation and abort `indexer:reindex` in developer mode. Added a dedicated `php-magento2-base` Docker Bake target (PHP 8.1-8.4) that pins the upstream base image to `-alpine3.19` (verified to validate that schema cleanly) and used it as the base for the `php-magento2` image; every other framework's PHP image keeps tracking the regular, actively-patched floating Alpine tag.
+
+### 🐛 Bug Fixes
+
+- **Redundant Composer Install Corrupting Restored `vendor/`:** During Magento 2 bootstrap, a `composer install` failure (e.g. private-repo auth error) triggers a fallback that rsyncs `vendor/` from a remote. The subsequent `govard config auto` step then unconditionally re-ran `composer install` anyway, hitting the same failure again and potentially corrupting the just-restored `vendor/`, breaking the rest of bootstrap. Added a stateless check (`engine.VendorSatisfiesComposerLock`, comparing `composer.lock` against `vendor/composer/installed.json` for both Composer 1.x and 2.x formats) that skips the redundant install whenever `vendor/` already satisfies the lock, and now backs up `vendor/`/`composer.lock` before a risky install so a failure can't leave the project without a working `vendor/` at all.
+
 ## [1.58.0] - 2026-07-20
 
 ### ✨ New Features

@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -72,13 +74,46 @@ func initVSCodeCommands() {
 
 				config := loadConfig()
 				target := resolveToolExecution(config, vc.Binary, "")
-				return RunInContainerAt(target.ContainerName, target.User, target.Workdir, vc.Binary, append(vc.PrependArgs, args...))
+				runErr := RunInContainerAt(target.ContainerName, target.User, target.Workdir, vc.Binary, append(vc.PrependArgs, args...))
+				if runErr == nil {
+					return nil
+				}
+				if code, ok := toolExitCode(runErr); ok {
+					// The tool ran and exited non-zero on its own terms (e.g.
+					// phpcs/phpstan exit 1 when they find issues, not because
+					// anything failed to run). Exit with that code directly
+					// instead of returning it to Cobra: Execute() would print
+					// it via pterm, which writes to stdout and would corrupt
+					// machine-readable output (e.g. --report=json) that the
+					// tool already flushed there.
+					os.Exit(code)
+				}
+				return runErr
 			},
 		}
 		vscodeCmd.AddCommand(cmd)
 	}
 	vscodeCmd.AddCommand(vscodeSetupCmd)
 	rootCmd.AddCommand(vscodeCmd)
+}
+
+// toolExitCode extracts the process exit code from err if it's an
+// *exec.ExitError — i.e. the tool actually ran and exited non-zero on its own
+// terms (phpcs/phpstan exit 1 when they find issues; that's normal output,
+// not a failure to run). Returns ok=false for any other error (docker not
+// found, container not running, etc), which should still be reported as a
+// real failure.
+func toolExitCode(err error) (int, bool) {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), true
+	}
+	return 0, false
+}
+
+// ToolExitCodeForTest exposes toolExitCode to the tests package.
+func ToolExitCodeForTest(err error) (int, bool) {
+	return toolExitCode(err)
 }
 
 // findProjectRootUpward walks up from the current working directory looking
