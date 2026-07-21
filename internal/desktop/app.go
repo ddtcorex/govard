@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"govard/internal/engine"
+	_ "govard/internal/frameworks" // registers framework detection/config data via init()
 )
 
 func (app *App) GetUserInfo() (res UserInfo, err error) {

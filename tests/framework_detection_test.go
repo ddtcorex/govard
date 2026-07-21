@@ -176,6 +176,58 @@ func TestWordpressDiscovery(t *testing.T) {
 	}
 }
 
+func TestOpenMagePackageDetectedAsMagento1(t *testing.T) {
+	// This looks surprising but is today's real behavior: openmage/magento-lts
+	// maps to "magento1", not "openmage" - openmage has no detection
+	// heuristic of its own. Locking this in so Task 2's rewrite can't
+	// accidentally "fix" it.
+	testDir := tempProject(t, map[string]string{
+		"composer.json": composerJSON(t, map[string]string{
+			"openmage/magento-lts": "20.0.0",
+		}),
+	})
+
+	metadata := engine.DetectFramework(testDir)
+	if metadata.Framework != "magento1" {
+		t.Errorf("Expected framework magento1 (current quirk), got %s", metadata.Framework)
+	}
+}
+
+func TestMagentoHackathonPackageDetectedAsMagento1(t *testing.T) {
+	testDir := tempProject(t, map[string]string{
+		"composer.json": composerJSON(t, map[string]string{
+			"magento-hackathon/magento-composer-installer": "3.0.0",
+		}),
+	})
+
+	metadata := engine.DetectFramework(testDir)
+	if metadata.Framework != "magento1" {
+		t.Errorf("Expected framework magento1, got %s", metadata.Framework)
+	}
+}
+
+func TestMagento1LocalXMLDiscovery(t *testing.T) {
+	testDir := tempProject(t, map[string]string{
+		"app/etc/local.xml": "<config></config>",
+	})
+
+	metadata := engine.DetectFramework(testDir)
+	if metadata.Framework != "magento1" {
+		t.Errorf("Expected framework magento1, got %s", metadata.Framework)
+	}
+}
+
+func TestMagento2AuthJSONDiscovery(t *testing.T) {
+	testDir := tempProject(t, map[string]string{
+		"auth.json": `{"http-basic":{"repo.magento.com":{"username":"u","password":"p"}}}`,
+	})
+
+	metadata := engine.DetectFramework(testDir)
+	if metadata.Framework != "magento2" {
+		t.Errorf("Expected framework magento2, got %s", metadata.Framework)
+	}
+}
+
 func tempProject(t *testing.T, files map[string]string) string {
 	t.Helper()
 

@@ -14,6 +14,10 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "OpenMage",
 		Config:      config,
 		Manifest:    manifest,
+		// Detect is intentionally the zero value: openmage has no
+		// composer-package or file-path heuristic of its own today (see
+		// magento1's Detect comment) - preserving current behavior exactly.
+		Detect: engine.DetectionSpec{},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewOpenMageBootstrap(opts)
 		},

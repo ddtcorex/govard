@@ -32,6 +32,12 @@ type FrameworkDefinition struct {
 	// currently sourced from engine.GetFrameworkManifestConfig.
 	Manifest engine.FrameworkManifestConfig
 
+	// Detect describes how to auto-detect this framework from a project
+	// directory (composer.json/package.json/auth.json/file-path matches).
+	// Populated by each framework's Definition() and pushed into
+	// engine's detection registry by Registry.Register.
+	Detect engine.DetectionSpec
+
 	// Bootstrap builds this framework's fresh-install/clone bootstrapper.
 	// Nil for frameworks that don't yet implement bootstrap.FrameworkBootstrap
 	// (currently only magento2, which uses the free function

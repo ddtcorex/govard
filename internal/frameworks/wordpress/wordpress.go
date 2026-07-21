@@ -15,6 +15,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "WordPress",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			ComposerPackages: []string{"johnpbloch/wordpress", "roots/wordpress", "wordpress/wordpress"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewWordPressBootstrap(opts)
 		},

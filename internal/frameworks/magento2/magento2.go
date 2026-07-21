@@ -19,5 +19,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "Magento 2",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			ComposerPackages: []string{"magento/product-community-edition", "magento/product-enterprise-edition", "magento/framework"},
+			AuthJSONHosts:    []string{"repo.magento.com"},
+		},
 	}
 }

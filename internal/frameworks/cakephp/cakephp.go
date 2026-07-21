@@ -14,6 +14,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "CakePHP",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			ComposerPackages: []string{"cakephp/cakephp"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewCakePHPBootstrap(opts)
 		},

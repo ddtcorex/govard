@@ -14,6 +14,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "Shopware",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			ComposerPackages: []string{"shopware/core", "shopware/platform"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewShopwareBootstrap(opts)
 		},

@@ -14,6 +14,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "Drupal",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			ComposerPackages: []string{"drupal/core"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewDrupalBootstrap(opts)
 		},

@@ -14,6 +14,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "Emdash",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			PackageJSONDeps: []string{"emdash"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewEmdashBootstrap(opts)
 		},

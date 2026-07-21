@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"govard/internal/engine"
+	_ "govard/internal/frameworks" // registers framework detection/config data via init()
 	"govard/internal/ui"
 
 	"github.com/pterm/pterm"

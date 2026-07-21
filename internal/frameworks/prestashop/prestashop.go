@@ -14,6 +14,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "PrestaShop",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			FilePaths: []string{"config/defines.inc.php"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewPrestaShopBootstrap(opts)
 		},

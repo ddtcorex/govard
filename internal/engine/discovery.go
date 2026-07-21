@@ -12,6 +12,33 @@ type ProjectMetadata struct {
 	Version   string
 }
 
+// DetectionSpec describes how to auto-detect one framework: any-of matches
+// against composer.json require keys, package.json dependency keys,
+// auth.json http-basic hosts, and relative file-path existence checks.
+// Populated via RegisterDetection, normally called once per framework from
+// internal/frameworks's init() (see internal/frameworks/registry.go).
+type DetectionSpec struct {
+	ComposerPackages []string
+	PackageJSONDeps  []string
+	AuthJSONHosts    []string
+	FilePaths        []string
+}
+
+var detectionRegistry = map[string]DetectionSpec{}
+
+// RegisterDetection registers framework's detection data. Not safe for
+// concurrent calls; intended usage is registration during package init(),
+// before DetectFramework is ever called.
+func RegisterDetection(framework string, spec DetectionSpec) {
+	detectionRegistry[framework] = spec
+}
+
+// GetRegisteredDetectionForTest exposes the detection registry for tests.
+func GetRegisteredDetectionForTest(framework string) (DetectionSpec, bool) {
+	spec, ok := detectionRegistry[framework]
+	return spec, ok
+}
+
 func DetectWebRoot(root string, framework string) string {
 	return DetectFrameworkWebRoot(root, framework)
 }
@@ -23,26 +50,9 @@ func DetectFramework(root string) ProjectMetadata {
 	composerPath := filepath.Join(root, "composer.json")
 	if _, err := os.Stat(composerPath); err == nil {
 		if require, ok := readComposerRequirements(composerPath); ok {
-			frameworkMap := map[string]string{
-				"magento/product-community-edition":            "magento2",
-				"magento/product-enterprise-edition":           "magento2",
-				"magento/framework":                            "magento2",
-				"openmage/magento-lts":                         "magento1",
-				"magento-hackathon/magento-composer-installer": "magento1",
-				"laravel/framework":                            "laravel",
-				"drupal/core":                                  "drupal",
-				"symfony/framework-bundle":                     "symfony",
-				"symfony/symfony":                              "symfony",
-				"shopware/core":                                "shopware",
-				"shopware/platform":                            "shopware",
-				"cakephp/cakephp":                              "cakephp",
-				"johnpbloch/wordpress":                         "wordpress",
-				"roots/wordpress":                              "wordpress",
-				"wordpress/wordpress":                          "wordpress",
-			}
-
+			composerIndex := buildComposerPackageIndex()
 			for pkg, raw := range require {
-				if fw, exists := frameworkMap[pkg]; exists {
+				if fw, exists := composerIndex[pkg]; exists {
 					metadata.Framework = fw
 					metadata.Version = dependencyVersionString(raw)
 					return metadata
@@ -55,53 +65,67 @@ func DetectFramework(root string) ProjectMetadata {
 	packagePath := filepath.Join(root, "package.json")
 	if _, err := os.Stat(packagePath); err == nil {
 		if deps, ok := readPackageDependencies(packagePath); ok {
-			if raw, ok := deps["emdash"]; ok {
-				metadata.Framework = "emdash"
-				metadata.Version = dependencyVersionString(raw)
-				return metadata
-			}
-			if raw, ok := deps["next"]; ok {
-				metadata.Framework = "nextjs"
-				metadata.Version = dependencyVersionString(raw)
-				return metadata
-			}
-		}
-	}
-
-	// Heuristic: auth.json with Magento repo credentials
-	authPath := filepath.Join(root, "auth.json")
-	if _, err := os.Stat(authPath); err == nil {
-		data, _ := os.ReadFile(authPath)
-		var auth map[string]interface{}
-		if err := json.Unmarshal(data, &auth); err == nil {
-			if basic, ok := auth["http-basic"].(map[string]interface{}); ok {
-				if _, ok := basic["repo.magento.com"]; ok {
-					metadata.Framework = "magento2"
+			depIndex := buildPackageJSONDepIndex()
+			for dep, raw := range deps {
+				if fw, exists := depIndex[dep]; exists {
+					metadata.Framework = fw
+					metadata.Version = dependencyVersionString(raw)
 					return metadata
 				}
 			}
 		}
 	}
 
-	// Heuristic: Magento 1 files
-	if _, err := os.Stat(filepath.Join(root, "app", "Mage.php")); err == nil {
-		metadata.Framework = "magento1"
-		return metadata
-	}
-	if _, err := os.Stat(filepath.Join(root, "app", "etc", "local.xml")); err == nil {
-		metadata.Framework = "magento1"
-		return metadata
+	// Heuristic: auth.json with a registered host present (e.g. Magento repo credentials)
+	authPath := filepath.Join(root, "auth.json")
+	if _, err := os.Stat(authPath); err == nil {
+		data, _ := os.ReadFile(authPath)
+		var auth map[string]interface{}
+		if err := json.Unmarshal(data, &auth); err == nil {
+			if basic, ok := auth["http-basic"].(map[string]interface{}); ok {
+				for framework, spec := range detectionRegistry {
+					for _, host := range spec.AuthJSONHosts {
+						if _, ok := basic[host]; ok {
+							metadata.Framework = framework
+							return metadata
+						}
+					}
+				}
+			}
+		}
 	}
 
-	// Heuristic: PrestaShop files. config/defines.inc.php is present in every
-	// PrestaShop version (1.6 through 9.x) and PrestaShop isn't reliably a composer
-	// "require" entry since it's the root package, not a dependency.
-	if _, err := os.Stat(filepath.Join(root, "config", "defines.inc.php")); err == nil {
-		metadata.Framework = "prestashop"
-		return metadata
+	// Heuristic: registered file-path existence checks
+	for framework, spec := range detectionRegistry {
+		for _, relPath := range spec.FilePaths {
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relPath))); err == nil {
+				metadata.Framework = framework
+				return metadata
+			}
+		}
 	}
 
 	return metadata
+}
+
+func buildComposerPackageIndex() map[string]string {
+	index := make(map[string]string)
+	for framework, spec := range detectionRegistry {
+		for _, pkg := range spec.ComposerPackages {
+			index[pkg] = framework
+		}
+	}
+	return index
+}
+
+func buildPackageJSONDepIndex() map[string]string {
+	index := make(map[string]string)
+	for framework, spec := range detectionRegistry {
+		for _, dep := range spec.PackageJSONDeps {
+			index[dep] = framework
+		}
+	}
+	return index
 }
 
 func dependencyVersionString(raw interface{}) string {

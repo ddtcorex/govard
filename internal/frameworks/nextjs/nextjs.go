@@ -14,6 +14,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "Next.js",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			PackageJSONDeps: []string{"next"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewNextJSBootstrap(opts)
 		},

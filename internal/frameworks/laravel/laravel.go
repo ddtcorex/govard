@@ -14,6 +14,9 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "Laravel",
 		Config:      config,
 		Manifest:    manifest,
+		Detect: engine.DetectionSpec{
+			ComposerPackages: []string{"laravel/framework"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewLaravelBootstrap(opts)
 		},

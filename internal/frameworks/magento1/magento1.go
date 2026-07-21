@@ -14,6 +14,17 @@ func Definition() types.FrameworkDefinition {
 		DisplayName: "Magento 1",
 		Config:      config,
 		Manifest:    manifest,
+		// ComposerPackages intentionally includes openmage/magento-lts and
+		// magento-hackathon/magento-composer-installer - this is the exact,
+		// pre-existing behavior of internal/engine/discovery.go (a project
+		// using openmage/magento-lts is auto-detected as "magento1", not
+		// "openmage"; openmage has no detection heuristic of its own).
+		// This looks like it could be a bug, but changing it is out of
+		// scope - Global Constraints require zero detection behavior change.
+		Detect: engine.DetectionSpec{
+			ComposerPackages: []string{"openmage/magento-lts", "magento-hackathon/magento-composer-installer"},
+			FilePaths:        []string{"app/Mage.php", "app/etc/local.xml"},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewMagento1Bootstrap(opts)
 		},
