@@ -16,6 +16,10 @@ const (
 	DefaultMagentoDBName = "magento"
 	DefaultMagentoDBHost = DefaultDBHost
 
+	DefaultMageOSDBUser = "mageos"
+	DefaultMageOSDBPass = "mageos"
+	DefaultMageOSDBName = "mageos"
+
 	DefaultSymfonyDBUser = "symfony"
 	DefaultSymfonyDBPass = "symfony"
 	DefaultSymfonyDBName = "symfony"

@@ -58,6 +58,13 @@ func defaultDBCredentialsForFramework(framework string) dbCredentials {
 			Password: conventions.DefaultMagentoDBPass,
 			Database: conventions.DefaultMagentoDBName,
 		}
+	case conventions.FrameworkMageOS:
+		return dbCredentials{
+			Port:     conventions.MySQLPort,
+			Username: conventions.DefaultMageOSDBUser,
+			Password: conventions.DefaultMageOSDBPass,
+			Database: conventions.DefaultMageOSDBName,
+		}
 	default:
 		return dbCredentials{
 			Port:     conventions.MySQLPort,

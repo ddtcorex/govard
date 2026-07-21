@@ -454,7 +454,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 					pterm.Warning.Printf("Could not refresh PMA active projects: %v\n", err)
 				}
 
-				if context.Config.Framework == "magento2" {
+				if context.Config.Framework == "magento2" || context.Config.Framework == "mageos" {
 					if context.SkipTuning {
 						pterm.Info.Println("Skipping framework auto-configuration (--no-tuning)")
 					} else if context.ShiftInfo != nil && context.ShiftInfo.Shifted && stdinIsTerminal() {

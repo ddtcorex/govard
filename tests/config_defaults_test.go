@@ -20,6 +20,11 @@ func TestNormalizeConfigChownDirListDefaults(t *testing.T) {
 			want:      []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer"},
 		},
 		{
+			name:      "Mage-OS defaults",
+			framework: "mageos",
+			want:      []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer"},
+		},
+		{
 			name:      "Generic framework defaults",
 			framework: "laravel",
 			want:      []string{"/bash_history"},

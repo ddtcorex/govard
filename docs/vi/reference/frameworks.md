@@ -14,6 +14,7 @@ Govard tự động nhận diện các framework được hỗ trợ và áp d�
 | Framework | Tự động nhận diện | Profile theo phiên bản | Web Root mặc định |
 | :--- | :---: | :---: | :--- |
 | Magento 2 | ✅ | ✅ | `/pub` |
+| Mage-OS | ✅ | cấu hình mặc định | `/pub` |
 | Magento 1 / OpenMage | ✅ | cấu hình mặc định | thư mục gốc dự án |
 | Laravel | ✅ | ✅ | `/public` |
 | Next.js | ✅ | cấu hình mặc định | thư mục gốc dự án |
@@ -33,6 +34,7 @@ Govard tự động nhận diện các framework được hỗ trợ và áp d�
 | Framework | PHP | Node | DB | Cache | Search | Queue |
 | :--- | :---: | :---: | :--- | :--- | :--- | :--- |
 | Magento 2 | 8.4 | 24 | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
+| Mage-OS | 8.4 | 24 | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
 | Magento 1 / OpenMage | 8.1 | — | mariadb 10.11 | none | none | none |
 | Laravel | 8.4 | — | mariadb 11.4 | none | none | none |
 | Next.js | — | 24 | none | none | none | none |
@@ -173,6 +175,23 @@ govard tool magento cache:flush
 **Những gì bạn vẫn cần làm:**
 - Tạo các website, store và store view tương ứng trong admin panel của Magento.
 - Xóa cache/config sau khi thay đổi ánh xạ store.
+
+---
+
+## 🌱 Mage-OS
+
+Mage-OS là bản fork cộng đồng, có thể thay thế trực tiếp cho Magento 2 Open Source. Govard nhận diện Mage-OS qua `mage-os/product-community-edition` hoặc `mage-os/project-community-edition` trong `composer.json`, và tái sử dụng Docker image, template nginx cùng compose stack Varnish của Magento 2 — mọi công cụ Magento 2 ở trên (`govard tool magento`, `govard tool magerun`, `govard config auto`, định tuyến multi-site) đều áp dụng không thay đổi.
+
+Cấu hình runtime mặc định: PHP 8.4.
+
+### Cài đặt mới & Pipeline Nâng cấp Tự động
+
+```bash
+govard bootstrap --framework mageos --fresh
+govard upgrade --version 1.3.1
+```
+
+`govard bootstrap`/`govard upgrade` sử dụng `mage-os/project-community-edition` và repository công khai của Mage-OS (`https://repo.mage-os.org`) thay vì repository riêng tư của Magento.
 
 ---
 

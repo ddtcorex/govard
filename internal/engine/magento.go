@@ -1132,7 +1132,7 @@ func prepareMagentoRunMappingAssets(config Config) (string, string, error) {
 
 func isMagentoFramework(framework string) bool {
 	switch strings.ToLower(strings.TrimSpace(framework)) {
-	case "magento1", "magento2", "openmage":
+	case "magento1", "magento2", "openmage", "mageos":
 		return true
 	default:
 		return false

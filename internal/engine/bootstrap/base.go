@@ -54,3 +54,13 @@ func Magento2FreshCommands(opts Options) []string {
 		"composer create-project magento/project-community-edition:" + version + " .",
 	}
 }
+
+func MageOSFreshCommands(opts Options) []string {
+	version := opts.Version
+	if version == "" {
+		version = "1.3.1"
+	}
+	return []string{
+		"composer create-project mage-os/project-community-edition:" + version + " --repository-url=https://repo.mage-os.org .",
+	}
+}

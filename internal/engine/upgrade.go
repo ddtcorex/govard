@@ -25,7 +25,9 @@ func UpgradeFramework(ctx context.Context, config Config, opts UpgradeOptions) e
 
 	switch strings.ToLower(config.Framework) {
 	case "magento2", "magento":
-		return upgradeMagento2(ctx, config, opts)
+		return upgradeMagento2(ctx, config, opts, magento2UpgradeVariant)
+	case "mageos":
+		return upgradeMagento2(ctx, config, opts, mageOSUpgradeVariant)
 	case "magento1":
 		return upgradeMagento1(ctx, config, opts)
 	case "laravel":
@@ -38,4 +40,9 @@ func UpgradeFramework(ctx context.Context, config Config, opts UpgradeOptions) e
 		pterm.Warning.Printf("Upgrade for %s is not implemented yet.\n", config.Framework)
 		return nil
 	}
+}
+
+// UpgradeFrameworkForTest exposes UpgradeFramework for tests in /tests.
+func UpgradeFrameworkForTest(config Config, opts UpgradeOptions) error {
+	return UpgradeFramework(context.Background(), config, opts)
 }

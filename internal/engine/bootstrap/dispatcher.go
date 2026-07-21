@@ -6,6 +6,8 @@ func Run(framework string, opts Options) error {
 	switch framework {
 	case "magento2":
 		return BootstrapMagento2(opts)
+	case "mageos":
+		return BootstrapMageOS(opts)
 	case "magento1":
 		return BootstrapMagento1(opts)
 	case "openmage":
@@ -35,6 +37,11 @@ func Run(framework string, opts Options) error {
 
 func BootstrapMagento2(opts Options) error {
 	_ = Magento2FreshCommands(opts)
+	return nil
+}
+
+func BootstrapMageOS(opts Options) error {
+	_ = MageOSFreshCommands(opts)
 	return nil
 }
 

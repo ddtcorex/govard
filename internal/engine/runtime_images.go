@@ -43,7 +43,7 @@ func RequiredRuntimeImages(config Config, root string) []string {
 			push(fmt.Sprintf("%snginx:%s", imageRepo, config.Stack.NginxVersion))
 		}
 		switch config.Framework {
-		case "magento2":
+		case "magento2", "mageos":
 			push(fmt.Sprintf("%sphp-magento2:%s", imageRepo, config.Stack.PHPVersion))
 		case "magento1", "openmage":
 			push(fmt.Sprintf("%sphp-magento1:%s", imageRepo, config.Stack.PHPVersion))

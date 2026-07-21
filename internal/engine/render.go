@@ -337,6 +337,17 @@ func RenderBlueprint(root string, config Config) error {
 	return RenderBlueprintWithProfile(root, config, config.Profile)
 }
 
+// varnishTemplateFramework returns the framework whose Varnish VCL blueprint
+// asset should be used for framework. mageos has no VCL of its own - it
+// reuses magento2's, since Mage-OS is a drop-in fork with the same runtime
+// shape and no Varnish-relevant differences.
+func varnishTemplateFramework(framework string) string {
+	if framework == "mageos" {
+		return "magento2"
+	}
+	return framework
+}
+
 // BlueprintVersion should be incremented whenever architectural changes are made to the embedded blueprints
 // to ensure that 'govard env up' re-renders existing environments.
 const BlueprintVersion = "1.46"
@@ -488,7 +499,7 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 
 	// Ensure support assets (Varnish, etc)
 	if config.Stack.Features.Varnish {
-		vclSrc := path.Join(config.Framework, "varnish", "default.vcl")
+		vclSrc := path.Join(varnishTemplateFramework(config.Framework), "varnish", "default.vcl")
 		vclDest := renderData.VarnishVclPath
 		vclDestDir := filepath.Dir(vclDest)
 

@@ -36,7 +36,7 @@ var configAutoCmd = &cobra.Command{
 
 func applyFrameworkAutoConfiguration(cmd *cobra.Command, config engine.Config) error {
 	switch config.Framework {
-	case "magento2":
+	case "magento2", "mageos":
 		// Proactively fix search host in DB via CLI (using govard db query)
 		if config.Stack.Features.Search || config.Stack.Services.Search != "none" {
 			_ = runMagentoSearchHostFixViaCLI(cmd, config)
@@ -60,6 +60,14 @@ func SetMagento1AutoConfigurationRunnerForTest(fn func(projectName string, confi
 	runMagento1AutoConfiguration = fn
 	return func() {
 		runMagento1AutoConfiguration = previous
+	}
+}
+
+func SetMagento2AutoConfigurationRunnerForTest(fn func(projectName string, config engine.Config, force bool) error) func() {
+	previous := runMagento2AutoConfiguration
+	runMagento2AutoConfiguration = fn
+	return func() {
+		runMagento2AutoConfiguration = previous
 	}
 }
 

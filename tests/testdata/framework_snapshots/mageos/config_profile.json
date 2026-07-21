@@ -1,0 +1,64 @@
+{
+  "framework_config": {
+    "Name": "mageos",
+    "Runtime": "php",
+    "AppService": "php",
+    "AppWorkdir": "/var/www/html",
+    "NGINXPUBLIC": "/pub",
+    "NGINXTemplate": "magento2.conf",
+    "DatabaseName": "mageos",
+    "DefaultPHP": "8.4",
+    "DefaultNodeVer": "24",
+    "DefaultDB": "mariadb",
+    "DefaultDBVer": "11.8",
+    "DefaultMySQLVer": "8.4",
+    "DefaultNginxVer": "1.28",
+    "DefaultApacheVer": "2.4",
+    "DefaultCacheVer": "7.4",
+    "DefaultSearchVer": "3.0",
+    "DefaultVarnishVer": "8.0",
+    "DefaultQueueVer": "4.2",
+    "DefaultWebServer": "nginx",
+    "DefaultSearch": "opensearch",
+    "DefaultCache": "redis",
+    "DefaultQueue": "none",
+    "DefaultComposerVer": "latest",
+    "Includes": [
+      "includes/base.yml",
+      "includes/redis.yml",
+      "includes/elasticsearch.yml",
+      "includes/varnish.yml",
+      "includes/rabbitmq.yml",
+      "includes/selenium.yml",
+      "includes/livereload.yml"
+    ]
+  },
+  "runtime_profile": {
+    "Profile": {
+      "Framework": "mageos",
+      "FrameworkVersion": "",
+      "PHPVersion": "8.4",
+      "NodeVersion": "24",
+      "DB": "mariadb",
+      "DBVersion": "11.8",
+      "WebRoot": "/pub",
+      "WebServer": "nginx",
+      "Cache": "redis",
+      "CacheVersion": "7.4",
+      "NginxVersion": "1.28",
+      "ApacheVersion": "2.4",
+      "Search": "opensearch",
+      "SearchVersion": "3.0",
+      "VarnishVersion": "8.0",
+      "Queue": "none",
+      "QueueVersion": "",
+      "ComposerVersion": "latest",
+      "XdebugSession": "PHPSTORM"
+    },
+    "Source": "framework-defaults",
+    "Notes": [
+      "Framework version is not detected. Using framework defaults."
+    ],
+    "Warnings": null
+  }
+}

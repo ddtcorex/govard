@@ -16,7 +16,7 @@ import (
 // allFrameworkNames mirrors the keys of engine.FrameworkConfigs, excluding
 // "custom" (a user-defined escape hatch, not a real framework identity).
 var allFrameworkNames = []string{
-	"magento2", "magento1", "openmage",
+	"magento2", "magento1", "openmage", "mageos",
 	"laravel", "symfony", "wordpress", "drupal",
 	"nextjs", "emdash", "shopware", "cakephp", "prestashop",
 }
@@ -165,6 +165,8 @@ func freshCommandsFor(framework string) []string {
 	switch framework {
 	case "magento2":
 		return bootstrap.Magento2FreshCommands(opts)
+	case "mageos":
+		return bootstrap.MageOSFreshCommands(opts)
 	case "magento1":
 		return bootstrap.NewMagento1Bootstrap(opts).FreshCommands()
 	case "openmage":

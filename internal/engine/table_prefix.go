@@ -32,7 +32,7 @@ func SafeTablePrefix(prefix string) string {
 
 func FrameworkSupportsTablePrefix(framework string) bool {
 	switch normalizeFrameworkManifestKey(framework) {
-	case "magento2", "magento1", "openmage", "prestashop":
+	case "magento2", "magento1", "openmage", "prestashop", "mageos":
 		return true
 	default:
 		return false
@@ -44,7 +44,7 @@ func DetectMagentoTablePrefix(root string, framework string) string {
 		return ""
 	}
 	switch normalizeFrameworkManifestKey(framework) {
-	case "magento2":
+	case "magento2", "mageos":
 		return DetectMagento2TablePrefix(root)
 	case "magento1", "openmage":
 		return DetectMagento1TablePrefix(root)

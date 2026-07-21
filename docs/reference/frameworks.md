@@ -14,6 +14,7 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | Framework | Auto-Detection | Version-Aware Profile | Default Web Root |
 | :--- | :---: | :---: | :--- |
 | Magento 2 | ✅ | ✅ | `/pub` |
+| Mage-OS | ✅ | framework defaults | `/pub` |
 | Magento 1 / OpenMage | ✅ | framework defaults | project root |
 | Laravel | ✅ | ✅ | `/public` |
 | Next.js | ✅ | framework defaults | project root |
@@ -33,6 +34,7 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | Framework | PHP | Node | DB | Cache | Search | Queue |
 | :--- | :---: | :---: | :--- | :--- | :--- | :--- |
 | Magento 2 | 8.4 | 24 | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
+| Mage-OS | 8.4 | 24 | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
 | Magento 1 / OpenMage | 8.1 | — | mariadb 10.11 | none | none | none |
 | Laravel | 8.4 | — | mariadb 11.4 | none | none | none |
 | Next.js | — | 24 | none | none | none | none |
@@ -173,6 +175,23 @@ govard tool magento cache:flush
 **What you still need to do:**
 - Create websites, stores, and store views in Magento admin
 - Clear config/cache after changing store mappings
+
+---
+
+## 🌱 Mage-OS
+
+Mage-OS is a community-maintained, drop-in fork of Magento 2 Open Source. Govard detects it via `mage-os/product-community-edition` or `mage-os/project-community-edition` in `composer.json`, and reuses Magento 2's Docker image, nginx template, and Varnish/compose stack — all Magento 2 tooling above (`govard tool magento`, `govard tool magerun`, `govard config auto`, multi-site routing) applies unchanged.
+
+Default runtime: PHP 8.4.
+
+### Fresh Bootstrap & Native Upgrade Pipeline
+
+```bash
+govard bootstrap --framework mageos --fresh
+govard upgrade --version 1.3.1
+```
+
+`govard bootstrap`/`govard upgrade` use `mage-os/project-community-edition` and Mage-OS's public repository (`https://repo.mage-os.org`) instead of Magento's private repository.
 
 ---
 

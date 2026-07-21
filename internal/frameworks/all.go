@@ -7,6 +7,7 @@ import (
 	"govard/internal/frameworks/laravel"
 	"govard/internal/frameworks/magento1"
 	"govard/internal/frameworks/magento2"
+	"govard/internal/frameworks/mageos"
 	"govard/internal/frameworks/nextjs"
 	"govard/internal/frameworks/openmage"
 	"govard/internal/frameworks/prestashop"
@@ -20,6 +21,7 @@ import (
 // a new framework (e.g. mageos, added in a later step of this initiative).
 func init() {
 	Register(magento2.Definition())
+	Register(mageos.Definition())
 	Register(magento1.Definition())
 	Register(openmage.Definition())
 	Register(laravel.Definition())

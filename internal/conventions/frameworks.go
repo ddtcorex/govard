@@ -3,6 +3,7 @@ package conventions
 const (
 	FrameworkMagento1   = "magento1"
 	FrameworkMagento2   = "magento2"
+	FrameworkMageOS     = "mageos"
 	FrameworkLaravel    = "laravel"
 	FrameworkWordPress  = "wordpress"
 	FrameworkSymfony    = "symfony"
