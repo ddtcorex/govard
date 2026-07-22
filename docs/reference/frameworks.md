@@ -390,4 +390,10 @@ Interactive picker for:
 
 ---
 
+## Contributing a New Framework
+
+Want to add a framework not listed here? See [Adding a New Framework](/developer/adding-a-framework) for the internal registry structure and a file-by-file guide.
+
+---
+
 [← Configuration](/reference/configuration) | [Remotes and Sync →](/workflows/remotes-and-sync)

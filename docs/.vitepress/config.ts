@@ -5,7 +5,7 @@ export default defineConfig({
   title: 'Govard',
   description: 'Go-based Versatile Runtime & Development',
 
-  srcExclude: ['plans/**'],
+  srcExclude: ['plans/**', 'superpowers/**'],
 
   cleanUrls: true,
   lastUpdated: true,
@@ -186,6 +186,7 @@ function sidebarEn() {
         text: 'Developer',
         items: [
           { text: 'Architecture', link: '/developer/architecture' },
+          { text: 'Adding a Framework', link: '/developer/adding-a-framework' },
           { text: 'Contributing', link: '/developer/contributing' },
         ],
       },
@@ -240,6 +241,7 @@ function sidebarVi() {
         text: 'Nhà phát triển',
         items: [
           { text: 'Kiến trúc', link: '/vi/developer/architecture' },
+          { text: 'Thêm Framework', link: '/vi/developer/adding-a-framework' },
           { text: 'Đóng góp', link: '/vi/developer/contributing' },
         ],
       },

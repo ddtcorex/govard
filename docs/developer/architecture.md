@@ -96,14 +96,13 @@ See [Configuration](/reference/configuration) for the complete contract.
 
 ## Framework Support
 
-Discovery inspects project manifests and maps to framework defaults for:
+Each of Govard's 13 supported frameworks is registered in `internal/frameworks/<name>/` as a `types.FrameworkDefinition` — one struct carrying the framework's detection signature, runtime/manifest data, and dispatch hooks (bootstrap factory, tunnel base-URL rewriter, `govard bootstrap` support flags). `internal/frameworks/all.go`'s `init()` registers all 13 into a package-level registry (`internal/frameworks/registry.go`) that `internal/frameworks/run.go` and `internal/frameworks/base_url.go` dispatch through, instead of hardcoded `switch framework { ... }` statements scattered across the codebase.
 
-- Web root path
-- PHP and Node versions
-- Database engine and version
-- Optional cache, search, queue, and Varnish services
+Discovery (`engine.DetectFramework`) inspects project manifests — composer.json requires, package.json deps, auth.json hosts, file-path signatures — and maps to framework defaults for web root, PHP/Node versions, database engine, and optional cache/search/queue/Varnish services, sourced from `engine.GetFrameworkConfig`/`engine.GetFrameworkManifestConfig` (still the authoritative data, composed into each `FrameworkDefinition`).
 
-Magento 2 receives the deepest integration: auto-configuration, version-aware search/cache defaults, and dedicated debug routing.
+Magento 2 and its Mage-OS fork receive the deepest integration: auto-configuration, version-aware search/cache defaults, and dedicated debug routing.
+
+See [Adding a New Framework](/developer/adding-a-framework) for the full internal structure and a file-by-file guide to adding one.
 
 ---
 
@@ -140,6 +139,8 @@ Desktop operations call the CLI command surface directly (e.g., `govard up`, `go
 │   ├── cmd/                 CLI command definitions (Cobra)
 │   ├── blueprints/          Docker Compose templates per framework
 │   ├── engine/              Core logic (Docker SDK, discovery, rendering)
+│   │   └── bootstrap/       Per-framework FrameworkBootstrap implementations
+│   ├── frameworks/          Framework registry (one FrameworkDefinition per framework)
 │   ├── desktop/             Desktop app glue (Wails bindings)
 │   ├── proxy/               Caddy/proxy route and TLS helpers
 │   ├── ui/                  Styled terminal output (pterm)
@@ -158,7 +159,7 @@ Desktop operations call the CLI command surface directly (e.g., `govard up`, `go
 
 | Extension Point | How |
 | :--- | :--- |
-| Add framework detection | `internal/engine/discovery.go` |
+| Add a new framework | `internal/frameworks/<name>/` — see [Adding a New Framework](/developer/adding-a-framework) |
 | Extend runtime selection | Profile/config engine |
 | Add blueprint fragments | Compose template logic |
 | Project-level extensions | `.govard/commands`, `.govard/hooks`, `.govard/docker-compose.override.yml` |

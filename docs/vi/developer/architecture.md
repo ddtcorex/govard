@@ -96,14 +96,13 @@ Xem thêm tài liệu [Cấu hình](/vi/reference/configuration) để biết ch
 
 ## Hỗ trợ Framework
 
-Bộ nhận diện sẽ quét các file manifest của dự án để ánh xạ cấu hình mặc định tương ứng về:
+Mỗi framework trong số 13 framework Govard hỗ trợ được đăng ký tại `internal/frameworks/<name>/` dưới dạng một `types.FrameworkDefinition` — một struct duy nhất mang chữ ký nhận diện, dữ liệu runtime/manifest, và các hook dispatch (bootstrap factory, base-URL rewriter cho tunnel, cờ hỗ trợ `govard bootstrap`) của framework đó. `init()` của `internal/frameworks/all.go` đăng ký cả 13 framework vào một registry cấp package (`internal/frameworks/registry.go`), và `internal/frameworks/run.go`/`internal/frameworks/base_url.go` dispatch thông qua registry này thay vì rải rác các `switch framework { ... }` khắp codebase.
 
-- Đường dẫn Web root
-- Phiên bản PHP và Node.js
-- Phiên bản và engine database
-- Các dịch vụ bổ sung tùy chọn: cache, search, queue, và Varnish
+Bộ nhận diện (`engine.DetectFramework`) quét file manifest của dự án — composer.json requires, package.json deps, auth.json hosts, chữ ký đường dẫn file — và ánh xạ về cấu hình mặc định của framework (web root, phiên bản PHP/Node, database engine, các dịch vụ cache/search/queue/Varnish tùy chọn), lấy từ `engine.GetFrameworkConfig`/`engine.GetFrameworkManifestConfig` (vẫn là nguồn dữ liệu gốc, được compose vào từng `FrameworkDefinition`).
 
-Magento 2 được hỗ trợ sâu sắc nhất: tự động cấu hình, cấu hình mặc định search/cache theo phiên bản, và định tuyến debug riêng biệt.
+Magento 2 và bản fork Mage-OS được hỗ trợ sâu sắc nhất: tự động cấu hình, cấu hình mặc định search/cache theo phiên bản, và định tuyến debug riêng biệt.
+
+Xem [Thêm Framework](/vi/developer/adding-a-framework) để biết cấu trúc nội bộ đầy đủ và hướng dẫn từng file để thêm một framework mới.
 
 ---
 
@@ -140,6 +139,8 @@ Các thao tác trên Desktop gọi trực tiếp tới tầng CLI (ví dụ: `go
 │   ├── cmd/                 Khai báo lệnh CLI (Cobra)
 │   ├── blueprints/          File compose template cho từng framework
 │   ├── engine/              Logic cốt lõi (Docker SDK, nhận diện, rendering)
+│   │   └── bootstrap/       Triển khai FrameworkBootstrap cho từng framework
+│   ├── frameworks/          Registry framework (mỗi framework một FrameworkDefinition)
 │   ├── desktop/             Chất keo liên kết desktop (Wails bindings)
 │   ├── proxy/               Helper định tuyến Caddy/proxy và TLS
 │   ├── ui/                  Định dạng terminal output (pterm)
@@ -158,7 +159,7 @@ Các thao tác trên Desktop gọi trực tiếp tới tầng CLI (ví dụ: `go
 
 | Điểm mở rộng | Cách thức thực hiện |
 | :--- | :--- |
-| Thêm bộ nhận diện framework | Triển khai tại `internal/engine/discovery.go` |
+| Thêm framework mới | `internal/frameworks/<name>/` — xem [Thêm Framework](/vi/developer/adding-a-framework) |
 | Mở rộng lựa chọn runtime | Thao tác trên profile/config engine |
 | Thêm các mảnh blueprint compose | Thêm các compose template logic |
 | Tiện ích mở rộng dự án | `.govard/commands`, `.govard/hooks`, `.govard/docker-compose.override.yml` |

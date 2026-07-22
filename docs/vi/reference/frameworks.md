@@ -390,4 +390,10 @@ Trình chọn tương tác cho các thành phần:
 
 ---
 
+## Đóng góp một Framework mới
+
+Muốn thêm một framework chưa có trong danh sách này? Xem [Thêm Framework mới](/vi/developer/adding-a-framework) để biết cấu trúc registry nội bộ và hướng dẫn từng file.
+
+---
+
 [← Cấu hình](/vi/reference/configuration) | [Remote & Đồng bộ →](/vi/workflows/remotes-and-sync)

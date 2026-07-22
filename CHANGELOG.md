@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add Mage-OS framework support (detection, bootstrap fresh-install, upgrade) - reuses Magento 2's Docker image, blueprint, and compose stack.
 
+### 🐛 Bug Fixes
+
+- **Mage-OS Auto-Configuration Used Magento 2's DB Credentials:** `govard config auto`'s `setup:config:set` step for Mage-OS projects connected with Magento 2's default database user/password/name (`magento`/`magento`/`magento`) instead of Mage-OS's own (`mageos`/`mageos`/`mageos`), causing auto-configuration to fail with an access-denied error on a fresh Mage-OS install. Found by running a real `govard bootstrap --framework mageos --fresh` end-to-end.
+- **Next.js Fresh Install Depended on the Host's npm/Node Environment:** `govard bootstrap --framework nextjs --fresh` ran `npx create-next-app` directly on the host machine instead of inside a container (unlike every other framework), so a misconfigured or missing host npm install would silently break project scaffolding while `govard bootstrap` still reported success - the app would fail to start (`next: not found`) with no clear error. Project creation now runs in a throwaway container, independent of the host environment.
+
+### 🔧 Internal
+
+- Continued the framework registry consolidation (`internal/frameworks/*`): bootstrap dispatch, tunnel base-URL rewriting, and `govard bootstrap` framework allowlists now resolve through each framework's registered `FrameworkDefinition` instead of hardcoded per-framework switches, and several duplicated fresh-install code paths were collapsed into shared helpers. No user-facing behavior change - verified via the existing golden-snapshot regression suite plus real end-to-end `govard bootstrap --fresh` runs for all 13 supported frameworks.
+
 ## [1.59.0] - 2026-07-21
 
 ### ✨ New Features

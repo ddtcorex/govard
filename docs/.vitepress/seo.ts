@@ -32,6 +32,7 @@ export const SITEMAP_PRIORITIES: Record<string, { changefreq: string; priority: 
   'workflows/global-services': { changefreq: 'monthly', priority: 0.7 },
   'workflows/desktop-app': { changefreq: 'yearly', priority: 0.7 },
   'developer/architecture': { changefreq: 'yearly', priority: 0.6 },
+  'developer/adding-a-framework': { changefreq: 'yearly', priority: 0.6 },
   'developer/contributing': { changefreq: 'yearly', priority: 0.6 },
   'more/faq': { changefreq: 'monthly', priority: 0.7 },
   'more/changelog': { changefreq: 'weekly', priority: 0.7 },
