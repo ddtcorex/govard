@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks"
 )
 
 func TestBootstrapPkgSymfonyFreshCommands(t *testing.T) {
@@ -47,7 +48,7 @@ func TestBootstrapDispatcherSymfony(t *testing.T) {
 	opts := bootstrap.DefaultOptions()
 	opts.Version = "7.0"
 
-	err := bootstrap.Run("symfony", opts)
+	err := frameworks.RunBootstrap("symfony", opts)
 	if err != nil {
 		t.Fatalf("Run(symfony) failed: %v", err)
 	}

@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 
 	"govard/internal/engine/bootstrap"
@@ -27,8 +28,11 @@ func TestMagentoFamilyDefinitions(t *testing.T) {
 	if m2.Config.NGINXTemplate != "magento2.conf" {
 		t.Errorf("magento2 Config.NGINXTemplate = %q, want %q", m2.Config.NGINXTemplate, "magento2.conf")
 	}
-	if m2.Bootstrap != nil {
-		t.Error("magento2 Bootstrap should be nil (magento2 has no FrameworkBootstrap implementation yet)")
+	if m2.Bootstrap == nil {
+		t.Fatal("magento2 Bootstrap should not be nil")
+	}
+	if got := m2.Bootstrap(bootstrap.Options{Version: "2.4.7"}).FreshCommands(); len(got) != 1 || !strings.Contains(got[0], "magento/project-community-edition:2.4.7") {
+		t.Errorf("magento2 Bootstrap FreshCommands = %v, want a magento2 create-project command", got)
 	}
 
 	m1 := magento1.Definition()

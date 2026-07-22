@@ -17,23 +17,6 @@ type BaseURLManager interface {
 	Revert(projectRoot string, config engine.Config) error
 }
 
-func NewBaseURLManager(framework string) BaseURLManager {
-	switch strings.ToLower(framework) {
-	case "magento2", "mageos":
-		return &Magento2Manager{}
-	case "magento1", "openmage":
-		return &Magento1Manager{}
-	case "laravel":
-		return &LaravelManager{}
-	case "wordpress":
-		return &WordPressManager{}
-	case "symfony":
-		return &SymfonyManager{}
-	default:
-		return &NoopManager{}
-	}
-}
-
 type NoopManager struct{}
 
 func (m *NoopManager) Backup(projectRoot string, config engine.Config) error { return nil }

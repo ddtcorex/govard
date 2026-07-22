@@ -18,6 +18,13 @@ func NewSymfonyBootstrap(opts Options) *SymfonyBootstrap {
 	return &SymfonyBootstrap{Options: opts}
 }
 
+// BootstrapSymfony runs Symfony's fresh-install command generation.
+func BootstrapSymfony(opts Options) error {
+	bootstrap := NewSymfonyBootstrap(opts)
+	_ = bootstrap.FreshCommands()
+	return nil
+}
+
 func (s *SymfonyBootstrap) Name() string {
 	return "symfony"
 }

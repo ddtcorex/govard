@@ -20,5 +20,6 @@ func Definition() types.FrameworkDefinition {
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewCakePHPBootstrap(opts)
 		},
+		SupportsFreshInstall: true,
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	"govard/internal/engine"
 	"govard/internal/engine/tunnel"
+	"govard/internal/frameworks"
 )
 
 func TestMagento2ManagerUpdate(t *testing.T) {
@@ -100,6 +101,9 @@ func TestBaseURLManagerFactory(t *testing.T) {
 		expected  string
 	}{
 		{"magento2", "*tunnel.Magento2Manager"},
+		{"mageos", "*tunnel.Magento2Manager"},
+		{"magento1", "*tunnel.Magento1Manager"},
+		{"openmage", "*tunnel.Magento1Manager"},
 		{"Laravel", "*tunnel.LaravelManager"},
 		{"wordpress", "*tunnel.WordPressManager"},
 		{"Symfony", "*tunnel.SymfonyManager"},
@@ -107,7 +111,7 @@ func TestBaseURLManagerFactory(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		mgr := tunnel.NewBaseURLManager(tt.framework)
+		mgr := frameworks.NewBaseURLManager(tt.framework)
 		typeName := fmt.Sprintf("%T", mgr)
 		if typeName != tt.expected {
 			t.Errorf("framework %s: expected type %s, got %s", tt.framework, tt.expected, typeName)

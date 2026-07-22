@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks"
 )
 
 func TestBootstrapPkgDefaultOptions(t *testing.T) {
@@ -56,7 +57,7 @@ func TestBootstrapPkgMageOSFreshCommands(t *testing.T) {
 }
 
 func TestBootstrapPkgRunUnsupportedFramework(t *testing.T) {
-	err := bootstrap.Run("unknown", bootstrap.Options{})
+	err := frameworks.RunBootstrap("unknown", bootstrap.Options{})
 	if err == nil {
 		t.Fatal("expected unsupported framework error")
 	}

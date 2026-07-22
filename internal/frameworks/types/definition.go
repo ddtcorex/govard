@@ -3,6 +3,7 @@ package types
 import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/engine/tunnel"
 )
 
 // BootstrapFactory builds a framework's bootstrapper for one invocation.
@@ -39,9 +40,20 @@ type FrameworkDefinition struct {
 	Detect engine.DetectionSpec
 
 	// Bootstrap builds this framework's fresh-install/clone bootstrapper.
-	// Nil for frameworks that don't yet implement bootstrap.FrameworkBootstrap
-	// (currently only magento2, which uses the free function
-	// bootstrap.Magento2FreshCommands instead - resolved when the bootstrap
-	// dispatchers are unified in a later step).
+	// Populated for all 13 frameworks; frameworks.RunBootstrap uses it to
+	// dispatch without a per-framework switch.
 	Bootstrap BootstrapFactory
+
+	// BaseURLManager builds this framework's tunnel base-URL rewriter (for
+	// `govard tunnel`). Nil for frameworks that don't need specialized
+	// rewriting; frameworks.NewBaseURLManager falls back to
+	// tunnel.NoopManager in that case.
+	BaseURLManager func() tunnel.BaseURLManager
+
+	// SupportsBootstrap allows `govard bootstrap` (remote/clone workflow)
+	// for this framework.
+	SupportsBootstrap bool
+	// SupportsFreshInstall allows `govard bootstrap --fresh` for this
+	// framework.
+	SupportsFreshInstall bool
 }

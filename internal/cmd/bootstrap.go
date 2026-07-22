@@ -6,11 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -371,10 +373,14 @@ func stringSliceContains(slice []string, item string) bool {
 }
 
 func supportedBootstrapFrameworks(fresh bool) []string {
-	if fresh {
-		return []string{"magento2", "mageos", "magento1", "laravel", "symfony", "openmage", "drupal", "wordpress", "nextjs", "emdash", "shopware", "cakephp"}
+	var supported []string
+	for _, def := range frameworks.All() {
+		if fresh && def.SupportsFreshInstall || !fresh && def.SupportsBootstrap {
+			supported = append(supported, def.Name)
+		}
 	}
-	return []string{"magento2", "mageos", "magento1", "openmage", "laravel", "symfony", "wordpress", "prestashop"}
+	sort.Strings(supported)
+	return supported
 }
 
 // BootstrapSupportsFrameworkForTest exposes the command's framework allowlist

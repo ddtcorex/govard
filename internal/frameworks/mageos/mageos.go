@@ -2,15 +2,11 @@ package mageos
 
 import (
 	"govard/internal/engine"
+	"govard/internal/engine/bootstrap"
+	"govard/internal/engine/tunnel"
 	"govard/internal/frameworks/types"
 )
 
-// Definition returns mageos's FrameworkDefinition. Like magento2, Bootstrap
-// is left nil: mageos reuses magento2's bespoke fresh-install orchestration
-// (internal/cmd/bootstrap_fresh_install.go's runBootstrapFreshInstall,
-// parameterized by repository URL/metapackage) rather than the
-// bootstrap.FrameworkBootstrap interface, so there is no
-// bootstrap.NewMageOSBootstrap to wrap here.
 func Definition() types.FrameworkDefinition {
 	config, _ := engine.GetFrameworkConfig("mageos")
 	manifest, _ := engine.GetFrameworkManifestConfig("mageos")
@@ -25,5 +21,13 @@ func Definition() types.FrameworkDefinition {
 				"mage-os/project-community-edition",
 			},
 		},
+		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
+			return bootstrap.NewMageOSBootstrap(opts)
+		},
+		BaseURLManager: func() tunnel.BaseURLManager {
+			return &tunnel.Magento2Manager{}
+		},
+		SupportsBootstrap:    true,
+		SupportsFreshInstall: true,
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"govard/internal/cmd"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks"
 
 	"github.com/spf13/cobra"
 )
@@ -144,9 +145,9 @@ func TestBootstrapSupportsSymfony(t *testing.T) {
 	}
 
 	opts := bootstrap.DefaultOptions()
-	err := bootstrap.Run("symfony", opts)
+	err := frameworks.RunBootstrap("symfony", opts)
 	if err != nil {
-		t.Fatalf("bootstrap.Run(symfony) failed: %v", err)
+		t.Fatalf("frameworks.RunBootstrap(symfony) failed: %v", err)
 	}
 }
 

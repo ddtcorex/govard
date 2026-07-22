@@ -3,6 +3,7 @@ package symfony
 import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/engine/tunnel"
 	"govard/internal/frameworks/types"
 )
 
@@ -20,5 +21,10 @@ func Definition() types.FrameworkDefinition {
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewSymfonyBootstrap(opts)
 		},
+		BaseURLManager: func() tunnel.BaseURLManager {
+			return &tunnel.SymfonyManager{}
+		},
+		SupportsBootstrap:    true,
+		SupportsFreshInstall: true,
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"govard/internal/engine"
 	"govard/internal/engine/tunnel"
+	"govard/internal/frameworks"
 	"govard/internal/proxy"
 
 	"github.com/pterm/pterm"
@@ -140,7 +141,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 
 		pterm.Info.Printf("Starting tunnel provider '%s' to %s. Press Ctrl+C to stop.\n", provider.Name(), targetURL)
 
-		mgr := tunnel.NewBaseURLManager(config.Framework)
+		mgr := frameworks.NewBaseURLManager(config.Framework)
 		if err := mgr.Backup(cwd, config); err != nil {
 			pterm.Warning.Printf("Failed to backup base URL: %v\n", err)
 		}
@@ -229,7 +230,7 @@ var tunnelStopCmd = &cobra.Command{
 		config, err := loadFullConfig()
 		if err == nil {
 			cwd, _ := os.Getwd()
-			mgr := tunnel.NewBaseURLManager(config.Framework)
+			mgr := frameworks.NewBaseURLManager(config.Framework)
 			pterm.Info.Println("Reverting base URL...")
 			_ = mgr.Revert(cwd, config)
 		}

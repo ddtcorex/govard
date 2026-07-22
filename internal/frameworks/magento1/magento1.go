@@ -3,6 +3,7 @@ package magento1
 import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/engine/tunnel"
 	"govard/internal/frameworks/types"
 )
 
@@ -28,5 +29,10 @@ func Definition() types.FrameworkDefinition {
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return bootstrap.NewMagento1Bootstrap(opts)
 		},
+		BaseURLManager: func() tunnel.BaseURLManager {
+			return &tunnel.Magento1Manager{}
+		},
+		SupportsBootstrap:    true,
+		SupportsFreshInstall: true,
 	}
 }
