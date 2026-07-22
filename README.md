@@ -57,7 +57,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Global Services**: Built-in Proxy (Caddy), Mailpit, PHPMyAdmin, and Portainer (Default login for Portainer is `admin` / `AdminGovard123$`).
 - **Search Engine Host Access**: Elasticsearch/OpenSearch is automatically reachable from the host at `http://<project>.test:9200` — no extra config, reuses the same Caddy proxy that serves your project's HTTPS domain.
 - **Desktop Dashboard**: Wails-based UI with live logs, quick actions, and settings.
-- **Native Framework Upgrades**: Multi-framework upgrade pipeline (`govard upgrade`) for Magento 2, Laravel, Symfony, and WordPress that automates environment restarts, dependency updates, and database migrations.
+- **Native Framework Upgrades**: Multi-framework upgrade pipeline (`govard upgrade`) for Magento 2, Mage-OS, Laravel, Symfony, and WordPress that automates environment restarts, dependency updates, and database migrations.
 
 ---
 
@@ -457,6 +457,8 @@ CLI shortcuts: `govard open mail`, `govard open db`, `govard open portainer`
 │   ├── cmd/         # CLI Command definitions (Cobra)
 │   ├── blueprints/  # Docker Compose templates for specific frameworks
 │   ├── engine/      # Core logic (Docker SDK, Discovery, Rendering)
+│   │   └── bootstrap/ # Per-framework FrameworkBootstrap implementations
+│   ├── frameworks/  # Framework registry (one FrameworkDefinition per framework)
 │   ├── desktop/     # Desktop app glue (Wails bindings)
 │   ├── proxy/       # Caddy/proxy route and TLS helpers
 │   ├── ui/          # Styled terminal output logic
@@ -517,7 +519,7 @@ Common command aliases:
 | <code>govard&nbsp;extensions</code> | Manage project extension contract in `.govard`                     |
 | `govard desktop`     | Launch the Govard Desktop app (`--background` supported)           |
 | <code>govard&nbsp;self&#8209;update</code> | Upgrade installed Govard binaries (`govard` + detected `govard-desktop`) |
-| `govard upgrade`     | Native framework upgrade pipeline (Magento 2, Laravel, Symfony, WordPress) |
+| `govard upgrade`     | Native framework upgrade pipeline (Magento 2, Mage-OS, Laravel, Symfony, WordPress) |
 | `govard version`     | Print the version number of Govard                                 |
 | `govard redis`       | Smart shortcut for project Redis Management                        |
 | `govard varnish`     | Smart shortcut for project Varnish Management                      |
@@ -537,6 +539,7 @@ Full documentation is available on the [**GitHub Wiki**](https://github.com/ddtc
 - [SSL and Domains](https://github.com/ddtcorex/govard/wiki/SSL-and-Domains) - Local HTTPS, CA trust, and domain routing
 - [Desktop App](https://github.com/ddtcorex/govard/wiki/Desktop-App) - Desktop surface and dev-mode workflow
 - [Architecture](https://github.com/ddtcorex/govard/wiki/Architecture) - System design and module layout
+- [Adding a Framework](https://github.com/ddtcorex/govard/wiki/Adding-a-framework) - Framework registry structure and how to add support for a new framework
 - [Contributing](https://github.com/ddtcorex/govard/wiki/Contributing) - Build, test, and contribution workflow
 - [FAQ & Troubleshooting](https://github.com/ddtcorex/govard/wiki/FAQ) - Common issues and solutions
 

@@ -70,6 +70,7 @@ jobs:
               -e 's|/workflows/ssl-and-domains|SSL-and-Domains|g' \
               -e 's|/workflows/desktop-app|Desktop-App|g' \
               -e 's|/developer/architecture|Architecture|g' \
+              -e 's|/developer/adding-a-framework|Adding-a-framework|g' \
               -e 's|/developer/contributing|Contributing|g' \
               -e 's|/more/faq|FAQ|g' \
               -e 's|/more/changelog|Changelog|g' \
@@ -219,6 +220,7 @@ jobs:
 
           ### 🏗️ Developer
           - [Architecture](Architecture)
+          - [Adding a Framework](Adding-a-framework)
           - [Contributing](Contributing)
 
           ---
