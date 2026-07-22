@@ -162,3 +162,37 @@ func TestConfigureWithoutRabbitMQSkipsAmqpCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigureMageOSDatabaseSetupUsesMageOSCredentials(t *testing.T) {
+	config := engine.Config{Framework: "mageos"}
+
+	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	for _, cmd := range cmds {
+		if cmd.Desc != "Setting Database connection" {
+			continue
+		}
+		joined := strings.Join(cmd.Args, " ")
+		if !strings.Contains(joined, "--db-name=mageos") || !strings.Contains(joined, "--db-user=mageos") || !strings.Contains(joined, "--db-password=mageos") {
+			t.Fatalf("expected mageos db credentials in setup:config:set, got: %s", joined)
+		}
+		return
+	}
+	t.Fatal("expected a Setting Database connection command")
+}
+
+func TestConfigureMagento2DatabaseSetupStillUsesMagentoCredentials(t *testing.T) {
+	config := engine.Config{Framework: "magento2"}
+
+	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	for _, cmd := range cmds {
+		if cmd.Desc != "Setting Database connection" {
+			continue
+		}
+		joined := strings.Join(cmd.Args, " ")
+		if !strings.Contains(joined, "--db-name=magento") || !strings.Contains(joined, "--db-user=magento") || !strings.Contains(joined, "--db-password=magento") {
+			t.Fatalf("expected magento db credentials in setup:config:set, got: %s", joined)
+		}
+		return
+	}
+	t.Fatal("expected a Setting Database connection command")
+}

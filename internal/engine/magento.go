@@ -334,13 +334,17 @@ func buildMagento2Commands(projectName string, config Config, lockedKeys map[str
 	containerName := fmt.Sprintf("%s%s", projectName, conventions.PHPSuffix)
 	searchEngine := ResolveMagentoSearchEngine(config)
 
+	dbName, dbUser, dbPass := conventions.DefaultMagentoDBName, conventions.DefaultMagentoDBUser, conventions.DefaultMagentoDBPass
+	if strings.EqualFold(config.Framework, "mageos") {
+		dbName, dbUser, dbPass = conventions.DefaultMageOSDBName, conventions.DefaultMageOSDBUser, conventions.DefaultMageOSDBPass
+	}
 	configSetArgs := []string{
 		conventions.BinMagento,
 		"setup:config:set",
 		"--db-host=db",
-		"--db-name=" + conventions.DefaultMagentoDBName,
-		"--db-user=" + conventions.DefaultMagentoDBUser,
-		"--db-password=" + conventions.DefaultMagentoDBPass,
+		"--db-name=" + dbName,
+		"--db-user=" + dbUser,
+		"--db-password=" + dbPass,
 	}
 	if tablePrefix := NormalizeTablePrefix(config.TablePrefix); tablePrefix != "" {
 		configSetArgs = append(configSetArgs, "--db-prefix="+tablePrefix)
