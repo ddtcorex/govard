@@ -198,6 +198,44 @@ func TestRunBootstrapFrameworkFreshInstallForTestRejectsUnsupportedFramework(t *
 	}
 }
 
+func TestRunBootstrapFrameworkFreshInstallForTestNextJSUsesThrowawayContainer(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	var capturedProjectDir string
+	var capturedCommand string
+	defer cmd.SetNodeCreateProjectRunnerForTest(func(config engine.Config, projectDir string, commandLine string) error {
+		capturedProjectDir = projectDir
+		capturedCommand = commandLine
+		stageDir := extractStageHostDir(t, commandLine)
+		return os.WriteFile(filepath.Join(stageDir, "package.json"), []byte("{\"name\":\"nextjs-app\"}\n"), 0o644)
+	})()
+
+	err := cmd.RunBootstrapFrameworkFreshInstallForTest(
+		&cobra.Command{},
+		engine.Config{
+			ProjectName: "sample-project",
+			Framework:   "nextjs",
+			Domain:      "sample.test",
+		},
+		"dev",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("RunBootstrapFrameworkFreshInstallForTest() error = %v", err)
+	}
+
+	if capturedProjectDir != tempDir {
+		t.Fatalf("expected runner to receive project dir %q, got %q", tempDir, capturedProjectDir)
+	}
+	if !strings.Contains(capturedCommand, "npx create-next-app@latest") {
+		t.Fatalf("expected create-next-app invocation, got: %s", capturedCommand)
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, "package.json")); err != nil {
+		t.Fatalf("expected staged package.json to land in the project dir: %v", err)
+	}
+}
+
 func TestRunBootstrapFrameworkFreshInstallForTestWordPressDoesNotRestartEnvironment(t *testing.T) {
 	tempDir := t.TempDir()
 	chdirForTest(t, tempDir)
