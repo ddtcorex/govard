@@ -55,7 +55,7 @@ func resolveShellExecution(config engine.Config) (string, string, string) {
 	serviceName := engine.ResolveFrameworkAppService(config.Framework)
 	workdir := engine.ResolveFrameworkAppWorkdir(config.Framework)
 	user := ""
-	if !engine.FrameworkUsesNodeRuntime(config.Framework) {
+	if !engine.FrameworkUsesNodeRuntime(config.Framework) && !engine.FrameworkUsesPythonRuntime(config.Framework) {
 		user = ResolveProjectExecUser(config, conventions.UserWWWData)
 	}
 	return fmt.Sprintf("%s-%s%s", config.ProjectName, serviceName, conventions.ReplicaSuffix), workdir, user

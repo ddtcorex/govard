@@ -8,6 +8,7 @@
     "NGINXTemplate": "laravel.conf",
     "DatabaseName": "laravel",
     "DefaultPHP": "8.4",
+    "DefaultPythonVer": "",
     "DefaultNodeVer": "",
     "DefaultDB": "mariadb",
     "DefaultDBVer": "11.4",

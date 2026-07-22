@@ -1,0 +1,46 @@
+# Django Docker Compose configuration
+# This is the main Docker Compose file for Django projects
+
+services:
+  web:
+    image: python:{{ .Config.Stack.PythonVersion }}-slim
+    working_dir: /app
+    user: root
+    volumes:
+      - .:/app
+    command: >
+      sh -lc 'pip install --no-cache-dir -r requirements.txt && python manage.py runserver 0.0.0.0:80'
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DJANGO_DEBUG=1
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=django
+      - POSTGRES_USER=django
+      - POSTGRES_PASSWORD=django
+      - DATABASE_URL=postgres://django:django@db:5432/django
+    depends_on:
+      - db
+    networks:
+      - govard-net
+      - govard-proxy
+
+  db:
+    image: postgres:{{ .Config.Stack.DBVersion }}
+    environment:
+      - POSTGRES_DB=django
+      - POSTGRES_USER=django
+      - POSTGRES_PASSWORD=django
+    volumes:
+      - db-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:/var/lib/postgresql/data
+    networks:
+      - govard-net
+
+networks:
+  govard-net:
+    driver: bridge
+  govard-proxy:
+    external: true
+
+volumes:
+  db-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:

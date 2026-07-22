@@ -36,7 +36,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Database Observability**: Live query monitoring with `govard db top` and real-time progress bars for imports and syncs.
 - **Zero-Config Debugging**: Seamless Xdebug 2 & 3 integration with one-click toggling, project-specific isolation (`<project>-docker`), and structured subcommands.
 - **VSCode Integration**: `govard vscode setup [--global]` wires Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHPUnit, and Xdebug to run inside the project container instead of requiring PHP on the host, prompting to install any missing extension along the way.
-- **Framework Discovery**: Automatically detects Magento 1/OpenMage, Magento 2, Mage-OS, Laravel, Next.js, Emdash, Drupal, Symfony, Shopware, CakePHP, PrestaShop, and WordPress to generate tailored configurations.
+- **Framework Discovery**: Automatically detects Magento 1/OpenMage, Magento 2, Mage-OS, Laravel, Next.js, Emdash, Drupal, Symfony, Shopware, CakePHP, PrestaShop, WordPress, and Django to generate tailored configurations.
 - **Custom Framework**: Interactive prompt to pick web server, database, cache, search, queue, and varnish for bespoke stacks.
 - **Xdebug Routing**: Dedicated `php-debug` container, activated only when `XDEBUG_SESSION` cookie is present.
 - **Inter-Project Connectivity**: Projects can securely communicate with each other (e.g., `curl https://other-project.test`) by explicitly declaring dependencies via `linked_projects`. This ensures network isolation by default and enables targeted container refreshes.

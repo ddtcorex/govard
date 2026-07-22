@@ -25,27 +25,29 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | CakePHP | ✅ | framework defaults | `/webroot` |
 | PrestaShop | ✅ | framework defaults | project root |
 | WordPress | ✅ | ✅ | `/` |
+| Django | ✅ | framework defaults | project root |
 | Custom | manual | manual | project root |
 
 ---
 
 ## Runtime Defaults
 
-| Framework | PHP | Node | DB | Cache | Search | Queue |
-| :--- | :---: | :---: | :--- | :--- | :--- | :--- |
-| Magento 2 | 8.4 | 24 | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
-| Mage-OS | 8.4 | 24 | mariadb 11.8 | redis 7.4 | opensearch 3.0 | none |
-| Magento 1 / OpenMage | 8.1 | — | mariadb 10.11 | none | none | none |
-| Laravel | 8.4 | — | mariadb 11.4 | none | none | none |
-| Next.js | — | 24 | none | none | none | none |
-| Emdash | — | 22 | none | none | none | none |
-| Drupal | 8.4 | — | mariadb 11.4 | none | none | none |
-| Symfony | 8.4 | — | mariadb 11.4 | none | none | none |
-| Shopware | 8.4 | — | mariadb 11.4 | none | none | none |
-| CakePHP | 8.4 | — | mariadb 11.4 | none | none | none |
-| PrestaShop | 8.1 | — | mariadb 10.11 | none | none | none |
-| WordPress | 8.3 | — | mariadb 11.4 | none | none | none |
-| Custom | 8.4 | — | mariadb 11.4 | none | none | none |
+| Framework | PHP | Node | Python | DB | Cache | Search | Queue |
+| :--- | :---: | :---: | :---: | :--- | :--- | :--- | :--- |
+| Magento 2 | 8.4 | 24 | — | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
+| Mage-OS | 8.4 | 24 | — | mariadb 11.8 | redis 7.4 | opensearch 3.0 | none |
+| Magento 1 / OpenMage | 8.1 | — | — | mariadb 10.11 | none | none | none |
+| Laravel | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| Next.js | — | 24 | — | none | none | none | none |
+| Emdash | — | 22 | — | none | none | none | none |
+| Drupal | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| Symfony | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| Shopware | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| CakePHP | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| PrestaShop | 8.1 | — | — | mariadb 10.11 | none | none | none |
+| WordPress | 8.3 | — | — | mariadb 11.4 | none | none | none |
+| Django | — | — | 3.12 | postgres 16 | none | none | none |
+| Custom | 8.4 | — | — | mariadb 11.4 | none | none | none |
 
 `—` means Govard does not force a default for that stack component.
 
@@ -371,6 +373,31 @@ govard env up
 **Package manager auto-detection:** Govard reads `package.json` (`packageManager` field), `pnpm-workspace.yaml`, and lockfiles.
 
 > Current scope is local Node + SQLite + local uploads. Govard does not yet automate Cloudflare D1/R2 flows.
+
+---
+
+## 🐍 Django
+
+Python-first local runtime: Python 3.12 (configurable via `stack.python_version`), PostgreSQL 16, no managed PHP/cache/search/queue.
+
+```bash
+govard shell           # web container at /app
+govard tool manage [command]   # python manage.py [command]
+govard db connect               # psql into the postgres db
+```
+
+Fresh install (clone an existing project, then bootstrap it):
+
+```bash
+git clone <your-django-repo> myproject && cd myproject
+govard init --framework django
+govard env up
+govard bootstrap --framework django
+```
+
+**Detection:** any project with a `manage.py` file at its root.
+
+> Current scope is `requirements.txt` + `pip` only (no Poetry/`pyproject.toml`), PostgreSQL only (no SQLite/MySQL option), and `manage.py runserver` for local dev (no Gunicorn). `govard bootstrap`'s clone workflow runs `pip install` + `manage.py migrate` automatically; scaffolding a brand-new project via `govard bootstrap --fresh` is not yet supported.
 
 ---
 

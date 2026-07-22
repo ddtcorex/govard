@@ -32,6 +32,8 @@ func RequiredRuntimeImages(config Config, root string) []string {
 		} else {
 			push(fmt.Sprintf("node:%s-alpine", config.Stack.NodeVersion))
 		}
+	} else if FrameworkUsesPythonRuntime(config.Framework) {
+		push(fmt.Sprintf("python:%s-slim", config.Stack.PythonVersion))
 	} else {
 		switch strings.ToLower(config.Stack.Services.WebServer) {
 		case "apache":

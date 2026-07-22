@@ -116,6 +116,14 @@ var frameworkCommands = []FrameworkCommand{
 		DefaultUser: "",
 	},
 	{
+		Name:        "manage",
+		Short:       "Run Django management commands",
+		Frameworks:  []string{"django"},
+		Binary:      "python",
+		PrependArgs: []string{"manage.py"},
+		DefaultUser: "",
+	},
+	{
 		Name:        "composer",
 		Short:       "Run composer commands",
 		Binary:      "composer",
@@ -261,7 +269,7 @@ func resolveToolExecution(config engine.Config, binary string, defaultUser strin
 	workdir := engine.ResolveFrameworkAppWorkdir(config.Framework)
 	user := defaultUser
 
-	if engine.FrameworkUsesNodeRuntime(config.Framework) {
+	if engine.FrameworkUsesNodeRuntime(config.Framework) || engine.FrameworkUsesPythonRuntime(config.Framework) {
 		return commandExecutionTarget{
 			ContainerName: fmt.Sprintf("%s-%s%s", config.ProjectName, serviceName, conventions.ReplicaSuffix),
 			Workdir:       workdir,

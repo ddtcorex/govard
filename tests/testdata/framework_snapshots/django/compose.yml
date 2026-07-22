@@ -1,0 +1,40 @@
+networks:
+    govard-net:
+        driver: bridge
+    govard-proxy:
+        external: true
+services:
+    db:
+        environment:
+            - POSTGRES_DB=django
+            - POSTGRES_USER=django
+            - POSTGRES_PASSWORD=django
+        image: postgres:16
+        networks:
+            - govard-net
+        volumes:
+            - db-data:/var/lib/postgresql/data
+    web:
+        command: |
+            sh -lc 'pip install --no-cache-dir -r requirements.txt && python manage.py runserver 0.0.0.0:80'
+        depends_on:
+            - db
+        environment:
+            - PYTHONUNBUFFERED=1
+            - DJANGO_DEBUG=1
+            - POSTGRES_HOST=db
+            - POSTGRES_PORT=5432
+            - POSTGRES_DB=django
+            - POSTGRES_USER=django
+            - POSTGRES_PASSWORD=django
+            - DATABASE_URL=postgres://django:django@db:5432/django
+        image: python:3.12-slim
+        networks:
+            - govard-net
+            - govard-proxy
+        user: root
+        volumes:
+            - .:/app
+        working_dir: /app
+volumes:
+    db-data: null

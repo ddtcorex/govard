@@ -15,6 +15,7 @@ type FrameworkConfig struct {
 	NGINXTemplate      string
 	DatabaseName       string
 	DefaultPHP         string
+	DefaultPythonVer   string
 	DefaultNodeVer     string
 	DefaultDB          string
 	DefaultDBVer       string
@@ -182,6 +183,30 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 		DefaultComposerVer: "",
 		Includes: []string{
 			"emdash/services.yml",
+		},
+	},
+	"django": {
+		Name:               "django",
+		Runtime:            "python",
+		AppService:         "web",
+		AppWorkdir:         "/app",
+		NGINXPUBLIC:        "",
+		NGINXTemplate:      "",
+		DatabaseName:       "django",
+		DefaultPHP:         "",
+		DefaultPythonVer:   "3.12",
+		DefaultDB:          "postgres",
+		DefaultDBVer:       "16",
+		DefaultNginxVer:    "1.28",
+		DefaultApacheVer:   "2.4",
+		DefaultQueueVer:    "4.2",
+		DefaultWebServer:   "none",
+		DefaultSearch:      "none",
+		DefaultCache:       "none",
+		DefaultQueue:       "none",
+		DefaultComposerVer: "",
+		Includes: []string{
+			"django/services.yml",
 		},
 	},
 	"drupal": {
@@ -472,6 +497,11 @@ func GetFrameworkConfig(name string) (FrameworkConfig, bool) {
 func FrameworkUsesNodeRuntime(name string) bool {
 	config, ok := GetFrameworkConfig(name)
 	return ok && strings.EqualFold(config.Runtime, "node")
+}
+
+func FrameworkUsesPythonRuntime(name string) bool {
+	config, ok := GetFrameworkConfig(name)
+	return ok && strings.EqualFold(config.Runtime, "python")
 }
 
 func ResolveFrameworkAppService(name string) string {

@@ -25,27 +25,29 @@ Govard tự động nhận diện các framework được hỗ trợ và áp d�
 | CakePHP | ✅ | cấu hình mặc định | `/webroot` |
 | PrestaShop | ✅ | cấu hình mặc định | thư mục gốc dự án |
 | WordPress | ✅ | ✅ | `/` |
+| Django | ✅ | cấu hình mặc định | thư mục gốc dự án |
 | Tùy chỉnh (Custom) | thủ công | thủ công | thư mục gốc dự án |
 
 ---
 
 ## Cấu hình mặc định (Runtime Defaults)
 
-| Framework | PHP | Node | DB | Cache | Search | Queue |
-| :--- | :---: | :---: | :--- | :--- | :--- | :--- |
-| Magento 2 | 8.4 | 24 | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
-| Mage-OS | 8.4 | 24 | mariadb 11.8 | redis 7.4 | opensearch 3.0 | none |
-| Magento 1 / OpenMage | 8.1 | — | mariadb 10.11 | none | none | none |
-| Laravel | 8.4 | — | mariadb 11.4 | none | none | none |
-| Next.js | — | 24 | none | none | none | none |
-| Emdash | — | 22 | none | none | none | none |
-| Drupal | 8.4 | — | mariadb 11.4 | none | none | none |
-| Symfony | 8.4 | — | mariadb 11.4 | none | none | none |
-| Shopware | 8.4 | — | mariadb 11.4 | none | none | none |
-| CakePHP | 8.4 | — | mariadb 11.4 | none | none | none |
-| PrestaShop | 8.1 | — | mariadb 10.11 | none | none | none |
-| WordPress | 8.3 | — | mariadb 11.4 | none | none | none |
-| Tùy chỉnh (Custom) | 8.4 | — | mariadb 11.4 | none | none | none |
+| Framework | PHP | Node | Python | DB | Cache | Search | Queue |
+| :--- | :---: | :---: | :---: | :--- | :--- | :--- | :--- |
+| Magento 2 | 8.4 | 24 | — | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
+| Mage-OS | 8.4 | 24 | — | mariadb 11.8 | redis 7.4 | opensearch 3.0 | none |
+| Magento 1 / OpenMage | 8.1 | — | — | mariadb 10.11 | none | none | none |
+| Laravel | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| Next.js | — | 24 | — | none | none | none | none |
+| Emdash | — | 22 | — | none | none | none | none |
+| Drupal | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| Symfony | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| Shopware | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| CakePHP | 8.4 | — | — | mariadb 11.4 | none | none | none |
+| PrestaShop | 8.1 | — | — | mariadb 10.11 | none | none | none |
+| WordPress | 8.3 | — | — | mariadb 11.4 | none | none | none |
+| Django | — | — | 3.12 | postgres 16 | none | none | none |
+| Tùy chỉnh (Custom) | 8.4 | — | — | mariadb 11.4 | none | none | none |
 
 Ký hiệu `—` nghĩa là Govard không ép buộc giá trị mặc định cho thành phần stack đó.
 
@@ -371,6 +373,31 @@ govard env up
 **Tự động nhận diện Package Manager**: Govard đọc các thông tin từ `package.json` (trường `packageManager`), `pnpm-workspace.yaml` và các file lock.
 
 > Phạm vi hiện tại là chạy Node + SQLite local + upload local. Govard chưa tự động hóa các luồng Cloudflare D1/R2.
+
+---
+
+## 🐍 Django
+
+Cấu hình local runtime ưu tiên Python: Python 3.12 (có thể cấu hình qua `stack.python_version`), PostgreSQL 16, không quản lý các dịch vụ PHP/cache/search/queue.
+
+```bash
+govard shell           # container web tại thư mục /app
+govard tool manage [command]   # chạy python manage.py [command]
+govard db connect               # kết nối psql vào database postgres
+```
+
+Cài đặt mới (clone một dự án có sẵn, sau đó bootstrap):
+
+```bash
+git clone <your-django-repo> myproject && cd myproject
+govard init --framework django
+govard env up
+govard bootstrap --framework django
+```
+
+**Nhận diện:** bất kỳ dự án nào có file `manage.py` ở thư mục gốc.
+
+> Phạm vi hiện tại chỉ hỗ trợ `requirements.txt` + `pip` (chưa hỗ trợ Poetry/`pyproject.toml`), chỉ hỗ trợ PostgreSQL (chưa có tùy chọn SQLite/MySQL), và dùng `manage.py runserver` cho local dev (chưa hỗ trợ Gunicorn). Luồng clone của `govard bootstrap` tự động chạy `pip install` + `manage.py migrate`; việc khởi tạo dự án mới hoàn toàn qua `govard bootstrap --fresh` chưa được hỗ trợ.
 
 ---
 

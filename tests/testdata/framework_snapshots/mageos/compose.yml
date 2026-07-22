@@ -4,6 +4,19 @@ networks:
     govard-proxy:
         external: true
 services:
+    db:
+        environment:
+            MYSQL_DATABASE: mageos
+            MYSQL_PASSWORD: mageos
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_USER: mageos
+        hostname: snapshot-mageos-db
+        image: ddtcorex/govard-mariadb:11.8
+        networks:
+            - govard-net
+            - govard-proxy
+        volumes:
+            - db-data:/var/lib/mysql
     php:
         environment:
             CHOWN_DIR_LIST: /bash_history /var/www/html /home/www-data/.cache/composer
@@ -42,3 +55,5 @@ services:
             - .:/var/www/html
             - <GOVARD_HOME>/nginx/snapshot-mageos/default.conf:/etc/nginx/templates/magento2.conf:ro
             - <GOVARD_HOME>/nginx/snapshot-mageos/mage-run-map.conf:/etc/nginx/conf.d/mage-run-map.conf:ro
+volumes:
+    db-data: null

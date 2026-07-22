@@ -4,6 +4,19 @@ networks:
     govard-proxy:
         external: true
 services:
+    db:
+        environment:
+            MYSQL_DATABASE: shopware
+            MYSQL_PASSWORD: shopware
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_USER: shopware
+        hostname: snapshot-shopware-db
+        image: ddtcorex/govard-mariadb:11.4
+        networks:
+            - govard-net
+            - govard-proxy
+        volumes:
+            - db-data:/var/lib/mysql
     php:
         environment:
             CHOWN_DIR_LIST: /bash_history
@@ -41,3 +54,5 @@ services:
         volumes:
             - .:/var/www/html
             - <GOVARD_HOME>/nginx/snapshot-shopware/default.conf:/etc/nginx/templates/shopware.conf:ro
+volumes:
+    db-data: null

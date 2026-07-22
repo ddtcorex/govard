@@ -19,6 +19,7 @@ var allFrameworkNames = []string{
 	"magento2", "magento1", "openmage", "mageos",
 	"laravel", "symfony", "wordpress", "drupal",
 	"nextjs", "emdash", "shopware", "cakephp", "prestashop",
+	"django",
 }
 
 // TestAllFrameworkNamesMatchesRegistry ensures that allFrameworkNames stays in
@@ -119,6 +120,11 @@ func TestFrameworkSnapshotBlueprintRendering(t *testing.T) {
 			}
 
 			projectName := "snapshot-" + framework
+			profileResult, err := engine.ResolveRuntimeProfile(framework, "")
+			if err != nil {
+				t.Fatalf("ResolveRuntimeProfile failed for %s: %v", framework, err)
+			}
+
 			config := engine.Config{
 				ProjectName: projectName,
 				Framework:   framework,
@@ -126,6 +132,9 @@ func TestFrameworkSnapshotBlueprintRendering(t *testing.T) {
 				Stack: engine.Stack{
 					UserID:  1000,
 					GroupID: 1000,
+					Services: engine.Services{
+						DB: profileResult.Profile.DB,
+					},
 				},
 			}
 			engine.NormalizeConfig(&config, tempDir)
@@ -189,6 +198,8 @@ func freshCommandsFor(framework string) []string {
 		return bootstrap.NewCakePHPBootstrap(opts).FreshCommands()
 	case "prestashop":
 		return bootstrap.NewPrestaShopBootstrap(opts).FreshCommands()
+	case "django":
+		return bootstrap.NewDjangoBootstrap(opts).FreshCommands()
 	default:
 		return nil
 	}

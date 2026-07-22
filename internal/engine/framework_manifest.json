@@ -1074,6 +1074,19 @@
       "ignored": [],
       "sensitive": []
     },
+    "django": {
+      "paths": {
+        "local_media": "media",
+        "remote_media": "media",
+        "web_root_candidates": []
+      },
+      "features": {
+        "requires_running_env_for_fresh_install": false,
+        "supports_post_clone": true
+      },
+      "ignored": [],
+      "sensitive": []
+    },
     "custom": {
       "paths": {
         "local_media": "public/media",

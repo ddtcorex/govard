@@ -8,6 +8,7 @@
     "NGINXTemplate": "drupal.conf",
     "DatabaseName": "drupal",
     "DefaultPHP": "8.4",
+    "DefaultPythonVer": "",
     "DefaultNodeVer": "",
     "DefaultDB": "mariadb",
     "DefaultDBVer": "11.4",

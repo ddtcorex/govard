@@ -4,6 +4,19 @@ networks:
     govard-proxy:
         external: true
 services:
+    db:
+        environment:
+            MYSQL_DATABASE: wordpress
+            MYSQL_PASSWORD: wordpress
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_USER: wordpress
+        hostname: snapshot-wordpress-db
+        image: ddtcorex/govard-mariadb:11.4
+        networks:
+            - govard-net
+            - govard-proxy
+        volumes:
+            - db-data:/var/lib/mysql
     php:
         environment:
             CHOWN_DIR_LIST: /bash_history
@@ -41,3 +54,5 @@ services:
         volumes:
             - .:/var/www/html
             - <GOVARD_HOME>/nginx/snapshot-wordpress/default.conf:/etc/nginx/templates/wordpress.conf:ro
+volumes:
+    db-data: null

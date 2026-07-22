@@ -31,6 +31,7 @@ type Stack struct {
 	NginxVersion    string   `yaml:"nginx_version,omitempty"`
 	ApacheVersion   string   `yaml:"apache_version,omitempty"`
 	PHPVersion      string   `yaml:"php_version,omitempty"`
+	PythonVersion   string   `yaml:"python_version,omitempty"`
 	NodeVersion     string   `yaml:"node_version,omitempty"`
 	ComposerVersion string   `yaml:"composer_version,omitempty"`
 	VarnishVersion  string   `yaml:"varnish_version,omitempty"`

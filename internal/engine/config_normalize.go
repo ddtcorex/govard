@@ -76,6 +76,14 @@ func NormalizeConfig(config *Config, root string) {
 		// leave PHPVersion empty to indicate no PHP container is needed
 	}
 
+	if config.Stack.PythonVersion == "" {
+		if ok && fwConfig.DefaultPythonVer != "" {
+			config.Stack.PythonVersion = fwConfig.DefaultPythonVer
+		}
+		// If DefaultPythonVer is empty (e.g., a non-Python framework), leave
+		// PythonVersion empty - no Python container is needed.
+	}
+
 	if config.Stack.NodeVersion == "" {
 		if profileAvailable && profile.NodeVersion != "" {
 			config.Stack.NodeVersion = profile.NodeVersion

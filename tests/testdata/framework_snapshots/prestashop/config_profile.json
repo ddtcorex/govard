@@ -8,6 +8,7 @@
     "NGINXTemplate": "prestashop.conf",
     "DatabaseName": "prestashop",
     "DefaultPHP": "8.1",
+    "DefaultPythonVer": "",
     "DefaultNodeVer": "",
     "DefaultDB": "mariadb",
     "DefaultDBVer": "10.11",

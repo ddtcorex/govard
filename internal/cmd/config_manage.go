@@ -78,6 +78,8 @@ func getConfigValue(config engine.Config, key string) (string, bool) {
 		return config.TablePrefix, true
 	case "php_version", "stack.php_version":
 		return config.Stack.PHPVersion, true
+	case "python_version", "stack.python_version":
+		return config.Stack.PythonVersion, true
 	case "node_version", "stack.node_version":
 		return config.Stack.NodeVersion, true
 	case "db", "services.db", "stack.services.db":
@@ -110,6 +112,8 @@ func setConfigValue(config *engine.Config, key string, value string) (bool, erro
 		config.TablePrefix = value
 	case "php_version", "stack.php_version":
 		config.Stack.PHPVersion = value
+	case "python_version", "stack.python_version":
+		config.Stack.PythonVersion = value
 	case "node_version", "stack.node_version":
 		config.Stack.NodeVersion = value
 	case "db", "services.db", "stack.services.db":

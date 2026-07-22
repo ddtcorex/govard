@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
 
@@ -54,7 +55,7 @@ func runStreamDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 			}
 		}
 
-		if err := resetLocalDatabase(containerName, localCredentials.Database); err != nil {
+		if err := resetLocalDatabase(containerName, localCredentials); err != nil {
 			return err
 		}
 		pterm.Success.Println("Local database reset successful.")
@@ -107,9 +108,8 @@ func runStreamDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 	return nil
 }
 
-func resetLocalDatabase(containerName string, database string) error {
-	name := normalizeDatabaseName(database)
-	script, err := buildLocalDBResetScript(name)
+func resetLocalDatabase(containerName string, credentials dbCredentials) error {
+	script, err := buildLocalDBResetScript(credentials)
 	if err != nil {
 		return err
 	}
@@ -121,9 +121,9 @@ func resetLocalDatabase(containerName string, database string) error {
 	output, err := resetCmd.CombinedOutput()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("timed out resetting local database %s", name)
+			return fmt.Errorf("timed out resetting local database %s", credentials.Database)
 		}
-		return fmt.Errorf("failed to reset local database %s (%v): %s", name, err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("failed to reset local database %s (%v): %s", credentials.Database, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
@@ -150,13 +150,16 @@ func validateDatabaseName(name string) error {
 	return nil
 }
 
-func buildLocalDBResetScript(database string) (string, error) {
-	name := normalizeDatabaseName(database)
+func buildLocalDBResetScript(credentials dbCredentials) (string, error) {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildLocalPostgresResetScript(credentials)
+	}
+
+	name := normalizeDatabaseName(credentials.Database)
 	if err := validateDatabaseName(name); err != nil {
 		return "", err
 	}
 
-	// Kill any sessions using the target DB so DROP DATABASE does not block on metadata locks.
 	killSQL := fmt.Sprintf("SELECT id FROM information_schema.processlist WHERE db='%s' AND id<>CONNECTION_ID()", strings.ReplaceAll(name, "'", "''"))
 	resetSQL := fmt.Sprintf("DROP DATABASE IF EXISTS `%s`; CREATE DATABASE `%s`;", name, name)
 	return strings.Join([]string{
@@ -169,7 +172,7 @@ func buildLocalDBResetScript(database string) (string, error) {
 }
 
 func BuildLocalDBResetScriptForTest(database string) (string, error) {
-	return buildLocalDBResetScript(database)
+	return buildLocalDBResetScript(dbCredentials{Database: database})
 }
 
 func runDirectDBImport(cmd *cobra.Command, config engine.Config, options dbCommandOptions) error {
@@ -189,7 +192,7 @@ func runDirectDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 			return err
 		}
 		credentials := resolveLocalDBCredentials(config, containerName)
-		script, err := buildLocalDBResetScript(credentials.Database)
+		script, err := buildLocalDBResetScript(credentials)
 		if err != nil {
 			return err
 		}

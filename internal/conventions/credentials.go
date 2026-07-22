@@ -40,4 +40,8 @@ const (
 	DefaultPrestaShopDBPass      = "prestashop"
 	DefaultPrestaShopDBName      = "prestashop"
 	DefaultPrestaShopTablePrefix = "ps_"
+
+	DefaultDjangoDBUser = "django"
+	DefaultDjangoDBPass = "django"
+	DefaultDjangoDBName = "django"
 )

@@ -8,6 +8,7 @@
     "NGINXTemplate": "symfony.conf",
     "DatabaseName": "symfony",
     "DefaultPHP": "8.4",
+    "DefaultPythonVer": "",
     "DefaultNodeVer": "",
     "DefaultDB": "mariadb",
     "DefaultDBVer": "11.4",

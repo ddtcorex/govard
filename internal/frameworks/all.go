@@ -2,6 +2,7 @@ package frameworks
 
 import (
 	"govard/internal/frameworks/cakephp"
+	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/drupal"
 	"govard/internal/frameworks/emdash"
 	"govard/internal/frameworks/laravel"
@@ -38,4 +39,5 @@ func init() {
 	Register(shopware.Definition())
 	Register(cakephp.Definition())
 	Register(prestashop.Definition())
+	Register(django.Definition())
 }

@@ -8,6 +8,7 @@
     "NGINXTemplate": "magento1.conf",
     "DatabaseName": "magento",
     "DefaultPHP": "8.1",
+    "DefaultPythonVer": "",
     "DefaultNodeVer": "",
     "DefaultDB": "mariadb",
     "DefaultDBVer": "10.11",

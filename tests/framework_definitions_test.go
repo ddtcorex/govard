@@ -6,6 +6,7 @@ import (
 
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks/cakephp"
+	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/drupal"
 	"govard/internal/frameworks/emdash"
 	"govard/internal/frameworks/laravel"
@@ -143,5 +144,24 @@ func TestNodeFrameworkDefinitions(t *testing.T) {
 				t.Errorf("%s Bootstrap factory should produce at least one fresh command", tc.name)
 			}
 		})
+	}
+}
+
+func TestDjangoFrameworkDefinition(t *testing.T) {
+	def := django.Definition()
+	if def.Name != "django" {
+		t.Errorf("Name = %q, want %q", def.Name, "django")
+	}
+	if def.Config.Runtime != "python" {
+		t.Errorf("Config.Runtime = %q, want %q", def.Config.Runtime, "python")
+	}
+	if def.Bootstrap == nil {
+		t.Fatal("django Bootstrap should not be nil")
+	}
+	if def.SupportsFreshInstall {
+		t.Error("expected SupportsFreshInstall to be false")
+	}
+	if !def.SupportsBootstrap {
+		t.Error("expected SupportsBootstrap (clone workflow) to be true")
 	}
 }

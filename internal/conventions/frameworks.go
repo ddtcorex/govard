@@ -14,4 +14,5 @@ const (
 	FrameworkEmdash     = "emdash"
 	FrameworkOpenMage   = "openmage"
 	FrameworkPrestaShop = "prestashop"
+	FrameworkDjango     = "django"
 )

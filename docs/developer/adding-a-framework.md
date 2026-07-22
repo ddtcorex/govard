@@ -5,7 +5,7 @@ description: How Govard's framework registry is structured internally, and a con
 
 # Adding a New Framework
 
-Govard currently ships support for 13 frameworks: Magento 2, Mage-OS, Magento 1, OpenMage, Laravel, Symfony, Drupal, WordPress, Next.js, Emdash, Shopware, CakePHP, and PrestaShop. This page documents how that support is structured internally, and what to touch to add framework #14.
+Govard ships support for a growing list of frameworks — Magento 2, Mage-OS, Magento 1, OpenMage, Laravel, Symfony, Drupal, WordPress, Next.js, Emdash, Shopware, CakePHP, PrestaShop, Django, and more over time. This page documents how that support is structured internally, and what to touch to add a new one.
 
 ---
 
@@ -32,7 +32,7 @@ type FrameworkDefinition struct {
 }
 ```
 
-`internal/frameworks/all.go`'s `init()` calls `Register(<pkg>.Definition())` for all 13 packages, in a specific order (more on why, below), populating a package-level registry that the rest of Govard reads through three small, focused files:
+`internal/frameworks/all.go`'s `init()` calls `Register(<pkg>.Definition())` for each registered framework package, in a specific order (more on why, below), populating a package-level registry that the rest of Govard reads through three small, focused files:
 
 | File | Purpose |
 | :--- | :--- |
@@ -51,7 +51,7 @@ Two things are still framework-name switches, on purpose, not by omission:
 
 ---
 
-## Adding framework #14: a checklist
+## Adding a new framework: a checklist
 
 Say you're adding a fictional framework called `whimsy`. Every step below has a real, working example already in the codebase — the file references point at the closest existing analog to copy from.
 

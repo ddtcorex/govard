@@ -13,6 +13,7 @@ import (
 )
 
 type dbCredentials struct {
+	Engine      string
 	Host        string
 	Port        int
 	Username    string
@@ -22,6 +23,29 @@ type dbCredentials struct {
 }
 
 func defaultDBCredentialsForFramework(framework string) dbCredentials {
+	credentials := defaultDBCredentialsForFrameworkFields(framework)
+	credentials.Engine = dbEngineForFramework(framework)
+	return credentials
+}
+
+// dbEngineForFramework maps a framework's configured default DB service to the
+// tooling engine (postgres vs. the existing mysql/mariadb default) db_credentials.go
+// should use for it. Driven by FrameworkConfigs, not a per-framework literal, so a
+// future framework registered with DefaultDB: "postgres" is covered automatically.
+func dbEngineForFramework(framework string) string {
+	fwConfig, ok := engine.GetFrameworkConfig(framework)
+	if !ok {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(fwConfig.DefaultDB)) {
+	case conventions.ServicePostgreSQL, "postgresql":
+		return conventions.ServicePostgreSQL
+	default:
+		return ""
+	}
+}
+
+func defaultDBCredentialsForFrameworkFields(framework string) dbCredentials {
 	switch strings.TrimSpace(framework) {
 	case conventions.FrameworkSymfony:
 		return dbCredentials{
@@ -72,6 +96,13 @@ func defaultDBCredentialsForFramework(framework string) dbCredentials {
 			Password: conventions.DefaultMageOSDBPass,
 			Database: conventions.DefaultMageOSDBName,
 		}
+	case conventions.FrameworkDjango:
+		return dbCredentials{
+			Port:     conventions.PostgresPort,
+			Username: conventions.DefaultDjangoDBUser,
+			Password: conventions.DefaultDjangoDBPass,
+			Database: conventions.DefaultDjangoDBName,
+		}
 	default:
 		return dbCredentials{
 			Port:     conventions.MySQLPort,
@@ -84,6 +115,22 @@ func defaultDBCredentialsForFramework(framework string) dbCredentials {
 
 func (credentials dbCredentials) withDefaults() dbCredentials {
 	result := credentials
+	if result.Engine == conventions.ServicePostgreSQL {
+		if strings.TrimSpace(result.Username) == "" {
+			result.Username = conventions.DefaultDjangoDBUser
+		}
+		if strings.TrimSpace(result.Database) == "" {
+			result.Database = conventions.DefaultDjangoDBName
+		}
+		if strings.TrimSpace(result.Host) != "" && result.Port <= 0 {
+			result.Port = conventions.PostgresPort
+		}
+		if result.Port < 0 {
+			result.Port = 0
+		}
+		result.TablePrefix = ""
+		return result
+	}
 	if strings.TrimSpace(result.Username) == "" {
 		result.Username = conventions.DefaultMagentoDBUser
 	}
@@ -98,6 +145,176 @@ func (credentials dbCredentials) withDefaults() dbCredentials {
 	}
 	result.TablePrefix = engine.SafeTablePrefix(result.TablePrefix)
 	return result
+}
+
+func postgresPasswordExportPrefix(password string) string {
+	if strings.TrimSpace(password) == "" {
+		return ""
+	}
+	return "export PGPASSWORD=" + engine.ShellQuote(password) + "; "
+}
+
+func pgQuoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+func pgQuoteLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func buildRemotePostgresDumpCommandString(credentials dbCredentials, compress bool) string {
+	credentials = credentials.withDefaults()
+
+	args := []string{"pg_dump", "--no-owner", "--no-privileges"}
+	if host := strings.TrimSpace(credentials.Host); host != "" {
+		args = append(args, "-h"+engine.ShellQuote(host))
+	}
+	if credentials.Port > 0 {
+		args = append(args, "-p"+strconv.Itoa(credentials.Port))
+	}
+	args = append(args, "-U"+engine.ShellQuote(credentials.Username), engine.ShellQuote(credentials.Database))
+
+	dumpCmd := strings.Join(args, " ")
+	if compress {
+		dumpCmd += " | gzip -c"
+	}
+	return postgresPasswordExportPrefix(credentials.Password) + dumpCmd
+}
+
+func buildRemotePostgresConnectCommandString(credentials dbCredentials) string {
+	credentials = credentials.withDefaults()
+
+	args := []string{"psql"}
+	if host := strings.TrimSpace(credentials.Host); host != "" {
+		args = append(args, "-h"+engine.ShellQuote(host))
+	}
+	if credentials.Port > 0 {
+		args = append(args, "-p"+strconv.Itoa(credentials.Port))
+	}
+	args = append(args, "-U"+engine.ShellQuote(credentials.Username), engine.ShellQuote(credentials.Database))
+
+	return postgresPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+}
+
+func buildRemotePostgresImportCommandString(credentials dbCredentials) string {
+	credentials = credentials.withDefaults()
+
+	args := []string{"psql"}
+	if host := strings.TrimSpace(credentials.Host); host != "" {
+		args = append(args, "-h"+engine.ShellQuote(host))
+	}
+	if credentials.Port > 0 {
+		args = append(args, "-p"+strconv.Itoa(credentials.Port))
+	}
+	args = append(args, "-U"+engine.ShellQuote(credentials.Username), "-v", "ON_ERROR_STOP=1", engine.ShellQuote(credentials.Database))
+
+	return postgresPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+}
+
+func buildRemotePostgresQueryCommandString(credentials dbCredentials, query string) string {
+	credentials = credentials.withDefaults()
+
+	args := []string{"psql"}
+	if host := strings.TrimSpace(credentials.Host); host != "" {
+		args = append(args, "-h"+engine.ShellQuote(host))
+	}
+	if credentials.Port > 0 {
+		args = append(args, "-p"+strconv.Itoa(credentials.Port))
+	}
+	args = append(args, "-U"+engine.ShellQuote(credentials.Username), "-c", engine.ShellQuote(query), engine.ShellQuote(credentials.Database))
+
+	return postgresPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+}
+
+func buildLocalPostgresConnectCommand(containerName string, credentials dbCredentials) *exec.Cmd {
+	credentials = credentials.withDefaults()
+	script := postgresPasswordExportPrefix(credentials.Password) +
+		"exec psql -U " + engine.ShellQuote(credentials.Username) + " " + engine.ShellQuote(credentials.Database)
+	return exec.Command("docker", "exec", "-it", containerName, "sh", "-lc", script)
+}
+
+func buildLocalPostgresImportCommand(containerName string, credentials dbCredentials) *exec.Cmd {
+	credentials = credentials.withDefaults()
+	script := postgresPasswordExportPrefix(credentials.Password) +
+		"exec psql -U " + engine.ShellQuote(credentials.Username) + " -v ON_ERROR_STOP=1 " + engine.ShellQuote(credentials.Database)
+	return exec.Command("docker", "exec", "-i", containerName, "sh", "-lc", script)
+}
+
+func buildLocalPostgresDumpCommand(containerName string, credentials dbCredentials) *exec.Cmd {
+	credentials = credentials.withDefaults()
+	script := postgresPasswordExportPrefix(credentials.Password) +
+		"pg_dump --no-owner --no-privileges -U " + engine.ShellQuote(credentials.Username) + " " + engine.ShellQuote(credentials.Database)
+	return exec.Command("docker", "exec", "-i", containerName, "sh", "-lc", script)
+}
+
+func buildLocalPostgresQueryCommand(containerName string, credentials dbCredentials, query string) *exec.Cmd {
+	credentials = credentials.withDefaults()
+	script := postgresPasswordExportPrefix(credentials.Password) +
+		"exec psql -U " + engine.ShellQuote(credentials.Username) + " -c " + engine.ShellQuote(query) + " " + engine.ShellQuote(credentials.Database)
+	return exec.Command("docker", "exec", "-i", containerName, "sh", "-lc", script)
+}
+
+func buildLocalPostgresResetScript(credentials dbCredentials) (string, error) {
+	credentials = credentials.withDefaults()
+	name := normalizeDatabaseName(credentials.Database)
+	if err := validateDatabaseName(name); err != nil {
+		return "", err
+	}
+	user := credentials.Username
+
+	terminateSQL := "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=" +
+		pgQuoteLiteral(name) + " AND pid <> pg_backend_pid();"
+	resetSQL := "DROP DATABASE IF EXISTS " + pgQuoteIdent(name) + "; CREATE DATABASE " +
+		pgQuoteIdent(name) + " OWNER " + pgQuoteIdent(user) + ";"
+
+	passwordPrefix := postgresPasswordExportPrefix(credentials.Password)
+
+	return strings.Join([]string{
+		"set -e",
+		passwordPrefix + "psql -U " + engine.ShellQuote(user) + " -d postgres -c " + engine.ShellQuote(terminateSQL),
+		passwordPrefix + "psql -U " + engine.ShellQuote(user) + " -d postgres -c " + engine.ShellQuote(resetSQL),
+	}, " && "), nil
+}
+
+func getPostgresDatabaseSizeQuery(database string) string {
+	return "SELECT pg_database_size(" + pgQuoteLiteral(database) + ");"
+}
+
+func getPostgresDatabaseSize(config engine.Config, remoteName string, remoteCfg engine.RemoteConfig, credentials dbCredentials) (int64, error) {
+	credentials = credentials.withDefaults()
+	query := getPostgresDatabaseSizeQuery(credentials.Database)
+
+	args := []string{"psql", "-tA"}
+	if host := strings.TrimSpace(credentials.Host); host != "" {
+		args = append(args, "-h"+engine.ShellQuote(host))
+	}
+	if credentials.Port > 0 {
+		args = append(args, "-p"+strconv.Itoa(credentials.Port))
+	}
+	args = append(args, "-U"+engine.ShellQuote(credentials.Username), "-c", engine.ShellQuote(query), engine.ShellQuote(credentials.Database))
+
+	cmdStr := postgresPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+
+	var output []byte
+	var err error
+	if remoteName == "local" {
+		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
+		output, err = exec.Command("docker", "exec", containerName, "sh", "-c", cmdStr).CombinedOutput()
+	} else {
+		sshCmd := remote.BuildSSHExecCommand(remoteName, remoteCfg, true, cmdStr)
+		output, err = sshCmd.CombinedOutput()
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	totalSizeStr := strings.TrimSpace(string(output))
+	if totalSizeStr == "" {
+		return 0, nil
+	}
+	var size int64
+	_, _ = fmt.Sscanf(totalSizeStr, "%d", &size)
+	return size, nil
 }
 
 func resolveRemoteDBCredentials(config engine.Config, remoteName string, remoteCfg engine.RemoteConfig) (dbCredentials, error) {
@@ -263,7 +480,33 @@ func DefaultDBCredentialsForFrameworkForTest(framework string) dbCredentials {
 	return defaultDBCredentialsForFramework(framework)
 }
 
+func BuildRemoteDBDumpCommandForFrameworkForTest(framework string, host string, port int, username string, password string, database string, compress bool) string {
+	credentials := defaultDBCredentialsForFramework(framework)
+	credentials.Host = host
+	credentials.Port = port
+	credentials.Username = username
+	credentials.Password = password
+	credentials.Database = database
+	return buildRemoteMySQLDumpCommandString(credentials, false, false, framework, compress)
+}
+
+func BuildLocalDBConnectCommandArgsForFrameworkForTest(framework string, containerName string, username string, database string) []string {
+	credentials := defaultDBCredentialsForFramework(framework)
+	credentials.Username = username
+	credentials.Database = database
+	return buildLocalDBConnectCommand(containerName, credentials).Args
+}
+
+func BuildLocalDBResetScriptForFrameworkForTest(framework string, database string) (string, error) {
+	credentials := defaultDBCredentialsForFramework(framework)
+	credentials.Database = database
+	return buildLocalDBResetScript(credentials)
+}
+
 func buildRemoteMySQLDumpCommandString(credentials dbCredentials, noNoise bool, noPII bool, framework string, compress bool) string {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildRemotePostgresDumpCommandString(credentials, compress)
+	}
 	credentials = credentials.withDefaults()
 
 	dbCliDetect := conventions.MySQLDumpBinDetect
@@ -300,6 +543,9 @@ func buildRemoteMySQLDumpCommandString(credentials dbCredentials, noNoise bool, 
 }
 
 func buildRemoteMySQLConnectCommandString(credentials dbCredentials) string {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildRemotePostgresConnectCommandString(credentials)
+	}
 	credentials = credentials.withDefaults()
 
 	args := []string{"mysql"}
@@ -315,6 +561,9 @@ func buildRemoteMySQLConnectCommandString(credentials dbCredentials) string {
 }
 
 func buildRemoteMySQLImportCommandString(credentials dbCredentials) string {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildRemotePostgresImportCommandString(credentials)
+	}
 	credentials = credentials.withDefaults()
 
 	args := []string{"mysql", "--max-allowed-packet=" + conventions.MySQLMaxAllowedPacket}
@@ -330,6 +579,9 @@ func buildRemoteMySQLImportCommandString(credentials dbCredentials) string {
 }
 
 func buildLocalDBConnectCommand(containerName string, credentials dbCredentials) *exec.Cmd {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildLocalPostgresConnectCommand(containerName, credentials)
+	}
 	credentials = credentials.withDefaults()
 	args := []string{"exec", "-it"}
 	if strings.TrimSpace(credentials.Password) != "" {
@@ -340,6 +592,9 @@ func buildLocalDBConnectCommand(containerName string, credentials dbCredentials)
 }
 
 func buildLocalDBImportCommand(containerName string, credentials dbCredentials) *exec.Cmd {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildLocalPostgresImportCommand(containerName, credentials)
+	}
 	credentials = credentials.withDefaults()
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
@@ -350,6 +605,9 @@ func buildLocalDBImportCommand(containerName string, credentials dbCredentials) 
 }
 
 func buildLocalDBDumpCommand(containerName string, credentials dbCredentials, noNoise bool, noPII bool, framework string) *exec.Cmd {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildLocalPostgresDumpCommand(containerName, credentials)
+	}
 	credentials = credentials.withDefaults()
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
@@ -468,6 +726,9 @@ func BuildIgnoredTableArgsForTest(dbName string, dbPrefix string, noNoise bool, 
 }
 
 func buildLocalDBQueryCommand(containerName string, credentials dbCredentials, query string) *exec.Cmd {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildLocalPostgresQueryCommand(containerName, credentials, query)
+	}
 	credentials = credentials.withDefaults()
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
@@ -489,6 +750,9 @@ func buildLocalMySQLQueryCommandScript(credentials dbCredentials, query string) 
 }
 
 func buildRemoteMySQLQueryCommandString(credentials dbCredentials, query string) string {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildRemotePostgresQueryCommandString(credentials, query)
+	}
 	credentials = credentials.withDefaults()
 
 	args := []string{"mysql"}
@@ -504,6 +768,9 @@ func buildRemoteMySQLQueryCommandString(credentials dbCredentials, query string)
 }
 
 func GetDatabaseSize(config engine.Config, remoteName string, remoteCfg engine.RemoteConfig, credentials dbCredentials, noNoise bool, noPII bool) (int64, error) {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return getPostgresDatabaseSize(config, remoteName, remoteCfg, credentials)
+	}
 	credentials = credentials.withDefaults()
 	ignoredTables := getIgnoredTableList(noNoise, noPII, config.Framework)
 	whereClause := fmt.Sprintf("WHERE table_schema = '%s'", strings.ReplaceAll(credentials.Database, "'", "''"))

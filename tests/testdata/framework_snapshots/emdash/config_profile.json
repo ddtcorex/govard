@@ -8,6 +8,7 @@
     "NGINXTemplate": "",
     "DatabaseName": "",
     "DefaultPHP": "",
+    "DefaultPythonVer": "",
     "DefaultNodeVer": "22",
     "DefaultDB": "none",
     "DefaultDBVer": "",
