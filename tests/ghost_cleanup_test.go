@@ -2,30 +2,29 @@ package tests
 
 import (
 	"context"
-	"os"
+	"io"
+	"path/filepath"
 	"testing"
 
 	"govard/internal/engine"
 )
 
 func TestGhostProjectCleanup(t *testing.T) {
-	projectPath := "/home/kai/Work/htdocs/ghost-test"
+	// A ghost project: a directory with no running containers and no
+	// registry entry (GOVARD_HOME_DIR is isolated per TestMain). Exercises
+	// DeleteProject's resilience - it must still succeed when there's
+	// nothing to clean up, rather than failing because the project isn't
+	// "really" there.
+	projectPath := t.TempDir()
+	projectName := filepath.Base(projectPath)
 
-	// Ensure project directory and container are NOT deleted yet
-	if _, err := os.Stat(projectPath); os.IsNotExist(err) {
-		t.Skipf("skipping: project directory %s does not exist", projectPath)
-	}
-
-	t.Logf("Running resilient cleanup for ghost project at: %s", projectPath)
-
-	err := engine.DeleteProject(context.Background(), projectPath, os.Stdout, os.Stderr)
+	err := engine.DeleteProject(context.Background(), projectPath, io.Discard, io.Discard)
 	if err != nil {
 		t.Errorf("Resilient cleanup failed: %v", err)
 	}
 
 	// Verify registry removal (indirectly by trying to find it)
-	_, _, err = engine.FindProjectByQuery("ghost-test")
-	if err == nil {
-		t.Error("Project 'ghost-test' still exists in registry after deletion")
+	if _, _, err := engine.FindProjectByQuery(projectName); err == nil {
+		t.Errorf("project %q still exists in registry after deletion", projectName)
 	}
 }

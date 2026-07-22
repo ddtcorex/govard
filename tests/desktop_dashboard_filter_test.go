@@ -8,7 +8,7 @@ import (
 
 func TestDesktopPkgLooksLikeGovardForTest(t *testing.T) {
 	t.Run("excludes proxy and warden namespaces", func(t *testing.T) {
-		if desktop.LooksLikeGovardForTest("proxy", []string{"web"}, []string{"/home/kai/.govard/compose/proxy.yml"}, false) {
+		if desktop.LooksLikeGovardForTest("proxy", []string{"web"}, []string{"/home/dev/.govard/compose/proxy.yml"}, false) {
 			t.Fatal("proxy project should never be treated as Govard workload")
 		}
 		if desktop.LooksLikeGovardForTest("warden", []string{"php"}, []string{"/opt/warden/docker-compose.yml"}, false) {
@@ -31,7 +31,7 @@ func TestDesktopPkgLooksLikeGovardForTest(t *testing.T) {
 		if !desktop.LooksLikeGovardForTest(
 			"m2govard",
 			[]string{"web", "php", "db"},
-			[]string{"/home/kai/.govard/compose/m2govard-c9d09835429f.yml"},
+			[]string{"/home/dev/.govard/compose/m2govard-c9d09835429f.yml"},
 			false,
 		) {
 			t.Fatal("govard compose projects should be treated as Govard")
@@ -42,7 +42,7 @@ func TestDesktopPkgLooksLikeGovardForTest(t *testing.T) {
 		if !desktop.LooksLikeGovardForTest(
 			"m2govard",
 			[]string{"web"},
-			[]string{`C:\Users\kai\.govard\compose\m2.govard.yml`},
+			[]string{`C:\Users\dev\.govard\compose\m2.govard.yml`},
 			false,
 		) {
 			t.Fatal("windows govard compose path should be treated as Govard")
