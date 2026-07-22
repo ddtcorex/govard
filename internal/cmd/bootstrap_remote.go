@@ -10,6 +10,8 @@ import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/engine/remote"
+	"govard/internal/frameworks"
+	"govard/internal/frameworks/types"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -18,6 +20,19 @@ import (
 var bootstrapRemoteDirExists = func(remoteName string, remoteCfg engine.RemoteConfig, remotePath string) bool {
 	probe := remote.BuildSSHExecCommand(remoteName, remoteCfg, true, "test -d "+remote.QuoteRemotePath(remotePath))
 	return probe.Run() == nil
+}
+
+// bootstrapPostCloneDefinition returns framework's registry entry if it
+// participates in the FrameworkBootstrap.PostClone step of the remote/clone
+// bootstrap workflow. magento2/mageos are excluded even though
+// SupportsBootstrap is true: their post-clone setup is the
+// ensureBootstrapMagentoEnvPHP branch above, not PostClone.
+func bootstrapPostCloneDefinition(framework string) (types.FrameworkDefinition, bool) {
+	def, ok := frameworks.Get(framework)
+	if !ok || !def.SupportsBootstrap || engine.IsMagento2Family(framework) {
+		return types.FrameworkDefinition{}, false
+	}
+	return def, true
 }
 
 func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
@@ -197,19 +212,8 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 		}
 
 		var frameworkBootstrap bootstrap.FrameworkBootstrap
-		switch config.Framework {
-		case "magento1":
-			frameworkBootstrap = bootstrap.NewMagento1Bootstrap(bootstrapOpts)
-		case "openmage":
-			frameworkBootstrap = bootstrap.NewOpenMageBootstrap(bootstrapOpts)
-		case "symfony":
-			frameworkBootstrap = bootstrap.NewSymfonyBootstrap(bootstrapOpts)
-		case "laravel":
-			frameworkBootstrap = bootstrap.NewLaravelBootstrap(bootstrapOpts)
-		case "wordpress":
-			frameworkBootstrap = bootstrap.NewWordPressBootstrap(bootstrapOpts)
-		case "prestashop":
-			frameworkBootstrap = bootstrap.NewPrestaShopBootstrap(bootstrapOpts)
+		if def, ok := bootstrapPostCloneDefinition(config.Framework); ok {
+			frameworkBootstrap = def.Bootstrap(bootstrapOpts)
 		}
 
 		if frameworkBootstrap != nil {
@@ -221,7 +225,7 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 				}
 			}
 		}
-	} else if config.Framework == "symfony" || config.Framework == "laravel" || config.Framework == "wordpress" || config.Framework == "magento1" || config.Framework == "openmage" || config.Framework == "prestashop" {
+	} else if _, ok := bootstrapPostCloneDefinition(config.Framework); ok {
 		pterm.Info.Printf("Skipping %s post-clone setup because composer install is disabled.\n", config.Framework)
 	}
 

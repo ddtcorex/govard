@@ -8,16 +8,37 @@ import (
 	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
+
+// genericFreshInstallFrameworks lists frameworks whose fresh-install is a
+// uniform CreateProject -> Install -> `govard config auto` sequence,
+// differing only in which bootstrap.Options fields they need - handled by
+// runBootstrapGenericFreshInstall. Frameworks with a materially different
+// sequence (openmage, nextjs, emdash call Configure directly instead of
+// shelling out; magento2/mageos/magento1 have their own elaborate/blocked
+// paths) are NOT here and keep their own function.
+var genericFreshInstallFrameworks = map[string]struct{ needsDB, needsDomain bool }{
+	"symfony":   {needsDB: true},
+	"laravel":   {needsDB: true},
+	"drupal":    {},
+	"wordpress": {needsDB: true, needsDomain: true},
+	"shopware":  {needsDomain: true},
+	"cakephp":   {},
+}
 
 func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
 	cwd, _ := os.Getwd()
 
 	if config.Framework == "mageos" && opts.MetaPackage == defaultBootstrapMetaPackage {
 		opts.MetaPackage = "mage-os/project-community-edition"
+	}
+
+	if needs, ok := genericFreshInstallFrameworks[config.Framework]; ok {
+		return runBootstrapGenericFreshInstall(cmd, config, opts, cwd, needs.needsDB, needs.needsDomain)
 	}
 
 	switch config.Framework {
@@ -27,209 +48,54 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 		return fmt.Errorf("fresh install not supported for %s (use openmage instead)", config.Framework)
 	case "openmage":
 		return runBootstrapOpenMageFreshInstall(cmd, config, opts, cwd)
-	case "symfony":
-		return runBootstrapSymfonyFreshInstall(cmd, config, opts, cwd)
-	case "laravel":
-		return runBootstrapLaravelFreshInstall(cmd, config, opts, cwd)
-	case "drupal":
-		return runBootstrapDrupalFreshInstall(cmd, config, opts, cwd)
-	case "wordpress":
-		return runBootstrapWordPressFreshInstall(cmd, config, opts, cwd)
 	case "nextjs":
 		return runBootstrapNextJSFreshInstall(cmd, config, opts, cwd)
 	case "emdash":
 		return runBootstrapEmdashFreshInstall(cmd, config, opts, cwd)
-	case "shopware":
-		return runBootstrapShopwareFreshInstall(cmd, config, opts, cwd)
-	case "cakephp":
-		return runBootstrapCakePHPFreshInstall(cmd, config, opts, cwd)
 	default:
 		return fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
 	}
 }
 
-func runBootstrapSymfonyFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
-	localDB := resolveLocalDBCredentials(config, containerName)
-
-	symfonyOpts := bootstrap.Options{
-		Version: opts.MetaVersion,
-		Env:     opts.Source,
-		Runner: func(command string) error {
-			return runPHPContainerShellCommand(config, command)
-		},
-		DBHost: conventions.DefaultDBHost, // Internal container hostname
-		DBUser: localDB.Username,
-		DBPass: localDB.Password,
-		DBName: localDB.Database,
-	}
-
-	symfonyBootstrap := bootstrap.NewSymfonyBootstrap(symfonyOpts)
-
-	if err := symfonyBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if err := symfonyBootstrap.Install(cwd); err != nil {
-		return err
-	}
-
-	if err := runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...); err != nil {
-		return fmt.Errorf("configure failed: %w", err)
-	}
-
-	pterm.Success.Println("Fresh Symfony bootstrap completed.")
-	return nil
-}
-
-func runBootstrapLaravelFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
-	localDB := resolveLocalDBCredentials(config, containerName)
-
-	laravelOpts := bootstrap.Options{
-		Version: opts.MetaVersion,
-		Env:     opts.Source,
-		Runner: func(command string) error {
-			return runPHPContainerShellCommand(config, command)
-		},
-		DBHost: conventions.DefaultDBHost, // Internal container hostname
-		DBUser: localDB.Username,
-		DBPass: localDB.Password,
-		DBName: localDB.Database,
-	}
-
-	laravelBootstrap := bootstrap.NewLaravelBootstrap(laravelOpts)
-
-	if err := laravelBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if err := laravelBootstrap.Install(cwd); err != nil {
-		return err
-	}
-
-	if err := runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...); err != nil {
-		return fmt.Errorf("configure failed: %w", err)
-	}
-
-	pterm.Success.Println("Fresh Laravel bootstrap completed.")
-	return nil
-}
-
-func runBootstrapDrupalFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	drupalOpts := bootstrap.Options{
+// runBootstrapGenericFreshInstall runs the CreateProject -> Install ->
+// `govard config auto` sequence shared by genericFreshInstallFrameworks.
+func runBootstrapGenericFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string, needsDB bool, needsDomain bool) error {
+	fwOpts := bootstrap.Options{
 		Version: opts.MetaVersion,
 		Env:     opts.Source,
 		Runner: func(command string) error {
 			return runPHPContainerShellCommand(config, command)
 		},
 	}
-
-	drupalBootstrap := bootstrap.NewDrupalBootstrap(drupalOpts)
-
-	if err := drupalBootstrap.CreateProject(cwd); err != nil {
-		return err
+	if needsDB {
+		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
+		localDB := resolveLocalDBCredentials(config, containerName)
+		fwOpts.DBHost = conventions.DefaultDBHost // Internal container hostname
+		fwOpts.DBUser = localDB.Username
+		fwOpts.DBPass = localDB.Password
+		fwOpts.DBName = localDB.Database
+	}
+	if needsDomain {
+		fwOpts.Domain = config.Domain
 	}
 
-	if err := drupalBootstrap.Install(cwd); err != nil {
+	def, ok := frameworks.Get(config.Framework)
+	if !ok || def.Bootstrap == nil {
+		return fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
+	}
+	fwBootstrap := def.Bootstrap(fwOpts)
+
+	if err := fwBootstrap.CreateProject(cwd); err != nil {
 		return err
 	}
-
+	if err := fwBootstrap.Install(cwd); err != nil {
+		return err
+	}
 	if err := runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...); err != nil {
 		return fmt.Errorf("configure failed: %w", err)
 	}
 
-	pterm.Success.Println("Fresh Drupal bootstrap completed.")
-	return nil
-}
-
-func runBootstrapWordPressFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
-	localDB := resolveLocalDBCredentials(config, containerName)
-
-	wpOpts := bootstrap.Options{
-		Version: opts.MetaVersion,
-		Env:     opts.Source,
-		Runner: func(command string) error {
-			return runPHPContainerShellCommand(config, command)
-		},
-		DBHost: conventions.DefaultDBHost,
-		DBUser: localDB.Username,
-		DBPass: localDB.Password,
-		DBName: localDB.Database,
-		Domain: config.Domain,
-	}
-
-	wpBootstrap := bootstrap.NewWordPressBootstrap(wpOpts)
-
-	if err := wpBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if err := wpBootstrap.Install(cwd); err != nil {
-		return err
-	}
-
-	if err := runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...); err != nil {
-		return fmt.Errorf("configure failed: %w", err)
-	}
-
-	pterm.Success.Println("Fresh WordPress bootstrap completed.")
-	return nil
-}
-
-func runBootstrapShopwareFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	shopwareOpts := bootstrap.Options{
-		Version: opts.MetaVersion,
-		Env:     opts.Source,
-		Domain:  config.Domain,
-		Runner: func(command string) error {
-			return runPHPContainerShellCommand(config, command)
-		},
-	}
-
-	shopwareBootstrap := bootstrap.NewShopwareBootstrap(shopwareOpts)
-
-	if err := shopwareBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if err := shopwareBootstrap.Install(cwd); err != nil {
-		return err
-	}
-
-	if err := runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...); err != nil {
-		return fmt.Errorf("configure failed: %w", err)
-	}
-
-	pterm.Success.Println("Fresh Shopware bootstrap completed.")
-	return nil
-}
-
-func runBootstrapCakePHPFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	cakePHPOpts := bootstrap.Options{
-		Version: opts.MetaVersion,
-		Env:     opts.Source,
-		Runner: func(command string) error {
-			return runPHPContainerShellCommand(config, command)
-		},
-	}
-
-	cakePHPBootstrap := bootstrap.NewCakePHPBootstrap(cakePHPOpts)
-
-	if err := cakePHPBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if err := cakePHPBootstrap.Install(cwd); err != nil {
-		return err
-	}
-
-	if err := runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...); err != nil {
-		return fmt.Errorf("configure failed: %w", err)
-	}
-
-	pterm.Success.Println("Fresh CakePHP bootstrap completed.")
+	pterm.Success.Printf("Fresh %s bootstrap completed.\n", def.DisplayName)
 	return nil
 }
 
