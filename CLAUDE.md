@@ -148,6 +148,11 @@ Update `docs/*.md` for: command names/aliases/flags, config behavior, remote/syn
 
 **Treat stale docs as incomplete work.**
 
+## Git Workflow
+
+- Always start a new feature branch for each work session — never commit directly to `master`/`develop`.
+- When development on a feature branch is complete (tests passing, ready for review), proactively create a GitHub issue with full details (problem/motivation, scope, what changed) and a GitHub PR with full details (summary, rationale, test plan) that links back to that issue (e.g. `Closes #<issue>` in the PR body) — don't wait to be asked.
+
 ## Superpowers Workflow Preferences
 
 - `docs/superpowers/**` (specs, plans) are local-only working artifacts — gitignored (see `.gitignore`). Never `git add`/commit them; keep them on disk for reference within the session.
