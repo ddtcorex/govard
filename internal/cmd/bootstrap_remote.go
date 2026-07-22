@@ -137,7 +137,7 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 		}
 	}
 
-	if config.Framework == "magento2" {
+	if engine.IsMagento2Family(config.Framework) {
 		if err := ensureBootstrapMagentoEnvPHP(config, opts); err != nil {
 			return err
 		}
@@ -225,11 +225,11 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 		pterm.Info.Printf("Skipping %s post-clone setup because composer install is disabled.\n", config.Framework)
 	}
 
-	if opts.AdminCreate && config.Framework == "magento2" {
+	if opts.AdminCreate && engine.IsMagento2Family(config.Framework) {
 		runBootstrapAdminCreate(cmd, config)
 	}
 
-	if config.Framework == "magento2" {
+	if engine.IsMagento2Family(config.Framework) {
 		if err := runBootstrapMagentoReindex(cmd); err != nil {
 			return err
 		}

@@ -22,6 +22,20 @@ func TestMagentoDiscovery(t *testing.T) {
 	}
 }
 
+func TestComposerDetectionUsesFrameworkPriority(t *testing.T) {
+	testDir := tempProject(t, map[string]string{
+		"composer.json": composerJSON(t, map[string]string{
+			"magento/product-community-edition": "2.4.8",
+			"mage-os/project-community-edition": "1.3.1",
+		}),
+	})
+
+	metadata := engine.DetectFramework(testDir)
+	if metadata.Framework != "magento2" {
+		t.Errorf("Expected Magento 2 to win the documented detection priority, got %s", metadata.Framework)
+	}
+}
+
 func TestMagento1Discovery(t *testing.T) {
 	testDir := tempProject(t, map[string]string{
 		"app/Mage.php": "",
@@ -108,6 +122,20 @@ func TestEmdashDiscovery(t *testing.T) {
 	}
 	if metadata.Version != "^0.1.0" {
 		t.Errorf("Expected version ^0.1.0, got %s", metadata.Version)
+	}
+}
+
+func TestEmdashTakesPrecedenceOverNextJS(t *testing.T) {
+	testDir := tempProject(t, map[string]string{
+		"package.json": packageJSON(t, map[string]string{
+			"emdash": "^0.1.0",
+			"next":   "15.0.0",
+		}),
+	})
+
+	metadata := engine.DetectFramework(testDir)
+	if metadata.Framework != "emdash" {
+		t.Errorf("Expected framework emdash to retain its legacy priority over nextjs, got %s", metadata.Framework)
 	}
 }
 

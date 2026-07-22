@@ -1,6 +1,6 @@
 ---
-title: Supported Frameworks — Magento, Laravel, Symfony, WordPress & More
-description: Govard auto-detects Magento 1/2, Laravel, Symfony, Drupal, Shopware, CakePHP, PrestaShop, WordPress, Next.js, and applies framework-specific runtime defaults.
+title: Supported Frameworks — Magento, Mage-OS, Laravel, Symfony, WordPress & More
+description: Govard auto-detects Magento 1/2, Mage-OS, Laravel, Symfony, Drupal, Shopware, CakePHP, PrestaShop, WordPress, Next.js, and applies framework-specific runtime defaults.
 ---
 
 # Frameworks
@@ -34,7 +34,7 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | Framework | PHP | Node | DB | Cache | Search | Queue |
 | :--- | :---: | :---: | :--- | :--- | :--- | :--- |
 | Magento 2 | 8.4 | 24 | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
-| Mage-OS | 8.4 | 24 | mariadb 11.4 | valkey 8.0.0 | opensearch 2.19.0 | none |
+| Mage-OS | 8.4 | 24 | mariadb 11.8 | redis 7.4 | opensearch 3.0 | none |
 | Magento 1 / OpenMage | 8.1 | — | mariadb 10.11 | none | none | none |
 | Laravel | 8.4 | — | mariadb 11.4 | none | none | none |
 | Next.js | — | 24 | none | none | none | none |

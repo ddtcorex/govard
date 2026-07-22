@@ -454,28 +454,29 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 					pterm.Warning.Printf("Could not refresh PMA active projects: %v\n", err)
 				}
 
-				if context.Config.Framework == "magento2" || context.Config.Framework == "mageos" {
+				if engine.IsMagento2Family(context.Config.Framework) {
+					frameworkName := engine.Magento2FamilyDisplayName(context.Config.Framework)
 					if context.SkipTuning {
 						pterm.Info.Println("Skipping framework auto-configuration (--no-tuning)")
 					} else if context.ShiftInfo != nil && context.ShiftInfo.Shifted && stdinIsTerminal() {
 						// Prompt user for Magento tuning when shift is detected
-						pterm.Info.Println("Magento 2 environment detected.")
+						pterm.Info.Printf("%s environment detected.\n", frameworkName)
 						pterm.Info.Printf("Reason: %s\n", context.ShiftInfo.Reason)
 						proceed, _ := pterm.DefaultInteractiveConfirm.
 							WithDefaultValue(true).
 							WithDefaultText("Y = tune now, N = skip tuning").
-							Show("Run Magento auto-configuration?")
+							Show(fmt.Sprintf("Run %s auto-configuration?", frameworkName))
 						if proceed {
 							if err := engine.ConfigureMagento(context.Config.ProjectName, context.Config, false, context.ShiftInfo); err != nil {
-								pterm.Warning.Printf("Magento auto-configuration failed: %v\n", err)
+								pterm.Warning.Printf("%s auto-configuration failed: %v\n", frameworkName, err)
 							}
 						} else {
-							pterm.Info.Println("Magento tuning skipped. Run 'govard config auto' to configure later.")
+							pterm.Info.Printf("%s tuning skipped. Run 'govard config auto' to configure later.\n", frameworkName)
 						}
 					} else if context.ShiftInfo != nil && context.ShiftInfo.Shifted {
 						// Non-interactive mode: run without prompt if shift detected
 						if err := engine.ConfigureMagento(context.Config.ProjectName, context.Config, false, context.ShiftInfo); err != nil {
-							pterm.Warning.Printf("Magento auto-configuration failed: %v\n", err)
+							pterm.Warning.Printf("%s auto-configuration failed: %v\n", frameworkName, err)
 						}
 					}
 					// No shift detected: skip ConfigureMagento entirely

@@ -29,7 +29,7 @@ var deployCmd = &cobra.Command{
 		}
 
 		locales, _ := cmd.Flags().GetString("locales")
-		if strings.TrimSpace(locales) == "" && strings.EqualFold(config.Framework, "magento2") {
+		if strings.TrimSpace(locales) == "" && engine.IsMagento2Family(config.Framework) {
 			detected := detectMagento2Locales(config)
 			if len(detected) > 0 {
 				locales = strings.Join(detected, " ")

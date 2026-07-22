@@ -141,6 +141,9 @@ func TestRunBootstrapMagentoSetupInstallForTestUsesMageOSDBCredentialsForLegacyV
 	if !strings.Contains(joined, "--db-name=mageos") || !strings.Contains(joined, "--db-user=mageos") || !strings.Contains(joined, "--db-password=mageos") {
 		t.Fatalf("expected mageos db credentials in legacy-version setup args, got %q", joined)
 	}
+	if !strings.Contains(joined, "--search-engine=opensearch") {
+		t.Fatalf("expected Mage-OS 1.x to use OpenSearch, got %q", joined)
+	}
 }
 
 func flattenArgs(groups [][]string) []string {

@@ -73,19 +73,20 @@ func buildBootstrapRemotePlan(config engine.Config, opts BootstrapRuntimeOptions
 	}
 
 	// 6. Framework specific post-steps
-	switch framework {
-	case "magento2":
-		plan.Descriptions = append(plan.Descriptions, "Configuring Magento 2 environment (env.php)...")
+	switch {
+	case engine.IsMagento2Family(framework):
+		frameworkName := engine.Magento2FamilyDisplayName(framework)
+		plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Configuring %s environment (env.php)...", frameworkName))
 		plan.Commands = append(plan.Commands, "govard config auto")
 
 		if opts.AdminCreate {
-			plan.Descriptions = append(plan.Descriptions, "Creating Magento 2 admin user...")
+			plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Creating %s admin user...", frameworkName))
 			plan.Commands = append(plan.Commands, "govard tool magento admin:user:create ...")
 		}
 
-		plan.Descriptions = append(plan.Descriptions, "Reindexing Magento 2 data...")
+		plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Reindexing %s data...", frameworkName))
 		plan.Commands = append(plan.Commands, "govard tool magento indexer:reindex")
-	case "magento1", "openmage":
+	case framework == "magento1" || framework == "openmage":
 		plan.Descriptions = append(plan.Descriptions, "Configuring Magento 1 environment (base URLs and scoped website/store URLs)...")
 		plan.Commands = append(plan.Commands, "govard config auto")
 	}

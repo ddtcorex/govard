@@ -276,7 +276,7 @@ func TestRunBootstrapMagentoSetupInstallForTestUsesElasticsearch7ForLegacyVersio
 
 	err := cmd.RunBootstrapMagentoSetupInstallForTest(
 		&cobra.Command{},
-		engine.Config{Domain: "sample.test"},
+		engine.Config{Framework: "magento2", Domain: "sample.test"},
 		"staging",
 		"2.4.7",
 	)

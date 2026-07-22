@@ -11,6 +11,9 @@ export const normalizeOnboardingFramework = (framework = "") => {
   if (normalized === "m2") {
     return "magento2";
   }
+  if (normalized === "mage-os") {
+    return "mageos";
+  }
   if (normalized === "m1") {
     return "magento1";
   }
@@ -89,6 +92,9 @@ const inferFrameworkFromPath = (projectPath = "") => {
   if (!value) {
     return "";
   }
+  if (value.includes("mageos") || value.includes("mage-os")) {
+    return "mageos";
+  }
   if (value.includes("magento2") || value.includes("m2")) {
     return "magento2";
   }
@@ -147,6 +153,7 @@ const formatFrameworkLabel = (framework = "") => {
   const labels = {
     "": "Auto-detect",
     magento2: "Magento 2",
+    mageos: "Mage-OS",
     magento1: "Magento 1",
     laravel: "Laravel",
     symfony: "Symfony",
@@ -171,6 +178,7 @@ const formatFrameworkSummary = (framework = "", frameworkVersion = "") => {
 
 const frameworkVersionPlaceholderByFramework = {
   magento2: "2.4.7-p3",
+  mageos: "1.3.1",
   magento1: "1.9.4",
   laravel: "11",
   symfony: "7.0",
@@ -1110,6 +1118,7 @@ export const renderOnboardingModal = (container) => {
                       >
                         <option value="auto">🔍 Auto-detect</option>
                         <option value="magento2">Magento 2</option>
+                        <option value="mageos">Mage-OS</option>
                         <option value="magento1">Magento 1</option>
                         <option value="laravel">Laravel</option>
                         <option value="symfony">Symfony</option>

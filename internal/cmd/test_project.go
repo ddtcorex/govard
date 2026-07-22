@@ -45,9 +45,10 @@ func init() {
 }
 
 func runDefaultTests(config engine.Config) error {
-	switch config.Framework {
-	case "magento2":
+	if engine.IsMagento2Family(config.Framework) {
 		return runPHPUnit(config, nil)
+	}
+	switch config.Framework {
 	case "laravel":
 		return runInPHPContainer(config, "php", []string{"artisan", "test"})
 	default:
@@ -78,7 +79,7 @@ func runPHPStan(config engine.Config, args []string) error {
 		cmdArgs = append(cmdArgs, args...)
 	} else {
 		// Default paths for Magento 2 or others
-		if config.Framework == "magento2" {
+		if engine.IsMagento2Family(config.Framework) {
 			cmdArgs = append(cmdArgs, "app/code", "app/design")
 		} else {
 			cmdArgs = append(cmdArgs, "app", "src")
@@ -89,7 +90,7 @@ func runPHPStan(config engine.Config, args []string) error {
 }
 
 func runMFTF(config engine.Config, args []string) error {
-	if config.Framework != "magento2" {
+	if !engine.IsMagento2Family(config.Framework) {
 		return fmt.Errorf("MFTF is only supported for Magento 2 projects")
 	}
 	fmt.Println()
@@ -103,7 +104,7 @@ func runMFTF(config engine.Config, args []string) error {
 }
 
 func runIntegrationTests(config engine.Config, args []string) error {
-	if config.Framework == "magento2" {
+	if engine.IsMagento2Family(config.Framework) {
 		fmt.Println()
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Running Magento 2 Integration Tests ")
 		fmt.Println()

@@ -21,10 +21,8 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 	}
 
 	switch config.Framework {
-	case "magento2":
-		return runBootstrapMagentoFreshInstall(cmd, config, opts)
-	case "mageos":
-		return runBootstrapMageOSFreshInstall(cmd, config, opts)
+	case "magento2", "mageos":
+		return runBootstrapFreshInstall(cmd, config, opts)
 	case "magento1":
 		return fmt.Errorf("fresh install not supported for %s (use openmage instead)", config.Framework)
 	case "openmage":
@@ -48,14 +46,6 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 	default:
 		return fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
 	}
-}
-
-func runBootstrapMagentoFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
-	return runBootstrapFreshInstall(cmd, config, opts)
-}
-
-func runBootstrapMageOSFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
-	return runBootstrapFreshInstall(cmd, config, opts)
 }
 
 func runBootstrapSymfonyFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
@@ -350,7 +340,7 @@ func runBootstrapFreshInstall(cmd *cobra.Command, config engine.Config, opts Boo
 		return err
 	}
 	if err := runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...); err != nil {
-		return fmt.Errorf("magento configure failed: %w", err)
+		return fmt.Errorf("framework configuration failed: %w", err)
 	}
 	if opts.IncludeSample {
 		if err := runBootstrapSampleData(cmd); err != nil {
@@ -358,7 +348,7 @@ func runBootstrapFreshInstall(cmd *cobra.Command, config engine.Config, opts Boo
 		}
 	}
 
-	pterm.Success.Println("Fresh Magento bootstrap completed.")
+	pterm.Success.Printf("Fresh %s bootstrap completed.\n", engine.Magento2FamilyDisplayName(config.Framework))
 	return nil
 }
 

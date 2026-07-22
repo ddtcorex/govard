@@ -19,7 +19,7 @@ type BaseURLManager interface {
 
 func NewBaseURLManager(framework string) BaseURLManager {
 	switch strings.ToLower(framework) {
-	case "magento2":
+	case "magento2", "mageos":
 		return &Magento2Manager{}
 	case "magento1", "openmage":
 		return &Magento1Manager{}

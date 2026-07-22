@@ -326,7 +326,7 @@ Case Studies:
 			return fmt.Errorf("post-synchronization hooks failed to execute: %w", err)
 		}
 
-		if config.Framework == "magento2" && (files || mediaMode != "") {
+		if engine.IsMagento2Family(config.Framework) && (files || mediaMode != "") {
 			_ = engine.FixProjectPermissions(config.ProjectName, config)
 		}
 

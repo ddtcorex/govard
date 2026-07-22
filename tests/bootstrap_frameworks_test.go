@@ -186,6 +186,7 @@ func TestWriteEmdashPasskeyShimCreatesGovardOverride(t *testing.T) {
 func TestBootstrapDispatcherAllFrameworks(t *testing.T) {
 	frameworks := []string{
 		"magento2",
+		"mageos",
 		"magento1",
 		"openmage",
 		"symfony",

@@ -21,18 +21,21 @@ import (
 // pipeline for a specific distribution (Magento 2 Open Source/Commerce, or
 // Mage-OS).
 type magentoUpgradeVariant struct {
+	DisplayName   string
 	Metapackage   string
 	RepositoryURL string
 	PackagePrefix string
 }
 
 var magento2UpgradeVariant = magentoUpgradeVariant{
+	DisplayName:   "Magento 2",
 	Metapackage:   "magento/project-community-edition",
 	RepositoryURL: "https://repo.magento.com/",
 	PackagePrefix: "magento/",
 }
 
 var mageOSUpgradeVariant = magentoUpgradeVariant{
+	DisplayName:   "Mage-OS",
 	Metapackage:   "mage-os/project-community-edition",
 	RepositoryURL: "https://repo.mage-os.org/",
 	PackagePrefix: "mage-os/",
@@ -57,9 +60,9 @@ func upgradeMagento2(ctx context.Context, config Config, opts UpgradeOptions, va
 		pterm.Info.Println("[DRY RUN] Would perform the following steps:")
 		pterm.Info.Println("  1. Update .govard.yml configuration for the target framework version")
 		pterm.Info.Println("  2. Restart environment (govard env down && govard env up)")
-		pterm.Info.Printf("  3. Create temporary magento project %s to fetch composer.json\n", opts.TargetVersion)
+		pterm.Info.Printf("  3. Create temporary %s project %s to fetch composer.json\n", variant.DisplayName, opts.TargetVersion)
 		pterm.Info.Println("  4. Merge composer.json preserving 3rd-party dependencies")
-		pterm.Info.Println("  5. Run composer update magento/* phpunit/* --with-all-dependencies")
+		pterm.Info.Printf("  5. Run composer update %s* phpunit/* --with-all-dependencies\n", variant.PackagePrefix)
 		pterm.Info.Println("  6. bin/magento setup:upgrade, setup:di:compile, cache:flush")
 		return nil
 	}
@@ -197,7 +200,7 @@ func upgradeMagento2(ctx context.Context, config Config, opts UpgradeOptions, va
 	// Clean backup
 	_ = os.Remove(filepath.Join(opts.ProjectDir, "composer.json.bak"))
 
-	pterm.Success.Printf("✅ Magento upgrade to %s completed!\n", opts.TargetVersion)
+	pterm.Success.Printf("✅ %s upgrade to %s completed!\n", variant.DisplayName, opts.TargetVersion)
 	return nil
 }
 

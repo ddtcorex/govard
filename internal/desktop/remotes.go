@@ -361,7 +361,7 @@ func resolveRemoteAdminURL(project string, remoteName string) (string, string, e
 	}
 
 	adminPath := conventions.DefaultAdminPath
-	if strings.EqualFold(strings.TrimSpace(cfg.Framework), conventions.FrameworkMagento2) {
+	if engine.IsMagento2Family(cfg.Framework) {
 		detectedPath, probeErr := detectRemoteMagentoAdminPathForDesktop(resolvedRemoteName, remoteCfg)
 		if probeErr == nil {
 			adminPath = detectedPath
@@ -1239,7 +1239,7 @@ func buildPresetSyncOptionDefs(project, preset string) presetSyncOptions {
 		}
 	}
 
-	isMagento := framework == "magento2" || framework == "magento1" || framework == "openmage"
+	isMagento := engine.IsMagento2Family(framework) || framework == "magento1" || framework == "openmage"
 
 	switch normalizedPreset {
 	case "db":

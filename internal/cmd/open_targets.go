@@ -176,7 +176,7 @@ func detectLocalAdminURL(config engine.Config) string {
 	}
 
 	baseURL := "https://" + strings.TrimSpace(config.Domain)
-	if strings.ToLower(strings.TrimSpace(config.Framework)) != conventions.FrameworkMagento2 {
+	if !engine.IsMagento2Family(config.Framework) {
 		return joinURLWithPath(baseURL, conventions.DefaultAdminPath)
 	}
 
@@ -373,7 +373,7 @@ func joinURLWithPath(baseURL string, path string) string {
 }
 
 func detectRemoteMagentoAdminPath(config engine.Config, remoteName string, remoteCfg engine.RemoteConfig) (string, error) {
-	if strings.ToLower(strings.TrimSpace(config.Framework)) != conventions.FrameworkMagento2 {
+	if !engine.IsMagento2Family(config.Framework) {
 		return conventions.DefaultAdminPath, nil
 	}
 

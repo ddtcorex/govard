@@ -57,7 +57,7 @@ var frameworkCommands = []FrameworkCommand{
 	{
 		Name:        "magento",
 		Short:       "Run Magento CLI commands",
-		Frameworks:  []string{"magento2"},
+		Frameworks:  []string{"magento2", "mageos"},
 		Binary:      "php",
 		PrependArgs: []string{"bin/magento"},
 		DefaultUser: "",
@@ -74,7 +74,7 @@ var frameworkCommands = []FrameworkCommand{
 		Name:        "magerun",
 		Aliases:     []string{"mr"},
 		Short:       "Run n98-magerun commands",
-		Frameworks:  []string{"magento1", "magento2", "openmage"},
+		Frameworks:  []string{"magento1", "magento2", "mageos", "openmage"},
 		Binary:      "n98-magerun",
 		DefaultUser: "",
 	},
@@ -269,7 +269,7 @@ func resolveToolExecution(config engine.Config, binary string, defaultUser strin
 		}
 	}
 
-	if config.Framework == "magento2" && (binary == "php" || binary == "composer" ||
+	if engine.IsMagento2Family(config.Framework) && (binary == "php" || binary == "composer" ||
 		binary == "npm" || binary == "yarn" || binary == "npx" ||
 		binary == "pnpm" || binary == "grunt") {
 		user = config.ResolveProjectExecUser(conventions.UserWWWData)

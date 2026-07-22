@@ -55,7 +55,8 @@ func ConfigureMagento(projectName string, config Config, force bool, shiftInfo *
 		return nil
 	}
 
-	pterm.Info.Printf("Configuring Magento 2 environment (%s)...\n", reason)
+	frameworkName := Magento2FamilyDisplayName(config.Framework)
+	pterm.Info.Printf("Configuring %s environment (%s)...\n", frameworkName, reason)
 
 	if err := FixProjectPermissions(projectName, config); err != nil {
 		pterm.Warning.Printf("Could not fix project permissions (continuing): %v\n", err)
@@ -196,7 +197,7 @@ func ConfigureMagento(projectName string, config Config, force bool, shiftInfo *
 		}
 	}
 
-	pterm.Success.Println("Magento 2 environment configured successfully!")
+	pterm.Success.Printf("%s environment configured successfully!\n", frameworkName)
 	return nil
 }
 
@@ -1131,8 +1132,11 @@ func prepareMagentoRunMappingAssets(config Config) (string, string, error) {
 }
 
 func isMagentoFramework(framework string) bool {
+	if IsMagento2Family(framework) {
+		return true
+	}
 	switch strings.ToLower(strings.TrimSpace(framework)) {
-	case "magento1", "magento2", "openmage", "mageos":
+	case "magento1", "openmage":
 		return true
 	default:
 		return false

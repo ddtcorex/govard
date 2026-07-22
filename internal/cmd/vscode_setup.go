@@ -421,7 +421,7 @@ var phpstanDefaultConfigFilenames = []string{"phpstan.neon", "phpstan.neon.dist"
 // phpstan` already uses when no paths are given on the command line, so this
 // doesn't invent a new, inconsistent convention.
 func phpstanDefaultPaths(framework string) []string {
-	if framework == "magento2" {
+	if engine.IsMagento2Family(framework) {
 		return []string{"app/code", "app/design"}
 	}
 	return []string{"app", "src"}

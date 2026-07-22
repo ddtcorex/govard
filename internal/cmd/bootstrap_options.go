@@ -77,12 +77,6 @@ func resolveBootstrapOptions(cmd *cobra.Command, args []string) (BootstrapRuntim
 		cloneFlagExplicit = cmd.Flags().Changed("clone")
 	}
 
-	if opts.MetaVersion != "" {
-		comparison, comparable := compareNumericDotVersions(opts.MetaVersion, "2.0.0")
-		if !comparable || comparison < 0 {
-			return BootstrapRuntimeOptions{}, fmt.Errorf("invalid --framework-version value %q (must be Magento 2.0.0+)", opts.MetaVersion)
-		}
-	}
 	if opts.Fresh && opts.Clone {
 		if cloneFlagExplicit {
 			return BootstrapRuntimeOptions{}, fmt.Errorf("--fresh and --clone cannot be used together")
@@ -103,6 +97,31 @@ func resolveBootstrapOptions(cmd *cobra.Command, args []string) (BootstrapRuntim
 	}
 
 	return opts, nil
+}
+
+func validateBootstrapFrameworkVersion(framework string, version string) error {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return nil
+	}
+
+	comparison, comparable := compareNumericDotVersions(version, "0.0.0")
+	if !comparable || comparison < 0 {
+		return fmt.Errorf("invalid --framework-version value %q (must be a numeric dotted version)", version)
+	}
+	if strings.EqualFold(strings.TrimSpace(framework), "magento2") || strings.EqualFold(strings.TrimSpace(framework), "magento") {
+		comparison, _ = compareNumericDotVersions(version, "2.0.0")
+		if comparison < 0 {
+			return fmt.Errorf("invalid --framework-version value %q (must be Magento 2.0.0+)", version)
+		}
+	}
+	return nil
+}
+
+// ValidateBootstrapFrameworkVersionForTest exposes framework-aware fresh
+// version validation for tests in /tests.
+func ValidateBootstrapFrameworkVersionForTest(framework string, version string) error {
+	return validateBootstrapFrameworkVersion(framework, version)
 }
 
 func normalizeBootstrapSource(raw string) string {

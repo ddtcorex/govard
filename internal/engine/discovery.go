@@ -26,10 +26,22 @@ type DetectionSpec struct {
 
 var detectionRegistry = map[string]DetectionSpec{}
 
+// detectionOrder preserves registration order so DetectFramework's
+// ambiguous-match heuristics (auth.json hosts, file paths, and a
+// composer.json/package.json requiring packages from more than one
+// registered framework) resolve deterministically by priority, instead of
+// Go's randomized map iteration order.
+var detectionOrder []string
+
 // RegisterDetection registers framework's detection data. Not safe for
 // concurrent calls; intended usage is registration during package init(),
-// before DetectFramework is ever called.
+// before DetectFramework is ever called. Call order sets detection
+// priority - see internal/frameworks/all.go's init(), the one place that
+// controls it.
 func RegisterDetection(framework string, spec DetectionSpec) {
+	if _, exists := detectionRegistry[framework]; !exists {
+		detectionOrder = append(detectionOrder, framework)
+	}
 	detectionRegistry[framework] = spec
 }
 
@@ -50,12 +62,14 @@ func DetectFramework(root string) ProjectMetadata {
 	composerPath := filepath.Join(root, "composer.json")
 	if _, err := os.Stat(composerPath); err == nil {
 		if require, ok := readComposerRequirements(composerPath); ok {
-			composerIndex := buildComposerPackageIndex()
-			for pkg, raw := range require {
-				if fw, exists := composerIndex[pkg]; exists {
-					metadata.Framework = fw
-					metadata.Version = dependencyVersionString(raw)
-					return metadata
+			for _, framework := range detectionOrder {
+				spec := detectionRegistry[framework]
+				for _, pkg := range spec.ComposerPackages {
+					if raw, exists := require[pkg]; exists {
+						metadata.Framework = framework
+						metadata.Version = dependencyVersionString(raw)
+						return metadata
+					}
 				}
 			}
 		}
@@ -65,12 +79,14 @@ func DetectFramework(root string) ProjectMetadata {
 	packagePath := filepath.Join(root, "package.json")
 	if _, err := os.Stat(packagePath); err == nil {
 		if deps, ok := readPackageDependencies(packagePath); ok {
-			depIndex := buildPackageJSONDepIndex()
-			for dep, raw := range deps {
-				if fw, exists := depIndex[dep]; exists {
-					metadata.Framework = fw
-					metadata.Version = dependencyVersionString(raw)
-					return metadata
+			for _, framework := range detectionOrder {
+				spec := detectionRegistry[framework]
+				for _, dep := range spec.PackageJSONDeps {
+					if raw, exists := deps[dep]; exists {
+						metadata.Framework = framework
+						metadata.Version = dependencyVersionString(raw)
+						return metadata
+					}
 				}
 			}
 		}
@@ -83,7 +99,8 @@ func DetectFramework(root string) ProjectMetadata {
 		var auth map[string]interface{}
 		if err := json.Unmarshal(data, &auth); err == nil {
 			if basic, ok := auth["http-basic"].(map[string]interface{}); ok {
-				for framework, spec := range detectionRegistry {
+				for _, framework := range detectionOrder {
+					spec := detectionRegistry[framework]
 					for _, host := range spec.AuthJSONHosts {
 						if _, ok := basic[host]; ok {
 							metadata.Framework = framework
@@ -96,7 +113,8 @@ func DetectFramework(root string) ProjectMetadata {
 	}
 
 	// Heuristic: registered file-path existence checks
-	for framework, spec := range detectionRegistry {
+	for _, framework := range detectionOrder {
+		spec := detectionRegistry[framework]
 		for _, relPath := range spec.FilePaths {
 			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relPath))); err == nil {
 				metadata.Framework = framework
@@ -106,26 +124,6 @@ func DetectFramework(root string) ProjectMetadata {
 	}
 
 	return metadata
-}
-
-func buildComposerPackageIndex() map[string]string {
-	index := make(map[string]string)
-	for framework, spec := range detectionRegistry {
-		for _, pkg := range spec.ComposerPackages {
-			index[pkg] = framework
-		}
-	}
-	return index
-}
-
-func buildPackageJSONDepIndex() map[string]string {
-	index := make(map[string]string)
-	for framework, spec := range detectionRegistry {
-		for _, dep := range spec.PackageJSONDeps {
-			index[dep] = framework
-		}
-	}
-	return index
 }
 
 func dependencyVersionString(raw interface{}) string {

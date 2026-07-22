@@ -154,14 +154,14 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 		}
 		configForObservability = config
 
-		supportedFrameworks := []string{"magento2", "magento1", "openmage", "laravel", "symfony", "wordpress", "prestashop"}
-		if opts.Fresh {
-			supportedFrameworks = []string{"magento2", "magento1", "laravel", "symfony", "openmage", "drupal", "wordpress", "nextjs", "emdash", "shopware", "cakephp"}
-		}
+		supportedFrameworks := supportedBootstrapFrameworks(opts.Fresh)
 
 		if !stringSliceContains(supportedFrameworks, config.Framework) {
 			return fmt.Errorf("bootstrap currently supports these project types: %s (detected: %s)",
 				strings.Join(supportedFrameworks, ", "), config.Framework)
+		}
+		if err := validateBootstrapFrameworkVersion(config.Framework, opts.MetaVersion); err != nil {
+			return err
 		}
 
 		var resolvedRemote string
@@ -368,6 +368,19 @@ func stringSliceContains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func supportedBootstrapFrameworks(fresh bool) []string {
+	if fresh {
+		return []string{"magento2", "mageos", "magento1", "laravel", "symfony", "openmage", "drupal", "wordpress", "nextjs", "emdash", "shopware", "cakephp"}
+	}
+	return []string{"magento2", "mageos", "magento1", "openmage", "laravel", "symfony", "wordpress", "prestashop"}
+}
+
+// BootstrapSupportsFrameworkForTest exposes the command's framework allowlist
+// so tests cover the same gate that runs before any bootstrap workflow.
+func BootstrapSupportsFrameworkForTest(framework string, fresh bool) bool {
+	return stringSliceContains(supportedBootstrapFrameworks(fresh), framework)
 }
 
 func needsRemoteEnvironment(opts BootstrapRuntimeOptions) bool {

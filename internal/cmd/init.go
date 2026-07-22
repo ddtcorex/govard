@@ -124,6 +124,7 @@ Case Studies:
 				"Laravel":    "laravel",
 				"Magento 1":  "magento1",
 				"Magento 2":  "magento2",
+				"Mage-OS":    "mageos",
 				"Next.js":    "nextjs",
 				"OpenMage":   "openmage",
 				"PrestaShop": "prestashop",
@@ -165,7 +166,7 @@ Case Studies:
 		composerVersion := profileResult.Profile.ComposerVersion
 		xdebugSession := profileResult.Profile.XdebugSession
 		webRoot := profileResult.Profile.WebRoot
-		enableVarnish := metadata.Framework == "magento2" && migrateFrom == "" && !hasExistingConfig
+		enableVarnish := engine.IsMagento2Family(metadata.Framework) && migrateFrom == "" && !hasExistingConfig
 
 		if metadata.Framework == "custom" {
 			pterm.Info.Println("Customize your stack services for the custom framework.")

@@ -17,7 +17,7 @@ import (
 )
 
 func ensureBootstrapMagentoEnvPHP(config engine.Config, opts BootstrapRuntimeOptions) error {
-	if config.Framework != "magento2" {
+	if !engine.IsMagento2Family(config.Framework) {
 		return nil
 	}
 

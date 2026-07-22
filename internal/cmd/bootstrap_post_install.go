@@ -80,7 +80,7 @@ func runBootstrapPostInstall(cmd *cobra.Command, config engine.Config, opts Boot
 		"--admin-email=" + adminEmail,
 	}
 
-	if opts.MetaVersion != "" {
+	if strings.EqualFold(config.Framework, conventions.FrameworkMagento2) && opts.MetaVersion != "" {
 		if comparison, comparable := compareNumericDotVersions(opts.MetaVersion, "2.4.8"); comparable && comparison < 0 {
 			setupArgs = []string{
 				"setup:install",
