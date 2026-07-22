@@ -63,7 +63,7 @@ func (d *DrupalBootstrap) CreateProject(projectDir string) error {
 		return runComposerProjectCommand(projectDir, nil, "create-project", template, stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project " + template + " \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, d.Options.Runner, createInStage, runnerCommand); err != nil {
+	if err := runStagedCreateProject(projectDir, d.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Drupal project: %w", err)
 	}
 

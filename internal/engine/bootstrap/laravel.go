@@ -66,7 +66,7 @@ func (l *LaravelBootstrap) CreateProject(projectDir string) error {
 		return runComposerProjectCommand(projectDir, nil, "create-project", laravelVersion, stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project " + laravelVersion + " \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, l.Options.Runner, createInStage, runnerCommand); err != nil {
+	if err := runStagedCreateProject(projectDir, l.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Laravel project: %w", err)
 	}
 

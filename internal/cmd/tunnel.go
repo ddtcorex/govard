@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/tunnel"
 	"govard/internal/frameworks"
@@ -186,7 +187,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 							pterm.Success.Printf("Tunnel URL detected: %s\n", p)
 							if parsed, perr := url.Parse(p); perr == nil {
 								tunnelHost = parsed.Host
-								webContainer := fmt.Sprintf("%s-web-1", config.ProjectName)
+								webContainer := fmt.Sprintf("%s%s", config.ProjectName, conventions.WebSuffix)
 								pterm.Info.Printf("Registering tunnel alias %s -> %s...\n", tunnelHost, webContainer)
 								_ = proxy.RegisterDomain(tunnelHost, webContainer)
 							}

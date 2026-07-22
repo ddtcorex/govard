@@ -49,7 +49,7 @@ func (o *OpenMageBootstrap) CreateProject(projectDir string) error {
 		return runComposerProjectCommand(projectDir, nil, "create-project", packageName, stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project " + packageName + " \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, o.Options.Runner, createInStage, runnerCommand); err != nil {
+	if err := runStagedCreateProject(projectDir, o.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create OpenMage project: %w", err)
 	}
 

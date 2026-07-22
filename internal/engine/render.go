@@ -24,6 +24,7 @@ import (
 func renderTemplateFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"emdashRuntimeCommand": buildEmdashRuntimeCommand,
+		"nextjsRuntimeCommand": buildNextJSRuntimeCommand,
 	}
 }
 
@@ -651,6 +652,16 @@ func buildEmdashRuntimeCommand(packageManager string, domain string) string {
 	return strings.Join([]string{
 		`if [ ! -d node_modules ] || [ -z "$$(ls -A node_modules 2>/dev/null)" ]; then npm install; fi;`,
 		fmt.Sprintf("exec npm run dev -- --host 0.0.0.0 --port 80 --allowed-hosts %s;", domain),
+	}, " ")
+}
+
+// buildNextJSRuntimeCommand installs dependencies if node_modules is
+// missing (e.g. wiped independently of a fresh bootstrap) before running
+// the dev server, matching emdashRuntimeCommand's resilience.
+func buildNextJSRuntimeCommand() string {
+	return strings.Join([]string{
+		`if [ ! -d node_modules ] || [ -z "$$(ls -A node_modules 2>/dev/null)" ]; then npm install; fi;`,
+		`exec npm run dev -- --hostname 0.0.0.0 --port 80;`,
 	}, " ")
 }
 

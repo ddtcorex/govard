@@ -132,11 +132,7 @@ func runBootstrapNextJSFreshInstall(cmd *cobra.Command, config engine.Config, op
 		Version: opts.MetaVersion,
 		Env:     opts.Source,
 		Runner: func(command string) error {
-			// For Next.js, we might want to run commands in the web container if it's node-based
-			// but for now let's keep it consistent or handle it specifically if needed.
-			// Next.js currently uses CreateProject and Configure which run on host in the Next.js bootstrap.
-			// I'll leave it for now or fix it if I see it's also host-only.
-			return nil
+			return runNodeCreateProjectContainer(config, cwd, command)
 		},
 	}
 

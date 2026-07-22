@@ -13,7 +13,8 @@ services:
     user: root
     volumes:
       - .:/app
-    command: npm run dev -- --hostname 0.0.0.0 --port 80
+    command: >
+      sh -lc '{{ nextjsRuntimeCommand }}'
     environment:
       - NODE_ENV=development
       - PORT=80

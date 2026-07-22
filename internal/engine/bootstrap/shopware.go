@@ -43,7 +43,7 @@ func (s *ShopwareBootstrap) CreateProject(projectDir string) error {
 		return runComposerProjectCommand(projectDir, nil, "create-project", "shopware/production", stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project shopware/production \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, s.Options.Runner, createInStage, runnerCommand); err != nil {
+	if err := runStagedCreateProject(projectDir, s.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Shopware project: %w", err)
 	}
 

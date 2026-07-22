@@ -33,7 +33,7 @@ func TestGetFrameworkMediaExcludesByMode(t *testing.T) {
 
 func TestFrameworkManifestFeatureFlags(t *testing.T) {
 	if engine.FrameworkRequiresRunningEnvForFreshInstall("nextjs") {
-		t.Fatal("expected nextjs fresh install to skip env startup requirement")
+		t.Fatal("expected nextjs fresh install to skip env startup requirement (CreateProject runs in its own throwaway container, not the compose-managed web service)")
 	}
 	if !engine.FrameworkRequiresRunningEnvForFreshInstall("magento2") {
 		t.Fatal("expected magento2 fresh install to require env startup")

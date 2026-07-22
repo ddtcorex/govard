@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/pterm/pterm"
 )
@@ -41,7 +42,12 @@ func (n *NextJSBootstrap) FreshCommands() []string {
 func (n *NextJSBootstrap) CreateProject(projectDir string) error {
 	pterm.Info.Println("Creating fresh Next.js project...")
 
-	if err := runStagedCreateProject(projectDir, nil, nextJSStageProjectCreator, ""); err != nil {
+	runnerCommand := strings.Join([]string{
+		"npx", "create-next-app@latest", `"$GOVARD_STAGE_DIR"`,
+		"--typescript", "--tailwind", "--eslint", "--app", "--no-src-dir",
+		"--import-alias", "'@/*'", "--use-npm", "--yes",
+	}, " ")
+	if err := runStagedCreateProject(projectDir, n.Options.Runner, nextJSStageProjectCreator, runnerCommand, conventions.NodeWorkDir); err != nil {
 		return fmt.Errorf("failed to create Next.js project: %w", err)
 	}
 

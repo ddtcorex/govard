@@ -2,6 +2,7 @@ package conventions
 
 const (
 	PHPSuffix           = "-php-1"
+	WebSuffix           = "-web-1"
 	PHPFPMSuffix        = "-php-fpm-1"
 	DBSuffix            = "-db-1"
 	RedisSuffix         = "-redis-1"

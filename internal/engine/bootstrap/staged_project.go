@@ -34,7 +34,10 @@ func removeProjectContents(projectDir string) error {
 	return nil
 }
 
-func runStagedCreateProject(projectDir string, runner func(command string) error, createInStage func(stageDir string) error, runnerCommand string) error {
+// containerBaseDir is the project's mount point inside whichever service
+// container `runner` execs into - conventions.DefaultWorkDir for PHP
+// frameworks, conventions.NodeWorkDir for Node-based ones (nextjs).
+func runStagedCreateProject(projectDir string, runner func(command string) error, createInStage func(stageDir string) error, runnerCommand string, containerBaseDir string) error {
 	if err := removeProjectContents(projectDir); err != nil {
 		return err
 	}
@@ -49,7 +52,7 @@ func runStagedCreateProject(projectDir string, runner func(command string) error
 		if strings.TrimSpace(runnerCommand) == "" {
 			return fmt.Errorf("runner command is required for staged project creation")
 		}
-		if err := runner(buildStagedRunnerCommand(projectDir, stageDir, runnerCommand)); err != nil {
+		if err := runner(buildStagedRunnerCommand(projectDir, stageDir, runnerCommand, containerBaseDir)); err != nil {
 			return err
 		}
 	} else {
@@ -68,8 +71,8 @@ func runStagedCreateProject(projectDir string, runner func(command string) error
 	return nil
 }
 
-func buildStagedRunnerCommand(projectDir, stageDir, runnerCommand string) string {
-	containerStageDir := conventions.DefaultWorkDir
+func buildStagedRunnerCommand(projectDir, stageDir, runnerCommand string, containerBaseDir string) string {
+	containerStageDir := containerBaseDir
 	if relStageDir, err := filepath.Rel(projectDir, stageDir); err == nil && relStageDir != "." {
 		containerStageDir = path.Join(containerStageDir, filepath.ToSlash(relStageDir))
 	}
@@ -215,5 +218,5 @@ func runPHPOneLiner(projectDir string, runner func(command string) error, code s
 }
 
 func RunStagedCreateProjectForTest(projectDir string, runner func(command string) error, createInStage func(stageDir string) error, runnerCommand string) error {
-	return runStagedCreateProject(projectDir, runner, createInStage, runnerCommand)
+	return runStagedCreateProject(projectDir, runner, createInStage, runnerCommand, conventions.DefaultWorkDir)
 }

@@ -43,7 +43,7 @@ func (c *CakePHPBootstrap) CreateProject(projectDir string) error {
 		return runComposerProjectCommand(projectDir, nil, "create-project", "--prefer-dist", "cakephp/app", stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project --prefer-dist cakephp/app \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, c.Options.Runner, createInStage, runnerCommand); err != nil {
+	if err := runStagedCreateProject(projectDir, c.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create CakePHP project: %w", err)
 	}
 
