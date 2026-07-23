@@ -310,3 +310,53 @@ func TestPatchDjangoSettingsForPostgresErrorsWhenBlockMissing(t *testing.T) {
 		t.Fatal("expected error when default sqlite DATABASES block is not found")
 	}
 }
+
+func TestPatchDjangoSettingsForDomainRewritesAllowedHosts(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.py")
+	original := "DEBUG = True\n\nALLOWED_HOSTS = []\n\n\n# Application definition\n"
+	if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+		t.Fatalf("write fixture settings.py: %v", err)
+	}
+
+	if err := bootstrap.PatchDjangoSettingsForDomainForTest(settingsPath, "django.test"); err != nil {
+		t.Fatalf("PatchDjangoSettingsForDomainForTest() error = %v", err)
+	}
+
+	patched, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read patched settings.py: %v", err)
+	}
+	content := string(patched)
+
+	if !strings.Contains(content, "ALLOWED_HOSTS = ['django.test', 'localhost', '127.0.0.1']") {
+		t.Errorf("expected ALLOWED_HOSTS to include the project domain, got:\n%s", content)
+	}
+	if !strings.Contains(content, "CSRF_TRUSTED_ORIGINS = ['https://django.test']") {
+		t.Errorf("expected CSRF_TRUSTED_ORIGINS for the project domain, got:\n%s", content)
+	}
+	if strings.Contains(content, "ALLOWED_HOSTS = []") {
+		t.Errorf("expected default empty ALLOWED_HOSTS to be replaced, got:\n%s", content)
+	}
+}
+
+func TestPatchDjangoSettingsForDomainErrorsWhenDomainEmpty(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.py")
+	if err := os.WriteFile(settingsPath, []byte("ALLOWED_HOSTS = []\n"), 0o644); err != nil {
+		t.Fatalf("write fixture settings.py: %v", err)
+	}
+
+	if err := bootstrap.PatchDjangoSettingsForDomainForTest(settingsPath, ""); err == nil {
+		t.Fatal("expected error when domain is empty")
+	}
+}
+
+func TestPatchDjangoSettingsForDomainErrorsWhenLineMissing(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.py")
+	if err := os.WriteFile(settingsPath, []byte("# no allowed hosts line here\n"), 0o644); err != nil {
+		t.Fatalf("write fixture settings.py: %v", err)
+	}
+
+	if err := bootstrap.PatchDjangoSettingsForDomainForTest(settingsPath, "django.test"); err == nil {
+		t.Fatal("expected error when default ALLOWED_HOSTS line is not found")
+	}
+}

@@ -313,6 +313,7 @@ func TestDjangoCreateProjectWithRunnerStagesStartProject(t *testing.T) {
 	var capturedCommand string
 	djangoBootstrap := bootstrap.NewDjangoBootstrap(bootstrap.Options{
 		Version: "5.1",
+		Domain:  "sample.test",
 		Runner: func(command string) error {
 			capturedCommand = command
 			stageDir := extractStageHostDir(t, command)
@@ -322,7 +323,7 @@ func TestDjangoCreateProjectWithRunnerStagesStartProject(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(stageDir, "config"), 0o755); err != nil {
 				return err
 			}
-			settingsContent := "from pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\n\nDATABASES = {\n    'default': {\n        'ENGINE': 'django.db.backends.sqlite3',\n        'NAME': BASE_DIR / 'db.sqlite3',\n    }\n}\n"
+			settingsContent := "from pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\n\nALLOWED_HOSTS = []\n\nDATABASES = {\n    'default': {\n        'ENGINE': 'django.db.backends.sqlite3',\n        'NAME': BASE_DIR / 'db.sqlite3',\n    }\n}\n"
 			return os.WriteFile(filepath.Join(stageDir, "config", "settings.py"), []byte(settingsContent), 0o644)
 		},
 	})
@@ -359,6 +360,12 @@ func TestDjangoCreateProjectWithRunnerStagesStartProject(t *testing.T) {
 	}
 	if !strings.Contains(string(settingsContent), "django.db.backends.postgresql") {
 		t.Fatalf("expected settings.py to be patched for postgres, got:\n%s", string(settingsContent))
+	}
+	if !strings.Contains(string(settingsContent), "ALLOWED_HOSTS = ['sample.test', 'localhost', '127.0.0.1']") {
+		t.Fatalf("expected settings.py ALLOWED_HOSTS to include the project domain, got:\n%s", string(settingsContent))
+	}
+	if !strings.Contains(string(settingsContent), "CSRF_TRUSTED_ORIGINS = ['https://sample.test']") {
+		t.Fatalf("expected settings.py CSRF_TRUSTED_ORIGINS for the project domain, got:\n%s", string(settingsContent))
 	}
 
 	if _, err := os.Stat(filepath.Join(projectDir, ".govard.yml")); err != nil {

@@ -190,6 +190,7 @@ func runBootstrapDjangoFreshInstall(cmd *cobra.Command, config engine.Config, op
 		Version:     opts.MetaVersion,
 		Env:         opts.Source,
 		ProjectName: config.ProjectName,
+		Domain:      config.Domain,
 		Runner: func(command string) error {
 			return runPythonCreateProjectContainer(config, cwd, command)
 		},

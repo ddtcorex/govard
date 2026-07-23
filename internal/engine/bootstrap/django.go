@@ -62,6 +62,9 @@ func (d *DjangoBootstrap) CreateProject(projectDir string) error {
 	if err := patchDjangoSettingsForPostgres(settingsPath); err != nil {
 		pterm.Warning.Printf("Could not configure Django settings.py for Postgres, leaving default config: %v\n", err)
 	}
+	if err := patchDjangoSettingsForDomain(settingsPath, d.Options.Domain); err != nil {
+		pterm.Warning.Printf("Could not configure Django ALLOWED_HOSTS for domain, leaving default config: %v\n", err)
+	}
 
 	pterm.Success.Println("Django project created successfully")
 	return nil
@@ -230,6 +233,50 @@ func patchDjangoSettingsForPostgres(settingsPath string) error {
 	}
 
 	return os.WriteFile(settingsPath, []byte(content), conventions.DefaultFilePerm)
+}
+
+const djangoDefaultAllowedHosts = "ALLOWED_HOSTS = []"
+
+// djangoAllowedHostsReplacement builds the ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS
+// replacement text for a given domain. CSRF_TRUSTED_ORIGINS is required
+// alongside ALLOWED_HOSTS (not just a convenience) because Django 4+ checks
+// incoming POST requests' Origin header against it, which Govard's HTTPS
+// proxy always sets to the project's domain.
+func djangoAllowedHostsReplacement(domain string) string {
+	return "ALLOWED_HOSTS = ['" + domain + "', 'localhost', '127.0.0.1']\n\nCSRF_TRUSTED_ORIGINS = ['https://" + domain + "']"
+}
+
+// patchDjangoSettingsForDomain wires settings.py's ALLOWED_HOSTS to the
+// project's configured domain so Django accepts requests proxied through it
+// instead of rejecting them with DisallowedHost - Django's default
+// ALLOWED_HOSTS = [] only special-cases localhost/127.0.0.1/[::1], not
+// arbitrary dev domains like "django.test". Also adds CSRF_TRUSTED_ORIGINS
+// for the same domain over HTTPS. Returns an error (soft-fail, caller
+// decides whether to warn) if domain is empty or Django's template changed
+// and the expected line can't be found.
+func patchDjangoSettingsForDomain(settingsPath string, domain string) error {
+	domain = strings.TrimSpace(domain)
+	if domain == "" {
+		return fmt.Errorf("no domain configured, leaving ALLOWED_HOSTS untouched")
+	}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return fmt.Errorf("read settings.py: %w", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, djangoDefaultAllowedHosts) {
+		return fmt.Errorf("default ALLOWED_HOSTS line not found in %s", settingsPath)
+	}
+	content = strings.Replace(content, djangoDefaultAllowedHosts, djangoAllowedHostsReplacement(domain), 1)
+
+	return os.WriteFile(settingsPath, []byte(content), conventions.DefaultFilePerm)
+}
+
+// PatchDjangoSettingsForDomainForTest exposes patchDjangoSettingsForDomain for tests in /tests.
+func PatchDjangoSettingsForDomainForTest(settingsPath string, domain string) error {
+	return patchDjangoSettingsForDomain(settingsPath, domain)
 }
 
 // WriteDjangoRequirementsForTest exposes writeDjangoRequirements for tests in /tests.

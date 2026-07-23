@@ -405,7 +405,7 @@ govard bootstrap --framework django
 
 **Detection:** any project with a `manage.py` file at its root.
 
-> Current scope is `requirements.txt` + `pip` only (no Poetry/`pyproject.toml`), PostgreSQL only (no SQLite/MySQL option), and `manage.py runserver` for local dev (no Gunicorn). Both workflows run `pip install` + `manage.py migrate` automatically. `--fresh` scaffolds via `django-admin startproject config .` and wires `settings.py` to the Postgres container Govard already provisions.
+> Current scope is `requirements.txt` + `pip` only (no Poetry/`pyproject.toml`), PostgreSQL only (no SQLite/MySQL option), and `manage.py runserver` for local dev (no Gunicorn). Both workflows run `pip install` + `manage.py migrate` automatically. `--fresh` scaffolds via `django-admin startproject config .` and wires `settings.py` to the Postgres container Govard already provisions, plus `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` for the project's configured domain.
 
 ---
 
