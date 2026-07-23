@@ -259,7 +259,7 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 			if err := runBootstrapFrameworkFreshInstall(cmd, config, opts); err != nil {
 				return err
 			}
-			if !opts.SkipUp && !startEnvBeforeFreshInstall {
+			if !opts.SkipUp && !startEnvBeforeFreshInstall && !frameworkFreshInstallManagesOwnEnvUp(config.Framework) {
 				if err := runGovardSubcommand(cmd, "env", "up", "--remove-orphans"); err != nil {
 					return fmt.Errorf("failed to start local environment: %w", err)
 				}
@@ -368,6 +368,52 @@ func SetNodeCreateProjectRunnerForTest(fn func(config engine.Config, projectDir 
 	return func() {
 		nodeCreateProjectRunner = previous
 	}
+}
+
+// pythonCreateProjectRunner runs commandLine in a throwaway `docker run --rm`
+// container (not the compose-managed "web" service, which may not be
+// running yet - or, if started early just to host this exec, would need to
+// stay alive on an empty/not-yet-scaffolded project directory). This keeps
+// Django's fresh-install independent of env-up ordering, the same way
+// Next.js's CreateProject doesn't depend on any container being up either.
+var pythonCreateProjectRunner = func(config engine.Config, projectDir string, commandLine string) error {
+	pythonVersion := strings.TrimSpace(config.Stack.PythonVersion)
+	if pythonVersion == "" {
+		pythonVersion = "3.12"
+	}
+	dockerArgs := []string{
+		"run", "--rm",
+		"-v", projectDir + ":" + conventions.PythonWorkDir,
+		"-w", conventions.PythonWorkDir,
+		"python:" + pythonVersion + "-slim",
+		"sh", "-lc", commandLine,
+	}
+	dockerCmd := exec.Command("docker", dockerArgs...)
+	dockerCmd.Stdin = os.Stdin
+	dockerCmd.Stdout = os.Stdout
+	dockerCmd.Stderr = os.Stderr
+	return dockerCmd.Run()
+}
+
+func runPythonCreateProjectContainer(config engine.Config, projectDir string, commandLine string) error {
+	return pythonCreateProjectRunner(config, projectDir, commandLine)
+}
+
+// SetPythonCreateProjectRunnerForTest overrides the throwaway Python container
+// runner used by Django's fresh-install, returning a restore function.
+func SetPythonCreateProjectRunnerForTest(fn func(config engine.Config, projectDir string, commandLine string) error) func() {
+	previous := pythonCreateProjectRunner
+	if fn != nil {
+		pythonCreateProjectRunner = fn
+	}
+	return func() {
+		pythonCreateProjectRunner = previous
+	}
+}
+
+// RunPythonCreateProjectContainerForTest exposes runPythonCreateProjectContainer for tests in /tests.
+func RunPythonCreateProjectContainerForTest(config engine.Config, projectDir string, commandLine string) error {
+	return runPythonCreateProjectContainer(config, projectDir, commandLine)
 }
 
 func govardComposerSubcommandArgs(args ...string) []string {

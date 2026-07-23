@@ -20,3 +20,9 @@ func TestDjangoConventionsConstants(t *testing.T) {
 		t.Errorf("DefaultDjangoDBName = %q, want %q", conventions.DefaultDjangoDBName, "django")
 	}
 }
+
+func TestPythonWorkDirMatchesDjangoComposeWorkingDir(t *testing.T) {
+	if conventions.PythonWorkDir != "/app" {
+		t.Errorf("PythonWorkDir = %q, want %q", conventions.PythonWorkDir, "/app")
+	}
+}

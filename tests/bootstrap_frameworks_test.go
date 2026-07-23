@@ -119,6 +119,18 @@ func TestBootstrapPkgEmdashFreshInstallSupport(t *testing.T) {
 	}
 }
 
+func TestBootstrapPkgDjangoFreshInstallSupport(t *testing.T) {
+	opts := bootstrap.Options{}
+	django := bootstrap.NewDjangoBootstrap(opts)
+
+	if !django.SupportsFreshInstall() {
+		t.Error("expected Django to support fresh install")
+	}
+	if !django.SupportsClone() {
+		t.Error("expected Django to support clone")
+	}
+}
+
 func TestPatchEmdashAstroConfigAddsTrustedForwardedDomainSupport(t *testing.T) {
 	projectDir := t.TempDir()
 	configPath := filepath.Join(projectDir, "astro.config.mjs")
@@ -199,6 +211,7 @@ func TestBootstrapDispatcherAllFrameworks(t *testing.T) {
 		"shopware",
 		"cakephp",
 		"prestashop",
+		"django",
 	}
 
 	opts := bootstrap.DefaultOptions()

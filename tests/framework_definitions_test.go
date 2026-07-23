@@ -158,10 +158,13 @@ func TestDjangoFrameworkDefinition(t *testing.T) {
 	if def.Bootstrap == nil {
 		t.Fatal("django Bootstrap should not be nil")
 	}
-	if def.SupportsFreshInstall {
-		t.Error("expected SupportsFreshInstall to be false")
+	if !def.SupportsFreshInstall {
+		t.Error("expected SupportsFreshInstall to be true")
 	}
 	if !def.SupportsBootstrap {
 		t.Error("expected SupportsBootstrap (clone workflow) to be true")
+	}
+	if cmds := def.Bootstrap(bootstrap.Options{}).FreshCommands(); len(cmds) == 0 {
+		t.Error("django Bootstrap factory should produce at least one fresh command now that fresh-install is supported")
 	}
 }

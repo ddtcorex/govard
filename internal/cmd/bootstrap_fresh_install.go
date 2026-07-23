@@ -52,6 +52,8 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 		return runBootstrapNextJSFreshInstall(cmd, config, opts, cwd)
 	case "emdash":
 		return runBootstrapEmdashFreshInstall(cmd, config, opts, cwd)
+	case "django":
+		return runBootstrapDjangoFreshInstall(cmd, config, opts, cwd)
 	default:
 		return fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
 	}
@@ -183,6 +185,47 @@ func runBootstrapEmdashFreshInstall(cmd *cobra.Command, config engine.Config, op
 	return nil
 }
 
+func runBootstrapDjangoFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
+	djangoOpts := bootstrap.Options{
+		Version:     opts.MetaVersion,
+		Env:         opts.Source,
+		ProjectName: config.ProjectName,
+		Runner: func(command string) error {
+			return runPythonCreateProjectContainer(config, cwd, command)
+		},
+	}
+
+	djangoBootstrap := bootstrap.NewDjangoBootstrap(djangoOpts)
+
+	if err := djangoBootstrap.CreateProject(cwd); err != nil {
+		return err
+	}
+
+	if opts.SkipUp {
+		pterm.Info.Println("Skipping env up and migrate (--no-up); run `govard env up` then `govard tool manage migrate` manually.")
+		return nil
+	}
+
+	if err := runGovardSubcommand(cmd, "env", "up", "--remove-orphans"); err != nil {
+		return fmt.Errorf("failed to start local environment: %w", err)
+	}
+
+	if err := djangoBootstrap.Install(cwd); err != nil {
+		return err
+	}
+
+	pterm.Success.Println("Fresh Django bootstrap completed.")
+	return nil
+}
+
+// RunBootstrapDjangoFreshInstallForTest exposes runBootstrapDjangoFreshInstall
+// for tests in /tests, since it needs opts.SkipUp which
+// RunBootstrapFrameworkFreshInstallForTest doesn't forward.
+func RunBootstrapDjangoFreshInstallForTest(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
+	cwd, _ := os.Getwd()
+	return runBootstrapDjangoFreshInstall(cmd, config, opts, cwd)
+}
+
 func runBootstrapFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
 	if err := ensureBootstrapAuthJSON(config, opts); err != nil {
 		return err
@@ -276,4 +319,22 @@ func RunBootstrapFrameworkFreshInstallForTest(cmd *cobra.Command, config engine.
 		Source:      strings.TrimSpace(source),
 		MetaVersion: strings.TrimSpace(metaVersion),
 	})
+}
+
+// frameworkFreshInstallManagesOwnEnvUp reports whether the framework's
+// fresh-install function already calls `env up` itself (and, if needed,
+// runs Install()/migrate against the running containers) - so the generic
+// post-fresh-install `env up` in bootstrapCmd.RunE would be redundant.
+// Django's compose "web" container executes `python manage.py runserver`
+// directly and can't come up against an empty project directory, so its
+// fresh-install path must scaffold the project first, then bring the
+// environment up itself before running Install() - by the time control
+// returns to RunE, env up has already happened.
+func frameworkFreshInstallManagesOwnEnvUp(framework string) bool {
+	return framework == "django"
+}
+
+// FrameworkFreshInstallManagesOwnEnvUpForTest exposes frameworkFreshInstallManagesOwnEnvUp for tests in /tests.
+func FrameworkFreshInstallManagesOwnEnvUpForTest(framework string) bool {
+	return frameworkFreshInstallManagesOwnEnvUp(framework)
 }

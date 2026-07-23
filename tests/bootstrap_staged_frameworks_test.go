@@ -304,6 +304,68 @@ func TestShopwareInstallSyncsDomainAwareURLs(t *testing.T) {
 	}
 }
 
+func TestDjangoCreateProjectWithRunnerStagesStartProject(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, ".govard.yml"), []byte("project_name: sample-project\n"), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
+	}
+
+	var capturedCommand string
+	djangoBootstrap := bootstrap.NewDjangoBootstrap(bootstrap.Options{
+		Version: "5.1",
+		Runner: func(command string) error {
+			capturedCommand = command
+			stageDir := extractStageHostDir(t, command)
+			if err := os.WriteFile(filepath.Join(stageDir, "manage.py"), []byte("#!/usr/bin/env python\n"), 0o644); err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Join(stageDir, "config"), 0o755); err != nil {
+				return err
+			}
+			settingsContent := "from pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\n\nDATABASES = {\n    'default': {\n        'ENGINE': 'django.db.backends.sqlite3',\n        'NAME': BASE_DIR / 'db.sqlite3',\n    }\n}\n"
+			return os.WriteFile(filepath.Join(stageDir, "config", "settings.py"), []byte(settingsContent), 0o644)
+		},
+	})
+
+	if err := djangoBootstrap.CreateProject(projectDir); err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+
+	if !strings.Contains(capturedCommand, `pip install --no-cache-dir 'Django==5.1'`) {
+		t.Fatalf("unexpected runner command: %s", capturedCommand)
+	}
+	if !strings.Contains(capturedCommand, `django-admin startproject config "$GOVARD_STAGE_DIR"`) {
+		t.Fatalf("unexpected runner command: %s", capturedCommand)
+	}
+	if !strings.Contains(capturedCommand, "GOVARD_STAGE_DIR='/app/") {
+		t.Fatalf("expected staged dir under PythonWorkDir (/app), got: %s", capturedCommand)
+	}
+
+	if _, err := os.Stat(filepath.Join(projectDir, "manage.py")); err != nil {
+		t.Fatalf("expected staged manage.py to be copied into project dir: %v", err)
+	}
+
+	reqContent, err := os.ReadFile(filepath.Join(projectDir, "requirements.txt"))
+	if err != nil {
+		t.Fatalf("read requirements.txt: %v", err)
+	}
+	if string(reqContent) != "Django==5.1\npsycopg2-binary\n" {
+		t.Fatalf("requirements.txt = %q", string(reqContent))
+	}
+
+	settingsContent, err := os.ReadFile(filepath.Join(projectDir, "config", "settings.py"))
+	if err != nil {
+		t.Fatalf("read settings.py: %v", err)
+	}
+	if !strings.Contains(string(settingsContent), "django.db.backends.postgresql") {
+		t.Fatalf("expected settings.py to be patched for postgres, got:\n%s", string(settingsContent))
+	}
+
+	if _, err := os.Stat(filepath.Join(projectDir, ".govard.yml")); err != nil {
+		t.Fatalf("expected .govard.yml to be preserved: %v", err)
+	}
+}
+
 func extractStageHostDir(t *testing.T, command string) string {
 	t.Helper()
 	match := regexp.MustCompile(`GOVARD_STAGE_HOST_DIR='([^']+)'`).FindStringSubmatch(command)

@@ -386,6 +386,14 @@ govard tool manage [command]   # chạy python manage.py [command]
 govard db connect               # kết nối psql vào database postgres
 ```
 
+Cài đặt mới (khởi tạo một dự án hoàn toàn mới):
+
+```bash
+mkdir myproject && cd myproject
+govard init --framework django
+govard bootstrap --fresh --framework django --framework-version 5.1
+```
+
 Cài đặt mới (clone một dự án có sẵn, sau đó bootstrap):
 
 ```bash
@@ -397,7 +405,7 @@ govard bootstrap --framework django
 
 **Nhận diện:** bất kỳ dự án nào có file `manage.py` ở thư mục gốc.
 
-> Phạm vi hiện tại chỉ hỗ trợ `requirements.txt` + `pip` (chưa hỗ trợ Poetry/`pyproject.toml`), chỉ hỗ trợ PostgreSQL (chưa có tùy chọn SQLite/MySQL), và dùng `manage.py runserver` cho local dev (chưa hỗ trợ Gunicorn). Luồng clone của `govard bootstrap` tự động chạy `pip install` + `manage.py migrate`; việc khởi tạo dự án mới hoàn toàn qua `govard bootstrap --fresh` chưa được hỗ trợ.
+> Phạm vi hiện tại chỉ hỗ trợ `requirements.txt` + `pip` (chưa hỗ trợ Poetry/`pyproject.toml`), chỉ hỗ trợ PostgreSQL (chưa có tùy chọn SQLite/MySQL), và dùng `manage.py runserver` cho local dev (chưa hỗ trợ Gunicorn). Cả hai luồng đều tự động chạy `pip install` + `manage.py migrate`. `--fresh` khởi tạo dự án qua `django-admin startproject config .` và cấu hình `settings.py` để dùng container Postgres mà Govard đã cung cấp sẵn.
 
 ---
 
