@@ -158,7 +158,7 @@ func copyProjectPath(srcPath, dstPath string) error {
 	}
 }
 
-func copyProjectFile(srcPath, dstPath string, mode os.FileMode) error {
+func copyProjectFile(srcPath, dstPath string, mode os.FileMode) (err error) {
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
 		return fmt.Errorf("open staged file %s: %w", srcPath, err)
@@ -173,7 +173,11 @@ func copyProjectFile(srcPath, dstPath string, mode os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("create project file %s: %w", dstPath, err)
 	}
-	defer dstFile.Close()
+	defer func() {
+		if cerr := dstFile.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("copy staged file %s: %w", srcPath, err)

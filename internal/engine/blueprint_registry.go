@@ -258,6 +258,9 @@ func extractTarGzArchive(payload []byte, dest string) error {
 			return err
 		}
 
+		if strings.Contains(header.Name, "..") {
+			return fmt.Errorf("unsafe archive path %q", header.Name)
+		}
 		targetPath, err := safeArchivePath(dest, header.Name)
 		if err != nil {
 			return err
@@ -296,6 +299,9 @@ func extractZipArchive(payload []byte, dest string) error {
 	}
 
 	for _, zipped := range reader.File {
+		if strings.Contains(zipped.Name, "..") {
+			return fmt.Errorf("unsafe archive path %q", zipped.Name)
+		}
 		targetPath, err := safeArchivePath(dest, zipped.Name)
 		if err != nil {
 			return err

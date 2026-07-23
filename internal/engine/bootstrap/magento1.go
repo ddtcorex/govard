@@ -245,6 +245,12 @@ func RunSQLViaDockerExec(containerName string, dbUser string, dbPassword string,
 
 // Md5SaltedHash returns the MD5 hash of (salt + password) as a hex string.
 // This matches Magento 1's salted password hashing: md5(salt . password).
+//
+// MD5 is required here, not a choice: Magento 1's own auth code only ever
+// verifies this exact format, so using a stronger algorithm would produce a
+// hash Magento 1 itself cannot log in with. This only ever hashes the local
+// dev bootstrap's default admin credentials (see conventions.DefaultAdminUser
+// / DefaultAdminPassword), never a real user secret.
 func Md5SaltedHash(salt, password string) string {
 	h := md5.New() //nolint:gosec
 	fmt.Fprint(h, salt+password)

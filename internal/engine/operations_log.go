@@ -47,7 +47,7 @@ func OperationsLogPath() string {
 	return filepath.Join(".govard", "operations.log")
 }
 
-func WriteOperationEvent(event OperationEvent) error {
+func WriteOperationEvent(event OperationEvent) (err error) {
 	event.Operation = strings.TrimSpace(event.Operation)
 	if event.Operation == "" {
 		return fmt.Errorf("operation name is required")
@@ -80,7 +80,11 @@ func WriteOperationEvent(event OperationEvent) error {
 	if err != nil {
 		return fmt.Errorf("open operations log: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	if _, err := file.Write(append(payload, '\n')); err != nil {
 		return fmt.Errorf("write operation event: %w", err)

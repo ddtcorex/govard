@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"govard/internal/conventions"
 	"io"
@@ -317,8 +318,8 @@ func downloadAndExtractWordPressCore(projectDir string) error {
 				return fmt.Errorf("create WordPress file %s: %w", targetPath, err)
 			}
 			if _, err := io.Copy(file, tarReader); err != nil {
-				file.Close()
-				return fmt.Errorf("write WordPress file %s: %w", targetPath, err)
+				closeErr := file.Close()
+				return fmt.Errorf("write WordPress file %s: %w", targetPath, errors.Join(err, closeErr))
 			}
 			if err := file.Close(); err != nil {
 				return fmt.Errorf("close WordPress file %s: %w", targetPath, err)

@@ -251,7 +251,7 @@ func copyDir(src string, dst string) error {
 	return nil
 }
 
-func copyFileWithMode(src string, dst string, mode os.FileMode) error {
+func copyFileWithMode(src string, dst string, mode os.FileMode) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("open source file %s: %w", src, err)
@@ -266,7 +266,11 @@ func copyFileWithMode(src string, dst string, mode os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("open destination file %s: %w", dst, err)
 	}
-	defer out.Close()
+	defer func() {
+		if cerr := out.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	_, err = io.Copy(out, in)
 	if err != nil {

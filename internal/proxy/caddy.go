@@ -261,7 +261,7 @@ func upsertRoute(config map[string]interface{}, serverName string, domain string
 		changed = true
 	}
 
-	newRoutes := make([]interface{}, 0, len(routes)+1)
+	newRoutes := make([]interface{}, 0, len(routes))
 	inserted := false
 	for _, route := range routes {
 		routeMap, ok := route.(map[string]interface{})

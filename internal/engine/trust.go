@@ -228,10 +228,17 @@ func extractRootCAFromContainer(destinationPath string) error {
 	return fmt.Errorf("tried containers %s", strings.Join(attemptErrors, " | "))
 }
 
+// warmupCaddyCA makes a single TLS handshake against the local Caddy proxy to
+// force it to mint its root CA / leaf cert on first run, before that CA
+// exists anywhere for us to verify against (extractRootCAFromContainer calls
+// this only after an initial extraction attempt fails). The dial target is
+// hardcoded to loopback, no data is sent or read, and the connection is
+// closed immediately after the handshake, so InsecureSkipVerify carries no
+// meaningful risk here — there is nothing yet to verify against.
 func warmupCaddyCA() {
 	dialer := &net.Dialer{Timeout: 2 * time.Second}
 	conn, err := tls.DialWithDialer(dialer, "tcp", "127.0.0.1:443", &tls.Config{
-		InsecureSkipVerify: true, // local bootstrap probe
+		InsecureSkipVerify: true, // local bootstrap probe, see doc comment above
 		ServerName:         "mail.govard.test",
 	})
 	if err != nil {

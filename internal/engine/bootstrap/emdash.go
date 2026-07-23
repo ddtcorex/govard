@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"govard/internal/conventions"
 	"io"
@@ -141,8 +142,8 @@ func downloadAndExtractStarterTemplate(projectDir string) error {
 				return fmt.Errorf("create template file %s: %w", targetPath, err)
 			}
 			if _, err := io.Copy(file, tarReader); err != nil {
-				file.Close()
-				return fmt.Errorf("write template file %s: %w", targetPath, err)
+				closeErr := file.Close()
+				return fmt.Errorf("write template file %s: %w", targetPath, errors.Join(err, closeErr))
 			}
 			if err := file.Close(); err != nil {
 				return fmt.Errorf("close template file %s: %w", targetPath, err)

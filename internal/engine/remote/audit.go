@@ -42,7 +42,7 @@ func AuditLogPath() string {
 	return filepath.Join(home, ".govard", "remote.log")
 }
 
-func WriteAuditEvent(event AuditEvent) error {
+func WriteAuditEvent(event AuditEvent) (err error) {
 	if event.Operation == "" {
 		return fmt.Errorf("remote audit operation is required")
 	}
@@ -67,7 +67,11 @@ func WriteAuditEvent(event AuditEvent) error {
 	if err != nil {
 		return fmt.Errorf("open remote audit log: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	if _, err := file.Write(append(payload, '\n')); err != nil {
 		return fmt.Errorf("write remote audit event: %w", err)

@@ -569,11 +569,25 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 	if err := EnsureComposePathReady(outputPath); err != nil {
 		return fmt.Errorf("failed to prepare compose output path: %w", err)
 	}
+	if err := writeRenderedCompose(outputPath, merged); err != nil {
+		return err
+	}
+
+	_ = os.WriteFile(hashPath, []byte(currentHash), conventions.DefaultFilePerm)
+
+	return nil
+}
+
+func writeRenderedCompose(outputPath string, merged map[string]interface{}) (err error) {
 	f, err := os.OpenFile(outputPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, conventions.DefaultFilePerm)
 	if err != nil {
 		return fmt.Errorf("create compose output %s: %w", outputPath, err)
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	// Prune empty root-level maps to avoid validation errors (e.g., "volumes must be a mapping")
 	if volumes, ok := merged["volumes"].(map[string]interface{}); ok && len(volumes) == 0 {
@@ -587,13 +601,9 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 		return fmt.Errorf("marshal rendered compose: %w", err)
 	}
 
-	_, err = f.Write(out)
-	if err != nil {
+	if _, err = f.Write(out); err != nil {
 		return fmt.Errorf("write compose output %s: %w", outputPath, err)
 	}
-
-	_ = os.WriteFile(hashPath, []byte(currentHash), conventions.DefaultFilePerm)
-
 	return nil
 }
 
