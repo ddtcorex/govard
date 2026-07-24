@@ -10,6 +10,7 @@ import (
 	"govard/internal/cmd"
 	"govard/internal/engine"
 	bootstrapengine "govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/wordpress"
 
 	"github.com/spf13/cobra"
 )
@@ -114,7 +115,7 @@ func TestRunBootstrapFrameworkFreshInstallForTestWordPressDoesNotRestartEnvironm
 	tempDir := t.TempDir()
 	chdirForTest(t, tempDir)
 
-	restoreDownloader := bootstrapengine.SetWordPressCoreDownloaderForTest(func(projectDir string) error {
+	restoreDownloader := wordpress.SetWordPressCoreDownloaderForTest(func(projectDir string) error {
 		samplePath := filepath.Join(projectDir, "wp-config-sample.php")
 		return os.WriteFile(samplePath, []byte("<?php\n"), 0o644)
 	})
@@ -187,6 +188,183 @@ func TestRunBootstrapFrameworkFreshInstallForTestCakePHPUsesRegistryFreshInstall
 	}
 	if !strings.Contains(capturedCommands[0], "composer create-project --prefer-dist cakephp/app") {
 		t.Fatalf("expected a CakePHP create-project invocation, got: %s", capturedCommands[0])
+	}
+
+	want := [][]string{
+		{"config", "auto"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("subcommand calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestRunBootstrapFrameworkFreshInstallForTestLaravelUsesRegistryFreshInstall(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	var capturedCommands []string
+	defer cmd.SetPHPContainerShellRunnerForTest(func(config engine.Config, commandLine string) error {
+		capturedCommands = append(capturedCommands, commandLine)
+		return nil
+	})()
+
+	calls := make([][]string, 0, 1)
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		calls = append(calls, append([]string{}, args...))
+		return nil
+	})()
+
+	err := cmd.RunBootstrapFrameworkFreshInstallForTest(
+		&cobra.Command{},
+		engine.Config{
+			ProjectName: "sample-project",
+			Framework:   "laravel",
+		},
+		"dev",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("RunBootstrapFrameworkFreshInstallForTest() error = %v", err)
+	}
+
+	if len(capturedCommands) == 0 {
+		t.Fatal("expected at least one PHP container command to be run")
+	}
+	if !strings.Contains(capturedCommands[0], "composer create-project laravel/laravel") {
+		t.Fatalf("expected a Laravel create-project invocation, got: %s", capturedCommands[0])
+	}
+
+	want := [][]string{
+		{"config", "auto"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("subcommand calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestRunBootstrapFrameworkFreshInstallForTestDrupalUsesRegistryFreshInstall(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	var capturedCommands []string
+	defer cmd.SetPHPContainerShellRunnerForTest(func(config engine.Config, commandLine string) error {
+		capturedCommands = append(capturedCommands, commandLine)
+		return nil
+	})()
+
+	calls := make([][]string, 0, 1)
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		calls = append(calls, append([]string{}, args...))
+		return nil
+	})()
+
+	err := cmd.RunBootstrapFrameworkFreshInstallForTest(
+		&cobra.Command{},
+		engine.Config{
+			ProjectName: "sample-project",
+			Framework:   "drupal",
+		},
+		"dev",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("RunBootstrapFrameworkFreshInstallForTest() error = %v", err)
+	}
+
+	if len(capturedCommands) == 0 {
+		t.Fatal("expected at least one PHP container command to be run")
+	}
+	if !strings.Contains(capturedCommands[0], "composer create-project drupal/recommended-project") {
+		t.Fatalf("expected a Drupal create-project invocation, got: %s", capturedCommands[0])
+	}
+
+	want := [][]string{
+		{"config", "auto"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("subcommand calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestRunBootstrapFrameworkFreshInstallForTestShopwareUsesRegistryFreshInstall(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	var capturedCommands []string
+	defer cmd.SetPHPContainerShellRunnerForTest(func(config engine.Config, commandLine string) error {
+		capturedCommands = append(capturedCommands, commandLine)
+		return nil
+	})()
+
+	calls := make([][]string, 0, 1)
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		calls = append(calls, append([]string{}, args...))
+		return nil
+	})()
+
+	err := cmd.RunBootstrapFrameworkFreshInstallForTest(
+		&cobra.Command{},
+		engine.Config{
+			ProjectName: "sample-project",
+			Framework:   "shopware",
+			Domain:      "sample.test",
+		},
+		"dev",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("RunBootstrapFrameworkFreshInstallForTest() error = %v", err)
+	}
+
+	if len(capturedCommands) == 0 {
+		t.Fatal("expected at least one PHP container command to be run")
+	}
+	if !strings.Contains(capturedCommands[0], "composer create-project shopware/production") {
+		t.Fatalf("expected a Shopware create-project invocation, got: %s", capturedCommands[0])
+	}
+
+	want := [][]string{
+		{"config", "auto"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("subcommand calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestRunBootstrapFrameworkFreshInstallForTestSymfonyUsesRegistryFreshInstall(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	var capturedCommands []string
+	defer cmd.SetPHPContainerShellRunnerForTest(func(config engine.Config, commandLine string) error {
+		capturedCommands = append(capturedCommands, commandLine)
+		return nil
+	})()
+
+	calls := make([][]string, 0, 1)
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		calls = append(calls, append([]string{}, args...))
+		return nil
+	})()
+
+	err := cmd.RunBootstrapFrameworkFreshInstallForTest(
+		&cobra.Command{},
+		engine.Config{
+			ProjectName: "sample-project",
+			Framework:   "symfony",
+		},
+		"dev",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("RunBootstrapFrameworkFreshInstallForTest() error = %v", err)
+	}
+
+	if len(capturedCommands) == 0 {
+		t.Fatal("expected at least one PHP container command to be run")
+	}
+	if !strings.Contains(capturedCommands[0], "composer create-project symfony/skeleton") {
+		t.Fatalf("expected a Symfony create-project invocation, got: %s", capturedCommands[0])
 	}
 
 	want := [][]string{

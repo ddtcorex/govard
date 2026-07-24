@@ -1,8 +1,9 @@
-package bootstrap
+package drupal
 
 import (
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,10 +12,10 @@ import (
 )
 
 type DrupalBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewDrupalBootstrap(opts Options) *DrupalBootstrap {
+func NewDrupalBootstrap(opts bootstrap.Options) *DrupalBootstrap {
 	return &DrupalBootstrap{Options: opts}
 }
 
@@ -60,10 +61,10 @@ func (d *DrupalBootstrap) CreateProject(projectDir string) error {
 	template := d.getDrupalTemplate(d.Options.Version)
 
 	createInStage := func(stageDir string) error {
-		return runComposerProjectCommand(projectDir, nil, "create-project", template, stageDir, "--no-interaction")
+		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", template, stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project " + template + " \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, d.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
+	if err := bootstrap.RunStagedCreateProject(projectDir, d.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Drupal project: %w", err)
 	}
 
@@ -197,7 +198,7 @@ func (d *DrupalBootstrap) getDrupalTemplate(version string) string {
 }
 
 func (d *DrupalBootstrap) runComposerCommand(projectDir string, args ...string) error {
-	return runComposerProjectCommand(projectDir, d.Options.Runner, args...)
+	return bootstrap.RunComposerProjectCommand(projectDir, d.Options.Runner, args...)
 }
 
 func (d *DrupalBootstrap) runDrushCommand(projectDir string, args ...string) error {
@@ -210,5 +211,5 @@ func (d *DrupalBootstrap) runDrushCommand(projectDir string, args ...string) err
 		}
 	}
 
-	return runPHPProjectScript(projectDir, d.Options.Runner, drushPath, args...)
+	return bootstrap.RunPHPProjectScript(projectDir, d.Options.Runner, drushPath, args...)
 }

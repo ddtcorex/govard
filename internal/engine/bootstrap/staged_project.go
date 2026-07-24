@@ -262,3 +262,29 @@ func RunStagedCreateProject(projectDir string, runner func(command string) error
 func RunComposerProjectCommand(projectDir string, runner func(command string) error, args ...string) error {
 	return runComposerProjectCommand(projectDir, runner, args...)
 }
+
+// RunPHPProjectScript exposes runPHPProjectScript for framework packages
+// outside this package whose FrameworkBootstrap implementation has moved
+// out of package bootstrap as part of the self-contained-framework-folder
+// migration. Sibling files still in this package (openmage.go) keep
+// calling the unexported version directly - this is an additive wrapper,
+// not a rename.
+func RunPHPProjectScript(projectDir string, runner func(command string) error, scriptPath string, args ...string) error {
+	return runPHPProjectScript(projectDir, runner, scriptPath, args...)
+}
+
+// RemoveProjectContents exposes removeProjectContents for framework
+// packages outside this package whose FrameworkBootstrap implementation
+// has moved out of package bootstrap as part of the
+// self-contained-framework-folder migration. Sibling files still in this
+// package (emdash.go) keep calling the unexported version directly - this
+// is an additive wrapper, not a rename.
+func RemoveProjectContents(projectDir string) error {
+	return removeProjectContents(projectDir)
+}
+
+// RunPHPOneLiner exposes runPHPOneLiner for the same reason as
+// RemoveProjectContents above.
+func RunPHPOneLiner(projectDir string, runner func(command string) error, code string) error {
+	return runPHPOneLiner(projectDir, runner, code)
+}
