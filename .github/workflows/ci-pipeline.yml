@@ -49,6 +49,9 @@ jobs:
             exit 1
           fi
 
+      - name: Check generated framework registration is up to date
+        run: make generate-check
+
   fast_tests:
     name: Fast Tests (Frontend + Unit)
     runs-on: ubuntu-latest

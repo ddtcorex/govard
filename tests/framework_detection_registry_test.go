@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"govard/internal/engine"
-	_ "govard/internal/frameworks" // trigger all.go's init(), which registers detection data
+	_ "govard/internal/frameworks" // trigger all_generated.go's init(), which registers detection data
 )
 
 // expectedDetection mirrors, framework-by-framework, the exact literal data

@@ -83,6 +83,8 @@ gofmt -s -w .                   # format
 // Test location: tests/thing_test.go
 ```
 
+**`package main` tools (e.g. `go:generate` helpers under `internal/**/gen/`):** this pattern cannot apply directly — Go does not allow importing a `package main` from another package (`go test` fails with "is a program, not an importable package"). Putting `_test.go` files alongside a `main.go` and testing unexported functions in-package is the wrong fix; it violates the `tests/` convention above and has already shipped once by mistake. Instead, extract the testable logic into a small importable library package (e.g. `internal/frameworks/gen/generator/`) with exported functions, leave `main.go` as a thin wrapper that just calls into it, and test the library package normally under `tests/`.
+
 ## CLI Commands
 
 `internal/cmd/root.go` owns root registration.

@@ -20,7 +20,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.3
 GOLANGCI_LINT_BIN ?= $(shell go env GOPATH)/bin/golangci-lint
 LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 
-.PHONY: help install install-release build-test-binary build clean test test-unit test-coverage test-integration test-integration-ci test-frontend lint lint-install fmt fmt-check vet images push
+.PHONY: help install install-release build-test-binary build clean test test-unit test-coverage test-integration test-integration-ci test-frontend lint lint-install fmt fmt-check vet generate generate-check images push
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -35,7 +35,7 @@ build-frontend:
 	@echo "Building frontend assets..."
 	@cd desktop/frontend && yarn install && yarn run build:css
 
-build: build-frontend ## Build Govard binary for the current platform
+build: generate build-frontend ## Build Govard binary for the current platform
 	@echo "Building Govard..."
 	mkdir -p $(BUILD_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) cmd/govard/main.go
@@ -45,7 +45,17 @@ build-test-binary: build-frontend
 	mkdir -p $(BUILD_DIR)
 	go build -mod=mod -ldflags "$(LDFLAGS)" -tags integration -o $(TEST_BINARY) cmd/govard/main.go
 
-test: lint fmt-check vet test-frontend test-unit test-integration ## Run all tests
+generate: ## Regenerate internal/frameworks/all_generated.go from registered framework folders
+	go generate ./internal/frameworks/...
+
+generate-check: generate ## Fail if all_generated.go is stale (CI drift check)
+	@if ! git diff --quiet -- internal/frameworks/all_generated.go; then \
+		echo "internal/frameworks/all_generated.go is out of date - run 'make generate' and commit the result:"; \
+		git diff -- internal/frameworks/all_generated.go; \
+		exit 1; \
+	fi
+
+test: generate lint fmt-check vet test-frontend test-unit test-integration ## Run all tests
 
 
 fmt-check:
