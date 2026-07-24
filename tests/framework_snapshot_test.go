@@ -11,6 +11,7 @@ import (
 	"govard/internal/cmd"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/cakephp"
 )
 
 // allFrameworkNames mirrors the keys of engine.FrameworkConfigs, excluding
@@ -195,7 +196,7 @@ func freshCommandsFor(framework string) []string {
 	case "shopware":
 		return bootstrap.NewShopwareBootstrap(opts).FreshCommands()
 	case "cakephp":
-		return bootstrap.NewCakePHPBootstrap(opts).FreshCommands()
+		return cakephp.NewCakePHPBootstrap(opts).FreshCommands()
 	case "prestashop":
 		return bootstrap.NewPrestaShopBootstrap(opts).FreshCommands()
 	case "django":

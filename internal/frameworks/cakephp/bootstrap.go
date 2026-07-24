@@ -1,20 +1,22 @@
-package bootstrap
+package cakephp
 
 import (
 	"fmt"
-	"govard/internal/conventions"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 
 	"github.com/pterm/pterm"
 )
 
 type CakePHPBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewCakePHPBootstrap(opts Options) *CakePHPBootstrap {
+func NewCakePHPBootstrap(opts bootstrap.Options) *CakePHPBootstrap {
 	return &CakePHPBootstrap{Options: opts}
 }
 
@@ -40,10 +42,10 @@ func (c *CakePHPBootstrap) CreateProject(projectDir string) error {
 	pterm.Info.Println("Creating fresh CakePHP project...")
 
 	createInStage := func(stageDir string) error {
-		return runComposerProjectCommand(projectDir, nil, "create-project", "--prefer-dist", "cakephp/app", stageDir, "--no-interaction")
+		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", "--prefer-dist", "cakephp/app", stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project --prefer-dist cakephp/app \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, c.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
+	if err := bootstrap.RunStagedCreateProject(projectDir, c.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create CakePHP project: %w", err)
 	}
 
@@ -129,5 +131,5 @@ func (c *CakePHPBootstrap) PostClone(projectDir string) error {
 }
 
 func (c *CakePHPBootstrap) runComposerCommand(projectDir string, args ...string) error {
-	return runComposerProjectCommand(projectDir, c.Options.Runner, args...)
+	return bootstrap.RunComposerProjectCommand(projectDir, c.Options.Runner, args...)
 }

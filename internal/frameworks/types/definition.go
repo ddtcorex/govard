@@ -59,4 +59,19 @@ type FrameworkDefinition struct {
 	// SupportsFreshInstall allows `govard bootstrap --fresh` for this
 	// framework.
 	SupportsFreshInstall bool
+
+	// FreshInstall runs this framework's fresh-install orchestration
+	// (CreateProject/Install/Configure sequencing, env-up timing, etc.),
+	// replacing a per-framework case in
+	// internal/cmd/bootstrap_fresh_install.go's switch. nil for
+	// frameworks not yet migrated to this field - they keep dispatching
+	// through that switch and its genericFreshInstallFrameworks map.
+	FreshInstall func(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error
+	// FreshInstallNeedsDB/FreshInstallNeedsDomain tell the caller which
+	// bootstrap.Options fields to populate before invoking FreshInstall -
+	// the registry-owned equivalent of
+	// bootstrap_fresh_install.go's genericFreshInstallFrameworks map.
+	// Only meaningful when FreshInstall is non-nil.
+	FreshInstallNeedsDB     bool
+	FreshInstallNeedsDomain bool
 }

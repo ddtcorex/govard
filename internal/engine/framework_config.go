@@ -363,34 +363,6 @@ var FrameworkConfigs = map[string]FrameworkConfig{
 			"includes/rabbitmq.yml",
 		},
 	},
-	"cakephp": {
-		Name:               "cakephp",
-		Runtime:            "php",
-		AppService:         "php",
-		AppWorkdir:         conventions.DefaultWorkDir,
-		NGINXPUBLIC:        "/webroot",
-		NGINXTemplate:      "cakephp.conf",
-		DatabaseName:       "cakephp",
-		DefaultPHP:         "8.4",
-		DefaultDB:          "mariadb",
-		DefaultDBVer:       "11.4",
-		DefaultMySQLVer:    "8.4",
-		DefaultNginxVer:    "1.28",
-		DefaultApacheVer:   "2.4",
-		DefaultCacheVer:    "7.4",
-		DefaultVarnishVer:  "8.0",
-		DefaultQueueVer:    "4.2",
-		DefaultWebServer:   "nginx",
-		DefaultSearch:      "none",
-		DefaultCache:       "none",
-		DefaultQueue:       "none",
-		DefaultComposerVer: "latest",
-		Includes: []string{
-			"includes/base.yml",
-			"includes/redis.yml",
-			"includes/rabbitmq.yml",
-		},
-	},
 	"wordpress": {
 		Name:               "wordpress",
 		Runtime:            "php",
@@ -492,6 +464,17 @@ func GetFrameworkConfig(name string) (FrameworkConfig, bool) {
 	}
 	config, ok := FrameworkConfigs[name]
 	return config, ok
+}
+
+// RegisterFrameworkConfig registers cfg as the FrameworkConfig for name,
+// keyed the same way GetFrameworkConfig looks it up. Called from
+// frameworks.Register (alongside RegisterDetection) so a framework
+// package can own its own FrameworkConfig literal instead of an entry in
+// this file's static FrameworkConfigs map. Not safe for concurrent calls;
+// intended usage is registration during package init(), before
+// GetFrameworkConfig is ever called.
+func RegisterFrameworkConfig(name string, cfg FrameworkConfig) {
+	FrameworkConfigs[strings.ToLower(strings.TrimSpace(name))] = cfg
 }
 
 func FrameworkUsesNodeRuntime(name string) bool {

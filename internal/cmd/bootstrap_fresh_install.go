@@ -9,6 +9,7 @@ import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks"
+	"govard/internal/frameworks/types"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -27,7 +28,6 @@ var genericFreshInstallFrameworks = map[string]struct{ needsDB, needsDomain bool
 	"drupal":    {},
 	"wordpress": {needsDB: true, needsDomain: true},
 	"shopware":  {needsDomain: true},
-	"cakephp":   {},
 }
 
 func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
@@ -35,6 +35,10 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 
 	if config.Framework == "mageos" && opts.MetaPackage == defaultBootstrapMetaPackage {
 		opts.MetaPackage = "mage-os/project-community-edition"
+	}
+
+	if def, ok := frameworks.Get(config.Framework); ok && def.FreshInstall != nil {
+		return runBootstrapRegistryFreshInstall(cmd, config, opts, def, cwd)
 	}
 
 	if needs, ok := genericFreshInstallFrameworks[config.Framework]; ok {
@@ -57,6 +61,45 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 	default:
 		return fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
 	}
+}
+
+// runBootstrapRegistryFreshInstall dispatches to a framework's own
+// FreshInstall function (internal/frameworks/<name>/freshinstall.go)
+// instead of a per-framework case here. Frameworks not yet migrated to
+// this registry field (def.FreshInstall == nil) keep dispatching through
+// genericFreshInstallFrameworks/the switch above.
+func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, def types.FrameworkDefinition, cwd string) error {
+	fwOpts := bootstrap.Options{
+		Version: opts.MetaVersion,
+		Env:     opts.Source,
+		Runner: func(command string) error {
+			return runPHPContainerShellCommand(config, command)
+		},
+	}
+	if def.FreshInstallNeedsDB {
+		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
+		localDB := resolveLocalDBCredentials(config, containerName)
+		fwOpts.DBHost = conventions.DefaultDBHost
+		fwOpts.DBUser = localDB.Username
+		fwOpts.DBPass = localDB.Password
+		fwOpts.DBName = localDB.Database
+	}
+	if def.FreshInstallNeedsDomain {
+		fwOpts.Domain = config.Domain
+	}
+
+	helpers := bootstrap.CmdHelpers{
+		ConfigureAuto: func() error {
+			return runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...)
+		},
+	}
+
+	if err := def.FreshInstall(fwOpts, cwd, helpers); err != nil {
+		return err
+	}
+
+	pterm.Success.Printf("Fresh %s bootstrap completed.\n", def.DisplayName)
+	return nil
 }
 
 // runBootstrapGenericFreshInstall runs the CreateProject -> Install ->

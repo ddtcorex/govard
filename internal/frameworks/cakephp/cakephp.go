@@ -7,8 +7,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("cakephp")
-	manifest, _ := engine.GetFrameworkManifestConfig("cakephp")
 	return types.FrameworkDefinition{
 		Name:        "cakephp",
 		DisplayName: "CakePHP",
@@ -18,8 +16,9 @@ func Definition() types.FrameworkDefinition {
 			ComposerPackages: []string{"cakephp/cakephp"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewCakePHPBootstrap(opts)
+			return NewCakePHPBootstrap(opts)
 		},
+		FreshInstall:         freshInstall,
 		SupportsFreshInstall: true,
 	}
 }

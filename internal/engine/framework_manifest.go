@@ -110,6 +110,21 @@ func GetFrameworkManifestConfig(framework string) (FrameworkManifestConfig, bool
 	return getFrameworkManifestConfig(framework)
 }
 
+// RegisterFrameworkManifest registers manifest as the FrameworkManifestConfig
+// for framework, keyed the same way GetFrameworkManifestConfig looks it
+// up. Called from frameworks.Register (alongside RegisterDetection and
+// RegisterFrameworkConfig) so a framework package can own its own
+// FrameworkManifestConfig literal instead of an entry in
+// framework_manifest.json's "frameworks" object. The "_shared" block
+// (global noise/media excludes) stays in framework_manifest.json - it's
+// genuinely cross-framework data, not per-framework. Not safe for
+// concurrent calls; intended usage is registration during package
+// init(), before GetFrameworkManifestConfig is ever called.
+func RegisterFrameworkManifest(framework string, manifest FrameworkManifestConfig) {
+	loadFrameworkTablesManifest()
+	frameworkManifest.Frameworks[normalizeFrameworkManifestKey(framework)] = manifest
+}
+
 func appendStrings(dst []string, values []string) []string {
 	if len(values) == 0 {
 		return dst

@@ -32,7 +32,7 @@ type generatedSourceData struct {
 // RenderSource builds the formatted contents of all_generated.go.
 // alphabetical drives the import block; order drives the sequence of
 // Register() calls in the generated init() (the two differ only when
-// priorityOverrides reorders a package ahead of its alphabetical
+// PriorityOverrides reorders a package ahead of its alphabetical
 // position).
 func RenderSource(alphabetical []string, order []string) ([]byte, error) {
 	tmpl, err := template.New("all_generated").Parse(generatedSourceTemplate)

@@ -30,6 +30,17 @@ type Options struct {
 	PrestaShopNewCookieKey string
 }
 
+// CmdHelpers bundles the cmd-package-level closures a framework's
+// FreshInstall function needs, so internal/frameworks/<name> packages can
+// orchestrate their own fresh-install sequence without importing
+// internal/cmd (which would create an import cycle - internal/cmd already
+// imports internal/frameworks, which imports this package).
+type CmdHelpers struct {
+	// ConfigureAuto runs `govard config auto` against the project - the
+	// step every fresh-install sequence ends with before printing success.
+	ConfigureAuto func() error
+}
+
 func DefaultOptions() Options {
 	return Options{Source: "staging"}
 }

@@ -245,3 +245,20 @@ func runPHPOneLiner(projectDir string, runner func(command string) error, code s
 func RunStagedCreateProjectForTest(projectDir string, runner func(command string) error, createInStage func(stageDir string) error, runnerCommand string) error {
 	return runStagedCreateProject(projectDir, runner, createInStage, runnerCommand, conventions.DefaultWorkDir)
 }
+
+// RunStagedCreateProject exposes runStagedCreateProject for framework
+// packages outside this package (e.g. internal/frameworks/cakephp) whose
+// FrameworkBootstrap implementation has moved out of package bootstrap as
+// part of the self-contained-framework-folder migration. Sibling files
+// still in this package (drupal.go, laravel.go, symfony.go, shopware.go,
+// openmage.go) keep calling the unexported version directly - this is an
+// additive wrapper, not a rename.
+func RunStagedCreateProject(projectDir string, runner func(command string) error, createInStage func(stageDir string) error, runnerCommand string, containerBaseDir string) error {
+	return runStagedCreateProject(projectDir, runner, createInStage, runnerCommand, containerBaseDir)
+}
+
+// RunComposerProjectCommand exposes runComposerProjectCommand for the same
+// reason as RunStagedCreateProject above.
+func RunComposerProjectCommand(projectDir string, runner func(command string) error, args ...string) error {
+	return runComposerProjectCommand(projectDir, runner, args...)
+}

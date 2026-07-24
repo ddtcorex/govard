@@ -72,15 +72,17 @@ func (r *Registry) All() []types.FrameworkDefinition {
 var defaultRegistry = NewRegistry()
 
 // Register adds def to the package-level default registry. Called from
-// all_generated.go's init() for each of the 12 frameworks; production code should
+// all_generated.go's init() for each of the 14 frameworks; production code should
 // not call this directly. Also registers def's detection data with
 // engine - unlike (*Registry).Register, this package-level function is
-// only ever called on the real 12 frameworks (from all_generated.go), never on a
+// only ever called on the real 14 frameworks (from all_generated.go), never on a
 // throwaway test Registry, so it's safe for it alone to touch engine's
 // global detection registry.
 func Register(def types.FrameworkDefinition) {
 	defaultRegistry.Register(def)
 	engine.RegisterDetection(strings.ToLower(strings.TrimSpace(def.Name)), def.Detect)
+	engine.RegisterFrameworkConfig(def.Name, def.Config)
+	engine.RegisterFrameworkManifest(def.Name, def.Manifest)
 }
 
 // Normalize resolves raw against the package-level default registry.
