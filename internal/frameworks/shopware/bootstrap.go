@@ -1,8 +1,9 @@
-package bootstrap
+package shopware
 
 import (
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,10 +12,10 @@ import (
 )
 
 type ShopwareBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewShopwareBootstrap(opts Options) *ShopwareBootstrap {
+func NewShopwareBootstrap(opts bootstrap.Options) *ShopwareBootstrap {
 	return &ShopwareBootstrap{Options: opts}
 }
 
@@ -40,10 +41,10 @@ func (s *ShopwareBootstrap) CreateProject(projectDir string) error {
 	pterm.Info.Println("Creating fresh Shopware project...")
 
 	createInStage := func(stageDir string) error {
-		return runComposerProjectCommand(projectDir, nil, "create-project", "shopware/production", stageDir, "--no-interaction")
+		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", "shopware/production", stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project shopware/production \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, s.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
+	if err := bootstrap.RunStagedCreateProject(projectDir, s.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Shopware project: %w", err)
 	}
 
@@ -163,7 +164,7 @@ func (s *ShopwareBootstrap) PostClone(projectDir string) error {
 }
 
 func (s *ShopwareBootstrap) runComposerCommand(projectDir string, args ...string) error {
-	return runComposerProjectCommand(projectDir, s.Options.Runner, args...)
+	return bootstrap.RunComposerProjectCommand(projectDir, s.Options.Runner, args...)
 }
 
 func (s *ShopwareBootstrap) runBinConsole(projectDir string, args ...string) error {
@@ -173,7 +174,7 @@ func (s *ShopwareBootstrap) runBinConsole(projectDir string, args ...string) err
 		return nil
 	}
 
-	return runPHPProjectScript(projectDir, s.Options.Runner, consolePath, args...)
+	return bootstrap.RunPHPProjectScript(projectDir, s.Options.Runner, consolePath, args...)
 }
 
 func (s *ShopwareBootstrap) resolveDBConfig() (host, user, pass, name string) {

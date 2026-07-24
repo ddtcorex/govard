@@ -8,8 +8,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("laravel")
-	manifest, _ := engine.GetFrameworkManifestConfig("laravel")
 	return types.FrameworkDefinition{
 		Name:        "laravel",
 		DisplayName: "Laravel",
@@ -19,11 +17,13 @@ func Definition() types.FrameworkDefinition {
 			ComposerPackages: []string{"laravel/framework"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewLaravelBootstrap(opts)
+			return NewLaravelBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.LaravelManager{}
 		},
+		FreshInstall:         freshInstall,
+		FreshInstallNeedsDB:  true,
 		SupportsBootstrap:    true,
 		SupportsFreshInstall: true,
 	}

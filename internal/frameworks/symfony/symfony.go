@@ -8,8 +8,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("symfony")
-	manifest, _ := engine.GetFrameworkManifestConfig("symfony")
 	return types.FrameworkDefinition{
 		Name:        "symfony",
 		DisplayName: "Symfony",
@@ -19,11 +17,13 @@ func Definition() types.FrameworkDefinition {
 			ComposerPackages: []string{"symfony/framework-bundle", "symfony/symfony"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewSymfonyBootstrap(opts)
+			return NewSymfonyBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.SymfonyManager{}
 		},
+		FreshInstall:         freshInstall,
+		FreshInstallNeedsDB:  true,
 		SupportsBootstrap:    true,
 		SupportsFreshInstall: true,
 	}

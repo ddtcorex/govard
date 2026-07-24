@@ -11,6 +11,9 @@ import (
 
 	"govard/internal/conventions"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/laravel"
+	"govard/internal/frameworks/shopware"
+	"govard/internal/frameworks/wordpress"
 )
 
 func TestRunStagedCreateProjectForTestPreservesGovardFiles(t *testing.T) {
@@ -106,7 +109,7 @@ func TestLaravelCreateProjectWithRunnerStagesComposerCreateProject(t *testing.T)
 	}
 
 	var capturedCommand string
-	laravelBootstrap := bootstrap.NewLaravelBootstrap(bootstrap.Options{
+	laravelBootstrap := laravel.NewLaravelBootstrap(bootstrap.Options{
 		Runner: func(command string) error {
 			capturedCommand = command
 			stageDir := extractStageHostDir(t, command)
@@ -169,7 +172,7 @@ func TestWordPressCreateProjectUsesDownloaderInsteadOfWPCLI(t *testing.T) {
 	}
 
 	var downloadDir string
-	restore := bootstrap.SetWordPressCoreDownloaderForTest(func(targetDir string) error {
+	restore := wordpress.SetWordPressCoreDownloaderForTest(func(targetDir string) error {
 		downloadDir = targetDir
 		if err := os.WriteFile(filepath.Join(targetDir, "wp-load.php"), []byte("<?php\n"), 0o644); err != nil {
 			return err
@@ -178,7 +181,7 @@ func TestWordPressCreateProjectUsesDownloaderInsteadOfWPCLI(t *testing.T) {
 	})
 	defer restore()
 
-	wpBootstrap := bootstrap.NewWordPressBootstrap(bootstrap.Options{
+	wpBootstrap := wordpress.NewWordPressBootstrap(bootstrap.Options{
 		Runner: func(command string) error {
 			return fmt.Errorf("runner should not be called during WordPress create: %s", command)
 		},
@@ -216,7 +219,7 @@ require_once ABSPATH . 'wp-settings.php';
 	}
 
 	commands := make([]string, 0, 4)
-	wpBootstrap := bootstrap.NewWordPressBootstrap(bootstrap.Options{
+	wpBootstrap := wordpress.NewWordPressBootstrap(bootstrap.Options{
 		Runner: func(command string) error {
 			commands = append(commands, command)
 			return nil
@@ -267,7 +270,7 @@ func TestShopwareInstallSyncsDomainAwareURLs(t *testing.T) {
 	}
 
 	commands := make([]string, 0, 4)
-	shopwareBootstrap := bootstrap.NewShopwareBootstrap(bootstrap.Options{
+	shopwareBootstrap := shopware.NewShopwareBootstrap(bootstrap.Options{
 		Runner: func(command string) error {
 			commands = append(commands, command)
 			return nil

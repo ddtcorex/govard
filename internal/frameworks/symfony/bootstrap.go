@@ -1,8 +1,9 @@
-package bootstrap
+package symfony
 
 import (
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,17 +12,17 @@ import (
 )
 
 type SymfonyBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewSymfonyBootstrap(opts Options) *SymfonyBootstrap {
+func NewSymfonyBootstrap(opts bootstrap.Options) *SymfonyBootstrap {
 	return &SymfonyBootstrap{Options: opts}
 }
 
 // BootstrapSymfony runs Symfony's fresh-install command generation.
-func BootstrapSymfony(opts Options) error {
-	bootstrap := NewSymfonyBootstrap(opts)
-	_ = bootstrap.FreshCommands()
+func BootstrapSymfony(opts bootstrap.Options) error {
+	symfonyBootstrap := NewSymfonyBootstrap(opts)
+	_ = symfonyBootstrap.FreshCommands()
 	return nil
 }
 
@@ -67,10 +68,10 @@ func (s *SymfonyBootstrap) CreateProject(projectDir string) error {
 	skeleton := s.getSkeletonForVersion(s.Options.Version)
 
 	createInStage := func(stageDir string) error {
-		return runComposerProjectCommand(projectDir, nil, "create-project", skeleton, stageDir, "--no-interaction")
+		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", skeleton, stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project " + skeleton + " \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, s.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
+	if err := bootstrap.RunStagedCreateProject(projectDir, s.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Symfony project: %w", err)
 	}
 
@@ -230,7 +231,7 @@ func (s *SymfonyBootstrap) getSkeletonForVersion(version string) string {
 }
 
 func (s *SymfonyBootstrap) runComposerCommand(projectDir string, args ...string) error {
-	return runComposerProjectCommand(projectDir, s.Options.Runner, args...)
+	return bootstrap.RunComposerProjectCommand(projectDir, s.Options.Runner, args...)
 }
 
 func (s *SymfonyBootstrap) runSymfonyConsole(projectDir string, args ...string) error {
@@ -243,7 +244,7 @@ func (s *SymfonyBootstrap) runSymfonyConsole(projectDir string, args ...string) 
 		}
 	}
 
-	return runPHPProjectScript(projectDir, s.Options.Runner, consolePath, args...)
+	return bootstrap.RunPHPProjectScript(projectDir, s.Options.Runner, consolePath, args...)
 }
 
 func (s *SymfonyBootstrap) hasDoctrine(projectDir string) bool {

@@ -8,6 +8,8 @@ import (
 
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks"
+	"govard/internal/frameworks/drupal"
+	"govard/internal/frameworks/laravel"
 )
 
 func TestBootstrapPkgLaravelFreshCommands(t *testing.T) {
@@ -23,7 +25,7 @@ func TestBootstrapPkgLaravelFreshCommands(t *testing.T) {
 
 	for _, tc := range cases {
 		opts := bootstrap.Options{Version: tc.version}
-		laravel := bootstrap.NewLaravelBootstrap(opts)
+		laravel := laravel.NewLaravelBootstrap(opts)
 		cmds := laravel.FreshCommands()
 
 		if len(cmds) == 0 {
@@ -49,7 +51,7 @@ func TestBootstrapPkgDrupalFreshCommands(t *testing.T) {
 
 	for _, tc := range cases {
 		opts := bootstrap.Options{Version: tc.version}
-		drupal := bootstrap.NewDrupalBootstrap(opts)
+		drupal := drupal.NewDrupalBootstrap(opts)
 		cmds := drupal.FreshCommands()
 
 		if len(cmds) == 0 {

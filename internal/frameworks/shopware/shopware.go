@@ -7,8 +7,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("shopware")
-	manifest, _ := engine.GetFrameworkManifestConfig("shopware")
 	return types.FrameworkDefinition{
 		Name:        "shopware",
 		DisplayName: "Shopware",
@@ -18,8 +16,10 @@ func Definition() types.FrameworkDefinition {
 			ComposerPackages: []string{"shopware/core", "shopware/platform"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewShopwareBootstrap(opts)
+			return NewShopwareBootstrap(opts)
 		},
-		SupportsFreshInstall: true,
+		FreshInstall:            freshInstall,
+		FreshInstallNeedsDomain: true,
+		SupportsFreshInstall:    true,
 	}
 }

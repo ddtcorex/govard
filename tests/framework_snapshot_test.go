@@ -12,6 +12,11 @@ import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks/cakephp"
+	"govard/internal/frameworks/drupal"
+	"govard/internal/frameworks/laravel"
+	"govard/internal/frameworks/shopware"
+	"govard/internal/frameworks/symfony"
+	"govard/internal/frameworks/wordpress"
 )
 
 // allFrameworkNames mirrors the keys of engine.FrameworkConfigs, excluding
@@ -182,19 +187,19 @@ func freshCommandsFor(framework string) []string {
 	case "openmage":
 		return bootstrap.NewOpenMageBootstrap(opts).FreshCommands()
 	case "laravel":
-		return bootstrap.NewLaravelBootstrap(opts).FreshCommands()
+		return laravel.NewLaravelBootstrap(opts).FreshCommands()
 	case "symfony":
-		return bootstrap.NewSymfonyBootstrap(opts).FreshCommands()
+		return symfony.NewSymfonyBootstrap(opts).FreshCommands()
 	case "drupal":
-		return bootstrap.NewDrupalBootstrap(opts).FreshCommands()
+		return drupal.NewDrupalBootstrap(opts).FreshCommands()
 	case "wordpress":
-		return bootstrap.NewWordPressBootstrap(opts).FreshCommands()
+		return wordpress.NewWordPressBootstrap(opts).FreshCommands()
 	case "nextjs":
 		return bootstrap.NewNextJSBootstrap(opts).FreshCommands()
 	case "emdash":
 		return bootstrap.NewEmdashBootstrap(opts).FreshCommands()
 	case "shopware":
-		return bootstrap.NewShopwareBootstrap(opts).FreshCommands()
+		return shopware.NewShopwareBootstrap(opts).FreshCommands()
 	case "cakephp":
 		return cakephp.NewCakePHPBootstrap(opts).FreshCommands()
 	case "prestashop":

@@ -7,6 +7,7 @@ import (
 
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks"
+	"govard/internal/frameworks/symfony"
 )
 
 func TestBootstrapPkgSymfonyFreshCommands(t *testing.T) {
@@ -22,8 +23,8 @@ func TestBootstrapPkgSymfonyFreshCommands(t *testing.T) {
 
 	for _, tc := range cases {
 		opts := bootstrap.Options{Version: tc.version}
-		symfony := bootstrap.NewSymfonyBootstrap(opts)
-		cmds := symfony.FreshCommands()
+		symfonyBootstrap := symfony.NewSymfonyBootstrap(opts)
+		cmds := symfonyBootstrap.FreshCommands()
 
 		if len(cmds) == 0 {
 			t.Fatalf("expected commands for version %s, got none", tc.version)
@@ -38,7 +39,7 @@ func TestBootstrapPkgSymfonyFreshCommands(t *testing.T) {
 func TestBootstrapPkgSymfonyRun(t *testing.T) {
 	opts := bootstrap.Options{Version: "7.0"}
 
-	err := bootstrap.BootstrapSymfony(opts)
+	err := symfony.BootstrapSymfony(opts)
 	if err != nil {
 		t.Fatalf("BootstrapSymfony failed: %v", err)
 	}
@@ -75,13 +76,13 @@ func TestSymfonyDoctrineDetection(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	opts := bootstrap.Options{Version: "7.0"}
-	symfony := bootstrap.NewSymfonyBootstrap(opts)
+	symfonyBootstrap := symfony.NewSymfonyBootstrap(opts)
 
 	// Case 1: No composer.json
-	if symfony.HasDoctrineForTest(tempDir) {
+	if symfonyBootstrap.HasDoctrineForTest(tempDir) {
 		t.Error("expected hasDoctrine to be false when composer.json does not exist")
 	}
-	if symfony.HasMigrationsForTest(tempDir) {
+	if symfonyBootstrap.HasMigrationsForTest(tempDir) {
 		t.Error("expected hasMigrations to be false when composer.json does not exist")
 	}
 
@@ -97,10 +98,10 @@ func TestSymfonyDoctrineDetection(t *testing.T) {
 	if err := os.WriteFile(composerPath, []byte(minimalJSON), 0644); err != nil {
 		t.Fatalf("failed to write composer.json: %v", err)
 	}
-	if symfony.HasDoctrineForTest(tempDir) {
+	if symfonyBootstrap.HasDoctrineForTest(tempDir) {
 		t.Error("expected hasDoctrine to be false with minimal composer.json")
 	}
-	if symfony.HasMigrationsForTest(tempDir) {
+	if symfonyBootstrap.HasMigrationsForTest(tempDir) {
 		t.Error("expected hasMigrations to be false with minimal composer.json")
 	}
 
@@ -114,10 +115,10 @@ func TestSymfonyDoctrineDetection(t *testing.T) {
 	if err := os.WriteFile(composerPath, []byte(doctrineJSON), 0644); err != nil {
 		t.Fatalf("failed to write composer.json: %v", err)
 	}
-	if !symfony.HasDoctrineForTest(tempDir) {
+	if !symfonyBootstrap.HasDoctrineForTest(tempDir) {
 		t.Error("expected hasDoctrine to be true when symfony/orm-pack is present")
 	}
-	if symfony.HasMigrationsForTest(tempDir) {
+	if symfonyBootstrap.HasMigrationsForTest(tempDir) {
 		t.Error("expected hasMigrations to be false when only symfony/orm-pack is present")
 	}
 
@@ -132,10 +133,10 @@ func TestSymfonyDoctrineDetection(t *testing.T) {
 	if err := os.WriteFile(composerPath, []byte(migrationsJSON), 0644); err != nil {
 		t.Fatalf("failed to write composer.json: %v", err)
 	}
-	if !symfony.HasDoctrineForTest(tempDir) {
+	if !symfonyBootstrap.HasDoctrineForTest(tempDir) {
 		t.Error("expected hasDoctrine to be true when doctrine/doctrine-bundle is present")
 	}
-	if !symfony.HasMigrationsForTest(tempDir) {
+	if !symfonyBootstrap.HasMigrationsForTest(tempDir) {
 		t.Error("expected hasMigrations to be true when doctrine/doctrine-migrations-bundle is present")
 	}
 }

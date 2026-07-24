@@ -9,10 +9,14 @@ import (
 	"govard/internal/conventions"
 )
 
-// waitForMySQLDatabase polls a MySQL/MariaDB connection until it succeeds,
+// WaitForMySQLDatabase polls a MySQL/MariaDB connection until it succeeds,
 // retrying for up to 30 seconds. Used by frameworks whose fresh-install runs
 // an installer against the DB before the DB container has finished starting.
-func waitForMySQLDatabase(projectDir string, runner func(command string) error, host, user, pass, name string) error {
+// Exported (unlike the other staged_project.go helpers, this one has no
+// unexported/exported pair) because WordPress's FrameworkBootstrap moved
+// out of package bootstrap as part of the self-contained-framework-folder
+// migration and is currently the only caller.
+func WaitForMySQLDatabase(projectDir string, runner func(command string) error, host, user, pass, name string) error {
 	code := strings.Join([]string{
 		"mysqli_report(MYSQLI_REPORT_OFF);",
 		"$db = mysqli_init();",

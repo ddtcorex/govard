@@ -8,8 +8,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("wordpress")
-	manifest, _ := engine.GetFrameworkManifestConfig("wordpress")
 	return types.FrameworkDefinition{
 		Name:        "wordpress",
 		Aliases:     []string{"wp"},
@@ -20,12 +18,15 @@ func Definition() types.FrameworkDefinition {
 			ComposerPackages: []string{"johnpbloch/wordpress", "roots/wordpress", "wordpress/wordpress"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewWordPressBootstrap(opts)
+			return NewWordPressBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.WordPressManager{}
 		},
-		SupportsBootstrap:    true,
-		SupportsFreshInstall: true,
+		FreshInstall:            freshInstall,
+		FreshInstallNeedsDB:     true,
+		FreshInstallNeedsDomain: true,
+		SupportsBootstrap:       true,
+		SupportsFreshInstall:    true,
 	}
 }

@@ -100,7 +100,7 @@ func (o *OpenMageBootstrap) runCLIInstall(projectDir string) error {
 	}
 
 	dbHost, dbUser, dbPass, dbName := o.resolveDBConfig()
-	if err := waitForMySQLDatabase(projectDir, o.Options.Runner, dbHost, dbUser, dbPass, dbName); err != nil {
+	if err := WaitForMySQLDatabase(projectDir, o.Options.Runner, dbHost, dbUser, dbPass, dbName); err != nil {
 		return fmt.Errorf("database not reachable: %w", err)
 	}
 

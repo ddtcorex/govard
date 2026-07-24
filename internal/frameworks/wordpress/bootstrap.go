@@ -1,4 +1,4 @@
-package bootstrap
+package wordpress
 
 import (
 	"archive/tar"
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"io"
 	"net/http"
 	"os"
@@ -28,10 +29,10 @@ const (
 var wordpressCoreDownloader = downloadAndExtractWordPressCore
 
 type WordPressBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewWordPressBootstrap(opts Options) *WordPressBootstrap {
+func NewWordPressBootstrap(opts bootstrap.Options) *WordPressBootstrap {
 	return &WordPressBootstrap{Options: opts}
 }
 
@@ -56,7 +57,7 @@ func (w *WordPressBootstrap) FreshCommands() []string {
 func (w *WordPressBootstrap) CreateProject(projectDir string) error {
 	pterm.Info.Println("Creating fresh WordPress project...")
 
-	if err := removeProjectContents(projectDir); err != nil {
+	if err := bootstrap.RemoveProjectContents(projectDir); err != nil {
 		return err
 	}
 	if err := wordpressCoreDownloader(projectDir); err != nil {
@@ -199,7 +200,7 @@ func (w *WordPressBootstrap) installWordPressSite(projectDir, siteURL string) er
 		"}",
 	}, "\n")
 
-	if err := runPHPOneLiner(projectDir, w.Options.Runner, code); err != nil {
+	if err := bootstrap.RunPHPOneLiner(projectDir, w.Options.Runner, code); err != nil {
 		return fmt.Errorf("install WordPress site: %w", err)
 	}
 
@@ -229,7 +230,7 @@ func (w *WordPressBootstrap) updateWordPressSiteURL(projectDir, siteURL string) 
 		"update_option('home', " + strconv.Quote(siteURL) + ");",
 	}, "\n")
 
-	if err := runPHPOneLiner(projectDir, w.Options.Runner, code); err != nil {
+	if err := bootstrap.RunPHPOneLiner(projectDir, w.Options.Runner, code); err != nil {
 		return fmt.Errorf("update WordPress site URL: %w", err)
 	}
 
@@ -258,7 +259,7 @@ func (w *WordPressBootstrap) resolveDBConfig() (host, user, pass, name string) {
 
 func (w *WordPressBootstrap) waitForWordPressDatabase(projectDir string) error {
 	dbHost, dbUser, dbPass, dbName := w.resolveDBConfig()
-	return waitForMySQLDatabase(projectDir, w.Options.Runner, dbHost, dbUser, dbPass, dbName)
+	return bootstrap.WaitForMySQLDatabase(projectDir, w.Options.Runner, dbHost, dbUser, dbPass, dbName)
 }
 
 func downloadAndExtractWordPressCore(projectDir string) error {

@@ -7,8 +7,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("drupal")
-	manifest, _ := engine.GetFrameworkManifestConfig("drupal")
 	return types.FrameworkDefinition{
 		Name:        "drupal",
 		DisplayName: "Drupal",
@@ -18,8 +16,9 @@ func Definition() types.FrameworkDefinition {
 			ComposerPackages: []string{"drupal/core"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewDrupalBootstrap(opts)
+			return NewDrupalBootstrap(opts)
 		},
+		FreshInstall:         freshInstall,
 		SupportsFreshInstall: true,
 	}
 }

@@ -65,13 +65,12 @@ type FrameworkDefinition struct {
 	// replacing a per-framework case in
 	// internal/cmd/bootstrap_fresh_install.go's switch. nil for
 	// frameworks not yet migrated to this field - they keep dispatching
-	// through that switch and its genericFreshInstallFrameworks map.
+	// through that switch.
 	FreshInstall func(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error
 	// FreshInstallNeedsDB/FreshInstallNeedsDomain tell the caller which
-	// bootstrap.Options fields to populate before invoking FreshInstall -
-	// the registry-owned equivalent of
-	// bootstrap_fresh_install.go's genericFreshInstallFrameworks map.
-	// Only meaningful when FreshInstall is non-nil.
+	// bootstrap.Options fields (DB credentials, domain) to populate
+	// before invoking FreshInstall. Only meaningful when FreshInstall is
+	// non-nil.
 	FreshInstallNeedsDB     bool
 	FreshInstallNeedsDomain bool
 }

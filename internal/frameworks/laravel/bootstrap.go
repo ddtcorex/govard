@@ -1,8 +1,9 @@
-package bootstrap
+package laravel
 
 import (
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,10 +13,10 @@ import (
 )
 
 type LaravelBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewLaravelBootstrap(opts Options) *LaravelBootstrap {
+func NewLaravelBootstrap(opts bootstrap.Options) *LaravelBootstrap {
 	return &LaravelBootstrap{Options: opts}
 }
 
@@ -63,10 +64,10 @@ func (l *LaravelBootstrap) CreateProject(projectDir string) error {
 	laravelVersion := l.getLaravelVersion(l.Options.Version)
 
 	createInStage := func(stageDir string) error {
-		return runComposerProjectCommand(projectDir, nil, "create-project", laravelVersion, stageDir, "--no-interaction")
+		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", laravelVersion, stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project " + laravelVersion + " \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, l.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
+	if err := bootstrap.RunStagedCreateProject(projectDir, l.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Laravel project: %w", err)
 	}
 
@@ -227,7 +228,7 @@ func (l *LaravelBootstrap) getLaravelVersion(version string) string {
 }
 
 func (l *LaravelBootstrap) runComposerCommand(projectDir string, args ...string) error {
-	return runComposerProjectCommand(projectDir, l.Options.Runner, args...)
+	return bootstrap.RunComposerProjectCommand(projectDir, l.Options.Runner, args...)
 }
 
 func (l *LaravelBootstrap) runArtisanCommand(projectDir string, args ...string) error {
