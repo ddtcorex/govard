@@ -153,6 +153,50 @@ func TestRunBootstrapFrameworkFreshInstallForTestWordPressDoesNotRestartEnvironm
 	}
 }
 
+func TestRunBootstrapFrameworkFreshInstallForTestCakePHPUsesRegistryFreshInstall(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	var capturedCommands []string
+	defer cmd.SetPHPContainerShellRunnerForTest(func(config engine.Config, commandLine string) error {
+		capturedCommands = append(capturedCommands, commandLine)
+		return nil
+	})()
+
+	calls := make([][]string, 0, 1)
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		calls = append(calls, append([]string{}, args...))
+		return nil
+	})()
+
+	err := cmd.RunBootstrapFrameworkFreshInstallForTest(
+		&cobra.Command{},
+		engine.Config{
+			ProjectName: "sample-project",
+			Framework:   "cakephp",
+		},
+		"dev",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("RunBootstrapFrameworkFreshInstallForTest() error = %v", err)
+	}
+
+	if len(capturedCommands) == 0 {
+		t.Fatal("expected at least one PHP container command to be run")
+	}
+	if !strings.Contains(capturedCommands[0], "composer create-project --prefer-dist cakephp/app") {
+		t.Fatalf("expected a CakePHP create-project invocation, got: %s", capturedCommands[0])
+	}
+
+	want := [][]string{
+		{"config", "auto"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("subcommand calls = %#v, want %#v", calls, want)
+	}
+}
+
 func TestRunBootstrapFrameworkFreshInstallForTestDjangoScaffoldsAndMigrates(t *testing.T) {
 	tempDir := t.TempDir()
 	chdirForTest(t, tempDir)

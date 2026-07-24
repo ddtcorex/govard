@@ -977,28 +977,6 @@
       "ignored": [],
       "sensitive": []
     },
-    "cakephp": {
-      "paths": {
-        "local_media": "public/media",
-        "remote_media": "public/media",
-        "web_root_candidates": [
-          {
-            "path": "public",
-            "value": "/public"
-          },
-          {
-            "path": "webroot",
-            "value": "/webroot"
-          }
-        ]
-      },
-      "features": {
-        "requires_running_env_for_fresh_install": true,
-        "supports_post_clone": false
-      },
-      "ignored": [],
-      "sensitive": []
-    },
     "prestashop": {
       "paths": {
         "local_media": "img",

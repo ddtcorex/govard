@@ -8,7 +8,7 @@
 // Detection order matters for one known ambiguous-match case: a project
 // whose dependencies match both Emdash's and Next.js's Detect signature
 // must resolve to Emdash (the legacy pre-registry detector's tie-break).
-// internal/frameworks/gen/order.go's priorityOverrides map is where that
+// internal/frameworks/gen/generator/order.go's PriorityOverrides map is where that
 // ordering is declared now, not here.
 package frameworks
 
