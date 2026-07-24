@@ -12,7 +12,7 @@ import (
 )
 
 // TestRegistryHasAllTwelveFrameworks confirms the package-level registry
-// (populated by all.go's init()) has exactly the same 12 frameworks as
+// (populated by all_generated.go's init()) has exactly the same 12 frameworks as
 // allFrameworkNames (defined in framework_snapshot_test.go, Plan 1) -
 // the two lists must never drift, or a framework would silently be
 // missing from either the registry or its golden-snapshot coverage.

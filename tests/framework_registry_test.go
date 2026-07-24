@@ -74,7 +74,7 @@ func TestRegistryNormalize(t *testing.T) {
 
 func TestRegistryPackageLevelDefaultIsIsolatedFromTestRegistries(t *testing.T) {
 	// The package-level Register/Get/All/Normalize operate on a shared
-	// default instance (populated later by all.go's init(), once it
+	// default instance (populated later by all_generated.go's init(), once it
 	// exists). This test only confirms that constructing a fresh
 	// NewRegistry() never touches that shared default, so tests in this
 	// file can never pollute it (or be polluted by it).

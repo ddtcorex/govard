@@ -5,7 +5,7 @@ description: Cấu trúc nội bộ của framework registry trong Govard, và h
 
 # Thêm Framework mới
 
-Govard hiện hỗ trợ 13 framework: Magento 2, Mage-OS, Magento 1, OpenMage, Laravel, Symfony, Drupal, WordPress, Next.js, Emdash, Shopware, CakePHP, và PrestaShop. Trang này mô tả cấu trúc nội bộ của phần hỗ trợ đó, và những gì cần đụng vào để thêm framework thứ 14.
+Govard hỗ trợ một danh sách framework ngày càng mở rộng — Magento 2, Mage-OS, Magento 1, OpenMage, Laravel, Symfony, Drupal, WordPress, Next.js, Emdash, Shopware, CakePHP, PrestaShop, Django, và sẽ còn thêm nữa theo thời gian. Trang này mô tả cấu trúc nội bộ của phần hỗ trợ đó, và những gì cần đụng vào để thêm một framework mới.
 
 ---
 
@@ -32,7 +32,7 @@ type FrameworkDefinition struct {
 }
 ```
 
-`init()` của `internal/frameworks/all.go` gọi `Register(<pkg>.Definition())` cho cả 13 package, theo một thứ tự cụ thể (lý do ở phần dưới), tạo nên một registry cấp package mà phần còn lại của Govard đọc qua 3 file nhỏ, tập trung:
+`internal/frameworks/all_generated.go` — được sinh bởi `go generate ./internal/frameworks/...` từ `Definition()` của mỗi package (xem bước 6 dưới đây) — gọi `Register(<pkg>.Definition())` cho từng framework đã đăng ký, theo một thứ tự cụ thể (lý do ở phần dưới), tạo nên một registry cấp package mà phần còn lại của Govard đọc qua 3 file nhỏ, tập trung:
 
 | File | Vai trò |
 | :--- | :--- |
@@ -51,7 +51,7 @@ Có 2 phần vẫn là switch theo tên framework, một cách có chủ đích,
 
 ---
 
-## Thêm framework #14: một checklist
+## Thêm một framework mới: checklist
 
 Giả sử bạn đang thêm một framework hư cấu tên `whimsy`. Mỗi bước dưới đây đều có một ví dụ thật, đang chạy trong codebase — các đường dẫn file trỏ tới ví dụ gần giống nhất để copy.
 
@@ -133,9 +133,11 @@ func Definition() types.FrameworkDefinition {
 
 Chỉ đặt `BaseURLManager` nếu framework cần rewrite base-URL riêng cho `govard tunnel` (đa số không cần — `tunnel.NoopManager` mặc định là no-op, đúng cho bất kỳ framework nào không tự lưu base URL trong database hay file config).
 
-### 6. Đăng ký — `internal/frameworks/all.go`
+### 6. Đăng ký — không cần sửa gì
 
-Thêm import và một dòng `Register(whimsy.Definition())` bên trong `init()`. **Vị trí có ý nghĩa**: detection duyệt qua các framework đã đăng ký theo đúng thứ tự đăng ký và trả về kết quả khớp đầu tiên, nên nếu chữ ký nhận diện của framework mới có thể trùng với framework khác, nó cần được đăng ký ở đúng vị trí tương đối. Comment sẵn có trong `all.go` ghi lại 1 trường hợp đã biết (Emdash trước Next.js, giữ đúng thứ tự ưu tiên phân giải xung đột của detector cũ).
+Việc đăng ký được sinh tự động, không còn duy trì thủ công: chạy `make generate` (hoặc `go generate ./internal/frameworks/...`) và `internal/frameworks/all_generated.go` sẽ tự nhận package `whimsy` mới — không cần thêm import hay dòng `Register()` nào bằng tay. `make build` và `make test` đã tự chạy bước này cho bạn, nên trên thực tế bạn chỉ cần chạy tay khi muốn xem trước file sinh ra trước khi build.
+
+**Vị trí vẫn có ý nghĩa cho detection**: `DetectFramework` duyệt qua các framework theo đúng thứ tự đăng ký và trả về kết quả khớp đầu tiên, nên nếu chữ ký nhận diện của framework mới có thể trùng với framework khác đã đăng ký, nó cần được đăng ký ở đúng vị trí tương đối. Thứ tự mặc định là theo alphabet; trường hợp ngoại lệ duy nhất đã biết (Emdash phải đăng ký trước Next.js, giữ đúng thứ tự ưu tiên phân giải xung đột của detector cũ) được khai báo trong map `priorityOverrides` của `internal/frameworks/gen/order.go` — thêm một entry ở đó, không phải trong `all_generated.go`, nếu chữ ký nhận diện của `whimsy` cũng mơ hồ tương tự với một framework đã có.
 
 ### 7. Orchestration fresh-install / clone — `internal/cmd`
 
@@ -153,7 +155,7 @@ Thêm dòng vào bảng support/runtime-defaults và một mục ngắn trong [`
 
 - `tests/framework_detection_test.go` — một `TestWhimsyDiscovery` khớp với chữ ký `Detect` bạn đã dùng.
 - `tests/framework_definitions_test.go` hoặc một file test riêng cho `whimsy` — assert `Definition()`'s `Config`/`Manifest`/`Bootstrap` được điền đúng như kỳ vọng.
-- `tests/framework_snapshot_test.go` — đây là lưới an toàn golden-snapshot bao phủ *mọi* framework đã đăng ký tự động (render blueprint, `FreshCommands()`, config/profile đã resolve, DB credentials/manifest mặc định) qua `allFrameworkNames`; đăng ký `whimsy` trong `all.go` khiến nó bắt đầu chạy, nhưng fixture golden của nó tại `tests/testdata/framework_snapshots/whimsy/` chưa tồn tại. Sinh chúng khi bạn chắc chắn output render đã đúng:
+- `tests/framework_snapshot_test.go` — đây là lưới an toàn golden-snapshot bao phủ *mọi* framework đã đăng ký tự động (render blueprint, `FreshCommands()`, config/profile đã resolve, DB credentials/manifest mặc định) qua `allFrameworkNames`; đăng ký `whimsy` (tự động ngay khi bạn chạy `make generate` sau khi thêm folder — xem bước 6) khiến nó bắt đầu chạy, nhưng fixture golden của nó tại `tests/testdata/framework_snapshots/whimsy/` chưa tồn tại. Sinh chúng khi bạn chắc chắn output render đã đúng:
 
   ```bash
   UPDATE_GOLDEN=1 go test ./tests/... -run TestFrameworkSnapshot

@@ -96,7 +96,7 @@ See [Configuration](/reference/configuration) for the complete contract.
 
 ## Framework Support
 
-Each of Govard's 13 supported frameworks is registered in `internal/frameworks/<name>/` as a `types.FrameworkDefinition` — one struct carrying the framework's detection signature, runtime/manifest data, and dispatch hooks (bootstrap factory, tunnel base-URL rewriter, `govard bootstrap` support flags). `internal/frameworks/all.go`'s `init()` registers all 13 into a package-level registry (`internal/frameworks/registry.go`) that `internal/frameworks/run.go` and `internal/frameworks/base_url.go` dispatch through, instead of hardcoded `switch framework { ... }` statements scattered across the codebase.
+Each of Govard's 13 supported frameworks is registered in `internal/frameworks/<name>/` as a `types.FrameworkDefinition` — one struct carrying the framework's detection signature, runtime/manifest data, and dispatch hooks (bootstrap factory, tunnel base-URL rewriter, `govard bootstrap` support flags). `internal/frameworks/all_generated.go`'s `init()` registers all 13 into a package-level registry (`internal/frameworks/registry.go`) that `internal/frameworks/run.go` and `internal/frameworks/base_url.go` dispatch through, instead of hardcoded `switch framework { ... }` statements scattered across the codebase.
 
 Discovery (`engine.DetectFramework`) inspects project manifests — composer.json requires, package.json deps, auth.json hosts, file-path signatures — and maps to framework defaults for web root, PHP/Node versions, database engine, and optional cache/search/queue/Varnish services, sourced from `engine.GetFrameworkConfig`/`engine.GetFrameworkManifestConfig` (still the authoritative data, composed into each `FrameworkDefinition`).
 

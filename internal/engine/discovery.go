@@ -36,8 +36,8 @@ var detectionOrder []string
 // RegisterDetection registers framework's detection data. Not safe for
 // concurrent calls; intended usage is registration during package init(),
 // before DetectFramework is ever called. Call order sets detection
-// priority - see internal/frameworks/all.go's init(), the one place that
-// controls it.
+// priority - see internal/frameworks/gen/order.go's priorityOverrides map,
+// which is what now controls it.
 func RegisterDetection(framework string, spec DetectionSpec) {
 	if _, exists := detectionRegistry[framework]; !exists {
 		detectionOrder = append(detectionOrder, framework)
