@@ -1,25 +1,25 @@
-package bootstrap
+package prestashop
 
 import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
-	"govard/internal/conventions"
-
 	"github.com/pterm/pterm"
 )
 
 type PrestaShopBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewPrestaShopBootstrap(opts Options) *PrestaShopBootstrap {
+func NewPrestaShopBootstrap(opts bootstrap.Options) *PrestaShopBootstrap {
 	return &PrestaShopBootstrap{Options: opts}
 }
 
@@ -123,7 +123,7 @@ func (p *PrestaShopBootstrap) updateShopURL() error {
 	_, user, pass, name, prefix := p.resolveDBConfig()
 	containerName := projectName + conventions.DBSuffix
 
-	return RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopShopURLSQL(prefix, domain))
+	return bootstrap.RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopShopURLSQL(prefix, domain))
 }
 
 func BuildPrestaShopShopURLSQLForTest(prefix, domain string) string {
@@ -154,7 +154,7 @@ func (p *PrestaShopBootstrap) enableSSL() error {
 	_, user, pass, name, prefix := p.resolveDBConfig()
 	containerName := projectName + conventions.DBSuffix
 
-	return RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopEnableSSLSQL(prefix))
+	return bootstrap.RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopEnableSSLSQL(prefix))
 }
 
 func BuildPrestaShopEnableSSLSQLForTest(prefix string) string {
@@ -184,7 +184,7 @@ func (p *PrestaShopBootstrap) configureMail() error {
 	_, user, pass, name, prefix := p.resolveDBConfig()
 	containerName := projectName + conventions.DBSuffix
 
-	return RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopMailSQL(prefix))
+	return bootstrap.RunSQLViaDockerExec(containerName, user, pass, name, buildPrestaShopMailSQL(prefix))
 }
 
 func BuildPrestaShopMailSQLForTest(prefix string) string {

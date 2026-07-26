@@ -249,9 +249,7 @@ func RunStagedCreateProjectForTest(projectDir string, runner func(command string
 // RunStagedCreateProject exposes runStagedCreateProject for framework
 // packages outside this package (e.g. internal/frameworks/cakephp) whose
 // FrameworkBootstrap implementation has moved out of package bootstrap as
-// part of the self-contained-framework-folder migration. Sibling files
-// still in this package (drupal.go, laravel.go, symfony.go, shopware.go,
-// openmage.go) keep calling the unexported version directly - this is an
+// part of the self-contained-framework-folder migration - kept as an
 // additive wrapper, not a rename.
 func RunStagedCreateProject(projectDir string, runner func(command string) error, createInStage func(stageDir string) error, runnerCommand string, containerBaseDir string) error {
 	return runStagedCreateProject(projectDir, runner, createInStage, runnerCommand, containerBaseDir)
@@ -266,9 +264,7 @@ func RunComposerProjectCommand(projectDir string, runner func(command string) er
 // RunPHPProjectScript exposes runPHPProjectScript for framework packages
 // outside this package whose FrameworkBootstrap implementation has moved
 // out of package bootstrap as part of the self-contained-framework-folder
-// migration. Sibling files still in this package (openmage.go) keep
-// calling the unexported version directly - this is an additive wrapper,
-// not a rename.
+// migration - kept as an additive wrapper, not a rename.
 func RunPHPProjectScript(projectDir string, runner func(command string) error, scriptPath string, args ...string) error {
 	return runPHPProjectScript(projectDir, runner, scriptPath, args...)
 }
@@ -276,9 +272,8 @@ func RunPHPProjectScript(projectDir string, runner func(command string) error, s
 // RemoveProjectContents exposes removeProjectContents for framework
 // packages outside this package whose FrameworkBootstrap implementation
 // has moved out of package bootstrap as part of the
-// self-contained-framework-folder migration. Sibling files still in this
-// package (emdash.go) keep calling the unexported version directly - this
-// is an additive wrapper, not a rename.
+// self-contained-framework-folder migration - kept as an additive
+// wrapper, not a rename.
 func RemoveProjectContents(projectDir string) error {
 	return removeProjectContents(projectDir)
 }

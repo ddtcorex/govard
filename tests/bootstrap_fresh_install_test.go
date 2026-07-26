@@ -9,7 +9,7 @@ import (
 
 	"govard/internal/cmd"
 	"govard/internal/engine"
-	bootstrapengine "govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/wordpress"
 
 	"github.com/spf13/cobra"
@@ -404,7 +404,7 @@ func TestRunBootstrapFrameworkFreshInstallForTestDjangoScaffoldsAndMigrates(t *t
 	defer restoreSubcommand()
 
 	var execContainer, execScript string
-	restoreExec := bootstrapengine.SetDjangoContainerExecRunnerForTest(func(containerName string, script string) error {
+	restoreExec := django.SetDjangoContainerExecRunnerForTest(func(containerName string, script string) error {
 		execContainer = containerName
 		execScript = script
 		return nil
@@ -453,7 +453,7 @@ func TestRunBootstrapFrameworkFreshInstallForTestDjangoScaffoldsAndMigrates(t *t
 	}
 }
 
-func TestRunBootstrapDjangoFreshInstallForTestSkipsUpAndMigrateWithNoUp(t *testing.T) {
+func TestRunBootstrapFrameworkFreshInstallWithOptionsForTestDjangoSkipsUpAndMigrateWithNoUp(t *testing.T) {
 	tempDir := t.TempDir()
 	chdirForTest(t, tempDir)
 
@@ -477,18 +477,18 @@ func TestRunBootstrapDjangoFreshInstallForTestSkipsUpAndMigrateWithNoUp(t *testi
 	defer restoreSubcommand()
 
 	execCalled := false
-	restoreExec := bootstrapengine.SetDjangoContainerExecRunnerForTest(func(containerName string, script string) error {
+	restoreExec := django.SetDjangoContainerExecRunnerForTest(func(containerName string, script string) error {
 		execCalled = true
 		return nil
 	})
 	defer restoreExec()
 
-	err := cmd.RunBootstrapDjangoFreshInstallForTest(&cobra.Command{}, engine.Config{
+	err := cmd.RunBootstrapFrameworkFreshInstallWithOptionsForTest(&cobra.Command{}, engine.Config{
 		ProjectName: "sample-project",
 		Framework:   "django",
 	}, cmd.BootstrapRuntimeOptions{SkipUp: true})
 	if err != nil {
-		t.Fatalf("RunBootstrapDjangoFreshInstallForTest() error = %v", err)
+		t.Fatalf("RunBootstrapFrameworkFreshInstallWithOptionsForTest() error = %v", err)
 	}
 
 	if subcommandCalled {

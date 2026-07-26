@@ -8,8 +8,12 @@ import (
 
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks"
+	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/drupal"
+	"govard/internal/frameworks/emdash"
 	"govard/internal/frameworks/laravel"
+	"govard/internal/frameworks/nextjs"
+	"govard/internal/frameworks/openmage"
 )
 
 func TestBootstrapPkgLaravelFreshCommands(t *testing.T) {
@@ -66,8 +70,8 @@ func TestBootstrapPkgDrupalFreshCommands(t *testing.T) {
 
 func TestBootstrapPkgOpenMageFreshCommands(t *testing.T) {
 	opts := bootstrap.Options{}
-	openmage := bootstrap.NewOpenMageBootstrap(opts)
-	cmds := openmage.FreshCommands()
+	openmageBootstrap := openmage.NewOpenMageBootstrap(opts)
+	cmds := openmageBootstrap.FreshCommands()
 
 	if len(cmds) == 0 {
 		t.Fatal("expected commands for OpenMage, got none")
@@ -80,9 +84,9 @@ func TestBootstrapPkgOpenMageFreshCommands(t *testing.T) {
 
 func TestBootstrapPkgOpenMagePostCloneWritesTablePrefix(t *testing.T) {
 	projectDir := t.TempDir()
-	openmage := bootstrap.NewOpenMageBootstrap(bootstrap.Options{TablePrefix: "demo_"})
+	openmageBootstrap := openmage.NewOpenMageBootstrap(bootstrap.Options{TablePrefix: "demo_"})
 
-	if err := openmage.PostClone(projectDir); err != nil {
+	if err := openmageBootstrap.PostClone(projectDir); err != nil {
 		t.Fatalf("PostClone() error = %v", err)
 	}
 
@@ -97,38 +101,38 @@ func TestBootstrapPkgOpenMagePostCloneWritesTablePrefix(t *testing.T) {
 
 func TestBootstrapPkgNextJSFreshInstallSupport(t *testing.T) {
 	opts := bootstrap.Options{}
-	nextjs := bootstrap.NewNextJSBootstrap(opts)
+	nextjsBootstrap := nextjs.NewNextJSBootstrap(opts)
 
-	if !nextjs.SupportsFreshInstall() {
+	if !nextjsBootstrap.SupportsFreshInstall() {
 		t.Error("expected Next.js to support fresh install")
 	}
 
-	if !nextjs.SupportsClone() {
+	if !nextjsBootstrap.SupportsClone() {
 		t.Error("expected Next.js to support clone")
 	}
 }
 
 func TestBootstrapPkgEmdashFreshInstallSupport(t *testing.T) {
 	opts := bootstrap.Options{}
-	emdash := bootstrap.NewEmdashBootstrap(opts)
+	emdashBootstrap := emdash.NewEmdashBootstrap(opts)
 
-	if !emdash.SupportsFreshInstall() {
+	if !emdashBootstrap.SupportsFreshInstall() {
 		t.Error("expected Emdash to support fresh install")
 	}
 
-	if emdash.SupportsClone() {
+	if emdashBootstrap.SupportsClone() {
 		t.Error("expected Emdash clone support to remain disabled")
 	}
 }
 
 func TestBootstrapPkgDjangoFreshInstallSupport(t *testing.T) {
 	opts := bootstrap.Options{}
-	django := bootstrap.NewDjangoBootstrap(opts)
+	djangoBootstrap := django.NewDjangoBootstrap(opts)
 
-	if !django.SupportsFreshInstall() {
+	if !djangoBootstrap.SupportsFreshInstall() {
 		t.Error("expected Django to support fresh install")
 	}
-	if !django.SupportsClone() {
+	if !djangoBootstrap.SupportsClone() {
 		t.Error("expected Django to support clone")
 	}
 }
@@ -154,7 +158,7 @@ export default defineConfig({
 		t.Fatalf("write astro config: %v", err)
 	}
 
-	if err := bootstrap.PatchEmdashAstroConfigForTest(projectDir); err != nil {
+	if err := emdash.PatchEmdashAstroConfigForTest(projectDir); err != nil {
 		t.Fatalf("patch astro config: %v", err)
 	}
 
@@ -180,7 +184,7 @@ export default defineConfig({
 func TestWriteEmdashPasskeyShimCreatesGovardOverride(t *testing.T) {
 	projectDir := t.TempDir()
 
-	if err := bootstrap.WriteEmdashPasskeyShimForTest(projectDir); err != nil {
+	if err := emdash.WriteEmdashPasskeyShimForTest(projectDir); err != nil {
 		t.Fatalf("write passkey shim: %v", err)
 	}
 

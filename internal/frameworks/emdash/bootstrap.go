@@ -1,4 +1,4 @@
-package bootstrap
+package emdash
 
 import (
 	"archive/tar"
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"io"
 	"net/http"
 	"os"
@@ -23,10 +24,10 @@ const (
 )
 
 type EmdashBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewEmdashBootstrap(opts Options) *EmdashBootstrap {
+func NewEmdashBootstrap(opts bootstrap.Options) *EmdashBootstrap {
 	return &EmdashBootstrap{Options: opts}
 }
 
@@ -51,7 +52,7 @@ func (e *EmdashBootstrap) FreshCommands() []string {
 func (e *EmdashBootstrap) CreateProject(projectDir string) error {
 	pterm.Info.Println("Creating fresh Emdash project...")
 
-	if err := removeProjectContents(projectDir); err != nil {
+	if err := bootstrap.RemoveProjectContents(projectDir); err != nil {
 		return err
 	}
 	if err := downloadAndExtractStarterTemplate(projectDir); err != nil {

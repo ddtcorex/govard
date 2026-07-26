@@ -8,24 +8,28 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("openmage")
-	manifest, _ := engine.GetFrameworkManifestConfig("openmage")
 	return types.FrameworkDefinition{
 		Name:        "openmage",
 		DisplayName: "OpenMage",
 		Config:      config,
 		Manifest:    manifest,
-		// Detect is intentionally the zero value: openmage has no
-		// composer-package or file-path heuristic of its own today (see
-		// magento1's Detect comment) - preserving current behavior exactly.
+		// Detect is intentionally the zero value - OpenMage has no
+		// detection heuristic of its own. A project using
+		// openmage/magento-lts is auto-detected as "magento1", not
+		// "openmage" (see internal/frameworks/magento1/magento1.go's
+		// Detect.ComposerPackages comment). Pre-existing behavior,
+		// unchanged by this migration.
 		Detect: engine.DetectionSpec{},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewOpenMageBootstrap(opts)
+			return NewOpenMageBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.Magento1Manager{}
 		},
-		SupportsBootstrap:    true,
-		SupportsFreshInstall: true,
+		FreshInstall:            freshInstall,
+		FreshInstallNeedsDB:     true,
+		FreshInstallNeedsDomain: true,
+		SupportsBootstrap:       true,
+		SupportsFreshInstall:    true,
 	}
 }

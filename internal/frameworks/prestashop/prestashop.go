@@ -7,8 +7,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("prestashop")
-	manifest, _ := engine.GetFrameworkManifestConfig("prestashop")
 	return types.FrameworkDefinition{
 		Name:        "prestashop",
 		DisplayName: "PrestaShop",
@@ -18,7 +16,7 @@ func Definition() types.FrameworkDefinition {
 			FilePaths: []string{"config/defines.inc.php"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewPrestaShopBootstrap(opts)
+			return NewPrestaShopBootstrap(opts)
 		},
 		SupportsBootstrap: true,
 	}

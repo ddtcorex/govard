@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/prestashop"
 )
 
 func TestBootstrapPkgPrestaShopFreshInstallUnsupported(t *testing.T) {
-	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{})
+	prestashop := prestashop.NewPrestaShopBootstrap(bootstrap.Options{})
 
 	if prestashop.SupportsFreshInstall() {
 		t.Fatal("expected PrestaShop fresh install to remain unsupported")
@@ -26,7 +27,7 @@ func TestBootstrapPkgPrestaShopFreshInstallUnsupported(t *testing.T) {
 
 func TestBootstrapPkgPrestaShopPostCloneGeneratesParametersFile(t *testing.T) {
 	projectDir := t.TempDir()
-	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{
+	prestashop := prestashop.NewPrestaShopBootstrap(bootstrap.Options{
 		DBHost:      "db",
 		DBUser:      "shopuser",
 		DBPass:      "shoppass",
@@ -64,7 +65,7 @@ func TestBootstrapPkgPrestaShopPostCloneGeneratesParametersFile(t *testing.T) {
 
 func TestBootstrapPkgPrestaShopPostCloneReusesRemoteSecretsWhenProvided(t *testing.T) {
 	projectDir := t.TempDir()
-	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{
+	prestashop := prestashop.NewPrestaShopBootstrap(bootstrap.Options{
 		DBHost:                 "db",
 		DBUser:                 "shopuser",
 		DBPass:                 "shoppass",
@@ -125,7 +126,7 @@ return array (
 		t.Fatalf("write parameters.php: %v", err)
 	}
 
-	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{
+	prestashop := prestashop.NewPrestaShopBootstrap(bootstrap.Options{
 		DBHost:      "db",
 		DBUser:      "localuser",
 		DBPass:      "localpass",
@@ -158,7 +159,7 @@ return array (
 }
 
 func TestBuildPrestaShopShopURLSQL(t *testing.T) {
-	sql := bootstrap.BuildPrestaShopShopURLSQLForTest("shop_", "castelas-sutunam.test")
+	sql := prestashop.BuildPrestaShopShopURLSQLForTest("shop_", "castelas-sutunam.test")
 
 	expected := "UPDATE shop_shop_url SET domain = 'castelas-sutunam.test', domain_ssl = 'castelas-sutunam.test' WHERE id_shop_url = 1; " +
 		"UPDATE shop_configuration SET value = 'castelas-sutunam.test' WHERE name IN ('PS_SHOP_DOMAIN', 'PS_SHOP_DOMAIN_SSL');"
@@ -168,7 +169,7 @@ func TestBuildPrestaShopShopURLSQL(t *testing.T) {
 }
 
 func TestBuildPrestaShopShopURLSQLEscapesQuotes(t *testing.T) {
-	sql := bootstrap.BuildPrestaShopShopURLSQLForTest("ps_", "o'brien.test")
+	sql := prestashop.BuildPrestaShopShopURLSQLForTest("ps_", "o'brien.test")
 
 	if !strings.Contains(sql, `domain = 'o\'brien.test'`) {
 		t.Fatalf("expected escaped domain in shop_url SQL, got:\n%s", sql)
@@ -179,7 +180,7 @@ func TestBuildPrestaShopShopURLSQLEscapesQuotes(t *testing.T) {
 }
 
 func TestBuildPrestaShopEnableSSLSQL(t *testing.T) {
-	sql := bootstrap.BuildPrestaShopEnableSSLSQLForTest("shop_")
+	sql := prestashop.BuildPrestaShopEnableSSLSQLForTest("shop_")
 
 	expected := "UPDATE shop_configuration SET value = 1 WHERE name IN ('PS_SSL_ENABLED', 'PS_SSL_ENABLED_EVERYWHERE');"
 	if sql != expected {
@@ -188,7 +189,7 @@ func TestBuildPrestaShopEnableSSLSQL(t *testing.T) {
 }
 
 func TestBuildPrestaShopMailSQL(t *testing.T) {
-	sql := bootstrap.BuildPrestaShopMailSQLForTest("shop_")
+	sql := prestashop.BuildPrestaShopMailSQLForTest("shop_")
 
 	expected := "UPDATE shop_configuration SET value = 'mail' WHERE name LIKE 'PS_MAIL_SERVER'; " +
 		"UPDATE shop_configuration SET value = '' WHERE name LIKE 'PS_MAIL_USER'; " +
@@ -203,7 +204,7 @@ func TestBootstrapPkgPrestaShopUpdateShopURLNoOpWithoutDomainOrProjectName(t *te
 
 	// No Domain and no ProjectName set: updateShopURL must no-op rather than attempt a
 	// real docker exec (which would fail/hang in a unit test with no running container).
-	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{
+	prestashop := prestashop.NewPrestaShopBootstrap(bootstrap.Options{
 		DBHost: "db",
 		DBUser: "shopuser",
 		DBPass: "shoppass",
@@ -220,7 +221,7 @@ func TestBootstrapPkgPrestaShopUpdateShopURLNoOpWithoutDomainOrProjectName(t *te
 
 func TestBootstrapPkgPrestaShopPostCloneCreatesWritableDirs(t *testing.T) {
 	projectDir := t.TempDir()
-	prestashop := bootstrap.NewPrestaShopBootstrap(bootstrap.Options{})
+	prestashop := prestashop.NewPrestaShopBootstrap(bootstrap.Options{})
 
 	if err := prestashop.PostClone(projectDir); err != nil {
 		t.Fatalf("PostClone() error = %v", err)

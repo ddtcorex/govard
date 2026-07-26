@@ -7,8 +7,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("django")
-	manifest, _ := engine.GetFrameworkManifestConfig("django")
 	return types.FrameworkDefinition{
 		Name:        "django",
 		DisplayName: "Django",
@@ -18,8 +16,9 @@ func Definition() types.FrameworkDefinition {
 			FilePaths: []string{"manage.py"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewDjangoBootstrap(opts)
+			return NewDjangoBootstrap(opts)
 		},
+		FreshInstall:         freshInstall,
 		SupportsFreshInstall: true,
 		SupportsBootstrap:    true,
 	}
