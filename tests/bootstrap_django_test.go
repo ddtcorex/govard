@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/django"
 )
 
 func TestDjangoBootstrapCapabilities(t *testing.T) {
-	b := bootstrap.NewDjangoBootstrap(bootstrap.Options{})
+	b := django.NewDjangoBootstrap(bootstrap.Options{})
 	if b.Name() != "django" {
 		t.Errorf("Name() = %q, want %q", b.Name(), "django")
 	}
@@ -23,7 +24,7 @@ func TestDjangoBootstrapCapabilities(t *testing.T) {
 }
 
 func TestDjangoBootstrapFreshCommandsNotEmpty(t *testing.T) {
-	b := bootstrap.NewDjangoBootstrap(bootstrap.Options{})
+	b := django.NewDjangoBootstrap(bootstrap.Options{})
 	if cmds := b.FreshCommands(); len(cmds) == 0 {
 		t.Error("expected FreshCommands() to be non-empty now that fresh-install is supported")
 	}
@@ -31,14 +32,14 @@ func TestDjangoBootstrapFreshCommandsNotEmpty(t *testing.T) {
 
 func TestDjangoBootstrapInstallUsesContainerExecRunner(t *testing.T) {
 	var gotContainer, gotScript string
-	restore := bootstrap.SetDjangoContainerExecRunnerForTest(func(containerName, script string) error {
+	restore := django.SetDjangoContainerExecRunnerForTest(func(containerName, script string) error {
 		gotContainer = containerName
 		gotScript = script
 		return nil
 	})
 	defer restore()
 
-	b := bootstrap.NewDjangoBootstrap(bootstrap.Options{ProjectName: "sample-project"})
+	b := django.NewDjangoBootstrap(bootstrap.Options{ProjectName: "sample-project"})
 	if err := b.Install(t.TempDir()); err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
@@ -53,7 +54,7 @@ func TestDjangoBootstrapInstallUsesContainerExecRunner(t *testing.T) {
 
 func TestWriteDjangoRequirementsPinnedVersion(t *testing.T) {
 	projectDir := t.TempDir()
-	if err := bootstrap.WriteDjangoRequirementsForTest(projectDir, "5.1"); err != nil {
+	if err := django.WriteDjangoRequirementsForTest(projectDir, "5.1"); err != nil {
 		t.Fatalf("WriteDjangoRequirementsForTest() error = %v", err)
 	}
 
@@ -69,7 +70,7 @@ func TestWriteDjangoRequirementsPinnedVersion(t *testing.T) {
 
 func TestWriteDjangoRequirementsUnpinnedVersion(t *testing.T) {
 	projectDir := t.TempDir()
-	if err := bootstrap.WriteDjangoRequirementsForTest(projectDir, ""); err != nil {
+	if err := django.WriteDjangoRequirementsForTest(projectDir, ""); err != nil {
 		t.Fatalf("WriteDjangoRequirementsForTest() error = %v", err)
 	}
 
@@ -107,7 +108,7 @@ DATABASES = {
 		t.Fatalf("write fixture settings.py: %v", err)
 	}
 
-	if err := bootstrap.PatchDjangoSettingsForPostgresForTest(settingsPath); err != nil {
+	if err := django.PatchDjangoSettingsForPostgresForTest(settingsPath); err != nil {
 		t.Fatalf("PatchDjangoSettingsForPostgresForTest() error = %v", err)
 	}
 
@@ -172,7 +173,7 @@ DATABASES = {
 		t.Fatalf("write fixture settings.py: %v", err)
 	}
 
-	if err := bootstrap.PatchDjangoSettingsForPostgresForTest(settingsPath); err != nil {
+	if err := django.PatchDjangoSettingsForPostgresForTest(settingsPath); err != nil {
 		t.Fatalf("PatchDjangoSettingsForPostgresForTest() error = %v", err)
 	}
 
@@ -246,7 +247,7 @@ DATABASES = {
 		t.Fatalf("write fixture settings.py: %v", err)
 	}
 
-	if err := bootstrap.PatchDjangoSettingsForPostgresForTest(settingsPath); err != nil {
+	if err := django.PatchDjangoSettingsForPostgresForTest(settingsPath); err != nil {
 		t.Fatalf("PatchDjangoSettingsForPostgresForTest() error = %v", err)
 	}
 
@@ -305,7 +306,7 @@ func TestPatchDjangoSettingsForPostgresErrorsWhenBlockMissing(t *testing.T) {
 		t.Fatalf("write fixture settings.py: %v", err)
 	}
 
-	err := bootstrap.PatchDjangoSettingsForPostgresForTest(settingsPath)
+	err := django.PatchDjangoSettingsForPostgresForTest(settingsPath)
 	if err == nil {
 		t.Fatal("expected error when default sqlite DATABASES block is not found")
 	}
@@ -318,7 +319,7 @@ func TestPatchDjangoSettingsForDomainRewritesAllowedHosts(t *testing.T) {
 		t.Fatalf("write fixture settings.py: %v", err)
 	}
 
-	if err := bootstrap.PatchDjangoSettingsForDomainForTest(settingsPath, "django.test"); err != nil {
+	if err := django.PatchDjangoSettingsForDomainForTest(settingsPath, "django.test"); err != nil {
 		t.Fatalf("PatchDjangoSettingsForDomainForTest() error = %v", err)
 	}
 
@@ -345,7 +346,7 @@ func TestPatchDjangoSettingsForDomainErrorsWhenDomainEmpty(t *testing.T) {
 		t.Fatalf("write fixture settings.py: %v", err)
 	}
 
-	if err := bootstrap.PatchDjangoSettingsForDomainForTest(settingsPath, ""); err == nil {
+	if err := django.PatchDjangoSettingsForDomainForTest(settingsPath, ""); err == nil {
 		t.Fatal("expected error when domain is empty")
 	}
 }
@@ -356,7 +357,7 @@ func TestPatchDjangoSettingsForDomainErrorsWhenLineMissing(t *testing.T) {
 		t.Fatalf("write fixture settings.py: %v", err)
 	}
 
-	if err := bootstrap.PatchDjangoSettingsForDomainForTest(settingsPath, "django.test"); err == nil {
+	if err := django.PatchDjangoSettingsForDomainForTest(settingsPath, "django.test"); err == nil {
 		t.Fatal("expected error when default ALLOWED_HOSTS line is not found")
 	}
 }

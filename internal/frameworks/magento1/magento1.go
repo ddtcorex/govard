@@ -8,8 +8,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("magento1")
-	manifest, _ := engine.GetFrameworkManifestConfig("magento1")
 	return types.FrameworkDefinition{
 		Name:        "magento1",
 		DisplayName: "Magento 1",
@@ -27,7 +25,7 @@ func Definition() types.FrameworkDefinition {
 			FilePaths:        []string{"app/Mage.php", "app/etc/local.xml"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewMagento1Bootstrap(opts)
+			return NewMagento1Bootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.Magento1Manager{}

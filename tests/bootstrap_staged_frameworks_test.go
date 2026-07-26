@@ -11,7 +11,9 @@ import (
 
 	"govard/internal/conventions"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/laravel"
+	"govard/internal/frameworks/nextjs"
 	"govard/internal/frameworks/shopware"
 	"govard/internal/frameworks/wordpress"
 )
@@ -71,13 +73,13 @@ func TestNextJSCreateProjectStagesIntoTemporaryDirectory(t *testing.T) {
 	}
 
 	var stageDir string
-	restore := bootstrap.SetNextJSStageProjectCreatorForTest(func(dir string) error {
+	restore := nextjs.SetNextJSStageProjectCreatorForTest(func(dir string) error {
 		stageDir = dir
 		return os.WriteFile(filepath.Join(dir, "package.json"), []byte("{\"name\":\"next-app\"}\n"), 0o644)
 	})
 	defer restore()
 
-	nextJSBootstrap := bootstrap.NewNextJSBootstrap(bootstrap.Options{})
+	nextJSBootstrap := nextjs.NewNextJSBootstrap(bootstrap.Options{})
 	if err := nextJSBootstrap.CreateProject(projectDir); err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
@@ -139,7 +141,7 @@ func TestNextJSCreateProjectWithRunnerStagesCreateNextApp(t *testing.T) {
 	}
 
 	var capturedCommand string
-	nextJSBootstrap := bootstrap.NewNextJSBootstrap(bootstrap.Options{
+	nextJSBootstrap := nextjs.NewNextJSBootstrap(bootstrap.Options{
 		Runner: func(command string) error {
 			capturedCommand = command
 			stageDir := extractStageHostDir(t, command)
@@ -314,7 +316,7 @@ func TestDjangoCreateProjectWithRunnerStagesStartProject(t *testing.T) {
 	}
 
 	var capturedCommand string
-	djangoBootstrap := bootstrap.NewDjangoBootstrap(bootstrap.Options{
+	djangoBootstrap := django.NewDjangoBootstrap(bootstrap.Options{
 		Version: "5.1",
 		Domain:  "sample.test",
 		Runner: func(command string) error {

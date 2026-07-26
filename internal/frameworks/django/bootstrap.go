@@ -1,24 +1,24 @@
-package bootstrap
+package django
 
 import (
 	"context"
 	"fmt"
+	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"govard/internal/conventions"
-
 	"github.com/pterm/pterm"
 )
 
 type DjangoBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewDjangoBootstrap(opts Options) *DjangoBootstrap {
+func NewDjangoBootstrap(opts bootstrap.Options) *DjangoBootstrap {
 	return &DjangoBootstrap{Options: opts}
 }
 
@@ -50,7 +50,7 @@ func (d *DjangoBootstrap) CreateProject(projectDir string) error {
 		return createDjangoProjectInStage(stageDir, djangoSpec)
 	}
 	runnerCommand := "pip install --no-cache-dir " + conventions.ShellQuote(djangoSpec) + ` && django-admin startproject config "$GOVARD_STAGE_DIR"`
-	if err := runStagedCreateProject(projectDir, d.Options.Runner, createInStage, runnerCommand, conventions.PythonWorkDir); err != nil {
+	if err := bootstrap.RunStagedCreateProject(projectDir, d.Options.Runner, createInStage, runnerCommand, conventions.PythonWorkDir); err != nil {
 		return fmt.Errorf("failed to create Django project: %w", err)
 	}
 

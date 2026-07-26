@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -31,14 +32,6 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 		return runBootstrapFreshInstall(cmd, config, opts)
 	case "magento1":
 		return fmt.Errorf("fresh install not supported for %s (use openmage instead)", config.Framework)
-	case "openmage":
-		return runBootstrapOpenMageFreshInstall(cmd, config, opts, cwd)
-	case "nextjs":
-		return runBootstrapNextJSFreshInstall(cmd, config, opts, cwd)
-	case "emdash":
-		return runBootstrapEmdashFreshInstall(cmd, config, opts, cwd)
-	case "django":
-		return runBootstrapDjangoFreshInstall(cmd, config, opts, cwd)
 	default:
 		return fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
 	}
@@ -51,8 +44,11 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 // the switch above.
 func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, def types.FrameworkDefinition, cwd string) error {
 	fwOpts := bootstrap.Options{
-		Version: opts.MetaVersion,
-		Env:     opts.Source,
+		Version:     opts.MetaVersion,
+		Env:         opts.Source,
+		SkipUp:      opts.SkipUp,
+		ProjectName: config.ProjectName,
+		TablePrefix: config.TablePrefix,
 		Runner: func(command string) error {
 			return runPHPContainerShellCommand(config, command)
 		},
@@ -73,140 +69,26 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 		ConfigureAuto: func() error {
 			return runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...)
 		},
+		NodeRunner: func(command string) error {
+			return runNodeCreateProjectContainer(config, cwd, command)
+		},
+		PythonRunner: func(command string) error {
+			return runPythonCreateProjectContainer(config, cwd, command)
+		},
+		EnvUp: func() error {
+			return runGovardSubcommand(cmd, "env", "up", "--remove-orphans")
+		},
 	}
 
 	if err := def.FreshInstall(fwOpts, cwd, helpers); err != nil {
+		if errors.Is(err, bootstrap.ErrFreshInstallSkipUp) {
+			return nil
+		}
 		return err
 	}
 
 	pterm.Success.Printf("Fresh %s bootstrap completed.\n", def.DisplayName)
 	return nil
-}
-
-func runBootstrapOpenMageFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
-	localDB := resolveLocalDBCredentials(config, containerName)
-
-	openmageOpts := bootstrap.Options{
-		Version:     opts.MetaVersion,
-		Env:         opts.Source,
-		TablePrefix: config.TablePrefix,
-		Runner: func(command string) error {
-			return runPHPContainerShellCommand(config, command)
-		},
-		DBHost:      conventions.DefaultDBHost,
-		DBUser:      localDB.Username,
-		DBPass:      localDB.Password,
-		DBName:      localDB.Database,
-		ProjectName: config.ProjectName,
-		Domain:      config.Domain,
-	}
-
-	openmageBootstrap := bootstrap.NewOpenMageBootstrap(openmageOpts)
-
-	if err := openmageBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if err := openmageBootstrap.Install(cwd); err != nil {
-		return err
-	}
-
-	if err := openmageBootstrap.Configure(cwd); err != nil {
-		return fmt.Errorf("configure OpenMage: %w", err)
-	}
-
-	pterm.Success.Println("Fresh OpenMage bootstrap completed.")
-	return nil
-}
-
-func runBootstrapNextJSFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	nextJSOpts := bootstrap.Options{
-		Version: opts.MetaVersion,
-		Env:     opts.Source,
-		Runner: func(command string) error {
-			return runNodeCreateProjectContainer(config, cwd, command)
-		},
-	}
-
-	nextJSBootstrap := bootstrap.NewNextJSBootstrap(nextJSOpts)
-
-	if err := nextJSBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if err := nextJSBootstrap.Configure(cwd); err != nil {
-		return err
-	}
-
-	pterm.Success.Println("Fresh Next.js bootstrap completed.")
-	return nil
-}
-
-func runBootstrapEmdashFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	emdashOpts := bootstrap.Options{
-		Version: opts.MetaVersion,
-		Env:     opts.Source,
-	}
-
-	emdashBootstrap := bootstrap.NewEmdashBootstrap(emdashOpts)
-
-	if err := emdashBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if err := emdashBootstrap.Install(cwd); err != nil {
-		return err
-	}
-
-	if err := emdashBootstrap.Configure(cwd); err != nil {
-		return err
-	}
-
-	pterm.Success.Println("Fresh Emdash bootstrap completed.")
-	return nil
-}
-
-func runBootstrapDjangoFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, cwd string) error {
-	djangoOpts := bootstrap.Options{
-		Version:     opts.MetaVersion,
-		Env:         opts.Source,
-		ProjectName: config.ProjectName,
-		Domain:      config.Domain,
-		Runner: func(command string) error {
-			return runPythonCreateProjectContainer(config, cwd, command)
-		},
-	}
-
-	djangoBootstrap := bootstrap.NewDjangoBootstrap(djangoOpts)
-
-	if err := djangoBootstrap.CreateProject(cwd); err != nil {
-		return err
-	}
-
-	if opts.SkipUp {
-		pterm.Info.Println("Skipping env up and migrate (--no-up); run `govard env up` then `govard tool manage migrate` manually.")
-		return nil
-	}
-
-	if err := runGovardSubcommand(cmd, "env", "up", "--remove-orphans"); err != nil {
-		return fmt.Errorf("failed to start local environment: %w", err)
-	}
-
-	if err := djangoBootstrap.Install(cwd); err != nil {
-		return err
-	}
-
-	pterm.Success.Println("Fresh Django bootstrap completed.")
-	return nil
-}
-
-// RunBootstrapDjangoFreshInstallForTest exposes runBootstrapDjangoFreshInstall
-// for tests in /tests, since it needs opts.SkipUp which
-// RunBootstrapFrameworkFreshInstallForTest doesn't forward.
-func RunBootstrapDjangoFreshInstallForTest(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
-	cwd, _ := os.Getwd()
-	return runBootstrapDjangoFreshInstall(cmd, config, opts, cwd)
 }
 
 func runBootstrapFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
@@ -302,6 +184,17 @@ func RunBootstrapFrameworkFreshInstallForTest(cmd *cobra.Command, config engine.
 		Source:      strings.TrimSpace(source),
 		MetaVersion: strings.TrimSpace(metaVersion),
 	})
+}
+
+// RunBootstrapFrameworkFreshInstallWithOptionsForTest exposes
+// runBootstrapFrameworkFreshInstall for tests in /tests that need to set
+// fields RunBootstrapFrameworkFreshInstallForTest doesn't forward (e.g.
+// SkipUp) - added when Django moved off its own dedicated
+// runBootstrapDjangoFreshInstall function onto the registry FreshInstall
+// path, since RunBootstrapDjangoFreshInstallForTest (which used to serve
+// this purpose) no longer has any Django-specific function left to wrap.
+func RunBootstrapFrameworkFreshInstallWithOptionsForTest(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
+	return runBootstrapFrameworkFreshInstall(cmd, config, opts)
 }
 
 // frameworkFreshInstallManagesOwnEnvUp reports whether the framework's

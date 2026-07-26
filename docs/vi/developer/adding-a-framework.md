@@ -46,8 +46,8 @@ Mọi nơi đọc dữ liệu framework theo tên — allowlist của `govard bo
 
 Có 2 phần vẫn là switch theo tên framework, một cách có chủ đích, không phải do bỏ sót:
 
-1. **`internal/cmd/bootstrap_fresh_install.go` / `bootstrap_remote.go`** — phần *orchestration* thực sự của fresh-install/clone (lệnh shell nào chạy, theo thứ tự nào, điền field nào của `bootstrap.Options`). Symfony, Laravel, Drupal, WordPress, Shopware, và CakePHP mỗi framework đều tự có field `FreshInstall` trên `Definition()` của mình trong registry (`internal/frameworks/<name>/freshinstall.go`), delegate sang helper chung `bootstrap.GenericFreshInstall` cho chuỗi `CreateProject → Install → govard config auto`, nên `runBootstrapFrameworkFreshInstall` dispatch tới chúng mà không cần case riêng — nhưng OpenMage, Next.js, Emdash, Django, và nhóm Magento mỗi cái làm khác nhau về bản chất (git clone và `composer create-project` và tải HTTP; tạo admin user; sinh `.env`; sample data), không chỉ là "gọi constructor khác," nên chúng vẫn cần một `case` trong switch của hàm đó. Không thể data-hóa việc này nếu không ép các framework vào một khuôn không hợp, hoặc tái cấu trúc quan hệ phụ thuộc giữa `internal/cmd` và `internal/frameworks`. Xem mục "Orchestration fresh-install" bên dưới để biết framework mới cần gì ở đây.
-2. **`engine.GetFrameworkConfig` / `engine.GetFrameworkManifestConfig`** (`internal/engine/framework_config.go`, `internal/engine/framework_manifest.json`) — dữ liệu mặc định phiên bản PHP/Node/DB thực sự. Field `Config`/`Manifest` của registry chỉ là đọc-lại (read-through) từ đây — `internal/engine` vẫn là nguồn dữ liệu gốc; `internal/frameworks` chỉ gộp nó vào 1 struct/framework cùng với detection và dispatch.
+1. **`internal/cmd/bootstrap_remote.go`** (orchestration cho clone workflow) và, chỉ còn với một nhóm framework, **`internal/cmd/bootstrap_fresh_install.go`** (orchestration cho fresh-install). Mọi framework trừ Magento 2/Mage-OS/Magento 1 giờ đều tự có field `FreshInstall` trên `Definition()` của mình trong registry (`internal/frameworks/<name>/freshinstall.go`) — phần lớn (Symfony, Laravel, Drupal, WordPress, Shopware, CakePHP) delegate sang helper chung `bootstrap.GenericFreshInstall` cho chuỗi `CreateProject → Install → govard config auto`, còn một số ít (OpenMage, Next.js, Emdash, Django) tự viết trình tự riêng ngay trong `freshinstall.go` của mình (thứ tự bước khác, không gọi `Install()`, override `Options.Runner`, v.v.) — dù theo cách nào, `runBootstrapFrameworkFreshInstall` cũng dispatch tới chúng mà không cần case riêng. Magento 2 và Mage-OS chưa bao giờ implement interface `FrameworkBootstrap`, và fresh install của Magento 1 vốn không được hỗ trợ theo thiết kế (`CreateProject` chỉ trả lỗi bảo người dùng dùng `--clone`), nên ba framework này vẫn giữ `case` riêng trong switch của hàm đó. PrestaShop cũng không có `FreshInstall` (fresh install cũng không được hỗ trợ), nhưng vì nó chưa từng có case trong switch từ trước, nên không có gì để xóa.
+2. **Magento 2, Mage-OS, và `custom`** là những entry cuối cùng còn nằm ở dạng dữ liệu tĩnh trong map `FrameworkConfigs` của `internal/engine/framework_config.go` và object `"frameworks"` của `internal/engine/framework_manifest.json`. `Config`/`Manifest` của mọi framework khác giờ nằm ngay trong package `internal/frameworks/<name>/` của chính nó, dưới dạng literal `config.go`/`manifest.go`, được đẩy vào `engine.FrameworkConfigs`/manifest store lúc registration qua `engine.RegisterFrameworkConfig`/`RegisterFrameworkManifest` (được gọi từ `frameworks.Register`, và hàm này lại được gọi từ code init sinh tự động trong `internal/frameworks/all_generated.go`) — `engine.GetFrameworkConfig`/`GetFrameworkManifestConfig` vẫn tồn tại như phía đọc của map/store đó, chỉ không còn là nơi framework mới thêm dữ liệu vào nữa.
 
 ---
 
@@ -55,25 +55,35 @@ Có 2 phần vẫn là switch theo tên framework, một cách có chủ đích,
 
 Giả sử bạn đang thêm một framework hư cấu tên `whimsy`. Mỗi bước dưới đây đều có một ví dụ thật, đang chạy trong codebase — các đường dẫn file trỏ tới ví dụ gần giống nhất để copy.
 
-### 1. Cấu hình runtime mặc định — `internal/engine/framework_config.go`
+### 1. Cấu hình runtime mặc định — `internal/frameworks/whimsy/config.go`
 
-Thêm một entry `FrameworkConfig` (phiên bản PHP/Node, nginx template, engine/phiên bản DB, danh sách includes). Copy theo framework gần giống nhất — vd `"cakephp"` cho stack PHP+MariaDB thông thường, `"nextjs"` cho stack chỉ Node không DB.
+Tạo file `config.go` với một biến cấp package `var config = engine.FrameworkConfig{...}` (phiên bản PHP/Node, nginx template, engine/phiên bản DB, danh sách includes). Copy theo framework gần giống nhất — vd `internal/frameworks/cakephp/config.go` cho stack PHP+MariaDB thông thường, `internal/frameworks/nextjs/config.go` cho stack chỉ Node không DB.
 
-### 2. Dữ liệu manifest — `internal/engine/framework_manifest.json`
+### 2. Dữ liệu manifest — `internal/frameworks/whimsy/manifest.go`
 
-Thêm entry dưới `frameworks.whimsy`: exclude khi sync (đường dẫn `local_media`/`remote_media`, web-root candidates), bảng DB nhạy cảm/bỏ qua, và khối `features`:
+Tạo file `manifest.go` với một biến cấp package `var manifest = engine.FrameworkManifestConfig{...}`: exclude khi sync (`Paths.LocalMedia`/`RemoteMedia`, `WebRootCandidates`), bảng DB nhạy cảm/bỏ qua, và khối `Features`:
 
-```json
-"whimsy": {
-  "paths": { "local_media": "public/uploads", "remote_media": "public/uploads", "web_root_candidates": [] },
-  "features": {
-    "requires_running_env_for_fresh_install": false,
-    "supports_post_clone": true
-  }
+```go
+package whimsy
+
+import "govard/internal/engine"
+
+var manifest = engine.FrameworkManifestConfig{
+    Ignored:   []string{},
+    Sensitive: []string{},
+    Paths: engine.FrameworkPathConfig{
+        LocalMedia:        "public/uploads",
+        RemoteMedia:       "public/uploads",
+        WebRootCandidates: []engine.FrameworkWebRootCandidate{},
+    },
+    Features: engine.FrameworkFeatureConfig{
+        RequiresRunningEnvForFreshInstall: false,
+        SupportsPostClone:                 true,
+    },
 }
 ```
 
-`requires_running_env_for_fresh_install` quyết định `govard bootstrap --fresh` khởi động container *trước* hay *sau* khi chạy `CreateProject` — xem mục "gotcha" bên dưới về vấn đề này trước khi đặt nó `true`.
+Copy theo framework gần giống nhất — vd `internal/frameworks/cakephp/manifest.go` hoặc `internal/frameworks/django/manifest.go`. `RequiresRunningEnvForFreshInstall` quyết định `govard bootstrap --fresh` khởi động container *trước* hay *sau* khi chạy `CreateProject` — xem mục "gotcha" bên dưới về vấn đề này trước khi đặt nó `true`.
 
 ### 3. Blueprint compose — `internal/blueprints/files/whimsy/`
 
@@ -96,7 +106,7 @@ type FrameworkBootstrap interface {
 }
 ```
 
-Copy `internal/engine/bootstrap/cakephp.go` cho framework PHP dùng chung helper `runStagedCreateProject` (`internal/engine/bootstrap/staged_project.go`), hoặc `internal/engine/bootstrap/emdash.go` cho framework mà `CreateProject` không cần container nào cả (chỉ tải HTTP thuần).
+Copy `internal/frameworks/cakephp/bootstrap.go` cho framework PHP dùng chung helper `bootstrap.RunStagedCreateProject` (`internal/engine/bootstrap/staged_project.go`), hoặc `internal/frameworks/emdash/bootstrap.go` cho framework mà `CreateProject` không cần container nào cả (chỉ tải HTTP thuần).
 
 **Nếu framework cần chạy một CLI tool (`npx`, `composer`, v.v.) để scaffold dự án, nó phải chạy bên trong container — không bao giờ được giả định là công cụ đã có sẵn trên host.** Xem mục "gotcha" về container execution bên dưới; đây là bài học quan trọng nhất rút ra từ lịch sử hệ thống này.
 
@@ -112,8 +122,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-    config, _ := engine.GetFrameworkConfig("whimsy")
-    manifest, _ := engine.GetFrameworkManifestConfig("whimsy")
     return types.FrameworkDefinition{
         Name:        "whimsy",
         DisplayName: "Whimsy",
@@ -123,7 +131,7 @@ func Definition() types.FrameworkDefinition {
             ComposerPackages: []string{"whimsy/framework"}, // hoặc PackageJSONDeps, AuthJSONHosts, FilePaths
         },
         Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-            return bootstrap.NewWhimsyBootstrap(opts)
+            return NewWhimsyBootstrap(opts)
         },
         SupportsFreshInstall: true,
         SupportsBootstrap:    true, // chỉ nếu nó cũng hỗ trợ quy trình remote/clone
@@ -131,7 +139,7 @@ func Definition() types.FrameworkDefinition {
 }
 ```
 
-Chỉ đặt `BaseURLManager` nếu framework cần rewrite base-URL riêng cho `govard tunnel` (đa số không cần — `tunnel.NoopManager` mặc định là no-op, đúng cho bất kỳ framework nào không tự lưu base URL trong database hay file config).
+`config` và `manifest` chính là 2 biến cấp package từ bước 1 và 2 — không cần lookup theo tên, vì `Definition()` nằm cùng package với nơi khai báo chúng. `NewWhimsyBootstrap` là constructor cục bộ từ `bootstrap.go` ở bước 4 (không có tiền tố `bootstrap.` — bộ bootstrapper giờ nằm ngay trong package `whimsy`, không phải `internal/engine/bootstrap`). Chỉ đặt `BaseURLManager` nếu framework cần rewrite base-URL riêng cho `govard tunnel` (đa số không cần — `tunnel.NoopManager` mặc định là no-op, đúng cho bất kỳ framework nào không tự lưu base URL trong database hay file config).
 
 ### 6. Đăng ký — không cần sửa gì
 
@@ -144,7 +152,7 @@ Việc đăng ký được sinh tự động, không còn duy trì thủ công: 
 Đây là phần vẫn là switch (xem "Những gì chưa nằm trên registry" ở trên):
 
 - Nếu `whimsy` khớp khuôn chung `CreateProject → Install → govard config auto`, thêm file `internal/frameworks/whimsy/freshinstall.go` với một hàm `freshInstall` chỉ đơn giản delegate sang `bootstrap.GenericFreshInstall(NewWhimsyBootstrap(opts), projectDir, helpers)` — copy theo `internal/frameworks/cakephp/freshinstall.go` — rồi gắn vào qua field `FreshInstall` (cùng `FreshInstallNeedsDB`/`FreshInstallNeedsDomain`) trên `Definition()`. `runBootstrapFrameworkFreshInstall` sẽ tự nhận, không cần sửa switch nào.
-- Nếu cần các bước riêng, viết orchestration đó ngay trong `internal/frameworks/whimsy/freshinstall.go` (vẫn gắn vào theo đúng cách qua field `FreshInstall` của `Definition()`) — hoặc, nếu thực sự không thể đặt trong package của framework, thêm `case "whimsy":` vào switch của `runBootstrapFrameworkFreshInstall` gọi một hàm mới `runBootstrapWhimsyFreshInstall`; copy `runBootstrapOpenMageFreshInstall` hoặc `runBootstrapNextJSFreshInstall` làm khung ban đầu.
+- Nếu cần các bước riêng, viết orchestration đó ngay trong `internal/frameworks/whimsy/freshinstall.go` — vẫn gắn vào theo đúng cách qua field `FreshInstall` của `Definition()`, chỉ là không delegate sang `bootstrap.GenericFreshInstall`; copy `internal/frameworks/openmage/freshinstall.go` hoặc `internal/frameworks/django/freshinstall.go` làm khung ban đầu (file của Django cho thấy cách override `Options.Runner` thành một runner `CmdHelpers` không phải PHP, và cách dùng `Options.SkipUp`/`bootstrap.ErrFreshInstallSkipUp`). Chỉ nên quay lại dùng `case "whimsy":` trong switch của `runBootstrapFrameworkFreshInstall` nếu orchestration đó thực sự không thể diễn đạt được bằng một hàm `FreshInstall` — mọi framework trừ nhóm Magento 2/Mage-OS/Magento 1 đến nay đều tránh được việc này.
 - Nếu nó hỗ trợ quy trình remote/clone (`SupportsBootstrap: true`, không chỉ fresh-install), nó tự động được `bootstrap_remote.go`'s post-clone dispatch (`bootstrapPostCloneDefinition`) nhận diện — không cần sửa switch nào ở đó trừ khi nó thuộc nhóm Magento (được xử lý ở một nhánh riêng, sớm hơn, dựa trên `engine.IsMagento2Family`).
 
 ### 8. Docs

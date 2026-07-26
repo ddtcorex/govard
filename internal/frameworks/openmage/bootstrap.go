@@ -1,8 +1,9 @@
-package bootstrap
+package openmage
 
 import (
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,10 +12,10 @@ import (
 )
 
 type OpenMageBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewOpenMageBootstrap(opts Options) *OpenMageBootstrap {
+func NewOpenMageBootstrap(opts bootstrap.Options) *OpenMageBootstrap {
 	return &OpenMageBootstrap{Options: opts}
 }
 
@@ -46,10 +47,10 @@ func (o *OpenMageBootstrap) CreateProject(projectDir string) error {
 	}
 
 	createInStage := func(stageDir string) error {
-		return runComposerProjectCommand(projectDir, nil, "create-project", packageName, stageDir, "--no-interaction")
+		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", packageName, stageDir, "--no-interaction")
 	}
 	runnerCommand := "composer create-project " + packageName + " \"$GOVARD_STAGE_DIR\" --no-interaction"
-	if err := runStagedCreateProject(projectDir, o.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
+	if err := bootstrap.RunStagedCreateProject(projectDir, o.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create OpenMage project: %w", err)
 	}
 
@@ -100,7 +101,7 @@ func (o *OpenMageBootstrap) runCLIInstall(projectDir string) error {
 	}
 
 	dbHost, dbUser, dbPass, dbName := o.resolveDBConfig()
-	if err := WaitForMySQLDatabase(projectDir, o.Options.Runner, dbHost, dbUser, dbPass, dbName); err != nil {
+	if err := bootstrap.WaitForMySQLDatabase(projectDir, o.Options.Runner, dbHost, dbUser, dbPass, dbName); err != nil {
 		return fmt.Errorf("database not reachable: %w", err)
 	}
 
@@ -134,7 +135,7 @@ func (o *OpenMageBootstrap) runCLIInstall(projectDir string) error {
 	}
 
 	pterm.Info.Println("Running OpenMage CLI installer...")
-	if err := runPHPProjectScript(projectDir, o.Options.Runner, installScript, args...); err != nil {
+	if err := bootstrap.RunPHPProjectScript(projectDir, o.Options.Runner, installScript, args...); err != nil {
 		return fmt.Errorf("install.php failed: %w", err)
 	}
 
@@ -212,11 +213,11 @@ func (o *OpenMageBootstrap) CreateAdmin(projectDir string) error {
 	containerName := fmt.Sprintf("%s%s", o.Options.ProjectName, conventions.DBSuffix)
 
 	pterm.Info.Println("Creating OpenMage admin user...")
-	return RunMagento1AdminUserSQL(containerName, o.Options.DBUser, o.Options.DBPass, o.Options.DBName, strings.TrimSpace(o.Options.TablePrefix), adminEmail)
+	return bootstrap.RunMagento1AdminUserSQL(containerName, o.Options.DBUser, o.Options.DBPass, o.Options.DBName, strings.TrimSpace(o.Options.TablePrefix), adminEmail)
 }
 
 func (o *OpenMageBootstrap) createLocalXml(projectDir string) error {
-	cryptKey, err := generateMagento1CryptKey()
+	cryptKey, err := bootstrap.GenerateMagento1CryptKey()
 	if err != nil {
 		return fmt.Errorf("failed to generate crypt key: %w", err)
 	}
@@ -281,5 +282,5 @@ func (o *OpenMageBootstrap) createLocalXml(projectDir string) error {
 }
 
 func (o *OpenMageBootstrap) runComposerCommand(projectDir string, args ...string) error {
-	return runComposerProjectCommand(projectDir, o.Options.Runner, args...)
+	return bootstrap.RunComposerProjectCommand(projectDir, o.Options.Runner, args...)
 }

@@ -1,8 +1,9 @@
-package bootstrap
+package nextjs
 
 import (
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/engine/bootstrap"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,10 +15,10 @@ import (
 var nextJSStageProjectCreator = createNextJSProjectInStage
 
 type NextJSBootstrap struct {
-	Options Options
+	Options bootstrap.Options
 }
 
-func NewNextJSBootstrap(opts Options) *NextJSBootstrap {
+func NewNextJSBootstrap(opts bootstrap.Options) *NextJSBootstrap {
 	return &NextJSBootstrap{Options: opts}
 }
 
@@ -47,7 +48,7 @@ func (n *NextJSBootstrap) CreateProject(projectDir string) error {
 		"--typescript", "--tailwind", "--eslint", "--app", "--no-src-dir",
 		"--import-alias", "'@/*'", "--use-npm", "--yes",
 	}, " ")
-	if err := runStagedCreateProject(projectDir, n.Options.Runner, nextJSStageProjectCreator, runnerCommand, conventions.NodeWorkDir); err != nil {
+	if err := bootstrap.RunStagedCreateProject(projectDir, n.Options.Runner, nextJSStageProjectCreator, runnerCommand, conventions.NodeWorkDir); err != nil {
 		return fmt.Errorf("failed to create Next.js project: %w", err)
 	}
 

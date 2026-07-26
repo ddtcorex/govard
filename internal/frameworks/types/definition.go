@@ -14,12 +14,15 @@ type BootstrapFactory func(bootstrap.Options) bootstrap.FrameworkBootstrap
 
 // FrameworkDefinition is the single source of truth for one framework's
 // identity, runtime defaults, sync/manifest data, and dispatch (bootstrap,
-// base-URL rewriting, bootstrap-command support). Fields are added
-// incrementally as more scattered per-framework switches move onto this
-// registry; not every one has moved yet - e.g. fresh-install/clone
-// orchestration in internal/cmd/bootstrap_fresh_install.go and
-// bootstrap_remote.go stays a switch, since each framework's steps there
-// differ in kind, not just in which constructor to call.
+// base-URL rewriting, bootstrap-command support, fresh-install
+// orchestration). Fields are added incrementally as more scattered
+// per-framework switches move onto this registry; not every one has
+// moved yet - clone-workflow orchestration in
+// internal/cmd/bootstrap_remote.go stays a switch, and fresh-install for
+// the Magento family (magento2/mageos/magento1) stays a switch in
+// internal/cmd/bootstrap_fresh_install.go, since Magento 2/Mage-OS never
+// adopted the FrameworkBootstrap interface at all and Magento 1's fresh
+// install is unsupported by design.
 type FrameworkDefinition struct {
 	// Name is the canonical framework key, e.g. "magento2", "laravel".
 	Name string

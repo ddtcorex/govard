@@ -7,8 +7,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("nextjs")
-	manifest, _ := engine.GetFrameworkManifestConfig("nextjs")
 	return types.FrameworkDefinition{
 		Name:        "nextjs",
 		DisplayName: "Next.js",
@@ -18,8 +16,9 @@ func Definition() types.FrameworkDefinition {
 			PackageJSONDeps: []string{"next"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewNextJSBootstrap(opts)
+			return NewNextJSBootstrap(opts)
 		},
+		FreshInstall:         freshInstall,
 		SupportsFreshInstall: true,
 	}
 }

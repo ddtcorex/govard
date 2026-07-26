@@ -12,8 +12,14 @@ import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks/cakephp"
+	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/drupal"
+	"govard/internal/frameworks/emdash"
 	"govard/internal/frameworks/laravel"
+	"govard/internal/frameworks/magento1"
+	"govard/internal/frameworks/nextjs"
+	"govard/internal/frameworks/openmage"
+	"govard/internal/frameworks/prestashop"
 	"govard/internal/frameworks/shopware"
 	"govard/internal/frameworks/symfony"
 	"govard/internal/frameworks/wordpress"
@@ -183,9 +189,9 @@ func freshCommandsFor(framework string) []string {
 	case "mageos":
 		return bootstrap.MageOSFreshCommands(opts)
 	case "magento1":
-		return bootstrap.NewMagento1Bootstrap(opts).FreshCommands()
+		return magento1.NewMagento1Bootstrap(opts).FreshCommands()
 	case "openmage":
-		return bootstrap.NewOpenMageBootstrap(opts).FreshCommands()
+		return openmage.NewOpenMageBootstrap(opts).FreshCommands()
 	case "laravel":
 		return laravel.NewLaravelBootstrap(opts).FreshCommands()
 	case "symfony":
@@ -195,17 +201,17 @@ func freshCommandsFor(framework string) []string {
 	case "wordpress":
 		return wordpress.NewWordPressBootstrap(opts).FreshCommands()
 	case "nextjs":
-		return bootstrap.NewNextJSBootstrap(opts).FreshCommands()
+		return nextjs.NewNextJSBootstrap(opts).FreshCommands()
 	case "emdash":
-		return bootstrap.NewEmdashBootstrap(opts).FreshCommands()
+		return emdash.NewEmdashBootstrap(opts).FreshCommands()
 	case "shopware":
 		return shopware.NewShopwareBootstrap(opts).FreshCommands()
 	case "cakephp":
 		return cakephp.NewCakePHPBootstrap(opts).FreshCommands()
 	case "prestashop":
-		return bootstrap.NewPrestaShopBootstrap(opts).FreshCommands()
+		return prestashop.NewPrestaShopBootstrap(opts).FreshCommands()
 	case "django":
-		return bootstrap.NewDjangoBootstrap(opts).FreshCommands()
+		return django.NewDjangoBootstrap(opts).FreshCommands()
 	default:
 		return nil
 	}
