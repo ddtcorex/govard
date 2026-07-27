@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -28,8 +29,6 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 	}
 
 	switch config.Framework {
-	case "magento2", "mageos":
-		return runBootstrapFreshInstall(cmd, config, opts)
 	case "magento1":
 		return fmt.Errorf("fresh install not supported for %s (use openmage instead)", config.Framework)
 	default:
@@ -44,11 +43,14 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 // the switch above.
 func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, def types.FrameworkDefinition, cwd string) error {
 	fwOpts := bootstrap.Options{
-		Version:     opts.MetaVersion,
-		Env:         opts.Source,
-		SkipUp:      opts.SkipUp,
-		ProjectName: config.ProjectName,
-		TablePrefix: config.TablePrefix,
+		Version:       opts.MetaVersion,
+		Env:           opts.Source,
+		SkipUp:        opts.SkipUp,
+		ProjectName:   config.ProjectName,
+		TablePrefix:   config.TablePrefix,
+		MetaPackage:   opts.MetaPackage,
+		HyvaInstall:   opts.HyvaInstall,
+		IncludeSample: opts.IncludeSample,
 		Runner: func(command string) error {
 			return runPHPContainerShellCommand(config, command)
 		},
@@ -78,6 +80,24 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 		EnvUp: func() error {
 			return runGovardSubcommand(cmd, "env", "up", "--remove-orphans")
 		},
+		EnsureAuthJSON: func() error {
+			return ensureBootstrapAuthJSON(config, opts)
+		},
+		FixComposerCompatibility: func() error {
+			return FixComposerCompatibility(config)
+		},
+		RunHyvaInstall: func() error {
+			return runBootstrapHyvaInstall(cmd, opts)
+		},
+		ResolveMagentoTablePrefix: func() (string, error) {
+			return resolveBootstrapMagentoTablePrefix(config)
+		},
+		RunMagentoSetupInstall: func(args []string) error {
+			return runBootstrapMagentoSetupInstall(cmd, config, args)
+		},
+		RunMagentoSampleData: func() error {
+			return runBootstrapSampleData(cmd)
+		},
 	}
 
 	if err := def.FreshInstall(fwOpts, cwd, helpers); err != nil {
@@ -91,91 +111,30 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 	return nil
 }
 
-func runBootstrapFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
-	if err := ensureBootstrapAuthJSON(config, opts); err != nil {
-		return err
-	}
-
-	if err := FixComposerCompatibility(config); err != nil {
-		return err
-	}
-
-	if config.Framework == "wordpress" {
-		if err := FixWordPressCompatibility(config); err != nil {
-			return err
+// runBootstrapMagentoSetupInstall runs `bin/magento setup:install` with the
+// given args, first applying a best-effort Elasticsearch/OpenSearch
+// read-only-allow-delete unblock if the PHP container is already running.
+// Moved from the tail of runBootstrapPostInstall (internal/cmd/
+// bootstrap_post_install.go) - the "build the args" half of that function
+// is now bootstrap.BuildMagentoSetupInstallArgs
+// (internal/engine/bootstrap/magento_family.go), called by the Magento
+// family's shared freshInstall before this function ever runs.
+func runBootstrapMagentoSetupInstall(cmd *cobra.Command, config engine.Config, args []string) error {
+	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)
+	if engine.IsContainerRunning(context.Background(), containerName) {
+		esFixCmd := []string{
+			"exec", "-T", "php", "sh", "-c",
+			"curl -s -X PUT 'http://elasticsearch:9200/_all/_settings' -H 'Content-Type: application/json' -d'{\"index.blocks.read_only_allow_delete\": null}' > /dev/null 2>&1 || true",
+		}
+		if err := runGovardSubcommand(cmd, append([]string{"env"}, esFixCmd...)...); err != nil {
+			pterm.Warning.Printf("Failed to apply Elasticsearch block fix: %v\n", err)
 		}
 	}
 
-	if err := runBootstrapFreshCreateProject(cmd, config, opts); err != nil {
-		return err
-	}
-	if opts.HyvaInstall {
-		if err := runBootstrapHyvaInstall(cmd, opts); err != nil {
-			return err
-		}
-	}
-
-	if err := runBootstrapPostInstall(cmd, config, opts); err != nil {
-		return err
-	}
-	if err := runGovardSubcommand(cmd, govardConfigureSubcommandArgs()...); err != nil {
-		return fmt.Errorf("framework configuration failed: %w", err)
-	}
-	if opts.IncludeSample {
-		if err := runBootstrapSampleData(cmd); err != nil {
-			return err
-		}
-	}
-
-	pterm.Success.Printf("Fresh %s bootstrap completed.\n", engine.Magento2FamilyDisplayName(config.Framework))
-	return nil
-}
-
-func runBootstrapFreshCreateProject(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
-	commandLine := bootstrapFreshCreateProjectCommandLine(config, opts.MetaPackage, opts.MetaVersion)
-
-	if err := runPHPContainerShellCommand(config, commandLine); err != nil {
-		return fmt.Errorf("fresh create-project failed: %w", err)
+	if err := runGovardSubcommand(cmd, govardMagentoSubcommandArgs(args...)...); err != nil {
+		return fmt.Errorf("magento setup:install failed: %w", err)
 	}
 	return nil
-}
-
-// bootstrapFreshCreateProjectCommandLine builds the shell command for a
-// fresh composer create-project, using Mage-OS's public repository for
-// framework "mageos" and Magento's private repository for everything else
-// (unchanged default behavior).
-func bootstrapFreshCreateProjectCommandLine(config engine.Config, metaPackage string, metaVersion string) string {
-	repositoryURL := "https://repo.magento.com"
-	if config.Framework == "mageos" {
-		repositoryURL = "https://repo.mage-os.org"
-	}
-
-	versionPart := ""
-	if metaVersion != "" {
-		versionPart = " " + engine.ShellQuote(metaVersion)
-	}
-	return strings.Join([]string{
-		"set -e",
-		"rm -rf /tmp/govard-create-project",
-		"composer create-project -n --ignore-platform-reqs --repository-url=" + repositoryURL + " " +
-			engine.ShellQuote(metaPackage) + " /tmp/govard-create-project" + versionPart,
-		"if command -v rsync >/dev/null 2>&1; then rsync -a /tmp/govard-create-project/ " + conventions.DefaultWorkDir + "/; else cp -a /tmp/govard-create-project/. " + conventions.DefaultWorkDir + "/; fi",
-		"rm -rf /tmp/govard-create-project",
-	}, " && ")
-}
-
-// RunBootstrapFreshCreateProjectForTest exposes runBootstrapFreshCreateProject for tests in /tests.
-func RunBootstrapFreshCreateProjectForTest(cmd *cobra.Command, config engine.Config, metaPackage, metaVersion string) error {
-	return runBootstrapFreshCreateProject(cmd, config, BootstrapRuntimeOptions{
-		MetaPackage: strings.TrimSpace(metaPackage),
-		MetaVersion: strings.TrimSpace(metaVersion),
-	})
-}
-
-// RunBootstrapFreshCreateProjectCommandLineForTest exposes
-// bootstrapFreshCreateProjectCommandLine for tests in /tests.
-func RunBootstrapFreshCreateProjectCommandLineForTest(config engine.Config, metaPackage string, metaVersion string) string {
-	return bootstrapFreshCreateProjectCommandLine(config, metaPackage, metaVersion)
 }
 
 // RunBootstrapFrameworkFreshInstallForTest exposes runBootstrapFrameworkFreshInstall for tests in /tests.
