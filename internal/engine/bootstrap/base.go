@@ -19,6 +19,18 @@ type Options struct {
 	// step entirely.
 	SkipUp bool
 
+	// MetaPackage is the composer meta-package to create-project from
+	// (e.g. "magento/project-community-edition" or, after the mageos
+	// swap in runBootstrapFrameworkFreshInstall,
+	// "mage-os/project-community-edition"). Only the Magento family's
+	// FreshInstall reads this - every other framework's create-project
+	// package name is a compile-time constant inside its own bootstrap.go.
+	MetaPackage string
+	// HyvaInstall/IncludeSample mirror the --hyva-install/--include-sample
+	// CLI flags. Only the Magento family's FreshInstall reads these.
+	HyvaInstall   bool
+	IncludeSample bool
+
 	// Database credentials for local configuration
 	DBHost      string
 	DBUser      string
@@ -65,6 +77,38 @@ type CmdHelpers struct {
 	// since its compose "web" container runs `python manage.py runserver`
 	// directly and can't come up against an empty/unmigrated project.
 	EnvUp func() error
+
+	// EnsureAuthJSON prompts for/writes repo.magento.com credentials if
+	// needed (internal/cmd's ensureBootstrapAuthJSON) - interactive and
+	// filesystem-touching, so it can't live in the framework package
+	// without importing internal/cmd. Only the Magento family's
+	// FreshInstall calls this.
+	EnsureAuthJSON func() error
+	// FixComposerCompatibility runs engine.FixComposerCompatibility for
+	// the current project. Only the Magento family's FreshInstall calls
+	// this today, but it's framework-agnostic in principle.
+	FixComposerCompatibility func() error
+	// RunHyvaInstall sets the Hyvä composer token/repo and requires the
+	// theme package (internal/cmd's runBootstrapHyvaInstall). Only called
+	// when Options.HyvaInstall is true.
+	RunHyvaInstall func() error
+	// ResolveMagentoTablePrefix resolves/validates the table prefix from
+	// config or the TABLE_PREFIX env var (internal/cmd's
+	// resolveBootstrapMagentoTablePrefix).
+	ResolveMagentoTablePrefix func() (string, error)
+	// RunMagentoSetupInstall applies a best-effort Elasticsearch/OpenSearch
+	// read-only-allow-delete fix (if the PHP container is already running)
+	// and then runs `govard tool magento` with the given setup:install
+	// args (internal/cmd's tail of runBootstrapPostInstall). The args
+	// themselves are built by the caller via
+	// bootstrap.BuildMagentoSetupInstallArgs (Task 2) - this closure only
+	// executes them, since running a govard subcommand needs the
+	// cmd-package-only *cobra.Command.
+	RunMagentoSetupInstall func(args []string) error
+	// RunMagentoSampleData runs sample:deploy/setup:upgrade/indexer:reindex/
+	// cache:flush (internal/cmd's runBootstrapSampleData). Only called
+	// when Options.IncludeSample is true.
+	RunMagentoSampleData func() error
 }
 
 // ErrFreshInstallSkipUp is returned by a framework's FreshInstall function

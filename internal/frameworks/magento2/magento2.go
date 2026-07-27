@@ -8,8 +8,6 @@ import (
 )
 
 func Definition() types.FrameworkDefinition {
-	config, _ := engine.GetFrameworkConfig("magento2")
-	manifest, _ := engine.GetFrameworkManifestConfig("magento2")
 	return types.FrameworkDefinition{
 		Name:        "magento2",
 		Aliases:     []string{"magento"},
@@ -26,7 +24,9 @@ func Definition() types.FrameworkDefinition {
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.Magento2Manager{}
 		},
-		SupportsBootstrap:    true,
-		SupportsFreshInstall: true,
+		FreshInstall:            freshInstall,
+		FreshInstallNeedsDomain: true,
+		SupportsBootstrap:       true,
+		SupportsFreshInstall:    true,
 	}
 }

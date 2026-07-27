@@ -87,11 +87,15 @@ func TestRegistryManifestMatchesEngine(t *testing.T) {
 // TestRegistryBootstrapMatchesGoldenSnapshot cross-checks the registry's
 // Bootstrap factory output against Plan 1's committed golden fixtures
 // (tests/testdata/framework_snapshots/<framework>/bootstrap_fresh_commands.json),
-// for every framework except magento2 and mageos (whose Bootstrap fields are
-// nil by design - see internal/frameworks/magento2/magento2.go and
-// internal/frameworks/mageos/mageos.go; mageos reuses magento2's bespoke
-// fresh-install orchestration rather than the bootstrap.FrameworkBootstrap
-// interface).
+// for every framework except magento2 and mageos. Their Bootstrap factory
+// (bootstrap.NewMagento2Bootstrap/NewMageOSBootstrap) is populated - not
+// nil - but its FreshCommands() is a summary string, not what
+// FreshInstall actually runs (see internal/engine/bootstrap/
+// magento_family.go and internal/frameworks/{magento2,mageos}/
+// freshinstall.go for the real orchestration); this skip predates that
+// distinction being real for any framework and applies to magento2/mageos
+// specifically because no other framework's registered FreshCommands()
+// diverges this much from its FreshInstall behavior.
 func TestRegistryBootstrapMatchesGoldenSnapshot(t *testing.T) {
 	goldenRoot := testDataDir(t)
 

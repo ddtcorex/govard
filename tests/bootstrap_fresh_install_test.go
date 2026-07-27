@@ -15,31 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestRunBootstrapFreshCreateProjectForTestBuildsExpectedCommand(t *testing.T) {
-	var gotCommandLine string
-	defer cmd.SetPHPContainerShellRunnerForTest(func(config engine.Config, commandLine string) error {
-		gotCommandLine = commandLine
-		return nil
-	})()
-
-	err := cmd.RunBootstrapFreshCreateProjectForTest(
-		&cobra.Command{},
-		engine.Config{ProjectName: "sample-project"},
-		"magento/project-community-edition",
-		"2.4.8",
-	)
-	if err != nil {
-		t.Fatalf("RunBootstrapFreshCreateProjectForTest() error = %v", err)
-	}
-
-	if !strings.Contains(gotCommandLine, "composer create-project -n --ignore-platform-reqs --repository-url=https://repo.magento.com 'magento/project-community-edition' /tmp/govard-create-project '2.4.8'") {
-		t.Fatalf("unexpected create-project command: %s", gotCommandLine)
-	}
-	if !strings.Contains(gotCommandLine, "rm -rf /tmp/govard-create-project") {
-		t.Fatalf("expected cleanup commands in shell line: %s", gotCommandLine)
-	}
-}
-
 func TestFrameworkFreshInstallManagesOwnEnvUpForTest(t *testing.T) {
 	cases := []struct {
 		framework string
@@ -372,6 +347,168 @@ func TestRunBootstrapFrameworkFreshInstallForTestSymfonyUsesRegistryFreshInstall
 	}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("subcommand calls = %#v, want %#v", calls, want)
+	}
+}
+
+// TestRunBootstrapFrameworkFreshInstallForTestMagento2UsesRegistryFreshInstall
+// exercises the actual registry dispatch path for Magento 2 end-to-end
+// (RunBootstrapFrameworkFreshInstallWithOptionsForTest ->
+// runBootstrapRegistryFreshInstall -> magento2.freshInstall ->
+// bootstrap.MagentoFamilyFreshInstall), rather than only unit-testing the
+// pure bootstrap.BuildMagentoFreshCreateProjectCommand/
+// BuildMagentoSetupInstallArgs builder functions in isolation
+// (tests/magento_family_fresh_install_test.go) - this is the test that
+// would catch a dispatcher wiring regression (e.g. magento2 silently
+// falling through to the wrong case, or losing FreshInstall/DisplayName).
+//
+// AssumeYes: true is required here (unlike every other framework's
+// dispatch test in this file) because the Magento family's FreshInstall
+// is the only one that calls helpers.EnsureAuthJSON ->
+// ensureBootstrapAuthJSON, which - without AssumeYes - falls into a real
+// pterm interactive prompt (Show()) asking whether to reuse
+// ~/.composer/auth.json. That prompt reads real stdin, which hangs a
+// `go test` run indefinitely (there is no keystroke coming) instead of
+// failing fast, so the test would appear to "pass" in CI (where stdin
+// isn't a TTY) yet hang forever for any developer running it locally with
+// a real terminal attached and a real auth.json on disk. AssumeYes
+// mirrors `govard bootstrap --fresh --yes` and makes
+// ensureBootstrapAuthJSON short-circuit to the non-interactive
+// "use global auth.json" (or, absent one, the warning-and-continue)
+// branch instead.
+func TestRunBootstrapFrameworkFreshInstallForTestMagento2UsesRegistryFreshInstall(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	var capturedCommands []string
+	defer cmd.SetPHPContainerShellRunnerForTest(func(config engine.Config, commandLine string) error {
+		capturedCommands = append(capturedCommands, commandLine)
+		return nil
+	})()
+
+	var calls [][]string
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		calls = append(calls, append([]string{}, args...))
+		return nil
+	})()
+
+	err := cmd.RunBootstrapFrameworkFreshInstallWithOptionsForTest(&cobra.Command{}, engine.Config{
+		ProjectName: "sample-project",
+		Framework:   "magento2",
+		Domain:      "sample.test",
+	}, cmd.BootstrapRuntimeOptions{
+		Source:      "dev",
+		MetaPackage: "magento/project-community-edition",
+		AssumeYes:   true,
+	})
+	if err != nil {
+		t.Fatalf("RunBootstrapFrameworkFreshInstallWithOptionsForTest() error = %v", err)
+	}
+
+	if len(capturedCommands) == 0 {
+		t.Fatal("expected at least one PHP container command to be run")
+	}
+	if !strings.Contains(capturedCommands[0], "https://repo.magento.com") {
+		t.Fatalf("expected magento2 create-project command to reference repo.magento.com, got: %s", capturedCommands[0])
+	}
+	if strings.Contains(capturedCommands[0], "repo.mage-os.org") {
+		t.Fatalf("expected magento2 create-project command to NOT reference repo.mage-os.org, got: %s", capturedCommands[0])
+	}
+
+	var setupInstallArgs []string
+	configuredAuto := false
+	for _, args := range calls {
+		joined := strings.Join(args, " ")
+		if strings.Contains(joined, "setup:install") {
+			setupInstallArgs = args
+		}
+		if joined == "config auto" {
+			configuredAuto = true
+		}
+	}
+	if len(setupInstallArgs) == 0 {
+		t.Fatalf("expected a magento setup:install subcommand, calls: %#v", calls)
+	}
+	joined := strings.Join(setupInstallArgs, " ")
+	if !strings.Contains(joined, "--db-name=magento") || !strings.Contains(joined, "--db-user=magento") || !strings.Contains(joined, "--db-password=magento") {
+		t.Fatalf("expected magento db credentials in setup args, got %q", joined)
+	}
+	if !strings.Contains(joined, "--admin-email=admin@sample.test") {
+		t.Fatalf("expected admin email derived from config.Domain in setup args, got %q", joined)
+	}
+	if !configuredAuto {
+		t.Fatalf("expected govard config auto to run, calls: %#v", calls)
+	}
+}
+
+// TestRunBootstrapFrameworkFreshInstallForTestMageOSUsesRegistryFreshInstall
+// is TestRunBootstrapFrameworkFreshInstallForTestMagento2UsesRegistryFreshInstall's
+// Mage-OS counterpart - both frameworks share
+// bootstrap.MagentoFamilyFreshInstall, but the review that flagged this gap
+// specifically called out that neither had end-to-end dispatch coverage,
+// and MageOSVariant's repository URL/DB credentials genuinely differ from
+// Magento2Variant's, so both are covered rather than assuming parity.
+func TestRunBootstrapFrameworkFreshInstallForTestMageOSUsesRegistryFreshInstall(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	var capturedCommands []string
+	defer cmd.SetPHPContainerShellRunnerForTest(func(config engine.Config, commandLine string) error {
+		capturedCommands = append(capturedCommands, commandLine)
+		return nil
+	})()
+
+	var calls [][]string
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		calls = append(calls, append([]string{}, args...))
+		return nil
+	})()
+
+	err := cmd.RunBootstrapFrameworkFreshInstallWithOptionsForTest(&cobra.Command{}, engine.Config{
+		ProjectName: "sample-project",
+		Framework:   "mageos",
+		Domain:      "sample.test",
+	}, cmd.BootstrapRuntimeOptions{
+		Source:      "dev",
+		MetaPackage: "mage-os/project-community-edition",
+		AssumeYes:   true,
+	})
+	if err != nil {
+		t.Fatalf("RunBootstrapFrameworkFreshInstallWithOptionsForTest() error = %v", err)
+	}
+
+	if len(capturedCommands) == 0 {
+		t.Fatal("expected at least one PHP container command to be run")
+	}
+	if !strings.Contains(capturedCommands[0], "https://repo.mage-os.org") {
+		t.Fatalf("expected mageos create-project command to reference repo.mage-os.org, got: %s", capturedCommands[0])
+	}
+	if strings.Contains(capturedCommands[0], "repo.magento.com") {
+		t.Fatalf("expected mageos create-project command to NOT reference repo.magento.com, got: %s", capturedCommands[0])
+	}
+
+	var setupInstallArgs []string
+	configuredAuto := false
+	for _, args := range calls {
+		joined := strings.Join(args, " ")
+		if strings.Contains(joined, "setup:install") {
+			setupInstallArgs = args
+		}
+		if joined == "config auto" {
+			configuredAuto = true
+		}
+	}
+	if len(setupInstallArgs) == 0 {
+		t.Fatalf("expected a magento setup:install subcommand, calls: %#v", calls)
+	}
+	joined := strings.Join(setupInstallArgs, " ")
+	if !strings.Contains(joined, "--db-name=mageos") || !strings.Contains(joined, "--db-user=mageos") || !strings.Contains(joined, "--db-password=mageos") {
+		t.Fatalf("expected mageos db credentials in setup args, got %q", joined)
+	}
+	if !strings.Contains(joined, "--admin-email=admin@sample.test") {
+		t.Fatalf("expected admin email derived from config.Domain in setup args, got %q", joined)
+	}
+	if !configuredAuto {
+		t.Fatalf("expected govard config auto to run, calls: %#v", calls)
 	}
 }
 

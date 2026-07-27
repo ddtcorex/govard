@@ -15,14 +15,13 @@ type BootstrapFactory func(bootstrap.Options) bootstrap.FrameworkBootstrap
 // FrameworkDefinition is the single source of truth for one framework's
 // identity, runtime defaults, sync/manifest data, and dispatch (bootstrap,
 // base-URL rewriting, bootstrap-command support, fresh-install
-// orchestration). Fields are added incrementally as more scattered
-// per-framework switches move onto this registry; not every one has
-// moved yet - clone-workflow orchestration in
-// internal/cmd/bootstrap_remote.go stays a switch, and fresh-install for
-// the Magento family (magento2/mageos/magento1) stays a switch in
-// internal/cmd/bootstrap_fresh_install.go, since Magento 2/Mage-OS never
-// adopted the FrameworkBootstrap interface at all and Magento 1's fresh
-// install is unsupported by design.
+// orchestration). Every registered framework now has FreshInstall
+// populated except Magento 1 (fresh install unsupported by design -
+// CreateProject just returns an error telling the user to use --clone)
+// and PrestaShop (fresh install never supported, no FreshInstall field at
+// all). Clone-workflow orchestration in internal/cmd/bootstrap_remote.go
+// remains a switch for every framework, not just these two - that's a
+// separate, still-open piece of this registry effort.
 type FrameworkDefinition struct {
 	// Name is the canonical framework key, e.g. "magento2", "laravel".
 	Name string
@@ -46,7 +45,7 @@ type FrameworkDefinition struct {
 	Detect engine.DetectionSpec
 
 	// Bootstrap builds this framework's fresh-install/clone bootstrapper.
-	// Populated for all 13 frameworks; frameworks.RunBootstrap uses it to
+	// Populated for all 14 frameworks; frameworks.RunBootstrap uses it to
 	// dispatch without a per-framework switch.
 	Bootstrap BootstrapFactory
 
