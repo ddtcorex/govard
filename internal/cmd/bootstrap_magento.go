@@ -17,10 +17,6 @@ import (
 )
 
 func ensureBootstrapMagentoEnvPHP(config engine.Config, opts BootstrapRuntimeOptions) error {
-	if !engine.IsMagento2Family(config.Framework) {
-		return nil
-	}
-
 	cwd, _ := os.Getwd()
 	envPath := filepath.Join(cwd, "app", "etc", "env.php")
 

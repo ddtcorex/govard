@@ -19,6 +19,12 @@ type Options struct {
 	// step entirely.
 	SkipUp bool
 
+	// AdminCreate mirrors the --no-admin CLI flag's inverse
+	// (BootstrapRuntimeOptions.AdminCreate in internal/cmd) - whether the
+	// clone-workflow's PostCloneHook should create an admin user. Only
+	// Magento 2/Mage-OS's PostCloneHook reads this today.
+	AdminCreate bool
+
 	// MetaPackage is the composer meta-package to create-project from
 	// (e.g. "magento/project-community-edition" or, after the mageos
 	// swap in runBootstrapFrameworkFreshInstall,
@@ -109,6 +115,24 @@ type CmdHelpers struct {
 	// cache:flush (internal/cmd's runBootstrapSampleData). Only called
 	// when Options.IncludeSample is true.
 	RunMagentoSampleData func() error
+
+	// EnsureMagentoEnvPHP generates app/etc/env.php if missing, probing
+	// the remote for a crypt key/table prefix to reuse where possible
+	// (internal/cmd's ensureBootstrapMagentoEnvPHP). Only the Magento
+	// family's PreConfigureHook calls this.
+	EnsureMagentoEnvPHP func() error
+	// RunMagentoAdminCreate creates the default Magento admin user via
+	// `govard tool magento admin:user:create`, best-effort - it never
+	// returns an error itself (internal/cmd's runBootstrapAdminCreate
+	// only warns on failure), so this closure always returns nil. Only
+	// the Magento family's PostCloneHook calls this, and only when
+	// Options.AdminCreate is true.
+	RunMagentoAdminCreate func() error
+	// RunMagentoReindex runs `govard tool magento indexer:reindex`
+	// (internal/cmd's runBootstrapMagentoReindex) - unlike
+	// RunMagentoAdminCreate, a failure here does propagate as a real
+	// error. Only the Magento family's PostCloneHook calls this.
+	RunMagentoReindex func() error
 }
 
 // ErrFreshInstallSkipUp is returned by a framework's FreshInstall function

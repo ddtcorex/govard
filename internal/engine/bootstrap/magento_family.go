@@ -226,3 +226,31 @@ func MagentoFamilyFreshInstall(variant MagentoFamilyVariant, opts Options, proje
 
 	return nil
 }
+
+// MagentoFamilyPreConfigure is Magento 2/Mage-OS's PreConfigureHook: it
+// just generates app/etc/env.php before `govard config auto` runs. No
+// variant parameterization needed - env.php generation (crypt key, DB
+// connection block, table prefix) is identical for both distributions,
+// driven entirely by the caller-provided closure (which itself resolves
+// the right local DB credentials and probes the remote independently of
+// which Magento distribution this is).
+func MagentoFamilyPreConfigure(opts Options, projectDir string, helpers CmdHelpers) error {
+	return helpers.EnsureMagentoEnvPHP()
+}
+
+// MagentoFamilyPostClone is Magento 2/Mage-OS's PostCloneHook: create the
+// admin user (if requested), then reindex. Moved verbatim from
+// internal/cmd/bootstrap_remote.go's runBootstrapRemote (the
+// `if opts.AdminCreate && engine.IsMagento2Family(...)` /
+// `if engine.IsMagento2Family(...)` pair near the end of that function),
+// same order, same error propagation (admin-create failures are
+// swallowed by RunMagentoAdminCreate itself and never reach here; a
+// reindex failure does propagate).
+func MagentoFamilyPostClone(opts Options, projectDir string, helpers CmdHelpers) error {
+	if opts.AdminCreate {
+		if err := helpers.RunMagentoAdminCreate(); err != nil {
+			return err
+		}
+	}
+	return helpers.RunMagentoReindex()
+}
