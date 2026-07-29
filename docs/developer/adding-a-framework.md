@@ -89,7 +89,7 @@ Copy the closest existing framework's shape — e.g. `internal/frameworks/cakeph
 
 A `services.yml` (Docker Compose fragment) rendered as a Go template — copy the closest analog (`internal/blueprints/files/nextjs/services.yml` for a Node runtime, `internal/blueprints/files/cakephp/` for PHP). Not every framework needs its own directory: Mage-OS reuses Magento 2's compose/nginx/Varnish blueprint outright (see `varnishTemplateFramework` in `internal/engine/render.go`) since it's a drop-in fork with the same runtime shape.
 
-### 4. Bootstrap implementation — `internal/engine/bootstrap/whimsy.go`
+### 4. Bootstrap implementation — `internal/frameworks/whimsy/bootstrap.go`
 
 Implement the `FrameworkBootstrap` interface (`internal/engine/bootstrap/base.go`):
 

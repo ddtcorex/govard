@@ -89,7 +89,7 @@ Copy theo framework gần giống nhất — vd `internal/frameworks/cakephp/man
 
 Một file `services.yml` (đoạn Docker Compose) được render qua Go template — copy theo ví dụ gần nhất (`internal/blueprints/files/nextjs/services.yml` cho runtime Node, `internal/blueprints/files/cakephp/` cho PHP). Không phải framework nào cũng cần thư mục riêng: Mage-OS tái dùng thẳng blueprint compose/nginx/Varnish của Magento 2 (xem `varnishTemplateFramework` trong `internal/engine/render.go`) vì nó là bản fork drop-in với cùng hình dạng runtime.
 
-### 4. Triển khai Bootstrap — `internal/engine/bootstrap/whimsy.go`
+### 4. Triển khai Bootstrap — `internal/frameworks/whimsy/bootstrap.go`
 
 Triển khai interface `FrameworkBootstrap` (`internal/engine/bootstrap/base.go`):
 
