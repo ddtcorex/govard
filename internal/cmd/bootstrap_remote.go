@@ -23,10 +23,11 @@ var bootstrapRemoteDirExists = func(remoteName string, remoteCfg engine.RemoteCo
 }
 
 // bootstrapPostCloneDefinition returns framework's registry entry if it
-// participates in the FrameworkBootstrap.PostClone step of the remote/clone
-// bootstrap workflow. magento2/mageos are excluded even though
-// SupportsBootstrap is true: their post-clone setup is the
-// ensureBootstrapMagentoEnvPHP branch above, not PostClone.
+// participates in the generic FrameworkBootstrap.PostClone interface step of
+// the remote/clone bootstrap workflow. magento2/mageos are excluded even
+// though SupportsBootstrap is true: their real pre-configure/post-clone
+// setup is dispatched separately in runBootstrapRemote via Definition()'s
+// PreConfigureHook/PostCloneHook fields, not through this interface method.
 func bootstrapPostCloneDefinition(framework string) (types.FrameworkDefinition, bool) {
 	def, ok := frameworks.Get(framework)
 	if !ok || !def.SupportsBootstrap || engine.IsMagento2Family(framework) {
@@ -152,8 +153,35 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 		}
 	}
 
-	if engine.IsMagento2Family(config.Framework) {
-		if err := ensureBootstrapMagentoEnvPHP(config, opts); err != nil {
+	// Most fields here are pre-populated for the benefit of future hooks;
+	// the current two (MagentoFamilyPreConfigure/MagentoFamilyPostClone)
+	// only read AdminCreate.
+	hookOpts := bootstrap.Options{
+		Version:     opts.MetaVersion,
+		Env:         opts.Source,
+		ProjectName: config.ProjectName,
+		Domain:      config.Domain,
+		TablePrefix: config.TablePrefix,
+		AdminCreate: opts.AdminCreate,
+		Runner: func(command string) error {
+			return runPHPContainerShellCommand(config, command)
+		},
+	}
+	hookHelpers := bootstrap.CmdHelpers{
+		EnsureMagentoEnvPHP: func() error {
+			return ensureBootstrapMagentoEnvPHP(config, opts)
+		},
+		RunMagentoAdminCreate: func() error {
+			runBootstrapAdminCreate(cmd, config)
+			return nil
+		},
+		RunMagentoReindex: func() error {
+			return runBootstrapMagentoReindex(cmd)
+		},
+	}
+
+	if def, ok := frameworks.Get(config.Framework); ok && def.PreConfigureHook != nil {
+		if err := def.PreConfigureHook(hookOpts, cwd, hookHelpers); err != nil {
 			return err
 		}
 	}
@@ -229,13 +257,13 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 		pterm.Info.Printf("Skipping %s post-clone setup because composer install is disabled.\n", config.Framework)
 	}
 
-	if opts.AdminCreate && engine.IsMagento2Family(config.Framework) {
-		runBootstrapAdminCreate(cmd, config)
-	}
-
-	if engine.IsMagento2Family(config.Framework) {
-		if err := runBootstrapMagentoReindex(cmd); err != nil {
-			return err
+	if def, ok := frameworks.Get(config.Framework); ok && def.PostCloneHook != nil {
+		if opts.ComposerInstall {
+			if err := def.PostCloneHook(hookOpts, cwd, hookHelpers); err != nil {
+				return err
+			}
+		} else {
+			pterm.Info.Printf("Skipping %s post-clone hook because composer install is disabled.\n", config.Framework)
 		}
 	}
 

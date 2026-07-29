@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"govard/internal/cmd"
 	"govard/internal/engine"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -167,5 +169,80 @@ func TestRunBootstrapRemoteSkipsComposerInstallWhenVendorSatisfiesLock(t *testin
 
 	if composerInstallCalls != 0 {
 		t.Fatalf("expected composer install to be skipped, but it was called %d time(s)", composerInstallCalls)
+	}
+}
+
+func TestRunBootstrapRemoteRunsMagentoPostCloneHookWhenComposerInstallEnabled(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	config := engine.Config{
+		ProjectName: "sample-project",
+		Framework:   "magento2",
+	}
+
+	opts := cmd.DefaultBootstrapRuntimeOptionsForTest()
+	opts.ComposerInstall = true
+	opts.AssumeYes = true
+	opts.DBImport = false
+	opts.MediaSync = ""
+
+	envPHPExistedAtConfigAuto := false
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		if strings.Join(args, " ") == "config auto" {
+			_, statErr := os.Stat(filepath.Join(tempDir, "app", "etc", "env.php"))
+			envPHPExistedAtConfigAuto = statErr == nil
+		}
+		return nil
+	})()
+
+	var captured bytes.Buffer
+	pterm.SetDefaultOutput(&captured)
+	defer pterm.SetDefaultOutput(os.Stdout)
+
+	if err := cmd.RunBootstrapRemoteForTest(&cobra.Command{}, config, opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !envPHPExistedAtConfigAuto {
+		t.Fatal("expected PreConfigureHook to generate app/etc/env.php BEFORE `govard config auto` runs")
+	}
+	if !strings.Contains(captured.String(), "Reindexing Magento data...") {
+		t.Fatalf("expected PostCloneHook reindex step to be dispatched, got: %q", captured.String())
+	}
+}
+
+func TestRunBootstrapRemoteSkipsMagentoPostCloneHookWhenComposerInstallDisabled(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	config := engine.Config{
+		ProjectName: "sample-project",
+		Framework:   "magento2",
+	}
+
+	opts := cmd.DefaultBootstrapRuntimeOptionsForTest()
+	opts.ComposerInstall = false
+	opts.AssumeYes = true
+	opts.DBImport = false
+	opts.MediaSync = ""
+
+	defer cmd.SetGovardSubcommandRunnerForTest(func(subCmd *cobra.Command, args ...string) error {
+		return nil
+	})()
+
+	// The skip message is printed via pterm, which doesn't go through
+	// SetGovardSubcommandRunnerForTest - capture pterm's output directly to
+	// assert PostCloneHook was actually skipped, not just silently absent.
+	var captured bytes.Buffer
+	pterm.SetDefaultOutput(&captured)
+	defer pterm.SetDefaultOutput(os.Stdout)
+
+	if err := cmd.RunBootstrapRemoteForTest(&cobra.Command{}, config, opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(captured.String(), "Skipping magento2 post-clone hook because composer install is disabled.") {
+		t.Fatalf("expected skip message for magento2 post-clone hook, got: %q", captured.String())
 	}
 }

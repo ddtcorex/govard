@@ -15,13 +15,18 @@ type BootstrapFactory func(bootstrap.Options) bootstrap.FrameworkBootstrap
 // FrameworkDefinition is the single source of truth for one framework's
 // identity, runtime defaults, sync/manifest data, and dispatch (bootstrap,
 // base-URL rewriting, bootstrap-command support, fresh-install
-// orchestration). Every registered framework now has FreshInstall
-// populated except Magento 1 (fresh install unsupported by design -
-// CreateProject just returns an error telling the user to use --clone)
-// and PrestaShop (fresh install never supported, no FreshInstall field at
-// all). Clone-workflow orchestration in internal/cmd/bootstrap_remote.go
-// remains a switch for every framework, not just these two - that's a
-// separate, still-open piece of this registry effort.
+// orchestration, clone-workflow hooks). Every registered framework now
+// has FreshInstall populated except Magento 1 (fresh install unsupported
+// by design - CreateProject just returns an error telling the user to
+// use --clone) and PrestaShop (fresh install never supported, no
+// FreshInstall field at all). Clone-workflow orchestration in
+// internal/cmd/bootstrap_remote.go dispatches through the registry too -
+// the generic FrameworkBootstrap.PostClone(projectDir) interface method
+// for most frameworks, plus the two optional hook fields below
+// (PreConfigureHook/PostCloneHook) for frameworks whose clone-workflow
+// needs step timing or cmd-package capabilities (running `govard tool
+// <x>`) that plain interface method can't express - Magento 2/Mage-OS
+// are the first consumers, not the only intended ones.
 type FrameworkDefinition struct {
 	// Name is the canonical framework key, e.g. "magento2", "laravel".
 	Name string
@@ -75,4 +80,28 @@ type FrameworkDefinition struct {
 	// non-nil.
 	FreshInstallNeedsDB     bool
 	FreshInstallNeedsDomain bool
+
+	// PreConfigureHook runs framework-specific setup that must happen
+	// during the remote/clone bootstrap workflow, before `govard config
+	// auto` - for frameworks whose configure step depends on a generated
+	// file existing first (Magento 2/Mage-OS's app/etc/env.php, generated
+	// from a template plus any probed remote crypt key/table prefix).
+	// Optional; nil for frameworks that don't need it. Runs unconditionally
+	// (not gated on opts.ComposerInstall) whenever set, since env.php
+	// generation is a prerequisite for config auto rather than a
+	// consequence of composer install.
+	PreConfigureHook func(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error
+	// PostCloneHook runs additional framework-specific steps during the
+	// remote/clone bootstrap workflow, after the generic
+	// def.Bootstrap(opts).PostClone(projectDir) dispatch (which some
+	// frameworks - e.g. Magento 2/Mage-OS - don't implement at all,
+	// reporting it as unsupported since their real post-clone setup is
+	// this hook instead). Optional; nil for frameworks that don't need
+	// it. The caller gates this on opts.ComposerInstall alone, NOT on
+	// shouldRunFrameworkPostClone/FrameworkSupportsPostClone - those also
+	// check engine.FrameworkSupportsPostClone, which is deliberately false
+	// for frameworks that only use this hook (their plain PostClone really
+	// is unsupported), so gating on that combined condition would make
+	// this hook permanently unreachable for exactly the frameworks that set it.
+	PostCloneHook func(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error
 }

@@ -25,6 +25,8 @@ func Definition() types.FrameworkDefinition {
 			return &tunnel.Magento2Manager{}
 		},
 		FreshInstall:            freshInstall,
+		PreConfigureHook:        bootstrap.MagentoFamilyPreConfigure,
+		PostCloneHook:           bootstrap.MagentoFamilyPostClone,
 		FreshInstallNeedsDomain: true,
 		SupportsBootstrap:       true,
 		SupportsFreshInstall:    true,

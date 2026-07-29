@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -126,5 +128,97 @@ func TestBuildMagentoSetupInstallArgsUsesOpenSearchForMageOSRegardlessOfVersion(
 	}
 	if strings.Contains(joined, "--search-engine=elasticsearch7") {
 		t.Fatalf("expected Mage-OS to never hit the elasticsearch7 branch (magento2-only), got %q", joined)
+	}
+}
+
+func TestMagentoFamilyPreConfigureCallsEnsureMagentoEnvPHP(t *testing.T) {
+	called := false
+	helpers := bootstrap.CmdHelpers{
+		EnsureMagentoEnvPHP: func() error {
+			called = true
+			return nil
+		},
+	}
+
+	if err := bootstrap.MagentoFamilyPreConfigure(bootstrap.Options{}, "/tmp/whatever", helpers); err != nil {
+		t.Fatalf("MagentoFamilyPreConfigure() error = %v", err)
+	}
+	if !called {
+		t.Fatal("expected EnsureMagentoEnvPHP to be called")
+	}
+}
+
+func TestMagentoFamilyPreConfigurePropagatesError(t *testing.T) {
+	wantErr := errors.New("env.php generation failed")
+	helpers := bootstrap.CmdHelpers{
+		EnsureMagentoEnvPHP: func() error {
+			return wantErr
+		},
+	}
+
+	err := bootstrap.MagentoFamilyPreConfigure(bootstrap.Options{}, "/tmp/whatever", helpers)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("MagentoFamilyPreConfigure() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestMagentoFamilyPostCloneCreatesAdminThenReindexesWhenAdminCreateTrue(t *testing.T) {
+	var calls []string
+	helpers := bootstrap.CmdHelpers{
+		RunMagentoAdminCreate: func() error {
+			calls = append(calls, "admin-create")
+			return nil
+		},
+		RunMagentoReindex: func() error {
+			calls = append(calls, "reindex")
+			return nil
+		},
+	}
+
+	if err := bootstrap.MagentoFamilyPostClone(bootstrap.Options{AdminCreate: true}, "/tmp/whatever", helpers); err != nil {
+		t.Fatalf("MagentoFamilyPostClone() error = %v", err)
+	}
+	want := []string{"admin-create", "reindex"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestMagentoFamilyPostCloneSkipsAdminCreateWhenFalse(t *testing.T) {
+	var calls []string
+	helpers := bootstrap.CmdHelpers{
+		RunMagentoAdminCreate: func() error {
+			calls = append(calls, "admin-create")
+			return nil
+		},
+		RunMagentoReindex: func() error {
+			calls = append(calls, "reindex")
+			return nil
+		},
+	}
+
+	if err := bootstrap.MagentoFamilyPostClone(bootstrap.Options{AdminCreate: false}, "/tmp/whatever", helpers); err != nil {
+		t.Fatalf("MagentoFamilyPostClone() error = %v", err)
+	}
+	want := []string{"reindex"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v, want %#v (admin-create must be skipped)", calls, want)
+	}
+}
+
+func TestMagentoFamilyPostClonePropagatesReindexError(t *testing.T) {
+	wantErr := errors.New("reindex failed")
+	helpers := bootstrap.CmdHelpers{
+		RunMagentoAdminCreate: func() error {
+			return nil
+		},
+		RunMagentoReindex: func() error {
+			return wantErr
+		},
+	}
+
+	err := bootstrap.MagentoFamilyPostClone(bootstrap.Options{AdminCreate: true}, "/tmp/whatever", helpers)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("MagentoFamilyPostClone() error = %v, want %v", err, wantErr)
 	}
 }
