@@ -13,20 +13,20 @@ func Definition() types.FrameworkDefinition {
 		Aliases:     []string{"magento"},
 		DisplayName: "Magento 2",
 		Config:      config,
-		Manifest:    manifest,
+		Manifest:    Manifest,
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"magento/product-community-edition", "magento/product-enterprise-edition", "magento/framework"},
 			AuthJSONHosts:    []string{"repo.magento.com"},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewMagento2Bootstrap(opts)
+			return NewBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.Magento2Manager{}
 		},
 		FreshInstall:            freshInstall,
-		PreConfigureHook:        bootstrap.MagentoFamilyPreConfigure,
-		PostCloneHook:           bootstrap.MagentoFamilyPostClone,
+		PreConfigureHook:        PreConfigure,
+		PostCloneHook:           PostClone,
 		FreshInstallNeedsDomain: true,
 		SupportsBootstrap:       true,
 		SupportsFreshInstall:    true,

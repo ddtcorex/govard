@@ -107,9 +107,9 @@ type CmdHelpers struct {
 	// and then runs `govard tool magento` with the given setup:install
 	// args (internal/cmd's tail of runBootstrapPostInstall). The args
 	// themselves are built by the caller via
-	// bootstrap.BuildMagentoSetupInstallArgs (Task 2) - this closure only
-	// executes them, since running a govard subcommand needs the
-	// cmd-package-only *cobra.Command.
+	// magento2.BuildSetupInstallArgs (internal/frameworks/magento2/
+	// bootstrap.go) - this closure only executes them, since running a
+	// govard subcommand needs the cmd-package-only *cobra.Command.
 	RunMagentoSetupInstall func(args []string) error
 	// RunMagentoSampleData runs sample:deploy/setup:upgrade/indexer:reindex/
 	// cache:flush (internal/cmd's runBootstrapSampleData). Only called
@@ -157,24 +157,4 @@ type FrameworkBootstrap interface {
 	Install(projectDir string) error
 	Configure(projectDir string) error
 	PostClone(projectDir string) error
-}
-
-func Magento2FreshCommands(opts Options) []string {
-	version := opts.Version
-	if version == "" {
-		version = "2.4.8"
-	}
-	return []string{
-		"composer create-project magento/project-community-edition:" + version + " .",
-	}
-}
-
-func MageOSFreshCommands(opts Options) []string {
-	version := opts.Version
-	if version == "" {
-		version = "1.3.1"
-	}
-	return []string{
-		"composer create-project mage-os/project-community-edition:" + version + " --repository-url=https://repo.mage-os.org .",
-	}
 }

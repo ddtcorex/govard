@@ -14,7 +14,7 @@ func Definition() types.FrameworkDefinition {
 		Name:        "magento1",
 		DisplayName: "Magento 1",
 		Config:      config,
-		Manifest:    manifest,
+		Manifest:    Manifest,
 		// ComposerPackages intentionally includes openmage/magento-lts and
 		// magento-hackathon/magento-composer-installer - this is the exact,
 		// pre-existing behavior of internal/engine/discovery.go (a project
