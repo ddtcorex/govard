@@ -13,6 +13,7 @@ services:
     user: root
     volumes:
       - .:/app
+      - next-cache:/app/.next
     command: >
       sh -lc '{{ nextjsRuntimeCommand }}'
     environment:
@@ -27,3 +28,6 @@ networks:
     driver: bridge
   govard-proxy:
     external: true
+
+volumes:
+  next-cache:

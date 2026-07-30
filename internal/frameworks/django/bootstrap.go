@@ -125,7 +125,13 @@ var djangoContainerExecRunner = func(containerName string, script string) error 
 // internal/cmd/bootstrap.go's ordering), so the container is available.
 func (d *DjangoBootstrap) installAndMigrate() error {
 	containerName := d.Options.ProjectName + conventions.WebSuffix
-	script := "pip install --no-cache-dir -r requirements.txt && python manage.py migrate"
+	// The container runs as root (internal/blueprints/files/django/
+	// services.yml), so pip/migrate leave __pycache__ files root-owned on
+	// the host's bind-mounted project directory. Reclaim ownership back
+	// to whatever the mount point itself is owned by (the host user)
+	// regardless of migrate's exit code, so a failed migrate doesn't
+	// leave stray root-owned files behind either.
+	script := "pip install --no-cache-dir -r requirements.txt && python manage.py migrate; rc=$?; chown -R \"$(stat -c %u:%g .)\" . 2>/dev/null; exit $rc"
 
 	if err := djangoContainerExecRunner(containerName, script); err != nil {
 		return fmt.Errorf("django pip install/migrate failed: %w", err)

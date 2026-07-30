@@ -528,7 +528,7 @@ func TestRunBootstrapFrameworkFreshInstallForTestDjangoScaffoldsAndMigrates(t *t
 		if err := os.MkdirAll(filepath.Join(stageDir, "config"), 0o755); err != nil {
 			return err
 		}
-		settingsContent := "from pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\n\nDATABASES = {\n    'default': {\n        'ENGINE': 'django.db.backends.sqlite3',\n        'NAME': BASE_DIR / 'db.sqlite3',\n    }\n}\n"
+		settingsContent := "from pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\n\nALLOWED_HOSTS = []\n\nDATABASES = {\n    'default': {\n        'ENGINE': 'django.db.backends.sqlite3',\n        'NAME': BASE_DIR / 'db.sqlite3',\n    }\n}\n"
 		return os.WriteFile(filepath.Join(stageDir, "config", "settings.py"), []byte(settingsContent), 0o644)
 	})
 	defer restorePython()
@@ -575,6 +575,14 @@ func TestRunBootstrapFrameworkFreshInstallForTestDjangoScaffoldsAndMigrates(t *t
 		t.Fatalf("expected requirements.txt to be generated: %v", err)
 	}
 
+	settingsContent, err := os.ReadFile(filepath.Join(tempDir, "config", "settings.py"))
+	if err != nil {
+		t.Fatalf("expected settings.py to exist: %v", err)
+	}
+	if !strings.Contains(string(settingsContent), "ALLOWED_HOSTS = ['sample.test', 'localhost', '127.0.0.1']") {
+		t.Fatalf("expected the registry dispatch to thread config.Domain through to ALLOWED_HOSTS (requires FreshInstallNeedsDomain on Django's Definition()), got: %s", settingsContent)
+	}
+
 	wantSubcommands := [][]string{
 		{"env", "up", "--remove-orphans"},
 	}
@@ -585,8 +593,9 @@ func TestRunBootstrapFrameworkFreshInstallForTestDjangoScaffoldsAndMigrates(t *t
 	if execContainer != "sample-project-web-1" {
 		t.Errorf("expected Install() to exec into sample-project-web-1, got %q", execContainer)
 	}
-	if execScript != "pip install --no-cache-dir -r requirements.txt && python manage.py migrate" {
-		t.Errorf("unexpected Install() script: %q", execScript)
+	wantExecScript := "pip install --no-cache-dir -r requirements.txt && python manage.py migrate; rc=$?; chown -R \"$(stat -c %u:%g .)\" . 2>/dev/null; exit $rc"
+	if execScript != wantExecScript {
+		t.Errorf("unexpected Install() script: %q, want %q", execScript, wantExecScript)
 	}
 }
 
