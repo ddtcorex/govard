@@ -1,6 +1,8 @@
 package magento1
 
 import (
+	"fmt"
+
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/engine/tunnel"
@@ -29,6 +31,16 @@ func Definition() types.FrameworkDefinition {
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.Magento1Manager{}
+		},
+		// FreshInstall is unsupported by design for Magento 1 - Magento 1
+		// itself has no create-project/setup:install equivalent, so
+		// `govard bootstrap --fresh` just points the user at OpenMage
+		// instead. SupportsFreshInstall stays true so this bespoke error
+		// fires (via runBootstrapRegistryFreshInstall) instead of the
+		// generic "framework doesn't support --fresh" rejection at the
+		// CLI allowlist stage.
+		FreshInstall: func(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error {
+			return fmt.Errorf("fresh install not supported for magento1 (use openmage instead)")
 		},
 		SupportsBootstrap:    true,
 		SupportsFreshInstall: true,
