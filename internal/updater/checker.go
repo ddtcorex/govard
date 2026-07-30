@@ -2,6 +2,7 @@ package updater
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -21,29 +22,72 @@ var (
 )
 
 func CheckForUpdates(current string) {
-	resp, err := updateCheckHTTPClient.Get(updateCheckLatestURL())
+	release, err := FetchLatestRelease(updateCheckHTTPClient)
 	if err != nil {
 		return
 	}
-	defer resp.Body.Close()
 
-	var release struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return
-	}
-
-	if shouldNotifyUpdate(current, release.TagName) {
-		updateCheckNotifier(release.TagName, current)
+	if shouldNotifyUpdate(current, release.Tag) {
+		updateCheckNotifier(release.Tag, current)
 	}
 }
 
-func updateCheckLatestURL() string {
+// LatestRelease is the subset of the GitHub releases API response callers need.
+type LatestRelease struct {
+	Tag  string
+	Body string
+}
+
+// FetchLatestRelease fetches the latest GitHub release (tag + changelog body),
+// honoring the GOVARD_UPDATE_CHECK_URL override. Shared by the CLI update check
+// and the desktop app's update check so both stay in sync.
+func FetchLatestRelease(client *http.Client) (LatestRelease, error) {
+	if client == nil {
+		client = updateCheckHTTPClient
+	}
+
+	req, err := http.NewRequest(http.MethodGet, LatestReleaseURL(), nil)
+	if err != nil {
+		return LatestRelease{}, fmt.Errorf("prepare update check request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "govard")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return LatestRelease{}, fmt.Errorf("request latest release: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return LatestRelease{}, fmt.Errorf("request latest release failed with status %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Body    string `json:"body"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return LatestRelease{}, fmt.Errorf("decode latest release payload: %w", err)
+	}
+
+	return LatestRelease{Tag: release.TagName, Body: release.Body}, nil
+}
+
+// LatestReleaseURL returns the GitHub releases API URL to check, honoring
+// the GOVARD_UPDATE_CHECK_URL override used by tests and self-hosted mirrors.
+func LatestReleaseURL() string {
 	if override := strings.TrimSpace(os.Getenv(updateCheckLatestURLEnvVar)); override != "" {
 		return override
 	}
 	return "https://api.github.com/repos/ddtcorex/govard/releases/latest"
+}
+
+// ShouldNotifyUpdate reports whether latestTag represents a version newer
+// than currentVersion. Exported for reuse outside this package (e.g. the
+// desktop app); see ShouldNotifyUpdateForTest for the test-only alias.
+func ShouldNotifyUpdate(currentVersion, latestTag string) bool {
+	return shouldNotifyUpdate(currentVersion, latestTag)
 }
 
 func shouldNotifyUpdate(currentVersion, latestTag string) bool {
