@@ -80,6 +80,17 @@ type FrameworkDefinition struct {
 	// non-nil.
 	FreshInstallNeedsDB     bool
 	FreshInstallNeedsDomain bool
+	// FreshInstallManagesOwnEnvUp reports whether this framework's
+	// FreshInstall already calls `env up` itself (and, if needed, runs
+	// Install()/migrate against the running containers), so the generic
+	// post-fresh-install `env up` in bootstrapCmd.RunE would be redundant.
+	// Django's compose "web" container executes `python manage.py
+	// runserver` directly and can't come up against an empty project
+	// directory, so its fresh-install path must scaffold the project
+	// first, then bring the environment up itself before running
+	// Install() - by the time control returns to RunE, env up has
+	// already happened.
+	FreshInstallManagesOwnEnvUp bool
 
 	// PreConfigureHook runs framework-specific setup that must happen
 	// during the remote/clone bootstrap workflow, before `govard config

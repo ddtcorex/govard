@@ -94,7 +94,7 @@ type CmdHelpers struct {
 	// the current project. Only the Magento family's FreshInstall calls
 	// this today, but it's framework-agnostic in principle.
 	FixComposerCompatibility func() error
-	// RunHyvaInstall sets the Hyvä composer token/repo and requires the
+	// RunHyvaInstall sets the Hyva composer token/repo and requires the
 	// theme package (internal/cmd's runBootstrapHyvaInstall). Only called
 	// when Options.HyvaInstall is true.
 	RunHyvaInstall func() error

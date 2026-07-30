@@ -18,8 +18,9 @@ func Definition() types.FrameworkDefinition {
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return NewDjangoBootstrap(opts)
 		},
-		FreshInstall:         freshInstall,
-		SupportsFreshInstall: true,
-		SupportsBootstrap:    true,
+		FreshInstall:                freshInstall,
+		FreshInstallManagesOwnEnvUp: true,
+		SupportsFreshInstall:        true,
+		SupportsBootstrap:           true,
 	}
 }
