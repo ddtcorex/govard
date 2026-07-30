@@ -78,7 +78,7 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 	case !source.IsLocal && destination.IsLocal:
 		remoteCredentials, probeErr := resolveRemoteDBCredentials(config, source.Name, source.RemoteCfg)
 		if probeErr != nil {
-			pterm.Warning.Println(formatRemoteDBProbeWarning(source.Name, probeErr))
+			return "", nil, fmt.Errorf("cannot sync database: %s", formatRemoteDBProbeWarning(source.Name, probeErr))
 		}
 		dumpCmdStr := buildRemoteMySQLDumpCommandString(remoteCredentials, noNoise, noPII, config.Framework, true)
 		importCmdStr := buildLocalMySQLClientCommandScript(localCredentials, true)
@@ -98,7 +98,7 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 	case source.IsLocal && !destination.IsLocal:
 		remoteCredentials, probeErr := resolveRemoteDBCredentials(config, destination.Name, destination.RemoteCfg)
 		if probeErr != nil {
-			pterm.Warning.Println(formatRemoteDBProbeWarning(destination.Name, probeErr))
+			return "", nil, fmt.Errorf("cannot sync database: %s", formatRemoteDBProbeWarning(destination.Name, probeErr))
 		}
 		dumpCmdStr := buildLocalMySQLDumpCommandScript(localCredentials, noNoise, noPII, config.Framework)
 		importCmdStr := buildRemoteMySQLImportCommandString(remoteCredentials)

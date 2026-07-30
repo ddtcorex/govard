@@ -148,9 +148,11 @@ func TestSyncPlanDirectoryDetectionTreatsExtensionPathAsFile(t *testing.T) {
 }
 
 func TestSyncPlanScopes(t *testing.T) {
+	// Framework "custom" resolves DB credentials from RemoteConfig directly,
+	// without probing the remote over SSH -- keeps this test hermetic.
 	config := engine.Config{
 		ProjectName: "test-project",
-		Framework:   "magento2",
+		Framework:   "custom",
 	}
 
 	endpoints := cmd.ResolveSyncEndpointsForTest(
@@ -195,10 +197,30 @@ func TestSyncPlanScopes(t *testing.T) {
 }
 
 func TestSyncPlanDatabaseUsesTablePrefixForIgnoredTables(t *testing.T) {
+	// Exercises the same table-prefix resolution the DB sync action relies on,
+	// without going through the remote metadata probe (see BuildDatabaseSyncAction,
+	// which now aborts the sync when that probe fails instead of falling back).
+	got := cmd.BuildIgnoredTableArgsForTest("magento", "demo_", true, false, "magento2")
+
+	found := false
+	for _, arg := range got {
+		if arg == "--ignore-table=magento.demo_cron_schedule" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected prefixed ignored table, got: %v", got)
+	}
+}
+
+func TestSyncPlanDatabaseStopsWhenRemoteCredentialsCannotBeResolved(t *testing.T) {
+	// Magento2 resolves DB credentials by probing the remote over SSH for .env/env.php.
+	// Against a host that can't be reached, that probe fails -- the sync must stop
+	// with a clear error instead of silently falling back to guessed credentials.
 	config := engine.Config{
 		ProjectName: "test-project",
 		Framework:   "magento2",
-		TablePrefix: "demo_",
 	}
 
 	endpoints := cmd.ResolveSyncEndpointsForTest(
@@ -215,18 +237,13 @@ func TestSyncPlanDatabaseUsesTablePrefixForIgnoredTables(t *testing.T) {
 	)
 
 	opts := cmd.SyncExecutionOptionsForTest(false, "", true)
-	opts.NoNoise = true
 
-	plan, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts)
-	if err != nil {
-		t.Fatal(err)
+	_, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts)
+	if err == nil {
+		t.Fatal("expected sync plan to fail when remote DB credentials cannot be resolved, got nil error")
 	}
-
-	if len(plan.Commands) != 1 {
-		t.Fatalf("expected 1 database command, got %d", len(plan.Commands))
-	}
-	if !strings.Contains(plan.Commands[0], "--ignore-table=magento.demo_cron_schedule") {
-		t.Fatalf("expected sync DB dump to use prefixed ignored table, got: %s", plan.Commands[0])
+	if !strings.Contains(err.Error(), "cannot sync database") {
+		t.Fatalf("expected error to explain the DB sync was stopped, got: %v", err)
 	}
 }
 

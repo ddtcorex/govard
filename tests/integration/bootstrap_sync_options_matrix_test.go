@@ -224,10 +224,18 @@ func TestSyncOptionsMatrixWithSimulatedEnvironments(t *testing.T) {
 
 	t.Run("PlanFullDeletePathIncludeExcludeResume", func(t *testing.T) {
 		projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "sync-options-full-plan")
+		// DB scope resolves remote credentials by probing the remote over SSH,
+		// so this needs the shim (unlike the file-only plan subtests above).
+		shim := env.SetupRuntimeShims(t, map[string]int{
+			"docker": 0,
+			"ssh":    0,
+			"rsync":  0,
+		})
+
 		result := env.RunGovardWithEnv(
 			t,
 			projectDir,
-			isolatedHomeEnv(t),
+			append(shim.Env(), isolatedHomeEnv(t)...),
 			"sync",
 			"--source", "staging",
 			"--destination", "local",
