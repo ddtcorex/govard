@@ -7,10 +7,12 @@ import (
 	"testing"
 
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/magento2"
+	"govard/internal/frameworks/mageos"
 )
 
 func TestBuildMagentoFreshCreateProjectCommandUsesMagentoRepositoryForMagento2(t *testing.T) {
-	commandLine := bootstrap.BuildMagentoFreshCreateProjectCommand(bootstrap.Magento2Variant, bootstrap.Options{
+	commandLine := magento2.BuildFreshCreateProjectCommand(magento2.Variant, bootstrap.Options{
 		MetaPackage: "magento/project-community-edition",
 	})
 	if !strings.Contains(commandLine, "https://repo.magento.com") {
@@ -22,7 +24,7 @@ func TestBuildMagentoFreshCreateProjectCommandUsesMagentoRepositoryForMagento2(t
 }
 
 func TestBuildMagentoFreshCreateProjectCommandUsesMageOSRepositoryForMageOS(t *testing.T) {
-	commandLine := bootstrap.BuildMagentoFreshCreateProjectCommand(bootstrap.MageOSVariant, bootstrap.Options{
+	commandLine := magento2.BuildFreshCreateProjectCommand(mageos.Variant, bootstrap.Options{
 		MetaPackage: "mage-os/project-community-edition",
 	})
 	if !strings.Contains(commandLine, "https://repo.mage-os.org") {
@@ -34,7 +36,7 @@ func TestBuildMagentoFreshCreateProjectCommandUsesMageOSRepositoryForMageOS(t *t
 }
 
 func TestBuildMagentoFreshCreateProjectCommandIncludesVersionWhenSet(t *testing.T) {
-	commandLine := bootstrap.BuildMagentoFreshCreateProjectCommand(bootstrap.Magento2Variant, bootstrap.Options{
+	commandLine := magento2.BuildFreshCreateProjectCommand(magento2.Variant, bootstrap.Options{
 		MetaPackage: "magento/project-community-edition",
 		Version:     "2.4.8",
 	})
@@ -52,7 +54,7 @@ func TestBuildMagentoFreshCreateProjectCommandIncludesVersionWhenSet(t *testing.
 // easy to silently drop in a refactor since they're not exercised by any
 // other assertion here) and the /tmp/govard-create-project cleanup step.
 func TestBuildMagentoFreshCreateProjectCommandBuildsExpectedCommand(t *testing.T) {
-	commandLine := bootstrap.BuildMagentoFreshCreateProjectCommand(bootstrap.Magento2Variant, bootstrap.Options{
+	commandLine := magento2.BuildFreshCreateProjectCommand(magento2.Variant, bootstrap.Options{
 		MetaPackage: "magento/project-community-edition",
 		Version:     "2.4.8",
 	})
@@ -66,7 +68,7 @@ func TestBuildMagentoFreshCreateProjectCommandBuildsExpectedCommand(t *testing.T
 }
 
 func TestBuildMagentoFreshCreateProjectCommandOmitsVersionWhenEmpty(t *testing.T) {
-	commandLine := bootstrap.BuildMagentoFreshCreateProjectCommand(bootstrap.Magento2Variant, bootstrap.Options{
+	commandLine := magento2.BuildFreshCreateProjectCommand(magento2.Variant, bootstrap.Options{
 		MetaPackage: "magento/project-community-edition",
 	})
 	if !strings.Contains(commandLine, "'magento/project-community-edition' /tmp/govard-create-project && ") {
@@ -75,7 +77,7 @@ func TestBuildMagentoFreshCreateProjectCommandOmitsVersionWhenEmpty(t *testing.T
 }
 
 func TestBuildMagentoSetupInstallArgsUsesMagentoDBCredentialsForMagento2(t *testing.T) {
-	args := bootstrap.BuildMagentoSetupInstallArgs(bootstrap.Magento2Variant, "", "admin@sample.test", "")
+	args := magento2.BuildSetupInstallArgs(magento2.Variant, "", "admin@sample.test", "")
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--db-name=magento") || !strings.Contains(joined, "--db-user=magento") || !strings.Contains(joined, "--db-password=magento") {
 		t.Fatalf("expected magento db credentials in setup args, got %q", joined)
@@ -86,7 +88,7 @@ func TestBuildMagentoSetupInstallArgsUsesMagentoDBCredentialsForMagento2(t *test
 }
 
 func TestBuildMagentoSetupInstallArgsUsesMageOSDBCredentials(t *testing.T) {
-	args := bootstrap.BuildMagentoSetupInstallArgs(bootstrap.MageOSVariant, "", "admin@sample.test", "")
+	args := magento2.BuildSetupInstallArgs(mageos.Variant, "", "admin@sample.test", "")
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--db-name=mageos") || !strings.Contains(joined, "--db-user=mageos") || !strings.Contains(joined, "--db-password=mageos") {
 		t.Fatalf("expected mageos db credentials in setup args, got %q", joined)
@@ -94,7 +96,7 @@ func TestBuildMagentoSetupInstallArgsUsesMageOSDBCredentials(t *testing.T) {
 }
 
 func TestBuildMagentoSetupInstallArgsUsesConfigTablePrefix(t *testing.T) {
-	args := bootstrap.BuildMagentoSetupInstallArgs(bootstrap.Magento2Variant, "", "admin@sample.test", "demo_")
+	args := magento2.BuildSetupInstallArgs(magento2.Variant, "", "admin@sample.test", "demo_")
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--db-prefix=demo_") {
 		t.Fatalf("expected setup args to contain table prefix, got %q", joined)
@@ -102,7 +104,7 @@ func TestBuildMagentoSetupInstallArgsUsesConfigTablePrefix(t *testing.T) {
 }
 
 func TestBuildMagentoSetupInstallArgsUsesElasticsearch7ForLegacyMagento2Version(t *testing.T) {
-	args := bootstrap.BuildMagentoSetupInstallArgs(bootstrap.Magento2Variant, "2.4.7", "admin@sample.test", "")
+	args := magento2.BuildSetupInstallArgs(magento2.Variant, "2.4.7", "admin@sample.test", "")
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--search-engine=elasticsearch7") {
 		t.Fatalf("expected elasticsearch7 engine for legacy versions, args: %s", joined)
@@ -113,7 +115,7 @@ func TestBuildMagentoSetupInstallArgsUsesElasticsearch7ForLegacyMagento2Version(
 }
 
 func TestBuildMagentoSetupInstallArgsUsesOpenSearchForRecentMagento2Version(t *testing.T) {
-	args := bootstrap.BuildMagentoSetupInstallArgs(bootstrap.Magento2Variant, "2.4.8", "admin@sample.test", "")
+	args := magento2.BuildSetupInstallArgs(magento2.Variant, "2.4.8", "admin@sample.test", "")
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--search-engine=opensearch") {
 		t.Fatalf("expected opensearch args for 2.4.8+, got: %s", joined)
@@ -121,7 +123,7 @@ func TestBuildMagentoSetupInstallArgsUsesOpenSearchForRecentMagento2Version(t *t
 }
 
 func TestBuildMagentoSetupInstallArgsUsesOpenSearchForMageOSRegardlessOfVersion(t *testing.T) {
-	args := bootstrap.BuildMagentoSetupInstallArgs(bootstrap.MageOSVariant, "1.3.0", "admin@sample.test", "")
+	args := magento2.BuildSetupInstallArgs(mageos.Variant, "1.3.0", "admin@sample.test", "")
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--search-engine=opensearch") {
 		t.Fatalf("expected Mage-OS 1.x to use OpenSearch regardless of version (pre-existing asymmetry, not fixed by this migration), got %q", joined)
@@ -140,8 +142,8 @@ func TestMagentoFamilyPreConfigureCallsEnsureMagentoEnvPHP(t *testing.T) {
 		},
 	}
 
-	if err := bootstrap.MagentoFamilyPreConfigure(bootstrap.Options{}, "/tmp/whatever", helpers); err != nil {
-		t.Fatalf("MagentoFamilyPreConfigure() error = %v", err)
+	if err := magento2.PreConfigure(bootstrap.Options{}, "/tmp/whatever", helpers); err != nil {
+		t.Fatalf("PreConfigure() error = %v", err)
 	}
 	if !called {
 		t.Fatal("expected EnsureMagentoEnvPHP to be called")
@@ -156,9 +158,9 @@ func TestMagentoFamilyPreConfigurePropagatesError(t *testing.T) {
 		},
 	}
 
-	err := bootstrap.MagentoFamilyPreConfigure(bootstrap.Options{}, "/tmp/whatever", helpers)
+	err := magento2.PreConfigure(bootstrap.Options{}, "/tmp/whatever", helpers)
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("MagentoFamilyPreConfigure() error = %v, want %v", err, wantErr)
+		t.Fatalf("PreConfigure() error = %v, want %v", err, wantErr)
 	}
 }
 
@@ -175,8 +177,8 @@ func TestMagentoFamilyPostCloneCreatesAdminThenReindexesWhenAdminCreateTrue(t *t
 		},
 	}
 
-	if err := bootstrap.MagentoFamilyPostClone(bootstrap.Options{AdminCreate: true}, "/tmp/whatever", helpers); err != nil {
-		t.Fatalf("MagentoFamilyPostClone() error = %v", err)
+	if err := magento2.PostClone(bootstrap.Options{AdminCreate: true}, "/tmp/whatever", helpers); err != nil {
+		t.Fatalf("PostClone() error = %v", err)
 	}
 	want := []string{"admin-create", "reindex"}
 	if !reflect.DeepEqual(calls, want) {
@@ -197,8 +199,8 @@ func TestMagentoFamilyPostCloneSkipsAdminCreateWhenFalse(t *testing.T) {
 		},
 	}
 
-	if err := bootstrap.MagentoFamilyPostClone(bootstrap.Options{AdminCreate: false}, "/tmp/whatever", helpers); err != nil {
-		t.Fatalf("MagentoFamilyPostClone() error = %v", err)
+	if err := magento2.PostClone(bootstrap.Options{AdminCreate: false}, "/tmp/whatever", helpers); err != nil {
+		t.Fatalf("PostClone() error = %v", err)
 	}
 	want := []string{"reindex"}
 	if !reflect.DeepEqual(calls, want) {
@@ -217,8 +219,8 @@ func TestMagentoFamilyPostClonePropagatesReindexError(t *testing.T) {
 		},
 	}
 
-	err := bootstrap.MagentoFamilyPostClone(bootstrap.Options{AdminCreate: true}, "/tmp/whatever", helpers)
+	err := magento2.PostClone(bootstrap.Options{AdminCreate: true}, "/tmp/whatever", helpers)
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("MagentoFamilyPostClone() error = %v, want %v", err, wantErr)
+		t.Fatalf("PostClone() error = %v, want %v", err, wantErr)
 	}
 }

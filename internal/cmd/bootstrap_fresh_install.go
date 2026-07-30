@@ -112,8 +112,8 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 // read-only-allow-delete unblock if the PHP container is already running.
 // Moved from the tail of runBootstrapPostInstall (internal/cmd/
 // bootstrap_post_install.go) - the "build the args" half of that function
-// is now bootstrap.BuildMagentoSetupInstallArgs
-// (internal/engine/bootstrap/magento_family.go), called by the Magento
+// is now magento2.BuildSetupInstallArgs
+// (internal/frameworks/magento2/bootstrap.go), called by the Magento
 // family's shared freshInstall before this function ever runs.
 func runBootstrapMagentoSetupInstall(cmd *cobra.Command, config engine.Config, args []string) error {
 	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)

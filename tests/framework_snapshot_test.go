@@ -17,6 +17,8 @@ import (
 	"govard/internal/frameworks/emdash"
 	"govard/internal/frameworks/laravel"
 	"govard/internal/frameworks/magento1"
+	"govard/internal/frameworks/magento2"
+	"govard/internal/frameworks/mageos"
 	"govard/internal/frameworks/nextjs"
 	"govard/internal/frameworks/openmage"
 	"govard/internal/frameworks/prestashop"
@@ -185,9 +187,9 @@ func freshCommandsFor(framework string) []string {
 	opts := bootstrap.Options{}
 	switch framework {
 	case "magento2":
-		return bootstrap.Magento2FreshCommands(opts)
+		return magento2.FreshCommands(opts)
 	case "mageos":
-		return bootstrap.MageOSFreshCommands(opts)
+		return mageos.FreshCommands(opts)
 	case "magento1":
 		return magento1.NewMagento1Bootstrap(opts).FreshCommands()
 	case "openmage":

@@ -4,6 +4,7 @@ import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/engine/tunnel"
+	"govard/internal/frameworks/magento2"
 	"govard/internal/frameworks/types"
 )
 
@@ -20,14 +21,14 @@ func Definition() types.FrameworkDefinition {
 			},
 		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
-			return bootstrap.NewMageOSBootstrap(opts)
+			return NewBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
 			return &tunnel.Magento2Manager{}
 		},
 		FreshInstall:            freshInstall,
-		PreConfigureHook:        bootstrap.MagentoFamilyPreConfigure,
-		PostCloneHook:           bootstrap.MagentoFamilyPostClone,
+		PreConfigureHook:        magento2.PreConfigure,
+		PostCloneHook:           magento2.PostClone,
 		FreshInstallNeedsDomain: true,
 		SupportsBootstrap:       true,
 		SupportsFreshInstall:    true,

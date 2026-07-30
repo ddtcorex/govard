@@ -354,9 +354,9 @@ func TestRunBootstrapFrameworkFreshInstallForTestSymfonyUsesRegistryFreshInstall
 // exercises the actual registry dispatch path for Magento 2 end-to-end
 // (RunBootstrapFrameworkFreshInstallWithOptionsForTest ->
 // runBootstrapRegistryFreshInstall -> magento2.freshInstall ->
-// bootstrap.MagentoFamilyFreshInstall), rather than only unit-testing the
-// pure bootstrap.BuildMagentoFreshCreateProjectCommand/
-// BuildMagentoSetupInstallArgs builder functions in isolation
+// magento2.FreshInstall), rather than only unit-testing the
+// pure magento2.BuildFreshCreateProjectCommand/
+// BuildSetupInstallArgs builder functions in isolation
 // (tests/magento_family_fresh_install_test.go) - this is the test that
 // would catch a dispatcher wiring regression (e.g. magento2 silently
 // falling through to the wrong case, or losing FreshInstall/DisplayName).
@@ -443,10 +443,10 @@ func TestRunBootstrapFrameworkFreshInstallForTestMagento2UsesRegistryFreshInstal
 // TestRunBootstrapFrameworkFreshInstallForTestMageOSUsesRegistryFreshInstall
 // is TestRunBootstrapFrameworkFreshInstallForTestMagento2UsesRegistryFreshInstall's
 // Mage-OS counterpart - both frameworks share
-// bootstrap.MagentoFamilyFreshInstall, but the review that flagged this gap
+// magento2.FreshInstall, but the review that flagged this gap
 // specifically called out that neither had end-to-end dispatch coverage,
-// and MageOSVariant's repository URL/DB credentials genuinely differ from
-// Magento2Variant's, so both are covered rather than assuming parity.
+// and mageos.Variant's repository URL/DB credentials genuinely differ from
+// magento2.Variant's, so both are covered rather than assuming parity.
 func TestRunBootstrapFrameworkFreshInstallForTestMageOSUsesRegistryFreshInstall(t *testing.T) {
 	tempDir := t.TempDir()
 	chdirForTest(t, tempDir)

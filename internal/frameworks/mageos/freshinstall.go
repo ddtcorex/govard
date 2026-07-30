@@ -1,10 +1,13 @@
 package mageos
 
-import "govard/internal/engine/bootstrap"
+import (
+	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/magento2"
+)
 
 // freshInstall runs Mage-OS's fresh-install sequence by delegating to the
-// shared Magento-family orchestrator (internal/engine/bootstrap/
-// magento_family.go), parameterized by bootstrap.MageOSVariant.
+// shared Magento-family orchestrator (internal/frameworks/magento2/
+// bootstrap.go), parameterized by Variant.
 func freshInstall(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error {
-	return bootstrap.MagentoFamilyFreshInstall(bootstrap.MageOSVariant, opts, projectDir, helpers)
+	return magento2.FreshInstall(Variant, opts, projectDir, helpers)
 }
