@@ -261,6 +261,10 @@ case "$*" in
   *govard-rsync-ok*)
     printf '%s\n' "govard-rsync-ok"
     ;;
+  *"db.default missing"*)
+    # Fake Magento 2 app/etc/env.php DB probe payload (see magentoDBProbePHP)
+    printf '%s\n' "eyJob3N0IjoiZGIiLCJ1c2VybmFtZSI6Im1hZ2VudG8iLCJwYXNzd29yZCI6Im1hZ2VudG8iLCJkYm5hbWUiOiJtYWdlbnRvIiwidGFibGVfcHJlZml4IjoiIiwiY3J5cHRfa2V5IjoiIn0="
+    ;;
 esac
 `
 	}
