@@ -24,23 +24,19 @@ func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config,
 		opts.MetaPackage = "mage-os/project-community-edition"
 	}
 
-	if def, ok := frameworks.Get(config.Framework); ok && def.FreshInstall != nil {
-		return runBootstrapRegistryFreshInstall(cmd, config, opts, def, cwd)
-	}
-
-	switch config.Framework {
-	case "magento1":
-		return fmt.Errorf("fresh install not supported for %s (use openmage instead)", config.Framework)
-	default:
+	def, ok := frameworks.Get(config.Framework)
+	if !ok || def.FreshInstall == nil {
 		return fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
 	}
+	return runBootstrapRegistryFreshInstall(cmd, config, opts, def, cwd)
 }
 
 // runBootstrapRegistryFreshInstall dispatches to a framework's own
 // FreshInstall function (internal/frameworks/<name>/freshinstall.go)
-// instead of a per-framework case here. Frameworks not yet migrated to
-// this registry field (def.FreshInstall == nil) keep dispatching through
-// the switch above.
+// instead of a per-framework case here. Every registered framework sets
+// FreshInstall now - even Magento 1, whose FreshInstall just returns the
+// "use openmage instead" error - so runBootstrapFrameworkFreshInstall has
+// no framework-name switch left at all.
 func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions, def types.FrameworkDefinition, cwd string) error {
 	fwOpts := bootstrap.Options{
 		Version:       opts.MetaVersion,
