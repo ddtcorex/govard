@@ -402,7 +402,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 
 				{
 					if context.Config.Framework == "wordpress" {
-						if err := FixWordPressCompatibility(context.Config); err != nil {
+						if err := engine.FixWordPressCompatibility(context.Config); err != nil {
 							pterm.Warning.Printf("Could not ensure WordPress (WP-CLI) compatibility: %v\n", err)
 						}
 					}

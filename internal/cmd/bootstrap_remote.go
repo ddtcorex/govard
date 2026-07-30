@@ -91,7 +91,7 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 			}
 
 			if config.Framework == "wordpress" {
-				if err := FixWordPressCompatibility(config); err != nil {
+				if err := engine.FixWordPressCompatibility(config); err != nil {
 					pterm.Warning.Printf("Could not verify/fix WordPress compatibility: %v\n", err)
 				}
 			}
