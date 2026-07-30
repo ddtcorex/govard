@@ -17,4 +17,7 @@ services:
         user: root
         volumes:
             - .:/app
+            - next-cache:/app/.next
         working_dir: /app
+volumes:
+    next-cache: null

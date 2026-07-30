@@ -47,8 +47,9 @@ func TestDjangoBootstrapInstallUsesContainerExecRunner(t *testing.T) {
 	if gotContainer != "sample-project-web-1" {
 		t.Errorf("containerName = %q, want %q", gotContainer, "sample-project-web-1")
 	}
-	if gotScript != "pip install --no-cache-dir -r requirements.txt && python manage.py migrate" {
-		t.Errorf("script = %q", gotScript)
+	wantScript := "pip install --no-cache-dir -r requirements.txt && python manage.py migrate; rc=$?; chown -R \"$(stat -c %u:%g .)\" . 2>/dev/null; exit $rc"
+	if gotScript != wantScript {
+		t.Errorf("script = %q, want %q", gotScript, wantScript)
 	}
 }
 

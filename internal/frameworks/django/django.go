@@ -20,6 +20,7 @@ func Definition() types.FrameworkDefinition {
 		},
 		FreshInstall:                freshInstall,
 		FreshInstallManagesOwnEnvUp: true,
+		FreshInstallNeedsDomain:     true,
 		SupportsFreshInstall:        true,
 		SupportsBootstrap:           true,
 	}
