@@ -76,7 +76,7 @@ func buildSyncExecutionPlan(config engine.Config, endpoints ResolvedSyncEndpoint
 			endpoints.Destination,
 			sourcePath,
 			destinationPath,
-			isSyncingDirectory(opts.Path, sourcePath, destinationPath),
+			isSyncingDirectory(opts.Path, sourcePath, destinationPath, endpoints.Source.IsLocal, endpoints.Destination.IsLocal),
 			opts.Delete,
 			opts.Resume,
 			opts.NoCompress,
@@ -167,6 +167,13 @@ func evaluateSyncPolicy(endpoints ResolvedSyncEndpoints, opts SyncExecutionOptio
 	warnings := []string{}
 	if opts.Path != "" && (opts.Media != "" || opts.DB) {
 		warnings = append(warnings, "Path filter only applies to file synchronization; media and database will use full configured paths.")
+	}
+	if opts.Files && strings.TrimSpace(opts.Path) == "" {
+		if opts.Delete {
+			warnings = append(warnings, "No --path specified: the ENTIRE project root will be synced, and --delete is enabled — files outside any single subfolder may be permanently removed. Re-run with -p/--path if you meant to target a specific path.")
+		} else {
+			warnings = append(warnings, "No --path specified: the ENTIRE project root will be synced, not a subfolder. Re-run with -p/--path if you meant to target a specific path.")
+		}
 	}
 	if len(opts.Include) > 0 && !opts.Files && opts.Media == "" {
 		warnings = append(warnings, "Include patterns are only applicable to file or media rsync operations.")
@@ -347,28 +354,29 @@ func getSyncNoiseExcludes(framework string) []string {
 	return engine.GetFrameworkSyncNoiseExcludes(framework)
 }
 
-func isSyncingDirectory(path, sourcePath, destinationPath string) bool {
+func isSyncingDirectory(path, sourcePath, destinationPath string, sourceIsLocal, destinationIsLocal bool) bool {
 	if path == "" || strings.HasSuffix(path, "/") || strings.HasSuffix(path, "\\") {
 		return true
 	}
 
-	// If source is local, check if it's a directory
-	if info, err := os.Stat(sourcePath); err == nil && info.IsDir() {
-		return true
+	if sourceIsLocal {
+		if info, err := os.Stat(sourcePath); err == nil {
+			return info.IsDir()
+		}
+	}
+	if destinationIsLocal {
+		if info, err := os.Stat(destinationPath); err == nil {
+			return info.IsDir()
+		}
 	}
 
-	// If destination is local, check if it exists as a directory
-	if info, err := os.Stat(destinationPath); err == nil && info.IsDir() {
-		return true
-	}
-
-	// Special case for common directories known in this project
-	pathLower := strings.ToLower(path)
-	if pathLower == "vendor" || pathLower == "node_modules" || pathLower == "pub/media" || pathLower == "media" || pathLower == "var" {
-		return true
-	}
-
-	return false
+	// Neither side is resolvable locally (or the path doesn't exist yet):
+	// fall back to an extension check. Paths without a file extension are
+	// assumed to be directories -- covers arbitrary framework paths (theme
+	// folders, storage dirs, etc.) without needing a hardcoded list. A real
+	// directory whose name contains a dot can still be forced with a
+	// trailing slash.
+	return filepath.Ext(path) == ""
 }
 
 // BuildSyncExecutionPlanForTest exposes buildSyncExecutionPlan for tests in /tests.

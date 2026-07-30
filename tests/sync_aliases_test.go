@@ -138,6 +138,147 @@ func TestSyncCommandExplicitMediaModeStillParsesWithSpaceSeparatedValue(t *testi
 	}
 }
 
+func TestSyncCommandWarnsWhenPathMissingForFileSync(t *testing.T) {
+	resetSyncFlagsForAliasTest(t)
+
+	tempDir := t.TempDir()
+	writeSyncAliasConfig(t, tempDir)
+	chdirForTest(t, tempDir)
+
+	root := cmd.RootCommandForTest()
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"sync", "--plan", "--file", "-e", "dev"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "No --path specified: the ENTIRE project root will be synced, not a subfolder.") {
+		t.Fatalf("expected empty-path warning, got: %s", out)
+	}
+}
+
+func TestSyncCommandWarnsHarderWhenPathMissingAndDeleteEnabled(t *testing.T) {
+	resetSyncFlagsForAliasTest(t)
+
+	tempDir := t.TempDir()
+	writeSyncAliasConfig(t, tempDir)
+	chdirForTest(t, tempDir)
+
+	root := cmd.RootCommandForTest()
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"sync", "--plan", "--file", "--delete", "-e", "dev"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "No --path specified: the ENTIRE project root will be synced, and --delete is enabled") {
+		t.Fatalf("expected delete-aware empty-path warning, got: %s", out)
+	}
+}
+
+func TestSyncCommandNoEmptyPathWarningWhenPathGiven(t *testing.T) {
+	resetSyncFlagsForAliasTest(t)
+
+	tempDir := t.TempDir()
+	writeSyncAliasConfig(t, tempDir)
+	chdirForTest(t, tempDir)
+
+	root := cmd.RootCommandForTest()
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"sync", "--plan", "--file", "--path", "app/etc/config.php", "-e", "dev"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "No --path specified") {
+		t.Fatalf("did not expect empty-path warning when --path is set, got: %s", out)
+	}
+}
+
+func TestSyncCommandBareTrailingArgBecomesPath(t *testing.T) {
+	resetSyncFlagsForAliasTest(t)
+
+	tempDir := t.TempDir()
+	writeSyncAliasConfig(t, tempDir)
+	chdirForTest(t, tempDir)
+
+	root := cmd.RootCommandForTest()
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"sync", "--plan", "--file", "-e", "dev", "var/log/"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Path Filter: var/log/") {
+		t.Fatalf("expected bare trailing arg to become --path, got: %s", out)
+	}
+	if strings.Contains(out, "No --path specified") {
+		t.Fatalf("did not expect empty-path warning once positional arg supplies a path, got: %s", out)
+	}
+}
+
+func TestSyncCommandExplicitMediaModePositionalIsNotReusedAsPath(t *testing.T) {
+	resetSyncFlagsForAliasTest(t)
+
+	tempDir := t.TempDir()
+	writeSyncAliasConfig(t, tempDir)
+	chdirForTest(t, tempDir)
+
+	root := cmd.RootCommandForTest()
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"sync", "--plan", "--media", "all", "-e", "dev"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Path Filter: (none)") {
+		t.Fatalf("expected 'all' consumed by --media, not reused as path, got: %s", out)
+	}
+}
+
+func TestSyncCommandExplicitPathWinsOverPositionalArg(t *testing.T) {
+	resetSyncFlagsForAliasTest(t)
+
+	tempDir := t.TempDir()
+	writeSyncAliasConfig(t, tempDir)
+	chdirForTest(t, tempDir)
+
+	root := cmd.RootCommandForTest()
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"sync", "--plan", "--file", "--path", "app/etc/config.php", "-e", "dev", "ignored-positional"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Path Filter: app/etc/config.php") {
+		t.Fatalf("expected explicit --path to win over positional arg, got: %s", out)
+	}
+}
+
 func TestResetSyncFlagsForTestClearsStringArrayFlags(t *testing.T) {
 	resetSyncFlagsForAliasTest(t)
 

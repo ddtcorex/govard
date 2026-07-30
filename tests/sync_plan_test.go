@@ -68,6 +68,85 @@ func TestSyncPlanDirectoryDetection(t *testing.T) {
 	}
 }
 
+func TestSyncPlanDirectoryDetectionForUnlistedFrameworkPath(t *testing.T) {
+	tempDir := t.TempDir()
+	destDir := filepath.Join(tempDir, "dest")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	config := engine.Config{ProjectName: "test-project", Framework: "magento2"}
+
+	endpoints := cmd.ResolveSyncEndpointsForTest(
+		cmd.SyncEndpoint{
+			Name:     "staging",
+			IsLocal:  false,
+			RootPath: "/var/www/html",
+			RemoteCfg: engine.RemoteConfig{
+				Host: "staging.example.com",
+				Path: "/var/www/html",
+			},
+		},
+		cmd.SyncEndpoint{Name: "local", IsLocal: true, RootPath: destDir},
+	)
+
+	// "app/design/frontend/MyTheme" is not in the old hardcoded whitelist and
+	// does not exist yet at the destination -- must still be treated as a
+	// directory so rsync doesn't nest it inside itself at the destination.
+	opts := cmd.SyncExecutionOptionsForTest(true, "", false)
+	opts.Path = "app/design/frontend/MyTheme"
+
+	plan, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(plan.Commands) != 1 {
+		t.Fatalf("expected 1 rsync command, got %d", len(plan.Commands))
+	}
+	if !strings.Contains(plan.Commands[0], "MyTheme/") {
+		t.Errorf("expected rsync command to contain trailing-slash 'MyTheme/', got: %s", plan.Commands[0])
+	}
+}
+
+func TestSyncPlanDirectoryDetectionTreatsExtensionPathAsFile(t *testing.T) {
+	tempDir := t.TempDir()
+	destDir := filepath.Join(tempDir, "dest")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	config := engine.Config{ProjectName: "test-project", Framework: "magento2"}
+
+	endpoints := cmd.ResolveSyncEndpointsForTest(
+		cmd.SyncEndpoint{
+			Name:     "staging",
+			IsLocal:  false,
+			RootPath: "/var/www/html",
+			RemoteCfg: engine.RemoteConfig{
+				Host: "staging.example.com",
+				Path: "/var/www/html",
+			},
+		},
+		cmd.SyncEndpoint{Name: "local", IsLocal: true, RootPath: destDir},
+	)
+
+	opts := cmd.SyncExecutionOptionsForTest(true, "", false)
+	opts.Path = "app/etc/config.php"
+
+	plan, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(plan.Commands) != 1 {
+		t.Fatalf("expected 1 rsync command, got %d", len(plan.Commands))
+	}
+	if strings.Contains(plan.Commands[0], "config.php/") {
+		t.Errorf("expected file path to NOT get a trailing slash, got: %s", plan.Commands[0])
+	}
+}
+
 func TestSyncPlanScopes(t *testing.T) {
 	config := engine.Config{
 		ProjectName: "test-project",

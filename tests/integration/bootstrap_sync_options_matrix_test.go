@@ -301,7 +301,7 @@ func TestSyncOptionsMatrixWithSimulatedEnvironments(t *testing.T) {
 		logs := shim.ReadLog(t)
 		assertMatrixContains(t, logs, "rsync|")
 		assertMatrixContains(t, logs, "--delete")
-		assertMatrixContains(t, logs, "deploy@staging.example.com:'/srv/www/staging/app/code'")
+		assertMatrixContains(t, logs, "deploy@staging.example.com:'/srv/www/staging/app/code/'")
 		assertMatrixContains(t, logs, filepath.Join(projectDir, "app", "code"))
 	})
 

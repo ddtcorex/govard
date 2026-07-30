@@ -102,6 +102,7 @@ Case Studies:
 		full, _ := cmd.Flags().GetBool("full")
 		deleteFiles, _ := cmd.Flags().GetBool("delete")
 		path, _ := cmd.Flags().GetString("path")
+		path = resolvePositionalPathArg(cmd, path, args)
 		planOnly, _ := cmd.Flags().GetBool("plan")
 		yes, _ := cmd.Flags().GetBool("yes")
 		resume, _ := cmd.Flags().GetBool("resume")

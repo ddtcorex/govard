@@ -82,6 +82,8 @@ Lệnh `govard sync` di chuyển các file nguồn, media, và dữ liệu datab
 govard sync --source staging --destination local --full --plan
 govard sync --from staging --to local --media
 govard sync -s dev --db --no-noise --no-pii
+govard sync -s prod --file --path app/etc/config.php
+govard sync -s dev --file app/design/frontend/MyTheme
 ```
 
 Tự động chọn remote `staging` nếu không khai báo `--source`, và fallback về `dev`.
@@ -117,6 +119,10 @@ Cờ `--media` đơn lẻ sẽ mặc định chạy chế độ đồng bộ med
 | `-p, --path` | Chỉ định một file hoặc thư mục cụ thể tương đối với thư mục gốc dự án |
 | `-I, --include` | Cấu hình pattern bao gồm của rsync (có thể lặp lại nhiều lần) |
 | `-X, --exclude` | Cấu hình pattern loại trừ của rsync (có thể lặp lại nhiều lần) |
+
+::: tip
+Nếu không truyền `--path`, toàn bộ thư mục gốc của dự án sẽ được đồng bộ — `govard sync` sẽ cảnh báo điều này trong kế hoạch trước khi hỏi xác nhận. Bạn cũng có thể bỏ qua `-p`/`--path` và truyền path dưới dạng tham số cuối cùng, ví dụ: `govard sync -s dev --file app/design/frontend/MyTheme`.
+:::
 
 ### Các bộ lọc bảo mật cơ sở dữ liệu (Database Privacy Filters)
 
