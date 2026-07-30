@@ -59,6 +59,8 @@ Say you're adding a fictional framework called `whimsy`. Every step below has a 
 
 Create a `config.go` with a package-level `var config = engine.FrameworkConfig{...}` literal (PHP/Node version, nginx template, DB engine/version, includes list). Copy the closest existing framework's shape — e.g. `internal/frameworks/cakephp/config.go` for a vanilla PHP+MariaDB stack, `internal/frameworks/nextjs/config.go` for a Node-only one with no DB.
 
+If `whimsy` is a near-fork of an existing framework (same runtime stack, nearly identical defaults — like Mage-OS is to Magento 2, or OpenMage is to Magento 1), don't duplicate the whole literal: add a small shared constructor to `internal/engine/bootstrap` instead (see `bootstrap.BuildMagento2FamilyConfig`/`BuildMagento1FamilyConfig` in `internal/engine/bootstrap/magento_family_config.go`) parameterized by just the handful of fields that actually differ, and call it from both frameworks' `config.go`.
+
 ### 2. Manifest data — `internal/frameworks/whimsy/manifest.go`
 
 Create a `manifest.go` with a package-level `var manifest = engine.FrameworkManifestConfig{...}` literal: sync excludes (`Paths.LocalMedia`/`RemoteMedia`, `WebRootCandidates`), sensitive/ignored DB tables, and the `Features` block:
@@ -84,6 +86,8 @@ var manifest = engine.FrameworkManifestConfig{
 ```
 
 Copy the closest existing framework's shape — e.g. `internal/frameworks/cakephp/manifest.go` or `internal/frameworks/django/manifest.go`. `RequiresRunningEnvForFreshInstall` controls whether `govard bootstrap --fresh` starts containers *before* or *after* running `CreateProject` — see the gotcha about this below before setting it `true`.
+
+Same rule as `config.go` above: if `whimsy` is a near-fork of an existing framework, reference a shared value in `internal/engine/bootstrap` (see `bootstrap.Magento2FamilyManifest`/`Magento1FamilyManifest` in `internal/engine/bootstrap/magento_family_manifest.go`) instead of duplicating the whole literal.
 
 ### 3. Compose blueprint — `internal/blueprints/files/whimsy/`
 
@@ -151,7 +155,7 @@ Registration is generated, not hand-maintained: run `make generate` (or `go gene
 
 Almost all of this is registry-driven; one switch case remains (see "What's not on the registry yet," above):
 
-- If `whimsy` fits the generic `CreateProject → Install → govard config auto` shape, add `internal/frameworks/whimsy/freshinstall.go` with a `freshInstall` function that just delegates to `bootstrap.GenericFreshInstall(NewWhimsyBootstrap(opts), projectDir, helpers)` — copy `internal/frameworks/cakephp/freshinstall.go` — and wire it up via the `FreshInstall` (plus `FreshInstallNeedsDB`/`FreshInstallNeedsDomain`) fields on `Definition()`. `runBootstrapFrameworkFreshInstall` picks it up automatically, no switch to edit.
+- If `whimsy` fits the generic `CreateProject → Install → govard config auto` shape, add `internal/frameworks/whimsy/freshinstall.go` with a `freshInstall` function that just delegates to `bootstrap.GenericFreshInstall(NewWhimsyBootstrap(opts), projectDir, helpers)` — copy `internal/frameworks/cakephp/freshinstall.go` — and wire it up via the `FreshInstall` (plus `FreshInstallNeedsDB`/`FreshInstallNeedsDomain`) fields on `Definition()`. `runBootstrapFrameworkFreshInstall` picks it up automatically, no switch to edit. If `whimsy`'s compose service can't come up against an empty/unmigrated project (so `FreshInstall` must bring the environment up itself before running `Install()`/migrate — Django is the one framework that needs this today), also set `FreshInstallManagesOwnEnvUp: true` on `Definition()` so `bootstrapCmd.RunE` skips its own redundant `env up` afterward.
 - If it needs bespoke steps, write that orchestration in `internal/frameworks/whimsy/freshinstall.go` instead — it still gets wired up the same way via `Definition()`'s `FreshInstall` field, just without delegating to `bootstrap.GenericFreshInstall`; copy `internal/frameworks/openmage/freshinstall.go` or `internal/frameworks/django/freshinstall.go` as a starting shape (Django's shows how to override `Options.Runner` to a non-PHP `CmdHelpers` runner and how to use `Options.SkipUp`/`bootstrap.ErrFreshInstallSkipUp`). Only fall back to a `case "whimsy":` in `runBootstrapFrameworkFreshInstall`'s switch if the orchestration genuinely cannot be expressed as a `FreshInstall` function — every registered framework has managed to avoid this so far except Magento 1, whose fresh install is unsupported by design and still returns its error from that switch.
 - If it supports the remote/clone workflow (`SupportsBootstrap: true`, not just fresh-install), it's picked up automatically by `bootstrap_remote.go`'s post-clone dispatch (`bootstrapPostCloneDefinition`) — no switch to edit there unless it's part of the Magento family (which `bootstrapPostCloneDefinition` excludes via `engine.IsMagento2Family`, since its real pre-configure/post-clone setup goes through the `PreConfigureHook`/`PostCloneHook` fields instead - see the paragraph below).
 

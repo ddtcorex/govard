@@ -59,6 +59,8 @@ Giả sử bạn đang thêm một framework hư cấu tên `whimsy`. Mỗi bư�
 
 Tạo file `config.go` với một biến cấp package `var config = engine.FrameworkConfig{...}` (phiên bản PHP/Node, nginx template, engine/phiên bản DB, danh sách includes). Copy theo framework gần giống nhất — vd `internal/frameworks/cakephp/config.go` cho stack PHP+MariaDB thông thường, `internal/frameworks/nextjs/config.go` cho stack chỉ Node không DB.
 
+Nếu `whimsy` là bản fork gần giống một framework đã có (cùng stack runtime, giá trị mặc định gần như giống hệt — như Mage-OS với Magento 2, hay OpenMage với Magento 1), đừng copy nguyên literal: thêm một constructor dùng chung vào `internal/engine/bootstrap` (xem `bootstrap.BuildMagento2FamilyConfig`/`BuildMagento1FamilyConfig` trong `internal/engine/bootstrap/magento_family_config.go`) tham số hóa theo đúng vài field thực sự khác nhau, rồi gọi nó từ `config.go` của cả hai framework.
+
 ### 2. Dữ liệu manifest — `internal/frameworks/whimsy/manifest.go`
 
 Tạo file `manifest.go` với một biến cấp package `var manifest = engine.FrameworkManifestConfig{...}`: exclude khi sync (`Paths.LocalMedia`/`RemoteMedia`, `WebRootCandidates`), bảng DB nhạy cảm/bỏ qua, và khối `Features`:
@@ -84,6 +86,8 @@ var manifest = engine.FrameworkManifestConfig{
 ```
 
 Copy theo framework gần giống nhất — vd `internal/frameworks/cakephp/manifest.go` hoặc `internal/frameworks/django/manifest.go`. `RequiresRunningEnvForFreshInstall` quyết định `govard bootstrap --fresh` khởi động container *trước* hay *sau* khi chạy `CreateProject` — xem mục "gotcha" bên dưới về vấn đề này trước khi đặt nó `true`.
+
+Quy tắc tương tự `config.go` ở trên: nếu `whimsy` là bản fork gần giống một framework đã có, hãy tham chiếu tới một giá trị dùng chung trong `internal/engine/bootstrap` (xem `bootstrap.Magento2FamilyManifest`/`Magento1FamilyManifest` trong `internal/engine/bootstrap/magento_family_manifest.go`) thay vì copy nguyên literal.
 
 ### 3. Blueprint compose — `internal/blueprints/files/whimsy/`
 
@@ -151,7 +155,7 @@ Việc đăng ký được sinh tự động, không còn duy trì thủ công: 
 
 Phần lớn chỗ này đã lên registry; chỉ còn đúng một case switch sót lại (xem "Những gì chưa nằm trên registry" ở trên):
 
-- Nếu `whimsy` khớp khuôn chung `CreateProject → Install → govard config auto`, thêm file `internal/frameworks/whimsy/freshinstall.go` với một hàm `freshInstall` chỉ đơn giản delegate sang `bootstrap.GenericFreshInstall(NewWhimsyBootstrap(opts), projectDir, helpers)` — copy theo `internal/frameworks/cakephp/freshinstall.go` — rồi gắn vào qua field `FreshInstall` (cùng `FreshInstallNeedsDB`/`FreshInstallNeedsDomain`) trên `Definition()`. `runBootstrapFrameworkFreshInstall` sẽ tự nhận, không cần sửa switch nào.
+- Nếu `whimsy` khớp khuôn chung `CreateProject → Install → govard config auto`, thêm file `internal/frameworks/whimsy/freshinstall.go` với một hàm `freshInstall` chỉ đơn giản delegate sang `bootstrap.GenericFreshInstall(NewWhimsyBootstrap(opts), projectDir, helpers)` — copy theo `internal/frameworks/cakephp/freshinstall.go` — rồi gắn vào qua field `FreshInstall` (cùng `FreshInstallNeedsDB`/`FreshInstallNeedsDomain`) trên `Definition()`. `runBootstrapFrameworkFreshInstall` sẽ tự nhận, không cần sửa switch nào. Nếu service compose của `whimsy` không thể khởi động được với một project rỗng/chưa migrate (nên `FreshInstall` phải tự bật môi trường lên trước khi chạy `Install()`/migrate — Django là framework duy nhất cần điều này hiện nay), hãy đặt thêm `FreshInstallManagesOwnEnvUp: true` trên `Definition()` để `bootstrapCmd.RunE` bỏ qua bước `env up` dư thừa của chính nó sau đó.
 - Nếu cần các bước riêng, viết orchestration đó ngay trong `internal/frameworks/whimsy/freshinstall.go` — vẫn gắn vào theo đúng cách qua field `FreshInstall` của `Definition()`, chỉ là không delegate sang `bootstrap.GenericFreshInstall`; copy `internal/frameworks/openmage/freshinstall.go` hoặc `internal/frameworks/django/freshinstall.go` làm khung ban đầu (file của Django cho thấy cách override `Options.Runner` thành một runner `CmdHelpers` không phải PHP, và cách dùng `Options.SkipUp`/`bootstrap.ErrFreshInstallSkipUp`). Chỉ nên quay lại dùng `case "whimsy":` trong switch của `runBootstrapFrameworkFreshInstall` nếu orchestration đó thực sự không thể diễn đạt được bằng một hàm `FreshInstall` — mọi framework đã đăng ký đến nay đều tránh được việc này, trừ Magento 1, vì fresh install của nó không được hỗ trợ theo thiết kế và vẫn trả lỗi ngay từ switch đó.
 - Nếu nó hỗ trợ quy trình remote/clone (`SupportsBootstrap: true`, không chỉ fresh-install), nó tự động được `bootstrap_remote.go`'s post-clone dispatch (`bootstrapPostCloneDefinition`) nhận diện — không cần sửa switch nào ở đó trừ khi nó thuộc nhóm Magento (bị `bootstrapPostCloneDefinition` loại trừ qua `engine.IsMagento2Family`, vì bước pre-configure/post-clone thật của nó đi qua field `PreConfigureHook`/`PostCloneHook` thay thế - xem đoạn ngay dưới đây).
 
