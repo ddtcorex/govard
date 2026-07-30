@@ -159,14 +159,11 @@ func RunBootstrapFrameworkFreshInstallWithOptionsForTest(cmd *cobra.Command, con
 // frameworkFreshInstallManagesOwnEnvUp reports whether the framework's
 // fresh-install function already calls `env up` itself (and, if needed,
 // runs Install()/migrate against the running containers) - so the generic
-// post-fresh-install `env up` in bootstrapCmd.RunE would be redundant.
-// Django's compose "web" container executes `python manage.py runserver`
-// directly and can't come up against an empty project directory, so its
-// fresh-install path must scaffold the project first, then bring the
-// environment up itself before running Install() - by the time control
-// returns to RunE, env up has already happened.
+// post-fresh-install `env up` in bootstrapCmd.RunE would be redundant. See
+// FrameworkDefinition.FreshInstallManagesOwnEnvUp for why Django needs this.
 func frameworkFreshInstallManagesOwnEnvUp(framework string) bool {
-	return framework == "django"
+	def, ok := frameworks.Get(framework)
+	return ok && def.FreshInstallManagesOwnEnvUp
 }
 
 // FrameworkFreshInstallManagesOwnEnvUpForTest exposes frameworkFreshInstallManagesOwnEnvUp for tests in /tests.

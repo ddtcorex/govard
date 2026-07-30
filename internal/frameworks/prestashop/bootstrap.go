@@ -112,7 +112,7 @@ func (p *PrestaShopBootstrap) PostClone(projectDir string) error {
 // this. PrestaShop keeps the domain in two separate places that don't auto-sync with
 // each other: the ps_shop_url table (id_shop_url = 1) and a denormalized copy in
 // ps_configuration (PS_SHOP_DOMAIN/PS_SHOP_DOMAIN_SSL, read by Tools::getShopDomain*())
-// — both need updating or pages/redirects keep resolving against the old domain.
+// - both need updating or pages/redirects keep resolving against the old domain.
 func (p *PrestaShopBootstrap) updateShopURL() error {
 	domain := strings.TrimSpace(p.Options.Domain)
 	projectName := strings.TrimSpace(p.Options.ProjectName)
@@ -170,7 +170,7 @@ func buildPrestaShopEnableSSLSQL(prefix string) string {
 }
 
 // configureMail points the shop's customer-facing mail relay (PS_MAIL_SERVER/
-// PS_MAIL_USER/PS_MAIL_SMTP_PORT — distinct from parameters.php's Symfony-mailer keys
+// PS_MAIL_USER/PS_MAIL_SMTP_PORT - distinct from parameters.php's Symfony-mailer keys
 // already handled by patchParametersFile/createParametersFile) at govard's shared local
 // mail catcher. Universal for any govard-managed PrestaShop project, same reasoning as
 // enableSSL: govard always provides this catcher, regardless of project-specific
@@ -193,7 +193,7 @@ func BuildPrestaShopMailSQLForTest(prefix string) string {
 
 // buildPrestaShopMailSQL returns the SQL statements that point PS_MAIL_SERVER/
 // PS_MAIL_USER/PS_MAIL_SMTP_PORT at govard's shared local mail catcher ('mail', no auth,
-// port 1025 — matching the mailer_host/mailer_port fabricated into parameters.php).
+// port 1025 - matching the mailer_host/mailer_port fabricated into parameters.php).
 func buildPrestaShopMailSQL(prefix string) string {
 	return fmt.Sprintf(
 		"UPDATE %[1]sconfiguration SET value = 'mail' WHERE name LIKE 'PS_MAIL_SERVER'; "+
@@ -354,7 +354,7 @@ func (p *PrestaShopBootstrap) ensureWritableDirs(projectDir string) {
 }
 
 // singleQuoteEscape escapes backslashes and single quotes for embedding a value inside
-// a single-quoted literal — the escaping rules are identical for a PHP array literal
+// a single-quoted literal - the escaping rules are identical for a PHP array literal
 // and a MySQL string literal, so this is shared by both parameters.php generation/patching
 // and the shop URL SQL statement.
 func singleQuoteEscape(value string) string {
