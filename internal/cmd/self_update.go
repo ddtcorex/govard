@@ -22,8 +22,6 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-
-	"govard/internal/engine"
 )
 
 const (
@@ -264,19 +262,6 @@ func selfUpdateReleaseBaseURL(repo, releaseTag string) string {
 }
 
 func fetchLatestReleaseTag(client *http.Client, repo string) (string, error) {
-	cacheFile := filepath.Join(engine.GovardHomeDir(), "cache", "latest-release.json")
-	var cacheData struct {
-		Tag       string    `json:"tag"`
-		FetchedAt time.Time `json:"fetched_at"`
-	}
-	if b, err := os.ReadFile(cacheFile); err == nil {
-		if json.Unmarshal(b, &cacheData) == nil && time.Since(cacheData.FetchedAt) < time.Hour {
-			if isValidReleaseTag(cacheData.Tag) {
-				return cacheData.Tag, nil
-			}
-		}
-	}
-
 	url := selfUpdateLatestReleaseURL(repo)
 	body, err := downloadText(client, url)
 	if err != nil {
@@ -293,13 +278,6 @@ func fetchLatestReleaseTag(client *http.Client, repo string) (string, error) {
 	tag, err := validateReleaseTag(release.TagName)
 	if err != nil {
 		return "", fmt.Errorf("invalid release tag received from upstream: %w", err)
-	}
-
-	cacheData.Tag = tag
-	cacheData.FetchedAt = time.Now()
-	if b, err := json.Marshal(cacheData); err == nil {
-		_ = os.MkdirAll(filepath.Dir(cacheFile), conventions.DefaultDirPerm)
-		_ = os.WriteFile(cacheFile, b, conventions.DefaultFilePerm)
 	}
 
 	return tag, nil
