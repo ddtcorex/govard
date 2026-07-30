@@ -193,5 +193,5 @@ func TestMagentoThreeEnvironmentInitBootstrapAndSyncOptions(t *testing.T) {
 	assertContains(t, syncLogs, "--include app/*")
 	assertContains(t, syncLogs, "--exclude vendor/")
 	assertContains(t, syncLogs, "--delete")
-	assertContains(t, syncLogs, "deploy@dev.example.com:'/var/www/html/app/code'")
+	assertContains(t, syncLogs, "deploy@dev.example.com:'/var/www/html/app/code/'")
 }

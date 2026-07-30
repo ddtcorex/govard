@@ -83,6 +83,7 @@ govard sync --source staging --destination local --full --plan
 govard sync --from staging --to local --media
 govard sync -s dev --db --no-noise --no-pii
 govard sync -s prod --file --path app/etc/config.php
+govard sync -s dev --file app/design/frontend/MyTheme
 ```
 
 Auto-selects `staging` if no `--source` provided, falling back to `dev`.
@@ -118,6 +119,10 @@ Bare `--media` defaults to the `optimized` media mode.
 | `-p, --path` | Specific file/directory relative to project root |
 | `-I, --include` | Rsync include pattern (repeatable) |
 | `-X, --exclude` | Rsync exclude pattern (repeatable) |
+
+::: tip
+Omitting `--path` syncs the entire project root — `govard sync` warns you about this in the plan before asking for confirmation. You can also skip `-p`/`--path` entirely and pass the path as a trailing argument instead, e.g. `govard sync -s dev --file app/design/frontend/MyTheme`.
+:::
 
 ### Database Privacy Filters
 
