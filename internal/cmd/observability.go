@@ -21,6 +21,14 @@ func trackProjectRegistry(config engine.Config, cwd string, command string) erro
 		return nil
 	}
 
+	// previous_profile is only ever set by `config profile switch`/`clear`; preserve it here
+	// so unrelated commands (sync, lock, db, bootstrap, remote, tunnel) don't erase the
+	// bookkeeping that lets `env up` detect and warn about a profile shift.
+	previousProfile := ""
+	if existing, ok := engine.GetProjectRegistryEntry(projectRoot); ok {
+		previousProfile = existing.PreviousProfile
+	}
+
 	entry := engine.ProjectRegistryEntry{
 		Path:             projectRoot,
 		ProjectName:      normalizeProjectName(config.ProjectName, projectRoot),
@@ -31,6 +39,7 @@ func trackProjectRegistry(config engine.Config, cwd string, command string) erro
 		LastSeenAt:       time.Now().UTC(),
 		PHPVersion:       strings.TrimSpace(config.Stack.PHPVersion),
 		Profile:          strings.TrimSpace(config.Profile),
+		PreviousProfile:  previousProfile,
 		FrameworkVersion: strings.TrimSpace(config.FrameworkVersion),
 	}
 	return engine.UpsertProjectRegistryEntry(entry)

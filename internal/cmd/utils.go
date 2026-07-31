@@ -19,13 +19,7 @@ import (
 )
 
 func loadConfig() engine.Config {
-	wd, _ := os.Getwd()
-	config, _, err := engine.LoadConfigFromDir(wd, false)
-	if err != nil {
-		pterm.Warning.Printf("Failed to load layered config: %v\n", err)
-		return engine.Config{}
-	}
-	return config
+	return loadConfigWithProfile("")
 }
 
 // loadConfigWithProfile loads config with a specific profile (used by env proxy).
@@ -47,7 +41,9 @@ func loadFullConfig() (engine.Config, error) {
 
 func loadFullConfigWithProfile(profile string) (engine.Config, error) {
 	wd, _ := os.Getwd()
-	config, _, err := engine.LoadConfigFromDirWithProfile(wd, true, profile)
+	// Resolve profile: explicit flag > project registry (last-used) > empty (default)
+	resolvedProfile := engine.ResolveEffectiveProfile(wd, profile)
+	config, _, err := engine.LoadConfigFromDirWithProfile(wd, true, resolvedProfile)
 	if err != nil {
 		return engine.Config{}, fmt.Errorf("could not load config: %w", err)
 	}
