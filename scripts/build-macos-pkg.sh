@@ -61,3 +61,13 @@ pkgbuild \
   "$PKG_PATH"
 
 echo "Created: $PKG_PATH"
+
+# `govard self-update` refreshes govard-desktop by downloading
+# govard-desktop_<version>_Darwin_<arch>.tar.gz (same naming as the Linux
+# archive GoReleaser produces) — ship it here since GoReleaser only
+# cross-builds govard-desktop for linux.
+DESKTOP_ARCHIVE_NAME="govard-desktop_${VERSION}_Darwin_${ARCH}.tar.gz"
+DESKTOP_ARCHIVE_PATH="$OUT_DIR/$DESKTOP_ARCHIVE_NAME"
+tar -czf "$DESKTOP_ARCHIVE_PATH" -C "$BIN_DIR" govard-desktop
+
+echo "Created: $DESKTOP_ARCHIVE_PATH"

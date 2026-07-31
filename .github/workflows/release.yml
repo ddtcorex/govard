@@ -39,6 +39,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       fail-fast: false
+      max-parallel: 1 # serialize: both legs append to the shared release checksums.txt
       matrix:
         arch: [amd64, arm64]
     steps:
@@ -50,10 +51,18 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Build macOS pkg
+      - name: Build macOS pkg and desktop archive
         run: ./scripts/build-macos-pkg.sh "${GITHUB_REF_NAME}" "${{ matrix.arch }}" dist
 
-      - name: Upload macOS pkg asset
+      - name: Upload macOS assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/*.pkg --clobber
+        run: gh release upload "${GITHUB_REF_NAME}" dist/*.pkg dist/*.tar.gz --clobber
+
+      - name: Append checksums for macOS assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${GITHUB_REF_NAME}" -p checksums.txt -O dist/checksums.txt --clobber
+          (cd dist && shasum -a 256 *.tar.gz >> checksums.txt)
+          gh release upload "${GITHUB_REF_NAME}" dist/checksums.txt --clobber
