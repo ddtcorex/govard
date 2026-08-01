@@ -30,7 +30,7 @@ func Definition() types.FrameworkDefinition {
 			return NewMagento1Bootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
-			return &tunnel.Magento1Manager{}
+			return &Magento1Manager{}
 		},
 		// FreshInstall is unsupported by design for Magento 1 - Magento 1
 		// itself has no create-project/setup:install equivalent, so

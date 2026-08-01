@@ -22,7 +22,7 @@ func Definition() types.FrameworkDefinition {
 			return NewBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
-			return &tunnel.Magento2Manager{}
+			return &Magento2Manager{}
 		},
 		FreshInstall:            freshInstall,
 		PreConfigureHook:        PreConfigure,

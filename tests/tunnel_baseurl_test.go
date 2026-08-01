@@ -7,13 +7,15 @@ import (
 	"testing"
 
 	"govard/internal/engine"
-	"govard/internal/engine/tunnel"
 	"govard/internal/frameworks"
+	"govard/internal/frameworks/laravel"
+	"govard/internal/frameworks/magento1"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestMagento2ManagerUpdate(t *testing.T) {
 	var executedCommands []string
-	mgr := &tunnel.Magento2Manager{
+	mgr := &magento2.Magento2Manager{
 		Executor: func(name string, args ...string) ([]byte, error) {
 			if name == "docker" && args[0] == "exec" {
 				executedCommands = append(executedCommands, strings.Join(args, " "))
@@ -46,7 +48,7 @@ func TestLaravelManagerUpdate(t *testing.T) {
 	envContent := "APP_NAME=Laravel\nAPP_URL=http://localhost\nDB_CONNECTION=mysql"
 	var writtenContent string
 
-	mgr := &tunnel.LaravelManager{
+	mgr := &laravel.LaravelManager{
 		ReadFile: func(path string) ([]byte, error) {
 			return []byte(envContent), nil
 		},
@@ -69,7 +71,7 @@ func TestLaravelManagerUpdate(t *testing.T) {
 
 func TestMagento1ManagerUpdate(t *testing.T) {
 	var executedSQL string
-	mgr := &tunnel.Magento1Manager{
+	mgr := &magento1.Magento1Manager{
 		Executor: func(name string, args ...string) ([]byte, error) {
 			if name == "docker" && args[0] == "exec" {
 				executedSQL = args[len(args)-1]
@@ -100,13 +102,13 @@ func TestBaseURLManagerFactory(t *testing.T) {
 		framework string
 		expected  string
 	}{
-		{"magento2", "*tunnel.Magento2Manager"},
-		{"mageos", "*tunnel.Magento2Manager"},
-		{"magento1", "*tunnel.Magento1Manager"},
-		{"openmage", "*tunnel.Magento1Manager"},
-		{"Laravel", "*tunnel.LaravelManager"},
-		{"wordpress", "*tunnel.WordPressManager"},
-		{"Symfony", "*tunnel.SymfonyManager"},
+		{"magento2", "*magento2.Magento2Manager"},
+		{"mageos", "*magento2.Magento2Manager"},
+		{"magento1", "*magento1.Magento1Manager"},
+		{"openmage", "*magento1.Magento1Manager"},
+		{"Laravel", "*laravel.LaravelManager"},
+		{"wordpress", "*wordpress.WordPressManager"},
+		{"Symfony", "*symfony.SymfonyManager"},
 		{"Unknown", "*tunnel.NoopManager"},
 	}
 

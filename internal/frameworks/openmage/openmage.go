@@ -4,6 +4,7 @@ import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/engine/tunnel"
+	"govard/internal/frameworks/magento1"
 	"govard/internal/frameworks/types"
 )
 
@@ -24,7 +25,7 @@ func Definition() types.FrameworkDefinition {
 			return NewOpenMageBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
-			return &tunnel.Magento1Manager{}
+			return &magento1.Magento1Manager{}
 		},
 		FreshInstall:            freshInstall,
 		FreshInstallNeedsDB:     true,
