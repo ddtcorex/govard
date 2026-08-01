@@ -20,7 +20,7 @@ func Definition() types.FrameworkDefinition {
 			return NewSymfonyBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
-			return &tunnel.SymfonyManager{}
+			return &SymfonyManager{}
 		},
 		FreshInstall:         freshInstall,
 		FreshInstallNeedsDB:  true,

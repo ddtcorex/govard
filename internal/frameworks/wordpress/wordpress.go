@@ -21,7 +21,7 @@ func Definition() types.FrameworkDefinition {
 			return NewWordPressBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
-			return &tunnel.WordPressManager{}
+			return &WordPressManager{}
 		},
 		FreshInstall:            freshInstall,
 		FreshInstallNeedsDB:     true,

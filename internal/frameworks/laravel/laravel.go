@@ -20,7 +20,7 @@ func Definition() types.FrameworkDefinition {
 			return NewLaravelBootstrap(opts)
 		},
 		BaseURLManager: func() tunnel.BaseURLManager {
-			return &tunnel.LaravelManager{}
+			return &LaravelManager{}
 		},
 		FreshInstall:         freshInstall,
 		FreshInstallNeedsDB:  true,
