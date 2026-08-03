@@ -17,12 +17,12 @@ func TestNormalizeConfigChownDirListDefaults(t *testing.T) {
 		{
 			name:      "Magento 2 defaults",
 			framework: "magento2",
-			want:      []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer"},
+			want:      []string{"/bash_history"},
 		},
 		{
 			name:      "Mage-OS defaults",
 			framework: "mageos",
-			want:      []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer"},
+			want:      []string{"/bash_history"},
 		},
 		{
 			name:      "Generic framework defaults",
@@ -53,7 +53,7 @@ func TestPrepareConfigForWriteOmitsDefaultChownDirList(t *testing.T) {
 	config := engine.Config{
 		Framework: "magento2",
 		Stack: engine.Stack{
-			ChownDirList: []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer"},
+			ChownDirList: []string{"/bash_history"},
 		},
 	}
 
