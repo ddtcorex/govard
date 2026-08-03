@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os/exec"
@@ -174,9 +175,16 @@ func IsVolumeEmpty(volumeName string) (bool, error) {
 	// Run a tiny container to check for files
 	// We skip 'lost+found' if it exists
 	cmd := exec.Command("docker", "run", "--rm", "-v", fmt.Sprintf("%s:/data:ro", volumeName), "alpine", "sh", "-c", "ls -A /data | grep -v 'lost+found' | wc -l")
-	output, err := cmd.CombinedOutput()
+	// Use Output() (stdout only): if the alpine image isn't cached yet, `docker run`
+	// writes its pull progress to stderr, which CombinedOutput() would otherwise mix
+	// into the count we're about to parse.
+	output, err := cmd.Output()
 	if err != nil {
-		return false, fmt.Errorf("failed to check volume: %w (%s)", err, strings.TrimSpace(string(output)))
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return false, fmt.Errorf("failed to check volume: %w (%s)", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return false, fmt.Errorf("failed to check volume: %w", err)
 	}
 
 	countStr := strings.TrimSpace(string(output))
