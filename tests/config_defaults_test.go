@@ -2,6 +2,7 @@ package tests
 
 import (
 	"govard/internal/engine"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,12 +18,12 @@ func TestNormalizeConfigChownDirListDefaults(t *testing.T) {
 		{
 			name:      "Magento 2 defaults",
 			framework: "magento2",
-			want:      []string{"/bash_history"},
+			want:      []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer"},
 		},
 		{
 			name:      "Mage-OS defaults",
 			framework: "mageos",
-			want:      []string{"/bash_history"},
+			want:      []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer"},
 		},
 		{
 			name:      "Generic framework defaults",
@@ -53,7 +54,7 @@ func TestPrepareConfigForWriteOmitsDefaultChownDirList(t *testing.T) {
 	config := engine.Config{
 		Framework: "magento2",
 		Stack: engine.Stack{
-			ChownDirList: []string{"/bash_history"},
+			ChownDirList: []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer"},
 		},
 	}
 
@@ -69,6 +70,15 @@ func TestPrepareConfigForWriteOmitsDefaultChownDirList(t *testing.T) {
 	content := string(data)
 	if strings.Contains(content, "chown_dir_list:") {
 		t.Fatalf("expected serialized config to omit chown_dir_list, got:\n%s", content)
+	}
+}
+
+func TestEntrypointChownDirListExcludesBindMounts(t *testing.T) {
+	dirs := []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer", "/custom"}
+	want := []string{"/bash_history", "/custom"}
+	got := engine.GetEntrypointChownDirList(dirs)
+	if !slices.Equal(got, want) {
+		t.Fatalf("expected entrypoint chown dirs %v, got %v", want, got)
 	}
 }
 
