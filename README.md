@@ -85,30 +85,39 @@ curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh |
 
 # Install building from source (auto-installs Go 1.25 if needed)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --source
+
+# Install CLI only (required on Ubuntu 20.04)
+curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only
 ```
 
-By default this installs both `govard` and `govard-desktop` to `/usr/local/bin`, automatically detects/installs missing system dependencies (`certutil`, `WebKitGTK`), starts global services, and configures SSL trust.
-On Linux, if a standalone `govard-desktop` archive is missing in a release, the installer falls back to extracting `govard-desktop` from the release `.deb` package.
+By default the installer installs `govard` (CLI) and, where `WebKitGTK 4.1` is available, `govard-desktop` to `/usr/local/bin`. On Ubuntu 20.04 the required WebKitGTK version is unavailable, so the installer automatically installs CLI only. Use `--cli-only` to explicitly skip Desktop on any platform.
+
+The installer automatically handles required system dependencies, starts global services, and configures SSL trust. On Linux, if a standalone `govard-desktop` archive is missing, it falls back to the separate Desktop `.deb` package.
 
 Do not mix install channels on the same machine (for example: `.deb` + `make install` + `self-update` across different paths).  
 Use one channel only, otherwise you can end up with conflicting binaries in `/usr/bin` and `/usr/local/bin`.
 
-### Release Installers (CLI + Desktop)
+### Release Installers
 
-Every tagged release now publishes installer packages that install both:
+Every tagged release publishes these Linux packages:
 
-- `govard` (CLI)
-- `govard-desktop` (Desktop runtime used by `govard desktop`)
+- `govard_<version>_linux_<arch>.deb` — CLI only; supports Ubuntu 20.04.
+- `govard-desktop_<version>_linux_<arch>.deb` — Desktop add-on; requires `WebKitGTK 4.1` (Ubuntu 22.04+).
 
 From the release page:
 
-- Linux: `govard_<version>_linux_<arch>.deb`
 - macOS: `govard_<version>_Darwin_<arch>.pkg`
 
-Linux (`.deb`) example:
+Linux CLI-only example:
 
 ```bash
-sudo dpkg -i govard_<version>_linux_amd64.deb
+sudo apt install ./govard_<version>_linux_<arch>.deb
+```
+
+Linux CLI + Desktop example:
+
+```bash
+sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_linux_<arch>.deb
 ```
 
 macOS (`.pkg`) example:
