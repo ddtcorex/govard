@@ -95,6 +95,16 @@ func TestPHPEntrypointReentersAsRootBeforeUIDRemap(t *testing.T) {
 	}
 }
 
+func TestPHPEntrypointDoesNotAbortOnChownDirListFailure(t *testing.T) {
+	content := readProjectFileForTest(t, filepath.Join("docker", "php", "etc", "entrypoint.sh"))
+	if !strings.Contains(content, "sudo chown -R www-data:www-data \"${dir}\" || \\") {
+		t.Fatalf("expected php entrypoint to guard the CHOWN_DIR_LIST chown against failure, got:\n%s", content)
+	}
+	if !strings.Contains(content, "Warning: could not fix ownership for some paths under ${dir}; continuing.") {
+		t.Fatalf("expected php entrypoint to warn instead of aborting (set -e) when the CHOWN_DIR_LIST chown fails, got:\n%s", content)
+	}
+}
+
 func TestPHPEntrypointStartsCrondBestEffort(t *testing.T) {
 	content := readProjectFileForTest(t, filepath.Join("docker", "php", "etc", "entrypoint.sh"))
 	if !strings.Contains(content, "sudo crond 2>/dev/null || true") {
