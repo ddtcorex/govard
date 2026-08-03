@@ -31,6 +31,7 @@ func renderTemplateFuncMap() template.FuncMap {
 // RenderData holds all data needed for template rendering
 type RenderData struct {
 	Config                 Config
+	EntrypointChownDirList []string
 	RequiresPHP            bool
 	NGINXPublic            string
 	NGINXTemplate          string
@@ -414,21 +415,22 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 
 	// Prepare render data
 	renderData := RenderData{
-		Config:               config,
-		RequiresPHP:          RequiresPHP(config),
-		NGINXPublic:          fwConfig.NGINXPUBLIC,
-		NGINXTemplate:        fwConfig.NGINXTemplate,
-		DatabaseName:         fwConfig.DatabaseName,
-		ImageRepository:      imageRepo,
-		XdebugSessionPattern: buildXdebugSessionPattern(config.Stack.XdebugSession),
-		VarnishVclPath:       filepath.Join(GovardHomeDir(), "varnish", config.ProjectName, "default.vcl"),
-		RabbitMQConfPath:     filepath.Join(GovardHomeDir(), "rabbitmq", config.ProjectName, "rabbitmq.conf"),
-		PackageManager:       packageManager,
-		ComposerVersion:      config.Stack.ComposerVersion,
-		RuntimeDomainHosts:   runtimeDomainHosts,
-		HostGovardRootCAPath: govardRootCAPath,
-		WorkDir:              conventions.DefaultWorkDir,
-		HomeWWWData:          conventions.HomeWWWData,
+		Config:                 config,
+		EntrypointChownDirList: GetEntrypointChownDirList(config.Stack.ChownDirList),
+		RequiresPHP:            RequiresPHP(config),
+		NGINXPublic:            fwConfig.NGINXPUBLIC,
+		NGINXTemplate:          fwConfig.NGINXTemplate,
+		DatabaseName:           fwConfig.DatabaseName,
+		ImageRepository:        imageRepo,
+		XdebugSessionPattern:   buildXdebugSessionPattern(config.Stack.XdebugSession),
+		VarnishVclPath:         filepath.Join(GovardHomeDir(), "varnish", config.ProjectName, "default.vcl"),
+		RabbitMQConfPath:       filepath.Join(GovardHomeDir(), "rabbitmq", config.ProjectName, "rabbitmq.conf"),
+		PackageManager:         packageManager,
+		ComposerVersion:        config.Stack.ComposerVersion,
+		RuntimeDomainHosts:     runtimeDomainHosts,
+		HostGovardRootCAPath:   govardRootCAPath,
+		WorkDir:                conventions.DefaultWorkDir,
+		HomeWWWData:            conventions.HomeWWWData,
 	}
 	if config.Stack.WebRoot != "" {
 		renderData.NGINXPublic = config.Stack.WebRoot

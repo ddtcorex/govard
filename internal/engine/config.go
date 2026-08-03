@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"govard/internal/conventions"
 	"sort"
 	"strings"
 )
@@ -132,10 +133,24 @@ func (c Config) ResolveProjectExecUser(fallback string) string {
 	return fallback
 }
 
-// GetDefaultChownDirList returns internal directories that need consistent
-// ownership. Project sources and host caches rely on UID/GID mapping instead.
+// GetDefaultChownDirList returns directories that may need ownership repair.
 func GetDefaultChownDirList(framework string) []string {
 	// Note: /home/www-data/.ssh is intentionally NOT included here.
 	// The SSH directory is always mounted :ro, so chown would fail.
-	return []string{"/bash_history"}
+	list := []string{"/bash_history"}
+	if framework == "magento2" || framework == "mageos" {
+		list = append(list, conventions.DefaultWorkDir, conventions.HomeWWWData+"/.cache/composer")
+	}
+	return list
+}
+
+// GetEntrypointChownDirList excludes bind mounts that rely on UID/GID mapping.
+func GetEntrypointChownDirList(dirs []string) []string {
+	result := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		if dir != conventions.DefaultWorkDir && dir != conventions.HomeWWWData+"/.cache/composer" {
+			result = append(result, dir)
+		}
+	}
+	return result
 }
