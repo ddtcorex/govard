@@ -35,26 +35,39 @@ curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh |
 
 # Build from source (auto-installs Go 1.25 if needed)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --source
+
+# Install CLI only (required on Ubuntu 20.04)
+curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only
 ```
 
-By default, this installs both `govard` and `govard-desktop` to `/usr/local/bin` and:
-- Auto-detects/installs missing system dependencies (`certutil`, `WebKitGTK`)
+By default, this installs `govard` (CLI) and, where `WebKitGTK 4.1` is available, `govard-desktop` to `/usr/local/bin` and:
+- Auto-detects/installs missing system dependencies
 - Starts global services
 - Configures SSL trust
-- On Linux, falls back to extracting `govard-desktop` from the `.deb` package if a standalone archive is not in the release
+- On Linux, falls back to the separate `govard-desktop` `.deb` package if a standalone archive is not in the release
+
+Ubuntu 20.04 does not provide WebKitGTK 4.1. The installer detects this and installs CLI only automatically; use `--cli-only` to explicitly skip Desktop on any platform. Govard Desktop requires Ubuntu 22.04+ or another Linux distribution with WebKitGTK 4.1.
 
 ---
 
-## 📦 Release Installers (CLI + Desktop)
+## 📦 Release Installers
 
-Every tagged release publishes installer packages that include both `govard` (CLI) and `govard-desktop`.
+Every tagged release publishes two Linux packages:
 
 From the [releases page](https://github.com/ddtcorex/govard/releases):
 
 ### Linux (`.deb`)
 
+CLI only (including Ubuntu 20.04):
+
 ```bash
-sudo dpkg -i govard_<version>_linux_amd64.deb
+sudo apt install ./govard_<version>_linux_<arch>.deb
+```
+
+CLI + Desktop (WebKitGTK 4.1 / Ubuntu 22.04+):
+
+```bash
+sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_linux_<arch>.deb
 ```
 
 ### macOS (`.pkg`)
@@ -154,4 +167,3 @@ govard doctor
 ---
 
 **[← Home](/)** | **[Getting Started →](/getting-started/getting-started)**
-

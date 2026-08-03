@@ -35,26 +35,39 @@ curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh |
 
 # Build từ source (tự động cài Go 1.25 nếu cần)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --source
+
+# Chỉ cài CLI (bắt buộc với Ubuntu 20.04)
+curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only
 ```
 
-Mặc định, script sẽ cài đặt cả `govard` (CLI) và `govard-desktop` (Desktop app) vào `/usr/local/bin` và:
-- Tự động phát hiện và cài đặt các system dependencies còn thiếu (`certutil`, `WebKitGTK`).
+Mặc định, script sẽ cài `govard` (CLI) và, khi có `WebKitGTK 4.1`, cả `govard-desktop` (Desktop app) vào `/usr/local/bin` rồi:
+- Tự động phát hiện và cài đặt system dependencies cần thiết.
 - Khởi chạy các global services.
 - Cấu hình SSL trust.
-- Trên Linux, tự động fallback sang giải nén `govard-desktop` từ package `.deb` nếu file nén archive độc lập không có sẵn trong bản release.
+- Trên Linux, tự động fallback sang package `.deb` riêng của `govard-desktop` nếu archive độc lập không có sẵn trong bản release.
+
+Ubuntu 20.04 không có WebKitGTK 4.1. Script sẽ tự nhận diện và chỉ cài CLI; dùng `--cli-only` để chủ động bỏ qua Desktop trên mọi nền tảng. Govard Desktop yêu cầu Ubuntu 22.04+ hoặc một bản Linux khác có WebKitGTK 4.1.
 
 ---
 
-## 📦 Release Installers (CLI + Desktop)
+## 📦 Release Installers
 
-Mỗi release được gắn tag đều publish các package cài đặt bao gồm cả `govard` (CLI) và `govard-desktop`.
+Mỗi release được gắn tag đều publish hai package Linux riêng biệt.
 
 Tải từ [trang releases](https://github.com/ddtcorex/govard/releases):
 
 ### Linux (`.deb`)
 
+Chỉ CLI (bao gồm Ubuntu 20.04):
+
 ```bash
-sudo dpkg -i govard_<version>_linux_amd64.deb
+sudo apt install ./govard_<version>_linux_<arch>.deb
+```
+
+CLI + Desktop (WebKitGTK 4.1 / Ubuntu 22.04+):
+
+```bash
+sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_linux_<arch>.deb
 ```
 
 ### macOS (`.pkg`)

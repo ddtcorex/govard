@@ -29,10 +29,12 @@ INSTALL_DIR="/usr/local/bin"
 GOVARD_DIR="/opt/govard"
 MIN_GO_VERSION="1.25.0"
 SOURCE_MODE=false
+CLI_ONLY=false
 FORCE_YES=false
 SPECIFIC_VERSION=""
 SOURCE_DIR=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${0}}")" && pwd)"
+WEBKITGTK_PACKAGE="libwebkit2gtk-4.1-0"
 
 desktop_build_tags() {
     local tags="desktop production"
@@ -85,6 +87,7 @@ Usage: install.sh [options]
 Options:
   --source       Build from source instead of downloading binary
   --source-dir <path>  Build from a specific local source directory (requires --source)
+  --cli-only     Install Govard CLI without the Desktop application
   --local        Install to ~/.local/bin (no sudo)
   --dir <path>   Custom installation directory
   --version <v>  Install specific version (e.g. v1.9.0)
@@ -99,6 +102,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --source) SOURCE_MODE=true; shift ;;
         --source-dir) SOURCE_DIR="$2"; shift 2 ;;
+        --cli-only) CLI_ONLY=true; shift ;;
         --local)  INSTALL_DIR="${HOME}/.local/bin"; shift ;;
         --dir)    INSTALL_DIR="$2"; shift 2 ;;
         --version) SPECIFIC_VERSION="$2"; shift 2 ;;
@@ -117,6 +121,54 @@ detect_env() {
         *) error "Unsupported architecture: $ARCH" ;;
     esac
     info "Detected Environment: $OS/$ARCH"
+}
+
+desktop_runtime_available() {
+    if command -v ldconfig >/dev/null 2>&1 && [[ "$(ldconfig -p 2>/dev/null)" == *"libwebkit2gtk-4.1"* ]]; then
+        return 0
+    fi
+
+    [[ -f "/usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0" ]] || [[ -f "/usr/lib/libwebkit2gtk-4.1.so.0" ]]
+}
+
+apt_lists_populated() {
+    local lists_dir="/var/lib/apt/lists"
+    [[ -d "$lists_dir" ]] && find "$lists_dir" -maxdepth 1 -type f ! -name lock 2>/dev/null | grep -q .
+}
+
+desktop_install_enabled() {
+    [[ "$CLI_ONLY" != true ]] || return 1
+    [[ "$OS" != linux ]] && return 0
+
+    if command -v apt-cache >/dev/null 2>&1; then
+        if apt-cache show "$WEBKITGTK_PACKAGE" >/dev/null 2>&1; then
+            return 0
+        fi
+
+        if apt_lists_populated; then
+            return 1
+        fi
+
+        # APT package lists are empty (e.g. a freshly provisioned host that
+        # never ran apt-get update) — refresh once before concluding the
+        # package is genuinely unavailable.
+        sudo apt-get update >/dev/null 2>&1 || true
+        apt-cache show "$WEBKITGTK_PACKAGE" >/dev/null 2>&1
+        return
+    fi
+
+    desktop_runtime_available
+}
+
+configure_desktop_install() {
+    if desktop_install_enabled; then
+        return 0
+    fi
+
+    if [[ "$CLI_ONLY" != true ]]; then
+        warn "WebKitGTK 4.1 is unavailable; installing Govard CLI only. Govard Desktop requires a newer Linux distribution."
+    fi
+    CLI_ONLY=true
 }
 
 check_dependencies() {
@@ -157,14 +209,14 @@ check_dependencies() {
             missing_deps+=("libnss3-tools")
         fi
 
-        # Check WebKitGTK
-        if command -v ldconfig >/dev/null 2>&1 && ldconfig -p | grep -q "libwebkit2gtk-4.1"; then
-            success "  WebKitGTK: Found"
-        elif [[ -f "/usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0" ]] || [[ -f "/usr/lib/libwebkit2gtk-4.1.so.0" ]]; then
-            success "  WebKitGTK: Found (via file check)"
-        else
-            warn "  WebKitGTK: Not found (Required for Desktop App)"
-            missing_deps+=("libwebkit2gtk-4.1-0")
+        if [[ "$CLI_ONLY" == false ]]; then
+            # Check WebKitGTK
+            if desktop_runtime_available; then
+                success "  WebKitGTK: Found"
+            else
+                warn "  WebKitGTK: Not found (Required for Desktop App)"
+                missing_deps+=("$WEBKITGTK_PACKAGE")
+            fi
         fi
 
         if [[ ${#missing_deps[@]} -gt 0 ]]; then
@@ -434,34 +486,65 @@ resolve_version() {
 }
 
 install_via_deb() {
-    local deb_name="govard_${VERSION_NO_V}_linux_${ARCH}.deb"
-    local deb_url="https://github.com/${REPO}/releases/download/${SPECIFIC_VERSION}/${deb_name}"
+    local cli_deb_name="govard_${VERSION_NO_V}_linux_${ARCH}.deb"
+    local cli_deb_url="https://github.com/${REPO}/releases/download/${SPECIFIC_VERSION}/${cli_deb_name}"
     local tmp_dir
     tmp_dir=$(mktemp -d)
-    local deb_path="${tmp_dir}/${deb_name}"
+    local cli_deb_path="${tmp_dir}/${cli_deb_name}"
 
-    info "Downloading ${deb_name}..."
-    if ! curl -fsSL "$deb_url" -o "$deb_path"; then
-        warn "Failed to download ${deb_name}."
+    info "Downloading ${cli_deb_name}..."
+    if ! curl -fsSL "$cli_deb_url" -o "$cli_deb_path"; then
+        warn "Failed to download ${cli_deb_name}."
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    info "Installing via dpkg..."
-    if sudo dpkg -i "$deb_path"; then
+    if [[ "$CLI_ONLY" == true ]]; then
+        info "Installing Govard CLI via APT..."
+        if sudo apt-get install -y "$cli_deb_path"; then
+            rm -rf "$tmp_dir"
+            success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
+            return 0
+        fi
+
+        warn "Govard CLI Debian package installation failed."
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    local desktop_deb_name="govard-desktop_${VERSION_NO_V}_linux_${ARCH}.deb"
+    local desktop_deb_url="https://github.com/${REPO}/releases/download/${SPECIFIC_VERSION}/${desktop_deb_name}"
+    local desktop_deb_path="${tmp_dir}/${desktop_deb_name}"
+
+    info "Downloading ${desktop_deb_name}..."
+    if ! curl -fsSL "$desktop_deb_url" -o "$desktop_deb_path"; then
+        warn "Failed to download ${desktop_deb_name}; installing Govard CLI only."
+        if sudo apt-get install -y "$cli_deb_path"; then
+            rm -rf "$tmp_dir"
+            success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
+            return 0
+        fi
+
+        warn "Govard CLI Debian package installation failed."
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    info "Installing Govard CLI and Desktop via APT..."
+    if sudo apt-get install -y "$cli_deb_path" "$desktop_deb_path"; then
         rm -rf "$tmp_dir"
         success "Govard $SPECIFIC_VERSION installed via Debian package (CLI + Desktop)!"
         return 0
     fi
 
-    warn "dpkg -i failed. Attempting to fix missing dependencies..."
-    if sudo apt-get install -f -y 2>/dev/null; then
+    warn "Govard Desktop Debian package installation failed; installing Govard CLI only."
+    if sudo apt-get install -y "$cli_deb_path"; then
         rm -rf "$tmp_dir"
-        success "Govard $SPECIFIC_VERSION installed via Debian package (CLI + Desktop)!"
+        success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
         return 0
     fi
 
-    warn "Debian package installation failed."
+    warn "Govard CLI Debian package installation failed."
     rm -rf "$tmp_dir"
     return 1
 }
@@ -483,7 +566,10 @@ install_binary() {
     OS_CAP="$(echo "${OS:0:1}" | tr '[:lower:]' '[:upper:]')${OS:1}"
 
     TMP_DIR=$(mktemp -d)
-    binaries=("$CLI_BINARY_NAME" "$DESKTOP_BINARY_NAME")
+    binaries=("$CLI_BINARY_NAME")
+    if [[ "$CLI_ONLY" == false ]]; then
+        binaries+=("$DESKTOP_BINARY_NAME")
+    fi
     extracted_entries=()
 
     for binary_name in "${binaries[@]}"; do
@@ -503,7 +589,7 @@ install_binary() {
         fi
 
         if [[ "$binary_name" == "$DESKTOP_BINARY_NAME" && "$OS" == "linux" ]]; then
-            deb_name="govard_${VERSION_NO_V}_linux_${ARCH}.deb"
+            deb_name="govard-desktop_${VERSION_NO_V}_linux_${ARCH}.deb"
             deb_path="${TMP_DIR}/${deb_name}"
             deb_url="https://github.com/${REPO}/releases/download/${SPECIFIC_VERSION}/${deb_name}"
             warn "Desktop archive not found for ${SPECIFIC_VERSION}; falling back to Debian package ${deb_name}."
@@ -530,7 +616,11 @@ install_binary() {
     done
 
     rm -rf "$TMP_DIR"
-    success "Govard $SPECIFIC_VERSION installed (CLI + Desktop)!"
+    if [[ "$CLI_ONLY" == true ]]; then
+        success "Govard $SPECIFIC_VERSION installed (CLI only)!"
+    else
+        success "Govard $SPECIFIC_VERSION installed (CLI + Desktop)!"
+    fi
 }
 
 install_source() {
@@ -570,23 +660,30 @@ install_source() {
 
     TMP_BUILD_DIR=$(mktemp -d)
     go build -ldflags "$LDFLAGS" -o "${TMP_BUILD_DIR}/${CLI_BINARY_NAME}" cmd/govard/main.go
-    DESKTOP_BUILD_TAGS="$(desktop_build_tags)"
-    if desktop_env="$(desktop_build_env)" && [[ -n "$desktop_env" ]]; then
-        env "$desktop_env" go build -tags "$DESKTOP_BUILD_TAGS" -ldflags "$LDFLAGS" -o "${TMP_BUILD_DIR}/${DESKTOP_BINARY_NAME}" cmd/govard-desktop/main.go
-    else
-        go build -tags "$DESKTOP_BUILD_TAGS" -ldflags "$LDFLAGS" -o "${TMP_BUILD_DIR}/${DESKTOP_BINARY_NAME}" cmd/govard-desktop/main.go
+    install_binary_file "${TMP_BUILD_DIR}/${CLI_BINARY_NAME}" "$CLI_BINARY_NAME"
+
+    if [[ "$CLI_ONLY" == false ]]; then
+        DESKTOP_BUILD_TAGS="$(desktop_build_tags)"
+        if desktop_env="$(desktop_build_env)" && [[ -n "$desktop_env" ]]; then
+            env "$desktop_env" go build -tags "$DESKTOP_BUILD_TAGS" -ldflags "$LDFLAGS" -o "${TMP_BUILD_DIR}/${DESKTOP_BINARY_NAME}" cmd/govard-desktop/main.go
+        else
+            go build -tags "$DESKTOP_BUILD_TAGS" -ldflags "$LDFLAGS" -o "${TMP_BUILD_DIR}/${DESKTOP_BINARY_NAME}" cmd/govard-desktop/main.go
+        fi
+        install_binary_file "${TMP_BUILD_DIR}/${DESKTOP_BINARY_NAME}" "$DESKTOP_BINARY_NAME"
     fi
 
-    install_binary_file "${TMP_BUILD_DIR}/${CLI_BINARY_NAME}" "$CLI_BINARY_NAME"
-    install_binary_file "${TMP_BUILD_DIR}/${DESKTOP_BINARY_NAME}" "$DESKTOP_BINARY_NAME"
-
     rm -rf "$TMP_BUILD_DIR"
-    success "Govard built and installed from source (CLI + Desktop, tags: ${DESKTOP_BUILD_TAGS})!"
+    if [[ "$CLI_ONLY" == true ]]; then
+        success "Govard built and installed from source (CLI only)!"
+    else
+        success "Govard built and installed from source (CLI + Desktop, tags: ${DESKTOP_BUILD_TAGS})!"
+    fi
 }
 
 main() {
     show_banner
     detect_env
+    configure_desktop_install
     check_dependencies
 
     if [[ -n "$SOURCE_DIR" && "$SOURCE_MODE" != true ]]; then
@@ -613,7 +710,7 @@ main() {
     fi
 
     # Update desktop database so the app is immediately searchable in the menu
-    if [[ "$OS" == "linux" ]]; then
+    if [[ "$OS" == "linux" && "$CLI_ONLY" == false ]]; then
         info "Running ldconfig to update library cache..."
         sudo ldconfig || true
 
@@ -639,4 +736,6 @@ main() {
     success "Installation complete!"
 }
 
-main
+if ! (return 0 2>/dev/null); then
+    main
+fi

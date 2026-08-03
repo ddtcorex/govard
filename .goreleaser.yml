@@ -59,11 +59,10 @@ checksum:
   name_template: checksums.txt
 
 nfpms:
-  - id: govard-installer
+  - id: govard-cli
     package_name: govard
     ids:
       - govard
-      - govard-desktop
     formats:
       - deb
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -71,12 +70,31 @@ nfpms:
     maintainer: DDTCoreX <kaido4492@gmail.com>
     vendor: DDTCoreX
     homepage: https://github.com/ddtcorex/govard
-    description: Govard local development orchestrator with CLI and Desktop modes
+    description: Govard local development orchestrator CLI
     license: MIT
     section: utils
     priority: optional
     dependencies:
       - ca-certificates
+      - libnss3-tools
+
+  - id: govard-desktop
+    package_name: govard-desktop
+    ids:
+      - govard-desktop
+    formats:
+      - deb
+    file_name_template: "govard-desktop_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    bindir: /usr/local/bin
+    maintainer: DDTCoreX <kaido4492@gmail.com>
+    vendor: DDTCoreX
+    homepage: https://github.com/ddtcorex/govard
+    description: Govard Desktop application
+    license: MIT
+    section: utils
+    priority: optional
+    dependencies:
+      - govard
       - libwebkit2gtk-4.1-0
       - libgtk-3-0
       - libnss3-tools
