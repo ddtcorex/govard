@@ -42,12 +42,18 @@ if [ -n "${PUID:-}" ]; then
   fi
 fi
 
-# Apply recursive chown if requested
+# Apply recursive chown if requested. On some bind-mount backends (e.g.
+# Docker Desktop for Mac), chown can be refused for individual paths owned by
+# a UID that doesn't match the host session, for reasons outside this
+# script's control. That must not abort the whole entrypoint: combined with
+# `set -e` above, an unguarded failure here would prevent php-fpm from ever
+# starting, so any such failure is logged as a warning instead.
 if [ -n "${CHOWN_DIR_LIST:-}" ]; then
   for dir in ${CHOWN_DIR_LIST}; do
     if [ -d "${dir}" ]; then
       echo "Fixing permissions for ${dir}..."
-      sudo chown -R www-data:www-data "${dir}"
+      sudo chown -R www-data:www-data "${dir}" || \
+        echo "Warning: could not fix ownership for some paths under ${dir}; continuing." >&2
     fi
   done
 fi
