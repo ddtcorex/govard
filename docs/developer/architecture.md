@@ -171,7 +171,8 @@ Desktop operations call the CLI command surface directly (e.g., `govard up`, `go
 | Artifact | Description |
 | :--- | :--- |
 | Platform archives | CLI binaries via GoReleaser (`.tar.gz` / `.zip`) |
-| `govard_<version>_linux_<arch>.deb` | Linux installer with `govard` + `govard-desktop` |
+| `govard_<version>_linux_<arch>.deb` | Linux installer containing the `govard` CLI |
+| `govard-desktop_<version>_linux_<arch>.deb` | Linux Desktop add-on; depends on the CLI package and WebKitGTK 4.1 |
 | `govard_<version>_Darwin_<arch>.pkg` | macOS installer with `govard` + `govard-desktop` |
 | `checksums.txt` | SHA-256 checksums for all artifacts |
 

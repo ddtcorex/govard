@@ -134,9 +134,7 @@ func (c Config) ResolveProjectExecUser(fallback string) string {
 	return fallback
 }
 
-// GetDefaultChownDirList returns the standard list of directories that require
-// consistent ownership for developer workflows. For instance, Magento 2 projects
-// require /var/www/html to be writable for generated code and static assets.
+// GetDefaultChownDirList returns directories that may need ownership repair.
 func GetDefaultChownDirList(framework string) []string {
 	// Note: /home/www-data/.ssh is intentionally NOT included here.
 	// The SSH directory is always mounted :ro, so chown would fail.

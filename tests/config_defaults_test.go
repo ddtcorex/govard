@@ -2,6 +2,7 @@ package tests
 
 import (
 	"govard/internal/engine"
+	"slices"
 	"strings"
 	"testing"
 
@@ -69,6 +70,15 @@ func TestPrepareConfigForWriteOmitsDefaultChownDirList(t *testing.T) {
 	content := string(data)
 	if strings.Contains(content, "chown_dir_list:") {
 		t.Fatalf("expected serialized config to omit chown_dir_list, got:\n%s", content)
+	}
+}
+
+func TestEntrypointChownDirListExcludesBindMounts(t *testing.T) {
+	dirs := []string{"/bash_history", "/var/www/html", "/home/www-data/.cache/composer", "/custom"}
+	want := []string{"/bash_history", "/custom"}
+	got := engine.GetEntrypointChownDirList(dirs)
+	if !slices.Equal(got, want) {
+		t.Fatalf("expected entrypoint chown dirs %v, got %v", want, got)
 	}
 }
 

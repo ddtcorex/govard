@@ -19,7 +19,7 @@ services:
             - db-data:/var/lib/mysql
     php:
         environment:
-            CHOWN_DIR_LIST: /bash_history /var/www/html /home/www-data/.cache/composer
+            CHOWN_DIR_LIST: /bash_history
             COMPOSER_CACHE_DIR: /home/www-data/.cache/composer
             COMPOSER_HOME: /home/www-data/.composer
             COMPOSER_VERSION: latest
@@ -45,7 +45,7 @@ services:
             - NGINX_TEMPLATE=magento2.conf
             - PUID=1000
             - PGID=1000
-            - CHOWN_DIR_LIST="/bash_history /var/www/html /home/www-data/.cache/composer"
+            - CHOWN_DIR_LIST="/bash_history"
         hostname: snapshot-mageos-web
         image: ddtcorex/govard-nginx:1.28
         networks:

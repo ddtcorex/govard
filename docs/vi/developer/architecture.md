@@ -171,7 +171,8 @@ Các thao tác trên Desktop gọi trực tiếp tới tầng CLI (ví dụ: `go
 | Artifact | Mô tả |
 | :--- | :--- |
 | Bản nén theo nền tảng | Binary CLI build qua GoReleaser (`.tar.gz` / `.zip`) |
-| `govard_<version>_linux_<arch>.deb` | Gói cài đặt Linux chứa cả `govard` + `govard-desktop` |
+| `govard_<version>_linux_<arch>.deb` | Gói cài đặt Linux chứa CLI `govard` |
+| `govard-desktop_<version>_linux_<arch>.deb` | Gói Desktop Linux bổ sung; phụ thuộc package CLI và WebKitGTK 4.1 |
 | `govard_<version>_Darwin_<arch>.pkg` | Gói cài đặt macOS chứa cả `govard` + `govard-desktop` |
 | `checksums.txt` | File mã băm SHA-256 xác minh cho mọi artifact phát hành |
 

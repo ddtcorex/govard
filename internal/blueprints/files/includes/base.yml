@@ -53,7 +53,7 @@ services:
       {{ end }}
       - PUID={{ .Config.Stack.UserID }}
       - PGID={{ .Config.Stack.GroupID }}
-      - CHOWN_DIR_LIST="{{ range $i, $dir := .Config.Stack.ChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
+      - CHOWN_DIR_LIST="{{ range $i, $dir := .EntrypointChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
 
   {{ if $isHybrid }}
   apache:
@@ -78,7 +78,7 @@ services:
       - APACHE_XDEBUG_SESSION={{ .XdebugSessionPattern }}
       - PUID={{ .Config.Stack.UserID }}
       - PGID={{ .Config.Stack.GroupID }}
-      - CHOWN_DIR_LIST="{{ range $i, $dir := .Config.Stack.ChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
+      - CHOWN_DIR_LIST="{{ range $i, $dir := .EntrypointChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
   {{ end }}
 
   {{ if .RequiresPHP }}
@@ -125,7 +125,7 @@ services:
       NODE_VERSION: "{{ .Config.Stack.NodeVersion }}"
       PUID: {{ .Config.Stack.UserID }}
       PGID: {{ .Config.Stack.GroupID }}
-      CHOWN_DIR_LIST: "{{ range $i, $dir := .Config.Stack.ChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
+      CHOWN_DIR_LIST: "{{ range $i, $dir := .EntrypointChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "mail:host-gateway"
@@ -196,7 +196,7 @@ services:
       COMPOSER_VERSION: "{{ .ComposerVersion }}"
       PUID: {{ .Config.Stack.UserID }}
       PGID: {{ .Config.Stack.GroupID }}
-      CHOWN_DIR_LIST: "{{ range $i, $dir := .Config.Stack.ChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
+      CHOWN_DIR_LIST: "{{ range $i, $dir := .EntrypointChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "mail:host-gateway"
