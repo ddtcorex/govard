@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestConfigureAddsBaseUrl(t *testing.T) {
 	config := engine.Config{Domain: "store.test"}
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	found := false
 	for _, cmd := range cmds {
 		for _, arg := range cmd.Args {
@@ -33,7 +34,7 @@ func TestConfigureDatabaseSetupDoesNotSetSearchFlags(t *testing.T) {
 		},
 	}
 
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	foundDBSetup := false
 	for _, cmd := range cmds {
 		if cmd.Desc != "Setting Database connection" {
@@ -60,7 +61,7 @@ func TestConfigureDatabaseSetupIncludesTablePrefix(t *testing.T) {
 		TablePrefix: "demo_",
 	}
 
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	for _, cmd := range cmds {
 		if cmd.Desc != "Setting Database connection" {
 			continue
@@ -85,7 +86,7 @@ func TestConfigureSearchHostCommandsUseMagentoConfigSet(t *testing.T) {
 		},
 	}
 
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	joined := make([]string, 0, len(cmds))
 	for _, cmd := range cmds {
 		joined = append(joined, strings.Join(cmd.Args, " "))
@@ -105,7 +106,7 @@ func TestConfigureEnablesWebServerRewrites(t *testing.T) {
 		Domain: "store.test",
 	}
 
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	joined := make([]string, 0, len(cmds))
 	for _, cmd := range cmds {
 		joined = append(joined, strings.Join(cmd.Args, " "))
@@ -129,7 +130,7 @@ func TestConfigureRabbitMQAmqpCommands(t *testing.T) {
 		},
 	}
 
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	joined := make([]string, 0, len(cmds))
 	for _, cmd := range cmds {
 		joined = append(joined, strings.Join(cmd.Args, " "))
@@ -153,7 +154,7 @@ func TestConfigureWithoutRabbitMQSkipsAmqpCommands(t *testing.T) {
 		},
 	}
 
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	for _, cmd := range cmds {
 		for _, arg := range cmd.Args {
 			if strings.HasPrefix(arg, "--amqp-") {
@@ -166,7 +167,7 @@ func TestConfigureWithoutRabbitMQSkipsAmqpCommands(t *testing.T) {
 func TestConfigureMageOSDatabaseSetupUsesMageOSCredentials(t *testing.T) {
 	config := engine.Config{Framework: "mageos"}
 
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	for _, cmd := range cmds {
 		if cmd.Desc != "Setting Database connection" {
 			continue
@@ -183,7 +184,7 @@ func TestConfigureMageOSDatabaseSetupUsesMageOSCredentials(t *testing.T) {
 func TestConfigureMagento2DatabaseSetupStillUsesMagentoCredentials(t *testing.T) {
 	config := engine.Config{Framework: "magento2"}
 
-	cmds := engine.MagentoConfigCommandsForTest("proj", config)
+	cmds := magento2.MagentoConfigCommandsForTest("proj", config)
 	for _, cmd := range cmds {
 		if cmd.Desc != "Setting Database connection" {
 			continue

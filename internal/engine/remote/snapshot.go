@@ -215,7 +215,7 @@ func BuildRemoteSnapshotDeleteCommandForTest(remoteCfg engine.RemoteConfig, name
 
 func BuildRemoteSnapshotRestoreCommandForTest(remoteCfg engine.RemoteConfig, name string, framework string, dbOnly bool, mediaOnly bool) string {
 	_, mediaPath := engine.ResolveRemotePathsForConfig(framework, remoteCfg)
-	dbImport := "mysql -u magento magento"
+	dbImport := "mysql -u app app"
 	return BuildRemoteSnapshotRestoreCommand(remoteCfg, name, framework, dbImport, mediaPath, dbOnly, mediaOnly)
 }
 

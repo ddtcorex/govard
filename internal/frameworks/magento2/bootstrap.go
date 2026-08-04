@@ -7,12 +7,15 @@ import (
 	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/types"
+
+	"github.com/pterm/pterm"
 )
 
 // FamilyVariant parameterizes the shared Magento-2-family fresh-install/
 // clone-workflow pipeline for a specific distribution - the same pattern
-// internal/engine/upgrade_magento2.go's magentoUpgradeVariant already uses
-// for `govard upgrade`. Magento 2 owns this type and the generic logic
+// this package's own upgrade.go's UpgradeVariant already uses for `govard
+// upgrade`. Magento 2 owns this type and the generic logic
 // built on it below, since Magento 2 is the real, primary implementation;
 // a sibling distribution (currently only Mage-OS, in
 // internal/frameworks/mageos/bootstrap.go) imports this package and
@@ -132,8 +135,8 @@ func BuildFreshCreateProjectCommand(variant FamilyVariant, opts bootstrap.Option
 // list for variant - moved verbatim from internal/cmd/
 // bootstrap_post_install.go's runBootstrapPostInstall (the "build
 // setupArgs" half; the "run it" half is now
-// internal/cmd/bootstrap_fresh_install.go's runBootstrapMagentoSetupInstall,
-// wired through CmdHelpers.RunMagentoSetupInstall).
+// internal/cmd/bootstrap_fresh_install.go's generic setup-install runner,
+// wired through CmdHelpers.RunFrameworkSetupInstall).
 //
 // The legacy elasticsearch7-vs-opensearch version gate is intentionally
 // magento2-only (variant.Name == "magento2"), matching the pre-existing
@@ -195,7 +198,7 @@ func BuildSetupInstallArgs(variant FamilyVariant, version string, adminEmail str
 // HyvaInstall) Hyva theme install -> setup:install -> `govard config auto`
 // -> (if IncludeSample) sample data. Moved from internal/cmd/
 // bootstrap_fresh_install.go's runBootstrapFreshInstall, parameterized by
-// variant instead of an engine.Magento2FamilyDisplayName string check.
+// variant instead of a core framework-name check.
 func FreshInstall(variant FamilyVariant, opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error {
 	if err := helpers.EnsureAuthJSON(); err != nil {
 		return err
@@ -215,13 +218,13 @@ func FreshInstall(variant FamilyVariant, opts bootstrap.Options, projectDir stri
 		}
 	}
 
-	tablePrefix, err := helpers.ResolveMagentoTablePrefix()
+	tablePrefix, err := helpers.ResolveFrameworkTablePrefix()
 	if err != nil {
 		return err
 	}
 	adminEmail := conventions.AdminEmailForDomain(opts.Domain)
 	setupArgs := BuildSetupInstallArgs(variant, opts.Version, adminEmail, tablePrefix)
-	if err := helpers.RunMagentoSetupInstall(setupArgs); err != nil {
+	if err := RunSetupInstall(helpers, setupArgs); err != nil {
 		return err
 	}
 
@@ -230,12 +233,44 @@ func FreshInstall(variant FamilyVariant, opts bootstrap.Options, projectDir stri
 	}
 
 	if opts.IncludeSample {
-		if err := helpers.RunMagentoSampleData(); err != nil {
+		if err := RunSampleData(helpers); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func RunSetupInstall(helpers bootstrap.CmdHelpers, args []string) error {
+	if helpers.IsPHPContainerRunning != nil && helpers.IsPHPContainerRunning() {
+		fix := []string{"exec", "-T", "php", "sh", "-c", "curl -s -X PUT 'http://elasticsearch:9200/_all/_settings' -H 'Content-Type: application/json' -d'{\"index.blocks.read_only_allow_delete\": null}' > /dev/null 2>&1 || true"}
+		if err := helpers.RunEnvironmentCommand(fix); err != nil {
+			fmt.Printf("Warning: failed to apply Elasticsearch block fix: %v\n", err)
+		}
+	}
+	if err := helpers.RunTool("magento", args); err != nil {
+		return fmt.Errorf("magento setup:install failed: %w", err)
+	}
+	return nil
+}
+
+// RunSampleData executes Magento's ordered sample-data workflow through the
+// generic tool transport owned by bootstrap.CmdHelpers.
+func RunSampleData(helpers bootstrap.CmdHelpers) error {
+	for _, args := range [][]string{{"sample:deploy"}, {"setup:upgrade"}, {"indexer:reindex"}, {"cache:flush"}} {
+		if err := helpers.RunTool("magento", args); err != nil {
+			return fmt.Errorf("sample data step failed (%s): %w", strings.Join(args, " "), err)
+		}
+	}
+	return nil
+}
+
+func BootstrapPlanSteps(createAdmin bool) []types.BootstrapPlanStep {
+	steps := []types.BootstrapPlanStep{{Description: "Configuring framework environment...", Command: "govard config auto"}}
+	if createAdmin {
+		steps = append(steps, types.BootstrapPlanStep{Description: "Creating framework admin user...", Command: "govard tool magento admin:user:create ..."})
+	}
+	return append(steps, types.BootstrapPlanStep{Description: "Reindexing framework data...", Command: "govard tool magento indexer:reindex"})
 }
 
 // PreConfigure is Magento 2/Mage-OS's PreConfigureHook: it just generates
@@ -246,22 +281,36 @@ func FreshInstall(variant FamilyVariant, opts bootstrap.Options, projectDir stri
 // right local DB credentials and probes the remote independently of which
 // Magento distribution this is).
 func PreConfigure(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error {
-	return helpers.EnsureMagentoEnvPHP()
+	return helpers.EnsureFrameworkEnvironment()
 }
 
 // PostClone is Magento 2/Mage-OS's PostCloneHook: create the admin user
 // (if requested), then reindex. Moved verbatim from internal/cmd/
 // bootstrap_remote.go's runBootstrapRemote (the
-// `if opts.AdminCreate && engine.IsMagento2Family(...)` /
-// `if engine.IsMagento2Family(...)` pair near the end of that function),
+// former core family conditional near the end of that function),
 // same order, same error propagation (admin-create failures are
-// swallowed by RunMagentoAdminCreate itself and never reach here; a
-// reindex failure does propagate).
+// swallowed by RunAdminCreate itself and never reach here; a reindex
+// failure does propagate).
 func PostClone(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error {
 	if opts.AdminCreate {
-		if err := helpers.RunMagentoAdminCreate(); err != nil {
-			return err
-		}
+		RunAdminCreate(opts, helpers)
 	}
-	return helpers.RunMagentoReindex()
+	return RunReindex(helpers)
+}
+
+func RunReindex(helpers bootstrap.CmdHelpers) error {
+	pterm.Info.Println("Reindexing Magento data...")
+	if helpers.IsPHPContainerRunning != nil && !helpers.IsPHPContainerRunning() {
+		return nil
+	}
+	return helpers.RunTool("magento", []string{"indexer:reindex"})
+}
+
+func RunAdminCreate(opts bootstrap.Options, helpers bootstrap.CmdHelpers) {
+	if helpers.IsPHPContainerRunning != nil && !helpers.IsPHPContainerRunning() {
+		return
+	}
+	if helpers.RunToolSilent != nil {
+		_ = helpers.RunToolSilent("magento", []string{"admin:user:create", "--admin-user=" + conventions.DefaultAdminUser, "--admin-password=" + conventions.DefaultAdminPassword, "--admin-firstname=Govard", "--admin-lastname=Admin", "--admin-email=" + conventions.AdminEmailForDomain(opts.Domain)})
+	}
 }

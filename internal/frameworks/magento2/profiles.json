@@ -1,0 +1,404 @@
+{
+  "stacks": {
+    "ultra": {
+      "search_version": "2.19",
+      "varnish_version": "7.7",
+      "nginx_version": "1.28",
+      "queue_version": "3.13",
+      "cache_version": "7.2"
+    },
+    "very_modern": {
+      "search_version": "2.19",
+      "varnish_version": "7.6",
+      "nginx_version": "1.26",
+      "queue_version": "3.13",
+      "cache_version": "7.2"
+    },
+    "modern": {
+      "search_version": "2.12",
+      "varnish_version": "7.5",
+      "nginx_version": "1.24",
+      "queue_version": "3.12",
+      "cache_version": "7.2"
+    }
+  },
+  "versions": [
+    {
+      "major": 2,
+      "minor": 4,
+      "defaults": {
+        "db": "mariadb",
+        "cache": "redis",
+        "search": "opensearch",
+        "queue": "rabbitmq",
+        "web_root": "/pub"
+      },
+      "patches": [
+        {
+          "patch": 9,
+          "min_p_patch": 0,
+          "php_version": "8.5",
+          "db_version": "11.8",
+          "cache": "valkey",
+          "cache_version": "9.0",
+          "search_version": "3.0",
+          "varnish_version": "8.0",
+          "queue_version": "4.2",
+          "nginx_version": "1.28"
+        },
+        {
+          "patch": 8,
+          "php_version": "8.4",
+          "db_version": "11.4",
+          "cache_version": "7.2",
+          "rules": [
+            {
+              "min": 2,
+              "stack": "ultra",
+              "search_version": "3.0"
+            },
+            {
+              "min": 0,
+              "stack": "very_modern"
+            }
+          ]
+        },
+        {
+          "patch": 7,
+          "php_version": "8.3",
+          "db_version": "10.6",
+          "rules": [
+            {
+              "min": 6,
+              "stack": "ultra",
+              "db_version": "10.11"
+            },
+            {
+              "min": 5,
+              "stack": "very_modern"
+            },
+            {
+              "min": 0,
+              "stack": "modern"
+            }
+          ]
+        },
+        {
+          "patch": 6,
+          "php_version": "8.2",
+          "db_version": "10.6",
+          "cache_version": "7.0",
+          "search_version": "2.5",
+          "queue_version": "3.11",
+          "varnish_version": "7.1",
+          "nginx_version": "1.22",
+          "composer_version": "2.2",
+          "rules": [
+            {
+              "min": 11,
+              "stack": "ultra",
+              "db_version": "10.11"
+            },
+            {
+              "min": 10,
+              "stack": "very_modern"
+            },
+            {
+              "min": 8,
+              "stack": "modern"
+            },
+            {
+              "min": 5,
+              "stack": "modern",
+              "varnish_version": "7.1",
+              "cache_version": "7.0"
+            }
+          ]
+        },
+        {
+          "patch": 5,
+          "php_version": "8.1",
+          "db_version": "10.4",
+          "cache_version": "6.2",
+          "search_version": "1.2",
+          "queue_version": "3.11",
+          "varnish_version": "7.0",
+          "nginx_version": "1.22",
+          "composer_version": "2.2",
+          "rules": [
+            {
+              "min": 13,
+              "stack": "ultra"
+            },
+            {
+              "min": 12,
+              "stack": "ultra",
+              "cache_version": "6.2"
+            },
+            {
+              "min": 10,
+              "stack": "very_modern",
+              "search_version": "1.3"
+            },
+            {
+              "min": 8,
+              "stack": "modern",
+              "search_version": "1.3",
+              "queue_version": "3.13"
+            },
+            {
+              "min": 7,
+              "stack": "modern",
+              "search_version": "1.3",
+              "queue_version": "3.13",
+              "varnish_version": "7.0",
+              "cache_version": "7.0"
+            }
+          ]
+        },
+        {
+          "patch": 4,
+          "php_version": "8.1",
+          "db_version": "10.4",
+          "cache_version": "6.2",
+          "search_version": "1.2",
+          "queue_version": "3.9",
+          "varnish_version": "7.0",
+          "nginx_version": "1.20",
+          "composer_version": "2.2",
+          "rules": [
+            {
+              "min": 16,
+              "stack": "ultra"
+            },
+            {
+              "min": 13,
+              "stack": "very_modern"
+            },
+            {
+              "min": 11,
+              "stack": "modern",
+              "search_version": "1.3",
+              "queue_version": "3.13",
+              "cache_version": "7.2"
+            },
+            {
+              "min": 8,
+              "stack": "modern",
+              "search_version": "1.3",
+              "queue_version": "3.13",
+              "cache_version": "7.0"
+            }
+          ]
+        },
+        {
+          "patch": 3,
+          "php_version": "7.4",
+          "db_version": "10.4",
+          "nginx_version": "1.18",
+          "varnish_version": "6.0",
+          "queue_version": "3.8",
+          "composer_version": "2.2",
+          "rules": [
+            {
+              "min": 2,
+              "search": "opensearch",
+              "search_version": "1.2",
+              "cache_version": "6.2"
+            },
+            {
+              "min": 0,
+              "search": "elasticsearch",
+              "search_version": "7.10",
+              "cache_version": "6.0"
+            }
+          ]
+        },
+        {
+          "patch": 2,
+          "php_version": "7.4",
+          "db_version": "10.4",
+          "cache": "redis",
+          "cache_version": "6.0",
+          "search": "elasticsearch",
+          "search_version": "7.9",
+          "queue_version": "3.8",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18",
+          "composer_version": "2.2"
+        },
+        {
+          "patch": 1,
+          "php_version": "7.4",
+          "db_version": "10.4",
+          "cache": "redis",
+          "cache_version": "6.0",
+          "search": "elasticsearch",
+          "search_version": "7.9",
+          "queue_version": "3.8",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18",
+          "composer_version": "2.2"
+        },
+        {
+          "patch": 0,
+          "php_version": "7.4",
+          "db_version": "10.4",
+          "cache": "redis",
+          "cache_version": "5.0",
+          "search": "elasticsearch",
+          "search_version": "7.6",
+          "queue_version": "3.8",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18",
+          "composer_version": "2.2"
+        }
+      ]
+    },
+    {
+      "major": 2,
+      "minor": 3,
+      "defaults": {
+        "db": "mariadb",
+        "cache": "redis",
+        "search": "elasticsearch",
+        "queue": "rabbitmq",
+        "web_root": "/"
+      },
+      "patches": [
+        {
+          "patch": 0,
+          "php_version": "7.1",
+          "db_version": "10.1",
+          "cache_version": "5.0",
+          "search_version": "5.6",
+          "queue_version": "3.7",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        },
+        {
+          "patch_min": 1,
+          "patch_max": 2,
+          "php_version": "7.2",
+          "db_version": "10.2",
+          "cache_version": "5.0",
+          "search_version": "6.8",
+          "queue_version": "3.7",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        },
+        {
+          "patch_min": 3,
+          "patch_max": 4,
+          "php_version": "7.2",
+          "db_version": "10.2",
+          "cache_version": "5.0",
+          "search_version": "6.8",
+          "queue_version": "3.8",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        },
+        {
+          "patch_min": 5,
+          "patch_max": 6,
+          "php_version": "7.3",
+          "db_version": "10.4",
+          "cache_version": "5.0",
+          "search_version": "7.6",
+          "queue_version": "3.8",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        },
+        {
+          "patch_min": 7,
+          "php_version": "7.4",
+          "db_version": "10.4",
+          "cache_version": "5.0",
+          "search_version": "7.9",
+          "queue_version": "3.8",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        }
+      ]
+    },
+    {
+      "major": 2,
+      "minor": 2,
+      "defaults": {
+        "db": "mariadb",
+        "cache": "redis",
+        "search": "elasticsearch",
+        "queue": "rabbitmq",
+        "web_root": "/"
+      },
+      "patches": [
+        {
+          "patch": 0,
+          "php_version": "7.1",
+          "db_version": "10.0",
+          "cache_version": "5.0",
+          "search_version": "5.6",
+          "queue_version": "3.7",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        },
+        {
+          "patch_min": 1,
+          "php_version": "7.1",
+          "db_version": "10.1",
+          "cache_version": "5.0",
+          "search_version": "5.6",
+          "queue_version": "3.7",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        }
+      ]
+    },
+    {
+      "major": 2,
+      "minor": 1,
+      "defaults": {
+        "db": "mariadb",
+        "cache": "redis",
+        "search": "elasticsearch",
+        "queue": "rabbitmq",
+        "web_root": "/"
+      },
+      "patches": [
+        {
+          "patch_min": 0,
+          "php_version": "7.1",
+          "db_version": "10.0",
+          "cache_version": "5.0",
+          "search_version": "2.4",
+          "queue_version": "3.7",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        }
+      ]
+    },
+    {
+      "major": 2,
+      "minor": 0,
+      "defaults": {
+        "db": "mariadb",
+        "cache": "redis",
+        "search": "elasticsearch",
+        "queue": "rabbitmq",
+        "web_root": "/"
+      },
+      "patches": [
+        {
+          "patch_min": 0,
+          "php_version": "7.1",
+          "db_version": "10.0",
+          "cache_version": "5.0",
+          "search_version": "2.4",
+          "queue_version": "3.7",
+          "varnish_version": "6.0",
+          "nginx_version": "1.18"
+        }
+      ]
+    }
+  ]
+}

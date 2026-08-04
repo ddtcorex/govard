@@ -2,9 +2,10 @@ package engine
 
 import (
 	"fmt"
-	"govard/internal/conventions"
 	"sort"
 	"strings"
+
+	"govard/internal/conventions"
 )
 
 type Features struct {
@@ -138,9 +139,7 @@ func GetDefaultChownDirList(framework string) []string {
 	// Note: /home/www-data/.ssh is intentionally NOT included here.
 	// The SSH directory is always mounted :ro, so chown would fail.
 	list := []string{"/bash_history"}
-	if framework == "magento2" || framework == "mageos" {
-		list = append(list, conventions.DefaultWorkDir, conventions.HomeWWWData+"/.cache/composer")
-	}
+	list = append(list, DefaultChownDirectoriesForFramework(framework)...)
 	return list
 }
 

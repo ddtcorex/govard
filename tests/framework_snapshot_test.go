@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"govard/internal/blueprints"
 	"govard/internal/cmd"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
@@ -112,9 +113,6 @@ func testDataDir(t *testing.T) string {
 }
 
 func TestFrameworkSnapshotBlueprintRendering(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
 	goldenRoot := testDataDir(t)
 
 	for _, framework := range allFrameworkNames {
@@ -129,7 +127,7 @@ func TestFrameworkSnapshotBlueprintRendering(t *testing.T) {
 			t.Setenv("SSH_AUTH_SOCK", "")
 
 			destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-			if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+			if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 				t.Fatalf("failed to copy blueprints: %v", err)
 			}
 

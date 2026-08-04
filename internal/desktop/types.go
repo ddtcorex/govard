@@ -123,3 +123,12 @@ type RemoteConfigSnapshot struct {
 	AuthMethod   string
 	Capabilities []string
 }
+
+// FrameworkOption describes one selectable framework for the onboarding UI,
+// sourced from the internal/frameworks registry so the frontend never
+// hardcodes framework metadata independently of the Go-side definitions.
+type FrameworkOption struct {
+	Name        string   `json:"name"`
+	DisplayName string   `json:"displayName"`
+	Aliases     []string `json:"aliases"`
+}

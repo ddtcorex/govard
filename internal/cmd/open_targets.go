@@ -6,23 +6,17 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"regexp"
 	"strings"
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
 	engineremote "govard/internal/engine/remote"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 )
 
 const openLocalEnvironment = "local"
-
-var (
-	magentoFrontNamePattern   = regexp.MustCompile(`(?i)['"]frontName['"]\s*=>\s*['"]([^'"]+)['"]`)
-	magentoTablePrefixPattern = regexp.MustCompile(`(?i)['"]table_prefix['"]\s*=>\s*['"]([^'"]*)['"]`)
-)
 
 func runOpenAdminTarget(config engine.Config, requestedEnvironment string) error {
 	environment, isRemote, err := resolveOpenEnvironment(config, requestedEnvironment)
@@ -36,17 +30,9 @@ func runOpenAdminTarget(config engine.Config, requestedEnvironment string) error
 		if err != nil {
 			return err
 		}
-		var adminPath string
-		if strings.EqualFold(strings.TrimSpace(config.Framework), conventions.FrameworkEmdash) {
-			adminPath = "_emdash/admin"
-		} else {
-			detectedAdminPath, probeErr := detectRemoteMagentoAdminPath(config, environment, remoteCfg)
-			if probeErr != nil {
-				adminPath = conventions.DefaultAdminPath
-				pterm.Warning.Printf("Could not auto-detect admin path for '%s': %v\n", environment, probeErr)
-			} else {
-				adminPath = detectedAdminPath
-			}
+		adminPath, probeErr := frameworks.ResolveRemoteAdminPath(config.Framework, environment, remoteCfg)
+		if probeErr != nil {
+			pterm.Warning.Printf("Could not auto-detect admin path for '%s': %v\n", environment, probeErr)
 		}
 		url = buildRemoteAdminURL(remoteCfg, adminPath)
 	} else {
@@ -164,29 +150,23 @@ func runOpenPortainerTarget(config engine.Config, requestedEnvironment string) e
 
 func openAdminURL(config engine.Config) string {
 	baseURL := "https://" + strings.TrimSpace(config.Domain)
-	if strings.EqualFold(strings.TrimSpace(config.Framework), conventions.FrameworkEmdash) {
-		return joinURLWithPath(baseURL, "_emdash/admin")
-	}
-	return joinURLWithPath(baseURL, conventions.DefaultAdminPath)
+	return joinURLWithPath(baseURL, frameworks.DefaultAdminPath(config.Framework))
 }
 
 func detectLocalAdminURL(config engine.Config) string {
-	if strings.EqualFold(strings.TrimSpace(config.Framework), conventions.FrameworkEmdash) {
+	definition, ok := frameworks.Get(config.Framework)
+	if !ok || definition.DetectLocalAdminMetadata == nil || definition.BuildLocalAdminSettingsQuery == nil || definition.ResolveLocalAdminURL == nil {
 		return openAdminURL(config)
 	}
 
 	baseURL := "https://" + strings.TrimSpace(config.Domain)
-	if !engine.IsMagento2Family(config.Framework) {
-		return joinURLWithPath(baseURL, conventions.DefaultAdminPath)
-	}
-
 	projectRoot, _ := os.Getwd()
-	frontName, tablePrefix := detectLocalMagentoAdminMeta(projectRoot)
+	frontName, tablePrefix := definition.DetectLocalAdminMetadata(projectRoot)
 	if tablePrefix == "" {
 		tablePrefix = config.TablePrefix
 	}
-	dbValues := readLocalMagentoAdminDBValues(config, tablePrefix)
-	return resolveMagentoAdminURL(baseURL, frontName, dbValues)
+	dbValues := readLocalFrameworkAdminDBValues(config, definition.BuildLocalAdminSettingsQuery(tablePrefix))
+	return definition.ResolveLocalAdminURL(baseURL, frontName, dbValues)
 }
 
 func runOpenLocalShell(config engine.Config) error {
@@ -256,38 +236,13 @@ func buildRemoteAdminURL(remoteCfg engine.RemoteConfig, adminPath string) string
 	return base + "/" + trimmedPath
 }
 
-func detectLocalMagentoAdminMeta(projectRoot string) (string, string) {
-	envPath := filepath.Join(projectRoot, "app", "etc", "env.php")
-	content, err := os.ReadFile(envPath)
-	if err != nil {
-		return "", ""
-	}
-
-	raw := string(content)
-	frontName := ""
-	tablePrefix := ""
-
-	if match := magentoFrontNamePattern.FindStringSubmatch(raw); len(match) == 2 {
-		frontName = strings.Trim(strings.TrimSpace(match[1]), "/")
-	}
-	if match := magentoTablePrefixPattern.FindStringSubmatch(raw); len(match) == 2 {
-		tablePrefix = strings.TrimSpace(match[1])
-	}
-
-	return frontName, tablePrefix
-}
-
-func readLocalMagentoAdminDBValues(config engine.Config, tablePrefix string) map[string]string {
+func readLocalFrameworkAdminDBValues(config engine.Config, query string) map[string]string {
 	containerName := dbContainerName(config)
 	if err := ensureLocalDBRunning(containerName); err != nil {
 		return map[string]string{}
 	}
 
 	credentials := resolveLocalDBCredentials(config, containerName)
-	table := tablePrefix + "core_config_data"
-	query := "SELECT path, value FROM " + table +
-		" WHERE path IN ('admin/url/use_custom','admin/url/use_custom_path','admin/url/custom','admin/url/custom_path')"
-
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
 		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
@@ -299,10 +254,10 @@ func readLocalMagentoAdminDBValues(config engine.Config, tablePrefix string) map
 		return map[string]string{}
 	}
 
-	return parseMagentoAdminDBRows(string(output))
+	return parseAdminDBRows(string(output))
 }
 
-func parseMagentoAdminDBRows(raw string) map[string]string {
+func parseAdminDBRows(raw string) map[string]string {
 	values := map[string]string{}
 	for _, line := range strings.Split(raw, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -318,51 +273,6 @@ func parseMagentoAdminDBRows(raw string) map[string]string {
 	return values
 }
 
-func resolveMagentoAdminURL(baseURL string, envFrontName string, dbValues map[string]string) string {
-	frontName := strings.Trim(strings.TrimSpace(envFrontName), "/")
-	if frontName == "" {
-		frontName = conventions.DefaultAdminPath
-	}
-
-	if truthyMagentoConfig(dbValues["admin/url/use_custom_path"]) {
-		if customPath := normalizeMagentoAdminTarget(dbValues["admin/url/custom_path"]); customPath != "" {
-			if isURLTarget(customPath) {
-				return customPath
-			}
-			return joinURLWithPath(baseURL, customPath)
-		}
-	}
-
-	if truthyMagentoConfig(dbValues["admin/url/use_custom"]) {
-		if custom := normalizeMagentoAdminTarget(dbValues["admin/url/custom"]); custom != "" {
-			if isURLTarget(custom) {
-				return custom
-			}
-			return joinURLWithPath(baseURL, custom)
-		}
-	}
-
-	return joinURLWithPath(baseURL, frontName)
-}
-
-func truthyMagentoConfig(raw string) bool {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeMagentoAdminTarget(raw string) string {
-	return strings.Trim(strings.TrimSpace(raw), "/")
-}
-
-func isURLTarget(raw string) bool {
-	value := strings.ToLower(strings.TrimSpace(raw))
-	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
-}
-
 func joinURLWithPath(baseURL string, path string) string {
 	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	trimmedPath := strings.Trim(strings.TrimSpace(path), "/")
@@ -370,30 +280,6 @@ func joinURLWithPath(baseURL string, path string) string {
 		return base
 	}
 	return base + "/" + trimmedPath
-}
-
-func detectRemoteMagentoAdminPath(config engine.Config, remoteName string, remoteCfg engine.RemoteConfig) (string, error) {
-	if !engine.IsMagento2Family(config.Framework) {
-		return conventions.DefaultAdminPath, nil
-	}
-
-	phpScript := `$c=@include "app/etc/env.php"; if(!is_array($c)){fwrite(STDERR,"env.php not found"); exit(2);} echo (string)($c["backend"]["frontName"] ?? "` + conventions.DefaultAdminPath + `");`
-	remoteCommand := "php -r " + engine.ShellQuote(phpScript)
-	if path := strings.TrimSpace(remoteCfg.Path); path != "" {
-		remoteCommand = "cd " + engineremote.QuoteRemotePath(path) + " && " + remoteCommand
-	}
-
-	probeCmd := engineremote.BuildSSHExecCommand(remoteName, remoteCfg, true, remoteCommand)
-	output, err := probeCmd.CombinedOutput()
-	if err != nil {
-		return conventions.DefaultAdminPath, fmt.Errorf("probe failed: %w", err)
-	}
-
-	value := strings.Trim(strings.TrimSpace(string(output)), "/")
-	if value == "" {
-		value = conventions.DefaultAdminPath
-	}
-	return value, nil
 }
 
 func buildSFTPURL(remoteCfg engine.RemoteConfig) string {
@@ -428,8 +314,4 @@ func BuildRemoteAdminURLForTest(remoteCfg engine.RemoteConfig, adminPath string)
 
 func BuildSFTPURLForTest(remoteCfg engine.RemoteConfig) string {
 	return buildSFTPURL(remoteCfg)
-}
-
-func ResolveMagentoAdminURLForTest(baseURL string, envFrontName string, dbValues map[string]string) string {
-	return resolveMagentoAdminURL(baseURL, envFrontName, dbValues)
 }

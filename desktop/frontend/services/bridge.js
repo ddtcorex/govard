@@ -90,6 +90,10 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.PickProjectDirectory?.bind(bridge));
   },
+  async listFrameworks() {
+    const bridge = getBridge();
+    return call(bridge?.ListFrameworks?.bind(bridge));
+  },
   async onboardProject(
     inputOrPath,
     framework,

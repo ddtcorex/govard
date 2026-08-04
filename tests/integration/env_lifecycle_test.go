@@ -49,7 +49,7 @@ func TestUpQuickstartWithShims(t *testing.T) {
 
 	env := NewTestEnvironment(t)
 	projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "up-m2")
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	shim := env.SetupRuntimeShims(t, map[string]int{"docker": 0, "ssh": 0, "rsync": 0})
 	result := env.RunGovardWithEnv(t, projectDir, shim.Env(), "env", "up", "--quickstart")

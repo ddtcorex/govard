@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/spf13/cobra"
 )
@@ -53,76 +55,7 @@ Case Studies:
   govard tool npm install`,
 }
 
-var frameworkCommands = []FrameworkCommand{
-	{
-		Name:        "magento",
-		Short:       "Run Magento CLI commands",
-		Frameworks:  []string{"magento2", "mageos"},
-		Binary:      "php",
-		PrependArgs: []string{"bin/magento"},
-		DefaultUser: "",
-	},
-	{
-		Name:        "artisan",
-		Short:       "Run Laravel Artisan commands",
-		Frameworks:  []string{"laravel"},
-		Binary:      "php",
-		PrependArgs: []string{"artisan"},
-		DefaultUser: "",
-	},
-	{
-		Name:        "magerun",
-		Aliases:     []string{"mr"},
-		Short:       "Run n98-magerun commands",
-		Frameworks:  []string{"magento1", "magento2", "mageos", "openmage"},
-		Binary:      "n98-magerun",
-		DefaultUser: "",
-	},
-	{
-		Name:        "drush",
-		Short:       "Run Drupal Drush commands",
-		Frameworks:  []string{"drupal"},
-		Binary:      "drush",
-		DefaultUser: "",
-	},
-	{
-		Name:        "symfony",
-		Short:       "Run Symfony CLI commands",
-		Frameworks:  []string{"symfony"},
-		Binary:      "php",
-		PrependArgs: []string{"bin/console"},
-		DefaultUser: "",
-	},
-	{
-		Name:        "shopware",
-		Short:       "Run Shopware CLI commands",
-		Frameworks:  []string{"shopware"},
-		Binary:      "bin/console",
-		DefaultUser: "",
-	},
-	{
-		Name:        "cake",
-		Short:       "Run CakePHP CLI commands",
-		Frameworks:  []string{"cakephp"},
-		Binary:      "bin/cake",
-		DefaultUser: "",
-	},
-	{
-		Name:        "prestashop",
-		Short:       "Run PrestaShop CLI commands (Symfony console)",
-		Frameworks:  []string{"prestashop"},
-		Binary:      "php",
-		PrependArgs: []string{"bin/console"},
-		DefaultUser: "",
-	},
-	{
-		Name:        "manage",
-		Short:       "Run Django management commands",
-		Frameworks:  []string{"django"},
-		Binary:      "python",
-		PrependArgs: []string{"manage.py"},
-		DefaultUser: "",
-	},
+var genericToolCommands = []FrameworkCommand{
 	{
 		Name:        "composer",
 		Short:       "Run composer commands",
@@ -133,13 +66,6 @@ var frameworkCommands = []FrameworkCommand{
 		Name:        "php",
 		Short:       "Run the php CLI directly",
 		Binary:      "php",
-		DefaultUser: "",
-	},
-	{
-		Name:        "wp",
-		Short:       "Run WordPress CLI commands",
-		Frameworks:  []string{"wordpress"},
-		Binary:      "wp",
 		DefaultUser: "",
 	},
 	{
@@ -172,6 +98,42 @@ var frameworkCommands = []FrameworkCommand{
 		Binary:      "grunt",
 		DefaultUser: "",
 	},
+}
+
+var frameworkCommands = append(frameworkToolCommands(), genericToolCommands...)
+
+func frameworkToolCommands() []FrameworkCommand {
+	byName := make(map[string]int)
+	var commands []FrameworkCommand
+	for _, definition := range frameworks.All() {
+		for _, declaration := range definition.ToolCommands {
+			index, exists := byName[declaration.Name]
+			if !exists {
+				byName[declaration.Name] = len(commands)
+				commands = append(commands, FrameworkCommand{
+					Name:        declaration.Name,
+					Aliases:     append([]string(nil), declaration.Aliases...),
+					Short:       declaration.Short,
+					Binary:      declaration.Binary,
+					PrependArgs: append([]string(nil), declaration.PrependArgs...),
+					DefaultUser: declaration.DefaultUser,
+				})
+				index = len(commands) - 1
+			}
+			commands[index].Frameworks = append(commands[index].Frameworks, definition.Name)
+		}
+	}
+	for index := range commands {
+		sort.Strings(commands[index].Frameworks)
+	}
+	sort.Slice(commands, func(i, j int) bool { return commands[i].Name < commands[j].Name })
+	return commands
+}
+
+// FrameworkToolCommandsForTest exposes only framework-owned commands; generic
+// Composer/PHP/Node tools deliberately remain outside the registry.
+func FrameworkToolCommandsForTest() []FrameworkCommand {
+	return frameworkToolCommands()
 }
 
 func initFrameworkCommands() {
@@ -277,11 +239,7 @@ func resolveToolExecution(config engine.Config, binary string, defaultUser strin
 		}
 	}
 
-	if engine.IsMagento2Family(config.Framework) && (binary == "php" || binary == "composer" ||
-		binary == "npm" || binary == "yarn" || binary == "npx" ||
-		binary == "pnpm" || binary == "grunt") {
-		user = config.ResolveProjectExecUser(conventions.UserWWWData)
-	} else if user == "" {
+	if user == "" {
 		user = config.ResolveProjectExecUser(conventions.UserWWWData)
 	}
 

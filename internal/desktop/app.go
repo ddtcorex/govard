@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"govard/internal/engine"
-	_ "govard/internal/frameworks" // registers framework detection/config data via init()
+	"govard/internal/frameworks"
 )
 
 func (app *App) GetUserInfo() (res UserInfo, err error) {
@@ -170,4 +170,22 @@ func (app *App) DeleteProject(projectQuery string) (res string, err error) {
 		return "", err
 	}
 	return "Project deleted successfully", nil
+}
+
+// ListFrameworks returns every framework registered in internal/frameworks,
+// for the onboarding UI's framework picker. This keeps the frontend's
+// dropdown, alias resolution, and display-name formatting in sync with the
+// Go-side registry instead of duplicating framework metadata in JS.
+func (app *App) ListFrameworks() (res []FrameworkOption, err error) {
+	defer RecoverPanic(&err, "ListFrameworks")
+	defs := frameworks.All()
+	res = make([]FrameworkOption, 0, len(defs))
+	for _, def := range defs {
+		res = append(res, FrameworkOption{
+			Name:        def.Name,
+			DisplayName: def.DisplayName,
+			Aliases:     append([]string(nil), def.Aliases...), // defensive copy - registry.go's All()/Get() warn callers not to mutate shared slice fields
+		})
+	}
+	return res, nil
 }

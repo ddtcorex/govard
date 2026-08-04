@@ -36,7 +36,13 @@ type RuntimeProfileResult struct {
 	Warnings []string
 }
 
-type runtimeProfileOverride struct {
+// VersionProfileOverride carries the runtime-profile fields a
+// framework-version-specific resolver wants to override on top of
+// framework defaults (empty string = "don't override this field").
+// Exported (renamed from the former unexported runtimeProfileOverride) so
+// framework packages can construct/return it via their registered
+// FrameworkDefinition.VersionProfileResolver.
+type VersionProfileOverride struct {
 	PHPVersion      string
 	NodeVersion     string
 	DB              string
@@ -57,13 +63,9 @@ type runtimeProfileOverride struct {
 
 var majorVersionPattern = regexp.MustCompile(`\d+`)
 var majorMinorPattern = regexp.MustCompile(`\d+\.\d+`)
-var magentoVersionPattern = regexp.MustCompile(`\d+\.\d+\.\d+(?:-p\d+)?`)
 
 func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResult, error) {
-	framework = strings.TrimSpace(strings.ToLower(framework))
-	if framework == "magento" {
-		framework = "magento2"
-	}
+	framework = NormalizeFrameworkAlias(framework)
 	version = strings.TrimSpace(version)
 	if framework == "" {
 		return RuntimeProfileResult{}, fmt.Errorf("framework is required")
@@ -115,8 +117,8 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 		return result, nil
 	}
 
-	if framework == "magento2" {
-		override, source, ok := resolveMagento2Override(version)
+	if resolver, ok := GetVersionProfileResolver(framework); ok {
+		override, source, ok := resolver(version)
 		if !ok {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("No version-specific profile for %s version %q. Using framework defaults.", framework, version))
 			return result, nil
@@ -150,7 +152,7 @@ func ExtractMajorVersion(version string) (int, bool) {
 	return major, true
 }
 
-func applyRuntimeProfileOverride(profile *RuntimeProfile, override runtimeProfileOverride) {
+func applyRuntimeProfileOverride(profile *RuntimeProfile, override VersionProfileOverride) {
 	if profile == nil {
 		return
 	}
@@ -237,54 +239,29 @@ func normalizeProfileValue(raw string, fallback string) string {
 	return value
 }
 
-func resolveMagento2Override(version string) (runtimeProfileOverride, string, bool) {
-	major, minor, patch, pPatch, ok := parseMagentoVersion(version)
-	if !ok {
-		return runtimeProfileOverride{}, "", false
-	}
+// VersionProfileResolver resolves version-specific runtime-profile
+// overrides for one framework. Returns ok=false if version has no
+// version-specific profile (caller falls back to framework defaults).
+// Framework packages register this when they own patch-level compatibility
+// data that cannot be expressed by the generic major/minor profile registry.
+type VersionProfileResolver func(version string) (VersionProfileOverride, string, bool)
 
-	return resolveMagentoProfileFromRegistry(major, minor, patch, pPatch)
+var versionProfileResolvers = map[string]VersionProfileResolver{}
+
+// RegisterVersionProfileResolver registers resolver as the
+// version-specific profile resolver for framework.
+// Called from frameworks.Register. Not safe for concurrent calls;
+// intended usage is registration during package init(), before
+// ResolveRuntimeProfile is ever called. Frameworks without one fall through
+// to the generic JSON-driven major/minor profile registry.
+func RegisterVersionProfileResolver(framework string, resolver VersionProfileResolver) {
+	versionProfileResolvers[strings.ToLower(strings.TrimSpace(framework))] = resolver
 }
 
-func parseMagentoVersion(version string) (major int, minor int, patch int, pPatch int, ok bool) {
-	version = strings.TrimSpace(strings.TrimPrefix(version, "v"))
-	match := magentoVersionPattern.FindString(version)
-	if match != "" {
-		version = match
-	}
-	if version == "" {
-		return 0, 0, 0, 0, false
-	}
-
-	parts := strings.SplitN(version, "-p", 2)
-	core := parts[0]
-	coreParts := strings.Split(core, ".")
-	if len(coreParts) < 3 {
-		return 0, 0, 0, 0, false
-	}
-
-	major, err := strconv.Atoi(coreParts[0])
-	if err != nil {
-		return 0, 0, 0, 0, false
-	}
-	minor, err = strconv.Atoi(coreParts[1])
-	if err != nil {
-		return 0, 0, 0, 0, false
-	}
-	patch, err = strconv.Atoi(coreParts[2])
-	if err != nil {
-		return 0, 0, 0, 0, false
-	}
-
-	pPatch = 0
-	if len(parts) == 2 && parts[1] != "" {
-		pPatch, err = strconv.Atoi(parts[1])
-		if err != nil {
-			return 0, 0, 0, 0, false
-		}
-	}
-
-	return major, minor, patch, pPatch, true
+// GetVersionProfileResolver looks up the registered resolver for framework.
+func GetVersionProfileResolver(framework string) (VersionProfileResolver, bool) {
+	resolver, ok := versionProfileResolvers[strings.ToLower(strings.TrimSpace(framework))]
+	return resolver, ok
 }
 
 func parseMajorMinor(version string) (major int, minor int, ok bool) {

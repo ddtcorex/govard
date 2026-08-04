@@ -5,12 +5,16 @@ import (
 	"strings"
 	"testing"
 
-	"govard/internal/cmd"
 	"govard/internal/conventions"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestBuildBootstrapMagentoEnvPHPForTestUsesDefaultDBHost(t *testing.T) {
-	got := cmd.BuildBootstrapMagentoEnvPHPForTest("test-crypt-key", "sample_db", "sample_user", "sample_pass")
+	got := magento2.BuildBootstrapEnvironment(
+		"test-crypt-key",
+		magento2.BootstrapEnvironmentDatabase{Database: "sample_db", Username: "sample_user", Password: "sample_pass"},
+		"",
+	)
 
 	expectedHost := fmt.Sprintf("'host' => %q", conventions.DefaultMagentoDBHost)
 	if count := strings.Count(got, expectedHost); count != 2 {
@@ -34,7 +38,11 @@ func TestBuildBootstrapMagentoEnvPHPForTestUsesDefaultDBHost(t *testing.T) {
 }
 
 func TestBuildBootstrapMagentoEnvPHPForTestUsesTablePrefix(t *testing.T) {
-	got := cmd.BuildBootstrapMagentoEnvPHPWithPrefixForTest("test-crypt-key", "sample_db", "sample_user", "sample_pass", "demo_")
+	got := magento2.BuildBootstrapEnvironment(
+		"test-crypt-key",
+		magento2.BootstrapEnvironmentDatabase{Database: "sample_db", Username: "sample_user", Password: "sample_pass"},
+		"demo_",
+	)
 
 	if !strings.Contains(got, "'table_prefix' => \"demo_\"") {
 		t.Fatalf("expected rendered env.php to contain table prefix, got:\n%s", got)

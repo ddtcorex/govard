@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestBuildMagentoCommandsBasic(t *testing.T) {
@@ -27,7 +28,7 @@ func TestBuildMagentoCommandsBasic(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-test", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-test", config)
 
 	if len(commands) == 0 {
 		t.Fatal("Expected at least one Magento command")
@@ -63,7 +64,7 @@ func TestBuildMagentoCommandsWithRedis(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-redis", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-redis", config)
 
 	hasRedisCache := false
 	hasRedisSession := false
@@ -102,7 +103,7 @@ func TestBuildMagentoCommandsWithValkey(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-valkey", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-valkey", config)
 
 	hasCacheConfig := false
 	for _, cmd := range commands {
@@ -137,7 +138,7 @@ func TestBuildMagentoCommandsWithVarnish(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-varnish", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-varnish", config)
 
 	hasVarnishConfig := false
 	for _, cmd := range commands {
@@ -169,7 +170,7 @@ func TestBuildMagentoCommandsWithElasticsearch(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-es", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-es", config)
 
 	hasSearchConfig := false
 	for _, cmd := range commands {
@@ -202,7 +203,7 @@ func TestBuildMagentoCommandsWithOpenSearch(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-os", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-os", config)
 
 	hasSearchConfig := false
 	for _, cmd := range commands {
@@ -238,7 +239,7 @@ func TestBuildMagentoCommandsAllFeatures(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-full", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-full", config)
 
 	requiredCommands := map[string]bool{
 		"Database":              false,
@@ -282,7 +283,7 @@ func TestBuildMagentoCommandsBaseURL(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-url", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-url", config)
 
 	hasBaseURL := false
 	for _, cmd := range commands {
@@ -314,7 +315,7 @@ func TestBuildMagentoCommandsNoDomain(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-no-domain", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-no-domain", config)
 
 	if len(commands) == 0 {
 		t.Fatal("Expected commands even without domain")
@@ -337,7 +338,7 @@ func TestBuildMagentoCommandsContainerName(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("test-project", config)
+	commands := magento2.MagentoConfigCommandsForTest("test-project", config)
 
 	for _, cmd := range commands {
 		found := false
@@ -371,7 +372,7 @@ func TestBuildMagentoCommandsUser(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("magento-user", config)
+	commands := magento2.MagentoConfigCommandsForTest("magento-user", config)
 
 	hasUserFlag := false
 	for _, cmd := range commands {

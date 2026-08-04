@@ -47,6 +47,10 @@ type FrameworkDefinition struct{ Name string }
 
 func main() {}
 `)
+	writeTestFile(t, filepath.Join(root, "shared", "dotenv.go"), `package shared
+
+func Parse() {}
+`)
 
 	got, err := generator.DiscoverFrameworkDirs(root)
 	if err != nil {

@@ -18,11 +18,11 @@ import (
 
 	"govard/internal/engine"
 	engineremote "govard/internal/engine/remote"
+	"govard/internal/frameworks"
 
 	"gopkg.in/yaml.v3"
 )
 
-const remoteMagentoAdminProbeScript = `$c=@include "app/etc/env.php"; if(!is_array($c)){fwrite(STDERR,"env.php not found"); exit(2);} echo (string)($c["backend"]["frontName"] ?? "` + conventions.DefaultAdminPath + `");`
 const remoteLastSyncReadLimit = 5000
 
 var defaultRunGovardCommandForDesktop = func(root string, args []string) (string, error) {
@@ -360,13 +360,7 @@ func resolveRemoteAdminURL(project string, remoteName string) (string, string, e
 		return "", "", err
 	}
 
-	adminPath := conventions.DefaultAdminPath
-	if engine.IsMagento2Family(cfg.Framework) {
-		detectedPath, probeErr := detectRemoteMagentoAdminPathForDesktop(resolvedRemoteName, remoteCfg)
-		if probeErr == nil {
-			adminPath = detectedPath
-		}
-	}
+	adminPath, _ := frameworks.ResolveRemoteAdminPath(cfg.Framework, resolvedRemoteName, remoteCfg)
 
 	return buildRemoteAdminURLForDesktop(remoteCfg, adminPath), resolvedRemoteName, nil
 }
@@ -430,28 +424,6 @@ func resolveRemoteConfigForCapability(
 	}
 
 	return "", engine.RemoteConfig{}, fmt.Errorf("unknown remote: %s", trimmedRequested)
-}
-
-func detectRemoteMagentoAdminPathForDesktop(
-	remoteName string,
-	remoteCfg engine.RemoteConfig,
-) (string, error) {
-	remoteCommand := "php -r " + engine.ShellQuote(remoteMagentoAdminProbeScript)
-	if path := strings.TrimSpace(remoteCfg.Path); path != "" {
-		remoteCommand = "cd " + engineremote.QuoteRemotePath(path) + " && " + remoteCommand
-	}
-
-	probeCmd := engineremote.BuildSSHExecCommand(remoteName, remoteCfg, true, remoteCommand)
-	output, err := probeCmd.CombinedOutput()
-	if err != nil {
-		return conventions.DefaultAdminPath, fmt.Errorf("probe failed: %w", err)
-	}
-
-	value := strings.Trim(strings.TrimSpace(string(output)), "/")
-	if value == "" {
-		value = conventions.DefaultAdminPath
-	}
-	return value, nil
 }
 
 func buildRemoteAdminURLForDesktop(remoteCfg engine.RemoteConfig, adminPath string) string {
@@ -1239,7 +1211,7 @@ func buildPresetSyncOptionDefs(project, preset string) presetSyncOptions {
 		}
 	}
 
-	isMagento := engine.IsMagento2Family(framework) || framework == "magento1" || framework == "openmage"
+	isMagento := frameworks.IsA(framework, "magento2") || frameworks.IsA(framework, "magento1")
 
 	switch normalizedPreset {
 	case "db":

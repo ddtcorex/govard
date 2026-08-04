@@ -428,7 +428,7 @@ func TestFrameworkConfigOverride(t *testing.T) {
 	}
 
 	CreateGovardConfig(t, projectDir, config)
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	err := engine.RenderBlueprint(projectDir, config)
 	if err != nil {

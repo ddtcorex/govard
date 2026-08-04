@@ -9,6 +9,7 @@ import (
 
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -327,8 +328,10 @@ Case Studies:
 			return fmt.Errorf("post-synchronization hooks failed to execute: %w", err)
 		}
 
-		if engine.IsMagento2Family(config.Framework) && (files || mediaMode != "") {
-			_ = engine.FixProjectPermissions(config.ProjectName, config)
+		if files || mediaMode != "" {
+			if definition, ok := frameworks.Get(config.Framework); ok && definition.PostSync != nil {
+				_ = definition.PostSync(config)
+			}
 		}
 
 		pterm.Success.Println("Synchronization successfully completed.")

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestMaybeRunMagentoComposerInstallSkipsWhenVendorSatisfiesLock(t *testing.T) {
@@ -30,13 +31,13 @@ func TestMaybeRunMagentoComposerInstallSkipsWhenVendorSatisfiesLock(t *testing.T
 	}
 
 	composerInstallCalls := 0
-	defer engine.SetMagentoComposerInstallRunnerForTest(func(projectName string, config engine.Config, stdout, stderr io.Writer) error {
+	defer magento2.SetMagentoComposerInstallRunnerForTest(func(projectName string, config engine.Config, stdout, stderr io.Writer) error {
 		composerInstallCalls++
 		return nil
 	})()
 
 	config := engine.Config{ProjectName: "sample-project", Framework: "magento2"}
-	engine.MaybeRunMagentoComposerInstallForTest("sample-project", config)
+	magento2.MaybeRunMagentoComposerInstallForTest("sample-project", config)
 
 	if composerInstallCalls != 0 {
 		t.Fatalf("expected composer install to be skipped, but it was called %d time(s)", composerInstallCalls)
@@ -49,13 +50,13 @@ func TestMaybeRunMagentoComposerInstallRunsWhenVendorDoesNotSatisfyLock(t *testi
 	// No composer.lock/installed.json fixtures: VendorSatisfiesComposerLock reports false.
 
 	composerInstallCalls := 0
-	defer engine.SetMagentoComposerInstallRunnerForTest(func(projectName string, config engine.Config, stdout, stderr io.Writer) error {
+	defer magento2.SetMagentoComposerInstallRunnerForTest(func(projectName string, config engine.Config, stdout, stderr io.Writer) error {
 		composerInstallCalls++
 		return nil
 	})()
 
 	config := engine.Config{ProjectName: "sample-project", Framework: "magento2"}
-	engine.MaybeRunMagentoComposerInstallForTest("sample-project", config)
+	magento2.MaybeRunMagentoComposerInstallForTest("sample-project", config)
 
 	if composerInstallCalls != 1 {
 		t.Fatalf("expected composer install to run exactly once, got %d", composerInstallCalls)
@@ -84,13 +85,13 @@ func TestMaybeRunMagentoComposerInstallRunsWhenLockVersionMismatches(t *testing.
 	}
 
 	composerInstallCalls := 0
-	defer engine.SetMagentoComposerInstallRunnerForTest(func(projectName string, config engine.Config, stdout, stderr io.Writer) error {
+	defer magento2.SetMagentoComposerInstallRunnerForTest(func(projectName string, config engine.Config, stdout, stderr io.Writer) error {
 		composerInstallCalls++
 		return nil
 	})()
 
 	config := engine.Config{ProjectName: "sample-project", Framework: "magento2"}
-	engine.MaybeRunMagentoComposerInstallForTest("sample-project", config)
+	magento2.MaybeRunMagentoComposerInstallForTest("sample-project", config)
 
 	if composerInstallCalls != 1 {
 		t.Fatalf("expected composer install to run exactly once, got %d", composerInstallCalls)

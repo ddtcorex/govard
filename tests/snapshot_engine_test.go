@@ -72,6 +72,17 @@ func TestBuildSnapshotDumpCommandUsesEnvPassword(t *testing.T) {
 	}
 }
 
+func TestBuildSnapshotDumpCommandUsesGenericFallbackWithoutFrameworkCredentials(t *testing.T) {
+	args := engine.BuildSnapshotDumpCommandForTest("example-db-1", "", "", "")
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "mysqldump -u root --all-databases") {
+		t.Fatalf("expected generic root/all-databases fallback, got: %s", joined)
+	}
+	if strings.Contains(joined, "magento") {
+		t.Fatalf("snapshot fallback must not encode Magento defaults, got: %s", joined)
+	}
+}
+
 func TestBuildSnapshotImportCommandUsesEnvPassword(t *testing.T) {
 	args := engine.BuildSnapshotImportCommandForTest("example-db-1", "app", "secret", "shop")
 	joined := strings.Join(args, " ")

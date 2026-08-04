@@ -6,6 +6,7 @@ package integration
 import (
 	"encoding/json"
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 	"os"
 	"path/filepath"
 	"testing"
@@ -58,14 +59,14 @@ func TestMagentoProfileShiftDetection(t *testing.T) {
 	config.Profile = "default"
 	config.FrameworkVersion = "2.4.6-p3"
 
-	shifted, reason := engine.CheckProfileShiftCleanupForTest(config)
+	shifted, reason := magento2.CheckProfileShiftCleanupForTest(config)
 	if shifted {
 		t.Errorf("Expected no shift, got %v: %s", shifted, reason)
 	}
 
 	// Case 2: PHP Version change
 	config.Stack.PHPVersion = "8.4"
-	shifted, reason = engine.CheckProfileShiftCleanupForTest(config)
+	shifted, reason = magento2.CheckProfileShiftCleanupForTest(config)
 	if !shifted || reason != "PHP version changed: 8.2 -> 8.4" {
 		t.Errorf("Expected PHP shift, got shifted=%v, reason=%s", shifted, reason)
 	}
@@ -73,7 +74,7 @@ func TestMagentoProfileShiftDetection(t *testing.T) {
 	// Case 3: Profile change
 	config.Stack.PHPVersion = "8.2"
 	config.Profile = "upgrade"
-	shifted, reason = engine.CheckProfileShiftCleanupForTest(config)
+	shifted, reason = magento2.CheckProfileShiftCleanupForTest(config)
 	if !shifted || reason != "Profile changed: \"default\" -> \"upgrade\"" {
 		t.Errorf("Expected Profile shift, got shifted=%v, reason=%s", shifted, reason)
 	}
@@ -81,7 +82,7 @@ func TestMagentoProfileShiftDetection(t *testing.T) {
 	// Case 4: Framework Version change
 	config.Profile = "default"
 	config.FrameworkVersion = "2.4.8-p4"
-	shifted, reason = engine.CheckProfileShiftCleanupForTest(config)
+	shifted, reason = magento2.CheckProfileShiftCleanupForTest(config)
 	if !shifted || reason != "Version changed: 2.4.6-p3 -> 2.4.8-p4" {
 		t.Errorf("Expected Version shift, got shifted=%v, reason=%s", shifted, reason)
 	}
@@ -90,7 +91,7 @@ func TestMagentoProfileShiftDetection(t *testing.T) {
 	// This is the fix: empty PHP version means "use profile default", not "change"
 	config.Stack.PHPVersion = ""
 	config.FrameworkVersion = "2.4.6-p3"
-	shifted, reason = engine.CheckProfileShiftCleanupForTest(config)
+	shifted, reason = magento2.CheckProfileShiftCleanupForTest(config)
 	if shifted {
 		t.Errorf("Expected no shift when current PHP is empty, got shifted=%v: %s", shifted, reason)
 	}
@@ -98,7 +99,7 @@ func TestMagentoProfileShiftDetection(t *testing.T) {
 	// Case 6: Empty current profile should NOT trigger shift
 	config.Stack.PHPVersion = "8.2"
 	config.Profile = ""
-	shifted, reason = engine.CheckProfileShiftCleanupForTest(config)
+	shifted, reason = magento2.CheckProfileShiftCleanupForTest(config)
 	if shifted {
 		t.Errorf("Expected no shift when current profile is empty, got shifted=%v: %s", shifted, reason)
 	}
@@ -106,7 +107,7 @@ func TestMagentoProfileShiftDetection(t *testing.T) {
 	// Case 7: Empty current version should NOT trigger shift
 	config.Profile = "default"
 	config.FrameworkVersion = ""
-	shifted, reason = engine.CheckProfileShiftCleanupForTest(config)
+	shifted, reason = magento2.CheckProfileShiftCleanupForTest(config)
 	if shifted {
 		t.Errorf("Expected no shift when current version is empty, got shifted=%v: %s", shifted, reason)
 	}
@@ -158,7 +159,7 @@ func TestDetectMagentoProfileShiftInfo(t *testing.T) {
 		config.Profile = "default"
 		config.FrameworkVersion = "2.4.6-p3"
 
-		info := engine.DetectProfileShiftForTest(config)
+		info := magento2.DetectProfileShiftForTest(config)
 		if info.Shifted {
 			t.Errorf("Expected no shift, got Shifted=true, Reason=%s", info.Reason)
 		}
@@ -170,7 +171,7 @@ func TestDetectMagentoProfileShiftInfo(t *testing.T) {
 		config.Profile = "default"
 		config.FrameworkVersion = "2.4.8-p4"
 
-		info := engine.DetectProfileShiftForTest(config)
+		info := magento2.DetectProfileShiftForTest(config)
 		if !info.Shifted {
 			t.Fatal("Expected shift to be detected")
 		}
@@ -207,7 +208,7 @@ func TestDetectMagentoProfileShiftInfo(t *testing.T) {
 		config.Stack.PHPVersion = "8.4"
 		config.FrameworkVersion = "2.4.8-p4"
 
-		info := engine.DetectProfileShiftForTest(config)
+		info := magento2.DetectProfileShiftForTest(config)
 		if info.Shifted {
 			t.Fatal("Expected NO shift when there's no previous info (user runs `govard config auto` manually)")
 		}

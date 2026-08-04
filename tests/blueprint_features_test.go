@@ -3,10 +3,10 @@ package tests
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
+	"govard/internal/blueprints"
 	"govard/internal/engine"
 )
 
@@ -148,12 +148,8 @@ func renderComposeWithConfig(t *testing.T, config engine.Config) string {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 

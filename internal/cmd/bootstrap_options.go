@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"govard/internal/frameworks"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -109,10 +111,10 @@ func validateBootstrapFrameworkVersion(framework string, version string) error {
 	if !comparable || comparison < 0 {
 		return fmt.Errorf("invalid --framework-version value %q (must be a numeric dotted version)", version)
 	}
-	if strings.EqualFold(strings.TrimSpace(framework), "magento2") || strings.EqualFold(strings.TrimSpace(framework), "magento") {
-		comparison, _ = compareNumericDotVersions(version, "2.0.0")
+	if definition, ok := frameworks.Get(framework); ok && definition.MinimumBootstrapVersion != "" {
+		comparison, _ = compareNumericDotVersions(version, definition.MinimumBootstrapVersion)
 		if comparison < 0 {
-			return fmt.Errorf("invalid --framework-version value %q (must be Magento 2.0.0+)", version)
+			return fmt.Errorf("invalid --framework-version value %q (must be %s %s+)", version, definition.DisplayName, definition.MinimumBootstrapVersion)
 		}
 	}
 	return nil

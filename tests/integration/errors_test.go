@@ -346,11 +346,9 @@ func TestCreateSnapshotNonExistentProject(t *testing.T) {
 }
 
 func TestBlueprintRenderWithSpecialCharactersInProjectName(t *testing.T) {
-	env := NewTestEnvironment(t)
-
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test_project-123",

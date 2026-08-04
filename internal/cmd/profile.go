@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -216,10 +217,7 @@ func resolveProfileForCurrentProject() (engine.ProjectMetadata, engine.RuntimePr
 	metadata := engine.DetectFramework(cwd)
 
 	if v := strings.TrimSpace(profileFrameworkOverride); v != "" {
-		metadata.Framework = strings.ToLower(v)
-		if metadata.Framework == "magento" {
-			metadata.Framework = "magento2"
-		}
+		metadata.Framework = frameworks.Normalize(v)
 	}
 	if v := strings.TrimSpace(profileVersionOverride); v != "" {
 		metadata.Version = v

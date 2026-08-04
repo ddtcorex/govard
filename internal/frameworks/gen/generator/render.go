@@ -15,12 +15,15 @@ import (
 {{- range .Imports }}
 	"govard/internal/frameworks/{{ . }}"
 {{- end }}
+	"govard/internal/frameworks/types"
 )
 
 func init() {
+	RegisterSpecs([]types.FrameworkSpec{
 {{- range .Order }}
-	Register({{ . }}.Definition())
+		{{ . }}.Spec(),
 {{- end }}
+	})
 }
 `
 
@@ -30,8 +33,8 @@ type generatedSourceData struct {
 }
 
 // RenderSource builds the formatted contents of all_generated.go.
-// alphabetical drives the import block; order drives the sequence of
-// Register() calls in the generated init() (the two differ only when
+// alphabetical drives the import block; order drives the sequence of specs
+// projected into engine's detection registry (the two differ only when
 // PriorityOverrides reorders a package ahead of its alphabetical
 // position).
 func RenderSource(alphabetical []string, order []string) ([]byte, error) {

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestMergeComposerMapKeys(t *testing.T) {
@@ -103,7 +103,7 @@ func TestMergeComposerMapKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			engine.MergeComposerMapKeysForTest(tt.current, tt.target, tt.key)
+			magento2.MergeComposerMapKeysForTest(tt.current, tt.target, tt.key)
 			if !reflect.DeepEqual(tt.current, tt.expected) {
 				t.Errorf("MergeComposerMapKeysForTest() mismatch.\nGot:  %v\nWant: %v", tt.current, tt.expected)
 			}

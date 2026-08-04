@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"govard/internal/engine/remote"
+	"govard/internal/frameworks/prestashop"
 )
 
 func TestDecodePrestaShopEnvironmentPayload(t *testing.T) {
@@ -22,7 +22,7 @@ func TestDecodePrestaShopEnvironmentPayload(t *testing.T) {
 	}
 	encoded := base64.StdEncoding.EncodeToString(raw)
 
-	env, err := remote.DecodePrestaShopEnvironmentPayloadForTest(encoded)
+	env, err := prestashop.DecodePrestaShopEnvironmentPayloadForTest(encoded)
 	if err != nil {
 		t.Fatalf("decode payload: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestDecodePrestaShopEnvironmentPayloadIncludesSecrets(t *testing.T) {
 	}
 	encoded := base64.StdEncoding.EncodeToString(raw)
 
-	env, err := remote.DecodePrestaShopEnvironmentPayloadForTest(encoded)
+	env, err := prestashop.DecodePrestaShopEnvironmentPayloadForTest(encoded)
 	if err != nil {
 		t.Fatalf("decode payload: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestDecodePrestaShopEnvironmentPayloadSecretsOptional(t *testing.T) {
 	}
 	encoded := base64.StdEncoding.EncodeToString(raw)
 
-	env, err := remote.DecodePrestaShopEnvironmentPayloadForTest(encoded)
+	env, err := prestashop.DecodePrestaShopEnvironmentPayloadForTest(encoded)
 	if err != nil {
 		t.Fatalf("expected no error when secrets are absent, got: %v", err)
 	}
@@ -110,13 +110,13 @@ func TestDecodePrestaShopEnvironmentPayloadMissingRequiredFields(t *testing.T) {
 	raw, _ := json.Marshal(payload)
 	encoded := base64.StdEncoding.EncodeToString(raw)
 
-	if _, err := remote.DecodePrestaShopEnvironmentPayloadForTest(encoded); err == nil {
+	if _, err := prestashop.DecodePrestaShopEnvironmentPayloadForTest(encoded); err == nil {
 		t.Fatal("expected error when username/dbname are missing")
 	}
 }
 
 func TestDecodePrestaShopEnvironmentPayloadEmpty(t *testing.T) {
-	if _, err := remote.DecodePrestaShopEnvironmentPayloadForTest(""); err == nil {
+	if _, err := prestashop.DecodePrestaShopEnvironmentPayloadForTest(""); err == nil {
 		t.Fatal("expected error for empty payload")
 	}
 }

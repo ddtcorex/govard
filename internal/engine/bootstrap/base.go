@@ -48,14 +48,10 @@ type Options struct {
 	Domain      string
 	ProjectName string
 
-	// PrestaShop encryption secrets carried over from a remote's parameters.php, so a
-	// fabricated local parameters.php can reuse them instead of generating fresh ones
-	// (module data encrypted under the remote's keys would otherwise be undecryptable
-	// after a DB clone). Left empty when no remote secrets were available/probed.
-	PrestaShopSecret       string
-	PrestaShopCookieKey    string
-	PrestaShopCookieIV     string
-	PrestaShopNewCookieKey string
+	// RemoteMetadata carries framework-owned opaque values discovered while
+	// probing a remote. Generic bootstrap orchestration transports this map;
+	// each framework decides which keys it understands.
+	RemoteMetadata map[string]string
 }
 
 // CmdHelpers bundles the cmd-package-level closures a framework's
@@ -98,41 +94,21 @@ type CmdHelpers struct {
 	// theme package (internal/cmd's runBootstrapHyvaInstall). Only called
 	// when Options.HyvaInstall is true.
 	RunHyvaInstall func() error
-	// ResolveMagentoTablePrefix resolves/validates the table prefix from
-	// config or the TABLE_PREFIX env var (internal/cmd's
-	// resolveBootstrapMagentoTablePrefix).
-	ResolveMagentoTablePrefix func() (string, error)
-	// RunMagentoSetupInstall applies a best-effort Elasticsearch/OpenSearch
-	// read-only-allow-delete fix (if the PHP container is already running)
-	// and then runs `govard tool magento` with the given setup:install
-	// args (internal/cmd's tail of runBootstrapPostInstall). The args
-	// themselves are built by the caller via
-	// magento2.BuildSetupInstallArgs (internal/frameworks/magento2/
-	// bootstrap.go) - this closure only executes them, since running a
-	// govard subcommand needs the cmd-package-only *cobra.Command.
-	RunMagentoSetupInstall func(args []string) error
-	// RunMagentoSampleData runs sample:deploy/setup:upgrade/indexer:reindex/
-	// cache:flush (internal/cmd's runBootstrapSampleData). Only called
-	// when Options.IncludeSample is true.
-	RunMagentoSampleData func() error
+	// RunTool executes a framework-selected `govard tool` command. Framework
+	// packages own the tool name and action arguments; cmd only transports them
+	// through Cobra's command runner.
+	RunTool               func(tool string, args []string) error
+	RunToolSilent         func(tool string, args []string) error
+	RunEnvironmentCommand func(args []string) error
+	IsPHPContainerRunning func() bool
+	// ResolveFrameworkTablePrefix resolves/validates the framework table prefix from
+	// config or the TABLE_PREFIX env var.
+	ResolveFrameworkTablePrefix func() (string, error)
 
-	// EnsureMagentoEnvPHP generates app/etc/env.php if missing, probing
-	// the remote for a crypt key/table prefix to reuse where possible
-	// (internal/cmd's ensureBootstrapMagentoEnvPHP). Only the Magento
-	// family's PreConfigureHook calls this.
-	EnsureMagentoEnvPHP func() error
-	// RunMagentoAdminCreate creates the default Magento admin user via
-	// `govard tool magento admin:user:create`, best-effort - it never
-	// returns an error itself (internal/cmd's runBootstrapAdminCreate
-	// only warns on failure), so this closure always returns nil. Only
-	// the Magento family's PostCloneHook calls this, and only when
-	// Options.AdminCreate is true.
-	RunMagentoAdminCreate func() error
-	// RunMagentoReindex runs `govard tool magento indexer:reindex`
-	// (internal/cmd's runBootstrapMagentoReindex) - unlike
-	// RunMagentoAdminCreate, a failure here does propagate as a real
-	// error. Only the Magento family's PostCloneHook calls this.
-	RunMagentoReindex func() error
+	// EnsureFrameworkEnvironment generates a framework-owned runtime file,
+	// the remote for framework-owned configuration to reuse where possible.
+	// Only the Magento family's PreConfigureHook calls this.
+	EnsureFrameworkEnvironment func() error
 }
 
 // ErrFreshInstallSkipUp is returned by a framework's FreshInstall function

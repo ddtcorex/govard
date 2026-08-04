@@ -20,13 +20,12 @@ import (
 func runBootstrapFrameworkFreshInstall(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) error {
 	cwd, _ := os.Getwd()
 
-	if config.Framework == "mageos" && opts.MetaPackage == defaultBootstrapMetaPackage {
-		opts.MetaPackage = "mage-os/project-community-edition"
-	}
-
 	def, ok := frameworks.Get(config.Framework)
 	if !ok || def.FreshInstall == nil {
 		return fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
+	}
+	if opts.MetaPackage == defaultBootstrapMetaPackage && def.DefaultFreshMetaPackage != "" {
+		opts.MetaPackage = def.DefaultFreshMetaPackage
 	}
 	return runBootstrapRegistryFreshInstall(cmd, config, opts, def, cwd)
 }
@@ -85,14 +84,18 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 		RunHyvaInstall: func() error {
 			return runBootstrapHyvaInstall(cmd, opts)
 		},
-		ResolveMagentoTablePrefix: func() (string, error) {
-			return resolveBootstrapMagentoTablePrefix(config)
+		ResolveFrameworkTablePrefix: func() (string, error) {
+			if def.ResolveBootstrapTablePrefix == nil {
+				return "", fmt.Errorf("fresh install table prefix is not supported for framework: %s", config.Framework)
+			}
+			return def.ResolveBootstrapTablePrefix(config.TablePrefix)
 		},
-		RunMagentoSetupInstall: func(args []string) error {
-			return runBootstrapMagentoSetupInstall(cmd, config, args)
+		RunTool: func(tool string, args []string) error {
+			return runGovardSubcommand(cmd, govardToolSubcommandArgs(tool, args...)...)
 		},
-		RunMagentoSampleData: func() error {
-			return runBootstrapSampleData(cmd)
+		RunEnvironmentCommand: func(args []string) error { return runGovardSubcommand(cmd, append([]string{"env"}, args...)...) },
+		IsPHPContainerRunning: func() bool {
+			return engine.IsContainerRunning(context.Background(), fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix))
 		},
 	}
 
@@ -104,32 +107,6 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 	}
 
 	pterm.Success.Printf("Fresh %s bootstrap completed.\n", def.DisplayName)
-	return nil
-}
-
-// runBootstrapMagentoSetupInstall runs `bin/magento setup:install` with the
-// given args, first applying a best-effort Elasticsearch/OpenSearch
-// read-only-allow-delete unblock if the PHP container is already running.
-// Moved from the tail of runBootstrapPostInstall (internal/cmd/
-// bootstrap_post_install.go) - the "build the args" half of that function
-// is now magento2.BuildSetupInstallArgs
-// (internal/frameworks/magento2/bootstrap.go), called by the Magento
-// family's shared freshInstall before this function ever runs.
-func runBootstrapMagentoSetupInstall(cmd *cobra.Command, config engine.Config, args []string) error {
-	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)
-	if engine.IsContainerRunning(context.Background(), containerName) {
-		esFixCmd := []string{
-			"exec", "-T", "php", "sh", "-c",
-			"curl -s -X PUT 'http://elasticsearch:9200/_all/_settings' -H 'Content-Type: application/json' -d'{\"index.blocks.read_only_allow_delete\": null}' > /dev/null 2>&1 || true",
-		}
-		if err := runGovardSubcommand(cmd, append([]string{"env"}, esFixCmd...)...); err != nil {
-			pterm.Warning.Printf("Failed to apply Elasticsearch block fix: %v\n", err)
-		}
-	}
-
-	if err := runGovardSubcommand(cmd, govardMagentoSubcommandArgs(args...)...); err != nil {
-		return fmt.Errorf("magento setup:install failed: %w", err)
-	}
 	return nil
 }
 

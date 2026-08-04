@@ -422,8 +422,8 @@ func govardComposerSubcommandArgs(args ...string) []string {
 	return commandArgs
 }
 
-func govardMagentoSubcommandArgs(args ...string) []string {
-	commandArgs := []string{"tool", "magento"}
+func govardToolSubcommandArgs(tool string, args ...string) []string {
+	commandArgs := []string{"tool", tool}
 	commandArgs = append(commandArgs, args...)
 	return commandArgs
 }
@@ -500,13 +500,10 @@ func shouldIgnoreFrameworkPostCloneError(config engine.Config, err error, cwd st
 	}
 	errText := strings.ToLower(err.Error())
 
-	// WordPress config might already exist or fail in non-critical ways
-	if config.Framework == "wordpress" {
-		return fileExists(filepath.Join(cwd, "wp-config.php"))
-	}
-
-	if config.Framework == "prestashop" {
-		return fileExists(filepath.Join(cwd, "app", "config", "parameters.php"))
+	if definition, ok := frameworks.Get(config.Framework); ok && definition.IgnorePostCloneError != nil {
+		if definition.IgnorePostCloneError(err, cwd) {
+			return true
+		}
 	}
 
 	if !strings.Contains(errText, "composer install failed") {

@@ -13,7 +13,6 @@ import (
 )
 
 func TestRenderAllFrameworkBlueprints(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	frameworks := []string{
 		"magento2",
@@ -32,7 +31,7 @@ func TestRenderAllFrameworkBlueprints(t *testing.T) {
 		t.Run(fw, func(t *testing.T) {
 			projectDir := t.TempDir()
 
-			CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+			CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 			config := engine.Config{
 				ProjectName: "test-" + fw,
@@ -75,11 +74,10 @@ func TestRenderAllFrameworkBlueprints(t *testing.T) {
 }
 
 func TestRenderBlueprintWithFeatures(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-features",
@@ -133,11 +131,10 @@ func TestRenderBlueprintWithFeatures(t *testing.T) {
 }
 
 func TestRenderBlueprintWithCustomWebRoot(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-webroot",
@@ -170,11 +167,10 @@ func TestRenderBlueprintWithCustomWebRoot(t *testing.T) {
 }
 
 func TestRenderBlueprintWithVarnish(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-varnish",
@@ -214,11 +210,10 @@ func TestRenderBlueprintWithVarnish(t *testing.T) {
 }
 
 func TestRenderBlueprintWithXdebug(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-xdebug",
@@ -262,11 +257,10 @@ func TestRenderBlueprintWithXdebug(t *testing.T) {
 }
 
 func TestRenderBlueprintWithRabbitMQ(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-queue",
@@ -302,11 +296,10 @@ func TestRenderBlueprintWithRabbitMQ(t *testing.T) {
 }
 
 func TestRenderBlueprintWithComposeOverride(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	overrideContent := `
 services:
@@ -362,11 +355,10 @@ services:
 }
 
 func TestBlueprintNetworkConfiguration(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-network",
@@ -406,11 +398,10 @@ func TestBlueprintNetworkConfiguration(t *testing.T) {
 }
 
 func TestRenderBlueprintWithComposerVersion(t *testing.T) {
-	env := NewTestEnvironment(t)
 
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-composer-ver",

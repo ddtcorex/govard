@@ -168,7 +168,7 @@ func ResolveEffectiveProfile(projectPath, explicitProfile string) string {
 	return ""
 }
 
-func checkProfileShiftCleanup(config Config) (bool, string) {
+func CheckProfileShiftCleanup(config Config) (bool, string) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return false, ""

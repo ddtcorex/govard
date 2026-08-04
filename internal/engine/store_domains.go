@@ -74,7 +74,7 @@ func normalizeStoreDomainMappings(mappings StoreDomainMappings) StoreDomainMappi
 	return normalized
 }
 
-func sortedStoreDomainHosts(mappings StoreDomainMappings) []string {
+func SortedStoreDomainHosts(mappings StoreDomainMappings) []string {
 	hosts := make([]string, 0, len(mappings))
 	for host := range mappings {
 		hosts = append(hosts, host)

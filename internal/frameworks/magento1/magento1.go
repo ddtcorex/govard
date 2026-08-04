@@ -3,18 +3,31 @@ package magento1
 import (
 	"fmt"
 
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/engine/remote"
 	"govard/internal/engine/tunnel"
+	"govard/internal/frameworks/magento2"
 	"govard/internal/frameworks/types"
+
+	"github.com/spf13/cobra"
 )
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:        "magento1",
-		DisplayName: "Magento 1",
-		Config:      config,
-		Manifest:    Manifest,
+		Name:           "magento1",
+		Aliases:        []string{"m1"},
+		DisplayName:    "Magento 1",
+		MigrationTypes: types.MigrationTypes{DDEV: []string{"magento"}, Warden: []string{"magento1"}},
+		Config:         config,
+		Manifest:       Manifest,
+		DefaultDBCredentials: types.DefaultDBCredentials{
+			Port:     conventions.MySQLPort,
+			Username: conventions.DefaultMagentoDBUser,
+			Password: conventions.DefaultMagentoDBPass,
+			Database: conventions.DefaultMagentoDBName,
+		},
 		// ComposerPackages intentionally includes openmage/magento-lts and
 		// magento-hackathon/magento-composer-installer - this is the exact,
 		// pre-existing behavior of internal/engine/discovery.go (a project
@@ -22,6 +35,9 @@ func Definition() types.FrameworkDefinition {
 		// "openmage"; openmage has no detection heuristic of its own).
 		// This looks like it could be a bug, but changing it is out of
 		// scope - Global Constraints require zero detection behavior change.
+		ToolCommands: []types.ToolCommand{
+			{Name: "magerun", Aliases: []string{"mr"}, Short: "Run n98-magerun commands", Binary: "n98-magerun"},
+		},
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"openmage/magento-lts", "magento-hackathon/magento-composer-installer"},
 			FilePaths:        []string{"app/Mage.php", "app/etc/local.xml"},
@@ -42,7 +58,23 @@ func Definition() types.FrameworkDefinition {
 		FreshInstall: func(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error {
 			return fmt.Errorf("fresh install not supported for magento1 (use openmage instead)")
 		},
-		SupportsBootstrap:    true,
-		SupportsFreshInstall: true,
+		SupportsBootstrap:       true,
+		SupportsFreshInstall:    true,
+		PHPImageVariant:         "magento1",
+		DBDriverCategory:        "magento",
+		RunMappingAssetPreparer: magento2.PrepareRunMappingAssets,
+		TablePrefixDetector:     DetectTablePrefix,
+		BootstrapPlanSteps: func(bool) []types.BootstrapPlanStep {
+			return []types.BootstrapPlanStep{{Description: "Configuring framework environment...", Command: "govard config auto"}}
+		},
+		Upgrade: Upgrade,
+		ProbeRemoteDB: func(remoteName string, remoteCfg engine.RemoteConfig) (remote.RemoteDatabaseMetadata, error) {
+			metadata, err := ProbeMagento1Environment(remoteName, remoteCfg)
+			return metadata.DB, err
+		},
+		RemoteDBUsesConfigTablePrefix: true,
+		AutoConfigure: func(cmd *cobra.Command, config engine.Config) error {
+			return magento2.ConfigureMagento1(config.ProjectName, config)
+		},
 	}
 }

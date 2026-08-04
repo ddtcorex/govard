@@ -1,6 +1,9 @@
 package emdash
 
 import (
+	"text/template"
+
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks/types"
@@ -8,10 +11,18 @@ import (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:        "emdash",
-		DisplayName: "Emdash",
-		Config:      config,
-		Manifest:    manifest,
+		Name:             "emdash",
+		DisplayName:      "Emdash",
+		Config:           config,
+		Manifest:         manifest,
+		NodeImageFlavor:  "standard",
+		DefaultAdminPath: "_emdash/admin",
+		DefaultDBCredentials: types.DefaultDBCredentials{
+			Port:     conventions.MySQLPort,
+			Username: conventions.DefaultDBUser,
+			Password: conventions.DefaultDBPass,
+			Database: conventions.DefaultDBName,
+		},
 		Detect: engine.DetectionSpec{
 			PackageJSONDeps: []string{"emdash"},
 		},
@@ -20,5 +31,6 @@ func Definition() types.FrameworkDefinition {
 		},
 		FreshInstall:         freshInstall,
 		SupportsFreshInstall: true,
+		TemplateFuncs:        template.FuncMap{"emdashRuntimeCommand": BuildRuntimeCommand},
 	}
 }

@@ -5,19 +5,29 @@ import (
 
 	"govard/internal/cmd"
 	"govard/internal/engine"
+	"govard/internal/frameworks/types"
+
+	"github.com/spf13/cobra"
 )
 
 func TestApplyFrameworkAutoConfigurationUsesMagento1Handler(t *testing.T) {
 	called := false
-	restore := cmd.SetMagento1AutoConfigurationRunnerForTest(func(projectName string, config engine.Config) error {
-		called = true
-		if projectName != "sample-project" {
-			t.Fatalf("expected project name sample-project, got %s", projectName)
+	restore := cmd.SetFrameworkLookupForAutoConfigureForTest(func(name string) (types.FrameworkDefinition, bool) {
+		if name != "magento1" {
+			t.Fatalf("expected lookup for magento1, got %s", name)
 		}
-		if config.Framework != "magento1" {
-			t.Fatalf("expected magento1 config, got %s", config.Framework)
-		}
-		return nil
+		return types.FrameworkDefinition{
+			AutoConfigure: func(_ *cobra.Command, config engine.Config) error {
+				called = true
+				if config.ProjectName != "sample-project" {
+					t.Fatalf("expected project name sample-project, got %s", config.ProjectName)
+				}
+				if config.Framework != "magento1" {
+					t.Fatalf("expected magento1 config, got %s", config.Framework)
+				}
+				return nil
+			},
+		}, true
 	})
 	defer restore()
 
@@ -36,15 +46,22 @@ func TestApplyFrameworkAutoConfigurationUsesMagento1Handler(t *testing.T) {
 
 func TestApplyFrameworkAutoConfigurationUsesMagento2HandlerForMageOS(t *testing.T) {
 	called := false
-	restore := cmd.SetMagento2AutoConfigurationRunnerForTest(func(projectName string, config engine.Config, force bool) error {
-		called = true
-		if projectName != "sample-project" {
-			t.Fatalf("expected project name sample-project, got %s", projectName)
+	restore := cmd.SetFrameworkLookupForAutoConfigureForTest(func(name string) (types.FrameworkDefinition, bool) {
+		if name != "mageos" {
+			t.Fatalf("expected lookup for mageos, got %s", name)
 		}
-		if config.Framework != "mageos" {
-			t.Fatalf("expected mageos config, got %s", config.Framework)
-		}
-		return nil
+		return types.FrameworkDefinition{
+			AutoConfigure: func(_ *cobra.Command, config engine.Config) error {
+				called = true
+				if config.ProjectName != "sample-project" {
+					t.Fatalf("expected project name sample-project, got %s", config.ProjectName)
+				}
+				if config.Framework != "mageos" {
+					t.Fatalf("expected mageos config, got %s", config.Framework)
+				}
+				return nil
+			},
+		}, true
 	})
 	defer restore()
 
@@ -61,5 +78,28 @@ func TestApplyFrameworkAutoConfigurationUsesMagento2HandlerForMageOS(t *testing.
 
 	if !called {
 		t.Fatal("expected Magento 2 auto configuration runner to be invoked for mageos")
+	}
+}
+
+func TestPrepareFrameworkComposerUsesDefinitionHook(t *testing.T) {
+	called := false
+	restore := cmd.SetFrameworkLookupForBootstrapForTest(func(name string) (types.FrameworkDefinition, bool) {
+		if name != "wordpress" {
+			t.Fatalf("expected lookup for wordpress, got %s", name)
+		}
+		return types.FrameworkDefinition{
+			PrepareComposer: func(config engine.Config) error {
+				called = config.ProjectName == "sample-project"
+				return nil
+			},
+		}, true
+	})
+	defer restore()
+
+	if err := cmd.PrepareFrameworkComposerForTest(engine.Config{ProjectName: "sample-project", Framework: "wordpress"}); err != nil {
+		t.Fatalf("PrepareFrameworkComposerForTest() error = %v", err)
+	}
+	if !called {
+		t.Fatal("expected framework composer preparation hook to run")
 	}
 }

@@ -9,7 +9,7 @@ import (
 
 func TestMagento2VarnishTemplateTracksOfficialMagentoDefaults(t *testing.T) {
 	projectRoot := testProjectRoot(t)
-	vclPath := filepath.Join(projectRoot, "internal", "blueprints", "files", "magento2", "varnish", "default.vcl")
+	vclPath := filepath.Join(projectRoot, "internal", "frameworks", "magento2", "blueprint", "varnish", "default.vcl")
 
 	content, err := os.ReadFile(vclPath)
 	if err != nil {

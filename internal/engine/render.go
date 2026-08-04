@@ -21,11 +21,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// registeredTemplateFuncs accumulates every framework's TemplateFuncs
+// contribution, merged into the FuncMap available to every rendered
+// blueprint template. Populated via RegisterTemplateFunc, called from
+// frameworks.Register.
+var registeredTemplateFuncs = template.FuncMap{}
+
+// RegisterTemplateFunc registers fn under name in the FuncMap available to
+// every rendered blueprint template (see renderTemplateFuncMap). Called
+// from frameworks.Register so a framework package can contribute its own
+// template functions (e.g. emdash's/nextjs's runtime-command builders)
+// instead of a literal entry in this file's static FuncMap. Not safe for
+// concurrent calls; intended usage is registration during package init(),
+// before any blueprint is ever rendered.
+func RegisterTemplateFunc(name string, fn any) {
+	registeredTemplateFuncs[name] = fn
+}
+
 func renderTemplateFuncMap() template.FuncMap {
-	return template.FuncMap{
-		"emdashRuntimeCommand": buildEmdashRuntimeCommand,
-		"nextjsRuntimeCommand": buildNextJSRuntimeCommand,
+	merged := template.FuncMap{}
+	for k, v := range registeredTemplateFuncs {
+		merged[k] = v
 	}
+	return merged
 }
 
 // RenderData holds all data needed for template rendering
@@ -79,15 +97,20 @@ func findBlueprintsDir(startDir string) (string, error) {
 
 	curr := abs
 	for {
-		// Check both legacy root path and new internal path
-		candidates := []string{
-			filepath.Join(curr, "blueprints"),
-			filepath.Join(curr, "internal", "blueprints", "files"),
-		}
-		for _, target := range candidates {
-			if _, err := os.Stat(target); err == nil {
-				return target, nil
-			}
+		// Legacy root path only: a full standalone blueprints/ directory next
+		// to the project root (e.g. an extracted release layout). This does
+		// NOT include internal/blueprints/files - since the framework
+		// consolidation refactor that directory holds only the shared
+		// remainder (includes/, proxy.yml, generic support/ assets) and is no
+		// longer a complete blueprints tree on its own; the complete tree
+		// lives solely in the compiled-in blueprints.FS (fallback plus every
+		// framework package's registered mount). Treating the on-disk
+		// internal/blueprints/files as a drop-in substitute here would
+		// silently serve an incomplete tree to any process running from
+		// within this repo checkout.
+		target := filepath.Join(curr, "blueprints")
+		if _, err := os.Stat(target); err == nil {
+			return target, nil
 		}
 
 		parent := filepath.Dir(curr)
@@ -131,8 +154,28 @@ func findBlueprintsFS(startDir string) (fs.FS, error) {
 	if err == nil {
 		return os.DirFS(dir), nil
 	}
+	if checkoutRoot, ok := findSourceCheckoutRoot(startDir); ok {
+		return blueprints.WithSourceOverrides(blueprints.FS, checkoutRoot), nil
+	}
 
 	return blueprints.FS, nil
+}
+
+func findSourceCheckoutRoot(startDir string) (string, bool) {
+	abs, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", false
+	}
+	for current := abs; ; current = filepath.Dir(current) {
+		candidate := filepath.Join(current, "internal", "blueprints", "files")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return current, true
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", false
+		}
+	}
 }
 
 func blueprintsFingerprint(blueprintsFS fs.FS) (string, error) {
@@ -344,8 +387,8 @@ func RenderBlueprint(root string, config Config) error {
 // reuses magento2's, since Mage-OS is a drop-in fork with the same runtime
 // shape and no Varnish-relevant differences.
 func varnishTemplateFramework(framework string) string {
-	if framework == "mageos" {
-		return "magento2"
+	if inherited := VarnishTemplateFrameworkForFramework(framework); inherited != "" {
+		return inherited
 	}
 	return framework
 }
@@ -447,8 +490,8 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 		renderData.ApacheCustomConfigDir = filepath.Join(root, ProjectApacheCustomDir)
 	}
 
-	if nginxMapPath, apacheMapPath, err := prepareMagentoRunMappingAssets(config); err != nil {
-		return fmt.Errorf("failed to prepare Magento run mapping assets: %w", err)
+	if nginxMapPath, apacheMapPath, err := PrepareRunMappingAssets(config); err != nil {
+		return fmt.Errorf("failed to prepare framework run mapping assets: %w", err)
 	} else {
 		renderData.NginxMageRunMapPath = nginxMapPath
 		renderData.ApacheMageRunMapPath = apacheMapPath
@@ -647,34 +690,6 @@ func renderTemplateFS(bfs fs.FS, tmplPath string, data RenderData) (string, erro
 	}
 
 	return buf.String(), nil
-}
-
-func buildEmdashRuntimeCommand(packageManager string, domain string) string {
-	domain = strings.TrimSpace(domain)
-
-	if packageManager == "pnpm" {
-		return strings.Join([]string{
-			"corepack enable >/dev/null 2>&1 || true;",
-			"if ! command -v pnpm >/dev/null 2>&1; then corepack prepare pnpm@latest --activate >/dev/null 2>&1; fi;",
-			`if [ ! -d node_modules ] || [ -z "$$(ls -A node_modules 2>/dev/null)" ]; then pnpm install; fi;`,
-			fmt.Sprintf("exec pnpm dev --host 0.0.0.0 --port 80 --allowed-hosts %s;", domain),
-		}, " ")
-	}
-
-	return strings.Join([]string{
-		`if [ ! -d node_modules ] || [ -z "$$(ls -A node_modules 2>/dev/null)" ]; then npm install; fi;`,
-		fmt.Sprintf("exec npm run dev -- --host 0.0.0.0 --port 80 --allowed-hosts %s;", domain),
-	}, " ")
-}
-
-// buildNextJSRuntimeCommand installs dependencies if node_modules is
-// missing (e.g. wiped independently of a fresh bootstrap) before running
-// the dev server, matching emdashRuntimeCommand's resilience.
-func buildNextJSRuntimeCommand() string {
-	return strings.Join([]string{
-		`if [ ! -d node_modules ] || [ -z "$$(ls -A node_modules 2>/dev/null)" ]; then npm install; fi;`,
-		`exec npm run dev -- --hostname 0.0.0.0 --port 80;`,
-	}, " ")
 }
 
 func buildXdebugSessionPattern(raw string) string {

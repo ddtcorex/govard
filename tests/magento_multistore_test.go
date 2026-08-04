@@ -2,6 +2,7 @@ package tests
 
 import (
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 	"strings"
 	"testing"
 )
@@ -17,7 +18,7 @@ func TestBuildMagentoCommandsStoreDomains(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("testproject", config)
+	commands := magento2.MagentoConfigCommandsForTest("testproject", config)
 
 	foundUnsecure := false
 	foundSecure := false
@@ -53,7 +54,7 @@ func TestBuildMagentoCommandsNoStoreDomains(t *testing.T) {
 		// StoreDomains is nil
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("testproject", config)
+	commands := magento2.MagentoConfigCommandsForTest("testproject", config)
 
 	for _, cmd := range commands {
 		if strings.Contains(strings.Join(cmd.Args, " "), "--scope=stores") {
@@ -74,7 +75,7 @@ func TestBuildMagentoCommandsWebsiteScopedStoreDomains(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("testproject", config)
+	commands := magento2.MagentoConfigCommandsForTest("testproject", config)
 
 	foundWebsiteScope := false
 	foundStoreScope := false

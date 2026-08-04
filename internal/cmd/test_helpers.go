@@ -6,11 +6,36 @@ import (
 	"time"
 
 	"govard/internal/engine"
+	"govard/internal/engine/remote"
 )
 
 type UpReadinessCheckForTest struct {
 	Service       string
 	ContainerName string
+}
+
+// RemoteDBCredentialsForTest is the observable subset of resolved remote DB
+// credentials. It avoids exposing the command package's internal credential
+// type while preserving the table-prefix contract in external tests.
+type RemoteDBCredentialsForTest struct {
+	Host        string
+	Port        int
+	Username    string
+	Database    string
+	TablePrefix string
+}
+
+// ProjectRemoteDBCredentialsForTest exposes framework-aware remote metadata
+// projection without creating an SSH connection.
+func ProjectRemoteDBCredentialsForTest(config engine.Config, metadata remote.RemoteDatabaseMetadata, useConfigTablePrefix bool) RemoteDBCredentialsForTest {
+	credentials := projectRemoteDBCredentials(config, metadata, useConfigTablePrefix)
+	return RemoteDBCredentialsForTest{
+		Host:        credentials.Host,
+		Port:        credentials.Port,
+		Username:    credentials.Username,
+		Database:    credentials.Database,
+		TablePrefix: credentials.TablePrefix,
+	}
 }
 
 type UpCrossProjectRefreshDependenciesForTest struct {

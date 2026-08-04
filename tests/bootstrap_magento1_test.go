@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/magento1"
 )
 
 func TestGenerateMagento1CryptKeyReturnsRandom32CharHex(t *testing.T) {
-	key1, err := bootstrap.GenerateMagento1CryptKey()
+	key1, err := magento1.GenerateCryptKey()
 	if err != nil {
 		t.Fatalf("GenerateMagento1CryptKey() error = %v", err)
 	}
@@ -21,7 +21,7 @@ func TestGenerateMagento1CryptKeyReturnsRandom32CharHex(t *testing.T) {
 		}
 	}
 
-	key2, err := bootstrap.GenerateMagento1CryptKey()
+	key2, err := magento1.GenerateCryptKey()
 	if err != nil {
 		t.Fatalf("GenerateMagento1CryptKey() error = %v", err)
 	}

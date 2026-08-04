@@ -10,15 +10,20 @@ import (
 	"strings"
 
 	"govard/internal/engine"
-	"govard/internal/engine/remote"
+	"govard/internal/frameworks"
+	"govard/internal/frameworks/types"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
-func ensureBootstrapMagentoEnvPHP(config engine.Config, opts BootstrapRuntimeOptions) error {
+func ensureBootstrapFrameworkEnvironment(config engine.Config, opts BootstrapRuntimeOptions) error {
+	definition, ok := frameworks.Get(config.Framework)
+	if !ok || definition.BootstrapEnvironmentPath == "" || definition.RenderBootstrapEnvironment == nil {
+		return fmt.Errorf("framework %q does not provide a bootstrap environment renderer", config.Framework)
+	}
 	cwd, _ := os.Getwd()
-	envPath := filepath.Join(cwd, "app", "etc", "env.php")
+	envPath := filepath.Join(cwd, definition.BootstrapEnvironmentPath)
 
 	if info, err := os.Lstat(envPath); err == nil && (info.Mode()&os.ModeSymlink) != 0 {
 		if _, err := os.Stat(envPath); err != nil {
@@ -44,113 +49,48 @@ func ensureBootstrapMagentoEnvPHP(config engine.Config, opts BootstrapRuntimeOpt
 
 	tablePrefix := engine.NormalizeTablePrefix(config.TablePrefix)
 	if remoteCfg, ok := config.Remotes[opts.Source]; ok {
-		if metadata, err := remote.ProbeMagento2Environment(opts.Source, remoteCfg); err == nil {
-			if strings.TrimSpace(metadata.CryptKey) != "" {
-				cryptKey = strings.TrimSpace(metadata.CryptKey)
+		if definition.ProbeRemoteBootstrapMetadata != nil {
+			metadata, err := definition.ProbeRemoteBootstrapMetadata(opts.Source, remoteCfg)
+			if err == nil {
+				if remoteKey := strings.TrimSpace(metadata.Private[definition.BootstrapEnvironmentMetadataKey]); remoteKey != "" {
+					cryptKey = remoteKey
+				}
+				if tablePrefix == "" {
+					tablePrefix = metadata.TablePrefix
+				}
+			} else {
+				pterm.Warning.Printf("Could not extract remote bootstrap metadata (%v). Using generated fallback secret.\n", err)
 			}
-			if tablePrefix == "" {
-				tablePrefix = metadata.DB.TablePrefix
-			}
-		} else {
-			pterm.Warning.Printf("Could not extract crypt/key from remote env.php (%v). Using fallback key.\n", err)
 		}
 	}
 
 	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
 	localDB := resolveLocalDBCredentials(config, containerName)
 
-	template := buildBootstrapMagentoEnvPHP(cryptKey, localDB, tablePrefix)
+	template := definition.RenderBootstrapEnvironment(cryptKey, types.BootstrapEnvironmentDatabase{
+		Database: localDB.Database,
+		Username: localDB.Username,
+		Password: localDB.Password,
+	}, tablePrefix)
 
 	if err := os.WriteFile(envPath, []byte(template), conventions.DefaultFilePerm); err != nil {
-		return fmt.Errorf("failed to write app/etc/env.php: %w", err)
+		return fmt.Errorf("write framework bootstrap environment: %w", err)
 	}
 
-	pterm.Info.Println("Generated local app/etc/env.php for bootstrap.")
+	pterm.Info.Println("Generated local framework bootstrap environment.")
 	return nil
 }
 
-func buildBootstrapMagentoEnvPHP(cryptKey string, localDB dbCredentials, tablePrefix string) string {
-	localDB = localDB.withDefaults()
-	tablePrefix = engine.NormalizeTablePrefix(tablePrefix)
-
-	return fmt.Sprintf(`<?php
-return [
-    'backend' => [
-        'frontName' => %q
-    ],
-    'crypt' => [
-        'key' => %q
-    ],
-    'db' => [
-        'table_prefix' => %q,
-        'connection' => [
-            'default' => [
-                'host' => %q,
-                'dbname' => %q,
-                'username' => %q,
-                'password' => %q,
-                'active' => '1'
-            ],
-            'indexer' => [
-                'host' => %q,
-                'dbname' => %q,
-                'username' => %q,
-                'password' => %q,
-                'active' => '1'
-            ]
-        ]
-    ],
-    'resource' => [
-        'default_setup' => [
-            'connection' => 'default'
-        ]
-    ],
-    'x-frame-options' => 'SAMEORIGIN',
-    'MAGE_MODE' => 'developer',
-    'session' => [
-        'save' => 'files'
-    ],
-    'install' => [
-        'date' => 'Mon, 01 May 2023 00:00:00 +0000'
-    ]
-];
-`, conventions.DefaultAdminPath,
-		cryptKey,
-		tablePrefix,
-		conventions.DefaultMagentoDBHost,
-		localDB.Database, localDB.Username, localDB.Password,
-		conventions.DefaultMagentoDBHost,
-		localDB.Database, localDB.Username, localDB.Password,
-	)
-}
-
-func runMagentoSearchHostFixViaCLI(cmd *cobra.Command, config engine.Config) error {
-	host := "elasticsearch"
-	if s := strings.ToLower(strings.TrimSpace(config.Stack.Services.Search)); s != "" && s != "none" {
-		host = s
+func runFrameworkSearchHostFixViaCLI(cmd *cobra.Command, config engine.Config) error {
+	definition, ok := frameworks.Get(config.Framework)
+	if !ok || definition.BuildSearchHostFixSQL == nil {
+		return nil
 	}
-	searchEngine := engine.ResolveMagentoSearchEngine(config)
-	sql := engine.BuildMagentoSearchHostFixSQL(host, searchEngine)
+	sql := definition.BuildSearchHostFixSQL(config)
 	// Skip the --environment flag implicitly because we're running it locally
 	err := runGovardSubcommand(cmd, "db", "query", sql)
 	if err != nil {
 		pterm.Warning.Printf("Could not fix search host via 'govard db query' (continuing): %v\n", err)
 	}
 	return err
-}
-
-func BuildBootstrapMagentoEnvPHPForTest(cryptKey, database, username, password string) string {
-	return buildBootstrapMagentoEnvPHP(cryptKey, dbCredentials{
-		Database: database,
-		Username: username,
-		Password: password,
-	}, "")
-}
-
-func BuildBootstrapMagentoEnvPHPWithPrefixForTest(cryptKey, database, username, password, tablePrefix string) string {
-	return buildBootstrapMagentoEnvPHP(cryptKey, dbCredentials{
-		Database: database,
-		Username: username,
-		Password: password,
-	}, tablePrefix)
 }
