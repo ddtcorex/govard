@@ -39,35 +39,41 @@ func TestRenderSourceProducesValidGo(t *testing.T) {
 		t.Errorf("expected a 'Code generated' header, got:\n%s", source)
 	}
 
-	var registerArgs []string
+	var specArgs []string
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
 		fnIdent, ok := call.Fun.(*ast.Ident)
-		if !ok || fnIdent.Name != "Register" || len(call.Args) != 1 {
+		if !ok || fnIdent.Name != "RegisterSpecs" || len(call.Args) != 1 {
 			return true
 		}
-		defCall, ok := call.Args[0].(*ast.CallExpr)
+		list, ok := call.Args[0].(*ast.CompositeLit)
 		if !ok {
 			return true
 		}
-		sel, ok := defCall.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
+		for _, entry := range list.Elts {
+			specCall, ok := entry.(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			sel, ok := specCall.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Spec" {
+				continue
+			}
+			pkgIdent, ok := sel.X.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			specArgs = append(specArgs, pkgIdent.Name)
 		}
-		pkgIdent, ok := sel.X.(*ast.Ident)
-		if !ok {
-			return true
-		}
-		registerArgs = append(registerArgs, pkgIdent.Name)
 		return true
 	})
 
 	want := []string{"django", "cakephp"}
-	if !reflect.DeepEqual(registerArgs, want) {
-		t.Errorf("Register() call order = %v, want %v", registerArgs, want)
+	if !reflect.DeepEqual(specArgs, want) {
+		t.Errorf("RegisterSpecs() call order = %v, want %v", specArgs, want)
 	}
 }
 

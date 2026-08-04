@@ -18,14 +18,14 @@ Go-based local development orchestrator for PHP and web projects (Magento, Larav
 cmd/govard/main.go              # CLI entrypoint
 cmd/govard-desktop/             # Desktop app (Wails)
 desktop/frontend/               # Desktop frontend (vanilla JS)
-internal/cmd/                   # Cobra commands (70 files)
+internal/cmd/                   # Cobra commands
   bootstrap*.go                  # Bootstrap workflows
   config_*.go                    # Config management
   db*.go                         # Database commands
   doctor*.go                     # Diagnostics & fixes
   profile*.go                    # Profile detection/apply
   up*.go                         # Environment startup
-internal/engine/                 # Core engine (20 files)
+internal/engine/                 # Core engine (framework-agnostic dispatch + registries)
   config*.go                     # Config structs, normalize, persist
   compose*.go                    # Docker compose generation
   blueprint*.go                  # Blueprint rendering
@@ -33,7 +33,8 @@ internal/engine/                 # Core engine (20 files)
   lockfile.go                    # Lock file management
   migrate.go                     # DDEV/Warden migration
   doctor*.go                     # Diagnostics
-internal/blueprints/             # Blueprint templates
+internal/frameworks/<name>/     # Per-framework definition, bootstrap, and blueprint assets
+internal/blueprints/             # Shared blueprint templates (assets specific to one framework live in that framework's own package instead)
 internal/conventions/            # Constants, conventions
 internal/desktop/               # Desktop backend
 internal/proxy/                 # Caddy/proxy TLS
@@ -101,7 +102,7 @@ When adding/modifying commands:
 
 `internal/engine/render.go`'s `BlueprintVersion` const forces existing projects to re-render (`govard env up`) by invalidating a stored content hash.
 
-- Editing files under `internal/blueprints/files/**` (base.yml, framework yml, nginx templates) already busts that hash automatically via content fingerprinting — **no bump needed**.
+- Editing files under `internal/blueprints/files/**` (shared base.yml, generic nginx templates) or any `internal/frameworks/<name>/blueprint/**` (a framework's own compose fragment, nginx template, etc. — embedded via that package's `embed.go` and grafted into the merged `blueprints.FS` at init time) already busts that hash automatically via content fingerprinting — **no bump needed**.
 - Bump `BlueprintVersion` only when Go rendering logic changes (`render.go`, `config_normalize.go`, `framework_config.go`, `profile.go`, etc.) in a way that changes rendered output *without* changing blueprint file bytes — those changes aren't hash-detected.
 - When bumped, note it in `CHANGELOG.md` under a "Blueprint Lifecycle" bullet (see prior entries for wording).
 

@@ -13,11 +13,9 @@ import (
 )
 
 func TestEdgeCaseProjectNameWithUnderscores(t *testing.T) {
-	env := NewTestEnvironment(t)
-
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "my_test_project_123",
@@ -54,11 +52,9 @@ func TestEdgeCaseProjectNameWithUnderscores(t *testing.T) {
 }
 
 func TestEdgeCaseProjectNameWithHyphens(t *testing.T) {
-	env := NewTestEnvironment(t)
-
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "my-test-project",
@@ -171,11 +167,9 @@ func TestEdgeCasePHPVersionEdgeValues(t *testing.T) {
 }
 
 func TestEdgeCaseEmptyBlueprintIncludes(t *testing.T) {
-	env := NewTestEnvironment(t)
-
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-empty",
@@ -225,11 +219,9 @@ func TestEdgeCaseFrameworkDetectionWithDevDependencies(t *testing.T) {
 }
 
 func TestEdgeCaseDuplicateFeatureFlags(t *testing.T) {
-	env := NewTestEnvironment(t)
-
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "test-dup",
@@ -303,11 +295,9 @@ func TestEdgeCaseNilConfigFeatures(t *testing.T) {
 }
 
 func TestEdgeCaseVeryLongProjectName(t *testing.T) {
-	env := NewTestEnvironment(t)
-
 	projectDir := t.TempDir()
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	longName := "very-long-project-name-that-exceeds-normal-length-limits-for-testing-purposes"
 	config := engine.Config{

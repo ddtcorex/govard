@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"errors"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,6 +10,7 @@ import (
 
 	"govard/internal/cmd"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 )
 
 func TestUpCommandQuickstartFlagExists(t *testing.T) {
@@ -365,69 +365,19 @@ func TestApplyQuickstartProfileDisablesOptionalServices(t *testing.T) {
 	}
 }
 
-func TestCheckMagentoRuntimeSyncReturnsWarnings(t *testing.T) {
-	// Setup a temporary project environment so LoadRawConfigFromDir finds an empty config
-	tmpDir := t.TempDir()
-	origWd, _ := os.Getwd()
-	defer func() {
-		_ = os.Chdir(origWd)
-	}()
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatal(err)
+func TestFrameworkLifecycleHooksAreOwnedByDefinitions(t *testing.T) {
+	wordpress, ok := frameworks.Get("wordpress")
+	if !ok || wordpress.PostEnvironmentUp == nil {
+		t.Fatal("expected WordPress to own its post-environment compatibility hook")
 	}
 
-	// Create a raw config that lacks explicit versions (so it's not 'intentional')
-	rawContent := `project_name: test-sync
-framework: magento2
-`
-	if err := os.WriteFile(".govard.yml", []byte(rawContent), 0644); err != nil {
-		t.Fatal(err)
+	magento, ok := frameworks.Get("magento2")
+	if !ok || magento.ConfigureAfterProfileShift == nil {
+		t.Fatal("expected Magento 2 to own its profile-shift configuration hook")
 	}
 
-	config := engine.Config{
-		Framework: "magento2",
-		Stack: engine.Stack{
-			PHPVersion: "8.1", // This would be the normalized result if we were testing normalization
-			Services: engine.Services{
-				Search: "elasticsearch",
-			},
-		},
-	}
-
-	warnings := cmd.CheckMagentoRuntimeSync(config, engine.ProjectMetadata{
-		Framework: "magento2",
-		Version:   "2.4.7-p3",
-	})
-
-	if len(warnings) == 0 {
-		t.Fatal("expected warnings for out of sync profile when versions are not explicitly set in raw config")
-	}
-
-	warningMsg := warnings[0]
-	// Magento 2.4.7-p3 expects PHP 8.3.
-	// Since raw config is empty, CheckMagentoRuntimeSync should warn about the mismatch.
-	if !strings.Contains(warningMsg, "PHP") {
-		t.Errorf("expected warning about PHP mismatch, got: %s", warningMsg)
-	}
-}
-
-func TestCheckMagentoRuntimeSyncReturnsNilWhenSynced(t *testing.T) {
-	config := engine.Config{
-		Framework: "magento2",
-		Stack: engine.Stack{
-			PHPVersion: "8.3",
-			Services: engine.Services{
-				Search: "opensearch",
-			},
-		},
-	}
-
-	warnings := cmd.CheckMagentoRuntimeSync(config, engine.ProjectMetadata{
-		Framework: "magento2",
-		Version:   "2.4.7-p3",
-	})
-
-	if len(warnings) > 0 {
-		t.Fatalf("expected no warnings for synced profile, got: %v", warnings)
+	mageOS, ok := frameworks.Get("mageos")
+	if !ok || mageOS.ConfigureAfterProfileShift == nil {
+		t.Fatal("expected Mage-OS to inherit the Magento profile-shift configuration hook")
 	}
 }

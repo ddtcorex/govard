@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -421,8 +422,8 @@ var phpstanDefaultConfigFilenames = []string{"phpstan.neon", "phpstan.neon.dist"
 // phpstan` already uses when no paths are given on the command line, so this
 // doesn't invent a new, inconsistent convention.
 func phpstanDefaultPaths(framework string) []string {
-	if engine.IsMagento2Family(framework) {
-		return []string{"app/code", "app/design"}
+	if def, ok := frameworks.Get(framework); ok && len(def.PHPStanPaths) > 0 {
+		return def.PHPStanPaths
 	}
 	return []string{"app", "src"}
 }
@@ -465,18 +466,6 @@ func phpunitAvailable(root string) bool {
 	return err == nil
 }
 
-// composerCodingStandardPackages maps known Composer packages that register a
-// phpcs coding standard to the standard name to pass as --standard. Checked
-// in order; the first match wins.
-var composerCodingStandardPackages = []struct {
-	Package  string
-	Standard string
-}{
-	{Package: "magento/magento-coding-standard", Standard: "Magento2"},
-	{Package: "wp-coding-standards/wpcs", Standard: "WordPress"},
-	{Package: "drupal/coder", Standard: "Drupal"},
-}
-
 // detectPHPCSStandard picks a phpcs coding standard for the project at root
 // by checking composer.json for a known coding-standard package, falling
 // back to PSR12 (always available in squizlabs/php_codesniffer) if none of
@@ -497,12 +486,15 @@ func detectPHPCSStandard(root string) string {
 		return fallback
 	}
 
-	for _, candidate := range composerCodingStandardPackages {
-		if _, ok := composer.Require[candidate.Package]; ok {
-			return candidate.Standard
+	for _, def := range frameworks.All() {
+		if def.ComposerCodingStandard.Package == "" {
+			continue
 		}
-		if _, ok := composer.RequireDev[candidate.Package]; ok {
-			return candidate.Standard
+		if _, ok := composer.Require[def.ComposerCodingStandard.Package]; ok {
+			return def.ComposerCodingStandard.Standard
+		}
+		if _, ok := composer.RequireDev[def.ComposerCodingStandard.Package]; ok {
+			return def.ComposerCodingStandard.Standard
 		}
 	}
 	return fallback

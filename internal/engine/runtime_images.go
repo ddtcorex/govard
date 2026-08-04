@@ -27,7 +27,7 @@ func RequiredRuntimeImages(config Config, root string) []string {
 	}
 
 	if FrameworkUsesNodeRuntime(config.Framework) {
-		if config.Framework == "emdash" || config.Framework == "nextjs" {
+		if NodeImageFlavorForFramework(config.Framework) == "standard" {
 			push(fmt.Sprintf("node:%s", config.Stack.NodeVersion))
 		} else {
 			push(fmt.Sprintf("node:%s-alpine", config.Stack.NodeVersion))
@@ -44,12 +44,9 @@ func RequiredRuntimeImages(config Config, root string) []string {
 		default:
 			push(fmt.Sprintf("%snginx:%s", imageRepo, config.Stack.NginxVersion))
 		}
-		switch config.Framework {
-		case "magento2", "mageos":
-			push(fmt.Sprintf("%sphp-magento2:%s", imageRepo, config.Stack.PHPVersion))
-		case "magento1", "openmage":
-			push(fmt.Sprintf("%sphp-magento1:%s", imageRepo, config.Stack.PHPVersion))
-		default:
+		if variant := PHPImageVariantForFramework(config.Framework); variant != "" {
+			push(fmt.Sprintf("%sphp-%s:%s", imageRepo, variant, config.Stack.PHPVersion))
+		} else {
 			push(fmt.Sprintf("%sphp:%s", imageRepo, config.Stack.PHPVersion))
 		}
 	}

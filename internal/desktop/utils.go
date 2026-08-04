@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"govard/internal/conventions"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 	"os"
 	"path/filepath"
 	"sort"
@@ -121,34 +122,18 @@ func normalizeOnboardingFramework(framework string) string {
 	switch strings.ToLower(strings.TrimSpace(framework)) {
 	case "", "auto", "detect":
 		return ""
-	case "m2":
-		return conventions.FrameworkMagento2
-	case "m1":
-		return conventions.FrameworkMagento1
-	case "wp":
-		return conventions.FrameworkWordPress
 	default:
-		return strings.ToLower(strings.TrimSpace(framework))
+		return frameworks.Normalize(framework)
 	}
 }
 
 // ... (existing functions)
 
 func displayFramework(framework string) string {
-	switch framework {
-	case conventions.FrameworkMagento1:
-		return "Magento 1"
-	case conventions.FrameworkMagento2:
-		return "Magento 2"
-	case conventions.FrameworkNextJS:
-		return "Next.js"
-	case conventions.FrameworkEmdash:
-		return "Emdash"
-	case conventions.FrameworkCakePHP:
-		return "CakePHP"
-	default:
-		return titleCase(framework)
+	if def, ok := frameworks.Get(framework); ok && def.DisplayName != "" {
+		return def.DisplayName
 	}
+	return titleCase(framework)
 }
 
 func formatDatabase(dbType, dbVersion string) string {

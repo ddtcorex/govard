@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 )
@@ -72,23 +73,11 @@ func buildBootstrapRemotePlan(config engine.Config, opts BootstrapRuntimeOptions
 		plan.Commands = append(plan.Commands, cmdLine)
 	}
 
-	// 6. Framework specific post-steps
-	switch {
-	case engine.IsMagento2Family(framework):
-		frameworkName := engine.Magento2FamilyDisplayName(framework)
-		plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Configuring %s environment (env.php)...", frameworkName))
-		plan.Commands = append(plan.Commands, "govard config auto")
-
-		if opts.AdminCreate {
-			plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Creating %s admin user...", frameworkName))
-			plan.Commands = append(plan.Commands, "govard tool magento admin:user:create ...")
+	if definition, ok := frameworks.Get(framework); ok && definition.BootstrapPlanSteps != nil {
+		for _, step := range definition.BootstrapPlanSteps(opts.AdminCreate) {
+			plan.Descriptions = append(plan.Descriptions, step.Description)
+			plan.Commands = append(plan.Commands, step.Command)
 		}
-
-		plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Reindexing %s data...", frameworkName))
-		plan.Commands = append(plan.Commands, "govard tool magento indexer:reindex")
-	case framework == "magento1" || framework == "openmage":
-		plan.Descriptions = append(plan.Descriptions, "Configuring Magento 1 environment (base URLs and scoped website/store URLs)...")
-		plan.Commands = append(plan.Commands, "govard config auto")
 	}
 
 	return plan, nil

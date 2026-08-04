@@ -6,6 +6,7 @@ package integration
 import (
 	"encoding/json"
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 	"os"
 	"path/filepath"
 	"testing"
@@ -66,7 +67,7 @@ func TestFrameworkProfileShiftDetection(t *testing.T) {
 			}
 			config.Stack.PHPVersion = "8.2"
 
-			info := engine.DetectProfileShiftForTest(config)
+			info := magento2.DetectProfileShiftForTest(config)
 			if !info.Shifted {
 				t.Errorf("[%s] Expected shift to be detected for PHP version change", fw)
 			}
@@ -78,7 +79,7 @@ func TestFrameworkProfileShiftDetection(t *testing.T) {
 			config.Stack.PHPVersion = "8.1"
 			config.Profile = "staging"
 
-			info = engine.DetectProfileShiftForTest(config)
+			info = magento2.DetectProfileShiftForTest(config)
 			if !info.Shifted {
 				t.Errorf("[%s] Expected shift to be detected for Profile change", fw)
 			}

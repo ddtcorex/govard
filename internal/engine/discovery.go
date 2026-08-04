@@ -180,3 +180,46 @@ func readPackageDependencies(path string) (map[string]interface{}, bool) {
 	}
 	return deps, true
 }
+
+// aliasRegistry maps a lowercased/trimmed alias to its canonical framework
+// name (e.g. "magento" -> "magento2", "wp" -> "wordpress"). Populated via
+// RegisterFrameworkAlias, normally called once per framework from
+// internal/frameworks's package-level Register (see
+// internal/frameworks/registry.go), looping over each FrameworkDefinition's
+// Aliases field.
+var aliasRegistry = map[string]string{}
+
+// RegisterFrameworkAlias registers alias as resolving to canonical. Not
+// safe for concurrent calls; intended usage is registration during package
+// init(), before NormalizeFrameworkAlias is ever called.
+func RegisterFrameworkAlias(alias string, canonical string) {
+	alias = strings.ToLower(strings.TrimSpace(alias))
+	canonical = strings.ToLower(strings.TrimSpace(canonical))
+	if alias == "" || canonical == "" {
+		return
+	}
+	aliasRegistry[alias] = canonical
+}
+
+// NormalizeFrameworkAlias resolves a raw framework name (possibly an
+// alias registered via RegisterFrameworkAlias) to its canonical name.
+// Unknown names are returned lowercased/trimmed but otherwise unchanged -
+// engine-internal code should call this instead of a local
+// magento/wp-style switch. Packages that already import
+// internal/frameworks (internal/cmd, internal/desktop) should prefer
+// frameworks.Normalize directly instead - this function exists only for
+// engine-internal code, which cannot import internal/frameworks without
+// creating an import cycle (frameworks already imports engine).
+func NormalizeFrameworkAlias(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	if canonical, ok := aliasRegistry[normalized]; ok {
+		return canonical
+	}
+	return normalized
+}
+
+// GetRegisteredFrameworkAliasForTest exposes the alias registry for tests.
+func GetRegisteredFrameworkAliasForTest(alias string) (string, bool) {
+	canonical, ok := aliasRegistry[strings.ToLower(strings.TrimSpace(alias))]
+	return canonical, ok
+}

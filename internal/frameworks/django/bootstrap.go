@@ -125,7 +125,7 @@ var djangoContainerExecRunner = func(containerName string, script string) error 
 // internal/cmd/bootstrap.go's ordering), so the container is available.
 func (d *DjangoBootstrap) installAndMigrate() error {
 	containerName := d.Options.ProjectName + conventions.WebSuffix
-	// The container runs as root (internal/blueprints/files/django/
+	// The container runs as root (internal/frameworks/django/blueprint/
 	// services.yml), so pip/migrate leave __pycache__ files root-owned on
 	// the host's bind-mounted project directory. Reclaim ownership back
 	// to whatever the mount point itself is owned by (the host user)
@@ -217,7 +217,7 @@ func insertImportOsAfterDocstring(content string) string {
 
 // patchDjangoSettingsForPostgres rewires settings.py's default sqlite
 // DATABASES block to read the POSTGRES_* env vars that
-// internal/blueprints/files/django/services.yml already injects into the
+// internal/frameworks/django/blueprint/services.yml already injects into the
 // web container, so `manage.py migrate` targets the real project database
 // instead of a throwaway db.sqlite3. Returns an error (soft-fail, caller
 // decides whether to warn) if Django's template changed and the expected

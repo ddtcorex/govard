@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestMageOSComposerCleanupUsesMageOSPrefixNotMagentoPrefix(t *testing.T) {
@@ -20,7 +21,7 @@ func TestMageOSComposerCleanupUsesMageOSPrefixNotMagentoPrefix(t *testing.T) {
 		},
 	}
 
-	engine.MergeComposerMapKeysWithPrefixForTest(current, target, "require", "mage-os/")
+	magento2.MergeComposerMapKeysWithPrefixForTest(current, target, "require", "mage-os/")
 
 	requireMap := current["require"].(map[string]interface{})
 	if _, ok := requireMap["mage-os/module-catalog"]; ok {
@@ -47,7 +48,7 @@ func TestMagentoComposerCleanupStillUsesMagentoPrefix(t *testing.T) {
 		},
 	}
 
-	engine.MergeComposerMapKeysWithPrefixForTest(current, target, "require", "magento/")
+	magento2.MergeComposerMapKeysWithPrefixForTest(current, target, "require", "magento/")
 
 	requireMap := current["require"].(map[string]interface{})
 	if _, ok := requireMap["magento/module-catalog"]; ok {

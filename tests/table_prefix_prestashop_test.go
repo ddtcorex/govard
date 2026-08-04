@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks/prestashop"
 )
 
 func TestPrestaShopSupportsTablePrefix(t *testing.T) {
@@ -38,19 +39,19 @@ return array (
 		t.Fatalf("write parameters.php: %v", err)
 	}
 
-	prefix := engine.DetectPrestaShopTablePrefix(root)
+	prefix := prestashop.DetectTablePrefix(root)
 	if prefix != "shop_" {
 		t.Fatalf("expected table prefix 'shop_', got %q", prefix)
 	}
 
-	if got := engine.DetectMagentoTablePrefix(root, "prestashop"); got != "shop_" {
-		t.Fatalf("expected DetectMagentoTablePrefix to return 'shop_', got %q", got)
+	if got := engine.DetectFrameworkTablePrefix(root, "prestashop"); got != "shop_" {
+		t.Fatalf("expected generic detector to return 'shop_', got %q", got)
 	}
 }
 
 func TestDetectPrestaShopTablePrefixMissingFile(t *testing.T) {
 	root := t.TempDir()
-	if prefix := engine.DetectPrestaShopTablePrefix(root); prefix != "" {
+	if prefix := prestashop.DetectTablePrefix(root); prefix != "" {
 		t.Fatalf("expected empty prefix when parameters.php is missing, got %q", prefix)
 	}
 }

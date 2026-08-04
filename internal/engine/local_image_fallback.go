@@ -301,42 +301,6 @@ func localBuildSpecForGovardService(service string, tag string, repoPrefix strin
 				{Name: conventions.EnvPHPVersion, Value: tag},
 			},
 		}, nil
-	case "php-magento1":
-		if isDebug {
-			return localImageBuildSpec{
-				ContextRel:    "php",
-				DockerfileRel: filepath.Join("php", "debug", "Dockerfile"),
-				BuildArgs:     debugBuildArgs(repoPrefix+"php-magento1:"+baseTag, xdebugVersionOverride),
-				Dependencies:  []string{repoPrefix + "php-magento1:" + baseTag},
-			}, nil
-		}
-		return localImageBuildSpec{
-			ContextRel:    "php",
-			DockerfileRel: filepath.Join("php", "magento1", "Dockerfile"),
-			BuildArgs: []localImageBuildArg{
-				{Name: conventions.EnvPHPVersion, Value: tag},
-				{Name: "GOVARD_IMAGE_REPOSITORY", Value: repoPrefix},
-			},
-			Dependencies: []string{repoPrefix + "php:" + tag},
-		}, nil
-	case "php-magento2":
-		if isDebug {
-			return localImageBuildSpec{
-				ContextRel:    "php",
-				DockerfileRel: filepath.Join("php", "debug", "Dockerfile"),
-				BuildArgs:     debugBuildArgs(repoPrefix+"php-magento2:"+baseTag, xdebugVersionOverride),
-				Dependencies:  []string{repoPrefix + "php-magento2:" + baseTag},
-			}, nil
-		}
-		return localImageBuildSpec{
-			ContextRel:    "php",
-			DockerfileRel: filepath.Join("php", "magento2", "Dockerfile"),
-			BuildArgs: []localImageBuildArg{
-				{Name: conventions.EnvPHPVersion, Value: tag},
-				{Name: "GOVARD_IMAGE_REPOSITORY", Value: repoPrefix},
-			},
-			Dependencies: []string{repoPrefix + "php:" + tag},
-		}, nil
 	case "mariadb":
 		return localImageBuildSpec{
 			ContextRel: "mariadb",
@@ -407,8 +371,46 @@ func localBuildSpecForGovardService(service string, tag string, repoPrefix strin
 			ContextRel: "dnsmasq",
 		}, nil
 	default:
+		if variant, ok := phpVariantFromServiceName(service); ok {
+			serviceImage := "php-" + variant
+			if isDebug {
+				return localImageBuildSpec{
+					ContextRel:    "php",
+					DockerfileRel: filepath.Join("php", "debug", "Dockerfile"),
+					BuildArgs:     debugBuildArgs(repoPrefix+serviceImage+":"+baseTag, xdebugVersionOverride),
+					Dependencies:  []string{repoPrefix + serviceImage + ":" + baseTag},
+				}, nil
+			}
+			return localImageBuildSpec{
+				ContextRel:    "php",
+				DockerfileRel: filepath.Join("php", variant, "Dockerfile"),
+				BuildArgs: []localImageBuildArg{
+					{Name: conventions.EnvPHPVersion, Value: tag},
+					{Name: "GOVARD_IMAGE_REPOSITORY", Value: repoPrefix},
+				},
+				Dependencies: []string{repoPrefix + "php:" + tag},
+			}, nil
+		}
 		return localImageBuildSpec{}, fmt.Errorf("unsupported Govard image service %q", service)
 	}
+}
+
+// phpVariantFromServiceName reports whether service is a registered PHP
+// image variant's service name (e.g. "php-magento1"), returning the bare
+// variant ("magento1"). Lets this switch recognize any registered variant
+// generically instead of one literal case per framework family.
+func phpVariantFromServiceName(service string) (string, bool) {
+	const prefix = "php-"
+	if !strings.HasPrefix(service, prefix) {
+		return "", false
+	}
+	variant := strings.TrimPrefix(service, prefix)
+	for _, v := range registeredPHPImageVariants() {
+		if v == variant {
+			return variant, true
+		}
+	}
+	return "", false
 }
 
 // splitDebugTag splits a Govard image tag into its base (non-debug) version,

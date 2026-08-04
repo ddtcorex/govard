@@ -34,49 +34,11 @@ type FrameworkConfig struct {
 	Includes           []string // List of include files to load
 }
 
-// FrameworkConfigs maps framework names to their configurations
-var FrameworkConfigs = map[string]FrameworkConfig{
-	"custom": {
-		Name:               "custom",
-		Runtime:            "php",
-		AppService:         "php",
-		AppWorkdir:         conventions.DefaultWorkDir,
-		NGINXPUBLIC:        "",
-		NGINXTemplate:      "default.conf",
-		DatabaseName:       "app",
-		DefaultPHP:         "",
-		DefaultNodeVer:     "",
-		DefaultDB:          "none",
-		DefaultDBVer:       "",
-		DefaultMySQLVer:    "",
-		DefaultNginxVer:    "1.28",
-		DefaultApacheVer:   "2.4",
-		DefaultCacheVer:    "7.4",
-		DefaultSearchVer:   "3.0",
-		DefaultVarnishVer:  "8.0",
-		DefaultQueueVer:    "4.2",
-		DefaultWebServer:   "nginx",
-		DefaultSearch:      "none",
-		DefaultCache:       "none",
-		DefaultQueue:       "none",
-		DefaultComposerVer: "",
-		Includes: []string{
-			"includes/base.yml",
-			"includes/redis.yml",
-			"includes/elasticsearch.yml",
-			"includes/varnish.yml",
-			"includes/rabbitmq.yml",
-			"includes/livereload.yml",
-		},
-	},
-}
+// FrameworkConfigs is populated by framework registration during startup.
+var FrameworkConfigs = map[string]FrameworkConfig{}
 
 func GetFrameworkConfig(name string) (FrameworkConfig, bool) {
-	name = strings.ToLower(strings.TrimSpace(name))
-	if name == "magento" {
-		name = "magento2"
-	}
-	config, ok := FrameworkConfigs[name]
+	config, ok := FrameworkConfigs[NormalizeFrameworkAlias(name)]
 	return config, ok
 }
 

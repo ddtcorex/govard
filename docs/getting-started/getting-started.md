@@ -25,6 +25,7 @@ Govard inspects `composer.json` or `package.json`, detects the framework, and wr
 | Framework | Detection |
 | :--- | :--- |
 | Magento 2 | `composer.json` with `magento/magento2-base` |
+| Mage-OS | `composer.json` with `mage-os/product-community-edition` or `mage-os/project-community-edition` |
 | Magento 1 / OpenMage | `composer.json` patterns |
 | Laravel | `artisan` file + `composer.json` |
 | Next.js | `package.json` with `next` dependency |
@@ -33,6 +34,8 @@ Govard inspects `composer.json` or `package.json`, detects the framework, and wr
 | Symfony | `symfony/framework-bundle` |
 | Shopware | `shopware/core` |
 | CakePHP | `cakephp/cakephp` |
+| PrestaShop | `config/defines.inc.php` |
+| Django | `manage.py` |
 | WordPress | `wp-config.php` or `wp-login.php` |
 | Custom | Interactive stack picker (`govard init --framework custom`) |
 

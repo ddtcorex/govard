@@ -10,6 +10,7 @@ import (
 	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
+	"govard/internal/frameworks"
 )
 
 type dbCredentials struct {
@@ -46,70 +47,20 @@ func dbEngineForFramework(framework string) string {
 }
 
 func defaultDBCredentialsForFrameworkFields(framework string) dbCredentials {
-	switch strings.TrimSpace(framework) {
-	case conventions.FrameworkSymfony:
-		return dbCredentials{
-			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultSymfonyDBUser,
-			Password: conventions.DefaultSymfonyDBPass,
-			Database: conventions.DefaultSymfonyDBName,
-		}
-	case conventions.FrameworkLaravel:
-		return dbCredentials{
-			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultLaravelDBUser,
-			Password: conventions.DefaultLaravelDBPass,
-			Database: conventions.DefaultLaravelDBName,
-		}
-	case conventions.FrameworkWordPress:
-		return dbCredentials{
-			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultWordPressDBUser,
-			Password: conventions.DefaultWordPressDBPass,
-			Database: conventions.DefaultWordPressDBName,
-		}
-	case conventions.FrameworkPrestaShop:
-		return dbCredentials{
-			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultPrestaShopDBUser,
-			Password: conventions.DefaultPrestaShopDBPass,
-			Database: conventions.DefaultPrestaShopDBName,
-		}
-	case conventions.FrameworkMagento2, conventions.FrameworkMagento1:
-		return dbCredentials{
-			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultMagentoDBUser,
-			Password: conventions.DefaultMagentoDBPass,
-			Database: conventions.DefaultMagentoDBName,
-		}
-	case conventions.FrameworkOpenMage:
-		return dbCredentials{
-			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultOpenMageDBUser,
-			Password: conventions.DefaultOpenMageDBPass,
-			Database: conventions.DefaultOpenMageDBName,
-		}
-	case conventions.FrameworkMageOS:
-		return dbCredentials{
-			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultMageOSDBUser,
-			Password: conventions.DefaultMageOSDBPass,
-			Database: conventions.DefaultMageOSDBName,
-		}
-	case conventions.FrameworkDjango:
-		return dbCredentials{
-			Port:     conventions.PostgresPort,
-			Username: conventions.DefaultDjangoDBUser,
-			Password: conventions.DefaultDjangoDBPass,
-			Database: conventions.DefaultDjangoDBName,
-		}
-	default:
+	def, ok := frameworks.Get(framework)
+	if !ok {
 		return dbCredentials{
 			Port:     conventions.MySQLPort,
 			Username: conventions.DefaultDBUser,
 			Password: conventions.DefaultDBPass,
 			Database: conventions.DefaultDBName,
 		}
+	}
+	return dbCredentials{
+		Port:     def.DefaultDBCredentials.Port,
+		Username: def.DefaultDBCredentials.Username,
+		Password: def.DefaultDBCredentials.Password,
+		Database: def.DefaultDBCredentials.Database,
 	}
 }
 
@@ -132,10 +83,10 @@ func (credentials dbCredentials) withDefaults() dbCredentials {
 		return result
 	}
 	if strings.TrimSpace(result.Username) == "" {
-		result.Username = conventions.DefaultMagentoDBUser
+		result.Username = conventions.DefaultDBUser
 	}
 	if strings.TrimSpace(result.Database) == "" {
-		result.Database = conventions.DefaultMagentoDBName
+		result.Database = conventions.DefaultDBName
 	}
 	if strings.TrimSpace(result.Host) != "" && result.Port <= 0 {
 		result.Port = conventions.MySQLPort
@@ -320,97 +271,9 @@ func getPostgresDatabaseSize(config engine.Config, remoteName string, remoteCfg 
 func resolveRemoteDBCredentials(config engine.Config, remoteName string, remoteCfg engine.RemoteConfig) (dbCredentials, error) {
 	fallback := defaultDBCredentialsForFramework(config.Framework)
 	fallback.TablePrefix = engine.NormalizeTablePrefix(config.TablePrefix)
-	switch strings.TrimSpace(config.Framework) {
-	case conventions.FrameworkMagento2, conventions.FrameworkMageOS:
-		metadata, err := remote.ProbeMagento2Environment(remoteName, remoteCfg)
-		if err != nil {
-			return fallback, err
-		}
 
-		return dbCredentials{
-			Host:        metadata.DB.Host,
-			Port:        metadata.DB.Port,
-			Username:    metadata.DB.Username,
-			Password:    metadata.DB.Password,
-			Database:    metadata.DB.Database,
-			TablePrefix: firstNonEmpty(metadata.DB.TablePrefix, config.TablePrefix),
-		}.withDefaults(), nil
-	case conventions.FrameworkMagento1, conventions.FrameworkOpenMage:
-		metadata, err := remote.ProbeMagento1Environment(remoteName, remoteCfg)
-		if err != nil {
-			return fallback, err
-		}
-		return dbCredentials{
-			Host:        metadata.DB.Host,
-			Port:        metadata.DB.Port,
-			Username:    metadata.DB.Username,
-			Password:    metadata.DB.Password,
-			Database:    metadata.DB.Database,
-			TablePrefix: firstNonEmpty(metadata.DB.TablePrefix, config.TablePrefix),
-		}.withDefaults(), nil
-	case conventions.FrameworkPrestaShop:
-		metadata, err := remote.ProbePrestaShopEnvironment(remoteName, remoteCfg)
-		if err != nil {
-			return fallback, err
-		}
-		return dbCredentials{
-			Host:        metadata.DB.Host,
-			Port:        metadata.DB.Port,
-			Username:    metadata.DB.Username,
-			Password:    metadata.DB.Password,
-			Database:    metadata.DB.Database,
-			TablePrefix: firstNonEmpty(metadata.DB.TablePrefix, config.TablePrefix),
-		}.withDefaults(), nil
-	case "wordpress":
-		metadata, err := remote.ProbeWordPressEnvironment(remoteName, remoteCfg)
-		if err != nil {
-			// Fallback to Dotenv for Bedrock-style WordPress sites
-			metadataDotenv, errDotenv := remote.ProbeDotenvEnvironment(remoteName, remoteCfg)
-			if errDotenv == nil {
-				return dbCredentials{
-					Host:     metadataDotenv.DB.Host,
-					Port:     metadataDotenv.DB.Port,
-					Username: metadataDotenv.DB.Username,
-					Password: metadataDotenv.DB.Password,
-					Database: metadataDotenv.DB.Database,
-				}.withDefaults(), nil
-			}
-			return fallback, err
-		}
-		return dbCredentials{
-			Host:     metadata.DB.Host,
-			Port:     metadata.DB.Port,
-			Username: metadata.DB.Username,
-			Password: metadata.DB.Password,
-			Database: metadata.DB.Database,
-		}.withDefaults(), nil
-	case "symfony", "laravel", "drupal", "shopware", "cakephp":
-		metadata, err := remote.ProbeDotenvEnvironment(remoteName, remoteCfg)
-		if err != nil {
-			return fallback, err
-		}
-		return dbCredentials{
-			Host:     metadata.DB.Host,
-			Port:     metadata.DB.Port,
-			Username: metadata.DB.Username,
-			Password: metadata.DB.Password,
-			Database: metadata.DB.Database,
-		}.withDefaults(), nil
-	case "custom":
-		if remoteCfg.DBName != "" {
-			fallback.Database = remoteCfg.DBName
-		}
-		if remoteCfg.DBUser != "" {
-			fallback.Username = remoteCfg.DBUser
-		}
-		if remoteCfg.DBPass != "" {
-			fallback.Password = remoteCfg.DBPass
-		}
-		if remoteCfg.DBPort > 0 {
-			fallback.Port = remoteCfg.DBPort
-		}
-		return fallback, nil
-	default:
+	def, ok := frameworks.Get(config.Framework)
+	if !ok || def.ProbeRemoteDB == nil {
 		if remoteCfg.DBName != "" {
 			fallback.Database = remoteCfg.DBName
 		}
@@ -425,6 +288,27 @@ func resolveRemoteDBCredentials(config engine.Config, remoteName string, remoteC
 		}
 		return fallback, nil
 	}
+
+	metadata, err := def.ProbeRemoteDB(remoteName, remoteCfg)
+	if err != nil {
+		return fallback, err
+	}
+	return projectRemoteDBCredentials(config, metadata, def.RemoteDBUsesConfigTablePrefix), nil
+}
+
+func projectRemoteDBCredentials(config engine.Config, metadata remote.RemoteDatabaseMetadata, useConfigTablePrefix bool) dbCredentials {
+	tablePrefix := metadata.TablePrefix
+	if tablePrefix == "" && useConfigTablePrefix {
+		tablePrefix = config.TablePrefix
+	}
+	return dbCredentials{
+		Host:        metadata.Host,
+		Port:        metadata.Port,
+		Username:    metadata.Username,
+		Password:    metadata.Password,
+		Database:    metadata.Database,
+		TablePrefix: tablePrefix,
+	}.withDefaults()
 }
 
 func resolveLocalDBCredentials(config engine.Config, containerName string) dbCredentials {
@@ -464,16 +348,6 @@ func parseEnvMap(raw string) map[string]string {
 		result[strings.TrimSpace(parts[0])] = parts[1]
 	}
 	return result
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
 
 func DefaultDBCredentialsForFrameworkForTest(framework string) dbCredentials {
@@ -695,13 +569,13 @@ func BuildRemoteMySQLDumpCommandForTest(host string, port int, username string, 
 		Username: username,
 		Password: password,
 		Database: database,
-	}, false, false, "magento2", compress)
+	}, false, false, "", compress)
 }
 
 func BuildRemoteMySQLDumpCommandWithPrefixForTest(database string, tablePrefix string, noNoise bool, noPII bool, framework string) string {
 	return buildRemoteMySQLDumpCommandString(dbCredentials{
-		Username:    conventions.DefaultMagentoDBUser,
-		Password:    conventions.DefaultMagentoDBPass,
+		Username:    conventions.DefaultDBUser,
+		Password:    conventions.DefaultDBPass,
 		Database:    database,
 		TablePrefix: tablePrefix,
 	}, noNoise, noPII, framework, false)

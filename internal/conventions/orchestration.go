@@ -7,7 +7,7 @@ const (
 	// compose files' working_dir/volumes.
 	NodeWorkDir = "/app"
 	// PythonWorkDir is the working directory inside Django's "web" service
-	// container - see internal/blueprints/files/django/services.yml's
+	// container - see internal/frameworks/django/blueprint/services.yml's
 	// working_dir/volumes.
 	PythonWorkDir = "/app"
 

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"govard/internal/conventions"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -107,41 +107,22 @@ Case Studies:
 			metadata.Framework = migrated.Framework
 		}
 		if initFramework != "" {
-			metadata.Framework = strings.ToLower(initFramework)
-			if metadata.Framework == "magento" {
-				metadata.Framework = "magento2"
-			}
+			metadata.Framework = frameworks.Normalize(initFramework)
 		}
 		if initFrameworkVersion != "" {
 			metadata.Version = initFrameworkVersion
 		}
 		if metadata.Framework == "" || metadata.Framework == "generic" {
-			frameworkMap := map[string]string{
-				"CakePHP":    "cakephp",
-				"Custom":     "custom",
-				"Drupal":     "drupal",
-				"Emdash":     "emdash",
-				"Laravel":    "laravel",
-				"Magento 1":  "magento1",
-				"Magento 2":  "magento2",
-				"Mage-OS":    "mageos",
-				"Next.js":    "nextjs",
-				"OpenMage":   "openmage",
-				"PrestaShop": "prestashop",
-				"Shopware":   "shopware",
-				"Symfony":    "symfony",
-				"WordPress":  "wordpress",
+			options := frameworkSelectionOptions()
+			labels := make([]string, 0, len(options))
+			byLabel := make(map[string]string, len(options))
+			for _, option := range options {
+				labels = append(labels, option.DisplayName)
+				byLabel[option.DisplayName] = option.Name
 			}
 
-			frameworkDisplayOptions := make([]string, 0, len(frameworkMap))
-			for k := range frameworkMap {
-				frameworkDisplayOptions = append(frameworkDisplayOptions, k)
-			}
-			sort.Strings(frameworkDisplayOptions)
-
-			selectedDisplay := selectOption("Select project framework", frameworkDisplayOptions, "Custom")
-			metadata.Framework = frameworkMap[selectedDisplay]
-
+			selectedDisplay := selectOption("Select project framework", labels, "Custom")
+			metadata.Framework = byLabel[selectedDisplay]
 		}
 
 		if metadata.Version != "" {
@@ -166,7 +147,8 @@ Case Studies:
 		composerVersion := profileResult.Profile.ComposerVersion
 		xdebugSession := profileResult.Profile.XdebugSession
 		webRoot := profileResult.Profile.WebRoot
-		enableVarnish := engine.IsMagento2Family(metadata.Framework) && migrateFrom == "" && !hasExistingConfig
+		definition, _ := frameworks.Get(metadata.Framework)
+		enableVarnish := definition.EnableVarnishOnInit && migrateFrom == "" && !hasExistingConfig
 
 		if metadata.Framework == "custom" {
 			pterm.Info.Println("Customize your stack services for the custom framework.")

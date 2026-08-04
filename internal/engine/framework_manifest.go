@@ -86,15 +86,7 @@ func loadFrameworkTablesManifest() {
 }
 
 func normalizeFrameworkManifestKey(framework string) string {
-	normalized := strings.ToLower(strings.TrimSpace(framework))
-	switch normalized {
-	case "magento":
-		return "magento2"
-	case "wp":
-		return "wordpress"
-	default:
-		return normalized
-	}
+	return NormalizeFrameworkAlias(framework)
 }
 
 func getFrameworkManifestConfig(framework string) (FrameworkManifestConfig, bool) {
@@ -141,8 +133,7 @@ func GetFrameworkIgnoredTables(framework string, noNoise bool, noPII bool) []str
 
 	config, ok := getFrameworkManifestConfig(framework)
 	if !ok {
-		// Fallback to magento2 standard if framework not recognized
-		config = frameworkManifest.Frameworks["magento2"]
+		return nil
 	}
 
 	tables := make([]string, 0)

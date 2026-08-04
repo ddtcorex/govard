@@ -66,15 +66,17 @@ func TestBootstrapPkgPrestaShopPostCloneGeneratesParametersFile(t *testing.T) {
 func TestBootstrapPkgPrestaShopPostCloneReusesRemoteSecretsWhenProvided(t *testing.T) {
 	projectDir := t.TempDir()
 	prestashop := prestashop.NewPrestaShopBootstrap(bootstrap.Options{
-		DBHost:                 "db",
-		DBUser:                 "shopuser",
-		DBPass:                 "shoppass",
-		DBName:                 "shopdb",
-		TablePrefix:            "shop_",
-		PrestaShopSecret:       "remote-secret",
-		PrestaShopCookieKey:    "remote-cookie-key",
-		PrestaShopCookieIV:     "remote-cookie-iv",
-		PrestaShopNewCookieKey: "remote-new-cookie-key",
+		DBHost:      "db",
+		DBUser:      "shopuser",
+		DBPass:      "shoppass",
+		DBName:      "shopdb",
+		TablePrefix: "shop_",
+		RemoteMetadata: map[string]string{
+			"prestashop.secret":         "remote-secret",
+			"prestashop.cookie_key":     "remote-cookie-key",
+			"prestashop.cookie_iv":      "remote-cookie-iv",
+			"prestashop.new_cookie_key": "remote-new-cookie-key",
+		},
 	})
 
 	if err := prestashop.PostClone(projectDir); err != nil {

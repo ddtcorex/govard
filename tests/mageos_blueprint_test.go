@@ -3,9 +3,9 @@ package tests
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
+	"govard/internal/blueprints"
 	"govard/internal/engine"
 )
 
@@ -38,13 +38,9 @@ func TestMageOSRequiredRuntimeImageIsPHPMagento2(t *testing.T) {
 }
 
 func TestMageOSBlueprintRendersLikeMagento2(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	tempDir := t.TempDir()
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("failed to copy blueprints: %v", err)
 	}
 

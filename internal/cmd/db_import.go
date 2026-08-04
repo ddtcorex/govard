@@ -133,7 +133,7 @@ func normalizeDatabaseName(database string) string {
 	if name != "" {
 		return name
 	}
-	return "magento"
+	return conventions.DefaultDBName
 }
 
 func validateDatabaseName(name string) error {

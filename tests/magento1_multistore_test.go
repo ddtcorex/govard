@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestBuildMagento1CommandsStoreDomains(t *testing.T) {
@@ -19,7 +20,7 @@ func TestBuildMagento1CommandsStoreDomains(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("testproject", config)
+	commands := magento2.MagentoConfigCommandsForTest("testproject", config)
 
 	foundWebsiteScopedSQL := false
 	foundStoreScopedSQL := false
@@ -62,7 +63,7 @@ func TestBuildMagento1CommandsTypedStoreDomains(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("testproject", config)
+	commands := magento2.MagentoConfigCommandsForTest("testproject", config)
 
 	foundWebsiteOnly := false
 	foundStoreOnly := false
@@ -113,7 +114,7 @@ func TestBuildMagento1CommandsUseTablePrefix(t *testing.T) {
 		},
 	}
 
-	commands := engine.MagentoConfigCommandsForTest("testproject", config)
+	commands := magento2.MagentoConfigCommandsForTest("testproject", config)
 	all := make([]string, 0, len(commands))
 	for _, cmd := range commands {
 		all = append(all, strings.Join(cmd.Args, " "))

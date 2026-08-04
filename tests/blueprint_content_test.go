@@ -1,13 +1,12 @@
 package tests
 
 import (
-	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
+	"govard/internal/blueprints"
 	"govard/internal/engine"
 
 	"gopkg.in/yaml.v3"
@@ -25,10 +24,6 @@ func TestRenderMagento2Blueprint(t *testing.T) {
 	// Without this, `govard env up` succeeds but the site returns 502 Bad Gateway.
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
-	t.Setenv("GOVARD_BLUEPRINTS_DIR", func() string {
-		_, filename, _, _ := runtime.Caller(0)
-		return filepath.Join(filepath.Dir(filename), "..", "internal", "blueprints", "files")
-	}())
 
 	config := engine.Config{
 		ProjectName: "sample-project",
@@ -125,11 +120,8 @@ func TestRenderBlueprintMountsGovardRootCAIntoPHPRuntimes(t *testing.T) {
 	govardHome := setTestGovardHome(t, tempDir)
 
 	// We need to set up blueprints in the tempDir because we are calling RenderBlueprint directly on it
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -298,12 +290,8 @@ func TestRenderBlueprintReRendersWhenKnownProjectDomainsChange(t *testing.T) {
 	registryPath := filepath.Join(t.TempDir(), "projects.json")
 	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -367,12 +355,8 @@ func TestRenderBlueprintReRendersWhenGovardRootCAAppears(t *testing.T) {
 	tempDir := t.TempDir()
 	govardHome := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -485,12 +469,8 @@ func TestRenderEmdashBlueprintWithDetectedPNPM(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(tempDir, "package.json"), []byte(`{"packageManager":"pnpm@10.11.0"}`), 0644); err != nil {
@@ -534,12 +514,8 @@ func TestRenderNextjsBlueprintSkipsManagedWebServerAssets(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -569,12 +545,8 @@ func TestRenderEmdashBlueprintSkipsManagedWebServerAssets(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -675,12 +647,8 @@ func TestRenderBlueprintWithFeatures(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -740,12 +708,8 @@ func TestRenderMagento2BlueprintHybridWebServer(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -822,12 +786,8 @@ func TestRenderMagento2BlueprintWithVarnishAcrossWebServers(t *testing.T) {
 			tempDir := t.TempDir()
 			homeDir := setTestGovardHome(t, tempDir)
 
-			_, filename, _, _ := runtime.Caller(0)
-			projectRoot := filepath.Join(filepath.Dir(filename), "..")
-			blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 			destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-			if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+			if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 				t.Fatalf("Failed to copy blueprints: %v", err)
 			}
 
@@ -902,12 +862,8 @@ func TestRenderMagento2BlueprintWithMageRunMappings(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -969,12 +925,8 @@ func TestRenderMagento2BlueprintWithRenderedNginxConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -1027,12 +979,8 @@ func TestRenderMagento2BlueprintHybridWithRenderedNginxConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -1082,12 +1030,8 @@ func TestRenderMagento1BlueprintApacheWithMageRunMappings(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -1158,12 +1102,8 @@ func TestRenderMagento1BlueprintApacheWithRenderedHTTPDConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -1220,12 +1160,8 @@ func TestRenderMagento2BlueprintHybridWithRenderedApacheHTTPDConfig(t *testing.T
 	tempDir := t.TempDir()
 	homeDir := setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -1278,12 +1214,8 @@ func testBlueprintRender(t *testing.T, framework string, expectedStrings []strin
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -1334,44 +1266,6 @@ func testBlueprintRender(t *testing.T, framework string, expectedStrings []strin
 	if !strings.Contains(contentStr, "govard-proxy:") {
 		t.Errorf("Expected govard-proxy network in %s compose file", framework)
 	}
-}
-
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-
-		return copyFile(path, dstPath)
-	})
-}
-
-func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, sourceFile)
-	return err
 }
 
 func setTestGovardHome(t *testing.T, root string) string {

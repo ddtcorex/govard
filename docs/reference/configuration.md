@@ -130,7 +130,7 @@ linked_projects:
 | `domain` | Primary project domain (e.g. `myproject.test`) |
 | `extra_domains` | Additional hostnames routed through the local proxy |
 | `store_domains` | Magento multi-store hostname → scope code map |
-| `table_prefix` | Magento 2, Magento 1, or OpenMage database table prefix; omit or leave empty for unprefixed schemas |
+| `table_prefix` | Magento 2, Mage-OS, Magento 1, OpenMage, or PrestaShop database table prefix; omit or leave empty for unprefixed schemas |
 | `linked_projects` | List of dependencies (project names or IP:domain) for cross-project connectivity |
 
 ::: important IMPORTANT
@@ -167,7 +167,7 @@ Use `table_prefix` when the Magento database tables are prefixed, for example `d
 table_prefix: "demo_"
 ```
 
-Govard uses this value for Magento 2 `env.php`, Magento 1/OpenMage `local.xml`, `config auto` SQL, DB sync privacy filters, and Warden migration. The value must contain only letters, numbers, and underscores.
+Govard uses this value for Magento 2/Mage-OS `env.php`, Magento 1/OpenMage `local.xml`, PrestaShop `parameters.php`, `config auto` SQL, DB sync privacy filters, and Warden migration. The value must contain only letters, numbers, and underscores.
 
 ---
 

@@ -102,7 +102,7 @@ govard bootstrap -e staging --no-pii --no-noise
 | `--no-stream-db` | Sử dụng một file tạm local để truyền DB thay vì stream trực tiếp |
 | `--no-up` | Bỏ qua bước khởi động container local trước khi chạy bootstrap |
 
-Đối với các dự án Magento có thiết lập `table_prefix`, các bộ lọc bảo mật DB sẽ tự động áp dụng chính xác cho các bảng có tiền tố tương ứng.
+Đối với các dự án Magento 2/Mage-OS, Magento 1/OpenMage hoặc PrestaShop có thiết lập `table_prefix`, các bộ lọc bảo mật DB sẽ tự động áp dụng chính xác cho các bảng có tiền tố tương ứng.
 
 **Các cờ đặc thù của Magento:**
 

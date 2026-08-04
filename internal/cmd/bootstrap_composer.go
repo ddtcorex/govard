@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -39,6 +40,8 @@ func FixComposerCompatibility(config engine.Config) error {
 }
 
 func ensureBootstrapAuthJSON(config engine.Config, opts BootstrapRuntimeOptions) error {
+	definition, _ := frameworks.Get(config.Framework)
+	auth := definition.ComposerAuth
 	cwd, _ := os.Getwd()
 	authPath := filepath.Join(cwd, "auth.json")
 	if _, err := os.Stat(authPath); err == nil {
@@ -64,18 +67,20 @@ func ensureBootstrapAuthJSON(config engine.Config, opts BootstrapRuntimeOptions)
 	}
 
 	if opts.MageUsername != "" && opts.MagePassword != "" {
-		return createAuthJSONFromCredentials(globalAuthPath, opts.MageUsername, opts.MagePassword, cwd)
+		return createAuthJSONFromCredentials(globalAuthPath, auth.Repository, opts.MageUsername, opts.MagePassword, cwd)
 	}
 
-	if config.Framework == "magento2" && !shouldUseGlobalAuthByDefault() && !opts.AssumeYes {
-		pterm.Info.Println("Magento 2 requires authentication for repo.magento.com.")
-		pterm.Info.Println("You can find your keys at: https://marketplace.magento.com/customer/accessKeys/")
+	if auth.Repository != "" && !shouldUseGlobalAuthByDefault() && !opts.AssumeYes {
+		pterm.Info.Printf("%s requires authentication for %s.\n", auth.DisplayName, auth.Repository)
+		if auth.CredentialURL != "" {
+			pterm.Info.Printf("You can find your keys at: %s\n", auth.CredentialURL)
+		}
 
 		username, _ := pterm.DefaultInteractiveTextInput.Show("Magento Public Key")
 		password, _ := pterm.DefaultInteractiveTextInput.WithMask("*").Show("Magento Private Key")
 
 		if username != "" && password != "" {
-			return createAuthJSONFromCredentials(globalAuthPath, username, password, cwd)
+			return createAuthJSONFromCredentials(globalAuthPath, auth.Repository, username, password, cwd)
 		}
 	}
 
@@ -83,8 +88,12 @@ func ensureBootstrapAuthJSON(config engine.Config, opts BootstrapRuntimeOptions)
 	return nil
 }
 
-func createAuthJSONFromCredentials(path, username, password, cwd string) error {
-	payload := fmt.Sprintf("{\n    \"http-basic\": {\n        \"repo.magento.com\": {\n            \"username\": %q,\n            \"password\": %q\n        }\n    }\n}\n", username, password)
+func createAuthJSONFromCredentials(path, repository, username, password, cwd string) error {
+	repository = strings.TrimSpace(repository)
+	if repository == "" {
+		return fmt.Errorf("framework does not declare a Composer authentication repository")
+	}
+	payload := fmt.Sprintf("{\n    \"http-basic\": {\n        %q: {\n            \"username\": %q,\n            \"password\": %q\n        }\n    }\n}\n", repository, username, password)
 	if err := os.MkdirAll(filepath.Dir(path), conventions.SecretDirPerm); err != nil {
 		return fmt.Errorf("failed to ensure directory for auth.json: %w", err)
 	}

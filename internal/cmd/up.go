@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"govard/internal/conventions"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 	"govard/internal/proxy"
 	"govard/internal/updater"
 	"io"
@@ -400,11 +401,9 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 					}
 				}
 
-				{
-					if context.Config.Framework == "wordpress" {
-						if err := engine.FixWordPressCompatibility(context.Config); err != nil {
-							pterm.Warning.Printf("Could not ensure WordPress (WP-CLI) compatibility: %v\n", err)
-						}
+				if definition, ok := frameworks.Get(context.Config.Framework); ok && definition.PostEnvironmentUp != nil {
+					if err := definition.PostEnvironmentUp(context.Config); err != nil {
+						pterm.Warning.Printf("Could not complete %s post-start compatibility: %v\n", definition.DisplayName, err)
 					}
 				}
 
@@ -454,8 +453,8 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 					pterm.Warning.Printf("Could not refresh PMA active projects: %v\n", err)
 				}
 
-				if engine.IsMagento2Family(context.Config.Framework) {
-					frameworkName := engine.Magento2FamilyDisplayName(context.Config.Framework)
+				if definition, ok := frameworks.Get(context.Config.Framework); ok && definition.ConfigureAfterProfileShift != nil {
+					frameworkName := definition.DisplayName
 					if context.SkipTuning {
 						pterm.Info.Println("Skipping framework auto-configuration (--no-tuning)")
 					} else if context.ShiftInfo != nil && context.ShiftInfo.Shifted && stdinIsTerminal() {
@@ -467,7 +466,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 							WithDefaultText("Y = tune now, N = skip tuning").
 							Show(fmt.Sprintf("Run %s auto-configuration?", frameworkName))
 						if proceed {
-							if err := engine.ConfigureMagento(context.Config.ProjectName, context.Config, false, context.ShiftInfo); err != nil {
+							if err := definition.ConfigureAfterProfileShift(context.Config, context.ShiftInfo); err != nil {
 								pterm.Warning.Printf("%s auto-configuration failed: %v\n", frameworkName, err)
 							}
 						} else {
@@ -475,7 +474,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 						}
 					} else if context.ShiftInfo != nil && context.ShiftInfo.Shifted {
 						// Non-interactive mode: run without prompt if shift detected
-						if err := engine.ConfigureMagento(context.Config.ProjectName, context.Config, false, context.ShiftInfo); err != nil {
+						if err := definition.ConfigureAfterProfileShift(context.Config, context.ShiftInfo); err != nil {
 							pterm.Warning.Printf("%s auto-configuration failed: %v\n", frameworkName, err)
 						}
 					}
@@ -790,34 +789,6 @@ func ApplyQuickstartProfile(config *engine.Config) {
 
 	config.Stack.Services.Queue = "none"
 	config.Stack.QueueVersion = ""
-}
-
-// CheckMagentoRuntimeSync checks the detected Magento framework against configured
-// runtime and returns warnings if there's a mismatch (without auto-tuning).
-func CheckMagentoRuntimeSync(config engine.Config, metadata engine.ProjectMetadata) []string {
-	if config.Framework != "magento2" {
-		return nil
-	}
-
-	cwd, _ := os.Getwd()
-	rawConfig, err := engine.LoadRawConfigFromDir(cwd, false)
-	if err != nil {
-		return nil
-	}
-
-	warnings := engine.CollectProfileSyncWarnings(rawConfig, metadata)
-	if len(warnings) > 0 {
-		version := strings.TrimSpace(metadata.Version)
-		if version == "" {
-			version = strings.TrimSpace(config.FrameworkVersion)
-		}
-		return []string{fmt.Sprintf(
-			"Magento %s expects different services: %s. Run 'govard doctor --fix' to align.",
-			version, strings.Join(warnings, ", "),
-		)}
-	}
-
-	return nil
 }
 
 func compareNumericDotVersions(left, right string) (int, bool) {

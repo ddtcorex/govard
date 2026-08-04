@@ -25,6 +25,7 @@ Govard sẽ kiểm tra file `composer.json` hoặc `package.json`, nhận diện
 | Framework | Cách nhận diện |
 | :--- | :--- |
 | Magento 2 | `composer.json` có `magento/magento2-base` |
+| Mage-OS | `composer.json` có `mage-os/product-community-edition` hoặc `mage-os/project-community-edition` |
 | Magento 1 / OpenMage | Pattern cấu trúc file trong `composer.json` |
 | Laravel | Có file `artisan` + `composer.json` |
 | Next.js | `package.json` có dependency `next` |
@@ -33,6 +34,8 @@ Govard sẽ kiểm tra file `composer.json` hoặc `package.json`, nhận diện
 | Symfony | Có `symfony/framework-bundle` |
 | Shopware | Có `shopware/core` |
 | CakePHP | Có `cakephp/cakephp` |
+| PrestaShop | `config/defines.inc.php` |
+| Django | `manage.py` |
 | WordPress | Có `wp-config.php` hoặc `wp-login.php` |
 | Custom (Tùy chỉnh) | Chọn stack qua prompt tương tác (`govard init --framework custom`) |
 

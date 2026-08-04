@@ -1,7 +1,7 @@
 package tests
 
 import (
-	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 	"os"
 	"testing"
 )
@@ -25,7 +25,7 @@ func TestIsMagentoElasticsuiteProject(t *testing.T) {
 		t.Fatalf("Failed to write composer.json: %v", err)
 	}
 
-	if !engine.IsMagentoElasticsuiteProjectForTest() {
+	if !magento2.IsMagentoElasticsuiteProjectForTest() {
 		t.Errorf("Expected elasticsuite detection via composer.json to be true")
 	}
 
@@ -41,7 +41,7 @@ func TestIsMagentoElasticsuiteProject(t *testing.T) {
 		t.Fatalf("Failed to write config.php: %v", err)
 	}
 
-	if !engine.IsMagentoElasticsuiteProjectForTest() {
+	if !magento2.IsMagentoElasticsuiteProjectForTest() {
 		t.Errorf("Expected elasticsuite detection via config.php to be true")
 	}
 }
@@ -59,7 +59,7 @@ func TestIsMagentoConfigPathUnavailable(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := engine.IsMagentoConfigPathUnavailableForTest(tt.output); got != tt.expected {
+		if got := magento2.IsMagentoConfigPathUnavailableForTest(tt.output); got != tt.expected {
 			t.Errorf("IsMagentoConfigPathUnavailable(%q) = %v; want %v", tt.output, got, tt.expected)
 		}
 	}

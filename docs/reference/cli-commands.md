@@ -102,7 +102,7 @@ govard bootstrap -e staging --no-pii --no-noise
 | `--no-stream-db` | Use local temp file for DB transfer |
 | `--no-up` | Skip starting local containers before bootstrap steps |
 
-For Magento projects with `table_prefix` set, DB privacy filters target prefixed table names automatically.
+For Magento 2/Mage-OS, Magento 1/OpenMage, or PrestaShop projects with `table_prefix` set, DB privacy filters target prefixed table names automatically.
 
 **Magento special flags:**
 

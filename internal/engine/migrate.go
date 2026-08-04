@@ -193,43 +193,11 @@ func MigrateFromWarden(root string) (MigrationResult, error) {
 }
 
 func mapDDEVTypeToFramework(ddevType string) string {
-	switch ddevType {
-	case "magento2":
-		return "magento2"
-	case "magento":
-		return "magento1"
-	case "laravel":
-		return "laravel"
-	case "drupal7", "drupal8", "drupal9", "drupal10", "drupal11":
-		return "drupal"
-	case "symfony":
-		return "symfony"
-	case "shopware6":
-		return "shopware"
-	case "wordpress":
-		return "wordpress"
-	default:
-		return ddevType
-	}
+	return lookupMigrationFramework("ddev", ddevType)
 }
 
 func mapWardenTypeToFramework(wardenType string) string {
-	switch wardenType {
-	case "magento2":
-		return "magento2"
-	case "magento1":
-		return "magento1"
-	case "laravel":
-		return "laravel"
-	case "symfony":
-		return "symfony"
-	case "shopware":
-		return "shopware"
-	case "wordpress":
-		return "wordpress"
-	default:
-		return wardenType
-	}
+	return lookupMigrationFramework("warden", wardenType)
 }
 
 func ParseDotEnv(path string) map[string]string {

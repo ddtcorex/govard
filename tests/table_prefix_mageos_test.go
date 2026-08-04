@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestMageOSSupportsTablePrefix(t *testing.T) {
@@ -40,11 +41,11 @@ return [
 		t.Fatalf("write env.php: %v", err)
 	}
 
-	if got := engine.DetectMagento2TablePrefix(root); got != "mos_" {
-		t.Fatalf("expected table prefix 'mos_' via DetectMagento2TablePrefix, got %q", got)
+	if got := magento2.DetectTablePrefix(root); got != "mos_" {
+		t.Fatalf("expected table prefix 'mos_' via Magento 2 capability, got %q", got)
 	}
 
-	if got := engine.DetectMagentoTablePrefix(root, "mageos"); got != "mos_" {
-		t.Fatalf("expected DetectMagentoTablePrefix to return 'mos_' for mageos, got %q", got)
+	if got := engine.DetectFrameworkTablePrefix(root, "mageos"); got != "mos_" {
+		t.Fatalf("expected generic detector to return 'mos_' for mageos, got %q", got)
 	}
 }

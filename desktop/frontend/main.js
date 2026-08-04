@@ -2022,6 +2022,7 @@ const bootstrap = async () => {
       loadFooterVersion(),
       settingsController.load(),
       refreshDashboard(),
+      onboardingController.loadFrameworkOptions(),
     ]).catch((e) => console.error("Parallel bootstrap error:", e));
     if (getState().sidebarMode === "global-services") {
       await globalServicesController.refreshLogs();

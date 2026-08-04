@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,45 @@ var bootstrapRemoteDirExists = func(remoteName string, remoteCfg engine.RemoteCo
 	return probe.Run() == nil
 }
 
+var frameworkLookupForBootstrap = frameworks.Get
+
+func prepareFrameworkComposer(config engine.Config) error {
+	definition, ok := frameworkLookupForBootstrap(config.Framework)
+	if !ok || definition.PrepareComposer == nil {
+		return nil
+	}
+	return definition.PrepareComposer(config)
+}
+
+// SetFrameworkLookupForBootstrapForTest swaps the registry lookup used by the
+// clone-bootstrap capabilities. It lets tests exercise a hook without running
+// an external framework command.
+func SetFrameworkLookupForBootstrapForTest(fn func(name string) (types.FrameworkDefinition, bool)) func() {
+	previous := frameworkLookupForBootstrap
+	frameworkLookupForBootstrap = fn
+	return func() { frameworkLookupForBootstrap = previous }
+}
+
+// PrepareFrameworkComposerForTest exposes the generic composer preparation
+// dispatch for a focused capability test.
+func PrepareFrameworkComposerForTest(config engine.Config) error {
+	return prepareFrameworkComposer(config)
+}
+
+func shouldRunComposerDumpAutoload(framework string, composerJSONExists bool) bool {
+	if composerJSONExists {
+		return true
+	}
+	definition, ok := frameworkLookupForBootstrap(framework)
+	return !ok || !definition.RequiresComposerManifestForDumpAutoload
+}
+
+// ShouldRunComposerDumpAutoloadForTest exposes the registry-driven policy for
+// a focused regression test.
+func ShouldRunComposerDumpAutoloadForTest(framework string, composerJSONExists bool) bool {
+	return shouldRunComposerDumpAutoload(framework, composerJSONExists)
+}
+
 // bootstrapPostCloneDefinition returns framework's registry entry if it
 // participates in the generic FrameworkBootstrap.PostClone interface step of
 // the remote/clone bootstrap workflow. magento2/mageos are excluded even
@@ -30,7 +70,7 @@ var bootstrapRemoteDirExists = func(remoteName string, remoteCfg engine.RemoteCo
 // PreConfigureHook/PostCloneHook fields, not through this interface method.
 func bootstrapPostCloneDefinition(framework string) (types.FrameworkDefinition, bool) {
 	def, ok := frameworks.Get(framework)
-	if !ok || !def.SupportsBootstrap || engine.IsMagento2Family(framework) {
+	if !ok || !def.SupportsBootstrap || def.PreConfigureHook != nil || def.PostCloneHook != nil {
 		return types.FrameworkDefinition{}, false
 	}
 	return def, true
@@ -90,10 +130,8 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 				pterm.Warning.Printf("Could not verify/fix composer compatibility: %v\n", err)
 			}
 
-			if config.Framework == "wordpress" {
-				if err := engine.FixWordPressCompatibility(config); err != nil {
-					pterm.Warning.Printf("Could not verify/fix WordPress compatibility: %v\n", err)
-				}
+			if err := prepareFrameworkComposer(config); err != nil {
+				pterm.Warning.Printf("Could not prepare framework composer compatibility: %v\n", err)
 			}
 
 			if err := ensureBootstrapAuthJSON(config, opts); err != nil {
@@ -140,7 +178,7 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 	// a remote sync or when a lock file references a missing VCS commit but the dependency already exists locally.
 	if opts.ComposerInstall {
 		composerJSONPath := filepath.Join(cwd, "composer.json")
-		if fileExists(composerJSONPath) || strings.ToLower(config.Framework) != "wordpress" {
+		if shouldRunComposerDumpAutoload(config.Framework, fileExists(composerJSONPath)) {
 			if err := bootstrapComposerDumpAutoload(cmd, cwd); err != nil {
 				return err
 			}
@@ -168,15 +206,17 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 		},
 	}
 	hookHelpers := bootstrap.CmdHelpers{
-		EnsureMagentoEnvPHP: func() error {
-			return ensureBootstrapMagentoEnvPHP(config, opts)
+		EnsureFrameworkEnvironment: func() error {
+			return ensureBootstrapFrameworkEnvironment(config, opts)
 		},
-		RunMagentoAdminCreate: func() error {
-			runBootstrapAdminCreate(cmd, config)
-			return nil
+		RunTool: func(tool string, args []string) error {
+			return runGovardSubcommand(cmd, govardToolSubcommandArgs(tool, args...)...)
 		},
-		RunMagentoReindex: func() error {
-			return runBootstrapMagentoReindex(cmd)
+		RunToolSilent: func(tool string, args []string) error {
+			return runGovardSubcommandSilent(cmd, govardToolSubcommandArgs(tool, args...)...)
+		},
+		IsPHPContainerRunning: func() bool {
+			return engine.IsContainerRunning(context.Background(), fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix))
 		},
 	}
 
@@ -220,21 +260,16 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 			Domain:      config.Domain,
 		}
 
-		if config.Framework == "prestashop" {
-			if remoteCfg, ok := config.Remotes[opts.Source]; ok {
-				if psEnv, err := remote.ProbePrestaShopEnvironment(opts.Source, remoteCfg); err == nil {
-					// The remote's actual table prefix reflects the DB that was just
-					// imported and takes priority over local config, same precedence as
-					// resolveRemoteDBCredentials uses for every other framework.
-					if remotePrefix := engine.SafeTablePrefix(psEnv.DB.TablePrefix); remotePrefix != "" {
+		if def, ok := frameworks.Get(config.Framework); ok && def.ProbeRemoteBootstrapMetadata != nil {
+			if remoteCfg, configured := config.Remotes[opts.Source]; configured {
+				metadata, err := def.ProbeRemoteBootstrapMetadata(opts.Source, remoteCfg)
+				if err != nil {
+					pterm.Warning.Printf("Could not probe remote bootstrap metadata, falling back to local config: %v\n", err)
+				} else {
+					if remotePrefix := engine.SafeTablePrefix(metadata.TablePrefix); remotePrefix != "" {
 						bootstrapOpts.TablePrefix = remotePrefix
 					}
-					bootstrapOpts.PrestaShopSecret = psEnv.Secrets.Secret
-					bootstrapOpts.PrestaShopCookieKey = psEnv.Secrets.CookieKey
-					bootstrapOpts.PrestaShopCookieIV = psEnv.Secrets.CookieIV
-					bootstrapOpts.PrestaShopNewCookieKey = psEnv.Secrets.NewCookieKey
-				} else {
-					pterm.Warning.Printf("Could not probe remote PrestaShop secrets/table prefix, falling back to local config: %v\n", err)
+					bootstrapOpts.RemoteMetadata = metadata.Private
 				}
 			}
 		}

@@ -88,13 +88,13 @@ func (m *Magento1Bootstrap) CreateAdmin(projectDir string) error {
 	containerName := fmt.Sprintf("%s%s", m.Options.ProjectName, conventions.DBSuffix)
 
 	pterm.Info.Println("Creating Magento 1 admin user...")
-	return bootstrap.RunMagento1AdminUserSQL(containerName, m.Options.DBUser, m.Options.DBPass, m.Options.DBName, strings.TrimSpace(m.Options.TablePrefix), adminEmail)
+	return RunAdminUserSQL(containerName, m.Options.DBUser, m.Options.DBPass, m.Options.DBName, strings.TrimSpace(m.Options.TablePrefix), adminEmail)
 }
 
 // createLocalXml generates app/etc/local.xml with a random 32-hex crypt key and
 // the default local Warden database credentials.
 func (m *Magento1Bootstrap) createLocalXml(projectDir string) error {
-	cryptKey, err := bootstrap.GenerateMagento1CryptKey()
+	cryptKey, err := GenerateCryptKey()
 	if err != nil {
 		return fmt.Errorf("failed to generate crypt key: %w", err)
 	}

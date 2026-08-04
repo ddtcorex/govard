@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"govard/internal/conventions"
 	"govard/internal/engine/bootstrap"
+	"govard/internal/frameworks/magento1"
 	"os"
 	"path/filepath"
 	"strings"
@@ -213,11 +214,11 @@ func (o *OpenMageBootstrap) CreateAdmin(projectDir string) error {
 	containerName := fmt.Sprintf("%s%s", o.Options.ProjectName, conventions.DBSuffix)
 
 	pterm.Info.Println("Creating OpenMage admin user...")
-	return bootstrap.RunMagento1AdminUserSQL(containerName, o.Options.DBUser, o.Options.DBPass, o.Options.DBName, strings.TrimSpace(o.Options.TablePrefix), adminEmail)
+	return magento1.RunAdminUserSQL(containerName, o.Options.DBUser, o.Options.DBPass, o.Options.DBName, strings.TrimSpace(o.Options.TablePrefix), adminEmail)
 }
 
 func (o *OpenMageBootstrap) createLocalXml(projectDir string) error {
-	cryptKey, err := bootstrap.GenerateMagento1CryptKey()
+	cryptKey, err := magento1.GenerateCryptKey()
 	if err != nil {
 		return fmt.Errorf("failed to generate crypt key: %w", err)
 	}

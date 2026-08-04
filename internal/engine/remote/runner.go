@@ -23,7 +23,7 @@ func BuildSSHInteractiveArgs(remoteName string, remoteCfg engine.RemoteConfig, f
 	return BuildSSHArgs(remoteName, remoteCfg, forwardAgent, true)
 }
 
-func runRemoteCapture(remoteName string, remoteCfg engine.RemoteConfig, remoteCommand string) (string, error) {
+func RunRemoteCapture(remoteName string, remoteCfg engine.RemoteConfig, remoteCommand string) (string, error) {
 	cmd := BuildSSHExecCommand(remoteName, remoteCfg, true, remoteCommand)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

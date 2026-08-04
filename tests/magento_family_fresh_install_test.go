@@ -133,10 +133,10 @@ func TestBuildMagentoSetupInstallArgsUsesOpenSearchForMageOSRegardlessOfVersion(
 	}
 }
 
-func TestMagentoFamilyPreConfigureCallsEnsureMagentoEnvPHP(t *testing.T) {
+func TestMagentoFamilyPreConfigureCallsEnsureFrameworkEnvironment(t *testing.T) {
 	called := false
 	helpers := bootstrap.CmdHelpers{
-		EnsureMagentoEnvPHP: func() error {
+		EnsureFrameworkEnvironment: func() error {
 			called = true
 			return nil
 		},
@@ -146,14 +146,14 @@ func TestMagentoFamilyPreConfigureCallsEnsureMagentoEnvPHP(t *testing.T) {
 		t.Fatalf("PreConfigure() error = %v", err)
 	}
 	if !called {
-		t.Fatal("expected EnsureMagentoEnvPHP to be called")
+		t.Fatal("expected EnsureFrameworkEnvironment to be called")
 	}
 }
 
 func TestMagentoFamilyPreConfigurePropagatesError(t *testing.T) {
 	wantErr := errors.New("env.php generation failed")
 	helpers := bootstrap.CmdHelpers{
-		EnsureMagentoEnvPHP: func() error {
+		EnsureFrameworkEnvironment: func() error {
 			return wantErr
 		},
 	}
@@ -167,11 +167,11 @@ func TestMagentoFamilyPreConfigurePropagatesError(t *testing.T) {
 func TestMagentoFamilyPostCloneCreatesAdminThenReindexesWhenAdminCreateTrue(t *testing.T) {
 	var calls []string
 	helpers := bootstrap.CmdHelpers{
-		RunMagentoAdminCreate: func() error {
+		RunToolSilent: func(tool string, args []string) error {
 			calls = append(calls, "admin-create")
 			return nil
 		},
-		RunMagentoReindex: func() error {
+		RunTool: func(tool string, args []string) error {
 			calls = append(calls, "reindex")
 			return nil
 		},
@@ -189,11 +189,11 @@ func TestMagentoFamilyPostCloneCreatesAdminThenReindexesWhenAdminCreateTrue(t *t
 func TestMagentoFamilyPostCloneSkipsAdminCreateWhenFalse(t *testing.T) {
 	var calls []string
 	helpers := bootstrap.CmdHelpers{
-		RunMagentoAdminCreate: func() error {
+		RunToolSilent: func(tool string, args []string) error {
 			calls = append(calls, "admin-create")
 			return nil
 		},
-		RunMagentoReindex: func() error {
+		RunTool: func(tool string, args []string) error {
 			calls = append(calls, "reindex")
 			return nil
 		},
@@ -211,10 +211,10 @@ func TestMagentoFamilyPostCloneSkipsAdminCreateWhenFalse(t *testing.T) {
 func TestMagentoFamilyPostClonePropagatesReindexError(t *testing.T) {
 	wantErr := errors.New("reindex failed")
 	helpers := bootstrap.CmdHelpers{
-		RunMagentoAdminCreate: func() error {
+		RunToolSilent: func(tool string, args []string) error {
 			return nil
 		},
-		RunMagentoReindex: func() error {
+		RunTool: func(tool string, args []string) error {
 			return wantErr
 		},
 	}
@@ -222,5 +222,28 @@ func TestMagentoFamilyPostClonePropagatesReindexError(t *testing.T) {
 	err := magento2.PostClone(bootstrap.Options{AdminCreate: true}, "/tmp/whatever", helpers)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("PostClone() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestMagentoFamilySampleDataUsesMagentoToolWorkflow(t *testing.T) {
+	var calls []string
+	helpers := bootstrap.CmdHelpers{
+		RunTool: func(tool string, args []string) error {
+			calls = append(calls, tool+" "+strings.Join(args, " "))
+			return nil
+		},
+	}
+
+	if err := magento2.RunSampleData(helpers); err != nil {
+		t.Fatalf("RunSampleData() error = %v", err)
+	}
+	want := []string{
+		"magento sample:deploy",
+		"magento setup:upgrade",
+		"magento indexer:reindex",
+		"magento cache:flush",
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("tool calls = %#v, want %#v", calls, want)
 	}
 }

@@ -19,7 +19,7 @@ func TestEndToEndMagento2Workflow(t *testing.T) {
 	projectDir := env.CreateMagento2Project(t, "magento2-integration")
 	defer env.CleanupProject(t, "magento2-integration")
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "magento2-test",
@@ -66,7 +66,7 @@ func TestEndToEndLaravelWorkflow(t *testing.T) {
 	projectDir := env.CreateLaravelProject(t, "laravel-integration")
 	defer env.CleanupProject(t, "laravel-integration")
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "laravel-test",
@@ -105,7 +105,7 @@ func TestEndToEndNextJSWorkflow(t *testing.T) {
 	projectDir := env.CreateNextJSProject(t, "nextjs-integration")
 	defer env.CleanupProject(t, "nextjs-integration")
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "nextjs-test",
@@ -138,7 +138,7 @@ func TestBlueprintRenderingWithAllFeatures(t *testing.T) {
 	projectDir := env.CreateMagento2Project(t, "magento2-full")
 	defer env.CleanupProject(t, "magento2-full")
 
-	CopyBlueprints(t, env.BlueprintsPath, filepath.Join(projectDir, "blueprints"))
+	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
 		ProjectName: "magento2-full",

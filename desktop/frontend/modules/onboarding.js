@@ -1,5 +1,17 @@
 import { normalizeRemotesPayload } from "./remotes.js";
 
+// Legacy shorthand aliases kept as a static fallback so normalization still
+// works correctly for callers that run before loadFrameworkOptions() has
+// populated frameworkOptionsCache (e.g. very early app lifecycle, or any
+// caller that doesn't go through main.js's bootstrap). Once the registry
+// loads, buildFrameworkLookups(frameworkOptionsCache) takes precedence.
+const legacyFrameworkAliases = {
+  m2: "magento2",
+  "mage-os": "mageos",
+  m1: "magento1",
+  wp: "wordpress",
+};
+
 export const normalizeOnboardingFramework = (framework = "") => {
   const normalized = String(framework || "")
     .trim()
@@ -8,19 +20,12 @@ export const normalizeOnboardingFramework = (framework = "") => {
   if (["", "auto", "detect"].includes(normalized)) {
     return "";
   }
-  if (normalized === "m2") {
-    return "magento2";
-  }
-  if (normalized === "mage-os") {
-    return "mageos";
-  }
-  if (normalized === "m1") {
-    return "magento1";
-  }
-  if (normalized === "wp") {
-    return "wordpress";
-  }
-  return normalized;
+  const { aliasToName } = buildFrameworkLookups(frameworkOptionsCache);
+  return (
+    aliasToName.get(normalized) ||
+    legacyFrameworkAliases[normalized] ||
+    normalized
+  );
 };
 
 export const normalizeOnboardingGitProtocol = (protocol = "") => {
@@ -87,33 +92,48 @@ export const normalizeOnboardingDomain = (domain = "", projectPath = "") => {
   return `${base}.test`;
 };
 
+// extraPathInferenceAliases covers path-matching hints that are NOT
+// registered as Go-side Aliases (that field also drives CLI/config alias
+// normalization, a broader surface out of scope for path inference) but
+// were historically recognized when inferring a framework from a project
+// path (e.g. a folder named "my-next-app" or "mage-os-store").
+const extraPathInferenceAliases = {
+  nextjs: ["next"],
+  mageos: ["mage-os"],
+};
+
 const inferFrameworkFromPath = (projectPath = "") => {
   const value = String(projectPath || "").toLowerCase();
   if (!value) {
     return "";
   }
-  if (value.includes("mageos") || value.includes("mage-os")) {
-    return "mageos";
+  // frameworkOptionsCache is sourced from a Go map with no defined
+  // iteration order, so "first match wins" would be nondeterministic
+  // whenever two frameworks' candidates overlap as substrings (e.g.
+  // magento2's "magento" alias is itself a substring of "magento1").
+  // Scanning every candidate across every framework and keeping the
+  // single longest match instead makes the more specific name/alias win
+  // deterministically, independent of cache order.
+  let bestName = "";
+  let bestLength = 0;
+  for (const option of frameworkOptionsCache) {
+    const name = String(option?.name || "").toLowerCase();
+    if (!name) {
+      continue;
+    }
+    const candidates = [
+      name,
+      ...(option?.aliases || []).map((a) => String(a).toLowerCase()),
+      ...(extraPathInferenceAliases[name] || []),
+    ];
+    for (const candidate of candidates) {
+      if (candidate && value.includes(candidate) && candidate.length > bestLength) {
+        bestName = name;
+        bestLength = candidate.length;
+      }
+    }
   }
-  if (value.includes("magento2") || value.includes("m2")) {
-    return "magento2";
-  }
-  if (value.includes("magento1") || value.includes("m1")) {
-    return "magento1";
-  }
-  if (value.includes("laravel")) {
-    return "laravel";
-  }
-  if (value.includes("symfony")) {
-    return "symfony";
-  }
-  if (value.includes("wordpress") || value.includes("wp")) {
-    return "wordpress";
-  }
-  if (value.includes("next")) {
-    return "nextjs";
-  }
-  return "";
+  return bestName;
 };
 
 const levelToHintClass = {
@@ -150,18 +170,16 @@ const setHint = (element, message, level = "muted") => {
 
 const formatFrameworkLabel = (framework = "") => {
   const normalized = normalizeOnboardingFramework(framework);
-  const labels = {
-    "": "Auto-detect",
-    magento2: "Magento 2",
-    mageos: "Mage-OS",
-    magento1: "Magento 1",
-    laravel: "Laravel",
-    symfony: "Symfony",
-    wordpress: "WordPress",
-    nextjs: "Next.js",
-    custom: "Custom",
-  };
-  return labels[normalized] || framework || "Auto-detect";
+  if (normalized === "") {
+    return "Auto-detect";
+  }
+  if (normalized === "custom") {
+    return "Custom";
+  }
+  const match = frameworkOptionsCache.find(
+    (option) => String(option?.name || "").toLowerCase() === normalized,
+  );
+  return match?.displayName || framework || "Auto-detect";
 };
 
 const normalizeOnboardingFrameworkVersion = (frameworkVersion = "") =>
@@ -184,6 +202,33 @@ const frameworkVersionPlaceholderByFramework = {
   symfony: "7.0",
   wordpress: "6.5",
   nextjs: "15",
+};
+
+let frameworkOptionsCache = [];
+
+const buildFrameworkLookups = (options = []) => {
+  const byName = new Map();
+  const aliasToName = new Map();
+  options.forEach((option) => {
+    const name = String(option?.name || "").trim().toLowerCase();
+    if (!name) {
+      return;
+    }
+    byName.set(name, {
+      name,
+      displayName: String(option?.displayName || "").trim() || name,
+      aliases: Array.isArray(option?.aliases)
+        ? option.aliases.map((alias) => String(alias || "").trim().toLowerCase()).filter(Boolean)
+        : [],
+    });
+    (option?.aliases || []).forEach((alias) => {
+      const normalizedAlias = String(alias || "").trim().toLowerCase();
+      if (normalizedAlias) {
+        aliasToName.set(normalizedAlias, name);
+      }
+    });
+  });
+  return { byName, aliasToName };
 };
 
 const defaultServiceOptions = {
@@ -503,6 +548,45 @@ export const createOnboardingController = ({
       confirmFolderOverride,
       gitValidationMessage,
     };
+  };
+
+  const populateFrameworkSelect = () => {
+    if (!refs.projectFramework) {
+      return;
+    }
+    const select = refs.projectFramework;
+    const previousValue = select.value;
+    Array.from(select.querySelectorAll("option[data-dynamic-framework]")).forEach(
+      (node) => node.remove(),
+    );
+    const customOption = select.querySelector('option[value="custom"]');
+    frameworkOptionsCache
+      .slice()
+      .sort((a, b) => String(a.displayName || a.name).localeCompare(String(b.displayName || b.name)))
+      .forEach((option) => {
+        const node = document.createElement("option");
+        node.value = option.name;
+        node.textContent = option.displayName || option.name;
+        node.dataset.dynamicFramework = "true";
+        if (customOption) {
+          select.insertBefore(node, customOption);
+        } else {
+          select.appendChild(node);
+        }
+      });
+    if (previousValue) {
+      select.value = previousValue;
+    }
+  };
+
+  const loadFrameworkOptions = async () => {
+    try {
+      const list = await bridge.listFrameworks();
+      frameworkOptionsCache = Array.isArray(list) ? list : [];
+      populateFrameworkSelect();
+    } catch (err) {
+      console.error("Failed to load framework list:", err);
+    }
   };
 
   const resetForm = () => {
@@ -932,6 +1016,7 @@ export const createOnboardingController = ({
     handleProgress,
     handleInputChange: () => syncPreview(),
     resetForm,
+    loadFrameworkOptions,
   };
 };
 
@@ -1117,13 +1202,6 @@ export const renderOnboardingModal = (container) => {
                         class="w-full bg-surface-secondary dark:bg-black/40 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-bold focus:ring-4 focus:ring-primary/15 transition-all text-sm outline-none appearance-none cursor-pointer"
                       >
                         <option value="auto">🔍 Auto-detect</option>
-                        <option value="magento2">Magento 2</option>
-                        <option value="mageos">Mage-OS</option>
-                        <option value="magento1">Magento 1</option>
-                        <option value="laravel">Laravel</option>
-                        <option value="symfony">Symfony</option>
-                        <option value="wordpress">WordPress</option>
-                        <option value="nextjs">Next.js</option>
                         <option value="custom">Custom System</option>
                       </select>
                       <span class="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-500 pointer-events-none text-xl">expand_more</span>

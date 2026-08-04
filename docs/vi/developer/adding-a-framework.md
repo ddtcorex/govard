@@ -5,7 +5,7 @@ description: Cấu trúc nội bộ của framework registry trong Govard, và h
 
 # Thêm Framework mới
 
-Govard hỗ trợ một danh sách framework ngày càng mở rộng — Magento 2, Mage-OS, Magento 1, OpenMage, Laravel, Symfony, Drupal, WordPress, Next.js, Emdash, Shopware, CakePHP, PrestaShop, Django, và sẽ còn thêm nữa theo thời gian. Trang này mô tả cấu trúc nội bộ của phần hỗ trợ đó, và những gì cần đụng vào để thêm một framework mới.
+Govard hỗ trợ một danh sách framework ngày càng mở rộng — Magento 2, Mage-OS, Magento 1, OpenMage, Laravel, Symfony, Drupal, WordPress, Next.js, Emdash, Shopware, CakePHP, PrestaShop, Django, Custom, và sẽ còn thêm nữa theo thời gian. Trang này mô tả cấu trúc nội bộ của phần hỗ trợ đó, và những gì cần đụng vào để thêm một framework mới.
 
 ---
 
@@ -24,15 +24,45 @@ type FrameworkDefinition struct {
     Manifest engine.FrameworkManifestConfig // exclude khi sync, bảng nhạy cảm, feature flags
     Detect   engine.DetectionSpec           // chữ ký nhận diện composer/package.json/auth.json/đường dẫn file
 
+    DefaultDBCredentials   DefaultDBCredentials   // port/username/password/database-name mặc định cho local dev
+    PHPStanPaths           []string               // đường dẫn phân tích `govard test phpstan` mặc định, nil dùng mặc định chung {"app","src"}
+    ComposerCodingStandard ComposerCodingStandard // package Composer + label --standard phpcs của coding standard framework này
+
     Bootstrap      BootstrapFactory              // func(bootstrap.Options) bootstrap.FrameworkBootstrap
     BaseURLManager func() tunnel.BaseURLManager  // nil nếu framework không cần rewrite base-URL cho tunnel
 
     SupportsBootstrap    bool // cho phép `govard bootstrap` (quy trình remote/clone)
     SupportsFreshInstall bool // cho phép `govard bootstrap --fresh`
+
+    FreshInstall                func(bootstrap.Options, string, bootstrap.CmdHelpers) error // orchestration fresh-install; nil nếu chưa migrate khỏi switch cũ
+    FreshInstallNeedsDB         bool // populate DB credentials trước khi gọi FreshInstall
+    FreshInstallNeedsDomain     bool // populate domain trước khi gọi FreshInstall
+    FreshInstallManagesOwnEnvUp bool // true nếu FreshInstall đã tự gọi `env up`
+
+    PreConfigureHook func(bootstrap.Options, string, bootstrap.CmdHelpers) error // setup của clone workflow phải chạy trước `govard config auto`
+    PostCloneHook    func(bootstrap.Options, string, bootstrap.CmdHelpers) error // setup của clone workflow chạy sau dispatch PostClone chung
+
+    PHPImageVariant string // hậu tố variant image PHP cho container của framework này, "" dùng image thường
+
+    DBDriverCategory string // category DB-user/label per-project cho phpMyAdmin, "" fallback về "app"
+
+    Upgrade engine.UpgradeFunc // pipeline `govard upgrade` (deps, migration, flush cache), nil nếu chưa triển khai
+
+    RunMappingAssetPreparer engine.RunMappingAssetPreparer // chuẩn bị asset "run mapping" nginx/apache theo store trước khi render, nil nếu không có
+
+    TablePrefixDetector engine.TablePrefixDetector // đọc file config riêng của framework để lấy table prefix DB, nil nếu không có khái niệm table prefix
+
+    VersionProfileResolver engine.VersionProfileResolver // resolve override runtime-profile theo phiên bản, nil cho mọi framework trừ magento2 hiện tại
+
+    TemplateFuncs template.FuncMap // các hàm template blueprint bổ sung framework này góp vào, nil với hầu hết
+
+    ProbeRemoteDB func(remoteName string, remoteCfg engine.RemoteConfig) (remote.MagentoDBInfo, error) // probe một remote để lấy DB credentials thực, nil nếu chưa triển khai
+
+    AutoConfigure func(cmd *cobra.Command, config engine.Config) error // setup sau khi render riêng của framework cho `govard config auto`, nil nếu chưa hỗ trợ
 }
 ```
 
-`internal/frameworks/all_generated.go` — được sinh bởi `go generate ./internal/frameworks/...` từ `Definition()` của mỗi package (xem bước 6 dưới đây) — gọi `Register(<pkg>.Definition())` cho từng framework đã đăng ký, theo một thứ tự cụ thể (lý do ở phần dưới), tạo nên một registry cấp package mà phần còn lại của Govard đọc qua 3 file nhỏ, tập trung:
+`internal/frameworks/all_generated.go` — được sinh bởi `go generate ./internal/frameworks/...` từ `Spec()` của mỗi package (xem bước 6 dưới đây) — gọi `RegisterSpecs([]types.FrameworkSpec{<pkg>.Spec(), ...})` một lần với spec của mọi framework đã đăng ký, theo một thứ tự cụ thể (lý do ở phần dưới). `RegisterSpecs` resolve từng spec thành một `types.FrameworkDefinition` đầy đủ (`Definition` của một spec gốc được dùng nguyên vẹn; `Definition` của parent thuộc một spec con được resolve trước, sau đó `types.FrameworkPatch` của spec con được áp lên trên — xem "Fork một framework có sẵn" dưới đây) và tạo nên một registry cấp package. Thêm framework vào registry nghĩa là các field trong `Definition()` đã resolve của nó tự động chảy qua mọi nơi dispatch theo danh tính framework — nhưng giờ có 3 cơ chế khác nhau, không chỉ 1:
 
 | File | Vai trò |
 | :--- | :--- |
@@ -40,7 +70,11 @@ type FrameworkDefinition struct {
 | `internal/frameworks/run.go` | `RunBootstrap(name, opts)` — dispatch tới `def.Bootstrap` thay vì switch |
 | `internal/frameworks/base_url.go` | `NewBaseURLManager(name)` — dispatch tới `def.BaseURLManager`, fallback về `tunnel.NoopManager` |
 
-Mọi nơi đọc dữ liệu framework theo tên — allowlist của `govard bootstrap`, base-URL rewriting của `govard tunnel`, bootstrap dispatcher — đều đi qua 1 trong 3 file này thay vì `switch framework { case "magento2": ... }` hardcode rải rác. Thêm framework vào registry nghĩa là nó tự động tham gia cả 3 nơi đó, không cần sửa switch nào.
+- **3 file trên** là phía đọc của chính registry, dùng bởi allowlist của `govard bootstrap`, base-URL rewriting của `govard tunnel`, và bootstrap dispatcher.
+- **Đọc field top-down**: code trong `internal/cmd`/`internal/desktop` (đã import sẵn `internal/frameworks`) gọi `frameworks.Get(name)` rồi đọc trực tiếp một field của `Definition()` — `DefaultDBCredentials`, `PHPStanPaths`, `ComposerCodingStandard`, `ProbeRemoteDB`, `AutoConfigure`, `FreshInstall` (cùng các field đi kèm `FreshInstallNeedsDB`/`FreshInstallNeedsDomain`/`FreshInstallManagesOwnEnvUp`), `PreConfigureHook`/`PostCloneHook`. Đây là lựa chọn mặc định cho những gì chỉ `cmd`/`desktop` cần.
+- **Registry do engine sở hữu**: `internal/engine` không thể import ngược `internal/frameworks` (`frameworks` import `engine`, không phải ngược lại), nên một số thứ engine tự cần dispatch — `PHPImageVariant`, `DBDriverCategory`, `Upgrade`, `RunMappingAssetPreparer`, `TablePrefixDetector`, `VersionProfileResolver`, và từng entry của `TemplateFuncs` — được đẩy vào một lệnh gọi `engine.RegisterX(...)` tương ứng từ `frameworks.Register` (`internal/frameworks/registry.go`) lúc registration, vd `engine.RegisterPHPImageVariant`, `engine.RegisterUpgrader`. Các hàm phía đọc của engine (`PHPImageVariantForFramework`, `UpgradeFramework`, v.v.) sau đó dispatch dựa trên registry đó thay vì switch theo từng framework.
+
+Bất kể field nào đi theo đường nào, không còn `switch framework { case "magento2": ... }` hardcode cho nó — thêm framework vào registry nghĩa là nó tự động tham gia ở mọi nơi field đó được đọc, không cần sửa switch nào.
 
 ### Dispatch cho fresh-install và clone workflow
 
@@ -100,11 +134,51 @@ Copy theo framework gần giống nhất — vd `internal/frameworks/cakephp/man
 
 Quy tắc tương tự `config.go` ở trên: `magento2.Manifest` (`internal/frameworks/magento2/manifest.go`, được `internal/frameworks/mageos/manifest.go` tham chiếu) và `magento1.Manifest` (`internal/frameworks/magento1/manifest.go`, được `internal/frameworks/openmage/manifest.go` tham chiếu).
 
-### 3. Blueprint compose — `internal/blueprints/files/whimsy/`
+### 3. Tài sản blueprint — `internal/frameworks/whimsy/blueprint/` + `embed.go`
 
-Một file `services.yml` (đoạn Docker Compose) được render qua Go template — copy theo ví dụ gần nhất (`internal/blueprints/files/nextjs/services.yml` cho runtime Node, `internal/blueprints/files/cakephp/` cho PHP). Không phải framework nào cũng cần thư mục riêng: Mage-OS tái dùng thẳng blueprint compose/nginx/Varnish của Magento 2 (xem `varnishTemplateFramework` trong `internal/engine/render.go`) vì nó là bản fork drop-in với cùng hình dạng runtime.
+Tài sản blueprint của framework — đoạn Compose, template vhost nginx, và bất kỳ thứ gì khác blueprint cần — giờ nằm ngay trong package riêng của framework, không còn nằm dưới thư mục dùng chung `internal/blueprints/files/<name>/` nữa (cây thư mục đó vẫn tồn tại, nhưng chỉ chứa tài sản thực sự dùng chung giữa các framework: `proxy.yml`, `includes/`, và template mặc định chung trong `support/nginx/templates`). Gồm hai phần:
 
-Nếu service của bạn cần chạy `user: root` (vd image Node/Python gốc cần root để `npm`/`pip` install không lỗi quyền), hãy cách ly thư mục nào nó ghi vào mà là cache build hay cây dependency — không phải source bạn cần xem trên host — bằng named Docker volume thay vì bind mount, để file root-owned không bao giờ chạm tới host filesystem. Xem `node-modules:` trong `internal/blueprints/files/emdash/services.yml` và `next-cache:` trong `internal/blueprints/files/nextjs/services.yml`. Với những chỗ ghi không cách ly được theo cách đó (vd `__pycache__` của Django, rải rác khắp cây thư mục dự án), chown lại thư mục về đúng owner của bind mount (`stat -c %u:%g .` — không cần truyền UID qua đâu cả) sau lệnh đã chạy as root; xem `installAndMigrate` trong `internal/frameworks/django/bootstrap.go` và `command:` trong `internal/blueprints/files/django/services.yml`.
+1. **`internal/frameworks/whimsy/blueprint/`** — các file tài sản thực tế:
+   - `services.yml` (đoạn Docker Compose, được render qua Go template) nếu framework cần — copy theo ví dụ gần nhất (`internal/frameworks/nextjs/blueprint/services.yml` cho runtime Node, `internal/frameworks/cakephp/blueprint/` cho framework PHP chỉ cần template nginx, không cần đoạn compose riêng). Không phải framework nào cũng cần file này: framework tái dùng hẳn compose của framework khác (Mage-OS tái dùng của Magento 2 — xem `varnishTemplateFramework` trong `internal/engine/render.go`) bỏ qua file này, cũng như framework chỉ đóng góp template nginx (cakephp, drupal, wordpress hiện tại).
+   - một template vhost nginx (vd `whimsy.conf`) nếu framework cần một template khác với mặc định chung.
+   - bất kỳ tài sản lồng nhau nào khác mà blueprint cần — xem `internal/frameworks/magento2/blueprint/varnish/default.vcl` như một ví dụ ngoài `services.yml`/template nginx.
+
+2. **`internal/frameworks/whimsy/embed.go`** — embed thư mục đó và ghép nó vào cây `blueprints.FS` hợp nhất tại thời điểm package init. Copy theo `internal/frameworks/magento2/embed.go` (có cả tài sản lồng nhau lẫn template nginx) hoặc bản đơn giản hơn `internal/frameworks/cakephp/embed.go` (chỉ có template nginx) làm khuôn mẫu ban đầu:
+
+   ```go
+   package whimsy
+
+   import (
+       "embed"
+       "io/fs"
+
+       "govard/internal/blueprints"
+   )
+
+   //go:embed all:blueprint
+   var blueprintFiles embed.FS
+
+   var BlueprintFS fs.FS
+
+   func init() {
+       var err error
+       BlueprintFS, err = fs.Sub(blueprintFiles, "blueprint")
+       if err != nil {
+           panic(err)
+       }
+
+       blueprints.RegisterFrameworkMount(blueprints.FrameworkMount{
+           Framework:     "whimsy",
+           FS:            BlueprintFS,
+           HasDir:        true, // false nếu whimsy chỉ đóng góp template nginx, không có services.yml/tài sản khác
+           NginxTemplate: "whimsy.conf", // "" nếu whimsy không có template nginx riêng
+       })
+   }
+   ```
+
+   `HasDir: true` ghép toàn bộ `BlueprintFS` thành `whimsy/` trong cây hợp nhất (vd `whimsy/services.yml`); `NginxTemplate`, nếu được đặt, luôn được ghép tại `support/nginx/templates/whimsy.conf` bất kể `HasDir`. Xem chú thích doc của `FrameworkMount` trong `internal/blueprints/blueprints.go` để biết đầy đủ hợp đồng (contract). Không cần thêm lệnh đăng ký nào ngoài `init()` này — miễn là có thứ gì đó import `internal/frameworks/whimsy` (bước 5's `all_generated.go` đã làm việc này), Go sẽ chạy `init()` này trước khi `blueprints.FS` được đọc lần nào.
+
+Nếu service của bạn cần chạy `user: root` (vd image Node/Python gốc cần root để `npm`/`pip` install không lỗi quyền), hãy cách ly thư mục nào nó ghi vào mà là cache build hay cây dependency — không phải source bạn cần xem trên host — bằng named Docker volume thay vì bind mount, để file root-owned không bao giờ chạm tới host filesystem. Xem `node-modules:` trong `internal/frameworks/emdash/blueprint/services.yml` và `next-cache:` trong `internal/frameworks/nextjs/blueprint/services.yml`. Với những chỗ ghi không cách ly được theo cách đó (vd `__pycache__` của Django, rải rác khắp cây thư mục dự án), chown lại thư mục về đúng owner của bind mount (`stat -c %u:%g .` — không cần truyền UID qua đâu cả) sau lệnh đã chạy as root; xem `installAndMigrate` trong `internal/frameworks/django/bootstrap.go` và `command:` trong `internal/frameworks/django/blueprint/services.yml`.
 
 ### 4. Triển khai Bootstrap — `internal/frameworks/whimsy/bootstrap.go`
 
@@ -158,9 +232,61 @@ func Definition() types.FrameworkDefinition {
 
 `config` và `manifest` chính là 2 biến cấp package từ bước 1 và 2 — không cần lookup theo tên, vì `Definition()` nằm cùng package với nơi khai báo chúng. `NewWhimsyBootstrap` là constructor cục bộ từ `bootstrap.go` ở bước 4 (không có tiền tố `bootstrap.` — bộ bootstrapper nằm ngay trong package `whimsy`, không phải `internal/engine/bootstrap`). Chỉ đặt `BaseURLManager` nếu framework cần rewrite base-URL riêng cho `govard tunnel` (đa số không cần — `tunnel.NoopManager` mặc định là no-op, đúng cho bất kỳ framework nào không tự lưu base URL trong database hay file config).
 
+Mỗi package framework cũng cần một hàm `Spec()` — đây, không phải `Definition()`, mới là thứ `all_generated.go` thực sự gọi. Với một framework hoàn toàn mới, độc lập như `whimsy`, đây chỉ là một dòng bọc trực tiếp `Definition()`:
+
+```go
+// Spec declares Whimsy as a root framework.
+func Spec() types.FrameworkSpec { return types.FrameworkSpec{Definition: Definition()} }
+```
+
+Copy nguyên văn từ bất kỳ framework không-fork nào, vd `internal/frameworks/wordpress/spec.go` hoặc `internal/frameworks/custom/spec.go`. Nếu `whimsy` lại là bản fork gần của một framework có sẵn, xem mục "Fork một framework có sẵn" dưới đây trước khi viết `Spec()` — `Spec()` của một bản fork trông khác hẳn dòng bọc đơn giản này.
+
+### 5b. Fork một framework có sẵn — `Parent` và `FrameworkPatch`
+
+Nếu `whimsy` là bản fork gần như giống hệt một framework đã đăng ký (như cách Mage-OS fork từ Magento 2, hay OpenMage fork từ Magento 1), đừng copy lại nguyên `Definition()` của framework đó. Thay vào đó, khai báo `whimsy` như một **spec con**: cho nó một `Parent` và một `types.FrameworkPatch` chỉ liệt kê những field thực sự khác với parent. Mọi field khác được kế thừa tự động khi `RegisterSpecs` resolve registry lúc khởi động.
+
+`types.FrameworkPatch` có một field `types.Override[T]` cho mỗi field có thể kế thừa của `FrameworkDefinition` (xem `internal/frameworks/types/spec.go` để biết danh sách đầy đủ). Giá trị zero của `Override[T]` nghĩa là "kế thừa nguyên giá trị của parent" — để thực sự thay đổi gì đó, bạn phải gọi một trong hai:
+
+- `types.Set(value)` — thay giá trị kế thừa bằng `value`.
+- `types.Clear[T]()` — reset tường minh về giá trị zero của `T` (khác với "kế thừa", vì với một số field, giá trị đúng của bản fork thực sự *là* giá trị zero, vd một pipeline `Upgrade` mà parent có nhưng bản fork chủ ý không có).
+
+Ví dụ thật — `Spec()` của `internal/frameworks/mageos/mageos.go` (Mage-OS kế thừa hầu hết hành vi của Magento 2, nhưng patch riêng display name, DB mặc định, chữ ký nhận diện, và một số field đặc thù Magento 2 mà nó không dùng chung):
+
+```go
+// Spec declares Mage-OS as a Magento 2 child. Every inherited behavior is
+// intentionally omitted; only distribution-specific deltas remain here.
+func Spec() types.FrameworkSpec {
+    def := Definition()
+    return types.FrameworkSpec{
+        Parent: "magento2",
+        Definition: types.FrameworkDefinition{
+            Name:    def.Name,
+            Aliases: def.Aliases,
+        },
+        Patch: types.FrameworkPatch{
+            DisplayName:            types.Set(def.DisplayName),
+            MigrationTypes:         types.Clear[types.MigrationTypes](),
+            Config:                 types.Set(def.Config),
+            DefaultDBCredentials:   types.Set(def.DefaultDBCredentials),
+            Detect:                 types.Set(def.Detect),
+            Bootstrap:              types.Set(def.Bootstrap),
+            FreshInstall:           types.Set(def.FreshInstall),
+            DBDriverCategory:       types.Clear[string](),
+            Upgrade:                types.Set(def.Upgrade),
+            VersionProfileResolver: types.Clear[engine.VersionProfileResolver](),
+            // ...and so on for every other field that differs from magento2.
+        },
+    }
+}
+```
+
+Lưu ý `def := Definition()` vẫn tồn tại và vẫn được điền đầy đủ (code khác, và chính `Spec()` này, đọc field trực tiếp từ nó) — pattern fork chỉ thay đổi những gì `Spec()` báo cho registry, không thay đổi `Definition()` bản thân nó. Xem `internal/frameworks/openmage/openmage.go` để có ví dụ thật thứ hai (OpenMage fork từ Magento 1) với một bộ patch khác, nhỏ hơn — hai bản fork không patch cùng field, vì mỗi bản fork có delta hành vi thực tế khác nhau so với parent của nó.
+
+`Parent` phải trỏ tới một framework đã đăng ký (được kiểm tra lúc khởi động — `RegisterSpecs` panic nếu gặp parent không tồn tại hoặc chu trình kế thừa, nên lỗi gõ nhầm ở đây fail ngay lúc process khởi động, không âm thầm ở runtime). Chỉ fork một framework theo cách này nếu nó thực sự là biến thể gần với một parent có thật, đứng trước nó theo alphabet, để kế thừa; đa số framework mới là framework gốc, không phải fork.
+
 ### 6. Đăng ký — không cần sửa gì
 
-Việc đăng ký được sinh tự động, không còn duy trì thủ công: chạy `make generate` (hoặc `go generate ./internal/frameworks/...`) và `internal/frameworks/all_generated.go` sẽ tự nhận package `whimsy` mới — không cần thêm import hay dòng `Register()` nào bằng tay. `make build` và `make test` đã tự chạy bước này cho bạn, nên trên thực tế bạn chỉ cần chạy tay khi muốn xem trước file sinh ra trước khi build.
+Việc đăng ký được sinh tự động, không còn duy trì thủ công: chạy `make generate` (hoặc `go generate ./internal/frameworks/...`) và `internal/frameworks/all_generated.go` sẽ tự nhận `Spec()` của package `whimsy` mới — không cần thêm import hay dòng `RegisterSpecs()` nào bằng tay. `make build` và `make test` đã tự chạy bước này cho bạn, nên trên thực tế bạn chỉ cần chạy tay khi muốn xem trước file sinh ra trước khi build.
 
 **Vị trí vẫn có ý nghĩa cho detection**: `DetectFramework` duyệt qua các framework theo đúng thứ tự đăng ký và trả về kết quả khớp đầu tiên, nên nếu chữ ký nhận diện của framework mới có thể trùng với framework khác đã đăng ký, nó cần được đăng ký ở đúng vị trí tương đối. Thứ tự mặc định là theo alphabet; trường hợp ngoại lệ duy nhất đã biết (Emdash phải đăng ký trước Next.js) được khai báo trong map `PriorityOverrides` của `internal/frameworks/gen/generator/order.go` — thêm một entry ở đó, không phải trong `all_generated.go`, nếu chữ ký nhận diện của `whimsy` cũng mơ hồ tương tự với một framework đã có.
 
@@ -223,8 +349,8 @@ Mage-OS là bản fork drop-in của Magento 2 và tái dùng phần lớn hành
 
 Một service chạy `user: root` (image Node/Python gốc cần vậy để `npm`/`pip` install không lỗi quyền) sẽ ghi bất kỳ file nào nó tạo trong thư mục dự án bind-mount dưới quyền root — user trên host không xóa/sửa được nếu không có `sudo`. Không có 1 fix chung cho mọi trường hợp; chọn theo từng thư mục:
 
-- Nếu thư mục đó là cache có thể build lại hoặc cây dependency, không phải thứ dev cần xem trên host, hãy cách ly nó bằng named Docker volume thay vì bind mount (`node-modules:` trong `internal/blueprints/files/emdash/services.yml`, `next-cache:` trong `internal/blueprints/files/nextjs/services.yml`) — file root-owned không bao giờ chạm tới host filesystem.
-- Nếu file root-owned có thể xuất hiện ở bất kỳ đâu trong cây thư mục (`__pycache__` của Django), chown lại thư mục dự án về đúng owner của bind mount sau lệnh đã chạy as root: `chown -R "$(stat -c %u:%g .)" .` — lệnh này đọc owner *hiện tại* của mount point thay vì phải truyền UID/GID host qua như một tham số mới. Xem `installAndMigrate` trong `internal/frameworks/django/bootstrap.go` và `command:` trong `internal/blueprints/files/django/services.yml`.
+- Nếu thư mục đó là cache có thể build lại hoặc cây dependency, không phải thứ dev cần xem trên host, hãy cách ly nó bằng named Docker volume thay vì bind mount (`node-modules:` trong `internal/frameworks/emdash/blueprint/services.yml`, `next-cache:` trong `internal/frameworks/nextjs/blueprint/services.yml`) — file root-owned không bao giờ chạm tới host filesystem.
+- Nếu file root-owned có thể xuất hiện ở bất kỳ đâu trong cây thư mục (`__pycache__` của Django), chown lại thư mục dự án về đúng owner của bind mount sau lệnh đã chạy as root: `chown -R "$(stat -c %u:%g .)" .` — lệnh này đọc owner *hiện tại* của mount point thay vì phải truyền UID/GID host qua như một tham số mới. Xem `installAndMigrate` trong `internal/frameworks/django/bootstrap.go` và `command:` trong `internal/frameworks/django/blueprint/services.yml`.
 
 ---
 

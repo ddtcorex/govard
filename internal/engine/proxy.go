@@ -230,16 +230,7 @@ $projectsJson = @file_get_contents('/govard-registry/projects.json');
 $activeProjectsJson = @file_get_contents('/govard-registry/active-projects.json');
 
 $dbMap = [
-    'magento1' => 'magento',
-    'magento2' => 'magento',
-    'laravel' => 'laravel',
-    'symfony' => 'symfony',
-    'shopware' => 'shopware',
-    'wordpress' => 'wordpress',
-    'drupal' => 'drupal',
-    'cakephp' => 'cakephp',
-    'openmage' => 'openmage',
-    'prestashop' => 'prestashop'
+` + dbDriverCategoryPHPArray() + `
 ];
 
 $activeProjects = [];
@@ -324,6 +315,27 @@ if ($selectedProject !== '' && isset($projectToServer[$selectedProject])) {
     }
 }
 `
+}
+
+// dbDriverCategoryPHPArray renders the registered DB-driver categories as
+// PHP array literal entries (sorted by framework name for determinism),
+// e.g. "    'magento1' => 'magento',\n    'magento2' => 'magento'".
+func dbDriverCategoryPHPArray() string {
+	names := make([]string, 0, len(dbDriverCategoriesByFramework))
+	for name := range dbDriverCategoriesByFramework {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
+		lines = append(lines, fmt.Sprintf("    %s => %s",
+			phpSingleQuote(name), phpSingleQuote(dbDriverCategoriesByFramework[name])))
+	}
+	return strings.Join(lines, ",\n")
+}
+
+func phpSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "\\'") + "'"
 }
 
 func ActiveProjectNamesFromContainersForTest(containers []container.Summary) []string {

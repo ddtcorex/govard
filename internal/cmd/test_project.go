@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"govard/internal/conventions"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
+	"govard/internal/frameworks/types"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -45,15 +47,10 @@ func init() {
 }
 
 func runDefaultTests(config engine.Config) error {
-	if engine.IsMagento2Family(config.Framework) {
-		return runPHPUnit(config, nil)
+	if command, ok := frameworkTestCommand(config.Framework, "default"); ok {
+		return runInPHPContainer(config, command.Binary, command.Args)
 	}
-	switch config.Framework {
-	case "laravel":
-		return runInPHPContainer(config, "php", []string{"artisan", "test"})
-	default:
-		return runPHPUnit(config, nil)
-	}
+	return runPHPUnit(config, nil)
 }
 
 func runPHPUnit(config engine.Config, args []string) error {
@@ -77,43 +74,54 @@ func runPHPStan(config engine.Config, args []string) error {
 	cmdArgs := []string{binaryPath, "analyze"}
 	if len(args) > 0 {
 		cmdArgs = append(cmdArgs, args...)
+	} else if def, ok := frameworks.Get(config.Framework); ok && len(def.PHPStanPaths) > 0 {
+		cmdArgs = append(cmdArgs, def.PHPStanPaths...)
 	} else {
-		// Default paths for Magento 2 or others
-		if engine.IsMagento2Family(config.Framework) {
-			cmdArgs = append(cmdArgs, "app/code", "app/design")
-		} else {
-			cmdArgs = append(cmdArgs, "app", "src")
-		}
+		cmdArgs = append(cmdArgs, "app", "src")
 	}
 
 	return RunInContainer(config.ProjectName+conventions.PHPSuffix, ResolveProjectExecUser(config, conventions.UserWWWData), "php", cmdArgs)
 }
 
 func runMFTF(config engine.Config, args []string) error {
-	if !engine.IsMagento2Family(config.Framework) {
-		return fmt.Errorf("MFTF is only supported for Magento 2 projects")
-	}
-	fmt.Println()
-	pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Running MFTF Tests ")
-	fmt.Println()
-	binaryPath := "vendor/bin/mftf"
-	cmdArgs := []string{binaryPath, "run:group"}
-	cmdArgs = append(cmdArgs, args...)
-
-	return RunInContainer(config.ProjectName+conventions.PHPSuffix, ResolveProjectExecUser(config, conventions.UserWWWData), "php", cmdArgs)
+	return runFrameworkTestSuite(config, "mftf", args)
 }
 
 func runIntegrationTests(config engine.Config, args []string) error {
-	if engine.IsMagento2Family(config.Framework) {
-		fmt.Println()
-		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Running Magento 2 Integration Tests ")
-		fmt.Println()
-		binaryPath := "vendor/bin/phpunit"
-		cmdArgs := []string{"-c", "dev/tests/integration/phpunit.xml", binaryPath}
-		cmdArgs = append(cmdArgs, args...)
-		return RunInContainer(config.ProjectName+conventions.PHPSuffix, ResolveProjectExecUser(config, conventions.UserWWWData), "php", cmdArgs)
+	return runFrameworkTestSuite(config, "integration", args)
+}
+
+func runFrameworkTestSuite(config engine.Config, suite string, args []string) error {
+	command, ok := frameworkTestCommand(config.Framework, suite)
+	if !ok {
+		return fmt.Errorf("%s tests not configured for framework: %s", suite, config.Framework)
 	}
-	return fmt.Errorf("integration tests not configured for framework: %s", config.Framework)
+	if command.Label != "" {
+		fmt.Println()
+		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Running " + command.Label + " ")
+		fmt.Println()
+	}
+	commandArgs := append(append([]string(nil), command.Args...), args...)
+	return RunInContainer(config.ProjectName+conventions.PHPSuffix, ResolveProjectExecUser(config, conventions.UserWWWData), command.Binary, commandArgs)
+}
+
+func frameworkTestCommand(framework string, suite string) (types.TestCommand, bool) {
+	definition, ok := frameworks.Get(framework)
+	if !ok {
+		return types.TestCommand{}, false
+	}
+	if suite == "default" {
+		command := definition.DefaultTestCommand
+		return command, command.Binary != ""
+	}
+	command, ok := definition.TestSuiteCommands[suite]
+	return command, ok && command.Binary != ""
+}
+
+// FrameworkTestCommandForTest resolves one command without starting a
+// container, so tests cover registry ownership of suite availability.
+func FrameworkTestCommandForTest(framework string, suite string) (types.TestCommand, bool) {
+	return frameworkTestCommand(framework, suite)
 }
 
 func runInPHPContainer(config engine.Config, binary string, args []string) error {

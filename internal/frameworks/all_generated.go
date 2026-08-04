@@ -4,6 +4,7 @@ package frameworks
 
 import (
 	"govard/internal/frameworks/cakephp"
+	"govard/internal/frameworks/custom"
 	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/drupal"
 	"govard/internal/frameworks/emdash"
@@ -16,22 +17,26 @@ import (
 	"govard/internal/frameworks/prestashop"
 	"govard/internal/frameworks/shopware"
 	"govard/internal/frameworks/symfony"
+	"govard/internal/frameworks/types"
 	"govard/internal/frameworks/wordpress"
 )
 
 func init() {
-	Register(emdash.Definition())
-	Register(cakephp.Definition())
-	Register(django.Definition())
-	Register(drupal.Definition())
-	Register(laravel.Definition())
-	Register(magento1.Definition())
-	Register(magento2.Definition())
-	Register(mageos.Definition())
-	Register(nextjs.Definition())
-	Register(openmage.Definition())
-	Register(prestashop.Definition())
-	Register(shopware.Definition())
-	Register(symfony.Definition())
-	Register(wordpress.Definition())
+	RegisterSpecs([]types.FrameworkSpec{
+		emdash.Spec(),
+		cakephp.Spec(),
+		custom.Spec(),
+		django.Spec(),
+		drupal.Spec(),
+		laravel.Spec(),
+		magento1.Spec(),
+		magento2.Spec(),
+		mageos.Spec(),
+		nextjs.Spec(),
+		openmage.Spec(),
+		prestashop.Spec(),
+		shopware.Spec(),
+		symfony.Spec(),
+		wordpress.Spec(),
+	})
 }

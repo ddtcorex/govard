@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -29,8 +30,8 @@ var deployCmd = &cobra.Command{
 		}
 
 		locales, _ := cmd.Flags().GetString("locales")
-		if strings.TrimSpace(locales) == "" && engine.IsMagento2Family(config.Framework) {
-			detected := detectMagento2Locales(config)
+		if strings.TrimSpace(locales) == "" {
+			detected := detectFrameworkLocales(config)
 			if len(detected) > 0 {
 				locales = strings.Join(detected, " ")
 				pterm.Info.Printf("Auto-detected locales: %s\n", locales)
@@ -59,10 +60,14 @@ func init() {
 	rootCmd.AddCommand(deployCmd)
 }
 
-// detectMagento2Locales queries the local database container for all active locale codes.
+// detectFrameworkLocales queries framework-owned locale metadata.
 // It returns a deduplicated, sorted list that always includes "en_US".
 // Falls back silently on any error.
-func detectMagento2Locales(config engine.Config) []string {
+func detectFrameworkLocales(config engine.Config) []string {
+	definition, ok := frameworks.Get(config.Framework)
+	if !ok || definition.BuildDeployLocalesQuery == nil {
+		return nil
+	}
 	containerName := dbContainerName(config)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -70,9 +75,7 @@ func detectMagento2Locales(config engine.Config) []string {
 
 	credentials := resolveLocalDBCredentials(config, containerName)
 	credentials = credentials.withDefaults()
-	configTable := credentials.TablePrefix + "core_config_data"
-	// Query locale codes from core_config_data (covers storefront + admin).
-	query := "SELECT DISTINCT value FROM " + configTable + " WHERE path IN ('general/locale/code','general/locale/timezone') AND value REGEXP '^[a-z]{2}_[A-Z]{2}$';"
+	query := definition.BuildDeployLocalesQuery(credentials.TablePrefix)
 
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {

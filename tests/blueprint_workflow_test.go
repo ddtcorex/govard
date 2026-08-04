@@ -3,10 +3,10 @@ package tests
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
+	"govard/internal/blueprints"
 	"govard/internal/engine"
 
 	"gopkg.in/yaml.v3"
@@ -18,12 +18,8 @@ func TestFullSetupLogic(t *testing.T) {
 
 	projectName := filepath.Base(tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -107,12 +103,8 @@ func TestRenderBlueprintReRendersWhenBlueprintContentsChange(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -174,12 +166,8 @@ func TestRenderBlueprintReRendersWhenProjectComposeOverrideChanges(t *testing.T)
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -237,12 +225,8 @@ func TestRenderBlueprintReRendersWhenNginxCustomConfigDirChanges(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -296,12 +280,8 @@ func TestRenderBlueprintReRendersWhenApacheCustomConfigDirChanges(t *testing.T) 
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -355,12 +335,8 @@ func TestRenderBlueprintReRendersWhenPackageManagerSignalChanges(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(tempDir, "package-lock.json"), []byte("{}"), 0o644); err != nil {
@@ -410,12 +386,8 @@ func TestRenderBlueprintReRendersWhenSSHAuthSockChanges(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -469,12 +441,8 @@ func TestRenderBlueprintIncludesNginxCustomConfigDir(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -548,12 +516,8 @@ func TestRenderBlueprintIncludesApacheCustomConfigDir(t *testing.T) {
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 
@@ -619,12 +583,8 @@ func TestRenderBlueprintIncludesApacheCustomConfigDirInHybridMode(t *testing.T) 
 	tempDir := t.TempDir()
 	setTestGovardHome(t, tempDir)
 
-	_, filename, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(filename), "..")
-	blueprintsDir := filepath.Join(projectRoot, "internal", "blueprints", "files")
-
 	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
-	if err := copyDir(blueprintsDir, destBlueprintsDir); err != nil {
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
 		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 

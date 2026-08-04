@@ -15,8 +15,9 @@ import (
 // support code, not a framework's own Definition() - DiscoverFrameworkDirs
 // skips them.
 var excludedDirs = map[string]bool{
-	"gen":   true,
-	"types": true,
+	"gen":    true,
+	"shared": true,
+	"types":  true,
 }
 
 // DiscoverFrameworkDirs lists the framework package directories directly

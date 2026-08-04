@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"govard/internal/blueprints"
 	"govard/internal/engine"
 
 	"gopkg.in/yaml.v3"
@@ -25,10 +26,9 @@ import (
 
 // TestEnvironment holds the configuration for integration tests
 type TestEnvironment struct {
-	ProjectRoot    string
-	TestProjects   map[string]string
-	BinaryPath     string
-	BlueprintsPath string
+	ProjectRoot  string
+	TestProjects map[string]string
+	BinaryPath   string
 }
 
 // RuntimeShims describes the command shim environment used by integration tests.
@@ -64,10 +64,9 @@ func NewTestEnvironment(t *testing.T) *TestEnvironment {
 	copyBinaryForTest(t, binaryPath, isolatedBinary)
 
 	return &TestEnvironment{
-		ProjectRoot:    projectRoot,
-		TestProjects:   make(map[string]string),
-		BinaryPath:     isolatedBinary,
-		BlueprintsPath: filepath.Join(projectRoot, "internal", "blueprints", "files"),
+		ProjectRoot:  projectRoot,
+		TestProjects: make(map[string]string),
+		BinaryPath:   isolatedBinary,
 	}
 }
 
@@ -391,28 +390,18 @@ func WaitForCondition(t *testing.T, timeout time.Duration, interval time.Duratio
 	return false
 }
 
-// CopyBlueprints copies blueprints to test project
-func CopyBlueprints(t *testing.T, src, dst string) {
+// CopyBlueprints materializes the merged blueprints.FS (the real, in-binary
+// blueprint set - shared includes/proxy.yml plus every framework package's
+// embedded blueprint mount) into dst. It intentionally does NOT source from
+// the on-disk internal/blueprints/files directory: that tree only holds the
+// remainder of blueprints not relocated into internal/frameworks/<name>, so
+// copying it directly would silently drop every relocated framework's
+// nginx templates and service definitions.
+func CopyBlueprints(t *testing.T, dst string) {
 	t.Helper()
 
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		t.Fatalf("Failed to create blueprints dir: %v", err)
-	}
-
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		t.Fatalf("Failed to read blueprints dir: %v", err)
-	}
-
-	for _, entry := range entries {
-		srcPath := filepath.Join(src, entry.Name())
-		dstPath := filepath.Join(dst, entry.Name())
-
-		if entry.IsDir() {
-			copyDir(t, srcPath, dstPath)
-		} else {
-			copyFile(t, srcPath, dstPath)
-		}
+	if err := os.CopyFS(dst, blueprints.FS); err != nil {
+		t.Fatalf("Failed to copy blueprints: %v", err)
 	}
 }
 

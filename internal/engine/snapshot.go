@@ -281,9 +281,8 @@ func copyFileWithMode(src string, dst string, mode os.FileMode) (err error) {
 
 func resolveSnapshotDBCredentials(containerName string) snapshotDBCredentials {
 	credentials := snapshotDBCredentials{
-		Username: "magento",
-		Password: "magento",
-		Database: "magento",
+		Username: "root",
+		Password: "root",
 	}
 
 	inspectCommand := exec.Command("docker", "inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", containerName)
@@ -311,7 +310,12 @@ func buildSnapshotDumpCommand(containerName string, credentials snapshotDBCreden
 	if strings.TrimSpace(credentials.Password) != "" {
 		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
 	}
-	args = append(args, containerName, "mysqldump", "-u", credentials.Username, credentials.Database)
+	args = append(args, containerName, "mysqldump", "-u", credentials.Username)
+	if strings.TrimSpace(credentials.Database) == "" {
+		args = append(args, "--all-databases")
+	} else {
+		args = append(args, credentials.Database)
+	}
 	return exec.Command("docker", args...)
 }
 
@@ -321,17 +325,17 @@ func buildSnapshotImportCommand(containerName string, credentials snapshotDBCred
 	if strings.TrimSpace(credentials.Password) != "" {
 		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
 	}
-	args = append(args, containerName, "mysql", "-u", credentials.Username, credentials.Database)
+	args = append(args, containerName, "mysql", "-u", credentials.Username)
+	if strings.TrimSpace(credentials.Database) != "" {
+		args = append(args, credentials.Database)
+	}
 	return exec.Command("docker", args...)
 }
 
 func normalizeSnapshotDBCredentials(credentials snapshotDBCredentials) snapshotDBCredentials {
 	result := credentials
 	if strings.TrimSpace(result.Username) == "" {
-		result.Username = "magento"
-	}
-	if strings.TrimSpace(result.Database) == "" {
-		result.Database = "magento"
+		result.Username = "root"
 	}
 	return result
 }

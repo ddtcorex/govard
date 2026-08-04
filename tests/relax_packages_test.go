@@ -1,7 +1,7 @@
 package tests
 
 import (
-	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 	"testing"
 )
 
@@ -20,7 +20,7 @@ func TestRelaxPackagesFromContent(t *testing.T) {
 }`
 
 	// Call the function with empty containerName so it doesn't try to run docker commands
-	relaxed := engine.RelaxPackagesFromContentForTest(content, "")
+	relaxed := magento2.RelaxPackagesFromContentForTest(content, "")
 
 	expected := []string{
 		"symfony/process:*",
@@ -52,7 +52,7 @@ func TestRelaxPackagesFromContentWithNoMatches(t *testing.T) {
         "some/other-package": "^1.0"
     }
 }`
-	relaxed := engine.RelaxPackagesFromContentForTest(content, "")
+	relaxed := magento2.RelaxPackagesFromContentForTest(content, "")
 	if len(relaxed) != 0 {
 		t.Errorf("Expected 0 relaxed packages, got %d: %v", len(relaxed), relaxed)
 	}

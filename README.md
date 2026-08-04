@@ -57,7 +57,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Global Services**: Built-in Proxy (Caddy), Mailpit, PHPMyAdmin, and Portainer (Default login for Portainer is `admin` / `AdminGovard123$`).
 - **Search Engine Host Access**: Elasticsearch/OpenSearch is automatically reachable from the host at `http://<project>.test:9200` — no extra config, reuses the same Caddy proxy that serves your project's HTTPS domain.
 - **Desktop Dashboard**: Wails-based UI with live logs, quick actions, and settings.
-- **Native Framework Upgrades**: Multi-framework upgrade pipeline (`govard upgrade`) for Magento 2, Mage-OS, Laravel, Symfony, and WordPress that automates environment restarts, dependency updates, and database migrations.
+- **Native Framework Upgrades**: Multi-framework upgrade pipeline (`govard upgrade`) for Magento 2, Mage-OS, Magento 1, Laravel, Symfony, and WordPress that automates environment restarts, dependency updates, and database migrations.
 
 ---
 

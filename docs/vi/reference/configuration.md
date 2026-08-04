@@ -130,7 +130,7 @@ linked_projects:
 | `domain` | Domain chính của dự án (ví dụ: `myproject.test`) |
 | `extra_domains` | Các hostname bổ sung được định tuyến qua local proxy |
 | `store_domains` | Magento multi-store hostname → ánh xạ mã scope |
-| `table_prefix` | Tiền tố bảng database cho Magento 2, Magento 1 hoặc OpenMage; bỏ qua hoặc để trống nếu không dùng |
+| `table_prefix` | Tiền tố bảng database cho Magento 2, Mage-OS, Magento 1, OpenMage hoặc PrestaShop; bỏ qua hoặc để trống nếu không dùng |
 | `linked_projects` | Danh sách các dependency (tên dự án hoặc IP:domain) để kết nối liên dự án |
 
 ::: important QUAN TRỌNG
@@ -167,7 +167,7 @@ Sử dụng `table_prefix` khi các bảng cơ sở dữ liệu Magento có ti�
 table_prefix: "demo_"
 ```
 
-Govard sử dụng giá trị này cho Magento 2 `env.php`, Magento 1/OpenMage `local.xml`, SQL của lệnh `config auto`, các bộ lọc dữ liệu khi sync DB và quá trình migrate từ Warden. Giá trị này chỉ được chứa chữ cái, chữ số và dấu gạch dưới.
+Govard sử dụng giá trị này cho Magento 2/Mage-OS `env.php`, Magento 1/OpenMage `local.xml`, PrestaShop `parameters.php`, SQL của lệnh `config auto`, các bộ lọc dữ liệu khi sync DB và quá trình migrate từ Warden. Giá trị này chỉ được chứa chữ cái, chữ số và dấu gạch dưới.
 
 ---
 

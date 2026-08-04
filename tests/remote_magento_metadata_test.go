@@ -6,9 +6,11 @@ import (
 	"testing"
 
 	"govard/internal/engine/remote"
+	"govard/internal/frameworks/magento1"
+	"govard/internal/frameworks/magento2"
 )
 
-func TestParseMagentoDBHostPort(t *testing.T) {
+func TestParseRemoteDatabaseHostPort(t *testing.T) {
 	testCases := []struct {
 		name    string
 		raw     string
@@ -25,7 +27,7 @@ func TestParseMagentoDBHostPort(t *testing.T) {
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
-			host, port := remote.ParseMagentoDBHostPort(testCase.raw)
+			host, port := remote.ParseDatabaseHostPort(testCase.raw)
 			if host != testCase.expectH {
 				t.Fatalf("host mismatch: got %q want %q", host, testCase.expectH)
 			}
@@ -53,7 +55,7 @@ func TestNormalizeMagentoVersion(t *testing.T) {
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
-			actual := remote.NormalizeMagentoVersion(testCase.raw)
+			actual := magento2.NormalizeMagentoVersion(testCase.raw)
 			if actual != testCase.expect {
 				t.Fatalf("version mismatch: got %q want %q", actual, testCase.expect)
 			}
@@ -70,7 +72,7 @@ func TestDecodeMagento2EnvironmentPayloadIncludesTablePrefix(t *testing.T) {
 		"table_prefix": "demo_",
 	})
 
-	metadata, err := remote.DecodeMagento2EnvironmentPayloadForTest(encoded)
+	metadata, err := magento2.DecodeMagento2EnvironmentPayloadForTest(encoded)
 	if err != nil {
 		t.Fatalf("DecodeMagento2EnvironmentPayloadForTest() error = %v", err)
 	}
@@ -88,7 +90,7 @@ func TestDecodeMagento1EnvironmentPayloadIncludesTablePrefix(t *testing.T) {
 		"table_prefix": "demo_",
 	})
 
-	metadata, err := remote.DecodeMagento1EnvironmentPayloadForTest(encoded)
+	metadata, err := magento1.DecodeMagento1EnvironmentPayloadForTest(encoded)
 	if err != nil {
 		t.Fatalf("DecodeMagento1EnvironmentPayloadForTest() error = %v", err)
 	}

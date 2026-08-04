@@ -3,17 +3,18 @@ package cmd
 import (
 	"fmt"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
+	"govard/internal/frameworks/types"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
-var (
-	runMagento2AutoConfiguration = func(projectName string, config engine.Config, force bool) error {
-		return engine.ConfigureMagento(projectName, config, force, nil)
-	}
-	runMagento1AutoConfiguration = engine.ConfigureMagento1
-)
+// frameworkLookupForAutoConfigure is swappable in tests so
+// ApplyFrameworkAutoConfigurationForTest can exercise a fake AutoConfigure
+// closure without registering a throwaway framework in the real,
+// process-global frameworks registry.
+var frameworkLookupForAutoConfigure = frameworks.Get
 
 var configAutoCmd = &cobra.Command{
 	Use:   "auto",
@@ -35,39 +36,33 @@ var configAutoCmd = &cobra.Command{
 }
 
 func applyFrameworkAutoConfiguration(cmd *cobra.Command, config engine.Config) error {
-	switch config.Framework {
-	case "magento2", "mageos":
-		// Proactively fix search host in DB via CLI (using govard db query)
-		if config.Stack.Features.Search || config.Stack.Services.Search != "none" {
-			_ = runMagentoSearchHostFixViaCLI(cmd, config)
-		}
-		return runMagento2AutoConfiguration(config.ProjectName, config, true)
-	case "magento1", "openmage":
-		return runMagento1AutoConfiguration(config.ProjectName, config)
-	case "wordpress":
-		return nil
-	default:
+	def, ok := frameworkLookupForAutoConfigure(config.Framework)
+	if !ok || def.AutoConfigure == nil {
 		pterm.Warning.Printf(
 			"Auto configuration is not supported for framework %q yet.\n",
 			config.Framework,
 		)
 		return nil
 	}
-}
-
-func SetMagento1AutoConfigurationRunnerForTest(fn func(projectName string, config engine.Config) error) func() {
-	previous := runMagento1AutoConfiguration
-	runMagento1AutoConfiguration = fn
-	return func() {
-		runMagento1AutoConfiguration = previous
+	if def.BuildSearchHostFixSQL != nil {
+		// The framework provides its SQL while generic command orchestration
+		// executes it through the local database command.
+		if config.Stack.Features.Search || config.Stack.Services.Search != "none" {
+			_ = runFrameworkSearchHostFixViaCLI(cmd, config)
+		}
 	}
+	return def.AutoConfigure(cmd, config)
 }
 
-func SetMagento2AutoConfigurationRunnerForTest(fn func(projectName string, config engine.Config, force bool) error) func() {
-	previous := runMagento2AutoConfiguration
-	runMagento2AutoConfiguration = fn
+// SetFrameworkLookupForAutoConfigureForTest swaps the framework-lookup used
+// by applyFrameworkAutoConfiguration so tests can exercise a fake
+// AutoConfigure closure without registering a throwaway framework in the
+// real, process-global frameworks registry.
+func SetFrameworkLookupForAutoConfigureForTest(fn func(name string) (types.FrameworkDefinition, bool)) func() {
+	previous := frameworkLookupForAutoConfigure
+	frameworkLookupForAutoConfigure = fn
 	return func() {
-		runMagento2AutoConfiguration = previous
+		frameworkLookupForAutoConfigure = previous
 	}
 }
 

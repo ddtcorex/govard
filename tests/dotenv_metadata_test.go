@@ -3,11 +3,11 @@ package tests
 import (
 	"testing"
 
-	"govard/internal/engine/remote"
+	"govard/internal/frameworks/shared/dotenv"
 )
 
 func TestParseDotenvDatabaseURL(t *testing.T) {
-	info, err := remote.ParseDotenvDatabaseURLForTest("mysql://etl_user:s3cr3t@127.0.0.1:3307/etl_dev?serverVersion=8.0")
+	info, err := dotenv.ParseDatabaseURLForTest("mysql://etl_user:s3cr3t@127.0.0.1:3307/etl_dev?serverVersion=8.0")
 	if err != nil {
 		t.Fatalf("expected parse success, got error: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestParseDotenvDatabaseURL(t *testing.T) {
 }
 
 func TestResolveDotenvDBInfoPrefersDatabaseURL(t *testing.T) {
-	info, err := remote.ResolveDotenvDBInfoForTest(
+	info, err := dotenv.ResolveDatabaseInfoForTest(
 		"mysql://correct_user:correct_pass@db.example:3309/correct_db",
 		"",
 		"",
@@ -53,7 +53,7 @@ func TestResolveDotenvDBInfoPrefersDatabaseURL(t *testing.T) {
 }
 
 func TestResolveDotenvDBInfoFromDiscreteVars(t *testing.T) {
-	info, err := remote.ResolveDotenvDBInfoForTest(
+	info, err := dotenv.ResolveDatabaseInfoForTest(
 		"",
 		"db.internal",
 		"3310",

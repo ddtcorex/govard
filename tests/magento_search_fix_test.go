@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"govard/internal/engine"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestBuildMagentoSearchHostFixSQL(t *testing.T) {
@@ -50,7 +50,7 @@ func TestBuildMagentoSearchHostFixSQL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sql := engine.BuildMagentoSearchHostFixSQL(tt.host, tt.searchEngine)
+			sql := magento2.BuildMagentoSearchHostFixSQL(tt.host, tt.searchEngine)
 
 			for _, exp := range tt.expected {
 				if !strings.Contains(sql, exp) {

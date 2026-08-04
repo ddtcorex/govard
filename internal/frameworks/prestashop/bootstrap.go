@@ -232,23 +232,27 @@ func (p *PrestaShopBootstrap) resolveDBConfig() (host, user, pass, name, prefix 
 // Options when present (so any module data encrypted under the remote's keys stays
 // decryptable locally), falling back to a freshly generated random value otherwise.
 func (p *PrestaShopBootstrap) resolveSecrets() (secret, cookieKey, cookieIV, newCookieKey string, err error) {
-	secret, err = resolveOrGeneratePrestaShopSecret(p.Options.PrestaShopSecret)
+	secret, err = resolveOrGeneratePrestaShopSecret(p.remoteMetadata("prestashop.secret"))
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("generate secret: %w", err)
 	}
-	cookieKey, err = resolveOrGeneratePrestaShopSecret(p.Options.PrestaShopCookieKey)
+	cookieKey, err = resolveOrGeneratePrestaShopSecret(p.remoteMetadata("prestashop.cookie_key"))
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("generate cookie_key: %w", err)
 	}
-	cookieIV, err = resolveOrGeneratePrestaShopSecret(p.Options.PrestaShopCookieIV)
+	cookieIV, err = resolveOrGeneratePrestaShopSecret(p.remoteMetadata("prestashop.cookie_iv"))
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("generate cookie_iv: %w", err)
 	}
-	newCookieKey, err = resolveOrGeneratePrestaShopSecret(p.Options.PrestaShopNewCookieKey)
+	newCookieKey, err = resolveOrGeneratePrestaShopSecret(p.remoteMetadata("prestashop.new_cookie_key"))
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("generate new_cookie_key: %w", err)
 	}
 	return secret, cookieKey, cookieIV, newCookieKey, nil
+}
+
+func (p *PrestaShopBootstrap) remoteMetadata(key string) string {
+	return p.Options.RemoteMetadata[key]
 }
 
 func resolveOrGeneratePrestaShopSecret(remoteValue string) (string, error) {

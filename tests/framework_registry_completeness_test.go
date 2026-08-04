@@ -11,15 +11,13 @@ import (
 	"govard/internal/frameworks"
 )
 
-// TestRegistryHasAllTwelveFrameworks confirms the package-level registry
-// (populated by all_generated.go's init()) has exactly the same 12 frameworks as
-// allFrameworkNames (defined in framework_snapshot_test.go, Plan 1) -
-// the two lists must never drift, or a framework would silently be
-// missing from either the registry or its golden-snapshot coverage.
-func TestRegistryHasAllTwelveFrameworks(t *testing.T) {
+// TestRegistryIncludesSnapshotFrameworksAndCustom confirms the package-level
+// registry contains every golden-snapshot framework plus Custom, which is a
+// selectable escape hatch deliberately excluded from those snapshots.
+func TestRegistryIncludesSnapshotFrameworksAndCustom(t *testing.T) {
 	all := frameworks.All()
-	if len(all) != len(allFrameworkNames) {
-		t.Fatalf("registry has %d frameworks, allFrameworkNames has %d", len(all), len(allFrameworkNames))
+	if len(all) != len(allFrameworkNames)+1 {
+		t.Fatalf("registry has %d frameworks, want %d snapshot frameworks plus custom", len(all), len(allFrameworkNames))
 	}
 
 	registered := map[string]bool{}
@@ -30,6 +28,9 @@ func TestRegistryHasAllTwelveFrameworks(t *testing.T) {
 		if !registered[name] {
 			t.Errorf("framework %q is in allFrameworkNames but not registered in internal/frameworks", name)
 		}
+	}
+	if !registered["custom"] {
+		t.Error("custom must be registered because CLI and desktop expose it as a selectable framework")
 	}
 }
 

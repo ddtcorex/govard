@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/pterm/pterm"
 	"gopkg.in/yaml.v3"
@@ -138,8 +139,14 @@ func unblockSearchIndex(check engine.DoctorCheck) DoctorFixResult {
 	}
 
 	config := loadConfig()
+	definition, ok := frameworks.Get(config.Framework)
+	if !ok || definition.UnblockSearchIndex == nil {
+		result.Status = DoctorFixStatusUnavailable
+		result.Message = fmt.Sprintf("%s does not support this search-index fix.", config.Framework)
+		return result
+	}
 	result.Actions = append(result.Actions, "unblock search index via docker exec curl")
-	if err := engine.FixElasticsearchIndexBlock(config.ProjectName, config); err != nil {
+	if err := definition.UnblockSearchIndex(config); err != nil {
 		result.Status = DoctorFixStatusSkipped
 		result.Message = err.Error()
 		return result
