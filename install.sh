@@ -152,6 +152,7 @@ desktop_install_enabled() {
         # APT package lists are empty (e.g. a freshly provisioned host that
         # never ran apt-get update) — refresh once before concluding the
         # package is genuinely unavailable.
+        info "APT package lists are empty; running 'sudo apt-get update' to check Desktop availability..."
         sudo apt-get update >/dev/null 2>&1 || true
         apt-cache show "$WEBKITGTK_PACKAGE" >/dev/null 2>&1
         return

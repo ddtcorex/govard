@@ -105,6 +105,20 @@ func installScriptAPTCache(t *testing.T, exitCode int) string {
 	if err := os.WriteFile(path, []byte(contents), 0o755); err != nil {
 		t.Fatalf("write apt-cache shim: %v", err)
 	}
+
+	// desktop_install_enabled() falls back to `sudo apt-get update` when APT
+	// package lists are unpopulated (a real, machine-state-dependent
+	// condition - see apt_lists_populated() in install.sh). sudo typically
+	// enforces its own secure_path for the command it execs, ignoring our
+	// PATH override, so shimming apt-get here would not reliably intercept
+	// it. Shimming sudo itself does, keeping this test hermetic (no real
+	// network access or privilege escalation) regardless of whether
+	// /var/lib/apt/lists happens to be empty on the machine running the test.
+	sudoPath := filepath.Join(dir, "sudo")
+	if err := os.WriteFile(sudoPath, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write sudo shim: %v", err)
+	}
+
 	return dir
 }
 
