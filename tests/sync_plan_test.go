@@ -214,6 +214,53 @@ func TestSyncPlanDatabaseUsesTablePrefixForIgnoredTables(t *testing.T) {
 	}
 }
 
+// TestSyncPlanDatabaseActionFailsFastWhenLocalContainerNotRunning is a
+// regression test: `sync --db` used to build and start the remote dump /
+// local import pipeline without ever checking the local DB container was
+// up, so against a stopped/missing container it could hang indefinitely
+// (docker exec behaving unpredictably) instead of failing with a clear
+// error - unlike `db import --stream-db`, which already guarded this. The
+// database action must now fail fast, before touching docker exec at all.
+func TestSyncPlanDatabaseActionFailsFastWhenLocalContainerNotRunning(t *testing.T) {
+	config := engine.Config{
+		ProjectName: "test-project",
+		Framework:   "custom",
+	}
+
+	endpoints := cmd.ResolveSyncEndpointsForTest(
+		cmd.SyncEndpoint{
+			Name:     "production",
+			IsLocal:  false,
+			RootPath: "/var/www/html",
+			RemoteCfg: engine.RemoteConfig{
+				Host: "production.example.com",
+				Path: "/var/www/html",
+			},
+		},
+		cmd.SyncEndpoint{Name: "local", IsLocal: true, RootPath: "/home/user/project"},
+	)
+
+	opts := cmd.SyncExecutionOptionsForTest(false, "", true)
+
+	plan, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts)
+	if err != nil {
+		t.Fatalf("BuildSyncExecutionPlanForTest() error = %v", err)
+	}
+	if len(plan.DatabaseActions) != 1 {
+		t.Fatalf("expected 1 database action, got %d", len(plan.DatabaseActions))
+	}
+
+	// No real "test-project-db-1" container exists in this hermetic test
+	// environment, so running the action must surface that immediately.
+	actionErr := plan.DatabaseActions[0]()
+	if actionErr == nil {
+		t.Fatal("expected database action to fail when the local container is not running, got nil error")
+	}
+	if !strings.Contains(actionErr.Error(), "is not running") {
+		t.Fatalf("expected a clear 'not running' error, got: %v", actionErr)
+	}
+}
+
 func TestSyncPlanDatabaseStopsWhenRemoteCredentialsCannotBeResolved(t *testing.T) {
 	// Magento2 resolves DB credentials by probing the remote over SSH for .env/env.php.
 	// Against a host that can't be reached, that probe fails -- the sync must stop

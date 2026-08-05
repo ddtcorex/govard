@@ -86,6 +86,15 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 		desc := fmt.Sprintf("ssh %s \"%s\" | docker exec -i %s sh -lc \"%s\"", remote.RemoteTarget(source.RemoteCfg), dumpCmdStr, localDBContainer, importCmdStr)
 
 		return desc, func() error {
+			// The local container is the import target here, so it must be up
+			// before we start streaming into it - otherwise `docker exec`
+			// against it can behave unpredictably (e.g. hang) instead of
+			// failing fast with a clear error (see runStreamDBImport/
+			// buildDBImportCommand, which already guard this for `db import`).
+			if err := ensureLocalDBRunning(localDBContainer); err != nil {
+				return err
+			}
+
 			spinner, _ := pterm.DefaultSpinner.Start("Fetching remote database size...")
 			totalSize, _ := GetDatabaseSize(config, source.Name, source.RemoteCfg, remoteCredentials, noNoise, noPII)
 			spinner.Success()
@@ -106,6 +115,13 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 		desc := fmt.Sprintf("docker exec -i %s sh -lc \"%s\" | ssh %s \"%s\"", localDBContainer, dumpCmdStr, remote.RemoteTarget(destination.RemoteCfg), importCmdStr)
 
 		return desc, func() error {
+			// The local container is the dump source here, so it must be up
+			// before we start reading from it - see the comment in the
+			// remote-to-local branch above for why this matters.
+			if err := ensureLocalDBRunning(localDBContainer); err != nil {
+				return err
+			}
+
 			spinner, _ := pterm.DefaultSpinner.Start("Fetching local database size...")
 			totalSize, _ := GetDatabaseSize(config, "local", engine.RemoteConfig{}, localCredentials, noNoise, noPII)
 			spinner.Success()
