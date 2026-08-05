@@ -79,9 +79,17 @@ func TestSanitizeSQLLine(t *testing.T) {
 		},
 		{
 			name:     "Remove Sandbox lines",
-			line:     "/*... 999999.*enable the sandbox mode ...*/",
+			line:     `/*!999999\- enable the sandbox mode */`,
 			expected: "",
 			keep:     false,
+		},
+		{
+			name: "Keep extended-insert row containing sandbox and 999999 as real data",
+			line: "INSERT INTO `core_config_data` VALUES (1,'default',0,'general/store_information/name','MyStore')," +
+				"(999999,'default',0,'somekey','someval'),(2,'default',0,'payment/paypal/environment','sandbox');",
+			expected: "INSERT INTO `core_config_data` VALUES (1,'default',0,'general/store_information/name','MyStore')," +
+				"(999999,'default',0,'somekey','someval'),(2,'default',0,'payment/paypal/environment','sandbox');",
+			keep: true,
 		},
 		{
 			name:     "Strip DEFINER",

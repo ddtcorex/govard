@@ -9,8 +9,16 @@ import (
 )
 
 var (
-	sqlDefinerPattern       = regexp.MustCompile(`DEFINER\s*=\s*[^*]+\*`)
-	sqlSandboxPattern       = regexp.MustCompile(`.*999999.*sandbox.*`)
+	sqlDefinerPattern = regexp.MustCompile(`DEFINER\s*=\s*[^*]+\*`)
+	// Matches only the literal mysqlbinlog "sandbox mode" comment artifact
+	// (e.g. `/*!999999\- enable the sandbox mode */`), anchored to the
+	// `/*!999999` version-comment delimiter and closing `*/`. Must NOT be
+	// a bare substring match: mysqldump uses --extended-insert by default,
+	// so a whole table's rows can share one line, and real data containing
+	// both the digits "999999" and the word "sandbox" (e.g. a PayPal/Braintree
+	// "sandbox" config value next to an unrelated numeric ID) would otherwise
+	// cause that entire INSERT statement to be silently dropped.
+	sqlSandboxPattern       = regexp.MustCompile(`/\*!999999.*sandbox.*\*/`)
 	sqlRowFormatPattern     = regexp.MustCompile(`ROW_FORMAT\s*=\s*FIXED`)
 	sqlCollation0900Pattern = regexp.MustCompile(`utf8mb4_0900_ai_ci`)
 	sqlCollation520Pattern  = regexp.MustCompile(`utf8(mb4)?_unicode_520_ci`)
@@ -52,7 +60,7 @@ func SanitizeSQLLine(line string) (string, bool) {
 	hasRowFormat := strings.Contains(line, "ROW_FORMAT")
 	has0900 := strings.Contains(line, "utf8mb4_0900_ai_ci")
 	has520 := strings.Contains(line, "_unicode_520_ci")
-	hasSandbox := strings.Contains(line, "sandbox")
+	hasSandbox := strings.Contains(line, "/*!999999")
 
 	// If none of these exist, return the line as-is immediately.
 	if !hasDefiner && !hasRowFormat && !has0900 && !has520 && !hasSandbox {
