@@ -583,8 +583,15 @@ govard lock generate --file .govard/govard.lock
 Tải về phiên bản Govard mới nhất, kiểm định mã checksum và thay thế các binary đã cài đặt một cách an toàn.
 
 ```bash
-govard self-update
+govard self-update                    # cập nhật theo channel hiện tại
+govard self-update --channel beta     # chuyển sang nhận bản beta (được lưu lại)
+govard self-update --channel stable   # quay lại bản stable (được lưu lại)
+govard self-update --version v1.60.0-beta.1  # cài đúng 1 phiên bản cụ thể
 ```
+
+Channel cập nhật được lưu lại qua các lần chạy (CLI và Govard Desktop dùng
+chung cấu hình này), nên `govard self-update` không kèm flag sẽ tiếp tục
+theo channel bạn đã chọn lần gần nhất.
 
 ### `govard upgrade`
 

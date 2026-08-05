@@ -140,5 +140,6 @@ changelog:
   format: "{{ .Message }}"
 
 release:
+  prerelease: auto
   footer: |
     Automated release by GoReleaser.

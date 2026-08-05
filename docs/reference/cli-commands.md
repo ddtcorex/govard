@@ -581,8 +581,15 @@ govard lock generate --file .govard/govard.lock
 Download release artifacts, verify checksums, and replace binaries atomically.
 
 ```bash
-govard self-update
+govard self-update                    # update within your current channel
+govard self-update --channel beta     # opt into beta releases (persists)
+govard self-update --channel stable   # switch back to stable (persists)
+govard self-update --version v1.60.0-beta.1  # install one specific version
 ```
+
+The update channel is remembered across runs (both the CLI and Govard
+Desktop read the same setting), so a plain `govard self-update` keeps
+following whichever channel you last selected.
 
 ### `govard upgrade`
 

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/updater"
 	"io"
 	"net/http"
 	"os"
@@ -31,6 +32,7 @@ const (
 	selfUpdateChecksumsFile         = "checksums.txt"
 	selfUpdateRepoEnvVar            = "GOVARD_REPO"
 	selfUpdateLatestURLEnvVar       = "GOVARD_SELF_UPDATE_LATEST_URL"
+	selfUpdateListURLEnvVar         = "GOVARD_SELF_UPDATE_LIST_URL"
 	selfUpdateReleaseBaseURLEnvVar  = "GOVARD_SELF_UPDATE_RELEASE_BASE_URL"
 	selfUpdateConfirmOverrideEnvVar = "GOVARD_SELF_UPDATE_CONFIRM"
 	selfUpdateDesktopTargetEnvVar   = "GOVARD_SELF_UPDATE_DESKTOP_TARGET"
@@ -40,6 +42,7 @@ const (
 
 var selfUpdateVersion string
 var selfUpdateAssumeYes bool
+var selfUpdateChannel string
 
 var selfUpdateCmd = &cobra.Command{
 	Use:   "self-update",
@@ -71,6 +74,14 @@ var selfUpdateCmd = &cobra.Command{
 		releaseTag := ""
 		repo := selfUpdateRepo()
 
+		if strings.TrimSpace(selfUpdateChannel) != "" {
+			if err := updater.SetChannel(selfUpdateChannel); err != nil {
+				return err
+			}
+			pterm.Info.Printf("Update channel set to %s.\n", updater.GetChannel())
+		}
+		effectiveChannel := updater.GetChannel()
+
 		var err error
 		if strings.TrimSpace(selfUpdateVersion) != "" {
 			releaseTag, err = validateReleaseTag(selfUpdateVersion)
@@ -78,8 +89,8 @@ var selfUpdateCmd = &cobra.Command{
 				return err
 			}
 		} else {
-			pterm.Info.Println("Resolving latest release...")
-			releaseTag, err = fetchLatestReleaseTag(client, repo)
+			pterm.Info.Printf("Resolving latest %s release...\n", effectiveChannel)
+			releaseTag, err = fetchChannelReleaseTag(client, repo, effectiveChannel)
 			if err != nil {
 				return err
 			}
@@ -209,6 +220,7 @@ var selfUpdateCmd = &cobra.Command{
 func init() {
 	selfUpdateCmd.Flags().StringVar(&selfUpdateVersion, "version", "", "Install a specific version (e.g. v1.0.1)")
 	selfUpdateCmd.Flags().BoolVar(&selfUpdateAssumeYes, "yes", false, "Skip confirmation prompt")
+	selfUpdateCmd.Flags().StringVar(&selfUpdateChannel, "channel", "", "Set and use an update channel (stable or beta); persists for future runs")
 }
 
 func normalizeReleaseTag(tag string) string {
@@ -224,7 +236,7 @@ func normalizeReleaseTag(tag string) string {
 
 func isValidReleaseTag(tag string) bool {
 	// Simple regex to ensure tag follows vX.Y.Z format, avoiding path traversal or command injection
-	matched, _ := regexp.MatchString(`^v\d+\.\d+\.\d+$`, tag)
+	matched, _ := regexp.MatchString(`^v\d+\.\d+\.\d+(-beta\.\d+)?$`, tag)
 	return matched
 }
 
@@ -281,6 +293,52 @@ func fetchLatestReleaseTag(client *http.Client, repo string) (string, error) {
 	}
 
 	return tag, nil
+}
+
+func selfUpdateReleaseListURL(repo string) string {
+	if override := strings.TrimSpace(os.Getenv(selfUpdateListURLEnvVar)); override != "" {
+		return strings.TrimRight(override, "/")
+	}
+	return fmt.Sprintf("https://api.github.com/repos/%s/releases", repo)
+}
+
+func fetchChannelReleaseTag(client *http.Client, repo, channel string) (string, error) {
+	if channel != updater.ChannelBeta {
+		return fetchLatestReleaseTag(client, repo)
+	}
+
+	body, err := downloadText(client, selfUpdateReleaseListURL(repo))
+	if err != nil {
+		return "", err
+	}
+
+	var releases []struct {
+		TagName string `json:"tag_name"`
+		Draft   bool   `json:"draft"`
+	}
+	if err := json.Unmarshal([]byte(body), &releases); err != nil {
+		return "", fmt.Errorf("decode release list payload: %w", err)
+	}
+
+	tags := make([]string, 0, len(releases))
+	for _, release := range releases {
+		if release.Draft {
+			continue
+		}
+		tags = append(tags, release.TagName)
+	}
+
+	newestTag, ok := updater.NewestReleaseTag(tags)
+	if !ok {
+		return "", errors.New("no valid beta releases found")
+	}
+
+	return validateReleaseTag(newestTag)
+}
+
+// FetchChannelReleaseTagForTest exposes fetchChannelReleaseTag for tests in /tests.
+func FetchChannelReleaseTagForTest(client *http.Client, repo, channel string) (string, error) {
+	return fetchChannelReleaseTag(client, repo, channel)
 }
 
 func buildReleaseAssetName(binaryName, releaseTag, goos, goarch string) (string, string, error) {

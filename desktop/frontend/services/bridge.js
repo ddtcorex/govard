@@ -308,6 +308,14 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.InstallLatestUpdate?.bind(bridge));
   },
+  async getUpdateChannel() {
+    const bridge = getBridge();
+    return call(bridge?.GetUpdateChannel?.bind(bridge));
+  },
+  async setUpdateChannel(channel) {
+    const bridge = getBridge();
+    return call(bridge?.SetUpdateChannel?.bind(bridge), channel);
+  },
   async restartDesktopApp() {
     const bridge = getBridge();
     return call(bridge?.RestartDesktopApp?.bind(bridge));

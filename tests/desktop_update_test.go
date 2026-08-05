@@ -184,6 +184,132 @@ func TestDesktopSummarizeSelfUpdateErrorAuthorizationDenied(t *testing.T) {
 	}
 }
 
+func TestDesktopGetUpdateChannelDefaultsToStable(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	desktop.ResetStateForTest()
+
+	app := desktop.NewApp()
+	channel, err := app.GetUpdateChannel()
+	if err != nil {
+		t.Fatalf("GetUpdateChannel failed: %v", err)
+	}
+	if channel != "stable" {
+		t.Fatalf("expected stable channel, got %q", channel)
+	}
+}
+
+func TestDesktopSetUpdateChannelPersists(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	desktop.ResetStateForTest()
+
+	app := desktop.NewApp()
+	applied, err := app.SetUpdateChannel("beta")
+	if err != nil {
+		t.Fatalf("SetUpdateChannel failed: %v", err)
+	}
+	if applied != "beta" {
+		t.Fatalf("expected applied channel beta, got %q", applied)
+	}
+
+	channel, err := app.GetUpdateChannel()
+	if err != nil {
+		t.Fatalf("GetUpdateChannel failed: %v", err)
+	}
+	if channel != "beta" {
+		t.Fatalf("expected persisted channel beta, got %q", channel)
+	}
+}
+
+func TestDesktopSetUpdateChannelRejectsInvalidValue(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	desktop.ResetStateForTest()
+
+	app := desktop.NewApp()
+	if _, err := app.SetUpdateChannel("nightly"); err == nil {
+		t.Fatal("expected SetUpdateChannel to reject an invalid channel")
+	}
+}
+
+func TestDesktopCheckForUpdatesUsesBetaChannelFeed(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	desktop.ResetStateForTest()
+
+	app := desktop.NewApp()
+	if _, err := app.SetUpdateChannel("beta"); err != nil {
+		t.Fatalf("SetUpdateChannel failed: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"tag_name":"v9.9.9-beta.1"}]`))
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_UPDATE_CHECK_LIST_URL", server.URL)
+	previousVersion := desktop.Version
+	desktop.Version = "1.0.0"
+	t.Cleanup(func() {
+		desktop.Version = previousVersion
+	})
+
+	result, err := app.CheckForUpdates()
+	if err != nil {
+		t.Fatalf("CheckForUpdates failed: %v", err)
+	}
+	if result.Channel != "beta" {
+		t.Fatalf("expected result.Channel = beta, got %q", result.Channel)
+	}
+	if result.LatestVersion != "v9.9.9-beta.1" {
+		t.Fatalf("expected latest version v9.9.9-beta.1, got %q", result.LatestVersion)
+	}
+}
+
+func TestDesktopBuildElevatedSelfUpdateArgsForwardsGovardHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GOVARD_HOME_DIR", home)
+
+	args := desktop.BuildDesktopElevatedSelfUpdateArgsForTest("/usr/bin/env", "/usr/local/bin/govard", "")
+
+	expected := fmt.Sprintf("GOVARD_HOME_DIR=%s", home)
+	found := false
+	for _, arg := range args {
+		if arg == expected {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected elevated pkexec args to include %q, got %v", expected, args)
+	}
+}
+
+func TestDesktopBuildElevatedSelfUpdateArgsForwardsGovardHomeAlongsideDesktopTarget(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GOVARD_HOME_DIR", home)
+
+	args := desktop.BuildDesktopElevatedSelfUpdateArgsForTest("/usr/bin/env", "/usr/local/bin/govard", "/opt/govard/govard-desktop")
+
+	expectedHome := fmt.Sprintf("GOVARD_HOME_DIR=%s", home)
+	expectedTarget := "GOVARD_SELF_UPDATE_DESKTOP_TARGET=/opt/govard/govard-desktop"
+	foundHome := false
+	foundTarget := false
+	for _, arg := range args {
+		if arg == expectedHome {
+			foundHome = true
+		}
+		if arg == expectedTarget {
+			foundTarget = true
+		}
+	}
+	if !foundHome {
+		t.Fatalf("expected elevated pkexec args to include %q, got %v", expectedHome, args)
+	}
+	if !foundTarget {
+		t.Fatalf("expected elevated pkexec args to include %q, got %v", expectedTarget, args)
+	}
+}
+
 func TestDesktopResolveGovardBinaryForUpdatePrefersSibling(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	desktop.ResetStateForTest()

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"govard/internal/conventions"
 	"govard/internal/updater"
 )
 
@@ -76,15 +77,7 @@ func runDesktopSelfUpdateCommand(govardBinary, desktopTarget string, elevated bo
 			envBinary = lookedUpEnv
 		}
 
-		args := []string{
-			envBinary,
-			"NO_COLOR=1",
-			"CLICOLOR=0",
-		}
-		if strings.TrimSpace(desktopTarget) != "" {
-			args = append(args, fmt.Sprintf("%s=%s", desktopSelfUpdateDesktopTargetEnvVar, desktopTarget))
-		}
-		args = append(args, govardBinary, "self-update", "--yes")
+		args := buildDesktopElevatedSelfUpdateArgs(envBinary, govardBinary, desktopTarget)
 
 		output, err = runDesktopPrivilegedSelfUpdate(pkexecPath, args)
 	} else {
@@ -105,6 +98,27 @@ func runDesktopSelfUpdateCommand(govardBinary, desktopTarget string, elevated bo
 		return "", errors.New(summarizeDesktopSelfUpdateError(err, trimmed))
 	}
 	return trimmed, nil
+}
+
+// buildDesktopElevatedSelfUpdateArgs builds the "pkexec /usr/bin/env ..." argument
+// list used to run "govard self-update" with elevated privileges. It forwards the
+// invoking process's resolved Govard home directory as an explicit GOVARD_HOME_DIR
+// env var (read from the invoking process's own environment before pkexec strips
+// it), so the elevated child resolves the exact same persisted update channel
+// (~/.govard/update-channel.json) as the invoking user, rather than silently
+// falling back to the elevated user's home directory (typically /root).
+func buildDesktopElevatedSelfUpdateArgs(envBinary, govardBinary, desktopTarget string) []string {
+	args := []string{
+		envBinary,
+		"NO_COLOR=1",
+		"CLICOLOR=0",
+		fmt.Sprintf("%s=%s", conventions.EnvGovardHome, conventions.GetGovardHome()),
+	}
+	if strings.TrimSpace(desktopTarget) != "" {
+		args = append(args, fmt.Sprintf("%s=%s", desktopSelfUpdateDesktopTargetEnvVar, desktopTarget))
+	}
+	args = append(args, govardBinary, "self-update", "--yes")
+	return args
 }
 
 func runDesktopPrivilegedSelfUpdate(pkexecPath string, baseArgs []string) ([]byte, error) {
@@ -184,11 +198,13 @@ var restartDesktopBinary = defaultRestartDesktopBinary
 
 func (app *App) CheckForUpdates() (UpdateCheckResult, error) {
 	current := normalizeDesktopVersionTag(Version)
+	channel := updater.GetChannel()
 	result := UpdateCheckResult{
 		CurrentVersion: current,
+		Channel:        channel,
 	}
 
-	release, err := updater.FetchLatestRelease(desktopUpdateHTTPClient)
+	release, err := updater.FetchChannelRelease(desktopUpdateHTTPClient, channel)
 	if err != nil {
 		result.Message = "Could not check for updates."
 		return result, err
@@ -204,6 +220,17 @@ func (app *App) CheckForUpdates() (UpdateCheckResult, error) {
 
 	result.Message = fmt.Sprintf("Govard Desktop is up to date (%s).", current)
 	return result, nil
+}
+
+func (app *App) GetUpdateChannel() (string, error) {
+	return updater.GetChannel(), nil
+}
+
+func (app *App) SetUpdateChannel(channel string) (string, error) {
+	if err := updater.SetChannel(channel); err != nil {
+		return "", err
+	}
+	return updater.GetChannel(), nil
 }
 
 func (app *App) InstallLatestUpdate() (string, error) {

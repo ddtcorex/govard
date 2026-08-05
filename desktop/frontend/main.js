@@ -105,6 +105,7 @@ const getLiveRefs = () => ({
   settingsUpdateChangelog: byId("settingsUpdateChangelog"),
   checkUpdatesButton: byId("checkUpdatesButton"),
   installUpdateButton: byId("installUpdateButton"),
+  updateChannelSelect: byId("updateChannelSelect"),
   updatePrompt: byId("updatePrompt"),
   updatePromptCurrent: byId("updatePromptCurrent"),
   updatePromptLatest: byId("updatePromptLatest"),
@@ -1949,6 +1950,11 @@ const bindDynamicControlListeners = () => {
   if (refs.runInBackgroundToggle) {
     refs.runInBackgroundToggle.addEventListener("change", () => {
       settingsController.save();
+    });
+  }
+  if (refs.updateChannelSelect) {
+    refs.updateChannelSelect.addEventListener("change", () => {
+      settingsController.setUpdateChannel(refs.updateChannelSelect.value);
     });
   }
 

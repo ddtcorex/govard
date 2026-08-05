@@ -71,6 +71,19 @@ go build -o govard cmd/govard/main.go
 
 ---
 
+## Cutting a Beta Release
+
+Beta releases use the tag format `vX.Y.Z-beta.N` (e.g. `v1.60.0-beta.1`),
+tagged directly from the current commit — no version bump in `root.go`,
+`app.go`, `package.json`, `wails.json`, or `CHANGELOG.md` is needed for a
+beta. Pushing the tag triggers the same `.github/workflows/release.yml`
+pipeline as a stable release; `.goreleaser.yml`'s `prerelease: auto` marks
+the resulting GitHub Release as a prerelease, so it won't appear via
+`GET /releases/latest` and won't reach stable-channel users automatically.
+Users opt in with `govard self-update --channel beta`.
+
+---
+
 ## Test Commands
 
 ### Preferred Makefile Commands
