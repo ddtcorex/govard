@@ -66,6 +66,7 @@ export const createSettingsController = ({
     failed: false,
     message: "Version check has not been run yet.",
     changelog: "",
+    channel: "stable",
   };
 
   const normalizeUpdateResult = (payload = {}) => ({
@@ -181,6 +182,16 @@ export const createSettingsController = ({
 
   const load = async () => {
     try {
+      const channel = await bridge.getUpdateChannel();
+      updateState.channel = channel || "stable";
+    } catch (_channelErr) {
+      updateState.channel = "stable";
+    }
+    if (refs.updateChannelSelect) {
+      refs.updateChannelSelect.value = updateState.channel;
+    }
+
+    try {
       const raw = await bridge.getSettings();
       const settings = normalizeSettingsPayload(raw);
       if (refs.themeSelect) refs.themeSelect.value = settings.theme;
@@ -194,6 +205,7 @@ export const createSettingsController = ({
         refs.runInBackgroundToggle.checked = settings.runInBackground;
       }
       applyTheme(settings.theme);
+
       renderUpdateSection();
     } catch (_err) {
       applyTheme();
@@ -374,6 +386,28 @@ export const createSettingsController = ({
     };
   };
 
+  const setUpdateChannel = async (channel) => {
+    try {
+      const applied = await bridge.setUpdateChannel(channel);
+      updateState.channel = applied || channel;
+      const message = `Update channel set to ${updateState.channel}.`;
+      onStatus(message);
+      onToast(message, "success");
+      return { ok: true, channel: updateState.channel };
+    } catch (_err) {
+      const message = normalizeErrorMessage(
+        _err,
+        "Could not set update channel.",
+      );
+      if (refs.updateChannelSelect) {
+        refs.updateChannelSelect.value = updateState.channel;
+      }
+      onStatus(message);
+      onToast(message, "error");
+      return { ok: false, channel: updateState.channel, message };
+    }
+  };
+
   return {
     toggleDrawer,
     load,
@@ -381,6 +415,7 @@ export const createSettingsController = ({
     reset,
     checkForUpdates,
     installLatestUpdate,
+    setUpdateChannel,
     updateRefs,
   };
 };
@@ -554,7 +589,18 @@ export const renderSettingsDrawer = (container) => {
                       Idle
                     </span>
                   </div>
-                  
+
+                  <div class="flex items-center justify-between mb-5 -mt-1">
+                    <label for="updateChannelSelect" class="text-[11px] font-bold text-text-tertiary uppercase tracking-wider">Update channel</label>
+                    <select
+                      id="updateChannelSelect"
+                      class="bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:border-primary/50 cursor-pointer"
+                    >
+                      <option value="stable">Stable</option>
+                      <option value="beta">Beta</option>
+                    </select>
+                  </div>
+
                   <div class="mt-4 mb-6 p-5 bg-white dark:bg-black/20 rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col gap-4">
                     <p
                       class="update-message-text text-[14px] font-medium text-slate-700 dark:text-slate-200 leading-snug flex items-center gap-3"

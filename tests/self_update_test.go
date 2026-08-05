@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -48,6 +50,9 @@ func TestValidateReleaseTagForTest(t *testing.T) {
 		{name: "empty", in: "", wantErr: true},
 		{name: "invalid suffix", in: "v1.2.3-rc1", wantErr: true},
 		{name: "path traversal", in: "../../1.2.3", wantErr: true},
+		{name: "valid beta", in: "v1.60.0-beta.1", want: "v1.60.0-beta.1"},
+		{name: "invalid beta missing number", in: "v1.2.3-beta", wantErr: true},
+		{name: "invalid beta trailing dot segment", in: "v1.2.3-beta.1.2", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -353,6 +358,60 @@ func TestDetectMixedInstallChannelPairsForTestIncludesConflictingCopies(t *testi
 	}
 	if pairs[0][0] != localGovard || pairs[0][1] != systemGovard {
 		t.Fatalf("unexpected pair %v", pairs[0])
+	}
+}
+
+func TestFetchChannelReleaseTagForTestBetaPicksSemverMax(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"tag_name":"v1.0.0-beta.1"},{"tag_name":"v1.0.0-beta.2"}]`))
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LIST_URL", server.URL)
+
+	tag, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "beta")
+	if err != nil {
+		t.Fatalf("FetchChannelReleaseTagForTest() error = %v", err)
+	}
+	if tag != "v1.0.0-beta.2" {
+		t.Fatalf("tag = %q, want %q", tag, "v1.0.0-beta.2")
+	}
+}
+
+func TestFetchChannelReleaseTagForTestStableDelegatesToLatest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tag_name":"v2.0.0"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LATEST_URL", server.URL)
+
+	tag, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "stable")
+	if err != nil {
+		t.Fatalf("FetchChannelReleaseTagForTest() error = %v", err)
+	}
+	if tag != "v2.0.0" {
+		t.Fatalf("tag = %q, want %q", tag, "v2.0.0")
+	}
+}
+
+func TestFetchChannelReleaseTagForTestBetaIgnoresDrafts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"tag_name":"v3.0.0-beta.9","draft":true},{"tag_name":"v3.0.0-beta.1"}]`))
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LIST_URL", server.URL)
+
+	tag, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "beta")
+	if err != nil {
+		t.Fatalf("FetchChannelReleaseTagForTest() error = %v", err)
+	}
+	if tag != "v3.0.0-beta.1" {
+		t.Fatalf("tag = %q, want %q (draft must be excluded)", tag, "v3.0.0-beta.1")
 	}
 }
 

@@ -349,6 +349,11 @@ func SummarizeDesktopSelfUpdateErrorForTest(runErr error, sanitizedOutput string
 	return summarizeDesktopSelfUpdateError(runErr, sanitizedOutput)
 }
 
+// BuildDesktopElevatedSelfUpdateArgsForTest exposes elevated pkexec argument construction for desktop update.
+func BuildDesktopElevatedSelfUpdateArgsForTest(envBinary, govardBinary, desktopTarget string) []string {
+	return buildDesktopElevatedSelfUpdateArgs(envBinary, govardBinary, desktopTarget)
+}
+
 // ResolveGovardBinaryForDesktopUpdateForTest exposes govard binary resolution for desktop update.
 func ResolveGovardBinaryForDesktopUpdateForTest() (string, error) {
 	return resolveGovardBinaryForDesktopUpdate()

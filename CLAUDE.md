@@ -139,7 +139,7 @@ Compiles backend and serves frontend at `http://localhost:34115`
 ## Project-Specific Notes
 
 - CI tracks `main`, `master`, `develop`; default is `master`
-- Release tags: `vX.Y.Z`
+- Release tags: `vX.Y.Z`; beta releases use `vX.Y.Z-beta.N` (e.g. `v1.60.0-beta.1`), tagged directly from HEAD — skip the Release Checklist's version-bump/CHANGELOG steps for a beta cut. `.goreleaser.yml`'s `prerelease: auto` marks the resulting GitHub Release as a prerelease automatically, so it's excluded from `GET /releases/latest` and won't reach stable-channel users; opt in via `govard self-update --channel beta`.
 - Integration tests require built binary (`bin/govard-test`) and Docker
 - When uncertain, prefer compatibility over broad refactors
 

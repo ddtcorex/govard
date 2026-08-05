@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"govard/internal/conventions"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"govard/internal/engine"
 	_ "govard/internal/frameworks" // registers framework detection/config data via init()
 	"govard/internal/ui"
+	"govard/internal/updater"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -67,7 +69,22 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of Govard",
 	Run: func(cmd *cobra.Command, args []string) {
 		ui.PrintBrand(Version)
+		if notice := versionChannelNotice(updater.GetChannel()); notice != "" {
+			pterm.Info.Println(notice)
+		}
 	},
+}
+
+func versionChannelNotice(channel string) string {
+	if channel == updater.ChannelStable {
+		return ""
+	}
+	return fmt.Sprintf("Update channel: %s", channel)
+}
+
+// VersionChannelNoticeForTest exposes versionChannelNotice for tests in /tests.
+func VersionChannelNoticeForTest(channel string) string {
+	return versionChannelNotice(channel)
 }
 
 func Execute() {

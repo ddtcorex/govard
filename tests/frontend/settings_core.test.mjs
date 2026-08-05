@@ -165,3 +165,140 @@ test("applyTheme respects prefers-color-scheme for theme=system", () => {
   delete globalThis.document;
   delete globalThis.window;
 });
+
+test("renderSettingsDrawer includes update channel select", () => {
+  const container = { innerHTML: "" };
+  renderSettingsDrawer(container);
+
+  assert.equal(
+    container.innerHTML.includes('id="updateChannelSelect"'),
+    true,
+    "expected update channel select in settings drawer",
+  );
+});
+
+test("load reads update channel from bridge", async () => {
+  globalThis.document = { documentElement: { classList: createClassList() } };
+  globalThis.window = { matchMedia: () => ({ matches: false }) };
+
+  const refs = {
+    updateChannelSelect: { value: "" },
+  };
+  const bridge = {
+    getSettings: async () => ({}),
+    getUpdateChannel: async () => "beta",
+  };
+
+  const controller = createSettingsController({
+    bridge,
+    refs,
+    onStatus: () => {},
+    onToast: () => {},
+  });
+
+  await controller.load();
+
+  assert.equal(refs.updateChannelSelect.value, "beta");
+  delete globalThis.document;
+  delete globalThis.window;
+});
+
+test("load reads update channel even when getSettings fails", async () => {
+  globalThis.document = { documentElement: { classList: createClassList() } };
+  globalThis.window = { matchMedia: () => ({ matches: false }) };
+
+  const refs = {
+    updateChannelSelect: { value: "" },
+  };
+  const bridge = {
+    getSettings: async () => {
+      throw new Error("boom");
+    },
+    getUpdateChannel: async () => "beta",
+  };
+
+  const controller = createSettingsController({
+    bridge,
+    refs,
+    onStatus: () => {},
+    onToast: () => {},
+  });
+
+  await controller.load();
+
+  assert.equal(refs.updateChannelSelect.value, "beta");
+  delete globalThis.document;
+  delete globalThis.window;
+});
+
+test("setUpdateChannel persists channel via bridge and updates status", async () => {
+  let statusMessage = "";
+  const bridge = {
+    setUpdateChannel: async (channel) => channel,
+  };
+
+  const controller = createSettingsController({
+    bridge,
+    refs: {},
+    onStatus: (msg) => {
+      statusMessage = msg;
+    },
+    onToast: () => {},
+  });
+
+  const result = await controller.setUpdateChannel("beta");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.channel, "beta");
+  assert.equal(statusMessage, "Update channel set to beta.");
+});
+
+test("setUpdateChannel surfaces bridge errors", async () => {
+  const bridge = {
+    setUpdateChannel: async () => {
+      throw new Error("invalid update channel");
+    },
+  };
+
+  const controller = createSettingsController({
+    bridge,
+    refs: {},
+    onStatus: () => {},
+    onToast: () => {},
+  });
+
+  const result = await controller.setUpdateChannel("nightly");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.message, "invalid update channel");
+});
+
+test("setUpdateChannel resyncs select to last-known-good channel on failure", async () => {
+  const refs = {
+    updateChannelSelect: { value: "stable" },
+  };
+  const bridge = {
+    setUpdateChannel: async () => {
+      throw new Error("invalid update channel");
+    },
+  };
+
+  const controller = createSettingsController({
+    bridge,
+    refs,
+    onStatus: () => {},
+    onToast: () => {},
+  });
+
+  // Simulate the user picking "beta" in the <select> before the rejected call.
+  refs.updateChannelSelect.value = "beta";
+
+  const result = await controller.setUpdateChannel("beta");
+
+  assert.equal(result.ok, false);
+  assert.equal(
+    refs.updateChannelSelect.value,
+    "stable",
+    "select should snap back to the last persisted channel after a rejected update",
+  );
+});

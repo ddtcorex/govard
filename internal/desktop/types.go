@@ -48,6 +48,7 @@ type UpdateCheckResult struct {
 	Outdated       bool   `json:"outdated"`
 	Message        string `json:"message"`
 	Changelog      string `json:"changelog"`
+	Channel        string `json:"channel"`
 }
 
 type UserInfo struct {

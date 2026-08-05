@@ -71,6 +71,19 @@ go build -o govard cmd/govard/main.go
 
 ---
 
+## Cắt bản Beta
+
+Bản beta dùng tag dạng `vX.Y.Z-beta.N` (ví dụ `v1.60.0-beta.1`), tag thẳng
+từ commit hiện tại — không cần bump version ở `root.go`, `app.go`,
+`package.json`, `wails.json`, hay thêm entry vào `CHANGELOG.md`. Push tag sẽ
+kích hoạt cùng pipeline `.github/workflows/release.yml` như bản stable;
+`prerelease: auto` trong `.goreleaser.yml` sẽ đánh dấu GitHub Release đó là
+prerelease, nên nó sẽ không xuất hiện qua `GET /releases/latest` và không
+tự động đến tay user đang ở channel stable. User chủ động opt-in bằng
+`govard self-update --channel beta`.
+
+---
+
 ## Các lệnh kiểm thử (Test Commands)
 
 ### Các lệnh Makefile khuyên dùng
