@@ -26,6 +26,7 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | PrestaShop | ✅ | framework defaults | project root |
 | WordPress | ✅ | ✅ | `/` |
 | Django | ✅ | framework defaults | project root |
+| Dagster | ✅ | framework defaults | project root |
 | Custom | manual | manual | project root |
 
 ---
@@ -47,6 +48,7 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | PrestaShop | 8.1 | — | — | mariadb 10.11 | none | none | none |
 | WordPress | 8.3 | — | — | mariadb 11.4 | none | none | none |
 | Django | — | — | 3.12 | postgres 16 | none | none | none |
+| Dagster | — | — | 3.12 | postgres 16 | none | none | none |
 | Custom | 8.4 | — | — | mariadb 11.4 | none | none | none |
 
 `—` means Govard does not force a default for that stack component.
@@ -406,6 +408,39 @@ govard bootstrap --framework django
 **Detection:** any project with a `manage.py` file at its root.
 
 > Current scope is `requirements.txt` + `pip` only (no Poetry/`pyproject.toml`), PostgreSQL only (no SQLite/MySQL option), and `manage.py runserver` for local dev (no Gunicorn). Both workflows run `pip install` + `manage.py migrate` automatically. `--fresh` scaffolds via `django-admin startproject config .` and wires `settings.py` to the Postgres container Govard already provisions, plus `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` for the project's configured domain.
+
+---
+
+## ⚙️ Dagster
+
+Python-first local runtime: Python 3.12 (configurable via `stack.python_version`), PostgreSQL 16, no managed PHP/cache/search/queue.
+
+```bash
+govard shell                    # web container at /app
+govard tool dagster [command]   # dagster CLI commands
+govard db connect               # psql into the postgres db
+```
+
+Fresh install (scaffold a brand-new project from scratch):
+
+```bash
+mkdir myproject && cd myproject
+govard init --framework dagster
+govard bootstrap --fresh --framework dagster
+```
+
+Fresh install (clone an existing project, then bootstrap it):
+
+```bash
+git clone <your-dagster-repo> myproject && cd myproject
+govard init --framework dagster
+govard env up
+govard bootstrap --framework dagster
+```
+
+**Detection:** any project with a `workspace.yaml` or `dagster.yaml` file at its root.
+
+> Current scope is `requirements.txt` + `pip` only (no Poetry/`pyproject.toml`) and PostgreSQL only, via `dagster-postgres`. Both workflows run `pip install` automatically. `--fresh` scaffolds via `dagster project scaffold` and writes `dagster.yaml` (Postgres storage config wired to the container Govard already provisions) plus a `workspace.yaml` pointing at the scaffolded module. The compose blueprint also mounts and trusts Govard's local root CA inside the container, so outbound HTTPS calls to other Govard projects via `linked_projects` verify correctly.
 
 ---
 

@@ -26,6 +26,7 @@ Govard tự động nhận diện các framework được hỗ trợ và áp d�
 | PrestaShop | ✅ | cấu hình mặc định | thư mục gốc dự án |
 | WordPress | ✅ | ✅ | `/` |
 | Django | ✅ | cấu hình mặc định | thư mục gốc dự án |
+| Dagster | ✅ | cấu hình mặc định | thư mục gốc dự án |
 | Tùy chỉnh (Custom) | thủ công | thủ công | thư mục gốc dự án |
 
 ---
@@ -47,6 +48,7 @@ Govard tự động nhận diện các framework được hỗ trợ và áp d�
 | PrestaShop | 8.1 | — | — | mariadb 10.11 | none | none | none |
 | WordPress | 8.3 | — | — | mariadb 11.4 | none | none | none |
 | Django | — | — | 3.12 | postgres 16 | none | none | none |
+| Dagster | — | — | 3.12 | postgres 16 | none | none | none |
 | Tùy chỉnh (Custom) | 8.4 | — | — | mariadb 11.4 | none | none | none |
 
 Ký hiệu `—` nghĩa là Govard không ép buộc giá trị mặc định cho thành phần stack đó.
@@ -406,6 +408,39 @@ govard bootstrap --framework django
 **Nhận diện:** bất kỳ dự án nào có file `manage.py` ở thư mục gốc.
 
 > Phạm vi hiện tại chỉ hỗ trợ `requirements.txt` + `pip` (chưa hỗ trợ Poetry/`pyproject.toml`), chỉ hỗ trợ PostgreSQL (chưa có tùy chọn SQLite/MySQL), và dùng `manage.py runserver` cho local dev (chưa hỗ trợ Gunicorn). Cả hai luồng đều tự động chạy `pip install` + `manage.py migrate`. `--fresh` khởi tạo dự án qua `django-admin startproject config .`, cấu hình `settings.py` để dùng container Postgres mà Govard đã cung cấp sẵn, và cấu hình `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` theo domain của dự án.
+
+---
+
+## ⚙️ Dagster
+
+Cấu hình local runtime ưu tiên Python: Python 3.12 (có thể cấu hình qua `stack.python_version`), PostgreSQL 16, không quản lý các dịch vụ PHP/cache/search/queue.
+
+```bash
+govard shell                    # container web tại thư mục /app
+govard tool dagster [command]   # chạy Dagster CLI [command]
+govard db connect               # kết nối psql vào database postgres
+```
+
+Cài đặt mới (khởi tạo một dự án hoàn toàn mới):
+
+```bash
+mkdir myproject && cd myproject
+govard init --framework dagster
+govard bootstrap --fresh --framework dagster
+```
+
+Cài đặt mới (clone một dự án có sẵn, sau đó bootstrap):
+
+```bash
+git clone <your-dagster-repo> myproject && cd myproject
+govard init --framework dagster
+govard env up
+govard bootstrap --framework dagster
+```
+
+**Nhận diện:** bất kỳ dự án nào có file `workspace.yaml` hoặc `dagster.yaml` ở thư mục gốc.
+
+> Phạm vi hiện tại chỉ hỗ trợ `requirements.txt` + `pip` (chưa hỗ trợ Poetry/`pyproject.toml`) và chỉ hỗ trợ PostgreSQL, thông qua `dagster-postgres`. Cả hai luồng đều tự động chạy `pip install`. `--fresh` khởi tạo dự án qua `dagster project scaffold` và ghi file `dagster.yaml` (cấu hình storage Postgres trỏ vào container mà Govard đã cung cấp sẵn) cùng với `workspace.yaml` trỏ vào module vừa khởi tạo. Blueprint compose cũng mount và tin cậy (trust) sẵn Root CA nội bộ của Govard trong container, nên các lời gọi HTTPS ra ngoài tới các dự án Govard khác qua `linked_projects` sẽ xác thực đúng cách.
 
 ---
 

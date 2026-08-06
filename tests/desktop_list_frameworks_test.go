@@ -12,8 +12,8 @@ func TestListFrameworksReturnsAllRegisteredFrameworks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListFrameworks() error: %v", err)
 	}
-	if len(options) != 15 {
-		t.Fatalf("ListFrameworks() returned %d frameworks, want 15", len(options))
+	if len(options) != 16 {
+		t.Fatalf("ListFrameworks() returned %d frameworks, want 16", len(options))
 	}
 
 	byName := make(map[string]desktop.FrameworkOption, len(options))

@@ -1,5 +1,7 @@
-# Django Docker Compose configuration
-# This is the main Docker Compose file for Django projects
+# Dagster Docker Compose configuration
+# Runs `dagster dev` (webserver + daemon + code-location loading in one
+# process) as the "web" service, fronted directly by Caddy - no
+# PHP-FPM/nginx block, matching the Next.js/Emdash/Django pattern.
 
 services:
   web:
@@ -11,9 +13,9 @@ services:
       {{ if .HostGovardRootCAPath }}
       - "{{ .HostGovardRootCAPath }}:/usr/local/share/ca-certificates/govard.crt:ro"
       {{ end }}
+      - dagster-home{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:/dagster_home
     extra_hosts:
       - "host.docker.internal:host-gateway"
-      - "mail:host-gateway"
       {{ range .RuntimeDomainHosts }}
       - "{{ . }}"
       {{ end }}
@@ -21,19 +23,20 @@ services:
       sh -lc '
         { command -v update-ca-certificates >/dev/null || { apt-get update && apt-get install -y --no-install-recommends ca-certificates; }; } &&
         update-ca-certificates &&
-        pip install --no-cache-dir -r requirements.txt && chown -R "$(stat -c %u:%g .)" . 2>/dev/null; python manage.py runserver 0.0.0.0:80
+        pip install --no-cache-dir -r requirements.txt &&
+        chown -R "$(stat -c %u:%g .)" . 2>/dev/null;
+        mkdir -p "$$DAGSTER_HOME" && { [ ! -f dagster.yaml ] || cp dagster.yaml "$$DAGSTER_HOME/dagster.yaml"; } &&
+        dagster dev -w workspace.yaml -h 0.0.0.0 -p 80
       '
     environment:
-      - PYTHONUNBUFFERED=1
-      - DJANGO_DEBUG=1
+      - DAGSTER_HOME=/dagster_home
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=django
-      - POSTGRES_USER=django
-      - POSTGRES_PASSWORD=django
-      - DATABASE_URL=postgres://django:django@db:5432/django
+      - POSTGRES_DB=dagster
+      - POSTGRES_USER=dagster
+      - POSTGRES_PASSWORD=dagster
     depends_on:
       - db
     networks:
@@ -43,9 +46,9 @@ services:
   db:
     image: postgres:{{ .Config.Stack.DBVersion }}
     environment:
-      - POSTGRES_DB=django
-      - POSTGRES_USER=django
-      - POSTGRES_PASSWORD=django
+      - POSTGRES_DB=dagster
+      - POSTGRES_USER=dagster
+      - POSTGRES_PASSWORD=dagster
     volumes:
       - db-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:/var/lib/postgresql/data
     networks:
@@ -59,3 +62,4 @@ networks:
 
 volumes:
   db-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:
+  dagster-home{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:

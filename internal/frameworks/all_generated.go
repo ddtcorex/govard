@@ -5,6 +5,7 @@ package frameworks
 import (
 	"govard/internal/frameworks/cakephp"
 	"govard/internal/frameworks/custom"
+	"govard/internal/frameworks/dagster"
 	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/drupal"
 	"govard/internal/frameworks/emdash"
@@ -26,6 +27,7 @@ func init() {
 		emdash.Spec(),
 		cakephp.Spec(),
 		custom.Spec(),
+		dagster.Spec(),
 		django.Spec(),
 		drupal.Spec(),
 		laravel.Spec(),

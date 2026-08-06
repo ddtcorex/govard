@@ -337,6 +337,20 @@ linked_projects:
   - "custom.site:192.168.1.10"   # Ánh xạ thủ công
 ```
 
+**Ví dụ: một pipeline đồng bộ Dagster gọi tới một cửa hàng Magento 2**
+
+```yaml
+# Trong file .govard.yml của dự án Dagster
+linked_projects:
+  - "shop"   # tên của dự án Magento 2
+```
+
+Blueprint compose của framework Dagster đã mount và tin cậy (trust) sẵn
+Root CA nội bộ của Govard trong container, vì vậy khi `linked_projects`
+phân giải được domain của `shop`, code trong pipeline gọi tới
+`https://shop.test` (REST/GraphQL API của Magento 2) sẽ xác thực TLS
+đúng cách - không cần dùng `verify=False`/`InsecureSkipVerify`.
+
 ---
 
 [← Lệnh CLI](/vi/reference/cli-commands) | [Frameworks →](/vi/reference/frameworks)

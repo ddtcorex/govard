@@ -1,0 +1,59 @@
+{
+  "framework_config": {
+    "Name": "dagster",
+    "Runtime": "python",
+    "AppService": "web",
+    "AppWorkdir": "/app",
+    "NGINXPUBLIC": "",
+    "NGINXTemplate": "",
+    "DatabaseName": "dagster",
+    "DefaultPHP": "",
+    "DefaultPythonVer": "3.12",
+    "DefaultNodeVer": "",
+    "DefaultDB": "postgres",
+    "DefaultDBVer": "16",
+    "DefaultMySQLVer": "",
+    "DefaultNginxVer": "",
+    "DefaultApacheVer": "",
+    "DefaultCacheVer": "",
+    "DefaultSearchVer": "",
+    "DefaultVarnishVer": "",
+    "DefaultQueueVer": "",
+    "DefaultWebServer": "none",
+    "DefaultSearch": "none",
+    "DefaultCache": "none",
+    "DefaultQueue": "none",
+    "DefaultComposerVer": "",
+    "Includes": [
+      "dagster/services.yml"
+    ]
+  },
+  "runtime_profile": {
+    "Profile": {
+      "Framework": "dagster",
+      "FrameworkVersion": "",
+      "PHPVersion": "",
+      "NodeVersion": "",
+      "DB": "postgres",
+      "DBVersion": "16",
+      "WebRoot": "",
+      "WebServer": "none",
+      "Cache": "none",
+      "CacheVersion": "",
+      "NginxVersion": "",
+      "ApacheVersion": "",
+      "Search": "none",
+      "SearchVersion": "",
+      "VarnishVersion": "",
+      "Queue": "none",
+      "QueueVersion": "",
+      "ComposerVersion": "",
+      "XdebugSession": "PHPSTORM"
+    },
+    "Source": "framework-defaults",
+    "Notes": [
+      "Framework version is not detected. Using framework defaults."
+    ],
+    "Warnings": null
+  }
+}

@@ -14,11 +14,25 @@ services:
     volumes:
       - .:/app
       - next-cache:/app/.next
+      {{ if .HostGovardRootCAPath }}
+      - "{{ .HostGovardRootCAPath }}:/usr/local/share/ca-certificates/govard.crt:ro"
+      {{ end }}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "mail:host-gateway"
+      {{ range .RuntimeDomainHosts }}
+      - "{{ . }}"
+      {{ end }}
     command: >
-      sh -lc '{{ nextjsRuntimeCommand }}'
+      sh -lc '
+        { command -v update-ca-certificates >/dev/null || { apt-get update && apt-get install -y --no-install-recommends ca-certificates; }; } &&
+        update-ca-certificates &&
+        {{ nextjsRuntimeCommand }}
+      '
     environment:
       - NODE_ENV=development
       - PORT=80
+      - NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/govard.crt
     networks:
       - govard-net
       - govard-proxy
