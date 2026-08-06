@@ -44,4 +44,8 @@ const (
 	DefaultDjangoDBUser = "django"
 	DefaultDjangoDBPass = "django"
 	DefaultDjangoDBName = "django"
+
+	DefaultDagsterDBUser = "dagster"
+	DefaultDagsterDBPass = "dagster"
+	DefaultDagsterDBName = "dagster"
 )

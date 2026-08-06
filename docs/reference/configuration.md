@@ -353,6 +353,20 @@ linked_projects:
   - "custom.site:192.168.1.10"   # Manual mapping
 ```
 
+**Example: a Dagster sync pipeline calling a Magento 2 store**
+
+```yaml
+# In the Dagster project's .govard.yml
+linked_projects:
+  - "shop"   # the Magento 2 project's name
+```
+
+The Dagster framework's compose blueprint already mounts and trusts
+Govard's local root CA inside the container, so once `linked_projects`
+resolves `shop`'s domain, pipeline code calling `https://shop.test`
+(Magento 2's REST/GraphQL API) verifies TLS correctly - no
+`verify=False`/`InsecureSkipVerify` needed.
+
 ---
 
 [← CLI Commands](/reference/cli-commands) | [Frameworks →](/reference/frameworks)

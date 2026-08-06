@@ -6,6 +6,7 @@ import (
 
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks/cakephp"
+	"govard/internal/frameworks/dagster"
 	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/drupal"
 	"govard/internal/frameworks/emdash"
@@ -166,5 +167,27 @@ func TestDjangoFrameworkDefinition(t *testing.T) {
 	}
 	if cmds := def.Bootstrap(bootstrap.Options{}).FreshCommands(); len(cmds) == 0 {
 		t.Error("django Bootstrap factory should produce at least one fresh command now that fresh-install is supported")
+	}
+}
+
+func TestDagsterFrameworkDefinition(t *testing.T) {
+	def := dagster.Definition()
+	if def.Name != "dagster" {
+		t.Errorf("Name = %q, want %q", def.Name, "dagster")
+	}
+	if def.Config.Runtime != "python" {
+		t.Errorf("Config.Runtime = %q, want %q", def.Config.Runtime, "python")
+	}
+	if def.Config.DefaultDB != "postgres" {
+		t.Errorf("Config.DefaultDB = %q, want %q", def.Config.DefaultDB, "postgres")
+	}
+	if def.Bootstrap == nil {
+		t.Fatal("dagster Bootstrap should not be nil")
+	}
+	if !def.SupportsBootstrap {
+		t.Error("expected SupportsBootstrap (clone workflow) to be true")
+	}
+	if !def.SupportsFreshInstall {
+		t.Error("expected SupportsFreshInstall to be true")
 	}
 }

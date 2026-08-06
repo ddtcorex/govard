@@ -13,6 +13,7 @@ import (
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks/cakephp"
+	"govard/internal/frameworks/dagster"
 	"govard/internal/frameworks/django"
 	"govard/internal/frameworks/drupal"
 	"govard/internal/frameworks/emdash"
@@ -34,7 +35,7 @@ var allFrameworkNames = []string{
 	"magento2", "magento1", "openmage", "mageos",
 	"laravel", "symfony", "wordpress", "drupal",
 	"nextjs", "emdash", "shopware", "cakephp", "prestashop",
-	"django",
+	"django", "dagster",
 }
 
 // TestAllFrameworkNamesMatchesRegistry ensures that allFrameworkNames stays in
@@ -174,6 +175,85 @@ func TestFrameworkSnapshotBlueprintRendering(t *testing.T) {
 	}
 }
 
+// TestDagsterComposeRendersCAMountAndLinkedProjectHosts is a hermetic,
+// non-snapshot render test covering the "populated" case of Dagster's
+// compose blueprint {{ if .HostGovardRootCAPath }} CA-mount block and
+// {{ range .RuntimeDomainHosts }} extra_hosts block. The golden-file
+// snapshot in TestFrameworkSnapshotBlueprintRendering above always
+// renders with both empty, so it only ever exercised the negative case;
+// this test renders with a real root CA file on disk and a linked
+// project host mapping so both blocks actually populate, and asserts the
+// resulting compose file contains the CA-mount volume line and a
+// linked-project extra_hosts entry (in addition to the always-present
+// static host.docker.internal entry).
+func TestDagsterComposeRendersCAMountAndLinkedProjectHosts(t *testing.T) {
+	tempDir := t.TempDir()
+	fakeHome := filepath.Join(tempDir, "fake-home")
+	if err := os.MkdirAll(fakeHome, 0o755); err != nil {
+		t.Fatalf("failed to create fake home dir: %v", err)
+	}
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("SSH_AUTH_SOCK", "")
+
+	govardHome := filepath.Join(tempDir, "govard-home")
+	t.Setenv("GOVARD_HOME_DIR", govardHome)
+
+	sslDir := filepath.Join(govardHome, "ssl")
+	if err := os.MkdirAll(sslDir, 0o755); err != nil {
+		t.Fatalf("failed to create fake ssl dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sslDir, "root.crt"), []byte("fake-root-ca"), 0o644); err != nil {
+		t.Fatalf("failed to write fake root CA: %v", err)
+	}
+
+	destBlueprintsDir := filepath.Join(tempDir, "blueprints")
+	if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
+		t.Fatalf("failed to copy blueprints: %v", err)
+	}
+
+	projectName := "dagster-linked"
+	profileResult, err := engine.ResolveRuntimeProfile("dagster", "")
+	if err != nil {
+		t.Fatalf("ResolveRuntimeProfile failed: %v", err)
+	}
+
+	config := engine.Config{
+		ProjectName:    projectName,
+		Framework:      "dagster",
+		Domain:         projectName + ".test",
+		LinkedProjects: []string{"other-project.test:host-gateway"},
+		Stack: engine.Stack{
+			UserID:  1000,
+			GroupID: 1000,
+			Services: engine.Services{
+				DB: profileResult.Profile.DB,
+			},
+		},
+	}
+	engine.NormalizeConfig(&config, tempDir)
+
+	if err := engine.RenderBlueprint(tempDir, config); err != nil {
+		t.Fatalf("RenderBlueprint failed: %v", err)
+	}
+
+	composePath := engine.ComposeFilePath(tempDir, projectName)
+	composeContent, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatalf("failed to read rendered compose file: %v", err)
+	}
+	rendered := string(composeContent)
+
+	if !strings.Contains(rendered, "/usr/local/share/ca-certificates/govard.crt") {
+		t.Errorf("expected rendered Dagster compose to contain the CA-mount volume line, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "other-project.test:host-gateway") {
+		t.Errorf("expected rendered Dagster compose to contain a linked-project extra_hosts entry, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "host.docker.internal:host-gateway") {
+		t.Errorf("expected rendered Dagster compose to still contain the static host.docker.internal extra_hosts entry, got:\n%s", rendered)
+	}
+}
+
 // freshCommandsFor calls each framework's bootstrap constructor directly,
 // bypassing the production dispatcher (internal/engine/bootstrap/dispatcher.go's
 // Run). This means it snapshots what each bootstrapper's FreshCommands()
@@ -212,6 +292,8 @@ func freshCommandsFor(framework string) []string {
 		return prestashop.NewPrestaShopBootstrap(opts).FreshCommands()
 	case "django":
 		return django.NewDjangoBootstrap(opts).FreshCommands()
+	case "dagster":
+		return dagster.NewDagsterBootstrap(opts).FreshCommands()
 	default:
 		return nil
 	}

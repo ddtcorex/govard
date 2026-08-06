@@ -1,0 +1,65 @@
+# Dagster Docker Compose configuration
+# Runs `dagster dev` (webserver + daemon + code-location loading in one
+# process) as the "web" service, fronted directly by Caddy - no
+# PHP-FPM/nginx block, matching the Next.js/Emdash/Django pattern.
+
+services:
+  web:
+    image: python:{{ .Config.Stack.PythonVersion }}-slim
+    working_dir: /app
+    user: root
+    volumes:
+      - .:/app
+      {{ if .HostGovardRootCAPath }}
+      - "{{ .HostGovardRootCAPath }}:/usr/local/share/ca-certificates/govard.crt:ro"
+      {{ end }}
+      - dagster-home{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:/dagster_home
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      {{ range .RuntimeDomainHosts }}
+      - "{{ . }}"
+      {{ end }}
+    command: >
+      sh -lc '
+        { command -v update-ca-certificates >/dev/null || { apt-get update && apt-get install -y --no-install-recommends ca-certificates; }; } &&
+        update-ca-certificates &&
+        pip install --no-cache-dir -r requirements.txt &&
+        chown -R "$(stat -c %u:%g .)" . 2>/dev/null;
+        mkdir -p "$$DAGSTER_HOME" && { [ ! -f dagster.yaml ] || cp dagster.yaml "$$DAGSTER_HOME/dagster.yaml"; } &&
+        dagster dev -w workspace.yaml -h 0.0.0.0 -p 80
+      '
+    environment:
+      - DAGSTER_HOME=/dagster_home
+      - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+      - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=dagster
+      - POSTGRES_USER=dagster
+      - POSTGRES_PASSWORD=dagster
+    depends_on:
+      - db
+    networks:
+      - govard-net
+      - govard-proxy
+
+  db:
+    image: postgres:{{ .Config.Stack.DBVersion }}
+    environment:
+      - POSTGRES_DB=dagster
+      - POSTGRES_USER=dagster
+      - POSTGRES_PASSWORD=dagster
+    volumes:
+      - db-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:/var/lib/postgresql/data
+    networks:
+      - govard-net
+
+networks:
+  govard-net:
+    driver: bridge
+  govard-proxy:
+    external: true
+
+volumes:
+  db-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:
+  dagster-home{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:
