@@ -25,11 +25,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
+      - name: Determine previous stable tag
+        id: prev_tag
+        run: |
+          PREV_TAG=$(git for-each-ref --sort=-creatordate --format '%(refname:short)' refs/tags \
+            | grep -v -- '-' \
+            | grep -vFx "${GITHUB_REF_NAME}" \
+            | head -n1)
+          echo "tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           version: "~> v2"
-          args: release --clean
+          args: release --clean --previous-tag=${{ steps.prev_tag.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
