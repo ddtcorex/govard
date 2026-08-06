@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.60.0] - 2026-08-06
+
+### ✨ New Features
+
+- **Django Framework Support:** Govard now fully supports Django projects: its own runtime config (configurable Python version, no PHP container), `manage.py`-based detection, a compose blueprint (Python web service + PostgreSQL), and a clone-only bootstrap (`pip install` + `manage.py migrate`). `govard db dump/import/connect/query` gained full PostgreSQL support alongside the existing MySQL/MariaDB path, generically derived from each framework's configured DB engine rather than hardcoded. Fresh installs scaffold via `django-admin startproject` inside a disposable container and patch the generated `settings.py`'s `DATABASES`/`ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` against Govard's domain.
+- **Mage-OS Support:** Added Mage-OS as a fully supported framework, reusing Magento 2's Docker image, blueprint, and Varnish stack, with its own DB credentials, `govard bootstrap --fresh`, and `govard upgrade` support.
+- **CLI-Only Installs on Ubuntu 20.04:** Linux release packaging now splits into independent CLI and Desktop Debian packages. The installer automatically falls back to CLI-only when WebKitGTK 4.1 isn't available (e.g. Ubuntu 20.04), and a new `--cli-only` flag lets users opt into that path explicitly.
+- **Beta Update Channel:** `govard self-update --channel beta` (persisted in `~/.govard/update-channel.json`) and a matching Stable/Beta toggle in Govard Desktop Settings let users opt into beta releases; both surfaces share the same channel state. `govard version` now prints the active channel when it isn't stable.
+
+### 🔄 Refactors
+
+- **Framework Registry Consolidation:** All 14 registered frameworks (Magento 1/2, OpenMage, Mage-OS, Laravel, Symfony, Drupal, WordPress, Shopware, CakePHP, PrestaShop, Next.js, Emdash, Django) are now self-contained: each owns its config, manifest, bootstrap, and (where applicable) fresh-install logic inside its own `internal/frameworks/<name>/` package instead of scattered central maps and switches in `internal/engine`/`internal/cmd`. Magento's two families (Magento 2/Mage-OS, Magento 1/OpenMage) share behavior through parent/child inheritance so family-wide changes no longer need duplicating per fork. Framework registration is now generated (`internal/frameworks/gen`) rather than hand-maintained, with a CI drift check. No intended behavior change; verified through the full golden-snapshot suite and real end-to-end `govard bootstrap --fresh` runs against Docker for every framework.
+- Consolidated the CLI's and Desktop's duplicated "fetch GitHub latest release + compare versions" logic into `internal/updater`.
+
+### 🐛 Bug Fixes
+
+- **`sync --db` Hang on a Stopped Local Container:** `govard sync --db` could hang indefinitely against a stopped/missing local database container instead of failing fast; it now guards against this the same way `db import --stream-db` and `db dump/import -f` already did.
+- **`sync --db` Silently Dropping Real Rows:** The sandbox-comment sanitizer regex matched any dump line containing both "999999" and "sandbox" anywhere, not just the intended `mysqlbinlog` artifact comment - since `mysqldump --extended-insert` packs many rows per line, real rows containing an ID like 999999 alongside a "sandbox" setting (e.g. a PayPal/Braintree config value) were silently dropped from the imported data. The pattern is now anchored to the actual comment delimiters.
+- **`sync --db` Fails Late Instead of Fast:** A failed remote-credential probe used to silently fall back to generic default DB credentials and let the sync pipeline run anyway, surfacing a confusing error deep inside the transfer instead of the real cause up front.
+- **`sync` Path Handling:** Forgetting `-p/--path` now warns explicitly instead of silently syncing the entire project root; a bare trailing positional argument is used as the path when `--path` wasn't set; and directory detection no longer misclassifies real destination directories that don't already exist locally (e.g. a new theme folder) as files.
+- **Root-Owned Files on the Host (Django/Next.js):** Django and Next.js containers run as `root` for package installs, which could leave `__pycache__`/`.next` build cache root-owned on the host bind mount. Next.js's build cache is now isolated in a named volume; Django's container chowns the project directory back to the bind mount's real owner after install and defensively on every start.
+- **PHP Entrypoint Aborting on a Failed `chown`:** On Docker Desktop for Mac, a `chown` refusal for a UID-mismatched path (e.g. nested `.git` from a Composer VCS package) used to abort the whole entrypoint under `set -e`, leaving `php-fpm` unreachable and `env up` timing out. The chown is now guarded so a failure just logs a warning.
+- **Bind-Mount Ownership:** Bind-mounted project files are no longer chowned outside of startup, and bind-mount filtering is scoped correctly to that phase.
+- **Volume-Empty Check Flakiness:** An uncached `alpine:latest` image's pull progress on stderr could get merged into stdout and break the numeric parsing used to detect an empty volume; only real stdout is parsed now.
+- **macOS Self-Update 404:** `govard self-update` on macOS 404'd when detecting an installed `govard-desktop` binary, because GoReleaser never cross-built a Darwin `govard-desktop` archive for it. The release workflow now publishes that archive (and its checksum) alongside the `.pkg`.
+- **Active Profile Reset by Unrelated Commands:** Commands that don't take `--profile` (`sync`, `lock generate/check`, `bootstrap`, `remote`, `tunnel`, `db` without `--profile`) used to feed an empty profile back into the project registry, silently wiping the profile `env up` would otherwise pick up.
+- **Self-Update Staleness:** Removed a one-hour cache on the resolved latest-release tag for `govard self-update`, since it only risked installing a stale tag with no meaningful benefit for an explicit, infrequent command.
+- Resolved open CodeQL code-scanning alerts (unchecked `Close()` errors, a zip-slip sanitizer pattern, overflow-prone capacity arithmetic) and pending Dependabot dependency vulnerabilities (`golang.org/x/crypto`, `golang.org/x/net`, `google.golang.org/grpc`, OpenTelemetry, `postcss`, `vite`/`esbuild`, `picomatch`).
+- The installer's fallback `sudo apt-get update` now announces itself before running, consistent with every other `sudo` call in the install script.
+
+### 📚 Documentation
+
+- Rewrote `docs/developer/adding-a-framework.md` (and its Vietnamese mirror) to describe the framework registry's current architecture rather than its migration history, and to cover the parent/child inheritance mechanism used by the Magento families.
+
 ## [1.59.0] - 2026-07-21
 
 ### ✨ New Features
