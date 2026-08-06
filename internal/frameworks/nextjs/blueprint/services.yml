@@ -14,6 +14,12 @@ services:
     volumes:
       - .:/app
       - next-cache:/app/.next
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "mail:host-gateway"
+      {{ range .RuntimeDomainHosts }}
+      - "{{ . }}"
+      {{ end }}
     command: >
       sh -lc '{{ nextjsRuntimeCommand }}'
     environment:

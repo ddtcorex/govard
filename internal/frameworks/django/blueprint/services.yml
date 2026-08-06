@@ -8,6 +8,12 @@ services:
     user: root
     volumes:
       - .:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "mail:host-gateway"
+      {{ range .RuntimeDomainHosts }}
+      - "{{ . }}"
+      {{ end }}
     command: >
       sh -lc 'pip install --no-cache-dir -r requirements.txt && chown -R "$(stat -c %u:%g .)" . 2>/dev/null; python manage.py runserver 0.0.0.0:80'
     environment:

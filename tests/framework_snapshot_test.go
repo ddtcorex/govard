@@ -254,6 +254,74 @@ func TestDagsterComposeRendersCAMountAndLinkedProjectHosts(t *testing.T) {
 	}
 }
 
+// TestNonPHPFrameworksRenderLinkedProjectExtraHosts is a hermetic,
+// non-snapshot render test covering the "populated" case of the
+// {{ range .RuntimeDomainHosts }} extra_hosts block added to Django's,
+// Next.js's, and Emdash's compose blueprints. Before this, none of these
+// frameworks' own web service definitions requested RuntimeDomainHosts -
+// only the shared base.yml's PHP/php-debug services did - so
+// linked_projects never resolved to anything but the container's own
+// loopback for any framework outside that PHP path (see the Dagster gap
+// this mirrors, and the render test above covering the same mechanism).
+func TestNonPHPFrameworksRenderLinkedProjectExtraHosts(t *testing.T) {
+	for _, framework := range []string{"django", "nextjs", "emdash"} {
+		framework := framework
+		t.Run(framework, func(t *testing.T) {
+			tempDir := t.TempDir()
+			fakeHome := filepath.Join(tempDir, "fake-home")
+			if err := os.MkdirAll(fakeHome, 0o755); err != nil {
+				t.Fatalf("failed to create fake home dir: %v", err)
+			}
+			t.Setenv("HOME", fakeHome)
+			t.Setenv("SSH_AUTH_SOCK", "")
+
+			destBlueprintsDir := filepath.Join(tempDir, "blueprints")
+			if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
+				t.Fatalf("failed to copy blueprints: %v", err)
+			}
+
+			projectName := framework + "-linked"
+			profileResult, err := engine.ResolveRuntimeProfile(framework, "")
+			if err != nil {
+				t.Fatalf("ResolveRuntimeProfile failed for %s: %v", framework, err)
+			}
+
+			config := engine.Config{
+				ProjectName:    projectName,
+				Framework:      framework,
+				Domain:         projectName + ".test",
+				LinkedProjects: []string{"other-project.test:host-gateway"},
+				Stack: engine.Stack{
+					UserID:  1000,
+					GroupID: 1000,
+					Services: engine.Services{
+						DB: profileResult.Profile.DB,
+					},
+				},
+			}
+			engine.NormalizeConfig(&config, tempDir)
+
+			if err := engine.RenderBlueprint(tempDir, config); err != nil {
+				t.Fatalf("RenderBlueprint failed for %s: %v", framework, err)
+			}
+
+			composePath := engine.ComposeFilePath(tempDir, projectName)
+			composeContent, err := os.ReadFile(composePath)
+			if err != nil {
+				t.Fatalf("failed to read rendered compose file for %s: %v", framework, err)
+			}
+			rendered := string(composeContent)
+
+			if !strings.Contains(rendered, "other-project.test:host-gateway") {
+				t.Errorf("expected rendered %s compose to contain a linked-project extra_hosts entry, got:\n%s", framework, rendered)
+			}
+			if !strings.Contains(rendered, "host.docker.internal:host-gateway") {
+				t.Errorf("expected rendered %s compose to still contain the static host.docker.internal extra_hosts entry, got:\n%s", framework, rendered)
+			}
+		})
+	}
+}
+
 // freshCommandsFor calls each framework's bootstrap constructor directly,
 // bypassing the production dispatcher (internal/engine/bootstrap/dispatcher.go's
 // Run). This means it snapshots what each bootstrapper's FreshCommands()

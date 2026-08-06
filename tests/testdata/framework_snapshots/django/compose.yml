@@ -28,6 +28,9 @@ services:
             - POSTGRES_USER=django
             - POSTGRES_PASSWORD=django
             - DATABASE_URL=postgres://django:django@db:5432/django
+        extra_hosts:
+            - host.docker.internal:host-gateway
+            - mail:host-gateway
         image: python:3.12-slim
         networks:
             - govard-net

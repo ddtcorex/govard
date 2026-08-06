@@ -11,6 +11,9 @@ services:
             - GOVARD_TRUSTED_DOMAIN=snapshot-emdash.test
             - NODE_ENV=development
             - PORT=80
+        extra_hosts:
+            - host.docker.internal:host-gateway
+            - mail:host-gateway
         image: node:22
         networks:
             - govard-net
