@@ -6,11 +6,16 @@ networks:
 services:
     web:
         command: |
-            sh -lc 'if [ ! -d node_modules ] || [ -z "$$(ls -A node_modules 2>/dev/null)" ]; then npm install; fi; exec npm run dev -- --host 0.0.0.0 --port 80 --allowed-hosts snapshot-emdash.test;'
+            sh -lc '
+              { command -v update-ca-certificates >/dev/null || { apt-get update && apt-get install -y --no-install-recommends ca-certificates; }; } &&
+              update-ca-certificates &&
+              if [ ! -d node_modules ] || [ -z "$$(ls -A node_modules 2>/dev/null)" ]; then npm install; fi; exec npm run dev -- --host 0.0.0.0 --port 80 --allowed-hosts snapshot-emdash.test;
+            '
         environment:
             - GOVARD_TRUSTED_DOMAIN=snapshot-emdash.test
             - NODE_ENV=development
             - PORT=80
+            - NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/govard.crt
         extra_hosts:
             - host.docker.internal:host-gateway
             - mail:host-gateway

@@ -16,12 +16,18 @@ services:
             - db-data:/var/lib/postgresql/data
     web:
         command: |
-            sh -lc 'pip install --no-cache-dir -r requirements.txt && chown -R "$(stat -c %u:%g .)" . 2>/dev/null; python manage.py runserver 0.0.0.0:80'
+            sh -lc '
+              { command -v update-ca-certificates >/dev/null || { apt-get update && apt-get install -y --no-install-recommends ca-certificates; }; } &&
+              update-ca-certificates &&
+              pip install --no-cache-dir -r requirements.txt && chown -R "$(stat -c %u:%g .)" . 2>/dev/null; python manage.py runserver 0.0.0.0:80
+            '
         depends_on:
             - db
         environment:
             - PYTHONUNBUFFERED=1
             - DJANGO_DEBUG=1
+            - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+            - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
             - POSTGRES_HOST=db
             - POSTGRES_PORT=5432
             - POSTGRES_DB=django

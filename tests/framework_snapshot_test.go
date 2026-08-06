@@ -256,13 +256,17 @@ func TestDagsterComposeRendersCAMountAndLinkedProjectHosts(t *testing.T) {
 
 // TestNonPHPFrameworksRenderLinkedProjectExtraHosts is a hermetic,
 // non-snapshot render test covering the "populated" case of the
-// {{ range .RuntimeDomainHosts }} extra_hosts block added to Django's,
+// {{ range .RuntimeDomainHosts }} extra_hosts block and the
+// {{ if .HostGovardRootCAPath }} CA-mount block added to Django's,
 // Next.js's, and Emdash's compose blueprints. Before this, none of these
-// frameworks' own web service definitions requested RuntimeDomainHosts -
-// only the shared base.yml's PHP/php-debug services did - so
-// linked_projects never resolved to anything but the container's own
-// loopback for any framework outside that PHP path (see the Dagster gap
-// this mirrors, and the render test above covering the same mechanism).
+// frameworks' own web service definitions requested RuntimeDomainHosts or
+// mounted/trusted Govard's root CA - only the shared base.yml's
+// PHP/php-debug services requested RuntimeDomainHosts, and only Dagster's
+// blueprint had the CA-mount mechanism - so linked_projects never
+// resolved to anything but the container's own loopback, and even once it
+// did resolve, outbound HTTPS to a linked project failed TLS verification
+// for any framework outside that set (see the Dagster gap this mirrors,
+// and the render test above covering the same mechanism for Dagster).
 func TestNonPHPFrameworksRenderLinkedProjectExtraHosts(t *testing.T) {
 	for _, framework := range []string{"django", "nextjs", "emdash"} {
 		framework := framework
@@ -274,6 +278,17 @@ func TestNonPHPFrameworksRenderLinkedProjectExtraHosts(t *testing.T) {
 			}
 			t.Setenv("HOME", fakeHome)
 			t.Setenv("SSH_AUTH_SOCK", "")
+
+			govardHome := filepath.Join(tempDir, "govard-home")
+			t.Setenv("GOVARD_HOME_DIR", govardHome)
+
+			sslDir := filepath.Join(govardHome, "ssl")
+			if err := os.MkdirAll(sslDir, 0o755); err != nil {
+				t.Fatalf("failed to create fake ssl dir: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(sslDir, "root.crt"), []byte("fake-root-ca"), 0o644); err != nil {
+				t.Fatalf("failed to write fake root CA: %v", err)
+			}
 
 			destBlueprintsDir := filepath.Join(tempDir, "blueprints")
 			if err := os.CopyFS(destBlueprintsDir, blueprints.FS); err != nil {
@@ -317,6 +332,9 @@ func TestNonPHPFrameworksRenderLinkedProjectExtraHosts(t *testing.T) {
 			}
 			if !strings.Contains(rendered, "host.docker.internal:host-gateway") {
 				t.Errorf("expected rendered %s compose to still contain the static host.docker.internal extra_hosts entry, got:\n%s", framework, rendered)
+			}
+			if !strings.Contains(rendered, "/usr/local/share/ca-certificates/govard.crt") {
+				t.Errorf("expected rendered %s compose to contain the CA-mount volume line, got:\n%s", framework, rendered)
 			}
 		})
 	}
