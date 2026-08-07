@@ -10,6 +10,13 @@ import (
 	"govard/internal/frameworks/types"
 )
 
+const (
+	DefaultDBUser = "symfony"
+	DefaultDBPass = "symfony"
+	DefaultDBName = "symfony"
+	BinConsole    = "bin/console"
+)
+
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
 		Name:           "symfony",
@@ -19,9 +26,9 @@ func Definition() types.FrameworkDefinition {
 		Manifest:       manifest,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultSymfonyDBUser,
-			Password: conventions.DefaultSymfonyDBPass,
-			Database: conventions.DefaultSymfonyDBName,
+			Username: DefaultDBUser,
+			Password: DefaultDBPass,
+			Database: DefaultDBName,
 		},
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"symfony/framework-bundle", "symfony/symfony"},

@@ -362,3 +362,84 @@ func TestPatchDjangoSettingsForDomainErrorsWhenLineMissing(t *testing.T) {
 		t.Fatal("expected error when default ALLOWED_HOSTS line is not found")
 	}
 }
+
+func TestBootstrapPkgDjangoFreshInstallSupport(t *testing.T) {
+	opts := bootstrap.Options{}
+	djangoBootstrap := django.NewDjangoBootstrap(opts)
+
+	if !djangoBootstrap.SupportsFreshInstall() {
+		t.Error("expected Django to support fresh install")
+	}
+	if !djangoBootstrap.SupportsClone() {
+		t.Error("expected Django to support clone")
+	}
+}
+
+func TestDjangoCreateProjectWithRunnerStagesStartProject(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, ".govard.yml"), []byte("project_name: sample-project\n"), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
+	}
+
+	var capturedCommand string
+	djangoBootstrap := django.NewDjangoBootstrap(bootstrap.Options{
+		Version: "5.1",
+		Domain:  "sample.test",
+		Runner: func(command string) error {
+			capturedCommand = command
+			stageDir := extractStageHostDir(t, command)
+			if err := os.WriteFile(filepath.Join(stageDir, "manage.py"), []byte("#!/usr/bin/env python\n"), 0o644); err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Join(stageDir, "config"), 0o755); err != nil {
+				return err
+			}
+			settingsContent := "from pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\n\nALLOWED_HOSTS = []\n\nDATABASES = {\n    'default': {\n        'ENGINE': 'django.db.backends.sqlite3',\n        'NAME': BASE_DIR / 'db.sqlite3',\n    }\n}\n"
+			return os.WriteFile(filepath.Join(stageDir, "config", "settings.py"), []byte(settingsContent), 0o644)
+		},
+	})
+
+	if err := djangoBootstrap.CreateProject(projectDir); err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+
+	if !strings.Contains(capturedCommand, `pip install --no-cache-dir 'Django==5.1'`) {
+		t.Fatalf("unexpected runner command: %s", capturedCommand)
+	}
+	if !strings.Contains(capturedCommand, `django-admin startproject config "$GOVARD_STAGE_DIR"`) {
+		t.Fatalf("unexpected runner command: %s", capturedCommand)
+	}
+	if !strings.Contains(capturedCommand, "GOVARD_STAGE_DIR='/app/") {
+		t.Fatalf("expected staged dir under PythonWorkDir (/app), got: %s", capturedCommand)
+	}
+
+	if _, err := os.Stat(filepath.Join(projectDir, "manage.py")); err != nil {
+		t.Fatalf("expected staged manage.py to be copied into project dir: %v", err)
+	}
+
+	reqContent, err := os.ReadFile(filepath.Join(projectDir, "requirements.txt"))
+	if err != nil {
+		t.Fatalf("read requirements.txt: %v", err)
+	}
+	if string(reqContent) != "Django==5.1\npsycopg2-binary\n" {
+		t.Fatalf("requirements.txt = %q", string(reqContent))
+	}
+
+	settingsContent, err := os.ReadFile(filepath.Join(projectDir, "config", "settings.py"))
+	if err != nil {
+		t.Fatalf("read settings.py: %v", err)
+	}
+	if !strings.Contains(string(settingsContent), "django.db.backends.postgresql") {
+		t.Fatalf("expected settings.py to be patched for postgres, got:\n%s", string(settingsContent))
+	}
+	if !strings.Contains(string(settingsContent), "ALLOWED_HOSTS = ['sample.test', 'localhost', '127.0.0.1']") {
+		t.Fatalf("expected settings.py ALLOWED_HOSTS to include the project domain, got:\n%s", string(settingsContent))
+	}
+	if !strings.Contains(string(settingsContent), "CSRF_TRUSTED_ORIGINS = ['https://sample.test']") {
+		t.Fatalf("expected settings.py CSRF_TRUSTED_ORIGINS for the project domain, got:\n%s", string(settingsContent))
+	}
+
+	if _, err := os.Stat(filepath.Join(projectDir, ".govard.yml")); err != nil {
+		t.Fatalf("expected .govard.yml to be preserved: %v", err)
+	}
+}

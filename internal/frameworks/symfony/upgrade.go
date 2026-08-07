@@ -58,7 +58,7 @@ func Upgrade(ctx context.Context, config engine.Config, opts engine.UpgradeOptio
 
 	// Step 3: Migration
 	pterm.Info.Println("Step 3/4: Running migrations...")
-	migrateCmd := exec.CommandContext(ctx, "docker", "exec", "-w", conventions.DefaultWorkDir, containerName, "php", conventions.BinSymfonyConsole, "doctrine:migrations:migrate", "--no-interaction")
+	migrateCmd := exec.CommandContext(ctx, "docker", "exec", "-w", conventions.DefaultWorkDir, containerName, "php", BinConsole, "doctrine:migrations:migrate", "--no-interaction")
 	migrateCmd.Stdout = opts.Stdout
 	migrateCmd.Stderr = opts.Stderr
 	if err := migrateCmd.Run(); err != nil {
@@ -67,7 +67,7 @@ func Upgrade(ctx context.Context, config engine.Config, opts engine.UpgradeOptio
 
 	// Step 4: Cache clear
 	pterm.Info.Println("Step 4/4: Clearing cache...")
-	cacheCmd := exec.CommandContext(ctx, "docker", "exec", "-w", conventions.DefaultWorkDir, containerName, "php", conventions.BinSymfonyConsole, "cache:clear")
+	cacheCmd := exec.CommandContext(ctx, "docker", "exec", "-w", conventions.DefaultWorkDir, containerName, "php", BinConsole, "cache:clear")
 	cacheCmd.Stdout = opts.Stdout
 	cacheCmd.Stderr = opts.Stderr
 	if err := cacheCmd.Run(); err != nil {

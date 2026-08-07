@@ -154,15 +154,15 @@ func (o *OpenMageBootstrap) resolveDBConfig() (host, user, pass, name string) {
 	}
 	user = strings.TrimSpace(o.Options.DBUser)
 	if user == "" {
-		user = conventions.DefaultOpenMageDBUser
+		user = DefaultDBUser
 	}
 	pass = o.Options.DBPass
 	if pass == "" {
-		pass = conventions.DefaultOpenMageDBPass
+		pass = DefaultDBPass
 	}
 	name = strings.TrimSpace(o.Options.DBName)
 	if name == "" {
-		name = conventions.DefaultOpenMageDBName
+		name = DefaultDBName
 	}
 	return host, user, pass, name
 }

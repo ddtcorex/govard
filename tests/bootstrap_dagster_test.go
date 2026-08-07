@@ -106,3 +106,56 @@ func TestModuleNameFromPyprojectTomlErrorsWithoutToolDagsterSection(t *testing.T
 		t.Fatal("expected error when [tool.dagster] section is missing, got nil")
 	}
 }
+
+func TestDagsterCreateProjectWithRunnerStagesScaffold(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, ".govard.yml"), []byte("project_name: sample-project\n"), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
+	}
+
+	var capturedCommand string
+	dagsterBootstrap := dagster.NewDagsterBootstrap(bootstrap.Options{
+		ProjectName: "sample-project",
+		Runner: func(command string) error {
+			capturedCommand = command
+			stageDir := extractStageHostDir(t, command)
+			// Simulate `dagster project scaffold --name sample-project`
+			// having landed the package directly at stageDir's root (the
+			// real command's exact shape is confirmed live in Step 7),
+			// including the [tool.dagster] module_name scaffold itself
+			// records for autodiscovery.
+			pyproject := "[project]\nname = \"sample-project\"\n\n[tool.dagster]\nmodule_name = \"sample_project.definitions\"\ncode_location_name = \"sample_project\"\n"
+			return os.WriteFile(filepath.Join(stageDir, "pyproject.toml"), []byte(pyproject), 0o644)
+		},
+	})
+
+	if err := dagsterBootstrap.CreateProject(projectDir); err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+
+	if !strings.Contains(capturedCommand, "dagster project scaffold") {
+		t.Fatalf("unexpected runner command: %s", capturedCommand)
+	}
+	if !strings.Contains(capturedCommand, "sample-project") {
+		t.Fatalf("expected runner command to reference the project name, got: %s", capturedCommand)
+	}
+
+	requirements, err := os.ReadFile(filepath.Join(projectDir, "requirements.txt"))
+	if err != nil {
+		t.Fatalf("read requirements.txt: %v", err)
+	}
+	if !strings.Contains(string(requirements), "dagster") {
+		t.Errorf("expected requirements.txt to mention dagster, got:\n%s", requirements)
+	}
+
+	if _, err := os.Stat(filepath.Join(projectDir, "dagster.yaml")); err != nil {
+		t.Errorf("expected dagster.yaml to be written: %v", err)
+	}
+	workspaceContent, err := os.ReadFile(filepath.Join(projectDir, "workspace.yaml"))
+	if err != nil {
+		t.Fatalf("read workspace.yaml: %v", err)
+	}
+	if !strings.Contains(string(workspaceContent), "sample_project.definitions") {
+		t.Errorf("expected workspace.yaml to reference the scaffold's real definitions module, got:\n%s", workspaceContent)
+	}
+}

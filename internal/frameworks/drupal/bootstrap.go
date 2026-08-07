@@ -104,9 +104,9 @@ func (d *DrupalBootstrap) Install(projectDir string) error {
 		"--db-user=drupal",
 		"--db-pass=drupal",
 		"--site-name=Drupal Site",
-		"--account-name=admin",
-		"--account-pass=admin",
-		"--account-mail=admin@local.test",
+		"--account-name=" + conventions.DefaultAdminUser,
+		"--account-pass=" + conventions.DefaultAdminPassword,
+		"--account-mail=" + conventions.DefaultAdminEmail,
 		"--no-interaction",
 	}
 

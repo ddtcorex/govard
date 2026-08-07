@@ -7,6 +7,12 @@ import (
 	"govard/internal/frameworks/types"
 )
 
+const (
+	DefaultDBUser = "dagster"
+	DefaultDBPass = "dagster"
+	DefaultDBName = "dagster"
+)
+
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
 		Name:        "dagster",
@@ -15,9 +21,9 @@ func Definition() types.FrameworkDefinition {
 		Manifest:    manifest,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.PostgresPort,
-			Username: conventions.DefaultDagsterDBUser,
-			Password: conventions.DefaultDagsterDBPass,
-			Database: conventions.DefaultDagsterDBName,
+			Username: DefaultDBUser,
+			Password: DefaultDBPass,
+			Database: DefaultDBName,
 		},
 		Detect: engine.DetectionSpec{
 			FilePaths: []string{"workspace.yaml", "dagster.yaml"},

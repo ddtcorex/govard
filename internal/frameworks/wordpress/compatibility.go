@@ -32,7 +32,7 @@ const (
 // It downloads the WP-CLI phar directly from the official builds repository,
 // selecting the version based on the detected WordPress version.
 func FixWordPressCompatibility(config engine.Config) error {
-	if config.Framework != conventions.FrameworkWordPress {
+	if config.Framework != frameworkName {
 		return nil
 	}
 

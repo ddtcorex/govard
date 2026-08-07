@@ -173,7 +173,7 @@ func RunUpgrade(ctx context.Context, config engine.Config, opts engine.UpgradeOp
 
 	pterm.Info.Println("Step 5/6: Running setup:upgrade...")
 	if !opts.NoDBUpgrade {
-		suArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, conventions.BinMagento, "setup:upgrade", "--no-interaction"}
+		suArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, BinMagento, "setup:upgrade", "--no-interaction"}
 		su := exec.CommandContext(ctx, "docker", suArgs...)
 		su.Stdout = opts.Stdout
 		su.Stderr = opts.Stderr
@@ -185,13 +185,13 @@ func RunUpgrade(ctx context.Context, config engine.Config, opts engine.UpgradeOp
 	}
 
 	pterm.Info.Println("Step 6/6: Compiling and flushing cache...")
-	diArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, conventions.BinMagento, "setup:di:compile"}
+	diArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, BinMagento, "setup:di:compile"}
 	diCmd := exec.CommandContext(ctx, "docker", diArgs...)
 	if err := diCmd.Run(); err != nil {
 		pterm.Warning.Printf("setup:di:compile failed: %v\n", err)
 	}
 
-	cacheArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, conventions.BinMagento, "cache:flush"}
+	cacheArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, BinMagento, "cache:flush"}
 	cacheCmd := exec.CommandContext(ctx, "docker", cacheArgs...)
 	if err := cacheCmd.Run(); err != nil {
 		pterm.Warning.Printf("cache:flush failed: %v\n", err)
@@ -205,7 +205,7 @@ func RunUpgrade(ctx context.Context, config engine.Config, opts engine.UpgradeOp
 }
 
 func getMagentoCurrentVersion(containerName string) (string, error) {
-	cmdArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, "php", conventions.BinMagento, "--version"}
+	cmdArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, "php", BinMagento, "--version"}
 	out, err := exec.Command("docker", cmdArgs...).CombinedOutput()
 	if err == nil {
 		re := regexp.MustCompile(`\d+\.\d+\.\d+(-p\d+)?`)

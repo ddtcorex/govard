@@ -10,6 +10,13 @@ import (
 	"govard/internal/frameworks/types"
 )
 
+const (
+	DefaultDBUser = "laravel"
+	DefaultDBPass = "laravel"
+	DefaultDBName = "laravel"
+	BinArtisan    = "artisan"
+)
+
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
 		Name:           "laravel",
@@ -19,9 +26,9 @@ func Definition() types.FrameworkDefinition {
 		Manifest:       manifest,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultLaravelDBUser,
-			Password: conventions.DefaultLaravelDBPass,
-			Database: conventions.DefaultLaravelDBName,
+			Username: DefaultDBUser,
+			Password: DefaultDBPass,
+			Database: DefaultDBName,
 		},
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"laravel/framework"},

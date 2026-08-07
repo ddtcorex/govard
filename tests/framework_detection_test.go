@@ -9,283 +9,69 @@ import (
 	"govard/internal/engine"
 )
 
-func TestMagentoDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"magento/product-community-edition": "2.4.7",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "magento2" {
-		t.Errorf("Expected framework magento2, got %s", metadata.Framework)
+// TestFrameworkDetectionPriority covers detection outcomes that depend on a
+// relationship between two specific frameworks (priority ordering, package
+// aliasing) rather than a single framework in isolation - each case name
+// carries the framework pairing; the test function itself stays generic.
+func TestFrameworkDetectionPriority(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    map[string]string
+		expected string
+	}{
+		{
+			name: "magento2_wins_over_mageos",
+			files: map[string]string{
+				"composer.json": composerJSON(t, map[string]string{
+					"magento/product-community-edition": "2.4.8",
+					"mage-os/project-community-edition": "1.3.1",
+				}),
+			},
+			expected: "magento2",
+		},
+		{
+			name: "emdash_retains_legacy_priority_over_nextjs",
+			files: map[string]string{
+				"package.json": packageJSON(t, map[string]string{
+					"emdash": "^0.1.0",
+					"next":   "15.0.0",
+				}),
+			},
+			expected: "emdash",
+		},
+		// Surprising but current real behavior: openmage/magento-lts maps to
+		// "magento1", not "openmage" - openmage has no detection heuristic
+		// of its own. This test locks that in so it can't be "fixed" by
+		// accident in a future change.
+		{
+			name: "openmage_package_aliases_to_magento1",
+			files: map[string]string{
+				"composer.json": composerJSON(t, map[string]string{
+					"openmage/magento-lts": "20.0.0",
+				}),
+			},
+			expected: "magento1",
+		},
+		{
+			name: "magento_hackathon_package_aliases_to_magento1",
+			files: map[string]string{
+				"composer.json": composerJSON(t, map[string]string{
+					"magento-hackathon/magento-composer-installer": "3.0.0",
+				}),
+			},
+			expected: "magento1",
+		},
 	}
-}
 
-func TestComposerDetectionUsesFrameworkPriority(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"magento/product-community-edition": "2.4.8",
-			"mage-os/project-community-edition": "1.3.1",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "magento2" {
-		t.Errorf("Expected Magento 2 to win the documented detection priority, got %s", metadata.Framework)
-	}
-}
-
-func TestMagento1Discovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"app/Mage.php": "",
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "magento1" {
-		t.Errorf("Expected framework magento1, got %s", metadata.Framework)
-	}
-}
-
-func TestPrestaShopDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"config/defines.inc.php": "<?php\ndefine('_PS_VERSION_', '8.1.5');\n",
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "prestashop" {
-		t.Errorf("Expected framework prestashop, got %s", metadata.Framework)
-	}
-}
-
-func TestLaravelDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"laravel/framework": "11.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "laravel" {
-		t.Errorf("Expected framework laravel, got %s", metadata.Framework)
-	}
-	if metadata.Version != "11.0.0" {
-		t.Errorf("Expected version 11.0.0, got %s", metadata.Version)
-	}
-}
-
-func TestNextjsDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"package.json": packageJSON(t, map[string]string{
-			"next": "14.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "nextjs" {
-		t.Errorf("Expected framework nextjs, got %s", metadata.Framework)
-	}
-	if metadata.Version != "14.0.0" {
-		t.Errorf("Expected version 14.0.0, got %s", metadata.Version)
-	}
-}
-
-func TestNextjsDiscoveryWithMalformedComposerFallback(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": `{"name":"broken","require":{invalid json`,
-		"package.json": packageJSON(t, map[string]string{
-			"next": "14.2.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "nextjs" {
-		t.Errorf("Expected framework nextjs, got %s", metadata.Framework)
-	}
-	if metadata.Version != "14.2.0" {
-		t.Errorf("Expected version 14.2.0, got %s", metadata.Version)
-	}
-}
-
-func TestEmdashDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"package.json": packageJSON(t, map[string]string{
-			"astro":  "^6.1.2",
-			"emdash": "^0.1.0",
-		}),
-		"astro.config.mjs": `import emdash from "emdash/astro";`,
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "emdash" {
-		t.Errorf("Expected framework emdash, got %s", metadata.Framework)
-	}
-	if metadata.Version != "^0.1.0" {
-		t.Errorf("Expected version ^0.1.0, got %s", metadata.Version)
-	}
-}
-
-func TestEmdashTakesPrecedenceOverNextJS(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"package.json": packageJSON(t, map[string]string{
-			"emdash": "^0.1.0",
-			"next":   "15.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "emdash" {
-		t.Errorf("Expected framework emdash to retain its legacy priority over nextjs, got %s", metadata.Framework)
-	}
-}
-
-func TestDrupalDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"drupal/core": "10.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "drupal" {
-		t.Errorf("Expected framework drupal, got %s", metadata.Framework)
-	}
-}
-
-func TestSymfonyDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"symfony/framework-bundle": "7.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "symfony" {
-		t.Errorf("Expected framework symfony, got %s", metadata.Framework)
-	}
-}
-
-func TestShopwareDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"shopware/core": "6.6.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "shopware" {
-		t.Errorf("Expected framework shopware, got %s", metadata.Framework)
-	}
-}
-
-func TestCakephpDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"cakephp/cakephp": "5.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "cakephp" {
-		t.Errorf("Expected framework cakephp, got %s", metadata.Framework)
-	}
-}
-
-func TestWordpressDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"johnpbloch/wordpress": "6.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "wordpress" {
-		t.Errorf("Expected framework wordpress, got %s", metadata.Framework)
-	}
-}
-
-func TestOpenMagePackageDetectedAsMagento1(t *testing.T) {
-	// This looks surprising but is today's real behavior: openmage/magento-lts
-	// maps to "magento1", not "openmage" - openmage has no detection
-	// heuristic of its own. Locking this in so Task 2's rewrite can't
-	// accidentally "fix" it.
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"openmage/magento-lts": "20.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "magento1" {
-		t.Errorf("Expected framework magento1 (current quirk), got %s", metadata.Framework)
-	}
-}
-
-func TestMagentoHackathonPackageDetectedAsMagento1(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"composer.json": composerJSON(t, map[string]string{
-			"magento-hackathon/magento-composer-installer": "3.0.0",
-		}),
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "magento1" {
-		t.Errorf("Expected framework magento1, got %s", metadata.Framework)
-	}
-}
-
-func TestMagento1LocalXMLDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"app/etc/local.xml": "<config></config>",
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "magento1" {
-		t.Errorf("Expected framework magento1, got %s", metadata.Framework)
-	}
-}
-
-func TestMagento2AuthJSONDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"auth.json": `{"http-basic":{"repo.magento.com":{"username":"u","password":"p"}}}`,
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "magento2" {
-		t.Errorf("Expected framework magento2, got %s", metadata.Framework)
-	}
-}
-
-func TestDjangoDiscovery(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"manage.py": "#!/usr/bin/env python\nimport django\n",
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "django" {
-		t.Errorf("Expected framework django, got %s", metadata.Framework)
-	}
-}
-
-func TestDagsterDiscoveryViaWorkspaceYAML(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"workspace.yaml": "load_from:\n  - python_module: my_pipeline\n",
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "dagster" {
-		t.Errorf("Expected framework dagster, got %s", metadata.Framework)
-	}
-}
-
-func TestDagsterDiscoveryViaDagsterYAML(t *testing.T) {
-	testDir := tempProject(t, map[string]string{
-		"dagster.yaml": "storage:\n  sqlite:\n",
-	})
-
-	metadata := engine.DetectFramework(testDir)
-	if metadata.Framework != "dagster" {
-		t.Errorf("Expected framework dagster, got %s", metadata.Framework)
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			testDir := tempProject(t, tt.files)
+			metadata := engine.DetectFramework(testDir)
+			if metadata.Framework != tt.expected {
+				t.Errorf("expected framework %s, got %s", tt.expected, metadata.Framework)
+			}
+		})
 	}
 }
 

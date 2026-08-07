@@ -210,19 +210,19 @@ func (p *PrestaShopBootstrap) resolveDBConfig() (host, user, pass, name, prefix 
 	}
 	user = strings.TrimSpace(p.Options.DBUser)
 	if user == "" {
-		user = conventions.DefaultPrestaShopDBUser
+		user = DefaultDBUser
 	}
 	pass = p.Options.DBPass
 	if pass == "" {
-		pass = conventions.DefaultPrestaShopDBPass
+		pass = DefaultDBPass
 	}
 	name = strings.TrimSpace(p.Options.DBName)
 	if name == "" {
-		name = conventions.DefaultPrestaShopDBName
+		name = DefaultDBName
 	}
 	prefix = strings.TrimSpace(p.Options.TablePrefix)
 	if prefix == "" {
-		prefix = conventions.DefaultPrestaShopTablePrefix
+		prefix = DefaultTablePrefix
 	}
 	return host, user, pass, name, prefix
 }

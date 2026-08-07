@@ -13,6 +13,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	DefaultDBUser = "openmage"
+	DefaultDBPass = "openmage"
+	DefaultDBName = "openmage"
+)
+
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
 		Name:        "openmage",
@@ -21,9 +27,9 @@ func Definition() types.FrameworkDefinition {
 		Manifest:    manifest,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultOpenMageDBUser,
-			Password: conventions.DefaultOpenMageDBPass,
-			Database: conventions.DefaultOpenMageDBName,
+			Username: DefaultDBUser,
+			Password: DefaultDBPass,
+			Database: DefaultDBName,
 		},
 		// Detect is intentionally the zero value - OpenMage has no
 		// detection heuristic of its own. A project using

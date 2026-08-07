@@ -14,9 +14,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	DefaultDBUser = "wordpress"
+	DefaultDBPass = "wordpress"
+	DefaultDBName = "wordpress"
+
+	// frameworkName is wordpress's own identity string, used for the
+	// self-comparison in compatibility.go. Kept local because nothing
+	// outside this package needs a framework-name registry entry.
+	frameworkName = "wordpress"
+)
+
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:           "wordpress",
+		Name:           frameworkName,
 		Aliases:        []string{"wp"},
 		DisplayName:    "WordPress",
 		MigrationTypes: types.MigrationTypes{DDEV: []string{"wordpress"}, Warden: []string{"wordpress"}},
@@ -24,9 +35,9 @@ func Definition() types.FrameworkDefinition {
 		Manifest:       manifest,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultWordPressDBUser,
-			Password: conventions.DefaultWordPressDBPass,
-			Database: conventions.DefaultWordPressDBName,
+			Username: DefaultDBUser,
+			Password: DefaultDBPass,
+			Database: DefaultDBName,
 		},
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"johnpbloch/wordpress", "roots/wordpress", "wordpress/wordpress"},
