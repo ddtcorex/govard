@@ -68,6 +68,7 @@ gofmt -s -w .                   # format
 - Prefer small pure helpers for parsing/formatting
 - Do not swallow errors for critical flows (network, file, process)
 - Never log secrets, tokens, private keys, or DB passwords
+- `internal/conventions/` holds only constants used by ≥2 packages (or genuinely cross-cutting ones — admin/path/permission/network defaults). A constant read by exactly one framework package (DB credential defaults, tool binary paths, etc.) belongs in that framework's own package (`internal/frameworks/<name>/`), not in `conventions` — verify with `grep -rl "conventions\.<Name>"` before adding a new framework-specific constant there.
 
 ## Testing Conventions
 
@@ -76,6 +77,7 @@ gofmt -s -w .                   # format
 - Prefer mocks over live network in unit tests
 - Isolate state via `GOVARD_HOME_DIR` (use `TestMain` where appropriate)
 - Gate external service tests with explicit env checks
+- A framework's test functions for a given subject live in `tests/<subject>_<framework>_test.go` (e.g. `bootstrap_dagster_test.go`, `table_prefix_prestashop_test.go`) — never inside a shared/grab-bag file alongside other frameworks' tests. A test that genuinely compares/depends on ≥2 specific frameworks (priority ordering, package aliasing) stays in the framework-generic `<subject>_test.go`, written table-driven with framework names only in test data/`t.Run` labels, never in the Go function name.
 
 **Test pattern for internal packages:**
 ```go
