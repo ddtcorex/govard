@@ -68,10 +68,10 @@ func (credentials dbCredentials) withDefaults() dbCredentials {
 	result := credentials
 	if result.Engine == conventions.ServicePostgreSQL {
 		if strings.TrimSpace(result.Username) == "" {
-			result.Username = conventions.DefaultDjangoDBUser
+			result.Username = conventions.DefaultPostgresDBUser
 		}
 		if strings.TrimSpace(result.Database) == "" {
-			result.Database = conventions.DefaultDjangoDBName
+			result.Database = conventions.DefaultPostgresDBName
 		}
 		if strings.TrimSpace(result.Host) != "" && result.Port <= 0 {
 			result.Port = conventions.PostgresPort

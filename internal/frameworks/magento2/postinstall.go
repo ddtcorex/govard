@@ -138,7 +138,7 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 
 					// Force developer mode early to allow on-the-fly generation of Proxies/Interceptors
 					pterm.Info.Println("Switching to developer mode to enable on-the-fly class generation...")
-					_ = exec.Command("docker", magentoDockerExecArgs(containerName, config, conventions.BinMagento, "deploy:mode:set", "developer", "--no-interaction")...).Run()
+					_ = exec.Command("docker", magentoDockerExecArgs(containerName, config, BinMagento, "deploy:mode:set", "developer", "--no-interaction")...).Run()
 
 					// Force clean generated code and caches to break the stale Interceptor/DI crash cycle
 					_ = exec.Command("docker", magentoDockerExecArgs(containerName, config, "sh", "-c", "rm -rf generated/code/* generated/metadata/* var/cache/* var/page_cache/* var/view_preprocessed/*")...).Run()
@@ -279,7 +279,7 @@ func isMagentoConfigPathUnavailable(output string) bool {
 }
 
 func runMagentoConfigImport(containerName string, config engine.Config) error {
-	args := magentoDockerExecArgs(containerName, config, conventions.BinMagento, "app:config:import", "--no-interaction")
+	args := magentoDockerExecArgs(containerName, config, BinMagento, "app:config:import", "--no-interaction")
 	output, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("app:config:import failed: %w\nOutput: %s", err, string(output))
@@ -288,7 +288,7 @@ func runMagentoConfigImport(containerName string, config engine.Config) error {
 }
 
 func runMagentoSetupUpgrade(containerName string, config engine.Config) error {
-	args := magentoDockerExecArgs(containerName, config, conventions.BinMagento, "setup:upgrade", "--no-interaction")
+	args := magentoDockerExecArgs(containerName, config, BinMagento, "setup:upgrade", "--no-interaction")
 	output, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("setup:upgrade failed: %w\nOutput: %s", err, string(output))
@@ -347,7 +347,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 		dbName, dbUser, dbPass = conventions.DefaultMageOSDBName, conventions.DefaultMageOSDBUser, conventions.DefaultMageOSDBPass
 	}
 	configSetArgs := []string{
-		conventions.BinMagento,
+		BinMagento,
 		"setup:config:set",
 		"--db-host=db",
 		"--db-name=" + dbName,
@@ -361,7 +361,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 
 	commands := []magentoCommand{{
 		Desc: "Enable Developer Mode",
-		Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "deploy:mode:set", conventions.MagentoDeveloperMode, "--no-interaction"),
+		Args: magentoDockerExecArgs(containerName, config, BinMagento, "deploy:mode:set", conventions.MagentoDeveloperMode, "--no-interaction"),
 	}, {
 		Desc: "Setting Database connection",
 		Args: magentoDockerExecArgs(containerName, config, configSetArgs...),
@@ -371,7 +371,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 	if searchEngine != "" {
 		commands = append(commands, magentoCommand{
 			Desc: "Setting Search Engine",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 				"catalog/search/engine", searchEngine, "--no-interaction"),
 			Optional: true,
 		})
@@ -381,7 +381,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 	if config.Stack.Services.Cache == conventions.ServiceRedis || config.Stack.Services.Cache == "valkey" {
 		commands = append(commands, magentoCommand{
 			Desc: "Configuring Redis Cache",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "setup:config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "setup:config:set",
 				"--cache-backend=redis",
 				"--cache-backend-redis-server=redis",
 				"--cache-backend-redis-db=0",
@@ -393,7 +393,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 		})
 		commands = append(commands, magentoCommand{
 			Desc: "Configuring Redis Sessions",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "setup:config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "setup:config:set",
 				"--session-save=redis", "--session-save-redis-host=redis", "--session-save-redis-db=2", "--no-interaction"),
 			Optional: true,
 		})
@@ -402,7 +402,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 	if config.Stack.Services.Queue == conventions.ServiceRabbitMQ {
 		commands = append(commands, magentoCommand{
 			Desc: "Configuring RabbitMQ Message Queue",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "setup:config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "setup:config:set",
 				"--amqp-host=rabbitmq",
 				"--amqp-port="+strconv.Itoa(conventions.RabbitMQPort),
 				"--amqp-user=guest",
@@ -416,24 +416,24 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 	if config.Stack.Features.Varnish {
 		commands = append(commands, magentoCommand{
 			Desc: "Configuring Varnish Page Cache",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 				"system/full_page_cache/caching_application", "2", "--no-interaction"),
 		})
 		commands = append(commands, magentoCommand{
 			Desc: "Configuring Varnish Purge Hosts",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "setup:config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "setup:config:set",
 				"--http-cache-hosts="+conventions.ServiceVarnish+":"+strconv.Itoa(conventions.HTTPPort), "--no-interaction"),
 			Optional: true,
 		})
 		commands = append(commands, magentoCommand{
 			Desc: "Configuring Varnish Backend Host",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 				"system/full_page_cache/varnish/backend_host", "web", "--no-interaction"),
 			Optional: true,
 		})
 		commands = append(commands, magentoCommand{
 			Desc: "Configuring Varnish Backend Port",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 				"system/full_page_cache/varnish/backend_port", strconv.Itoa(conventions.HTTPPort), "--no-interaction"),
 			Optional: true,
 		})
@@ -444,17 +444,17 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 		if lockedKeys["web/unsecure/base_url"] || lockedKeys["web/secure/base_url"] {
 			commands = append(commands, magentoCommand{
 				Desc: "Setting Base URLs (Locked in env.php)",
-				Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+				Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 					"--lock-env", "web/unsecure/base_url", baseUrl, "--no-interaction"),
 			}, magentoCommand{
 				Desc: "Setting Secure Base URLs (Locked in env.php)",
-				Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+				Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 					"--lock-env", "web/secure/base_url", baseUrl, "--no-interaction"),
 			})
 		} else {
 			commands = append(commands, magentoCommand{
 				Desc: "Setting Base URLs",
-				Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "setup:store-config:set",
+				Args: magentoDockerExecArgs(containerName, config, BinMagento, "setup:store-config:set",
 					"--base-url="+baseUrl, "--base-url-secure="+baseUrl, "--no-interaction"),
 			})
 		}
@@ -464,7 +464,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 			// For local dev, using the full domain is usually safest.
 			commands = append(commands, magentoCommand{
 				Desc: "Setting Cookie Domain (Locked in env.php)",
-				Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+				Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 					"--lock-env", "web/cookie/cookie_domain", config.Domain, "--no-interaction"),
 				Optional: true,
 			})
@@ -473,7 +473,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 		if lockedKeys["web/secure/offloader_header"] {
 			commands = append(commands, magentoCommand{
 				Desc: "Setting Offloader Header (Locked in env.php)",
-				Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+				Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 					"--lock-env", "web/secure/offloader_header", "X-Forwarded-Proto", "--no-interaction"),
 				Optional: true,
 			})
@@ -495,12 +495,12 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 		}
 		commands = append(commands, magentoCommand{
 			Desc: fmt.Sprintf("Setting Base URL for %s %s", scopeDesc, scopeCode),
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 				scopeFlag, "--scope-code="+scopeCode, "web/unsecure/base_url", baseURL, "--no-interaction"),
 			Optional: true,
 		}, magentoCommand{
 			Desc: fmt.Sprintf("Setting Secure Base URL for %s %s", scopeDesc, scopeCode),
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 				scopeFlag, "--scope-code="+scopeCode, "web/secure/base_url", baseURL, "--no-interaction"),
 			Optional: true,
 		})
@@ -508,20 +508,20 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 
 	commands = append(commands, magentoCommand{
 		Desc: "Enable Web Server Rewrites",
-		Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+		Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 			"web/seo/use_rewrites", "1", "--no-interaction"),
 		Optional: true,
 	})
 
 	commands = append(commands, magentoCommand{
 		Desc: "Disable reCAPTCHA",
-		Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+		Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 			"recaptcha_frontend/type_for/customer_login", "invisible", "--no-interaction"),
 		Optional: true,
 	})
 	commands = append(commands, magentoCommand{
 		Desc: "Disable 2FA",
-		Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+		Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 			"twofactorauth/general/enable", "0", "--no-interaction"),
 		Optional: true,
 	})
@@ -531,7 +531,7 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 		// Using --lock-env to write to app/etc/env.php as requested (prevents DB pollution).
 		commands = append(commands, magentoCommand{
 			Desc: "Injecting LiveReload script into env.php footer",
-			Args: magentoDockerExecArgs(containerName, config, conventions.BinMagento, "config:set",
+			Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
 				"--lock-env", "design/footer/absolute_footer", lrScript, "--no-interaction"),
 			Optional: true,
 		})
@@ -631,7 +631,7 @@ func buildMagentoSearchConfigSetCommands(containerName string, config engine.Con
 			Args: magentoDockerExecArgs(
 				containerName,
 				config,
-				conventions.BinMagento,
+				BinMagento,
 				"config:set",
 				setting.path,
 				setting.value,

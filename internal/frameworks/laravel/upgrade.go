@@ -57,7 +57,7 @@ func Upgrade(ctx context.Context, config engine.Config, opts engine.UpgradeOptio
 
 	// Step 3: Migration
 	pterm.Info.Println("Step 3/3: Running migrations...")
-	migrateCmd := exec.CommandContext(ctx, "docker", "exec", "-w", conventions.DefaultWorkDir, containerName, "php", conventions.BinArtisan, "migrate", "--force")
+	migrateCmd := exec.CommandContext(ctx, "docker", "exec", "-w", conventions.DefaultWorkDir, containerName, "php", BinArtisan, "migrate", "--force")
 	migrateCmd.Stdout = opts.Stdout
 	migrateCmd.Stderr = opts.Stderr
 	if err := migrateCmd.Run(); err != nil {

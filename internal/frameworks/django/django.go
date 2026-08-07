@@ -7,6 +7,12 @@ import (
 	"govard/internal/frameworks/types"
 )
 
+const (
+	DefaultDBUser = "django"
+	DefaultDBPass = "django"
+	DefaultDBName = "django"
+)
+
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
 		Name:        "django",
@@ -15,9 +21,9 @@ func Definition() types.FrameworkDefinition {
 		Manifest:    manifest,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.PostgresPort,
-			Username: conventions.DefaultDjangoDBUser,
-			Password: conventions.DefaultDjangoDBPass,
-			Database: conventions.DefaultDjangoDBName,
+			Username: DefaultDBUser,
+			Password: DefaultDBPass,
+			Database: DefaultDBName,
 		},
 		Detect: engine.DetectionSpec{
 			FilePaths: []string{"manage.py"},

@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const BinMagento = "bin/magento"
+
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
 		Name:           "magento2",

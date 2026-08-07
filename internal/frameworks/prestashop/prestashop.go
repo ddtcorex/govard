@@ -10,6 +10,13 @@ import (
 	"path/filepath"
 )
 
+const (
+	DefaultDBUser      = "prestashop"
+	DefaultDBPass      = "prestashop"
+	DefaultDBName      = "prestashop"
+	DefaultTablePrefix = "ps_"
+)
+
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
 		Name:        "prestashop",
@@ -18,9 +25,9 @@ func Definition() types.FrameworkDefinition {
 		Manifest:    manifest,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
-			Username: conventions.DefaultPrestaShopDBUser,
-			Password: conventions.DefaultPrestaShopDBPass,
-			Database: conventions.DefaultPrestaShopDBName,
+			Username: DefaultDBUser,
+			Password: DefaultDBPass,
+			Database: DefaultDBName,
 		},
 		Detect: engine.DetectionSpec{
 			FilePaths: []string{"config/defines.inc.php"},
