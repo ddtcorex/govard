@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.61.0] - 2026-08-10
+
+### ✨ New Features
+
+- **Dagster Framework Support:** Govard now detects Dagster projects and provides a dedicated Docker Compose blueprint with Dagster webserver, daemon, user-code, and PostgreSQL services. `govard bootstrap` supports cloning an existing Dagster project and `govard bootstrap --fresh` scaffolds a new project using the official Dagster CLI.
+
+### 🔄 Refactors
+
+- Further isolated framework-specific conventions and tests, keeping each framework's ownership boundaries explicit.
+
+### 🐛 Bug Fixes
+
+- **Release Changelog Range:** GoReleaser now resolves the previous stable tag before generating release notes, so prerelease tags do not truncate the stable release changelog.
+
+### 📚 Documentation
+
+- Documented the framework-isolation conventions used by the registry and its tests.
+
 ## [1.60.0] - 2026-08-06
 
 ### ✨ New Features
