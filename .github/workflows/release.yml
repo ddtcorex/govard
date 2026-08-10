@@ -38,9 +38,10 @@ jobs:
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           version: "~> v2"
-          args: release --clean --previous-tag=${{ steps.prev_tag.outputs.tag }}
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_PREVIOUS_TAG: ${{ steps.prev_tag.outputs.tag }}
 
   macos-pkg:
     name: macOS Installer (${{ matrix.arch }})
