@@ -526,17 +526,6 @@ func buildMagento2Commands(projectName string, config engine.Config, lockedKeys 
 		Optional: true,
 	})
 
-	if config.Stack.Features.LiveReload {
-		lrScript := `<script src="http://localhost:35729/livereload.js?snipver=1"></script>`
-		// Using --lock-env to write to app/etc/env.php as requested (prevents DB pollution).
-		commands = append(commands, magentoCommand{
-			Desc: "Injecting LiveReload script into env.php footer",
-			Args: magentoDockerExecArgs(containerName, config, BinMagento, "config:set",
-				"--lock-env", "design/footer/absolute_footer", lrScript, "--no-interaction"),
-			Optional: true,
-		})
-	}
-
 	return commands
 }
 

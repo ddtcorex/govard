@@ -151,6 +151,42 @@ govard env cleanup
 - `-v, --volumes` — remove volumes
 - `--rmi local` — remove local images
 
+### `govard frontend`
+
+Manage the explicit, project-owned frontend development runtime for supported
+projects with `stack.features.frontend_sync: true`. Start the application with
+`govard env up` first. `env up` allocates no BrowserSync, LiveReload, Grunt,
+Tailwind watcher, or HTML-injection container; frontend resources exist only
+between explicit `frontend start` and `frontend stop` commands.
+
+```bash
+govard frontend start
+govard frontend logs -f
+govard frontend logs watch-vendor-theme -f
+govard frontend stop
+```
+
+`start` renders and starts only the dedicated frontend Compose services
+(`sync`, any discovered `watch-<theme>`, and `inject`), then waits for
+BrowserSync/Luma and every discovered watcher to be healthy. After health
+succeeds, it registers the active runtime through Caddy's Admin API. Both
+modes expose a narrow client-asset path on the application's own domain and
+run an HTML-injection proxy that shadows the application route (matching every
+path) so the client script appears on real page loads without editing project
+or theme files: Hyva exposes `/browser-sync/*` on port 3000 and injects
+`<script src="/browser-sync/browser-sync-client.js"></script>`; Luma exposes
+`/livereload/*` on port 35729 and injects
+`<script src="/livereload/livereload.js?snipver=1&port=443&path=livereload/livereload"></script>`.
+Both injectors buffer only HTML responses; everything else passes through
+unchanged.
+
+`stop` removes the Caddy routes (including the injection proxy) before
+removing only the frontend services; dependency volumes are retained. Once
+removed, the application's own route resumes serving every request. If Caddy
+registration fails during `start`, Govard removes the newly started frontend
+services so no hidden runtime continues consuming resources. `logs` accepts
+only a discovered frontend service; omit the service to use `sync`.
+
 ### `govard svc`
 
 Manage global services (proxy, Mailpit, PHPMyAdmin, Portainer).
@@ -211,6 +247,9 @@ govard shell --no-tty
 
 - PHP frameworks → `php` container at `/var/www/html`
 - Node-first frameworks (Next.js, Emdash) → `web` container at `/app`
+
+PHP containers intentionally do not include Node.js. Use `govard tool npm …`
+for Node package commands.
 
 ### `govard debug`
 
@@ -421,7 +460,11 @@ govard tool pnpm [command]
 govard tool grunt [command]
 ```
 
-For node-first frameworks, package-manager commands run in the `web` container at `/app`.
+Node package commands (`npm`, `npx`, `yarn`, `pnpm`, and `grunt`) run in a
+one-shot `node:<stack.node_version>-alpine` container with the project mounted
+at `/var/www/html`. This keeps builds aligned with Govard's frontend watchers
+and BrowserSync. `govard shell` still opens the framework runtime container and
+does not expose Node.js for PHP frameworks.
 
 `govard tool php` requires the current directory to be the project root. For editor/IDE integrations (see below), use `govard vscode` instead.
 

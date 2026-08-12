@@ -395,7 +395,7 @@ func varnishTemplateFramework(framework string) string {
 
 // BlueprintVersion should be incremented whenever architectural changes are made to the embedded blueprints
 // to ensure that 'govard env up' re-renders existing environments.
-const BlueprintVersion = "1.46"
+const BlueprintVersion = "1.47"
 
 func RenderBlueprintWithProfile(root string, config Config, profile string) error {
 	blueprintsFS, err := resolveBlueprintsDirForConfig(root, config)
@@ -405,7 +405,6 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 
 	NormalizeConfig(&config, root)
 	config.Profile = profile
-
 	blueprintFingerprint, err := blueprintsFingerprint(blueprintsFS)
 	if err != nil {
 		return fmt.Errorf("fingerprint blueprints: %w", err)
@@ -440,7 +439,7 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 			pterm.Info.Println("Blueprint unchanged, skipping render")
 			return nil
 		}
-		// Hash matches but the compose file is missing — fall through to re-render.
+		// Hash matches but a required rendered asset is missing — fall through to re-render.
 	}
 
 	// Get framework configuration
@@ -505,7 +504,6 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 			renderData.ApacheConfigDir = filepath.Dir(apacheHTTPDConfigPath)
 		}
 	}
-
 	renderData.SSHAuthSock = strings.TrimSpace(os.Getenv("SSH_AUTH_SOCK"))
 	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
 		sshDir := filepath.Join(home, ".ssh")
@@ -678,7 +676,7 @@ func mergeProjectComposeOverride(root string, merged map[string]interface{}) err
 }
 
 // renderTemplateFS renders a single template from an fs.FS
-func renderTemplateFS(bfs fs.FS, tmplPath string, data RenderData) (string, error) {
+func renderTemplateFS(bfs fs.FS, tmplPath string, data any) (string, error) {
 	tmpl, err := template.New(path.Base(tmplPath)).Funcs(renderTemplateFuncMap()).ParseFS(bfs, tmplPath)
 	if err != nil {
 		return "", fmt.Errorf("parse template %s: %w", tmplPath, err)

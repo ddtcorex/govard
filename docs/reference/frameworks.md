@@ -91,7 +91,7 @@ Magento 2 is the deepest supported workflow in Govard.
 - `govard tool magerun [command]` (Shortcut: `mr`) runs `n98-magerun2` inside the PHP container
 - `govard tool magento cron:install` installs crontabs inside the container
 - Optional Selenium/MFTF support (`mftf: true` in features)
-- Optional LiveReload for Grunt/Vite workflows (`livereload: true` in features)
+- Optional built-in frontend synchronization (`frontend_sync: true` in features)
 - Dedicated `php-debug` routing when Xdebug is enabled
 
 ### Typical Flow
@@ -103,36 +103,49 @@ govard tool magento cache:clean
 govard test phpunit
 ```
 
-### 🏎️ LiveReload & Frontend Development
+### 🏎️ Frontend Synchronization
 
-Govard supports the standard Magento 2 Grunt-based LiveReload workflow.
+Magento 2 and Mage-OS projects can opt into Govard's built-in BrowserSync frontend synchronization:
 
-1.  **Enable the feature** in `.govard.yml`:
-    ```yaml
-    stack:
-      features:
-        livereload: true
-    ```
-2.  **Apply changes**: Run `govard env up`. This exposes port `35729` to your host machine.
-3.  **Start the watcher**:
-    ```bash
-    govard shell
-    # Inside the shell:
-    grunt watch
-    ```
-4.  **Verify Configuration**: This is set up **automatically** if you run `govard config auto`. It injects the following snippet into your `app/etc/env.php`:
-    ```html
-    <script src="http://localhost:35729/livereload.js?snipver=1"></script>
-    ```
-5.  **Browser Setup**: Simply install the [LiveReload Browser Extension](http://livereload.com/extensions/) or rely on the automated script injection above.
+```yaml
+stack:
+  features:
+    frontend_sync: true
+```
 
-::: tip TIP
-Manual injection via `default.xml` is no longer needed. Everything is handled by Govard's auto-configuration engine via `env.php`.
-:::
+`frontend_sync` defaults to `false` and is invalid for other frameworks. It enables explicit, project-owned frontend runtime discovery. `govard env up` never starts or allocates frontend development services and always routes the project domain to `web` or Varnish; the on-demand frontend lifecycle is managed separately.
 
-::: info NOTE
-Since port `35729` is mapped directly to your host, you can only run `livereload: true` for one project at a time. If you have multiple projects, ensure only the active one has this feature enabled.
-:::
+Hyva projects require exactly one `scripts.browser-sync` owner below `app/design/frontend/<Vendor>/<Theme>/web/tailwind`; every discovered Tailwind package needs a committed `package-lock.json`. Luma projects require root `Gruntfile.js`, `package.json`, and `package-lock.json` (Magento ships these as `.sample` files — copy them and run `npm install` to generate the lockfile); Magento's default Gruntfile/LiveReload setup needs no further changes. A project may not satisfy both Hyva and Luma discovery at once; remove one setup before starting frontend sync. Govard does not create or edit BrowserSync, Magento, or theme files in your project.
+
+Luma needs no project-specific BrowserSync config, but Hyva's `browser-sync.config.js` (owned by the theme, not Govard) must read the environment Govard injects and use these settings to work correctly as a reverse proxy in front of the real application:
+
+```js
+module.exports = {
+  proxy: {
+    target: process.env.GOVARD_FRONTEND_SYNC_TARGET, // Govard sets this to the app container
+    proxyOptions: { changeOrigin: false },            // keep the original Host header
+    cookies: { stripDomain: false },                  // keep Magento's session cookie domain intact
+  },
+  port: Number.parseInt(process.env.GOVARD_FRONTEND_SYNC_PORT || '3000', 10),
+  open: false,                                        // no display inside the container
+  socket: {
+    domain: "//'+location.host+'",                    // resolve at request time via Caddy
+    path: '/browser-sync/socket.io',                   // must match the /browser-sync/* route
+  },
+};
+```
+
+`changeOrigin: false` and `cookies.stripDomain: false` are the two settings that matter most: with either wrong, BrowserSync sends Magento a `Host` header or cookie scope that does not match the browsing domain, which can trigger Magento's own base-URL redirect or break session cookies even though `frontend start` reports success. `open: false` avoids BrowserSync trying to launch a browser inside the headless Node container. `socket.path` must stay `/browser-sync/socket.io` since that is the only path Govard's Caddy route proxies to the BrowserSync container.
+
+#### Switching the active Hyva theme
+
+Because discovery requires exactly one `scripts.browser-sync` owner, a project with multiple Hyva themes can only drive frontend sync from one of them at a time. To switch: remove (or rename) the `scripts.browser-sync` entry in the currently active theme's `web/tailwind/package.json`, add the same script (plus its own `browser-sync.config.js`, `package.json` scripts, and `package-lock.json`) to the target theme, then run `govard frontend start` again — it re-discovers whichever theme is now the sole owner.
+
+A theme that only inherits another Hyva theme via `theme.xml`'s `<parent>` (and does not override `web/tailwind` itself) shares that parent's compiled CSS and does not need its own BrowserSync setup at all; frontend sync for the parent theme already covers it through Magento's own static-file fallback.
+
+A non-Hyva theme (Luma-based, no `Hyva_Theme` dependency) cannot be driven through the Hyva path above — it needs the Luma prerequisites (root `Gruntfile.js`/`package.json`/`package-lock.json`) instead, and Hyva/Luma discovery remains mutually exclusive project-wide: only one of the two setups may be valid at a time.
+
+After `govard env up`, use `govard frontend start`; use `govard frontend logs [service] -f` for BrowserSync, LiveReload, its HTML injector, or a discovered watcher (services are named `sync`, `watch-<theme>`, and `inject` — containers come out as `<project>-frontend-sync-1`, etc.), and `govard frontend stop` to remove only frontend services while retaining their dependency volumes. While active, Caddy routes Hyva `/browser-sync/*` requests to port 3000 and Luma `/livereload/*` requests to port 35729 for client assets and the socket; both modes also send all other application traffic through their own dedicated injector, which buffers only HTML responses to insert their client script (BrowserSync's or the standard LiveReload client) before `</body>` and passes non-HTML bodies through unchanged. Stopping restores the normal application route before the frontend containers are removed.
 
 ### Native Upgrade Pipeline
 
@@ -352,6 +365,8 @@ govard tool npx [command]
 ```
 
 Defaults: Node 24, no DB forced. Project-root web serving.
+`govard tool npm` and `govard tool npx` use the configured standalone Node image;
+`govard shell` continues to open the application web container.
 
 ---
 

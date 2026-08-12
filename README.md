@@ -507,6 +507,7 @@ Common command aliases:
 | `govard init`        | Initialize a new project configuration                             |
 | `govard bootstrap`   | Bootstrap local project setup and clone a remote environment       |
 | `govard env`        | Project-scoped lifecycle; intelligently proxies Docker Compose commands  |
+| `govard frontend`   | Start, stop, and inspect on-demand Magento frontend development services |
 | `govard domain`     | Manage additional domains for the project                          |
 | `govard svc`        | Manage global services (`proxy`, `mail`, `pma`, `portainer`)       |
 | `govard tool`        | Run framework/tooling CLIs inside project containers               |
@@ -534,6 +535,22 @@ Common command aliases:
 | `govard redis`       | Smart shortcut for project Redis Management                        |
 | `govard varnish`     | Smart shortcut for project Varnish Management                      |
 | `govard rabbitmq`    | Smart shortcut for project RabbitMQ Management                     |
+
+---
+
+### Magento Frontend Development
+
+Magento 2 and Mage-OS projects with `stack.features.frontend_sync: true` can run their project-owned Hyva BrowserSync or Luma Grunt/LiveReload setup on demand. Start the application first; `govard env up` does not allocate frontend containers.
+
+```bash
+govard env up
+govard frontend start
+govard frontend logs -f
+govard frontend logs watch-vendor-theme -f
+govard frontend stop
+```
+
+With no service argument, `frontend logs` lists every discovered frontend service and then shows the primary `sync` service. All frontend lifecycle commands require the backend web container to be running.
 
 ---
 

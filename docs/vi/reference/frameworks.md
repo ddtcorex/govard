@@ -91,7 +91,7 @@ Magento 2 là framework được hỗ trợ sâu sắc nhất trong Govard.
 - `govard tool magerun [command]` (Phím tắt: `mr`) chạy `n98-magerun2` bên trong container PHP.
 - `govard tool magento cron:install` cài đặt các crontab bên trong container.
 - Hỗ trợ Selenium/MFTF tùy chọn (`mftf: true` trong cấu hình features).
-- Hỗ trợ LiveReload tùy chọn cho Grunt/Vite workflow (`livereload: true` trong features).
+- Hỗ trợ đồng bộ frontend tích hợp tùy chọn (`frontend_sync: true` trong features).
 - Định tuyến riêng biệt `php-debug` khi bật Xdebug.
 
 ### Quy trình thông thường
@@ -103,36 +103,49 @@ govard tool magento cache:clean
 govard test phpunit
 ```
 
-### 🏎️ LiveReload & Phát triển Frontend
+### 🏎️ Đồng bộ Frontend
 
-Govard hỗ trợ quy trình LiveReload dựa trên Grunt tiêu chuẩn của Magento 2.
+Dự án Magento 2 và Mage-OS có thể bật đồng bộ frontend BrowserSync tích hợp của Govard:
 
-1. **Bật tính năng** trong file `.govard.yml`:
-    ```yaml
-    stack:
-      features:
-        livereload: true
-    ```
-2. **Áp dụng thay đổi**: Chạy `govard env up`. Lệnh này sẽ mở port `35729` ra máy host của bạn.
-3. **Bắt đầu watcher**:
-    ```bash
-    govard shell
-    # Bên trong shell:
-    grunt watch
-    ```
-4. **Xác minh cấu hình**: Việc này được thiết lập **tự động** nếu bạn chạy `govard config auto`. Hệ thống sẽ inject đoạn mã sau vào `app/etc/env.php`:
-    ```html
-    <script src="http://localhost:35729/livereload.js?snipver=1"></script>
-    ```
-5. **Cài đặt trình duyệt**: Chỉ cần cài đặt [LiveReload Browser Extension](http://livereload.com/extensions/) hoặc dựa vào cơ chế tự động inject script ở trên.
+```yaml
+stack:
+  features:
+    frontend_sync: true
+```
 
-::: tip GỢI Ý
-Không cần phải inject script thủ công qua `default.xml` nữa. Mọi thứ được xử lý tự động bởi cơ chế auto-configuration của Govard qua `env.php`.
-:::
+`frontend_sync` mặc định là `false` và không hợp lệ với framework khác. Tùy chọn này bật việc phát hiện runtime frontend do dự án sở hữu. `govard env up` không khởi động hoặc cấp phát dịch vụ frontend development và luôn route domain dự án đến `web` hoặc Varnish; lifecycle frontend theo yêu cầu được quản lý riêng.
 
-::: info LƯU Ý
-Vì port `35729` được ánh xạ trực tiếp tới máy host của bạn, bạn chỉ có thể chạy `livereload: true` cho duy nhất một dự án tại một thời điểm. Nếu bạn chạy nhiều dự án, hãy đảm bảo chỉ bật tính năng này cho dự án đang hoạt động.
-:::
+Dự án Hyva cần đúng một `scripts.browser-sync` dưới `app/design/frontend/<Vendor>/<Theme>/web/tailwind`; mọi package Tailwind được phát hiện cần `package-lock.json` đã commit. Dự án Luma cần `Gruntfile.js`, `package.json` và `package-lock.json` ở thư mục gốc (Magento mặc định ship các file này dạng `.sample` — copy đổi tên rồi chạy `npm install` để tạo lockfile); Gruntfile/LiveReload mặc định của Magento không cần sửa gì thêm. Một dự án không được thỏa mãn discovery của cả Hyva lẫn Luma cùng lúc; phải gỡ 1 trong 2 setup trước khi chạy frontend sync. Govard không tạo hoặc chỉnh sửa các file BrowserSync, Magento hay theme trong dự án.
+
+Luma không cần config BrowserSync riêng của project, nhưng `browser-sync.config.js` của Hyva (do theme sở hữu, không phải Govard) phải đọc đúng biến môi trường Govard truyền vào và dùng đúng các setting sau để hoạt động chính xác như 1 reverse proxy đứng trước app thật:
+
+```js
+module.exports = {
+  proxy: {
+    target: process.env.GOVARD_FRONTEND_SYNC_TARGET, // Govard set biến này trỏ tới container app
+    proxyOptions: { changeOrigin: false },            // giữ nguyên Host header gốc
+    cookies: { stripDomain: false },                  // giữ nguyên domain cookie session của Magento
+  },
+  port: Number.parseInt(process.env.GOVARD_FRONTEND_SYNC_PORT || '3000', 10),
+  open: false,                                        // container không có display
+  socket: {
+    domain: "//'+location.host+'",                    // resolve động lúc request qua Caddy
+    path: '/browser-sync/socket.io',                   // phải khớp route /browser-sync/*
+  },
+};
+```
+
+`changeOrigin: false` và `cookies.stripDomain: false` là 2 setting quan trọng nhất: nếu sai 1 trong 2, BrowserSync sẽ gửi cho Magento 1 Host header hoặc phạm vi cookie không khớp domain đang browse — có thể kích hoạt redirect base-URL của chính Magento hoặc làm hỏng session cookie, dù `frontend start` vẫn báo thành công bình thường. `open: false` để tránh BrowserSync cố mở trình duyệt bên trong container Node không có display. `socket.path` phải giữ nguyên `/browser-sync/socket.io` vì đó là path duy nhất route Caddy của Govard proxy tới container BrowserSync.
+
+#### Chuyển đổi theme Hyva đang active
+
+Vì discovery yêu cầu đúng 1 chủ sở hữu `scripts.browser-sync`, project có nhiều theme Hyva chỉ có thể chạy frontend sync cho 1 theme tại 1 thời điểm. Để chuyển: xóa (hoặc đổi tên) key `scripts.browser-sync` trong `web/tailwind/package.json` của theme đang active, thêm đúng script đó (kèm `browser-sync.config.js`, các script trong `package.json`, và `package-lock.json` riêng) vào theme muốn chuyển sang, rồi chạy lại `govard frontend start` — Govard tự phát hiện lại theme nào hiện là chủ sở hữu duy nhất.
+
+Theme chỉ kế thừa 1 theme Hyva khác qua `<parent>` trong `theme.xml` (và không override `web/tailwind` riêng) sẽ dùng chung CSS đã biên dịch của theme cha, không cần setup BrowserSync riêng — frontend sync của theme cha đã phủ sẵn theme con này qua cơ chế fallback file tĩnh của Magento.
+
+Theme không phải Hyva (dựa trên Luma, không phụ thuộc `Hyva_Theme`) không thể chạy qua đường Hyva ở trên — cần điều kiện tiên quyết của Luma (`Gruntfile.js`/`package.json`/`package-lock.json` ở root) thay vào đó, và discovery Hyva/Luma vẫn loại trừ lẫn nhau trên toàn project: chỉ 1 trong 2 setup được hợp lệ tại 1 thời điểm.
+
+Sau `govard env up`, dùng `govard frontend start`; dùng `govard frontend logs [service] -f` cho BrowserSync, LiveReload, HTML injector hoặc watcher đã phát hiện (các service tên là `sync`, `watch-<theme>`, `inject` — container ra tên `<project>-frontend-sync-1`, v.v.), và `govard frontend stop` để chỉ xóa dịch vụ frontend nhưng giữ lại dependency volume. Khi runtime hoạt động, Caddy route request Hyva `/browser-sync/*` và Luma `/livereload/*` đến đúng cổng (3000 và 35729) để phục vụ client asset và socket; cả hai chế độ đồng thời chuyển mọi traffic ứng dụng khác qua injector riêng của mình — injector chỉ buffer response HTML để chèn script client (của BrowserSync hoặc LiveReload chuẩn) trước `</body>`, còn body không phải HTML được giữ nguyên. Khi dừng, Govard khôi phục route ứng dụng thông thường trước khi xóa container frontend.
 
 ### Pipeline Nâng cấp Tự động (Native Upgrade Pipeline)
 
@@ -352,6 +365,8 @@ govard tool npx [command]
 ```
 
 Mặc định: Node 24, không ép buộc cấu hình database. Khởi chạy web tại thư mục gốc của dự án.
+`govard tool npm` và `govard tool npx` dùng standalone Node image đã cấu hình;
+`govard shell` vẫn mở application web container.
 
 ---
 

@@ -122,7 +122,6 @@ services:
       COMPOSER_CACHE_DIR: "{{ .HomeWWWData }}/.cache/composer"
       COMPOSER_HOME: "{{ .HomeWWWData }}/.composer"
       COMPOSER_VERSION: "{{ .ComposerVersion }}"
-      NODE_VERSION: "{{ .Config.Stack.NodeVersion }}"
       PUID: {{ .Config.Stack.UserID }}
       PGID: {{ .Config.Stack.GroupID }}
       CHOWN_DIR_LIST: "{{ range $i, $dir := .EntrypointChownDirList }}{{ if $i }} {{ end }}{{ $dir }}{{ end }}"
@@ -132,10 +131,6 @@ services:
       {{ range .RuntimeDomainHosts }}
       - "{{ . }}"
       {{ end }}
-    {{ if and (or (eq .Config.Framework "magento2") (eq .Config.Framework "mageos")) .Config.Stack.Features.LiveReload }}
-    ports:
-      - "35729:35729"
-    {{ end }}
   {{ end }}
 
   {{ if and .RequiresPHP .Config.Stack.Features.Xdebug }}

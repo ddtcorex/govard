@@ -115,42 +115,6 @@ if [ -n "${COMPOSER_VERSION:-}" ] && [ "${COMPOSER_VERSION}" != "latest" ]; then
   fi
 fi
 
-# Ensure specific Node.js version is active if requested
-if [ -n "${NODE_VERSION:-}" ]; then
-  CURRENT_NODE_VERSION=$(node -v 2>/dev/null | sed 's/v//')
-  if ! echo "${CURRENT_NODE_VERSION}" | grep -q "^${NODE_VERSION}"; then
-    echo "Ensuring Node.js version ${NODE_VERSION} (downloading)..."
-    
-    # Detect architecture
-    ARCH="x64"
-    case "$(uname -m)" in
-      aarch64|arm64) ARCH="arm64" ;;
-      x86_64) ARCH="x64" ;;
-    esac
-    
-    # Download and install specific version from unofficial MUSL builds (for Alpine)
-    mkdir -p /tmp/node-install
-    URL="https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${ARCH}-musl.tar.xz"
-    if sudo curl -sSfL "${URL}" -o /tmp/node.tar.xz; then
-      echo "Extracting Node.js ${NODE_VERSION}..."
-      sudo tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 --no-same-owner
-      rm /tmp/node.tar.xz
-      echo "Node.js version $(node -v) is now active."
-    else
-      # Try official build as a fallback (though it usually needs glibc)
-      URL_OFFICIAL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${ARCH}.tar.xz"
-      echo "Warning: MUSL build not found, attempting official build..."
-      if sudo curl -sSfL "${URL_OFFICIAL}" -o /tmp/node.tar.xz; then
-        sudo tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 --no-same-owner
-        rm /tmp/node.tar.xz
-        echo "Node.js version $(node -v) is now active."
-      else
-        echo "Warning: failed to download Node.js version ${NODE_VERSION}; falling back to default image version." >&2
-      fi
-    fi
-  fi
-fi
-
 if [ "$(id -u)" = "0" ]; then
   unset GOVARD_ENTRYPOINT_ROOT
   exec sudo -E -H -u www-data "$@"

@@ -35,8 +35,10 @@ var toolCmd = &cobra.Command{
 	Short: "Run framework/tooling commands inside project containers",
 	Long: `Run framework CLIs and common package manager commands directly inside the project containers.
 This eliminates the need to install PHP, Composer, or Node.js on your host machine.
-Govard automatically routes commands to the correct container (usually PHP) and
-executes them as the appropriate user (e.g., conventions.UserWWWData).
+Govard routes PHP tools to the application container. Node package commands
+run inside the application container for Node-runtime frameworks (Next.js,
+Emdash); for other frameworks they run in a one-shot Node container matching
+stack.node_version, since those application images no longer bundle Node.
 
 Case Studies:
 - Clean Workspace: Run 'govard tool magento setup:upgrade' without needing PHP/MySQL on your laptop.
@@ -188,8 +190,13 @@ func initFrameworkCommands() {
 					}
 				}
 
+				commandArgs := append(target.PrependArgs, args...)
+				if isNodeTool(target.Binary) && !engine.FrameworkUsesNodeRuntime(config.Framework) {
+					return RunNodeTool(config, target.Binary, commandArgs)
+				}
+
 				targetExec := resolveToolExecution(config, target.Binary, target.DefaultUser)
-				return RunInContainerAt(targetExec.ContainerName, targetExec.User, targetExec.Workdir, target.Binary, append(target.PrependArgs, args...))
+				return RunInContainerAt(targetExec.ContainerName, targetExec.User, targetExec.Workdir, target.Binary, commandArgs)
 			},
 		}
 		toolCmd.AddCommand(cmd)
@@ -220,6 +227,56 @@ func RunInContainerAt(containerName string, user string, workdir string, binary 
 	c := exec.Command("docker", dockerArgs...)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return c.Run()
+}
+
+// RunNodeTool runs package tooling in a one-shot standalone Node image.
+// Only used for frameworks whose application image does not already provide
+// Node (PHP, Python) — those images may bundle a different Node major, so
+// tooling must not inherit their runtime by accident. Node-runtime
+// frameworks (Next.js, Emdash) instead exec into their own running
+// container via resolveToolExecution, matching that container's exact
+// Node build (libc, native modules, network, environment).
+func RunNodeTool(config engine.Config, binary string, args []string) error {
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("resolve project directory: %w", err)
+	}
+
+	dockerArgs := []string{"run", "--rm"}
+	if stdinIsTerminal() {
+		dockerArgs = append(dockerArgs, "-it")
+	} else {
+		dockerArgs = append(dockerArgs, "-i")
+	}
+	dockerArgs = append(dockerArgs,
+		"--user", fmt.Sprintf("%d:%d", config.Stack.UserID, config.Stack.GroupID),
+		"-v", projectRoot+":"+conventions.DefaultWorkDir,
+		"-w", conventions.DefaultWorkDir,
+		"node:"+config.Stack.NodeVersion+"-alpine",
+	)
+
+	switch binary {
+	case "pnpm":
+		dockerArgs = append(dockerArgs, "corepack", "pnpm")
+	case "grunt":
+		dockerArgs = append(dockerArgs, "npx", "grunt")
+	default:
+		dockerArgs = append(dockerArgs, binary)
+	}
+	dockerArgs = append(dockerArgs, args...)
+
+	c := exec.Command("docker", dockerArgs...)
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return c.Run()
+}
+
+func isNodeTool(binary string) bool {
+	switch binary {
+	case "npm", "npx", "yarn", "pnpm", "grunt":
+		return true
+	default:
+		return false
+	}
 }
 
 func ResolveProjectExecUser(config engine.Config, fallback string) string {

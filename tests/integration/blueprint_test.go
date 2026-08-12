@@ -78,6 +78,16 @@ func TestRenderBlueprintWithFeatures(t *testing.T) {
 	projectDir := t.TempDir()
 
 	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
+	tailwindDir := filepath.Join(projectDir, "app", "design", "frontend", "Hyva", "Default", "web", "tailwind")
+	if err := os.MkdirAll(tailwindDir, 0o755); err != nil {
+		t.Fatalf("Failed to create frontend sync theme: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tailwindDir, "package.json"), []byte(`{"scripts":{"watch":"tailwindcss --watch"}}`), 0o644); err != nil {
+		t.Fatalf("Failed to write frontend sync package: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tailwindDir, "package-lock.json"), []byte("integration-lock"), 0o644); err != nil {
+		t.Fatalf("Failed to write frontend sync lockfile: %v", err)
+	}
 
 	config := engine.Config{
 		ProjectName: "test-features",
@@ -88,10 +98,11 @@ func TestRenderBlueprintWithFeatures(t *testing.T) {
 			PHPVersion: "8.3",
 			WebServer:  "nginx",
 			Features: engine.Features{
-				Xdebug:  true,
-				Cache:   true,
-				Varnish: true,
-				Search:  true,
+				Xdebug:       true,
+				Cache:        true,
+				Varnish:      true,
+				Search:       true,
+				FrontendSync: true,
 			},
 			Services: engine.Services{
 				WebServer: "nginx",

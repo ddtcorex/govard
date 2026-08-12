@@ -1,0 +1,97 @@
+services:
+  sync:
+    image: node:{{ .Config.Stack.NodeVersion }}-alpine
+    working_dir: {{ printf "%q" (printf "%s/%s" .WorkDir .Runtime.BrowserSync.TailwindDir) }}
+    volumes:
+      - .:{{ .WorkDir }}
+      - {{ printf "%q" (printf "%s:%s/%s/node_modules" .Runtime.BrowserSync.NodeModulesVolume .WorkDir .Runtime.BrowserSync.TailwindDir) }}
+    environment:
+      GOVARD_FRONTEND_SYNC_TARGET: {{ printf "%q" .FrontendSyncTarget }}
+      GOVARD_FRONTEND_SYNC_PUBLIC_URL: {{ printf "%q" .FrontendSyncPublicURL }}
+      GOVARD_FRONTEND_SYNC_PORT: "3000"
+      GOVARD_FRONTEND_SYNC_PACKAGE_HASH: {{ printf "%q" .Runtime.BrowserSync.PackageJSONHash }}
+    command: >-
+      sh -ec '
+      marker=node_modules/.govard-package-lock;
+      if [ "$$(cat "$$marker" 2>/dev/null || true)" != "{{ .Runtime.BrowserSync.PackageLockHash }}" ]; then
+        npm ci;
+        printf "%s\n" "{{ .Runtime.BrowserSync.PackageLockHash }}" > "$$marker";
+      fi;
+      exec npm run browser-sync
+      '
+    networks:
+      - govard-net
+      - govard-proxy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --spider http://127.0.0.1:3000/health_check.php
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  inject:
+    image: node:{{ .Config.Stack.NodeVersion }}-alpine
+    working_dir: {{ printf "%q" .WorkDir }}
+    volumes:
+      - {{ printf "%q" (printf "%s:/usr/local/lib/govard/frontend-inject.mjs:ro" .InjectScriptPath) }}
+    environment:
+      GOVARD_FRONTEND_INJECT_UPSTREAM: {{ printf "%q" .FrontendSyncTarget }}
+      GOVARD_FRONTEND_INJECT_PORT: "3000"
+      GOVARD_FRONTEND_INJECT_SCRIPT_HTML: {{ printf "%q" .InjectScriptHTML }}
+    command: node /usr/local/lib/govard/frontend-inject.mjs
+    networks:
+      - govard-net
+      - govard-proxy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --spider http://127.0.0.1:3000/__govard_frontend_health
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+
+  {{ range .FrontendSyncWatchers }}
+  {{ .ServiceName }}:
+    image: node:{{ $.Config.Stack.NodeVersion }}-alpine
+    stdin_open: true
+    working_dir: {{ printf "%q" (printf "%s/%s" $.WorkDir .TailwindDir) }}
+    volumes:
+      - .:{{ $.WorkDir }}
+      - {{ printf "%q" (printf "%s:%s/%s/node_modules" .NodeModulesVolume $.WorkDir .TailwindDir) }}
+    command: >-
+      sh -ec '
+      marker=node_modules/.govard-package-lock;
+      if [ "$$(cat "$$marker" 2>/dev/null || true)" != "{{ .PackageLockHash }}" ]; then
+        npm ci;
+        printf "%s\n" "{{ .PackageLockHash }}" > "$$marker";
+      fi;
+      exec env NODE_NO_TTY=1 npm run watch
+      '
+    networks:
+      - govard-net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test "$$(cat node_modules/.govard-package-lock 2>/dev/null)" = "{{ .PackageLockHash }}"
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+  {{ end }}
+
+volumes:
+  {{ .Runtime.BrowserSync.NodeModulesVolume }}: {}
+  {{ range .FrontendSyncWatchers }}
+  {{ .NodeModulesVolume }}: {}
+  {{ end }}
+
+networks:
+  govard-net:
+    external: true
+    name: {{ printf "%q" .ApplicationNetwork }}
+  govard-proxy:
+    external: true
+    name: govard-proxy

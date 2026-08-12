@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"govard/internal/conventions"
@@ -14,8 +15,31 @@ const caddyExecRetryAttempts = 8
 const caddyExecRetryDelay = 350 * time.Millisecond
 const caddyAdminAPI = "http://localhost:2019"
 
+const frontendRouteIDPrefix = "govard_frontend_"
+
+// FrontendEndpoint is the public frontend client route registered for an
+// active project runtime.
+type FrontendEndpoint struct {
+	Path        string
+	StripPrefix string
+	Target      string
+}
+
+// FrontendRegistration describes the Caddy routes owned by one active
+// frontend runtime. HTMLInjectionTarget is a development-only application
+// proxy that injects a live-reload client script into HTML responses -
+// used by both Luma (LiveReload) and Hyva (BrowserSync).
+type FrontendRegistration struct {
+	ProjectName         string
+	Domains             []string
+	Endpoint            FrontendEndpoint
+	HTMLInjectionTarget string
+}
+
+var caddyExecRunner = runCaddyExec
+
 var initCaddyCommandRunner = func(container string, initJSON string) error {
-	_, err := runCaddyExec(container, "curl", "-s", "-X", "POST",
+	_, err := caddyExecRunner(container, "curl", "-sS", "--fail", "-X", "POST",
 		fmt.Sprintf("%s/load", caddyAdminAPI),
 		"-H", "Content-Type: application/json",
 		"-d", initJSON)
@@ -174,6 +198,41 @@ func UnregisterSearchDomain(domain string) error {
 	return loadCaddyConfig(proxyContainer, config)
 }
 
+// RegisterFrontend installs the active runtime's path route and optional HTML
+// injection proxy through Caddy's Admin API. Existing application routes are
+// preserved as fallbacks.
+func RegisterFrontend(registration FrontendRegistration) error {
+	if err := validateFrontendRegistration(registration); err != nil {
+		return err
+	}
+	proxyContainer := "govard-proxy-caddy"
+	config, err := fetchCaddyConfig(proxyContainer)
+	if err != nil {
+		return err
+	}
+	if upsertFrontendRegistration(config, registration) {
+		return loadCaddyConfig(proxyContainer, config)
+	}
+	return nil
+}
+
+// UnregisterFrontend removes every Caddy route owned by a project frontend
+// runtime, regardless of which mode was active.
+func UnregisterFrontend(projectName string) error {
+	if strings.TrimSpace(projectName) == "" {
+		return fmt.Errorf("frontend proxy project name cannot be empty")
+	}
+	proxyContainer := "govard-proxy-caddy"
+	config, err := fetchCaddyConfig(proxyContainer)
+	if err != nil {
+		return err
+	}
+	if removeFrontendRegistration(config, projectName) {
+		return loadCaddyConfig(proxyContainer, config)
+	}
+	return nil
+}
+
 func EnsureTLS() error {
 	proxyContainer := "govard-proxy-caddy"
 
@@ -191,7 +250,7 @@ func EnsureTLS() error {
 }
 
 func fetchCaddyConfig(container string) (map[string]interface{}, error) {
-	output, err := runCaddyExec(container, "curl", "-s", fmt.Sprintf("%s/config/", caddyAdminAPI))
+	output, err := caddyExecRunner(container, "curl", "-sS", "--fail", fmt.Sprintf("%s/config/", caddyAdminAPI))
 	if err != nil {
 		return nil, fmt.Errorf("fetch caddy config: %w", err)
 	}
@@ -215,7 +274,7 @@ func loadCaddyConfig(container string, config map[string]interface{}) error {
 		return err
 	}
 
-	if _, err := runCaddyExec(container, "curl", "-s", "-X", "POST",
+	if _, err := caddyExecRunner(container, "curl", "-sS", "--fail", "-X", "POST",
 		fmt.Sprintf("%s/load", caddyAdminAPI),
 		"-H", "Content-Type: application/json",
 		"-d", string(payload)); err != nil {
@@ -304,6 +363,153 @@ func upsertDomainRoute(config map[string]interface{}, domain string, targetConta
 
 func upsertSearchRoute(config map[string]interface{}, domain string, targetContainer string) bool {
 	return upsertRoute(config, "srv_search", domain, targetContainer, conventions.SearchPort, "govard_search_route_")
+}
+
+func validateFrontendRegistration(registration FrontendRegistration) error {
+	if strings.TrimSpace(registration.ProjectName) == "" {
+		return fmt.Errorf("frontend proxy project name cannot be empty")
+	}
+	if len(registration.Domains) == 0 {
+		return fmt.Errorf("frontend proxy requires at least one domain")
+	}
+	if !strings.HasPrefix(registration.Endpoint.Path, "/") || strings.TrimSpace(registration.Endpoint.Target) == "" {
+		return fmt.Errorf("frontend proxy endpoint requires an absolute path and target")
+	}
+	if registration.Endpoint.StripPrefix != "" && !strings.HasPrefix(registration.Endpoint.StripPrefix, "/") {
+		return fmt.Errorf("frontend proxy endpoint strip prefix must be absolute")
+	}
+	for _, domain := range registration.Domains {
+		if strings.TrimSpace(domain) == "" {
+			return fmt.Errorf("frontend proxy domain cannot be empty")
+		}
+	}
+	return nil
+}
+
+func upsertFrontendRegistration(config map[string]interface{}, registration FrontendRegistration) bool {
+	appsChanged := false
+	apps := getOrCreateMap(config, "apps", &appsChanged)
+	http := getOrCreateMap(apps, "http", &appsChanged)
+	servers := getOrCreateMap(http, "servers", &appsChanged)
+	server := getOrCreateMap(servers, "srv0", &appsChanged)
+	routes, _ := server["routes"].([]interface{})
+	if routes == nil {
+		routes = []interface{}{}
+		appsChanged = true
+	}
+
+	prefix := frontendRoutePrefixForProject(registration.ProjectName)
+	applicationRoutes := make([]interface{}, 0, len(routes))
+	for _, route := range routes {
+		if frontendRouteHasPrefix(route, prefix) {
+			continue
+		}
+		applicationRoutes = append(applicationRoutes, route)
+	}
+
+	desiredRoutes := make([]interface{}, 0, len(registration.Domains)*2+len(applicationRoutes))
+	for _, rawDomain := range registration.Domains {
+		domain := strings.TrimSpace(rawDomain)
+		desiredRoutes = append(desiredRoutes, frontendReverseProxyRoute(
+			prefix+routeIDForDomain(domain, "endpoint_"),
+			domain,
+			registration.Endpoint.Path,
+			registration.Endpoint.StripPrefix,
+			registration.Endpoint.Target,
+		))
+		if strings.TrimSpace(registration.HTMLInjectionTarget) != "" {
+			desiredRoutes = append(desiredRoutes, frontendReverseProxyRoute(
+				prefix+routeIDForDomain(domain, "injection_"),
+				domain,
+				"",
+				"",
+				registration.HTMLInjectionTarget,
+			))
+		}
+	}
+	desiredRoutes = append(desiredRoutes, applicationRoutes...)
+	changed := appsChanged || !reflect.DeepEqual(routes, desiredRoutes)
+	server["routes"] = desiredRoutes
+	servers["srv0"] = server
+	http["servers"] = servers
+	apps["http"] = http
+	config["apps"] = apps
+	return changed
+}
+
+func frontendReverseProxyRoute(routeID, domain, path, stripPrefix, target string) map[string]interface{} {
+	match := map[string]interface{}{"host": []interface{}{domain}}
+	if path != "" {
+		match["path"] = []interface{}{path}
+	}
+	handlers := make([]interface{}, 0, 2)
+	if stripPrefix != "" {
+		handlers = append(handlers, map[string]interface{}{
+			"handler":           "rewrite",
+			"strip_path_prefix": stripPrefix,
+		})
+	}
+	handlers = append(handlers, map[string]interface{}{
+		"handler": "reverse_proxy",
+		"upstreams": []interface{}{
+			map[string]interface{}{"dial": target},
+		},
+	})
+	return map[string]interface{}{
+		"@id":      routeID,
+		"match":    []interface{}{match},
+		"handle":   handlers,
+		"terminal": true,
+	}
+}
+
+func removeFrontendRegistration(config map[string]interface{}, projectName string) bool {
+	apps, ok := config["apps"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	http, ok := apps["http"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	servers, ok := http["servers"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	server, ok := servers["srv0"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	routes, ok := server["routes"].([]interface{})
+	if !ok {
+		return false
+	}
+	prefix := frontendRoutePrefixForProject(projectName)
+	filtered := make([]interface{}, 0, len(routes))
+	for _, route := range routes {
+		if !frontendRouteHasPrefix(route, prefix) {
+			filtered = append(filtered, route)
+		}
+	}
+	if len(filtered) == len(routes) {
+		return false
+	}
+	server["routes"] = filtered
+	return true
+}
+
+func frontendRoutePrefixForProject(projectName string) string {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(projectName)))
+	return fmt.Sprintf("%s%x_", frontendRouteIDPrefix, digest[:8])
+}
+
+func frontendRouteHasPrefix(raw interface{}, prefix string) bool {
+	route, ok := raw.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	id, ok := route["@id"].(string)
+	return ok && strings.HasPrefix(id, prefix)
 }
 
 func removeRoute(config map[string]interface{}, serverName string, domain string, idPrefix string) bool {
@@ -607,6 +813,16 @@ func RemoveDomainRouteForTest(config map[string]interface{}, domain string) bool
 	return removeDomainRoute(config, domain)
 }
 
+// UpsertFrontendRegistrationForTest exposes frontend route construction.
+func UpsertFrontendRegistrationForTest(config map[string]interface{}, registration FrontendRegistration) bool {
+	return upsertFrontendRegistration(config, registration)
+}
+
+// RemoveFrontendRegistrationForTest exposes project-scoped route cleanup.
+func RemoveFrontendRegistrationForTest(config map[string]interface{}, projectName string) bool {
+	return removeFrontendRegistration(config, projectName)
+}
+
 // EnsureSearchServerConfigForTest exposes search server config normalization for tests.
 func EnsureSearchServerConfigForTest(config map[string]interface{}) bool {
 	return ensureSearchServerConfig(config)
@@ -729,4 +945,18 @@ func SetInitCaddyCommandRunnerForTest(fn func(container string, initJSON string)
 	return func() {
 		initCaddyCommandRunner = previous
 	}
+}
+
+// SetCaddyExecRunnerForTest replaces the Caddy Admin API command seam.
+func SetCaddyExecRunnerForTest(fn func(container string, args ...string) ([]byte, error)) func() {
+	previous := caddyExecRunner
+	if fn != nil {
+		caddyExecRunner = fn
+	}
+	return func() { caddyExecRunner = previous }
+}
+
+// LoadCaddyConfigForTest invokes a Caddy Admin API config load.
+func LoadCaddyConfigForTest(container string, config map[string]interface{}) error {
+	return loadCaddyConfig(container, config)
 }

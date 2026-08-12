@@ -69,12 +69,7 @@ RUN set -eux; \
     bind-tools \
     mariadb-client \
     postgresql-client \
-    jq \
-    nodejs; \
-    if ! command -v npm >/dev/null 2>&1; then apk add --no-cache npm; fi
-
-# Install global frontend tools
-RUN npm install -g --unsafe-perm grunt-cli gulp yarn
+    jq
 
 # Install PHP extensions
 RUN set -eux; \

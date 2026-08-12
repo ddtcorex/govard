@@ -30,8 +30,7 @@
       "includes/elasticsearch.yml",
       "includes/varnish.yml",
       "includes/rabbitmq.yml",
-      "includes/selenium.yml",
-      "includes/livereload.yml"
+      "includes/selenium.yml"
     ]
   },
   "runtime_profile": {
