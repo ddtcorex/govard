@@ -156,11 +156,14 @@ func PrepareInfraForShift(projectName string, config Config) {
 // The literal name "default" is treated as the empty/no-profile sentinel,
 // matching `config profile switch default` (internal/cmd/profile.go), so
 // `--profile default` never diverges into its own "-default"-suffixed
-// compose file, volumes, or containers.
+// compose file, volumes, or containers. It must return immediately rather
+// than fall through to the registry lookup below: that lookup exists for
+// "no --profile flag given at all", and an explicit "default" has to win
+// over whatever profile the registry has saved, not be treated as absent.
 func ResolveEffectiveProfile(projectPath, explicitProfile string) string {
 	explicitProfile = strings.TrimSpace(explicitProfile)
 	if explicitProfile == "default" {
-		explicitProfile = ""
+		return ""
 	}
 	if explicitProfile != "" {
 		return explicitProfile

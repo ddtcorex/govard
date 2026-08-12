@@ -194,6 +194,33 @@ func TestResolveEffectiveProfileLiteralDefault(t *testing.T) {
 	}
 }
 
+// TestResolveEffectiveProfileLiteralDefaultOverridesRegistry ensures an
+// explicit `--profile default` always wins, even when the project registry
+// has a different last-used profile saved (e.g. from a prior
+// `config profile switch upgrade` or a previous `env up --profile upgrade`).
+// Reproduces a live regression: normalizing "default" to "" before the
+// "was an explicit flag given at all?" check made it indistinguishable from
+// "no --profile flag passed", so it fell through to the registry lookup and
+// resurrected the stale "upgrade" profile instead of the requested default.
+func TestResolveEffectiveProfileLiteralDefaultOverridesRegistry(t *testing.T) {
+	tempDir := t.TempDir()
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+
+	entry := engine.ProjectRegistryEntry{
+		Path:    tempDir,
+		Profile: "upgrade",
+	}
+	if err := engine.UpsertProjectRegistryEntry(entry); err != nil {
+		t.Fatal(err)
+	}
+
+	result := engine.ResolveEffectiveProfile(tempDir, "default")
+	if result != "" {
+		t.Errorf(`ResolveEffectiveProfile(%q, "default") = %q, want "" (explicit "default" must override the registry's saved "upgrade" profile)`, tempDir, result)
+	}
+}
+
 func TestProfileSwitchSavesPreviousProfile(t *testing.T) {
 	tempDir := t.TempDir()
 
