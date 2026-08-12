@@ -45,7 +45,7 @@ services:
       - govard-proxy
 
   dnsmasq:
-    image: ddtcorex/govard-dnsmasq:latest
+    image: ddtcorex/govard-dnsmasq:3.24
     container_name: govard-proxy-dnsmasq
     restart: always
     cap_add:
