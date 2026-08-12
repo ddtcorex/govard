@@ -6,17 +6,37 @@ import (
 	"strings"
 
 	"govard/internal/conventions"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Features struct {
-	Cache      bool `yaml:"-"`
-	Search     bool `yaml:"-"`
-	Queue      bool `yaml:"-"`
-	Varnish    bool `yaml:"varnish,omitempty"`
-	Xdebug     bool `yaml:"xdebug,omitempty"`
-	Isolated   bool `yaml:"isolated,omitempty"`
-	LiveReload bool `yaml:"livereload,omitempty"`
-	MFTF       bool `yaml:"mftf,omitempty"`
+	Cache        bool `yaml:"-"`
+	Search       bool `yaml:"-"`
+	Queue        bool `yaml:"-"`
+	Varnish      bool `yaml:"varnish,omitempty"`
+	Xdebug       bool `yaml:"xdebug,omitempty"`
+	Isolated     bool `yaml:"isolated,omitempty"`
+	FrontendSync bool `yaml:"frontend_sync,omitempty"`
+	MFTF         bool `yaml:"mftf,omitempty"`
+}
+
+// UnmarshalYAML rejects the removed LiveReload setting instead of silently
+// accepting a config that no longer enables any frontend synchronization.
+func (f *Features) UnmarshalYAML(value *yaml.Node) error {
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		if value.Content[i].Value == "livereload" {
+			return fmt.Errorf("stack.features.livereload has been removed; use stack.features.frontend_sync")
+		}
+	}
+
+	type decodedFeatures Features
+	var decoded decodedFeatures
+	if err := value.Decode(&decoded); err != nil {
+		return err
+	}
+	*f = Features(decoded)
+	return nil
 }
 
 type Services struct {

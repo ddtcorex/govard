@@ -35,6 +35,5 @@ var config = engine.FrameworkConfig{
 		"includes/elasticsearch.yml",
 		"includes/varnish.yml",
 		"includes/rabbitmq.yml",
-		"includes/livereload.yml",
 	},
 }

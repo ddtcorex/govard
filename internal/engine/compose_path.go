@@ -58,6 +58,14 @@ func ComposeFilePathWithProfile(projectRoot string, projectName string, profile 
 	return filepath.Join(GovardHomeDir(), "compose", fileName)
 }
 
+// FrontendComposeFilePath resolves the dedicated frontend compose file for a
+// project and profile. It intentionally cannot collide with the application
+// runtime compose file.
+func FrontendComposeFilePath(projectRoot, projectName, profile string) string {
+	path := ComposeFilePathWithProfile(projectRoot, projectName+"-frontend", profile)
+	return filepath.Join(filepath.Dir(path), "frontend", filepath.Base(path))
+}
+
 // EnsureComposePathReady creates the compose directory when missing.
 func EnsureComposePathReady(path string) error {
 	return os.MkdirAll(filepath.Dir(path), conventions.SecretDirPerm)

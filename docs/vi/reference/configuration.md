@@ -110,7 +110,7 @@ stack:
     varnish: false
     isolated: false
     mftf: false
-    livereload: false
+    frontend_sync: false
 linked_projects:
     - "other-project"
     - "external-host.com:127.0.0.1"
@@ -187,11 +187,15 @@ Govard sử dụng giá trị này cho Magento 2/Mage-OS `env.php`, Magento 1/Op
 | `stack.composer_version` | `1`, `2`, `2.2`, `latest`, hoặc bất kỳ phiên bản nào | Phiên bản Composer |
 | `stack.xdebug_session` | ví dụ: `PHPSTORM` | Tên session Xdebug |
 | `stack.xdebug_version` | ví dụ: `3.4.5` | Ghi đè phiên bản PECL Xdebug được cài trong container `php-debug` (mặc định: phiên bản Govard khuyến nghị theo PHP version — hiện là `3.4.5` cho PHP 8.1-8.4, `3.5.3` cho PHP 8.5 vì phiên bản này không có lựa chọn 3.4.x). Việc này sẽ buộc build image cục bộ vì phiên bản cụ thể được đóng gói sẵn trong image. |
-| `stack.features.livereload` | `true`, `false` | Bật map port LiveReload (35729) |
+| `stack.features.frontend_sync` | `true`, `false` | Bật đồng bộ frontend tích hợp, chỉ dành cho Magento 2 và Mage-OS |
 | `stack.features.varnish` | `true`, `false` | Bật dịch vụ cache Varnish |
 | `stack.features.xdebug` | `true`, `false` | Bật Xdebug và dịch vụ php-debug |
 | `stack.features.isolated` | `true`, `false` | Cách ly network không cho truy cập từ bên ngoài |
 | `stack.features.mftf` | `true`, `false` | Bật Magento Functional Testing Framework |
+
+#### Đồng bộ Frontend
+
+Chỉ đặt `stack.features.frontend_sync: true` cho dự án Magento 2 hoặc Mage-OS. Tùy chọn này bật phát hiện runtime frontend theo yêu cầu; `govard env up` không khởi động, chờ, hoặc proxy các dịch vụ frontend development.
 
 Đối với các framework ưu tiên Node, hệ thống tự động nhận diện package manager từ `package.json`, `pnpm-workspace.yaml` hoặc các file lock.
 

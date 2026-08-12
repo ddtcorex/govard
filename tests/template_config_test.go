@@ -39,20 +39,6 @@ func TestNginxTemplatesIncludeXdebugRouting(t *testing.T) {
 	}
 }
 
-func TestMagento2TemplateHasLiveReloadRoute(t *testing.T) {
-	content := readTemplateFile(t, "magento2.conf")
-
-	if !strings.Contains(content, "location = /livereload.js") {
-		t.Fatalf("Expected /livereload.js route in magento2.conf")
-	}
-	if !strings.Contains(content, "set $php_live_reload_backend php;") {
-		t.Fatalf("Expected Magento 2 livereload backend variable in magento2.conf")
-	}
-	if !strings.Contains(content, "proxy_pass http://$php_live_reload_backend:35729/livereload.js;") {
-		t.Fatalf("Expected dynamic livereload proxy_pass in magento2.conf")
-	}
-}
-
 func TestWordPressTemplateSupportsDirectoryAdminRouting(t *testing.T) {
 	content := readTemplateFile(t, "wordpress.conf")
 
@@ -69,9 +55,6 @@ func TestHybridTemplateProxiesToApache(t *testing.T) {
 	}
 	if !strings.Contains(content, "proxy_pass http://$apache_backend:80;") {
 		t.Fatalf("Expected hybrid template to proxy requests to apache")
-	}
-	if !strings.Contains(content, "location = /livereload.js") {
-		t.Fatalf("Expected /livereload.js route in hybrid.conf")
 	}
 }
 

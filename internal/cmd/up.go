@@ -74,7 +74,7 @@ var upContainerStateRunner = func(containerName string) (string, error) {
 		"docker",
 		"inspect",
 		"-f",
-		"{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.State.Error}}",
+		"{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.State.Error}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}",
 		containerName,
 	)
 	output, err := cmd.CombinedOutput()
@@ -101,9 +101,10 @@ type upPipelineStage struct {
 }
 
 type upReadinessCheck struct {
-	Service       string
-	ContainerName string
-	ProbeArgs     []string
+	Service        string
+	ContainerName  string
+	ProbeArgs      []string
+	RequireHealthy bool
 }
 
 type upContainerState struct {
@@ -111,6 +112,7 @@ type upContainerState struct {
 	ExitCode  string
 	OOMKilled string
 	Error     string
+	Health    string
 }
 
 type upRuntimeContext struct {
@@ -388,7 +390,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 			Name:         "Ready",
 			OnFailureTip: "govard env logs php -f",
 			Run: func() error {
-				return waitForUpRuntimeReadiness(context.Config, defaultUpReadinessTimeout)
+				return waitForUpRuntimeReadiness(context.Cwd, context.Config, defaultUpReadinessTimeout)
 			},
 		},
 		{
@@ -487,47 +489,45 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 	}
 }
 
-func buildUpReadinessChecks(config engine.Config) []upReadinessCheck {
+func buildUpReadinessChecks(projectRoot string, config engine.Config) ([]upReadinessCheck, error) {
 	if strings.TrimSpace(config.ProjectName) == "" {
-		return nil
+		return nil, nil
 	}
 
-	// Skip PHP readiness checks if PHP is not required (e.g., custom without PHP, node-based frameworks)
-	if !engine.RequiresPHP(config) {
-		return nil
-	}
+	requiresPHP := engine.RequiresPHP(config)
+	checks := make([]upReadinessCheck, 0, 5)
 
-	phpFPMProbe := []string{
-		"php",
-		"-r",
-		`$s=@fsockopen("127.0.0.1",9000,$errno,$errstr,1); if($s===false){fwrite(STDERR,$errno . ":" . $errstr); exit(1);} fclose($s);`,
-	}
+	if requiresPHP {
+		phpFPMProbe := []string{
+			"php",
+			"-r",
+			`$s=@fsockopen("127.0.0.1",9000,$errno,$errstr,1); if($s===false){fwrite(STDERR,$errno . ":" . $errstr); exit(1);} fclose($s);`,
+		}
 
-	checks := []upReadinessCheck{
-		{
+		checks = append(checks, upReadinessCheck{
 			Service:       "php",
 			ContainerName: fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix),
 			ProbeArgs:     phpFPMProbe,
-		},
-	}
-
-	if config.Stack.Features.Xdebug {
-		checks = append(checks, upReadinessCheck{
-			Service:       "php-debug",
-			ContainerName: fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPDebugSuffix),
-			ProbeArgs:     phpFPMProbe,
 		})
+
+		if config.Stack.Features.Xdebug {
+			checks = append(checks, upReadinessCheck{
+				Service:       "php-debug",
+				ContainerName: fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPDebugSuffix),
+				ProbeArgs:     phpFPMProbe,
+			})
+		}
+
+		if config.Stack.Features.Varnish {
+			checks = append(checks, upReadinessCheck{
+				Service:       "varnish",
+				ContainerName: fmt.Sprintf("%s%s", config.ProjectName, conventions.VarnishSuffix),
+				ProbeArgs:     []string{"true"},
+			})
+		}
 	}
 
-	if config.Stack.Features.Varnish {
-		checks = append(checks, upReadinessCheck{
-			Service:       "varnish",
-			ContainerName: fmt.Sprintf("%s%s", config.ProjectName, conventions.VarnishSuffix),
-			ProbeArgs:     []string{"true"},
-		})
-	}
-
-	if config.Stack.Features.Cache || config.Stack.Services.Cache != "none" {
+	if requiresPHP && (config.Stack.Features.Cache || config.Stack.Services.Cache != "none") {
 		checks = append(checks, upReadinessCheck{
 			Service:       "redis",
 			ContainerName: fmt.Sprintf("%s%s", config.ProjectName, conventions.RedisSuffix),
@@ -535,7 +535,7 @@ func buildUpReadinessChecks(config engine.Config) []upReadinessCheck {
 		})
 	}
 
-	return checks
+	return checks, nil
 }
 
 func readinessProbeAttempts(timeout time.Duration) int {
@@ -556,8 +556,11 @@ func readinessProbeAttempts(timeout time.Duration) int {
 	return attempts
 }
 
-func waitForUpRuntimeReadiness(config engine.Config, timeout time.Duration) error {
-	checks := buildUpReadinessChecks(config)
+func waitForUpRuntimeReadiness(projectRoot string, config engine.Config, timeout time.Duration) error {
+	checks, err := buildUpReadinessChecks(projectRoot, config)
+	if err != nil {
+		return err
+	}
 	if len(checks) == 0 {
 		return nil
 	}
@@ -588,7 +591,16 @@ func waitForUpRuntimeReadiness(config engine.Config, timeout time.Duration) erro
 			} else {
 				abortConsecutiveCount = 0 // Reset if it's not in an abort state
 
-				lastErr = upReadinessProbeRunner(check.ContainerName, check.ProbeArgs)
+				switch {
+				case check.RequireHealthy && stateErr != nil:
+					lastErr = fmt.Errorf("inspect container health: %w", stateErr)
+				case check.RequireHealthy && !strings.EqualFold(strings.TrimSpace(state.Health), "healthy"):
+					lastErr = fmt.Errorf("container health is %s", engine.FirstNonEmpty(state.Health, "unknown"))
+				case len(check.ProbeArgs) == 0:
+					lastErr = nil
+				default:
+					lastErr = upReadinessProbeRunner(check.ContainerName, check.ProbeArgs)
+				}
 				if lastErr == nil {
 					pterm.Success.Printf("%s runtime is ready\n", check.Service)
 					break
@@ -614,8 +626,8 @@ func inspectUpContainerState(containerName string) (upContainerState, error) {
 		return upContainerState{}, err
 	}
 
-	parts := strings.SplitN(raw, "|", 4)
-	for len(parts) < 4 {
+	parts := strings.SplitN(raw, "|", 5)
+	for len(parts) < 5 {
 		parts = append(parts, "")
 	}
 
@@ -624,6 +636,7 @@ func inspectUpContainerState(containerName string) (upContainerState, error) {
 		ExitCode:  strings.TrimSpace(parts[1]),
 		OOMKilled: strings.TrimSpace(parts[2]),
 		Error:     strings.TrimSpace(parts[3]),
+		Health:    strings.TrimSpace(parts[4]),
 	}, nil
 }
 

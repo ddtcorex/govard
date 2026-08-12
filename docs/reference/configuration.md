@@ -110,7 +110,7 @@ stack:
     varnish: false
     isolated: false
     mftf: false
-    livereload: false
+    frontend_sync: false
 linked_projects:
     - "other-project"
     - "external-host.com:127.0.0.1"
@@ -187,11 +187,15 @@ Govard uses this value for Magento 2/Mage-OS `env.php`, Magento 1/OpenMage `loca
 | `stack.composer_version` | `1`, `2`, `2.2`, `latest`, or any point version | Composer version |
 | `stack.xdebug_session` | e.g. `PHPSTORM` | Xdebug session name |
 | `stack.xdebug_version` | e.g. `3.4.5` | Override the PECL Xdebug version installed in `php-debug` (default: Govard's recommended version per PHP version — currently `3.4.5` for PHP 8.1-8.4, `3.5.3` for PHP 8.5 since it has no 3.4.x option). Forces a local image build since the exact version is baked into the image. |
-| `stack.features.livereload` | `true`, `false` | Enable LiveReload port mapping (35729) |
+| `stack.features.frontend_sync` | `true`, `false` | Enable built-in frontend synchronization for Magento 2 and Mage-OS only |
 | `stack.features.varnish` | `true`, `false` | Enable Varnish cache service |
 | `stack.features.xdebug` | `true`, `false` | Enable Xdebug and php-debug service |
 | `stack.features.isolated` | `true`, `false` | Isolate network from external access |
 | `stack.features.mftf` | `true`, `false` | Enable Magento Functional Testing Framework |
+
+#### Frontend Synchronization
+
+Set `stack.features.frontend_sync: true` only for Magento 2 or Mage-OS projects. This enables explicit frontend runtime discovery; `govard env up` does not start, wait for, or proxy frontend development services.
 
 #### Connecting to Elasticsearch/OpenSearch from the Host
 

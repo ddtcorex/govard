@@ -17,6 +17,44 @@ import (
 // baked into a long-lived registry entry.
 type BootstrapFactory func(bootstrap.Options) bootstrap.FrameworkBootstrap
 
+// FrontendSyncRuntime is the framework-neutral identity returned by a
+// frontend-sync provider. Mode remains a string so lifecycle orchestration
+// does not need to import a framework package to select its checks.
+type FrontendSyncRuntime struct {
+	Mode           string
+	Services       []string
+	PublicEndpoint FrontendSyncPublicEndpoint
+	HTMLInjection  *FrontendSyncHTMLInjection
+}
+
+// FrontendSyncPublicEndpoint describes the public path exposed by a frontend
+// runtime. The command layer forwards this framework-owned declaration to the
+// proxy without branching on framework or mode names.
+type FrontendSyncPublicEndpoint struct {
+	Path        string
+	StripPrefix string
+	Service     string
+	Port        int
+}
+
+// FrontendSyncHTMLInjection identifies a runtime service that proxies the
+// application and injects a development client into HTML responses.
+type FrontendSyncHTMLInjection struct {
+	Service string
+	Port    int
+}
+
+// FrontendSyncDiscoverer inspects a project root and returns its
+// project-owned frontend development runtime, if any. Commands obtain this
+// capability through the framework registry instead of branching on
+// framework names.
+type FrontendSyncDiscoverer func(root string) (FrontendSyncRuntime, error)
+
+// FrontendSyncRenderer renders a framework's dedicated frontend Compose
+// blueprint and returns the resulting runtime plus the path to the rendered
+// compose file.
+type FrontendSyncRenderer func(root string, config engine.Config) (FrontendSyncRuntime, string, error)
+
 // FrameworkDefinition is the single source of truth for one framework's
 // identity, runtime defaults, sync/manifest data, and dispatch (bootstrap,
 // base-URL rewriting, bootstrap-command support, fresh-install
@@ -51,6 +89,11 @@ type FrameworkDefinition struct {
 	// Config carries runtime/compose defaults (PHP version, includes list,
 	// nginx template, etc.), currently sourced from engine.GetFrameworkConfig.
 	Config engine.FrameworkConfig
+	// FrontendSyncDiscoverer and FrontendSyncRenderer are optional because
+	// most frameworks do not expose a project-owned frontend runtime - both
+	// are nil for those. Mage-OS inherits Magento 2's functions.
+	FrontendSyncDiscoverer FrontendSyncDiscoverer
+	FrontendSyncRenderer   FrontendSyncRenderer
 	// Manifest carries sync/media exclude and sensitive-table data,
 	// currently sourced from engine.GetFrameworkManifestConfig.
 	Manifest engine.FrameworkManifestConfig

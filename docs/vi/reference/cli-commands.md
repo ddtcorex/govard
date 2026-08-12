@@ -153,6 +153,41 @@ govard env cleanup
 - `-v, --volumes` — xóa các docker volume dữ liệu đi kèm.
 - `--rmi local` — xóa các image local được dựng cho dự án.
 
+### `govard frontend`
+
+Quản lý runtime frontend development được dự án sở hữu cho các dự án hỗ trợ
+`stack.features.frontend_sync: true`. Hãy khởi động ứng dụng bằng
+`govard env up` trước. `env up` không cấp phát container BrowserSync,
+LiveReload, Grunt, Tailwind watcher hay HTML injection; tài nguyên frontend chỉ
+tồn tại từ lúc chạy `frontend start` đến khi chạy `frontend stop`.
+
+```bash
+govard frontend start
+govard frontend logs -f
+govard frontend logs watch-vendor-theme -f
+govard frontend stop
+```
+
+`start` chỉ render và khởi động các dịch vụ Compose frontend riêng biệt
+(`sync`, mọi `watch-<theme>` được phát hiện, và `inject`), sau đó đợi
+BrowserSync/Luma và mọi watcher được phát hiện ở trạng thái healthy. Sau khi
+health check thành công, lệnh đăng ký runtime đang hoạt động qua Caddy Admin
+API. Cả hai chế độ đều expose 1 path hẹp cho client asset trên đúng domain của
+ứng dụng, đồng thời chạy 1 proxy HTML-injection "che" route ứng dụng (khớp mọi
+path) để script client xuất hiện trên trang thật mà không cần sửa file dự án
+hay theme: Hyva expose `/browser-sync/*` ở cổng 3000 và inject
+`<script src="/browser-sync/browser-sync-client.js"></script>`; Luma expose
+`/livereload/*` ở cổng 35729 và inject
+`<script src="/livereload/livereload.js?snipver=1&port=443&path=livereload/livereload"></script>`.
+Cả hai injector chỉ buffer response HTML, mọi thứ khác đi qua nguyên vẹn.
+
+`stop` xóa các route Caddy (kể cả proxy injection) trước khi chỉ xóa các dịch
+vụ frontend; dependency volume vẫn được giữ lại. Sau khi xóa, route gốc của
+ứng dụng tự động nhận lại toàn bộ traffic. Nếu đăng ký Caddy thất bại trong
+`start`, Govard xóa các dịch vụ frontend vừa khởi động để không còn runtime ẩn
+tiếp tục tiêu tốn tài nguyên. `logs` chỉ nhận service frontend đã được phát
+hiện; bỏ qua service để dùng `sync`.
+
 ### `govard svc`
 
 Quản lý các dịch vụ toàn cục dùng chung (proxy, Mailpit, PHPMyAdmin, Portainer).
@@ -423,7 +458,10 @@ govard tool pnpm [command]
 govard tool grunt [command]
 ```
 
-Đối với các dự án node-first, các lệnh quản lý package sẽ được chạy trong container `web` tại thư mục `/app`.
+Các lệnh package Node (`npm`, `npx`, `yarn`, `pnpm`, và `grunt`) chạy trong
+container one-shot `node:<stack.node_version>-alpine`, mount project tại
+`/var/www/html`. Nhờ vậy bản build dùng cùng Node version với frontend watcher
+và BrowserSync. Với PHP framework, `govard shell` không có Node.js.
 
 `govard tool php` yêu cầu thư mục hiện tại phải đúng là project root. Với các tích hợp editor/IDE (xem phần dưới), dùng `govard vscode` thay thế.
 

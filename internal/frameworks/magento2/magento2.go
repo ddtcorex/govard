@@ -17,12 +17,14 @@ const BinMagento = "bin/magento"
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:           "magento2",
-		Aliases:        []string{"magento", "m2"},
-		DisplayName:    "Magento 2",
-		MigrationTypes: types.MigrationTypes{DDEV: []string{"magento2"}, Warden: []string{"magento2"}},
-		Config:         config,
-		Manifest:       Manifest,
+		Name:                   "magento2",
+		Aliases:                []string{"magento", "m2"},
+		DisplayName:            "Magento 2",
+		MigrationTypes:         types.MigrationTypes{DDEV: []string{"magento2"}, Warden: []string{"magento2"}},
+		Config:                 config,
+		FrontendSyncDiscoverer: FrontendSyncDiscoverer,
+		FrontendSyncRenderer:   FrontendSyncRenderer,
+		Manifest:               Manifest,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
 			Username: conventions.DefaultMagentoDBUser,

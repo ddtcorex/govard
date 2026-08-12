@@ -10,8 +10,9 @@ import (
 )
 
 type UpReadinessCheckForTest struct {
-	Service       string
-	ContainerName string
+	Service        string
+	ContainerName  string
+	RequireHealthy bool
 }
 
 // RemoteDBCredentialsForTest is the observable subset of resolved remote DB
@@ -85,21 +86,25 @@ func DesktopProductionBuildTagsForTest() string {
 }
 
 // BuildUpReadinessChecksForTest exposes startup readiness planning for tests.
-func BuildUpReadinessChecksForTest(config engine.Config) []UpReadinessCheckForTest {
-	checks := buildUpReadinessChecks(config)
+func BuildUpReadinessChecksForTest(projectRoot string, config engine.Config) ([]UpReadinessCheckForTest, error) {
+	checks, err := buildUpReadinessChecks(projectRoot, config)
+	if err != nil {
+		return nil, err
+	}
 	result := make([]UpReadinessCheckForTest, 0, len(checks))
 	for _, check := range checks {
 		result = append(result, UpReadinessCheckForTest{
-			Service:       check.Service,
-			ContainerName: check.ContainerName,
+			Service:        check.Service,
+			ContainerName:  check.ContainerName,
+			RequireHealthy: check.RequireHealthy,
 		})
 	}
-	return result
+	return result, nil
 }
 
 // WaitForUpRuntimeReadinessForTest exposes readiness waiting for tests.
-func WaitForUpRuntimeReadinessForTest(config engine.Config, timeout time.Duration) error {
-	return waitForUpRuntimeReadiness(config, timeout)
+func WaitForUpRuntimeReadinessForTest(projectRoot string, config engine.Config, timeout time.Duration) error {
+	return waitForUpRuntimeReadiness(projectRoot, config, timeout)
 }
 
 // SetUpReadinessProbeRunnerForTest overrides the probe runner used by readiness checks.

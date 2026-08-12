@@ -1,0 +1,60 @@
+services:
+  sync:
+    image: node:{{ .Config.Stack.NodeVersion }}-alpine
+    working_dir: {{ printf "%q" .WorkDir }}
+    volumes:
+      - .:{{ .WorkDir }}
+      - {{ printf "%q" (printf "%s:%s/node_modules" .Runtime.NodeModulesVolume .WorkDir) }}
+    command: >-
+      sh -ec '
+      marker=node_modules/.govard-package-lock;
+      if [ "$$(cat "$$marker" 2>/dev/null || true)" != "{{ .Runtime.PackageLockHash }}" ]; then
+        npm ci;
+        printf "%s\n" "{{ .Runtime.PackageLockHash }}" > "$$marker";
+      fi;
+      exec npx grunt watch
+      '
+    networks:
+      - govard-net
+      - govard-proxy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --spider http://127.0.0.1:35729
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  inject:
+    image: node:{{ .Config.Stack.NodeVersion }}-alpine
+    working_dir: {{ printf "%q" .WorkDir }}
+    volumes:
+      - {{ printf "%q" (printf "%s:/usr/local/lib/govard/frontend-inject.mjs:ro" .InjectScriptPath) }}
+    environment:
+      GOVARD_FRONTEND_INJECT_UPSTREAM: {{ printf "%q" .FrontendSyncTarget }}
+      GOVARD_FRONTEND_INJECT_PORT: "3000"
+      GOVARD_FRONTEND_INJECT_SCRIPT_HTML: {{ printf "%q" .InjectScriptHTML }}
+    command: node /usr/local/lib/govard/frontend-inject.mjs
+    networks:
+      - govard-net
+      - govard-proxy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --spider http://127.0.0.1:3000/__govard_frontend_health
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+
+volumes:
+  {{ .Runtime.NodeModulesVolume }}: {}
+
+networks:
+  govard-net:
+    external: true
+    name: {{ printf "%q" .ApplicationNetwork }}
+  govard-proxy:
+    external: true
+    name: govard-proxy

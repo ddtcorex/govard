@@ -42,7 +42,6 @@ func BuildConfig(name, databaseName, defaultPHP string) engine.FrameworkConfig {
 			"includes/varnish.yml",
 			"includes/rabbitmq.yml",
 			"includes/selenium.yml",
-			"includes/livereload.yml",
 		},
 	}
 }

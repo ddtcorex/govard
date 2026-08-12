@@ -24,7 +24,6 @@ services:
             COMPOSER_HOME: /home/www-data/.composer
             COMPOSER_VERSION: "2.2"
             GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
-            NODE_VERSION: "24"
             PGID: 1000
             PUID: 1000
             XDEBUG_MODE: "off"

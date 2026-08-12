@@ -100,6 +100,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(envCmd)
+	rootCmd.AddCommand(frontendCmd)
 	rootCmd.AddCommand(svcCmd)
 	rootCmd.AddCommand(upShortcutCmd)
 	rootCmd.AddCommand(downShortcutCmd)

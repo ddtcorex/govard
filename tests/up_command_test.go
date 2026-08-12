@@ -96,6 +96,51 @@ func TestResolveUpProxyTargetWithVarnish(t *testing.T) {
 	}
 }
 
+func TestEnvUpKeepsVarnishProxyTargetWhenFrontendSyncIsEnabled(t *testing.T) {
+	target := cmd.ResolveUpProxyTarget(engine.Config{
+		ProjectName: "demo",
+		Stack: engine.Stack{
+			Features: engine.Features{
+				FrontendSync: true,
+				Varnish:      true,
+			},
+		},
+	})
+	if target != "demo-varnish-1" {
+		t.Fatalf("expected demo-varnish-1, got %s", target)
+	}
+}
+
+func TestEnvUpKeepsWebProxyTargetWhenFrontendSyncIsEnabled(t *testing.T) {
+	config := engine.Config{
+		ProjectName: "demo",
+		Stack: engine.Stack{
+			Features: engine.Features{FrontendSync: true},
+		},
+	}
+	if got, want := cmd.ResolveUpProxyTarget(config), "demo-web-1"; got != want {
+		t.Fatalf("proxy target = %q, want %q", got, want)
+	}
+}
+
+func TestEnvUpDoesNotWaitForFrontendServices(t *testing.T) {
+	checks, err := cmd.BuildUpReadinessChecksForTest(t.TempDir(), engine.Config{
+		ProjectName: "demo",
+		Framework:   "magento2",
+		Stack: engine.Stack{
+			PHPVersion: "none",
+			Features:   engine.Features{FrontendSync: true},
+			Services:   engine.Services{Cache: "none"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build readiness checks: %v", err)
+	}
+	if len(checks) != 0 {
+		t.Fatalf("env up must not wait for standalone frontend services: %#v", checks)
+	}
+}
+
 func TestResolveUpSearchProxyTargetUsesElasticsearchSuffix(t *testing.T) {
 	config := engine.Config{ProjectName: "demo"}
 
@@ -107,7 +152,7 @@ func TestResolveUpSearchProxyTargetUsesElasticsearchSuffix(t *testing.T) {
 }
 
 func TestBuildUpReadinessChecksForPHPRuntime(t *testing.T) {
-	checks := cmd.BuildUpReadinessChecksForTest(engine.Config{
+	checks, err := cmd.BuildUpReadinessChecksForTest(t.TempDir(), engine.Config{
 		ProjectName: "demo",
 		Framework:   "laravel",
 		Stack: engine.Stack{
@@ -119,6 +164,9 @@ func TestBuildUpReadinessChecksForPHPRuntime(t *testing.T) {
 			},
 		},
 	})
+	if err != nil {
+		t.Fatalf("build readiness checks: %v", err)
+	}
 
 	expected := []cmd.UpReadinessCheckForTest{
 		{Service: "php", ContainerName: "demo-php-1"},
@@ -131,10 +179,13 @@ func TestBuildUpReadinessChecksForPHPRuntime(t *testing.T) {
 }
 
 func TestBuildUpReadinessChecksForNonPHPRuntime(t *testing.T) {
-	checks := cmd.BuildUpReadinessChecksForTest(engine.Config{
+	checks, err := cmd.BuildUpReadinessChecksForTest(t.TempDir(), engine.Config{
 		ProjectName: "demo",
 		Framework:   "nextjs",
 	})
+	if err != nil {
+		t.Fatalf("build readiness checks: %v", err)
+	}
 	if len(checks) != 0 {
 		t.Fatalf("expected no readiness checks for non-PHP runtime, got %v", checks)
 	}
@@ -161,7 +212,7 @@ func TestWaitForUpRuntimeReadinessRetriesUntilSuccess(t *testing.T) {
 	restoreSleep := cmd.SetUpReadinessSleepForTest(func(time.Duration) {})
 	defer restoreSleep()
 
-	err := cmd.WaitForUpRuntimeReadinessForTest(engine.Config{
+	err := cmd.WaitForUpRuntimeReadinessForTest(t.TempDir(), engine.Config{
 		ProjectName: "demo",
 		Framework:   "laravel",
 		Stack: engine.Stack{
@@ -195,7 +246,7 @@ func TestWaitForUpRuntimeReadinessReturnsErrorAfterTimeout(t *testing.T) {
 	restoreSleep := cmd.SetUpReadinessSleepForTest(func(time.Duration) {})
 	defer restoreSleep()
 
-	err := cmd.WaitForUpRuntimeReadinessForTest(engine.Config{
+	err := cmd.WaitForUpRuntimeReadinessForTest(t.TempDir(), engine.Config{
 		ProjectName: "demo",
 		Framework:   "laravel",
 		Stack: engine.Stack{
@@ -227,7 +278,7 @@ func TestWaitForUpRuntimeReadinessFailsFastWhenContainerExited(t *testing.T) {
 	})
 	defer restoreRunner()
 
-	err := cmd.WaitForUpRuntimeReadinessForTest(engine.Config{
+	err := cmd.WaitForUpRuntimeReadinessForTest(t.TempDir(), engine.Config{
 		ProjectName: "demo",
 		Framework:   "laravel",
 		Stack: engine.Stack{

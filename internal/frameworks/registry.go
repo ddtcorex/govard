@@ -236,6 +236,9 @@ func registerEngineDefinition(def types.FrameworkDefinition) {
 	engine.RegisterVarnishTemplateFramework(def.Name, def.VarnishTemplateFramework)
 	engine.RegisterDBDriverCategory(def.Name, def.DBDriverCategory)
 	engine.RegisterDefaultChownDirectories(def.Name, def.DefaultChownDirectories)
+	engine.RegisterFrameworkCapabilities(def.Name, engine.FrameworkCapabilities{
+		FrontendSync: def.FrontendSyncRenderer != nil,
+	})
 	for _, migrationType := range def.MigrationTypes.DDEV {
 		engine.RegisterMigrationFramework("ddev", migrationType, def.Name)
 	}
@@ -267,6 +270,28 @@ func Normalize(raw string) string { return defaultRegistry.Normalize(raw) }
 
 // Get looks up name in the package-level default registry.
 func Get(name string) (types.FrameworkDefinition, bool) { return defaultRegistry.Get(name) }
+
+// FrontendSyncDiscoverer resolves a framework's optional frontend-sync
+// discovery function without exposing framework-specific checks to command
+// code.
+func FrontendSyncDiscoverer(name string) (types.FrontendSyncDiscoverer, bool) {
+	definition, ok := Get(name)
+	if !ok || definition.FrontendSyncDiscoverer == nil {
+		return nil, false
+	}
+	return definition.FrontendSyncDiscoverer, true
+}
+
+// FrontendSyncRenderer resolves a framework's optional frontend-sync
+// blueprint-rendering function without exposing framework-specific checks
+// to command code.
+func FrontendSyncRenderer(name string) (types.FrontendSyncRenderer, bool) {
+	definition, ok := Get(name)
+	if !ok || definition.FrontendSyncRenderer == nil {
+		return nil, false
+	}
+	return definition.FrontendSyncRenderer, true
+}
 
 // All returns every definition in the package-level default registry.
 func All() []types.FrameworkDefinition { return defaultRegistry.All() }
