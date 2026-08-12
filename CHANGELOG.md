@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.62.1] - 2026-08-12
+
+### 🐛 Bug Fixes
+
+- **`env up --profile default` Matched `config profile switch default`:** `ResolveEffectiveProfile`, the shared resolution point behind every `--profile`-aware command (`env up`, `db`, `frontend`, `init`, `observability`, `doctor fix`), passed the literal `"default"` flag value straight through instead of normalizing it to the empty/no-profile sentinel like `config profile switch` already did. This made `--profile default` stand up a separate, `-default`-suffixed compose file, containers, and volumes instead of reusing the real default environment.
+- **Composer Version Re-Downloads on Every `env up`:** `ensureSpecificComposerVersion` only had a fast path for the literal versions `1`, `2`, `2.2`; any explicit patch/minor version (e.g. `2.9` resolving to `2.9.8`) re-downloaded `composer.phar` from getcomposer.org on every `govard env up`, even when the container already had that exact version installed. It now checks the container's active `composer --version` first.
+
 ## [1.62.0] - 2026-08-12
 
 ### ✨ New Features
