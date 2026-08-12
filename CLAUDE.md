@@ -69,6 +69,7 @@ gofmt -s -w .                   # format
 - Do not swallow errors for critical flows (network, file, process)
 - Never log secrets, tokens, private keys, or DB passwords
 - `internal/conventions/` holds only constants used by ≥2 packages (or genuinely cross-cutting ones — admin/path/permission/network defaults). A constant read by exactly one framework package (DB credential defaults, tool binary paths, etc.) belongs in that framework's own package (`internal/frameworks/<name>/`), not in `conventions` — verify with `grep -rl "conventions\.<Name>"` before adding a new framework-specific constant there.
+- This isolation applies beyond constants: `internal/engine`/`internal/cmd` must not branch on hardcoded framework names (`cfg.Framework == "magento2"`) — expose the behavior as a framework-registered capability instead (see `internal/engine/framework_capabilities.go`, `RegisterFrameworkCapabilities`) and let `internal/frameworks/<name>/` opt in at registration. `grep -rn '"magento2"\|"mageos"' internal/engine internal/cmd` before adding a new special case.
 
 ## Testing Conventions
 
@@ -109,6 +110,8 @@ When adding/modifying commands:
 - When bumped, note it in `CHANGELOG.md` under a "Blueprint Lifecycle" bullet (see prior entries for wording).
 
 ## Release Checklist
+
+`CHANGELOG.md` changes belong only to the release commit below — never add/edit `CHANGELOG.md` on a feature branch, even for a Blueprint Version bump; describe the change in the PR body instead.
 
 Update version in:
 1. `internal/cmd/root.go` (`var Version`)
@@ -157,6 +160,7 @@ Update `docs/*.md` for: command names/aliases/flags, config behavior, remote/syn
 
 - Always start a new feature branch for each work session — never commit directly to `master`/`develop`.
 - When development on a feature branch is complete (tests passing, ready for review), proactively create a GitHub issue with full details (problem/motivation, scope, what changed) and a GitHub PR with full details (summary, rationale, test plan) that links back to that issue (e.g. `Closes #<issue>` in the PR body) — don't wait to be asked.
+- After every squash/force-push to an existing PR branch, re-read the PR description and linked issue (`gh pr view`, `gh issue view`) and update them if the shipped diff no longer matches — a squash easily leaves stale Summary/Validation bullets behind.
 
 ## Superpowers Workflow Preferences
 
@@ -165,7 +169,7 @@ Update `docs/*.md` for: command names/aliases/flags, config behavior, remote/syn
 
 ## Pre-Completion Checklist
 
-1. `go test` on affected scope passes
+1. Full `make test` passes (lint + fmt + vet + unit + integration) — not just `go test` on the changed package. A failure found here is presumed in scope for this branch until proven otherwise (e.g. also reproducible fresh on `master`) — don't dismiss it as "unrelated."
 2. `gofmt -s -l .` shows no drift on changed files
 3. Command help/flags still coherent
 4. `README.md` and relevant `docs/*.md` updated for user-visible changes
