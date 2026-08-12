@@ -82,15 +82,7 @@ func ensureSpecificComposerVersion(config Config, version string) error {
 		}
 	}
 
-	script := fmt.Sprintf(`
-		case "%[1]s" in
-			1)   [ -f /usr/local/bin/composer1 ]   && echo "Using pre-baked Composer version 1..." && ln -sf /usr/local/bin/composer1 $(which composer) && exit 0 ;;
-			2)   [ -f /usr/local/bin/composer2 ]   && echo "Using pre-baked Composer version 2..." && ln -sf /usr/local/bin/composer2 $(which composer) && exit 0 ;;
-			2.2) [ -f /usr/local/bin/composer2lts ] && echo "Using pre-baked Composer version 2.2..." && ln -sf /usr/local/bin/composer2lts $(which composer) && exit 0 ;;
-		esac
-		echo "Ensuring Composer version %[1]s (downloading from %[2]s)..."
-		curl -sSfL %[2]s -o /tmp/composer.phar && chmod +x /tmp/composer.phar && mv /tmp/composer.phar $(which composer)
-	`, version, downloadUrl)
+	script := buildComposerEnsureScript(version, downloadUrl)
 
 	cmd := exec.Command("docker", "exec", "-u", "root", containerName, "sh", "-c", script)
 	out, err := cmd.CombinedOutput()
@@ -105,6 +97,33 @@ func ensureSpecificComposerVersion(config Config, version string) error {
 
 	pterm.Success.Printf("Composer %s is now active.\n", version)
 	return nil
+}
+
+// buildComposerEnsureScript builds the in-container shell script that makes
+// the given Composer version active. It skips the network download when a
+// pre-baked binary already matches, or when the currently active `composer`
+// already reports the exact target version — otherwise `env up` would
+// re-download composer.phar from getcomposer.org on every single run.
+func buildComposerEnsureScript(version, downloadUrl string) string {
+	return fmt.Sprintf(`
+		case "%[1]s" in
+			1)   [ -f /usr/local/bin/composer1 ]   && echo "Using pre-baked Composer version 1..." && ln -sf /usr/local/bin/composer1 $(which composer) && exit 0 ;;
+			2)   [ -f /usr/local/bin/composer2 ]   && echo "Using pre-baked Composer version 2..." && ln -sf /usr/local/bin/composer2 $(which composer) && exit 0 ;;
+			2.2) [ -f /usr/local/bin/composer2lts ] && echo "Using pre-baked Composer version 2.2..." && ln -sf /usr/local/bin/composer2lts $(which composer) && exit 0 ;;
+		esac
+		CURRENT_VERSION=$(composer --version 2>/dev/null | sed -nE 's/.*version ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')
+		if [ "$CURRENT_VERSION" = "%[1]s" ]; then
+			echo "Composer %[1]s is already active, skipping download."
+			exit 0
+		fi
+		echo "Ensuring Composer version %[1]s (downloading from %[2]s)..."
+		curl -sSfL %[2]s -o /tmp/composer.phar && chmod +x /tmp/composer.phar && mv /tmp/composer.phar $(which composer)
+	`, version, downloadUrl)
+}
+
+// BuildComposerEnsureScriptForTest exposes buildComposerEnsureScript for tests.
+func BuildComposerEnsureScriptForTest(version, downloadUrl string) string {
+	return buildComposerEnsureScript(version, downloadUrl)
 }
 
 func isMinorComposerVersion(version string) bool {
