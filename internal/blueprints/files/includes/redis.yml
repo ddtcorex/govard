@@ -5,6 +5,11 @@ services:
   redis:
     hostname: {{ .Config.ProjectName }}-redis
     image: {{ if eq $cache "valkey" }}{{ $.ImageRepository }}valkey:{{ $cacheVersion }}{{ else }}{{ $.ImageRepository }}redis:{{ $cacheVersion }}{{ end }}
+    volumes:
+      - cache-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:/data
     networks:
       - govard-net
+
+volumes:
+  cache-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:
 {{ end }}

@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: caddy:latest
+    image: caddy:2.11.4
     container_name: govard-proxy-caddy
     restart: always
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --resume
@@ -16,7 +16,7 @@ services:
       - govard-proxy
 
   mail:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.30.7
     container_name: govard-proxy-mail
     restart: always
     environment:
@@ -58,7 +58,7 @@ services:
       - govard-proxy
 
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:2.39.5
     container_name: govard-proxy-portainer
     restart: always
     command: --admin-password '$$2y$$05$$kPildpVdhSHibCqqR8HFWO2XpZl2mWCo4eJ84LCZJrInbIQIiJu5u'

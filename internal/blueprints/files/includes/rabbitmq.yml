@@ -7,6 +7,10 @@ services:
     image: {{ $.ImageRepository }}rabbitmq:{{ $queueVersion }}
     volumes:
       - '{{ .RabbitMQConfPath }}:/etc/rabbitmq/rabbitmq.conf:ro'
+      - rabbitmq-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:/var/lib/rabbitmq
     networks:
       - govard-net
+
+volumes:
+  rabbitmq-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:
 {{ end }}
