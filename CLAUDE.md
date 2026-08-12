@@ -2,6 +2,8 @@
 
 Go-based local development orchestrator for PHP and web projects (Magento, Laravel, Symfony, WordPress, etc.).
 
+`AGENTS.md` at the repo root is a symlink to this file, so Codex CLI (which reads `AGENTS.md`, not `CLAUDE.md`) follows the same rules. Edit `CLAUDE.md` only — never edit `AGENTS.md` directly or replace the symlink with a copy.
+
 ## Quick Reference
 
 | Command | Purpose |
