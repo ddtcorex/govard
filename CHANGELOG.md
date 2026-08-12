@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.62.0] - 2026-08-12
+
+### ✨ New Features
+
+- **On-Demand Magento Frontend Runtime:** `govard env up` now starts application infrastructure only for Magento 2/Mage-OS projects; frontend tooling starts explicitly with `govard frontend start`. Hyva projects get the theme-owned `browser-sync` plus Tailwind watchers; Luma projects get `grunt watch` with LiveReload exposed through Caddy. Both auto-inject their client script into real page loads via a dedicated HTML-injection proxy. `govard frontend stop`/`govard frontend logs` manage the frontend runtime independently of the application stack.
+- **Versioned dnsmasq Image:** The dnsmasq proxy image now publishes a real version tag (parameterized by `ALPINE_VERSION`), matching every other bake target, instead of only floating `:latest`.
+
+### 🛠 Improvements
+
+- **Persistent Redis/Valkey and RabbitMQ Data:** Added explicit named volumes for redis/valkey and RabbitMQ, matching the existing db-data/search-data pattern, so `govard env down` + `env up` no longer silently wipes cache/queue data via orphaned anonymous volumes.
+- Pinned Caddy, Mailpit, Portainer, and dnsmasq in the shared proxy stack to specific versions instead of `:latest`, so re-pulls stop leaving dangling images behind.
+- `make test`/`make build` no longer regenerate `desktop/frontend/assets/styles.css` as a side effect; run `make build-frontend` explicitly after editing `styles-src.css`.
+
+### 🐛 Bug Fixes
+
+- **Dependabot Alert GHSA-fxqj-rqcc-2cmp:** Bumped the pinned postcss version (via yarn `resolutions`) to 8.5.26, the first release with a complete fix for the `sourceMappingURL` arbitrary `.map` file read.
+
+### 📚 Documentation
+
+- Added an `AGENTS.md` symlink to `CLAUDE.md` so Codex CLI picks up the same project conventions as Claude Code.
+
 ## [1.61.0] - 2026-08-10
 
 ### ✨ New Features
