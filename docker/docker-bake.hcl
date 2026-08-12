@@ -332,6 +332,13 @@ target "varnish" {
 
 # ─── Dnsmasq ───────────────────────────────────────────────────────────────
 target "dnsmasq" {
+  name    = "dnsmasq-${replace(version, ".", "-")}"
   context = "docker/dnsmasq"
-  tags    = ["${DOCKER_ORG}dnsmasq:latest"]
+  matrix = {
+    version = ["3.24", "latest"]
+  }
+  args = {
+    ALPINE_VERSION = version == "latest" ? "3.24" : version
+  }
+  tags = ["${DOCKER_ORG}dnsmasq:${version}"]
 }
