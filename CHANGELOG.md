@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.62.2] - 2026-08-12
+
+### 🐛 Bug Fixes
+
+- **`env up --profile default` Regression (v1.62.1):** The previous fix normalized the literal `"default"` flag value to `""` before checking whether an explicit `--profile` flag had been given at all, making an explicit `--profile default` indistinguishable from "no flag passed" and letting it fall through to the project registry's saved profile (e.g. resurrecting `upgrade` instead of resolving to the default). `--profile default` now returns the empty/no-profile sentinel immediately, overriding the registry as intended.
+
 ## [1.62.1] - 2026-08-12
 
 ### 🐛 Bug Fixes
