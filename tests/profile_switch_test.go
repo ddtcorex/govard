@@ -179,6 +179,21 @@ func TestResolveEffectiveProfile(t *testing.T) {
 	}
 }
 
+// TestResolveEffectiveProfileLiteralDefault ensures `--profile default` resolves
+// to the empty profile, exactly like `config profile switch default` does
+// (internal/cmd/profile.go normalizes the "default" argument to "" before
+// saving it to the registry). Without this, "env up --profile default" would
+// diverge from the registry-driven default and suffix compose/volume names
+// with "-default" instead of leaving them unsuffixed.
+func TestResolveEffectiveProfileLiteralDefault(t *testing.T) {
+	tempDir := t.TempDir()
+
+	result := engine.ResolveEffectiveProfile(tempDir, "default")
+	if result != "" {
+		t.Errorf(`ResolveEffectiveProfile(%q, "default") = %q, want "" (literal "default" must normalize to the empty/no-profile sentinel)`, tempDir, result)
+	}
+}
+
 func TestProfileSwitchSavesPreviousProfile(t *testing.T) {
 	tempDir := t.TempDir()
 

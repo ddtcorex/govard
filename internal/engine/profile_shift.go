@@ -152,7 +152,16 @@ func PrepareInfraForShift(projectName string, config Config) {
 
 // ResolveEffectiveProfile resolves the effective profile for a project.
 // Priority: 1. explicit profile (--profile flag), 2. project registry (last-used), 3. empty (default)
+//
+// The literal name "default" is treated as the empty/no-profile sentinel,
+// matching `config profile switch default` (internal/cmd/profile.go), so
+// `--profile default` never diverges into its own "-default"-suffixed
+// compose file, volumes, or containers.
 func ResolveEffectiveProfile(projectPath, explicitProfile string) string {
+	explicitProfile = strings.TrimSpace(explicitProfile)
+	if explicitProfile == "default" {
+		explicitProfile = ""
+	}
 	if explicitProfile != "" {
 		return explicitProfile
 	}
