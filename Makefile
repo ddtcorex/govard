@@ -31,16 +31,21 @@ install: ## Build and install Govard CLI + Desktop binaries from current source 
 install-release: ## Install latest release Govard CLI + Desktop binaries to system
 	./install.sh -y
 
+# build-frontend regenerates the desktop app's embedded CSS from its Tailwind
+# source. Only run it deliberately after editing desktop/frontend/assets/styles-src.css
+# and commit the result - cmd/govard/main.go (built below) does not import
+# desktop/frontend's embed.FS at all, and cmd/govard-desktop (built by install.sh)
+# embeds whatever is already committed, so neither needs this as a prerequisite.
 build-frontend:
 	@echo "Building frontend assets..."
 	@cd desktop/frontend && yarn install && yarn run build:css
 
-build: generate build-frontend ## Build Govard binary for the current platform
+build: generate ## Build Govard binary for the current platform
 	@echo "Building Govard..."
 	mkdir -p $(BUILD_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) cmd/govard/main.go
 
-build-test-binary: build-frontend
+build-test-binary:
 	@echo "Building test binary..."
 	mkdir -p $(BUILD_DIR)
 	go build -mod=mod -ldflags "$(LDFLAGS)" -tags integration -o $(TEST_BINARY) cmd/govard/main.go
