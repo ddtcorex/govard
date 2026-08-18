@@ -3,6 +3,7 @@ package wordpress
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"govard/internal/conventions"
@@ -17,6 +18,33 @@ var wpCLIVersionMap = map[int]string{
 	4: "2.4.0",
 	5: "2.8.1",
 	6: "2.10.0",
+}
+
+// recommendedWPCliVersion returns the WP-CLI version govard pins for a
+// WordPress major version, or "" when no specific version is recommended
+// (an unknown major — or one newer than the map — falls back to the latest
+// WP-CLI, just like resolveWPCliURL).
+func recommendedWPCliVersion(wpMajor int) string {
+	return wpCLIVersionMap[wpMajor]
+}
+
+// wpCliVersionPattern matches the numeric X.Y.Z release in WP-CLI's
+// `wp --version` output (e.g. "WP-CLI 2.8.1").
+var wpCliVersionPattern = regexp.MustCompile(`\d+\.\d+\.\d+`)
+
+// parseWPCliVersion extracts the active WP-CLI version (X.Y.Z) from
+// `wp --version` output, or "" when none is present.
+func parseWPCliVersion(raw string) string {
+	return wpCliVersionPattern.FindString(raw)
+}
+
+// wpVersionMatches reports whether the active WP-CLI version (from
+// `wp --version`) equals the expected one.
+func wpVersionMatches(raw, want string) bool {
+	if want == "" {
+		return false
+	}
+	return parseWPCliVersion(raw) == want
 }
 
 const (
@@ -38,16 +66,29 @@ func FixWordPressCompatibility(config engine.Config) error {
 
 	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)
 
-	// Check if wp is already available in PATH
-	if wpExists(containerName) {
+	// Detect the WordPress version and the WP-CLI version pinned for it.
+	wpMajor := detectWordPressVersion(containerName)
+	pinned := recommendedWPCliVersion(wpMajor)
+
+	// Fast path — mirrors the Composer fast path (see ensureSpecificComposerVersion
+	// in internal/engine/composer_compatibility.go): skip the download when the
+	// container already runs the recommended WP-CLI version, instead of
+	// overwriting the phar on every env up. This is also what lets the pinned
+	// version actually be enforced: the previous existence-only check would keep
+	// an outdated WP-CLI once the recommendation for a WordPress major changed.
+	// When nothing is pinned (WordPress major undetectable, or no recommendation
+	// for it), keep the original behavior and only install when wp is absent.
+	if pinned != "" {
+		if active := getWPVersion(containerName); wpVersionMatches(active, pinned) {
+			pterm.Info.Printf("WP-CLI %s is already active, skipping download.\n", pinned)
+			return nil
+		}
+	} else if wpExists(containerName) {
 		return nil
 	}
 
 	pterm.Info.Println("Installing WP-CLI in WordPress container...")
-
-	// Detect WordPress version to select appropriate WP-CLI
-	wpVersion := detectWordPressVersion(containerName)
-	wpCLIURL := resolveWPCliURL(wpVersion)
+	wpCLIURL := resolveWPCliURL(wpMajor)
 	pterm.Info.Printf("Downloading WP-CLI from %s\n", wpCLIURL)
 
 	// Download and install WP-CLI phar
@@ -184,4 +225,19 @@ func stringToInt(s string) int {
 		result = result*10 + int(c-'0')
 	}
 	return result
+}
+
+// RecommendedWPCliVersionForTest exposes recommendedWPCliVersion to the external /tests package.
+func RecommendedWPCliVersionForTest(wpMajor int) string {
+	return recommendedWPCliVersion(wpMajor)
+}
+
+// ParseWPCliVersionForTest exposes parseWPCliVersion to the external /tests package.
+func ParseWPCliVersionForTest(raw string) string {
+	return parseWPCliVersion(raw)
+}
+
+// WPCliVersionMatchesForTest exposes wpVersionMatches to the external /tests package.
+func WPCliVersionMatchesForTest(raw, want string) bool {
+	return wpVersionMatches(raw, want)
 }
