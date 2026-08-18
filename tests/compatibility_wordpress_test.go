@@ -63,12 +63,28 @@ func TestRecommendedWPCliVersion(t *testing.T) {
 		{4, "2.4.0"},
 		{5, "2.8.1"},
 		{6, "2.10.0"},
-		{7, ""},
+		{7, "2.12.0"},
 		{0, ""},
 	}
 	for _, c := range cases {
 		if got := wordpress.RecommendedWPCliVersionForTest(c.major); got != c.want {
 			t.Errorf("RecommendedWPCliVersionForTest(%d) = %q, want %q", c.major, got, c.want)
+		}
+	}
+}
+
+func TestResolveWPCliURL(t *testing.T) {
+	cases := []struct {
+		major int
+		want  string
+	}{
+		{6, "https://github.com/wp-cli/wp-cli/releases/download/v2.10.0/wp-cli-2.10.0.phar"},
+		{7, "https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli-2.12.0.phar"},
+		{0, "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar"},
+	}
+	for _, c := range cases {
+		if got := wordpress.ResolveWPCliURLForTest(c.major); got != c.want {
+			t.Errorf("ResolveWPCliURLForTest(%d) = %q, want %q", c.major, got, c.want)
 		}
 	}
 }
@@ -141,8 +157,8 @@ func TestFixWordPressCompatibilityUpgradesWhenVersionStale(t *testing.T) {
 	if !strings.Contains(dockerLog, "curl -sSfL") {
 		t.Fatalf("expected WP-CLI download when active version is stale, docker log: %s", dockerLog)
 	}
-	if !strings.Contains(dockerLog, "wp-cli-2.10.0.phar") {
-		t.Fatalf("expected download of the pinned 2.10.0 phar for WordPress 6.x, docker log: %s", dockerLog)
+	if !strings.Contains(dockerLog, "releases/download/v2.10.0/wp-cli-2.10.0.phar") {
+		t.Fatalf("expected download of the pinned 2.10.0 phar from GitHub Releases, docker log: %s", dockerLog)
 	}
 	if strings.Contains(output, "skipping download") {
 		t.Fatalf("did not expect a skip message for a stale install, got: %q", output)

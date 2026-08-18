@@ -18,6 +18,7 @@ var wpCLIVersionMap = map[int]string{
 	4: "2.4.0",
 	5: "2.8.1",
 	6: "2.10.0",
+	7: "2.12.0",
 }
 
 // recommendedWPCliVersion returns the WP-CLI version govard pins for a
@@ -48,9 +49,12 @@ func wpVersionMatches(raw, want string) bool {
 }
 
 const (
-	// wpCLIBaseURL is the official WP-CLI phar download URL
+	// wpCLIBaseURL is the official WP-CLI builds repository, which nowadays only
+	// publishes the latest wp-cli.phar (versioned phars were removed from it).
 	wpCLIBaseURL = "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar"
-	// wpCLIPharName is the main phar file name (not latest)
+	// wpCLIReleaseBaseURL hosts the per-version phar downloads (GitHub Releases).
+	wpCLIReleaseBaseURL = "https://github.com/wp-cli/wp-cli/releases/download"
+	// wpCLIPharName is the main phar file name (latest)
 	wpCLIPharName = "wp-cli.phar"
 	// wpCLISystemPath is the full system path where wp binary will be installed
 	wpCLISystemPath = "/usr/local/bin/wp"
@@ -194,13 +198,15 @@ func detectWordPressVersion(containerName string) int {
 func resolveWPCliURL(wpMajorVersion int) string {
 	// Check version map
 	if version, ok := wpCLIVersionMap[wpMajorVersion]; ok {
-		url := fmt.Sprintf("%s/wp-cli-%s.phar", wpCLIBaseURL, version)
+		// Versioned phars only exist on GitHub Releases - the builds repository
+		// no longer publishes wp-cli-<version>.phar (they return 404).
+		url := fmt.Sprintf("%s/v%s/wp-cli-%s.phar", wpCLIReleaseBaseURL, version, version)
 		pterm.Debug.Printf("Using WP-CLI %s for WordPress %d.x\n", version, wpMajorVersion)
 		return url
 	}
 
 	// Use the main wp-cli.phar for unknown versions (always available)
-	pterm.Debug.Println("Using latest WP-CLI (version not detected or >= 7)")
+	pterm.Debug.Println("Using latest WP-CLI (version not detected or newer than the map)")
 	return fmt.Sprintf("%s/%s", wpCLIBaseURL, wpCLIPharName)
 }
 
@@ -214,6 +220,11 @@ func stringToInt(s string) int {
 		result = result*10 + int(c-'0')
 	}
 	return result
+}
+
+// ResolveWPCliURLForTest exposes resolveWPCliURL to the external /tests package.
+func ResolveWPCliURLForTest(wpMajor int) string {
+	return resolveWPCliURL(wpMajor)
 }
 
 // RecommendedWPCliVersionForTest exposes recommendedWPCliVersion to the external /tests package.
