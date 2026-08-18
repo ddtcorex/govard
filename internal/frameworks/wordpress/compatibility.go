@@ -3,6 +3,7 @@ package wordpress
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"govard/internal/conventions"
@@ -17,12 +18,43 @@ var wpCLIVersionMap = map[int]string{
 	4: "2.4.0",
 	5: "2.8.1",
 	6: "2.10.0",
+	7: "2.12.0",
+}
+
+// recommendedWPCliVersion returns the WP-CLI version govard pins for a
+// WordPress major version, or "" when no specific version is recommended
+// (an unknown major — or one newer than the map — falls back to the latest
+// WP-CLI, just like resolveWPCliURL).
+func recommendedWPCliVersion(wpMajor int) string {
+	return wpCLIVersionMap[wpMajor]
+}
+
+// wpCliVersionPattern matches the numeric X.Y.Z release in WP-CLI's
+// `wp --version` output (e.g. "WP-CLI 2.8.1").
+var wpCliVersionPattern = regexp.MustCompile(`\d+\.\d+\.\d+`)
+
+// parseWPCliVersion extracts the active WP-CLI version (X.Y.Z) from
+// `wp --version` output, or "" when none is present.
+func parseWPCliVersion(raw string) string {
+	return wpCliVersionPattern.FindString(raw)
+}
+
+// wpVersionMatches reports whether the active WP-CLI version (from
+// `wp --version`) equals the expected one.
+func wpVersionMatches(raw, want string) bool {
+	if want == "" {
+		return false
+	}
+	return parseWPCliVersion(raw) == want
 }
 
 const (
-	// wpCLIBaseURL is the official WP-CLI phar download URL
+	// wpCLIBaseURL is the official WP-CLI builds repository, which nowadays only
+	// publishes the latest wp-cli.phar (versioned phars were removed from it).
 	wpCLIBaseURL = "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar"
-	// wpCLIPharName is the main phar file name (not latest)
+	// wpCLIReleaseBaseURL hosts the per-version phar downloads (GitHub Releases).
+	wpCLIReleaseBaseURL = "https://github.com/wp-cli/wp-cli/releases/download"
+	// wpCLIPharName is the main phar file name (latest)
 	wpCLIPharName = "wp-cli.phar"
 	// wpCLISystemPath is the full system path where wp binary will be installed
 	wpCLISystemPath = "/usr/local/bin/wp"
@@ -38,16 +70,33 @@ func FixWordPressCompatibility(config engine.Config) error {
 
 	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)
 
-	// Check if wp is already available in PATH
-	if wpExists(containerName) {
-		return nil
+	// Detect the WordPress version and the WP-CLI version pinned for it.
+	wpMajor := detectWordPressVersion(containerName)
+	active := getWPVersion(containerName)
+
+	// Fast path — mirrors the Composer fast path (see ensureSpecificComposerVersion
+	// in internal/engine/composer_compatibility.go). When a specific version is
+	// pinned for this WordPress major, skip the download when the container
+	// already runs that exact version — this also enforces the pin, since the
+	// previous existence-only check would keep an outdated WP-CLI forever once
+	// the recommendation changed. When nothing is pinned (major undetectable or
+	// newer than the map, i.e. latest), only install when wp is absent — but
+	// still confirm an existing install so re-runs are never silent.
+	if active != "" {
+		if pinned := recommendedWPCliVersion(wpMajor); pinned != "" {
+			if wpVersionMatches(active, pinned) {
+				pterm.Info.Printf("WP-CLI %s is already active, skipping download.\n", pinned)
+				return nil
+			}
+			// pinned != "" but the active version differs -> upgrade below.
+		} else {
+			pterm.Info.Printf("WP-CLI %s is already available, skipping install.\n", parseWPCliVersion(active))
+			return nil
+		}
 	}
 
 	pterm.Info.Println("Installing WP-CLI in WordPress container...")
-
-	// Detect WordPress version to select appropriate WP-CLI
-	wpVersion := detectWordPressVersion(containerName)
-	wpCLIURL := resolveWPCliURL(wpVersion)
+	wpCLIURL := resolveWPCliURL(wpMajor)
 	pterm.Info.Printf("Downloading WP-CLI from %s\n", wpCLIURL)
 
 	// Download and install WP-CLI phar
@@ -94,21 +143,6 @@ WRAPPER_EOF
 	}
 
 	return nil
-}
-
-// wpExists checks if wp CLI is available in the container.
-func wpExists(containerName string) bool {
-	script := `command -v wp >/dev/null 2>&1 && wp --version 2>/dev/null | head -1 || echo "not_found"`
-	args := []string{"exec", "-u", "root", containerName, "sh", "-c", script}
-	out, err := exec.Command("docker", args...).CombinedOutput()
-	if err == nil {
-		version := strings.TrimSpace(string(out))
-		if version != "" && version != "not_found" {
-			pterm.Debug.Printf("WP-CLI already available: %s\n", version)
-			return true
-		}
-	}
-	return false
 }
 
 // getWPVersion returns the installed WP-CLI version.
@@ -164,13 +198,15 @@ func detectWordPressVersion(containerName string) int {
 func resolveWPCliURL(wpMajorVersion int) string {
 	// Check version map
 	if version, ok := wpCLIVersionMap[wpMajorVersion]; ok {
-		url := fmt.Sprintf("%s/wp-cli-%s.phar", wpCLIBaseURL, version)
+		// Versioned phars only exist on GitHub Releases - the builds repository
+		// no longer publishes wp-cli-<version>.phar (they return 404).
+		url := fmt.Sprintf("%s/v%s/wp-cli-%s.phar", wpCLIReleaseBaseURL, version, version)
 		pterm.Debug.Printf("Using WP-CLI %s for WordPress %d.x\n", version, wpMajorVersion)
 		return url
 	}
 
 	// Use the main wp-cli.phar for unknown versions (always available)
-	pterm.Debug.Println("Using latest WP-CLI (version not detected or >= 7)")
+	pterm.Debug.Println("Using latest WP-CLI (version not detected or newer than the map)")
 	return fmt.Sprintf("%s/%s", wpCLIBaseURL, wpCLIPharName)
 }
 
@@ -184,4 +220,24 @@ func stringToInt(s string) int {
 		result = result*10 + int(c-'0')
 	}
 	return result
+}
+
+// ResolveWPCliURLForTest exposes resolveWPCliURL to the external /tests package.
+func ResolveWPCliURLForTest(wpMajor int) string {
+	return resolveWPCliURL(wpMajor)
+}
+
+// RecommendedWPCliVersionForTest exposes recommendedWPCliVersion to the external /tests package.
+func RecommendedWPCliVersionForTest(wpMajor int) string {
+	return recommendedWPCliVersion(wpMajor)
+}
+
+// ParseWPCliVersionForTest exposes parseWPCliVersion to the external /tests package.
+func ParseWPCliVersionForTest(raw string) string {
+	return parseWPCliVersion(raw)
+}
+
+// WPCliVersionMatchesForTest exposes wpVersionMatches to the external /tests package.
+func WPCliVersionMatchesForTest(raw, want string) bool {
+	return wpVersionMatches(raw, want)
 }
