@@ -75,10 +75,11 @@ func TestRecommendedWPCliVersion(t *testing.T) {
 
 // runFixWordPressCompatibility invokes the real FixWordPressCompatibility with a
 // fake docker binary standing in for the project PHP container. The fake docker
-// reports a WordPress 6.x install (wp-includes/version.php -> 6.8.1) and either
-// exposes wp at the given version, or fails wp lookups until the install exec
-// (the one containing curl) runs, which "installs" wp in the fake container.
-func runFixWordPressCompatibility(t *testing.T, wpPresent bool, activeWPVersion string) (dockerLog string, output string) {
+// either reports a WordPress 6.x install (wp-includes/version.php -> 6.8.1) or
+// an undetectable one, and either exposes wp at the given version, or fails wp
+// lookups until the install exec (the one containing curl) runs, which
+// "installs" wp in the fake container.
+func runFixWordPressCompatibility(t *testing.T, wpPresent bool, activeWPVersion string, majorDetectable bool) (dockerLog string, output string) {
 	t.Helper()
 
 	if runtime.GOOS == "windows" {
@@ -88,12 +89,14 @@ func runFixWordPressCompatibility(t *testing.T, wpPresent bool, activeWPVersion 
 	shimDir := t.TempDir()
 	logPath := filepath.Join(shimDir, "docker.log")
 
-	present := "1"
-	if !wpPresent {
-		present = "0"
+	flag := func(b bool) string {
+		if b {
+			return "1"
+		}
+		return "0"
 	}
 
-	script := fmt.Sprintf("#!/bin/sh\nset -eu\necho \"$*\" >> %s\nstate=\"$(dirname %s)/.wp_installed\"\ncase \"$*\" in\n  *wp-includes/version.php*)\n    echo \"6.8.1\"\n    exit 0\n    ;;\n  *\"curl -sSfL\"*)\n    touch \"$state\"\n    exit 0\n    ;;\n  *\"wp --version\"*|*\"command -v wp\"*)\n    if [ \"%s\" != \"1\" ] && [ ! -f \"$state\" ]; then exit 127; fi\n    echo \"WP-CLI %s\"\n    exit 0\n    ;;\nesac\nexit 0\n", logPath, logPath, present, activeWPVersion)
+	script := fmt.Sprintf("#!/bin/sh\nset -eu\necho \"$*\" >> %s\nstate=\"$(dirname %s)/.wp_installed\"\ncase \"$*\" in\n  *wp-includes/version.php*)\n    if [ \"%s\" = \"1\" ]; then echo \"6.8.1\"; else echo \"\"; fi\n    exit 0\n    ;;\n  *\"curl -sSfL\"*)\n    touch \"$state\"\n    exit 0\n    ;;\n  *\"wp --version\"*|*\"command -v wp\"*)\n    if [ \"%s\" != \"1\" ] && [ ! -f \"$state\" ]; then exit 127; fi\n    echo \"WP-CLI %s\"\n    exit 0\n    ;;\nesac\nexit 0\n", logPath, logPath, flag(majorDetectable), flag(wpPresent), activeWPVersion)
 
 	dockerPath := filepath.Join(shimDir, "docker")
 	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {
@@ -119,7 +122,7 @@ func runFixWordPressCompatibility(t *testing.T, wpPresent bool, activeWPVersion 
 }
 
 func TestFixWordPressCompatibilitySkipsDownloadWhenVersionMatches(t *testing.T) {
-	dockerLog, output := runFixWordPressCompatibility(t, true, "2.10.0")
+	dockerLog, output := runFixWordPressCompatibility(t, true, "2.10.0", true)
 
 	if strings.Contains(dockerLog, "curl -sSfL") {
 		t.Fatalf("expected no WP-CLI download when active version matches the pinned one, docker log: %s", dockerLog)
@@ -133,7 +136,7 @@ func TestFixWordPressCompatibilitySkipsDownloadWhenVersionMatches(t *testing.T) 
 }
 
 func TestFixWordPressCompatibilityUpgradesWhenVersionStale(t *testing.T) {
-	dockerLog, output := runFixWordPressCompatibility(t, true, "2.8.1")
+	dockerLog, output := runFixWordPressCompatibility(t, true, "2.8.1", true)
 
 	if !strings.Contains(dockerLog, "curl -sSfL") {
 		t.Fatalf("expected WP-CLI download when active version is stale, docker log: %s", dockerLog)
@@ -147,12 +150,26 @@ func TestFixWordPressCompatibilityUpgradesWhenVersionStale(t *testing.T) {
 }
 
 func TestFixWordPressCompatibilityInstallsWhenMissing(t *testing.T) {
-	dockerLog, output := runFixWordPressCompatibility(t, false, "")
+	dockerLog, output := runFixWordPressCompatibility(t, false, "", true)
 
 	if !strings.Contains(dockerLog, "curl -sSfL") {
 		t.Fatalf("expected WP-CLI download when wp is missing, docker log: %s", dockerLog)
 	}
 	if strings.Contains(output, "skipping download") {
 		t.Fatalf("did not expect a skip message for a missing install, got: %q", output)
+	}
+}
+
+func TestFixWordPressCompatibilityConfirmsWhenMajorUndetectable(t *testing.T) {
+	dockerLog, output := runFixWordPressCompatibility(t, true, "2.10.0", false)
+
+	if strings.Contains(dockerLog, "curl -sSfL") {
+		t.Fatalf("expected no WP-CLI download when wp is present but the WordPress major is undetectable, docker log: %s", dockerLog)
+	}
+	if !strings.Contains(output, "already available, skipping install") {
+		t.Fatalf("expected a confirmation message even when the WordPress major is undetectable, got: %q", output)
+	}
+	if !strings.Contains(output, "WP-CLI 2.10.0") {
+		t.Fatalf("expected the message to name the active version, got: %q", output)
 	}
 }

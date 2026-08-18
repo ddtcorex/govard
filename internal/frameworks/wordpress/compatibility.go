@@ -68,23 +68,27 @@ func FixWordPressCompatibility(config engine.Config) error {
 
 	// Detect the WordPress version and the WP-CLI version pinned for it.
 	wpMajor := detectWordPressVersion(containerName)
-	pinned := recommendedWPCliVersion(wpMajor)
+	active := getWPVersion(containerName)
 
 	// Fast path — mirrors the Composer fast path (see ensureSpecificComposerVersion
-	// in internal/engine/composer_compatibility.go): skip the download when the
-	// container already runs the recommended WP-CLI version, instead of
-	// overwriting the phar on every env up. This is also what lets the pinned
-	// version actually be enforced: the previous existence-only check would keep
-	// an outdated WP-CLI once the recommendation for a WordPress major changed.
-	// When nothing is pinned (WordPress major undetectable, or no recommendation
-	// for it), keep the original behavior and only install when wp is absent.
-	if pinned != "" {
-		if active := getWPVersion(containerName); wpVersionMatches(active, pinned) {
-			pterm.Info.Printf("WP-CLI %s is already active, skipping download.\n", pinned)
+	// in internal/engine/composer_compatibility.go). When a specific version is
+	// pinned for this WordPress major, skip the download when the container
+	// already runs that exact version — this also enforces the pin, since the
+	// previous existence-only check would keep an outdated WP-CLI forever once
+	// the recommendation changed. When nothing is pinned (major undetectable or
+	// newer than the map, i.e. latest), only install when wp is absent — but
+	// still confirm an existing install so re-runs are never silent.
+	if active != "" {
+		if pinned := recommendedWPCliVersion(wpMajor); pinned != "" {
+			if wpVersionMatches(active, pinned) {
+				pterm.Info.Printf("WP-CLI %s is already active, skipping download.\n", pinned)
+				return nil
+			}
+			// pinned != "" but the active version differs -> upgrade below.
+		} else {
+			pterm.Info.Printf("WP-CLI %s is already available, skipping install.\n", parseWPCliVersion(active))
 			return nil
 		}
-	} else if wpExists(containerName) {
-		return nil
 	}
 
 	pterm.Info.Println("Installing WP-CLI in WordPress container...")
@@ -135,21 +139,6 @@ WRAPPER_EOF
 	}
 
 	return nil
-}
-
-// wpExists checks if wp CLI is available in the container.
-func wpExists(containerName string) bool {
-	script := `command -v wp >/dev/null 2>&1 && wp --version 2>/dev/null | head -1 || echo "not_found"`
-	args := []string{"exec", "-u", "root", containerName, "sh", "-c", script}
-	out, err := exec.Command("docker", args...).CombinedOutput()
-	if err == nil {
-		version := strings.TrimSpace(string(out))
-		if version != "" && version != "not_found" {
-			pterm.Debug.Printf("WP-CLI already available: %s\n", version)
-			return true
-		}
-	}
-	return false
 }
 
 // getWPVersion returns the installed WP-CLI version.
