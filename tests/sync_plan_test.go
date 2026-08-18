@@ -262,7 +262,7 @@ func TestSyncPlanDatabaseActionFailsFastWhenLocalContainerNotRunning(t *testing.
 }
 
 func TestSyncPlanDatabaseStopsWhenRemoteCredentialsCannotBeResolved(t *testing.T) {
-	// Magento2 resolves DB credentials by probing the remote over SSH for .env/env.php.
+	// Magento2 resolves DB credentials by probing the remote over SSH for app/etc/env.php.
 	// Against a host that can't be reached, that probe fails -- the sync must stop
 	// with a clear error instead of silently falling back to guessed credentials.
 	config := engine.Config{

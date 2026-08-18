@@ -559,7 +559,7 @@ func formatRemoteDBProbeWarning(remoteName string, err error) string {
 	if err == nil {
 		return ""
 	}
-	return fmt.Sprintf("Could not auto-detect DB credentials for '%s' from remote metadata (.env/env.php) (%v). Falling back to default credentials.", remoteName, err)
+	return fmt.Sprintf("Could not auto-detect DB credentials for '%s' by probing the remote project configuration (%v). Falling back to default credentials.", remoteName, err)
 }
 
 func BuildRemoteMySQLDumpCommandForTest(host string, port int, username string, password string, database string, compress bool) string {
