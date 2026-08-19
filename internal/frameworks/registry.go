@@ -194,6 +194,50 @@ func (r *Registry) IsA(name, ancestor string) bool {
 	return false
 }
 
+// ResolveAuditTarget asks every framework with an audit-target capability to
+// classify request. A descendant framework wins when multiple matches share a
+// lineage; matches from unrelated framework lineages are rejected as ambiguous.
+func (r *Registry) ResolveAuditTarget(request types.AuditTargetResolveRequest) (types.FrameworkDefinition, types.AuditTarget, error) {
+	var selectedDefinition types.FrameworkDefinition
+	var selectedTarget types.AuditTarget
+	selected := false
+
+	for _, definition := range r.All() {
+		if definition.AuditTargetResolver == nil {
+			continue
+		}
+		target, recognized, err := definition.AuditTargetResolver(request)
+		if err != nil {
+			return definition, target, fmt.Errorf("resolve audit target with framework %q: %w", definition.Name, err)
+		}
+		if !recognized {
+			continue
+		}
+
+		if !selected {
+			selectedDefinition = definition
+			selectedTarget = target
+			selected = true
+			continue
+		}
+		if r.IsA(definition.Name, selectedDefinition.Name) {
+			selectedDefinition = definition
+			selectedTarget = target
+			continue
+		}
+		if r.IsA(selectedDefinition.Name, definition.Name) {
+			continue
+		}
+		return types.FrameworkDefinition{}, types.AuditTarget{}, fmt.Errorf("ambiguous audit target: frameworks %q and %q both match %q", selectedDefinition.Name, definition.Name, request.StartPath)
+	}
+
+	if !selected {
+		return types.FrameworkDefinition{}, types.AuditTarget{}, fmt.Errorf("no framework can resolve audit target %q", request.StartPath)
+	}
+	selectedTarget.Framework = selectedDefinition.Name
+	return selectedDefinition, selectedTarget, nil
+}
+
 var defaultRegistry = NewRegistry()
 
 // RegisterSpecs resolves specs and installs them as the package-level registry.
@@ -301,3 +345,9 @@ func Lineage(name string) []string { return defaultRegistry.Lineage(name) }
 
 // IsA reports whether framework is ancestor itself or descends from ancestor.
 func IsA(framework, ancestor string) bool { return defaultRegistry.IsA(framework, ancestor) }
+
+// ResolveAuditTarget resolves request through the package-level framework
+// registry.
+func ResolveAuditTarget(request types.AuditTargetResolveRequest) (types.FrameworkDefinition, types.AuditTarget, error) {
+	return defaultRegistry.ResolveAuditTarget(request)
+}

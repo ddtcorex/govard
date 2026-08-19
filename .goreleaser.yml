@@ -3,6 +3,14 @@ version: 2
 project_name: govard
 
 builds:
+  # GovardMagelintDigest pins the official Magento lint image published by
+  # .github/workflows/audit-magelint-image.yml. It is read with `index .Env`
+  # rather than `.Env.GOVARD_MAGELINT_DIGEST` on purpose: GoReleaser fails the
+  # whole build when a `.Env.NAME` lookup misses, and an unset digest is a valid
+  # state (a local snapshot build, or a release whose image job published
+  # nothing). `index` yields an empty string instead, which ToolchainManager
+  # already treats as "no official image pinned" and answers by building the
+  # embedded lint context locally.
   - id: govard
     main: ./cmd/govard/main.go
     binary: govard
@@ -16,7 +24,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X govard/internal/cmd.Version={{ .Version }} -X govard/internal/desktop.Version={{ .Version }}
+      - -s -w -X govard/internal/cmd.Version={{ .Version }} -X govard/internal/desktop.Version={{ .Version }} -X govard/internal/audit.GovardMagelintDigest={{ index .Env "GOVARD_MAGELINT_DIGEST" }}
 
   - id: govard-desktop
     main: ./cmd/govard-desktop/main.go
@@ -32,7 +40,7 @@ builds:
     goarch:
       - amd64
     ldflags:
-      - -s -w -X govard/internal/cmd.Version={{ .Version }} -X govard/internal/desktop.Version={{ .Version }}
+      - -s -w -X govard/internal/cmd.Version={{ .Version }} -X govard/internal/desktop.Version={{ .Version }} -X govard/internal/audit.GovardMagelintDigest={{ index .Env "GOVARD_MAGELINT_DIGEST" }}
 
 archives:
   - id: govard-archive

@@ -44,6 +44,9 @@ func ValidateConfig(cfg Config) error {
 	if err := validateBlueprintRegistryConfig(cfg.BlueprintRegistry); err != nil {
 		return err
 	}
+	if err := validateAuditConfig(cfg.Audit); err != nil {
+		return err
+	}
 	if cfg.Stack.XdebugVersion != "" && !ValidateXdebugVersion(cfg.Stack.XdebugVersion) {
 		return fmt.Errorf("stack.xdebug_version %q is invalid (use a PECL Xdebug version, e.g. 3.5.3)", cfg.Stack.XdebugVersion)
 	}
@@ -117,6 +120,44 @@ func ValidateConfig(cfg Config) error {
 		}
 	}
 
+	return nil
+}
+
+func validateAuditConfig(config AuditConfig) error {
+	if config.Lint.externalProviderKeyCollision != "" {
+		return fmt.Errorf("audit.lint.external_providers keys collide after normalization as %q", config.Lint.externalProviderKeyCollision)
+	}
+	providerID := config.Lint.Provider
+	if providerID == "" {
+		providerID = "govard"
+	}
+	if !providerNamePattern.MatchString(providerID) {
+		return fmt.Errorf("audit.lint.provider %q is invalid (allowed: lowercase letters, numbers, hyphen, underscore)", providerID)
+	}
+	for id, provider := range config.Lint.ExternalProviders {
+		if !providerNamePattern.MatchString(id) {
+			return fmt.Errorf("audit.lint.external_providers key %q is invalid (allowed: lowercase letters, numbers, hyphen, underscore)", id)
+		}
+		if provider.Type != "docker" {
+			return fmt.Errorf("audit.lint.external_providers.%s has unsupported type %q (allowed: docker)", id, provider.Type)
+		}
+		if strings.TrimSpace(provider.Image) == "" {
+			return fmt.Errorf("audit.lint.external_providers.%s is missing Docker image", id)
+		}
+		if len(provider.Command) == 0 {
+			return fmt.Errorf("audit.lint.external_providers.%s has an empty command", id)
+		}
+		for index, argument := range provider.Command {
+			if strings.TrimSpace(argument) == "" {
+				return fmt.Errorf("audit.lint.external_providers.%s command argument %d is empty", id, index)
+			}
+		}
+	}
+	if providerID != "govard" {
+		if _, ok := config.Lint.ExternalProviders[providerID]; !ok {
+			return fmt.Errorf("audit.lint.provider %q is not a configured external provider", providerID)
+		}
+	}
 	return nil
 }
 

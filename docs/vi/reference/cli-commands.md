@@ -52,6 +52,134 @@ description: Tài liệu đầy đủ về các lệnh CLI, alias và shortcut c
 
 ## 🌿 Các lệnh môi trường (Environment Commands)
 
+### `govard audit`
+
+Chạy audit dự án có session được lưu bền vững. Hiện chỉ có check lint được triển
+khai; các job profiler và browser sẽ được bổ sung ở các giai đoạn sau mà không
+đổi semantics session.
+
+```bash
+govard audit run
+govard audit diff --base origin/master
+govard audit rerun --session 20260816T010203Z-a1b2c3d4
+govard audit status --session 20260816T010203Z-a1b2c3d4
+govard audit result --session 20260816T010203Z-a1b2c3d4 --run run-0001
+govard audit cleanup --older-than 168h
+```
+
+`run` mặc định dùng `--scope project`, `--checks lint`,
+`--lint-provider govard`, `--mode auto` và `--lint-jobs 2`. `--format json` chỉ
+ghi một JSON object không có terminal decoration ra stdout; diagnostic và log
+backend nằm ngoài stream đó. Chỉ chấp nhận `text`/`json`; `--lint-jobs` phải từ 1
+đến số PHP version được framework khai báo.
+
+Mỗi lần chạy tạo
+`~/.govard/audit/<project-id>/sessions/<session-id>/manifest.json` và ghi result
+atomically tại
+`~/.govard/audit/<project-id>/sessions/<session-id>/runs/<run-id>/audit-result.json`,
+kèm `report.json` của chính provider. `rerun`, `status`, `result` luôn cần đúng
+`--session` (và `result` cần thêm `--run`); Govard không tự chọn session mới
+nhất.
+
+#### Target mode
+
+`--mode` quyết định phạm vi được phân tích. `auto` (mặc định) tự phân loại thư
+mục hiện tại:
+
+| Mode | Được chọn khi | Phạm vi phân tích |
+|------|---------------|-------------------|
+| `project` | Thư mục nằm trong một Magento project root (có `bin/magento` và một Composer requirement của Magento) và không nằm trong module nào | Toàn bộ project |
+| `module_in_project` | Thư mục là một module — qua `etc/module.xml` (cách khai báo module `app/code`) hoặc Composer package type `magento2-module` — nằm bên trong một Magento project | Chỉ module đó, toàn bộ project được mount read-only để autoloader phân giải được |
+| `standalone` | Thư mục là một module và không có Magento project nào ở cấp trên | Chỉ module đó; dependency được cài vào worktree tạm và chỉ được scan lấy symbol |
+
+`--mode project` và `--mode standalone` buộc một phân loại cụ thể và sẽ lỗi khi
+thư mục không thỏa điều kiện.
+
+#### Phiên bản PHP
+
+Lint image cung cấp `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4` và `8.5`.
+
+- Target `project` và `module_in_project` chỉ phân tích đúng một phiên bản:
+  `stack.php_version` đang active của project. Cả bảy phiên bản đều hợp lệ ở đây.
+  `--php` chỉ được chấp nhận khi trùng với phiên bản active đó, và run sẽ bị từ
+  chối nếu container ứng dụng đang chạy báo PHP khác với cấu hình.
+- Target `standalone` chấp nhận `8.1` đến `8.5` và mặc định chạy cả năm. `7.4` và
+  `8.0` **không** dùng được cho standalone module và bị từ chối trước khi bất kỳ
+  image nào được pull, build hay chạy.
+
+Phiên bản bị từ chối sẽ lỗi với thông báo `unsupported_php:` và không thực hiện
+bất kỳ công việc container nào.
+
+#### Provider
+
+`--lint-provider` chọn lint backend. `govard` (mặc định) là backend native do
+Govard sở hữu: nó chạy lint image riêng của Govard, với build context được nhúng
+trong chính binary Govard. Bản release ghim image đó theo digest bất biến; khi
+image đã ghim không pull được hoặc label không khớp context nhúng, Govard sẽ
+build context nhúng ngay tại máy và run vẫn tiếp tục. Đường đi mặc định này không
+liên quan tới registry private hay credential bên ngoài nào.
+
+Mọi giá trị khác phải trùng tên một entry trong `audit.lint.external_providers`
+của cấu hình dự án (xem
+[Cấu hình](./configuration.md#audit-lint-providers)). External provider không bao
+giờ là fallback cho backend native và không bao giờ được suy diễn: tên lạ là lỗi,
+và lỗi của native vẫn là lỗi của native. Target standalone không có cấu hình dự
+án nên chỉ dùng được `govard`.
+
+#### Cache
+
+State lint tái sử dụng nằm ở `~/.govard/cache/audit/lint/<target-id>/` và có chủ
+đích **không** bị `audit cleanup` xóa — lệnh đó chỉ dọn session đã lưu. Mỗi target
+giữ một cache generation cho mỗi toolchain identity (image, runner, PHP matrix,
+analyzer policy). Trong một generation:
+
+- Thay đổi `composer.json`, `composer.lock` hoặc một analyzer ruleset
+  (`phpcs.xml`, `phpstan.neon` và các biến thể `.dist`) sẽ loại bỏ analyzer state
+  đã cache nhưng giữ Composer download cache còn nóng, nên đổi lock không buộc
+  tải lại toàn bộ dependency.
+- `--no-lint-result-cache` bỏ qua analyzer state cho một run và được báo lại với
+  cache state `bypassed`. Composer download cache vẫn được giữ.
+
+Evidence của mỗi run lưu cache state (`cold`, `warm` hoặc `bypassed`) kèm lý do
+theo từng phiên bản PHP, cùng image digest bất biến, toolchain digest và timing
+của từng phase.
+
+#### Credential và cancellation
+
+Composer credentials tại `~/.composer/auth.json` được mount read-only khi file
+tồn tại, và được link vào một Composer home riêng bên trong container — không bao
+giờ bị copy, log hay ghi vào report. Forward SSH agent là opt-in tuyệt đối qua
+`--allow-lint-ssh-agent`; không có flag đó thì `SSH_AUTH_SOCK` không bao giờ được
+forward dù host có set. Source tree luôn được mount read-only.
+
+Hủy một run sẽ stop lint container rồi remove nó, và run được báo là cancelled
+chứ không phải lỗi hạ tầng.
+
+`diff` lưu base ref trong manifest, nhưng lint hiện vẫn phân tích toàn bộ target;
+evidence vì thế báo `effective_scope: project`.
+
+### `govard audit toolchain`
+
+Quản lý lint image dùng chung cho cả máy. Các lệnh này không cần chạy bên trong
+một Govard project và không bao giờ gọi external lint provider.
+
+```bash
+govard audit toolchain status
+govard audit toolchain pull
+govard audit toolchain build
+```
+
+- `status` chỉ kiểm tra image local — không pull, không build — và báo context
+  digest nhúng của bản build này, reference official đã ghim, official image đó
+  có sẵn và đã verify label hay chưa, và local build đã tồn tại hay chưa. Khi
+  chưa có gì dùng được, nó cũng in ra nên chạy lệnh nào tiếp theo.
+- `pull` chỉ resolve official image đã ghim. Nó không build, nên khi đường đi
+  official không dùng được thì lệnh báo lỗi thay vì âm thầm tạo image local. Bản
+  build không ghim digest nào thì không có gì để pull và sẽ nói rõ điều đó.
+- `build` chỉ build context nhúng và không pull. Image kết quả là content
+  addressed, nên image đã có cho cùng context digest sẽ được dùng lại nguyên
+  trạng.
+
 ### `govard init`
 
 Phát hiện framework của dự án và tạo cấu hình `.govard.yml`.

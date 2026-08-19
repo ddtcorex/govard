@@ -295,6 +295,49 @@ Govard tạo mã hash vân tay cho `.govard/docker-compose.override.yml`, `.gova
 Khi ghi đè dịch vụ, nên ưu tiên các bổ sung nhỏ (thêm biến môi trường, label, port). Việc thay thế hoàn toàn danh sách như `services.web.volumes` có thể làm mất các mount quan trọng do Govard quản lý. `.govard/nginx/custom/` và `.govard/apache/custom/` tồn tại chính xác để bạn không cần thay thế toàn bộ cấu hình web server chỉ để thêm một directive.
 :::
 
+### Audit Lint Providers
+
+`audit.lint` cấu hình backend mà [`govard audit`](./cli-commands.md#govard-audit)
+dùng cho check lint. Cả hai key đều không bắt buộc; nếu không set gì, audit sẽ
+chạy backend native do Govard sở hữu.
+
+```yaml
+audit:
+  lint:
+    # Provider mặc định cho dự án này. Khi bỏ trống, mặc định là "govard"
+    # (backend native). Mọi giá trị khác phải trùng tên một key bên dưới.
+    provider: govard
+
+    # Các lint container bên thứ ba được khai báo tường minh. Không có gì được
+    # tự phát hiện, và không cái nào là fallback cho backend native.
+    external_providers:
+      house-standard:
+        type: docker            # bắt buộc; chỉ hỗ trợ "docker"
+        image: example.invalid/lint@sha256:...  # bắt buộc
+        command: ["lint", "--report", "/output/report.json"]  # bắt buộc, không rỗng
+```
+
+| Key | Bắt buộc | Mục đích |
+| :--- | :--- | :--- |
+| `audit.lint.provider` | Không | Provider mặc định của dự án. Phải là `govard` hoặc một key trong `external_providers`. Chỉ chữ thường, số, gạch ngang và gạch dưới. |
+| `audit.lint.external_providers.<name>.type` | Có | Loại provider. Chỉ hỗ trợ `docker`. |
+| `audit.lint.external_providers.<name>.image` | Có | Image container sẽ chạy. Nên ghim theo digest để evidence chỉ đúng một runtime bất biến. |
+| `audit.lint.external_providers.<name>.command` | Có | Mảng tham số cho container. Mọi phần tử phải khác rỗng; không có shell. |
+
+Thứ tự ưu tiên là tường minh: flag `--lint-provider` luôn thắng, sau đó
+`audit.lint.provider`, cuối cùng là mặc định `govard`. Credential có chủ đích
+không phải là trường cấu hình — Composer auth được đọc từ
+`~/.composer/auth.json`, còn forward SSH agent là opt-in theo từng run qua
+`--allow-lint-ssh-agent`.
+
+::: warning CẢNH BÁO
+External provider phải tạo ra report theo đúng schema lint của Govard và echo lại
+chính xác identity của run đó, nếu không report sẽ bị quarantine thay vì được
+nhận làm evidence. Gọi một provider chưa được cấu hình là lỗi, không bao giờ âm
+thầm quay về `govard`. Target standalone module không có cấu hình dự án nào, nên ở
+đó chỉ dùng được `govard`.
+:::
+
 ---
 
 ## Lệnh cấu hình

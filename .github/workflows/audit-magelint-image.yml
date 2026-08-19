@@ -1,0 +1,340 @@
+name: Audit Magelint Image
+
+# Builds, verifies, and publishes the Govard-owned Magento lint image
+# (ghcr.io/ddtcorex/govard-magelint) and returns the published manifest digest.
+#
+# The digest is the whole point of the job: internal/audit.GovardMagelintDigest
+# is injected with it at link time, and internal/audit/toolchain.go only ever
+# references the official image pinned to that immutable digest - never a
+# floating tag. A build whose contract tests, launcher smokes, or vulnerability
+# scan fail must therefore never publish, because the resulting digest would be
+# baked into a release for its entire life.
+#
+# The image is also label-verified against the lint build context embedded in the
+# Govard binary: officialLabelsVerify requires io.govard.audit.context-digest to
+# equal the embedded context digest exactly, so this workflow derives that value
+# from the built CLI itself rather than restating it.
+
+on:
+  # workflow_dispatch exists so this job can be exercised before it ever gates a
+  # release. Called from release.yml it is on the critical path behind
+  # "release: needs: magelint-image", so its first run would otherwise be a live
+  # tag push, where any orchestration defect blocks the release outright. Manual
+  # runs default to publish: false, which verifies the whole build, contract,
+  # smoke, SBOM, and scan path without pushing anything to GHCR.
+  #
+  # Note: GitHub only offers workflow_dispatch for workflow files that exist on
+  # the default branch, so this becomes runnable once the branch is merged - do a
+  # verify-only run then, before cutting the first tag that depends on it.
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag to build under. For a verify-only run any label works."
+        required: false
+        default: "manual-verify"
+        type: string
+      publish:
+        description: "Publish the multi-arch manifest to GHCR. Leave off to verify only."
+        required: false
+        default: false
+        type: boolean
+
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Tag to publish the lint image under, normally the release tag."
+        required: true
+        type: string
+      publish:
+        description: "Publish the multi-arch manifest to GHCR. Disable to verify only."
+        required: false
+        default: true
+        type: boolean
+    outputs:
+      image_digest:
+        description: "Immutable manifest digest of the published lint image, empty when publish is false."
+        value: ${{ jobs.image.outputs.image_digest }}
+      image_reference:
+        description: "Full digest-pinned image reference, empty when publish is false."
+        value: ${{ jobs.image.outputs.image_reference }}
+      context_digest:
+        description: "Embedded lint build context digest the published image is labelled with."
+        value: ${{ jobs.image.outputs.context_digest }}
+
+# No permission is granted by default; the single job below opts into exactly
+# what it needs. packages: write lives on that job alone and is never visible to
+# a calling workflow's other jobs.
+permissions: {}
+
+jobs:
+  image:
+    name: Build, verify, and publish magelint
+    runs-on: ubuntu-latest
+    # The arm64 leg is emulated, and the image installs seven PHP runtimes plus
+    # seven Composer toolchains, so this is a long job by nature rather than a
+    # hung one.
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_digest: ${{ steps.publish.outputs.image_digest }}
+      image_reference: ${{ steps.publish.outputs.image_reference }}
+      context_digest: ${{ steps.context.outputs.context_digest }}
+    env:
+      IMAGE_REPOSITORY: ghcr.io/ddtcorex/govard-magelint
+      CONTEXT_DIR: docker/audit-magento
+      # A local-only tag: the verification steps run against a single-arch image
+      # loaded into the daemon, never against anything already published.
+      SMOKE_IMAGE: govard-ci/magelint:smoke
+      # Every third-party image on this path is digest-pinned, not tagged. This
+      # job gates releases, so a mutable tag here would let an upstream retag
+      # change what a release is built and verified by. binfmt matters most of the
+      # three: it is the one that runs --privileged.
+      SYFT_IMAGE: anchore/syft@sha256:b8c170b8e51bfc4779ec3ef4399942c57290f5ce76a9c3af564c9d00d4946a6b
+      TRIVY_IMAGE: aquasec/trivy@sha256:665030f4d33a82c1e8d9d5e0453365842236723c1ee5cc3becca698268e66a56
+      BINFMT_IMAGE: tonistiigi/binfmt@sha256:2d2918e86e5327d0661f7083d67a95280b0f7be8f77ed79a8418f81d7d90ce6f
+      # Shared Trivy cache, so the database is fetched once by the retrying step
+      # below and the scan itself never reaches the network.
+      TRIVY_CACHE_DIR: trivy-cache
+      PHP_LAUNCHERS: "7.4 8.0 8.1 8.2 8.3 8.4 8.5"
+      # The tag is a pushed git ref, so it reaches every shell through the
+      # environment rather than through expression interpolation inside a script.
+      IMAGE_TAG: ${{ inputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
+      # The embedded context digest is read back out of the built CLI so the
+      # image label and the binary that verifies it can never disagree. Deriving
+      # it any other way would reintroduce exactly the drift
+      # officialLabelsVerify exists to catch.
+      - name: Resolve the embedded lint context digest
+        id: context
+        run: |
+          set -euo pipefail
+          go build -o "${RUNNER_TEMP}/govard" ./cmd/govard/main.go
+          CONTEXT_DIGEST=$("${RUNNER_TEMP}/govard" audit toolchain status --format json | jq -r '.context_digest')
+          case "${CONTEXT_DIGEST}" in
+            sha256:*) ;;
+            *) echo "::error::the CLI reported no usable lint context digest: ${CONTEXT_DIGEST}"; exit 1 ;;
+          esac
+          echo "context_digest=${CONTEXT_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "embedded lint context digest ${CONTEXT_DIGEST}"
+
+      # The contract suite drives the runner with stubbed PHP launchers and
+      # analyzers, so it needs no image and fails fast on a broken entrypoint
+      # before any minutes are spent building one.
+      - name: Run the lint runner contract suite
+        run: bash docker/audit-magento/tests/contract_test.sh
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      # binfmt is installed directly rather than through a separate QEMU action
+      # so this workflow needs no action the repository does not already use. It
+      # is pinned by digest because it runs --privileged.
+      - name: Enable arm64 emulation
+        run: |
+          set -euo pipefail
+          docker run --privileged --rm "${BINFMT_IMAGE}" --install arm64
+          docker buildx inspect --bootstrap | grep -q 'linux/arm64'
+
+      # A single-arch amd64 image is built and loaded first so the launcher
+      # smokes and the scanners run against a real image. The multi-arch push
+      # below reuses this build's cache for its amd64 leg.
+      - name: Build the amd64 verification image
+        env:
+          CONTEXT_DIGEST: ${{ steps.context.outputs.context_digest }}
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --tag "${SMOKE_IMAGE}" \
+            --build-arg "GOVARD_VERSION=${IMAGE_TAG}" \
+            --build-arg "GOVARD_CONTEXT_DIGEST=${CONTEXT_DIGEST}" \
+            --build-arg "GOVARD_SOURCE_REVISION=${GITHUB_SHA}" \
+            --file "${CONTEXT_DIR}/Dockerfile" \
+            "${CONTEXT_DIR}"
+
+      # Every label internal/audit.officialLabelsVerify checks is asserted here,
+      # because a mismatch would leave the published image unusable: the CLI would
+      # silently fall back to a local build for the whole life of the release.
+      - name: Verify the image labels the CLI requires
+        env:
+          CONTEXT_DIGEST: ${{ steps.context.outputs.context_digest }}
+        run: |
+          set -euo pipefail
+          labels=$(docker image inspect --format '{{json .Config.Labels}}' "${SMOKE_IMAGE}")
+          expect_label() {
+            actual=$(printf '%s' "$labels" | jq -r --arg key "$1" '.[$key] // ""')
+            if [ "$actual" != "$2" ]; then
+              echo "::error::label $1 is \"$actual\", expected \"$2\""
+              exit 1
+            fi
+          }
+          expect_label io.govard.audit.context-digest "${CONTEXT_DIGEST}"
+          expect_label io.govard.audit.report-schema "2"
+          expect_label io.govard.audit.php-versions "$(printf '%s' "${PHP_LAUNCHERS}" | tr ' ' ',')"
+          expect_label io.govard.version "${IMAGE_TAG}"
+          expect_label org.opencontainers.image.revision "${GITHUB_SHA}"
+
+      # Every PHP the image claims to provide is smoked individually, so a
+      # partially installed matrix can never ship. The runner itself is smoked
+      # too: the entrypoint is what every audit run actually executes.
+      - name: Smoke every PHP launcher and the runner entrypoint
+        run: |
+          set -euo pipefail
+          for version in ${PHP_LAUNCHERS}; do
+            echo "--- php${version} ---"
+            reported=$(docker run --rm --entrypoint "php${version}" "${SMOKE_IMAGE}" \
+              -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')
+            if [ "${reported}" != "${version}" ]; then
+              echo "::error::php${version} launcher reported PHP ${reported}"
+              exit 1
+            fi
+            docker run --rm --entrypoint "php${version}" "${SMOKE_IMAGE}" \
+              "/opt/govard/toolchains/php-${version}/vendor/bin/phpcs" -i | grep -q Magento2
+            docker run --rm --entrypoint "php${version}" "${SMOKE_IMAGE}" \
+              "/opt/govard/toolchains/php-${version}/vendor/bin/phpstan" --version >/dev/null
+          done
+          docker run --rm "${SMOKE_IMAGE}" --version
+          docker run --rm "${SMOKE_IMAGE}" --help >/dev/null
+
+      # Both scanners read an exported archive instead of the live daemon, so
+      # neither needs the Docker socket mounted into a container.
+      - name: Export the verification image
+        run: docker save "${SMOKE_IMAGE}" -o "${RUNNER_TEMP}/magelint-image.tar"
+
+      - name: Generate the SPDX SBOM
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${RUNNER_TEMP}:/work" \
+            "${SYFT_IMAGE}" \
+            scan "docker-archive:/work/magelint-image.tar" \
+            --output "spdx-json=/work/magelint-sbom.spdx.json"
+          jq -e '.SPDXID and (.packages | length > 0)' "${RUNNER_TEMP}/magelint-sbom.spdx.json" >/dev/null
+
+      # A release gate is exactly where a high or critical finding must stop the
+      # pipeline, so the scan is failing rather than advisory. --ignore-unfixed is
+      # deliberately NOT set: an unfixable base-image CVE is still a real risk to
+      # ship, and the image measured clean either way when this gate was added, so
+      # the stricter form costs nothing today. When an unfixable finding does
+      # appear, resolve it by moving the base image, or by adding an explicit
+      # --ignorefile carrying a reviewed and dated exception - never by widening
+      # the severity filter or turning the gate advisory.
+      # The database fetch is a registry pull and is therefore the one part of the
+      # scan that can fail for reasons that have nothing to do with the image. It
+      # is separated out and retried so a transient rate limit or network blip
+      # cannot fail a release, while the scan verdict below stays a single
+      # non-retried attempt: retrying a real finding would only waste minutes and
+      # risk making the gate look flaky instead of decisive.
+      - name: Refresh the Trivy vulnerability database
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/${TRIVY_CACHE_DIR}"
+          attempt=1
+          until docker run --rm \
+            -v "${RUNNER_TEMP}/${TRIVY_CACHE_DIR}:/root/.cache/trivy" \
+            "${TRIVY_IMAGE}" \
+            image --download-db-only --no-progress
+          do
+            if [ "${attempt}" -ge 3 ]; then
+              echo "::error::the Trivy vulnerability database could not be fetched after ${attempt} attempts"
+              exit 1
+            fi
+            echo "Trivy database fetch attempt ${attempt} failed; retrying in $(( attempt * 15 ))s"
+            sleep "$(( attempt * 15 ))"
+            attempt=$(( attempt + 1 ))
+          done
+
+      - name: Scan for high and critical vulnerabilities
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${RUNNER_TEMP}:/work" \
+            -v "${RUNNER_TEMP}/${TRIVY_CACHE_DIR}:/root/.cache/trivy" \
+            "${TRIVY_IMAGE}" \
+            image \
+            --input /work/magelint-image.tar \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format table \
+            --no-progress \
+            --skip-db-update
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: magelint-sbom-${{ inputs.image_tag }}
+          path: ${{ runner.temp }}/magelint-sbom.spdx.json
+          if-no-files-found: error
+
+      # The archive is close to a gigabyte and both scanners are done with it, so
+      # it is dropped before the two-architecture build asks for its own space.
+      - name: Reclaim the exported archive
+        run: rm -f "${RUNNER_TEMP}/magelint-image.tar"
+
+      - name: Log in to GHCR
+        if: ${{ inputs.publish }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${GHCR_TOKEN}" |
+            docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+
+      # The multi-arch manifest is the artifact a release consumes. Its digest is
+      # read from buildx's own metadata rather than reconstructed, so the value
+      # injected into the binary is the one the registry actually holds.
+      - name: Publish the multi-arch image
+        id: publish
+        if: ${{ inputs.publish }}
+        env:
+          CONTEXT_DIGEST: ${{ steps.context.outputs.context_digest }}
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --push \
+            --tag "${IMAGE_REPOSITORY}:${IMAGE_TAG}" \
+            --build-arg "GOVARD_VERSION=${IMAGE_TAG}" \
+            --build-arg "GOVARD_CONTEXT_DIGEST=${CONTEXT_DIGEST}" \
+            --build-arg "GOVARD_SOURCE_REVISION=${GITHUB_SHA}" \
+            --metadata-file "${RUNNER_TEMP}/buildx-metadata.json" \
+            --file "${CONTEXT_DIR}/Dockerfile" \
+            "${CONTEXT_DIR}"
+
+          IMAGE_DIGEST=$(jq -r '."containerimage.digest" // ""' "${RUNNER_TEMP}/buildx-metadata.json")
+          case "${IMAGE_DIGEST}" in
+            sha256:*) ;;
+            *) echo "::error::buildx published no usable manifest digest: ${IMAGE_DIGEST}"; exit 1 ;;
+          esac
+          echo "image_digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "image_reference=${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "published ${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
+
+      # The digest is about to be baked into a release binary, so the published
+      # manifest is re-read from the registry and required to carry both
+      # architectures before it is handed back.
+      - name: Verify the published manifest
+        if: ${{ inputs.publish }}
+        env:
+          IMAGE_REFERENCE: ${{ steps.publish.outputs.image_reference }}
+        run: |
+          set -euo pipefail
+          reference="${IMAGE_REFERENCE}"
+          platforms=$(docker buildx imagetools inspect --raw "${reference}" |
+            jq -r '[.manifests[]? | select(.platform.os == "linux") | "\(.platform.os)/\(.platform.architecture)"] | sort | join(",")')
+          for expected in linux/amd64 linux/arm64; do
+            case ",${platforms}," in
+              *",${expected},"*) ;;
+              *) echo "::error::published manifest is missing ${expected} (has: ${platforms})"; exit 1 ;;
+            esac
+          done
+          echo "published manifest covers ${platforms}"

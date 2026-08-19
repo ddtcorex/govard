@@ -116,6 +116,13 @@ type FrameworkDefinition struct {
 	// nil for frameworks that use the generic {"app", "src"} default.
 	PHPStanPaths []string
 
+	// AuditLint declares exact lint policy for frameworks that support the
+	// generic audit runner. Nil means lint audit is unsupported.
+	AuditLint *AuditLintProfile
+	// AuditTargetResolver resolves a framework-specific path into an audit
+	// target. Nil means lint audit target selection is unsupported.
+	AuditTargetResolver AuditTargetResolver
+
 	// ComposerCodingStandard is the Composer package (e.g.
 	// "magento/magento-coding-standard") that registers this framework's phpcs
 	// coding standard, and the --standard label to pass phpcs when that package

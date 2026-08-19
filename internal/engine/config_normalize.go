@@ -2,6 +2,7 @@ package engine
 
 import (
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -11,6 +12,7 @@ func NormalizeConfig(config *Config, root string) {
 	}
 
 	normalizeBlueprintRegistryConfig(&config.BlueprintRegistry)
+	normalizeAuditConfig(&config.Audit)
 	config.StoreDomains = normalizeStoreDomainMappings(config.StoreDomains)
 
 	config.Framework = NormalizeFrameworkAlias(config.Framework)
@@ -282,4 +284,36 @@ func NormalizeConfig(config *Config, root string) {
 			config.Remotes[name] = remote
 		}
 	}
+}
+
+func normalizeAuditConfig(config *AuditConfig) {
+	if config == nil {
+		return
+	}
+	config.Lint.Provider = NormalizeProviderName(config.Lint.Provider)
+	if config.Lint.Provider == "" {
+		config.Lint.Provider = "govard"
+	}
+	if config.Lint.ExternalProviders == nil {
+		return
+	}
+	normalized := make(map[string]ExternalLintProviderConfig, len(config.Lint.ExternalProviders))
+	ids := make([]string, 0, len(config.Lint.ExternalProviders))
+	for id := range config.Lint.ExternalProviders {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		provider := config.Lint.ExternalProviders[id]
+		provider.Type = NormalizeProviderName(provider.Type)
+		normalizedID := NormalizeProviderName(id)
+		if _, exists := normalized[normalizedID]; exists {
+			if config.Lint.externalProviderKeyCollision == "" {
+				config.Lint.externalProviderKeyCollision = normalizedID
+			}
+			continue
+		}
+		normalized[normalizedID] = provider
+	}
+	config.Lint.ExternalProviders = normalized
 }

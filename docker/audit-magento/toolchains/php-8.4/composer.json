@@ -1,0 +1,26 @@
+{
+    "name": "govard/magelint-toolchain-php84",
+    "description": "Locked Magento static-analysis toolchain for PHP 8.4.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "bitexpert/phpstan-magento": "^0.43.0",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "magento/magento-coding-standard": "^40.0",
+        "phpstan/extension-installer": "^1.4",
+        "phpstan/phpstan": "^2.2"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "phpstan/extension-installer": true
+        },
+        "optimize-autoloader": true,
+        "platform": {
+            "php": "8.4.24"
+        },
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
