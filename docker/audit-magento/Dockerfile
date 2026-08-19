@@ -39,7 +39,7 @@ RUN set -eux; \
     add-apt-repository -y ppa:ondrej/php; \
     apt-get update; \
     for version in $(printf '%s' "${GOVARD_MAGELINT_PHP_VERSIONS}" | tr ',' ' '); do \
-        packages="php${version}-cli php${version}-mbstring php${version}-xml php${version}-curl php${version}-zip php${version}-intl php${version}-bcmath"; \
+        packages="php${version}-cli php${version}-mbstring php${version}-xml php${version}-curl php${version}-zip php${version}-intl php${version}-bcmath php${version}-gd"; \
         case "${version}" in \
             7.*) packages="${packages} php${version}-json" ;; \
         esac; \
