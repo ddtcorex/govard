@@ -1,11 +1,76 @@
 package tests
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"govard/internal/frameworks"
 	"govard/internal/frameworks/types"
 )
+
+func TestFrameworkRegistryResolvesAuditTarget(t *testing.T) {
+	request := types.AuditTargetResolveRequest{StartPath: t.TempDir()}
+
+	t.Run("prefers the most specific framework in one lineage", func(t *testing.T) {
+		resolver := func(types.AuditTargetResolveRequest) (types.AuditTarget, bool, error) {
+			return types.AuditTarget{Framework: "parent", Mode: types.AuditTargetProject}, true, nil
+		}
+		registry, err := frameworks.NewRegistryFromSpecs([]types.FrameworkSpec{
+			{Parent: "parent", Definition: types.FrameworkDefinition{Name: "child"}},
+			{Definition: types.FrameworkDefinition{Name: "parent", AuditTargetResolver: resolver}},
+		})
+		if err != nil {
+			t.Fatalf("NewRegistryFromSpecs() error = %v", err)
+		}
+
+		definition, target, err := registry.ResolveAuditTarget(request)
+		if err != nil {
+			t.Fatalf("ResolveAuditTarget() error = %v", err)
+		}
+		if definition.Name != "child" {
+			t.Errorf("definition.Name = %q, want child", definition.Name)
+		}
+		if target.Framework != "child" {
+			t.Errorf("target.Framework = %q, want child", target.Framework)
+		}
+	})
+
+	t.Run("rejects unrelated matching frameworks", func(t *testing.T) {
+		registry := frameworks.NewRegistry()
+		for _, name := range []string{"first", "second"} {
+			registry.Register(types.FrameworkDefinition{
+				Name: name,
+				AuditTargetResolver: func(types.AuditTargetResolveRequest) (types.AuditTarget, bool, error) {
+					return types.AuditTarget{}, true, nil
+				},
+			})
+		}
+
+		_, _, err := registry.ResolveAuditTarget(request)
+		if err == nil {
+			t.Fatal("ResolveAuditTarget() error = nil, want unrelated ambiguity error")
+		}
+		if !strings.Contains(err.Error(), "ambiguous") {
+			t.Errorf("ResolveAuditTarget() error = %q, want ambiguity context", err)
+		}
+	})
+
+	t.Run("returns a resolver error from a recognized framework", func(t *testing.T) {
+		registry := frameworks.NewRegistry()
+		registry.Register(types.FrameworkDefinition{
+			Name: "broken",
+			AuditTargetResolver: func(types.AuditTargetResolveRequest) (types.AuditTarget, bool, error) {
+				return types.AuditTarget{}, true, fmt.Errorf("invalid target override")
+			},
+		})
+
+		_, _, err := registry.ResolveAuditTarget(request)
+		if err == nil || !strings.Contains(err.Error(), "invalid target override") {
+			t.Errorf("ResolveAuditTarget() error = %v, want resolver error", err)
+		}
+	})
+}
 
 func TestRegistryRegisterAndGet(t *testing.T) {
 	reg := frameworks.NewRegistry()

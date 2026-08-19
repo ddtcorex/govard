@@ -1,0 +1,5 @@
+project_name: m2-audit-module
+domain: m2-audit-module.test
+framework: magento2
+stack:
+  php_version: "7.4"

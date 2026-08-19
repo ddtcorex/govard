@@ -48,6 +48,8 @@ type FrameworkPatch struct {
 	DefaultDBCredentials                    Override[DefaultDBCredentials]
 	DefaultChownDirectories                 Override[[]string]
 	PHPStanPaths                            Override[[]string]
+	AuditLint                               Override[*AuditLintProfile]
+	AuditTargetResolver                     Override[AuditTargetResolver]
 	ComposerCodingStandard                  Override[ComposerCodingStandard]
 	ComposerAuth                            Override[ComposerAuthRequirement]
 	ToolCommands                            Override[[]ToolCommand]
@@ -131,6 +133,8 @@ func (s FrameworkSpec) Resolve(parent FrameworkDefinition) FrameworkDefinition {
 	s.Patch.NodeImageFlavor.apply(&resolved.NodeImageFlavor)
 	s.Patch.VarnishTemplateFramework.apply(&resolved.VarnishTemplateFramework)
 	s.Patch.PHPStanPaths.apply(&resolved.PHPStanPaths)
+	s.Patch.AuditLint.apply(&resolved.AuditLint)
+	s.Patch.AuditTargetResolver.apply(&resolved.AuditTargetResolver)
 	s.Patch.ComposerCodingStandard.apply(&resolved.ComposerCodingStandard)
 	s.Patch.ComposerAuth.apply(&resolved.ComposerAuth)
 	s.Patch.ToolCommands.apply(&resolved.ToolCommands)
@@ -197,6 +201,7 @@ func cloneDefinition(def FrameworkDefinition) FrameworkDefinition {
 	cloned.MigrationTypes.DDEV = cloneStrings(def.MigrationTypes.DDEV)
 	cloned.MigrationTypes.Warden = cloneStrings(def.MigrationTypes.Warden)
 	cloned.PHPStanPaths = cloneStrings(def.PHPStanPaths)
+	cloned.AuditLint = cloneAuditLintProfile(def.AuditLint)
 	cloned.DefaultChownDirectories = cloneStrings(def.DefaultChownDirectories)
 	cloned.ToolCommands = cloneToolCommands(def.ToolCommands)
 	cloned.DefaultTestCommand.Args = cloneStrings(def.DefaultTestCommand.Args)

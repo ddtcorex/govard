@@ -1,0 +1,11 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Copyright (c) Govard contributors.
+ * Distributed under the terms of the repository LICENSE file.
+ *
+ * Marker file only. internal/frameworks/magento2.isMagentoProject requires a
+ * regular bin/magento next to a Magento composer.json to classify a directory
+ * as a Magento project root; nothing here is ever executed by the tests.
+ */
+exit(0);

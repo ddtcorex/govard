@@ -52,6 +52,138 @@ This is the canonical CLI reference for Govard.
 
 ## 🌿 Environment Commands
 
+### `govard audit`
+
+Run framework-declared, persistent project audits. Lint is the only check
+implemented so far; later phases will add profiler and browser jobs without
+changing session semantics.
+
+```bash
+govard audit run
+govard audit diff --base origin/master
+govard audit rerun --session 20260816T010203Z-a1b2c3d4
+govard audit status --session 20260816T010203Z-a1b2c3d4
+govard audit result --session 20260816T010203Z-a1b2c3d4 --run run-0001
+govard audit cleanup --older-than 168h
+```
+
+`run` defaults to `--scope project`, `--checks lint`, `--lint-provider govard`,
+`--mode auto`, and `--lint-jobs 2`. `--format json` writes one undecorated JSON
+object to stdout; diagnostics and backend logs remain out of that stream. Only
+`text` and `json` formats are accepted, and `--lint-jobs` must be between 1 and
+the number of PHP versions declared by the framework.
+
+Each run creates `~/.govard/audit/<project-id>/sessions/<session-id>/manifest.json`
+and writes its result atomically to
+`~/.govard/audit/<project-id>/sessions/<session-id>/runs/<run-id>/audit-result.json`,
+alongside the provider's own `report.json`. `rerun`, `status`, and `result`
+require the exact `--session` value (and `result` also requires `--run`); Govard
+never chooses a latest session implicitly.
+
+#### Target modes
+
+`--mode` selects what is analyzed. `auto` (the default) classifies the current
+directory:
+
+| Mode | Resolved when | What is analyzed |
+|------|---------------|------------------|
+| `project` | The directory tree contains a Magento project root (a `bin/magento` plus a Magento Composer requirement) and no enclosing module | The whole project |
+| `module_in_project` | The directory is a module — either `etc/module.xml` (how `app/code` modules are declared) or a Composer package of type `magento2-module` — inside a Magento project | Only the module, with the whole project mounted read only so its autoloader resolves |
+| `standalone` | The directory is a module with no Magento project anywhere above it | Only the module; its dependencies are installed into a scratch worktree and scanned for symbols |
+
+`--mode project` and `--mode standalone` force a classification and fail when the
+directory does not support it.
+
+#### PHP versions
+
+The lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`.
+
+- `project` and `module_in_project` targets analyze exactly one version: the
+  project's active `stack.php_version`. Any of the seven is valid there. Passing
+  `--php` is only accepted when it repeats that active version, and the run is
+  refused outright when a running application container reports a different PHP
+  than the configuration does.
+- `standalone` targets accept `8.1` through `8.5` and default to all five.
+  `7.4` and `8.0` are **not** available for standalone modules and are rejected
+  before any image is pulled, built, or run.
+
+A rejected version fails with an `unsupported_php:` message and performs no
+container work at all.
+
+#### Providers
+
+`--lint-provider` selects the lint backend. `govard` (the default) is the
+Govard-owned native backend: it runs Govard's own Magento lint image, whose build
+context is embedded in the Govard binary. A release pins that image by immutable
+digest; when the pinned image cannot be pulled or its labels do not match the
+embedded context, Govard builds the embedded context locally instead and the run
+continues. There is no private registry and no external credential involved in
+the default path.
+
+Any other value must name an entry under `audit.lint.external_providers` in the
+project configuration (see
+[Configuration](./configuration.md#audit-lint-providers)). External providers are
+never a fallback for the native backend and are never inferred: an unknown name
+is an error, and a native failure stays a native failure. A standalone target has
+no project configuration, so only `govard` is available there.
+
+#### Caching
+
+Reusable lint state lives under `~/.govard/cache/audit/lint/<target-id>/` and is
+deliberately **not** removed by `audit cleanup`, which only prunes persisted
+sessions. Each target keeps one cache generation per toolchain identity (image,
+runner, PHP matrix, analyzer policy). Within a generation:
+
+- Changing `composer.json`, `composer.lock`, or an analyzer ruleset
+  (`phpcs.xml`, `phpstan.neon`, and their `.dist` variants) discards the cached
+  analyzer state but keeps the Composer download cache warm, so a lock change
+  does not force a full dependency re-download.
+- `--no-lint-result-cache` ignores analyzer state for one run and is reported
+  back as cache state `bypassed`. The Composer download cache is still kept.
+
+Every run's evidence records the cache state (`cold`, `warm`, or `bypassed`) and
+its reason per PHP version, plus the immutable image digest, the toolchain
+digest, and timings for every phase.
+
+#### Credentials and cancellation
+
+Composer credentials at `~/.composer/auth.json` are mounted read only when the
+file exists, and are linked into a private Composer home inside the container —
+never copied, logged, or written into a report. SSH agent forwarding is strictly
+opt-in through `--allow-lint-ssh-agent`; without that flag `SSH_AUTH_SOCK` is
+never forwarded even when it is set on the host. The source tree is always
+mounted read only.
+
+Cancelling a run stops the lint container and then removes it, and the run is
+reported as cancelled rather than as an infrastructure failure.
+
+`diff` records the requested base ref in the session manifest, but lint currently
+analyzes the full target; result evidence therefore reports
+`effective_scope: project`.
+
+### `govard audit toolchain`
+
+Manage the machine-wide Govard lint image. These commands do not need to run
+inside a Govard project and never invoke an external lint provider.
+
+```bash
+govard audit toolchain status
+govard audit toolchain pull
+govard audit toolchain build
+```
+
+- `status` inspects local images only — it never pulls and never builds — and
+  reports this build's embedded context digest, the pinned official reference,
+  whether that official image is present and label-verified, and whether a local
+  build already exists. When nothing usable is present it also prints what to run
+  next.
+- `pull` resolves only the pinned official image. It never builds, so an
+  unusable official path is reported rather than quietly replaced by a local
+  image. A build with no pinned digest has nothing to pull and says so.
+- `build` builds only the embedded context and never pulls. The resulting image
+  is content addressed, so an existing image for the same context digest is
+  reused as-is.
+
 ### `govard init`
 
 Detect the project framework and generate `.govard.yml`.

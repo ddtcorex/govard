@@ -219,6 +219,48 @@ This renders a per-project compose file under `~/.govard/compose/` and starts yo
 
 Each local project must use a unique `project_name` and primary domain. Govard now blocks `init`/`env up` when another tracked project already uses the same identity, instead of silently colliding with an existing environment.
 
+### 3. Audit lint runs
+
+For a framework that declares lint-audit support, Govard persists lint sessions
+locally and runs them in its own Magento static-analysis image:
+
+```bash
+govard audit run
+govard audit diff --base origin/master
+govard audit rerun --session <session-id>
+govard audit status --session <session-id>
+govard audit result --session <session-id> --run <run-id>
+govard audit cleanup --older-than 168h
+
+govard audit toolchain status
+govard audit toolchain pull
+govard audit toolchain build
+```
+
+Session manifests live at
+`~/.govard/audit/<project-id>/sessions/<session-id>/manifest.json`; each result
+lives under its `runs/<run-id>/audit-result.json` directory. Reruns always need
+an explicit session ID, never an implicit latest session. Use `--format json`
+for clean machine-readable stdout. Audit evidence includes the immutable image
+digest, the toolchain digest, phase timings, and cache state with its reason.
+
+`govard audit` analyzes a whole Magento project, a module inside one, or a
+standalone module (`--mode`). Project and module-in-project targets analyze the
+project's active PHP — any of `7.4` and `8.0` through `8.5`; standalone modules
+run `8.1` through `8.5` and reject `7.4` and `8.0` before any image work happens.
+
+The default `--lint-provider govard` needs no registry login: the lint image's
+build context is embedded in the Govard binary, a release pins the published
+image by immutable digest, and Govard builds the embedded context locally
+whenever that pinned image is unreachable or fails label verification.
+`~/.composer/auth.json` is mounted read only when present, and SSH agent
+forwarding is opt-in via `--allow-lint-ssh-agent`. Persistent lint caches survive
+session cleanup for warm repeat runs; a changed `composer.lock` or analyzer
+ruleset invalidates cached analysis by itself, and `--no-lint-result-cache`
+forces it for one run. `diff` currently records its base-ref intent but still
+analyzes the full target (`effective_scope: project`). Profiler and browser jobs
+will arrive in later audit phases.
+
 Common root shortcuts are also available for day-to-day lifecycle work:
 
 - `govard up` → `govard env up`

@@ -24,7 +24,8 @@ func Definition() types.FrameworkDefinition {
 			Password: conventions.DefaultMageOSDBPass,
 			Database: conventions.DefaultMageOSDBName,
 		},
-		PHPStanPaths: []string{"app/code", "app/design"},
+		PHPStanPaths:        []string{"app/code", "app/design"},
+		AuditTargetResolver: ResolveAuditTarget,
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{
 				"mage-os/product-community-edition",
@@ -75,6 +76,7 @@ func Spec() types.FrameworkSpec {
 			ComposerCodingStandard:   types.Clear[types.ComposerCodingStandard](),
 			ComposerAuth:             types.Clear[types.ComposerAuthRequirement](),
 			Detect:                   types.Set(def.Detect),
+			AuditTargetResolver:      types.Set(def.AuditTargetResolver),
 			Bootstrap:                types.Set(def.Bootstrap),
 			FreshInstall:             types.Set(def.FreshInstall),
 			DefaultFreshMetaPackage:  types.Set("mage-os/project-community-edition"),

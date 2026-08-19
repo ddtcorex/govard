@@ -86,6 +86,25 @@ type Config struct {
 	Stack             Stack                   `yaml:"stack"`
 	Remotes           RemoteConfigMap         `yaml:"remotes,omitempty"`
 	Hooks             map[string][]HookStep   `yaml:"hooks,omitempty"`
+	Audit             AuditConfig             `yaml:"audit,omitempty"`
+}
+
+// ExternalLintProviderConfig identifies an explicitly selected, local Docker
+// lint provider. Credentials are deliberately not configuration fields.
+type ExternalLintProviderConfig struct {
+	Type    string   `yaml:"type"`
+	Image   string   `yaml:"image,omitempty"`
+	Command []string `yaml:"command"`
+}
+
+type AuditLintConfig struct {
+	Provider                     string                                `yaml:"provider,omitempty"`
+	ExternalProviders            map[string]ExternalLintProviderConfig `yaml:"external_providers,omitempty"`
+	externalProviderKeyCollision string
+}
+
+type AuditConfig struct {
+	Lint AuditLintConfig `yaml:"lint,omitempty"`
 }
 
 type LockConfig struct {

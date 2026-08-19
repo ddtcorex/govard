@@ -1,0 +1,945 @@
+#!/usr/bin/env bash
+#
+# Govard Magento lint runner.
+#
+# Runs the Govard-owned PHPCS and PHPStan toolchains over a Magento project,
+# a module inside a project, or a standalone module, once per selected PHP
+# version, and writes one schema-v2 lint report.
+#
+# Copyright (c) Govard contributors.
+# Distributed under the terms of the repository LICENSE file.
+
+set -uo pipefail
+
+RUNNER_VERSION="1.0.0"
+REPORT_SCHEMA_VERSION="2"
+
+# The exact PHP policy Govard supports for Magento lint work. Any version
+# outside this list is reported as unsupported, never analyzed.
+SUPPORTED_PHP_VERSIONS="7.4 8.0 8.1 8.2 8.3 8.4 8.5"
+STANDALONE_PHP_VERSIONS="8.1 8.2 8.3 8.4 8.5"
+
+EXIT_PASSED=0
+EXIT_FINDINGS=1
+EXIT_INFRASTRUCTURE=2
+EXIT_UNSUPPORTED=3
+EXIT_USAGE=64
+EXIT_CANCELLED=143
+
+CANCELLED=0
+CHILD_PID=""
+CURRENT_VERSION=""
+PENDING_VERSIONS=""
+FINALIZED=0
+WORKSPACE_OWNED=0
+
+usage() {
+    cat <<'USAGE'
+magelint - Govard-owned Magento static analysis runner
+
+Usage:
+  magelint [options]
+
+Options:
+  --php LIST              PHP versions to analyze (comma separated, repeatable).
+                          Project and module targets accept a single version.
+                          Standalone targets default to 8.1,8.2,8.3,8.4,8.5.
+  --target-mode MODE      project, module_in_project, or standalone.
+  --target-relative PATH  Target path relative to the source mount.
+  --linter LIST           phpcs, phpstan (comma separated, repeatable). The
+                          phpcs linter runs the coding standard and, where the
+                          toolchain ships it, a second PHP compatibility pass
+                          for the analyzed version.
+  --jobs COUNT            Analyzer worker count per PHP version (1-32).
+  --report PATH           Report path (default <output>/report.json).
+  --no-result-cache       Ignore cached analyzer state and report it bypassed.
+  --version               Print the runner version.
+  --help                  Print this help.
+
+Supported PHP versions: 7.4, 8.0, 8.1, 8.2, 8.3, 8.4, 8.5.
+
+Report identity (environment, required unless noted):
+  GOVARD_LINT_PROVIDER          Provider name (default govard).
+  GOVARD_LINT_SESSION_ID        Audit session identifier.
+  GOVARD_LINT_RUN_ID            Audit run identifier.
+  GOVARD_LINT_PROJECT_ID        Audit project identifier.
+  GOVARD_LINT_TARGET_ID         Resolved target identifier.
+  GOVARD_LINT_TARGET_MODE       Target mode; --target-mode overrides it.
+  GOVARD_LINT_TARGET_PATH       Canonical host path of the target.
+  GOVARD_LINT_IMAGE_DIGEST      Immutable image digest of this runtime.
+  GOVARD_LINT_TOOLCHAIN_DIGEST  Toolchain digest computed by the caller.
+
+Execution settings (environment, all optional):
+  GOVARD_LINT_PHP_VERSIONS      Default PHP matrix; --php overrides it.
+  GOVARD_LINT_MATRIX_COMPLETE   true or false; otherwise derived from policy.
+  GOVARD_LINT_TARGET_RELATIVE   Default for --target-relative.
+  GOVARD_LINT_LINTERS           Default for --linter.
+  GOVARD_LINT_JOBS              Default for --jobs.
+  GOVARD_LINT_CODING_STANDARD   PHPCS standard (default Magento2).
+  GOVARD_LINT_COMPAT_STANDARD   PHP compatibility standard (default
+                                PHPCompatibility); set empty to skip that pass.
+  GOVARD_LINT_PHPSTAN_LEVEL     PHPStan level (default 5).
+  GOVARD_LINT_SOURCE_DIR        Read-only source mount (default /source).
+  GOVARD_LINT_CACHE_DIR         Writable cache mount (default /cache).
+  GOVARD_LINT_OUTPUT_DIR        Writable output mount (default /output).
+  GOVARD_LINT_WORKSPACE_DIR     Writable scratch directory (default a temp dir).
+  GOVARD_LINT_TOOLCHAIN_DIR     Analyzer toolchains (default /opt/govard/toolchains).
+  GOVARD_LINT_REPORT_SCRIPT     Reporter script path.
+  GOVARD_LINT_REPORT_PHP        PHP CLI used to run the reporter.
+  GOVARD_LINT_COMPOSER          Composer binary (default /usr/local/bin/composer).
+  GOVARD_LINT_COMPOSER_AUTH     Read-only Composer auth.json (default /auth/auth.json).
+  GOVARD_LINT_KEEP_WORKSPACE    Set to 1 to keep the scratch directory.
+
+Mounts: the source mount is read only; only the cache, output, and scratch
+directories are written. Credentials are never copied, logged, or reported.
+The report is published atomically through a rename, with mode 0600.
+
+Exit codes:
+  0    every analyzed PHP version passed
+  1    lint or compatibility findings were reported
+  2    an infrastructure failure prevented analysis; a minimal infra_error
+       report is still published, unless the output mount itself is
+       unwritable, which is reported on standard error
+  3    every requested PHP version is unsupported
+  64   usage error; no report is written
+  143  the run was cancelled by SIGTERM or SIGINT
+USAGE
+}
+
+log() {
+    printf 'magelint: %s\n' "$1"
+}
+
+usage_error() {
+    printf 'magelint: %s\n' "$1" >&2
+    printf 'magelint: run --help for the supported options\n' >&2
+    exit "$EXIT_USAGE"
+}
+
+json_escape() {
+    local value=$1
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/ }
+    value=${value//$'\r'/ }
+    value=${value//$'\t'/ }
+    printf '%s' "$value"
+}
+
+# Publishes a minimal but schema-complete infrastructure report without the
+# reporter, so a consumer that sees exit code 2 still finds evidence on disk.
+# It is written with the same atomic rename and mode as a full report.
+emit_minimal_report() {
+    local reason=$1
+    local path="${REPORT_PATH:-${GOVARD_LINT_OUTPUT_DIR:-/output}/report.json}"
+    local directory
+    directory=$(dirname "$path")
+    mkdir -p "$directory" 2>/dev/null || return 1
+    local temporary="$path.tmp$$"
+    local versions="${SELECTED_PHP:-}"
+    local matrix="${MATRIX_COMPLETE:-false}"
+    {
+        printf '{\n'
+        printf '  "schema_version": %s,\n' "$REPORT_SCHEMA_VERSION"
+        printf '  "provider": "%s",\n' "$(json_escape "${PROVIDER:-govard}")"
+        printf '  "session_id": "%s",\n' "$(json_escape "${SESSION_ID:-}")"
+        printf '  "run_id": "%s",\n' "$(json_escape "${RUN_ID:-}")"
+        printf '  "project_id": "%s",\n' "$(json_escape "${PROJECT_ID:-}")"
+        printf '  "target_id": "%s",\n' "$(json_escape "${TARGET_ID:-}")"
+        printf '  "target_mode": "%s",\n' "$(json_escape "${TARGET_MODE:-}")"
+        printf '  "target_path": "%s",\n' "$(json_escape "${TARGET_PATH:-}")"
+        printf '  "image_digest": "%s",\n' "$(json_escape "${IMAGE_DIGEST:-}")"
+        printf '  "toolchain_digest": "%s",\n' "$(json_escape "${TOOLCHAIN_DIGEST:-}")"
+        printf '  "status": "infra_error",\n'
+        printf '  "duration_ms": 0,\n'
+        printf '  "selected_php_versions": ['
+        local separator="" version
+        for version in $versions; do
+            printf '%s"%s"' "$separator" "$(json_escape "$version")"
+            separator=", "
+        done
+        printf '],\n'
+        printf '  "matrix_complete": %s,\n' "$matrix"
+        printf '  "php_results": ['
+        separator=""
+        for version in $versions; do
+            printf '%s\n' "$separator"
+            printf '    {\n'
+            printf '      "php_version": "%s",\n' "$(json_escape "$version")"
+            printf '      "outcome": "infra_error",\n'
+            printf '      "duration_ms": 0,\n'
+            printf '      "cache": {"state": "cold", "key": "", "reason": "%s"},\n' "$(json_escape "$reason")"
+            printf '      "phases": [{"name": "prepare", "php_version": "%s", "status": "error", "duration_ms": 0, "cache_reason": "%s"}],\n' \
+                "$(json_escape "$version")" "$(json_escape "$reason")"
+            printf '      "findings": []\n'
+            printf '    }'
+            separator=","
+        done
+        printf '\n  ]\n'
+        printf '}\n'
+    } >"$temporary" 2>/dev/null || return 1
+    chmod 0600 "$temporary" 2>/dev/null
+    mv -f "$temporary" "$path" 2>/dev/null || {
+        rm -f "$temporary"
+        return 1
+    }
+    return 0
+}
+
+infrastructure_error() {
+    printf 'magelint: %s\n' "$1" >&2
+    if ! emit_minimal_report "$1"; then
+        printf 'magelint: no report could be written for this failure\n' >&2
+    fi
+    exit "$EXIT_INFRASTRUCTURE"
+}
+
+now_ms() {
+    local stamp
+    stamp=$(date +%s%3N 2>/dev/null)
+    case "$stamp" in
+        *[!0-9]*|'') printf '%s000\n' "$(date +%s)" ;;
+        *) printf '%s\n' "$stamp" ;;
+    esac
+}
+
+encode() {
+    printf '%s' "$1" | base64 | tr -d '\n'
+}
+
+record() {
+    local line="$1"
+    shift
+    local value
+    for value in "$@"; do
+        line="$line $(encode "$value")"
+    done
+    printf '%s\n' "$line" >>"$RECORDS_FILE"
+}
+
+record_phase() {
+    # record_phase VERSION NAME STATUS DURATION_MS [CACHE_STATE CACHE_KEY CACHE_REASON]
+    record "phase" "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}"
+}
+
+record_php() {
+    # record_php VERSION MARKER DURATION_MS CACHE_STATE CACHE_KEY CACHE_REASON
+    record "php" "$1" "$2" "$3" "$4" "$5" "$6"
+}
+
+contains_word() {
+    local needle=$1 haystack=$2 candidate
+    for candidate in $haystack; do
+        if [ "$candidate" = "$needle" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+digest_of() {
+    printf '%s' "$1" | sha256sum | cut -d' ' -f1
+}
+
+split_list() {
+    printf '%s' "$1" | tr ',' ' '
+}
+
+resolve_report_php() {
+    if [ -n "${GOVARD_LINT_REPORT_PHP:-}" ]; then
+        printf '%s\n' "$GOVARD_LINT_REPORT_PHP"
+        return 0
+    fi
+    local candidate
+    for candidate in php8.3 php8.2 php8.4 php8.1 php8.5 php7.4 php; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+parse_args() {
+    REQUESTED_PHP=""
+    REQUESTED_LINTERS=""
+    TARGET_MODE="${GOVARD_LINT_TARGET_MODE:-}"
+    TARGET_RELATIVE="${GOVARD_LINT_TARGET_RELATIVE:-}"
+    JOBS="${GOVARD_LINT_JOBS:-1}"
+    REPORT_PATH=""
+    BYPASS_RESULT_CACHE=0
+
+    while [ "$#" -gt 0 ]; do
+        local name=$1
+        local value=""
+        local has_value=0
+        case "$name" in
+            --*=*)
+                value=${name#*=}
+                name=${name%%=*}
+                has_value=1
+                ;;
+        esac
+        case "$name" in
+            --help|-h)
+                usage
+                exit "$EXIT_PASSED"
+                ;;
+            --version)
+                printf 'magelint %s (report schema %s)\n' "$RUNNER_VERSION" "$REPORT_SCHEMA_VERSION"
+                exit "$EXIT_PASSED"
+                ;;
+            --no-result-cache)
+                [ "$has_value" -eq 1 ] && usage_error "option --no-result-cache takes no value"
+                BYPASS_RESULT_CACHE=1
+                ;;
+            --php|--target-mode|--target-relative|--linter|--jobs|--report)
+                if [ "$has_value" -eq 0 ]; then
+                    shift
+                    [ "$#" -gt 0 ] || usage_error "option $name needs a value"
+                    value=$1
+                fi
+                case "$name" in
+                    --php) REQUESTED_PHP="$REQUESTED_PHP $(split_list "$value")" ;;
+                    --target-mode) TARGET_MODE="$value" ;;
+                    --target-relative) TARGET_RELATIVE="$value" ;;
+                    --linter) REQUESTED_LINTERS="$REQUESTED_LINTERS $(split_list "$value")" ;;
+                    --jobs) JOBS="$value" ;;
+                    --report) REPORT_PATH="$value" ;;
+                esac
+                ;;
+            *)
+                usage_error "unknown option $1"
+                ;;
+        esac
+        shift
+    done
+}
+
+validate_identity() {
+    PROVIDER="${GOVARD_LINT_PROVIDER:-govard}"
+    SESSION_ID="${GOVARD_LINT_SESSION_ID:-}"
+    RUN_ID="${GOVARD_LINT_RUN_ID:-}"
+    PROJECT_ID="${GOVARD_LINT_PROJECT_ID:-}"
+    TARGET_ID="${GOVARD_LINT_TARGET_ID:-}"
+    TARGET_PATH="${GOVARD_LINT_TARGET_PATH:-}"
+    IMAGE_DIGEST="${GOVARD_LINT_IMAGE_DIGEST:-}"
+    TOOLCHAIN_DIGEST="${GOVARD_LINT_TOOLCHAIN_DIGEST:-}"
+
+    [ -n "$SESSION_ID" ] || usage_error "GOVARD_LINT_SESSION_ID is required"
+    [ -n "$RUN_ID" ] || usage_error "GOVARD_LINT_RUN_ID is required"
+    [ -n "$PROJECT_ID" ] || usage_error "GOVARD_LINT_PROJECT_ID is required"
+    [ -n "$TARGET_ID" ] || usage_error "GOVARD_LINT_TARGET_ID is required"
+    [ -n "$TARGET_PATH" ] || usage_error "GOVARD_LINT_TARGET_PATH is required"
+    [ -n "$IMAGE_DIGEST" ] || usage_error "GOVARD_LINT_IMAGE_DIGEST is required"
+    [ -n "$TOOLCHAIN_DIGEST" ] || usage_error "GOVARD_LINT_TOOLCHAIN_DIGEST is required"
+
+    case "$TARGET_MODE" in
+        project|module_in_project|standalone) ;;
+        '') usage_error "a target mode is required; set --target-mode or GOVARD_LINT_TARGET_MODE" ;;
+        *) usage_error "unsupported target mode $TARGET_MODE" ;;
+    esac
+
+    export GOVARD_LINT_PROVIDER="$PROVIDER"
+    export GOVARD_LINT_SESSION_ID="$SESSION_ID"
+    export GOVARD_LINT_RUN_ID="$RUN_ID"
+    export GOVARD_LINT_PROJECT_ID="$PROJECT_ID"
+    export GOVARD_LINT_TARGET_ID="$TARGET_ID"
+    export GOVARD_LINT_TARGET_MODE="$TARGET_MODE"
+    export GOVARD_LINT_TARGET_PATH="$TARGET_PATH"
+    export GOVARD_LINT_IMAGE_DIGEST="$IMAGE_DIGEST"
+    export GOVARD_LINT_TOOLCHAIN_DIGEST="$TOOLCHAIN_DIGEST"
+}
+
+validate_linters() {
+    local requested="$REQUESTED_LINTERS"
+    if [ -z "${requested// /}" ]; then
+        requested=$(split_list "${GOVARD_LINT_LINTERS:-phpcs,phpstan}")
+    fi
+    LINTERS=""
+    local linter
+    for linter in $requested; do
+        case "$linter" in
+            phpcs|phpstan)
+                if contains_word "$linter" "$LINTERS"; then
+                    usage_error "linter $linter is requested more than once"
+                fi
+                LINTERS="$LINTERS $linter"
+                ;;
+            *)
+                usage_error "unknown linter $linter; supported linters are phpcs and phpstan"
+                ;;
+        esac
+    done
+    LINTERS=${LINTERS# }
+    [ -n "$LINTERS" ] || usage_error "at least one linter is required"
+}
+
+validate_jobs() {
+    case "$JOBS" in
+        ''|*[!0-9]*) usage_error "--jobs must be a positive whole number" ;;
+    esac
+    if [ "$JOBS" -lt 1 ] || [ "$JOBS" -gt 32 ]; then
+        usage_error "--jobs must be between 1 and 32"
+    fi
+}
+
+validate_php_selection() {
+    local requested="$REQUESTED_PHP"
+    if [ -z "${requested// /}" ]; then
+        requested=$(split_list "${GOVARD_LINT_PHP_VERSIONS:-}")
+    fi
+    if [ -z "${requested// /}" ]; then
+        if [ "$TARGET_MODE" = "standalone" ]; then
+            requested="$STANDALONE_PHP_VERSIONS"
+        else
+            usage_error "$TARGET_MODE targets need the active project PHP version; set --php or GOVARD_LINT_PHP_VERSIONS"
+        fi
+    fi
+
+    SELECTED_PHP=""
+    local version
+    for version in $requested; do
+        case "$version" in
+            [0-9].[0-9]|[0-9].[0-9][0-9]) ;;
+            *) usage_error "invalid PHP version $version" ;;
+        esac
+        if contains_word "$version" "$SELECTED_PHP"; then
+            usage_error "PHP version $version is requested more than once"
+        fi
+        SELECTED_PHP="$SELECTED_PHP $version"
+    done
+    SELECTED_PHP=${SELECTED_PHP# }
+
+    local count=0
+    for version in $SELECTED_PHP; do
+        count=$((count + 1))
+    done
+    if [ "$TARGET_MODE" != "standalone" ] && [ "$count" -gt 1 ]; then
+        usage_error "$TARGET_MODE targets analyze a single active PHP version, not $count"
+    fi
+
+    # Standalone modules follow the standalone policy; project and
+    # module-in-project targets may also run PHP 7.4 or 8.0. Anything else is
+    # reported as unsupported, never analyzed.
+    if [ "$TARGET_MODE" = "standalone" ]; then
+        ALLOWED_PHP="$STANDALONE_PHP_VERSIONS"
+    else
+        ALLOWED_PHP="$SUPPORTED_PHP_VERSIONS"
+    fi
+
+    if [ -n "${GOVARD_LINT_MATRIX_COMPLETE:-}" ]; then
+        case "$GOVARD_LINT_MATRIX_COMPLETE" in
+            true|false) MATRIX_COMPLETE="$GOVARD_LINT_MATRIX_COMPLETE" ;;
+            *) usage_error "GOVARD_LINT_MATRIX_COMPLETE must be true or false" ;;
+        esac
+        return 0
+    fi
+    MATRIX_COMPLETE="true"
+    if [ "$TARGET_MODE" = "standalone" ]; then
+        local policy_count=0
+        for version in $STANDALONE_PHP_VERSIONS; do
+            policy_count=$((policy_count + 1))
+            contains_word "$version" "$SELECTED_PHP" || MATRIX_COMPLETE="false"
+        done
+        [ "$count" -eq "$policy_count" ] || MATRIX_COMPLETE="false"
+    fi
+}
+
+resolve_paths() {
+    SOURCE_DIR="${GOVARD_LINT_SOURCE_DIR:-/source}"
+    CACHE_DIR="${GOVARD_LINT_CACHE_DIR:-/cache}"
+    OUTPUT_DIR="${GOVARD_LINT_OUTPUT_DIR:-/output}"
+    TOOLCHAIN_DIR="${GOVARD_LINT_TOOLCHAIN_DIR:-/opt/govard/toolchains}"
+    REPORT_SCRIPT="${GOVARD_LINT_REPORT_SCRIPT:-/usr/local/lib/govard/report.php}"
+    COMPOSER_BIN="${GOVARD_LINT_COMPOSER:-/usr/local/bin/composer}"
+    COMPOSER_AUTH="${GOVARD_LINT_COMPOSER_AUTH:-/auth/auth.json}"
+    CODING_STANDARD="${GOVARD_LINT_CODING_STANDARD:-Magento2}"
+    COMPAT_STANDARD="${GOVARD_LINT_COMPAT_STANDARD-PHPCompatibility}"
+    PHPSTAN_LEVEL="${GOVARD_LINT_PHPSTAN_LEVEL:-5}"
+
+    case "$PHPSTAN_LEVEL" in
+        ''|*[!0-9]*) usage_error "GOVARD_LINT_PHPSTAN_LEVEL must be a whole number" ;;
+    esac
+
+    [ -d "$SOURCE_DIR" ] || infrastructure_error "source directory $SOURCE_DIR does not exist"
+
+    case "$TARGET_RELATIVE" in
+        /*) usage_error "--target-relative must be relative to the source mount" ;;
+        *..*) usage_error "--target-relative must stay inside the source mount" ;;
+    esac
+    TARGET_RELATIVE=${TARGET_RELATIVE#./}
+    TARGET_RELATIVE=${TARGET_RELATIVE%/}
+    if [ -n "$TARGET_RELATIVE" ]; then
+        TARGET_DIR="$SOURCE_DIR/$TARGET_RELATIVE"
+    else
+        TARGET_DIR="$SOURCE_DIR"
+    fi
+    [ -d "$TARGET_DIR" ] || infrastructure_error "target directory does not exist inside the source mount"
+
+    local resolved_source resolved_target
+    resolved_source=$(readlink -f "$SOURCE_DIR")
+    resolved_target=$(readlink -f "$TARGET_DIR")
+    case "$resolved_target" in
+        "$resolved_source"|"$resolved_source"/*) ;;
+        *) usage_error "--target-relative resolves outside the source mount" ;;
+    esac
+
+    mkdir -p "$CACHE_DIR" || infrastructure_error "cannot create cache directory"
+    mkdir -p "$OUTPUT_DIR" || infrastructure_error "cannot create output directory"
+
+    if [ -z "$REPORT_PATH" ]; then
+        REPORT_PATH="$OUTPUT_DIR/report.json"
+    fi
+
+    if [ -n "${GOVARD_LINT_WORKSPACE_DIR:-}" ]; then
+        WORKSPACE_DIR="$GOVARD_LINT_WORKSPACE_DIR"
+        mkdir -p "$WORKSPACE_DIR" || infrastructure_error "cannot create workspace directory"
+    else
+        WORKSPACE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/magelint.XXXXXX") ||
+            infrastructure_error "cannot create workspace directory"
+        WORKSPACE_OWNED=1
+    fi
+    RECORDS_FILE="$WORKSPACE_DIR/records"
+    : >"$RECORDS_FILE" || infrastructure_error "cannot create the record stream"
+
+    if [ -z "${HOME:-}" ] || [ ! -w "${HOME:-/}" ]; then
+        HOME="$WORKSPACE_DIR/home"
+        mkdir -p "$HOME"
+        export HOME
+    fi
+
+    REPORT_PHP=$(resolve_report_php) || infrastructure_error "no PHP CLI is available to write the report"
+    [ -f "$REPORT_SCRIPT" ] || infrastructure_error "reporter script $REPORT_SCRIPT is missing"
+
+    rm -f "$REPORT_PATH"
+}
+
+cleanup_workspace() {
+    if [ "${GOVARD_LINT_KEEP_WORKSPACE:-0}" = "1" ]; then
+        return 0
+    fi
+    if [ "$WORKSPACE_OWNED" -eq 1 ] && [ -n "${WORKSPACE_DIR:-}" ]; then
+        rm -rf "$WORKSPACE_DIR"
+    fi
+}
+
+on_cancel() {
+    CANCELLED=1
+    if [ -n "$CHILD_PID" ]; then
+        kill -TERM "$CHILD_PID" 2>/dev/null
+    fi
+}
+
+# Runs one analyzer as a cancellable child in the given working directory. The
+# second argument is a file that receives standard output, or "-" to inherit
+# it. The subshell execs the analyzer, so the recorded PID is the analyzer.
+run_child() {
+    local directory=$1
+    local destination=$2
+    shift 2
+    if [ "$destination" = "-" ]; then
+        ( cd "$directory" && exec "$@" ) &
+    else
+        ( cd "$directory" && exec "$@" ) >"$destination" &
+    fi
+    CHILD_PID=$!
+    wait "$CHILD_PID"
+    local status=$?
+    CHILD_PID=""
+    return $status
+}
+
+cancel_remaining() {
+    local elapsed=$(( $(now_ms) - RUN_STARTED_MS ))
+    if [ -n "$CURRENT_VERSION" ]; then
+        record_phase "$CURRENT_VERSION" "cancel" "cancelled" "0" "" "" "run cancelled"
+        record_php "$CURRENT_VERSION" "cancelled" "0" "${CACHE_STATE:-cold}" "${CACHE_KEY:-}" "cancellation requested"
+        CURRENT_VERSION=""
+    fi
+    local version
+    for version in $PENDING_VERSIONS; do
+        record_phase "$version" "validate" "cancelled" "0" "" "" "run cancelled before analysis"
+        record_php "$version" "cancelled" "0" "cold" "" "cancellation requested"
+    done
+    PENDING_VERSIONS=""
+    finalize "$elapsed"
+}
+
+finalize() {
+    if [ "$FINALIZED" -eq 1 ]; then
+        return 0
+    fi
+    FINALIZED=1
+    local elapsed=$1
+    record "selected" "$(printf '%s' "$SELECTED_PHP" | tr ' ' ',')"
+    record "matrix" "$MATRIX_COMPLETE"
+    record "total" "$elapsed"
+
+    local aggregate
+    aggregate=$("$REPORT_PHP" "$REPORT_SCRIPT" --records "$RECORDS_FILE" --output "$REPORT_PATH")
+    if [ $? -ne 0 ] || [ -z "$aggregate" ]; then
+        infrastructure_error "the lint report could not be written"
+    fi
+    log "report $aggregate ($elapsed ms) -> $REPORT_PATH"
+    case "$aggregate" in
+        passed) exit "$EXIT_PASSED" ;;
+        failed) exit "$EXIT_FINDINGS" ;;
+        unsupported) exit "$EXIT_UNSUPPORTED" ;;
+        cancelled) exit "$EXIT_CANCELLED" ;;
+        infra_error) exit "$EXIT_INFRASTRUCTURE" ;;
+        *) infrastructure_error "unexpected report status $aggregate" ;;
+    esac
+}
+
+prepare_cache() {
+    # prepare_cache VERSION; sets CACHE_STATE, CACHE_KEY, CACHE_REASON, VERSION_CACHE_DIR
+    local version=$1
+    CACHE_KEY=$(digest_of "$TOOLCHAIN_DIGEST|$version|$TARGET_MODE|$TARGET_RELATIVE|$CODING_STANDARD|$COMPAT_STANDARD|$PHPSTAN_LEVEL|$LINTERS")
+    if [ "$BYPASS_RESULT_CACHE" -eq 1 ]; then
+        CACHE_STATE="bypassed"
+        CACHE_REASON="analyzer caches bypassed by request"
+        VERSION_CACHE_DIR="$WORKSPACE_DIR/php-$version/cache"
+        rm -rf "$VERSION_CACHE_DIR"
+    else
+        VERSION_CACHE_DIR="$CACHE_DIR/analyzer/php-$version/$CACHE_KEY"
+        if [ -d "$VERSION_CACHE_DIR" ]; then
+            CACHE_STATE="warm"
+            CACHE_REASON="reused analyzer state for this toolchain key"
+        else
+            CACHE_STATE="cold"
+            CACHE_REASON="no analyzer state for this toolchain key"
+        fi
+    fi
+    mkdir -p "$VERSION_CACHE_DIR" 2>/dev/null || return 1
+    return 0
+}
+
+prepare_worktree() {
+    # prepare_worktree VERSION LAUNCHER; sets ANALYZE_DIR and ANALYZE_ROOT.
+    #
+    # ANALYZE_ROOT is the directory the analyzers run from. A project target
+    # runs from the project root so PHPStan uses the installed project
+    # autoloader. A standalone module runs from an empty directory instead:
+    # its dependency tree rarely contains the Magento framework, so executing
+    # its autoloader would abort analysis inside registration.php. Standalone
+    # dependencies are scanned for symbols instead of being executed.
+    local version=$1
+    local launcher=$2
+    if [ "$TARGET_MODE" != "standalone" ]; then
+        ANALYZE_DIR="$TARGET_DIR"
+        ANALYZE_ROOT="$SOURCE_DIR"
+        return 0
+    fi
+
+    ANALYZE_ROOT="$WORKSPACE_DIR/php-$version/root"
+    mkdir -p "$ANALYZE_ROOT" || return 1
+    ANALYZE_DIR="$WORKSPACE_DIR/php-$version/worktree"
+    rm -rf "$ANALYZE_DIR"
+    mkdir -p "$ANALYZE_DIR" || return 1
+    cp -a "$TARGET_DIR/." "$ANALYZE_DIR/" || return 1
+    chmod -R u+w "$ANALYZE_DIR" 2>/dev/null
+
+    if [ ! -f "$ANALYZE_DIR/composer.json" ]; then
+        # No manifest means no dependency resolution: analysis still runs, but
+        # every framework symbol is unknown to it, so findings can be false
+        # positives. Say so instead of degrading silently.
+        log "standalone target has no composer.json, analyzing without resolved dependencies"
+        return 0
+    fi
+
+    local composer_home="$WORKSPACE_DIR/php-$version/composer-home"
+    mkdir -p "$composer_home" || return 1
+    chmod 0700 "$composer_home" 2>/dev/null
+    # Credentials stay on their read-only mount; only a link is created, so no
+    # secret is copied into the shared cache or the report.
+    if [ -f "$COMPOSER_AUTH" ]; then
+        ln -sf "$COMPOSER_AUTH" "$composer_home/auth.json" || return 1
+    fi
+
+    COMPOSER_HOME="$composer_home" \
+    COMPOSER_CACHE_DIR="$CACHE_DIR/composer" \
+    COMPOSER_ALLOW_SUPERUSER=1 \
+    run_child "$ANALYZE_DIR" - "$launcher" "$COMPOSER_BIN" install \
+        --no-interaction --no-progress --no-scripts --no-plugins \
+        --no-dev --prefer-dist --working-dir="$ANALYZE_DIR" || return 1
+    return 0
+}
+
+write_phpstan_config() {
+    # write_phpstan_config VERSION CONFIG_PATH
+    local version=$1
+    local config=$2
+    local major=${version%%.*}
+    local minor=${version#*.}
+    local numeric=$((major * 10000 + minor * 100))
+    {
+        printf 'parameters:\n'
+        printf '\tlevel: %s\n' "$PHPSTAN_LEVEL"
+        printf '\tphpVersion: %s\n' "$numeric"
+        printf '\ttmpDir: %s\n' "$VERSION_CACHE_DIR/phpstan"
+        printf '\treportUnmatchedIgnoredErrors: false\n'
+        printf '\texcludePaths:\n'
+        printf '\t\tanalyse:\n'
+        local excluded
+        for excluded in vendor generated var pub/static; do
+            printf '\t\t\t- %s\n' "$ANALYZE_DIR/$excluded/*"
+        done
+        if [ "$TARGET_MODE" = "standalone" ] && [ -d "$ANALYZE_DIR/vendor" ]; then
+            printf '\tscanDirectories:\n'
+            printf '\t\t- %s\n' "$ANALYZE_DIR/vendor"
+        fi
+    } >"$config"
+}
+
+# Reports whether the toolchain ships the PHP compatibility standard. The
+# standard is a PHPCS standard directory inside the toolchain, so the ruleset
+# is probed directly instead of paying for an extra "phpcs -i" process.
+compat_standard_available() {
+    local toolchain=$1
+    [ -n "$COMPAT_STANDARD" ] || return 1
+    local ruleset
+    for ruleset in "$toolchain"/vendor/*/*/"$COMPAT_STANDARD"/ruleset.xml; do
+        if [ -f "$ruleset" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Runs one PHPCS pass. Every pass declares the analyzed PHP version through
+# testVersion, so version-aware sniffs report against that exact runtime.
+run_phpcs_pass() {
+    # run_phpcs_pass VERSION LAUNCHER TOOLCHAIN STANDARD REPORT CACHE_FILE
+    local version=$1
+    local launcher=$2
+    local toolchain=$3
+    local standard=$4
+    local report=$5
+    local cache_file=$6
+    local arguments
+    arguments=(
+        "$toolchain/vendor/bin/phpcs"
+        "--standard=$standard"
+        "--report=json"
+        "--report-file=$report"
+        "--extensions=php,phtml"
+        "--basepath=$ANALYZE_DIR"
+        "--ignore=*/vendor/*,*/generated/*,*/pub/static/*,*/var/*"
+        "--runtime-set" "ignore_warnings_on_exit" "0"
+        "--runtime-set" "testVersion" "$version"
+    )
+    if [ "$JOBS" -gt 1 ]; then
+        arguments+=("--parallel=$JOBS")
+    fi
+    if [ "$BYPASS_RESULT_CACHE" -eq 1 ]; then
+        arguments+=("--no-cache")
+    else
+        arguments+=("--cache=$cache_file")
+    fi
+    arguments+=("$ANALYZE_DIR")
+    rm -f "$report"
+    run_child "$ANALYZE_ROOT" - "$launcher" "${arguments[@]}"
+    return $?
+}
+
+phpcs_phase_status() {
+    # phpcs_phase_status EXIT_STATUS REPORT
+    if [ "$1" -eq 0 ]; then
+        printf 'passed\n'
+    elif [ -s "$2" ] && [ "$1" -le 2 ]; then
+        printf 'failed\n'
+    else
+        printf 'error\n'
+    fi
+}
+
+analyze_version() {
+    # analyze_version VERSION LAUNCHER TOOLCHAIN
+    local version=$1
+    local launcher=$2
+    local toolchain=$3
+    local raw_dir="$WORKSPACE_DIR/php-$version/raw"
+    mkdir -p "$raw_dir" || return 1
+
+    local phase_started status phase_status
+    if contains_word "phpcs" "$LINTERS"; then
+        local phpcs_report="$raw_dir/phpcs.json"
+        phase_started=$(now_ms)
+        run_phpcs_pass "$version" "$launcher" "$toolchain" "$CODING_STANDARD" \
+            "$phpcs_report" "$VERSION_CACHE_DIR/phpcs.json"
+        status=$?
+        [ "$CANCELLED" -eq 1 ] && return 130
+        phase_status=$(phpcs_phase_status "$status" "$phpcs_report")
+        record_phase "$version" "phpcs" "$phase_status" "$(( $(now_ms) - phase_started ))" \
+            "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+        if [ "$phase_status" != "error" ]; then
+            record "artifact" "$version" "phpcs" "phpcs-json" "$phpcs_report" "$ANALYZE_DIR"
+        else
+            return 2
+        fi
+
+        # Second PHPCS pass: the PHP compatibility standard for this exact
+        # version. Its findings are normalized as M2-LINT-COMPAT.
+        local compat_report="$raw_dir/phpcs-compat.json"
+        phase_started=$(now_ms)
+        if compat_standard_available "$toolchain"; then
+            run_phpcs_pass "$version" "$launcher" "$toolchain" "$COMPAT_STANDARD" \
+                "$compat_report" "$VERSION_CACHE_DIR/phpcs-compat.json"
+            status=$?
+            [ "$CANCELLED" -eq 1 ] && return 130
+            phase_status=$(phpcs_phase_status "$status" "$compat_report")
+            record_phase "$version" "compat" "$phase_status" "$(( $(now_ms) - phase_started ))" \
+                "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+            if [ "$phase_status" != "error" ]; then
+                record "artifact" "$version" "compat" "phpcs-compat-json" "$compat_report" "$ANALYZE_DIR"
+            else
+                return 2
+            fi
+        else
+            record_phase "$version" "compat" "skipped" "$(( $(now_ms) - phase_started ))" \
+                "$CACHE_STATE" "$CACHE_KEY" \
+                "the PHP $version toolchain ships no $COMPAT_STANDARD standard"
+        fi
+    fi
+
+    if contains_word "phpstan" "$LINTERS"; then
+        local phpstan_report="$raw_dir/phpstan.json"
+        local phpstan_config="$WORKSPACE_DIR/php-$version/phpstan.neon"
+        write_phpstan_config "$version" "$phpstan_config"
+        phase_started=$(now_ms)
+        rm -f "$phpstan_report"
+        run_child "$ANALYZE_ROOT" "$phpstan_report" "$launcher" "$toolchain/vendor/bin/phpstan" analyse \
+            --no-progress --no-interaction --error-format=json \
+            --memory-limit=2G --configuration="$phpstan_config" "$ANALYZE_DIR"
+        status=$?
+        [ "$CANCELLED" -eq 1 ] && return 130
+        if [ "$status" -eq 0 ]; then
+            phase_status="passed"
+        elif [ -s "$phpstan_report" ] && [ "$status" -le 1 ]; then
+            phase_status="failed"
+        else
+            phase_status="error"
+        fi
+        record_phase "$version" "phpstan" "$phase_status" "$(( $(now_ms) - phase_started ))" \
+            "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+        if [ "$phase_status" != "error" ]; then
+            record "artifact" "$version" "phpstan" "phpstan-json" "$phpstan_report" "$ANALYZE_DIR"
+        else
+            return 2
+        fi
+    fi
+    return 0
+}
+
+run_version() {
+    local version=$1
+    local version_started
+    version_started=$(now_ms)
+    CACHE_STATE="cold"
+    CACHE_KEY=""
+    CACHE_REASON=""
+
+    local validate_started
+    validate_started=$(now_ms)
+    if ! contains_word "$version" "$ALLOWED_PHP"; then
+        record_phase "$version" "validate" "unsupported" "$(( $(now_ms) - validate_started ))" \
+            "" "" "PHP $version is outside the supported $TARGET_MODE policy"
+        record_php "$version" "unsupported" "$(( $(now_ms) - version_started ))" "cold" "" \
+            "unsupported PHP version"
+        log "php $version unsupported"
+        return 0
+    fi
+
+    local launcher="php$version"
+    local toolchain="$TOOLCHAIN_DIR/php-$version"
+    if ! command -v "$launcher" >/dev/null 2>&1; then
+        record_phase "$version" "validate" "error" "$(( $(now_ms) - validate_started ))" \
+            "" "" "PHP $version launcher is missing from the image"
+        record_php "$version" "infra_error" "$(( $(now_ms) - version_started ))" "cold" "" \
+            "missing PHP launcher"
+        return 0
+    fi
+    local linter
+    for linter in $LINTERS; do
+        if [ ! -f "$toolchain/vendor/bin/$linter" ]; then
+            record_phase "$version" "validate" "error" "$(( $(now_ms) - validate_started ))" \
+                "" "" "the $linter toolchain for PHP $version is missing"
+            record_php "$version" "infra_error" "$(( $(now_ms) - version_started ))" "cold" "" \
+                "missing analyzer toolchain"
+            return 0
+        fi
+    done
+    record_phase "$version" "validate" "passed" "$(( $(now_ms) - validate_started ))" "" "" ""
+
+    if ! prepare_cache "$version"; then
+        record_phase "$version" "cache" "error" "0" "" "" "cannot prepare the analyzer cache"
+        record_php "$version" "infra_error" "$(( $(now_ms) - version_started ))" "cold" "" \
+            "cache preparation failed"
+        return 0
+    fi
+
+    local prepare_started
+    prepare_started=$(now_ms)
+    if ! prepare_worktree "$version" "$launcher"; then
+        if [ "$CANCELLED" -eq 1 ]; then
+            return 130
+        fi
+        record_phase "$version" "prepare" "error" "$(( $(now_ms) - prepare_started ))" \
+            "$CACHE_STATE" "$CACHE_KEY" "dependency preparation failed"
+        record_php "$version" "infra_error" "$(( $(now_ms) - version_started ))" \
+            "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+        log "php $version preparation failed"
+        return 0
+    fi
+    record_phase "$version" "prepare" "passed" "$(( $(now_ms) - prepare_started ))" \
+        "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+
+    analyze_version "$version" "$launcher" "$toolchain"
+    local analysis_status=$?
+    if [ "$analysis_status" -eq 130 ]; then
+        return 130
+    fi
+    if [ "$analysis_status" -ne 0 ]; then
+        record_php "$version" "infra_error" "$(( $(now_ms) - version_started ))" \
+            "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+        log "php $version infrastructure failure"
+        return 0
+    fi
+    record_php "$version" "ok" "$(( $(now_ms) - version_started ))" \
+        "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+    log "php $version analyzed"
+    return 0
+}
+
+main() {
+    parse_args "$@"
+    validate_identity
+    validate_linters
+    validate_jobs
+    validate_php_selection
+    resolve_paths
+
+    trap on_cancel TERM INT
+    trap cleanup_workspace EXIT
+
+    RUN_STARTED_MS=$(now_ms)
+    PENDING_VERSIONS="$SELECTED_PHP"
+
+    local version
+    for version in $SELECTED_PHP; do
+        CURRENT_VERSION="$version"
+        PENDING_VERSIONS=$(printf '%s' "$PENDING_VERSIONS" | tr ' ' '\n' | grep -Fvx "$version" | tr '\n' ' ')
+        run_version "$version"
+        local status=$?
+        CURRENT_VERSION=""
+        if [ "$CANCELLED" -eq 1 ] || [ "$status" -eq 130 ]; then
+            CURRENT_VERSION="$version"
+            cancel_remaining
+        fi
+    done
+
+    finalize "$(( $(now_ms) - RUN_STARTED_MS ))"
+}
+
+main "$@"

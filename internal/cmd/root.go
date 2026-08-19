@@ -138,6 +138,7 @@ func init() {
 	rootCmd.AddCommand(selfUpdateCmd)
 	rootCmd.AddCommand(lockCmd)
 	rootCmd.AddCommand(blueprintCmd)
+	rootCmd.AddCommand(newAuditCommand(defaultAuditCommandDependencies()))
 	rootCmd.AddCommand(tunnelCmd)
 	rootCmd.AddCommand(versionCmd)
 }

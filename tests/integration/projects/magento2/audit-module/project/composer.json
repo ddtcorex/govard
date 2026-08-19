@@ -1,0 +1,9 @@
+{
+    "name": "fixtures/magento2-audit-module",
+    "description": "Neutral Magento project fixture used by the gated live lint audit tests.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "magento/product-community-edition": "2.4.8"
+    }
+}

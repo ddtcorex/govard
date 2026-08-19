@@ -311,6 +311,48 @@ Govard fingerprints `.govard/docker-compose.override.yml`, `.govard/nginx/custom
 When overriding services, prefer additive merges (extra environment variables, labels, ports). Replacing full lists like `services.web.volumes` can discard required Govard-managed mounts. `.govard/nginx/custom/` and `.govard/apache/custom/` exist precisely so you don't have to replace the whole web server config just to add a directive.
 :::
 
+### Audit Lint Providers
+
+`audit.lint` configures which backend [`govard audit`](./cli-commands.md#govard-audit)
+uses for lint checks. Both keys are optional; with neither set, audits run the
+Govard-owned native backend.
+
+```yaml
+audit:
+  lint:
+    # Default provider for this project. "govard" (the native backend) is the
+    # default when omitted. Any other value must name a key below.
+    provider: govard
+
+    # Explicitly configured third-party lint containers. Nothing is discovered
+    # automatically and none of these is ever a fallback for the native backend.
+    external_providers:
+      house-standard:
+        type: docker            # required; "docker" is the only supported type
+        image: example.invalid/lint@sha256:...  # required
+        command: ["lint", "--report", "/output/report.json"]  # required, non-empty
+```
+
+| Key | Required | Purpose |
+| :--- | :--- | :--- |
+| `audit.lint.provider` | No | Project default provider. Must be `govard` or a key under `external_providers`. Lowercase letters, digits, hyphen, and underscore only. |
+| `audit.lint.external_providers.<name>.type` | Yes | Provider kind. Only `docker` is supported. |
+| `audit.lint.external_providers.<name>.image` | Yes | Container image to run. Pin it by digest so the evidence names an immutable runtime. |
+| `audit.lint.external_providers.<name>.command` | Yes | Argument array for the container. Every element must be non-empty; there is no shell. |
+
+Precedence is explicit: an `--lint-provider` flag always wins, then
+`audit.lint.provider`, then the `govard` default. Credentials are deliberately not
+configuration fields — Composer auth is read from `~/.composer/auth.json` and SSH
+agent forwarding is opt-in per run via `--allow-lint-ssh-agent`.
+
+::: warning WARNING
+An external provider must produce Govard's lint report schema and echo back this
+run's exact identity, or its report is quarantined rather than accepted as
+evidence. Naming a provider that is not configured is an error, never a silent
+fall back to `govard`. A standalone module target has no project configuration at
+all, so only `govard` is available there.
+:::
+
 ---
 
 ## Config Commands

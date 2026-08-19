@@ -1,0 +1,17 @@
+{
+    "name": "govard/sample-standalone-module",
+    "description": "Neutral standalone Magento module fixture used by Govard lint contract tests.",
+    "type": "magento2-module",
+    "license": "MIT",
+    "require": {
+        "php": "~7.4.0 || ~8.1.0 || ~8.2.0 || ~8.3.0 || ~8.4.0 || ~8.5.0"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Govard\\SampleModule\\": ""
+        }
+    }
+}
