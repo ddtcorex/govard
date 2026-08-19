@@ -43,7 +43,8 @@ func resolveAuditTarget(ctx context.Context, start string, mode types.AuditTarge
 	root := target.TargetPath
 	var config *engine.Config
 	if target.Mode != types.AuditTargetStandalone {
-		loaded, _, loadErr := engine.LoadConfigFromDir(target.ProjectRoot, true)
+		resolvedProfile := engine.ResolveEffectiveProfile(target.ProjectRoot, "")
+		loaded, _, loadErr := engine.LoadConfigFromDirWithProfile(target.ProjectRoot, true, resolvedProfile)
 		if loadErr != nil {
 			return resolvedAuditTarget{}, fmt.Errorf("load audit project config: %w", loadErr)
 		}

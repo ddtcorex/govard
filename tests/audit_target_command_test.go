@@ -307,6 +307,51 @@ func TestAuditReadOnlyCommandsDoNotProbeRuntimePHP(t *testing.T) {
 	}
 }
 
+// TestResolveAuditTargetAppliesRegisteredProfileBeforePHPDriftCheck covers the
+// bug where resolveAuditTarget loaded config via engine.LoadConfigFromDir,
+// which never merges a named profile layer (.govard.<profile>.yml) even when
+// that profile is the project's registry-remembered active profile. A real
+// project whose base config says PHP 8.2 but whose active "upgrade" profile
+// overrides it to PHP 8.4 would incorrectly report an infrastructure PHP
+// mismatch against a genuinely-matching running container.
+func TestResolveAuditTargetAppliesRegisteredProfileBeforePHPDriftCheck(t *testing.T) {
+	project := auditCommandProjectWithPHPVersion(t, "magento2", "8.2")
+	profileConfig := "stack:\n  php_version: \"8.4\"\n"
+	if err := os.WriteFile(filepath.Join(project, ".govard.upgrade.yml"), []byte(profileConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Use an explicit registry path override (matching the convention used by
+	// other registry-dependent tests) so the write below isn't rejected by
+	// normalizeProjectRegistryEntry's guard against polluting a real registry
+	// with a t.TempDir() project path, and so the command under test resolves
+	// against the same registry file.
+	t.Setenv(engine.ProjectRegistryPathEnvVar, filepath.Join(project, "projects.json"))
+	if err := engine.UpsertProjectRegistryEntry(engine.ProjectRegistryEntry{
+		Path:    project,
+		Profile: "upgrade",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	backend := &commandLintBackend{}
+	installAuditCommandDependenciesWithRuntimeProbe(t, backend, func(context.Context, types.AuditTarget, engine.Config) (string, bool, error) {
+		return "8.4", true, nil
+	})
+
+	output, err := executeAuditCommand(t, project, []string{"audit", "run", "--format", "json"})
+	if err != nil {
+		t.Fatalf("expected profile-layer PHP 8.4 to match running PHP 8.4, got error: %v", err)
+	}
+	var result audit.RunResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := backend.requests[0].SelectedPHPVersions, []string{"8.4"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("selected PHP versions = %#v, want %#v (profile layer should override base layer's 8.2)", got, want)
+	}
+}
+
 func standaloneAuditModule(t *testing.T, packageName string) string {
 	t.Helper()
 	module := t.TempDir()
