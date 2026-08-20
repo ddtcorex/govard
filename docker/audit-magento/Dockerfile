@@ -24,13 +24,13 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG GOVARD_MAGELINT_PHP_VERSIONS="7.4,8.0,8.1,8.2,8.3,8.4,8.5"
 ENV GOVARD_MAGELINT_PHP_VERSIONS="${GOVARD_MAGELINT_PHP_VERSIONS}"
 ENV COMPOSER_ALLOW_SUPERUSER=1
-# QEMU-emulated arm64 builds run Composer's usual parallel downloads through a
-# software-emulated CPU; several concurrent TLS handshakes then compete for the
-# same emulated cycles and can all miss their connect timeout together (seen as
-# simultaneous "SSL connection timeout" failures across unrelated packages).
-# Serializing downloads keeps each handshake within its timeout regardless of
-# host emulation speed.
-ENV COMPOSER_DISABLE_PARALLEL_DOWNLOADS=1
+# QEMU-emulated arm64 builds run Composer's usual parallel downloads (default
+# COMPOSER_MAX_PARALLEL_HTTP=12) through a software-emulated CPU; several
+# concurrent TLS handshakes then compete for the same emulated cycles and can
+# all miss their connect timeout together (seen as simultaneous "SSL
+# connection timeout" failures across unrelated packages). Capping this at 1
+# keeps each handshake within its timeout regardless of host emulation speed.
+ENV COMPOSER_MAX_PARALLEL_HTTP=1
 
 RUN set -eux; \
     apt-get update; \
