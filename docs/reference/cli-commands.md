@@ -94,6 +94,29 @@ directory:
 `--mode project` and `--mode standalone` force a classification and fail when the
 directory does not support it.
 
+```bash
+# project: run from the Magento project root
+cd ~/projects/storefront
+govard audit run
+
+# module_in_project: run from inside an app/code module
+cd ~/projects/storefront/app/code/Acme/Catalog
+govard audit run
+
+# module_in_project: run from inside a vendor package (Composer type magento2-module)
+cd ~/projects/storefront/vendor/acme/module-catalog
+govard audit run
+
+# standalone: run from a module with no Magento project above it
+cd ~/work/module-catalog
+govard audit run --php 8.1,8.5
+```
+
+Each of these selects its mode automatically from the current directory —
+`--mode` only needs to be passed to force or refuse a classification (for
+example `--mode project` fails outside a project root instead of silently
+reclassifying).
+
 #### PHP versions
 
 The lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`.

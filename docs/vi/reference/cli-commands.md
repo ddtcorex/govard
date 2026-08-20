@@ -95,6 +95,28 @@ mục hiện tại:
 `--mode project` và `--mode standalone` buộc một phân loại cụ thể và sẽ lỗi khi
 thư mục không thỏa điều kiện.
 
+```bash
+# project: chạy từ project root của Magento
+cd ~/projects/storefront
+govard audit run
+
+# module_in_project: chạy từ trong một module ở app/code
+cd ~/projects/storefront/app/code/Acme/Catalog
+govard audit run
+
+# module_in_project: chạy từ trong một package ở vendor (Composer type magento2-module)
+cd ~/projects/storefront/vendor/acme/module-catalog
+govard audit run
+
+# standalone: chạy từ một module không có Magento project nào ở cấp trên
+cd ~/work/module-catalog
+govard audit run --php 8.1,8.5
+```
+
+Mỗi lệnh trên tự nhận diện mode từ thư mục hiện tại — `--mode` chỉ cần dùng khi
+muốn buộc hoặc từ chối một phân loại cụ thể (ví dụ `--mode project` sẽ lỗi khi
+chạy ngoài project root thay vì tự phân loại lại).
+
 #### Phiên bản PHP
 
 Lint image cung cấp `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4` và `8.5`.
