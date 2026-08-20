@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.63.0] - 2026-08-20
+
+### ✨ New Features
+
+- **Govard-Native Magento Audit:** `govard audit run` lints Magento 2/Mage-OS projects, in-project `app/code`/`vendor` modules, and standalone modules against a Govard-owned, self-built multi-PHP (7.4, 8.0-8.5) Magelint image. Supports `--mode` (`auto`/`project`/`module_in_project`/`standalone`), `--php` version narrowing for standalone targets, `--lint-provider` for an explicit external CI gate (never an automatic fallback), reusable result caching, and exact rerun-by-session-id. See `govard audit --help` and `docs/reference/cli-commands.md`.
+- `govard audit toolchain status|pull|build` manages the machine-wide lint image independently of any project.
+
+### 🛠 Improvements
+
+- WP-CLI installs are now version-aware, mirroring the Composer fast path: skips the download when the active `wp --version` already matches the version pinned for the detected WordPress major, actually enforces that pin instead of keeping a stale binary forever, and always confirms the active version rather than sometimes returning silently. Versioned phars now download from GitHub Releases (the wp-cli builds repository stopped publishing them); WordPress 7 is now covered by the version map.
+- The Magelint image's CI build is now skipped when its embedded build context is unchanged since the last successful publish (a content-addressed cache tag plus a registry-side manifest copy) — cuts a routine release's image step from roughly an hour to seconds.
+
+### 🐛 Bug Fixes
+
+- `govard open db -e <env>` (and `db`, `snapshot`, `sync --db`) printed a misleading warning claiming credentials were read from a nonexistent `.env/env.php` path when a remote DB probe failed; it now names the configuration that was actually probed.
+- `govard audit` compared the active PHP version profile-blindly: a project with a named profile overriding `stack.php_version` incorrectly reported a PHP mismatch.
+- The Magelint image was missing the `gd` PHP extension required by every installable `magento/framework` release, failing standalone-mode Composer resolution across the whole PHP matrix.
+- Composer downloads inside the Magelint image's `arm64` build (under QEMU emulation) now run serialized (`COMPOSER_MAX_PARALLEL_HTTP=1`) instead of the default 12-way parallel, fixing simultaneous SSL-handshake timeouts that had failed the multi-arch image publish.
+- A lint backend's debug log file close error is now surfaced instead of silently discarded.
+
 ## [1.62.2] - 2026-08-12
 
 ### 🐛 Bug Fixes
