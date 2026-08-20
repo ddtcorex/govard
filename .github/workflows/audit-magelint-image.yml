@@ -14,6 +14,16 @@ name: Audit Magelint Image
 # Govard binary: officialLabelsVerify requires io.govard.audit.context-digest to
 # equal the embedded context digest exactly, so this workflow derives that value
 # from the built CLI itself rather than restating it.
+#
+# Most releases touch no file under docker/audit-magento/**, so this job also
+# maintains a content-addressed cache tag ("context-<16-hex-digest>") alongside
+# the release tag. When a release's embedded context digest already has a
+# matching, label-verified image published under that cache tag, the full
+# build/scan/publish pipeline (the ~1h arm64-under-QEMU leg especially) is
+# skipped entirely in favor of a registry-side manifest copy
+# (docker buildx imagetools create) onto the new release tag - no rebuild, no
+# re-scan of unchanged content. A verify-only run (publish: false) always runs
+# the full pipeline regardless, since exercising it end-to-end is its purpose.
 
 on:
   # workflow_dispatch exists so this job can be exercised before it ever gates a
@@ -78,8 +88,8 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image_digest: ${{ steps.publish.outputs.image_digest }}
-      image_reference: ${{ steps.publish.outputs.image_reference }}
+      image_digest: ${{ steps.publish.outputs.image_digest || steps.reuse.outputs.image_digest }}
+      image_reference: ${{ steps.publish.outputs.image_reference || steps.reuse.outputs.image_reference }}
       context_digest: ${{ steps.context.outputs.context_digest }}
     env:
       IMAGE_REPOSITORY: ghcr.io/ddtcorex/govard-magelint
@@ -126,10 +136,63 @@ jobs:
           echo "context_digest=${CONTEXT_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "embedded lint context digest ${CONTEXT_DIGEST}"
 
+      # docker/audit-magento/** is embedded, so this digest fully determines
+      # the image's content. A short, tag-legal token derived from it (rather
+      # than the digest itself, which is too long and colon-bearing for a
+      # tag) names the cache-lookup tag below.
+      - name: Derive the content-addressed cache tag
+        id: cache_tag
+        env:
+          CONTEXT_DIGEST: ${{ steps.context.outputs.context_digest }}
+        run: |
+          set -euo pipefail
+          trimmed="${CONTEXT_DIGEST#sha256:}"
+          echo "tag=context-${trimmed:0:16}" >> "$GITHUB_OUTPUT"
+
+      # A registry read only (manifest + config, no layers, no login needed
+      # for this public repository) that decides whether the expensive steps
+      # below can be skipped. Only consulted on a real publish: a
+      # verify-only run's whole purpose is to exercise the pipeline, so it
+      # must never take the skip path.
+      - name: Check the registry for an already-published image with this context digest
+        id: cache
+        if: ${{ inputs.publish }}
+        env:
+          CACHE_TAG: ${{ steps.cache_tag.outputs.tag }}
+          CONTEXT_DIGEST: ${{ steps.context.outputs.context_digest }}
+        run: |
+          set -euo pipefail
+          reference="${IMAGE_REPOSITORY}:${CACHE_TAG}"
+          if ! docker buildx imagetools inspect "${reference}" >/dev/null 2>&1; then
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+            echo "no cached image at ${reference}; building"
+            exit 0
+          fi
+
+          manifest_digest=$(docker buildx imagetools inspect "${reference}" --format '{{json .Manifest.Digest}}' | jq -r '.')
+          labels=$(docker buildx imagetools inspect "${reference}" --format '{{json (index .Image "linux/amd64").Config.Labels}}')
+          context_label=$(printf '%s' "${labels}" | jq -r '."io.govard.audit.context-digest" // ""')
+          schema_label=$(printf '%s' "${labels}" | jq -r '."io.govard.audit.report-schema" // ""')
+          php_label=$(printf '%s' "${labels}" | jq -r '."io.govard.audit.php-versions" // ""')
+          expected_php="$(printf '%s' "${PHP_LAUNCHERS}" | tr ' ' ',')"
+
+          if [ "${context_label}" = "${CONTEXT_DIGEST}" ] \
+            && [ "${schema_label}" = "2" ] \
+            && [ "${php_label}" = "${expected_php}" ] \
+            && [ -n "${manifest_digest}" ]; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "image_digest=${manifest_digest}" >> "$GITHUB_OUTPUT"
+            echo "reusing ${IMAGE_REPOSITORY}@${manifest_digest} (${reference}); context unchanged since it was published"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::${reference} exists but its labels do not match this build's expectations (context=${context_label}, schema=${schema_label}, php=${php_label}); rebuilding"
+          fi
+
       # The contract suite drives the runner with stubbed PHP launchers and
       # analyzers, so it needs no image and fails fast on a broken entrypoint
       # before any minutes are spent building one.
       - name: Run the lint runner contract suite
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: bash docker/audit-magento/tests/contract_test.sh
 
       # binfmt is installed directly rather than through a separate QEMU action
@@ -139,17 +202,21 @@ jobs:
       # platforms the kernel's binfmt_misc already knows about, so creating the
       # builder first leaves it unaware of arm64 emulation registered afterward.
       - name: Enable arm64 emulation
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: docker run --privileged --rm "${BINFMT_IMAGE}" --install arm64
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        if: ${{ steps.cache.outputs.hit != 'true' }}
 
       - name: Verify arm64 emulation is available to buildx
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: docker buildx inspect --bootstrap | grep -q 'linux/arm64'
 
       # A single-arch amd64 image is built and loaded first so the launcher
       # smokes and the scanners run against a real image. The multi-arch push
       # below reuses this build's cache for its amd64 leg.
       - name: Build the amd64 verification image
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         env:
           CONTEXT_DIGEST: ${{ steps.context.outputs.context_digest }}
         run: |
@@ -168,6 +235,7 @@ jobs:
       # because a mismatch would leave the published image unusable: the CLI would
       # silently fall back to a local build for the whole life of the release.
       - name: Verify the image labels the CLI requires
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         env:
           CONTEXT_DIGEST: ${{ steps.context.outputs.context_digest }}
         run: |
@@ -190,6 +258,7 @@ jobs:
       # partially installed matrix can never ship. The runner itself is smoked
       # too: the entrypoint is what every audit run actually executes.
       - name: Smoke every PHP launcher and the runner entrypoint
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: |
           set -euo pipefail
           for version in ${PHP_LAUNCHERS}; do
@@ -211,9 +280,11 @@ jobs:
       # Both scanners read an exported archive instead of the live daemon, so
       # neither needs the Docker socket mounted into a container.
       - name: Export the verification image
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: docker save "${SMOKE_IMAGE}" -o "${RUNNER_TEMP}/magelint-image.tar"
 
       - name: Generate the SPDX SBOM
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: |
           set -euo pipefail
           docker run --rm \
@@ -238,6 +309,7 @@ jobs:
       # non-retried attempt: retrying a real finding would only waste minutes and
       # risk making the gate look flaky instead of decisive.
       - name: Refresh the Trivy vulnerability database
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/${TRIVY_CACHE_DIR}"
@@ -257,6 +329,7 @@ jobs:
           done
 
       - name: Scan for high and critical vulnerabilities
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: |
           set -euo pipefail
           docker run --rm \
@@ -273,6 +346,7 @@ jobs:
             --skip-db-update
 
       - uses: actions/upload-artifact@v6
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         with:
           name: magelint-sbom-${{ inputs.image_tag }}
           path: ${{ runner.temp }}/magelint-sbom.spdx.json
@@ -281,6 +355,7 @@ jobs:
       # The archive is close to a gigabyte and both scanners are done with it, so
       # it is dropped before the two-architecture build asks for its own space.
       - name: Reclaim the exported archive
+        if: ${{ steps.cache.outputs.hit != 'true' }}
         run: rm -f "${RUNNER_TEMP}/magelint-image.tar"
 
       - name: Log in to GHCR
@@ -294,10 +369,13 @@ jobs:
 
       # The multi-arch manifest is the artifact a release consumes. Its digest is
       # read from buildx's own metadata rather than reconstructed, so the value
-      # injected into the binary is the one the registry actually holds.
+      # injected into the binary is the one the registry actually holds. Also
+      # tagged with the content-addressed cache tag so a later release whose
+      # context digest matches this one can skip straight to the reuse step
+      # below instead of rebuilding.
       - name: Publish the multi-arch image
         id: publish
-        if: ${{ inputs.publish }}
+        if: ${{ inputs.publish && steps.cache.outputs.hit != 'true' }}
         env:
           CONTEXT_DIGEST: ${{ steps.context.outputs.context_digest }}
         run: |
@@ -306,6 +384,7 @@ jobs:
             --platform linux/amd64,linux/arm64 \
             --push \
             --tag "${IMAGE_REPOSITORY}:${IMAGE_TAG}" \
+            --tag "${IMAGE_REPOSITORY}:${{ steps.cache_tag.outputs.tag }}" \
             --build-arg "GOVARD_VERSION=${IMAGE_TAG}" \
             --build-arg "GOVARD_CONTEXT_DIGEST=${CONTEXT_DIGEST}" \
             --build-arg "GOVARD_SOURCE_REVISION=${GITHUB_SHA}" \
@@ -322,13 +401,33 @@ jobs:
           echo "image_reference=${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "published ${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
 
+      # No rebuild, no re-scan: the cache-check step above already verified
+      # this exact digest's labels match what this build's embedded context
+      # requires, so the only thing a matching release needs is its own tag
+      # pointing at that same manifest. A registry-side manifest copy costs
+      # seconds, not the ~1h arm64-under-QEMU build this replaces.
+      - name: Reuse the already-published image under this release tag
+        id: reuse
+        if: ${{ inputs.publish && steps.cache.outputs.hit == 'true' }}
+        env:
+          CACHE_DIGEST: ${{ steps.cache.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          source_ref="${IMAGE_REPOSITORY}@${CACHE_DIGEST}"
+          docker buildx imagetools create --tag "${IMAGE_REPOSITORY}:${IMAGE_TAG}" "${source_ref}"
+          echo "image_digest=${CACHE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "image_reference=${source_ref}" >> "$GITHUB_OUTPUT"
+          echo "reused ${source_ref} for ${IMAGE_TAG}; context unchanged, no rebuild"
+
       # The digest is about to be baked into a release binary, so the published
       # manifest is re-read from the registry and required to carry both
-      # architectures before it is handed back.
+      # architectures before it is handed back. Runs after either path above,
+      # since a reused image needs the same guarantee a freshly published one
+      # does.
       - name: Verify the published manifest
         if: ${{ inputs.publish }}
         env:
-          IMAGE_REFERENCE: ${{ steps.publish.outputs.image_reference }}
+          IMAGE_REFERENCE: ${{ steps.publish.outputs.image_reference || steps.reuse.outputs.image_reference }}
         run: |
           set -euo pipefail
           reference="${IMAGE_REFERENCE}"
