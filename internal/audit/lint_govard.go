@@ -240,7 +240,11 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 	if err != nil {
 		return LintReport{}, fmt.Errorf("open govard lint log: %w", err)
 	}
-	defer logFile.Close()
+	defer func() {
+		if cerr := logFile.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "govard: close govard lint log %s: %v\n", logFile.Name(), cerr)
+		}
+	}()
 
 	container := backend.containerRequest(request, plan, resolved, toolchainDigest, cacheDir)
 	// Only container-safe values are logged: no credential path, no secret,

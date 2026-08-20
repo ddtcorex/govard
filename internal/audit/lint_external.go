@@ -131,7 +131,11 @@ func (provider *ExternalLintProvider) Run(ctx context.Context, request LintReque
 	if err != nil {
 		return LintReport{}, fmt.Errorf("open external lint log: %w", err)
 	}
-	defer logFile.Close()
+	defer func() {
+		if cerr := logFile.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "govard: close external lint log %s: %v\n", logFile.Name(), cerr)
+		}
+	}()
 	container := ContainerRunRequest{
 		Name:  containerName(request),
 		Image: imageWithDigest(provider.config.Image, imageDigest),
