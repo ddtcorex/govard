@@ -24,6 +24,13 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG GOVARD_MAGELINT_PHP_VERSIONS="7.4,8.0,8.1,8.2,8.3,8.4,8.5"
 ENV GOVARD_MAGELINT_PHP_VERSIONS="${GOVARD_MAGELINT_PHP_VERSIONS}"
 ENV COMPOSER_ALLOW_SUPERUSER=1
+# QEMU-emulated arm64 builds run Composer's usual parallel downloads through a
+# software-emulated CPU; several concurrent TLS handshakes then compete for the
+# same emulated cycles and can all miss their connect timeout together (seen as
+# simultaneous "SSL connection timeout" failures across unrelated packages).
+# Serializing downloads keeps each handshake within its timeout regardless of
+# host emulation speed.
+ENV COMPOSER_DISABLE_PARALLEL_DOWNLOADS=1
 
 RUN set -eux; \
     apt-get update; \
@@ -80,8 +87,16 @@ COPY toolchains /opt/govard/toolchains
 RUN set -eux; \
     for version in $(printf '%s' "${GOVARD_MAGELINT_PHP_VERSIONS}" | tr ',' ' '); do \
         cd "/opt/govard/toolchains/php-${version}"; \
-        "php${version}" /usr/local/bin/composer install \
-            --no-interaction --no-progress --no-dev --optimize-autoloader; \
+        attempt=1; \
+        until "php${version}" /usr/local/bin/composer install \
+            --no-interaction --no-progress --no-dev --optimize-autoloader; do \
+            if [ "${attempt}" -ge 3 ]; then \
+                echo "composer install for php${version} failed after ${attempt} attempts" >&2; \
+                exit 1; \
+            fi; \
+            sleep "$(( attempt * 10 ))"; \
+            attempt=$(( attempt + 1 )); \
+        done; \
         "php${version}" "/opt/govard/toolchains/php-${version}/vendor/bin/phpcs" -i | grep -q Magento2; \
         "php${version}" "/opt/govard/toolchains/php-${version}/vendor/bin/phpstan" --version >/dev/null; \
     done; \
