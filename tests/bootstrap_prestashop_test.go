@@ -161,10 +161,10 @@ return array (
 }
 
 func TestBuildPrestaShopShopURLSQL(t *testing.T) {
-	sql := prestashop.BuildPrestaShopShopURLSQLForTest("shop_", "castelas-sutunam.test")
+	sql := prestashop.BuildPrestaShopShopURLSQLForTest("shop_", "sample-shop.test")
 
-	expected := "UPDATE shop_shop_url SET domain = 'castelas-sutunam.test', domain_ssl = 'castelas-sutunam.test' WHERE id_shop_url = 1; " +
-		"UPDATE shop_configuration SET value = 'castelas-sutunam.test' WHERE name IN ('PS_SHOP_DOMAIN', 'PS_SHOP_DOMAIN_SSL');"
+	expected := "UPDATE shop_shop_url SET domain = 'sample-shop.test', domain_ssl = 'sample-shop.test' WHERE id_shop_url = 1; " +
+		"UPDATE shop_configuration SET value = 'sample-shop.test' WHERE name IN ('PS_SHOP_DOMAIN', 'PS_SHOP_DOMAIN_SSL');"
 	if sql != expected {
 		t.Fatalf("expected SQL:\n%s\ngot:\n%s", expected, sql)
 	}
