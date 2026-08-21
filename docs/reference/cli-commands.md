@@ -296,6 +296,19 @@ govard env cleanup
 | `--update-lock` | Auto-update `govard.lock` on mismatches |
 | `--no-tuning` | Skip framework auto-configuration prompts |
 
+**`govard env pull` behavior:**
+
+Images are pulled one by one. If an image cannot be pulled (removed from the
+registry, unsupported tag, network failure), Govard retries the remaining
+images and builds Govard-managed failures locally instead of aborting the
+whole pull. Pass `--no-fallback` to disable the local build retry.
+
+Search images: Govard-managed `elasticsearch`/`opensearch` tags track the
+minor version (e.g. `7.17`), while `search_version` in `.govard.yml` accepts
+either minor (`7.17`) or full patch (`7.17.28`) versions. A patch version is
+pulled as-is when published; otherwise the minor image is used and the local
+fallback build targets the closest real upstream release.
+
 **Files re-rendered on `env up`:**
 - `~/.govard/compose/<project-hash>.yml`
 - `~/.govard/nginx/<project>/default.conf`

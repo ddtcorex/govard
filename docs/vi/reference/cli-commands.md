@@ -293,6 +293,19 @@ govard env cleanup
 | `--update-lock` | Tự động cập nhật `govard.lock` nếu phát hiện sai lệch |
 | `--no-tuning` | Bỏ qua các prompt cấu hình tự động cho framework |
 
+**Hành vi của `govard env pull`:**
+
+Image được pull từng cái một. Nếu một image không thể pull (bị xóa khỏi
+registry, tag không được hỗ trợ, lỗi mạng), Govard vẫn pull tiếp các image
+còn lại và build locally các image do Govard quản lý thay vì dừng toàn bộ
+quá trình. Dùng `--no-fallback` để tắt cơ chế build local thay thế.
+
+Image search: tag `elasticsearch`/`opensearch` do Govard quản lý theo
+phiên bản minor (vd. `7.17`), trong khi `search_version` trong `.govard.yml`
+chấp nhận cả minor (`7.17`) lẫn patch đầy đủ (`7.17.28`). Version patch
+được pull nguyên trạng khi có trên registry; nếu không thì dùng image minor
+và bản build local fallback sẽ nhắm đúng bản upstream thật gần nhất.
+
 **Các file được render lại khi chạy `env up`:**
 - `~/.govard/compose/<project-hash>.yml`
 - `~/.govard/nginx/<project>/default.conf`

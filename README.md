@@ -43,7 +43,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Inter-Project Connectivity**: Projects can securely communicate with each other (e.g., `curl https://other-project.test`) by explicitly declaring dependencies via `linked_projects`. This ensures network isolation by default and enables targeted container refreshes.
 - **Queue Support**: Optional RabbitMQ service for async workloads.
 - **High Performance**: Built with Go and uses the native Docker SDK for direct container orchestration.
-- **Local Image Fallback**: Automatically builds missing Govard-managed images locally from embedded blueprints if they cannot be pulled from Docker Hub. Disable this retry with `--no-fallback`.
+- **Resilient Image Pull & Local Image Fallback**: Images are pulled one by one, so a single unavailable image (e.g. an elasticsearch tag missing from the registry) no longer stops the remaining pulls. Missing Govard-managed images are automatically built locally from embedded blueprints; disable the retry with `--no-fallback`.
 - **Smart Templating**: Uses Go `text/template` to render dynamic Docker Compose files from framework-specific blueprints.
 - **Magento 2 Optimized**: Deep integration for Magento 2, including automated `env.php` configuration, table prefix propagation, Varnish 7.x support, and Redis caching.
 - **Remote Management (Flagship)**: Manage named remotes for sync/deploy/db workflows with scope-based capabilities (`files,media,db,deploy`) and flexible auth modes (`keychain`, `ssh-agent`, `keyfile`).

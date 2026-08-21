@@ -226,28 +226,52 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Pulling Project Images ")
 		fmt.Println()
+		fallbackLocal := !hasFlag("--no-fallback")
+		extraPullArgs := make([]string, 0, len(args))
+		for _, arg := range args[1:] {
+			if arg == "--no-fallback" || strings.HasPrefix(arg, "--no-fallback=") {
+				continue
+			}
+			extraPullArgs = append(extraPullArgs, arg)
+		}
+		pullArgs := append([]string{"pull", "--ignore-buildable"}, extraPullArgs...)
+
 		err := engine.RunCompose(cmd.Context(), engine.ComposeOptions{
 			ProjectDir:  cwd,
 			ProjectName: config.ProjectName,
 			ComposeFile: composePath,
-			Args:        args,
+			Args:        pullArgs,
 			Stdout:      cmd.OutOrStdout(),
 			Stderr:      cmd.ErrOrStderr(),
 			Stdin:       os.Stdin,
 		})
 		if err != nil {
+			// A single broken image must not stop the remaining pulls:
+			// retry image by image so only failing ones fall back or fail.
 			pterm.Warning.Printf("docker compose pull failed: %v\n", err)
-			pterm.Info.Println("Attempting local Govard image build fallback...")
+			pterm.Info.Println("Retrieving project images one by one...")
 
-			built, fallbackErr := engine.FallbackBuildMissingGovardImagesFromCompose(composePath, cmd.OutOrStdout(), cmd.ErrOrStderr())
-			if fallbackErr != nil {
-				return fmt.Errorf("pull project images: %w (local fallback failed: %v)", err, fallbackErr)
+			result, resilientErr := engine.RunResilientImagePullsFromCompose(cmd.Context(), composePath, engine.ResilientPullOptions{
+				FallbackLocalBuild: fallbackLocal,
+			}, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			if resilientErr != nil {
+				return fmt.Errorf("pull project images: %w", resilientErr)
 			}
 
-			if len(built) > 0 {
-				pterm.Success.Printf("Local fallback built %d image(s): %v\n", len(built), built)
-			} else {
-				pterm.Info.Println("No missing Govard-managed images required local build.")
+			if len(result.Pulled) > 0 {
+				pterm.Success.Printf("Pulled %d image(s): %s\n", len(result.Pulled), strings.Join(result.Pulled, ", "))
+			}
+			if len(result.ReusedLocal) > 0 {
+				pterm.Success.Printf("Kept %d existing local image(s): %s\n", len(result.ReusedLocal), strings.Join(result.ReusedLocal, ", "))
+			}
+			if len(result.BuiltLocally) > 0 {
+				pterm.Success.Printf("Local fallback built %d image(s): %s\n", len(result.BuiltLocally), strings.Join(result.BuiltLocally, ", "))
+			}
+			for _, failure := range result.Failed {
+				pterm.Warning.Printf("Could not prepare %s: %v\n", failure.Image, failure.Err)
+			}
+			if len(result.Failed) == 0 {
+				pterm.Info.Println("All project images are available.")
 			}
 		}
 		built, rebuildErr := engine.RebuildIncompatibleGovardImagesFromCompose(composePath, cmd.OutOrStdout(), cmd.ErrOrStderr())
