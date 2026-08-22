@@ -256,6 +256,10 @@ The default `--lint-provider govard` needs no registry login: the lint image's
 build context is embedded in the Govard binary, a release pins the published
 image by immutable digest, and Govard builds the embedded context locally
 whenever that pinned image is unreachable or fails label verification.
+Analyzers skip user-content trees (`vendor/`, `generated/`, `var/`,
+`pub/static/`, `pub/media/`); because uploaded webshells land in `pub/media`,
+a fast name-only media guard reports any PHP file found there as an
+`M2-LINT-MEDIA` finding and fails the run.
 `~/.composer/auth.json` is mounted read only when present, and SSH agent
 forwarding is opt-in via `--allow-lint-ssh-agent`. Persistent lint caches survive
 session cleanup for warm repeat runs; a changed `composer.lock` or analyzer

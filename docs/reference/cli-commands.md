@@ -160,6 +160,20 @@ The lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`.
 A rejected version fails with an `unsupported_php:` message and performs no
 container work at all.
 
+#### Scanned paths
+
+Both native analyzers skip trees that never contain shipped code:
+`vendor/`, `generated/`, `var/`, `pub/static/`, and `pub/media/`. Skipping
+user-content trees keeps full-project runs fast on content-heavy stores.
+
+Because `pub/media` is skipped by the analyzers but is exactly where uploaded
+webshells land, every analyzed PHP version also runs a **media guard** phase: a
+name-only scan of `pub/media` for `.php`, `.phtml`, and `.pht` files. Each hit
+is reported as an `M2-LINT-MEDIA` finding with a path relative to the target
+root, and the phase fails the run. The scan costs milliseconds even on
+multi-gigabyte media trees; it inspects file names only and never reads file
+contents into the report.
+
 #### Providers
 
 `--lint-provider` selects the lint backend. `govard` (the default) is the

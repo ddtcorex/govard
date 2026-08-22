@@ -158,6 +158,20 @@ Lint image cung cấp `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4` và `8.5`.
 Phiên bản bị từ chối sẽ lỗi với thông báo `unsupported_php:` và không thực hiện
 bất kỳ công việc container nào.
 
+#### Đường dẫn được quét
+
+Cả hai analyzer native đều bỏ qua các cây không bao giờ chứa mã shipped:
+`vendor/`, `generated/`, `var/`, `pub/static/` và `pub/media/`. Bỏ qua các
+cây nội dung người dùng giúp run toàn dự án nhanh hơn trên các store nhiều
+nội dung.
+
+Vì `pub/media` bị analyzer bỏ qua nhưng lại chính là nơi webshell được upload,
+mỗi phiên bản PHP được phân tích còn chạy thêm một phase **media guard**: quét
+theo tên trong `pub/media` để tìm file `.php`, `.phtml` và `.pht`. Mỗi file
+tìm thấy được báo thành finding `M2-LINT-MEDIA` với đường dẫn relative từ target
+root, và phase đó làm run thất bại. Phép quét này chỉ mất mili giây dù media lớn
+hàng GB; nó chỉ đọc tên file, không bao giờ đọc nội dung file vào report.
+
 #### Provider
 
 `--lint-provider` chọn lint backend. `govard` (mặc định) là backend native do
