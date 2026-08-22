@@ -240,9 +240,12 @@ govard audit toolchain build
 Session manifests live at
 `~/.govard/audit/<project-id>/sessions/<session-id>/manifest.json`; each result
 lives under its `runs/<run-id>/audit-result.json` directory. Reruns always need
-an explicit session ID, never an implicit latest session. Use `--format json`
-for clean machine-readable stdout. Audit evidence includes the immutable image
-digest, the toolchain digest, phase timings, and cache state with its reason.
+an explicit session ID, never an implicit latest session. The default output is
+a readable summary (verdict, per-PHP results with cache state and sample
+findings, plus the exact rerun command); a failed or cancelled run exits
+non-zero after printing it. Use `--format json` for clean machine-readable
+stdout. Audit evidence includes the immutable image digest, the toolchain
+digest, phase timings, and cache state with its reason.
 
 `govard audit` analyzes a whole Magento project, a module inside one, or a
 standalone module (`--mode`). Project and module-in-project targets analyze the
