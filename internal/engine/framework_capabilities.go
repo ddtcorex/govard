@@ -5,7 +5,8 @@ import "strings"
 // FrameworkCapabilities records optional behaviors supplied by a registered
 // framework without making engine depend on the framework registry package.
 type FrameworkCapabilities struct {
-	FrontendSync bool
+	FrontendSync  bool
+	AuditProfiler bool
 }
 
 var registeredFrameworkCapabilities = map[string]FrameworkCapabilities{}
@@ -21,4 +22,11 @@ func RegisterFrameworkCapabilities(name string, capabilities FrameworkCapabiliti
 func FrameworkSupportsFrontendSync(name string) bool {
 	capabilities, ok := registeredFrameworkCapabilities[NormalizeFrameworkAlias(name)]
 	return ok && capabilities.FrontendSync
+}
+
+// FrameworkSupportsAuditProfiler reports whether the framework registered a
+// stock runtime-profiler capability.
+func FrameworkSupportsAuditProfiler(name string) bool {
+	capabilities, ok := registeredFrameworkCapabilities[NormalizeFrameworkAlias(name)]
+	return ok && capabilities.AuditProfiler
 }

@@ -94,6 +94,35 @@ func TestAuditRerunRequiresExplicitSession(t *testing.T) {
 	}
 }
 
+// A rerun without --checks must repeat the checks of the latest run in the
+// session instead of silently falling back to the [lint] default, which fails
+// on sessions that never carried lint settings.
+func TestAuditRerunWithoutChecksRepeatsLatestRunChecks(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	runtime := &fakeProfilerRuntime{csv: []byte("type,timer\nfoo,1\n")}
+	restore := cmd.SetAuditDependenciesForTest(cmd.AuditDependenciesForTest{ProfilerRuntime: runtime})
+	t.Cleanup(restore)
+
+	output, err := executeAuditCommand(t, project, []string{"audit", "run", "--checks", "profiler", "--url", "https://shop.test/", "--format", "json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first audit.RunResult
+	if err := json.Unmarshal(output, &first); err != nil {
+		t.Fatal(err)
+	}
+	if first.Status != audit.StatusPassed {
+		t.Fatalf("first run status = %q, want passed", first.Status)
+	}
+
+	if _, err := executeAuditCommand(t, project, []string{"audit", "rerun", "--session", first.SessionID, "--format", "json"}); err != nil {
+		t.Fatalf("rerun without --checks: %v", err)
+	}
+	if len(runtime.activateRequests) != 2 {
+		t.Fatalf("profiler activations = %d, want 2 (rerun must repeat the profiler check)", len(runtime.activateRequests))
+	}
+}
+
 func TestAuditStatusDoesNotExecuteBackend(t *testing.T) {
 	project := auditCommandProject(t, "magento2")
 	backend := &commandLintBackend{}
@@ -130,6 +159,74 @@ func TestAuditStatusRejectsUnsupportedChecks(t *testing.T) {
 	_, err := executeAuditCommand(t, project, []string{"audit", "status", "--session", "session-a", "--checks", "browser"})
 	if err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestAuditStatusAcceptsProfilerChecks(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	installAuditCommandDependencies(t, &commandLintBackend{})
+	_, err := executeAuditCommand(t, project, []string{"audit", "status", "--session", "session-a", "--checks", "profiler"})
+	if err == nil {
+		t.Fatal("audit status unexpectedly succeeded for a missing session")
+	}
+	if strings.Contains(err.Error(), "not implemented") {
+		t.Fatalf("error = %v, want profiler to pass command validation", err)
+	}
+}
+
+func TestAuditProfilerRunRequiresExplicitURLBeforeRunnerConstruction(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	var factoryCalls int
+	installAuditRunnerFactory(t, func(_ cmd.AuditRunnerRequest) (*audit.Runner, error) {
+		factoryCalls++
+		return nil, nil
+	})
+
+	_, err := executeAuditCommand(t, project, []string{"audit", "run", "--checks", "profiler"})
+	if err == nil || !strings.Contains(err.Error(), "--url") {
+		t.Fatalf("error = %v, want explicit profiler --url requirement", err)
+	}
+	if factoryCalls != 0 {
+		t.Fatalf("runner factory calls = %d, want none before URL validation", factoryCalls)
+	}
+}
+
+func TestAuditProfilerCommandPersistsURLForRerun(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	runtime := &fakeProfilerRuntime{csv: []byte("type,timer\nfoo,1\n")}
+	restore := cmd.SetAuditDependenciesForTest(cmd.AuditDependenciesForTest{ProfilerRuntime: runtime})
+	t.Cleanup(restore)
+	targetURL := "https://audit-shop.test/category.html?product_list_limit=48&color=red%20blue"
+
+	output, err := executeAuditCommand(t, project, []string{"audit", "run", "--checks", "profiler", "--url", targetURL, "--format", "json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first audit.RunResult
+	if err := json.Unmarshal(output, &first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := executeAuditCommand(t, project, []string{"audit", "rerun", "--session", first.SessionID, "--checks", "profiler", "--format", "json"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.activateRequests) != 2 {
+		t.Fatalf("activate requests = %d, want 2", len(runtime.activateRequests))
+	}
+	for index, request := range runtime.activateRequests {
+		if request.URL != targetURL {
+			t.Fatalf("activate request %d URL = %q, want %q", index, request.URL, targetURL)
+		}
+	}
+}
+
+func TestAuditProfilerCommandRejectsStandaloneTarget(t *testing.T) {
+	module := standaloneAuditModule(t, "vendor/package")
+	restore := cmd.SetAuditDependenciesForTest(cmd.AuditDependenciesForTest{ProfilerRuntime: &fakeProfilerRuntime{}})
+	t.Cleanup(restore)
+
+	_, err := executeAuditCommand(t, module, []string{"audit", "run", "--mode", "standalone", "--checks", "profiler", "--url", "https://shop.test/"})
+	if err == nil || !strings.Contains(err.Error(), "standalone") {
+		t.Fatalf("error = %v, want standalone profiler rejection", err)
 	}
 }
 
@@ -335,8 +432,11 @@ func TestAuditReadOnlyCommandsNeverSelectALintProvider(t *testing.T) {
 		arguments []string
 		want      bool
 	}{
-		"run":     {arguments: []string{"audit", "run", "--format", "json"}, want: true},
-		"rerun":   {arguments: []string{"audit", "rerun", "--session", "missing-session"}, want: true},
+		"run": {arguments: []string{"audit", "run", "--format", "json"}, want: true},
+		// A rerun with explicit checks keeps the lint-backend contract; the
+		// omitted-checks form peeks the session first and never constructs a
+		// backend when the session does not exist.
+		"rerun":   {arguments: []string{"audit", "rerun", "--session", "missing-session", "--checks", "lint"}, want: true},
 		"status":  {arguments: []string{"audit", "status", "--session", "missing-session"}, want: false},
 		"result":  {arguments: []string{"audit", "result", "--session", "missing-session", "--run", "missing-run"}, want: false},
 		"cleanup": {arguments: []string{"audit", "cleanup", "--older-than", "1h"}, want: false},
@@ -649,14 +749,11 @@ func executeAuditCommand(t *testing.T, project string, args []string) ([]byte, e
 		t.Fatal(err)
 	}
 	auditCommand.PersistentFlags().VisitAll(func(flag *pflag.Flag) {
-		if flag.Name == "php" {
+		if flag.Name == "php" || flag.Name == "checks" {
 			flag.Changed = false
 			return
 		}
 		value := flag.DefValue
-		if flag.Name == "checks" {
-			value = "lint"
-		}
 		if err := flag.Value.Set(value); err != nil {
 			t.Fatal(err)
 		}

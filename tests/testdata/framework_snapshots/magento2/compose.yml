@@ -53,6 +53,7 @@ services:
         volumes:
             - .:/var/www/html
             - <GOVARD_HOME>/nginx/snapshot-magento2/default.conf:/etc/nginx/templates/magento2.conf:ro
+            - <PROJECT_DIR>/.govard/nginx/custom:/etc/nginx/custom:ro
             - <GOVARD_HOME>/nginx/snapshot-magento2/mage-run-map.conf:/etc/nginx/conf.d/mage-run-map.conf:ro
 volumes:
     db-data: null

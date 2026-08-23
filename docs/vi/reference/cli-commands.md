@@ -54,12 +54,15 @@ description: Tài liệu đầy đủ về các lệnh CLI, alias và shortcut c
 
 ### `govard audit`
 
-Chạy audit dự án có session được lưu bền vững. Hiện chỉ có check lint được triển
-khai; các job profiler và browser sẽ được bổ sung ở các giai đoạn sau mà không
-đổi semantics session.
+Chạy audit dự án có session được lưu bền vững. `lint` chạy phân tích tĩnh;
+Magento 2 và Mage-OS còn khai báo thêm check `profiler` CSV stock do Govard tự
+điều phối. Các giai đoạn sau sẽ bổ sung browser job mà không đổi semantics
+session.
 
 ```bash
 govard audit run
+govard audit run --checks profiler --url 'https://shop.test/category.html?product_list_limit=48'
+govard audit run --checks lint,profiler --url 'https://shop.test/'
 govard audit diff --base origin/master
 govard audit rerun --session 20260816T010203Z-a1b2c3d4
 govard audit status --session 20260816T010203Z-a1b2c3d4
@@ -79,6 +82,24 @@ hẳn), nên output khi pipe hay redirect không dính escape code.
 `--format json` chỉ ghi một JSON object không có terminal decoration ra stdout;
 diagnostic và log backend nằm ngoài stream đó. Chỉ chấp nhận `text`/`json`;
 `--lint-jobs` phải từ 1 đến số PHP version được framework khai báo.
+
+`profiler` yêu cầu `--url` tuyệt đối HTTP(S) tường minh ở run đầu tiên và target
+phải là toàn bộ Govard project (standalone module lẫn module-only target đều bị
+từ chối trước khi có bất kỳ thay đổi runtime nào). URL chính xác được lưu trong
+run và được `audit rerun` tái sử dụng, nên các run before/after bắt cùng một
+trang. Govard dùng `MAGE_PROFILER=csvfile` stock của Magento; không cài Magento
+module, không phụ thuộc repository/image bên thứ ba, và không sửa
+`app/etc/env.php`.
+
+Chạy `govard env up` với phiên bản Govard hiện tại trước lần capture đầu tiên
+để Compose stack đã render mount thư mục cấu hình custom thuộc sở hữu project.
+Trong quá trình capture có lease bảo vệ, Govard tạo nguyên tử một include với
+tên duy nhất, reload server đang active, thực hiện một HTTP GET có giới hạn,
+thu `var/log/profiler.csv` qua PHP container, rồi khôi phục lại cả include lẫn
+CSV runtime. Nginx nhận tham số FastCGI tạm thời bên trong PHP location của
+Magento. Chế độ Apache dùng dịch vụ `web`; hybrid cấu hình và reload dịch vụ
+`apache` của nó thay vì nginx. CSV thu được được lưu tại
+`runs/<run-id>/artifacts/profiler/profile.csv` kèm digest SHA-256.
 
 Ví dụ bản tóm tắt của `govard audit run`:
 
@@ -106,6 +127,11 @@ atomically tại
 kèm `report.json` của chính provider. `rerun`, `status`, `result` luôn cần đúng
 `--session` (và `result` cần thêm `--run`); Govard không tự chọn session mới
 nhất.
+
+`rerun` không kèm `--checks` sẽ lặp lại đúng bộ check của lần chạy gần nhất
+trong session đó — kể cả URL profiler đã lưu — thay vì rơi về mặc định chỉ lint.
+Truyền `--checks` thì chạy lại đúng những gì được yêu cầu; cả hai dạng chỉ dựng
+lại những backend mà bộ chọn đó cần.
 
 #### Target mode
 

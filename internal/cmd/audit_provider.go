@@ -136,12 +136,22 @@ func newAuditLintBackend(selection auditLintSelection) (audit.LintBackend, error
 // sessions must not depend on whether a lint provider could be constructed
 // right now: an unavailable external provider or a root container identity would
 // otherwise make a pure read of a persisted JSON file fail.
-func newAuditRunner(request AuditRunnerRequest, backend audit.LintBackend) (*audit.Runner, error) {
+func newAuditRunner(request AuditRunnerRequest, backend audit.LintBackend, profilerRuntime audit.ProfilerRuntime) (*audit.Runner, error) {
 	govardHome := engine.GovardHomeDir()
 	options := audit.RunnerOptions{
 		Store:         audit.NewStore(audit.DefaultStoreRoot(govardHome)),
 		LintCacheRoot: audit.DefaultLintCacheRoot(govardHome),
 		Resources:     audit.Resources{CPU: 8, MemoryMB: 8192},
+	}
+	if request.ProfilerRuntimeRequired {
+		if profilerRuntime == nil {
+			var err error
+			profilerRuntime, err = newAuditProfilerRuntime(request, defaultAuditProfilerRuntimeDependencies())
+			if err != nil {
+				return nil, err
+			}
+		}
+		options.ProfilerRuntime = profilerRuntime
 	}
 	if !request.LintBackendRequired {
 		return audit.NewRunner(options), nil

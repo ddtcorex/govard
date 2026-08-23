@@ -41,6 +41,23 @@ type AuditLintProfile struct {
 	PHPStanExtension      string
 }
 
+// AuditProfilerProfile declares the stock runtime profiler contract owned by a
+// framework. The command layer consumes these values through the generic
+// FastCGI adapter without branching on the framework name.
+type AuditProfilerProfile struct {
+	EnvironmentVariable string
+	EnvironmentValue    string
+	OutputPath          string
+}
+
+func cloneAuditProfilerProfile(profile *AuditProfilerProfile) *AuditProfilerProfile {
+	if profile == nil {
+		return nil
+	}
+	cloned := *profile
+	return &cloned
+}
+
 func cloneAuditLintProfile(profile *AuditLintProfile) *AuditLintProfile {
 	if profile == nil {
 		return nil

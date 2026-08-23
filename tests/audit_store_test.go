@@ -212,6 +212,59 @@ func TestAuditStoreCleanupOlderThanIsolatedAndSkipsSymlinks(t *testing.T) {
 	}
 }
 
+func TestAuditStorePersistsLeaseOwnershipAndIsolatesRunArtifacts(t *testing.T) {
+	root := t.TempDir()
+	store := newAuditStore(root, time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC))
+	manifest, err := store.CreateSession(audit.SessionManifest{
+		SchemaVersion: audit.SchemaVersion,
+		ProjectID:     "project-aabbccdd",
+		ProjectRoot:   "/work/shop",
+		Scope:         audit.ScopeProject,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := store.CreateRun(manifest.ProjectID, manifest.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lease, err := store.AcquireLease(manifest.ProjectID, "diagnostics", "owner-a")
+	if err != nil {
+		t.Fatalf("AcquireLease() first owner error = %v", err)
+	}
+	if lease.Owner != "owner-a" {
+		t.Fatalf("AcquireLease() owner = %q, want owner-a", lease.Owner)
+	}
+	if _, err := store.AcquireLease(manifest.ProjectID, "diagnostics", "owner-b"); err == nil {
+		t.Fatal("AcquireLease() overwrote an existing owner")
+	}
+	if err := store.ReleaseLease(manifest.ProjectID, "diagnostics", "owner-b"); err == nil {
+		t.Fatal("ReleaseLease() accepted a foreign owner")
+	}
+	if err := store.ReleaseLease(manifest.ProjectID, "diagnostics", "owner-a"); err != nil {
+		t.Fatalf("ReleaseLease() owner error = %v", err)
+	}
+
+	artifactPath, err := store.RunArtifactPath(manifest.ProjectID, manifest.SessionID, run.RunID, "profiler/output.csv")
+	if err != nil {
+		t.Fatalf("RunArtifactPath() error = %v", err)
+	}
+	wantArtifactPath := filepath.Join(root, manifest.ProjectID, "sessions", manifest.SessionID, "runs", run.RunID, "artifacts", "profiler", "output.csv")
+	if artifactPath != wantArtifactPath {
+		t.Fatalf("RunArtifactPath() = %q, want %q", artifactPath, wantArtifactPath)
+	}
+	if err := os.WriteFile(artifactPath, []byte("csv"), 0o600); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(artifactPath)); err != nil {
+		t.Fatalf("artifact dir missing: %v", err)
+	}
+	if _, err := store.RunArtifactPath(manifest.ProjectID, manifest.SessionID, run.RunID, "../escape.csv"); err == nil {
+		t.Fatal("RunArtifactPath() accepted a path escape")
+	}
+}
+
 func newAuditStore(root string, now time.Time) *audit.Store {
 	return audit.NewStore(root,
 		audit.WithClock(func() time.Time { return now }),

@@ -122,6 +122,9 @@ type FrameworkDefinition struct {
 	// AuditTargetResolver resolves a framework-specific path into an audit
 	// target. Nil means lint audit target selection is unsupported.
 	AuditTargetResolver AuditTargetResolver
+	// AuditProfiler declares a framework-owned stock runtime profiler. Nil
+	// means the profiler audit check is unsupported.
+	AuditProfiler *AuditProfilerProfile
 
 	// ComposerCodingStandard is the Composer package (e.g.
 	// "magento/magento-coding-standard") that registers this framework's phpcs

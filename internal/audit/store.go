@@ -5,17 +5,20 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
 const (
 	manifestFilename = "manifest.json"
 	resultFilename   = "audit-result.json"
+	artifactsDirname = "artifacts"
 )
 
 var validID = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -27,6 +30,12 @@ type Store struct {
 }
 
 type StoreOption func(*Store)
+
+type LeaseRecord struct {
+	Resource   string    `json:"resource"`
+	Owner      string    `json:"owner"`
+	AcquiredAt time.Time `json:"acquired_at"`
+}
 
 func WithClock(now func() time.Time) StoreOption {
 	return func(store *Store) {
@@ -207,6 +216,90 @@ func (s *Store) SessionPath(projectID, sessionID string) string {
 	return path
 }
 
+func (s *Store) AcquireLease(projectID, resource, owner string) (LeaseRecord, error) {
+	if err := validateID("project", projectID); err != nil {
+		return LeaseRecord{}, err
+	}
+	if err := validateID("lease resource", resource); err != nil {
+		return LeaseRecord{}, err
+	}
+	if strings.TrimSpace(owner) == "" {
+		return LeaseRecord{}, errors.New("audit lease owner is required")
+	}
+
+	record := LeaseRecord{
+		Resource:   resource,
+		Owner:      owner,
+		AcquiredAt: s.now().UTC(),
+	}
+	leasePath := filepath.Join(s.root, projectID, "leases", resource+".json")
+	if err := os.MkdirAll(filepath.Dir(leasePath), 0o700); err != nil {
+		return LeaseRecord{}, fmt.Errorf("create audit leases directory: %w", err)
+	}
+	raw, err := json.Marshal(record)
+	if err != nil {
+		return LeaseRecord{}, fmt.Errorf("marshal audit lease: %w", err)
+	}
+	file, err := os.OpenFile(leasePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			existing, readErr := s.readLease(projectID, resource)
+			if readErr != nil {
+				return LeaseRecord{}, readErr
+			}
+			return LeaseRecord{}, fmt.Errorf("audit lease %q is already held by %q", resource, existing.Owner)
+		}
+		return LeaseRecord{}, fmt.Errorf("create audit lease %q: %w", resource, err)
+	}
+	if _, err := file.Write(raw); err != nil {
+		_ = file.Close()
+		return LeaseRecord{}, fmt.Errorf("write audit lease %q: %w", resource, err)
+	}
+	if err := file.Close(); err != nil {
+		return LeaseRecord{}, fmt.Errorf("close audit lease %q: %w", resource, err)
+	}
+	return record, nil
+}
+
+func (s *Store) ReleaseLease(projectID, resource, owner string) error {
+	if err := validateID("project", projectID); err != nil {
+		return err
+	}
+	if err := validateID("lease resource", resource); err != nil {
+		return err
+	}
+	if strings.TrimSpace(owner) == "" {
+		return errors.New("audit lease owner is required")
+	}
+	record, err := s.readLease(projectID, resource)
+	if err != nil {
+		return err
+	}
+	if record.Owner != owner {
+		return fmt.Errorf("audit lease %q is owned by %q, not %q", resource, record.Owner, owner)
+	}
+	if err := os.Remove(s.leasePath(projectID, resource)); err != nil {
+		return fmt.Errorf("remove audit lease %q: %w", resource, err)
+	}
+	return nil
+}
+
+func (s *Store) RunArtifactPath(projectID, sessionID, runID, relativePath string) (string, error) {
+	resultPath, err := s.resultPath(projectID, sessionID, runID)
+	if err != nil {
+		return "", err
+	}
+	cleaned, err := cleanArtifactRelativePath(relativePath)
+	if err != nil {
+		return "", err
+	}
+	artifactPath := filepath.Join(filepath.Dir(resultPath), artifactsDirname, filepath.FromSlash(cleaned))
+	if err := os.MkdirAll(filepath.Dir(artifactPath), 0o700); err != nil {
+		return "", fmt.Errorf("create audit artifact directory: %w", err)
+	}
+	return artifactPath, nil
+}
+
 func (s *Store) CleanupOlderThan(projectID string, cutoff time.Time) ([]string, error) {
 	if err := validateID("project", projectID); err != nil {
 		return nil, err
@@ -286,6 +379,33 @@ func (s *Store) resultPath(projectID, sessionID, runID string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(sessionPath, "runs", runID, resultFilename), nil
+}
+
+func (s *Store) leasePath(projectID, resource string) string {
+	return filepath.Join(s.root, projectID, "leases", resource+".json")
+}
+
+func (s *Store) readLease(projectID, resource string) (LeaseRecord, error) {
+	var record LeaseRecord
+	if err := readJSON(s.leasePath(projectID, resource), &record); err != nil {
+		return LeaseRecord{}, fmt.Errorf("read audit lease %q: %w", resource, err)
+	}
+	return record, nil
+}
+
+func cleanArtifactRelativePath(relativePath string) (string, error) {
+	cleaned := pathCleanForArtifacts(relativePath)
+	if cleaned == "." || cleaned == "" {
+		return "", errors.New("audit artifact path is required")
+	}
+	if strings.HasPrefix(cleaned, "../") || cleaned == ".." || filepath.IsAbs(relativePath) {
+		return "", fmt.Errorf("invalid audit artifact path %q", relativePath)
+	}
+	return cleaned, nil
+}
+
+func pathCleanForArtifacts(value string) string {
+	return filepath.ToSlash(filepath.Clean(value))
 }
 
 func validateID(kind, value string) error {

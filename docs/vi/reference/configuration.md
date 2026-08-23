@@ -293,6 +293,15 @@ Các trường thông tin remote hỗ trợ các tham chiếu `op://...` đượ
 Govard tạo mã hash vân tay cho `.govard/docker-compose.override.yml`, `.govard/nginx/custom/`, và `.govard/apache/custom/`. Nếu bất kỳ thứ nào trong số này thay đổi, lệnh `env up` tiếp theo sẽ tự động re-render cấu trúc compose.
 
 Khi ghi đè dịch vụ, nên ưu tiên các bổ sung nhỏ (thêm biến môi trường, label, port). Việc thay thế hoàn toàn danh sách như `services.web.volumes` có thể làm mất các mount quan trọng do Govard quản lý. `.govard/nginx/custom/` và `.govard/apache/custom/` tồn tại chính xác để bạn không cần thay thế toàn bộ cấu hình web server chỉ để thêm một directive.
+
+Framework khai báo runtime audit profiler khiến `govard env up` chuẩn bị và
+mount thư mục custom đang active ngay cả khi project không có snippet nào do
+người dùng viết. `govard audit run --checks profiler` dùng include lồng nhau
+`.govard/nginx/custom/audit-profiler/` bên trong PHP FastCGI location của
+Magento cho nginx, hoặc include vhost tạm thời trong `.govard/apache/custom/`
+cho Apache và hybrid. File được đặt tên duy nhất theo từng audit run và bị xóa
+trong quá trình cleanup có lease bảo vệ; không có thiết lập profiler nào được
+ghi vào `.govard.yml` hay `app/etc/env.php` của Magento.
 :::
 
 ### Audit Lint Providers
