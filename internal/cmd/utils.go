@@ -208,6 +208,10 @@ func suppressedComposeFlags(cmd *cobra.Command, govardCmdName, detectedSubcomman
 		}
 	}
 
+	if govardCmdName == "env" && detectedSubcommand == "pull" {
+		flags["no-fallback"] = struct{}{}
+	}
+
 	return flags
 }
 
@@ -360,6 +364,13 @@ func collectGovardSpecificOptions(cmd *cobra.Command, govardCmdName, detectedSub
 				},
 			)
 		}
+	}
+
+	if govardCmdName == "env" && detectedSubcommand == "pull" {
+		specs = append(specs, helpFlagSpec{
+			Display: "--no-fallback",
+			Usage:   "Disable the automatic local image build retry if pulls fail.",
+		})
 	}
 
 	return specs

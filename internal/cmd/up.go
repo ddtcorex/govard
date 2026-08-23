@@ -289,7 +289,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 					ProjectDir:  context.Cwd,
 					ProjectName: context.Config.ProjectName,
 					ComposeFile: context.Compose,
-					Args:        []string{"pull"},
+					Args:        []string{"pull", "--ignore-buildable"},
 					Stdout:      context.Out,
 					Stderr:      context.Err,
 				})
@@ -298,19 +298,30 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 						return fmt.Errorf("docker compose pull failed: %w", err)
 					}
 
+					// A single broken image must not stop the remaining pulls:
+					// retry image by image so only failing ones fall back or fail.
 					pterm.Warning.Printf("docker compose pull failed: %v\n", err)
-					pterm.Info.Println("Attempting local Govard image build fallback...")
+					pterm.Info.Println("Retrieving project images one by one...")
 
-					built, fallbackErr := engine.FallbackBuildMissingGovardImagesFromCompose(context.Compose, context.Out, context.Err)
-					if fallbackErr != nil {
-						return fmt.Errorf("docker compose pull failed: %w (local fallback failed: %v)", err, fallbackErr)
-					}
-					if len(built) == 0 {
-						pterm.Warning.Println("No missing Govard-managed images required local build. Continuing with current local cache.")
-						return nil
+					result, resilientErr := engine.RunResilientImagePullsFromCompose(cmd.Context(), context.Compose, engine.ResilientPullOptions{
+						FallbackLocalBuild: true,
+					}, context.Out, context.Err)
+					if resilientErr != nil {
+						return fmt.Errorf("docker compose pull failed: %w (resilient retry failed: %v)", err, resilientErr)
 					}
 
-					pterm.Success.Printf("Local fallback built %d image(s): %s\n", len(built), strings.Join(built, ", "))
+					if len(result.Pulled) > 0 {
+						pterm.Success.Printf("Pulled %d image(s): %s\n", len(result.Pulled), strings.Join(result.Pulled, ", "))
+					}
+					if len(result.ReusedLocal) > 0 {
+						pterm.Success.Printf("Kept %d existing local image(s): %s\n", len(result.ReusedLocal), strings.Join(result.ReusedLocal, ", "))
+					}
+					if len(result.BuiltLocally) > 0 {
+						pterm.Success.Printf("Local fallback built %d image(s): %s\n", len(result.BuiltLocally), strings.Join(result.BuiltLocally, ", "))
+					}
+					for _, failure := range result.Failed {
+						pterm.Warning.Printf("Could not prepare %s: %v\n", failure.Image, failure.Err)
+					}
 				}
 				return nil
 			},

@@ -517,20 +517,79 @@ func resolveVarnishBuildVersions(tag string) (version string, imageTag string) {
 
 func resolveElasticsearchBuildVersion(tag string) string {
 	tag = strings.TrimSpace(tag)
-	switch tag {
-	case "7.9":
-		return "7.9.3"
-	case "7.6":
-		return "7.6.2"
-	case "7.17":
-		return "7.17.10"
-	case "6.8":
-		return "6.8.23"
-	case "8.4":
-		return "8.4.3"
-	default:
+	if tag == "" {
 		return tag
 	}
+	if _, _, _, ok := splitElasticsearchTag(tag); ok {
+		return tag
+	}
+	switch tag {
+	case "5.6":
+		return "5.6.16"
+	case "6.5":
+		return "6.5.4"
+	case "6.8":
+		return "6.8.23"
+	case "7.6":
+		return "7.6.2"
+	case "7.7":
+		return "7.7.1"
+	case "7.9":
+		return "7.9.3"
+	case "7.10":
+		return "7.10.1"
+	case "7.16":
+		return "7.16.3"
+	case "7.17":
+		return "7.17.10"
+	case "8.11":
+		return "8.11.4"
+	default:
+		if majorMinorVersionPattern.MatchString(tag) {
+			// Upstream Elastic does not publish minor-only tags: fall back to
+			// the first patch release of the requested minor so the local
+			// build FROM line always references a real upstream tag.
+			return tag + ".0"
+		}
+		return tag
+	}
+}
+
+// splitElasticsearchTag splits an Elasticsearch image tag into its major,
+// minor, and patch parts. It reports ok only for full X.Y.Z tags (with an
+// optional trailing suffix such as -amd64), because those reference real
+// upstream releases as-is. Minor-only tags (X.Y) are not published upstream.
+func splitElasticsearchTag(tag string) (major string, minor string, rest string, ok bool) {
+	base := strings.TrimSpace(tag)
+	for i := 0; i < len(base); i++ {
+		c := base[i]
+		if (c >= '0' && c <= '9') || c == '.' {
+			continue
+		}
+		base = base[:i]
+		break
+	}
+	parts := strings.Split(base, ".")
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return "", "", "", false
+		}
+		for i := 0; i < len(part); i++ {
+			if part[i] < '0' || part[i] > '9' {
+				return "", "", "", false
+			}
+		}
+	}
+	return parts[0], parts[1], strings.TrimPrefix(strings.TrimSpace(tag), base), true
+}
+
+// ResolveElasticsearchBuildVersionForTest exposes Elasticsearch build version
+// resolution for tests.
+func ResolveElasticsearchBuildVersionForTest(tag string) string {
+	return resolveElasticsearchBuildVersion(tag)
 }
 
 func resolveOpensearchBuildVersion(tag string) string {

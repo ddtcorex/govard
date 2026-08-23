@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-RUNNER_VERSION="1.0.0"
+RUNNER_VERSION="1.1.0"
 REPORT_SCHEMA_VERSION="2"
 
 # The exact PHP policy Govard supports for Magento lint work. Any version
@@ -49,7 +49,9 @@ Options:
   --linter LIST           phpcs, phpstan (comma separated, repeatable). The
                           phpcs linter runs the coding standard and, where the
                           toolchain ships it, a second PHP compatibility pass
-                          for the analyzed version.
+                          for the analyzed version. Both analyzers skip user
+                          content trees; pub/media is instead guarded by a
+                          name-only scan that reports any PHP file found there.
   --jobs COUNT            Analyzer worker count per PHP version (1-32).
   --report PATH           Report path (default <output>/report.json).
   --no-result-cache       Ignore cached analyzer state and report it bypassed.
@@ -682,7 +684,10 @@ write_phpstan_config() {
         printf '\texcludePaths:\n'
         printf '\t\tanalyse:\n'
         local excluded
-        for excluded in vendor generated var pub/static; do
+        # pub/media is user content, never shipped code: skipping it keeps the
+        # pass fast on content-heavy stores. The media guard phase below scans
+        # it for PHP uploads instead.
+        for excluded in vendor generated var pub/static pub/media; do
             printf '\t\t\t- %s\n' "$ANALYZE_DIR/$excluded/*"
         done
         if [ "$TARGET_MODE" = "standalone" ] && [ -d "$ANALYZE_DIR/vendor" ]; then
@@ -725,7 +730,10 @@ run_phpcs_pass() {
         "--report-file=$report"
         "--extensions=php,phtml"
         "--basepath=$ANALYZE_DIR"
-        "--ignore=*/vendor/*,*/generated/*,*/pub/static/*,*/var/*"
+        # pub/media is user content, never shipped code: skipping it keeps the
+        # pass fast on content-heavy stores. The media guard phase below scans
+        # it for PHP uploads instead.
+        "--ignore=*/vendor/*,*/generated/*,*/pub/static/*,*/var/*,*/pub/media/*"
         "--runtime-set" "ignore_warnings_on_exit" "0"
         "--runtime-set" "testVersion" "$version"
     )
@@ -741,6 +749,43 @@ run_phpcs_pass() {
     rm -f "$report"
     run_child "$ANALYZE_ROOT" - "$launcher" "${arguments[@]}"
     return $?
+}
+
+# Scans the target's pub/media directory for PHP files. Media is user content,
+# never shipped code, so the analyzers skip it entirely -- but a PHP file inside
+# media is how uploaded webshells land on a store, so the runner still guards it.
+# The scan is a name lookup, not an analysis: it costs milliseconds even on
+# multi-gigabyte media trees. Findings carry the M2-LINT-MEDIA tool label so
+# consumers can tell them apart from analyzer findings.
+record_media_guard() {
+    # record_media_guard VERSION
+    local version=$1
+    local phase_started status phase_status media_dir
+    phase_started=$(now_ms)
+    media_dir="$TARGET_DIR/pub/media"
+    local files=""
+    if [ -d "$media_dir" ]; then
+        files=$(find "$media_dir" -type f \( -name '*.php' -o -name '*.phtml' -o -name '*.pht' \) 2>/dev/null)
+    fi
+    if [ -z "$files" ]; then
+        record_phase "$version" "media-guard" "passed" "$(( $(now_ms) - phase_started ))" \
+            "$CACHE_STATE" "$CACHE_KEY" "media carries no PHP files"
+        return 0
+    fi
+    local file line
+    while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        # Report paths stay relative to the target root, like every analyzer
+        # finding, so consumers see "pub/media/..." and know where it lives.
+        line=${file#"$TARGET_DIR/"}
+        record "finding" "$version" "M2-LINT-MEDIA" "PHP file in pub/media" "$line" "1" \
+            "PHP file inside pub/media is executable user content; uploaded webshells land exactly here. Remove it and audit how it arrived."
+    done <<MEDIAFILES
+$files
+MEDIAFILES
+    record_phase "$version" "media-guard" "failed" "$(( $(now_ms) - phase_started ))" \
+        "$CACHE_STATE" "$CACHE_KEY" "PHP files found in pub/media"
+    return 0
 }
 
 phpcs_phase_status() {
@@ -778,6 +823,11 @@ analyze_version() {
         else
             return 2
         fi
+
+        # Media guard: pub/media is excluded from every analyzer pass above,
+        # so PHP files uploaded into media would go unseen. The guard scans it
+        # by name and reports any hit as its own finding class.
+        record_media_guard "$version"
 
         # Second PHPCS pass: the PHP compatibility standard for this exact
         # version. Its findings are normalized as M2-LINT-COMPAT.

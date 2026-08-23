@@ -68,10 +68,36 @@ govard audit cleanup --older-than 168h
 ```
 
 `run` mặc định dùng `--scope project`, `--checks lint`,
-`--lint-provider govard`, `--mode auto` và `--lint-jobs 2`. `--format json` chỉ
-ghi một JSON object không có terminal decoration ra stdout; diagnostic và log
-backend nằm ngoài stream đó. Chỉ chấp nhận `text`/`json`; `--lint-jobs` phải từ 1
-đến số PHP version được framework khai báo.
+`--lint-provider govard`, `--mode auto` và `--lint-jobs 2`. Format mặc định
+`text` in một bản tóm tắt dễ đọc: kết luận trước tiên (PASSED/FAILED/CANCELLED),
+tiếp theo là scope, thời gian chạy, môi trường, kết quả từng PHP kèm cache state
+và tối đa mười finding, cùng gợi ý lệnh kế tiếp trỏ tới report đã lưu và đúng
+lệnh rerun. Một run hoàn tất nhưng check không pass (failed hoặc cancelled) vẫn
+in đầy đủ bản tóm tắt rồi mới thoát với exit code khác 0, để script và CI nhận
+biết được kết quả. Màu chỉ được áp dụng trên terminal tương tác (`NO_COLOR` tắt
+hẳn), nên output khi pipe hay redirect không dính escape code.
+`--format json` chỉ ghi một JSON object không có terminal decoration ra stdout;
+diagnostic và log backend nằm ngoài stream đó. Chỉ chấp nhận `text`/`json`;
+`--lint-jobs` phải từ 1 đến số PHP version được framework khai báo.
+
+Ví dụ bản tóm tắt của `govard audit run`:
+
+```
+== Audit run run-0001 / session 20260822T005406Z-14bd9570 ==
+  Status:      FAILED
+  Scope:       project
+  Duration:    4.5s
+  Environment: magento2 | nginx | Govard 1.63.0
+
+  Checks
+    - lint - failed - 4.5s - provider govard
+      PHP 8.5 | failed | 3.9s | cache cold | 12 findings
+      - phpcs Squiz.Classes.ClassFileName app/code/Acme/Catalog/Model/Item.php:12: Class name is not camel case
+
+  What next
+  Full findings: ~/.govard/audit/<project-id>/sessions/<session-id>/runs/run-0001/report.json
+  Re-run:        govard audit rerun --session <session-id>
+```
 
 Mỗi lần chạy tạo
 `~/.govard/audit/<project-id>/sessions/<session-id>/manifest.json` và ghi result
@@ -131,6 +157,20 @@ Lint image cung cấp `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4` và `8.5`.
 
 Phiên bản bị từ chối sẽ lỗi với thông báo `unsupported_php:` và không thực hiện
 bất kỳ công việc container nào.
+
+#### Đường dẫn được quét
+
+Cả hai analyzer native đều bỏ qua các cây không bao giờ chứa mã shipped:
+`vendor/`, `generated/`, `var/`, `pub/static/` và `pub/media/`. Bỏ qua các
+cây nội dung người dùng giúp run toàn dự án nhanh hơn trên các store nhiều
+nội dung.
+
+Vì `pub/media` bị analyzer bỏ qua nhưng lại chính là nơi webshell được upload,
+mỗi phiên bản PHP được phân tích còn chạy thêm một phase **media guard**: quét
+theo tên trong `pub/media` để tìm file `.php`, `.phtml` và `.pht`. Mỗi file
+tìm thấy được báo thành finding `M2-LINT-MEDIA` với đường dẫn relative từ target
+root, và phase đó làm run thất bại. Phép quét này chỉ mất mili giây dù media lớn
+hàng GB; nó chỉ đọc tên file, không bao giờ đọc nội dung file vào report.
 
 #### Provider
 
@@ -292,6 +332,19 @@ govard env cleanup
 | `--quickstart` | Đường dẫn khởi động nhanh nhất |
 | `--update-lock` | Tự động cập nhật `govard.lock` nếu phát hiện sai lệch |
 | `--no-tuning` | Bỏ qua các prompt cấu hình tự động cho framework |
+
+**Hành vi của `govard env pull`:**
+
+Image được pull từng cái một. Nếu một image không thể pull (bị xóa khỏi
+registry, tag không được hỗ trợ, lỗi mạng), Govard vẫn pull tiếp các image
+còn lại và build locally các image do Govard quản lý thay vì dừng toàn bộ
+quá trình. Dùng `--no-fallback` để tắt cơ chế build local thay thế.
+
+Image search: tag `elasticsearch`/`opensearch` do Govard quản lý theo
+phiên bản minor (vd. `7.17`), trong khi `search_version` trong `.govard.yml`
+chấp nhận cả minor (`7.17`) lẫn patch đầy đủ (`7.17.28`). Version patch
+được pull nguyên trạng khi có trên registry; nếu không thì dùng image minor
+và bản build local fallback sẽ nhắm đúng bản upstream thật gần nhất.
 
 **Các file được render lại khi chạy `env up`:**
 - `~/.govard/compose/<project-hash>.yml`

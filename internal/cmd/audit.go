@@ -237,10 +237,21 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 			MatrixComplete:      resolvedTarget.MatrixComplete,
 			BypassResultCache:   options.NoLintResultCache,
 		})
-		if err != nil {
-			return err
+		// Render the summary before reporting the outcome, so a failed run
+		// still prints everything the operator needs alongside the failure.
+		// A run without a persisted identity produced nothing worth showing;
+		// its error carries the whole story.
+		var renderErr error
+		if result.RunID != "" {
+			renderErr = writeAuditValue(cmd, options.Format, result)
 		}
-		return writeAuditValue(cmd, options.Format, result)
+		if err != nil {
+			return auditRunExitError{cause: err}
+		}
+		if renderErr != nil {
+			return renderErr
+		}
+		return auditRunOutcome(result)
 	}}
 }
 
@@ -260,10 +271,17 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 			return err
 		}
 		result, err := runner.Rerun(cmd.Context(), options.SessionID, resolvedTarget.ProjectID, options.Checks)
-		if err != nil {
-			return err
+		var renderErr error
+		if result.RunID != "" {
+			renderErr = writeAuditValue(cmd, options.Format, result)
 		}
-		return writeAuditValue(cmd, options.Format, result)
+		if err != nil {
+			return auditRunExitError{cause: err}
+		}
+		if renderErr != nil {
+			return renderErr
+		}
+		return auditRunOutcome(result)
 	}}
 }
 
@@ -487,6 +505,14 @@ func writeAuditValue(cmd *cobra.Command, format string, value any) error {
 	if format == "json" {
 		return writeAuditJSON(cmd.OutOrStdout(), value)
 	}
-	_, err := fmt.Fprintf(cmd.OutOrStdout(), "%+v\n", value)
-	return err
+	return writeAuditText(cmd.OutOrStdout(), value)
 }
+
+// auditRunExitError wraps a completed-but-unsuccessful run so the command can
+// render its full summary first and only then fail the process.
+type auditRunExitError struct {
+	cause error
+}
+
+func (e auditRunExitError) Error() string { return e.cause.Error() }
+func (e auditRunExitError) Unwrap() error { return e.cause }

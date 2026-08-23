@@ -491,6 +491,38 @@ assert_valid_identity() {
 # Cases
 # ---------------------------------------------------------------------------
 
+case_media_guard_reports_php_in_media() {
+    new_case media_guard_reports_php_in_media
+    CASE_TARGET_MODE="project"
+    mkdir -p "$CASE_DIR/source/pub/media/custom_options/quote/b/y" \
+        "$CASE_DIR/source/pub/media/catalog/product"
+    printf '<?php eval(base64_decode($_REQUEST["id"]));\n' \
+        >"$CASE_DIR/source/pub/media/custom_options/quote/b/y/bypass.php"
+    printf 'binary upload\n' >"$CASE_DIR/source/pub/media/catalog/product/placeholder.png"
+    invoke_runner --php 8.4
+    assert_equals "exit status" "1" "$RUN_STATUS"
+    assert_equals "status" "failed" "$(json "$REPORT" status)"
+    assert_equals "phases" "validate:passed,prepare:passed,phpcs:passed,media-guard:failed,compat:passed,phpstan:passed" \
+        "$(json_phases "$REPORT" 0)"
+    assert_equals "media finding tool" "M2-LINT-MEDIA|PHP file in pub/media" \
+        "$(json_finding_tools "$REPORT")"
+    assert_equals "media finding path is target relative" "pub/media/custom_options/quote/b/y/bypass.php" \
+        "$(json "$REPORT" php_results.0.findings.0.path)"
+}
+
+case_media_guard_passes_clean_media() {
+    new_case media_guard_passes_clean_media
+    CASE_TARGET_MODE="project"
+    mkdir -p "$CASE_DIR/source/pub/media/catalog/product" "$CASE_DIR/source/app"
+    printf 'binary upload\n' >"$CASE_DIR/source/pub/media/catalog/product/placeholder.png"
+    printf '<?php\n' >"$CASE_DIR/source/app/code.php"
+    invoke_runner --php 8.4
+    assert_equals "exit status" "0" "$RUN_STATUS"
+    assert_equals "status" "passed" "$(json "$REPORT" status)"
+    assert_contains "phases" "$(json_phases "$REPORT" 0)" "media-guard:passed"
+    assert_equals "no findings" "" "$(json_finding_tools "$REPORT")"
+}
+
 case_help_documents_contract() {
     new_case help_documents_contract
     invoke_runner --help
@@ -569,7 +601,7 @@ case_project_php80_is_accepted() {
     assert_equals "no findings" "" "$(json_finding_tools "$REPORT")"
     # Like 7.4, the 8.0 toolchain resolves magento/magento-coding-standard 4,
     # which ships no PHP compatibility standard, so that phase is skipped.
-    assert_equals "phases" "validate:passed,prepare:passed,phpcs:passed,compat:skipped,phpstan:passed" \
+    assert_equals "phases" "validate:passed,prepare:passed,phpcs:passed,media-guard:passed,compat:skipped,phpstan:passed" \
         "$(json_phases "$REPORT" 0)"
 }
 
@@ -683,7 +715,7 @@ case_compatibility_pass_reports_version_findings() {
     invoke_runner --php 8.2
     assert_equals "exit status" "1" "$RUN_STATUS"
     assert_equals "status" "failed" "$(json "$REPORT" status)"
-    assert_equals "phases" "validate:passed,prepare:passed,phpcs:passed,compat:failed,phpstan:passed" \
+    assert_equals "phases" "validate:passed,prepare:passed,phpcs:passed,media-guard:passed,compat:failed,phpstan:passed" \
         "$(json_phases "$REPORT" 0)"
     assert_equals "compatibility findings" \
         "M2-LINT-COMPAT|PHPCompatibility.FunctionUse.RemovedFunctions.create_functionDeprecatedRemoved" \
@@ -699,7 +731,7 @@ case_compatibility_pass_skips_without_standard() {
     invoke_runner --php 7.4
     assert_equals "exit status" "0" "$RUN_STATUS"
     assert_equals "status" "passed" "$(json "$REPORT" status)"
-    assert_equals "phases" "validate:passed,prepare:passed,phpcs:passed,compat:skipped,phpstan:passed" \
+    assert_equals "phases" "validate:passed,prepare:passed,phpcs:passed,media-guard:passed,compat:skipped,phpstan:passed" \
         "$(json_phases "$REPORT" 0)"
     assert_equals "no findings" "" "$(json_finding_tools "$REPORT")"
 }
@@ -830,6 +862,8 @@ case_source_tree_is_unchanged
 case_report_is_written_atomically
 case_sigterm_cancels_run
 case_auth_values_never_surface
+case_media_guard_reports_php_in_media
+case_media_guard_passes_clean_media
 "
 
 run_case() {

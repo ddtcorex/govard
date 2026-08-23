@@ -68,10 +68,37 @@ govard audit cleanup --older-than 168h
 ```
 
 `run` defaults to `--scope project`, `--checks lint`, `--lint-provider govard`,
-`--mode auto`, and `--lint-jobs 2`. `--format json` writes one undecorated JSON
-object to stdout; diagnostics and backend logs remain out of that stream. Only
-`text` and `json` formats are accepted, and `--lint-jobs` must be between 1 and
+`--mode auto`, and `--lint-jobs 2`. The default `text` format prints a compact
+human-readable summary: the verdict first (PASSED/FAILED/CANCELLED), then scope,
+duration, environment, per-PHP results with cache state and up to ten findings,
+plus next-step hints pointing at the persisted report and the exact rerun
+command. A completed run whose checks did not pass (failed or cancelled) still
+prints its summary and then exits non-zero, so scripts and CI observe the
+outcome. Color is applied only on an interactive terminal (`NO_COLOR` disables
+it), so piped or redirected output stays free of escape codes.
+`--format json` writes one undecorated JSON object to stdout; diagnostics and
+backend logs remain out of that stream. Only `text` and `json` formats are
+accepted, and `--lint-jobs` must be between 1 and
 the number of PHP versions declared by the framework.
+
+Example `govard audit run` summary:
+
+```
+== Audit run run-0001 / session 20260822T005406Z-14bd9570 ==
+  Status:      FAILED
+  Scope:       project
+  Duration:    4.5s
+  Environment: magento2 | nginx | Govard 1.63.0
+
+  Checks
+    - lint - failed - 4.5s - provider govard
+      PHP 8.5 | failed | 3.9s | cache cold | 12 findings
+      - phpcs Squiz.Classes.ClassFileName app/code/Acme/Catalog/Model/Item.php:12: Class name is not camel case
+
+  What next
+  Full findings: ~/.govard/audit/<project-id>/sessions/<session-id>/runs/run-0001/report.json
+  Re-run:        govard audit rerun --session <session-id>
+```
 
 Each run creates `~/.govard/audit/<project-id>/sessions/<session-id>/manifest.json`
 and writes its result atomically to
@@ -132,6 +159,20 @@ The lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`.
 
 A rejected version fails with an `unsupported_php:` message and performs no
 container work at all.
+
+#### Scanned paths
+
+Both native analyzers skip trees that never contain shipped code:
+`vendor/`, `generated/`, `var/`, `pub/static/`, and `pub/media/`. Skipping
+user-content trees keeps full-project runs fast on content-heavy stores.
+
+Because `pub/media` is skipped by the analyzers but is exactly where uploaded
+webshells land, every analyzed PHP version also runs a **media guard** phase: a
+name-only scan of `pub/media` for `.php`, `.phtml`, and `.pht` files. Each hit
+is reported as an `M2-LINT-MEDIA` finding with a path relative to the target
+root, and the phase fails the run. The scan costs milliseconds even on
+multi-gigabyte media trees; it inspects file names only and never reads file
+contents into the report.
 
 #### Providers
 
@@ -295,6 +336,19 @@ govard env cleanup
 | `--quickstart` | Fastest startup path |
 | `--update-lock` | Auto-update `govard.lock` on mismatches |
 | `--no-tuning` | Skip framework auto-configuration prompts |
+
+**`govard env pull` behavior:**
+
+Images are pulled one by one. If an image cannot be pulled (removed from the
+registry, unsupported tag, network failure), Govard retries the remaining
+images and builds Govard-managed failures locally instead of aborting the
+whole pull. Pass `--no-fallback` to disable the local build retry.
+
+Search images: Govard-managed `elasticsearch`/`opensearch` tags track the
+minor version (e.g. `7.17`), while `search_version` in `.govard.yml` accepts
+either minor (`7.17`) or full patch (`7.17.28`) versions. A patch version is
+pulled as-is when published; otherwise the minor image is used and the local
+fallback build targets the closest real upstream release.
 
 **Files re-rendered on `env up`:**
 - `~/.govard/compose/<project-hash>.yml`

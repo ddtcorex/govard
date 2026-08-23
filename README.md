@@ -43,7 +43,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Inter-Project Connectivity**: Projects can securely communicate with each other (e.g., `curl https://other-project.test`) by explicitly declaring dependencies via `linked_projects`. This ensures network isolation by default and enables targeted container refreshes.
 - **Queue Support**: Optional RabbitMQ service for async workloads.
 - **High Performance**: Built with Go and uses the native Docker SDK for direct container orchestration.
-- **Local Image Fallback**: Automatically builds missing Govard-managed images locally from embedded blueprints if they cannot be pulled from Docker Hub. Disable this retry with `--no-fallback`.
+- **Resilient Image Pull & Local Image Fallback**: Images are pulled one by one, so a single unavailable image (e.g. an elasticsearch tag missing from the registry) no longer stops the remaining pulls. Missing Govard-managed images are automatically built locally from embedded blueprints; disable the retry with `--no-fallback`.
 - **Smart Templating**: Uses Go `text/template` to render dynamic Docker Compose files from framework-specific blueprints.
 - **Magento 2 Optimized**: Deep integration for Magento 2, including automated `env.php` configuration, table prefix propagation, Varnish 7.x support, and Redis caching.
 - **Remote Management (Flagship)**: Manage named remotes for sync/deploy/db workflows with scope-based capabilities (`files,media,db,deploy`) and flexible auth modes (`keychain`, `ssh-agent`, `keyfile`).
@@ -240,9 +240,12 @@ govard audit toolchain build
 Session manifests live at
 `~/.govard/audit/<project-id>/sessions/<session-id>/manifest.json`; each result
 lives under its `runs/<run-id>/audit-result.json` directory. Reruns always need
-an explicit session ID, never an implicit latest session. Use `--format json`
-for clean machine-readable stdout. Audit evidence includes the immutable image
-digest, the toolchain digest, phase timings, and cache state with its reason.
+an explicit session ID, never an implicit latest session. The default output is
+a readable summary (verdict, per-PHP results with cache state and sample
+findings, plus the exact rerun command); a failed or cancelled run exits
+non-zero after printing it. Use `--format json` for clean machine-readable
+stdout. Audit evidence includes the immutable image digest, the toolchain
+digest, phase timings, and cache state with its reason.
 
 `govard audit` analyzes a whole Magento project, a module inside one, or a
 standalone module (`--mode`). Project and module-in-project targets analyze the
@@ -253,6 +256,10 @@ The default `--lint-provider govard` needs no registry login: the lint image's
 build context is embedded in the Govard binary, a release pins the published
 image by immutable digest, and Govard builds the embedded context locally
 whenever that pinned image is unreachable or fails label verification.
+Analyzers skip user-content trees (`vendor/`, `generated/`, `var/`,
+`pub/static/`, `pub/media/`); because uploaded webshells land in `pub/media`,
+a fast name-only media guard reports any PHP file found there as an
+`M2-LINT-MEDIA` finding and fails the run.
 `~/.composer/auth.json` is mounted read only when present, and SSH agent
 forwarding is opt-in via `--allow-lint-ssh-agent`. Persistent lint caches survive
 session cleanup for warm repeat runs; a changed `composer.lock` or analyzer
