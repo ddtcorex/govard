@@ -384,7 +384,7 @@ func TestFrameworkSnapshotManifestAndDBCredentials(t *testing.T) {
 				DBDatabase:             creds.Database,
 				DBTablePrefix:          creds.TablePrefix,
 			}
-			// Password intentionally omitted from the snapshot per CLAUDE.md
+			// Password intentionally omitted from the snapshot per AGENTS.md
 			// ("Never log secrets, tokens, private keys, or DB passwords") -
 			// default local dev passwords are low-sensitivity but there is no
 			// reason to commit them to a golden fixture file either.
