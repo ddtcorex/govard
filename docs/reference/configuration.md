@@ -296,7 +296,7 @@ Remote fields support `op://...` references resolved through the 1Password CLI.
 | `.govard/commands/*` | Custom commands exposed via `govard custom` |
 | `.govard/hooks/*` | Scripts referenced by `hooks.*.run` |
 | `.govard/nginx/custom/*.conf` | Extra nginx directives included inside the rendered `server {}` block (nginx web server only) |
-| `.govard/apache/custom/*.conf` | Extra Apache directives included inside the rendered `<VirtualHost>` block (Apache web server only) |
+| `.govard/apache/custom/*.conf` | Extra Apache directives included inside the rendered `<VirtualHost>` block (Apache and hybrid web-server modes) |
 
 **Lifecycle hook events:**
 
@@ -309,6 +309,15 @@ Remote fields support `op://...` references resolved through the 1Password CLI.
 Govard fingerprints `.govard/docker-compose.override.yml`, `.govard/nginx/custom/`, and `.govard/apache/custom/`. If any of them change, the next `env up` auto-re-renders the compose output.
 
 When overriding services, prefer additive merges (extra environment variables, labels, ports). Replacing full lists like `services.web.volumes` can discard required Govard-managed mounts. `.govard/nginx/custom/` and `.govard/apache/custom/` exist precisely so you don't have to replace the whole web server config just to add a directive.
+
+Frameworks that declare a runtime audit profiler cause `govard env up` to
+prepare and mount the active custom directory even when the project has no
+user-authored snippets. `govard audit run --checks profiler` uses a nested
+`.govard/nginx/custom/audit-profiler/` include inside Magento's PHP FastCGI
+location for nginx, or a temporary `.govard/apache/custom/` vhost include for
+Apache and hybrid. Files are uniquely named per audit run and removed during
+lease-protected cleanup; no profiler setting is written to `.govard.yml` or
+Magento's `app/etc/env.php`.
 :::
 
 ### Audit Lint Providers

@@ -54,12 +54,14 @@ This is the canonical CLI reference for Govard.
 
 ### `govard audit`
 
-Run framework-declared, persistent project audits. Lint is the only check
-implemented so far; later phases will add profiler and browser jobs without
-changing session semantics.
+Run framework-declared, persistent project audits. `lint` runs static analysis;
+Magento 2 and Mage-OS also declare a Govard-native stock CSV `profiler` check.
+Later phases will add browser jobs without changing session semantics.
 
 ```bash
 govard audit run
+govard audit run --checks profiler --url 'https://shop.test/category.html?product_list_limit=48'
+govard audit run --checks lint,profiler --url 'https://shop.test/'
 govard audit diff --base origin/master
 govard audit rerun --session 20260816T010203Z-a1b2c3d4
 govard audit status --session 20260816T010203Z-a1b2c3d4
@@ -80,6 +82,23 @@ it), so piped or redirected output stays free of escape codes.
 backend logs remain out of that stream. Only `text` and `json` formats are
 accepted, and `--lint-jobs` must be between 1 and
 the number of PHP versions declared by the framework.
+
+`profiler` requires an explicit absolute HTTP(S) `--url` on the first run and a
+whole Govard project target (standalone modules and module-only targets are
+rejected before runtime mutation). The exact URL is persisted in the run and
+reused by `audit rerun`, so before/after runs capture the same page. Govard uses
+Magento's stock `MAGE_PROFILER=csvfile`; it does not install a Magento module,
+depend on a third-party repository/image, or edit `app/etc/env.php`.
+
+Run `govard env up` with the current Govard version before the first capture so
+the generated Compose stack mounts the project-owned custom configuration
+directory. During the leased capture Govard atomically creates one uniquely
+named include, reloads the active server, performs a bounded HTTP GET, collects
+`var/log/profiler.csv` through the PHP container, and restores both the include
+and runtime CSV. Nginx receives the temporary FastCGI parameter inside
+Magento's PHP location. Apache mode uses the `web` service; hybrid configures
+and reloads its `apache` service rather than nginx. The collected CSV is stored
+under `runs/<run-id>/artifacts/profiler/profile.csv` with a SHA-256 digest.
 
 Example `govard audit run` summary:
 
@@ -106,6 +125,11 @@ and writes its result atomically to
 alongside the provider's own `report.json`. `rerun`, `status`, and `result`
 require the exact `--session` value (and `result` also requires `--run`); Govard
 never chooses a latest session implicitly.
+
+A `rerun` without an explicit `--checks` repeats the check selection of the
+latest run in that session — including its persisted profiler URL — instead of
+falling back to the lint default. Passing `--checks` reruns exactly what was
+requested; either form reconstructs only the backends that selection needs.
 
 #### Target modes
 

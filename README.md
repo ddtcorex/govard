@@ -265,8 +265,25 @@ forwarding is opt-in via `--allow-lint-ssh-agent`. Persistent lint caches surviv
 session cleanup for warm repeat runs; a changed `composer.lock` or analyzer
 ruleset invalidates cached analysis by itself, and `--no-lint-result-cache`
 forces it for one run. `diff` currently records its base-ref intent but still
-analyzes the full target (`effective_scope: project`). Profiler and browser jobs
-will arrive in later audit phases.
+analyzes the full target (`effective_scope: project`).
+
+Magento 2 and Mage-OS projects can capture the stock Magento CSV profiler
+without installing a module or editing `app/etc/env.php`:
+
+```bash
+govard env up
+govard audit run --checks profiler --url 'https://shop.test/category.html?product_list_limit=48'
+```
+
+Govard clears the runtime CSV, enables `MAGE_PROFILER=csvfile` through a
+temporary web-server include, requests the exact URL with a bounded HTTP
+client, stores `profiler/profile.csv` under the run's artifact directory, then
+removes the include and runtime CSV. Nginx uses its PHP FastCGI location;
+Apache and hybrid use Apache (`hybrid` never mutates nginx). The URL is frozen
+in run evidence and reused by `audit rerun`. Profiler captures require a whole
+Govard project target, and `govard env up` must have rendered the active custom
+config mount after installing this Govard version. Browser Core Web Vitals will
+arrive in a later audit phase.
 
 Common root shortcuts are also available for day-to-day lifecycle work:
 

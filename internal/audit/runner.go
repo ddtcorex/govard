@@ -27,6 +27,7 @@ type RunRequest struct {
 	Source              SourceFingerprint
 	LintProfile         types.AuditLintProfile
 	Target              types.AuditTarget
+	ProfilerURL         string
 	SelectedPHPVersions []string
 	MatrixComplete      bool
 	// BypassResultCache asks the lint backend to ignore reusable analyzer
@@ -35,8 +36,10 @@ type RunRequest struct {
 }
 
 type RunnerOptions struct {
-	Store       *Store
-	LintBackend LintBackend
+	Store                  *Store
+	LintBackend            LintBackend
+	ProfilerRuntime        ProfilerRuntime
+	ProfilerCleanupTimeout time.Duration
 	// LintCacheRoot is the reusable lint cache root (see
 	// DefaultLintCacheRoot). When empty, the cache stays beside the persisted
 	// sessions of the audited project.
@@ -47,11 +50,13 @@ type RunnerOptions struct {
 
 // Runner coordinates persisted audit sessions without knowing any framework.
 type Runner struct {
-	store         *Store
-	lintBackend   LintBackend
-	lintCacheRoot string
-	resources     Resources
-	now           func() time.Time
+	store                  *Store
+	lintBackend            LintBackend
+	profilerRuntime        ProfilerRuntime
+	profilerCleanupTimeout time.Duration
+	lintCacheRoot          string
+	resources              Resources
+	now                    func() time.Time
 }
 
 func NewRunner(options RunnerOptions) *Runner {
@@ -66,18 +71,22 @@ func NewRunner(options RunnerOptions) *Runner {
 	if resources.MemoryMB == 0 {
 		resources.MemoryMB = 2048
 	}
-	return &Runner{store: options.Store, lintBackend: options.LintBackend, lintCacheRoot: options.LintCacheRoot, resources: resources, now: now}
+	profilerCleanupTimeout := options.ProfilerCleanupTimeout
+	if profilerCleanupTimeout <= 0 {
+		profilerCleanupTimeout = defaultProfilerCleanupTimeout
+	}
+	return &Runner{store: options.Store, lintBackend: options.LintBackend, profilerRuntime: options.ProfilerRuntime, profilerCleanupTimeout: profilerCleanupTimeout, lintCacheRoot: options.LintCacheRoot, resources: resources, now: now}
 }
 
 func (runner *Runner) Run(ctx context.Context, request RunRequest) (RunResult, error) {
-	if err := runner.validateRequest(request); err != nil {
-		return RunResult{}, err
-	}
-	checks, err := normalizeChecks(request.Checks)
+	checks, err := NormalizeChecks(request.Checks)
 	if err != nil {
 		return RunResult{}, err
 	}
 	request.Checks = checks
+	if err := runner.validateRequest(request); err != nil {
+		return RunResult{}, err
+	}
 	manifest, err := runner.store.CreateSession(SessionManifest{
 		SchemaVersion: SchemaVersion,
 		ProjectID:     request.ProjectID,
@@ -95,8 +104,9 @@ func (runner *Runner) Run(ctx context.Context, request RunRequest) (RunResult, e
 }
 
 // Rerun always requires a caller-selected session; it never guesses a latest
-// run. Scope, base ref, project root, environment, source and lint policy are
-// reloaded from the persisted session/previous run rather than caller input.
+// run. Scope, base ref, project root, environment, source, lint policy, and —
+// when the caller passes no checks — the check selection are reloaded from the
+// persisted session/previous run rather than caller input.
 func (runner *Runner) Rerun(ctx context.Context, sessionID, projectID string, checks []string) (RunResult, error) {
 	if strings.TrimSpace(sessionID) == "" {
 		return RunResult{}, errors.New("audit rerun requires an explicit session ID")
@@ -114,17 +124,37 @@ func (runner *Runner) Rerun(ctx context.Context, sessionID, projectID string, ch
 	if len(manifest.Runs) == 0 {
 		return RunResult{}, fmt.Errorf("audit session %q has no prior run to rerun", sessionID)
 	}
-	checks, err = normalizeChecks(checks)
+	// An omitted --checks repeats the latest run's selection so a rerun of a
+	// profiler-only session does not silently demand lint settings it never had.
+	if len(checks) == 0 {
+		checks, err = runner.latestRunChecks(projectID, sessionID, manifest.Runs)
+		if err != nil {
+			return RunResult{}, err
+		}
+	}
+	checks, err = NormalizeChecks(checks)
 	if err != nil {
 		return RunResult{}, err
 	}
-	previous, err := runner.store.ReadResult(projectID, sessionID, manifest.Runs[len(manifest.Runs)-1].RunID)
-	if err != nil {
-		return RunResult{}, err
+	settings := savedLintSettings{}
+	target := types.AuditTarget{}
+	requestURL := ""
+	if includesCheck(checks, "lint") {
+		settings, err = runner.latestLintSettings(projectID, sessionID, manifest.Runs)
+		if err != nil {
+			return RunResult{}, err
+		}
+		target = savedLintTarget(settings.Target, manifest)
 	}
-	settings, err := persistedLintSettings(previous)
-	if err != nil {
-		return RunResult{}, err
+	if includesCheck(checks, "profiler") {
+		profilerSettings, err := runner.latestProfilerSettings(projectID, sessionID, manifest.Runs)
+		if err != nil {
+			return RunResult{}, err
+		}
+		if target == (types.AuditTarget{}) {
+			target = profilerSettings.Target
+		}
+		requestURL = profilerSettings.URL
 	}
 	return runner.runInSession(ctx, manifest, RunRequest{
 		ProjectRoot:         manifest.ProjectRoot,
@@ -136,10 +166,50 @@ func (runner *Runner) Rerun(ctx context.Context, sessionID, projectID string, ch
 		Environment:         manifest.Environment,
 		Source:              manifest.Source,
 		LintProfile:         settings.Profile,
-		Target:              savedLintTarget(settings.Target, manifest),
+		Target:              target,
+		ProfilerURL:         requestURL,
 		SelectedPHPVersions: settings.SelectedPHPVersions,
 		MatrixComplete:      settings.MatrixComplete,
 	})
+}
+
+// LatestRunChecks reports the check selection persisted in the newest run of
+// an explicit session. The rerun command uses it to construct only the
+// backends that selection actually needs before starting a rerun.
+func (runner *Runner) LatestRunChecks(_ context.Context, projectID, sessionID string) ([]string, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return nil, errors.New("audit session checks lookup requires an explicit session ID")
+	}
+	if runner == nil || runner.store == nil {
+		return nil, errors.New("audit runner store is not configured")
+	}
+	manifest, err := runner.store.ReadSession(projectID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(manifest.Runs) == 0 {
+		return nil, fmt.Errorf("audit session %q has no prior run to rerun", sessionID)
+	}
+	return runner.latestRunChecks(projectID, sessionID, manifest.Runs)
+}
+
+func (runner *Runner) latestRunChecks(projectID, sessionID string, runs []RunReference) ([]string, error) {
+	for index := len(runs) - 1; index >= 0; index-- {
+		result, err := runner.store.ReadResult(projectID, sessionID, runs[index].RunID)
+		if err != nil {
+			return nil, err
+		}
+		checks := make([]string, 0, 2)
+		for _, job := range result.Jobs {
+			if job.ID == "lint" || job.ID == "profiler" {
+				checks = append(checks, job.ID)
+			}
+		}
+		if len(checks) > 0 {
+			return checks, nil
+		}
+	}
+	return nil, fmt.Errorf("audit session %q has no run with recognized checks", sessionID)
 }
 
 func (runner *Runner) Status(projectID, sessionID string) (SessionManifest, error) {
@@ -198,6 +268,7 @@ func (runner *Runner) runInSession(ctx context.Context, manifest SessionManifest
 	if err == nil {
 		jobsResult, scheduleErr := NewScheduler(runner.resources).Run(ctx, jobs)
 		result.Jobs = jobsResult
+		result.Artifacts = append(result.Artifacts, profilerArtifacts(jobsResult)...)
 		err = scheduleErr
 		if err == nil {
 			err = infrastructureError(jobsResult)
@@ -222,12 +293,40 @@ func (runner *Runner) jobsFor(request RunRequest, manifest SessionManifest, runI
 	if runner == nil || runner.store == nil {
 		return nil, errors.New("audit runner store is not configured")
 	}
+	jobs := make([]Job, 0, len(request.Checks))
+	for _, check := range request.Checks {
+		switch check {
+		case "lint":
+			lintJob, err := runner.lintJob(request, manifest, runID)
+			if err != nil {
+				return nil, err
+			}
+			jobs = append(jobs, lintJob)
+		case "profiler":
+			if runner.profilerRuntime == nil {
+				return nil, errors.New("audit runner profiler runtime is not configured")
+			}
+			profilerRequest := ProfilerRequest{
+				ProjectRoot: request.ProjectRoot,
+				ProjectID:   manifest.ProjectID,
+				SessionID:   manifest.SessionID,
+				RunID:       runID,
+				URL:         request.ProfilerURL,
+				Target:      request.Target,
+			}
+			jobs = append(jobs, Job{ID: "profiler", Kind: "runtime-profiler", Resources: Resources{CPU: 1, MemoryMB: 256}, Run: runner.profilerJob(profilerRequest)})
+		}
+	}
+	return jobs, nil
+}
+
+func (runner *Runner) lintJob(request RunRequest, manifest SessionManifest, runID string) (Job, error) {
 	if runner.lintBackend == nil {
-		return nil, errors.New("audit runner lint backend is not configured")
+		return Job{}, errors.New("audit runner lint backend is not configured")
 	}
 	sessionPath := runner.store.SessionPath(manifest.ProjectID, manifest.SessionID)
 	if sessionPath == "" {
-		return nil, errors.New("resolve audit session path")
+		return Job{}, errors.New("resolve audit session path")
 	}
 	runDir := filepath.Join(sessionPath, "runs", runID)
 	cacheRoot := runner.lintCacheRoot
@@ -285,7 +384,7 @@ func (runner *Runner) jobsFor(request RunRequest, manifest SessionManifest, runI
 		}
 		return evidence, nil
 	}
-	return []Job{{ID: "lint", Kind: "static-analysis", Resources: Resources{CPU: request.LintJobs, MemoryMB: 2048}, Run: lintJob}}, nil
+	return Job{ID: "lint", Kind: "static-analysis", Resources: Resources{CPU: request.LintJobs, MemoryMB: 2048}, Run: lintJob}, nil
 }
 
 // lintTargetID derives a stable per-target identifier from the canonical
@@ -352,8 +451,19 @@ func (runner *Runner) validateRequest(request RunRequest) error {
 	if runner == nil || runner.store == nil {
 		return errors.New("audit runner store is not configured")
 	}
-	if runner.lintBackend == nil {
+	if includesCheck(request.Checks, "lint") && runner.lintBackend == nil {
 		return errors.New("audit runner lint backend is not configured")
+	}
+	if includesCheck(request.Checks, "profiler") && runner.profilerRuntime == nil {
+		return errors.New("audit runner profiler runtime is not configured")
+	}
+	if includesCheck(request.Checks, "profiler") {
+		if err := ValidateProfilerURL(request.ProfilerURL); err != nil {
+			return err
+		}
+		if request.Target.Mode == types.AuditTargetStandalone {
+			return errors.New("audit profiler does not support standalone targets; run it from a Govard project")
+		}
 	}
 	if strings.TrimSpace(request.ProjectRoot) == "" || strings.TrimSpace(request.ProjectID) == "" {
 		return errors.New("audit project root and project ID are required")
@@ -364,21 +474,34 @@ func (runner *Runner) validateRequest(request RunRequest) error {
 	if request.Scope == ScopeDiff && strings.TrimSpace(request.BaseRef) == "" {
 		return errors.New("diff audit requires a base ref")
 	}
-	if request.LintJobs < 1 {
-		return errors.New("lint jobs must be at least one")
-	}
-	if err := validateLintMatrix(LintRequest{
-		Profile:             request.LintProfile,
-		Target:              request.Target,
-		SelectedPHPVersions: request.SelectedPHPVersions,
-		MatrixComplete:      request.MatrixComplete,
-	}); err != nil {
-		return err
+	if includesCheck(request.Checks, "lint") {
+		if request.LintJobs < 1 {
+			return errors.New("lint jobs must be at least one")
+		}
+		if err := validateLintMatrix(LintRequest{
+			Profile:             request.LintProfile,
+			Target:              request.Target,
+			SelectedPHPVersions: request.SelectedPHPVersions,
+			MatrixComplete:      request.MatrixComplete,
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func normalizeChecks(checks []string) ([]string, error) {
+func includesCheck(checks []string, candidate string) bool {
+	for _, check := range checks {
+		if check == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+// NormalizeChecks trims, validates, and deduplicates requested audit checks
+// while preserving the caller's first-seen order.
+func NormalizeChecks(checks []string) ([]string, error) {
 	if len(checks) == 0 {
 		return []string{"lint"}, nil
 	}
@@ -386,7 +509,7 @@ func normalizeChecks(checks []string) ([]string, error) {
 	normalized := make([]string, 0, len(checks))
 	for _, check := range checks {
 		check = strings.TrimSpace(check)
-		if check != "lint" {
+		if check != "lint" && check != "profiler" {
 			return nil, fmt.Errorf("audit check %q is not implemented", check)
 		}
 		if !seen[check] {
@@ -425,6 +548,16 @@ type savedLintSettings struct {
 	SelectedPHPVersions []string               `json:"selected_php_versions"`
 	MatrixComplete      bool                   `json:"matrix_complete"`
 }
+
+type savedProfilerSettings struct {
+	URL    string            `json:"url"`
+	Target types.AuditTarget `json:"target"`
+}
+
+var (
+	errNoPersistedLintSettings     = errors.New("audit session has no persisted lint settings")
+	errNoPersistedProfilerSettings = errors.New("audit session has no persisted profiler settings")
+)
 
 type legacySavedLintSettings struct {
 	Profile struct {
@@ -496,5 +629,57 @@ func persistedLintSettings(result RunResult) (savedLintSettings, error) {
 		}
 		return settings, nil
 	}
-	return savedLintSettings{}, errors.New("audit session has no persisted lint settings")
+	return savedLintSettings{}, errNoPersistedLintSettings
+}
+
+func (runner *Runner) latestLintSettings(projectID, sessionID string, runs []RunReference) (savedLintSettings, error) {
+	for index := len(runs) - 1; index >= 0; index-- {
+		result, err := runner.store.ReadResult(projectID, sessionID, runs[index].RunID)
+		if err != nil {
+			return savedLintSettings{}, err
+		}
+		settings, err := persistedLintSettings(result)
+		if errors.Is(err, errNoPersistedLintSettings) {
+			continue
+		}
+		return settings, err
+	}
+	return savedLintSettings{}, errNoPersistedLintSettings
+}
+
+func persistedProfilerSettings(result RunResult) (savedProfilerSettings, error) {
+	for _, job := range result.Jobs {
+		if job.ID != "profiler" {
+			continue
+		}
+		value, ok := job.Evidence["profiler_settings"]
+		if !ok {
+			break
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return savedProfilerSettings{}, err
+		}
+		var settings savedProfilerSettings
+		if err := json.Unmarshal(raw, &settings); err != nil {
+			return savedProfilerSettings{}, fmt.Errorf("decode saved profiler settings: %w", err)
+		}
+		return settings, nil
+	}
+	return savedProfilerSettings{}, errNoPersistedProfilerSettings
+}
+
+func (runner *Runner) latestProfilerSettings(projectID, sessionID string, runs []RunReference) (savedProfilerSettings, error) {
+	for index := len(runs) - 1; index >= 0; index-- {
+		result, err := runner.store.ReadResult(projectID, sessionID, runs[index].RunID)
+		if err != nil {
+			return savedProfilerSettings{}, err
+		}
+		settings, err := persistedProfilerSettings(result)
+		if errors.Is(err, errNoPersistedProfilerSettings) {
+			continue
+		}
+		return settings, err
+	}
+	return savedProfilerSettings{}, errNoPersistedProfilerSettings
 }

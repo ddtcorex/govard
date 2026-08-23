@@ -41,6 +41,11 @@ func Definition() types.FrameworkDefinition {
 			PHPStanLevel:          5,
 			PHPStanExtension:      "bitexpert/phpstan-magento",
 		},
+		AuditProfiler: &types.AuditProfilerProfile{
+			EnvironmentVariable: "MAGE_PROFILER",
+			EnvironmentValue:    "csvfile",
+			OutputPath:          "var/log/profiler.csv",
+		},
 		AuditTargetResolver:    ResolveAuditTarget,
 		ComposerCodingStandard: types.ComposerCodingStandard{Package: "magento/magento-coding-standard", Standard: "Magento2"},
 		ComposerAuth:           types.ComposerAuthRequirement{Repository: "repo.magento.com", DisplayName: "Magento 2", CredentialURL: "https://marketplace.magento.com/customer/accessKeys/"},

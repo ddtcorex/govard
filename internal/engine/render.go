@@ -405,6 +405,27 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 
 	NormalizeConfig(&config, root)
 	config.Profile = profile
+
+	// Runtime audit providers mutate only Govard-owned custom include mounts.
+	// Prepare the active web server's mount before fingerprinting so its first
+	// creation is part of the same stable render, and before Compose rendering
+	// so providers never need to recreate a running container. Hybrid terminates
+	// FastCGI in Apache.
+	if FrameworkSupportsAuditProfiler(config.Framework) {
+		var auditCustomDir string
+		switch strings.ToLower(strings.TrimSpace(config.Stack.Services.WebServer)) {
+		case "nginx":
+			auditCustomDir = filepath.Join(root, ProjectNginxCustomDir)
+		case "apache", "hybrid":
+			auditCustomDir = filepath.Join(root, ProjectApacheCustomDir)
+		}
+		if auditCustomDir != "" {
+			if err := os.MkdirAll(auditCustomDir, 0o755); err != nil {
+				return fmt.Errorf("prepare audit profiler custom config directory: %w", err)
+			}
+		}
+	}
+
 	blueprintFingerprint, err := blueprintsFingerprint(blueprintsFS)
 	if err != nil {
 		return fmt.Errorf("fingerprint blueprints: %w", err)

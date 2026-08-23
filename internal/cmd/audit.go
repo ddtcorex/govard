@@ -36,6 +36,7 @@ type auditCommandOptions struct {
 	OlderThan         time.Duration
 	TargetMode        string
 	PHPVersions       []string
+	URL               string
 }
 
 // AuditRunnerRequest is the resolved context a runner factory needs to build a
@@ -54,6 +55,9 @@ type AuditRunnerRequest struct {
 	// which only read persisted sessions and must never depend on a lint
 	// provider being constructible.
 	LintBackendRequired bool
+	// ProfilerRuntimeRequired reports whether this invocation executes a
+	// framework-owned runtime profiler.
+	ProfilerRuntimeRequired bool
 	// LintProvider is the effective provider name after flag/config precedence.
 	// It stays empty when LintBackendRequired is false, since no provider is
 	// selected for a read-only command.
@@ -68,8 +72,10 @@ type AuditRunnerRequest struct {
 // provider. Both facts are independent: rerun executes lint but reloads its PHP
 // matrix from the persisted session instead of resolving policy again.
 type auditPreparation struct {
-	ResolvePHPPolicy    bool
-	LintBackendRequired bool
+	ResolvePHPPolicy        bool
+	LintBackendRequired     bool
+	ProfilerRuntimeRequired bool
+	RequireProfilerURL      bool
 }
 
 type auditCommandDependencies struct {
@@ -90,6 +96,7 @@ type AuditDependenciesForTest struct {
 	// project-independent toolchain commands use.
 	ToolchainFactory func() (*audit.ToolchainManager, error)
 	RuntimePHPProbe  func(context.Context, types.AuditTarget, engine.Config) (version string, running bool, err error)
+	ProfilerRuntime  audit.ProfilerRuntime
 }
 
 var auditDependencyState struct {
@@ -124,7 +131,7 @@ func ResetAuditCommandForTest() {
 func defaultAuditCommandDependencies() auditCommandDependencies {
 	return auditCommandDependencies{
 		runnerFactory: func(request AuditRunnerRequest) (*audit.Runner, error) {
-			return newAuditRunner(request, nil)
+			return newAuditRunner(request, nil, nil)
 		},
 		toolchainFactory: func() (*audit.ToolchainManager, error) {
 			return audit.NewToolchainManager(audit.NewExecDockerClient(nil), engine.GovardHomeDir()), nil
@@ -146,7 +153,12 @@ func currentAuditDependencies(defaults auditCommandDependencies) auditCommandDep
 	if override.LintBackend != nil {
 		backend := override.LintBackend
 		defaults.runnerFactory = func(request AuditRunnerRequest) (*audit.Runner, error) {
-			return newAuditRunner(request, backend)
+			return newAuditRunner(request, backend, override.ProfilerRuntime)
+		}
+	} else if override.ProfilerRuntime != nil {
+		profilerRuntime := override.ProfilerRuntime
+		defaults.runnerFactory = func(request AuditRunnerRequest) (*audit.Runner, error) {
+			return newAuditRunner(request, nil, profilerRuntime)
 		}
 	}
 	if override.ToolchainFactory != nil {
@@ -173,7 +185,7 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	}
 	command.PersistentFlags().StringVar(&options.Scope, "scope", string(audit.ScopeProject), "Audit scope (project or diff)")
 	command.PersistentFlags().StringVar(&options.BaseRef, "base", "", "Base ref required for diff scope")
-	command.PersistentFlags().StringSliceVar(&options.Checks, "checks", []string{"lint"}, "Checks to run (currently: lint)")
+	command.PersistentFlags().StringSliceVar(&options.Checks, "checks", []string{"lint"}, "Checks to run (lint or profiler)")
 	command.PersistentFlags().StringVar(&options.Format, "format", "text", "Output format (text or json)")
 	command.PersistentFlags().StringVar(&options.SessionID, "session", "", "Explicit audit session ID")
 	command.PersistentFlags().StringVar(&options.RunID, "run", "", "Explicit audit run ID")
@@ -182,8 +194,9 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().BoolVar(&options.NoLintResultCache, "no-lint-result-cache", false, "Ignore reusable lint analyzer state for this run (the Composer download cache is kept)")
 	command.PersistentFlags().BoolVar(&options.AllowLintSSHAgent, "allow-lint-ssh-agent", false, "Forward SSH_AUTH_SOCK into the lint container for private Composer dependencies")
 	command.PersistentFlags().DurationVar(&options.OlderThan, "older-than", 0, "Remove sessions older than this duration")
-	command.PersistentFlags().StringVar(&options.TargetMode, "mode", "auto", "Lint target mode (auto, project, or standalone)")
+	command.PersistentFlags().StringVar(&options.TargetMode, "mode", "auto", "Audit target mode (auto, project, or standalone)")
 	command.PersistentFlags().StringSliceVar(&options.PHPVersions, "php", nil, "PHP versions; standalone only unless matching active project PHP")
+	command.PersistentFlags().StringVar(&options.URL, "url", "", "Absolute HTTP(S) URL captured by runtime audit checks")
 
 	command.AddCommand(
 		newAuditRunCommand(options, dependencies, false),
@@ -202,7 +215,7 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 	short := "Run a project audit"
 	if forceDiff {
 		use = "diff"
-		short = "Record a diff audit and run its exact lint checks"
+		short = "Record a diff audit and run its exact checks"
 	}
 	return &cobra.Command{Use: use, Short: short, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := validateAuditCommandOptions(options); err != nil {
@@ -215,12 +228,23 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if scope == audit.ScopeDiff && strings.TrimSpace(options.BaseRef) == "" {
 			return errors.New("audit diff requires --base")
 		}
-		runner, resolvedTarget, err := prepareAudit(cmd, options, dependencies, auditPreparation{ResolvePHPPolicy: true, LintBackendRequired: true})
+		lintRequested := auditChecksInclude(options.Checks, "lint")
+		profilerRequested := auditChecksInclude(options.Checks, "profiler")
+		runner, resolvedTarget, err := prepareAudit(cmd, options, dependencies, auditPreparation{
+			ResolvePHPPolicy:        lintRequested,
+			LintBackendRequired:     lintRequested,
+			ProfilerRuntimeRequired: profilerRequested,
+			RequireProfilerURL:      profilerRequested,
+		})
 		if err != nil {
 			return err
 		}
 		if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 			return err
+		}
+		lintProfile := types.AuditLintProfile{}
+		if resolvedTarget.Definition.AuditLint != nil {
+			lintProfile = *resolvedTarget.Definition.AuditLint
 		}
 		result, err := runner.Run(cmd.Context(), audit.RunRequest{
 			ProjectRoot:         auditTargetRoot(resolvedTarget.Target),
@@ -231,8 +255,9 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 			LintJobs:            options.LintJobs,
 			Environment:         auditTargetEnvironment(resolvedTarget),
 			Source:              resolvedTarget.Source,
-			LintProfile:         *resolvedTarget.Definition.AuditLint,
+			LintProfile:         lintProfile,
 			Target:              resolvedTarget.Target,
+			ProfilerURL:         options.URL,
 			SelectedPHPVersions: resolvedTarget.PHPVersions,
 			MatrixComplete:      resolvedTarget.MatrixComplete,
 			BypassResultCache:   options.NoLintResultCache,
@@ -263,14 +288,39 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 		if strings.TrimSpace(options.SessionID) == "" {
 			return errors.New("audit rerun requires --session")
 		}
-		runner, resolvedTarget, err := prepareAudit(cmd, options, dependencies, auditPreparation{LintBackendRequired: true})
+		// Without an explicit --checks the rerun repeats the latest run's
+		// selection; peek it straight from the persisted session store so no
+		// lint backend or profiler runtime is constructed for the lookup.
+		effectiveChecks := options.Checks
+		if !cmd.Flags().Changed("checks") {
+			mode := types.AuditTargetMode(strings.TrimSpace(options.TargetMode))
+			if mode == "" {
+				mode = types.AuditTargetAuto
+			}
+			resolvedDeps := currentAuditDependencies(dependencies)
+			peekTarget, err := resolveAuditTarget(cmd.Context(), commandStartDirectory(), mode, options.PHPVersions, resolvedDeps.runtimePHPProbe, false)
+			if err != nil {
+				return err
+			}
+			peekRunner := audit.NewRunner(audit.RunnerOptions{Store: audit.NewStore(audit.DefaultStoreRoot(engine.GovardHomeDir()))})
+			effectiveChecks, err = peekRunner.LatestRunChecks(cmd.Context(), peekTarget.ProjectID, options.SessionID)
+			if err != nil {
+				return err
+			}
+		}
+		lintRequested := auditChecksInclude(effectiveChecks, "lint")
+		profilerRequested := auditChecksInclude(effectiveChecks, "profiler")
+		runner, resolvedTarget, err := prepareAudit(cmd, options, dependencies, auditPreparation{
+			LintBackendRequired:     lintRequested,
+			ProfilerRuntimeRequired: profilerRequested,
+		})
 		if err != nil {
 			return err
 		}
 		if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 			return err
 		}
-		result, err := runner.Rerun(cmd.Context(), options.SessionID, resolvedTarget.ProjectID, options.Checks)
+		result, err := runner.Rerun(cmd.Context(), options.SessionID, resolvedTarget.ProjectID, effectiveChecks)
 		var renderErr error
 		if result.RunID != "" {
 			renderErr = writeAuditValue(cmd, options.Format, result)
@@ -365,11 +415,28 @@ func prepareAudit(cmd *cobra.Command, options *auditCommandOptions, dependencies
 		return nil, resolvedAuditTarget{}, err
 	}
 	request := AuditRunnerRequest{
-		ProjectRoot:         auditTargetRoot(target.Target),
-		Definition:          target.Definition,
-		Target:              target.Target,
-		Config:              target.Config,
-		LintBackendRequired: preparation.LintBackendRequired,
+		ProjectRoot:             auditTargetRoot(target.Target),
+		Definition:              target.Definition,
+		Target:                  target.Target,
+		Config:                  target.Config,
+		LintBackendRequired:     preparation.LintBackendRequired,
+		ProfilerRuntimeRequired: preparation.ProfilerRuntimeRequired,
+	}
+	if preparation.ProfilerRuntimeRequired {
+		if target.Definition.AuditProfiler == nil {
+			return nil, resolvedAuditTarget{}, fmt.Errorf("framework %q does not support profiler audit", target.Definition.Name)
+		}
+		if target.Config == nil || target.Target.Mode == types.AuditTargetStandalone {
+			return nil, resolvedAuditTarget{}, errors.New("audit profiler does not support standalone targets; run it from a Govard project")
+		}
+		if target.Target.Mode != types.AuditTargetProject {
+			return nil, resolvedAuditTarget{}, fmt.Errorf("audit profiler requires a project target, got %q", target.Target.Mode)
+		}
+		if preparation.RequireProfilerURL {
+			if err := audit.ValidateProfilerURL(options.URL); err != nil {
+				return nil, resolvedAuditTarget{}, err
+			}
+		}
 	}
 	// Provider precedence is only resolved for an invocation that actually runs
 	// lint; a read-only command must not select a provider at all.
@@ -410,23 +477,32 @@ func validateAuditOptions(options *auditCommandOptions, definition types.Framewo
 	if err := validateAuditCommandOptions(options); err != nil {
 		return err
 	}
-	if definition.AuditLint == nil {
-		return fmt.Errorf("framework %q does not support lint audit", definition.Name)
-	}
-	if options.LintJobs < 1 || options.LintJobs > len(definition.AuditLint.ProjectPHPVersions) {
-		return fmt.Errorf("lint jobs must be between 1 and %d", len(definition.AuditLint.ProjectPHPVersions))
+	if auditChecksInclude(options.Checks, "lint") {
+		if definition.AuditLint == nil {
+			return fmt.Errorf("framework %q does not support lint audit", definition.Name)
+		}
+		if options.LintJobs < 1 || options.LintJobs > len(definition.AuditLint.ProjectPHPVersions) {
+			return fmt.Errorf("lint jobs must be between 1 and %d", len(definition.AuditLint.ProjectPHPVersions))
+		}
 	}
 	return nil
+}
+
+func auditChecksInclude(checks []string, candidate string) bool {
+	for _, check := range checks {
+		if strings.TrimSpace(check) == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAuditCommandOptions(options *auditCommandOptions) error {
 	if _, err := auditScope(options.Scope, false, false); err != nil {
 		return err
 	}
-	for _, check := range options.Checks {
-		if strings.TrimSpace(check) != "lint" {
-			return fmt.Errorf("audit check %q is not implemented", check)
-		}
+	if _, err := audit.NormalizeChecks(options.Checks); err != nil {
+		return err
 	}
 	if err := validateAuditProviderOption(options); err != nil {
 		return err

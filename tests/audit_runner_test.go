@@ -81,6 +81,50 @@ func TestAuditRunnerRerunUsesFrozenManifestAndRejectsProjectMismatch(t *testing.
 	}
 }
 
+func TestAuditRerunFindsLatestLintSettingsAfterProfilerOnlyRun(t *testing.T) {
+	backend := &fakeLintBackend{report: passingLintReport("project-aabbccdd")}
+	runtime := &fakeProfilerRuntime{}
+	store := newDeterministicAuditStore(t)
+	runner := audit.NewRunner(audit.RunnerOptions{Store: store, LintBackend: backend, ProfilerRuntime: runtime, Resources: audit.Resources{CPU: 2, MemoryMB: 2048}})
+	request := auditRunRequest()
+	request.Checks = []string{"lint", "profiler"}
+	request.ProfilerURL = "https://shop.test/"
+	first, err := runner.Run(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Rerun(context.Background(), first.SessionID, first.ProjectID, []string{"profiler"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Rerun(context.Background(), first.SessionID, first.ProjectID, []string{"lint"}); err != nil {
+		t.Fatalf("lint rerun after profiler-only run = %v", err)
+	}
+	if len(backend.requests) != 2 {
+		t.Fatalf("lint backend calls = %d, want two", len(backend.requests))
+	}
+}
+
+func TestAuditProfilerOnlyRerunPreservesProjectTarget(t *testing.T) {
+	backend := &fakeLintBackend{report: passingLintReport("project-aabbccdd")}
+	runtime := &fakeProfilerRuntime{}
+	store := newDeterministicAuditStore(t)
+	runner := audit.NewRunner(audit.RunnerOptions{Store: store, LintBackend: backend, ProfilerRuntime: runtime, Resources: audit.Resources{CPU: 2, MemoryMB: 2048}})
+	request := auditRunRequest()
+	request.Checks = []string{"lint", "profiler"}
+	request.ProfilerURL = "https://shop.test/"
+	request.Target = types.AuditTarget{Framework: "magento2", ProjectRoot: "/work/shop", TargetPath: "/work/shop", Mode: types.AuditTargetProject}
+	first, err := runner.Run(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Rerun(context.Background(), first.SessionID, first.ProjectID, []string{"profiler"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := runtime.activateRequests[len(runtime.activateRequests)-1].Target; !reflect.DeepEqual(got, request.Target) {
+		t.Fatalf("profiler rerun target = %#v, want %#v", got, request.Target)
+	}
+}
+
 func TestAuditRunnerPersistsLintFailureAndInfrastructureError(t *testing.T) {
 	t.Run("lint failure", func(t *testing.T) {
 		backend := &fakeLintBackend{report: failedLintReport("project-aabbccdd")}
