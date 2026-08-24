@@ -142,8 +142,8 @@ directory:
 | `module_in_project` | The directory is a module — either `etc/module.xml` (how `app/code` modules are declared) or a Composer package of type `magento2-module` — inside a Magento project | Only the module, with the whole project mounted read only so its autoloader resolves |
 | `standalone` | The directory is a module with no Magento project anywhere above it | Only the module; its dependencies are installed into a scratch worktree and scanned for symbols |
 
-`--mode project` and `--mode standalone` force a classification and fail when the
-directory does not support it.
+`--mode project`, `--mode module_in_project`, and `--mode standalone` force a
+classification and fail when the directory does not support it.
 
 ```bash
 # project: run from the Magento project root

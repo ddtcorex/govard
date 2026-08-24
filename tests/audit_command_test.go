@@ -629,6 +629,67 @@ func TestAuditCommandNoLongerAcceptsTheUnreleasedLintBackendFlag(t *testing.T) {
 	}
 }
 
+// auditTargetModeVocabulary mirrors every value the --mode flag accepts; the
+// help text and the unknown-mode error must both document this exact set.
+var auditTargetModeVocabulary = []string{"auto", "project", "module_in_project", "standalone"}
+
+func TestAuditModeFlagHelpDocumentsEveryTargetMode(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	help, err := executeAuditCommand(t, project, []string{"audit", "--help"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var modeUsage []string
+	for _, line := range strings.Split(string(help), "\n") {
+		if strings.Contains(line, "--mode") {
+			modeUsage = append(modeUsage, line)
+		}
+	}
+	if len(modeUsage) == 0 {
+		t.Fatalf("audit help does not document a --mode flag:\n%s", help)
+	}
+	documented := strings.Join(modeUsage, "\n")
+	for _, mode := range auditTargetModeVocabulary {
+		if !strings.Contains(documented, mode) {
+			t.Fatalf("audit --mode help does not document target mode %q; got:\n%s", mode, documented)
+		}
+	}
+}
+
+func TestAuditUnknownModeErrorNamesValidModes(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	installAuditCommandDependencies(t, &commandLintBackend{})
+	_, err := executeAuditCommand(t, project, []string{"audit", "run", "--mode", "module"})
+	if err == nil {
+		t.Fatal("an unknown audit target mode was accepted")
+	}
+	for _, mode := range auditTargetModeVocabulary {
+		if !strings.Contains(err.Error(), mode) {
+			t.Fatalf("unknown-mode error does not name valid mode %q: %v", mode, err)
+		}
+	}
+}
+
+func TestAuditUnknownModeIsRejectedWithTheModeVocabulary(t *testing.T) {
+	// Outside any framework project: the mode vocabulary check must fire
+	// before target resolution can produce its less actionable
+	// "no framework can resolve audit target" failure.
+	project := t.TempDir()
+	installAuditCommandDependencies(t, &commandLintBackend{})
+	_, err := executeAuditCommand(t, project, []string{"audit", "run", "--mode", "module"})
+	if err == nil {
+		t.Fatal("an unknown audit target mode was accepted")
+	}
+	if !strings.Contains(err.Error(), "unknown audit target mode") {
+		t.Fatalf("error does not name the unknown audit target mode problem: %v", err)
+	}
+	for _, mode := range auditTargetModeVocabulary {
+		if !strings.Contains(err.Error(), mode) {
+			t.Fatalf("unknown-mode error does not name valid mode %q: %v", mode, err)
+		}
+	}
+}
+
 func auditRunnerRequestForProvider(t *testing.T, provider string, config *engine.Config) cmd.AuditRunnerRequest {
 	t.Helper()
 	root := t.TempDir()

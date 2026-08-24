@@ -11,6 +11,13 @@ const (
 	AuditTargetStandalone AuditTargetMode = "standalone"
 )
 
+// AuditTargetModes lists every --mode value in vocabulary order. The audit
+// command's help text and its unknown-mode error both render this list, so the
+// accepted values stay documented in exactly one place.
+func AuditTargetModes() []AuditTargetMode {
+	return []AuditTargetMode{AuditTargetAuto, AuditTargetProject, AuditTargetModule, AuditTargetStandalone}
+}
+
 // AuditTargetResolveRequest supplies the user-selected starting point and an
 // optional mode override to a framework-owned target resolver.
 type AuditTargetResolveRequest struct {

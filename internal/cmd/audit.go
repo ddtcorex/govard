@@ -194,7 +194,7 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().BoolVar(&options.NoLintResultCache, "no-lint-result-cache", false, "Ignore reusable lint analyzer state for this run (the Composer download cache is kept)")
 	command.PersistentFlags().BoolVar(&options.AllowLintSSHAgent, "allow-lint-ssh-agent", false, "Forward SSH_AUTH_SOCK into the lint container for private Composer dependencies")
 	command.PersistentFlags().DurationVar(&options.OlderThan, "older-than", 0, "Remove sessions older than this duration")
-	command.PersistentFlags().StringVar(&options.TargetMode, "mode", "auto", "Audit target mode (auto, project, or standalone)")
+	command.PersistentFlags().StringVar(&options.TargetMode, "mode", "auto", auditTargetModeUsage())
 	command.PersistentFlags().StringSliceVar(&options.PHPVersions, "php", nil, "PHP versions; standalone only unless matching active project PHP")
 	command.PersistentFlags().StringVar(&options.URL, "url", "", "Absolute HTTP(S) URL captured by runtime audit checks")
 
@@ -501,6 +501,9 @@ func validateAuditCommandOptions(options *auditCommandOptions) error {
 	if _, err := auditScope(options.Scope, false, false); err != nil {
 		return err
 	}
+	if err := validateAuditTargetMode(options.TargetMode); err != nil {
+		return err
+	}
 	if _, err := audit.NormalizeChecks(options.Checks); err != nil {
 		return err
 	}
@@ -508,6 +511,43 @@ func validateAuditCommandOptions(options *auditCommandOptions) error {
 		return err
 	}
 	return validateAuditOutputOptions(options)
+}
+
+// auditTargetModeUsage renders the --mode help text from the framework-owned
+// mode vocabulary so a new mode cannot be added without the flag documenting it.
+func auditTargetModeUsage() string {
+	names := auditTargetModeNames()
+	if len(names) == 0 {
+		return "Audit target mode"
+	}
+	if len(names) == 1 {
+		return "Audit target mode (" + names[0] + ")"
+	}
+	return "Audit target mode (" + strings.Join(names[:len(names)-1], ", ") + ", or " + names[len(names)-1] + ")"
+}
+
+// auditTargetModeNames lists the accepted --mode values in vocabulary order.
+func auditTargetModeNames() []string {
+	modes := types.AuditTargetModes()
+	names := make([]string, 0, len(modes))
+	for _, mode := range modes {
+		names = append(names, string(mode))
+	}
+	return names
+}
+
+// validateAuditTargetMode rejects an unknown --mode value before any target
+// resolution runs. Left unchecked, a typo like `--mode module` would fall
+// through to the generic "no framework can resolve audit target" failure and
+// never tell the operator which values exist.
+func validateAuditTargetMode(mode string) error {
+	trimmed := strings.TrimSpace(mode)
+	for _, candidate := range types.AuditTargetModes() {
+		if trimmed == string(candidate) {
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown audit target mode %q (valid modes: %s)", mode, strings.Join(auditTargetModeNames(), ", "))
 }
 
 // validateAuditProviderOption only rejects a syntactically unusable provider
