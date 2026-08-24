@@ -144,8 +144,8 @@ mục hiện tại:
 | `module_in_project` | Thư mục là một module — qua `etc/module.xml` (cách khai báo module `app/code`) hoặc Composer package type `magento2-module` — nằm bên trong một Magento project | Chỉ module đó, toàn bộ project được mount read-only để autoloader phân giải được |
 | `standalone` | Thư mục là một module và không có Magento project nào ở cấp trên | Chỉ module đó; dependency được cài vào worktree tạm và chỉ được scan lấy symbol |
 
-`--mode project` và `--mode standalone` buộc một phân loại cụ thể và sẽ lỗi khi
-thư mục không thỏa điều kiện.
+`--mode project`, `--mode module_in_project` và `--mode standalone` buộc một
+phân loại cụ thể và sẽ lỗi khi thư mục không thỏa điều kiện.
 
 ```bash
 # project: chạy từ project root của Magento
