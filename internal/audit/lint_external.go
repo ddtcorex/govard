@@ -162,7 +162,11 @@ func (provider *ExternalLintProvider) Run(ctx context.Context, request LintReque
 	if cancellationCause := externalLintCancellationCause(ctx); cancellationCause != nil {
 		return cancelledExternalLintResult(cancellationCause, nil)
 	}
-	commandErr := provider.runContainer(ctx, container, logFile)
+	output := io.Writer(logFile)
+	if request.StreamWriter != nil {
+		output = io.MultiWriter(logFile, request.StreamWriter)
+	}
+	commandErr := provider.runContainer(ctx, container, output)
 	provider.runLifecycleHook(externalLintAfterRun)
 	if cancellationCause := externalLintCancellationCause(ctx); cancellationCause != nil {
 		return LintReport{Status: string(StatusCancelled)}, externalLintCancelledError(cancellationCause, provider.cleanupContainer(container.Name, logFile))

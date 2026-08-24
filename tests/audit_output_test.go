@@ -1,12 +1,14 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"govard/internal/audit"
+	"govard/internal/cmd"
 )
 
 // textLintBackend reports the configured report for every invocation, so
@@ -201,5 +203,26 @@ func TestAuditCleanupDefaultTextReportsRemovedSessions(t *testing.T) {
 	}
 	if strings.Contains(rendered, "map[removed_sessions:") {
 		t.Fatalf("cleanup text output still dumps the raw map:\n%s", rendered)
+	}
+}
+
+func TestFindingColoredStringContainsANSIAndLocation(t *testing.T) {
+	finding := audit.LintFinding{Tool: "phpcs", Rule: "Magento2.Classes.AbstractApi", Path: "app/code/Acme/Module/Model/Item.php", Line: 42, Column: 5, Message: "AbstractApi sniff violation"}
+	colored := cmd.FindingColoredStringForTest(finding)
+	if !strings.Contains(colored, "\x1b[") {
+		t.Fatalf("colored finding lacks ANSI codes: %q", colored)
+	}
+	for _, want := range []string{"phpcs", "Magento2.Classes.AbstractApi", "app/code/Acme/Module/Model/Item.php:42:5"} {
+		if !strings.Contains(colored, want) {
+			t.Fatalf("colored finding missing %q: %q", want, colored)
+		}
+	}
+	// Non-terminal and NO_COLOR must stay plain
+	if cmd.AuditColorEnabledForTest(&bytes.Buffer{}) {
+		t.Fatalf("bytes.Buffer must not be considered a terminal")
+	}
+	t.Setenv("NO_COLOR", "1")
+	if cmd.AuditColorEnabledForTest(&bytes.Buffer{}) {
+		t.Fatalf("NO_COLOR must disable color even for a terminal-like writer")
 	}
 }

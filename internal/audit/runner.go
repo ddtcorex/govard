@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,6 +34,13 @@ type RunRequest struct {
 	// BypassResultCache asks the lint backend to ignore reusable analyzer
 	// state for this run.
 	BypassResultCache bool
+	// Output receives live progress while the run executes when the command
+	// is in text mode on an interactive terminal. The runner forwards it to
+	// the lint backend's StreamWriter so Docker logs (phase start/end,
+	// per-PHP cache state, and later per-finding lines) appear as they
+	// happen, mirroring vendor/bin/phpcs/phpstan. In --format json the
+	// field stays nil so machine output is not polluted.
+	Output io.Writer
 }
 
 type RunnerOptions struct {
@@ -350,6 +358,7 @@ func (runner *Runner) lintJob(request RunRequest, manifest SessionManifest, runI
 		SelectedPHPVersions: append([]string(nil), request.SelectedPHPVersions...),
 		MatrixComplete:      request.MatrixComplete,
 		BypassResultCache:   request.BypassResultCache,
+		StreamWriter:        request.Output,
 	}
 	lintJob := func(ctx context.Context) (map[string]any, error) {
 		report, runErr := runner.lintBackend.Run(ctx, lintRequest)

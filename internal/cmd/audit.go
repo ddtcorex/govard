@@ -246,6 +246,13 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if resolvedTarget.Definition.AuditLint != nil {
 			lintProfile = *resolvedTarget.Definition.AuditLint
 		}
+		streamWriter := io.Writer(nil)
+		if options.Format != "json" {
+			// Text mode streams live Docker logs (phase progress, cache
+			// state) as they happen, mirroring vendor/bin/phpcs/phpstan.
+			// JSON stays machine-clean for AI agents.
+			streamWriter = cmd.OutOrStdout()
+		}
 		result, err := runner.Run(cmd.Context(), audit.RunRequest{
 			ProjectRoot:         auditTargetRoot(resolvedTarget.Target),
 			ProjectID:           resolvedTarget.ProjectID,
@@ -261,6 +268,7 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 			SelectedPHPVersions: resolvedTarget.PHPVersions,
 			MatrixComplete:      resolvedTarget.MatrixComplete,
 			BypassResultCache:   options.NoLintResultCache,
+			Output:              streamWriter,
 		})
 		// Render the summary before reporting the outcome, so a failed run
 		// still prints everything the operator needs alongside the failure.

@@ -166,7 +166,7 @@ func (r auditTextRenderer) checks(jobs []audit.JobResult) {
 }
 
 func (r auditTextRenderer) phpResult(php auditLintPHPView) {
-	parts := []string{"PHP " + php.Version, auditPlainStatus(php.Outcome)}
+	parts := []string{"PHP " + php.Version, auditStatusText(audit.Status(php.Outcome), r.color)}
 	if php.DurationMS > 0 {
 		parts = append(parts, auditHumanDuration(php.DurationMS))
 	}
@@ -174,15 +174,95 @@ func (r auditTextRenderer) phpResult(php auditLintPHPView) {
 	if cache == "" {
 		cache = "unknown"
 	}
-	parts = append(parts, "cache "+cache, fmt.Sprintf("%d findings", len(php.Findings)))
+	// Cache state benefits from a subtle color so scanning for "cold" vs "warm" is fast.
+	cacheText := "cache " + cache
+	if r.color {
+		switch cache {
+		case "cold":
+			cacheText = pterm.NewStyle(pterm.FgYellow).Sprint(cacheText)
+		case "warm":
+			cacheText = pterm.NewStyle(pterm.FgGreen).Sprint(cacheText)
+		case "bypassed":
+			cacheText = pterm.NewStyle(pterm.FgGray).Sprint(cacheText)
+		}
+	}
+	parts = append(parts, cacheText, fmt.Sprintf("%d findings", len(php.Findings)))
 	r.printf("      %s", strings.Join(parts, " | "))
+	limit := auditMaxDisplayedFindings
+	if r.color {
+		// On an interactive terminal the operator is actively fixing code;
+		// show every finding like vendor/bin/phpcs does. The piped case stays
+		// capped to avoid flooding CI logs — the full report is always on disk.
+		limit = len(php.Findings)
+	}
 	for index, finding := range php.Findings {
-		if index == auditMaxDisplayedFindings {
+		if index == limit {
 			r.printf("      ... and %d more findings (see the full report under What next)", len(php.Findings)-index)
 			break
 		}
-		r.printf("      - %s", finding.String())
+		line := finding.String()
+		if r.color {
+			line = findingColoredString(finding)
+		}
+		r.printf("      - %s", line)
 	}
+}
+
+// findingColoredString renders a single lint finding with terminal colors,
+// mirroring the vendor/bin/phpcs and phpstan CLIs the operator already knows:
+// tool dim, rule yellow, path cyan, message white. The plain String() stays
+// untouched for JSON and piped text. ANSI codes are emitted directly so the
+// helper is deterministic even when pterm's global DisableStyling is set in
+// tests or CI.
+func findingColoredString(finding auditLintFindingView) string {
+	location := finding.Path
+	if location == "" {
+		location = "(unknown path)"
+	}
+	if finding.Line > 0 {
+		location += ":" + fmt.Sprint(finding.Line)
+		if finding.Column > 0 {
+			location += ":" + fmt.Sprint(finding.Column)
+		}
+	}
+	// Explicit ANSI instead of pterm.NewStyle so tests never depend on the
+	// global pterm.DisableStyling flag (which CI and several hermetic tests
+	// flip). The palette mirrors auditStatusStyles: cyan for paths, bold
+	// light-blue for the tool, yellow for the rule.
+	const (
+		ansiCyan          = "\x1b[36m"
+		ansiYellow        = "\x1b[33m"
+		ansiLightBlueBold = "\x1b[94;1m"
+		ansiReset         = "\x1b[0m"
+	)
+	location = ansiCyan + location + ansiReset
+
+	prefix := finding.Tool
+	if prefix == "" {
+		prefix = "lint"
+	}
+	prefix = ansiLightBlueBold + prefix + ansiReset
+
+	rule := ""
+	if finding.Rule != "" {
+		rule = ansiYellow + finding.Rule + ansiReset
+	}
+
+	message := finding.Message
+	if len(message) > 160 {
+		message = message[:157] + "..."
+	}
+
+	var head string
+	if rule != "" {
+		head = prefix + " " + rule
+	} else {
+		head = prefix
+	}
+	if message == "" {
+		return head + " " + location
+	}
+	return head + " " + location + ": " + message
 }
 
 func (r auditTextRenderer) errors(errors []audit.AuditError) {
@@ -561,4 +641,15 @@ func auditSourceSummary(source audit.SourceFingerprint) string {
 func auditReportPath(projectID, sessionID, runID string) string {
 	root := audit.DefaultStoreRoot(engine.GovardHomeDir())
 	return fmt.Sprintf("%s/%s/sessions/%s/runs/%s/report.json", root, projectID, sessionID, runID)
+}
+
+// FindingColoredStringForTest exposes findingColoredString for hermetic tests.
+func FindingColoredStringForTest(finding audit.LintFinding) string {
+	view := auditLintFindingView{Tool: finding.Tool, Rule: finding.Rule, Path: finding.Path, Line: finding.Line, Column: finding.Column, Message: finding.Message}
+	return findingColoredString(view)
+}
+
+// AuditColorEnabledForTest exposes auditColorEnabled for hermetic tests.
+func AuditColorEnabledForTest(writer io.Writer) bool {
+	return auditColorEnabled(writer)
 }

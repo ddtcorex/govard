@@ -690,6 +690,35 @@ func TestAuditUnknownModeIsRejectedWithTheModeVocabulary(t *testing.T) {
 	}
 }
 
+func TestAuditRunStreamsOnlyInTextMode(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		format     string
+		wantStream bool
+	}{
+		{"json stays machine-clean", "json", false},
+		{"text streams live progress like vendor/bin", "text", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			project := auditCommandProject(t, "magento2")
+			backend := &commandLintBackend{}
+			installAuditCommandDependencies(t, backend)
+			if _, err := executeAuditCommand(t, project, []string{"audit", "run", "--format", tc.format}); err != nil {
+				// Text run with a passing report succeeds; json the same.
+				// A non-nil error here would be a helper failure, not the case under test.
+				t.Fatalf("executeAuditCommand: %v", err)
+			}
+			if len(backend.requests) == 0 {
+				t.Fatalf("lint backend was not invoked")
+			}
+			gotStream := backend.requests[0].StreamWriter != nil
+			if gotStream != tc.wantStream {
+				t.Fatalf("StreamWriter nil=%v, want stream=%v (format %q)", backend.requests[0].StreamWriter == nil, tc.wantStream, tc.format)
+			}
+		})
+	}
+}
+
 func auditRunnerRequestForProvider(t *testing.T, provider string, config *engine.Config) cmd.AuditRunnerRequest {
 	t.Helper()
 	root := t.TempDir()
