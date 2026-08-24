@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.64.0] - 2026-08-25
+
+### ✨ New Features
+
+- **Govard-Native Magento Profiler:** `govard audit run --checks profiler --url https://shop.test/` captures a live Magento `csvfile` profile via a temporary FastCGI env (`MAGE_PROFILER=csvfile`) injected through the active web server (nginx/Apache/hybrid), guarded by a per-project `diagnostics` lease and restored automatically. Supports `--checks lint,profiler`, rerun-by-session with persisted profiler URL, and stores the CSV as `profiler/profile.csv` artifact. See `govard audit --help` and `docs/reference/cli-commands.md`.
+- **Streaming Audit Progress & Colorized Findings:** `govard audit run` in `--format text` now streams Docker lint logs (phase start/end, cache state, magelint progress) as they happen by forwarding `StreamWriter` to both lint backends; `--format json` stays a single object on stdout for AI agents. TTY findings are colorized (cyan path, yellow rule, bold light-blue tool) and uncapped like `vendor/bin/phpcs`/`phpstan`; piped output stays plain and capped at 10.
+- **Audit Media Guard:** analyzers now skip `pub/media` (user content) for speed; a name-only scan reports any `*.php|*.phtml|*.pht` found there as `M2-LINT-MEDIA` findings.
+
+### 🛠 Improvements
+
+- **Resilient Image Pulls:** `govard env up` and `govard env pull` now run `docker compose pull --ignore-buildable` and fall back per-image: a failed pull reuses a compatible local image when present, otherwise builds the Govard-managed image locally; third-party images without a local build still fail fast. Elasticsearch `search_version` minors now resolve to concrete upstream patches (e.g. `7.10 -> 7.10.1`, `8.11 -> 8.11.4`) and unknown minors fall back to `X.Y.0`.
+- **Human-Readable Default Text Output:** `govard audit run|status|result|cleanup` without `--format json` now renders a compact text summary (status first, then scope/checks/errors/next steps) instead of raw struct dumps; failed/cancelled runs still render before exiting non-zero.
+
+### 🐛 Bug Fixes
+
+- `--mode` now validates against the full vocabulary (`auto`, `project`, `module_in_project`, `standalone`) and rejects typos like `--mode module` with `unknown audit target mode (valid modes: ...)` before target resolution; help text lists every mode via `types.AuditTargetModes()`.
+
+### 📚 Documentation
+
+- Consolidated `AGENTS.md` as the canonical agent instructions and mandated the superpowers workflow.
+- Documented streaming `text` vs `json` behavior for AI agents and every `--mode` value in both English and Vietnamese references.
+
 ## [1.63.0] - 2026-08-20
 
 ### ✨ New Features
