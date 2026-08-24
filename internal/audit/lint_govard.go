@@ -253,7 +253,11 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 	if cause := externalLintCancellationCause(ctx); cause != nil {
 		return cancelledGovardLintResult(cause, nil)
 	}
-	runErr := backend.runContainer(ctx, container, logFile)
+	output := io.Writer(logFile)
+	if request.StreamWriter != nil {
+		output = io.MultiWriter(logFile, request.StreamWriter)
+	}
+	runErr := backend.runContainer(ctx, container, output)
 	if cause := externalLintCancellationCause(ctx); cause != nil {
 		return LintReport{Status: lintStatusCancelled}, govardLintCancelledError(cause, backend.cleanupContainer(container.Name, logFile))
 	}

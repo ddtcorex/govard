@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 
 	"govard/internal/frameworks/types"
@@ -49,6 +50,13 @@ type LintRequest struct {
 	// for this run. The backend, not the runner, turns it into the runner
 	// argument and the "bypassed" cache evidence it must observe in return.
 	BypassResultCache bool
+	// StreamWriter receives live Docker log output while the backend runs. When
+	// nil the backend writes only to its persisted govard-lint.log file. The
+	// host command passes the terminal writer in text mode so operators see
+	// phase progress (validate → prepare → phpcs/phpstan) as it happens,
+	// mirroring vendor/bin/phpcs behaviour; in --format json the writer stays
+	// nil so machine output is not polluted.
+	StreamWriter io.Writer
 }
 
 type LintPhase struct {
