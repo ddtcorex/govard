@@ -70,18 +70,24 @@ govard audit cleanup --older-than 168h
 ```
 
 `run` defaults to `--scope project`, `--checks lint`, `--lint-provider govard`,
-`--mode auto`, and `--lint-jobs 2`. The default `text` format prints a compact
+`--mode auto`, and `--lint-jobs 2`. The default `text` format streams live
+progress like `vendor/bin/phpcs`/`vendor/bin/phpstan` — phase `validate` →
+`prepare` → `phpcs`/`phpstan`, cache state (`cold`/`warm`/`bypassed`), and
+`magelint: php X.Y analyzed` appear as they happen — then prints a compact
 human-readable summary: the verdict first (PASSED/FAILED/CANCELLED), then scope,
-duration, environment, per-PHP results with cache state and up to ten findings,
-plus next-step hints pointing at the persisted report and the exact rerun
-command. A completed run whose checks did not pass (failed or cancelled) still
-prints its summary and then exits non-zero, so scripts and CI observe the
-outcome. Color is applied only on an interactive terminal (`NO_COLOR` disables
-it), so piped or redirected output stays free of escape codes.
-`--format json` writes one undecorated JSON object to stdout; diagnostics and
-backend logs remain out of that stream. Only `text` and `json` formats are
-accepted, and `--lint-jobs` must be between 1 and
-the number of PHP versions declared by the framework.
+duration, environment, per-PHP results with cache state and findings, plus
+next-step hints pointing at the persisted report and the exact rerun command. On
+an interactive TTY (and when `NO_COLOR` is unset) findings are colorized (tool
+bold light-blue, rule yellow, `path:line:col` cyan) and every finding is shown
+like the native CLIs; when piped or redirected the output stays plain and is
+capped at ten findings (`... and N more`) to keep CI logs readable. A completed
+run whose checks did not pass (failed or cancelled) still prints its summary
+and then exits non-zero, so scripts and CI observe the outcome.
+`--format json` writes one undecorated JSON object to stdout for AI agents;
+diagnostics, backend logs, and the `ERROR audit run … reported failed checks`
+exit hint remain on stderr or in the persisted `govard-lint.log`. Only `text`
+and `json` formats are accepted, and `--lint-jobs` must be between 1 and the
+number of PHP versions declared by the framework.
 
 `profiler` requires an explicit absolute HTTP(S) `--url` on the first run and a
 whole Govard project target (standalone modules and module-only targets are

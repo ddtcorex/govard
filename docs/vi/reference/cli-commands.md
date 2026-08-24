@@ -72,16 +72,21 @@ govard audit cleanup --older-than 168h
 
 `run` mặc định dùng `--scope project`, `--checks lint`,
 `--lint-provider govard`, `--mode auto` và `--lint-jobs 2`. Format mặc định
-`text` in một bản tóm tắt dễ đọc: kết luận trước tiên (PASSED/FAILED/CANCELLED),
-tiếp theo là scope, thời gian chạy, môi trường, kết quả từng PHP kèm cache state
-và tối đa mười finding, cùng gợi ý lệnh kế tiếp trỏ tới report đã lưu và đúng
-lệnh rerun. Một run hoàn tất nhưng check không pass (failed hoặc cancelled) vẫn
-in đầy đủ bản tóm tắt rồi mới thoát với exit code khác 0, để script và CI nhận
-biết được kết quả. Màu chỉ được áp dụng trên terminal tương tác (`NO_COLOR` tắt
-hẳn), nên output khi pipe hay redirect không dính escape code.
-`--format json` chỉ ghi một JSON object không có terminal decoration ra stdout;
-diagnostic và log backend nằm ngoài stream đó. Chỉ chấp nhận `text`/`json`;
-`--lint-jobs` phải từ 1 đến số PHP version được framework khai báo.
+`text` stream tiến trình trực tiếp như `vendor/bin/phpcs`/`vendor/bin/phpstan` —
+giai đoạn `validate` → `prepare` → `phpcs`/`phpstan`, trạng thái cache
+(`cold`/`warm`/`bypassed`) và `magelint: php X.Y analyzed` hiện ngay khi chạy —
+rồi mới in bản tóm tắt: kết luận trước (PASSED/FAILED/CANCELLED), scope, thời
+gian, môi trường, kết quả từng PHP kèm findings và gợi ý `What next` trỏ tới
+report đã lưu cùng lệnh rerun chính xác. Trên TTY tương tác (và khi chưa đặt
+`NO_COLOR`) findings được tô màu (tool xanh nhạt đậm, rule vàng,
+`path:line:col` cyan) và hiện toàn bộ như CLI gốc; khi pipe/redirect thì giữ
+plain và chỉ hiện tối đa mười finding (`... and N more`) để log CI gọn. Một run
+hoàn tất nhưng check không pass (failed/cancelled) vẫn in tóm tắt rồi mới thoát
+khác 0 để script/CI nhận biết được. `--format json` chỉ ghi một JSON object
+không decoration ra stdout cho AI Agents; diagnostic, log backend và dòng
+`ERROR audit run … reported failed checks` nằm ở stderr hoặc `govard-lint.log`
+đã lưu. Chỉ chấp nhận `text`/`json`; `--lint-jobs` phải từ 1 đến số PHP version
+framework khai báo.
 
 `profiler` yêu cầu `--url` tuyệt đối HTTP(S) tường minh ở run đầu tiên và target
 phải là toàn bộ Govard project (standalone module lẫn module-only target đều bị
