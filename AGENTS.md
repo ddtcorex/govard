@@ -171,6 +171,7 @@ Update `docs/*.md` for: command names/aliases/flags, config behavior, remote/syn
 ## Git Workflow
 
 - Always start a new feature branch for each work session — never commit directly to `master`/`develop`.
+- Commit messages follow the workspace **Commit Message Format** (root `AGENTS.md` § Git Rules): Conventional Commits — `feat(govard): ...`, `fix(engine): ...` — English, imperative mood, subject ≤ 72 chars; one logical change per commit; never commit with red tests (`make test`).
 - When development on a feature branch is complete (tests passing, ready for review), proactively create a GitHub issue with full details (problem/motivation, scope, what changed) and a GitHub PR with full details (summary, rationale, test plan) that links back to that issue (e.g. `Closes #<issue>` in the PR body) — don't wait to be asked.
 - After every squash/force-push to an existing PR branch, re-read the PR description and linked issue (`gh pr view`, `gh issue view`) and update them if the shipped diff no longer matches — a squash easily leaves stale Summary/Validation bullets behind.
 
