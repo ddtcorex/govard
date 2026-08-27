@@ -1,0 +1,86 @@
+name: Bug Report
+description: Report a reproducible bug in Govard.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please search existing issues to avoid duplicates.
+        For security vulnerabilities, use private reporting: https://github.com/ddtcorex/govard/security/advisories
+
+  - type: input
+    id: version
+    attributes:
+      label: Govard version
+      description: Output of `govard version` (or `bin/govard version` if built locally)
+      placeholder: "v1.64.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the project is affected?
+      options:
+        - Environment startup (env up / compose)
+        - Bootstrap / framework detection
+        - Database / sync / remote
+        - Blueprint / proxy / networking
+        - Desktop app
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Go, Docker, Node versions
+      render: bash
+      placeholder: |
+        uname -a
+        go version
+        docker --version
+        node --version
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `govard init` ...
+        2. Run `govard env up` ...
+        3. Observe error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      render: shell
+
+  - type: textarea
+    id: contact
+    attributes:
+      label: Contact
+      description: Optional — how to reach you for follow-up (also reachable at kaido4492@gmail.com)
+      placeholder: kaido4492@gmail.com

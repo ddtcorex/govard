@@ -1,0 +1,61 @@
+name: Feature Request
+description: Suggest a new feature or improvement to Govard.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please search existing issues and check `AGENTS.md` for the Superpowers 3-phase workflow.
+        For questions, contact kaido4492@gmail.com.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New framework support
+        - Existing framework improvement
+        - Engine / blueprint / compose
+        - CLI / UX / doctor
+        - Desktop app
+        - Documentation / DX
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve? What is the use case?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe your preferred solution. Include scope and example usage if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: List alternatives or workarounds you tried.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, screenshots, or examples from similar tools.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and this is not a duplicate
+          required: true
+        - label: I am willing to contribute a PR following the Superpowers 3-phase workflow and Conventional Commits
