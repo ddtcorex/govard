@@ -2,16 +2,140 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main, master, develop]
   pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
+env:
+  GO_VERSION: "1.25.x"
+
 jobs:
+  quality_checks:
+    name: Quality Checks (Vet + Format)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run go vet
+        run: make vet
+
+      - name: Run golangci-lint
+        run: make lint
+
+      - name: Check gofmt formatting
+        run: |
+          unformatted="$(find . -type f -name '*.go' -not -path './vendor/*' -print0 | xargs -0 gofmt -s -l)"
+          if [ -n "$unformatted" ]; then
+            echo "The following files need formatting:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check generated framework registration is up to date
+        run: make generate-check
+
+  fast_tests:
+    name: Fast Tests (Frontend + Unit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run fast test suite
+        run: make test-unit test-frontend
+
+  integration_tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: fast_tests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build integration test binary
+        run: make build-test-binary
+
+      - name: Run integration test suite
+        run: make test-integration-ci
+
+  build_binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: [quality_checks, fast_tests, integration_tests]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build release binaries
+        run: make build
+
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: govard-binaries
+          path: bin/
+
   verify:
-    uses: ddtcorex/dsh-maestro-ci/.github/workflows/go-lib.yml@689916eaef46b2bb0b6948e5b4b878d158435d0d
+    name: verify / verify
+    runs-on: ubuntu-latest
+    needs: [quality_checks, fast_tests, integration_tests, build_binaries]
+    if: always()
+    steps:
+      - name: Gate
+        run: |
+          for r in "${{ needs.quality_checks.result }}" "${{ needs.fast_tests.result }}" "${{ needs.integration_tests.result }}" "${{ needs.build_binaries.result }}"; do
+            [ "$r" = "success" ] || [ "$r" = "skipped" ] || exit 1
+          done
