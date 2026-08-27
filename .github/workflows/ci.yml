@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ddtcorex/dsh-maestro-ci/.github/workflows/go-lib.yml@689916eaef46b2bb0b6948e5b4b878d158435d0d

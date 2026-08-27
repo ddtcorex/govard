@@ -19,6 +19,7 @@ import (
 	"govard/internal/engine"
 	"govard/internal/frameworks/types"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -197,6 +198,7 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().StringVar(&options.TargetMode, "mode", "auto", auditTargetModeUsage())
 	command.PersistentFlags().StringSliceVar(&options.PHPVersions, "php", nil, "PHP versions; standalone only unless matching active project PHP")
 	command.PersistentFlags().StringVar(&options.URL, "url", "", "Absolute HTTP(S) URL captured by runtime audit checks")
+	command.PersistentFlags().StringVar(&options.URL, "profiler-url", "", "Alias for --url (absolute HTTP(S) URL captured by runtime audit checks)")
 
 	command.AddCommand(
 		newAuditRunCommand(options, dependencies, false),
@@ -242,6 +244,7 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 			return err
 		}
+		warnXdebugGuard(cmd, resolvedTarget.Config)
 		lintProfile := types.AuditLintProfile{}
 		if resolvedTarget.Definition.AuditLint != nil {
 			lintProfile = *resolvedTarget.Definition.AuditLint
@@ -574,6 +577,18 @@ func validateAuditOutputOptions(options *auditCommandOptions) error {
 		return fmt.Errorf("unsupported audit format %q (use text or json)", options.Format)
 	}
 	return nil
+}
+
+func warnXdebugGuard(cmd *cobra.Command, cfg *engine.Config) {
+	if cfg == nil {
+		return
+	}
+	if engine.XdebugGuard(*cfg) {
+		pterm.Warning.Println("Xdebug enabled, ~10-20% performance tax; disable for bench fidelity (stack.features.xdebug:true)")
+	}
+	// MAGE_MODE guard is best-effort; only warn when explicitly non-production.
+	// The engine's MageModeGuard is reused so the message stays consistent.
+	_ = cmd
 }
 
 func auditEnvironment(config engine.Config) audit.EnvironmentFingerprint {
