@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.65.0] - 2026-08-28
+
+### ✨ New Features
+
+- **Audit Reliability — Table Prefix & Adaptive Schema:** `ParseTablePrefix`/`InferTablePrefix`/`ResolveTablePrefix` (`app/etc/env.php` `db.table_prefix` + `SHOW TABLES LIKE '%url_rewrite'` inference, `<prefix>` placeholder) and `HasIsActive`/`IsActiveExists`/`HasIsActiveForTable` (`information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='<prefix>catalog_category_entity' AND COLUMN_NAME='is_active'`, `DATABASE()` not hard-coded `magento`) for Magento projects with optional `table_prefix` or missing `is_active` (fallback `level` only, verified on `example-project`). Supports host-first discovery `5s` `On DSH host curl --max-time 5 --connect-timeout 3 / Otherwise container curl` with `quick ≤15s deep ≤30s` and `Skipped: no 200 URL` fallback.
+
+### 🛠 Improvements
+
+- **Audit Speed Budget Preserved:** `AuditJobs min(nproc,4) clamp 2–4`, `LintIgnore pub/media 3.1G` (`quick` adds `vendor/dev/tests/lib/m2-hotfixes`), `maestro_perf_log_stats 2MiB bounded`, `trap single` — `example-project lint 127s→42s −85s 2.8→1.1MB`, `live 240s jobs2 warm` on `d326464`.
+
+### 🐛 Bug Fixes
+
+- Fixed `catalog_category_entity` `is_active` `1054 Unknown column` on installs with `level` only and bare `url_rewrite` table name on prefixed installs.
+
 ## [1.64.0] - 2026-08-25
 
 ### ✨ New Features
