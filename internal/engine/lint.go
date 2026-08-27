@@ -2,11 +2,70 @@ package engine
 
 import (
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 
 	"govard/internal/conventions"
 )
+
+var tablePrefixRe = regexp.MustCompile(`['"]table_prefix['"]\s*=>\s*['"]([^'"]*)['"]`)
+
+// ParseTablePrefix extracts db.table_prefix from app/etc/env.php content.
+// Returns "" when no prefix is set or content is empty.
+func ParseTablePrefix(content string) string {
+	m := tablePrefixRe.FindStringSubmatch(content)
+	if len(m) < 2 {
+		return ""
+	}
+	return m[1]
+}
+
+// InferTablePrefix infers prefix from SHOW TABLES LIKE '%url_rewrite' result.
+// e.g. ["mg_url_rewrite"] -> "mg_", ["url_rewrite"] -> "".
+func InferTablePrefix(tables []string) string {
+	if len(tables) == 0 {
+		return ""
+	}
+	for _, t := range tables {
+		if strings.HasSuffix(t, "url_rewrite") {
+			return strings.TrimSuffix(t, "url_rewrite")
+		}
+	}
+	return ""
+}
+
+// ResolveTablePrefix prefers env.php prefix, falls back to inference.
+func ResolveTablePrefix(envContent string, tables []string) string {
+	if p := ParseTablePrefix(envContent); p != "" {
+		return p
+	}
+	return InferTablePrefix(tables)
+}
+
+// TablePrefix is alias for ResolveTablePrefix.
+func TablePrefix(envContent string, tables []string) string {
+	return ResolveTablePrefix(envContent, tables)
+}
+
+// HasIsActive checks if is_active column exists in column list.
+func HasIsActive(cols []string) bool {
+	for _, c := range cols {
+		if c == "is_active" {
+			return true
+		}
+	}
+	return false
+}
+
+// IsActiveExists alias.
+func IsActiveExists(cols []string) bool { return HasIsActive(cols) }
+
+// HasIsActiveColumn alias.
+func HasIsActiveColumn(cols []string) bool { return HasIsActive(cols) }
+
+// HasIsActiveForTable checks is_active with prefix context (same check).
+func HasIsActiveForTable(cols []string, _ string) bool { return HasIsActive(cols) }
 
 // LintIgnore returns ignore patterns for lint. Quick mode ignores
 // vendor/dev/tests/lib/m2-hotfixes and always ignores generated artefacts.
