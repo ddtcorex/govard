@@ -66,10 +66,13 @@ Khi có `GOVARD_ENV=staging`, Govard sẽ tải thêm:
 
 | Biến | Tác dụng |
 | :--- | :--- |
-| `GOVARD_HOME_DIR` | Ghi đè thư mục `~/.govard` |
-| `GOVARD_BLUEPRINTS_DIR` | Ghi đè vị trí tìm kiếm blueprint |
-| `GOVARD_IMAGE_REPOSITORY` | Ghi đè tiền tố repository image được quản lý |
+| `GOVARD_ENV` | Kích hoạt layer cấu hình theo môi trường (`.govard.<env>.yml` + `.govard/.govard.<env>.yml` được load cuối cùng) |
+| `GOVARD_HOME_DIR` | Ghi đè thư mục `~/.govard` — toàn bộ state, file compose, cert, và cache |
+| `GOVARD_BLUEPRINTS_DIR` | Ghi đè vị trí tìm kiếm blueprint (merged `blueprints.FS`) |
+| `GOVARD_IMAGE_REPOSITORY` | Ghi đè tiền tố repository image được quản lý (vd. `ghcr.io/my-org/govard-`) |
 | `GOVARD_DOCKER_DIR` | Ghi đè local Docker build context cho các build fallback |
+
+`GOVARD_ENV` là biến duy nhất ảnh hưởng tới thứ tự layer cấu hình; các biến còn lại ảnh hưởng tới filesystem/image. Các test nội bộ còn dùng `GOVARD_GLOBAL_COMMANDS_DIR`, `GOVARD_OPERATIONS_LOG_PATH`, `GOVARD_PROJECT_REGISTRY_PATH` để cô lập state — không cần cho sử dụng thông thường.
 
 ---
 
@@ -182,6 +185,7 @@ Govard sử dụng giá trị này cho Magento 2/Mage-OS `env.php`, Magento 1/Op
 | `stack.services.queue` | `rabbitmq`, `none` | Dịch vụ queue (hàng đợi) |
 | `stack.php_version` | ví dụ: `8.4`, `none` | Phiên bản PHP (`none` = không có PHP container) |
 | `stack.node_version` | ví dụ: `24` | Phiên bản Node.js |
+| `stack.python_version` | ví dụ: `3.12` | Phiên bản Python (chỉ Django, Dagster; mặc định `3.12`) |
 | `stack.db_version` | ví dụ: `11.4` | Phiên bản database |
 | `stack.web_root` | ví dụ: `/pub`, `/public` | Thư mục web root |
 | `stack.composer_version` | `1`, `2`, `2.2`, `latest`, hoặc bất kỳ phiên bản nào | Phiên bản Composer |

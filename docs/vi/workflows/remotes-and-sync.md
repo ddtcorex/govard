@@ -163,6 +163,7 @@ Govard tích hợp bộ lọc tự động khi đồng bộ media Magento nhằm
 | **None** | `--media none` | Bỏ qua hoàn toàn việc đồng bộ media |
 | **Minimal** | `--media minimal` | `*.jpg`, `*.png`, `*.webp`, `*.mp4`, `*.pdf` (chỉ đồng bộ asset code) |
 | **Optimized** | Chế độ mặc định | `catalog/product/` (Magento), `*/cache/*` (WordPress) |
+| **Catalog** | `--media catalog` | Như optimized nhưng bao gồm ảnh sản phẩm, bỏ qua cache sản phẩm (chỉ Magento) |
 | **All** | `--media all` | Đồng bộ tất cả mọi thứ (sử dụng cẩn thận) |
 
 ::: info LƯU Ý
@@ -355,6 +356,50 @@ govard db dump -e staging --local --no-noise --no-pii
 
 ```bash
 govard bootstrap --clone -e staging --no-pii --no-noise --yes
+```
+
+**Tình huống: Bootstrap Magento hiệu quả**
+
+Giả sử bạn đang bootstrap một dự án Magento 2 lớn nhưng chỉ muốn code và một phần media:
+
+```bash
+# Clone code, sync DB không PII, và sync media KHÔNG có ảnh sản phẩm nặng (mặc định: optimized)
+govard bootstrap --clone -e staging --no-pii --no-noise --yes
+```
+
+**Tình huống: Đồng bộ media có chọn lọc với exclude**
+
+Nếu bạn cần đồng bộ media nhưng muốn bỏ qua một thư mục lớn không nằm trong smart exclude mặc định:
+
+```bash
+# Sync media từ staging nhưng bỏ qua thư mục large-assets
+govard sync -s staging --media -X "large-assets/*"
+```
+
+**Tình huống: Cần ảnh sản phẩm khi bootstrap**
+
+Nếu bạn thực sự cần ảnh sản phẩm cho công việc frontend:
+
+```bash
+govard bootstrap --clone -e staging --media all --yes
+```
+
+**Tình huống: "Cây chổi" vs "Cây nhíp"**
+
+Kết hợp smart mode có sẵn (cây chổi) với custom exclude (cây nhíp) để kiểm soát tối đa:
+
+```bash
+# Lấy toàn bộ media nhưng bỏ qua thư mục backup cũ trên server
+govard bootstrap --clone -e staging --media all -X "pub/media/backup_2022/*" --yes
+```
+
+**Tình huống: Đồng bộ siêu nhanh (Minimal)**
+
+Nếu bạn chỉ làm frontend CSS/JS và không quan tâm ảnh:
+
+```bash
+# Chỉ đồng bộ asset tĩnh (css, js, fonts, json)
+govard sync -s staging --media minimal
 ```
 
 ---

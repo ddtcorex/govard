@@ -163,6 +163,7 @@ Govard implements automated filtering for Magento media sync to optimize bandwid
 | **None** | `--media none` | Skips media sync entirely |
 | **Minimal** | `--media minimal` | `*.jpg`, `*.png`, `*.webp`, `*.mp4`, `*.pdf` (assets only) |
 | **Optimized** | Default mode | `catalog/product/` (Magento), `*/cache/*` (WordPress) |
+| **Catalog** | `--media catalog` | Like optimized but includes product images, skips product caches (Magento only) |
 | **All** | `--media all` | Truly all (includes everything, use with caution) |
 
 ::: info NOTE

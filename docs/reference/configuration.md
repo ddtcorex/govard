@@ -66,10 +66,13 @@ With `GOVARD_ENV=staging`, Govard additionally loads:
 
 | Variable | Effect |
 | :--- | :--- |
-| `GOVARD_HOME_DIR` | Override `~/.govard` |
-| `GOVARD_BLUEPRINTS_DIR` | Override blueprint lookup location |
-| `GOVARD_IMAGE_REPOSITORY` | Override managed image repository prefix |
+| `GOVARD_ENV` | Activate an environment-specific override layer (`.govard.<env>.yml` + `.govard/.govard.<env>.yml` are loaded last) |
+| `GOVARD_HOME_DIR` | Override `~/.govard` — all state, compose files, certs, and caches |
+| `GOVARD_BLUEPRINTS_DIR` | Override blueprint lookup location (merged `blueprints.FS`) |
+| `GOVARD_IMAGE_REPOSITORY` | Override managed image repository prefix (e.g. `ghcr.io/my-org/govard-`) |
 | `GOVARD_DOCKER_DIR` | Override local Docker build contexts for fallback builds |
+
+`GOVARD_ENV` is the only variable that affects config layering; the other three affect filesystem/image resolution. Internal tests also use `GOVARD_GLOBAL_COMMANDS_DIR`, `GOVARD_OPERATIONS_LOG_PATH`, and `GOVARD_PROJECT_REGISTRY_PATH` to isolate global state — they are not needed for normal use.
 
 ---
 
@@ -182,6 +185,7 @@ Govard uses this value for Magento 2/Mage-OS `env.php`, Magento 1/OpenMage `loca
 | `stack.services.queue` | `rabbitmq`, `none` | Queue service |
 | `stack.php_version` | e.g. `8.4`, `none` | PHP version (`none` = no PHP container) |
 | `stack.node_version` | e.g. `24` | Node.js version |
+| `stack.python_version` | e.g. `3.12` | Python version (Django, Dagster only; default `3.12`) |
 | `stack.db_version` | e.g. `11.4` | Database version |
 | `stack.web_root` | e.g. `/pub`, `/public` | Web root directory |
 | `stack.composer_version` | `1`, `2`, `2.2`, `latest`, or any point version | Composer version |

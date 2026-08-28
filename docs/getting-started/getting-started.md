@@ -24,19 +24,20 @@ Govard inspects `composer.json` or `package.json`, detects the framework, and wr
 
 | Framework | Detection |
 | :--- | :--- |
-| Magento 2 | `composer.json` with `magento/magento2-base` |
+| Magento 2 | `composer.json` with `magento/product-community-edition`, `magento/product-enterprise-edition`, or `magento/framework` |
 | Mage-OS | `composer.json` with `mage-os/product-community-edition` or `mage-os/project-community-edition` |
-| Magento 1 / OpenMage | `composer.json` patterns |
-| Laravel | `artisan` file + `composer.json` |
+| Magento 1 / OpenMage | `composer.json` with `magento-hackathon/magento-composer-installer`, `openmage/magento-lts`, or `colinmollenhour/modman` |
+| Laravel | `artisan` file + `composer.json` with `laravel/framework` |
 | Next.js | `package.json` with `next` dependency |
-| Emdash | Emdash project markers |
-| Drupal | `composer.json` with `drupal/core` |
-| Symfony | `symfony/framework-bundle` |
-| Shopware | `shopware/core` |
-| CakePHP | `cakephp/cakephp` |
-| PrestaShop | `config/defines.inc.php` |
-| Django | `manage.py` |
+| Emdash | Project markers from the Emdash scaffold (`src/app` layout + Emdash config) |
+| Drupal | `composer.json` with `drupal/core` or `drupal/core-recommended` |
+| Symfony | `composer.json` with `symfony/framework-bundle` |
+| Shopware | `composer.json` with `shopware/core` |
+| CakePHP | `composer.json` with `cakephp/cakephp` |
+| PrestaShop | `config/defines.inc.php` or `composer.json` with `prestashop/prestashop` |
 | WordPress | `wp-config.php` or `wp-login.php` |
+| Django | `manage.py` at project root |
+| Dagster | `workspace.yaml` or `dagster.yaml` at project root |
 | Custom | Interactive stack picker (`govard init --framework custom`) |
 
 ### Force a Specific Framework

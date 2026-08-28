@@ -25,8 +25,8 @@ func ResolveConfigLayerPaths(root string) []string {
 }
 
 // ResolveConfigLayerPathsWithProfile builds the ordered list of config files.
-// Load order: Base → Profile → GOVARD_ENV → Local → ProjectLocal.
-// Profile is inserted after base so local overrides always win.
+// Load order: Base → Profile → Local → ProjectLocal → GOVARD_ENV → ProjectEnv.
+// Profile is inserted after base so local overrides always win; GOVARD_ENV layers are last so env-specific overrides win over local dev overrides.
 func ResolveConfigLayerPathsWithProfile(root, profile string) []string {
 	paths := []string{
 		filepath.Join(root, BaseConfigFile),

@@ -317,11 +317,14 @@ govard bootstrap -e staging --no-pii --no-noise
 | `-X, --exclude` | Các pattern loại trừ rsync tùy chỉnh (có thể lặp lại nhiều lần) |
 | `--no-db` | Bỏ qua bước import database |
 | `--no-media` | Bỏ qua bước đồng bộ file media |
-| `--media [mode]` | Chế độ đồng bộ media (`none`, `minimal`, `optimized`, `all`) |
+| `--media [mode]` | Chế độ đồng bộ media (`none`, `minimal`, `optimized`, `catalog` (Magento), `all`) |
 | `--no-composer` | Bỏ qua việc chạy `composer install` |
 | `--no-admin` | Bỏ qua bước tạo tài khoản admin (chỉ áp dụng cho Magento 2) |
 | `--no-stream-db` | Sử dụng một file tạm local để truyền DB thay vì stream trực tiếp |
 | `--no-up` | Bỏ qua bước khởi động container local trước khi chạy bootstrap |
+| `--code-only` | Chỉ clone code (bỏ qua DB/media, kèm `--clone`) |
+| `--fix-deps` | Chạy hook `fix-deps` trước khi bootstrap |
+| `--framework-version` | Phiên bản framework cho cài mới (vd. `2.4.9` cho Magento) |
 
 Đối với các dự án Magento 2/Mage-OS, Magento 1/OpenMage hoặc PrestaShop có thiết lập `table_prefix`, các bộ lọc bảo mật DB sẽ tự động áp dụng chính xác cho các bảng có tiền tố tương ứng.
 
@@ -358,11 +361,15 @@ govard env cleanup
 | Cờ | Tác dụng |
 | :--- | :--- |
 | `--pull` | Tải về các image mới nhất trước khi chạy |
-| `--fallback-local-build` | Build các image bị thiếu ở local |
+| `--fallback-local-build` | Build các image bị thiếu ở local (mặc định `true`) |
 | `--remove-orphans` | Xóa các container không còn trong cấu hình (orphaned) |
-| `--quickstart` | Đường dẫn khởi động nhanh nhất |
+| `--quickstart` | Đường dẫn khởi động nhanh nhất (chỉ dịch vụ tối thiểu) |
 | `--update-lock` | Tự động cập nhật `govard.lock` nếu phát hiện sai lệch |
 | `--no-tuning` | Bỏ qua các prompt cấu hình tự động cho framework |
+| `--profile <name>` | Dùng profile cụ thể (`.govard.<name>.yml`) cho lần chạy này |
+| `--force-recreate` | Tạo lại container dù config không đổi |
+
+`--profile` là cách inline thay cho `govard config profile switch`; vẫn cần `govard env up` để áp dụng.
 
 **Hành vi của `govard env pull`:**
 
@@ -504,8 +511,11 @@ Khởi chạy các công cụ test bên trong container ứng dụng.
 govard test phpunit
 govard test phpstan
 govard test mftf
+govard test unit
 govard test integration
 ```
+
+`unit` là alias chạy `phpunit` nhanh; `phpstan` fallback `--level=0` với `app/code`+`app/design` (Magento 2) hoặc `app`+`src` khi chưa có `phpstan.neon` riêng.
 
 ### `govard custom`
 
@@ -594,7 +604,7 @@ Khi cờ `--media` được gọi mà không truyền mode cụ thể, Govard s�
 | `--plan` | Chỉ hiển thị kế hoạch thực thi rồi thoát |
 | `-I, --include` | Pattern bao gồm của rsync (có thể khai báo nhiều lần) |
 | `-X, --exclude` | Pattern loại trừ của rsync (có thể khai báo nhiều lần) |
-| `-m, --media [mode]` | Phạm vi đồng bộ media (`none`, `minimal`, `optimized`, `all`); cờ `--media` đơn lẻ mặc định là `optimized` |
+| `-m, --media [mode]` | Phạm vi đồng bộ media (`none`, `minimal`, `optimized`, `catalog` (Magento), `all`); cờ `--media` đơn lẻ mặc định là `optimized` |
 | `-N, --no-noise` | Loại bỏ các dữ liệu rác khi đồng bộ |
 | `-P, --no-pii` | Loại bỏ thông tin cá nhân nhạy cảm khi đồng bộ |
 
@@ -632,9 +642,13 @@ govard snapshot create -e staging
 govard snapshot list
 govard snapshot list -e staging
 govard snapshot restore latest
+govard snapshot delete before-deploy
+govard snapshot export latest ./backup.tar.gz
 govard snapshot pull latest -e staging
 govard snapshot push before-deploy -e prod
 ```
+
+Các lệnh con: `create`, `list`, `restore`, `delete`, `export`, `pull`, `push`. `export` ghi ra file `tar.gz` local; `delete` xóa snapshot theo tên. `pull`/`push` chuyển snapshot giữa local và remote có tên (`-e`).
 
 ### `govard open`
 
@@ -652,18 +666,29 @@ govard open db -e staging
 
 ### `govard tunnel`
 
-Quản lý các đường link public tunnel (yêu cầu cài đặt `cloudflared`).
+Quản lý các đường link public tunnel (yêu cầu cài đặt `cloudflared`). Govard đăng ký domain tunnel trong Caddy như alias, giữ nguyên `Host` header, và tự động rewrite base URL của framework (Magento, Laravel, …) — khôi phục khi `tunnel stop` hoặc `Ctrl+C`.
 
 ```bash
 govard tunnel start
+govard tunnel start https://my-tunnel.trycloudflare.com
+govard tunnel start --provider cloudflare --no-tls-verify --plan
 govard tunnel status
 govard tunnel stop
 ```
+
+| Cờ | Tác dụng |
+| :--- | :--- |
+| `[url]` | URL tunnel tùy chọn (nếu không truyền, tự dò từ output `cloudflared`) |
+| `--provider <name>` | Provider tunnel (`cloudflare` là provider duy nhất hiện tại) |
+| `--no-tls-verify` | Bỏ qua xác thực TLS cho endpoint tunnel |
+| `--plan` | In kế hoạch khởi động rồi thoát, không chạy |
 
 ::: important QUAN TRỌNG
 Binary `cloudflared` phải được bạn tự cài đặt riêng trên hệ thống.
 Cài đặt thông qua [kho lưu trữ chính thức của Cloudflare](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-run/install-threads/) hoặc tải từ [releases trên GitHub](https://github.com/cloudflare/cloudflared/releases).
 :::
+
+→ Hướng dẫn đầy đủ: [Tunnel](/vi/workflows/tunnel)
 
 ---
 
@@ -681,6 +706,8 @@ govard tool shopware [command]   # Shopware
 govard tool cake [command]       # CakePHP
 govard tool wp [command]         # WordPress
 govard tool prestashop [command] # PrestaShop
+govard tool dagster [command]    # Dagster
+govard tool manage [command]     # Django (python manage.py)
 
 # Các công cụ quản lý package & build dùng chung
 govard tool composer [command]
@@ -918,6 +945,20 @@ govard rabbitmq status
 govard rabbitmq queues
 govard rabbitmq cli list_exchanges
 ```
+
+### `govard valkey` / `govard elasticsearch` / `govard opensearch`
+
+Shortcut trực tiếp tới service compose cùng tên. `govard env` proxy thông minh mọi lệnh compose khác, nhưng ba shortcut top-level này được đăng ký tường minh:
+
+```bash
+govard valkey cli
+govard elasticsearch info          # hoặc: govard elasticsearch _cluster/health
+govard opensearch info
+# Mọi tham số sau tên service đều được forward:
+govard elasticsearch curl -s http://elasticsearch:9200/_cat/indices
+```
+
+Host truy cập search cũng được route tự động qua `http://<domain>:9200` (xem [Cấu hình](/vi/reference/configuration#connecting-to-elasticsearchopensearch-from-the-host)) — shortcut trên exec trong container, còn route `:9200` dành cho `curl`/browser trên host.
 
 ---
 
