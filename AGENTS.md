@@ -187,3 +187,4 @@ Update `docs/*.md` for: command names/aliases/flags, config behavior, remote/syn
 3. Command help/flags still coherent
 4. `README.md` and relevant `docs/*.md` updated for user-visible changes
 5. `git status` reviewed for unintended file changes
+- **Always request approval before merge or release:** never merge a PR/MR or publish a release (`git tag`/`pnpm publish`/`gh release`) without an explicit human approval — request review (`gh pr ready` / `gh pr request-review` / ask in chat) and wait for `APPROVED`.
