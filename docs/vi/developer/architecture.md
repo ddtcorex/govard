@@ -80,15 +80,20 @@ Govard gộp các cấu hình phân tầng trên nền tảng các file blueprin
    ↓
 .govard.<profile>.yml        Ghi đè cấu hình profile (chỉ đọc)
    ↓
-.govard.local.yml            Ghi đè cấu hình local của dev (chỉ đọc)
+.govard.local.yml            Ghi đè cấu hình local của dev (cũ, chỉ đọc)
    ↓
-.govard.<env>.yml            Ghi đè cấu hình môi trường (chỉ đọc)
+.govard/.govard.local.yml    Ghi đè local trong thư mục .govard (khuyên dùng, chỉ đọc)
+   ↓
+.govard.<env>.yml            Ghi đè môi trường qua GOVARD_ENV (cũ, chỉ đọc)
+   ↓
+.govard/.govard.<env>.yml    Ghi đè môi trường trong .govard qua GOVARD_ENV (khuyên dùng, chỉ đọc)
 ```
 
 Điểm cốt lõi trong thiết kế:
 - `.govard.yml` là file cấu hình duy nhất được phép ghi tự động từ CLI.
 - Các cấu hình runtime mặc định được nhận diện theo framework và theo phiên bản (tùy chọn).
 - Các định nghĩa remote, hook và tiện ích mở rộng của dự án nằm tại thư mục `.govard/*`.
+- Layer `GOVARD_ENV` nằm cuối cùng nên ghi đè môi trường thắng local dev.
 
 Xem thêm tài liệu [Cấu hình](/vi/reference/configuration) để biết chi tiết.
 
@@ -136,22 +141,27 @@ Các thao tác trên Desktop gọi trực tiếp tới tầng CLI (ví dụ: `go
 │   └── govard-desktop/      Điểm vào của Desktop (Wails)
 ├── desktop/                 Mã nguồn giao diện desktop (Wails frontend/config)
 ├── internal/
+│   ├── blueprints/          Tài nguyên blueprint dùng chung (proxy.yml, includes/, template nginx generic)
 │   ├── cmd/                 Khai báo lệnh CLI (Cobra)
-│   ├── blueprints/          File compose template cho từng framework
-│   ├── engine/              Logic cốt lõi (Docker SDK, nhận diện, rendering)
-│   │   └── bootstrap/       Triển khai FrameworkBootstrap cho từng framework
+│   ├── conventions/         Hằng số dùng chung cho ≥2 package
+│   ├── engine/              Logic cốt lõi (Docker SDK, nhận diện, rendering, config)
+│   │   └── bootstrap/       Helper bootstrap chung
 │   ├── frameworks/          Registry framework (mỗi framework một FrameworkDefinition)
+│   │   ├── <name>/config.go, manifest.go, blueprint/, embed.go, bootstrap.go, <name>.go
+│   │   └── all_generated.go (wiring registry tự sinh)
 │   ├── desktop/             Chất keo liên kết desktop (Wails bindings)
 │   ├── proxy/               Helper định tuyến Caddy/proxy và TLS
 │   ├── ui/                  Định dạng terminal output (pterm)
 │   └── updater/             Kiểm tra cập nhật chạy ngầm
 ├── docker/                  PHP Dockerfiles và các file build context
-├── tests/                   Unit + integration tests
+├── tests/                   Unit + integration tests (go test ./tests/...)
 │   ├── fixtures/            Các file fixture test dùng chung
 │   └── integration/         Các dự án test integration cho từng framework
-├── docs/                    Tài liệu hướng dẫn của dự án
+├── docs/                    Tài liệu (VitePress)
 └── scripts/                 Script bổ trợ build (macOS pkg, v.v.)
 ```
+
+Tài nguyên blueprint của từng framework (`services.yml`, vhost nginx) nằm trong `internal/frameworks/<name>/blueprint/` và được graft vào `blueprints.FS` hợp nhất qua `embed.go`'s `RegisterFrameworkMount` — chỉ tài nguyên thực sự dùng chung mới ở `internal/blueprints/`.
 
 ---
 

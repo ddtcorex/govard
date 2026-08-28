@@ -80,15 +80,20 @@ Govard composes layered config files on top of framework blueprints:
    ↓
 .govard.<profile>.yml        Profile override (read-only)
    ↓
-.govard.local.yml            Local developer override (read-only)
+.govard.local.yml            Local developer override (legacy, read-only)
    ↓
-.govard.<env>.yml            Environment override (read-only)
+.govard/.govard.local.yml    Project-local override (preferred, read-only)
+   ↓
+.govard.<env>.yml            Environment override via GOVARD_ENV (legacy, read-only)
+   ↓
+.govard/.govard.<env>.yml    Project environment override via GOVARD_ENV (preferred, read-only)
 ```
 
 Key design points:
 - `.govard.yml` is the only writable config surface
 - Runtime defaults are framework-aware and optionally version-aware
 - Remote definitions, hooks, and project extensions live in `.govard/*`
+- `GOVARD_ENV` layers are last so env-specific overrides win over local dev overrides
 
 See [Configuration](/reference/configuration) for the complete contract.
 
@@ -136,22 +141,27 @@ Desktop operations call the CLI command surface directly (e.g., `govard up`, `go
 │   └── govard-desktop/      Desktop entry point (Wails)
 ├── desktop/                 Desktop app assets (Wails frontend/config)
 ├── internal/
+│   ├── blueprints/          Shared blueprint assets (proxy.yml, includes/, generic nginx templates)
 │   ├── cmd/                 CLI command definitions (Cobra)
-│   ├── blueprints/          Docker Compose templates per framework
-│   ├── engine/              Core logic (Docker SDK, discovery, rendering)
-│   │   └── bootstrap/       Per-framework FrameworkBootstrap implementations
+│   ├── conventions/         Cross-cutting constants used by ≥2 packages
+│   ├── engine/              Core logic (Docker SDK, discovery, rendering, config)
+│   │   └── bootstrap/       Generic bootstrap helpers
 │   ├── frameworks/          Framework registry (one FrameworkDefinition per framework)
+│   │   ├── <name>/config.go, manifest.go, blueprint/, embed.go, bootstrap.go, <name>.go
+│   │   └── all_generated.go (generated registry wiring)
 │   ├── desktop/             Desktop app glue (Wails bindings)
 │   ├── proxy/               Caddy/proxy route and TLS helpers
 │   ├── ui/                  Styled terminal output (pterm)
 │   └── updater/             Background update checking
 ├── docker/                  PHP Dockerfiles and build contexts
-├── tests/                   Unit + integration tests
+├── tests/                   Unit + integration tests (go test ./tests/...)
 │   ├── fixtures/            Shared test fixtures
 │   └── integration/         Integration test projects per framework
-├── docs/                    Project documentation
+├── docs/                    Documentation (VitePress)
 └── scripts/                 Build helpers (macOS pkg, etc.)
 ```
+
+Framework blueprint assets (`services.yml`, nginx vhost) live inside each `internal/frameworks/<name>/blueprint/` package and are grafted into the merged `blueprints.FS` via `embed.go`'s `RegisterFrameworkMount` — only truly shared assets stay under `internal/blueprints/`.
 
 ---
 

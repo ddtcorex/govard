@@ -322,11 +322,14 @@ govard bootstrap -e staging --no-pii --no-noise
 | `-X, --exclude` | Custom rsync exclude patterns (repeatable) |
 | `--no-db` | Skip database import |
 | `--no-media` | Skip media sync |
-| `--media [mode]` | Media sync mode (`none`, `minimal`, `optimized`, `all`) |
+| `--media [mode]` | Media sync mode (`none`, `minimal`, `optimized`, `catalog` (Magento), `all`) |
 | `--no-composer` | Skip `composer install` |
 | `--no-admin` | Skip admin user creation (Magento 2 only) |
 | `--no-stream-db` | Use local temp file for DB transfer |
 | `--no-up` | Skip starting local containers before bootstrap steps |
+| `--code-only` | Clone code only (skip DB/media, with `--clone`) |
+| `--fix-deps` | Run project `fix-deps` hook before bootstrap |
+| `--framework-version` | Framework version for fresh install (e.g. `2.4.9` for Magento) |
 
 For Magento 2/Mage-OS, Magento 1/OpenMage, or PrestaShop projects with `table_prefix` set, DB privacy filters target prefixed table names automatically.
 
@@ -361,11 +364,15 @@ govard env cleanup
 | Flag | Effect |
 | :--- | :--- |
 | `--pull` | Pull images before starting |
-| `--fallback-local-build` | Build missing images locally |
+| `--fallback-local-build` | Build missing images locally (default `true`) |
 | `--remove-orphans` | Remove orphaned containers |
-| `--quickstart` | Fastest startup path |
+| `--quickstart` | Fastest startup path (minimal services) |
 | `--update-lock` | Auto-update `govard.lock` on mismatches |
 | `--no-tuning` | Skip framework auto-configuration prompts |
+| `--profile <name>` | Use a specific profile (`.govard.<name>.yml`) for this run |
+| `--force-recreate` | Recreate containers even if config unchanged |
+
+`--profile` is an inline alternative to `govard config profile switch`; the selected profile still requires `govard env up` to apply.
 
 **`govard env pull` behavior:**
 
@@ -511,8 +518,11 @@ Run project test tools inside the application container.
 govard test phpunit
 govard test phpstan
 govard test mftf
+govard test unit
 govard test integration
 ```
+
+`unit` runs `phpunit` as `unit` alias; `phpstan` falls back to `--level=0` with `app/code`+`app/design` (Magento 2) or `app`+`src` when no project `phpstan.neon` exists.
 
 ### `govard custom`
 
@@ -601,7 +611,7 @@ When `--media` is used without a mode, Govard defaults it to `optimized`.
 | `--plan` | Print plan and exit |
 | `-I, --include` | Rsync include pattern (repeatable) |
 | `-X, --exclude` | Rsync exclude pattern (repeatable) |
-| `-m, --media [mode]` | Media sync scope (`none`, `minimal`, `optimized`, `all`); bare `--media` defaults to `optimized` |
+| `-m, --media [mode]` | Media sync scope (`none`, `minimal`, `optimized`, `catalog` (Magento only), `all`); bare `--media` defaults to `optimized` |
 | `-N, --no-noise` | Exclude ephemeral data |
 | `-P, --no-pii` | Exclude sensitive data |
 
@@ -639,9 +649,13 @@ govard snapshot create -e staging
 govard snapshot list
 govard snapshot list -e staging
 govard snapshot restore latest
+govard snapshot delete before-deploy
+govard snapshot export latest ./backup.tar.gz
 govard snapshot pull latest -e staging
 govard snapshot push before-deploy -e prod
 ```
+
+Subcommands: `create`, `list`, `restore`, `delete`, `export`, `pull`, `push`. `export` writes a `tar.gz` archive locally; `delete` removes the named snapshot. `pull`/`push` transfer snapshots between local and a named remote (`-e` flag).
 
 ### `govard open`
 
@@ -659,18 +673,29 @@ govard open db -e staging
 
 ### `govard tunnel`
 
-Manage public tunnels (requires `cloudflared`).
+Manage public tunnels (requires `cloudflared`). Govard registers the tunnel domain in Caddy as an alias, keeps the original `Host` header intact, and rewrites the framework base URL (Magento, Laravel, etc.) for the session — restoring it on `tunnel stop` or `Ctrl+C`.
 
 ```bash
 govard tunnel start
+govard tunnel start https://my-tunnel.trycloudflare.com
+govard tunnel start --provider cloudflare --no-tls-verify --plan
 govard tunnel status
 govard tunnel stop
 ```
+
+| Flag | Effect |
+| :--- | :--- |
+| `[url]` | Optional tunnel URL to register (otherwise auto-detected from `cloudflared` output) |
+| `--provider <name>` | Tunnel provider (`cloudflare` is the only provider today) |
+| `--no-tls-verify` | Skip TLS verification for the tunnel endpoint |
+| `--plan` | Print the start plan and exit without launching |
 
 ::: important IMPORTANT
 The `cloudflared` binary must be installed separately.
 Install via the [official Cloudflare repository](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-run/install-threads/) or [GitHub releases](https://github.com/cloudflare/cloudflared/releases).
 :::
+
+→ Full guide: [Tunnel](/workflows/tunnel) (new)
 
 ---
 
@@ -688,6 +713,8 @@ govard tool shopware [command]   # Shopware
 govard tool cake [command]       # CakePHP
 govard tool wp [command]         # WordPress
 govard tool prestashop [command] # PrestaShop
+govard tool dagster [command]    # Dagster
+govard tool manage [command]     # Django (python manage.py)
 
 # General tools
 govard tool composer [command]
@@ -929,6 +956,20 @@ govard rabbitmq status
 govard rabbitmq queues
 govard rabbitmq cli list_exchanges
 ```
+
+### `govard valkey` / `govard elasticsearch` / `govard opensearch`
+
+Direct service shortcuts — proxies to the compose service of the same name. `govard env` intelligently proxies any other compose command, but these top-level shortcuts are registered explicitly:
+
+```bash
+govard valkey cli
+govard elasticsearch info          # or: govard elasticsearch _cluster/health
+govard opensearch info
+# Any extra args after the service name are forwarded:
+govard elasticsearch curl -s http://elasticsearch:9200/_cat/indices
+```
+
+Host access for search is also routed automatically via `http://<your-domain>:9200` (see [Configuration](/reference/configuration#connecting-to-elasticsearchopensearch-from-the-host)) — the shortcuts above exec inside the container, while the `:9200` route is for host-side `curl`/browser.
 
 ---
 

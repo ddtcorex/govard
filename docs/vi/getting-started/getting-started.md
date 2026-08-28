@@ -24,19 +24,20 @@ Govard sẽ kiểm tra file `composer.json` hoặc `package.json`, nhận diện
 
 | Framework | Cách nhận diện |
 | :--- | :--- |
-| Magento 2 | `composer.json` có `magento/magento2-base` |
+| Magento 2 | `composer.json` có `magento/product-community-edition`, `magento/product-enterprise-edition` hoặc `magento/framework` |
 | Mage-OS | `composer.json` có `mage-os/product-community-edition` hoặc `mage-os/project-community-edition` |
-| Magento 1 / OpenMage | Pattern cấu trúc file trong `composer.json` |
-| Laravel | Có file `artisan` + `composer.json` |
+| Magento 1 / OpenMage | `composer.json` có `magento-hackathon/magento-composer-installer`, `openmage/magento-lts` hoặc `colinmollenhour/modman` |
+| Laravel | Có file `artisan` + `composer.json` với `laravel/framework` |
 | Next.js | `package.json` có dependency `next` |
-| Emdash | Chứa các dấu hiệu nhận biết của dự án Emdash |
-| Drupal | `composer.json` có `drupal/core` |
+| Emdash | Dấu hiệu scaffold Emdash (`src/app` + config Emdash) |
+| Drupal | `composer.json` có `drupal/core` hoặc `drupal/core-recommended` |
 | Symfony | Có `symfony/framework-bundle` |
 | Shopware | Có `shopware/core` |
 | CakePHP | Có `cakephp/cakephp` |
-| PrestaShop | `config/defines.inc.php` |
-| Django | `manage.py` |
+| PrestaShop | `config/defines.inc.php` hoặc `composer.json` có `prestashop/prestashop` |
 | WordPress | Có `wp-config.php` hoặc `wp-login.php` |
+| Django | `manage.py` ở thư mục gốc |
+| Dagster | `workspace.yaml` hoặc `dagster.yaml` ở thư mục gốc |
 | Custom (Tùy chỉnh) | Chọn stack qua prompt tương tác (`govard init --framework custom`) |
 
 ### Ép buộc nhận diện một Framework cụ thể
