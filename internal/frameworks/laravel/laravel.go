@@ -33,6 +33,7 @@ func Definition() types.FrameworkDefinition {
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"laravel/framework"},
 		},
+		AuditTargetResolver: ResolveAuditTarget,
 		ToolCommands: []types.ToolCommand{
 			{Name: "artisan", Short: "Run Laravel Artisan commands", Binary: "php", PrependArgs: []string{"artisan"}},
 		},

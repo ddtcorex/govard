@@ -129,6 +129,21 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 		return result, nil
 	}
 	_, minor, _ := parseMajorMinor(version)
+	// Bare major versions like "6" (no dot) historically resolved to the
+	// lowest minor rule (e.g. WordPress 6.0 -> PHP 8.0) while docs claim
+	// WordPress 6 -> PHP 8.3. Treat a bare major as "latest minor within that
+	// major" so `govard bootstrap --framework-version 6` pins to the newest
+	// profile (WordPress 6.6 -> PHP 8.3, DB 10.11) and `govard init` defaults
+	// (no version) remain framework defaults (PHP 8.3, DB 11.4). Explicit
+	// minor versions like "6.0" still resolve to their specific rule.
+	if isBareMajorVersion(version) {
+		if override, source, ok := resolveFrameworkProfileBareMajor(framework, major); ok {
+			applyRuntimeProfileOverride(&result.Profile, override)
+			normalizeProfile(&result.Profile)
+			result.Source = source
+			return result, nil
+		}
+	}
 	if override, source, ok := resolveFrameworkProfileFromRegistry(framework, major, minor); ok {
 		applyRuntimeProfileOverride(&result.Profile, override)
 		normalizeProfile(&result.Profile)
@@ -290,4 +305,62 @@ func parseMajorMinor(version string) (major int, minor int, ok bool) {
 		return 0, 0, false
 	}
 	return mj, mn, true
+}
+
+func isBareMajorVersion(version string) bool {
+	v := strings.TrimSpace(version)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	// Strip common constraint prefixes that still indicate a bare major request.
+	v = strings.TrimPrefix(v, "^")
+	v = strings.TrimPrefix(v, "~")
+	v = strings.TrimPrefix(v, ">=")
+	v = strings.TrimPrefix(v, ">")
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return false
+	}
+	if strings.Contains(v, ".") {
+		return false
+	}
+	_, err := strconv.Atoi(v)
+	return err == nil
+}
+
+func resolveFrameworkProfileBareMajor(framework string, major int) (VersionProfileOverride, string, bool) {
+	rules, ok := registry.Frameworks[framework]
+	if !ok {
+		return VersionProfileOverride{}, "", false
+	}
+	var best *frameworkRule
+	var bestMinor = -1
+	for i := range rules {
+		if rules[i].Major != major {
+			continue
+		}
+		minor := 0
+		if rules[i].MinorMin != nil {
+			minor = *rules[i].MinorMin
+		}
+		if best == nil || minor > bestMinor {
+			best = &rules[i]
+			bestMinor = minor
+		}
+	}
+	if best == nil {
+		return VersionProfileOverride{}, "", false
+	}
+	override := VersionProfileOverride{
+		PHPVersion:      best.PHPVersion,
+		DB:              best.DB,
+		DBVersion:       best.DBVersion,
+		ComposerVersion: best.ComposerVersion,
+	}
+	var source string
+	if best.MinorMin != nil {
+		source = fmt.Sprintf("version-specific:%s@%d.%d", framework, major, *best.MinorMin)
+	} else {
+		source = fmt.Sprintf("version-specific:%s@%d", framework, major)
+	}
+	return override, source, true
 }

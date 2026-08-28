@@ -42,9 +42,9 @@ func (l *LaravelBootstrap) FreshCommands() []string {
 	majorVersion := strings.Split(version, ".")[0]
 	switch majorVersion {
 	case "12":
-		laravelVersion = "laravel/laravel"
+		laravelVersion = "laravel/laravel:^12.0"
 	case "11":
-		laravelVersion = "laravel/laravel"
+		laravelVersion = "laravel/laravel:^11.0"
 	case "10":
 		laravelVersion = "laravel/laravel:^10.0"
 	case "9":
@@ -207,7 +207,7 @@ func (l *LaravelBootstrap) PostClone(projectDir string) error {
 
 func (l *LaravelBootstrap) getLaravelVersion(version string) string {
 	if version == "" {
-		return "laravel/laravel"
+		return "laravel/laravel:^11.0"
 	}
 
 	parts := strings.Split(version, ".")
@@ -215,9 +215,9 @@ func (l *LaravelBootstrap) getLaravelVersion(version string) string {
 
 	switch major {
 	case "12":
-		return "laravel/laravel"
+		return "laravel/laravel:^12.0"
 	case "11":
-		return "laravel/laravel"
+		return "laravel/laravel:^11.0"
 	case "10":
 		return "laravel/laravel:^10.0"
 	case "9":

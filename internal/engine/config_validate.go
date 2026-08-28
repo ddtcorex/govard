@@ -44,8 +44,14 @@ func ValidateConfig(cfg Config) error {
 	if err := validateBlueprintRegistryConfig(cfg.BlueprintRegistry); err != nil {
 		return err
 	}
-	if err := validateAuditConfig(cfg.Audit); err != nil {
-		return err
+	// Audit lint is framework-owned. Frameworks without a lint profile
+	// (e.g. symfony, laravel) may have an empty audit section; do not
+	// default it to govard or require validation in that case. If they
+	// explicitly configure a provider, still validate it.
+	if FrameworkSupportsAuditLint(cfg.Framework) || strings.TrimSpace(cfg.Audit.Lint.Provider) != "" || len(cfg.Audit.Lint.ExternalProviders) > 0 {
+		if err := validateAuditConfig(cfg.Audit); err != nil {
+			return err
+		}
 	}
 	if cfg.Stack.XdebugVersion != "" && !ValidateXdebugVersion(cfg.Stack.XdebugVersion) {
 		return fmt.Errorf("stack.xdebug_version %q is invalid (use a PECL Xdebug version, e.g. 3.5.3)", cfg.Stack.XdebugVersion)

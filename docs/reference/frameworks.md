@@ -59,14 +59,21 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 
 | Framework | Version | PHP Override | Other |
 | :--- | :--- | :--- | :--- |
-| Laravel | 10 | 8.2 | |
+| Laravel | 10 | 8.1 | |
 | Laravel | 11 | 8.3 | |
 | Laravel | 12 | 8.4 | |
-| Symfony | 6 | 8.2 | |
-| Symfony | 7 | 8.3 | |
+| Symfony | 6.0-6.3 | 8.1 | |
+| Symfony | 6.4+ | 8.2 | |
+| Symfony | 7.0-7.1 | 8.2 | |
+| Symfony | 7.2+ | 8.3 | |
 | Drupal | 10 | 8.3 | |
 | Drupal | 11 | 8.4 | |
-| WordPress | 6 | 8.3 | |
+| WordPress | 6.0 | 8.0 | MariaDB 10.6 |
+| WordPress | 6.3 | 8.1 | MariaDB 10.6 |
+| WordPress | 6.4-6.5 | 8.2 | MariaDB 10.11 |
+| WordPress | 6.6+ | 8.3 | MariaDB 10.11 |
+| WordPress | 6 (bare) | 8.3 | MariaDB 10.11 — bare major resolves to latest minor (6.6+) |
+| WordPress | 7 | 8.4 | MariaDB 11.4 |
 | Magento 2 | 2.4.9+ | 8.4 | MariaDB 11.4, Redis 7.2, OpenSearch 3.0.0, RabbitMQ 4.1.0 |
 | Magento 2 | 2.4.8 | 8.4 | MariaDB 11.4, Redis 7.2, OpenSearch 2.19.0 or 3.0.0 |
 | Magento 2 | 2.4.7 | 8.3 | MariaDB 10.6 or 10.11, Redis 7.2, OpenSearch 2.12.0-2.19.0 |

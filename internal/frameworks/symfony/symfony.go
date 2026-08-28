@@ -30,6 +30,7 @@ func Definition() types.FrameworkDefinition {
 			Password: DefaultDBPass,
 			Database: DefaultDBName,
 		},
+		AuditTargetResolver: ResolveAuditTarget,
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"symfony/framework-bundle", "symfony/symfony"},
 		},
