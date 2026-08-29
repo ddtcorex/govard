@@ -40,8 +40,12 @@ func TestWordPressAuditLintProfileExists(t *testing.T) {
 
 func TestWordPressResolveAuditTargetProject(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "wp-config.php"), []byte("<?php"), 0o644)
-	os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"johnpbloch/wordpress":"^6.0"}}`), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "wp-config.php"), []byte("<?php"), 0o644); err != nil {
+		t.Fatalf("WriteFile wp-config.php: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"johnpbloch/wordpress":"^6.0"}}`), 0o644); err != nil {
+		t.Fatalf("WriteFile composer.json: %v", err)
+	}
 	def, _ := frameworks.Get("wordpress")
 	target, ok, err := def.AuditTargetResolver(types.AuditTargetResolveRequest{StartPath: dir, ModeOverride: types.AuditTargetProject})
 	if err != nil || !ok {
@@ -57,8 +61,12 @@ func TestWordPressResolveAuditTargetProject(t *testing.T) {
 
 func TestWordPressBedrockLayout(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "web/wp/wp-includes"), 0o755)
-	os.WriteFile(filepath.Join(dir, "web/wp/wp-includes/version.php"), []byte("<?php $wp_version='6.0';"), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "web/wp/wp-includes"), 0o755); err != nil {
+		t.Fatalf("MkdirAll web/wp/wp-includes: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "web/wp/wp-includes/version.php"), []byte("<?php $wp_version='6.0';"), 0o644); err != nil {
+		t.Fatalf("WriteFile version.php: %v", err)
+	}
 	def, _ := frameworks.Get("wordpress")
 	target, ok, err := def.AuditTargetResolver(types.AuditTargetResolveRequest{StartPath: dir, ModeOverride: types.AuditTargetProject})
 	if err != nil || !ok {
@@ -77,8 +85,12 @@ func TestWordPressBedrockLayout(t *testing.T) {
 
 func TestWordPressResolveAuditTargetModuleReturnsHelpfulError(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "wp-config.php"), []byte("<?php"), 0o644)
-	os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"johnpbloch/wordpress":"^6.0"}}`), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "wp-config.php"), []byte("<?php"), 0o644); err != nil {
+		t.Fatalf("WriteFile wp-config.php: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"johnpbloch/wordpress":"^6.0"}}`), 0o644); err != nil {
+		t.Fatalf("WriteFile composer.json: %v", err)
+	}
 	def, _ := frameworks.Get("wordpress")
 	_, ok, err := def.AuditTargetResolver(types.AuditTargetResolveRequest{StartPath: dir, ModeOverride: types.AuditTargetModule})
 	if !ok || err == nil {

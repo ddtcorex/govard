@@ -26,8 +26,12 @@ func TestLaravelAuditLintProfileExists(t *testing.T) {
 func TestLaravelResolveAuditTargetProject(t *testing.T) {
 	dir := t.TempDir()
 	// fake laravel project: artisan + composer.json with laravel/framework
-	os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php"), 0o755)
-	os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php"), 0o755); err != nil {
+		t.Fatalf("WriteFile artisan: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0o644); err != nil {
+		t.Fatalf("WriteFile composer.json: %v", err)
+	}
 	def, _ := frameworks.Get("laravel")
 	target, ok, err := def.AuditTargetResolver(types.AuditTargetResolveRequest{StartPath: dir, ModeOverride: types.AuditTargetProject})
 	if err != nil || !ok {
@@ -40,8 +44,12 @@ func TestLaravelResolveAuditTargetProject(t *testing.T) {
 
 func TestLaravelResolveAuditTargetModuleReturnsHelpfulError(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "artisan"), []byte(""), 0o644)
-	os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte(""), 0o644); err != nil {
+		t.Fatalf("WriteFile artisan: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0o644); err != nil {
+		t.Fatalf("WriteFile composer.json: %v", err)
+	}
 	def, _ := frameworks.Get("laravel")
 	_, ok, err := def.AuditTargetResolver(types.AuditTargetResolveRequest{StartPath: dir, ModeOverride: types.AuditTargetModule})
 	if !ok || err == nil {

@@ -264,7 +264,7 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 			return cancelledGovardLintResult(cause, nil)
 		}
 		var outputBuf bytes.Buffer
-		output := io.Writer(io.MultiWriter(logFile, &outputBuf))
+		output := io.MultiWriter(logFile, &outputBuf)
 		if request.StreamWriter != nil {
 			output = io.MultiWriter(logFile, &outputBuf, request.StreamWriter)
 		}

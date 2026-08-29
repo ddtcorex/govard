@@ -34,9 +34,15 @@ func TestSymfonyAuditLintProfileExists(t *testing.T) {
 
 func TestSymfonyResolveAuditTargetProject(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
-	os.WriteFile(filepath.Join(dir, "bin", "console"), []byte(""), 0o755)
-	os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"symfony/framework-bundle":"^7.0"}}`), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
+		t.Fatalf("MkdirAll bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bin", "console"), []byte(""), 0o755); err != nil {
+		t.Fatalf("WriteFile console: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"symfony/framework-bundle":"^7.0"}}`), 0o644); err != nil {
+		t.Fatalf("WriteFile composer.json: %v", err)
+	}
 	def, _ := frameworks.Get("symfony")
 	target, ok, err := def.AuditTargetResolver(types.AuditTargetResolveRequest{StartPath: dir, ModeOverride: types.AuditTargetProject})
 	if err != nil || !ok {
@@ -49,9 +55,15 @@ func TestSymfonyResolveAuditTargetProject(t *testing.T) {
 
 func TestSymfonyResolveAuditTargetModuleReturnsHelpfulError(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
-	os.WriteFile(filepath.Join(dir, "bin", "console"), []byte(""), 0o644)
-	os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"symfony/framework-bundle":"^7.0"}}`), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
+		t.Fatalf("MkdirAll bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bin", "console"), []byte(""), 0o644); err != nil {
+		t.Fatalf("WriteFile console: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"symfony/framework-bundle":"^7.0"}}`), 0o644); err != nil {
+		t.Fatalf("WriteFile composer.json: %v", err)
+	}
 	def, _ := frameworks.Get("symfony")
 	_, ok, err := def.AuditTargetResolver(types.AuditTargetResolveRequest{StartPath: dir, ModeOverride: types.AuditTargetModule})
 	if !ok || err == nil {

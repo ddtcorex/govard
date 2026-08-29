@@ -54,7 +54,7 @@ func (l *LaravelBootstrap) FreshCommands() []string {
 	}
 
 	return []string{
-		"composer create-project " + laravelVersion + " .",
+		"COMPOSER_NO_BLOCKING=1 COMPOSER_NO_AUDIT=1 composer create-project --no-audit --no-blocking " + laravelVersion + " .",
 	}
 }
 
@@ -64,9 +64,9 @@ func (l *LaravelBootstrap) CreateProject(projectDir string) error {
 	laravelVersion := l.getLaravelVersion(l.Options.Version)
 
 	createInStage := func(stageDir string) error {
-		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", laravelVersion, stageDir, "--no-interaction")
+		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", "--no-audit", "--no-blocking", laravelVersion, stageDir, "--no-interaction")
 	}
-	runnerCommand := "composer create-project " + laravelVersion + " \"$GOVARD_STAGE_DIR\" --no-interaction"
+	runnerCommand := "COMPOSER_NO_BLOCKING=1 COMPOSER_NO_AUDIT=1 composer create-project --no-audit --no-blocking " + laravelVersion + " \"$GOVARD_STAGE_DIR\" --no-interaction"
 	if err := bootstrap.RunStagedCreateProject(projectDir, l.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Laravel project: %w", err)
 	}
