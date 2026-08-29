@@ -96,9 +96,15 @@ func TestDockerfileBundlesSymfonyAndWordPressCS(t *testing.T) {
 	if !strings.Contains(text, "szepeviktor/phpstan-wordpress") {
 		t.Fatalf("Dockerfile should keep szepeviktor/phpstan-wordpress alongside phpstan/phpstan-wordpress")
 	}
-	// Brief wants only wpcs + installer, no symfony2-coding-standard (provides Symfony2 not Symfony)
-	if strings.Contains(text, "escapestudios/symfony2-coding-standard") {
-		t.Fatalf("Dockerfile should not bundle escapestudios/symfony2-coding-standard; brief wants only wpcs + installer")
+	// Task 6 fix: bundle Symfony CS globally via escapestudios/symfony2-coding-standard
+	if !strings.Contains(text, "escapestudios/symfony2-coding-standard") {
+		t.Fatalf("Dockerfile should bundle escapestudios/symfony2-coding-standard for Symfony native")
+	}
+	if !strings.Contains(text, "escapestudios/symfony2-coding-standard:^3.0") {
+		t.Fatalf("Dockerfile should pin escapestudios/symfony2-coding-standard:^3.0, got %q", text)
+	}
+	if !strings.Contains(text, "vendor/escapestudios/symfony2-coding-standard") {
+		t.Fatalf("Dockerfile should set installed_paths to include Symfony standard")
 	}
 }
 

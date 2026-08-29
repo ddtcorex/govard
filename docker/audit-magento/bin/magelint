@@ -714,6 +714,8 @@ compat_standard_available() {
 
 # Runs one PHPCS pass. Every pass declares the analyzed PHP version through
 # testVersion, so version-aware sniffs report against that exact runtime.
+# WordPress and Symfony standards are bundled globally, not in the toolchain,
+# so they use the global phpcs binary to avoid PSR12 fallback.
 run_phpcs_pass() {
     # run_phpcs_pass VERSION LAUNCHER TOOLCHAIN STANDARD REPORT CACHE_FILE
     local version=$1
@@ -722,9 +724,17 @@ run_phpcs_pass() {
     local standard=$4
     local report=$5
     local cache_file=$6
+    local phpcs_bin="$toolchain/vendor/bin/phpcs"
+    case "$standard" in
+        WordPress*|Symfony*)
+            local global_home
+            global_home=$(composer global config home 2>/dev/null || echo /root/.config/composer)
+            phpcs_bin="$global_home/vendor/bin/phpcs"
+            ;;
+    esac
     local arguments
     arguments=(
-        "$toolchain/vendor/bin/phpcs"
+        "$phpcs_bin"
         "--standard=$standard"
         "--report=json"
         "--report-file=$report"
