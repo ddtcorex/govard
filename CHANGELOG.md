@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.66.0] - 2026-08-29
+
+### ✨ New Features
+
+- **Govard Lint for Laravel, Symfony and WordPress:** `govard audit run --checks lint --provider govard` now supports Laravel (`PSR12`, `laravel/pint`, PHP 8.1-8.4, `phpstan` level 5, `artisan` detection), Symfony (`Symfony` standard, `phpstan-symfony`, `bin/console` detection) and WordPress (`WordPress` standard, `wp-coding-standards/wpcs`, `phpstan-wordpress`, Bedrock `web/wp/wp-includes/version.php` support) in addition to Magento 2/Mage-OS. Lint runs via the Govard-owned `govard-lint` Docker image (multi-PHP 8.1-8.4) with `wp-coding-standards/wpcs`, `phpstan-symfony` and `phpstan-wordpress` bundled, `PSR12` fallback when native standard not yet bundled, `--mode project` only for these frameworks (`module`/`standalone` → helpful error `use --mode project`) and `COMPOSER_NO_BLOCKING`/`COMPOSER_NO_AUDIT` handling for `laravel/laravel:^11.0`/`^12.0` fresh installs.
+
+### 🐛 Bug Fixes
+
+- **8 Fresh-Install and DX Issues (185-192):** `govard shell -c` flag now exists (`Use: shell [-c <command>] [--]` with `--` passthrough), WordPress fresh install now waits for DB and runs `wp core install` via `wp-cli` fallback, `stack.php_version` bare major `6` → `6.x` latest minor (WordPress 6→8.3), `composer create-project` for Laravel 11/12 now pinned `^11.0`/`^12.0` with `--no-audit --no-blocking`, audit `provider govard` now resolves for Symfony/Laravel/WordPress via `AuditTargetResolver`, Magento 2 fresh-install docs and `audit lint` for all 4 frameworks (`docs/reference/frameworks.md` Audit Lint column + `docs/workflows/audit.md` per-framework examples).
+- **Laravel Fresh-Install Advisory Blocking:** `COMPOSER_NO_BLOCKING=1` + `COMPOSER_NO_AUDIT=1` + `composer create-project --no-audit --no-blocking` prevents PKSA advisory blocking and `COMPOSER_NO_AUDIT` deprecation, golden snapshots and `bootstrap_laravel_test`/`bootstrap_fresh_install_test` updated.
+
 ## [1.65.0] - 2026-08-28
 
 ### ✨ New Features
