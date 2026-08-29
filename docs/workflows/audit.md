@@ -104,7 +104,7 @@ pub/media/*.pht
 pub/media/**/*.pht
 ```
 
-See `internal/blueprints/files/.gitignore` (shared) and `internal/frameworks/magento2/blueprint/.gitignore`; `govard audit run --checks lint` is the enforcement gate.
+See `internal/blueprints/files/.gitignore` (shared, single source; rendered as project-root `.gitignore`); `govard audit run --checks lint` is the enforcement gate (container `media-guard` phase plus host `ScanMediaGuard` fallback so every provider enforces `M2-LINT-MEDIA`).
 
 ---
 

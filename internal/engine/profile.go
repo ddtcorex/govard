@@ -115,6 +115,7 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 	major, ok := ExtractMajorVersion(version)
 	if !ok {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("Could not parse major version from %q. Using framework defaults.", version))
+		appendNodeEOLWarning(&result)
 		return result, nil
 	}
 

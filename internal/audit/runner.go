@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"govard/internal/engine"
 	"govard/internal/frameworks/types"
 )
 
@@ -375,6 +376,38 @@ func (runner *Runner) lintJob(request RunRequest, manifest SessionManifest, runI
 		if err := validateLintReportAggregate(report); err != nil {
 			evidence["infrastructure_error"] = err.Error()
 			return evidence, err
+		}
+		// Host-side media guard: every lint run also enforces pub/media hygiene
+		// via a name-only scan (M2-LINT-MEDIA). This mirrors the container's
+		// media-guard phase so docs claiming "every lint run enforces media
+		// guard" hold even for external providers or when the container phase
+		// is skipped. It also provides Go-native enforcement for tests.
+		if findings := engine.ScanMediaGuard(request.ProjectRoot); len(findings) > 0 {
+			mediaEvidence := make([]map[string]any, 0, len(findings))
+			for _, f := range findings {
+				mediaEvidence = append(mediaEvidence, map[string]any{
+					"path":    f.Path,
+					"tool":    "M2-LINT-MEDIA",
+					"rule":    "M2-LINT-MEDIA",
+					"message": "PHP file in pub/media",
+				})
+			}
+			evidence["media_guard"] = map[string]any{
+				"status":   "failed",
+				"findings": mediaEvidence,
+			}
+			// If the backend already reported failed, keep that status but
+			// surface the host findings as well; if it passed, force failure.
+			if report.Status == lintStatusPassed {
+				evidence["lint_status"] = lintStatusFailed
+			}
+			// Preserve cancelled/infra_error as-is; only passed/failed are
+			// eligible for media-guard failure injection.
+			if report.Status == lintStatusPassed || report.Status == lintStatusFailed {
+				return evidence, lintFailureError{}
+			}
+		} else {
+			evidence["media_guard"] = map[string]any{"status": "passed"}
 		}
 		switch report.Status {
 		case lintStatusInfraError:

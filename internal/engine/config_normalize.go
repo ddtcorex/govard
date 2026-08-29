@@ -366,23 +366,24 @@ func CollectConfigDrift(cfg Config, meta ProjectMetadata) []string {
 		}
 	}
 	// Node 14 EOL hygiene: warn when config still pins EOL Node 14 (recommend 18+).
-	if IsNodeVersionEOL(strings.TrimSpace(cfg.Stack.NodeVersion)) {
-		warnings = append(warnings, NodeEOLWarning(strings.TrimSpace(cfg.Stack.NodeVersion)))
-	} else {
-		// Also surface profile-driven EOL warning if profile itself is EOL (e.g. future framework defaults).
-		for _, w := range profileResult.Warnings {
-			if strings.Contains(w, "node_version 14 is EOL") {
-				already := false
-				for _, existing := range warnings {
-					if existing == w {
-						already = true
-						break
-					}
-				}
-				if !already {
-					warnings = append(warnings, w)
-				}
+	// Also surface profile-driven EOL warning if profile itself is EOL (e.g. future defaults).
+	// Both checks are unconditional and deduped by value equality.
+	cfgNode := strings.TrimSpace(cfg.Stack.NodeVersion)
+	profileNode := strings.TrimSpace(profileResult.Profile.NodeVersion)
+	if IsNodeVersionEOL(cfgNode) {
+		warnings = append(warnings, NodeEOLWarning(cfgNode))
+	}
+	if IsNodeVersionEOL(profileNode) {
+		msg := NodeEOLWarning(profileNode)
+		already := false
+		for _, existing := range warnings {
+			if existing == msg {
+				already = true
+				break
 			}
+		}
+		if !already {
+			warnings = append(warnings, msg)
 		}
 	}
 	return warnings

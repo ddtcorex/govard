@@ -8,6 +8,13 @@ import (
 // IsComposerStale reports whether the Composer install is stale for projectRoot.
 // It returns true when composer.lock exists but vendor/composer/installed.json
 // does not satisfy it, or when composer.json is newer than composer.lock.
+//
+// Precedence: mtime check (composer.json newer than composer.lock) is evaluated
+// first and wins when it triggers; otherwise the vendor-vs-lock check decides.
+// Note on mtime granularity: filesystems with 1s resolution can miss sub-second
+// edits (e.g. json and lock both written within the same second). The vendor
+// check is the authoritative fallback in that case — if vendor still satisfies
+// the lock, the install is not considered stale despite coarse mtimes.
 func IsComposerStale(projectRoot string) bool {
 	if projectRoot == "" {
 		return false
