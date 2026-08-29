@@ -56,7 +56,7 @@ func TestLaravelCreateProjectWithRunnerStagesComposerCreateProject(t *testing.T)
 		t.Fatalf("CreateProject() error = %v", err)
 	}
 
-	if !strings.Contains(capturedCommand, `composer create-project laravel/laravel:^11.0 "$GOVARD_STAGE_DIR" --no-interaction`) {
+	if !strings.Contains(capturedCommand, `COMPOSER_NO_BLOCKING=1 COMPOSER_NO_AUDIT=1 composer create-project --no-audit --no-blocking laravel/laravel:^11.0 "$GOVARD_STAGE_DIR" --no-interaction`) {
 		t.Fatalf("unexpected runner command: %s", capturedCommand)
 	}
 	if _, err := os.Stat(filepath.Join(projectDir, "package.json")); err != nil {

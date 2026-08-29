@@ -205,7 +205,7 @@ func TestRunBootstrapFrameworkFreshInstallForTestLaravelUsesRegistryFreshInstall
 	if len(capturedCommands) == 0 {
 		t.Fatal("expected at least one PHP container command to be run")
 	}
-	if !strings.Contains(capturedCommands[0], "composer create-project laravel/laravel") {
+	if !strings.Contains(capturedCommands[0], "laravel/laravel") {
 		t.Fatalf("expected a Laravel create-project invocation, got: %s", capturedCommands[0])
 	}
 
