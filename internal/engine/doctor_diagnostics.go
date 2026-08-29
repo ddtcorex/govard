@@ -67,6 +67,7 @@ type DoctorDependencies struct {
 	CheckSystemDependencies  func() []string
 	CheckRuntimeImages       func() ([]string, error)
 	CheckLegacyConfig        func() error
+	CheckConfigDrift         func() error
 }
 
 func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
@@ -111,6 +112,9 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 	}
 	if dependencies.CheckLegacyConfig == nil {
 		dependencies.CheckLegacyConfig = CheckLegacyConfig
+	}
+	if dependencies.CheckConfigDrift == nil {
+		dependencies.CheckConfigDrift = CheckConfigDrift
 	}
 
 	report := DoctorReport{
@@ -332,6 +336,26 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 				Title:   "Configuration audit",
 				Status:  DoctorStatusPass,
 				Message: "Configuration file is using current naming standards.",
+			})
+		}
+	}
+
+	if err := dependencies.CheckConfigDrift(); err != nil {
+		report.Checks = append(report.Checks, DoctorCheck{
+			ID:               "project.config.drift",
+			Title:            "Configuration drift",
+			Status:           DoctorStatusWarn,
+			Message:          err.Error(),
+			Hint:             "Run doctor --fix to sync .govard.yml with detected framework/profile versions. Use --dry-run to preview or --commit to auto-commit.",
+			SuggestedCommand: "govard doctor --fix",
+		})
+	} else {
+		if _, err := os.Stat(BaseConfigFile); err == nil {
+			report.Checks = append(report.Checks, DoctorCheck{
+				ID:      "project.config.drift",
+				Title:   "Configuration drift",
+				Status:  DoctorStatusPass,
+				Message: "Configuration is in sync with framework profile.",
 			})
 		}
 	}
@@ -775,5 +799,30 @@ func CheckLegacyConfig() error {
 		return fmt.Errorf("found %d legacy configuration key(s): %s", len(foundLegacy), strings.Join(foundLegacy, ", "))
 	}
 
+	return nil
+}
+
+func CheckConfigDrift() error {
+	wd, _ := os.Getwd()
+	data, err := os.ReadFile(BaseConfigFile)
+	if err != nil {
+		return nil
+	}
+	// Quick check: if no config content, skip
+	if len(data) == 0 {
+		return nil
+	}
+	cfg, err := LoadRawConfigFromDir(wd, false)
+	if err != nil {
+		return nil
+	}
+	if cfg.Framework == "" || cfg.Framework == "generic" || cfg.Framework == "custom" {
+		return nil
+	}
+	meta := DetectFramework(wd)
+	warnings := CollectConfigDrift(cfg, meta)
+	if len(warnings) > 0 {
+		return fmt.Errorf("configuration drift: %s", strings.Join(warnings, ", "))
+	}
 	return nil
 }

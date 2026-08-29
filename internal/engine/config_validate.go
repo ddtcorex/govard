@@ -38,6 +38,21 @@ func ValidateConfig(cfg Config) error {
 	if strings.ContainsAny(cfg.Domain, " \t\r\n") {
 		return fmt.Errorf("domain cannot contain whitespace")
 	}
+	if strings.TrimSpace(cfg.FrameworkVersion) != "" && !IsValidFrameworkVersion(cfg.FrameworkVersion) {
+		return fmt.Errorf("framework_version %q is invalid (must not contain whitespace)", cfg.FrameworkVersion)
+	}
+	if strings.TrimSpace(cfg.Stack.PHPVersion) != "" && !IsValidStackVersion(cfg.Stack.PHPVersion) {
+		return fmt.Errorf("stack.php_version %q is invalid", cfg.Stack.PHPVersion)
+	}
+	if strings.TrimSpace(cfg.Stack.NodeVersion) != "" && !IsValidStackVersion(cfg.Stack.NodeVersion) {
+		return fmt.Errorf("stack.node_version %q is invalid", cfg.Stack.NodeVersion)
+	}
+	if strings.TrimSpace(cfg.Stack.DBVersion) != "" && !IsValidStackVersion(cfg.Stack.DBVersion) {
+		return fmt.Errorf("stack.db_version %q is invalid", cfg.Stack.DBVersion)
+	}
+	if strings.TrimSpace(cfg.Stack.SearchVersion) != "" && !IsValidStackVersion(cfg.Stack.SearchVersion) {
+		return fmt.Errorf("stack.search_version %q is invalid", cfg.Stack.SearchVersion)
+	}
 	if !ValidateTablePrefix(cfg.TablePrefix) {
 		return fmt.Errorf("table_prefix %q is invalid (allowed: letters, numbers, and underscore)", cfg.TablePrefix)
 	}
@@ -176,4 +191,38 @@ func validateService(field, value string, allowed map[string]struct{}) error {
 		return fmt.Errorf("unsupported value for %s: %s", field, value)
 	}
 	return nil
+}
+
+// IsValidFrameworkVersion reports whether v is a plausible framework_version (no whitespace, non-empty).
+func IsValidFrameworkVersion(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return false
+	}
+	return !strings.ContainsAny(v, " \t\r\n")
+}
+
+// IsValidStackVersion reports whether v looks like a version string (digits/dots/dashes, no whitespace).
+func IsValidStackVersion(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return false
+	}
+	if strings.ContainsAny(v, " \t\r\n") {
+		return false
+	}
+	// Allow digits, letters, dots, dashes, plus, underscores
+	for _, r := range v {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '.' || r == '-' || r == '_' || r == '+' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// ValidateConfigDrift reports drift warnings for an already-loaded config vs its detected metadata.
+// It is a non-blocking helper used by doctor to surface yml drift without failing validation.
+func ValidateConfigDrift(cfg Config, meta ProjectMetadata) []string {
+	return CollectConfigDrift(cfg, meta)
 }

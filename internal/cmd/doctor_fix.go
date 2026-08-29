@@ -46,6 +46,7 @@ var doctorFixHandlers = map[string]doctorFixHandler{
 	"project.profile.sync":    tuneProjectProfile,
 	"project.runtime.images":  pullRuntimeImages,
 	"project.config.audit":    fixLegacyConfig,
+	"project.config.drift":    fixConfigDrift,
 }
 
 func runDoctorDiagnostics() engine.DoctorReport {
@@ -432,6 +433,12 @@ func tuneProjectProfileCore(check engine.DoctorCheck, forceTune bool, forceOverr
 		return result
 	}
 
+	if doctorDryRun {
+		result.Message = fmt.Sprintf("[dry-run] would update %s profile (%s)", config.Framework, profileResult.Source)
+		result.Actions = append(result.Actions, "dry-run: no files written")
+		return result
+	}
+
 	if err := os.WriteFile(conventions.BaseConfigFile, updated, conventions.DefaultFilePerm); err != nil {
 		result.Status = DoctorFixStatusFailed
 		result.Message = fmt.Sprintf("failed to write updated config: %v", err)
@@ -642,12 +649,53 @@ func fixLegacyConfig(check engine.DoctorCheck) DoctorFixResult {
 		return result
 	}
 
+	if doctorDryRun {
+		result.Message = "[dry-run] would migrate legacy config"
+		result.Actions = append(result.Actions, "dry-run: no files written")
+		return result
+	}
+
 	if err := os.WriteFile(conventions.BaseConfigFile, updated, conventions.DefaultFilePerm); err != nil {
 		result.Status = DoctorFixStatusFailed
 		result.Message = fmt.Sprintf("failed to write updated config: %v", err)
 		return result
 	}
 
+	return result
+}
+
+func fixConfigDrift(check engine.DoctorCheck) DoctorFixResult {
+	result := DoctorFixResult{
+		CheckID: strings.TrimSpace(check.ID),
+		Title:   strings.TrimSpace(check.Title),
+		Status:  DoctorFixStatusApplied,
+		Message: "Configuration drift synchronized.",
+		Actions: []string{},
+	}
+	wd, _ := os.Getwd()
+	changes, err := engine.SyncConfigDriftForTest(wd, doctorDryRun, doctorCommit)
+	if err != nil {
+		result.Status = DoctorFixStatusFailed
+		result.Message = err.Error()
+		return result
+	}
+	if len(changes) == 0 {
+		result.Status = DoctorFixStatusSkipped
+		result.Message = "No drift detected."
+		return result
+	}
+	for _, c := range changes {
+		result.Actions = append(result.Actions, fmt.Sprintf("yq update .govard.yml %s", c))
+	}
+	if doctorDryRun {
+		result.Message = fmt.Sprintf("[dry-run] would sync: %s", strings.Join(changes, ", "))
+		result.Actions = append(result.Actions, "dry-run: no files written")
+		return result
+	}
+	if doctorCommit {
+		result.Actions = append(result.Actions, fmt.Sprintf("git add %s && git commit", conventions.BaseConfigFile))
+	}
+	result.Message = fmt.Sprintf("Synced %s", strings.Join(changes, ", "))
 	return result
 }
 

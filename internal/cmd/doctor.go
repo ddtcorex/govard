@@ -11,6 +11,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var doctorCommit bool
+var doctorDryRun bool
+
 var doctorCmd = &cobra.Command{
 	Use:     "doctor",
 	Aliases: []string{"diag"},
@@ -26,9 +29,11 @@ Checks:
   - Govard home directory readiness (~/.govard)
   - Outbound network probe sanity
   - SSH agent connectivity and loaded keys
+  - Configuration drift (framework_version, stack.php_version, db_version, node_version, search_version)
 
 Use --fix to apply safe automatic remediations. Use --json for machine-readable output.
 Use --pack to export a diagnostics support bundle for sharing with support.
+When --fix is used, --dry-run shows yq-style diff without writing, and --commit git-adds and commits .govard.yml drift.
 `),
 	Example: `  # Run a standard diagnostic pass
   govard doctor
@@ -46,6 +51,8 @@ Use --pack to export a diagnostics support bundle for sharing with support.
 		fixEnabled, _ := cmd.Flags().GetBool("fix")
 		packEnabled, _ := cmd.Flags().GetBool("pack")
 		packDir, _ := cmd.Flags().GetString("pack-dir")
+		doctorCommit, _ = cmd.Flags().GetBool("commit")
+		doctorDryRun, _ = cmd.Flags().GetBool("dry-run")
 
 		return ExecuteDoctor(cmd, outputJSON, fixEnabled, packEnabled, packDir, nil)
 	},
@@ -185,6 +192,8 @@ func DoctorCommand() *cobra.Command {
 func init() {
 	doctorCmd.Flags().Bool("json", false, "Print diagnostics as JSON")
 	doctorCmd.Flags().Bool("fix", false, "Apply safe automatic fixes when available")
+	doctorCmd.Flags().Bool("commit", false, "Commit .govard.yml drift fixes via git (implies --fix)")
+	doctorCmd.Flags().Bool("dry-run", false, "Show what would be fixed without writing files (use with --fix)")
 	doctorCmd.Flags().Bool("pack", false, "Export a diagnostics support pack")
 	doctorCmd.Flags().String("pack-dir", "", "Output directory for diagnostics pack (default: ~/.govard/diagnostics)")
 	doctorCmd.AddCommand(doctorTrustCmd)

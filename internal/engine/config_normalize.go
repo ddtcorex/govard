@@ -1,9 +1,16 @@
 package engine
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
+
+	"govard/internal/conventions"
+
+	"gopkg.in/yaml.v3"
 )
 
 func NormalizeConfig(config *Config, root string) {
@@ -322,4 +329,152 @@ func normalizeAuditConfig(config *AuditConfig) {
 		normalized[normalizedID] = provider
 	}
 	config.Lint.ExternalProviders = normalized
+}
+
+// CollectConfigDrift returns human-readable drift warnings comparing the
+// persisted config against the detected framework version and its profile.
+// Used by govard doctor to surface yml drift.
+func CollectConfigDrift(cfg Config, meta ProjectMetadata) []string {
+	warnings := []string{}
+	desiredVersion := strings.TrimSpace(meta.Version)
+	if desiredVersion == "" {
+		desiredVersion = strings.TrimSpace(cfg.FrameworkVersion)
+	}
+	if desiredVersion != "" && strings.TrimSpace(cfg.FrameworkVersion) != desiredVersion {
+		warnings = append(warnings, fmt.Sprintf("framework_version %s→%s", strings.TrimSpace(cfg.FrameworkVersion), desiredVersion))
+	}
+	profileResult, err := ResolveRuntimeProfile(cfg.Framework, desiredVersion)
+	if err != nil {
+		return warnings
+	}
+	p := profileResult.Profile
+	if p.PHPVersion != "" && strings.TrimSpace(cfg.Stack.PHPVersion) != p.PHPVersion {
+		warnings = append(warnings, fmt.Sprintf("stack.php_version %s→%s", strings.TrimSpace(cfg.Stack.PHPVersion), p.PHPVersion))
+	}
+	if p.DBVersion != "" && strings.TrimSpace(cfg.Stack.DBVersion) != p.DBVersion {
+		// Only warn if DB service is not "none"
+		if strings.ToLower(strings.TrimSpace(cfg.Stack.Services.DB)) != "none" && cfg.Stack.Services.DB != "" {
+			warnings = append(warnings, fmt.Sprintf("stack.db_version %s→%s", strings.TrimSpace(cfg.Stack.DBVersion), p.DBVersion))
+		}
+	}
+	if p.NodeVersion != "" && strings.TrimSpace(cfg.Stack.NodeVersion) != p.NodeVersion {
+		warnings = append(warnings, fmt.Sprintf("stack.node_version %s→%s", strings.TrimSpace(cfg.Stack.NodeVersion), p.NodeVersion))
+	}
+	if p.SearchVersion != "" && strings.TrimSpace(cfg.Stack.SearchVersion) != p.SearchVersion {
+		if strings.ToLower(strings.TrimSpace(cfg.Stack.Services.Search)) != "none" && cfg.Stack.Services.Search != "" {
+			warnings = append(warnings, fmt.Sprintf("stack.search_version %s→%s", strings.TrimSpace(cfg.Stack.SearchVersion), p.SearchVersion))
+		}
+	}
+	return warnings
+}
+
+// CollectConfigDriftWarningsForTest loads the raw config from dir and reports drift vs detected metadata.
+func CollectConfigDriftWarningsForTest(dir string) []string {
+	cfg, err := LoadRawConfigFromDir(dir, false)
+	if err != nil {
+		return nil
+	}
+	meta := DetectFramework(dir)
+	return CollectConfigDrift(cfg, meta)
+}
+
+// CollectConfigDriftWarningsForTestWithConfig reports drift for an in-memory config and metadata pair.
+func CollectConfigDriftWarningsForTestWithConfig(cfg Config, meta ProjectMetadata) []string {
+	return CollectConfigDrift(cfg, meta)
+}
+
+// SyncConfigDriftForTest yq-updates .govard.yml to align framework_version and stack versions with the
+// detected profile. When dryRun is true it returns the planned changes without writing.
+// When commit is true it also runs git add/commit if the directory is a git repo.
+func SyncConfigDriftForTest(dir string, dryRun bool, commit bool) ([]string, error) {
+	rawCfg, err := LoadRawConfigFromDir(dir, false)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	meta := DetectFramework(dir)
+	desiredVersion := strings.TrimSpace(meta.Version)
+	if desiredVersion == "" {
+		desiredVersion = strings.TrimSpace(rawCfg.FrameworkVersion)
+	}
+	// Resolve profile for desired version; fall back to current framework_version if needed.
+	profileResult, err := ResolveRuntimeProfile(rawCfg.Framework, desiredVersion)
+	if err != nil {
+		return nil, fmt.Errorf("resolve profile: %w", err)
+	}
+	p := profileResult.Profile
+
+	changes := []string{}
+	updated := rawCfg
+
+	// framework_version
+	if desiredVersion != "" && strings.TrimSpace(updated.FrameworkVersion) != desiredVersion {
+		changes = append(changes, fmt.Sprintf("framework_version %s→%s", strings.TrimSpace(updated.FrameworkVersion), desiredVersion))
+		updated.FrameworkVersion = desiredVersion
+	}
+	// php_version
+	if p.PHPVersion != "" && strings.TrimSpace(updated.Stack.PHPVersion) != p.PHPVersion {
+		changes = append(changes, fmt.Sprintf("stack.php_version %s→%s", strings.TrimSpace(updated.Stack.PHPVersion), p.PHPVersion))
+		updated.Stack.PHPVersion = p.PHPVersion
+	}
+	// db_version (only if DB service is active)
+	if p.DBVersion != "" && strings.ToLower(strings.TrimSpace(updated.Stack.Services.DB)) != "none" && updated.Stack.Services.DB != "" {
+		if strings.TrimSpace(updated.Stack.DBVersion) != p.DBVersion {
+			changes = append(changes, fmt.Sprintf("stack.db_version %s→%s", strings.TrimSpace(updated.Stack.DBVersion), p.DBVersion))
+			updated.Stack.DBVersion = p.DBVersion
+		}
+	}
+	// node_version
+	if p.NodeVersion != "" && strings.TrimSpace(updated.Stack.NodeVersion) != p.NodeVersion {
+		changes = append(changes, fmt.Sprintf("stack.node_version %s→%s", strings.TrimSpace(updated.Stack.NodeVersion), p.NodeVersion))
+		updated.Stack.NodeVersion = p.NodeVersion
+	}
+	// search_version (only if search service is active)
+	if p.SearchVersion != "" && strings.ToLower(strings.TrimSpace(updated.Stack.Services.Search)) != "none" && updated.Stack.Services.Search != "" {
+		if strings.TrimSpace(updated.Stack.SearchVersion) != p.SearchVersion {
+			changes = append(changes, fmt.Sprintf("stack.search_version %s→%s", strings.TrimSpace(updated.Stack.SearchVersion), p.SearchVersion))
+			updated.Stack.SearchVersion = p.SearchVersion
+		}
+	}
+
+	if len(changes) == 0 {
+		return nil, nil
+	}
+	if dryRun {
+		return changes, nil
+	}
+
+	// Marshal via PrepareConfigForWrite to keep minimal YAML, then restore drift-synced values that
+	// PrepareConfigForWrite might strip if they match defaults (we want explicit sync, so keep them).
+	writable := PrepareConfigForWrite(updated)
+	// Re-apply drifted values explicitly after PrepareConfigForWrite stripping.
+	if updated.FrameworkVersion != "" {
+		writable.FrameworkVersion = updated.FrameworkVersion
+	}
+	if updated.Stack.PHPVersion != "" {
+		writable.Stack.PHPVersion = updated.Stack.PHPVersion
+	}
+	if updated.Stack.DBVersion != "" {
+		writable.Stack.DBVersion = updated.Stack.DBVersion
+	}
+	if updated.Stack.NodeVersion != "" {
+		writable.Stack.NodeVersion = updated.Stack.NodeVersion
+	}
+	if updated.Stack.SearchVersion != "" {
+		writable.Stack.SearchVersion = updated.Stack.SearchVersion
+	}
+	data, err := yaml.Marshal(&writable)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
+	}
+	path := filepath.Join(dir, conventions.BaseConfigFile)
+	if err := os.WriteFile(path, data, conventions.DefaultFilePerm); err != nil {
+		return nil, fmt.Errorf("write config: %w", err)
+	}
+	if commit {
+		// Best-effort git commit if dir is inside a git repo.
+		_ = exec.Command("git", "-C", dir, "add", conventions.BaseConfigFile).Run()
+		msg := fmt.Sprintf("chore(govard): sync %s drift (%s)", conventions.BaseConfigFile, strings.Join(changes, ", "))
+		_ = exec.Command("git", "-C", dir, "commit", "-m", msg).Run()
+	}
+	return changes, nil
 }
