@@ -39,6 +39,7 @@ type auditCommandOptions struct {
 	TargetMode        string
 	PHPVersions       []string
 	URL               string
+	Timeout           string
 }
 
 // AuditRunnerRequest is the resolved context a runner factory needs to build a
@@ -181,7 +182,7 @@ func currentAuditDependencies(defaults auditCommandDependencies) auditCommandDep
 }
 
 func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
-	options := &auditCommandOptions{Scope: string(audit.ScopeProject), Checks: []string{"lint"}, Format: "text", LintProvider: audit.GovardLintProvider, LintJobs: 2}
+	options := &auditCommandOptions{Scope: string(audit.ScopeProject), Checks: []string{"lint"}, Format: "text", LintProvider: audit.GovardLintProvider, LintJobs: 2, Timeout: "auto"}
 	command := &cobra.Command{
 		Use:   "audit",
 		Short: "Run and inspect persistent project audits",
@@ -204,6 +205,7 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().StringSliceVar(&options.PHPVersions, "php", nil, "PHP versions; standalone only unless matching active project PHP")
 	command.PersistentFlags().StringVar(&options.URL, "url", "", "Absolute HTTP(S) URL captured by runtime audit checks")
 	command.PersistentFlags().StringVar(&options.URL, "profiler-url", "", "Alias for --url (absolute HTTP(S) URL captured by runtime audit checks)")
+	command.PersistentFlags().StringVar(&options.Timeout, "timeout", "auto", "Audit timeout (e.g. 300s, 10m, 0 for no timeout, or auto for framework-aware estimation)")
 
 	command.AddCommand(
 		newAuditRunCommand(options, dependencies, false),
@@ -279,7 +281,16 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 			// JSON stays machine-clean for AI agents.
 			streamWriter = cmd.OutOrStdout()
 		}
-		result, err := runner.Run(cmd.Context(), audit.RunRequest{
+		auditCtx := cmd.Context()
+		if timeout := resolveAuditTimeout(options.Timeout, resolvedTarget); timeout > 0 {
+			var cancel context.CancelFunc
+			auditCtx, cancel = context.WithTimeout(auditCtx, timeout)
+			defer cancel()
+			if options.Format != "json" && strings.TrimSpace(options.Timeout) == "auto" {
+				pterm.Info.Printf("audit timeout %s (auto-estimated for %s, %d jobs)\n", timeout, resolvedTarget.Definition.Name, options.LintJobs)
+			}
+		}
+		result, err := runner.Run(auditCtx, audit.RunRequest{
 			ProjectRoot:         auditTargetRoot(resolvedTarget.Target),
 			ProjectID:           resolvedTarget.ProjectID,
 			Scope:               scope,
@@ -362,7 +373,16 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 			return lockErr
 		}
 		defer func() { _ = releaseLock() }()
-		result, err := runner.Rerun(cmd.Context(), options.SessionID, resolvedTarget.ProjectID, effectiveChecks)
+		auditCtx := cmd.Context()
+		if timeout := resolveAuditTimeout(options.Timeout, resolvedTarget); timeout > 0 {
+			var cancel context.CancelFunc
+			auditCtx, cancel = context.WithTimeout(auditCtx, timeout)
+			defer cancel()
+			if options.Format != "json" && strings.TrimSpace(options.Timeout) == "auto" {
+				pterm.Info.Printf("audit timeout %s (auto-estimated for %s)\n", timeout, resolvedTarget.Definition.Name)
+			}
+		}
+		result, err := runner.Rerun(auditCtx, options.SessionID, resolvedTarget.ProjectID, effectiveChecks)
 		var renderErr error
 		if result.RunID != "" {
 			renderErr = writeAuditValue(cmd, options.Format, result)
@@ -757,6 +777,90 @@ func auditManifestDigest(root string) string {
 		_, _ = hash.Write(content)
 	}
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
+}
+
+func resolveAuditTimeout(raw string, target resolvedAuditTarget) time.Duration {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "0" || trimmed == "0s" || trimmed == "0m" {
+		return 0
+	}
+	if trimmed == "auto" {
+		return estimateAuditTimeout(target)
+	}
+	if d, err := time.ParseDuration(trimmed); err == nil {
+		return d
+	}
+	return 0
+}
+
+func estimateAuditTimeout(target resolvedAuditTarget) time.Duration {
+	root := auditTargetRoot(target.Target)
+	framework := string(target.Definition.Name)
+	fileCount := countPHPFiles(root)
+	// Heuristic from real measurements (cold cache, 2 jobs):
+	// - magento2 large (20k/5k findings): 600-1200s
+	// - wordpress large (1.1M findings): 450s, fresh: 206s
+	// - symfony/laravel fresh: 17-35s
+	// Base + per-file: magento/wordpress 0.08s/file, symfony/laravel 0.02s/file, +60s phpstan overhead.
+	var perFile time.Duration
+	switch framework {
+	case "magento2":
+		perFile = 80 * time.Millisecond
+	case "wordpress":
+		perFile = 70 * time.Millisecond
+	case "symfony", "laravel":
+		perFile = 20 * time.Millisecond
+	default:
+		perFile = 50 * time.Millisecond
+	}
+	estimated := 60*time.Second + time.Duration(fileCount)*perFile
+	// Clamp to sensible bounds and add headroom for phpstan + cache cold.
+	if estimated < 90*time.Second {
+		estimated = 90 * time.Second
+	}
+	if estimated > 30*time.Minute {
+		estimated = 30 * time.Minute
+	}
+	// For known heavy frameworks, ensure at least 10m for magento/wordpress to avoid the 120-300s retry loop we saw.
+	if (framework == "magento2" || framework == "wordpress") && estimated < 10*time.Minute {
+		estimated = 10 * time.Minute
+	}
+	// Add 50% headroom for cold cache and Xdebug tax.
+	estimated = estimated * 3 / 2
+	if estimated > 30*time.Minute {
+		estimated = 30 * time.Minute
+	}
+	return estimated
+}
+
+func countPHPFiles(root string) int {
+	if strings.TrimSpace(root) == "" {
+		return 500
+	}
+	count := 0
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if name == "vendor" || name == ".git" || name == "node_modules" || name == "var" || name == "pub" || name == ".govard" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(strings.ToLower(d.Name()), ".php") {
+			count++
+			if count > 20000 {
+				return filepath.SkipAll
+			}
+		}
+		return nil
+	})
+	if count < 10 {
+		return 500
+	}
+	return count
 }
 
 func writeAuditJSON(writer io.Writer, value any) error {
