@@ -102,8 +102,9 @@ RUN set -eux; \
     done; \
     rm -rf /root/.cache/composer /root/.composer
 
-RUN composer global require wp-coding-standards/wpcs phpstan/phpstan-symfony szepeviktor/phpstan-wordpress --no-interaction \
- && phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs || $(composer global config home)/vendor/bin/phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs
+RUN composer global require wp-coding-standards/wpcs:^3.1 dealerdirect/phpcodesniffer-composer-installer:^1.0 --no-interaction \
+ && phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs,$(composer global config home)/vendor/squizlabs/php_codesniffer/src/Standards || $(composer global config home)/vendor/bin/phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs,$(composer global config home)/vendor/squizlabs/php_codesniffer/src/Standards
+RUN composer global require szepeviktor/phpstan-wordpress phpstan/phpstan-symfony:^1.3 phpstan/phpstan-wordpress:^1.0 --no-interaction
 
 COPY bin/report.php /usr/local/lib/govard/report.php
 COPY bin/magelint /usr/local/bin/magelint

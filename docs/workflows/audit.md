@@ -69,6 +69,19 @@ Force with `--mode project|module_in_project|standalone` — fails if the direct
 
 ---
 
+## Lint Matrix
+
+Govard-native lint (`govard audit run --checks lint --mode project`) matrix:
+
+| Framework | CodingStandard | PHPStanLevel | ProjectPHPVersions | StandalonePHPVersions | Linters |
+| :--- | :--- | :---: | :--- | :--- | :--- |
+| Magento 2 | Magento2 | 5 | 8.1-8.4 (policy) | 8.1-8.5 | phpcs, phpstan |
+| Laravel | PSR12 | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
+| Symfony | Symfony | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
+| WordPress | WordPress | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
+
+Image `govard-magelint` bundles WPCS 3.1 (`wp-coding-standards/wpcs`) + Symfony CS + `phpstan-symfony`/`phpstan-wordpress` so WordPress (classic `wp-includes/version.php` + Bedrock `web/wp`) and Symfony (`bin/console`) run natively — no fallback to PSR12.
+
 ## PHP Versions (`--php`)
 
 Lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`.

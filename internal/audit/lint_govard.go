@@ -189,6 +189,16 @@ func isMissingCodingStandardError(msg string) bool {
 	return strings.Contains(msg, "was not installed") || strings.Contains(msg, "ERROR: the")
 }
 
+func logGovardLintBundledCodingStandard(logFile io.Writer, cs string) {
+	pterm.Info.Printf("CodingStandard %q bundled, using native\n", cs)
+	_, _ = fmt.Fprintf(logFile, "govard lint info: CodingStandard %q bundled, using native\n", cs)
+}
+
+func logGovardLintFallbackCodingStandard(logFile io.Writer, cs string) {
+	pterm.Info.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", cs)
+	_, _ = fmt.Fprintf(logFile, "govard lint info: CodingStandard %q not found in lint image, falling back to PSR12\n", cs)
+}
+
 func (backend *GovardLintBackend) Name() string {
 	return GovardLintProvider
 }
@@ -279,8 +289,7 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		combinedMsg += outputBuf.String()
 		// Also include log tail for cases where error is only in output
 		if isMissingCodingStandardError(combinedMsg) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
-			pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
-			_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+			logGovardLintFallbackCodingStandard(logFile, originalStandard)
 			_ = backend.removeCompletedContainer(container.Name, logFile)
 			if err := os.Remove(reportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return LintReport{}, fmt.Errorf("remove prior govard lint report: %w", err)
@@ -294,8 +303,7 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 			primary := govardLintInfrastructureExitError(exitCode, runErr)
 			// Also consider fallback on infra error that contains missing standard message
 			if isMissingCodingStandardError(combinedMsg+primary.Error()) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
-				pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
-				_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+				logGovardLintFallbackCodingStandard(logFile, originalStandard)
 				_ = backend.removeCompletedContainer(container.Name, logFile)
 				if err := os.Remove(reportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return LintReport{}, fmt.Errorf("remove prior govard lint report: %w", err)
@@ -310,14 +318,16 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		report, err := backend.acceptReport(currentRequest, resolved, toolchainDigest, exitCode, reportPath, logFile)
 		if err != nil {
 			if isMissingCodingStandardError(combinedMsg+err.Error()) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
-				pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
-				_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+				logGovardLintFallbackCodingStandard(logFile, originalStandard)
 				currentRequest.Profile.CodingStandard = "PSR12"
 				lastErr = err
 				_ = cleanupErr
 				continue
 			}
 			return LintReport{}, withGovardLintCleanupError(err, cleanupErr)
+		}
+		if currentRequest.Profile.CodingStandard == originalStandard && (originalStandard == "WordPress" || originalStandard == "Symfony") {
+			logGovardLintBundledCodingStandard(logFile, originalStandard)
 		}
 		return report, nil
 	}
