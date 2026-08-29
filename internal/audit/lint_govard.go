@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pterm/pterm"
 	auditmagento "govard/docker/audit-magento"
 	"govard/internal/frameworks/types"
 )
@@ -183,6 +185,10 @@ func validateGovardLintContainerUser(options GovardLintOptions) error {
 	return nil
 }
 
+func isMissingCodingStandardError(msg string) bool {
+	return strings.Contains(msg, "was not installed") || strings.Contains(msg, "ERROR: the")
+}
+
 func (backend *GovardLintBackend) Name() string {
 	return GovardLintProvider
 }
@@ -231,11 +237,6 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 	if cause := externalLintCancellationCause(ctx); cause != nil {
 		return cancelledGovardLintResult(cause, nil)
 	}
-	toolchainDigest := govardLintToolchainDigest(resolved, request)
-	cacheDir, err := backend.cacheDirectory(request, plan, resolved, toolchainDigest)
-	if err != nil {
-		return LintReport{}, err
-	}
 	logFile, err := os.OpenFile(filepath.Join(request.RunDir, govardLintLogFilename), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return LintReport{}, fmt.Errorf("open govard lint log: %w", err)
@@ -246,32 +247,84 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		}
 	}()
 
-	container := backend.containerRequest(request, plan, resolved, toolchainDigest, cacheDir)
-	// Only container-safe values are logged: no credential path, no secret,
-	// and no environment dump.
-	_, _ = fmt.Fprintf(logFile, "govard lint %s image %s args %s\n", container.Name, container.Image, strings.Join(container.Args, " "))
-	if cause := externalLintCancellationCause(ctx); cause != nil {
-		return cancelledGovardLintResult(cause, nil)
+	originalStandard := strings.TrimSpace(request.Profile.CodingStandard)
+	currentRequest := request
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		toolchainDigest := govardLintToolchainDigest(resolved, currentRequest)
+		cacheDir, err := backend.cacheDirectory(currentRequest, plan, resolved, toolchainDigest)
+		if err != nil {
+			return LintReport{}, err
+		}
+		container := backend.containerRequest(currentRequest, plan, resolved, toolchainDigest, cacheDir)
+		// Only container-safe values are logged: no credential path, no secret,
+		// and no environment dump.
+		_, _ = fmt.Fprintf(logFile, "govard lint %s image %s args %s\n", container.Name, container.Image, strings.Join(container.Args, " "))
+		if cause := externalLintCancellationCause(ctx); cause != nil {
+			return cancelledGovardLintResult(cause, nil)
+		}
+		var outputBuf bytes.Buffer
+		output := io.MultiWriter(logFile, &outputBuf)
+		if request.StreamWriter != nil {
+			output = io.MultiWriter(logFile, &outputBuf, request.StreamWriter)
+		}
+		runErr := backend.runContainer(ctx, container, output)
+		if cause := externalLintCancellationCause(ctx); cause != nil {
+			return LintReport{Status: lintStatusCancelled}, govardLintCancelledError(cause, backend.cleanupContainer(container.Name, logFile))
+		}
+		combinedMsg := ""
+		if runErr != nil {
+			combinedMsg = runErr.Error()
+		}
+		combinedMsg += outputBuf.String()
+		// Also include log tail for cases where error is only in output
+		if isMissingCodingStandardError(combinedMsg) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
+			pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+			_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+			_ = backend.removeCompletedContainer(container.Name, logFile)
+			if err := os.Remove(reportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return LintReport{}, fmt.Errorf("remove prior govard lint report: %w", err)
+			}
+			currentRequest.Profile.CodingStandard = "PSR12"
+			lastErr = runErr
+			continue
+		}
+		exitCode, completed := govardLintExitStatus(runErr)
+		if !completed {
+			primary := govardLintInfrastructureExitError(exitCode, runErr)
+			// Also consider fallback on infra error that contains missing standard message
+			if isMissingCodingStandardError(combinedMsg+primary.Error()) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
+				pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+				_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+				_ = backend.removeCompletedContainer(container.Name, logFile)
+				if err := os.Remove(reportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return LintReport{}, fmt.Errorf("remove prior govard lint report: %w", err)
+				}
+				currentRequest.Profile.CodingStandard = "PSR12"
+				lastErr = primary
+				continue
+			}
+			return LintReport{}, withGovardLintCleanupError(primary, backend.removeCompletedContainer(container.Name, logFile))
+		}
+		cleanupErr := backend.removeCompletedContainer(container.Name, logFile)
+		report, err := backend.acceptReport(currentRequest, resolved, toolchainDigest, exitCode, reportPath, logFile)
+		if err != nil {
+			if isMissingCodingStandardError(combinedMsg+err.Error()) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
+				pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+				_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+				currentRequest.Profile.CodingStandard = "PSR12"
+				lastErr = err
+				_ = cleanupErr
+				continue
+			}
+			return LintReport{}, withGovardLintCleanupError(err, cleanupErr)
+		}
+		return report, nil
 	}
-	output := io.Writer(logFile)
-	if request.StreamWriter != nil {
-		output = io.MultiWriter(logFile, request.StreamWriter)
+	if lastErr != nil {
+		return LintReport{}, lastErr
 	}
-	runErr := backend.runContainer(ctx, container, output)
-	if cause := externalLintCancellationCause(ctx); cause != nil {
-		return LintReport{Status: lintStatusCancelled}, govardLintCancelledError(cause, backend.cleanupContainer(container.Name, logFile))
-	}
-	exitCode, completed := govardLintExitStatus(runErr)
-	if !completed {
-		primary := govardLintInfrastructureExitError(exitCode, runErr)
-		return LintReport{}, withGovardLintCleanupError(primary, backend.removeCompletedContainer(container.Name, logFile))
-	}
-	cleanupErr := backend.removeCompletedContainer(container.Name, logFile)
-	report, err := backend.acceptReport(request, resolved, toolchainDigest, exitCode, reportPath, logFile)
-	if err != nil {
-		return LintReport{}, withGovardLintCleanupError(err, cleanupErr)
-	}
-	return report, nil
+	return LintReport{}, fmt.Errorf("govard lint failed after fallback")
 }
 
 // acceptReport validates every identity, cache, and status field before a

@@ -113,6 +113,21 @@ func PrepareConfigForWrite(config Config) Config {
 		}
 	}
 
+	// Do not persist a default audit.lint.provider for frameworks that do
+	// not implement audit lint. This prevents bootstrap/init from writing
+	// audit.lint.provider: govard for Symfony/Laravel where audit run would
+	// otherwise promise a gate that immediately fails with "no framework can
+	// resolve audit target".
+	if !FrameworkSupportsAuditLint(writable.Framework) {
+		writable.Audit.Lint.Provider = ""
+		if len(writable.Audit.Lint.ExternalProviders) == 0 {
+			writable.Audit.Lint.ExternalProviders = nil
+		}
+		if writable.Audit.Lint.Provider == "" && writable.Audit.Lint.ExternalProviders == nil {
+			writable.Audit = AuditConfig{}
+		}
+	}
+
 	return writable
 }
 

@@ -42,6 +42,14 @@ func Definition() types.FrameworkDefinition {
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"johnpbloch/wordpress", "roots/wordpress", "wordpress/wordpress"},
 		},
+		AuditLint: &types.AuditLintProfile{
+			ProjectPHPVersions:    []string{"8.1", "8.2", "8.3", "8.4"},
+			StandalonePHPVersions: []string{"8.1", "8.2", "8.3", "8.4"},
+			Linters:               []string{"phpcs", "phpstan"},
+			CodingStandard:        "WordPress",
+			PHPStanLevel:          5,
+		},
+		AuditTargetResolver:    ResolveAuditTarget,
 		ComposerCodingStandard: types.ComposerCodingStandard{Package: "wp-coding-standards/wpcs", Standard: "WordPress"},
 		ToolCommands: []types.ToolCommand{
 			{Name: "wp", Short: "Run WordPress CLI commands", Binary: "wp"},

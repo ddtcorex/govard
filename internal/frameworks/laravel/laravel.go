@@ -33,6 +33,15 @@ func Definition() types.FrameworkDefinition {
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"laravel/framework"},
 		},
+		AuditLint: &types.AuditLintProfile{
+			ProjectPHPVersions:    []string{"8.1", "8.2", "8.3", "8.4"},
+			StandalonePHPVersions: []string{"8.1", "8.2", "8.3", "8.4"},
+			Linters:               []string{"phpcs", "phpstan"},
+			CodingStandard:        "PSR12",
+			PHPStanLevel:          5,
+		},
+		AuditTargetResolver:    ResolveAuditTarget,
+		ComposerCodingStandard: types.ComposerCodingStandard{Package: "laravel/pint", Standard: "Laravel"},
 		ToolCommands: []types.ToolCommand{
 			{Name: "artisan", Short: "Run Laravel Artisan commands", Binary: "php", PrependArgs: []string{"artisan"}},
 		},

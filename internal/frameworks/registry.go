@@ -232,7 +232,7 @@ func (r *Registry) ResolveAuditTarget(request types.AuditTargetResolveRequest) (
 	}
 
 	if !selected {
-		return types.FrameworkDefinition{}, types.AuditTarget{}, fmt.Errorf("no framework can resolve audit target %q", request.StartPath)
+		return types.FrameworkDefinition{}, types.AuditTarget{}, fmt.Errorf("no framework can resolve audit target %q (audit lint is only supported for Magento 2/Mage-OS; for other frameworks use govard tool php vendor/bin/phpcs, vendor/bin/phpstan or vendor/bin/pint directly)", request.StartPath)
 	}
 	selectedTarget.Framework = selectedDefinition.Name
 	return selectedDefinition, selectedTarget, nil
@@ -283,6 +283,7 @@ func registerEngineDefinition(def types.FrameworkDefinition) {
 	engine.RegisterFrameworkCapabilities(def.Name, engine.FrameworkCapabilities{
 		FrontendSync:  def.FrontendSyncRenderer != nil,
 		AuditProfiler: def.AuditProfiler != nil,
+		AuditLint:     def.AuditLint != nil,
 	})
 	for _, migrationType := range def.MigrationTypes.DDEV {
 		engine.RegisterMigrationFramework("ddev", migrationType, def.Name)

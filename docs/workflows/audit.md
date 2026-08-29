@@ -12,10 +12,11 @@ Govard persists every audit as an immutable session under `~/.govard/audit/<proj
 ## Quick Start
 
 ```bash
-# Lint the whole project (auto-detect mode)
-govard audit run
+# Lint the whole project (auto-detect mode) — supported for Magento 2, Laravel, Symfony, WordPress
+govard audit run --checks lint               # Magento2
+govard audit run --checks lint --mode project # Laravel/Symfony/WordPress (auto resolves)
 
-# Lint + profiler on one URL (first run needs --url)
+# Lint + profiler on one URL (first run needs --url) — profiler is Magento-only
 govard audit run --checks lint,profiler --url 'https://shop.test/category.html?product_list_limit=48'
 
 # Profiler only

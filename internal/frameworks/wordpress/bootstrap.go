@@ -23,10 +23,32 @@ import (
 
 const (
 	wordpressCoreArchiveURL = "https://wordpress.org/latest.tar.gz"
+	wordpressCoreBaseURL    = "https://wordpress.org"
 	wordpressCorePrefix     = "wordpress/"
 )
 
 var wordpressCoreDownloader = downloadAndExtractWordPressCore
+
+// getWordPressArchiveURL returns the version-pinned WordPress core archive URL.
+// When version is empty or "latest" it returns the canonical latest.tar.gz URL
+// so existing fresh installs without --framework-version keep current behavior.
+// For a pinned version (e.g. "6", "6.7", "6.7.1") it returns the versioned
+// archive at https://wordpress.org/wordpress-<version>.tar.gz. A bare major
+// like "6" is normalized to "6.0" because WordPress publishes versioned
+// archives per minor (wordpress-6.0.tar.gz, wordpress-6.7.tar.gz, etc.) and
+// there is no wordpress-6.tar.gz.
+func getWordPressArchiveURL(version string) string {
+	v := strings.TrimSpace(version)
+	if v == "" || strings.EqualFold(v, "latest") {
+		return wordpressCoreArchiveURL
+	}
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	if !strings.Contains(v, ".") {
+		v = v + ".0"
+	}
+	return fmt.Sprintf("%s/wordpress-%s.tar.gz", wordpressCoreBaseURL, v)
+}
 
 type WordPressBootstrap struct {
 	Options bootstrap.Options
@@ -59,6 +81,21 @@ func (w *WordPressBootstrap) CreateProject(projectDir string) error {
 
 	if err := bootstrap.RemoveProjectContents(projectDir); err != nil {
 		return err
+	}
+	// When version is pinned via --framework-version (e.g. "6", "6.7"), download
+	// the versioned archive instead of latest.tar.gz. This keeps fresh installs
+	// reproducible and matches the --framework-version contract. See
+	// getWordPressArchiveURL for normalization rules.
+	if strings.TrimSpace(w.Options.Version) != "" {
+		archiveURL := getWordPressArchiveURL(w.Options.Version)
+		if archiveURL != wordpressCoreArchiveURL {
+			pterm.Info.Printf("Downloading WordPress %s from %s...\n", strings.TrimSpace(w.Options.Version), archiveURL)
+			if err := downloadAndExtractWordPressCoreFromURL(projectDir, archiveURL); err != nil {
+				return fmt.Errorf("failed to download WordPress core: %w", err)
+			}
+			pterm.Success.Println("WordPress downloaded successfully")
+			return nil
+		}
 	}
 	if err := wordpressCoreDownloader(projectDir); err != nil {
 		return fmt.Errorf("failed to download WordPress core: %w", err)
@@ -201,6 +238,24 @@ func (w *WordPressBootstrap) installWordPressSite(projectDir, siteURL string) er
 	}, "\n")
 
 	if err := bootstrap.RunPHPOneLiner(projectDir, w.Options.Runner, code); err != nil {
+		pterm.Warning.Printf("PHP one-liner install failed (%v), trying wp-cli fallback...\n", err)
+		if w.Options.Runner != nil {
+			fallback := fmt.Sprintf("wp core install --url=%s --title=%s --admin_user=%s --admin_email=%s --admin_password=%s --skip-email",
+				conventions.ShellQuote(siteURL),
+				conventions.ShellQuote("WordPress Site"),
+				conventions.ShellQuote(conventions.DefaultAdminUser),
+				conventions.ShellQuote(conventions.DefaultAdminEmail),
+				conventions.ShellQuote(conventions.DefaultAdminPassword),
+			)
+			// Only treat fallback as success if wp-cli is present and install succeeds;
+			// otherwise surface the original PHP error for diagnosability.
+			if fallbackErr := w.Options.Runner(fallback); fallbackErr == nil {
+				pterm.Success.Println("WordPress installed via wp-cli fallback")
+				return nil
+			} else {
+				pterm.Warning.Printf("wp-cli fallback also failed: %v\n", fallbackErr)
+			}
+		}
 		return fmt.Errorf("install WordPress site: %w", err)
 	}
 
@@ -259,12 +314,24 @@ func (w *WordPressBootstrap) resolveDBConfig() (host, user, pass, name string) {
 
 func (w *WordPressBootstrap) waitForWordPressDatabase(projectDir string) error {
 	dbHost, dbUser, dbPass, dbName := w.resolveDBConfig()
-	return bootstrap.WaitForMySQLDatabase(projectDir, w.Options.Runner, dbHost, dbUser, dbPass, dbName)
+	// WordPress fresh install requires a running DB container; manifest sets
+	// RequiresRunningEnvForFreshInstall=true so env up happens before
+	// CreateProject->Install. If Runner is nil (host-side fallback) we still
+	// poll via local php, but we surface the wait error explicitly rather than
+	// letting installWordPressSite silently create an empty DB.
+	if err := bootstrap.WaitForMySQLDatabase(projectDir, w.Options.Runner, dbHost, dbUser, dbPass, dbName); err != nil {
+		return fmt.Errorf("database not ready for WordPress install (db=%s user=%s host=%s): %w", dbName, dbUser, dbHost, err)
+	}
+	return nil
 }
 
 func downloadAndExtractWordPressCore(projectDir string) error {
+	return downloadAndExtractWordPressCoreFromURL(projectDir, wordpressCoreArchiveURL)
+}
+
+func downloadAndExtractWordPressCoreFromURL(projectDir string, archiveURL string) error {
 	client := &http.Client{Timeout: 2 * time.Minute}
-	resp, err := client.Get(wordpressCoreArchiveURL)
+	resp, err := client.Get(archiveURL)
 	if err != nil {
 		return fmt.Errorf("download WordPress core: %w", err)
 	}
@@ -371,4 +438,9 @@ func SetWordPressCoreDownloaderForTest(fn func(projectDir string) error) func() 
 	return func() {
 		wordpressCoreDownloader = previous
 	}
+}
+
+// GetWordPressArchiveURLForTest exposes getWordPressArchiveURL for tests.
+func GetWordPressArchiveURLForTest(version string) string {
+	return getWordPressArchiveURL(version)
 }

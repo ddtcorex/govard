@@ -42,9 +42,9 @@ func (l *LaravelBootstrap) FreshCommands() []string {
 	majorVersion := strings.Split(version, ".")[0]
 	switch majorVersion {
 	case "12":
-		laravelVersion = "laravel/laravel"
+		laravelVersion = "laravel/laravel:^12.0"
 	case "11":
-		laravelVersion = "laravel/laravel"
+		laravelVersion = "laravel/laravel:^11.0"
 	case "10":
 		laravelVersion = "laravel/laravel:^10.0"
 	case "9":
@@ -54,7 +54,7 @@ func (l *LaravelBootstrap) FreshCommands() []string {
 	}
 
 	return []string{
-		"composer create-project " + laravelVersion + " .",
+		"COMPOSER_NO_BLOCKING=1 COMPOSER_NO_AUDIT=1 composer create-project --no-audit --no-blocking " + laravelVersion + " .",
 	}
 }
 
@@ -64,9 +64,9 @@ func (l *LaravelBootstrap) CreateProject(projectDir string) error {
 	laravelVersion := l.getLaravelVersion(l.Options.Version)
 
 	createInStage := func(stageDir string) error {
-		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", laravelVersion, stageDir, "--no-interaction")
+		return bootstrap.RunComposerProjectCommand(projectDir, nil, "create-project", "--no-audit", "--no-blocking", laravelVersion, stageDir, "--no-interaction")
 	}
-	runnerCommand := "composer create-project " + laravelVersion + " \"$GOVARD_STAGE_DIR\" --no-interaction"
+	runnerCommand := "COMPOSER_NO_BLOCKING=1 COMPOSER_NO_AUDIT=1 composer create-project --no-audit --no-blocking " + laravelVersion + " \"$GOVARD_STAGE_DIR\" --no-interaction"
 	if err := bootstrap.RunStagedCreateProject(projectDir, l.Options.Runner, createInStage, runnerCommand, conventions.DefaultWorkDir); err != nil {
 		return fmt.Errorf("failed to create Laravel project: %w", err)
 	}
@@ -207,7 +207,7 @@ func (l *LaravelBootstrap) PostClone(projectDir string) error {
 
 func (l *LaravelBootstrap) getLaravelVersion(version string) string {
 	if version == "" {
-		return "laravel/laravel"
+		return "laravel/laravel:^11.0"
 	}
 
 	parts := strings.Split(version, ".")
@@ -215,9 +215,9 @@ func (l *LaravelBootstrap) getLaravelVersion(version string) string {
 
 	switch major {
 	case "12":
-		return "laravel/laravel"
+		return "laravel/laravel:^12.0"
 	case "11":
-		return "laravel/laravel"
+		return "laravel/laravel:^11.0"
 	case "10":
 		return "laravel/laravel:^10.0"
 	case "9":

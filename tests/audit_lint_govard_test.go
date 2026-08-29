@@ -1099,6 +1099,48 @@ func lintAggregateStatusForTest(results []audit.LintPHPResult) string {
 	}
 }
 
+func TestLintGovardFallsBackToPSR12WhenStandardMissing(t *testing.T) {
+	request := govardLintRequestForTest(t)
+	request.Profile.CodingStandard = "WordPress"
+	docker := &fakeLintDocker{}
+	backend := newGovardLintBackendForTest(t, docker, nil)
+	callCount := 0
+	docker.run = func(_ context.Context, run audit.ContainerRunRequest, output io.Writer) error {
+		callCount++
+		if callCount == 1 {
+			if got := run.Environment["GOVARD_LINT_CODING_STANDARD"]; got != "WordPress" {
+				t.Fatalf("first run coding standard = %q, want WordPress", got)
+			}
+			if output != nil {
+				_, _ = io.WriteString(output, "ERROR: the \"WordPress\" coding standard was not installed.")
+			}
+			return errors.New("ERROR: the \"WordPress\" coding standard was not installed. Was not installed")
+		}
+		if got := run.Environment["GOVARD_LINT_CODING_STANDARD"]; got != "PSR12" {
+			t.Fatalf("retry coding standard = %q, want PSR12", got)
+		}
+		writeGovardLintReportForTest(t, request, run, "passed")
+		return nil
+	}
+	report, err := backend.Run(context.Background(), request)
+	if err != nil {
+		t.Fatalf("fallback failed: %v", err)
+	}
+	if report.Status != "passed" {
+		t.Fatalf("report status = %q, want passed", report.Status)
+	}
+	if callCount != 2 {
+		t.Fatalf("runs = %d, want 2 (original + fallback)", callCount)
+	}
+	runs := docker.RunRequests()
+	if len(runs) != 2 {
+		t.Fatalf("run requests = %d, want 2", len(runs))
+	}
+	if runs[1].Environment["GOVARD_LINT_CODING_STANDARD"] != "PSR12" {
+		t.Fatalf("second run env = %q, want PSR12", runs[1].Environment["GOVARD_LINT_CODING_STANDARD"])
+	}
+}
+
 func writeLintReportFileForTest(t *testing.T, runDir string, report audit.LintReport) {
 	t.Helper()
 	content, err := json.Marshal(report)

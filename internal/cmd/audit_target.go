@@ -37,7 +37,7 @@ func resolveAuditTarget(ctx context.Context, start string, mode types.AuditTarge
 		return resolvedAuditTarget{}, err
 	}
 	if definition.AuditLint == nil {
-		return resolvedAuditTarget{}, fmt.Errorf("framework %q does not support lint audit", definition.Name)
+		return resolvedAuditTarget{}, fmt.Errorf("framework %q does not support lint audit (use govard tool php vendor/bin/phpcs, vendor/bin/phpstan or vendor/bin/pint directly)", definition.Name)
 	}
 
 	root := target.TargetPath
@@ -89,7 +89,7 @@ func resolveAuditTarget(ctx context.Context, start string, mode types.AuditTarge
 
 func resolveAuditPHPVersions(target types.AuditTarget, profile *types.AuditLintProfile, config *engine.Config, requested []string) ([]string, bool, error) {
 	if profile == nil {
-		return nil, false, fmt.Errorf("framework %q does not support lint audit", target.Framework)
+		return nil, false, fmt.Errorf("framework %q does not support lint audit (use govard tool php vendor/bin/phpcs, vendor/bin/phpstan or vendor/bin/pint directly)", target.Framework)
 	}
 	if target.Mode != types.AuditTargetStandalone {
 		if config == nil {

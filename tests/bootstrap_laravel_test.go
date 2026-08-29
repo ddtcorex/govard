@@ -15,10 +15,11 @@ func TestBootstrapPkgLaravelFreshCommands(t *testing.T) {
 		version  string
 		expected string
 	}{
-		{"11", "laravel/laravel"},
+		{"12", "laravel/laravel:^12.0"},
+		{"11", "laravel/laravel:^11.0"},
 		{"10", "laravel/laravel:^10.0"},
 		{"9", "laravel/laravel:^9.0"},
-		{"", "laravel/laravel"},
+		{"", "laravel/laravel:^11.0"},
 	}
 
 	for _, tc := range cases {
@@ -55,7 +56,7 @@ func TestLaravelCreateProjectWithRunnerStagesComposerCreateProject(t *testing.T)
 		t.Fatalf("CreateProject() error = %v", err)
 	}
 
-	if !strings.Contains(capturedCommand, `composer create-project laravel/laravel "$GOVARD_STAGE_DIR" --no-interaction`) {
+	if !strings.Contains(capturedCommand, `COMPOSER_NO_BLOCKING=1 COMPOSER_NO_AUDIT=1 composer create-project --no-audit --no-blocking laravel/laravel:^11.0 "$GOVARD_STAGE_DIR" --no-interaction`) {
 		t.Fatalf("unexpected runner command: %s", capturedCommand)
 	}
 	if _, err := os.Stat(filepath.Join(projectDir, "package.json")); err != nil {

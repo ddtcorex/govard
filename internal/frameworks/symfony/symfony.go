@@ -30,6 +30,15 @@ func Definition() types.FrameworkDefinition {
 			Password: DefaultDBPass,
 			Database: DefaultDBName,
 		},
+		AuditLint: &types.AuditLintProfile{
+			ProjectPHPVersions:    []string{"8.1", "8.2", "8.3", "8.4"},
+			StandalonePHPVersions: []string{"8.1", "8.2", "8.3", "8.4"},
+			Linters:               []string{"phpcs", "phpstan"},
+			CodingStandard:        "Symfony",
+			PHPStanLevel:          5,
+			PHPStanExtension:      "phpstan/phpstan-symfony",
+		},
+		AuditTargetResolver: ResolveAuditTarget,
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"symfony/framework-bundle", "symfony/symfony"},
 		},

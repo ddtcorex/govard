@@ -7,6 +7,7 @@ import "strings"
 type FrameworkCapabilities struct {
 	FrontendSync  bool
 	AuditProfiler bool
+	AuditLint     bool
 }
 
 var registeredFrameworkCapabilities = map[string]FrameworkCapabilities{}
@@ -29,4 +30,13 @@ func FrameworkSupportsFrontendSync(name string) bool {
 func FrameworkSupportsAuditProfiler(name string) bool {
 	capabilities, ok := registeredFrameworkCapabilities[NormalizeFrameworkAlias(name)]
 	return ok && capabilities.AuditProfiler
+}
+
+// FrameworkSupportsAuditLint reports whether the framework registered a
+// lint-audit capability. Frameworks without AuditLint (e.g. Symfony,
+// Laravel) return false so config normalization can omit the default
+// audit.lint.provider that would otherwise promise a non-existent gate.
+func FrameworkSupportsAuditLint(name string) bool {
+	capabilities, ok := registeredFrameworkCapabilities[NormalizeFrameworkAlias(name)]
+	return ok && capabilities.AuditLint
 }
