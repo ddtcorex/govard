@@ -108,6 +108,7 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 
 	if version == "" {
 		result.Notes = append(result.Notes, "Framework version is not detected. Using framework defaults.")
+		appendNodeEOLWarning(&result)
 		return result, nil
 	}
 
@@ -121,11 +122,13 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 		override, source, ok := resolver(version)
 		if !ok {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("No version-specific profile for %s version %q. Using framework defaults.", framework, version))
+			appendNodeEOLWarning(&result)
 			return result, nil
 		}
 		applyRuntimeProfileOverride(&result.Profile, override)
 		normalizeProfile(&result.Profile)
 		result.Source = source
+		appendNodeEOLWarning(&result)
 		return result, nil
 	}
 	_, minor, _ := parseMajorMinor(version)
@@ -141,6 +144,7 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 			applyRuntimeProfileOverride(&result.Profile, override)
 			normalizeProfile(&result.Profile)
 			result.Source = source
+			appendNodeEOLWarning(&result)
 			return result, nil
 		}
 	}
@@ -148,9 +152,11 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 		applyRuntimeProfileOverride(&result.Profile, override)
 		normalizeProfile(&result.Profile)
 		result.Source = source
+		appendNodeEOLWarning(&result)
 		return result, nil
 	}
 	result.Warnings = append(result.Warnings, fmt.Sprintf("No version-specific profile for %s major %d. Using framework defaults.", framework, major))
+	appendNodeEOLWarning(&result)
 	return result, nil
 }
 
@@ -363,4 +369,34 @@ func resolveFrameworkProfileBareMajor(framework string, major int) (VersionProfi
 		source = fmt.Sprintf("version-specific:%s@%d", framework, major)
 	}
 	return override, source, true
+}
+
+// IsNodeVersionEOL reports whether the given Node major version is end-of-life.
+// Currently only Node 14 is considered EOL (recommend 18+).
+func IsNodeVersionEOL(version string) bool {
+	v := strings.TrimSpace(version)
+	return v == "14"
+}
+
+// NodeEOLWarning returns the EOL warning message for the given Node version, or empty if not EOL.
+func NodeEOLWarning(version string) string {
+	if IsNodeVersionEOL(version) {
+		return "node_version 14 is EOL, recommend 18"
+	}
+	return ""
+}
+
+func appendNodeEOLWarning(result *RuntimeProfileResult) {
+	if result == nil {
+		return
+	}
+	if msg := NodeEOLWarning(result.Profile.NodeVersion); msg != "" {
+		// Avoid duplicate warnings if already present.
+		for _, w := range result.Warnings {
+			if w == msg {
+				return
+			}
+		}
+		result.Warnings = append(result.Warnings, msg)
+	}
 }

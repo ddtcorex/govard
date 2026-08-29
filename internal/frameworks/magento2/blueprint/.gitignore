@@ -1,0 +1,7 @@
+# Govard hygiene — Magento2 media guard (mirrors shared blueprint guard)
+pub/media/*.php
+pub/media/**/*.php
+pub/media/*.phtml
+pub/media/**/*.phtml
+pub/media/*.pht
+pub/media/**/*.pht

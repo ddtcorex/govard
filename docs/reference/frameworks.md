@@ -29,6 +29,8 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | Dagster | ✅ | framework defaults | project root | — |
 | Custom | manual | manual | project root | — |
 
+> **Linter column:** `Audit Lint (govard)` shows `govard audit run --checks lint` support. ✅ = native `govard` provider (Magento2: `Magento2` CS, Laravel: `PSR12`, Symfony: `Symfony`, WordPress: `WordPress`); every lint run also enforces the **media guard** (`pub/media` `*.php/*.phtml/*.pht` → `M2-LINT-MEDIA` `failed`) and hygiene `.gitignore` (`pub/media/*.php` etc.). See [Audit — Lint & Profiler](/workflows/audit#scanned-paths--media-guard).
+
 ---
 
 ## Runtime Defaults

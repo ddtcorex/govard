@@ -821,6 +821,9 @@ func CheckConfigDrift() error {
 	}
 	meta := DetectFramework(wd)
 	warnings := CollectConfigDrift(cfg, meta)
+	if msg := ComposerStaleWarning(wd); msg != "" {
+		warnings = append(warnings, msg)
+	}
 	if len(warnings) > 0 {
 		return fmt.Errorf("configuration drift: %s", strings.Join(warnings, ", "))
 	}

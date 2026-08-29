@@ -1,0 +1,8 @@
+# Govard hygiene — block executable uploads in pub/media (M2-LINT-MEDIA)
+# pub/media is user content, never shipped code; PHP here is a webshell signal.
+pub/media/*.php
+pub/media/**/*.php
+pub/media/*.phtml
+pub/media/**/*.phtml
+pub/media/*.pht
+pub/media/**/*.pht
