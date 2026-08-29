@@ -109,11 +109,11 @@ Analyzers skip `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (nev
 ## Scope (`--scope diff --base auto`)
 
 - `govard audit run --scope project` (default) audits the full target.
-- `govard audit run --scope diff --base auto --format json` is for review/PR workflows: it auto-detects the base via `git merge-base HEAD origin/HEAD || origin/master || gh pr view --json baseRefName` and records it in the session manifest. `govard audit diff --base <ref>` is a shorthand that forces `scope diff`.
+- `govard audit run --scope diff --base auto --format json` is for review/PR workflows: it auto-detects the base via `git merge-base HEAD origin/HEAD || origin/master || gh pr view --json baseRefName` (merge-base returns a commit SHA) and records it in the session manifest. `gh pr view` normalizes to `origin/<branch>` when the prefix is missing. `govard audit diff --base <ref>` is a shorthand that forces `scope diff`.
 
 ## Concurrency
 
-Runs for the same project are queued via `~/.govard/audit/<projectId>/lock` (wait up to 30s, `audit run waiting for prior run`), not cancelled.
+Runs for the same project are queued via `~/.govard/audit/<projectId>/lock` (under `GovardHomeDir`, respecting `GOVARD_HOME_DIR`; wait up to 30s, `audit run waiting for prior run`), not cancelled. A stale lock after 30s fails with a hint to remove the lock or run `govard audit cleanup`.
 
 ## Xdebug guard
 

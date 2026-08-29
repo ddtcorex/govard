@@ -228,6 +228,8 @@ is a hidden alias for `--lint-provider`.
 records the requested base in the session manifest for review workflows; use
 `--base auto` to auto-detect the base via `git merge-base HEAD origin/HEAD`
 (and `origin/master`/`origin/main` fallbacks, then `gh pr view --json baseRefName`).
+`git merge-base` emits a commit SHA (used directly as the base); `gh pr view`
+normalizes to `origin/<branch>` when the prefix is missing.
 Example for the review skill:
 
 ```bash
@@ -237,10 +239,12 @@ govard audit run --checks lint --mode project --scope diff --base auto --format 
 #### Concurrency
 
 Concurrent `govard audit run` invocations for the same project serialize on
-`~/.govard/audit/<projectId>/lock`. The second run waits up to 30s for the
-prior run to release the lock (`audit run waiting for prior run`) and then
-proceeds; runs are queued, not cancelled (fixing the earlier `cancelled`
-behaviour).
+`~/.govard/audit/<projectId>/lock` (via `GovardHomeDir`, respecting
+`GOVARD_HOME_DIR`). The second run waits up to 30s for the prior run to
+release the lock (`audit run waiting for prior run`) and then proceeds; runs
+are queued, not cancelled (fixing the earlier `cancelled` behaviour). If the
+lock remains held after 30s the run fails with a hint to remove the stale
+lock or run `govard audit cleanup`.
 
 #### Xdebug guard
 

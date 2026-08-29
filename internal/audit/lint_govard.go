@@ -193,10 +193,12 @@ func enforceGovardLintXdebugGuard(request LintRequest, allowXdebug bool) error {
 	if allowXdebug {
 		return nil
 	}
-	// Prefer explicit ProjectRoot; fallback to GovardHome handling is done by the caller.
+	// ProjectRoot is required: validateLintRequest already enforces non-empty
+	// absolute paths, so an empty root is a caller bug that must not silently
+	// bypass the Xdebug perf-tax guard.
 	root := strings.TrimSpace(request.ProjectRoot)
 	if root == "" {
-		return nil
+		return fmt.Errorf("govard lint xdebug guard requires project root")
 	}
 	// Probe for .govard.yml at project root via lightweight load.
 	candidate := filepath.Join(root, ".govard.yml")

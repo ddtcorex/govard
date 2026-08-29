@@ -228,7 +228,7 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if err := validateAuditCommandOptions(options); err != nil {
 			return err
 		}
-		scope, err := auditScope(options.Scope, forceDiff, cmd.Flags().Changed("scope"))
+		scope, err := auditScope(options.Scope, forceDiff, auditFlagChanged(cmd, "scope"))
 		if err != nil {
 			return err
 		}
@@ -326,7 +326,7 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 		// selection; peek it straight from the persisted session store so no
 		// lint backend or profiler runtime is constructed for the lookup.
 		effectiveChecks := options.Checks
-		if !cmd.Flags().Changed("checks") {
+		if !auditFlagChanged(cmd, "checks") {
 			mode := types.AuditTargetMode(strings.TrimSpace(options.TargetMode))
 			if mode == "" {
 				mode = types.AuditTargetAuto
@@ -483,7 +483,7 @@ func prepareAudit(cmd *cobra.Command, options *auditCommandOptions, dependencies
 	// Provider precedence is only resolved for an invocation that actually runs
 	// lint; a read-only command must not select a provider at all.
 	if preparation.LintBackendRequired {
-		providerExplicit := cmd.Flags().Changed("lint-provider") || cmd.Flags().Changed("provider")
+		providerExplicit := auditFlagChanged(cmd, "lint-provider") || auditFlagChanged(cmd, "provider")
 		request.LintProvider = effectiveAuditLintProvider(options, providerExplicit, target.Config)
 		request.AllowSSHAgent = options.AllowLintSSHAgent
 		request.AllowXdebug = options.AllowXdebug
@@ -626,12 +626,35 @@ func warnXdebugGuard(cmd *cobra.Command, cfg *engine.Config) {
 
 func enforceXdebugGuard(cfg *engine.Config, allow bool) error {
 	if cfg == nil {
+		// Standalone targets have no project config (target.Config is nil); there
+		// is no stack.features.xdebug to inspect, so the guard is intentionally
+		// skipped for standalone. Project targets always carry a config.
 		return nil
 	}
 	if engine.XdebugGuard(*cfg) && !allow {
 		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug")
 	}
 	return nil
+}
+
+// auditFlagChanged reports whether a flag (including persistent flags inherited
+// from the parent audit command) was explicitly set. lint-provider/provider,
+// scope, checks etc. are defined as PersistentFlags on the parent, so a child
+// run/rerun command must check PersistentFlags/InheritedFlags as well as Flags.
+func auditFlagChanged(cmd *cobra.Command, name string) bool {
+	if cmd == nil {
+		return false
+	}
+	if cmd.Flags().Changed(name) {
+		return true
+	}
+	if cmd.PersistentFlags().Changed(name) {
+		return true
+	}
+	if cmd.InheritedFlags().Changed(name) {
+		return true
+	}
+	return false
 }
 
 // detectAuditBase auto-detects the base ref for --scope diff --base auto.
@@ -652,16 +675,16 @@ func detectAuditBase(projectRoot string) (string, error) {
 	}
 	for _, args := range candidates {
 		if out, err := gitOutput(projectRoot, args...); err == nil && strings.TrimSpace(out) != "" {
-			// For merge-base we got a commit SHA; for rev-parse we got a ref. Prefer the ref name when available.
-			// Return the base ref that produced a result. For merge-base, return the second arg as base.
-			if args[0] == "merge-base" && len(args) > 2 {
-				return strings.TrimSpace(args[2]), nil
-			}
+			// git merge-base and rev-parse both emit a SHA; return the SHA
+			// (the commit that is the actual base), not the ref name.
 			return strings.TrimSpace(out), nil
 		}
 	}
-	// Try gh pr view fallback.
-	if output, err := exec.Command("gh", "pr", "view", "--json", "baseRefName", "-q", ".baseRefName").Output(); err == nil {
+	// Try gh pr view fallback, scoped to the project root (gitOutput uses
+	// git -C projectRoot, so gh must also run in projectRoot).
+	ghCmd := exec.Command("gh", "pr", "view", "--json", "baseRefName", "-q", ".baseRefName")
+	ghCmd.Dir = projectRoot
+	if output, err := ghCmd.Output(); err == nil {
 		base := strings.TrimSpace(string(output))
 		if base != "" {
 			// Normalize to origin/<branch> if needed.

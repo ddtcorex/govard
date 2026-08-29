@@ -233,8 +233,9 @@ func auditRepositoryIdentity(root, origin string) string {
 }
 
 // AuditLockPath returns the filesystem lock path for a given audit projectId.
-// It lives under GovardHomeDir/audit/<projectId>/lock so concurrent runs for
-// the same project serialize rather than cancel.
+// It lives under GovardHomeDir()/audit/<projectId>/lock (GovardHomeDir respects
+// GOVARD_HOME_DIR, defaulting to ~/.govard) so concurrent runs for the same
+// project serialize rather than cancel.
 func AuditLockPath(projectID string) string {
 	return filepath.Join(engine.GovardHomeDir(), "audit", projectID, "lock")
 }
@@ -309,5 +310,5 @@ func acquireAuditLock(projectID string, timeout time.Duration) (func() error, er
 			}, nil
 		}
 	}
-	return nil, fmt.Errorf("audit lock %q is already held (waited %s)", lockPath, timeout)
+	return nil, fmt.Errorf("audit lock %q is already held (waited %s); if the holder crashed, remove the lock or run \"govard audit cleanup\" and retry", lockPath, timeout)
 }

@@ -3,7 +3,6 @@ package tests
 import (
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -108,33 +107,43 @@ func TestAuditConcurrencyNoCancelOnSecondWait(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", tmpHome)
 	projectID := "project-concurrent-5678"
 	// Simulate example-project-large 15 cancelled: second run should be queued, not cancelled.
-	// Use barrier to ensure first holds lock for a duration.
+	// Use channel barriers instead of sleep to avoid flakiness.
 	release1, err := cmd.AcquireAuditLockForTest(projectID)
 	if err != nil {
 		t.Fatalf("first acquire: %v", err)
 	}
-	var wg sync.WaitGroup
-	wg.Add(2)
+	secondStarted := make(chan struct{})
+	secondDone := make(chan struct{})
 	firstStatus := "running"
 	secondStatus := "pending"
 	go func() {
-		defer wg.Done()
-		// first holds for 300ms then releases
-		time.Sleep(300 * time.Millisecond)
-		_ = release1()
-		firstStatus = "passed"
-	}()
-	go func() {
-		defer wg.Done()
+		close(secondStarted)
 		r, err := cmd.AcquireAuditLockForTest(projectID)
 		if err != nil {
 			secondStatus = "cancelled"
+			close(secondDone)
 			return
 		}
 		secondStatus = "waiting-then-passed"
 		_ = r()
+		close(secondDone)
 	}()
-	wg.Wait()
+	// Wait until the second goroutine has started attempting to acquire.
+	<-secondStarted
+	// Give the second acquire a moment to block on the lock file.
+	select {
+	case <-secondDone:
+		t.Fatalf("second acquire should have waited but returned immediately")
+	case <-time.After(50 * time.Millisecond):
+	}
+	_ = release1()
+	firstStatus = "passed"
+	// Wait for the second to acquire after the release.
+	select {
+	case <-secondDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second acquire did not acquire after first released (expected waiting, got timeout/cancelled)")
+	}
 	if secondStatus == "cancelled" {
 		t.Fatalf("expected waiting, got cancelled")
 	}
