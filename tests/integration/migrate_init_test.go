@@ -47,7 +47,7 @@ php_version: "8.3"
 	if !strings.Contains(content, "framework: laravel") {
 		t.Errorf("expected framework: laravel in config, got:\n%s", content)
 	}
-	if !strings.Contains(content, "php_version: \"8.3\"") {
-		t.Errorf("expected php_version: \"8.3\" in config, got:\n%s", content)
+	if !strings.Contains(content, "php_version: \"8.4\"") {
+		t.Errorf("expected php_version: \"8.4\" in config, got:\n%s", content)
 	}
 }

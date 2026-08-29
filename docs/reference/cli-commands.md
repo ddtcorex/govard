@@ -219,7 +219,39 @@ project configuration (see
 [Configuration](./configuration.md#audit-lint-providers)). External providers are
 never a fallback for the native backend and are never inferred: an unknown name
 is an error, and a native failure stays a native failure. A standalone target has
-no project configuration, so only `govard` is available there.
+no project configuration, so only `govard` is available there. `--provider`
+is a hidden alias for `--lint-provider`.
+
+#### Scope (`--scope`, `--base`)
+
+`--scope project` (default) audits the whole target. `--scope diff --base <ref>`
+records the requested base in the session manifest for review workflows; use
+`--base auto` to auto-detect the base via `git merge-base HEAD origin/HEAD`
+(and `origin/master`/`origin/main` fallbacks, then `gh pr view --json baseRefName`).
+`git merge-base` emits a commit SHA (used directly as the base); `gh pr view`
+normalizes to `origin/<branch>` when the prefix is missing.
+Example for the review skill:
+
+```bash
+govard audit run --checks lint --mode project --scope diff --base auto --format json
+```
+
+#### Concurrency
+
+Concurrent `govard audit run` invocations for the same project serialize on
+`~/.govard/audit/<projectId>/lock` (via `GovardHomeDir`, respecting
+`GOVARD_HOME_DIR`). The second run waits up to 30s for the prior run to
+release the lock (`audit run waiting for prior run`) and then proceeds; runs
+are queued, not cancelled (fixing the earlier `cancelled` behaviour). If the
+lock remains held after 30s the run fails with a hint to remove the stale
+lock or run `govard audit cleanup`.
+
+#### Xdebug guard
+
+When `stack.features.xdebug: true` the lint audit exits with
+`Xdebug enabled, ~10-20% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug`
+unless `--allow-xdebug` is passed. The guard is enforced in the command and
+in the Govard lint backend.
 
 #### Caching
 

@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"govard/internal/audit"
 	"govard/internal/engine"
@@ -228,4 +230,85 @@ func auditRepositoryIdentity(root, origin string) string {
 		return ""
 	}
 	return strings.TrimSpace(manifest.Name)
+}
+
+// AuditLockPath returns the filesystem lock path for a given audit projectId.
+// It lives under GovardHomeDir()/audit/<projectId>/lock (GovardHomeDir respects
+// GOVARD_HOME_DIR, defaulting to ~/.govard) so concurrent runs for the same
+// project serialize rather than cancel.
+func AuditLockPath(projectID string) string {
+	return filepath.Join(engine.GovardHomeDir(), "audit", projectID, "lock")
+}
+
+// AuditLockPathForTest exposes AuditLockPath to tests without importing engine.
+func AuditLockPathForTest(projectID string) string {
+	return AuditLockPath(projectID)
+}
+
+// AcquireAuditLock acquires the per-project audit lock, waiting up to 30s if
+// it is already held. It returns a release function that removes the lock file.
+func AcquireAuditLock(projectID string) (func() error, error) {
+	return acquireAuditLock(projectID, 30*time.Second)
+}
+
+// AcquireAuditLockForTest exposes AcquireAuditLock for tests.
+func AcquireAuditLockForTest(projectID string) (func() error, error) {
+	return AcquireAuditLock(projectID)
+}
+
+func acquireAuditLock(projectID string, timeout time.Duration) (func() error, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return nil, fmt.Errorf("audit lock requires a project ID")
+	}
+	lockPath := AuditLockPath(projectID)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o700); err != nil {
+		return nil, fmt.Errorf("create audit lock directory: %w", err)
+	}
+	// Try to create the lock file atomically.
+	tryLock := func() (bool, error) {
+		file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			if os.IsExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		// Write owner info for diagnostics; not used for logic.
+		_, _ = fmt.Fprintf(file, "%d %s\n", os.Getpid(), time.Now().UTC().Format(time.RFC3339))
+		_ = file.Close()
+		return true, nil
+	}
+	acquired, err := tryLock()
+	if err != nil {
+		return nil, err
+	}
+	if acquired {
+		return func() error {
+			if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("release audit lock: %w", err)
+			}
+			return nil
+		}, nil
+	}
+	// Lock is held; wait with polling, logging once.
+	slog.Info("audit run waiting for prior run", "projectId", projectID, "lock", lockPath)
+	deadline := time.Now().Add(timeout)
+	interval := 200 * time.Millisecond
+	for time.Now().Before(deadline) {
+		time.Sleep(interval)
+		acquired, err := tryLock()
+		if err != nil {
+			return nil, err
+		}
+		if acquired {
+			slog.Info("audit run acquired queued lock", "projectId", projectID)
+			return func() error {
+				if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("release audit lock: %w", err)
+				}
+				return nil
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("audit lock %q is already held (waited %s); if the holder crashed, remove the lock or run \"govard audit cleanup\" and retry", lockPath, timeout)
 }

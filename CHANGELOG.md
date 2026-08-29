@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.67.0] - 2026-08-29
+
+### ✨ New Features
+
+- **Audit Image WPCS/Symfony Bundle:** `govard-magelint` Docker image now bundles `wp-coding-standards/wpcs` (`WordPress` standard) and `phpstan-symfony`/`phpstan-wordpress` alongside `magento/magento-coding-standard`, enabling native `WordPress`/`Symfony` lint without `PSR12` fallback (`CodingStandard WordPress/Symfony` via `govard audit run --checks lint --mode project`).
+- **Config Drift Sync (`govard doctor --fix`):** `govard doctor` now detects drift `framework_version` (`2.4.6-p3→2.4.8-p4`), `stack.php_version` (`8.2→8.4`), `stack.db_version` (`10.6→11.4`), `stack.node_version` (`14→24`), `stack.search_version` (`7.10→3.0`) vs composer/profile; `govard doctor --fix` yq-updates `.govard.yml` (5 fields), `--dry-run` previews diff, `--commit` auto `git add && commit`. Includes `config_normalize`/`config_validate` drift helpers and `project.config.drift` check.
+
+### 🐛 Bug Fixes
+
+- **Audit Concurrency Queue:** `govard audit run` per-project lock (`~/.govard/audit/<projectId>/lock`) now queues (`waiting`) instead of `cancelled` for concurrent runs (fixes concurrent-run cancellation), plus `--scope diff --base auto` auto-detection (`git merge-base`/`gh pr view`) and `--allow-xdebug` guard.
+
 ## [1.66.0] - 2026-08-29
 
 ### ✨ New Features

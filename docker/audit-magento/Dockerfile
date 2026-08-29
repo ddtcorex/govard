@@ -102,8 +102,23 @@ RUN set -eux; \
     done; \
     rm -rf /root/.cache/composer /root/.composer
 
-RUN composer global require wp-coding-standards/wpcs phpstan/phpstan-symfony szepeviktor/phpstan-wordpress --no-interaction \
- && phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs || $(composer global config home)/vendor/bin/phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs
+# Magento2 coding standard 40's RestrictedCodeSniff unconditionally includes
+# _files/restricted_classes.php, but the file is not always present after a
+# clean composer install for php-8.1+ toolchains (host's php-8.1 has it, the
+# image's php-8.1 install does not). Patch the include to be tolerant so
+# Magento lint does not become infra_error when the file is missing; the
+# sniff simply has no restricted classes in that case.
+RUN set -eux; \
+    for version in 8.1 8.2 8.3 8.4 8.5; do \
+        file="/opt/govard/toolchains/php-${version}/vendor/magento/magento-coding-standard/Magento2/Sniffs/Legacy/RestrictedCodeSniff.php"; \
+        if [ -f "$file" ]; then \
+            sed -i "s|\$this->classes = include __DIR__ . '/_files/restricted_classes.php';|\$this->classes = file_exists(__DIR__ . '/_files/restricted_classes.php') ? include __DIR__ . '/_files/restricted_classes.php' : [];|" "$file"; \
+        fi; \
+    done
+
+RUN composer global config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true && composer global require wp-coding-standards/wpcs:^3.1 escapestudios/symfony2-coding-standard:^3.0 dealerdirect/phpcodesniffer-composer-installer:^1.0 --no-interaction \
+ && phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs,$(composer global config home)/vendor/escapestudios/symfony2-coding-standard,$(composer global config home)/vendor/squizlabs/php_codesniffer/src/Standards || $(composer global config home)/vendor/bin/phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs,$(composer global config home)/vendor/escapestudios/symfony2-coding-standard,$(composer global config home)/vendor/squizlabs/php_codesniffer/src/Standards
+RUN composer global require szepeviktor/phpstan-wordpress phpstan/phpstan-symfony:^1.3 --no-interaction
 
 COPY bin/report.php /usr/local/lib/govard/report.php
 COPY bin/magelint /usr/local/bin/magelint

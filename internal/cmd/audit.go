@@ -34,10 +34,12 @@ type auditCommandOptions struct {
 	LintJobs          int
 	NoLintResultCache bool
 	AllowLintSSHAgent bool
+	AllowXdebug       bool
 	OlderThan         time.Duration
 	TargetMode        string
 	PHPVersions       []string
 	URL               string
+	Timeout           string
 }
 
 // AuditRunnerRequest is the resolved context a runner factory needs to build a
@@ -66,6 +68,7 @@ type AuditRunnerRequest struct {
 	// AllowSSHAgent mirrors --allow-lint-ssh-agent. Agent forwarding is never
 	// inferred from the host environment alone.
 	AllowSSHAgent bool
+	AllowXdebug   bool
 }
 
 // auditPreparation states what one audit invocation actually needs, so the
@@ -179,7 +182,7 @@ func currentAuditDependencies(defaults auditCommandDependencies) auditCommandDep
 }
 
 func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
-	options := &auditCommandOptions{Scope: string(audit.ScopeProject), Checks: []string{"lint"}, Format: "text", LintProvider: audit.GovardLintProvider, LintJobs: 2}
+	options := &auditCommandOptions{Scope: string(audit.ScopeProject), Checks: []string{"lint"}, Format: "text", LintProvider: audit.GovardLintProvider, LintJobs: 2, Timeout: "auto"}
 	command := &cobra.Command{
 		Use:   "audit",
 		Short: "Run and inspect persistent project audits",
@@ -191,14 +194,18 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().StringVar(&options.SessionID, "session", "", "Explicit audit session ID")
 	command.PersistentFlags().StringVar(&options.RunID, "run", "", "Explicit audit run ID")
 	command.PersistentFlags().StringVar(&options.LintProvider, "lint-provider", audit.GovardLintProvider, "Lint provider: govard, or an audit.lint.external_providers name from the project config")
+	command.PersistentFlags().StringVar(&options.LintProvider, "provider", audit.GovardLintProvider, "Alias for --lint-provider")
+	_ = command.PersistentFlags().MarkHidden("provider")
 	command.PersistentFlags().IntVar(&options.LintJobs, "lint-jobs", 2, "Lint worker count")
 	command.PersistentFlags().BoolVar(&options.NoLintResultCache, "no-lint-result-cache", false, "Ignore reusable lint analyzer state for this run (the Composer download cache is kept)")
 	command.PersistentFlags().BoolVar(&options.AllowLintSSHAgent, "allow-lint-ssh-agent", false, "Forward SSH_AUTH_SOCK into the lint container for private Composer dependencies")
+	command.PersistentFlags().BoolVar(&options.AllowXdebug, "allow-xdebug", false, "Allow audit with Xdebug enabled (10-20% performance tax)")
 	command.PersistentFlags().DurationVar(&options.OlderThan, "older-than", 0, "Remove sessions older than this duration")
 	command.PersistentFlags().StringVar(&options.TargetMode, "mode", "auto", auditTargetModeUsage())
 	command.PersistentFlags().StringSliceVar(&options.PHPVersions, "php", nil, "PHP versions; standalone only unless matching active project PHP")
 	command.PersistentFlags().StringVar(&options.URL, "url", "", "Absolute HTTP(S) URL captured by runtime audit checks")
 	command.PersistentFlags().StringVar(&options.URL, "profiler-url", "", "Alias for --url (absolute HTTP(S) URL captured by runtime audit checks)")
+	command.PersistentFlags().StringVar(&options.Timeout, "timeout", "auto", "Audit timeout (e.g. 300s, 10m, 0 for no timeout, or auto for framework-aware estimation)")
 
 	command.AddCommand(
 		newAuditRunCommand(options, dependencies, false),
@@ -223,7 +230,7 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if err := validateAuditCommandOptions(options); err != nil {
 			return err
 		}
-		scope, err := auditScope(options.Scope, forceDiff, cmd.Flags().Changed("scope"))
+		scope, err := auditScope(options.Scope, forceDiff, auditFlagChanged(cmd, "scope"))
 		if err != nil {
 			return err
 		}
@@ -244,7 +251,25 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 			return err
 		}
+		if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
+			return err
+		}
 		warnXdebugGuard(cmd, resolvedTarget.Config)
+		// Resolve --base auto for diff scope after target is known (needs project root for git).
+		effectiveBase := options.BaseRef
+		if scope == audit.ScopeDiff && strings.TrimSpace(effectiveBase) == "auto" {
+			detected, detErr := detectAuditBase(auditTargetRoot(resolvedTarget.Target))
+			if detErr != nil {
+				return fmt.Errorf("detect audit base for --base auto: %w", detErr)
+			}
+			effectiveBase = detected
+		}
+		// Acquire per-project audit lock (queue, not cancel).
+		releaseLock, lockErr := AcquireAuditLock(resolvedTarget.ProjectID)
+		if lockErr != nil {
+			return lockErr
+		}
+		defer func() { _ = releaseLock() }()
 		lintProfile := types.AuditLintProfile{}
 		if resolvedTarget.Definition.AuditLint != nil {
 			lintProfile = *resolvedTarget.Definition.AuditLint
@@ -256,11 +281,20 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 			// JSON stays machine-clean for AI agents.
 			streamWriter = cmd.OutOrStdout()
 		}
-		result, err := runner.Run(cmd.Context(), audit.RunRequest{
+		auditCtx := cmd.Context()
+		if timeout := resolveAuditTimeout(options.Timeout, resolvedTarget); timeout > 0 {
+			var cancel context.CancelFunc
+			auditCtx, cancel = context.WithTimeout(auditCtx, timeout)
+			defer cancel()
+			if options.Format != "json" && strings.TrimSpace(options.Timeout) == "auto" {
+				pterm.Info.Printf("audit timeout %s (auto-estimated for %s, %d jobs)\n", timeout, resolvedTarget.Definition.Name, options.LintJobs)
+			}
+		}
+		result, err := runner.Run(auditCtx, audit.RunRequest{
 			ProjectRoot:         auditTargetRoot(resolvedTarget.Target),
 			ProjectID:           resolvedTarget.ProjectID,
 			Scope:               scope,
-			BaseRef:             options.BaseRef,
+			BaseRef:             effectiveBase,
 			Checks:              options.Checks,
 			LintJobs:            options.LintJobs,
 			Environment:         auditTargetEnvironment(resolvedTarget),
@@ -303,7 +337,7 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 		// selection; peek it straight from the persisted session store so no
 		// lint backend or profiler runtime is constructed for the lookup.
 		effectiveChecks := options.Checks
-		if !cmd.Flags().Changed("checks") {
+		if !auditFlagChanged(cmd, "checks") {
 			mode := types.AuditTargetMode(strings.TrimSpace(options.TargetMode))
 			if mode == "" {
 				mode = types.AuditTargetAuto
@@ -331,7 +365,24 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 		if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 			return err
 		}
-		result, err := runner.Rerun(cmd.Context(), options.SessionID, resolvedTarget.ProjectID, effectiveChecks)
+		if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
+			return err
+		}
+		releaseLock, lockErr := AcquireAuditLock(resolvedTarget.ProjectID)
+		if lockErr != nil {
+			return lockErr
+		}
+		defer func() { _ = releaseLock() }()
+		auditCtx := cmd.Context()
+		if timeout := resolveAuditTimeout(options.Timeout, resolvedTarget); timeout > 0 {
+			var cancel context.CancelFunc
+			auditCtx, cancel = context.WithTimeout(auditCtx, timeout)
+			defer cancel()
+			if options.Format != "json" && strings.TrimSpace(options.Timeout) == "auto" {
+				pterm.Info.Printf("audit timeout %s (auto-estimated for %s)\n", timeout, resolvedTarget.Definition.Name)
+			}
+		}
+		result, err := runner.Rerun(auditCtx, options.SessionID, resolvedTarget.ProjectID, effectiveChecks)
 		var renderErr error
 		if result.RunID != "" {
 			renderErr = writeAuditValue(cmd, options.Format, result)
@@ -452,8 +503,10 @@ func prepareAudit(cmd *cobra.Command, options *auditCommandOptions, dependencies
 	// Provider precedence is only resolved for an invocation that actually runs
 	// lint; a read-only command must not select a provider at all.
 	if preparation.LintBackendRequired {
-		request.LintProvider = effectiveAuditLintProvider(options, cmd.Flags().Changed("lint-provider"), target.Config)
+		providerExplicit := auditFlagChanged(cmd, "lint-provider") || auditFlagChanged(cmd, "provider")
+		request.LintProvider = effectiveAuditLintProvider(options, providerExplicit, target.Config)
 		request.AllowSSHAgent = options.AllowLintSSHAgent
+		request.AllowXdebug = options.AllowXdebug
 	}
 	runner, err := resolved.runnerFactory(request)
 	if err != nil {
@@ -591,6 +644,96 @@ func warnXdebugGuard(cmd *cobra.Command, cfg *engine.Config) {
 	_ = cmd
 }
 
+func enforceXdebugGuard(cfg *engine.Config, allow bool) error {
+	if cfg == nil {
+		// Standalone targets have no project config (target.Config is nil); there
+		// is no stack.features.xdebug to inspect, so the guard is intentionally
+		// skipped for standalone. Project targets always carry a config.
+		return nil
+	}
+	if engine.XdebugGuard(*cfg) && !allow {
+		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug") //nolint:staticcheck // ST1005: Xdebug is proper noun
+	}
+	return nil
+}
+
+// auditFlagChanged reports whether a flag (including persistent flags inherited
+// from the parent audit command) was explicitly set. lint-provider/provider,
+// scope, checks etc. are defined as PersistentFlags on the parent, so a child
+// run/rerun command must check PersistentFlags/InheritedFlags as well as Flags.
+func auditFlagChanged(cmd *cobra.Command, name string) bool {
+	if cmd == nil {
+		return false
+	}
+	if cmd.Flags().Changed(name) {
+		return true
+	}
+	if cmd.PersistentFlags().Changed(name) {
+		return true
+	}
+	if cmd.InheritedFlags().Changed(name) {
+		return true
+	}
+	return false
+}
+
+// detectAuditBase auto-detects the base ref for --scope diff --base auto.
+// It tries git merge-base HEAD origin/HEAD, then origin/master, then origin/main,
+// then gh pr view --json baseRefName. The project root is used as git -C.
+func detectAuditBase(projectRoot string) (string, error) {
+	if strings.TrimSpace(projectRoot) == "" {
+		projectRoot = "."
+	}
+	// Try git merge-base resolutions.
+	candidates := [][]string{
+		{"merge-base", "HEAD", "origin/HEAD"},
+		{"merge-base", "HEAD", "origin/master"},
+		{"merge-base", "HEAD", "origin/main"},
+		{"rev-parse", "--verify", "origin/HEAD"},
+		{"rev-parse", "--verify", "origin/master"},
+		{"rev-parse", "--verify", "origin/main"},
+	}
+	for _, args := range candidates {
+		if out, err := gitOutput(projectRoot, args...); err == nil && strings.TrimSpace(out) != "" {
+			// git merge-base and rev-parse both emit a SHA; return the SHA
+			// (the commit that is the actual base), not the ref name.
+			return strings.TrimSpace(out), nil
+		}
+	}
+	// Try gh pr view fallback, scoped to the project root (gitOutput uses
+	// git -C projectRoot, so gh must also run in projectRoot).
+	ghCmd := exec.Command("gh", "pr", "view", "--json", "baseRefName", "-q", ".baseRefName")
+	ghCmd.Dir = projectRoot
+	if output, err := ghCmd.Output(); err == nil {
+		base := strings.TrimSpace(string(output))
+		if base != "" {
+			// Normalize to origin/<branch> if needed.
+			if !strings.HasPrefix(base, "origin/") {
+				base = "origin/" + base
+			}
+			return base, nil
+		}
+	}
+	// Last resort: try to discover default branch from remote.
+	if branch, err := gitOutput(projectRoot, "remote", "show", "origin"); err == nil {
+		for _, line := range strings.Split(branch, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "HEAD branch:") {
+				b := strings.TrimSpace(strings.TrimPrefix(line, "HEAD branch:"))
+				if b != "" {
+					return "origin/" + b, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("could not auto-detect base ref for diff scope (try --base origin/master)")
+}
+
+// DetectAuditBaseForTest exposes detectAuditBase for tests.
+func DetectAuditBaseForTest(projectRoot string) (string, error) {
+	return detectAuditBase(projectRoot)
+}
+
 func auditEnvironment(config engine.Config) audit.EnvironmentFingerprint {
 	return audit.EnvironmentFingerprint{
 		Framework:        config.Framework,
@@ -634,6 +777,90 @@ func auditManifestDigest(root string) string {
 		_, _ = hash.Write(content)
 	}
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
+}
+
+func resolveAuditTimeout(raw string, target resolvedAuditTarget) time.Duration {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "0" || trimmed == "0s" || trimmed == "0m" {
+		return 0
+	}
+	if trimmed == "auto" {
+		return estimateAuditTimeout(target)
+	}
+	if d, err := time.ParseDuration(trimmed); err == nil {
+		return d
+	}
+	return 0
+}
+
+func estimateAuditTimeout(target resolvedAuditTarget) time.Duration {
+	root := auditTargetRoot(target.Target)
+	framework := target.Definition.Name
+	fileCount := countPHPFiles(root)
+	// Heuristic from real measurements (cold cache, 2 jobs):
+	// - magento2 large (20k/5k findings): 600-1200s
+	// - wordpress large (1.1M findings): 450s, fresh: 206s
+	// - symfony/laravel fresh: 17-35s
+	// Base + per-file: magento/wordpress 0.08s/file, symfony/laravel 0.02s/file, +60s phpstan overhead.
+	var perFile time.Duration
+	switch framework {
+	case "magento2":
+		perFile = 80 * time.Millisecond
+	case "wordpress":
+		perFile = 70 * time.Millisecond
+	case "symfony", "laravel":
+		perFile = 20 * time.Millisecond
+	default:
+		perFile = 50 * time.Millisecond
+	}
+	estimated := 60*time.Second + time.Duration(fileCount)*perFile
+	// Clamp to sensible bounds and add headroom for phpstan + cache cold.
+	if estimated < 90*time.Second {
+		estimated = 90 * time.Second
+	}
+	if estimated > 30*time.Minute {
+		estimated = 30 * time.Minute
+	}
+	// For known heavy frameworks, ensure at least 15m for magento/wordpress to avoid the 120-300s retry loop and 15m deadline on 8m34s lint+cleanup (sutunam).
+	if (framework == "magento2" || framework == "wordpress") && estimated < 15*time.Minute {
+		estimated = 15 * time.Minute
+	}
+	// Add 50% headroom for cold cache and Xdebug tax.
+	estimated = estimated * 3 / 2
+	if estimated > 30*time.Minute {
+		estimated = 30 * time.Minute
+	}
+	return estimated
+}
+
+func countPHPFiles(root string) int {
+	if strings.TrimSpace(root) == "" {
+		return 500
+	}
+	count := 0
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if name == "vendor" || name == ".git" || name == "node_modules" || name == "var" || name == "pub" || name == ".govard" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(strings.ToLower(d.Name()), ".php") {
+			count++
+			if count > 20000 {
+				return filepath.SkipAll
+			}
+		}
+		return nil
+	})
+	if count < 10 {
+		return 500
+	}
+	return count
 }
 
 func writeAuditJSON(writer io.Writer, value any) error {

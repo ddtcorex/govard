@@ -19,6 +19,7 @@ import (
 
 	"github.com/pterm/pterm"
 	auditmagento "govard/docker/audit-magento"
+	"govard/internal/engine"
 	"govard/internal/frameworks/types"
 )
 
@@ -114,6 +115,7 @@ type GovardLintOptions struct {
 	AuthJSON      string
 	SSHAgent      string
 	AllowSSHAgent bool
+	AllowXdebug   bool
 	UID           int
 	GID           int
 	// AllowRootUser deliberately permits a container user Govard cannot read
@@ -132,6 +134,7 @@ type GovardLintBackend struct {
 	authJSON      string
 	sshAgent      string
 	allowSSHAgent bool
+	allowXdebug   bool
 	uid           int
 	gid           int
 }
@@ -167,6 +170,7 @@ func NewGovardLintBackend(options GovardLintOptions) (*GovardLintBackend, error)
 		authJSON:      options.AuthJSON,
 		sshAgent:      options.SSHAgent,
 		allowSSHAgent: options.AllowSSHAgent,
+		allowXdebug:   options.AllowXdebug,
 		uid:           options.UID,
 		gid:           options.GID,
 	}, nil
@@ -185,8 +189,41 @@ func validateGovardLintContainerUser(options GovardLintOptions) error {
 	return nil
 }
 
+func enforceGovardLintXdebugGuard(request LintRequest, allowXdebug bool) error {
+	if allowXdebug {
+		return nil
+	}
+	// ProjectRoot is required: validateLintRequest already enforces non-empty
+	// absolute paths, so an empty root is a caller bug that must not silently
+	// bypass the Xdebug perf-tax guard.
+	root := strings.TrimSpace(request.ProjectRoot)
+	if root == "" {
+		return fmt.Errorf("govard lint xdebug guard requires project root")
+	}
+	// Probe for .govard.yml at project root via lightweight load.
+	candidate := filepath.Join(root, ".govard.yml")
+	cfg, err := engine.LoadConfig(candidate)
+	if err != nil || cfg == nil {
+		return nil
+	}
+	if engine.XdebugGuard(*cfg) {
+		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug") //nolint:staticcheck // ST1005: Xdebug is proper noun
+	}
+	return nil
+}
+
 func isMissingCodingStandardError(msg string) bool {
 	return strings.Contains(msg, "was not installed") || strings.Contains(msg, "ERROR: the")
+}
+
+func logGovardLintBundledCodingStandard(logFile io.Writer, cs string) {
+	pterm.Info.Printf("CodingStandard %q bundled, using native\n", cs)
+	_, _ = fmt.Fprintf(logFile, "govard lint info: CodingStandard %q bundled, using native\n", cs)
+}
+
+func logGovardLintFallbackCodingStandard(logFile io.Writer, cs string) {
+	pterm.Info.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", cs)
+	_, _ = fmt.Fprintf(logFile, "govard lint info: CodingStandard %q not found in lint image, falling back to PSR12\n", cs)
 }
 
 func (backend *GovardLintBackend) Name() string {
@@ -208,6 +245,9 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		return LintReport{}, fmt.Errorf("govard lint request provider %q does not match provider %q", request.Provider, GovardLintProvider)
 	}
 	if err := validateLintRequest(request); err != nil {
+		return LintReport{}, err
+	}
+	if err := enforceGovardLintXdebugGuard(request, backend.allowXdebug); err != nil {
 		return LintReport{}, err
 	}
 	plan, err := govardLintTargetPlan(request)
@@ -279,8 +319,7 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		combinedMsg += outputBuf.String()
 		// Also include log tail for cases where error is only in output
 		if isMissingCodingStandardError(combinedMsg) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
-			pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
-			_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+			logGovardLintFallbackCodingStandard(logFile, originalStandard)
 			_ = backend.removeCompletedContainer(container.Name, logFile)
 			if err := os.Remove(reportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return LintReport{}, fmt.Errorf("remove prior govard lint report: %w", err)
@@ -294,8 +333,7 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 			primary := govardLintInfrastructureExitError(exitCode, runErr)
 			// Also consider fallback on infra error that contains missing standard message
 			if isMissingCodingStandardError(combinedMsg+primary.Error()) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
-				pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
-				_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+				logGovardLintFallbackCodingStandard(logFile, originalStandard)
 				_ = backend.removeCompletedContainer(container.Name, logFile)
 				if err := os.Remove(reportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return LintReport{}, fmt.Errorf("remove prior govard lint report: %w", err)
@@ -310,14 +348,16 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		report, err := backend.acceptReport(currentRequest, resolved, toolchainDigest, exitCode, reportPath, logFile)
 		if err != nil {
 			if isMissingCodingStandardError(combinedMsg+err.Error()) && attempt == 0 && originalStandard != "" && originalStandard != "PSR12" {
-				pterm.Warning.Printf("CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
-				_, _ = fmt.Fprintf(logFile, "govard lint warning: CodingStandard %q not found in lint image, falling back to PSR12\n", originalStandard)
+				logGovardLintFallbackCodingStandard(logFile, originalStandard)
 				currentRequest.Profile.CodingStandard = "PSR12"
 				lastErr = err
 				_ = cleanupErr
 				continue
 			}
 			return LintReport{}, withGovardLintCleanupError(err, cleanupErr)
+		}
+		if currentRequest.Profile.CodingStandard == originalStandard && (originalStandard == "WordPress" || originalStandard == "Symfony") {
+			logGovardLintBundledCodingStandard(logFile, originalStandard)
 		}
 		return report, nil
 	}

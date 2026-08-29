@@ -69,6 +69,19 @@ Force with `--mode project|module_in_project|standalone` — fails if the direct
 
 ---
 
+## Lint Matrix
+
+Govard-native lint (`govard audit run --checks lint --mode project`) matrix:
+
+| Framework | CodingStandard | PHPStanLevel | ProjectPHPVersions | StandalonePHPVersions | Linters |
+| :--- | :--- | :---: | :--- | :--- | :--- |
+| Magento 2 | Magento2 | 5 | 8.1-8.4 (policy) | 8.1-8.5 | phpcs, phpstan |
+| Laravel | PSR12 | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
+| Symfony | Symfony | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
+| WordPress | WordPress | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
+
+Image `govard-magelint` bundles WPCS 3.1 (`wp-coding-standards/wpcs`) + Symfony CS + `phpstan-symfony`/`phpstan-wordpress` so WordPress (classic `wp-includes/version.php` + Bedrock `web/wp`) and Symfony (`bin/console`) run natively — no fallback to PSR12.
+
 ## PHP Versions (`--php`)
 
 Lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`.
@@ -80,7 +93,18 @@ Lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`.
 
 ## Scanned Paths & Media Guard
 
-Analyzers skip `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (never shipped code). Because `pub/media` is where uploaded webshells land, every PHP version also runs a **media guard**: name-only scan of `pub/media` for `.php/.phtml/.pht`. Each hit is `M2-LINT-MEDIA` and fails the run — milliseconds, names only.
+Analyzers skip `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (never shipped code). Because `pub/media` is where uploaded webshells land, every PHP version also runs a **media guard**: name-only scan of `pub/media` for `.php/.phtml/.pht`. Each hit is `M2-LINT-MEDIA` (`PHP file in pub/media`) and fails the run — milliseconds, names only. Guard phase is `media-guard` in the per-PHP `phases` array (`failed` when found, `passed` otherwise). Hygiene also blocks commits via `.gitignore`:
+
+```
+pub/media/*.php
+pub/media/**/*.php
+pub/media/*.phtml
+pub/media/**/*.phtml
+pub/media/*.pht
+pub/media/**/*.pht
+```
+
+See `internal/blueprints/files/.gitignore` (shared, single source; rendered as project-root `.gitignore`); `govard audit run --checks lint` is the enforcement gate (container `media-guard` phase plus host `ScanMediaGuard` fallback so every provider enforces `M2-LINT-MEDIA`).
 
 ---
 
@@ -91,7 +115,20 @@ Analyzers skip `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (nev
 | `govard` (default) | Govard-native: embedded build context, pinned by digest. If pinned image can't be pulled or labels mismatch, Govard builds locally and continues. |
 | `<external>` | Must name a key under `audit.lint.external_providers` in `.govard.yml` ([Configuration](/reference/configuration#audit-lint-providers)). Never a fallback; unknown name = error. |
 
-Standalone modules have no project config, so only `govard` is available.
+`--provider` is a hidden alias for `--lint-provider`. Standalone modules have no project config, so only `govard` is available.
+
+## Scope (`--scope diff --base auto`)
+
+- `govard audit run --scope project` (default) audits the full target.
+- `govard audit run --scope diff --base auto --format json` is for review/PR workflows: it auto-detects the base via `git merge-base HEAD origin/HEAD || origin/master || gh pr view --json baseRefName` (merge-base returns a commit SHA) and records it in the session manifest. `gh pr view` normalizes to `origin/<branch>` when the prefix is missing. `govard audit diff --base <ref>` is a shorthand that forces `scope diff`.
+
+## Concurrency
+
+Runs for the same project are queued via `~/.govard/audit/<projectId>/lock` (under `GovardHomeDir`, respecting `GOVARD_HOME_DIR`; wait up to 30s, `audit run waiting for prior run`), not cancelled. A stale lock after 30s fails with a hint to remove the lock or run `govard audit cleanup`.
+
+## Xdebug guard
+
+With `stack.features.xdebug: true` the audit hard-fails unless `--allow-xdebug` is set (`Xdebug enabled, ~10-20% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug`).
 
 ---
 
