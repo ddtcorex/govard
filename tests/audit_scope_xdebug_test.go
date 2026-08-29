@@ -62,9 +62,6 @@ func TestAuditXdebugGuardRequiresAllow(t *testing.T) {
 	if errWithAllow != nil && strings.Contains(errWithAllow.Error(), "Xdebug enabled") {
 		t.Fatalf("with --allow-xdebug still got Xdebug error: %v", errWithAllow)
 	}
-	if errWithAllow != nil {
-		// It may still produce result via backend; ensure backend was invoked.
-	}
 	if len(backend.requests) == 0 && errWithAllow == nil {
 		t.Fatal("expected backend request with allow-xdebug")
 	}

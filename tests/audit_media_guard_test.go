@@ -155,8 +155,8 @@ func TestNodeVersion14EOLWarning(t *testing.T) {
 		t.Fatalf("expected deduped single EOL warning, got %d in %v", count, warningsEOL)
 	}
 	// Direct helper must still be the source of truth, not a substring scan.
-	if !engine.IsNodeVersionEOL(result.Profile.NodeVersion) && engine.IsNodeVersionEOL("14") {
-		// sanity: ensure IsNodeVersionEOL is the predicate used by CollectConfigDrift
+	if !engine.IsNodeVersionEOL("14") {
+		t.Fatalf("IsNodeVersionEOL(14) should be true")
 	}
 }
 

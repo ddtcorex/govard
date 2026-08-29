@@ -78,7 +78,8 @@ func TestDockerfileBundlesSymfonyAndWordPressCS(t *testing.T) {
 		"wp-coding-standards/wpcs:^3.1",
 		"dealerdirect/phpcodesniffer-composer-installer",
 		"phpstan/phpstan-symfony",
-		"phpstan/phpstan-wordpress",
+		// phpstan/phpstan-wordpress does not exist as a package — szepeviktor/phpstan-wordpress is the correct one
+		"szepeviktor/phpstan-wordpress",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("Dockerfile missing %q", want)

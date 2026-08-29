@@ -274,7 +274,7 @@ func acquireAuditLock(projectID string, timeout time.Duration) (func() error, er
 			return false, err
 		}
 		// Write owner info for diagnostics; not used for logic.
-		_, _ = file.WriteString(fmt.Sprintf("%d %s\n", os.Getpid(), time.Now().UTC().Format(time.RFC3339)))
+		_, _ = fmt.Fprintf(file, "%d %s\n", os.Getpid(), time.Now().UTC().Format(time.RFC3339))
 		_ = file.Close()
 		return true, nil
 	}

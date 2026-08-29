@@ -207,7 +207,7 @@ func enforceGovardLintXdebugGuard(request LintRequest, allowXdebug bool) error {
 		return nil
 	}
 	if engine.XdebugGuard(*cfg) {
-		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug")
+		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug") //nolint:staticcheck // ST1005: Xdebug is proper noun
 	}
 	return nil
 }

@@ -15,7 +15,7 @@ import (
 func TestDoctorFixSyncsYml(t *testing.T) {
 	tmp := t.TempDir()
 	origWd, _ := os.Getwd()
-	defer os.Chdir(origWd)
+	defer func() { _ = os.Chdir(origWd) }()
 	if err := os.Chdir(tmp); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
@@ -103,7 +103,7 @@ stack:
 func TestDoctorFixSyncsYmlDryRun(t *testing.T) {
 	tmp := t.TempDir()
 	origWd, _ := os.Getwd()
-	defer os.Chdir(origWd)
+	defer func() { _ = os.Chdir(origWd) }()
 	if err := os.Chdir(tmp); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}

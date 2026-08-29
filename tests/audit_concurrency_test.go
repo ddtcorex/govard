@@ -114,7 +114,6 @@ func TestAuditConcurrencyNoCancelOnSecondWait(t *testing.T) {
 	}
 	secondStarted := make(chan struct{})
 	secondDone := make(chan struct{})
-	firstStatus := "running"
 	secondStatus := "pending"
 	go func() {
 		close(secondStarted)
@@ -137,7 +136,6 @@ func TestAuditConcurrencyNoCancelOnSecondWait(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 	_ = release1()
-	firstStatus = "passed"
 	// Wait for the second to acquire after the release.
 	select {
 	case <-secondDone:
@@ -146,9 +144,6 @@ func TestAuditConcurrencyNoCancelOnSecondWait(t *testing.T) {
 	}
 	if secondStatus == "cancelled" {
 		t.Fatalf("expected waiting, got cancelled")
-	}
-	if firstStatus == "cancelled" {
-		t.Fatalf("first should not be cancelled")
 	}
 	if secondStatus != "waiting-then-passed" {
 		t.Fatalf("second status = %q, want waiting-then-passed", secondStatus)
