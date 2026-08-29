@@ -88,6 +88,7 @@ func resolveAuditLintSelection(request AuditRunnerRequest) (auditLintSelection, 
 		// the lint backend mounts it only when AllowSSHAgent was opted into.
 		SSHAgent:      strings.TrimSpace(os.Getenv("SSH_AUTH_SOCK")),
 		AllowSSHAgent: request.AllowSSHAgent,
+		AllowXdebug:   request.AllowXdebug,
 		UID:           uid,
 		GID:           gid,
 	}

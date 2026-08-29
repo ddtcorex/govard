@@ -19,6 +19,7 @@ import (
 
 	"github.com/pterm/pterm"
 	auditmagento "govard/docker/audit-magento"
+	"govard/internal/engine"
 	"govard/internal/frameworks/types"
 )
 
@@ -114,6 +115,7 @@ type GovardLintOptions struct {
 	AuthJSON      string
 	SSHAgent      string
 	AllowSSHAgent bool
+	AllowXdebug   bool
 	UID           int
 	GID           int
 	// AllowRootUser deliberately permits a container user Govard cannot read
@@ -132,6 +134,7 @@ type GovardLintBackend struct {
 	authJSON      string
 	sshAgent      string
 	allowSSHAgent bool
+	allowXdebug   bool
 	uid           int
 	gid           int
 }
@@ -167,6 +170,7 @@ func NewGovardLintBackend(options GovardLintOptions) (*GovardLintBackend, error)
 		authJSON:      options.AuthJSON,
 		sshAgent:      options.SSHAgent,
 		allowSSHAgent: options.AllowSSHAgent,
+		allowXdebug:   options.AllowXdebug,
 		uid:           options.UID,
 		gid:           options.GID,
 	}, nil
@@ -181,6 +185,27 @@ func validateGovardLintContainerUser(options GovardLintOptions) error {
 	}
 	if options.UID <= 0 || options.GID <= 0 {
 		return fmt.Errorf("govard lint backend requires the host user and group IDs (got uid %d, gid %d); the image declares no user, so the container would run as root and publish a mode-0600 report this process cannot read - set AllowRootUser to accept that deliberately", options.UID, options.GID)
+	}
+	return nil
+}
+
+func enforceGovardLintXdebugGuard(request LintRequest, allowXdebug bool) error {
+	if allowXdebug {
+		return nil
+	}
+	// Prefer explicit ProjectRoot; fallback to GovardHome handling is done by the caller.
+	root := strings.TrimSpace(request.ProjectRoot)
+	if root == "" {
+		return nil
+	}
+	// Probe for .govard.yml at project root via lightweight load.
+	candidate := filepath.Join(root, ".govard.yml")
+	cfg, err := engine.LoadConfig(candidate)
+	if err != nil || cfg == nil {
+		return nil
+	}
+	if engine.XdebugGuard(*cfg) {
+		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug")
 	}
 	return nil
 }
@@ -218,6 +243,9 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		return LintReport{}, fmt.Errorf("govard lint request provider %q does not match provider %q", request.Provider, GovardLintProvider)
 	}
 	if err := validateLintRequest(request); err != nil {
+		return LintReport{}, err
+	}
+	if err := enforceGovardLintXdebugGuard(request, backend.allowXdebug); err != nil {
 		return LintReport{}, err
 	}
 	plan, err := govardLintTargetPlan(request)

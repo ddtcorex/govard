@@ -104,7 +104,20 @@ Analyzers skip `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (nev
 | `govard` (default) | Govard-native: embedded build context, pinned by digest. If pinned image can't be pulled or labels mismatch, Govard builds locally and continues. |
 | `<external>` | Must name a key under `audit.lint.external_providers` in `.govard.yml` ([Configuration](/reference/configuration#audit-lint-providers)). Never a fallback; unknown name = error. |
 
-Standalone modules have no project config, so only `govard` is available.
+`--provider` is a hidden alias for `--lint-provider`. Standalone modules have no project config, so only `govard` is available.
+
+## Scope (`--scope diff --base auto`)
+
+- `govard audit run --scope project` (default) audits the full target.
+- `govard audit run --scope diff --base auto --format json` is for review/PR workflows: it auto-detects the base via `git merge-base HEAD origin/HEAD || origin/master || gh pr view --json baseRefName` and records it in the session manifest. `govard audit diff --base <ref>` is a shorthand that forces `scope diff`.
+
+## Concurrency
+
+Runs for the same project are queued via `~/.govard/audit/<projectId>/lock` (wait up to 30s, `audit run waiting for prior run`), not cancelled.
+
+## Xdebug guard
+
+With `stack.features.xdebug: true` the audit hard-fails unless `--allow-xdebug` is set (`Xdebug enabled, ~10-20% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug`).
 
 ---
 
