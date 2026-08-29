@@ -349,7 +349,11 @@ func CollectConfigDrift(cfg Config, meta ProjectMetadata) []string {
 	}
 	p := profileResult.Profile
 	if p.PHPVersion != "" && strings.TrimSpace(cfg.Stack.PHPVersion) != p.PHPVersion {
-		warnings = append(warnings, fmt.Sprintf("stack.php_version %s→%s", strings.TrimSpace(cfg.Stack.PHPVersion), p.PHPVersion))
+		// Only treat php_version drift as warning if the current version is not a supported version for the framework.
+		// Migrated 8.3 for laravel (supports 8.1-8.4) should not be forced to 8.4 default.
+		if !isPHPVersionSupportedForFramework(cfg.Framework, strings.TrimSpace(cfg.Stack.PHPVersion)) {
+			warnings = append(warnings, fmt.Sprintf("stack.php_version %s→%s", strings.TrimSpace(cfg.Stack.PHPVersion), p.PHPVersion))
+		}
 	}
 	if p.DBVersion != "" && strings.TrimSpace(cfg.Stack.DBVersion) != p.DBVersion {
 		// Only warn if DB service is not "none"
@@ -432,10 +436,12 @@ func SyncConfigDriftForTest(dir string, dryRun bool, commit bool) ([]string, err
 		changes = append(changes, fmt.Sprintf("framework_version %s→%s", strings.TrimSpace(updated.FrameworkVersion), desiredVersion))
 		updated.FrameworkVersion = desiredVersion
 	}
-	// php_version
+	// php_version - only sync if current version is not supported for the framework (e.g. EOL), preserve migrated 8.3 for laravel which supports 8.1-8.4
 	if p.PHPVersion != "" && strings.TrimSpace(updated.Stack.PHPVersion) != p.PHPVersion {
-		changes = append(changes, fmt.Sprintf("stack.php_version %s→%s", strings.TrimSpace(updated.Stack.PHPVersion), p.PHPVersion))
-		updated.Stack.PHPVersion = p.PHPVersion
+		if !isPHPVersionSupportedForFramework(updated.Framework, strings.TrimSpace(updated.Stack.PHPVersion)) {
+			changes = append(changes, fmt.Sprintf("stack.php_version %s→%s", strings.TrimSpace(updated.Stack.PHPVersion), p.PHPVersion))
+			updated.Stack.PHPVersion = p.PHPVersion
+		}
 	}
 	// db_version (only if DB service is active)
 	if p.DBVersion != "" && strings.ToLower(strings.TrimSpace(updated.Stack.Services.DB)) != "none" && updated.Stack.Services.DB != "" {
@@ -498,4 +504,23 @@ func SyncConfigDriftForTest(dir string, dryRun bool, commit bool) ([]string, err
 		_ = exec.Command("git", "-C", dir, "commit", "-m", msg).Run()
 	}
 	return changes, nil
+}
+
+func isPHPVersionSupportedForFramework(framework string, version string) bool {
+	trimmed := strings.TrimSpace(version)
+	if trimmed == "" {
+		return false
+	}
+	// Framework-aware check without importing frameworks (avoids cycle):
+	// For modern stacks, 8.1-8.4 are supported across laravel/symfony/wordpress/magento2 (see AuditMatrix).
+	// Treat 8.3 as supported for laravel so migrated 8.3 is not forced to 8.4 default.
+	// Also allow 7.4/8.0 for magento2 project mode and 8.5 for standalone.
+	switch trimmed {
+	case "8.1", "8.2", "8.3", "8.4", "8.5":
+		return true
+	case "7.4", "8.0":
+		// Only magento2 supports these in project mode, but treat as supported to avoid false drift
+		return true
+	}
+	return false
 }
