@@ -795,7 +795,7 @@ func resolveAuditTimeout(raw string, target resolvedAuditTarget) time.Duration {
 
 func estimateAuditTimeout(target resolvedAuditTarget) time.Duration {
 	root := auditTargetRoot(target.Target)
-	framework := string(target.Definition.Name)
+	framework := target.Definition.Name
 	fileCount := countPHPFiles(root)
 	// Heuristic from real measurements (cold cache, 2 jobs):
 	// - magento2 large (20k/5k findings): 600-1200s
