@@ -1,4 +1,4 @@
-package laravel
+package wordpress
 
 import (
 	"encoding/json"
@@ -10,18 +10,20 @@ import (
 	"govard/internal/frameworks/types"
 )
 
-var laravelAuditPackages = map[string]struct{}{
-	"laravel/framework": {},
+var wordPressAuditPackages = map[string]struct{}{
+	"johnpbloch/wordpress": {},
+	"roots/wordpress":      {},
+	"wordpress/wordpress":  {},
 }
 
-// ResolveAuditTarget detects a Laravel project for audit routing.
+// ResolveAuditTarget detects a WordPress project for audit routing.
 func ResolveAuditTarget(request types.AuditTargetResolveRequest) (types.AuditTarget, bool, error) {
 	startPath, err := canonicalAuditPath(request.StartPath)
 	if err != nil {
 		return types.AuditTarget{}, false, err
 	}
 
-	projectRoot, err := findLaravelAuditProject(startPath)
+	projectRoot, err := findWordPressAuditProject(startPath)
 	if err != nil {
 		return types.AuditTarget{}, false, err
 	}
@@ -39,12 +41,12 @@ func ResolveAuditTarget(request types.AuditTargetResolveRequest) (types.AuditTar
 		}
 	case types.AuditTargetModule:
 		if hasEvidence {
-			return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q is not supported for framework %q: use --mode project (govard audit lint for this framework only supports project scope)", request.ModeOverride, "laravel")
+			return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q is not supported for framework %q: use --mode project (govard audit lint for this framework only supports project scope)", request.ModeOverride, "wordpress")
 		}
 		return types.AuditTarget{}, false, nil
 	case types.AuditTargetStandalone:
 		if hasEvidence {
-			return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q is not supported for framework %q: use --mode project (govard audit lint for this framework only supports project scope)", request.ModeOverride, "laravel")
+			return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q is not supported for framework %q: use --mode project (govard audit lint for this framework only supports project scope)", request.ModeOverride, "wordpress")
 		}
 		return types.AuditTarget{}, false, nil
 	default:
@@ -55,7 +57,7 @@ func ResolveAuditTarget(request types.AuditTargetResolveRequest) (types.AuditTar
 	}
 
 	if hasEvidence {
-		return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q requires a Laravel project", request.ModeOverride)
+		return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q requires a WordPress project", request.ModeOverride)
 	}
 	return types.AuditTarget{}, false, nil
 }
@@ -82,9 +84,9 @@ func canonicalAuditPath(startPath string) (string, error) {
 	return absolute, nil
 }
 
-func findLaravelAuditProject(startPath string) (string, error) {
+func findWordPressAuditProject(startPath string) (string, error) {
 	for current := startPath; ; current = filepath.Dir(current) {
-		isProject, err := isLaravelProject(current)
+		isProject, err := isWordPressProject(current)
 		if err != nil {
 			return "", err
 		}
@@ -98,23 +100,28 @@ func findLaravelAuditProject(startPath string) (string, error) {
 	}
 }
 
-func isLaravelProject(directory string) (bool, error) {
-	marker, err := os.Lstat(filepath.Join(directory, BinArtisan))
-	hasArtisan := false
-	if err == nil {
-		hasArtisan = marker.Mode().IsRegular()
-	} else if !os.IsNotExist(err) {
-		return false, fmt.Errorf("inspect Laravel artisan marker in %q: %w", directory, err)
+func isWordPressProject(directory string) (bool, error) {
+	markers := []string{
+		filepath.Join(directory, "wp-config.php"),
+		filepath.Join(directory, "wp-includes", "version.php"),
+		filepath.Join(directory, "web", "wp", "wp-includes", "version.php"),
 	}
-	if hasArtisan {
-		return true, nil
+	for _, markerPath := range markers {
+		marker, err := os.Lstat(markerPath)
+		if err == nil {
+			if marker.Mode().IsRegular() {
+				return true, nil
+			}
+		} else if !os.IsNotExist(err) {
+			return false, fmt.Errorf("inspect WordPress marker in %q: %w", directory, err)
+		}
 	}
 	manifest, exists, err := readAuditComposerManifest(directory)
 	if err != nil || !exists {
 		return false, err
 	}
 	for pkg := range manifest.Require {
-		if _, ok := laravelAuditPackages[pkg]; ok {
+		if _, ok := wordPressAuditPackages[pkg]; ok {
 			return true, nil
 		}
 	}
@@ -143,7 +150,7 @@ func readAuditComposerManifest(directory string) (auditComposerManifest, bool, e
 
 func projectAuditTarget(projectRoot string) types.AuditTarget {
 	return types.AuditTarget{
-		Framework:   "laravel",
+		Framework:   "wordpress",
 		ProjectRoot: projectRoot,
 		TargetPath:  projectRoot,
 		Mode:        types.AuditTargetProject,

@@ -54,12 +54,12 @@ This is the canonical CLI reference for Govard.
 
 ### `govard audit`
 
-Run framework-declared, persistent project audits. `lint` runs static analysis;
-Magento 2 and Mage-OS also declare a Govard-native stock CSV `profiler` check.
+Run framework-declared, persistent project audits. `lint` via `govard` provider is supported for Magento 2, Laravel, Symfony, WordPress (4 frameworks); Magento 2 and Mage-OS also declare a Govard-native stock CSV `profiler` check.
 Later phases will add browser jobs without changing session semantics.
 
 ```bash
-govard audit run
+govard audit run --checks lint               # Magento2
+govard audit run --checks lint --mode project # Laravel/Symfony/WordPress (auto resolves)
 govard audit run --checks profiler --url 'https://shop.test/category.html?product_list_limit=48'
 govard audit run --checks lint,profiler --url 'https://shop.test/'
 govard audit diff --base origin/master

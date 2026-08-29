@@ -11,23 +11,23 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 
 ## Support Matrix
 
-| Framework | Auto-Detection | Version-Aware Profile | Default Web Root |
-| :--- | :---: | :---: | :--- |
-| Magento 2 | ✅ | ✅ | `/pub` |
-| Mage-OS | ✅ | framework defaults | `/pub` |
-| Magento 1 / OpenMage | ✅ | framework defaults | project root |
-| Laravel | ✅ | ✅ | `/public` |
-| Next.js | ✅ | framework defaults | project root |
-| Emdash | ✅ | framework defaults | project root |
-| Drupal | ✅ | ✅ | `/web` |
-| Symfony | ✅ | ✅ | `/public` |
-| Shopware | ✅ | framework defaults | `/public` |
-| CakePHP | ✅ | framework defaults | `/webroot` |
-| PrestaShop | ✅ | framework defaults | project root |
-| WordPress | ✅ | ✅ | `/` |
-| Django | ✅ | framework defaults | project root |
-| Dagster | ✅ | framework defaults | project root |
-| Custom | manual | manual | project root |
+| Framework | Auto-Detection | Version-Aware Profile | Default Web Root | Audit Lint (`govard`) |
+| :--- | :---: | :---: | :---: | :---: |
+| Magento 2 | ✅ | ✅ | `/pub` | ✅ |
+| Mage-OS | ✅ | framework defaults | `/pub` | ✅ (via Magento 2) |
+| Magento 1 / OpenMage | ✅ | framework defaults | project root | — |
+| Laravel | ✅ | ✅ | `/public` | ✅ |
+| Next.js | ✅ | framework defaults | project root | — |
+| Emdash | ✅ | framework defaults | project root | — |
+| Drupal | ✅ | ✅ | `/web` | — |
+| Symfony | ✅ | ✅ | `/public` | ✅ |
+| Shopware | ✅ | framework defaults | `/public` | — |
+| CakePHP | ✅ | framework defaults | `/webroot` | — |
+| PrestaShop | ✅ | framework defaults | project root | — |
+| WordPress | ✅ | ✅ | `/` | ✅ |
+| Django | ✅ | framework defaults | project root | — |
+| Dagster | ✅ | framework defaults | project root | — |
+| Custom | manual | manual | project root | — |
 
 ---
 
@@ -78,6 +78,8 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | Magento 2 | 2.4.8 | 8.4 | MariaDB 11.4, Redis 7.2, OpenSearch 2.19.0 or 3.0.0 |
 | Magento 2 | 2.4.7 | 8.3 | MariaDB 10.6 or 10.11, Redis 7.2, OpenSearch 2.12.0-2.19.0 |
 | Magento 2 | 2.4.6 | 8.2 | MariaDB 10.6 or 10.11, Redis 7.0-7.2, OpenSearch 2.5.0-2.19.0 |
+
+> **Audit lint:** `govard audit run --checks lint` (provider `govard`) is supported for Magento 2, Laravel, Symfony, and WordPress — 4 frameworks. `audit lint supported for 4`.
 
 ```bash
 # Inspect the resolved profile

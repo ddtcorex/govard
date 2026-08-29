@@ -1,0 +1,21 @@
+{
+  "ProjectPHPVersions": [
+    "8.1",
+    "8.2",
+    "8.3",
+    "8.4"
+  ],
+  "StandalonePHPVersions": [
+    "8.1",
+    "8.2",
+    "8.3",
+    "8.4"
+  ],
+  "Linters": [
+    "phpcs",
+    "phpstan"
+  ],
+  "CodingStandard": "PSR12",
+  "PHPStanLevel": 5,
+  "PHPStanExtension": ""
+}

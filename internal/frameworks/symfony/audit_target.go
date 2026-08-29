@@ -15,11 +15,7 @@ var symfonyAuditPackages = map[string]struct{}{
 	"symfony/symfony":          {},
 }
 
-// ResolveAuditTarget detects a Symfony project for audit routing. Symfony
-// currently has no Govard-native lint profile (AuditLint is nil), so the
-// resolver exists only to turn the generic "no framework can resolve audit
-// target" into a helpful framework-specific message via the audit command's
-// follow-up AuditLint-nil check.
+// ResolveAuditTarget detects a Symfony project for audit routing.
 func ResolveAuditTarget(request types.AuditTargetResolveRequest) (types.AuditTarget, bool, error) {
 	startPath, err := canonicalAuditPath(request.StartPath)
 	if err != nil {
@@ -44,12 +40,12 @@ func ResolveAuditTarget(request types.AuditTargetResolveRequest) (types.AuditTar
 		}
 	case types.AuditTargetModule:
 		if hasEvidence {
-			return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q is not supported for framework %q: symfony audit lint is not yet implemented (use govard tool php vendor/bin/phpcs or vendor/bin/phpstan directly)", request.ModeOverride, "symfony")
+			return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q is not supported for framework %q: use --mode project (govard audit lint for this framework only supports project scope)", request.ModeOverride, "symfony")
 		}
 		return types.AuditTarget{}, false, nil
 	case types.AuditTargetStandalone:
 		if hasEvidence {
-			return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q is not supported for framework %q: symfony audit lint is not yet implemented (use govard tool php vendor/bin/phpcs or vendor/bin/phpstan directly)", request.ModeOverride, "symfony")
+			return types.AuditTarget{}, true, fmt.Errorf("audit target mode %q is not supported for framework %q: use --mode project (govard audit lint for this framework only supports project scope)", request.ModeOverride, "symfony")
 		}
 		return types.AuditTarget{}, false, nil
 	default:
@@ -105,9 +101,14 @@ func findSymfonyAuditProject(startPath string) (string, error) {
 
 func isSymfonyProject(directory string) (bool, error) {
 	marker, err := os.Lstat(filepath.Join(directory, BinConsole))
-	hasConsole := err == nil && marker.Mode().IsRegular()
-	if err != nil && !os.IsNotExist(err) {
+	hasConsole := false
+	if err == nil {
+		hasConsole = marker.Mode().IsRegular()
+	} else if !os.IsNotExist(err) {
 		return false, fmt.Errorf("inspect Symfony console marker in %q: %w", directory, err)
+	}
+	if hasConsole {
+		return true, nil
 	}
 	manifest, exists, err := readAuditComposerManifest(directory)
 	if err != nil || !exists {
@@ -115,9 +116,6 @@ func isSymfonyProject(directory string) (bool, error) {
 	}
 	for pkg := range manifest.Require {
 		if _, ok := symfonyAuditPackages[pkg]; ok {
-			if hasConsole {
-				return true, nil
-			}
 			return true, nil
 		}
 	}
