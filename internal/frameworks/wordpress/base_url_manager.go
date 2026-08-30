@@ -14,7 +14,7 @@ type WordPressManager struct {
 
 func (m *WordPressManager) Backup(projectRoot string, config engine.Config) error { return nil }
 func (m *WordPressManager) Update(projectRoot string, config engine.Config, tunnelURL string) error {
-	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPFPMSuffix)
+	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)
 	// wp option update siteurl <url> && wp option update home <url>
 	_, err := m.executeWP(containerName, "option", "update", "siteurl", tunnelURL)
 	if err != nil {
@@ -24,7 +24,7 @@ func (m *WordPressManager) Update(projectRoot string, config engine.Config, tunn
 	return err
 }
 func (m *WordPressManager) Revert(projectRoot string, config engine.Config) error {
-	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPFPMSuffix)
+	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)
 	localURL := fmt.Sprintf("https://%s", config.Domain)
 	_, err := m.executeWP(containerName, "option", "update", "siteurl", localURL)
 	if err != nil {
@@ -40,6 +40,6 @@ func (m *WordPressManager) executeWP(container string, args ...string) ([]byte, 
 			return exec.Command(name, args...).CombinedOutput()
 		}
 	}
-	fullArgs := append([]string{"exec", "-u", conventions.UserWWWData, container, "wp"}, args...)
+	fullArgs := append([]string{"exec", "-u", conventions.UserWWWData, "-w", conventions.DefaultWorkDir, container, "wp", "--allow-root"}, args...)
 	return executor("docker", fullArgs...)
 }
