@@ -430,6 +430,11 @@ func (backend *GovardLintBackend) containerRequest(request LintRequest, plan gov
 	if request.Profile.PHPStanLevel > 0 {
 		environment["GOVARD_LINT_PHPSTAN_LEVEL"] = strconv.Itoa(request.Profile.PHPStanLevel)
 	}
+	if request.Scope == ScopeDiff {
+		if _, err := os.Stat(filepath.Join(request.RunDir, "diff-files.txt")); err == nil {
+			environment["GOVARD_LINT_DIFF_FILE"] = filepath.Join(govardLintOutputMount, "diff-files.txt")
+		}
+	}
 	container := ContainerRunRequest{
 		Name:  containerName(request),
 		Image: resolved.Image,
