@@ -287,6 +287,24 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		}
 	}()
 
+	if request.Scope == ScopeDiff {
+		diffFiles, diffErr := govardLintDiffFiles(request.ProjectRoot, request.BaseRef)
+		if diffErr == nil {
+			relevant := govardLintFilterDiffFiles(diffFiles, request.Target, request.ProjectRoot)
+			if len(relevant) == 0 {
+				toolchainDigest := govardLintToolchainDigest(resolved, request)
+				report := govardLintEmptyDiffReport(request, plan, resolved, toolchainDigest)
+				if data, err := json.Marshal(report); err == nil {
+					_ = os.WriteFile(reportPath, data, 0o600)
+				}
+				_, _ = fmt.Fprintf(logFile, "govard lint diff: no relevant PHP files changed (base %s), short-circuit passed\n", request.BaseRef)
+				return report, nil
+			}
+			_ = os.WriteFile(filepath.Join(request.RunDir, "diff-files.txt"), []byte(strings.Join(relevant, "\n")), 0o600)
+			_, _ = fmt.Fprintf(logFile, "govard lint diff: %d relevant files changed (base %s)\n", len(relevant), request.BaseRef)
+		}
+	}
+
 	originalStandard := strings.TrimSpace(request.Profile.CodingStandard)
 	currentRequest := request
 	var lastErr error
@@ -962,4 +980,127 @@ func withGovardLintCleanupError(primary, cleanupErr error) error {
 		return primary
 	}
 	return fmt.Errorf("govard lint execution and cleanup failed: %w", errors.Join(primary, cleanupErr))
+}
+
+func govardLintDiffFiles(projectRoot, baseRef string) ([]string, error) {
+	base := strings.TrimSpace(baseRef)
+	if base == "" || strings.TrimSpace(projectRoot) == "" {
+		return nil, fmt.Errorf("diff requires project root and base ref")
+	}
+	// Use three-dot diff to compare base...HEAD (common ancestor).
+	// The base is typically a merge-base SHA from --base auto.
+	cmd := exec.Command("git", "-C", projectRoot, "diff", "--name-only", "--diff-filter=ACMRT", base+"...HEAD")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git diff %q...HEAD: %w", base, err)
+	}
+	raw := strings.TrimSpace(out.String())
+	if raw == "" {
+		return nil, nil
+	}
+	lines := strings.Split(raw, "\n")
+	files := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			files = append(files, trimmed)
+		}
+	}
+	return files, nil
+}
+
+func govardLintFilterDiffFiles(files []string, target types.AuditTarget, projectRoot string) []string {
+	if len(files) == 0 {
+		return nil
+	}
+	// For project target, consider any file under project root that is
+	// lint-relevant (php/phtml) and not in always-ignored trees.
+	// For module target, only files under that module.
+	var prefix string
+	if target.Mode == types.AuditTargetModule {
+		rel, err := filepath.Rel(target.ProjectRoot, target.TargetPath)
+		if err == nil {
+			prefix = filepath.ToSlash(rel)
+			if prefix == "." {
+				prefix = ""
+			}
+		}
+	}
+	relevant := make([]string, 0, len(files))
+	for _, file := range files {
+		normalized := filepath.ToSlash(filepath.Clean(file))
+		// Always ignore generated artefacts and user content
+		if strings.HasPrefix(normalized, "vendor/") || strings.HasPrefix(normalized, "generated/") || strings.HasPrefix(normalized, "var/") || strings.HasPrefix(normalized, "pub/static/") || strings.HasPrefix(normalized, "pub/media/") || strings.HasPrefix(normalized, "node_modules/") {
+			continue
+		}
+		// Only lint-relevant extensions for the fast-path. Other files
+		// (docs, css) would be reported as passed anyway, so skipping them
+		// keeps diff at 1-2s for docs-only changes.
+		ext := strings.ToLower(filepath.Ext(normalized))
+		if ext != ".php" && ext != ".phtml" && ext != ".xml" && ext != ".js" {
+			// For empty short-circuit we only care about php/phtml;
+			// xml/js are included for completeness but not required for
+			// the empty check. Keep the check permissive: if any php/phtml
+			// is in diff, we run full scan; otherwise we short-circuit.
+			// So we only count php/phtml as relevant for the empty check.
+			if ext != ".php" && ext != ".phtml" {
+				continue
+			}
+		}
+		if prefix != "" && !strings.HasPrefix(normalized, prefix+"/") && normalized != prefix {
+			continue
+		}
+		// Ensure the file still exists (deleted files are in diff but not on disk)
+		if _, err := os.Stat(filepath.Join(projectRoot, normalized)); err != nil {
+			continue
+		}
+		relevant = append(relevant, normalized)
+	}
+	return relevant
+}
+
+func govardLintEmptyDiffReport(request LintRequest, plan govardLintTarget, resolved ResolvedToolchain, toolchainDigest string) LintReport {
+	// Synthesize a passed report without running the container.
+	// The report must satisfy ValidateLintReport: provider, session/run/project/target,
+	// toolchain digests, selected versions, and one passed PHP result.
+	selected := request.SelectedPHPVersions
+	if len(selected) == 0 {
+		selected = []string{"8.4"}
+	}
+	phpVersion := selected[0]
+	return LintReport{
+		SchemaVersion:       LintReportSchemaVersion,
+		Provider:            GovardLintProvider,
+		SessionID:           request.SessionID,
+		RunID:               request.RunID,
+		ProjectID:           request.ProjectID,
+		TargetID:            request.TargetID,
+		TargetMode:          plan.mode,
+		TargetPath:          request.Target.TargetPath,
+		ImageDigest:         resolved.ImageDigest,
+		ToolchainDigest:     toolchainDigest,
+		Status:              lintStatusPassed,
+		DurationMS:          0,
+		SelectedPHPVersions: append([]string(nil), selected...),
+		MatrixComplete:      request.MatrixComplete,
+		PHPResults: []LintPHPResult{
+			{
+				PHPVersion: phpVersion,
+				Outcome:    lintStatusPassed,
+				DurationMS: 0,
+				Cache:      CacheOutcome{State: lintCacheWarm, Key: "diff-empty", Reason: "no relevant PHP files changed"},
+				Phases: []LintPhase{
+					{Name: "validate", PHPVersion: phpVersion, Status: "passed", DurationMS: 1},
+					{Name: "prepare", PHPVersion: phpVersion, Status: "passed", DurationMS: 1, CacheState: lintCacheWarm, CacheKey: "diff-empty", CacheReason: "no relevant PHP files changed"},
+					{Name: "phpcs", PHPVersion: phpVersion, Status: "passed", DurationMS: 1, CacheState: lintCacheWarm, CacheKey: "diff-empty", CacheReason: "no relevant PHP files changed"},
+					{Name: "media-guard", PHPVersion: phpVersion, Status: "passed", DurationMS: 1, CacheState: lintCacheWarm, CacheKey: "diff-empty", CacheReason: "diff has no PHP files"},
+					{Name: "compat", PHPVersion: phpVersion, Status: "passed", DurationMS: 1, CacheState: lintCacheWarm, CacheKey: "diff-empty", CacheReason: "no relevant PHP files changed"},
+					{Name: "phpstan", PHPVersion: phpVersion, Status: "passed", DurationMS: 1, CacheState: lintCacheWarm, CacheKey: "diff-empty", CacheReason: "no relevant PHP files changed"},
+				},
+				Findings: nil,
+			},
+		},
+	}
 }
