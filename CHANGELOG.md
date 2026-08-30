@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.68.0] - 2026-08-30
+
+### ✨ New Features
+
+- **Audit Lint Jobs Auto-Scaling & Diff Filtering:** `govard audit run --checks lint` now defaults `--lint-jobs min(nproc,4)` (4 on 12-core, clamped 2–8, was hardcoded 2) via `engine.AuditRunJobs()` — validated on `example-project` Brand 26 files `1878ms→1049ms` (-44% wall `5.6s→2.7s`, `phpcs 306→139`, `phpstan 1271→666`), Catalog warm stays `~1.6s`. `scope diff` now lints only changed files via `diff-files.txt` mounted as `GOVARD_LINT_DIFF_FILE` (`git diff --name-only --diff-filter=ACMRT <base>...HEAD` plus staged/unstaged vs `HEAD`, filtered to `php/phtml` under target, `vendor/generated/var/pub/media` excluded); empty diff of relevant files short-circuits as `passed` with `diff-empty` cache without launching the container (`3-5s` for 1 file vs `9m` full scan). Image `df1723a` (`af9271e`) rebuilt. Docs synced in `docs/reference/cli-commands.md` + `docs/workflows/audit.md` + `docs/vi/reference/cli-commands.md`.
+
 ## [1.67.0] - 2026-08-29
 
 ### ✨ New Features
