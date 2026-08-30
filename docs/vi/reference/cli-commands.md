@@ -71,7 +71,7 @@ govard audit cleanup --older-than 168h
 ```
 
 `run` mặc định dùng `--scope project`, `--checks lint`,
-`--lint-provider govard`, `--mode auto` và `--lint-jobs 2`. Format mặc định
+`--lint-provider govard`, `--mode auto` và `--lint-jobs min(nproc,4)` (mặc định `4` trên host thường, kẹp `2–8`). Format mặc định
 `text` stream tiến trình trực tiếp như `vendor/bin/phpcs`/`vendor/bin/phpstan` —
 giai đoạn `validate` → `prepare` → `phpcs`/`phpstan`, trạng thái cache
 (`cold`/`warm`/`bypassed`) và `magelint: php X.Y analyzed` hiện ngay khi chạy —

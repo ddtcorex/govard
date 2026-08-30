@@ -70,7 +70,7 @@ govard audit cleanup --older-than 168h
 ```
 
 `run` defaults to `--scope project`, `--checks lint`, `--lint-provider govard`,
-`--mode auto`, and `--lint-jobs 2`. The default `text` format streams live
+`--mode auto`, and `--lint-jobs min(nproc,4)` (default `4` on typical hosts, clamped `2–8`). The default `text` format streams live
 progress like `vendor/bin/phpcs`/`vendor/bin/phpstan` — phase `validate` →
 `prepare` → `phpcs`/`phpstan`, cache state (`cold`/`warm`/`bypassed`), and
 `magelint: php X.Y analyzed` appear as they happen — then prints a compact
@@ -225,7 +225,7 @@ is a hidden alias for `--lint-provider`.
 #### Scope (`--scope`, `--base`)
 
 `--scope project` (default) audits the whole target. `--scope diff --base <ref>`
-records the requested base in the session manifest for review workflows; use
+records the requested base in the session manifest and lints only the changed files (`git diff --name-only --diff-filter=ACMRT <base>...HEAD` plus staged/unstaged vs `HEAD`, filtered to `php/phtml` under the target, `vendor/generated/var/pub/media` excluded via `diff-files.txt` mounted as `GOVARD_LINT_DIFF_FILE`); an empty diff short-circuits as `passed` with `diff-empty` cache without launching the container. Use
 `--base auto` to auto-detect the base via `git merge-base HEAD origin/HEAD`
 (and `origin/master`/`origin/main` fallbacks, then `gh pr view --json baseRefName`).
 `git merge-base` emits a commit SHA (used directly as the base); `gh pr view`

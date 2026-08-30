@@ -182,7 +182,7 @@ func currentAuditDependencies(defaults auditCommandDependencies) auditCommandDep
 }
 
 func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
-	options := &auditCommandOptions{Scope: string(audit.ScopeProject), Checks: []string{"lint"}, Format: "text", LintProvider: audit.GovardLintProvider, LintJobs: 2, Timeout: "auto"}
+	options := &auditCommandOptions{Scope: string(audit.ScopeProject), Checks: []string{"lint"}, Format: "text", LintProvider: audit.GovardLintProvider, LintJobs: engine.AuditRunJobs(), Timeout: "auto"}
 	command := &cobra.Command{
 		Use:   "audit",
 		Short: "Run and inspect persistent project audits",
@@ -196,7 +196,7 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().StringVar(&options.LintProvider, "lint-provider", audit.GovardLintProvider, "Lint provider: govard, or an audit.lint.external_providers name from the project config")
 	command.PersistentFlags().StringVar(&options.LintProvider, "provider", audit.GovardLintProvider, "Alias for --lint-provider")
 	_ = command.PersistentFlags().MarkHidden("provider")
-	command.PersistentFlags().IntVar(&options.LintJobs, "lint-jobs", 2, "Lint worker count")
+	command.PersistentFlags().IntVar(&options.LintJobs, "lint-jobs", engine.AuditRunJobs(), "Lint worker count")
 	command.PersistentFlags().BoolVar(&options.NoLintResultCache, "no-lint-result-cache", false, "Ignore reusable lint analyzer state for this run (the Composer download cache is kept)")
 	command.PersistentFlags().BoolVar(&options.AllowLintSSHAgent, "allow-lint-ssh-agent", false, "Forward SSH_AUTH_SOCK into the lint container for private Composer dependencies")
 	command.PersistentFlags().BoolVar(&options.AllowXdebug, "allow-xdebug", false, "Allow audit with Xdebug enabled (10-20% performance tax)")

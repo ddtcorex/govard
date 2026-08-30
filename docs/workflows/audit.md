@@ -120,7 +120,7 @@ See `internal/blueprints/files/.gitignore` (shared, single source; rendered as p
 ## Scope (`--scope diff --base auto`)
 
 - `govard audit run --scope project` (default) audits the full target.
-- `govard audit run --scope diff --base auto --format json` is for review/PR workflows: it auto-detects the base via `git merge-base HEAD origin/HEAD || origin/master || gh pr view --json baseRefName` (merge-base returns a commit SHA) and records it in the session manifest. `gh pr view` normalizes to `origin/<branch>` when the prefix is missing. `govard audit diff --base <ref>` is a shorthand that forces `scope diff`.
+- `govard audit run --scope diff --base auto --format json` is for review/PR workflows: it auto-detects the base via `git merge-base HEAD origin/HEAD || origin/master || gh pr view --json baseRefName` (merge-base returns a commit SHA) and records it in the session manifest. `lint` then runs only on the changed files (`git diff --name-only --diff-filter=ACMRT <base>...HEAD` plus staged/unstaged vs `HEAD`, filtered to `php/phtml` under the target via `diff-files.txt` mounted as `GOVARD_LINT_DIFF_FILE`); an empty diff of relevant files short-circuits as `passed` with `diff-empty` cache without launching the container. `gh pr view` normalizes to `origin/<branch>` when the prefix is missing. `govard audit diff --base <ref>` is a shorthand that forces `scope diff`.
 
 ## Concurrency
 

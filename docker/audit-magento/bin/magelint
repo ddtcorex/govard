@@ -32,6 +32,8 @@ CURRENT_VERSION=""
 PENDING_VERSIONS=""
 FINALIZED=0
 WORKSPACE_OWNED=0
+DIFF_FILE="${GOVARD_LINT_DIFF_FILE:-}"
+DIFF_FILES=()
 
 usage() {
     cat <<'USAGE'
@@ -517,6 +519,48 @@ resolve_paths() {
     rm -f "$REPORT_PATH"
 }
 
+resolve_diff_files() {
+    DIFF_FILES=()
+    local diff_path="${GOVARD_LINT_DIFF_FILE:-}"
+    if [ -z "$diff_path" ]; then
+        return 0
+    fi
+    if [ ! -f "$diff_path" ]; then
+        log "diff file $diff_path not found, running full scan"
+        return 0
+    fi
+    if [ ! -s "$diff_path" ]; then
+        log "diff file $diff_path empty, running full scan"
+        return 0
+    fi
+    local line absolute
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        [ -z "$line" ] && continue
+        # Normalize: strip leading ./ and trailing /
+        line=${line#./}
+        line=${line%/}
+        case "$line" in
+            /*|*..*) continue ;;
+        esac
+        absolute="$SOURCE_DIR/$line"
+        # Only keep files under the target directory
+        case "$absolute" in
+            "$TARGET_DIR"|"$TARGET_DIR"/*) ;;
+            *) continue ;;
+        esac
+        if [ ! -f "$absolute" ]; then
+            continue
+        fi
+        DIFF_FILES+=("$absolute")
+    done < "$diff_path"
+    if [ "${#DIFF_FILES[@]}" -gt 0 ]; then
+        log "diff filtering: ${#DIFF_FILES[@]} files from $diff_path"
+    else
+        log "diff filtering: no valid files in $diff_path, running full scan"
+    fi
+}
+
 cleanup_workspace() {
     if [ "${GOVARD_LINT_KEEP_WORKSPACE:-0}" = "1" ]; then
         return 0
@@ -745,7 +789,11 @@ run_phpcs_pass() {
     else
         arguments+=("--cache=$cache_file")
     fi
-    arguments+=("$ANALYZE_DIR")
+    if [ "${#DIFF_FILES[@]}" -gt 0 ]; then
+        arguments+=("${DIFF_FILES[@]}")
+    else
+        arguments+=("$ANALYZE_DIR")
+    fi
     rm -f "$report"
     run_child "$ANALYZE_ROOT" - "$launcher" "${arguments[@]}"
     return $?
@@ -859,9 +907,15 @@ analyze_version() {
         write_phpstan_config "$version" "$phpstan_config"
         phase_started=$(now_ms)
         rm -f "$phpstan_report"
-        run_child "$ANALYZE_ROOT" "$phpstan_report" "$launcher" "$toolchain/vendor/bin/phpstan" analyse \
-            --no-progress --no-interaction --error-format=json \
-            --memory-limit=2G --configuration="$phpstan_config" "$ANALYZE_DIR"
+        if [ "${#DIFF_FILES[@]}" -gt 0 ]; then
+            run_child "$ANALYZE_ROOT" "$phpstan_report" "$launcher" "$toolchain/vendor/bin/phpstan" analyse \
+                --no-progress --no-interaction --error-format=json \
+                --memory-limit=2G --configuration="$phpstan_config" "${DIFF_FILES[@]}"
+        else
+            run_child "$ANALYZE_ROOT" "$phpstan_report" "$launcher" "$toolchain/vendor/bin/phpstan" analyse \
+                --no-progress --no-interaction --error-format=json \
+                --memory-limit=2G --configuration="$phpstan_config" "$ANALYZE_DIR"
+        fi
         status=$?
         [ "$CANCELLED" -eq 1 ] && return 130
         if [ "$status" -eq 0 ]; then
@@ -969,6 +1023,7 @@ main() {
     validate_jobs
     validate_php_selection
     resolve_paths
+    resolve_diff_files
 
     trap on_cancel TERM INT
     trap cleanup_workspace EXIT
