@@ -992,8 +992,22 @@ func govardLintDiffFiles(projectRoot, baseRef string) ([]string, error) {
 	if base == "" || strings.TrimSpace(projectRoot) == "" {
 		return nil, fmt.Errorf("diff requires project root and base ref")
 	}
-	// Use three-dot diff to compare base...HEAD (common ancestor).
-	// The base is typically a merge-base SHA from --base auto.
+	seen := make(map[string]struct{})
+	var files []string
+	addRaw := func(raw string) {
+		for _, line := range strings.Split(raw, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			if _, ok := seen[trimmed]; ok {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			files = append(files, trimmed)
+		}
+	}
+	// Committed diff: base...HEAD
 	cmd := exec.Command("git", "-C", projectRoot, "diff", "--name-only", "--diff-filter=ACMRT", base+"...HEAD")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -1001,17 +1015,22 @@ func govardLintDiffFiles(projectRoot, baseRef string) ([]string, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("git diff %q...HEAD: %w", base, err)
 	}
-	raw := strings.TrimSpace(out.String())
-	if raw == "" {
-		return nil, nil
+	addRaw(out.String())
+	// Dirty worktree: also include unstaged and staged changes vs HEAD
+	// (covers local edits without a commit, e.g. govard audit run --scope diff --base HEAD with dirty files)
+	for _, args := range [][]string{
+		{"-C", projectRoot, "diff", "--name-only", "--diff-filter=ACMRT", "HEAD"},
+		{"-C", projectRoot, "diff", "--cached", "--name-only", "--diff-filter=ACMRT", "HEAD"},
+	} {
+		var buf bytes.Buffer
+		c := exec.Command("git", args...)
+		c.Stdout = &buf
+		c.Stderr = io.Discard
+		_ = c.Run()
+		addRaw(buf.String())
 	}
-	lines := strings.Split(raw, "\n")
-	files := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			files = append(files, trimmed)
-		}
+	if len(files) == 0 {
+		return nil, nil
 	}
 	return files, nil
 }
