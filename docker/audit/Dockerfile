@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Govard lint runtime (formerly magelint).
+# Govard lint runtime (glint).
 #
 # Stage "phpbase" installs every PHP CLI Govard supports for lint work
 # (7.4 and 8.0 through 8.5) plus Composer 2. Stage "runtime" installs the seven
@@ -21,8 +21,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # The single declaration of the PHP policy in this image: exactly the
 # versions Govard supports for Magento lint work. Both build stages and the
 # image label derive from it, so the list cannot drift within the image.
-ARG GOVARD_MAGELINT_PHP_VERSIONS="7.4,8.0,8.1,8.2,8.3,8.4,8.5"
-ENV GOVARD_MAGELINT_PHP_VERSIONS="${GOVARD_MAGELINT_PHP_VERSIONS}"
+ARG GOVARD_GLINT_PHP_VERSIONS="7.4,8.0,8.1,8.2,8.3,8.4,8.5"
+ENV GOVARD_GLINT_PHP_VERSIONS="${GOVARD_GLINT_PHP_VERSIONS}"
 ENV COMPOSER_ALLOW_SUPERUSER=1
 # QEMU-emulated arm64 builds run Composer's usual parallel downloads (default
 # COMPOSER_MAX_PARALLEL_HTTP=12) through a software-emulated CPU; several
@@ -45,7 +45,7 @@ RUN set -eux; \
         unzip; \
     add-apt-repository -y ppa:ondrej/php; \
     apt-get update; \
-    for version in $(printf '%s' "${GOVARD_MAGELINT_PHP_VERSIONS}" | tr ',' ' '); do \
+    for version in $(printf '%s' "${GOVARD_GLINT_PHP_VERSIONS}" | tr ',' ' '); do \
         packages="php${version}-cli php${version}-mbstring php${version}-xml php${version}-curl php${version}-zip php${version}-intl php${version}-bcmath php${version}-gd"; \
         case "${version}" in \
             7.*) packages="${packages} php${version}-json" ;; \
@@ -54,7 +54,7 @@ RUN set -eux; \
     done; \
     apt-get purge -y --auto-remove software-properties-common gnupg; \
     rm -rf /var/lib/apt/lists/*; \
-    for version in $(printf '%s' "${GOVARD_MAGELINT_PHP_VERSIONS}" | tr ',' ' '); do \
+    for version in $(printf '%s' "${GOVARD_GLINT_PHP_VERSIONS}" | tr ',' ' '); do \
         "php${version}" --version >/dev/null; \
     done; \
     ! command -v php7.3
@@ -80,12 +80,12 @@ LABEL org.opencontainers.image.title="glint" \
       io.govard.version="${GOVARD_VERSION}" \
       io.govard.audit.context-digest="${GOVARD_CONTEXT_DIGEST}" \
       io.govard.audit.report-schema="2" \
-      io.govard.audit.php-versions="${GOVARD_MAGELINT_PHP_VERSIONS}"
+      io.govard.audit.php-versions="${GOVARD_GLINT_PHP_VERSIONS}"
 
 COPY toolchains /opt/govard/toolchains
 
 RUN set -eux; \
-    for version in $(printf '%s' "${GOVARD_MAGELINT_PHP_VERSIONS}" | tr ',' ' '); do \
+    for version in $(printf '%s' "${GOVARD_GLINT_PHP_VERSIONS}" | tr ',' ' '); do \
         cd "/opt/govard/toolchains/php-${version}"; \
         attempt=1; \
         until "php${version}" /usr/local/bin/composer install \
@@ -125,7 +125,6 @@ COPY bin/glint /usr/local/bin/glint
 
 RUN set -eux; \
     chmod 0755 /usr/local/bin/glint; \
-    ln -sf /usr/local/bin/glint /usr/local/bin/magelint; \
     chmod 0644 /usr/local/lib/govard/report.php; \
     mkdir -p /source /cache /output; \
     chmod 0777 /cache /output

@@ -1,7 +1,7 @@
 # audit-module fixture
 
 Neutral Magento-2-shaped tree used by the gated live lint audit tests in
-`tests/integration/audit_magelint_live_test.go`. It deliberately covers all
+`tests/integration/audit_glint_live_test.go`. It deliberately covers all
 three audit target modes from a single checked-in tree:
 
 - `project/` satisfies `internal/frameworks/magento2.isMagentoProject`

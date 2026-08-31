@@ -73,7 +73,7 @@ govard audit cleanup --older-than 168h
 `--mode auto`, and `--lint-jobs min(nproc,4)` (default `4` on typical hosts, clamped `2–8`). The default `text` format streams live
 progress like `vendor/bin/phpcs`/`vendor/bin/phpstan` — phase `validate` →
 `prepare` → `phpcs`/`phpstan`, cache state (`cold`/`warm`/`bypassed`), and
-`magelint: php X.Y analyzed` appear as they happen — then prints a compact
+`glint: php X.Y analyzed` appear as they happen — then prints a compact
 human-readable summary: the verdict first (PASSED/FAILED/CANCELLED), then scope,
 duration, environment, per-PHP results with cache state and findings, plus
 next-step hints pointing at the persisted report and the exact rerun command. On

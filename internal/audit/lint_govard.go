@@ -409,7 +409,7 @@ func (backend *GovardLintBackend) acceptReport(request LintRequest, resolved Res
 	// bootstrap/cache and storage/framework). This is framework-agnostic:
 	// those directories are always generated and never user code, so the
 	// filter is safe for any project. It also makes the Go-side behavior
-	// match the intended magelint excludes without waiting for an image
+	// match the intended glint excludes without waiting for an image
 	// rebuild.
 	filtered := filterGeneratedFindings(report)
 	if filtered {
@@ -435,7 +435,7 @@ func isGeneratedFindingPath(path string) bool {
 		return true
 	}
 	// Also cover the classic Magento/Symfony generated trees already
-	// excluded in magelint, kept here as a safety net.
+	// excluded in glint, kept here as a safety net.
 	if strings.HasPrefix(normalized, "var/") || normalized == "var" {
 		return true
 	}

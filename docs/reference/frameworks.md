@@ -81,7 +81,7 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 | Magento 2 | 2.4.7 | 8.3 | MariaDB 10.6 or 10.11, Redis 7.2, OpenSearch 2.12.0-2.19.0 |
 | Magento 2 | 2.4.6 | 8.2 | MariaDB 10.6 or 10.11, Redis 7.0-7.2, OpenSearch 2.5.0-2.19.0 |
 
-> **Audit lint:** `govard audit run --checks lint` (provider `govard`) is supported for Magento 2, Laravel, Symfony, and WordPress — 4 frameworks. `audit lint supported for 4`. Image `govard-magelint` bundles native coding standards (WPCS 3.1 for WordPress, Symfony CS for Symfony, PSR12 for Laravel, Magento2 for Magento) + `phpstan/phpstan-symfony` + `phpstan/phpstan-wordpress` so WordPress/Symfony run natively without fallback to PSR12.
+> **Audit lint:** `govard audit run --checks lint` (provider `govard`) is supported for Magento 2, Laravel, Symfony, and WordPress — 4 frameworks. `audit lint supported for 4`. Image `govard-glint` bundles native coding standards (WPCS 3.1 for WordPress, Symfony CS for Symfony, PSR12 for Laravel, Magento2 for Magento) + `phpstan/phpstan-symfony` + `phpstan/phpstan-wordpress` so WordPress/Symfony run natively without fallback to PSR12.
 
 ```bash
 # Inspect the resolved profile

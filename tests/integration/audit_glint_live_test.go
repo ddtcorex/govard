@@ -24,35 +24,35 @@ import (
 	"govard/internal/frameworks/types"
 )
 
-// auditMagelintGateEnv gates every test in this file. The Govard-owned Magento
+// auditGlintGateEnv gates every test in this file. The Govard-owned Magento
 // lint image is large and each scenario runs real containers, so these tests are
 // opt-in rather than part of the default integration run.
-const auditMagelintGateEnv = "GOVARD_TEST_AUDIT_MAGELINT"
+const auditGlintGateEnv = "GOVARD_TEST_AUDIT_GLINT"
 
-// auditMagelintFixture is the checked-in Magento-shaped tree every scenario
+// auditGlintFixture is the checked-in Magento-shaped tree every scenario
 // copies. It carries all three target modes; see its README for the exact
 // markers each mode relies on.
-const auditMagelintFixture = "magento2/audit-module"
+const auditGlintFixture = "magento2/audit-module"
 
-// requireAuditMagelintLive enforces the two-step gate. An unset gate is a
+// requireAuditGlintLive enforces the two-step gate. An unset gate is a
 // deliberate opt-out and skips, but a set gate with no reachable Docker daemon is
 // an environment block rather than a pass: the operator asked for live evidence,
 // so silently reporting success would be a lie about what was verified.
-func requireAuditMagelintLive(t *testing.T) {
+func requireAuditGlintLive(t *testing.T) {
 	t.Helper()
 
-	if os.Getenv(auditMagelintGateEnv) != "1" {
-		t.Skipf("live Magento lint audit coverage is opt-in; set %s=1 to run it against a real Docker daemon", auditMagelintGateEnv)
+	if os.Getenv(auditGlintGateEnv) != "1" {
+		t.Skipf("live Magento lint audit coverage is opt-in; set %s=1 to run it against a real Docker daemon", auditGlintGateEnv)
 	}
 	if err := exec.Command("docker", "version").Run(); err != nil {
-		t.Fatalf("%s=1 asked for live Docker coverage but the Docker daemon is unreachable: %v", auditMagelintGateEnv, err)
+		t.Fatalf("%s=1 asked for live Docker coverage but the Docker daemon is unreachable: %v", auditGlintGateEnv, err)
 	}
 }
 
-// auditMagelintEnvironment prepares one isolated live scenario: a private Govard
+// auditGlintEnvironment prepares one isolated live scenario: a private Govard
 // home so no run touches the real ~/.govard caches or persisted sessions, and a
 // private copy of the fixture so no run can mutate the checked-in tree.
-type auditMagelintEnvironment struct {
+type auditGlintEnvironment struct {
 	env        *TestEnvironment
 	home       string
 	fixture    string
@@ -61,16 +61,16 @@ type auditMagelintEnvironment struct {
 	standalone string
 }
 
-func newAuditMagelintEnvironment(t *testing.T) *auditMagelintEnvironment {
+func newAuditGlintEnvironment(t *testing.T) *auditGlintEnvironment {
 	t.Helper()
-	requireAuditMagelintLive(t)
+	requireAuditGlintLive(t)
 
 	home := t.TempDir()
 	t.Setenv("GOVARD_HOME_DIR", home)
 
 	env := NewTestEnvironment(t)
-	fixture := env.CreateProjectFromFixture(t, auditMagelintFixture, "audit-module")
-	return &auditMagelintEnvironment{
+	fixture := env.CreateProjectFromFixture(t, auditGlintFixture, "audit-module")
+	return &auditGlintEnvironment{
 		env:        env,
 		home:       home,
 		fixture:    fixture,
@@ -84,7 +84,7 @@ func newAuditMagelintEnvironment(t *testing.T) *auditMagelintEnvironment {
 // PHP version. Project and module-in-project targets analyze exactly that
 // version, so a scenario that wants a different one states it here rather than
 // passing --php, which the command rejects when it disagrees with the project.
-func (scenario *auditMagelintEnvironment) pinProjectPHP(t *testing.T, version string) {
+func (scenario *auditGlintEnvironment) pinProjectPHP(t *testing.T, version string) {
 	t.Helper()
 
 	local := filepath.Join(scenario.project, ".govard.local.yml")
@@ -94,19 +94,19 @@ func (scenario *auditMagelintEnvironment) pinProjectPHP(t *testing.T, version st
 	}
 }
 
-// auditMagelintOutcome pairs the command result with the provider report the run
+// auditGlintOutcome pairs the command result with the provider report the run
 // persisted. The report is the raw, schema-versioned lint evidence the container
 // published, so assertions read the same bytes a later `govard audit result`
 // would rather than a summary rebuilt by the test.
-type auditMagelintOutcome struct {
+type auditGlintOutcome struct {
 	command *CommandResult
 	result  audit.RunResult
 	report  audit.LintReport
 }
 
-// runAuditMagelint runs one audit from a directory inside the fixture and reads
+// runAuditGlint runs one audit from a directory inside the fixture and reads
 // back both the command result and the persisted provider report.
-func (scenario *auditMagelintEnvironment) runAuditMagelint(t *testing.T, workDir string, args ...string) auditMagelintOutcome {
+func (scenario *auditGlintEnvironment) runAuditGlint(t *testing.T, workDir string, args ...string) auditGlintOutcome {
 	t.Helper()
 
 	command := scenario.env.RunGovard(t, workDir, append([]string{"audit", "run", "--format", "json"}, args...)...)
@@ -118,7 +118,7 @@ func (scenario *auditMagelintEnvironment) runAuditMagelint(t *testing.T, workDir
 	if err := json.Unmarshal([]byte(command.Stdout), &result); err != nil {
 		t.Fatalf("decode audit run result: %v\nstdout: %s", err, command.Stdout)
 	}
-	return auditMagelintOutcome{
+	return auditGlintOutcome{
 		command: command,
 		result:  result,
 		report:  scenario.readLintReport(t, result),
@@ -129,7 +129,7 @@ func (scenario *auditMagelintEnvironment) runAuditMagelint(t *testing.T, workDir
 // path is derived from the run's own identity instead of picking the newest file,
 // so a scenario that performs several runs can never assert against another
 // run's evidence.
-func (scenario *auditMagelintEnvironment) readLintReport(t *testing.T, result audit.RunResult) audit.LintReport {
+func (scenario *auditGlintEnvironment) readLintReport(t *testing.T, result audit.RunResult) audit.LintReport {
 	t.Helper()
 
 	path := filepath.Join(scenario.home, "audit", result.ProjectID, "sessions", result.SessionID, "runs", result.RunID, "report.json")
@@ -182,13 +182,13 @@ func assertLintMatrix(t *testing.T, report audit.LintReport, mode types.AuditTar
 	}
 }
 
-// TestAuditMagelintProjectPHP74 covers the oldest supported launcher on a whole
+// TestAuditGlintProjectPHP74 covers the oldest supported launcher on a whole
 // project target, which is only reachable for project and module-in-project
 // modes.
-func TestAuditMagelintProjectPHP74(t *testing.T) {
-	scenario := newAuditMagelintEnvironment(t)
+func TestAuditGlintProjectPHP74(t *testing.T) {
+	scenario := newAuditGlintEnvironment(t)
 
-	outcome := scenario.runAuditMagelint(t, scenario.project)
+	outcome := scenario.runAuditGlint(t, scenario.project)
 
 	if outcome.result.Status != audit.StatusPassed {
 		t.Fatalf("audit run status is %q, want %q", outcome.result.Status, audit.StatusPassed)
@@ -202,14 +202,14 @@ func TestAuditMagelintProjectPHP74(t *testing.T) {
 	}
 }
 
-// TestAuditMagelintModuleInProjectPHP85 covers the newest supported launcher on a
+// TestAuditGlintModuleInProjectPHP85 covers the newest supported launcher on a
 // module resolved through its etc/module.xml declaration inside a project, which
 // mounts the whole project read only but analyzes only the module.
-func TestAuditMagelintModuleInProjectPHP85(t *testing.T) {
-	scenario := newAuditMagelintEnvironment(t)
+func TestAuditGlintModuleInProjectPHP85(t *testing.T) {
+	scenario := newAuditGlintEnvironment(t)
 	scenario.pinProjectPHP(t, "8.5")
 
-	outcome := scenario.runAuditMagelint(t, scenario.module)
+	outcome := scenario.runAuditGlint(t, scenario.module)
 
 	assertLintMatrix(t, outcome.report, types.AuditTargetModule, []string{"8.5"}, "cold")
 	if outcome.report.TargetPath != canonicalPathForTest(t, scenario.module) {
@@ -217,13 +217,13 @@ func TestAuditMagelintModuleInProjectPHP85(t *testing.T) {
 	}
 }
 
-// TestAuditMagelintStandaloneDefaultMatrix covers the full standalone default
+// TestAuditGlintStandaloneDefaultMatrix covers the full standalone default
 // matrix. Standalone modules deliberately exclude 7.4 and 8.0, so all five
 // remaining versions must run and the matrix must report itself complete.
-func TestAuditMagelintStandaloneDefaultMatrix(t *testing.T) {
-	scenario := newAuditMagelintEnvironment(t)
+func TestAuditGlintStandaloneDefaultMatrix(t *testing.T) {
+	scenario := newAuditGlintEnvironment(t)
 
-	outcome := scenario.runAuditMagelint(t, scenario.standalone)
+	outcome := scenario.runAuditGlint(t, scenario.standalone)
 
 	assertLintMatrix(t, outcome.report, types.AuditTargetStandalone, []string{"8.1", "8.2", "8.3", "8.4", "8.5"}, "cold")
 	if !outcome.report.MatrixComplete {
@@ -231,12 +231,12 @@ func TestAuditMagelintStandaloneDefaultMatrix(t *testing.T) {
 	}
 }
 
-// TestAuditMagelintRejectsStandalonePHP80BeforeImageWork proves the PHP policy is
+// TestAuditGlintRejectsStandalonePHP80BeforeImageWork proves the PHP policy is
 // enforced in Go before any image work is attempted. PHP 8.0 exists in the image
 // but is valid only for project and module-in-project targets, so a standalone
 // request for it must be refused without pulling, building, or running anything.
-func TestAuditMagelintRejectsStandalonePHP80BeforeImageWork(t *testing.T) {
-	scenario := newAuditMagelintEnvironment(t)
+func TestAuditGlintRejectsStandalonePHP80BeforeImageWork(t *testing.T) {
+	scenario := newAuditGlintEnvironment(t)
 
 	// Every Docker call the audit path can make goes through the "docker"
 	// binary, so shadowing it on PATH with a logging shim turns "no image work
@@ -258,22 +258,22 @@ func TestAuditMagelintRejectsStandalonePHP80BeforeImageWork(t *testing.T) {
 	}
 }
 
-// TestAuditMagelintWarmCacheAndInvalidation covers the reusable cache contract on
+// TestAuditGlintWarmCacheAndInvalidation covers the reusable cache contract on
 // a standalone target, which is the only mode that also populates a Composer
 // download cache. A repeat run must reuse analyzer state, a changed project
 // manifest must discard that state, and the Composer download cache - the
 // expensive half - must survive the invalidation.
-func TestAuditMagelintWarmCacheAndInvalidation(t *testing.T) {
-	scenario := newAuditMagelintEnvironment(t)
+func TestAuditGlintWarmCacheAndInvalidation(t *testing.T) {
+	scenario := newAuditGlintEnvironment(t)
 
-	cold := scenario.runAuditMagelint(t, scenario.standalone, "--php", "8.3")
+	cold := scenario.runAuditGlint(t, scenario.standalone, "--php", "8.3")
 	assertLintMatrix(t, cold.report, types.AuditTargetStandalone, []string{"8.3"}, "cold")
 
-	warm := scenario.runAuditMagelint(t, scenario.standalone, "--php", "8.3")
+	warm := scenario.runAuditGlint(t, scenario.standalone, "--php", "8.3")
 	assertLintMatrix(t, warm.report, types.AuditTargetStandalone, []string{"8.3"}, "warm")
 
 	generation := scenario.cacheGeneration(t, warm.report.TargetID)
-	composerBefore := auditMagelintDirectoryDigest(t, filepath.Join(generation, "composer"))
+	composerBefore := auditGlintDirectoryDigest(t, filepath.Join(generation, "composer"))
 	if composerBefore == "" {
 		t.Fatal("a standalone run must populate the Composer download cache inside its cache generation")
 	}
@@ -282,7 +282,7 @@ func TestAuditMagelintWarmCacheAndInvalidation(t *testing.T) {
 	// analysis without discarding the Composer download cache with it.
 	scenario.touchStandaloneManifest(t)
 
-	invalidated := scenario.runAuditMagelint(t, scenario.standalone, "--php", "8.3")
+	invalidated := scenario.runAuditGlint(t, scenario.standalone, "--php", "8.3")
 	assertLintMatrix(t, invalidated.report, types.AuditTargetStandalone, []string{"8.3"}, "cold")
 
 	if invalidated.report.TargetID != warm.report.TargetID {
@@ -291,19 +291,19 @@ func TestAuditMagelintWarmCacheAndInvalidation(t *testing.T) {
 	if after := scenario.cacheGeneration(t, invalidated.report.TargetID); after != generation {
 		t.Errorf("a manifest change must reuse the toolchain cache generation %q, got %q", generation, after)
 	}
-	if auditMagelintDirectoryDigest(t, filepath.Join(generation, "composer")) == "" {
+	if auditGlintDirectoryDigest(t, filepath.Join(generation, "composer")) == "" {
 		t.Error("a manifest change discarded the Composer download cache; only analyzer state may be invalidated")
 	}
 
 	// An explicit bypass must be reported as such, never as a warm reuse.
-	bypassed := scenario.runAuditMagelint(t, scenario.standalone, "--php", "8.3", "--no-lint-result-cache")
+	bypassed := scenario.runAuditGlint(t, scenario.standalone, "--php", "8.3", "--no-lint-result-cache")
 	assertLintMatrix(t, bypassed.report, types.AuditTargetStandalone, []string{"8.3"}, "bypassed")
 }
 
 // cacheGeneration resolves the single toolchain cache generation directory for a
 // target. There is exactly one per toolchain identity, so more than one means the
 // generation key drifted between runs that should have shared it.
-func (scenario *auditMagelintEnvironment) cacheGeneration(t *testing.T, targetID string) string {
+func (scenario *auditGlintEnvironment) cacheGeneration(t *testing.T, targetID string) string {
 	t.Helper()
 
 	namespace := filepath.Join(scenario.home, "cache", "audit", "lint", targetID)
@@ -323,7 +323,7 @@ func (scenario *auditMagelintEnvironment) cacheGeneration(t *testing.T, targetID
 	return filepath.Join(namespace, generations[0])
 }
 
-func (scenario *auditMagelintEnvironment) touchStandaloneManifest(t *testing.T) {
+func (scenario *auditGlintEnvironment) touchStandaloneManifest(t *testing.T) {
 	t.Helper()
 
 	path := filepath.Join(scenario.standalone, "composer.json")
@@ -345,32 +345,32 @@ func (scenario *auditMagelintEnvironment) touchStandaloneManifest(t *testing.T) 
 	}
 }
 
-// TestAuditMagelintLeavesSourceUnchanged proves the source mount really is read
+// TestAuditGlintLeavesSourceUnchanged proves the source mount really is read
 // only end to end. The image's own contract suite makes the same claim about the
 // entrypoint; this asserts it for a full run driven through the CLI, where the
 // mount flags, the container user, and the analyzer working directories all take
 // part.
-func TestAuditMagelintLeavesSourceUnchanged(t *testing.T) {
-	scenario := newAuditMagelintEnvironment(t)
+func TestAuditGlintLeavesSourceUnchanged(t *testing.T) {
+	scenario := newAuditGlintEnvironment(t)
 
-	before := auditMagelintDirectoryDigest(t, scenario.fixture)
+	before := auditGlintDirectoryDigest(t, scenario.fixture)
 	if before == "" {
 		t.Fatal("the fixture copy digested as empty")
 	}
 
-	scenario.runAuditMagelint(t, scenario.project)
-	scenario.runAuditMagelint(t, scenario.standalone, "--php", "8.3")
+	scenario.runAuditGlint(t, scenario.project)
+	scenario.runAuditGlint(t, scenario.standalone, "--php", "8.3")
 
-	if after := auditMagelintDirectoryDigest(t, scenario.fixture); after != before {
+	if after := auditGlintDirectoryDigest(t, scenario.fixture); after != before {
 		t.Errorf("a lint audit modified its source tree: digest %s became %s", before, after)
 	}
 }
 
-// auditMagelintDirectoryDigest digests a whole tree by relative path, file mode,
+// auditGlintDirectoryDigest digests a whole tree by relative path, file mode,
 // and content, so a changed byte, a changed permission, or an added or removed
 // file all move the digest. An absent directory digests as the empty string,
 // which callers use to distinguish "never created" from "changed".
-func auditMagelintDirectoryDigest(t *testing.T, root string) string {
+func auditGlintDirectoryDigest(t *testing.T, root string) string {
 	t.Helper()
 
 	if _, err := os.Stat(root); err != nil {
@@ -411,13 +411,13 @@ func auditMagelintDirectoryDigest(t *testing.T, root string) string {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
 }
 
-// TestAuditMagelintCancellationRemovesContainer covers cancellation and container
+// TestAuditGlintCancellationRemovesContainer covers cancellation and container
 // cleanup. It drives the lint backend directly rather than the CLI because the
 // CLI runs on a background context and has no signal-to-cancellation path, so a
 // signal there would kill the process and orphan the container instead of
 // exercising the backend's stop-then-remove cleanup.
-func TestAuditMagelintCancellationRemovesContainer(t *testing.T) {
-	scenario := newAuditMagelintEnvironment(t)
+func TestAuditGlintCancellationRemovesContainer(t *testing.T) {
+	scenario := newAuditGlintEnvironment(t)
 
 	definition, target, err := frameworks.ResolveAuditTarget(types.AuditTargetResolveRequest{
 		StartPath:    scenario.standalone,
@@ -477,7 +477,7 @@ func TestAuditMagelintCancellationRemovesContainer(t *testing.T) {
 		done <- runOutcome{report: report, err: runErr}
 	}()
 
-	containers := auditMagelintWaitForContainer(t, request.SessionID)
+	containers := auditGlintWaitForContainer(t, request.SessionID)
 	if len(containers) != 1 {
 		t.Fatalf("expected exactly one lint container for session %q, got %v", request.SessionID, containers)
 	}
@@ -502,7 +502,7 @@ func TestAuditMagelintCancellationRemovesContainer(t *testing.T) {
 	// same name on a rerun.
 	deadline := time.Now().Add(90 * time.Second)
 	for {
-		remaining := auditMagelintContainers(t, request.SessionID)
+		remaining := auditGlintContainers(t, request.SessionID)
 		if len(remaining) == 0 {
 			break
 		}
@@ -513,15 +513,15 @@ func TestAuditMagelintCancellationRemovesContainer(t *testing.T) {
 	}
 }
 
-// auditMagelintWaitForContainer waits for the lint container of one session to
+// auditGlintWaitForContainer waits for the lint container of one session to
 // exist. Containers are found by the audit session label the backend stamps on
 // them, so the test never has to reimplement the backend's container naming.
-func auditMagelintWaitForContainer(t *testing.T, sessionID string) []string {
+func auditGlintWaitForContainer(t *testing.T, sessionID string) []string {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Minute)
 	for time.Now().Before(deadline) {
-		if containers := auditMagelintContainers(t, sessionID); len(containers) > 0 {
+		if containers := auditGlintContainers(t, sessionID); len(containers) > 0 {
 			return containers
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -530,7 +530,7 @@ func auditMagelintWaitForContainer(t *testing.T, sessionID string) []string {
 	return nil
 }
 
-func auditMagelintContainers(t *testing.T, sessionID string) []string {
+func auditGlintContainers(t *testing.T, sessionID string) []string {
 	t.Helper()
 
 	output, err := exec.Command("docker", "ps", "--all", "--no-trunc",

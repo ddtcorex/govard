@@ -21,7 +21,7 @@ audit:
     external_providers:
       team-ci:
         type: docker
-        image: registry.example.com/team/magelint:v3
+        image: registry.example.com/team/glint:v3
         command: ["/usr/local/bin/glint", "--report-json", "/output/report.json"]
 `), &config); err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ audit:
 	if config.Audit.Lint.Provider != "govard" || provider.Type != "docker" {
 		t.Fatalf("normalized provider config = %#v", config.Audit.Lint)
 	}
-	if provider.Image != "registry.example.com/team/magelint:v3" || len(provider.Command) != 3 {
+	if provider.Image != "registry.example.com/team/glint:v3" || len(provider.Command) != 3 {
 		t.Fatalf("provider payload changed during normalization: %#v", provider)
 	}
 }
@@ -45,7 +45,7 @@ func TestAuditProviderConfigDefaultsToGovardAndNormalizesNamesAndTypesOnly(t *te
 		Domain:      "audit-shop.test",
 		Framework:   "magento2",
 		Audit: engine.AuditConfig{Lint: engine.AuditLintConfig{ExternalProviders: map[string]engine.ExternalLintProviderConfig{
-			" Team_CI ": {Type: " DOCKER ", Image: " registry.example.com/team/magelint:v3 ", Command: []string{" /tool ", " --flag "}},
+			" Team_CI ": {Type: " DOCKER ", Image: " registry.example.com/team/glint:v3 ", Command: []string{" /tool ", " --flag "}},
 		}}},
 	}
 	engine.NormalizeConfig(&config, "")
@@ -56,7 +56,7 @@ func TestAuditProviderConfigDefaultsToGovardAndNormalizesNamesAndTypesOnly(t *te
 	if !ok || provider.Type != "docker" {
 		t.Fatalf("normalized external providers = %#v", config.Audit.Lint.ExternalProviders)
 	}
-	if provider.Image != " registry.example.com/team/magelint:v3 " || provider.Command[0] != " /tool " || provider.Command[1] != " --flag " {
+	if provider.Image != " registry.example.com/team/glint:v3 " || provider.Command[0] != " /tool " || provider.Command[1] != " --flag " {
 		t.Fatalf("normalization changed provider payload: %#v", provider)
 	}
 }
@@ -68,7 +68,7 @@ func TestAuditProviderConfigRejectsInvalidValues(t *testing.T) {
 			Domain:      "audit-shop.test",
 			Framework:   "magento2",
 			Audit: engine.AuditConfig{Lint: engine.AuditLintConfig{ExternalProviders: map[string]engine.ExternalLintProviderConfig{
-				"team-ci": {Type: "docker", Image: "registry.example.com/team/magelint:v3", Command: []string{"/tool", "--report-json", "/output/report.json"}},
+				"team-ci": {Type: "docker", Image: "registry.example.com/team/glint:v3", Command: []string{"/tool", "--report-json", "/output/report.json"}},
 			}}},
 		}
 	}

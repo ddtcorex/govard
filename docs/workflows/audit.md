@@ -80,7 +80,7 @@ Govard-native lint (`govard audit run --checks lint --mode project`) matrix:
 | Symfony | Symfony | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
 | WordPress | WordPress | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
 
-Image `govard-magelint` bundles WPCS 3.1 (`wp-coding-standards/wpcs`) + Symfony CS + `phpstan-symfony`/`phpstan-wordpress` so WordPress (classic `wp-includes/version.php` + Bedrock `web/wp`) and Symfony (`bin/console`) run natively — no fallback to PSR12.
+Image `govard-glint` bundles WPCS 3.1 (`wp-coding-standards/wpcs`) + Symfony CS + `phpstan-symfony`/`phpstan-wordpress` so WordPress (classic `wp-includes/version.php` + Bedrock `web/wp`) and Symfony (`bin/console`) run natively — no fallback to PSR12.
 
 ## PHP Versions (`--php`)
 
