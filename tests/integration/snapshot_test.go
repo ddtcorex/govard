@@ -337,6 +337,9 @@ func TestSnapshotCommandsWithShims(t *testing.T) {
 
 	logs := shim.ReadLog(t)
 	assertContains(t, logs, "docker|inspect -f {{range .Config.Env}}{{println .}}{{end}} m2-clone-basic-db-1")
-	assertContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 mysqldump -u magento magento")
-	assertContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 mysql -u magento magento")
+	assertContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 sh -lc")
+	assertContains(t, logs, "DUMP_BIN")
+	assertContains(t, logs, "mariadb-dump")
+	assertContains(t, logs, "DB_CLI")
+	assertContains(t, logs, "-u magento magento")
 }

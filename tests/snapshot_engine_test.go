@@ -60,7 +60,11 @@ func TestBuildSnapshotDumpCommandUsesEnvPassword(t *testing.T) {
 	for _, expected := range []string{
 		"docker exec -i",
 		"MYSQL_PWD=secret",
-		"mysqldump -u app shop",
+		"mariadb-dump",
+		"mysqldump",
+		"DUMP_BIN",
+		"-u app shop",
+		"sh -lc",
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("expected dump command to contain %q, got: %s", expected, joined)
@@ -75,8 +79,11 @@ func TestBuildSnapshotDumpCommandUsesEnvPassword(t *testing.T) {
 func TestBuildSnapshotDumpCommandUsesGenericFallbackWithoutFrameworkCredentials(t *testing.T) {
 	args := engine.BuildSnapshotDumpCommandForTest("example-db-1", "", "", "")
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "mysqldump -u root --all-databases") {
+	if !strings.Contains(joined, "-u root --all-databases") {
 		t.Fatalf("expected generic root/all-databases fallback, got: %s", joined)
+	}
+	if !strings.Contains(joined, "mariadb-dump") || !strings.Contains(joined, "mysqldump") {
+		t.Fatalf("expected dump fallback to contain mariadb-dump/mysqldump detection, got: %s", joined)
 	}
 	if strings.Contains(joined, "magento") {
 		t.Fatalf("snapshot fallback must not encode Magento defaults, got: %s", joined)
@@ -90,7 +97,11 @@ func TestBuildSnapshotImportCommandUsesEnvPassword(t *testing.T) {
 	for _, expected := range []string{
 		"docker exec -i",
 		"MYSQL_PWD=secret",
-		"mysql -u app shop",
+		"DB_CLI",
+		"-u app shop",
+		"sh -lc",
+		"command -v mysql",
+		"command -v mariadb",
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("expected import command to contain %q, got: %s", expected, joined)

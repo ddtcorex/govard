@@ -945,6 +945,7 @@ func addUpFlags(command *cobra.Command) {
 	command.Flags().Bool("force-recreate", false, "Recreate containers even if their configuration and image haven't changed")
 	command.Flags().Bool("update-lock", false, "Automatically update govard.lock if mismatches are found")
 	command.Flags().Bool("no-tuning", false, "Skip framework auto-configuration after environment starts")
+	command.Flags().Bool("build", false, "Build images before starting (compat: govard manages local fallback automatically)")
 }
 
 func init() {

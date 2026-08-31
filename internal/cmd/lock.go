@@ -86,6 +86,8 @@ var lockCheckCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Compare current environment with govard.lock",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		// --strict is accepted for compatibility (lock check is already strict); no extra behavior.
+		_, _ = cmd.Flags().GetBool("strict")
 		startedAt := time.Now()
 		config, err := loadFullConfig()
 		if err != nil {
@@ -206,6 +208,7 @@ var lockDiffCmd = &cobra.Command{
 func init() {
 	lockGenerateCmd.Flags().String("file", "", "Path to lock file (default: ./govard.lock)")
 	lockCheckCmd.Flags().String("file", "", "Path to lock file (default: ./govard.lock)")
+	lockCheckCmd.Flags().Bool("strict", false, "Strict mode (compat: lock check is already strict)")
 	lockDiffCmd.Flags().String("file", "", "Path to lock file (default: ./govard.lock)")
 
 	lockCmd.AddCommand(lockGenerateCmd)

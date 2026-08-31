@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"govard/internal/conventions"
@@ -78,7 +79,14 @@ func saveConfig(config engine.Config) {
 }
 
 func runUp() {
-	// Call up command logic
+	// debug on/off call this outside cobra ExecuteContext, so cmd.Context() would be nil
+	// and engine.CheckDockerStatus(nil) panics on context.WithTimeout(nil, ...).
+	// Ensure a valid context before invoking upCmd.RunE.
+	ctx := upCmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	upCmd.SetContext(ctx)
 	_ = upCmd.RunE(upCmd, []string{})
 }
 
