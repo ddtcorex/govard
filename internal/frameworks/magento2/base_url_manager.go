@@ -2,7 +2,6 @@ package magento2
 
 import (
 	"fmt"
-	"os/exec"
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
@@ -57,12 +56,7 @@ func (m *Magento2Manager) Revert(projectRoot string, config engine.Config) error
 }
 
 func (m *Magento2Manager) executeMagento(container string, user string, magentoArgs ...string) error {
-	executor := m.Executor
-	if executor == nil {
-		executor = func(name string, args ...string) ([]byte, error) {
-			return exec.Command(name, args...).CombinedOutput()
-		}
-	}
+	executor := engine.ResolveDockerExecutor(m.Executor)
 	args := append([]string{"exec", "-u", user, "-w", conventions.DefaultWorkDir, container, "bin/magento"}, magentoArgs...)
 	_, err := executor("docker", args...)
 	return err
@@ -70,12 +64,7 @@ func (m *Magento2Manager) executeMagento(container string, user string, magentoA
 
 func (m *Magento2Manager) flushRedis(config engine.Config) {
 	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.RedisSuffix)
-	executor := m.Executor
-	if executor == nil {
-		executor = func(name string, args ...string) ([]byte, error) {
-			return exec.Command(name, args...).CombinedOutput()
-		}
-	}
+	executor := engine.ResolveDockerExecutor(m.Executor)
 	// Best effort flush
 	_, _ = executor("docker", "exec", containerName, "redis-cli", "flushall")
 }

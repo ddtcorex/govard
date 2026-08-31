@@ -13,5 +13,4 @@ const (
 	TargetMail          = "mail"
 	TargetPMA           = "pma"
 	TargetApp           = "app"
-	TargetPHPDebug      = "php-debug"
 )

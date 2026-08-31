@@ -393,9 +393,8 @@ func varnishTemplateFramework(framework string) string {
 	return framework
 }
 
-// BlueprintVersion should be incremented whenever architectural changes are made to the embedded blueprints
-// to ensure that 'govard env up' re-renders existing environments.
-const BlueprintVersion = "1.47"
+// blueprintVersion should be incremented whenever architectural changes are made to the embedded blueprints
+const blueprintVersion = "1.47"
 
 func RenderBlueprintWithProfile(root string, config Config, profile string) error {
 	blueprintsFS, err := resolveBlueprintsDirForConfig(root, config)
@@ -452,7 +451,7 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 	hashPath := outputPath + ".hash"
 
 	hashData, _ := json.Marshal(config)
-	hashSum := sha256.Sum256(append(hashData, []byte(profile+BlueprintVersion+blueprintFingerprint+overrideFingerprint+nginxCustomFingerprint+apacheCustomFingerprint+envFingerprint+packageManager+runtimeDomainHostsFingerprint+govardRootCAPath)...))
+	hashSum := sha256.Sum256(append(hashData, []byte(profile+blueprintVersion+blueprintFingerprint+overrideFingerprint+nginxCustomFingerprint+apacheCustomFingerprint+envFingerprint+packageManager+runtimeDomainHostsFingerprint+govardRootCAPath)...))
 	currentHash := hex.EncodeToString(hashSum[:])
 
 	if existingHash, err := os.ReadFile(hashPath); err == nil && string(existingHash) == currentHash {

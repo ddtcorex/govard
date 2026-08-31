@@ -17,12 +17,12 @@ var hostsFilePath = "/etc/hosts"
 // IsDomainResolvableLocally checks if the domain resolves to localhost (127.0.0.1 or ::1)
 // with a default timeout of 15 seconds.
 func IsDomainResolvableLocally(domain string) bool {
-	return IsDomainResolvableLocallyWithTimeout(domain, 15*time.Second)
+	return isDomainResolvableLocallyWithTimeout(domain, 15*time.Second)
 }
 
-// IsDomainResolvableLocallyWithTimeout checks if the domain resolves to localhost (127.0.0.1 or ::1)
+// isDomainResolvableLocallyWithTimeout checks if the domain resolves to localhost (127.0.0.1 or ::1)
 // within the specified timeout.
-func IsDomainResolvableLocallyWithTimeout(domain string, timeout time.Duration) bool {
+func isDomainResolvableLocallyWithTimeout(domain string, timeout time.Duration) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 

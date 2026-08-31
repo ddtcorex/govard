@@ -22,7 +22,7 @@ type ComposeOptions struct {
 // RunCompose executes a Docker Compose command with the given options.
 // It automatically handles project-level flags like --project-directory, -p, and -f.
 func RunCompose(ctx context.Context, opts ComposeOptions) error {
-	dockerArgs := BuildComposeArgs(opts.ProjectDir, opts.ProjectName, opts.ComposeFile, opts.Args)
+	dockerArgs := buildComposeArgs(opts.ProjectDir, opts.ProjectName, opts.ComposeFile, opts.Args)
 
 	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 	cmd.Dir = opts.ProjectDir
@@ -49,8 +49,8 @@ func RunCompose(ctx context.Context, opts ComposeOptions) error {
 	return cmd.Run()
 }
 
-// BuildComposeArgs constructs the full argument list for a docker compose command.
-func BuildComposeArgs(projectDir, projectName, composeFile string, args []string) []string {
+// buildComposeArgs constructs the full argument list for a docker compose command.
+func buildComposeArgs(projectDir, projectName, composeFile string, args []string) []string {
 	dockerArgs := []string{
 		"compose",
 		"--project-directory", filepath.Clean(projectDir),

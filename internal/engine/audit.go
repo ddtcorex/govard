@@ -6,12 +6,3 @@ package engine
 func AuditRunJobs() int {
 	return AuditJobs()
 }
-
-// AuditRunScope resolves --scope diff --base handling for audit run. It
-// delegates to AuditScope(diff, base) which validates the base ref via
-// git rev-parse --verify and falls back to "project" on empty/invalid base.
-// This keeps scope validation centralized while giving audit run a dedicated
-// entry point for wiring flags.
-func AuditRunScope(diff bool, base string) string {
-	return AuditScope(diff, base)
-}

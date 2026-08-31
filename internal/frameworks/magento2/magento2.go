@@ -132,14 +132,3 @@ func Definition() types.FrameworkDefinition {
 		},
 	}
 }
-
-// StableVolumeKey returns the stable volume key for a Magento2 project
-// derived from govard.yml name (not sha1(cwd)).
-func StableVolumeKey(projectName string) string {
-	return conventions.StableVolumeKey(projectName)
-}
-
-// LintIgnore returns .magelintignore quick/deep profiles.
-func LintIgnore(quick bool) []string {
-	return conventions.LintIgnore(quick)
-}

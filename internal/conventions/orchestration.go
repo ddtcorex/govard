@@ -11,6 +11,5 @@ const (
 	// working_dir/volumes.
 	PythonWorkDir = "/app"
 
-	MagentoDeveloperMode  = "developer"
-	MagentoProductionMode = "production"
+	MagentoDeveloperMode = "developer"
 )

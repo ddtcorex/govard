@@ -217,9 +217,3 @@ func NormalizeFrameworkAlias(raw string) string {
 	}
 	return normalized
 }
-
-// GetRegisteredFrameworkAliasForTest exposes the alias registry for tests.
-func GetRegisteredFrameworkAliasForTest(alias string) (string, bool) {
-	canonical, ok := aliasRegistry[strings.ToLower(strings.TrimSpace(alias))]
-	return canonical, ok
-}
