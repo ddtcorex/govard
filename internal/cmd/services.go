@@ -30,6 +30,11 @@ var valkeyCmd = &cobra.Command{
 			pterm.Warning.Println("Valkey is not enabled in .govard.yml (stack.services.cache=valkey)")
 			return nil
 		}
+		// Strip leading "cli" so `govard valkey cli ping` works like `govard redis cli ping`
+		// (runServiceCLI already invokes valkey-cli, so "cli" would become duplicate `valkey-cli cli`).
+		if len(args) > 0 && args[0] == "cli" {
+			args = args[1:]
+		}
 		return runServiceCLI("redis", "valkey-cli", args)
 	},
 }

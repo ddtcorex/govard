@@ -15,6 +15,9 @@ import (
 )
 
 func CheckDockerStatus(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -37,6 +40,9 @@ func CheckPort(port string) error {
 }
 
 func CheckPortForGovardProxy(ctx context.Context, port string) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	maxRetries := 10
 	// Optimization: List containers once to check both our proxy and others
 	containers, _ := getRunningContainers(ctx)
@@ -85,6 +91,9 @@ func CheckPortForGovardProxy(ctx context.Context, port string) bool {
 }
 
 func getRunningContainers(ctx context.Context) ([]container.Summary, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	cli, err := GetDockerClient()
 	if err != nil {
 		return nil, err
@@ -141,6 +150,9 @@ func isGovardProxyContainer(names []string) bool {
 }
 
 func IsContainerRunning(ctx context.Context, name string) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -213,6 +225,9 @@ func CloneVolume(sourceVolume, targetVolume string) error {
 }
 
 func CheckDockerComposePlugin(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	command := exec.CommandContext(ctx, "docker", "compose", "version")
 	output, err := command.CombinedOutput()
 	if err == nil {
@@ -226,6 +241,9 @@ func CheckDockerComposePlugin(ctx context.Context) error {
 }
 
 func GetRunningProjectNames(ctx context.Context) ([]string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 

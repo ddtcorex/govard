@@ -310,12 +310,13 @@ func buildSnapshotDumpCommand(containerName string, credentials snapshotDBCreden
 	if strings.TrimSpace(credentials.Password) != "" {
 		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
 	}
-	args = append(args, containerName, "mysqldump", "-u", credentials.Username)
-	if strings.TrimSpace(credentials.Database) == "" {
-		args = append(args, "--all-databases")
-	} else {
-		args = append(args, credentials.Database)
+	// Use shell detection for mariadb-dump/mysqldump (mariadb:12.3 only has mariadb-dump).
+	dbArg := "--all-databases"
+	if strings.TrimSpace(credentials.Database) != "" {
+		dbArg = credentials.Database
 	}
+	dumpCmd := fmt.Sprintf("%s; \"$DUMP_BIN\" -u %s %s", conventions.MySQLDumpBinDetect, credentials.Username, dbArg)
+	args = append(args, containerName, "sh", "-lc", dumpCmd)
 	return exec.Command("docker", args...)
 }
 
@@ -325,10 +326,12 @@ func buildSnapshotImportCommand(containerName string, credentials snapshotDBCred
 	if strings.TrimSpace(credentials.Password) != "" {
 		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
 	}
-	args = append(args, containerName, "mysql", "-u", credentials.Username)
+	dbArg := ""
 	if strings.TrimSpace(credentials.Database) != "" {
-		args = append(args, credentials.Database)
+		dbArg = " " + credentials.Database
 	}
+	importCmd := fmt.Sprintf("%s; \"$DB_CLI\" -u %s%s", conventions.MySQLClientBinDetect, credentials.Username, dbArg)
+	args = append(args, containerName, "sh", "-lc", importCmd)
 	return exec.Command("docker", args...)
 }
 
