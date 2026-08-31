@@ -2,12 +2,13 @@ package tests
 
 import (
 	"io/fs"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 
-	auditmagento "govard/docker/audit-magento"
+	auditmagento "govard/docker/audit"
 	"govard/internal/frameworks"
 )
 
@@ -44,8 +45,30 @@ func TestAuditLintImageContextDeclaresOnePHPPolicy(t *testing.T) {
 	wantStandalone := definition.AuditLint.StandalonePHPVersions
 
 	dockerfile := readContextFile(t, "Dockerfile")
-	runner := readContextFile(t, "bin/magelint")
+	runner := readContextFile(t, "bin/glint")
 	contract := readContextFile(t, "tests/contract_test.sh")
+	// magelint must remain as symlink for backward compat (checked on host
+	// filesystem, not via embed, since Go embed does not preserve symlinks)
+	found := false
+	for _, p := range []string{"../docker/audit/bin/magelint", "docker/audit/bin/magelint", "bin/magelint"} {
+		if target, err := os.Readlink(p); err == nil {
+			if target != "glint" {
+				t.Fatalf("legacy bin/magelint symlink points to %q, want %q", target, "glint")
+			}
+			found = true
+			break
+		}
+		if _, err := os.Lstat(p); err == nil {
+			found = true
+			break
+		}
+	}
+	if !found {
+		// Fallback: check embed for regular file copy (if repo stores it as copy)
+		if _, err := fs.ReadFile(auditmagento.ContextFS, "bin/magelint"); err != nil {
+			t.Fatalf("legacy bin/magelint missing (neither symlink nor embedded file): %v", err)
+		}
+	}
 
 	for _, declaration := range []struct {
 		name    string

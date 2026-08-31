@@ -58,11 +58,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_PREVIOUS_TAG: ${{ steps.prev_tag.outputs.tag }}
-          # Linked into internal/audit.GovardMagelintDigest by .goreleaser.yml.
-          # An empty value is a valid, degraded state rather than a build failure:
-          # ToolchainManager treats it as "no official image pinned" and builds the
-          # embedded lint context locally instead.
+          # Linked into internal/audit.GovardGlintDigest (and legacy
+          # GovardMagelintDigest) by .goreleaser.yml. An empty value is a valid,
+          # degraded state rather than a build failure: ToolchainManager treats
+          # it as "no official image pinned" and builds the embedded lint
+          # context locally instead.
           GOVARD_MAGELINT_DIGEST: ${{ needs.magelint-image.outputs.image_digest }}
+          GOVARD_GLINT_DIGEST: ${{ needs.magelint-image.outputs.image_digest }}
 
   macos-pkg:
     name: macOS Installer (${{ matrix.arch }})

@@ -1,7 +1,8 @@
-// Package auditmagento embeds the Govard-owned Magento lint image context so
-// the audit toolchain can be built locally when the published image is not
-// reachable. The context is Govard's own work: runner, reporter, locked
-// analyzer manifests, contract tests, and Dockerfile.
+// Package auditmagento embeds the Govard lint image context (formerly
+// audit-magento / magelint) so the audit toolchain can be built locally when
+// the published image is not reachable. The context is Govard's own work:
+// runner (glint), reporter, locked analyzer manifests, contract tests, and
+// Dockerfile.
 package auditmagento
 
 import (
@@ -21,8 +22,11 @@ var contextFiles embed.FS
 // ContextFS exposes the embedded Docker build context.
 var ContextFS fs.FS = contextFiles
 
-// EntrypointPath is the runner path inside the built image.
-const EntrypointPath = "/usr/local/bin/magelint"
+// EntrypointPath is the runner path inside the built image (glint).
+const EntrypointPath = "/usr/local/bin/glint"
+
+// MagelintEntrypointPath is the legacy path, kept for backward compat.
+const MagelintEntrypointPath = "/usr/local/bin/magelint"
 
 // ReportSchemaVersion is the lint report schema the image entrypoint writes.
 const ReportSchemaVersion = 2

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# Govard Magento lint runner.
+# Govard lint runner (glint) — formerly magelint.
 #
-# Runs the Govard-owned PHPCS and PHPStan toolchains over a Magento project,
-# a module inside a project, or a standalone module, once per selected PHP
-# version, and writes one schema-v2 lint report.
+# Runs the Govard-owned PHPCS and PHPStan toolchains over a PHP project
+# (Magento, Laravel, Symfony, WordPress, etc.), a module inside a project,
+# or a standalone module, once per selected PHP version, and writes one
+# schema-v2 lint report.
 #
 # Copyright (c) Govard contributors.
 # Distributed under the terms of the repository LICENSE file.
@@ -14,7 +15,7 @@ set -uo pipefail
 RUNNER_VERSION="1.1.0"
 REPORT_SCHEMA_VERSION="2"
 
-# The exact PHP policy Govard supports for Magento lint work. Any version
+# The exact PHP policy Govard supports for lint work. Any version
 # outside this list is reported as unsupported, never analyzed.
 SUPPORTED_PHP_VERSIONS="7.4 8.0 8.1 8.2 8.3 8.4 8.5"
 STANDALONE_PHP_VERSIONS="8.1 8.2 8.3 8.4 8.5"
@@ -37,10 +38,11 @@ DIFF_FILES=()
 
 usage() {
     cat <<'USAGE'
-magelint - Govard-owned Magento static analysis runner
+glint - Govard static analysis runner (formerly magelint)
 
 Usage:
-  magelint [options]
+  glint [options]
+  magelint [options]  (legacy alias)
 
 Options:
   --php LIST              PHP versions to analyze (comma separated, repeatable).

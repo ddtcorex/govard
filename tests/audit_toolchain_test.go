@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	auditmagento "govard/docker/audit-magento"
+	auditmagento "govard/docker/audit"
 	"govard/internal/audit"
 )
 
@@ -651,5 +651,5 @@ func wantLocalBuildImageForTest(t *testing.T, contextDigest string) string {
 	if len(trimmed) < 16 {
 		t.Fatalf("context digest %q is too short", contextDigest)
 	}
-	return "govard-local/magelint:" + trimmed[:16]
+	return "govard-local/glint:" + trimmed[:16]
 }

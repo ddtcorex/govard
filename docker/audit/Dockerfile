@@ -1,15 +1,15 @@
 # syntax=docker/dockerfile:1
 #
-# Govard-owned Magento lint runtime.
+# Govard lint runtime (formerly magelint).
 #
-# Stage "phpbase" installs every PHP CLI Govard supports for Magento lint work
+# Stage "phpbase" installs every PHP CLI Govard supports for lint work
 # (7.4 and 8.0 through 8.5) plus Composer 2. Stage "runtime" installs the seven
 # committed analyzer toolchains from their locks and adds the Govard runner.
 #
 # The same "phpbase" stage generates the committed locks:
-#   docker build --target phpbase -t govard-local/magelint-phpbase docker/audit-magento
-#   docker run --rm -v "$PWD/docker/audit-magento/toolchains":/toolchains \
-#     govard-local/magelint-phpbase sh -c '...composer update --no-install...'
+#   docker build --target phpbase -t govard-local/glint-phpbase docker/audit
+#   docker run --rm -v "$PWD/docker/audit/toolchains":/toolchains \
+#     govard-local/glint-phpbase sh -c '...composer update --no-install...'
 
 ARG COMPOSER_IMAGE=composer:2
 
@@ -71,8 +71,8 @@ ARG GOVARD_VERSION="dev"
 ARG GOVARD_CONTEXT_DIGEST="unknown"
 ARG GOVARD_SOURCE_REVISION="unknown"
 
-LABEL org.opencontainers.image.title="magelint" \
-      org.opencontainers.image.description="Govard-owned Magento static-analysis runtime for PHP 7.4 and 8.0-8.5" \
+LABEL org.opencontainers.image.title="glint" \
+      org.opencontainers.image.description="Govard static-analysis runtime for PHP 7.4 and 8.0-8.5" \
       org.opencontainers.image.source="https://github.com/ddtcorex/govard" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${GOVARD_SOURCE_REVISION}" \
@@ -121,10 +121,11 @@ RUN composer global config --no-plugins allow-plugins.dealerdirect/phpcodesniffe
 RUN composer global require szepeviktor/phpstan-wordpress phpstan/phpstan-symfony:^1.3 --no-interaction
 
 COPY bin/report.php /usr/local/lib/govard/report.php
-COPY bin/magelint /usr/local/bin/magelint
+COPY bin/glint /usr/local/bin/glint
 
 RUN set -eux; \
-    chmod 0755 /usr/local/bin/magelint; \
+    chmod 0755 /usr/local/bin/glint; \
+    ln -sf /usr/local/bin/glint /usr/local/bin/magelint; \
     chmod 0644 /usr/local/lib/govard/report.php; \
     mkdir -p /source /cache /output; \
     chmod 0777 /cache /output
@@ -135,4 +136,4 @@ ENV GOVARD_LINT_TOOLCHAIN_DIR=/opt/govard/toolchains \
 
 WORKDIR /source
 
-ENTRYPOINT ["/usr/local/bin/magelint"]
+ENTRYPOINT ["/usr/local/bin/glint"]

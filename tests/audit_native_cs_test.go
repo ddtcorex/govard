@@ -32,7 +32,7 @@ func TestLintGovardUsesNativeWordPressWhenPresent(t *testing.T) {
 		t.Fatalf("expected WordPress, got %s", def.AuditLint.CodingStandard)
 	}
 	// Verify Dockerfile bundles WPCS natively so no fallback to PSR12
-	content := readFileForTest(t, "docker/audit-magento/Dockerfile", "../docker/audit-magento/Dockerfile")
+	content := readFileForTest(t, "docker/audit/Dockerfile", "../docker/audit/Dockerfile")
 	text := string(content)
 	if !strings.Contains(text, "wp-coding-standards/wpcs") {
 		t.Fatalf("Dockerfile should bundle WPCS for WordPress native")
@@ -59,7 +59,7 @@ func TestLintGovardUsesNativeSymfonyWhenPresent(t *testing.T) {
 	if def.AuditLint.CodingStandard != "Symfony" {
 		t.Fatalf("expected Symfony, got %s", def.AuditLint.CodingStandard)
 	}
-	content := readFileForTest(t, "docker/audit-magento/Dockerfile", "../docker/audit-magento/Dockerfile")
+	content := readFileForTest(t, "docker/audit/Dockerfile", "../docker/audit/Dockerfile")
 	text := string(content)
 	if !strings.Contains(text, "phpstan/phpstan-symfony") {
 		t.Fatalf("Dockerfile should bundle phpstan-symfony for Symfony native")
@@ -71,7 +71,7 @@ func TestLintGovardUsesNativeSymfonyWhenPresent(t *testing.T) {
 }
 
 func TestDockerfileBundlesSymfonyAndWordPressCS(t *testing.T) {
-	content := readFileForTest(t, "docker/audit-magento/Dockerfile", "../docker/audit-magento/Dockerfile")
+	content := readFileForTest(t, "docker/audit/Dockerfile", "../docker/audit/Dockerfile")
 	text := string(content)
 	// Task requires both WPCS and Symfony CS (via phpstan extensions)
 	for _, want := range []string{

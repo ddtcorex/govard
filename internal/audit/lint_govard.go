@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/pterm/pterm"
-	auditmagento "govard/docker/audit-magento"
+	auditmagento "govard/docker/audit"
 	"govard/internal/engine"
 	"govard/internal/frameworks/types"
 )

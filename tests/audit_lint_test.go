@@ -21,13 +21,13 @@ import (
 )
 
 func TestLintToolchainDigestIncludesExternalCommand(t *testing.T) {
-	base := audit.LintToolchain{Provider: "team-ci", Image: "sha256:aaaaaaaa", Command: []string{"/usr/local/bin/magelint", "--report-json", "/output/report.json"}, PHPVersions: []string{"8.1", "8.2"}, Linters: []string{"phpcs", "phpstan"}, PHPStanLevel: 5}
+	base := audit.LintToolchain{Provider: "team-ci", Image: "sha256:aaaaaaaa", Command: []string{"/usr/local/bin/glint", "--report-json", "/output/report.json"}, PHPVersions: []string{"8.1", "8.2"}, Linters: []string{"phpcs", "phpstan"}, PHPStanLevel: 5}
 	first := audit.LintToolchainDigest(base)
 	base.Command[0] = "/usr/local/bin/other-linter"
 	if second := audit.LintToolchainDigest(base); first == second {
 		t.Fatal("digest did not change when external executable changed")
 	}
-	base.Command[0] = "/usr/local/bin/magelint"
+	base.Command[0] = "/usr/local/bin/glint"
 	base.Command[1] = "--different-argument"
 	if second := audit.LintToolchainDigest(base); first == second {
 		t.Fatal("digest did not change when external argument changed")
@@ -53,7 +53,7 @@ func TestExternalLintProviderUsesReadOnlySourceAndSeparateWritableMounts(t *test
 	if got, want := run.Image, "registry.example.com/team/magelint@"+testImageDigest; got != want {
 		t.Fatalf("image = %q, want %q", got, want)
 	}
-	if !reflect.DeepEqual(run.Args, []string{"/usr/local/bin/magelint", "--report-json", "/output/report.json"}) {
+	if !reflect.DeepEqual(run.Args, []string{"/usr/local/bin/glint", "--report-json", "/output/report.json"}) {
 		t.Fatalf("command was not kept as an argument array: %#v", run.Args)
 	}
 	wantMounts := []audit.ContainerMount{{Source: request.ProjectRoot, Target: "/source", ReadOnly: true}, {Source: request.CacheRoot, Target: "/cache"}, {Source: request.RunDir, Target: "/output"}}
@@ -525,7 +525,7 @@ func TestExternalLintProviderSelectsMatchingRepoDigest(t *testing.T) {
 
 func TestExternalLintProviderCopiesConfiguredCommand(t *testing.T) {
 	request := lintRequestForTest(t)
-	command := []string{"/usr/local/bin/magelint", "--report-json", "/output/report.json"}
+	command := []string{"/usr/local/bin/glint", "--report-json", "/output/report.json"}
 	docker := &fakeLintDocker{digest: testImageDigest}
 	provider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "registry.example.com/team/magelint:v3", Command: command}, Docker: docker})
 	if err != nil {
@@ -539,7 +539,7 @@ func TestExternalLintProviderCopiesConfiguredCommand(t *testing.T) {
 	if _, err := provider.Run(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	if got := docker.RunRequests()[0].Args[0]; got != "/usr/local/bin/magelint" {
+	if got := docker.RunRequests()[0].Args[0]; got != "/usr/local/bin/glint" {
 		t.Fatalf("provider command mutated to %q", got)
 	}
 }
@@ -812,7 +812,7 @@ func (docker *fakeLintDocker) RunRequests() []audit.ContainerRunRequest {
 
 func newExternalLintProviderForTest(t *testing.T, docker audit.DockerClient) *audit.ExternalLintProvider {
 	t.Helper()
-	provider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "registry.example.com/team/magelint:v3", Command: []string{"/usr/local/bin/magelint", "--report-json", "/output/report.json"}}, Docker: docker})
+	provider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "registry.example.com/team/magelint:v3", Command: []string{"/usr/local/bin/glint", "--report-json", "/output/report.json"}}, Docker: docker})
 	if err != nil {
 		t.Fatal(err)
 	}
