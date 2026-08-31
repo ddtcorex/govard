@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.69.0] - 2026-08-31
+
+### ✨ New Features
+
+- **Executable QA Harness `govard verify`:** 5-phase registry (`56` items `P1 7` · `P2 14` · `P3 15` · `P4 12` · `P5 8`, Guard `READ-ONLY-REMOTE`/`DESTRUCTIVE-LOCAL`, `When isMagento2` → `46` for Laravel/Symfony/WordPress), runner with `P4-08` + `--allow-destructive` gates (`--plan` bypasses), writes `~/.govard/verify-runs/<ISO>-phaseN.json` (migrates `checklist-runs`), JSON schema frozen, Cobra `govard verify` (`--phase`, `--json`, `--plan`, `--allow-destructive`/`--yes`, `--lint-jobs`, `--timeout`, `--checks`, `--base`, `--remote`, `--project`) combines all phases into single JSON `phase: "all"` when `--json`, framework fallback via `DetectFramework`, docs in `docs/reference/cli-commands.md` (EN/VI) and `README`. Checklist markdown template removed — `govard verify` is the single source. (#213)
+
+### ♻️ Refactor
+
+- **Audit: remove magelint completely, use glint only:** `audit-magento` → `audit`, `govard-magelint` (`ghcr.io/ddtcorex/govard-magelint`) → `govard-glint` (`ghcr.io/ddtcorex/govard-glint`), `docker/audit/bin/magelint` kept as symlink for transition, `scripts/benchmark-magelint.sh` → `benchmark-glint.sh`, tests `audit_magelint_live_test.go` → `audit_glint_live_test.go`, docs and `govard-toolbox` synced. (#212)
+
 ## [1.68.0] - 2026-08-30
 
 ### ✨ New Features
