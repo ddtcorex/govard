@@ -62,28 +62,3 @@ func govardBinary() string {
 	}
 	return "govard"
 }
-
-func hasProjectFlag(args []string) bool {
-	for _, a := range args {
-		if a == "--project" {
-			return true
-		}
-	}
-	return false
-}
-
-// runWithTimeout wraps execGovard with per-item timeout.
-func runWithTimeout(ctx context.Context, cfg engine.Config, opts VerifyOpts, timeout time.Duration, args ...string) Evidence {
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	} else if opts.Timeout != "" && opts.Timeout != "auto" && opts.Timeout != "0" {
-		if d, err := time.ParseDuration(opts.Timeout); err == nil && d > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, d)
-			defer cancel()
-		}
-	}
-	return execGovard(ctx, cfg, opts, args...)
-}
