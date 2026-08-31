@@ -403,15 +403,6 @@ func localBuildImage(contextDigest string) (string, error) {
 	return "govard-local/glint:" + trimmed[:16], nil
 }
 
-// localBuildImageLegacy is the previous tag, kept for Status fallback.
-func localBuildImageLegacy(contextDigest string) (string, error) {
-	trimmed := strings.TrimPrefix(contextDigest, "sha256:")
-	if len(trimmed) < 16 {
-		return "", fmt.Errorf("embedded audit lint context digest %q is too short to derive a build tag", contextDigest)
-	}
-	return "govard-local/magelint:" + trimmed[:16], nil
-}
-
 // materializeContext writes the embedded build context out to
 // "<cacheRoot>/context/<hex-digest>" so a real docker build has a real
 // filesystem context to point at. It is defensive against any embedded path
