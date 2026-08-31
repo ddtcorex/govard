@@ -401,10 +401,21 @@ func ExportSnapshot(projectRoot string, name string, targetPath string) error {
 
 	pterm.Info.Printf("Exporting snapshot %s to %s...\n", name, absTargetPath)
 
+	// Ensure parent directory exists (e.g. /tmp may be quota-limited).
+	if err := os.MkdirAll(filepath.Dir(absTargetPath), conventions.DefaultDirPerm); err != nil {
+		return fmt.Errorf("create export directory %s: %w", filepath.Dir(absTargetPath), err)
+	}
+
 	// Create a tar.gz of the snapshot directory
 	cmd := exec.Command("tar", "-czf", absTargetPath, "-C", filepath.Dir(snapshotDir), name)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("tar failed: %w\n%s", err, string(output))
+		outStr := string(output)
+		// Surface disk quota/space hints for common failures.
+		hint := ""
+		if strings.Contains(outStr, "Disk quota exceeded") || strings.Contains(outStr, "No space left on device") {
+			hint = fmt.Sprintf(" (disk quota/space exhausted for %s; try exporting to %s or freeing space: df -h %s)", absTargetPath, filepath.Join(projectRoot, ".govard", "snapshots"), filepath.Dir(absTargetPath))
+		}
+		return fmt.Errorf("tar failed%s: %w\n%s", hint, err, outStr)
 	}
 
 	return nil
