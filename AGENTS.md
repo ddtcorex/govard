@@ -52,6 +52,7 @@ internal/desktop/               # Desktop backend
 internal/proxy/                 # Caddy/proxy TLS
 internal/ui/                    # Terminal rendering
 internal/updater/               # Self-update
+docker/audit/                   # Lint image (glint, formerly magelint/audit-magento) — Dockerfile + bin/glint (magelint symlink) + toolchains
 tests/                          # Unit tests
 tests/integration/              # Integration tests
 tests/frontend/                 # Frontend JS tests

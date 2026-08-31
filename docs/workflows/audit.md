@@ -80,7 +80,7 @@ Govard-native lint (`govard audit run --checks lint --mode project`) matrix:
 | Symfony | Symfony | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
 | WordPress | WordPress | 5 | 8.1-8.4 | 8.1-8.4 | phpcs, phpstan |
 
-Image `govard-magelint` bundles WPCS 3.1 (`wp-coding-standards/wpcs`) + Symfony CS + `phpstan-symfony`/`phpstan-wordpress` so WordPress (classic `wp-includes/version.php` + Bedrock `web/wp`) and Symfony (`bin/console`) run natively — no fallback to PSR12.
+Image `govard-magelint` (now `glint`, `docker/audit`, `govard-local/glint:` — `magelint` kept as symlink for compat, `ghcr.io/ddtcorex/govard-magelint` unchanged) bundles WPCS 3.1 (`wp-coding-standards/wpcs`) + Symfony CS + `phpstan-symfony`/`phpstan-wordpress` so WordPress (classic `wp-includes/version.php` + Bedrock `web/wp`) and Symfony (`bin/console`) run natively — no fallback to PSR12. Laravel excludes `bootstrap/cache/*` and `storage/*` (`storage/framework/*`, `storage/logs`) — filtered in `docker/audit/bin/glint` (`--ignore` + `excludePaths`) and Go-side `govardLintDigest` filter, so fresh `laravel 11` no longer fails on generated `packages.php`/`services.php`/`storage/framework/views/*.php`.
 
 ## PHP Versions (`--php`)
 
@@ -124,7 +124,7 @@ See `internal/blueprints/files/.gitignore` (shared, single source; rendered as p
 
 ## Concurrency
 
-Runs for the same project are queued via `~/.govard/audit/<projectId>/lock` (under `GovardHomeDir`, respecting `GOVARD_HOME_DIR`; wait up to 30s, `audit run waiting for prior run`), not cancelled. A stale lock after 30s fails with a hint to remove the lock or run `govard audit cleanup`.
+Runs for the same project are queued via `~/.govard/audit/<projectId>/lock` (under `GovardHomeDir`, respecting `GOVARD_HOME_DIR`; wait up to 30s, `audit run waiting for prior run`), not cancelled. Since `v1.68.0` a stale lock is auto-removed if `mtime>10m` or holder PID dead (`syscall.Signal(0)`), otherwise after 30s fails with a hint to remove the lock or run `govard audit cleanup`.
 
 ## Xdebug guard
 

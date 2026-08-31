@@ -74,7 +74,7 @@ govard audit cleanup --older-than 168h
 `--lint-provider govard`, `--mode auto` và `--lint-jobs min(nproc,4)` (mặc định `4` trên host thường, kẹp `2–8`). Format mặc định
 `text` stream tiến trình trực tiếp như `vendor/bin/phpcs`/`vendor/bin/phpstan` —
 giai đoạn `validate` → `prepare` → `phpcs`/`phpstan`, trạng thái cache
-(`cold`/`warm`/`bypassed`) và `magelint: php X.Y analyzed` hiện ngay khi chạy —
+(`cold`/`warm`/`bypassed`) và `glint: php X.Y analyzed` (`magelint` legacy) hiện ngay khi chạy —
 rồi mới in bản tóm tắt: kết luận trước (PASSED/FAILED/CANCELLED), scope, thời
 gian, môi trường, kết quả từng PHP kèm findings và gợi ý `What next` trỏ tới
 report đã lưu cùng lệnh rerun chính xác. Trên TTY tương tác (và khi chưa đặt
