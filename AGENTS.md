@@ -52,6 +52,7 @@ internal/desktop/               # Desktop backend
 internal/proxy/                 # Caddy/proxy TLS
 internal/ui/                    # Terminal rendering
 internal/updater/               # Self-update
+docker/audit/                   # Lint image (glint) — Dockerfile + bin/glint + toolchains
 tests/                          # Unit tests
 tests/integration/              # Integration tests
 tests/frontend/                 # Frontend JS tests
