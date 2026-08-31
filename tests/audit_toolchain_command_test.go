@@ -15,7 +15,7 @@ import (
 )
 
 func TestAuditToolchainCommandStatusIsReadOnly(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
 	docker := &fakeToolchainDocker{
@@ -66,7 +66,7 @@ func TestAuditToolchainCommandStatusTextFormatShowsImageIdentity(t *testing.T) {
 	// Text is the default format, so the identity must be readable there and
 	// never rendered as a pointer address (fmt's "%+v" only dereferences a
 	// top-level pointer, so a nested pointer field would print as hex).
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
 	docker := &fakeToolchainDocker{
@@ -96,7 +96,7 @@ func TestAuditToolchainCommandStatusTextFormatShowsImageIdentity(t *testing.T) {
 }
 
 func TestAuditToolchainCommandStatusRepairGuidanceCarriesNoSecrets(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".composer"), 0o700); err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestAuditToolchainCommandStatusRepairGuidanceCarriesNoSecrets(t *testing.T)
 }
 
 func TestAuditToolchainCommandPullNeverBuilds(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	imageRef := wantOfficialImageRefForTest(t)
 	var inspectCalls atomic.Int32
@@ -175,7 +175,7 @@ func TestAuditToolchainCommandPullNeverBuilds(t *testing.T) {
 }
 
 func TestAuditToolchainCommandPullFailureGuidanceCarriesNoSecrets(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	docker := &fakeToolchainDocker{
 		inspect: func(context.Context, string) (audit.ImageInspection, error) {
 			return audit.ImageInspection{}, fmt.Errorf("no such image")
@@ -204,7 +204,7 @@ func TestAuditToolchainCommandPullFailureGuidanceCarriesNoSecrets(t *testing.T) 
 }
 
 func TestAuditToolchainCommandBuildNeverPulls(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
 	var built atomic.Bool
@@ -255,7 +255,7 @@ func TestAuditToolchainCommandBuildNeverPulls(t *testing.T) {
 }
 
 func TestAuditToolchainCommandsRunOutsideAGovardProject(t *testing.T) {
-	withGovardMagelintDigestForTest(t, "")
+	withGovardGlintDigestForTest(t, "")
 	docker := &fakeToolchainDocker{
 		inspect: func(context.Context, string) (audit.ImageInspection, error) {
 			return audit.ImageInspection{}, fmt.Errorf("no such image")

@@ -1,9 +1,9 @@
-name: Audit Magelint Image
+name: Audit Glint Image
 
-# Builds, verifies, and publishes the Govard-owned Magento lint image
-# (ghcr.io/ddtcorex/govard-magelint) and returns the published manifest digest.
+# Builds, verifies, and publishes the Govard-owned lint image
+# (ghcr.io/ddtcorex/govard-glint) and returns the published manifest digest.
 #
-# The digest is the whole point of the job: internal/audit.GovardMagelintDigest
+# The digest is the whole point of the job: internal/audit.GovardGlintDigest
 # is injected with it at link time, and internal/audit/toolchain.go only ever
 # references the official image pinned to that immutable digest - never a
 # floating tag. A build whose contract tests, launcher smokes, or vulnerability
@@ -28,7 +28,7 @@ name: Audit Magelint Image
 on:
   # workflow_dispatch exists so this job can be exercised before it ever gates a
   # release. Called from release.yml it is on the critical path behind
-  # "release: needs: magelint-image", so its first run would otherwise be a live
+  # "release: needs: glint-image", so its first run would otherwise be a live
   # tag push, where any orchestration defect blocks the release outright. Manual
   # runs default to publish: false, which verifies the whole build, contract,
   # smoke, SBOM, and scan path without pushing anything to GHCR.
@@ -92,7 +92,7 @@ jobs:
       image_reference: ${{ steps.publish.outputs.image_reference || steps.reuse.outputs.image_reference }}
       context_digest: ${{ steps.context.outputs.context_digest }}
     env:
-      IMAGE_REPOSITORY: ghcr.io/ddtcorex/govard-magelint
+      IMAGE_REPOSITORY: ghcr.io/ddtcorex/govard-glint
       CONTEXT_DIR: docker/audit
       # A local-only tag: the verification steps run against a single-arch image
       # loaded into the daemon, never against anything already published.

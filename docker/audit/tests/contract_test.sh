@@ -2,24 +2,24 @@
 #
 # Contract tests for the Govard-owned Magento lint runner.
 #
-# The suite drives docker/audit-magento/bin/magelint directly with
+# The suite drives docker/audit/bin/glint directly with
 # stubbed PHP launchers, stubbed analyzers, and a stubbed Composer, so it needs
 # only a PHP CLI and never a built image. When the host has no PHP CLI the
 # suite re-executes itself inside a small public PHP container.
 #
 # Usage:
-#   bash docker/audit-magento/tests/contract_test.sh [case-name ...]
+#   bash docker/audit/tests/contract_test.sh [case-name ...]
 #
 # Environment:
-#   GOVARD_MAGELINT_TEST_PHP     PHP CLI used by the harness and stubs.
-#   GOVARD_MAGELINT_TEST_IMAGE   Container image used when no PHP CLI exists.
-#   GOVARD_MAGELINT_TEST_NO_DOCKER  Set to 1 to forbid the container fallback.
+#   GOVARD_GLINT_TEST_PHP     PHP CLI used by the harness and stubs.
+#   GOVARD_GLINT_TEST_IMAGE   Container image used when no PHP CLI exists.
+#   GOVARD_GLINT_TEST_NO_DOCKER  Set to 1 to forbid the container fallback.
 
 set -u
 
 TESTS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CONTEXT_DIR=$(dirname -- "$TESTS_DIR")
-RUNNER="$CONTEXT_DIR/bin/magelint"
+RUNNER="$CONTEXT_DIR/bin/glint"
 FIXTURE_STANDALONE="$TESTS_DIR/fixtures/standalone"
 
 SUPPORTED_MATRIX="7.4 8.0 8.1 8.2 8.3 8.4 8.5"
@@ -35,8 +35,8 @@ case_name=""
 # ---------------------------------------------------------------------------
 
 detect_php() {
-    if [ -n "${GOVARD_MAGELINT_TEST_PHP:-}" ]; then
-        printf '%s\n' "$GOVARD_MAGELINT_TEST_PHP"
+    if [ -n "${GOVARD_GLINT_TEST_PHP:-}" ]; then
+        printf '%s\n' "$GOVARD_GLINT_TEST_PHP"
         return 0
     fi
     local candidate
@@ -50,8 +50,8 @@ detect_php() {
 }
 
 reexec_in_container() {
-    local image="${GOVARD_MAGELINT_TEST_IMAGE:-php:8.3-cli}"
-    if [ "${GOVARD_MAGELINT_TEST_NO_DOCKER:-0}" = "1" ]; then
+    local image="${GOVARD_GLINT_TEST_IMAGE:-php:8.3-cli}"
+    if [ "${GOVARD_GLINT_TEST_NO_DOCKER:-0}" = "1" ]; then
         printf 'contract tests need a PHP CLI; none found and the container fallback is disabled\n' >&2
         return 1
     fi
@@ -62,8 +62,8 @@ reexec_in_container() {
     printf '# no host PHP CLI; running contract tests inside %s\n' "$image"
     docker run --rm \
         -v "$CONTEXT_DIR":/govard-context:ro \
-        -e GOVARD_MAGELINT_TEST_INNER=1 \
-        -e GOVARD_MAGELINT_TEST_PHP=php \
+        -e GOVARD_GLINT_TEST_INNER=1 \
+        -e GOVARD_GLINT_TEST_PHP=php \
         "$image" \
         bash /govard-context/tests/contract_test.sh "$@"
 }
@@ -885,7 +885,7 @@ run_case() {
 
 main() {
     if ! TEST_PHP=$(detect_php); then
-        if [ "${GOVARD_MAGELINT_TEST_INNER:-0}" = "1" ]; then
+        if [ "${GOVARD_GLINT_TEST_INNER:-0}" = "1" ]; then
             printf 'contract tests need a PHP CLI inside the container\n' >&2
             return 1
         fi
@@ -903,7 +903,7 @@ main() {
         return 1
     fi
 
-    WORK_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/magelint-contract.XXXXXX") || return 1
+    WORK_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/glint-contract.XXXXXX") || return 1
     trap 'chmod -R u+w "$WORK_ROOT" 2>/dev/null; rm -rf "$WORK_ROOT"' EXIT
 
     local selected="$CASES"

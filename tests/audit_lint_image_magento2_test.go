@@ -2,7 +2,6 @@ package tests
 
 import (
 	"io/fs"
-	"os"
 	"reflect"
 	"regexp"
 	"strings"
@@ -47,28 +46,6 @@ func TestAuditLintImageContextDeclaresOnePHPPolicy(t *testing.T) {
 	dockerfile := readContextFile(t, "Dockerfile")
 	runner := readContextFile(t, "bin/glint")
 	contract := readContextFile(t, "tests/contract_test.sh")
-	// magelint must remain as symlink for backward compat (checked on host
-	// filesystem, not via embed, since Go embed does not preserve symlinks)
-	found := false
-	for _, p := range []string{"../docker/audit/bin/magelint", "docker/audit/bin/magelint", "bin/magelint"} {
-		if target, err := os.Readlink(p); err == nil {
-			if target != "glint" {
-				t.Fatalf("legacy bin/magelint symlink points to %q, want %q", target, "glint")
-			}
-			found = true
-			break
-		}
-		if _, err := os.Lstat(p); err == nil {
-			found = true
-			break
-		}
-	}
-	if !found {
-		// Fallback: check embed for regular file copy (if repo stores it as copy)
-		if _, err := fs.ReadFile(auditmagento.ContextFS, "bin/magelint"); err != nil {
-			t.Fatalf("legacy bin/magelint missing (neither symlink nor embedded file): %v", err)
-		}
-	}
 
 	for _, declaration := range []struct {
 		name    string
@@ -76,7 +53,7 @@ func TestAuditLintImageContextDeclaresOnePHPPolicy(t *testing.T) {
 		pattern string
 		want    []string
 	}{
-		{"Dockerfile ARG GOVARD_MAGELINT_PHP_VERSIONS", dockerfile, `(?m)^ARG GOVARD_MAGELINT_PHP_VERSIONS="([^"]+)"`, wantSupported},
+		{"Dockerfile ARG GOVARD_GLINT_PHP_VERSIONS", dockerfile, `(?m)^ARG GOVARD_GLINT_PHP_VERSIONS="([^"]+)"`, wantSupported},
 		{"runner SUPPORTED_PHP_VERSIONS", runner, `(?m)^SUPPORTED_PHP_VERSIONS="([^"]+)"`, wantSupported},
 		{"runner STANDALONE_PHP_VERSIONS", runner, `(?m)^STANDALONE_PHP_VERSIONS="([^"]+)"`, wantStandalone},
 		{"contract suite SUPPORTED_MATRIX", contract, `(?m)^SUPPORTED_MATRIX="([^"]+)"`, wantSupported},
@@ -89,8 +66,8 @@ func TestAuditLintImageContextDeclaresOnePHPPolicy(t *testing.T) {
 
 	// The image label must derive from the single Dockerfile declaration
 	// rather than repeat the list.
-	if !strings.Contains(dockerfile, `io.govard.audit.php-versions="${GOVARD_MAGELINT_PHP_VERSIONS}"`) {
-		t.Error("the php-versions label is not derived from GOVARD_MAGELINT_PHP_VERSIONS")
+	if !strings.Contains(dockerfile, `io.govard.audit.php-versions="${GOVARD_GLINT_PHP_VERSIONS}"`) {
+		t.Error("the php-versions label is not derived from GOVARD_GLINT_PHP_VERSIONS")
 	}
 	// The policy has a floor and a ceiling. Versions just outside either end
 	// must never drift in: 7.3 predates the oldest toolchain Govard ships, and

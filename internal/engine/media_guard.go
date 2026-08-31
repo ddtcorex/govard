@@ -19,7 +19,7 @@ type MediaGuardResult struct {
 }
 
 // ScanMediaGuard walks projectRoot/pub/media and returns every *.php/*.phtml/*.pht file.
-// The scan is name-only, mirroring the magelint media-guard phase (milliseconds even on big trees).
+// The scan is name-only, mirroring the glint media-guard phase (milliseconds even on big trees).
 func ScanMediaGuard(projectRoot string) []MediaGuardFinding {
 	mediaDir := filepath.Join(projectRoot, "pub", "media")
 	info, err := os.Stat(mediaDir)

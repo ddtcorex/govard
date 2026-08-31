@@ -50,7 +50,7 @@ func TestExternalLintProviderUsesReadOnlySourceAndSeparateWritableMounts(t *test
 		t.Fatalf("runs = %d, want 1", len(runs))
 	}
 	run := runs[0]
-	if got, want := run.Image, "registry.example.com/team/magelint@"+testImageDigest; got != want {
+	if got, want := run.Image, "registry.example.com/team/glint@"+testImageDigest; got != want {
 		t.Fatalf("image = %q, want %q", got, want)
 	}
 	if !reflect.DeepEqual(run.Args, []string{"/usr/local/bin/glint", "--report-json", "/output/report.json"}) {
@@ -60,7 +60,7 @@ func TestExternalLintProviderUsesReadOnlySourceAndSeparateWritableMounts(t *test
 	if !reflect.DeepEqual(run.Mounts, wantMounts) {
 		t.Fatalf("mounts = %#v, want %#v", run.Mounts, wantMounts)
 	}
-	if docker.pulls[0] != "registry.example.com/team/magelint:v3" {
+	if docker.pulls[0] != "registry.example.com/team/glint:v3" {
 		t.Fatalf("pulls = %#v", docker.pulls)
 	}
 }
@@ -263,7 +263,7 @@ func TestExternalLintProviderPreservesCancellationBeforeContainerExecution(t *te
 					if testCase.operationError {
 						return audit.ImageInspection{}, operationErr
 					}
-					return audit.ImageInspection{RepoDigests: []string{"registry.example.com/team/magelint@" + testImageDigest}}, nil
+					return audit.ImageInspection{RepoDigests: []string{"registry.example.com/team/glint@" + testImageDigest}}, nil
 				}
 			case "before run":
 				restore := provider.SetExternalLintLifecycleHooksForTest(func() { cancel(cause) }, nil, nil)
@@ -493,8 +493,8 @@ func TestExternalLintProviderUsesDistinctStableContainerNames(t *testing.T) {
 func TestExternalLintProviderSelectsMatchingRepoDigest(t *testing.T) {
 	request := lintRequestForTest(t)
 	docker := &fakeLintDocker{repoDigests: []string{
-		"registry.other.test/team/magelint@" + testImageDigest,
-		"registry.example.com/team/magelint@" + testImageDigest,
+		"registry.other.test/team/glint@" + testImageDigest,
+		"registry.example.com/team/glint@" + testImageDigest,
 	}}
 	docker.run = func(_ context.Context, run audit.ContainerRunRequest, _ io.Writer) error {
 		writeExternalLintReportForTest(t, request, run, "passed")
@@ -504,13 +504,13 @@ func TestExternalLintProviderSelectsMatchingRepoDigest(t *testing.T) {
 	if _, err := provider.Run(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	docker = &fakeLintDocker{repoDigests: []string{"localhost:5000/team/magelint@" + testImageDigest}}
+	docker = &fakeLintDocker{repoDigests: []string{"localhost:5000/team/glint@" + testImageDigest}}
 	provider = newExternalLintProviderForTest(t, docker)
 	if _, err := provider.Run(context.Background(), request); err == nil {
 		t.Fatal("digest from a different repository was accepted")
 	}
-	portDocker := &fakeLintDocker{repoDigests: []string{"localhost:5000/team/magelint@" + testImageDigest}}
-	portProvider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "localhost:5000/team/magelint:v3", Command: []string{"/tool", "--report-json", "/output/report.json"}}, Docker: portDocker})
+	portDocker := &fakeLintDocker{repoDigests: []string{"localhost:5000/team/glint@" + testImageDigest}}
+	portProvider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "localhost:5000/team/glint:v3", Command: []string{"/tool", "--report-json", "/output/report.json"}}, Docker: portDocker})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +527,7 @@ func TestExternalLintProviderCopiesConfiguredCommand(t *testing.T) {
 	request := lintRequestForTest(t)
 	command := []string{"/usr/local/bin/glint", "--report-json", "/output/report.json"}
 	docker := &fakeLintDocker{digest: testImageDigest}
-	provider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "registry.example.com/team/magelint:v3", Command: command}, Docker: docker})
+	provider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "registry.example.com/team/glint:v3", Command: command}, Docker: docker})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -768,7 +768,7 @@ func (docker *fakeLintDocker) Inspect(ctx context.Context, image string) (audit.
 	if digest == "" {
 		return audit.ImageInspection{}, nil
 	}
-	return audit.ImageInspection{RepoDigests: []string{"registry.example.com/team/magelint@" + digest}}, nil
+	return audit.ImageInspection{RepoDigests: []string{"registry.example.com/team/glint@" + digest}}, nil
 }
 func (docker *fakeLintDocker) Build(context.Context, string, string, map[string]string) error {
 	return nil
@@ -812,7 +812,7 @@ func (docker *fakeLintDocker) RunRequests() []audit.ContainerRunRequest {
 
 func newExternalLintProviderForTest(t *testing.T, docker audit.DockerClient) *audit.ExternalLintProvider {
 	t.Helper()
-	provider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "registry.example.com/team/magelint:v3", Command: []string{"/usr/local/bin/glint", "--report-json", "/output/report.json"}}, Docker: docker})
+	provider, err := audit.NewExternalLintProvider(audit.ExternalLintOptions{ID: "team-ci", Config: engine.ExternalLintProviderConfig{Type: "docker", Image: "registry.example.com/team/glint:v3", Command: []string{"/usr/local/bin/glint", "--report-json", "/output/report.json"}}, Docker: docker})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,7 +22,7 @@
 # fixture, so a benchmark never touches ~/.govard and never mutates the repo.
 #
 # Usage:
-#   bash scripts/benchmark-magelint.sh [options]
+#   bash scripts/benchmark-glint.sh [options]
 #
 # Options:
 #   --output FILE      Write JSONL here instead of standard output.
@@ -68,12 +68,12 @@ usage() {
 }
 
 fail() {
-    printf 'benchmark-magelint: %s\n' "$1" >&2
+    printf 'benchmark-glint: %s\n' "$1" >&2
     exit 1
 }
 
 note() {
-    printf 'benchmark-magelint: %s\n' "$1" >&2
+    printf 'benchmark-glint: %s\n' "$1" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -108,7 +108,7 @@ fi
 HOST=${GOVARD_BENCHMARK_HOST:-$(uname -n)}
 ARCH=$(uname -m)
 
-WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/govard-magelint-benchmark.XXXXXX")
+WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/govard-glint-benchmark.XXXXXX")
 GOVARD_HOME="$WORKDIR/govard-home"
 mkdir -p "$GOVARD_HOME"
 export GOVARD_HOME_DIR="$GOVARD_HOME"

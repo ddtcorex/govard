@@ -9,24 +9,24 @@ permissions:
   contents: write
 
 jobs:
-  # The Magento lint image must be published before anything is linked, because
+  # The lint image must be published before anything is linked, because
   # the release binaries carry its manifest digest in
-  # internal/audit.GovardMagelintDigest and only ever reference the official image
+  # internal/audit.GovardGlintDigest and only ever reference the official image
   # pinned to that digest. packages: write is granted here and nowhere else: a
   # reusable workflow cannot escalate beyond its calling job's token, so the grant
   # has to live on this job, while the workflow-level block above stays
   # contents: write only and neither `release` nor `macos-pkg` ever sees it.
-  magelint-image:
+  glint-image:
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/audit-magelint-image.yml
+    uses: ./.github/workflows/audit-glint-image.yml
     with:
       image_tag: ${{ github.ref_name }}
 
   release:
     runs-on: ubuntu-latest
-    needs: magelint-image
+    needs: glint-image
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,13 +58,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_PREVIOUS_TAG: ${{ steps.prev_tag.outputs.tag }}
-          # Linked into internal/audit.GovardGlintDigest (and legacy
-          # GovardMagelintDigest) by .goreleaser.yml. An empty value is a valid,
+          # Linked into internal/audit.GovardGlintDigest by .goreleaser.yml. An empty value is a valid,
           # degraded state rather than a build failure: ToolchainManager treats
           # it as "no official image pinned" and builds the embedded lint
           # context locally instead.
-          GOVARD_MAGELINT_DIGEST: ${{ needs.magelint-image.outputs.image_digest }}
-          GOVARD_GLINT_DIGEST: ${{ needs.magelint-image.outputs.image_digest }}
+          GOVARD_GLINT_DIGEST: ${{ needs.glint-image.outputs.image_digest }}
 
   macos-pkg:
     name: macOS Installer (${{ matrix.arch }})

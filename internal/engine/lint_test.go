@@ -14,7 +14,7 @@ func contains(values []string, pattern string) bool {
 	return false
 }
 
-func TestMagelintIgnoreQuickDeep(t *testing.T) {
+func TestGlintIgnoreQuickDeep(t *testing.T) {
 	quick := LintIgnore(true)
 	if contains(quick, "vendor") == false {
 		t.Fatal("quick must ignore vendor")

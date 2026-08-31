@@ -13,31 +13,14 @@ import (
 	auditmagento "govard/docker/audit"
 )
 
-// GovardGlintDigest pins the released official lint image (glint, formerly
-// magelint) by its immutable content digest. It defaults to empty for dev
+// GovardGlintDigest pins the released official lint image (glint) by its immutable content digest. It defaults to empty for dev
 // builds; release automation injects the real value via
-// "-X govard/internal/audit.GovardGlintDigest=<digest>" ldflags (and the
-// legacy "-X govard/internal/audit.GovardMagelintDigest" is kept as alias).
+// "-X govard/internal/audit.GovardGlintDigest=<digest>" ldflags.
 // When empty, ToolchainManager never attempts to pull the official image.
 var GovardGlintDigest string
 
-// GovardMagelintDigest is the legacy alias for GovardGlintDigest (kept so
-// "-X govard/internal/audit.GovardMagelintDigest" ldflags still work).
-var GovardMagelintDigest string
-
-func govardLintDigest() string {
-	if v := strings.TrimSpace(GovardGlintDigest); v != "" {
-		return v
-	}
-	return strings.TrimSpace(GovardMagelintDigest)
-}
-
-// officialGlintRepository is the Govard-owned official image repository
-// (glint, formerly magelint).
-const officialGlintRepository = "ghcr.io/ddtcorex/govard-magelint"
-
-// officialMagelintRepository is the legacy alias for officialGlintRepository.
-const officialMagelintRepository = officialGlintRepository
+// officialGlintRepository is the Govard-owned official image repository (glint).
+const officialGlintRepository = "ghcr.io/ddtcorex/govard-glint"
 
 const materializedContextMarkerFilename = ".materialized"
 
@@ -116,7 +99,7 @@ func (manager *ToolchainManager) Ensure(ctx context.Context) (ResolvedToolchain,
 		return ResolvedToolchain{}, err
 	}
 
-	if raw := govardLintDigest(); raw != "" {
+	if raw := strings.TrimSpace(GovardGlintDigest); raw != "" {
 		imageRef, pinnedDigest, ok := officialImageReference(raw)
 		if !ok {
 			// A malformed release digest is a Task 9 release-pipeline bug,
@@ -173,7 +156,7 @@ func (manager *ToolchainManager) Pull(ctx context.Context) (ResolvedToolchain, e
 	if err != nil {
 		return ResolvedToolchain{}, err
 	}
-	raw := govardLintDigest()
+	raw := strings.TrimSpace(GovardGlintDigest)
 	if raw == "" {
 		return ResolvedToolchain{}, fmt.Errorf("this build pins no official audit lint image digest, so there is nothing to pull")
 	}
@@ -216,7 +199,7 @@ func (manager *ToolchainManager) Status(ctx context.Context) (ToolchainStatus, e
 	}
 	status := ToolchainStatus{ContextDigest: contextDigest, LocalBuildImage: localImage}
 
-	if raw := govardLintDigest(); raw != "" {
+	if raw := strings.TrimSpace(GovardGlintDigest); raw != "" {
 		if imageRef, pinnedDigest, ok := officialImageReference(raw); ok {
 			status.OfficialImage = imageRef
 			if inspection, inspectErr := manager.docker.Inspect(ctx, imageRef); inspectErr == nil {
@@ -338,7 +321,7 @@ func officialImageReference(raw string) (imageRef, pinnedDigest string, ok bool)
 	if !isImmutableDigest(pinnedDigest) {
 		return "", "", false
 	}
-	return officialMagelintRepository + "@" + pinnedDigest, pinnedDigest, true
+	return officialGlintRepository + "@" + pinnedDigest, pinnedDigest, true
 }
 
 // ensureLocalBuild reuses the content-addressed local build image when it
@@ -393,8 +376,7 @@ func (manager *ToolchainManager) ensureLocalBuild(ctx context.Context, contextDi
 }
 
 // localBuildImage derives the content-addressed local build tag from the
-// embedded context digest: the first 16 hex characters of its hex portion
-// (glint, formerly magelint).
+// embedded context digest: the first 16 hex characters of its hex portion (glint).
 func localBuildImage(contextDigest string) (string, error) {
 	trimmed := strings.TrimPrefix(contextDigest, "sha256:")
 	if len(trimmed) < 16 {

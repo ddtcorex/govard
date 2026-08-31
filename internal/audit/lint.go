@@ -13,7 +13,7 @@ import (
 )
 
 // LintToolchain identifies the exact lint policy and runtime used for a run.
-// It intentionally contains no project-specific inputs; Magelint tracks those
+// It intentionally contains no project-specific inputs; Glint tracks those
 // separately inside its project/toolchain cache namespace.
 type LintToolchain struct {
 	Provider         string   `json:"provider"`

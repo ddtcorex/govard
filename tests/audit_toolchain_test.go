@@ -19,7 +19,7 @@ import (
 const testOfficialDigestHex = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
 
 func TestLintToolchainManagerReusesLocalOfficialImage(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	docker := &fakeToolchainDocker{
 		inspect: func(_ context.Context, image string) (audit.ImageInspection, error) {
@@ -53,7 +53,7 @@ func TestLintToolchainManagerReusesLocalOfficialImage(t *testing.T) {
 }
 
 func TestLintToolchainManagerPullsAndInspectsOfficialImage(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	imageRef := wantOfficialImageRefForTest(t)
 	var inspectCalls int
@@ -87,7 +87,7 @@ func TestLintToolchainManagerPullsAndInspectsOfficialImage(t *testing.T) {
 }
 
 func TestLintToolchainManagerFallsBackToEmbeddedBuildOnPullFailure(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
 	var built atomic.Bool
@@ -130,7 +130,7 @@ func TestLintToolchainManagerFallsBackToEmbeddedBuildOnPullFailure(t *testing.T)
 }
 
 func TestLintToolchainManagerFallsBackToEmbeddedBuildOnWrongLabels(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	imageRef := wantOfficialImageRefForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
@@ -181,7 +181,7 @@ func TestLintToolchainManagerFallsBackToEmbeddedBuildOnMalformedDigest(t *testin
 	// the embedded build exactly like every other official-path failure
 	// (pull failure, inspect failure, wrong labels) rather than bricking the
 	// audit feature for the entire life of a release with no workaround.
-	withGovardMagelintDigestForTest(t, "not-a-valid-sha256-digest")
+	withGovardGlintDigestForTest(t, "not-a-valid-sha256-digest")
 	contextDigest := auditLintContextDigestForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
 	var built atomic.Bool
@@ -227,7 +227,7 @@ func TestLintToolchainManagerFallsBackToEmbeddedBuildOnMalformedDigest(t *testin
 }
 
 func TestLintToolchainManagerReturnsErrorWhenPullAndBuildBothFail(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	docker := &fakeToolchainDocker{
 		inspect: func(context.Context, string) (audit.ImageInspection, error) {
 			return audit.ImageInspection{}, fmt.Errorf("no such image")
@@ -251,7 +251,7 @@ func TestLintToolchainManagerReturnsErrorWhenPullAndBuildBothFail(t *testing.T) 
 }
 
 func TestLintToolchainManagerReusesLocalBuildImage(t *testing.T) {
-	withGovardMagelintDigestForTest(t, "")
+	withGovardGlintDigestForTest(t, "")
 	contextDigest := auditLintContextDigestForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
 	docker := &fakeToolchainDocker{
@@ -283,7 +283,7 @@ func TestLintToolchainManagerReusesLocalBuildImage(t *testing.T) {
 }
 
 func TestLintToolchainManagerCancellationDoesNotFallBack(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	started := make(chan struct{})
 	docker := &fakeToolchainDocker{
 		inspect: func(context.Context, string) (audit.ImageInspection, error) {
@@ -320,7 +320,7 @@ func TestLintToolchainManagerCancellationDoesNotFallBack(t *testing.T) {
 }
 
 func TestLintToolchainManagerPullNeverBuilds(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	imageRef := wantOfficialImageRefForTest(t)
 	var inspectCalls int
@@ -354,7 +354,7 @@ func TestLintToolchainManagerPullNeverBuilds(t *testing.T) {
 }
 
 func TestLintToolchainManagerPullFailsWithoutBuildingWhenOfficialImageIsUnusable(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	docker := &fakeToolchainDocker{
 		inspect: func(context.Context, string) (audit.ImageInspection, error) {
 			return audit.ImageInspection{}, fmt.Errorf("no such image")
@@ -381,7 +381,7 @@ func TestLintToolchainManagerPullRefusesUnusableConfiguredDigests(t *testing.T) 
 		"malformed": "not-a-valid-sha256-digest",
 	} {
 		t.Run(name, func(t *testing.T) {
-			withGovardMagelintDigestForTest(t, digest)
+			withGovardGlintDigestForTest(t, digest)
 			docker := &fakeToolchainDocker{}
 			manager := audit.NewToolchainManager(docker, t.TempDir())
 
@@ -400,7 +400,7 @@ func TestLintToolchainManagerPullRefusesUnusableConfiguredDigests(t *testing.T) 
 
 func TestLintToolchainManagerBuildNeverPulls(t *testing.T) {
 	// A configured official digest must not tempt Build into the pull path.
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
 	var built atomic.Bool
@@ -440,7 +440,7 @@ func TestLintToolchainManagerBuildNeverPulls(t *testing.T) {
 }
 
 func TestLintToolchainManagerStatusIsReadOnly(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	localImage := wantLocalBuildImageForTest(t, contextDigest)
 	docker := &fakeToolchainDocker{
@@ -478,7 +478,7 @@ func TestLintToolchainManagerStatusIsReadOnly(t *testing.T) {
 }
 
 func TestLintToolchainManagerStatusReportsNothingPresentWithoutPullingOrBuilding(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	docker := &fakeToolchainDocker{
 		inspect: func(context.Context, string) (audit.ImageInspection, error) {
 			return audit.ImageInspection{}, fmt.Errorf("no such image")
@@ -505,7 +505,7 @@ func TestLintToolchainManagerStatusReportsNothingPresentWithoutPullingOrBuilding
 }
 
 func TestLintToolchainManagerStatusPrefersUsableOfficialImage(t *testing.T) {
-	withGovardMagelintDigestForTest(t, testOfficialDigestHex)
+	withGovardGlintDigestForTest(t, testOfficialDigestHex)
 	contextDigest := auditLintContextDigestForTest(t)
 	imageRef := wantOfficialImageRefForTest(t)
 	docker := &fakeToolchainDocker{
@@ -614,11 +614,11 @@ func (docker *fakeToolchainDocker) BuildCount() int {
 	return len(docker.builds)
 }
 
-func withGovardMagelintDigestForTest(t *testing.T, digest string) {
+func withGovardGlintDigestForTest(t *testing.T, digest string) {
 	t.Helper()
-	previous := audit.GovardMagelintDigest
-	audit.GovardMagelintDigest = digest
-	t.Cleanup(func() { audit.GovardMagelintDigest = previous })
+	previous := audit.GovardGlintDigest
+	audit.GovardGlintDigest = digest
+	t.Cleanup(func() { audit.GovardGlintDigest = previous })
 }
 
 func auditLintContextDigestForTest(t *testing.T) string {
@@ -642,7 +642,7 @@ func validOfficialLabelsForTest(contextDigest string) map[string]string {
 
 func wantOfficialImageRefForTest(t *testing.T) string {
 	t.Helper()
-	return "ghcr.io/ddtcorex/govard-magelint@sha256:" + testOfficialDigestHex
+	return "ghcr.io/ddtcorex/govard-glint@sha256:" + testOfficialDigestHex
 }
 
 func wantLocalBuildImageForTest(t *testing.T, contextDigest string) string {
