@@ -462,6 +462,25 @@ Liệt kê tất cả các môi trường Govard đang chạy trong toàn bộ w
 govard status
 ```
 
+### `govard verify`
+
+Chạy bộ kiểm tra QA thực thi 5 pha (thay cho tick thủ công). Registry là nguồn duy nhất — 56 mục P1 7 · P2 14 · P3 15 · P4 12 · P5 8. Chỉ Magento 2 có mục `When isMagento2` (10 mục bị lọc cho Laravel/Symfony/WordPress → 46).
+
+```bash
+govard verify --plan --json                 # dry-run tất cả pha, JSON máy
+govard verify --phase 1 --json              # một pha (1..5, 0=all)
+govard verify --phase 5 --allow-destructive --json # destructive sau snapshot
+govard verify --project /path/to/project --json
+```
+
+Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--checks`/`--lint-jobs` được chuyển tiếp tới các mục gọi `govard audit`.
+
+Gates: Pha 5 yêu cầu `P4-08 exit 0` trong `~/.govard/verify-runs/<ISO>-phase4.json` (snapshot) VÀ `--allow-destructive`. Thiếu snapshot → `need snapshot create (P4-08) first`. Thiếu flag → `need --allow-destructive for phase 5`. `--plan` bỏ qua cả hai gates (dry-run). Ghi remote là `READ-ONLY` (`--plan` only); `LOCAL-WRITE` sau snapshot.
+
+Outputs: `~/.govard/verify-runs/<ISO>-phaseN.json` với `{govard_version, project_sha, phase, items:[{id, command, duration_ms, exit_code, retries, evidence_excerpt, json_valid}]}`. `~/.govard/checklist-runs/` cũ được migrate lần đầu. `phase 0/all --json` xuất một JSON duy nhất `phase: "all"` với `items` gộp.
+
+Tự động phát hiện framework qua `engine.DetectFramework` khi thiếu `.govard.yml` (nên project mới có `artisan`/`composer.json` được nhận diện `laravel` v.v.).
+
 ### `govard desktop`
 
 Khởi chạy ứng dụng Wails desktop.

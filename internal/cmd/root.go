@@ -141,5 +141,6 @@ func init() {
 	rootCmd.AddCommand(newAuditCommand(defaultAuditCommandDependencies()))
 	rootCmd.AddCommand(tunnelCmd)
 	rootCmd.AddCommand(trustCmd)
+	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(versionCmd)
 }

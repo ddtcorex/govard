@@ -57,6 +57,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Rich CLI UX**: Powered by `pterm` for terminal output, progress bars, and interactive prompts.
 - **Global Services**: Built-in Proxy (Caddy), Mailpit, PHPMyAdmin, and Portainer (Default login for Portainer is `admin` / `AdminGovard123$`).
 - **Search Engine Host Access**: Elasticsearch/OpenSearch is automatically reachable from the host at `http://<project>.test:9200` — no extra config, reuses the same Caddy proxy that serves your project's HTTPS domain.
+- **Executable QA Harness**: `govard verify --plan --json` runs the 5-phase checklist (56 items, P1 7 · P2 14 · P3 15 · P4 12 · P5 8) with snapshot + `--allow-destructive` gates and machine JSON at `~/.govard/verify-runs/`.
 - **Desktop Dashboard**: Wails-based UI with live logs, quick actions, and settings.
 - **Native Framework Upgrades**: Multi-framework upgrade pipeline (`govard upgrade`) for Magento 2, Mage-OS, Magento 1, Laravel, Symfony, and WordPress that automates environment restarts, dependency updates, and database migrations.
 
