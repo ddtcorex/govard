@@ -15,7 +15,7 @@ name: Audit Magelint Image
 # equal the embedded context digest exactly, so this workflow derives that value
 # from the built CLI itself rather than restating it.
 #
-# Most releases touch no file under docker/audit-magento/**, so this job also
+# Most releases touch no file under docker/audit/**, so this job also
 # maintains a content-addressed cache tag ("context-<16-hex-digest>") alongside
 # the release tag. When a release's embedded context digest already has a
 # matching, label-verified image published under that cache tag, the full
@@ -78,7 +78,7 @@ permissions: {}
 
 jobs:
   image:
-    name: Build, verify, and publish magelint
+    name: Build, verify, and publish glint
     runs-on: ubuntu-latest
     # The arm64 leg is emulated, and the image installs seven PHP runtimes plus
     # seven Composer toolchains, so this is a long job by nature rather than a
@@ -93,10 +93,10 @@ jobs:
       context_digest: ${{ steps.context.outputs.context_digest }}
     env:
       IMAGE_REPOSITORY: ghcr.io/ddtcorex/govard-magelint
-      CONTEXT_DIR: docker/audit-magento
+      CONTEXT_DIR: docker/audit
       # A local-only tag: the verification steps run against a single-arch image
       # loaded into the daemon, never against anything already published.
-      SMOKE_IMAGE: govard-ci/magelint:smoke
+      SMOKE_IMAGE: govard-ci/glint:smoke
       # Every third-party image on this path is digest-pinned, not tagged. This
       # job gates releases, so a mutable tag here would let an upstream retag
       # change what a release is built and verified by. binfmt matters most of the
@@ -136,7 +136,7 @@ jobs:
           echo "context_digest=${CONTEXT_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "embedded lint context digest ${CONTEXT_DIGEST}"
 
-      # docker/audit-magento/** is embedded, so this digest fully determines
+      # docker/audit/** is embedded, so this digest fully determines
       # the image's content. A short, tag-legal token derived from it (rather
       # than the digest itself, which is too long and colon-bearing for a
       # tag) names the cache-lookup tag below.
@@ -193,7 +193,7 @@ jobs:
       # before any minutes are spent building one.
       - name: Run the lint runner contract suite
         if: ${{ steps.cache.outputs.hit != 'true' }}
-        run: bash docker/audit-magento/tests/contract_test.sh
+        run: bash docker/audit/tests/contract_test.sh
 
       # binfmt is installed directly rather than through a separate QEMU action
       # so this workflow needs no action the repository does not already use. It
@@ -281,7 +281,7 @@ jobs:
       # neither needs the Docker socket mounted into a container.
       - name: Export the verification image
         if: ${{ steps.cache.outputs.hit != 'true' }}
-        run: docker save "${SMOKE_IMAGE}" -o "${RUNNER_TEMP}/magelint-image.tar"
+        run: docker save "${SMOKE_IMAGE}" -o "${RUNNER_TEMP}/glint-image.tar"
 
       - name: Generate the SPDX SBOM
         if: ${{ steps.cache.outputs.hit != 'true' }}
@@ -290,9 +290,9 @@ jobs:
           docker run --rm \
             -v "${RUNNER_TEMP}:/work" \
             "${SYFT_IMAGE}" \
-            scan "docker-archive:/work/magelint-image.tar" \
-            --output "spdx-json=/work/magelint-sbom.spdx.json"
-          jq -e '.SPDXID and (.packages | length > 0)' "${RUNNER_TEMP}/magelint-sbom.spdx.json" >/dev/null
+            scan "docker-archive:/work/glint-image.tar" \
+            --output "spdx-json=/work/glint-sbom.spdx.json"
+          jq -e '.SPDXID and (.packages | length > 0)' "${RUNNER_TEMP}/glint-sbom.spdx.json" >/dev/null
 
       # A release gate is exactly where a high or critical finding must stop the
       # pipeline, so the scan is failing rather than advisory. --ignore-unfixed is
@@ -337,7 +337,7 @@ jobs:
             -v "${RUNNER_TEMP}/${TRIVY_CACHE_DIR}:/root/.cache/trivy" \
             "${TRIVY_IMAGE}" \
             image \
-            --input /work/magelint-image.tar \
+            --input /work/glint-image.tar \
             --scanners vuln \
             --severity HIGH,CRITICAL \
             --exit-code 1 \
@@ -348,15 +348,15 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: ${{ steps.cache.outputs.hit != 'true' }}
         with:
-          name: magelint-sbom-${{ inputs.image_tag }}
-          path: ${{ runner.temp }}/magelint-sbom.spdx.json
+          name: glint-sbom-${{ inputs.image_tag }}
+          path: ${{ runner.temp }}/glint-sbom.spdx.json
           if-no-files-found: error
 
       # The archive is close to a gigabyte and both scanners are done with it, so
       # it is dropped before the two-architecture build asks for its own space.
       - name: Reclaim the exported archive
         if: ${{ steps.cache.outputs.hit != 'true' }}
-        run: rm -f "${RUNNER_TEMP}/magelint-image.tar"
+        run: rm -f "${RUNNER_TEMP}/glint-image.tar"
 
       - name: Log in to GHCR
         if: ${{ inputs.publish }}

@@ -10,23 +10,34 @@ import (
 	"strconv"
 	"strings"
 
-	auditmagento "govard/docker/audit-magento"
+	auditmagento "govard/docker/audit"
 )
 
-// GovardMagelintDigest pins the released official lint image by its
-// immutable content digest. It defaults to empty for dev builds; Task 9's
-// release automation injects the real value the same way
-// internal/cmd.Version and internal/desktop.Version are injected, via
-// "-X govard/internal/audit.GovardMagelintDigest=<digest>" ldflags. When
-// empty, ToolchainManager never attempts to pull the official image and
-// goes straight to the embedded build fallback, since there is no reliable
-// floating tag to pull.
+// GovardGlintDigest pins the released official lint image (glint, formerly
+// magelint) by its immutable content digest. It defaults to empty for dev
+// builds; release automation injects the real value via
+// "-X govard/internal/audit.GovardGlintDigest=<digest>" ldflags (and the
+// legacy "-X govard/internal/audit.GovardMagelintDigest" is kept as alias).
+// When empty, ToolchainManager never attempts to pull the official image.
+var GovardGlintDigest string
+
+// GovardMagelintDigest is the legacy alias for GovardGlintDigest (kept so
+// "-X govard/internal/audit.GovardMagelintDigest" ldflags still work).
 var GovardMagelintDigest string
 
-// officialMagelintRepository is the Govard-owned official image repository.
-// It is only ever referenced pinned to an immutable digest, never a
-// floating tag.
-const officialMagelintRepository = "ghcr.io/ddtcorex/govard-magelint"
+func govardLintDigest() string {
+	if v := strings.TrimSpace(GovardGlintDigest); v != "" {
+		return v
+	}
+	return strings.TrimSpace(GovardMagelintDigest)
+}
+
+// officialGlintRepository is the Govard-owned official image repository
+// (glint, formerly magelint).
+const officialGlintRepository = "ghcr.io/ddtcorex/govard-magelint"
+
+// officialMagelintRepository is the legacy alias for officialGlintRepository.
+const officialMagelintRepository = officialGlintRepository
 
 const materializedContextMarkerFilename = ".materialized"
 
@@ -105,7 +116,7 @@ func (manager *ToolchainManager) Ensure(ctx context.Context) (ResolvedToolchain,
 		return ResolvedToolchain{}, err
 	}
 
-	if raw := strings.TrimSpace(GovardMagelintDigest); raw != "" {
+	if raw := govardLintDigest(); raw != "" {
 		imageRef, pinnedDigest, ok := officialImageReference(raw)
 		if !ok {
 			// A malformed release digest is a Task 9 release-pipeline bug,
@@ -162,7 +173,7 @@ func (manager *ToolchainManager) Pull(ctx context.Context) (ResolvedToolchain, e
 	if err != nil {
 		return ResolvedToolchain{}, err
 	}
-	raw := strings.TrimSpace(GovardMagelintDigest)
+	raw := govardLintDigest()
 	if raw == "" {
 		return ResolvedToolchain{}, fmt.Errorf("this build pins no official audit lint image digest, so there is nothing to pull")
 	}
@@ -205,7 +216,7 @@ func (manager *ToolchainManager) Status(ctx context.Context) (ToolchainStatus, e
 	}
 	status := ToolchainStatus{ContextDigest: contextDigest, LocalBuildImage: localImage}
 
-	if raw := strings.TrimSpace(GovardMagelintDigest); raw != "" {
+	if raw := govardLintDigest(); raw != "" {
 		if imageRef, pinnedDigest, ok := officialImageReference(raw); ok {
 			status.OfficialImage = imageRef
 			if inspection, inspectErr := manager.docker.Inspect(ctx, imageRef); inspectErr == nil {
@@ -382,8 +393,18 @@ func (manager *ToolchainManager) ensureLocalBuild(ctx context.Context, contextDi
 }
 
 // localBuildImage derives the content-addressed local build tag from the
-// embedded context digest: the first 16 hex characters of its hex portion.
+// embedded context digest: the first 16 hex characters of its hex portion
+// (glint, formerly magelint).
 func localBuildImage(contextDigest string) (string, error) {
+	trimmed := strings.TrimPrefix(contextDigest, "sha256:")
+	if len(trimmed) < 16 {
+		return "", fmt.Errorf("embedded audit lint context digest %q is too short to derive a build tag", contextDigest)
+	}
+	return "govard-local/glint:" + trimmed[:16], nil
+}
+
+// localBuildImageLegacy is the previous tag, kept for Status fallback.
+func localBuildImageLegacy(contextDigest string) (string, error) {
 	trimmed := strings.TrimPrefix(contextDigest, "sha256:")
 	if len(trimmed) < 16 {
 		return "", fmt.Errorf("embedded audit lint context digest %q is too short to derive a build tag", contextDigest)

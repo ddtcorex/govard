@@ -22,7 +22,7 @@ audit:
       team-ci:
         type: docker
         image: registry.example.com/team/magelint:v3
-        command: ["/usr/local/bin/magelint", "--report-json", "/output/report.json"]
+        command: ["/usr/local/bin/glint", "--report-json", "/output/report.json"]
 `), &config); err != nil {
 		t.Fatal(err)
 	}

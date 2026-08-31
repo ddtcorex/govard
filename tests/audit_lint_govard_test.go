@@ -57,7 +57,7 @@ func TestGovardLintBackendMountsReadOnlySourceAndWritableCacheAndOutput(t *testi
 	if run.AutoRemove {
 		t.Fatal("lint container requested auto-remove")
 	}
-	if got, want := run.Image, "govard-local/magelint:"; !strings.HasPrefix(got, want) {
+	if got, want := run.Image, "govard-local/glint:"; !strings.HasPrefix(got, want) {
 		t.Fatalf("image = %q, want the resolved toolchain image", got)
 	}
 	for _, fragment := range [][]string{
@@ -845,7 +845,7 @@ func TestGovardLintBackendWritesPrivateRunLog(t *testing.T) {
 	docker := &fakeLintDocker{}
 	backend := newGovardLintBackendForTest(t, docker, nil)
 	docker.run = func(_ context.Context, run audit.ContainerRunRequest, output io.Writer) error {
-		_, _ = io.WriteString(output, "magelint: report passed\n")
+		_, _ = io.WriteString(output, "glint: report passed\n")
 		writeGovardLintReportForTest(t, request, run, "passed")
 		return nil
 	}
@@ -863,7 +863,7 @@ func TestGovardLintBackendWritesPrivateRunLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(content), "magelint: report passed") {
+	if !strings.Contains(string(content), "glint: report passed") {
 		t.Fatalf("lint log = %q, want the container output", content)
 	}
 }
