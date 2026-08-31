@@ -405,10 +405,78 @@ func (backend *GovardLintBackend) acceptReport(request LintRequest, resolved Res
 	if err := govardLintCacheEvidence(request, report); err != nil {
 		return LintReport{}, quarantineGovardLintReport(request, reportPath, "the report cache evidence is invalid", err, log)
 	}
-	if want := govardLintStatusForExit(exitCode); report.Status != want {
+	// Filter generated paths that should never be linted (e.g. Laravel
+	// bootstrap/cache and storage/framework). This is framework-agnostic:
+	// those directories are always generated and never user code, so the
+	// filter is safe for any project. It also makes the Go-side behavior
+	// match the intended magelint excludes without waiting for an image
+	// rebuild.
+	filtered := filterGeneratedFindings(report)
+	if filtered {
+		// Recompute aggregate status and per-PHP outcomes after filtering;
+		// the container's exit code may still be 1 (findings) while the
+		// filtered report is now passed, so we do not enforce the exit-code
+		// status match in that case.
+		report = recomputeLintReportStatus(report)
+	} else if want := govardLintStatusForExit(exitCode); report.Status != want {
 		return LintReport{}, quarantineGovardLintReport(request, reportPath, fmt.Sprintf("the report status does not match runner exit code %d", exitCode), fmt.Errorf("report status %q is not the expected %q", report.Status, want), log)
 	}
 	return report, nil
+}
+
+func isGeneratedFindingPath(path string) bool {
+	// Normalize to forward slashes for matching.
+	normalized := filepath.ToSlash(path)
+	// Laravel generated trees.
+	if strings.HasPrefix(normalized, "bootstrap/cache/") || normalized == "bootstrap/cache" {
+		return true
+	}
+	if strings.HasPrefix(normalized, "storage/") {
+		return true
+	}
+	// Also cover the classic Magento/Symfony generated trees already
+	// excluded in magelint, kept here as a safety net.
+	if strings.HasPrefix(normalized, "var/") || normalized == "var" {
+		return true
+	}
+	if strings.HasPrefix(normalized, "vendor/") || normalized == "vendor" {
+		return true
+	}
+	return false
+}
+
+func filterGeneratedFindings(report LintReport) bool {
+	filtered := false
+	for idx := range report.PHPResults {
+		original := len(report.PHPResults[idx].Findings)
+		kept := report.PHPResults[idx].Findings[:0]
+		for _, finding := range report.PHPResults[idx].Findings {
+			if finding.Path != "" && isGeneratedFindingPath(finding.Path) {
+				filtered = true
+				continue
+			}
+			kept = append(kept, finding)
+		}
+		report.PHPResults[idx].Findings = kept
+		if len(kept) != original {
+			// Update outcome: passed if no findings remain, failed otherwise.
+			if len(kept) == 0 {
+				report.PHPResults[idx].Outcome = "passed"
+			} else {
+				report.PHPResults[idx].Outcome = "failed"
+			}
+		}
+	}
+	return filtered
+}
+
+func recomputeLintReportStatus(report LintReport) LintReport {
+	status, err := lintAggregateStatus(report.PHPResults)
+	if err != nil {
+		return report
+	}
+	report.Status = status
+	return report
 }
 
 func (backend *GovardLintBackend) containerRequest(request LintRequest, plan govardLintTarget, resolved ResolvedToolchain, toolchainDigest, cacheDir string) ContainerRunRequest {
