@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.70.0] - 2026-09-01
+
+### ✨ New Features
+
+- **Verify real execution for 56 items:** `internal/verify/registry.go` now wires real `Run` for all `56` items (`P1 7` · `P2 14` · `P3 15` · `P4 12` · `P5 8`) via `execGovard` helper running `govard` from `ProjectRoot` (`cmd.Dir`, not `--project` flag), measuring duration, truncating excerpt to 500 chars and detecting JSON validity. `--plan` still short-circuits to `stub` via `runner` gate. (#215)
+
+### 🐛 Bug Fixes
+
+- **Verify hermetic test guard:** `internal/verify/exec.go` now short-circuits when `GOVARD_VERIFY_FAKE=1` or binary is a `*.test` artifact (`isTestBinary` via `os.Executable`/`os.Args[0]`), returning fake `Evidence{ExitCode:0}` instead of recursing into the test binary which hung `TestVerifyRunnerAllowDestructiveRequired` for 9m50s (pipeline `33431591555`). Tests set `GOVARD_VERIFY_FAKE=1` for phase 5/JSON runs; `make test` via host Go `~/go_dist/go/bin/go` 1.25.0 now PASS. (#215)
+
+### ♻️ Refactor
+
+- **Workspace mandatory rule:** `AGENTS.md` workspace root now documents host Go `~/go_dist/go/bin/go` (1.25.0) as canonical toolchain (not `docker run golang:1.25`) and `make test` as mandatory pre-push gate to avoid hermetic leaks and `/tmp` disk-quota false failures.
+
 ## [1.69.0] - 2026-08-31
 
 ### ✨ New Features
