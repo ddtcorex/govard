@@ -74,6 +74,7 @@ Examples:
 			LintJobs:         lintJobs,
 			AllowDestructive: allowDestructive,
 			AllowXdebug:      allowXdebug,
+			ProjectRoot:      root,
 		}
 
 		// Migrate legacy runs once.
