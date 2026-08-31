@@ -50,10 +50,10 @@ build-test-binary:
 	mkdir -p $(BUILD_DIR)
 	go build -mod=mod -ldflags "$(LDFLAGS)" -tags integration -o $(TEST_BINARY) cmd/govard/main.go
 
-generate: ## Regenerate internal/frameworks/all_generated.go from registered framework folders
+generate: ## Regenerate internal/frameworks/all_generated.go
 	go generate ./internal/frameworks/...
 
-generate-check: generate ## Fail if all_generated.go is stale (CI drift check)
+generate-check: generate ## Fail if generated files are stale (CI drift check)
 	@if ! git diff --quiet -- internal/frameworks/all_generated.go; then \
 		echo "internal/frameworks/all_generated.go is out of date - run 'make generate' and commit the result:"; \
 		git diff -- internal/frameworks/all_generated.go; \

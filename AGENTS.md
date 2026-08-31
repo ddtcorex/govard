@@ -52,6 +52,7 @@ internal/desktop/               # Desktop backend
 internal/proxy/                 # Caddy/proxy TLS
 internal/ui/                    # Terminal rendering
 internal/updater/               # Self-update
+internal/verify/                # 5-phase executable checklist — registry + runner + generate (govard verify)
 docker/audit/                   # Lint image (glint) — Dockerfile + bin/glint + toolchains
 tests/                          # Unit tests
 tests/integration/              # Integration tests

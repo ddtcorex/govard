@@ -498,6 +498,25 @@ List running Govard environments across the workspace.
 govard status
 ```
 
+### `govard verify`
+
+Run the 5-phase executable QA harness (replaces manual tick). Registry is the single source of truth — 56 items across P1 7 · P2 14 · P3 15 · P4 12 · P5 8. Only Magento 2 has `When isMagento2` items (10 filtered for Laravel/Symfony/WordPress → 46).
+
+```bash
+govard verify --plan --json                 # dry-run all phases, machine JSON
+govard verify --phase 1 --json              # single phase (1..5, 0=all)
+govard verify --phase 5 --allow-destructive --json # destructive after snapshot
+govard verify --project /path/to/project --json
+```
+
+Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes` alias), `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--checks`/`--lint-jobs` are proxied to `govard audit` items.
+
+Gates: Phase 5 requires `P4-08 exit 0` in latest `~/.govard/verify-runs/<ISO>-phase4.json` (snapshot) AND `--allow-destructive`. Without snapshot → `need snapshot create (P4-08) first`. Without flag → `need --allow-destructive for phase 5`. `--plan` bypasses both gates (dry-run). Remote writes are `READ-ONLY` (`--plan` only); `LOCAL-WRITE` after snapshot.
+
+Outputs: `~/.govard/verify-runs/<ISO>-phaseN.json` with `{govard_version, project_sha, phase, items:[{id, command, duration_ms, exit_code, retries, evidence_excerpt, json_valid}]}`. Legacy `~/.govard/checklist-runs/` is migrated on first run. `phase 0/all --json` emits single JSON with `phase: "all"` and combined `items`.
+
+Framework detection falls back to `engine.DetectFramework` when `.govard.yml` is missing (so fresh `artisan`/`composer.json` projects are detected as `laravel` etc.).
+
 ### `govard desktop`
 
 Launch the Wails desktop app.
