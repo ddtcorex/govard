@@ -27,6 +27,7 @@ func TestVerifyRunnerGateP5WithoutSnapshot(t *testing.T) {
 func TestVerifyRunnerAllowDestructiveRequired(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOVARD_HOME_DIR", dir)
+	t.Setenv("GOVARD_VERIFY_FAKE", "1")
 
 	// Create a fake phase4 file with P4-08 PASS
 	verifyDir := filepath.Join(dir, "verify-runs")
@@ -91,6 +92,7 @@ func TestVerifyRunnerPlanNoSideEffect(t *testing.T) {
 func TestVerifyRunnerJSONSchema(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOVARD_HOME_DIR", dir)
+	t.Setenv("GOVARD_VERIFY_FAKE", "1")
 
 	res, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 1, verify.VerifyOpts{JSON: true})
 	if err != nil {
