@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"govard/internal/audit"
@@ -278,6 +279,38 @@ func acquireAuditLock(projectID string, timeout time.Duration) (func() error, er
 		_ = file.Close()
 		return true, nil
 	}
+	// Check if existing lock is stale (holder crashed or pid dead or mtime > 10m).
+	isStaleLock := func() bool {
+		info, err := os.Stat(lockPath)
+		if err != nil {
+			return false
+		}
+		// If lock file older than 10 minutes, consider stale (previous run likely crashed).
+		if time.Since(info.ModTime()) > 10*time.Minute {
+			slog.Info("audit lock stale: mtime", "projectId", projectID, "mtime", info.ModTime(), "since", time.Since(info.ModTime()))
+			return true
+		}
+		// Also check if pid inside is not running.
+		data, err := os.ReadFile(lockPath)
+		if err != nil {
+			return false
+		}
+		var pid int
+		if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil || pid <= 0 {
+			return false
+		}
+		// Signal 0 checks liveness without killing.
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			return false
+		}
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			// No such process or permission -> stale.
+			slog.Info("audit lock stale: pid not alive", "projectId", projectID, "pid", pid, "err", err)
+			return true
+		}
+		return false
+	}
 	acquired, err := tryLock()
 	if err != nil {
 		return nil, err
@@ -290,11 +323,34 @@ func acquireAuditLock(projectID string, timeout time.Duration) (func() error, er
 			return nil
 		}, nil
 	}
+	// If lock is stale, remove it and try again immediately.
+	if isStaleLock() {
+		slog.Info("audit lock is stale, removing", "projectId", projectID, "lock", lockPath)
+		_ = os.Remove(lockPath)
+		acquired, err := tryLock()
+		if err != nil {
+			return nil, err
+		}
+		if acquired {
+			slog.Info("audit run acquired lock after stale cleanup", "projectId", projectID)
+			return func() error {
+				if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("release audit lock: %w", err)
+				}
+				return nil
+			}, nil
+		}
+	}
 	// Lock is held; wait with polling, logging once.
 	slog.Info("audit run waiting for prior run", "projectId", projectID, "lock", lockPath)
 	deadline := time.Now().Add(timeout)
 	interval := 200 * time.Millisecond
 	for time.Now().Before(deadline) {
+		// Re-check stale while waiting (holder may have crashed).
+		if isStaleLock() {
+			slog.Info("audit lock became stale while waiting, removing", "projectId", projectID, "lock", lockPath)
+			_ = os.Remove(lockPath)
+		}
 		time.Sleep(interval)
 		acquired, err := tryLock()
 		if err != nil {
