@@ -731,7 +731,9 @@ write_phpstan_config() {
         # pub/media is user content, never shipped code: skipping it keeps the
         # pass fast on content-heavy stores. The media guard phase below scans
         # it for PHP uploads instead.
-        for excluded in vendor generated var pub/static pub/media; do
+        # bootstrap/cache and storage are Laravel generated trees (also safe to
+        # ignore for any framework).
+        for excluded in vendor generated var pub/static pub/media bootstrap/cache storage; do
             printf '\t\t\t- %s\n' "$ANALYZE_DIR/$excluded/*"
         done
         if [ "$TARGET_MODE" = "standalone" ] && [ -d "$ANALYZE_DIR/vendor" ]; then
@@ -777,7 +779,8 @@ run_phpcs_pass() {
         # pub/media is user content, never shipped code: skipping it keeps the
         # pass fast on content-heavy stores. The media guard phase below scans
         # it for PHP uploads instead.
-        "--ignore=*/vendor/*,*/generated/*,*/pub/static/*,*/var/*,*/pub/media/*"
+        # bootstrap/cache and storage are Laravel generated trees.
+        "--ignore=*/vendor/*,*/generated/*,*/pub/static/*,*/var/*,*/pub/media/*,*/bootstrap/cache/*,*/storage/*"
         "--runtime-set" "ignore_warnings_on_exit" "0"
         "--runtime-set" "testVersion" "$version"
     )
