@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"govard/internal/conventions"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"govard/internal/engine"
-	"govard/internal/proxy"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -140,37 +138,6 @@ var defaultRunGlobalServicesComposeForDesktop = func(args ...string) (string, er
 }
 
 var runGlobalServicesComposeForDesktop = defaultRunGlobalServicesComposeForDesktop
-
-var defaultWaitForGlobalProxyReadyForDesktop = func(ctx context.Context, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for {
-		if engine.IsContainerRunning(ctx, "govard-proxy-caddy") || engine.IsContainerRunning(ctx, "proxy-caddy-1") {
-			return true
-		}
-		if time.Now().After(deadline) {
-			return false
-		}
-		select {
-		case <-ctx.Done():
-			return false
-		case <-time.After(250 * time.Millisecond):
-		}
-	}
-}
-
-var waitForGlobalProxyReadyForDesktop = defaultWaitForGlobalProxyReadyForDesktop
-
-var defaultRefreshGlobalServiceRoutesForDesktop = func() error {
-	if err := registerDesktopGlobalServiceRoutes(); err != nil {
-		return err
-	}
-	if err := reviveRunningProjectRoutesForDesktop(); err != nil {
-		return err
-	}
-	return nil
-}
-
-var refreshGlobalServiceRoutesForDesktop = defaultRefreshGlobalServiceRoutesForDesktop
 
 var defaultRunHostPortProbeForDesktop = func(binary string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -845,63 +812,6 @@ func buildPublishedPortKeySet(ports []container.Port) map[string]bool {
 	return published
 }
 
-func registerDesktopGlobalServiceRoutes() error {
-	if err := proxy.RegisterDomain("mail.govard.test", "govard-proxy-mail:8025"); err != nil {
-		return fmt.Errorf("register mail route: %w", err)
-	}
-	if err := proxy.RegisterDomain("pma.govard.test", "govard-proxy-pma:80"); err != nil {
-		return fmt.Errorf("register pma route: %w", err)
-	}
-	if err := proxy.RegisterDomain("portainer.govard.test", "govard-proxy-portainer:9000"); err != nil {
-		return fmt.Errorf("register portainer route: %w", err)
-	}
-	return nil
-}
-
-func reviveRunningProjectRoutesForDesktop() error {
-	runningProjects, err := engine.GetRunningProjectNames(context.Background())
-	if err != nil {
-		return fmt.Errorf("get running projects: %w", err)
-	}
-	if len(runningProjects) == 0 {
-		return nil
-	}
-
-	entries, err := engine.ReadProjectRegistryEntries()
-	if err != nil {
-		return fmt.Errorf("read registry: %w", err)
-	}
-
-	for _, projectName := range runningProjects {
-		var matchedEntry *engine.ProjectRegistryEntry
-		for index := range entries {
-			if entries[index].ProjectName == projectName {
-				matchedEntry = &entries[index]
-				break
-			}
-		}
-		if matchedEntry == nil {
-			continue
-		}
-
-		config, _, configErr := engine.LoadConfigFromDir(matchedEntry.Path, false)
-		if configErr != nil {
-			if matchedEntry.Domain != "" {
-				_ = proxy.RegisterDomain(matchedEntry.Domain, projectName+"-web"+conventions.ReplicaSuffix)
-			}
-			continue
-		}
-
-		target := resolveDesktopUpProxyTarget(config)
-		allDomains := config.AllDomains()
-		if len(allDomains) > 0 {
-			_ = proxy.RegisterDomains(allDomains, target)
-		}
-	}
-
-	return nil
-}
-
 func resolveDesktopGovardCommandDir() (string, error) {
 	// For global services, we can run from home or any repo path.
 	// Usually ~/.govard/proxy, but the CLI handles it via internal engine.
@@ -919,14 +829,6 @@ func withCommandOutput(base string, commandOutput string) string {
 		return base
 	}
 	return base + "\n" + trimmed
-}
-
-func resolveDesktopUpProxyTarget(config engine.Config) string {
-	target := config.ProjectName + "-web" + conventions.ReplicaSuffix
-	if config.Stack.Features.Varnish {
-		target = config.ProjectName + conventions.VarnishSuffix
-	}
-	return target
 }
 
 func globalServicesComposeDirPath() string {

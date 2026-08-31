@@ -119,7 +119,7 @@ func IsSupportedRemoteAuthMethod(method string) bool {
 
 // RemotePriority returns a priority number for sorting remotes.
 // Smaller numbers mean higher priority (earlier in the list).
-func RemotePriority(name string) int {
+func remotePriority(name string) int {
 	switch NormalizeRemoteEnvironment(name) {
 	case RemoteEnvDev:
 		return 10
@@ -136,8 +136,8 @@ func RemotePriority(name string) int {
 // then alphabetically for names with equal priority.
 func SortRemoteNames(names []string) {
 	sort.Slice(names, func(i, j int) bool {
-		pi := RemotePriority(names[i])
-		pj := RemotePriority(names[j])
+		pi := remotePriority(names[i])
+		pj := remotePriority(names[j])
 		if pi != pj {
 			return pi < pj
 		}

@@ -292,16 +292,6 @@ func buildFrontendSyncWatchers(themes []FrontendSyncTheme) []FrontendSyncWatcher
 	return watchers
 }
 
-// DiscoverFrontendSyncWatchers returns the watcher services rendered for the
-// Hyva themes beneath root.
-func DiscoverFrontendSyncWatchers(root string) ([]FrontendSyncWatcher, error) {
-	themes, err := DiscoverFrontendSyncThemes(root)
-	if err != nil {
-		return nil, err
-	}
-	return buildFrontendSyncWatchers(themes), nil
-}
-
 func frontendSyncIdentityHash(theme FrontendSyncTheme) string {
 	sum := sha256.Sum256([]byte(theme.Vendor + "\x00" + theme.Theme))
 	return hex.EncodeToString(sum[:])

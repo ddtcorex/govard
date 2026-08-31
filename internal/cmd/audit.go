@@ -254,7 +254,7 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
 			return err
 		}
-		warnXdebugGuard(cmd, resolvedTarget.Config)
+		warnXdebugGuard(resolvedTarget.Config)
 		// Resolve --base auto for diff scope after target is known (needs project root for git).
 		effectiveBase := options.BaseRef
 		if scope == audit.ScopeDiff && strings.TrimSpace(effectiveBase) == "auto" {
@@ -632,16 +632,13 @@ func validateAuditOutputOptions(options *auditCommandOptions) error {
 	return nil
 }
 
-func warnXdebugGuard(cmd *cobra.Command, cfg *engine.Config) {
+func warnXdebugGuard(cfg *engine.Config) {
 	if cfg == nil {
 		return
 	}
 	if engine.XdebugGuard(*cfg) {
 		pterm.Warning.Println("Xdebug enabled, ~10-20% performance tax; disable for bench fidelity (stack.features.xdebug:true)")
 	}
-	// MAGE_MODE guard is best-effort; only warn when explicitly non-production.
-	// The engine's MageModeGuard is reused so the message stays consistent.
-	_ = cmd
 }
 
 func enforceXdebugGuard(cfg *engine.Config, allow bool) error {
@@ -727,11 +724,6 @@ func detectAuditBase(projectRoot string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("could not auto-detect base ref for diff scope (try --base origin/master)")
-}
-
-// DetectAuditBaseForTest exposes detectAuditBase for tests.
-func DetectAuditBaseForTest(projectRoot string) (string, error) {
-	return detectAuditBase(projectRoot)
 }
 
 func auditEnvironment(config engine.Config) audit.EnvironmentFingerprint {

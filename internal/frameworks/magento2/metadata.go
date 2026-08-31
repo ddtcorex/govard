@@ -27,23 +27,6 @@ func ProbeMagento2Environment(remoteName string, remoteCfg engine.RemoteConfig) 
 	return decodeMagento2EnvironmentPayload(encoded)
 }
 
-// DetectMagento2Version is currently unused anywhere in the codebase
-// (confirmed by a whole-repo grep this session) - kept during this move
-// since deleting dead-but-exported code is a separate decision from this
-// refactor's scope, not bundled in here.
-func DetectMagento2Version(remoteName string, remoteCfg engine.RemoteConfig) (string, error) {
-	remoteCommand := remote.BuildProjectRemoteCommand(remoteCfg.Path, `php -r `+engine.ShellQuote(magentoVersionProbePHP))
-	output, err := remote.RunRemoteCapture(remoteName, remoteCfg, remoteCommand)
-	if err != nil {
-		return "", err
-	}
-	version := normalizeMagentoVersion(strings.TrimSpace(output))
-	if version == "" {
-		return "", fmt.Errorf("remote composer.json does not contain a Magento package version")
-	}
-	return version, nil
-}
-
 func NormalizeMagentoVersion(raw string) string {
 	return normalizeMagentoVersion(raw)
 }
@@ -125,5 +108,3 @@ func normalizeMagentoVersion(raw string) string {
 }
 
 const magentoDBProbePHP = `$c=@include "app/etc/env.php"; if(!is_array($c)){fwrite(STDERR,"env.php not found"); exit(2);} $d=$c["db"]["connection"]["default"] ?? null; if(!is_array($d)){fwrite(STDERR,"db.default missing"); exit(3);} $r=["host"=>$d["host"] ?? "", "username"=>$d["username"] ?? "", "password"=>$d["password"] ?? "", "dbname"=>$d["dbname"] ?? "", "table_prefix"=>($c["db"]["table_prefix"] ?? ""), "crypt_key"=>($c["crypt"]["key"] ?? "")]; echo base64_encode(json_encode($r));`
-
-const magentoVersionProbePHP = `$c=@json_decode(@file_get_contents("composer.json"), true); if(!is_array($c)){fwrite(STDERR,"composer.json missing"); exit(2);} $r=$c["require"] ?? []; $v=""; if(isset($r["magento/product-community-edition"])){$v=$r["magento/product-community-edition"]; } elseif(isset($r["magento/product-enterprise-edition"])){$v=$r["magento/product-enterprise-edition"]; } echo (string)$v;`

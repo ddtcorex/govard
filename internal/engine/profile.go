@@ -119,7 +119,7 @@ func ResolveRuntimeProfile(framework string, version string) (RuntimeProfileResu
 		return result, nil
 	}
 
-	if resolver, ok := GetVersionProfileResolver(framework); ok {
+	if resolver, ok := getVersionProfileResolver(framework); ok {
 		override, source, ok := resolver(version)
 		if !ok {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("No version-specific profile for %s version %q. Using framework defaults.", framework, version))
@@ -280,8 +280,8 @@ func RegisterVersionProfileResolver(framework string, resolver VersionProfileRes
 	versionProfileResolvers[strings.ToLower(strings.TrimSpace(framework))] = resolver
 }
 
-// GetVersionProfileResolver looks up the registered resolver for framework.
-func GetVersionProfileResolver(framework string) (VersionProfileResolver, bool) {
+// getVersionProfileResolver looks up the registered resolver for framework.
+func getVersionProfileResolver(framework string) (VersionProfileResolver, bool) {
 	resolver, ok := versionProfileResolvers[strings.ToLower(strings.TrimSpace(framework))]
 	return resolver, ok
 }

@@ -15,22 +15,12 @@ import (
 	"time"
 
 	"govard/internal/conventions"
-	"govard/internal/engine"
 
 	"github.com/pkg/browser"
 )
 
 var defaultOpenExternalURLForDesktop = browser.OpenURL
 var openExternalURLForDesktop = defaultOpenExternalURLForDesktop
-
-var defaultRunEnvironmentComposeForDesktop = func(dir string, args []string) error {
-	return engine.RunCompose(context.Background(), engine.ComposeOptions{
-		ProjectDir: dir,
-		Args:       args[1:], // Skip "compose" as RunCompose adds it
-	})
-}
-
-var runEnvironmentComposeForDesktop = defaultRunEnvironmentComposeForDesktop
 
 func quickAction(ctx context.Context, action string, project string) (string, error) {
 	switch action {

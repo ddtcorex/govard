@@ -3,7 +3,6 @@ package magento1
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -74,12 +73,7 @@ func (m *Magento1Manager) Revert(projectRoot string, config engine.Config) error
 	return err
 }
 func (m *Magento1Manager) executeDockerMysql(container string, sql string) ([]byte, error) {
-	executor := m.Executor
-	if executor == nil {
-		executor = func(name string, args ...string) ([]byte, error) {
-			return exec.Command(name, args...).CombinedOutput()
-		}
-	}
+	executor := engine.ResolveDockerExecutor(m.Executor)
 	// Use smart detection for mysql vs mariadb binary
 	script := fmt.Sprintf(
 		`if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb; else exit 1; fi && "$DB_CLI" -u%s -p%s %s -e %s`,

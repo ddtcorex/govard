@@ -99,22 +99,22 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 		dependencies.CheckComposeSpam = func() error { return CheckComposeSpam(1000) }
 	}
 	if dependencies.CheckGovardRegistry == nil {
-		dependencies.CheckGovardRegistry = CheckGovardRegistry
+		dependencies.CheckGovardRegistry = checkGovardRegistry
 	}
 	if dependencies.CheckProfileSync == nil {
-		dependencies.CheckProfileSync = CheckProfileSync
+		dependencies.CheckProfileSync = checkProfileSync
 	}
 	if dependencies.CheckSystemDependencies == nil {
-		dependencies.CheckSystemDependencies = CheckSystemDependencies
+		dependencies.CheckSystemDependencies = checkSystemDependencies
 	}
 	if dependencies.CheckRuntimeImages == nil {
-		dependencies.CheckRuntimeImages = CheckRuntimeImages
+		dependencies.CheckRuntimeImages = checkRuntimeImages
 	}
 	if dependencies.CheckLegacyConfig == nil {
-		dependencies.CheckLegacyConfig = CheckLegacyConfig
+		dependencies.CheckLegacyConfig = checkLegacyConfig
 	}
 	if dependencies.CheckConfigDrift == nil {
-		dependencies.CheckConfigDrift = CheckConfigDrift
+		dependencies.CheckConfigDrift = checkConfigDrift
 	}
 
 	report := DoctorReport{
@@ -430,12 +430,12 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 			report.Failures++
 		}
 	}
-	report.IssueCards = BuildDoctorIssueCards(report.Checks)
+	report.IssueCards = buildDoctorIssueCards(report.Checks)
 
 	return report
 }
 
-func BuildDoctorIssueCards(checks []DoctorCheck) []DoctorIssueCard {
+func buildDoctorIssueCards(checks []DoctorCheck) []DoctorIssueCard {
 	cards := make([]DoctorIssueCard, 0, len(checks))
 	for _, check := range checks {
 		if check.Status == DoctorStatusPass {
@@ -500,7 +500,7 @@ func CheckGovardHomeWritable() error {
 	return file.Close()
 }
 
-func CheckGovardRegistry() error {
+func checkGovardRegistry() error {
 	path := ProjectRegistryPath()
 	info, err := os.Stat(path)
 	if err != nil {
@@ -610,7 +610,7 @@ func loadConfig() Config {
 	return config
 }
 
-func CheckProfileSync() error {
+func checkProfileSync() error {
 	config := loadConfig()
 	if config.Framework == "" || config.Framework == "generic" || config.Framework == "custom" {
 		return nil
@@ -706,7 +706,7 @@ func CollectProfileSyncWarnings(rawConfig Config, metadata ProjectMetadata) []st
 	return mismatches
 }
 
-func CheckSystemDependencies() []string {
+func checkSystemDependencies() []string {
 	missing := make([]string, 0, 4)
 
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -726,7 +726,7 @@ func CheckSystemDependencies() []string {
 	return missing
 }
 
-func CheckRuntimeImages() ([]string, error) {
+func checkRuntimeImages() ([]string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("could not read working directory: %w", err)
@@ -754,7 +754,7 @@ func CheckRuntimeImages() ([]string, error) {
 	return missing, nil
 }
 
-func CheckLegacyConfig() error {
+func checkLegacyConfig() error {
 	data, err := os.ReadFile(BaseConfigFile)
 	if err != nil {
 		return nil // skip if no config
@@ -802,7 +802,7 @@ func CheckLegacyConfig() error {
 	return nil
 }
 
-func CheckConfigDrift() error {
+func checkConfigDrift() error {
 	wd, _ := os.Getwd()
 	data, err := os.ReadFile(BaseConfigFile)
 	if err != nil {

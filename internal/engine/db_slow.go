@@ -45,74 +45,8 @@ func xdebugGuardForConfig(cfg Config) bool {
 	// MAGE_MODE guard is intentionally conservative: only `production` is
 	// considered non-warning. When the framework env file indicates otherwise,
 	// the caller should surface a warning and `Skipped: <reason>` if needed.
-	// Without an explicit mode field on Config, Xdebug is the primary gate;
-	// additional mode checks can be layered via MageModeGuard.
+	// Without an explicit mode field on Config, Xdebug is the primary gate.
 	return false
-}
-
-// MageModeGuard reports whether the given Magento mode should trigger a guard
-// warning. It is a pure helper for the audit's `MAGE_MODE` guard.
-func MageModeGuard(mode string) bool {
-	switch mode {
-	case "production":
-		return false
-	case "":
-		return false
-	default:
-		return true
-	}
-}
-
-// DbSlowLockPath returns the filesystem lock path used to serialize DB slow
-// log access. The audit uses an atomic `mkdir` lock
-// (`var/debug/.performance-audit.lock` or Govard tmp equivalent) so
-// concurrent per-page captures do not interleave `mysqldumpslow` or
-// `pt-query-digest` collection. The lock is never a `SET GLOBAL` hand-edit.
-func DbSlowLockPath(projectRoot string) string {
-	if projectRoot == "" {
-		projectRoot = "."
-	}
-	return filepath.Join(projectRoot, "var", "debug", ".performance-audit.lock")
-}
-
-// AcquireDbSlowLock attempts to acquire the DB slow log lock via atomic
-// `mkdir`. It returns a release function on success. The caller must defer
-// the release to avoid stale locks after `trap` restore.
-func AcquireDbSlowLock(projectRoot string) (func() error, error) {
-	lockPath := DbSlowLockPath(projectRoot)
-	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
-		return nil, fmt.Errorf("create db-slow lock directory: %w", err)
-	}
-	if err := os.Mkdir(lockPath, 0o755); err != nil {
-		if os.IsExist(err) {
-			return nil, fmt.Errorf("db-slow lock %q is already held", lockPath)
-		}
-		return nil, fmt.Errorf("acquire db-slow lock: %w", err)
-	}
-	release := func() error {
-		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("release db-slow lock: %w", err)
-		}
-		return nil
-	}
-	return release, nil
-}
-
-// DbSlowCollector describes how DB slow entries are collected inside the DB
-// container without `SET GLOBAL slow_query_log=ON` hand-edits. The Govard DB
-// lifecycle owns the slow log via container-local `mysqldumpslow` and
-// `pt-query-digest` against the mounted slow log file.
-func DbSlowCollector(projectName string) (container string, mysqldumpslowCmd string, ptDigestCmd string) {
-	if projectName == "" {
-		projectName = "project"
-	}
-	container = projectName + "-db-1"
-	// These commands run via `docker exec <container> ...` against the slow log
-	// file that the DB image already exposes when Govard's DB lock is held.
-	// No `SET GLOBAL` is issued; the log is read-only.
-	mysqldumpslowCmd = "mysqldumpslow -t 20 /var/log/mysql/slow.log"
-	ptDigestCmd = "pt-query-digest /var/log/mysql/slow.log"
-	return container, mysqldumpslowCmd, ptDigestCmd
 }
 
 func loadConfigForGuard() (*Config, error) {

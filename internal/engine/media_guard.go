@@ -56,8 +56,3 @@ func RunMediaGuard(projectRoot string) MediaGuardResult {
 	}
 	return MediaGuardResult{Status: "passed"}
 }
-
-// IsMediaGuardFailed reports whether pub/media contains executable PHP.
-func IsMediaGuardFailed(projectRoot string) bool {
-	return len(ScanMediaGuard(projectRoot)) > 0
-}

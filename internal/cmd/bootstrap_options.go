@@ -120,12 +120,6 @@ func validateBootstrapFrameworkVersion(framework string, version string) error {
 	return nil
 }
 
-// ValidateBootstrapFrameworkVersionForTest exposes framework-aware fresh
-// version validation for tests in /tests.
-func ValidateBootstrapFrameworkVersionForTest(framework string, version string) error {
-	return validateBootstrapFrameworkVersion(framework, version)
-}
-
 func normalizeBootstrapSource(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
 }

@@ -469,12 +469,6 @@ func supportedBootstrapFrameworks(fresh bool) []string {
 	return supported
 }
 
-// BootstrapSupportsFrameworkForTest exposes the command's framework allowlist
-// so tests cover the same gate that runs before any bootstrap workflow.
-func BootstrapSupportsFrameworkForTest(framework string, fresh bool) bool {
-	return stringSliceContains(supportedBootstrapFrameworks(fresh), framework)
-}
-
 func needsRemoteEnvironment(opts BootstrapRuntimeOptions) bool {
 	if opts.Fresh {
 		return false

@@ -21,13 +21,13 @@ const (
 var validEnvNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 func ResolveConfigLayerPaths(root string) []string {
-	return ResolveConfigLayerPathsWithProfile(root, "")
+	return resolveConfigLayerPathsWithProfile(root, "")
 }
 
-// ResolveConfigLayerPathsWithProfile builds the ordered list of config files.
+// resolveConfigLayerPathsWithProfile builds the ordered list of config files.
 // Load order: Base → Profile → Local → ProjectLocal → GOVARD_ENV → ProjectEnv.
 // Profile is inserted after base so local overrides always win; GOVARD_ENV layers are last so env-specific overrides win over local dev overrides.
-func ResolveConfigLayerPathsWithProfile(root, profile string) []string {
+func resolveConfigLayerPathsWithProfile(root, profile string) []string {
 	paths := []string{
 		filepath.Join(root, BaseConfigFile),
 	}
@@ -58,7 +58,7 @@ func LoadConfigFromDir(root string, requireBase bool) (Config, []string, error) 
 // LoadConfigFromDirWithProfile loads config with an optional profile layer.
 // Profile files (.govard.[profile].yml) are merged after base but before local.
 func LoadConfigFromDirWithProfile(root string, requireBase bool, profile string) (Config, []string, error) {
-	paths := ResolveConfigLayerPathsWithProfile(root, profile)
+	paths := resolveConfigLayerPathsWithProfile(root, profile)
 	merged := map[string]interface{}{}
 	loaded := make([]string, 0, len(paths))
 
@@ -144,7 +144,7 @@ func LoadRawConfigFromDir(root string, requireBase bool) (Config, error) {
 // but merging all profile and local layers just like LoadConfigFromDirWithProfile.
 // This is used to detect which fields were explicitly provided in the layered files by the user.
 func LoadRawConfigFromDirWithProfile(root string, requireBase bool, profile string) (Config, error) {
-	paths := ResolveConfigLayerPathsWithProfile(root, profile)
+	paths := resolveConfigLayerPathsWithProfile(root, profile)
 	merged := map[string]interface{}{}
 	loaded := make([]string, 0, len(paths))
 

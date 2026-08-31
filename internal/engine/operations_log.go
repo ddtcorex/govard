@@ -37,7 +37,7 @@ type OperationEvent struct {
 	Message     string          `json:"message,omitempty"`
 }
 
-func OperationsLogPath() string {
+func operationsLogPath() string {
 	if override := strings.TrimSpace(os.Getenv(OperationsLogPathEnvVar)); override != "" {
 		return filepath.Clean(override)
 	}
@@ -71,7 +71,7 @@ func WriteOperationEvent(event OperationEvent) (err error) {
 		return fmt.Errorf("encode operation event: %w", err)
 	}
 
-	path := OperationsLogPath()
+	path := operationsLogPath()
 	if err := os.MkdirAll(filepath.Dir(path), conventions.SecretDirPerm); err != nil {
 		return fmt.Errorf("create operations log dir: %w", err)
 	}
@@ -93,7 +93,7 @@ func WriteOperationEvent(event OperationEvent) (err error) {
 }
 
 func ReadOperationEvents(limit int) ([]OperationEvent, error) {
-	path := OperationsLogPath()
+	path := operationsLogPath()
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {

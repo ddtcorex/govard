@@ -882,10 +882,6 @@ func renderFinalizeOnBar(bar *pterm.ProgressbarPrinter, label string, startedAt 
 	}
 }
 
-func RunImportFromReader(importCmd *exec.Cmd, reader io.Reader, sanitize bool, stdout io.Writer, stderr io.Writer) error {
-	return RunImportFromReaderWithProgress(importCmd, reader, 0, sanitize, stdout, stderr, nil)
-}
-
 // poll, when non-nil, is called periodically while waiting for importCmd to
 // finish, to report the target database's growing size.
 func RunImportFromReaderWithProgress(importCmd *exec.Cmd, reader io.Reader, totalSize int64, sanitize bool, stdout io.Writer, stderr io.Writer, poll func() (int64, error)) error {
@@ -1004,10 +1000,6 @@ func RunImportFromReaderWithProgress(importCmd *exec.Cmd, reader io.Reader, tota
 		return closeErr
 	}
 	return waitErr
-}
-
-func RunDumpToImport(dumpCmd *exec.Cmd, importCmd *exec.Cmd, sanitize bool, stdout io.Writer, stderr io.Writer) error {
-	return RunDumpToImportWithProgress(dumpCmd, importCmd, 0, sanitize, stdout, stderr, nil)
 }
 
 // poll, when non-nil, is called periodically while waiting for importCmd to

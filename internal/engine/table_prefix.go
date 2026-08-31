@@ -46,20 +46,20 @@ func RegisterTablePrefixDetector(framework string, detector TablePrefixDetector)
 	tablePrefixDetectors[normalizeFrameworkManifestKey(framework)] = detector
 }
 
-// GetTablePrefixDetector looks up the registered table-prefix detector for
+// getTablePrefixDetector looks up the registered table-prefix detector for
 // framework (post normalizeFrameworkManifestKey aliasing).
-func GetTablePrefixDetector(framework string) (TablePrefixDetector, bool) {
+func getTablePrefixDetector(framework string) (TablePrefixDetector, bool) {
 	detector, ok := tablePrefixDetectors[normalizeFrameworkManifestKey(framework)]
 	return detector, ok
 }
 
 func FrameworkSupportsTablePrefix(framework string) bool {
-	_, ok := GetTablePrefixDetector(framework)
+	_, ok := getTablePrefixDetector(framework)
 	return ok
 }
 
 func DetectFrameworkTablePrefix(root string, framework string) string {
-	detector, ok := GetTablePrefixDetector(framework)
+	detector, ok := getTablePrefixDetector(framework)
 	if !ok {
 		return ""
 	}

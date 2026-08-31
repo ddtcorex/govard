@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	LockFilePathEnvVar = conventions.EnvGovardLock
+	lockFilePathEnvVar = conventions.EnvGovardLock
 	LockFileName       = conventions.LockFileName
 )
 
@@ -75,7 +75,7 @@ type LockCompliance struct {
 }
 
 func LockFilePath(root string) string {
-	if override := strings.TrimSpace(os.Getenv(LockFilePathEnvVar)); override != "" {
+	if override := strings.TrimSpace(os.Getenv(lockFilePathEnvVar)); override != "" {
 		return filepath.Clean(override)
 	}
 	cleanRoot := strings.TrimSpace(root)
@@ -326,7 +326,7 @@ func ReadServiceImagesFromCompose(composePath string) (map[string]string, error)
 	return normalizeServiceImages(images), nil
 }
 
-func DetectDockerVersionForLock() (string, error) {
+func detectDockerVersionForLock() (string, error) {
 	cmd := exec.Command("docker", "version", "--format", "{{.Server.Version}}")
 	output, err := cmd.Output()
 	if err != nil {
@@ -339,7 +339,7 @@ func DetectDockerVersionForLock() (string, error) {
 	return version, nil
 }
 
-func DetectDockerComposeVersionForLock() (string, error) {
+func detectDockerComposeVersionForLock() (string, error) {
 	cmd := exec.Command("docker", "compose", "version", "--short")
 	output, err := cmd.Output()
 	if err == nil {
@@ -418,16 +418,16 @@ func flattenStoreDomainsForLock(mappings StoreDomainMappings) map[string]string 
 
 func resolveLockDependencies(deps LockDependencies) LockDependencies {
 	if deps.ReadDockerVersion == nil {
-		deps.ReadDockerVersion = DetectDockerVersionForLock
+		deps.ReadDockerVersion = detectDockerVersionForLock
 	}
 	if deps.ReadDockerComposeVersion == nil {
-		deps.ReadDockerComposeVersion = DetectDockerComposeVersionForLock
+		deps.ReadDockerComposeVersion = detectDockerComposeVersionForLock
 	}
 	if deps.ReadServiceImages == nil {
 		deps.ReadServiceImages = ReadServiceImagesFromCompose
 	}
 	if deps.ReadCurrentUser == nil {
-		deps.ReadCurrentUser = DetectCurrentUserForLock
+		deps.ReadCurrentUser = detectCurrentUserForLock
 	}
 	if deps.Now == nil {
 		deps.Now = time.Now
@@ -443,7 +443,7 @@ func getGeneratedBy(deps LockDependencies) string {
 	return user
 }
 
-func DetectCurrentUserForLock() (string, error) {
+func detectCurrentUserForLock() (string, error) {
 	if user := os.Getenv("USER"); user != "" {
 		return user, nil
 	}

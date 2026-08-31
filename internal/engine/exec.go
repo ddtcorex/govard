@@ -15,16 +15,21 @@ func Handoff(binaryPath string, args []string) error {
 	return syscall.Exec(binaryPath, args, os.Environ())
 }
 
-// ExecuteInteractively runs a command with its stdio connected to the current terminal.
-// This is used when we don't want to replace the current process.
-func ExecuteInteractively(cmd *exec.Cmd) error {
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
 // ShellQuote is a wrapper around conventions.ShellQuote.
+// Deprecated: new code should use conventions.ShellQuote directly; this
+// wrapper is kept for backward compatibility within engine/cmd callers.
 func ShellQuote(raw string) string {
 	return conventions.ShellQuote(raw)
+}
+
+// ResolveDockerExecutor returns the provided executor or a default that
+// shells out via exec.Command. Used by framework base_url managers to
+// deduplicate the nil-check + CombinedOutput fallback.
+func ResolveDockerExecutor(executor func(name string, args ...string) ([]byte, error)) func(name string, args ...string) ([]byte, error) {
+	if executor != nil {
+		return executor
+	}
+	return func(name string, args ...string) ([]byte, error) {
+		return exec.Command(name, args...).CombinedOutput()
+	}
 }

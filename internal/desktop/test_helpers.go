@@ -29,11 +29,8 @@ func ResetStateForTest() {
 	validateGitConnectionForDesktop = defaultValidateGitConnectionForDesktop
 	cloneGitRepoForDesktop = defaultCloneGitRepoForDesktop
 	openExternalURLForDesktop = defaultOpenExternalURLForDesktop
-	runEnvironmentComposeForDesktop = defaultRunEnvironmentComposeForDesktop
 	runGlobalServicesComposeForDesktop = defaultRunGlobalServicesComposeForDesktop
 	ensureGlobalServicesForDesktop = defaultEnsureGlobalServicesForDesktop
-	waitForGlobalProxyReadyForDesktop = defaultWaitForGlobalProxyReadyForDesktop
-	refreshGlobalServiceRoutesForDesktop = defaultRefreshGlobalServiceRoutesForDesktop
 	runHostPortProbeForDesktop = defaultRunHostPortProbeForDesktop
 	chooseSaveFileForDesktop = defaultChooseSaveFileForDesktop
 	writeLogFileForDesktop = defaultWriteLogFileForDesktop
@@ -97,11 +94,6 @@ func BuildPMAOpenURLForTest(project string, database string) string {
 // ParseContainerIPAddressesForTest exposes container IP list parsing for tests.
 func ParseContainerIPAddressesForTest(raw string) []string {
 	return parseContainerIPAddresses(raw)
-}
-
-// NormalizeOnboardingDomainForTest exposes domain normalization for tests.
-func NormalizeOnboardingDomainForTest(domain string) string {
-	return normalizeOnboardingDomain(domain)
 }
 
 // BuildOperationNotificationForTest exposes operation notification formatting for tests.
@@ -282,11 +274,6 @@ func ResolveRemoteNameForOpenForTest(
 	return resolved, nil
 }
 
-// ListProjectRemotesForPathForTest exposes path-based remotes loading for tests.
-func ListProjectRemotesForPathForTest(root string) (RemoteSnapshot, error) {
-	return listProjectRemotesByPath(root)
-}
-
 // SetRunGovardCommandForDesktopForTest overrides the desktop govard command runner.
 func SetRunGovardCommandForDesktopForTest(fn func(root string, args []string) (string, error)) func() {
 	previous := runGovardCommandForDesktop
@@ -377,19 +364,6 @@ func SetDesktopGovardLookPathForUpdateForTest(fn func(file string) (string, erro
 	}
 }
 
-// SetDesktopPrivilegedCommandLookPathForUpdateForTest overrides privileged command lookup for desktop update.
-func SetDesktopPrivilegedCommandLookPathForUpdateForTest(fn func(file string) (string, error)) func() {
-	previous := desktopPrivilegedCommandLookPath
-	if fn == nil {
-		desktopPrivilegedCommandLookPath = exec.LookPath
-	} else {
-		desktopPrivilegedCommandLookPath = fn
-	}
-	return func() {
-		desktopPrivilegedCommandLookPath = previous
-	}
-}
-
 // SetRestartDesktopBinaryForTest overrides desktop relaunch command execution.
 func SetRestartDesktopBinaryForTest(fn func(binaryPath string) error) func() {
 	previous := restartDesktopBinary
@@ -468,19 +442,6 @@ func SetRunGlobalServicesComposeForDesktopForTest(fn func(args ...string) (strin
 	}
 }
 
-// SetRunEnvironmentComposeForDesktopForTest overrides project compose execution for desktop environment actions.
-func SetRunEnvironmentComposeForDesktopForTest(fn func(dir string, args []string) error) func() {
-	previous := runEnvironmentComposeForDesktop
-	if fn == nil {
-		runEnvironmentComposeForDesktop = defaultRunEnvironmentComposeForDesktop
-	} else {
-		runEnvironmentComposeForDesktop = fn
-	}
-	return func() {
-		runEnvironmentComposeForDesktop = previous
-	}
-}
-
 // SetEnsureGlobalServicesForDesktopForTest overrides global service compose readiness checks.
 func SetEnsureGlobalServicesForDesktopForTest(fn func() error) func() {
 	previous := ensureGlobalServicesForDesktop
@@ -491,49 +452,6 @@ func SetEnsureGlobalServicesForDesktopForTest(fn func() error) func() {
 	}
 	return func() {
 		ensureGlobalServicesForDesktop = previous
-	}
-}
-
-// SetWaitForGlobalProxyReadyForDesktopForTest overrides global proxy readiness checks.
-func SetWaitForGlobalProxyReadyForDesktopForTest(
-	fn func(ctx context.Context, timeout time.Duration) bool,
-) func() {
-	previous := waitForGlobalProxyReadyForDesktop
-	if fn == nil {
-		waitForGlobalProxyReadyForDesktop = defaultWaitForGlobalProxyReadyForDesktop
-	} else {
-		waitForGlobalProxyReadyForDesktop = fn
-	}
-	return func() {
-		waitForGlobalProxyReadyForDesktop = previous
-	}
-}
-
-// SetRefreshGlobalServiceRoutesForDesktopForTest overrides route refresh after global start/restart.
-func SetRefreshGlobalServiceRoutesForDesktopForTest(fn func() error) func() {
-	previous := refreshGlobalServiceRoutesForDesktop
-	if fn == nil {
-		refreshGlobalServiceRoutesForDesktop = defaultRefreshGlobalServiceRoutesForDesktop
-	} else {
-		refreshGlobalServiceRoutesForDesktop = fn
-	}
-	return func() {
-		refreshGlobalServiceRoutesForDesktop = previous
-	}
-}
-
-// SetRunHostPortProbeForDesktopForTest overrides host port probe commands (lsof/ss).
-func SetRunHostPortProbeForDesktopForTest(
-	fn func(binary string, args ...string) (string, error),
-) func() {
-	previous := runHostPortProbeForDesktop
-	if fn == nil {
-		runHostPortProbeForDesktop = defaultRunHostPortProbeForDesktop
-	} else {
-		runHostPortProbeForDesktop = fn
-	}
-	return func() {
-		runHostPortProbeForDesktop = previous
 	}
 }
 

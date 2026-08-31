@@ -28,18 +28,7 @@ const (
 )
 
 const (
-	Magento1LocalXml         = "app/etc/local.xml"
-	Magento2EnvPhp           = "app/etc/env.php"
-	DotEnvFile               = ".env"
-	WordPressConfig          = "wp-config.php"
 	PrestaShopParametersFile = "app/config/parameters.php"
-
-	// Lifecycle directories
-	MagentoGeneratedDir = "generated"
-	MagentoVarDir       = "var"
-	MagentoPubStaticDir = "pub/static"
-	MagentoVendorDir    = "vendor"
-	VarnishConfigDir    = "varnish"
 )
 
 // GetGovardHome returns the absolute path to the Govard home directory (~/.govard by default).
@@ -50,16 +39,6 @@ func GetGovardHome() string {
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".govard")
-}
-
-// GetGovardProxyDir returns the path to the proxy directory within Govard home.
-func GetGovardProxyDir() string {
-	return filepath.Join(GetGovardHome(), "proxy")
-}
-
-// GetGovardSSLDir returns the path to the SSL directory within Govard home.
-func GetGovardSSLDir() string {
-	return filepath.Join(GetGovardHome(), "ssl")
 }
 
 // ShellQuote wraps a string in single quotes and escapes existing single quotes

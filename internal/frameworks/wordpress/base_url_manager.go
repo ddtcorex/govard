@@ -2,7 +2,6 @@ package wordpress
 
 import (
 	"fmt"
-	"os/exec"
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
@@ -34,12 +33,7 @@ func (m *WordPressManager) Revert(projectRoot string, config engine.Config) erro
 	return err
 }
 func (m *WordPressManager) executeWP(container string, args ...string) ([]byte, error) {
-	executor := m.Executor
-	if executor == nil {
-		executor = func(name string, args ...string) ([]byte, error) {
-			return exec.Command(name, args...).CombinedOutput()
-		}
-	}
+	executor := engine.ResolveDockerExecutor(m.Executor)
 	fullArgs := append([]string{"exec", "-u", conventions.UserWWWData, "-w", conventions.DefaultWorkDir, container, "wp", "--allow-root"}, args...)
 	return executor("docker", fullArgs...)
 }

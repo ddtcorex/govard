@@ -439,8 +439,3 @@ func SetWordPressCoreDownloaderForTest(fn func(projectDir string) error) func() 
 		wordpressCoreDownloader = previous
 	}
 }
-
-// GetWordPressArchiveURLForTest exposes getWordPressArchiveURL for tests.
-func GetWordPressArchiveURLForTest(version string) string {
-	return getWordPressArchiveURL(version)
-}

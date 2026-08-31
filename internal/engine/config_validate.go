@@ -38,19 +38,19 @@ func ValidateConfig(cfg Config) error {
 	if strings.ContainsAny(cfg.Domain, " \t\r\n") {
 		return fmt.Errorf("domain cannot contain whitespace")
 	}
-	if strings.TrimSpace(cfg.FrameworkVersion) != "" && !IsValidFrameworkVersion(cfg.FrameworkVersion) {
+	if strings.TrimSpace(cfg.FrameworkVersion) != "" && !isValidFrameworkVersion(cfg.FrameworkVersion) {
 		return fmt.Errorf("framework_version %q is invalid (must not contain whitespace)", cfg.FrameworkVersion)
 	}
-	if strings.TrimSpace(cfg.Stack.PHPVersion) != "" && !IsValidStackVersion(cfg.Stack.PHPVersion) {
+	if strings.TrimSpace(cfg.Stack.PHPVersion) != "" && !isValidStackVersion(cfg.Stack.PHPVersion) {
 		return fmt.Errorf("stack.php_version %q is invalid", cfg.Stack.PHPVersion)
 	}
-	if strings.TrimSpace(cfg.Stack.NodeVersion) != "" && !IsValidStackVersion(cfg.Stack.NodeVersion) {
+	if strings.TrimSpace(cfg.Stack.NodeVersion) != "" && !isValidStackVersion(cfg.Stack.NodeVersion) {
 		return fmt.Errorf("stack.node_version %q is invalid", cfg.Stack.NodeVersion)
 	}
-	if strings.TrimSpace(cfg.Stack.DBVersion) != "" && !IsValidStackVersion(cfg.Stack.DBVersion) {
+	if strings.TrimSpace(cfg.Stack.DBVersion) != "" && !isValidStackVersion(cfg.Stack.DBVersion) {
 		return fmt.Errorf("stack.db_version %q is invalid", cfg.Stack.DBVersion)
 	}
-	if strings.TrimSpace(cfg.Stack.SearchVersion) != "" && !IsValidStackVersion(cfg.Stack.SearchVersion) {
+	if strings.TrimSpace(cfg.Stack.SearchVersion) != "" && !isValidStackVersion(cfg.Stack.SearchVersion) {
 		return fmt.Errorf("stack.search_version %q is invalid", cfg.Stack.SearchVersion)
 	}
 	if !ValidateTablePrefix(cfg.TablePrefix) {
@@ -193,8 +193,8 @@ func validateService(field, value string, allowed map[string]struct{}) error {
 	return nil
 }
 
-// IsValidFrameworkVersion reports whether v is a plausible framework_version (no whitespace, non-empty).
-func IsValidFrameworkVersion(v string) bool {
+// isValidFrameworkVersion reports whether v is a plausible framework_version (no whitespace, non-empty).
+func isValidFrameworkVersion(v string) bool {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return false
@@ -202,8 +202,8 @@ func IsValidFrameworkVersion(v string) bool {
 	return !strings.ContainsAny(v, " \t\r\n")
 }
 
-// IsValidStackVersion reports whether v looks like a version string (digits/dots/dashes, no whitespace).
-func IsValidStackVersion(v string) bool {
+// isValidStackVersion reports whether v looks like a version string (digits/dots/dashes, no whitespace).
+func isValidStackVersion(v string) bool {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return false
@@ -219,10 +219,4 @@ func IsValidStackVersion(v string) bool {
 		return false
 	}
 	return true
-}
-
-// ValidateConfigDrift reports drift warnings for an already-loaded config vs its detected metadata.
-// It is a non-blocking helper used by doctor to surface yml drift without failing validation.
-func ValidateConfigDrift(cfg Config, meta ProjectMetadata) []string {
-	return CollectConfigDrift(cfg, meta)
 }
