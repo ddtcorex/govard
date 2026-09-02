@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.70.1] - 2026-09-02
+
+### 🐛 Bug Fixes
+
+- **Audit stale phpstan cache:** `docker/audit/bin/glint` now heals a warm `phpstan` `resultCache` that references a deleted `var/deployer/releases/.../env.php` (`hash_file(): Failed to open stream` / `Could not read file`) by purging `VERSION_CACHE_DIR/phpstan` once and retrying, and `write_phpstan_config` emits `var/**/*` (recursive) instead of `var/*` so nested deployer releases never enter the cache. Contract tests `phpstan_stale_cache_is_healed` + `phpstan_excludes_var_deployer` (27 cases). Fixes warm-run `magelint: php 8.4 infrastructure failure` when a previously cached deployer release was later removed. (#217)
+
 ## [1.70.0] - 2026-09-01
 
 ### ✨ New Features
