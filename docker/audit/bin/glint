@@ -735,14 +735,34 @@ write_phpstan_config() {
         # it for PHP uploads instead.
         # bootstrap/cache and storage are Laravel generated trees (also safe to
         # ignore for any framework).
+        # Use `/**/*` so nested trees like `var/deployer/releases/1/var/www/html` are always excluded,
+        # not just the top-level `var/*` glob.
         for excluded in vendor generated var pub/static pub/media bootstrap/cache storage; do
-            printf '\t\t\t- %s\n' "$ANALYZE_DIR/$excluded/*"
+            printf '\t\t\t- %s\n' "$ANALYZE_DIR/$excluded/**/*"
         done
         if [ "$TARGET_MODE" = "standalone" ] && [ -d "$ANALYZE_DIR/vendor" ]; then
             printf '\tscanDirectories:\n'
             printf '\t\t- %s\n' "$ANALYZE_DIR/vendor"
         fi
     } >"$config"
+}
+
+# Returns 0 when the phpstan stderr looks like a stale resultCache referencing a
+# file that no longer exists (e.g. a deleted var/deployer release). The cache
+# then contains a `hash_file()` entry that will fail on every warm run until it
+# is purged, so the caller should `rm -rf $VERSION_CACHE_DIR/phpstan` and retry once.
+is_phpstan_stale_cache_error() {
+    local stderr_file=$1
+    if [ ! -f "$stderr_file" ]; then
+        return 1
+    fi
+    if grep -q "hash_file" "$stderr_file" 2>/dev/null && grep -q "Failed to open stream" "$stderr_file" 2>/dev/null; then
+        return 0
+    fi
+    if grep -q "Could not read file" "$stderr_file" 2>/dev/null; then
+        return 0
+    fi
+    return 1
 }
 
 # Reports whether the toolchain ships the PHP compatibility standard. The
@@ -908,35 +928,55 @@ analyze_version() {
 
     if contains_word "phpstan" "$LINTERS"; then
         local phpstan_report="$raw_dir/phpstan.json"
+        local phpstan_stderr="$raw_dir/phpstan.stderr"
         local phpstan_config="$WORKSPACE_DIR/php-$version/phpstan.neon"
         write_phpstan_config "$version" "$phpstan_config"
-        phase_started=$(now_ms)
-        rm -f "$phpstan_report"
-        if [ "${#DIFF_FILES[@]}" -gt 0 ]; then
-            run_child "$ANALYZE_ROOT" "$phpstan_report" "$launcher" "$toolchain/vendor/bin/phpstan" analyse \
-                --no-progress --no-interaction --error-format=json \
-                --memory-limit=2G --configuration="$phpstan_config" "${DIFF_FILES[@]}"
-        else
-            run_child "$ANALYZE_ROOT" "$phpstan_report" "$launcher" "$toolchain/vendor/bin/phpstan" analyse \
-                --no-progress --no-interaction --error-format=json \
-                --memory-limit=2G --configuration="$phpstan_config" "$ANALYZE_DIR"
-        fi
-        status=$?
-        [ "$CANCELLED" -eq 1 ] && return 130
-        if [ "$status" -eq 0 ]; then
-            phase_status="passed"
-        elif [ -s "$phpstan_report" ] && [ "$status" -le 1 ]; then
-            phase_status="failed"
-        else
-            phase_status="error"
-        fi
-        record_phase "$version" "phpstan" "$phase_status" "$(( $(now_ms) - phase_started ))" \
-            "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
-        if [ "$phase_status" != "error" ]; then
-            record "artifact" "$version" "phpstan" "phpstan-json" "$phpstan_report" "$ANALYZE_DIR"
-        else
-            return 2
-        fi
+        local phpstan_attempt
+        for phpstan_attempt in 0 1; do
+            phase_started=$(now_ms)
+            rm -f "$phpstan_report" "$phpstan_stderr"
+            if [ "${#DIFF_FILES[@]}" -gt 0 ]; then
+                # Capture stderr so a stale resultCache (hash_file -> Failed to open stream)
+                # can be detected and healed without bubbling as infra_error.
+                run_child "$ANALYZE_ROOT" "$phpstan_report" "$launcher" "$toolchain/vendor/bin/phpstan" analyse \
+                    --no-progress --no-interaction --error-format=json \
+                    --memory-limit=2G --configuration="$phpstan_config" "${DIFF_FILES[@]}" 2>"$phpstan_stderr"
+            else
+                run_child "$ANALYZE_ROOT" "$phpstan_report" "$launcher" "$toolchain/vendor/bin/phpstan" analyse \
+                    --no-progress --no-interaction --error-format=json \
+                    --memory-limit=2G --configuration="$phpstan_config" "$ANALYZE_DIR" 2>"$phpstan_stderr"
+            fi
+            status=$?
+            # Append stderr to the container log so `govard-lint.log` still shows it.
+            if [ -s "$phpstan_stderr" ]; then
+                cat "$phpstan_stderr" >&2 2>/dev/null || true
+            fi
+            [ "$CANCELLED" -eq 1 ] && return 130
+            if [ "$status" -eq 0 ]; then
+                phase_status="passed"
+            elif [ -s "$phpstan_report" ] && [ "$status" -le 1 ]; then
+                phase_status="failed"
+            else
+                phase_status="error"
+            fi
+            # Stale resultCache: hash_file() references a file that was deleted
+            # (e.g. var/deployer/releases/1/var/www/html/app/etc/env.php). Purge
+            # the phpstan tmpDir once and retry; the next run will be cold but clean.
+            if [ "$phase_status" = "error" ] && [ "$phpstan_attempt" -eq 0 ] && is_phpstan_stale_cache_error "$phpstan_stderr"; then
+                log "phpstan stale resultCache detected (hash_file miss), purging $VERSION_CACHE_DIR/phpstan and retrying once"
+                rm -rf "$VERSION_CACHE_DIR/phpstan" 2>/dev/null || true
+                mkdir -p "$VERSION_CACHE_DIR/phpstan" 2>/dev/null || true
+                continue
+            fi
+            record_phase "$version" "phpstan" "$phase_status" "$(( $(now_ms) - phase_started ))" \
+                "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+            if [ "$phase_status" != "error" ]; then
+                record "artifact" "$version" "phpstan" "phpstan-json" "$phpstan_report" "$ANALYZE_DIR"
+            else
+                return 2
+            fi
+            break
+        done
     fi
     return 0
 }

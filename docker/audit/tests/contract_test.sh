@@ -347,6 +347,19 @@ if ($mode === 'invalid') {
     echo "PHP Fatal error: stub phpstan crashed\n";
     exit(255);
 }
+if ($mode === 'stale') {
+    // First invocation simulates a stale resultCache referencing a deleted var/deployer file.
+    // The marker lives under GOVARD_LINT_CACHE_DIR (shared across retries).
+    $cacheDir = getenv('GOVARD_LINT_CACHE_DIR') ?: sys_get_temp_dir();
+    $marker = rtrim($cacheDir, '/') . '/.phpstan_stale_first';
+    if (!file_exists($marker)) {
+        @file_put_contents($marker, "1");
+        fwrite(STDERR, "PHP Warning:  hash_file(/source/var/deployer/releases/1/var/www/html/app/etc/env.php): Failed to open stream: No such file or directory in phar:///opt/govard/toolchains/php-8.4/vendor/phpstan/phpstan/phpstan.phar/src/Analyser/ResultCache/ResultCacheManager.php on line 1189\n");
+        fwrite(STDERR, "In ResultCacheManager.php line 1191:\n  Could not read file: /source/var/deployer/releases/1/var/www/html/app/etc/env.php\n");
+        exit(2);
+    }
+    // Second invocation (after glint purged the cache) succeeds.
+}
 $file = rtrim((string) $target, '/') . '/Model/Greeting.php';
 $payload = ['totals' => ['errors' => 0, 'file_errors' => 0], 'files' => [], 'errors' => []];
 $exit = 0;
@@ -838,6 +851,48 @@ case_auth_values_never_surface() {
     assert_equals "cache and output hide credentials" "0" "$leaks"
 }
 
+case_phpstan_stale_cache_is_healed() {
+    new_case phpstan_stale_cache_is_healed
+    CASE_PHPSTAN_MODE="stale"
+    invoke_runner --php 8.3
+    # Glint should detect the hash_file stale cache error, purge phpstan tmpDir and retry once.
+    assert_equals "stale cache healed exit status" "0" "$RUN_STATUS"
+    assert_equals "stale cache healed outcome" "passed" "$(json_php_field "$REPORT" outcome)"
+    assert_contains "log mentions purge" "$(cat "$CASE_DIR/stdout.log" "$CASE_DIR/stderr.log")" "stale resultCache"
+    # Verify the phpstan cache was actually purged (marker removed by retry's mkdir, stale marker remains but phpstan dir was cleared)
+    local cache_key
+    cache_key=$(json "$REPORT" php_results.0.cache.key)
+    if [ -z "$cache_key" ] || [ "$cache_key" = "<missing>" ]; then
+        fail "stale cache: cache evidence carries no key after heal"
+    fi
+    # Second warm run without stale mode should stay warm/cold without needing another heal.
+    CASE_PHPSTAN_MODE="pass"
+    invoke_runner --php 8.3
+    assert_equals "warm after heal exit status" "0" "$RUN_STATUS"
+    assert_equals "warm after heal outcome" "passed" "$(json_php_field "$REPORT" outcome)"
+}
+
+case_phpstan_excludes_var_deployer() {
+    new_case phpstan_excludes_var_deployer
+    CASE_TARGET_MODE="project"
+    # Create a var/deployer tree that would trigger the original hash_file bug if not excluded.
+    mkdir -p "$CASE_DIR/source/var/deployer/releases/1/var/www/html/app/etc"
+    printf '<?php return ["backend"=>["frontName"=>"admin"]];\n' >"$CASE_DIR/source/var/deployer/releases/1/var/www/html/app/etc/env.php"
+    # Verify write_phpstan_config emits a recursive exclude for var.
+    invoke_runner --php 8.3
+    assert_equals "exclude var exit status" "0" "$RUN_STATUS"
+    local config_file
+    config_file=$(find "$CASE_DIR/workspace" -name "phpstan.neon" 2>/dev/null | head -1)
+    if [ -z "$config_file" ]; then
+        fail "phpstan config not found"
+    else
+        assert_contains "phpstan config excludes var recursively" "$(cat "$config_file")" "var/**/*"
+        assert_not_contains "phpstan config still uses shallow var/*" "$(cat "$config_file")" 'var/*"'
+        # The var file should not contribute to findings (it is excluded) - report should be clean.
+        assert_equals "var file not analyzed" "passed" "$(json_php_field "$REPORT" outcome)"
+    fi
+}
+
 CASES="
 case_help_documents_contract
 case_rejects_unknown_flag
@@ -864,6 +919,8 @@ case_sigterm_cancels_run
 case_auth_values_never_surface
 case_media_guard_reports_php_in_media
 case_media_guard_passes_clean_media
+case_phpstan_stale_cache_is_healed
+case_phpstan_excludes_var_deployer
 "
 
 run_case() {
