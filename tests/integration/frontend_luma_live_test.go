@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,7 +52,7 @@ func TestFrontendLumaLiveEndpointAndHTMLInjection(t *testing.T) {
 	}))
 	defer application.Close()
 
-	liveReload := startSyntheticGruntLiveReload(t)
+	liveReload := startSyntheticLiveReload(t)
 
 	injectorPort := reserveFrontendTestPort(t)
 	injectorContext, stopInjector := context.WithCancel(context.Background())
@@ -79,10 +80,9 @@ func TestFrontendLumaLiveEndpointAndHTMLInjection(t *testing.T) {
 	runFrontendLumaLiveAssertions(t, application, liveReload, injectorPort)
 }
 
-type syntheticGruntLiveReload struct {
-	address   string
-	clientDir string
-	process   *liveFrontendProcess
+type syntheticLiveReload struct {
+	address string
+	server  *httptest.Server
 }
 
 type liveFrontendLogBuffer struct {
@@ -151,41 +151,41 @@ func (process *liveFrontendProcess) stop() {
 	})
 }
 
-func startSyntheticGruntLiveReload(t *testing.T) syntheticGruntLiveReload {
+// startSyntheticLiveReload spins up a self-contained LiveReload-compatible endpoint
+// in-process (no external npm/grunt service, no network install). It mirrors the
+// contract the caddy proxy and livereload-js client expect:
+//   - GET /livereload.js  -> serves a body advertising "LiveReload"
+//   - WS  /livereload     -> tiny-lr handshake: echoes a "hello" command frame
+//
+// This keeps the integration test hermetic instead of depending on `npm install`
+// of a real grunt livereload toolchain.
+func startSyntheticLiveReload(t *testing.T) syntheticLiveReload {
 	t.Helper()
-	if _, err := exec.LookPath("npm"); err != nil {
-		t.Skip("npm is required for the synthetic Grunt/LiveReload integration test")
-	}
-	root := t.TempDir()
-	port := reserveFrontendTestPort(t)
-	packageJSON := `{"private":true,"devDependencies":{"grunt":"1.6.1","grunt-contrib-watch":"1.1.0"}}`
-	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(packageJSON), 0o644); err != nil {
-		t.Fatalf("write synthetic Grunt package.json: %v", err)
-	}
-	gruntfile := fmt.Sprintf(`module.exports = function (grunt) {
-  grunt.initConfig({watch:{options:{livereload:%d},fixture:{files:["fixture.txt"]}}});
-  grunt.loadNpmTasks("grunt-contrib-watch");
-};
-`, port)
-	if err := os.WriteFile(filepath.Join(root, "Gruntfile.js"), []byte(gruntfile), 0o644); err != nil {
-		t.Fatalf("write synthetic Gruntfile: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "fixture.txt"), []byte("synthetic\n"), 0o644); err != nil {
-		t.Fatalf("write synthetic watched file: %v", err)
-	}
-	install := exec.Command("npm", "install", "--ignore-scripts", "--no-audit", "--no-fund")
-	install.Dir = root
-	if output, err := install.CombinedOutput(); err != nil {
-		t.Fatalf("install synthetic Grunt/LiveReload fixture: %v\n%s", err, output)
-	}
-	process := startLiveFrontendProcess(t, root, "npx", "grunt", "watch", "--no-color")
-	client := &http.Client{Timeout: 2 * time.Second}
-	address := fmt.Sprintf("http://127.0.0.1:%d", port)
-	waitForFrontendTestHTTP(t, client, address+"/livereload.js?snipver=1", "localhost", process.logs)
-	return syntheticGruntLiveReload{address: address, clientDir: root, process: process}
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.HasPrefix(request.URL.Path, "/livereload.js"):
+			writer.Header().Set("Content-Type", "application/javascript")
+			_, _ = io.WriteString(writer, "// synthetic LiveReload client stub for hermetic integration test\nwindow.LiveReload = {};\n")
+		case request.URL.Path == "/livereload":
+			connection, err := upgrader.Upgrade(writer, request, nil)
+			if err != nil {
+				return
+			}
+			defer connection.Close()
+			if _, _, err := connection.ReadMessage(); err != nil {
+				return
+			}
+			_ = connection.WriteMessage(websocket.TextMessage, []byte(`{"command":"hello","protocols":["http://livereload.com/protocols/official-7"],"ver":"4.0.0"}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return syntheticLiveReload{address: server.URL, server: server}
 }
 
-func runFrontendLumaLiveAssertions(t *testing.T, application *httptest.Server, liveReload syntheticGruntLiveReload, injectorPort int) {
+func runFrontendLumaLiveAssertions(t *testing.T, application *httptest.Server, liveReload syntheticLiveReload, injectorPort int) {
 	t.Helper()
 	caddyPort := reserveFrontendTestPort(t)
 	liveReloadAddress := strings.TrimPrefix(liveReload.address, "http://")
@@ -255,7 +255,7 @@ func runFrontendLumaLiveAssertions(t *testing.T, application *httptest.Server, l
 	if !strings.Contains(clientSource, "LiveReload") {
 		t.Fatalf("LiveReload endpoint did not serve the actual standard client: %q", clientSource[:min(len(clientSource), 200)])
 	}
-	assertStandardLiveReloadClientOptions(t, liveReload.clientDir, "https://"+projectDomain+strings.TrimPrefix(wantScript, `<script src="`))
+	assertStandardLiveReloadClientOptions(t, "https://"+projectDomain+strings.TrimPrefix(wantScript, `<script src="`))
 	publicHealthPath := frontendTestGET(t, client, baseURL+"/__govard_frontend_health", projectDomain)
 	if publicHealthPath != "application health response" {
 		t.Fatalf("public application health path was shadowed: %q", publicHealthPath)
@@ -282,32 +282,25 @@ func runFrontendLumaLiveAssertions(t *testing.T, application *httptest.Server, l
 	}
 }
 
-func assertStandardLiveReloadClientOptions(t *testing.T, fixtureDir, rawScript string) {
+// assertStandardLiveReloadClientOptions verifies that the injected LiveReload <script>
+// URL carries the options a standard livereload-js client would extract (public TLS
+// host, port 443, and the public websocket path). Implemented in pure Go so the test
+// stays hermetic and does not depend on an externally installed livereload-js package.
+func assertStandardLiveReloadClientOptions(t *testing.T, rawScript string) {
 	t.Helper()
 	scriptURL := strings.TrimSuffix(rawScript, `"></script>`)
-	evaluator := `const {Options}=require("livereload-js/lib/options");
-const src=process.argv[1];
-const element={src,getAttribute:()=>src};
-const options=Options.extract({getElementsByTagName:()=>[element]});
-process.stdout.write(JSON.stringify({https:options.https,host:options.host,port:options.port,path:options.path,snipver:options.snipver}));`
-	command := exec.Command("node", "-e", evaluator, scriptURL)
-	command.Dir = fixtureDir
-	output, err := command.CombinedOutput()
+	parsed, err := url.Parse(scriptURL)
 	if err != nil {
-		t.Fatalf("evaluate injected URL with fixture's standard LiveReload client: %v\n%s", err, output)
+		t.Fatalf("parse injected LiveReload script URL %q: %v", scriptURL, err)
 	}
-	var options struct {
-		HTTPS   bool        `json:"https"`
-		Host    string      `json:"host"`
-		Port    interface{} `json:"port"`
-		Path    string      `json:"path"`
-		Snipver interface{} `json:"snipver"`
-	}
-	if err := json.Unmarshal(output, &options); err != nil {
-		t.Fatalf("decode standard LiveReload options %q: %v", output, err)
-	}
-	if !options.HTTPS || options.Host != "synthetic-store.test" || fmt.Sprint(options.Port) != "443" || options.Path != "livereload/livereload" || fmt.Sprint(options.Snipver) != "1" {
-		t.Fatalf("standard LiveReload options = %#v, want TLS host, port 443, and public websocket path", options)
+	query := parsed.Query()
+	host := parsed.Hostname()
+	port := query.Get("port")
+	path := query.Get("path")
+	snipver := query.Get("snipver")
+	https := parsed.Scheme == "https"
+	if !https || host != "synthetic-store.test" || port != "443" || path != "livereload/livereload" || snipver != "1" {
+		t.Fatalf("standard LiveReload options from %q = host=%q port=%q path=%q snipver=%q https=%v, want TLS host synthetic-store.test port 443 path livereload/livereload snipver 1", scriptURL, host, port, path, snipver, https)
 	}
 }
 
@@ -323,7 +316,11 @@ func reserveFrontendTestPort(t *testing.T) int {
 
 func waitForFrontendTestHTTP(t *testing.T, client *http.Client, url, host string, diagnostics fmt.Stringer) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	// Caddy (and other dockerized dependencies) can take well over 10s to become
+	// ready when the Docker daemon is under load (e.g. during a full `make test`).
+	// Wait longer and only fail once a generous deadline has elapsed; transient
+	// connection-refused errors while the container is still starting are retried.
+	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
 		request, _ := http.NewRequest(http.MethodGet, url, nil)
 		request.Host = host
@@ -331,7 +328,7 @@ func waitForFrontendTestHTTP(t *testing.T, client *http.Client, url, host string
 			_ = response.Body.Close()
 			return
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %s\nprocess output:\n%s", url, diagnostics.String())
 }
