@@ -36,6 +36,25 @@ func failingLintReportWithFindings(projectID string) audit.LintReport {
 	return report
 }
 
+func TestAuditRunTextSurfacesToolingLimitationBucket(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	report := failingLintReportWithFindings("audit-shop")
+	php := report.PHPResults[0]
+	php.LimitedFindings = 10
+	report.PHPResults[0] = php
+	backend := &textLintBackend{report: report}
+	installAuditCommandDependencies(t, backend)
+
+	output, err := executeAuditCommand(t, project, []string{"audit", "run"})
+	if err == nil {
+		t.Fatalf("a failed lint must fail the process; output=%s", output)
+	}
+	rendered := string(output)
+	if !strings.Contains(rendered, "10 tooling-limitation findings excluded") {
+		t.Fatalf("failed-run text output hides the tooling-limitation bucket:\n%s", rendered)
+	}
+}
+
 func TestAuditRunDefaultTextShowsReadableSummary(t *testing.T) {
 	project := auditCommandProject(t, "magento2")
 	backend := &textLintBackend{report: passingLintReport("audit-shop")}

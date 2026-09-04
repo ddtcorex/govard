@@ -735,9 +735,12 @@ write_phpstan_config() {
         # it for PHP uploads instead.
         # bootstrap/cache and storage are Laravel generated trees (also safe to
         # ignore for any framework).
+        # dev/tests holds framework test fixtures that crash PHPStan with
+        # severe internal errors on full-project analysis; excluding it keeps
+        # the per-file findings instead of an "incomplete result".
         # Use `/**/*` so nested trees like `var/deployer/releases/1/var/www/html` are always excluded,
         # not just the top-level `var/*` glob.
-        for excluded in vendor generated var pub/static pub/media bootstrap/cache storage; do
+        for excluded in vendor generated var pub/static pub/media bootstrap/cache storage dev/tests; do
             printf '\t\t\t- %s\n' "$ANALYZE_DIR/$excluded/**/*"
         done
         if [ "$TARGET_MODE" = "standalone" ] && [ -d "$ANALYZE_DIR/vendor" ]; then

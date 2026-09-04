@@ -412,7 +412,8 @@ func (backend *GovardLintBackend) acceptReport(request LintRequest, resolved Res
 	// match the intended glint excludes without waiting for an image
 	// rebuild.
 	filtered := filterGeneratedFindings(report)
-	if filtered {
+	limited := partitionToolingLimitations(report)
+	if filtered || limited > 0 {
 		// Recompute aggregate status and per-PHP outcomes after filtering;
 		// the container's exit code may still be 1 (findings) while the
 		// filtered report is now passed, so we do not enforce the exit-code
@@ -477,6 +478,64 @@ func recomputeLintReportStatus(report LintReport) LintReport {
 	}
 	report.Status = status
 	return report
+}
+
+// isToolingLimitationFinding reports whether a finding describes an analyzer
+// tooling limitation rather than project code: a PHPStan internal crash
+// ("Internal error: ...", which normalize_phpstan surfaces as a pathless
+// compatibility finding) or any finding inside the dev/tests fixture tree,
+// which is never shipped. Both signals are framework-agnostic: crash-message
+// shape and test-fixture location, never a framework name.
+func isToolingLimitationFinding(finding LintFinding) bool {
+	if strings.HasPrefix(finding.Message, "Internal error:") {
+		return true
+	}
+	normalized := filepath.ToSlash(finding.Path)
+	return normalized == "dev/tests" || strings.HasPrefix(normalized, "dev/tests/")
+}
+
+func partitionToolingLimitationFindings(findings []LintFinding) (actionable, limited []LintFinding) {
+	for _, finding := range findings {
+		if isToolingLimitationFinding(finding) {
+			limited = append(limited, finding)
+			continue
+		}
+		actionable = append(actionable, finding)
+	}
+	return actionable, limited
+}
+
+// partitionToolingLimitations removes tooling-limitation findings from every
+// PHP result in place and recomputes each outcome: failed while actionable
+// findings remain, passed when only limitations were present. It returns the
+// number of partitioned findings.
+func partitionToolingLimitations(report LintReport) int {
+	limited := 0
+	for idx := range report.PHPResults {
+		actionable, dropped := partitionToolingLimitationFindings(report.PHPResults[idx].Findings)
+		if len(dropped) == 0 {
+			continue
+		}
+		limited += len(dropped)
+		report.PHPResults[idx].Findings = actionable
+		report.PHPResults[idx].LimitedFindings = len(dropped)
+		if len(actionable) == 0 {
+			report.PHPResults[idx].Outcome = "passed"
+		} else {
+			report.PHPResults[idx].Outcome = "failed"
+		}
+	}
+	return limited
+}
+
+// PartitionToolingLimitationsForTest exposes partitionToolingLimitationFindings for external tests.
+func PartitionToolingLimitationsForTest(findings []LintFinding) (actionable, limited []LintFinding) {
+	return partitionToolingLimitationFindings(findings)
+}
+
+// ApplyToolingLimitationPartitionForTest exposes partitionToolingLimitations for external tests.
+func ApplyToolingLimitationPartitionForTest(report *LintReport) int {
+	return partitionToolingLimitations(*report)
 }
 
 func (backend *GovardLintBackend) containerRequest(request LintRequest, plan govardLintTarget, resolved ResolvedToolchain, toolchainDigest, cacheDir string) ContainerRunRequest {

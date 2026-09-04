@@ -893,6 +893,27 @@ case_phpstan_excludes_var_deployer() {
     fi
 }
 
+case_phpstan_excludes_test_fixtures() {
+    new_case phpstan_excludes_test_fixtures
+    CASE_TARGET_MODE="project"
+    # Framework test fixtures (dev/tests) crash PHPStan with severe internal
+    # errors on full-project analysis, discarding every per-file finding.
+    mkdir -p "$CASE_DIR/source/dev/tests/integration/_files"
+    printf '<?php class Fixture_Broken {}\n' >"$CASE_DIR/source/dev/tests/integration/_files/broken.php"
+    # Verify write_phpstan_config emits a recursive exclude for dev/tests.
+    invoke_runner --php 8.3
+    assert_equals "exclude fixtures exit status" "0" "$RUN_STATUS"
+    local config_file
+    config_file=$(find "$CASE_DIR/workspace" -name "phpstan.neon" 2>/dev/null | head -1)
+    if [ -z "$config_file" ]; then
+        fail "phpstan config not found"
+    else
+        assert_contains "phpstan config excludes dev/tests recursively" "$(cat "$config_file")" "dev/tests/**/*"
+        # The fixture file should not contribute to findings (it is excluded) - report should be clean.
+        assert_equals "fixture file not analyzed" "passed" "$(json_php_field "$REPORT" outcome)"
+    fi
+}
+
 CASES="
 case_help_documents_contract
 case_rejects_unknown_flag
@@ -921,6 +942,7 @@ case_media_guard_reports_php_in_media
 case_media_guard_passes_clean_media
 case_phpstan_stale_cache_is_healed
 case_phpstan_excludes_var_deployer
+case_phpstan_excludes_test_fixtures
 "
 
 run_case() {

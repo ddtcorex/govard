@@ -188,6 +188,9 @@ func (r auditTextRenderer) phpResult(php auditLintPHPView) {
 	}
 	parts = append(parts, cacheText, fmt.Sprintf("%d findings", len(php.Findings)))
 	r.printf("      %s", strings.Join(parts, " | "))
+	if php.LimitedFindings > 0 {
+		r.printf("      ... and %d tooling-limitation findings excluded (analyzer crashes and test fixtures, not project code)", php.LimitedFindings)
+	}
 	limit := auditMaxDisplayedFindings
 	if r.color {
 		// On an interactive terminal the operator is actively fixing code;
@@ -396,12 +399,13 @@ func (r auditTextRenderer) removedSessions(payload map[string]any) {
 const auditMaxDisplayedFindings = 10
 
 type auditLintPHPView struct {
-	Version     string
-	Outcome     string
-	DurationMS  int64
-	CacheState  string
-	CacheReason string
-	Findings    []auditLintFindingView
+	Version         string
+	Outcome         string
+	DurationMS      int64
+	CacheState      string
+	CacheReason     string
+	Findings        []auditLintFindingView
+	LimitedFindings int
 }
 
 type auditLintFindingView struct {
@@ -460,12 +464,13 @@ func auditLintPHPViews(evidence map[string]any) []auditLintPHPView {
 				})
 			}
 			views = append(views, auditLintPHPView{
-				Version:     result.PHPVersion,
-				Outcome:     result.Outcome,
-				DurationMS:  result.DurationMS,
-				CacheState:  result.Cache.State,
-				CacheReason: result.Cache.Reason,
-				Findings:    findings,
+				Version:         result.PHPVersion,
+				Outcome:         result.Outcome,
+				DurationMS:      result.DurationMS,
+				CacheState:      result.Cache.State,
+				CacheReason:     result.Cache.Reason,
+				Findings:        findings,
+				LimitedFindings: result.LimitedFindings,
 			})
 		}
 		return views
@@ -481,9 +486,10 @@ func auditLintPHPViews(evidence map[string]any) []auditLintPHPView {
 			continue
 		}
 		view := auditLintPHPView{
-			Version:    auditMapString(item, "php_version"),
-			Outcome:    auditMapString(item, "outcome"),
-			DurationMS: auditMapInt64(item, "duration_ms"),
+			Version:         auditMapString(item, "php_version"),
+			Outcome:         auditMapString(item, "outcome"),
+			DurationMS:      auditMapInt64(item, "duration_ms"),
+			LimitedFindings: int(auditMapInt64(item, "limited_findings")),
 		}
 		if cache, ok := item["cache"].(map[string]any); ok {
 			view.CacheState = auditMapString(cache, "state")
