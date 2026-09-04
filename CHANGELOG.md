@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.70.2] - 2026-09-04
+
+### 🐛 Bug Fixes
+
+- **`doctor --fix --dry-run` no longer deadlocks:** `confirmAction` now returns a non-interactive decline under `--dry-run` before reaching `pterm.DefaultInteractiveConfirm.Show`, which previously parked forever on `/dev/tty` (`fatal error: all goroutines are asleep - deadlock!`) when no TTY was present — piping stdin could never answer it. `pullRuntimeImages` gains the same missing dry-run short-circuit. Both prompts now print a `[dry-run] ...` message and exit cleanly instead of blocking. (#222, closes #219)
+- **Config drift: `cache_version` and `services.search` now reconciled:** `CollectConfigDrift` / `SyncConfigDriftForTest` now detect and sync `stack.cache_version` drift and rename `stack.services.search` to the profile's search backend (e.g. `elasticsearch → opensearch`), matching the existing `search_version` handling — closes the secondary gap from #219 where a successful drift fix still left the profile partly un-converged. (#222)
+
 ## [1.70.1] - 2026-09-02
 
 ### 🐛 Bug Fixes
