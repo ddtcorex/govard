@@ -1151,3 +1151,43 @@ func writeLintReportFileForTest(t *testing.T, runDir string, report audit.LintRe
 		t.Fatal(err)
 	}
 }
+
+func TestPartitionToolingLimitationFindings(t *testing.T) {
+	report := audit.LintReport{PHPResults: []audit.LintPHPResult{{
+		PHPVersion: "8.4",
+		Findings: []audit.LintFinding{
+			{Tool: "M2-LINT-COMPAT", Path: "dev/tests/integration/testsuite/Magento/Framework/Jwt/JwtManagerTest.php", Message: "Function openssl_free_key() is deprecated since PHP 8.0"},
+			{Tool: "M2-LINT-COMPAT", Message: "Internal error: Magento\\TestModuleExtensionAttributes\\Api\\Data\\FakeRegionInterface does not exist and has no extension interface while analysing file /source/dev/tests/integration/_files/Magento/TestModuleExtensionAttributes/Model/Data/FakeRegion.php"},
+			{Tool: "M2-LINT-PHPCS", Rule: "Generic.Files.LineLength.TooLong", Path: "app/code/Acme/Elist/Controller/Submit/Create.php", Message: "Line exceeds 120 characters"},
+		},
+	}}}
+	actionable, limited := audit.PartitionToolingLimitationsForTest(report.PHPResults[0].Findings)
+	if len(actionable) != 1 || len(limited) != 2 {
+		t.Fatalf("got %d actionable, %d limited; want 1, 2", len(actionable), len(limited))
+	}
+}
+
+func TestPartitionedLimitationsRecomputeOutcome(t *testing.T) {
+	// Partitioning tooling limitations out of a PHP result must leave the
+	// actionable findings in place and recompute the outcome: failed while
+	// actionable findings remain, passed when only limitations were present.
+	report := audit.LintReport{Status: "failed", PHPResults: []audit.LintPHPResult{{
+		PHPVersion: "8.4",
+		Outcome:    "failed",
+		Findings: []audit.LintFinding{
+			{Tool: "M2-LINT-COMPAT", Message: "Internal error: FakeRegionInterface does not exist and has no extension interface while analysing file /source/dev/tests/integration/_files/FakeRegion.php"},
+			{Tool: "M2-LINT-PHPSTAN", Rule: "method.notFound", Path: "app/code/Acme/Contact/ViewModel/ContactViewModel.php", Line: 56, Message: "Call to an undefined method Magento\\Framework\\View\\Element\\BlockInterface::setData()."},
+		},
+	}}}
+	limited := audit.ApplyToolingLimitationPartitionForTest(&report)
+	if limited != 1 {
+		t.Fatalf("partitioned %d limited findings; want 1", limited)
+	}
+	kept := report.PHPResults[0].Findings
+	if len(kept) != 1 || kept[0].Rule != "method.notFound" {
+		t.Fatalf("kept findings = %+v; want only the actionable method.notFound", kept)
+	}
+	if report.PHPResults[0].Outcome != "failed" {
+		t.Fatalf("outcome = %q; want failed while actionable findings remain", report.PHPResults[0].Outcome)
+	}
+}

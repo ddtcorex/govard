@@ -87,6 +87,10 @@ type LintPHPResult struct {
 	Cache      CacheOutcome  `json:"cache"`
 	Phases     []LintPhase   `json:"phases"`
 	Findings   []LintFinding `json:"findings"`
+	// LimitedFindings counts findings partitioned out as analyzer tooling
+	// limitations (crashes, test fixtures) rather than project code. The
+	// container never writes it; the host sets it in acceptReport.
+	LimitedFindings int `json:"limited_findings,omitempty"`
 }
 
 type LintReport struct {
