@@ -459,6 +459,12 @@ func pullRuntimeImages(check engine.DoctorCheck) DoctorFixResult {
 		Actions: []string{},
 	}
 
+	if doctorDryRun {
+		result.Message = "[dry-run] would pull missing runtime images"
+		result.Actions = append(result.Actions, "dry-run: no images pulled")
+		return result
+	}
+
 	if !confirmAction("Do you want to pull missing Docker images now? This may take several minutes.") {
 		result.Status = DoctorFixStatusSkipped
 		result.Message = "Skipped by user."
@@ -791,6 +797,14 @@ func ApplyDoctorSafeFixesForTest(report engine.DoctorReport, skippedCheckIDs map
 }
 
 func confirmAction(message string) bool {
+	// --dry-run must never block on an interactive prompt. In non-TTY contexts
+	// (CI, automation, redirected stdout) pterm's interactive confirm waits on
+	// stdin and deadlocks the runtime (issue #219). Dry-run implies a
+	// non-interactive decline: the caller reports the would-be action instead.
+	if doctorDryRun {
+		pterm.Info.Printf("[dry-run] non-interactive: skipping confirmation: %s\n", message)
+		return false
+	}
 	if os.Getenv("GOVARD_ASSUME_YES") == "true" {
 		return true
 	}

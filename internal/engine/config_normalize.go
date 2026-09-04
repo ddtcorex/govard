@@ -365,6 +365,18 @@ func CollectConfigDrift(cfg Config, meta ProjectMetadata) []string {
 			warnings = append(warnings, fmt.Sprintf("stack.search_version %s→%s", strings.TrimSpace(cfg.Stack.SearchVersion), p.SearchVersion))
 		}
 	}
+	// cache_version drift (only when a cache service is active).
+	if p.CacheVersion != "" && strings.TrimSpace(cfg.Stack.CacheVersion) != p.CacheVersion {
+		if strings.ToLower(strings.TrimSpace(cfg.Stack.Services.Cache)) != "none" && cfg.Stack.Services.Cache != "" {
+			warnings = append(warnings, fmt.Sprintf("stack.cache_version %s→%s", strings.TrimSpace(cfg.Stack.CacheVersion), p.CacheVersion))
+		}
+	}
+	// services.search (the search backend service name) drift.
+	if p.Search != "" && strings.TrimSpace(cfg.Stack.Services.Search) != strings.TrimSpace(p.Search) {
+		if strings.ToLower(strings.TrimSpace(cfg.Stack.Services.Search)) != "none" && cfg.Stack.Services.Search != "" {
+			warnings = append(warnings, fmt.Sprintf("stack.services.search %s→%s", strings.TrimSpace(cfg.Stack.Services.Search), p.Search))
+		}
+	}
 	// Node 14 EOL hygiene: warn when config still pins EOL Node 14 (recommend 18+).
 	// Also surface profile-driven EOL warning if profile itself is EOL (e.g. future defaults).
 	// Both checks are unconditional and deduped by value equality.
@@ -456,6 +468,20 @@ func SyncConfigDriftForTest(dir string, dryRun bool, commit bool) ([]string, err
 			updated.Stack.SearchVersion = p.SearchVersion
 		}
 	}
+	// cache_version (only if cache service is active)
+	if p.CacheVersion != "" && strings.ToLower(strings.TrimSpace(updated.Stack.Services.Cache)) != "none" && updated.Stack.Services.Cache != "" {
+		if strings.TrimSpace(updated.Stack.CacheVersion) != p.CacheVersion {
+			changes = append(changes, fmt.Sprintf("stack.cache_version %s→%s", strings.TrimSpace(updated.Stack.CacheVersion), p.CacheVersion))
+			updated.Stack.CacheVersion = p.CacheVersion
+		}
+	}
+	// services.search: sync the search backend service name (e.g. elasticsearch -> opensearch)
+	if p.Search != "" && strings.ToLower(strings.TrimSpace(updated.Stack.Services.Search)) != "none" && updated.Stack.Services.Search != "" {
+		if strings.TrimSpace(updated.Stack.Services.Search) != strings.TrimSpace(p.Search) {
+			changes = append(changes, fmt.Sprintf("stack.services.search %s→%s", strings.TrimSpace(updated.Stack.Services.Search), p.Search))
+			updated.Stack.Services.Search = p.Search
+		}
+	}
 
 	if len(changes) == 0 {
 		return nil, nil
@@ -482,6 +508,12 @@ func SyncConfigDriftForTest(dir string, dryRun bool, commit bool) ([]string, err
 	}
 	if updated.Stack.SearchVersion != "" {
 		writable.Stack.SearchVersion = updated.Stack.SearchVersion
+	}
+	if updated.Stack.CacheVersion != "" {
+		writable.Stack.CacheVersion = updated.Stack.CacheVersion
+	}
+	if updated.Stack.Services.Search != "" {
+		writable.Stack.Services.Search = updated.Stack.Services.Search
 	}
 	data, err := yaml.Marshal(&writable)
 	if err != nil {

@@ -145,3 +145,72 @@ func TestPrepareConfigForWritePreservesDriftSync(t *testing.T) {
 		t.Fatalf("expected framework_version preserved, got %v", out["framework_version"])
 	}
 }
+
+// TestConfigDriftDetectsCacheVersionAndSearchService covers issue #219 secondary
+// gap: CollectConfigDrift previously ignored stack.cache_version and never renamed
+// stack.services.search to the profile's search backend.
+func TestConfigDriftDetectsCacheVersionAndSearchService(t *testing.T) {
+	tmp := t.TempDir()
+	oldYml := `project_name: drift-test
+framework: magento2
+framework_version: 2.4.6-p3
+domain: drift-test.test
+stack:
+  php_version: "8.2"
+  db_version: "10.6"
+  node_version: "14"
+  search_version: "7.10"
+  cache_version: "1.0"
+  services:
+    db: mariadb
+    search: elasticsearch
+    cache: redis
+`
+	if err := os.WriteFile(filepath.Join(tmp, ".govard.yml"), []byte(oldYml), 0o644); err != nil {
+		t.Fatalf("write yml: %v", err)
+	}
+	composerJSON := `{"require":{"magento/product-community-edition":"2.4.8-p4"}}`
+	if err := os.WriteFile(filepath.Join(tmp, "composer.json"), []byte(composerJSON), 0o644); err != nil {
+		t.Fatalf("write composer: %v", err)
+	}
+
+	warnings := engine.CollectConfigDriftWarningsForTest(tmp)
+	foundCacheVersion := false
+	foundSearchService := false
+	for _, w := range warnings {
+		if strings.Contains(w, "cache_version") {
+			foundCacheVersion = true
+		}
+		if strings.Contains(w, "services.search") {
+			foundSearchService = true
+		}
+	}
+	if !foundCacheVersion {
+		t.Fatalf("expected cache_version drift warning, got %v", warnings)
+	}
+	if !foundSearchService {
+		t.Fatalf("expected services.search drift warning, got %v", warnings)
+	}
+
+	// Sync (dry-run) must report both renames.
+	changes, err := engine.SyncConfigDriftForTest(tmp, true, false)
+	if err != nil {
+		t.Fatalf("sync drift: %v", err)
+	}
+	foundCacheSync := false
+	foundSearchSync := false
+	for _, c := range changes {
+		if strings.Contains(c, "cache_version") {
+			foundCacheSync = true
+		}
+		if strings.Contains(c, "services.search") {
+			foundSearchSync = true
+		}
+	}
+	if !foundCacheSync {
+		t.Fatalf("expected cache_version sync change, got %v", changes)
+	}
+	if !foundSearchSync {
+		t.Fatalf("expected services.search sync change, got %v", changes)
+	}
+}
