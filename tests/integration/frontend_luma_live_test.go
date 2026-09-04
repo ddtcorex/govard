@@ -11,10 +11,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -284,23 +284,43 @@ func runFrontendLumaLiveAssertions(t *testing.T, application *httptest.Server, l
 
 // assertStandardLiveReloadClientOptions verifies that the injected LiveReload <script>
 // URL carries the options a standard livereload-js client would extract (public TLS
-// host, port 443, and the public websocket path). Implemented in pure Go so the test
-// stays hermetic and does not depend on an externally installed livereload-js package.
+// host, port 443, and the public websocket path). It evaluates the URL against the
+// actual livereload-js parsing logic (vendored verbatim in
+// testdata/livereload-js/options.js, MIT-licensed) via Node, so the assertion
+// exercises the real client contract instead of a hand-rolled re-implementation of
+// it. The vendored fixture keeps the test hermetic — no network access or
+// `npm install` needed at test time (`node` itself is already required by this test
+// for the injector script).
 func assertStandardLiveReloadClientOptions(t *testing.T, rawScript string) {
 	t.Helper()
 	scriptURL := strings.TrimSuffix(rawScript, `"></script>`)
-	parsed, err := url.Parse(scriptURL)
-	if err != nil {
-		t.Fatalf("parse injected LiveReload script URL %q: %v", scriptURL, err)
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve path of testdata/livereload-js/options.js: runtime.Caller failed")
 	}
-	query := parsed.Query()
-	host := parsed.Hostname()
-	port := query.Get("port")
-	path := query.Get("path")
-	snipver := query.Get("snipver")
-	https := parsed.Scheme == "https"
-	if !https || host != "synthetic-store.test" || port != "443" || path != "livereload/livereload" || snipver != "1" {
-		t.Fatalf("standard LiveReload options from %q = host=%q port=%q path=%q snipver=%q https=%v, want TLS host synthetic-store.test port 443 path livereload/livereload snipver 1", scriptURL, host, port, path, snipver, https)
+	optionsPath := filepath.Join(filepath.Dir(thisFile), "testdata", "livereload-js", "options.js")
+	evaluator := `const {Options}=require(process.argv[1]);
+const src=process.argv[2];
+const element={src,getAttribute:()=>src};
+const options=Options.extract({getElementsByTagName:()=>[element]});
+process.stdout.write(JSON.stringify({https:options.https,host:options.host,port:options.port,path:options.path,snipver:options.snipver}));`
+	command := exec.Command("node", "-e", evaluator, optionsPath, scriptURL)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("evaluate injected URL with the vendored livereload-js client: %v\n%s", err, output)
+	}
+	var options struct {
+		HTTPS   bool        `json:"https"`
+		Host    string      `json:"host"`
+		Port    interface{} `json:"port"`
+		Path    string      `json:"path"`
+		Snipver interface{} `json:"snipver"`
+	}
+	if err := json.Unmarshal(output, &options); err != nil {
+		t.Fatalf("decode standard LiveReload options %q: %v", output, err)
+	}
+	if !options.HTTPS || options.Host != "synthetic-store.test" || fmt.Sprint(options.Port) != "443" || options.Path != "livereload/livereload" || fmt.Sprint(options.Snipver) != "1" {
+		t.Fatalf("standard LiveReload options = %#v, want TLS host, port 443, and public websocket path", options)
 	}
 }
 
