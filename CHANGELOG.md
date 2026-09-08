@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.71.2] - 2026-09-08
+
+### 🔧 Release Pipeline
+
+- **npm wrapper manifest:** adds the static `repository` pointer the Sigstore provenance check requires — v1.71.1 attested fine but the registry rejected the publish without it. No user-facing changes. (#244)
+
 ## [1.71.1] - 2026-09-08
 
 ### 🔧 Release Pipeline
