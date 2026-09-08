@@ -241,3 +241,72 @@ jobs:
         run: |
           npm install -g "@ddtcorex/govard@${GITHUB_REF_NAME#v}"
           test "$(govard version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)" = "${GITHUB_REF_NAME#v}"
+
+  # Renders bucket/govard.json from the tag's checksums and pushes it
+  # to ddtcorex/scoop-bucket (owned bucket: no community review gate,
+  # fully automated). Stable tags only.
+  scoop-bucket:
+    name: Scoop bucket (ddtcorex/scoop-bucket)
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout bucket
+        uses: actions/checkout@v6
+        with:
+          repository: ddtcorex/scoop-bucket
+          token: ${{ secrets.DISTRIBUTION_PAT }}
+          path: bucket
+
+      - name: Render manifest from release checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          gh release download "${GITHUB_REF_NAME}" -p checksums.txt -O checksums.txt
+          AMD64_URL="https://github.com/ddtcorex/govard/releases/download/${GITHUB_REF_NAME}/govard_${VER}_Windows_amd64.zip"
+          ARM64_URL="https://github.com/ddtcorex/govard/releases/download/${GITHUB_REF_NAME}/govard_${VER}_Windows_arm64.zip"
+          AMD64_HASH="$(grep -E "[[:space:]]govard_${VER}_Windows_amd64.zip$" checksums.txt | awk '{print $1}')"
+          ARM64_HASH="$(grep -E "[[:space:]]govard_${VER}_Windows_arm64.zip$" checksums.txt | awk '{print $1}')"
+          test -n "$AMD64_HASH" && test -n "$ARM64_HASH"
+          python3 - "$VER" "$AMD64_URL" "$AMD64_HASH" "$ARM64_URL" "$ARM64_HASH" <<'EOF'
+          import json, sys
+          ver, a64url, a64hash, armurl, armhash = sys.argv[1:6]
+          manifest = {
+              "version": ver,
+              "description": "Govard local development orchestrator CLI",
+              "homepage": "https://github.com/ddtcorex/govard",
+              "license": "MIT",
+              "architecture": {
+                  "64bit": {"url": a64url, "hash": a64hash},
+                  "arm64": {"url": armurl, "hash": armhash},
+              },
+              "bin": "govard.exe",
+              "checkver": "github",
+              "autoupdate": {
+                  "architecture": {
+                      "64bit": {"url": "https://github.com/ddtcorex/govard/releases/download/v$version/govard_$version_Windows_amd64.zip"},
+                      "arm64": {"url": "https://github.com/ddtcorex/govard/releases/download/v$version/govard_$version_Windows_arm64.zip"},
+                  }
+              },
+          }
+          with open("bucket/bucket/govard.json", "w") as f:
+              json.dump(manifest, f, indent=4)
+              f.write("\n")
+          EOF
+          cat bucket/bucket/govard.json
+
+      - name: Push manifest
+        run: |
+          cd bucket
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bucket/govard.json
+          if git diff --cached --quiet; then
+            echo "manifest unchanged"
+          else
+            git commit -m "chore: bump govard to ${GITHUB_REF_NAME}"
+            git push origin HEAD:master
+          fi
