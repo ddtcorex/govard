@@ -70,6 +70,10 @@ brews:
   - name: govard
     ids:
       - govard-archive
+    # Rendered only: GITHUB_TOKEN cannot push cross-repo, so the workflow
+    # pushes dist/homebrew/govard.rb to the tap with a dedicated PAT
+    # (release.yml "Publish Homebrew formula").
+    skip_upload: true
     repository:
       owner: ddtcorex
       name: homebrew-tap
