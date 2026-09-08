@@ -43,6 +43,7 @@ const (
 var selfUpdateVersion string
 var selfUpdateAssumeYes bool
 var selfUpdateChannel string
+var selfUpdateForce bool
 
 var selfUpdateCmd = &cobra.Command{
 	Use:   "self-update",
@@ -54,6 +55,18 @@ var selfUpdateCmd = &cobra.Command{
 
 		if runtime.GOOS == "windows" {
 			return errors.New("self-update is not supported on Windows yet; use a fresh release install")
+		}
+
+		if source := updater.InstallSource(); source != updater.InstallSourceUnmanaged && !selfUpdateForce {
+			if hint := updater.UpgradeHint(source); hint != "" {
+				pterm.Warning.Printf("Govard was installed via %s, which owns this installation.\n", source)
+				pterm.Info.Printf("Upgrade with: %s\n", hint)
+				pterm.Info.Println("Or re-run with --force to override (not recommended).")
+				return nil
+			}
+		}
+		if selfUpdateForce {
+			pterm.Warning.Println("Proceeding with --force on a package-manager-owned install; the manager and the binary may disagree about the installed version.")
 		}
 
 		if !shouldProceedWithSelfUpdate(selfUpdateAssumeYes) {
@@ -221,6 +234,7 @@ func init() {
 	selfUpdateCmd.Flags().StringVar(&selfUpdateVersion, "version", "", "Install a specific version (e.g. v1.0.1)")
 	selfUpdateCmd.Flags().BoolVar(&selfUpdateAssumeYes, "yes", false, "Skip confirmation prompt")
 	selfUpdateCmd.Flags().StringVar(&selfUpdateChannel, "channel", "", "Set and use an update channel (stable or beta); persists for future runs")
+	selfUpdateCmd.Flags().BoolVar(&selfUpdateForce, "force", false, "Proceed even when installed via a package manager (not recommended)")
 }
 
 func normalizeReleaseTag(tag string) string {

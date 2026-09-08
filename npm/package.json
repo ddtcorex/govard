@@ -1,0 +1,16 @@
+{
+  "name": "@ddtcorex/govard",
+  "version": "0.0.0-dev",
+  "description": "Govard local development orchestrator CLI (binary installer)",
+  "license": "MIT",
+  "bin": {
+    "govard": "./run.js"
+  },
+  "scripts": {
+    "postinstall": "node ./install.js",
+    "test": "node ./test-install.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

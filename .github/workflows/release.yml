@@ -97,3 +97,32 @@ jobs:
           gh release download "${GITHUB_REF_NAME}" -p checksums.txt -O dist/checksums.txt --clobber
           (cd dist && shasum -a 256 *.tar.gz >> checksums.txt)
           gh release upload "${GITHUB_REF_NAME}" dist/checksums.txt --clobber
+
+  # Publishes the thin installer wrapper (npm/) as @ddtcorex/govard.
+  # Stable tags only: prerelease tags contain "-" (e.g. v1.71.0-beta.1)
+  # and skip this job, matching the repo's beta-channel policy.
+  npm-publish:
+    name: npm wrapper (@ddtcorex/govard)
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Stamp wrapper version from tag
+        run: node -e "const fs=require('fs');const p='npm/package.json';const j=JSON.parse(fs.readFileSync(p));j.version='${GITHUB_REF_NAME}'.replace(/^v/,'');fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+
+      - name: Smoke-test wrapper logic
+        run: node ./npm/test-install.mjs
+
+      - name: Publish
+        run: npm publish ./npm --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_AUTH }}

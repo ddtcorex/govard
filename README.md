@@ -65,6 +65,19 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 
 ## 🛠️ Installation
 
+Pick one channel and stick to it:
+
+| Channel | Command | Notes |
+|---|---|---|
+| npm | `npm i -g @ddtcorex/govard` | Node 20+, CLI only, any OS |
+| Homebrew | `brew install ddtcorex/tap/govard` | macOS + Linuxbrew, CLI only |
+| Docker | `docker run ghcr.io/ddtcorex/govard:1.70.3 version` | No install needed; CI-friendly |
+| CI | `uses: ddtcorex/setup-govard@v1` | GitHub Actions, pinnable version |
+| Script | `curl -fsSL .../install.sh \| bash` | Full installer (see below) |
+| From source | `./install.sh --source -y` | Contributors |
+
+Pin a version for reproducible environments: `npm i -g @ddtcorex/govard@1.70.3`, `brew` pins via `brew extract`, Docker via exact tag, CI via the `version:` input. Installs from npm/brew/Docker report their install source (`govard doctor`) and `govard self-update` defers to the owning package manager instead of overwriting the binary.
+
 ### One-Line Install (Linux/macOS)
 
 Install the latest release binary with a single command:

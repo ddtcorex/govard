@@ -145,6 +145,32 @@ docker build -f docker/php/magento2/Dockerfile \
 
 ---
 
+## 📦 Package Managers & Containers
+
+One command per platform — pick one channel and stick to it:
+
+```bash
+# npm (Node 20+, any OS, CLI only)
+npm i -g @ddtcorex/govard
+# Pin for reproducible environments:
+npm i -g @ddtcorex/govard@1.70.3
+
+# Homebrew (macOS + Linuxbrew, CLI only)
+brew install ddtcorex/tap/govard
+
+# Docker (no install needed — CI-friendly)
+docker run --rm ghcr.io/ddtcorex/govard:1.70.3 version
+```
+
+Installs from npm, Homebrew, or Docker record their install source
+(check with `govard doctor`). `govard self-update` on those installs
+defers to the owning package manager instead of overwriting the binary.
+
+For CI pipelines, use the `ddtcorex/setup-govard` GitHub Action
+(see [CI Integration](/workflows/ci-integration)).
+
+---
+
 ## 🔄 Updating Govard
 
 ```bash

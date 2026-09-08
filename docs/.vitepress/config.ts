@@ -181,6 +181,7 @@ function sidebarEn() {
           { text: 'Audit', link: '/workflows/audit' },
           { text: 'Lock File', link: '/workflows/lock' },
           { text: 'Tunnel', link: '/workflows/tunnel' },
+          { text: 'CI Integration', link: '/workflows/ci-integration' },
         ],
       },
     ],

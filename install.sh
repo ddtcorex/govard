@@ -318,6 +318,25 @@ install_binary_file() {
             error "Cannot chmod $target_path and sudo is not available."
         fi
     fi
+
+    # Record how this binary was installed so govard self-update knows
+    # whether a package manager owns the installation.
+    write_install_source_marker "$(dirname "$target_path")"
+}
+
+# Writes the unmanaged install-source marker next to script-installed
+# binaries (shared by the archive path and the .deb path, which bypasses
+# install_binary_file via apt).
+write_install_source_marker() {
+    local bin_dir="$1"
+    local marker_path="${bin_dir}/.install-source"
+    if [ -w "$bin_dir" ]; then
+        echo "unmanaged" > "$marker_path"
+    else
+        if command -v sudo >/dev/null 2>&1; then
+            echo "unmanaged" | sudo tee "$marker_path" >/dev/null
+        fi
+    fi
 }
 
 warn_if_mixed_install_channels() {
@@ -504,6 +523,7 @@ install_via_deb() {
         info "Installing Govard CLI via APT..."
         if sudo apt-get install -y "$cli_deb_path"; then
             rm -rf "$tmp_dir"
+            write_install_source_marker "/usr/local/bin"
             success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
             return 0
         fi
@@ -522,6 +542,7 @@ install_via_deb() {
         warn "Failed to download ${desktop_deb_name}; installing Govard CLI only."
         if sudo apt-get install -y "$cli_deb_path"; then
             rm -rf "$tmp_dir"
+            write_install_source_marker "/usr/local/bin"
             success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
             return 0
         fi
@@ -534,6 +555,7 @@ install_via_deb() {
     info "Installing Govard CLI and Desktop via APT..."
     if sudo apt-get install -y "$cli_deb_path" "$desktop_deb_path"; then
         rm -rf "$tmp_dir"
+        write_install_source_marker "/usr/local/bin"
         success "Govard $SPECIFIC_VERSION installed via Debian package (CLI + Desktop)!"
         return 0
     fi
@@ -541,6 +563,7 @@ install_via_deb() {
     warn "Govard Desktop Debian package installation failed; installing Govard CLI only."
     if sudo apt-get install -y "$cli_deb_path"; then
         rm -rf "$tmp_dir"
+        write_install_source_marker "/usr/local/bin"
         success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
         return 0
     fi

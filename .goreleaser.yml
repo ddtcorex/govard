@@ -66,6 +66,33 @@ archives:
 checksum:
   name_template: checksums.txt
 
+brews:
+  - name: govard
+    ids:
+      - govard-archive
+    repository:
+      owner: ddtcorex
+      name: homebrew-tap
+    homepage: https://github.com/ddtcorex/govard
+    description: Govard local development orchestrator CLI
+    license: MIT
+    # Records install ownership so `govard self-update` defers to brew.
+    post_install: |
+      (bin/".install-source").write "brew"
+    test: |
+      system "#{bin}/govard", "version"
+
+dockers:
+  - image_templates:
+      - ghcr.io/ddtcorex/govard:{{ .Version }}
+      - ghcr.io/ddtcorex/govard:latest
+    dockerfile: Dockerfile.govard
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64,linux/arm64
+      - --build-arg=GOVARD_VERSION={{ .Version }}
+      - --build-arg=GLINT_DIGEST={{ index .Env "GOVARD_GLINT_DIGEST" }}
+
 nfpms:
   - id: govard-cli
     package_name: govard
