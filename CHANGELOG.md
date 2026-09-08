@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.70.3] - 2026-09-08
+
+### 🐛 Bug Fixes
+
+- **Proxy dnsmasq answers `*.test` locally:** the proxy `dnsmasq` command gains `--local=/test/` so `.test` is never forwarded upstream. Previously `-A` only synthesized A records while AAAA queries looped (container docker DNS → host resolved stub → back into the same dnsmasq) until timeout, stalling every dual-stack `*.test` lookup ~6s (`curl namelookup` 6.1s → 0.001s). `.test` is RFC 2606 reserved so never forwarding it is always safe. (#226, closes #225)
+
 ## [1.70.2] - 2026-09-04
 
 ### 🐛 Bug Fixes
