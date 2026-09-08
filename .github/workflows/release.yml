@@ -170,6 +170,9 @@ jobs:
     needs: release
     if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm --provenance attestation
     steps:
       - uses: actions/checkout@v6
         with:
