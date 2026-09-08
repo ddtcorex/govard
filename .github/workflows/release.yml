@@ -234,7 +234,9 @@ jobs:
       - name: Install via install.sh
         if: matrix.channel == 'install-sh'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only -y
+          # --version pins the exact tag: without it install.sh resolves
+          # releases/latest (stable only), which can never equal a beta tag.
+          curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only -y --version "${GITHUB_REF_NAME}"
           test "$(govard version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)" = "${GITHUB_REF_NAME#v}"
       - name: Install via npm
         if: ${{ matrix.channel == 'npm' && !contains(github.ref_name, '-') }}
