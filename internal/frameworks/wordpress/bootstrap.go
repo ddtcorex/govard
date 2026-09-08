@@ -225,17 +225,7 @@ func (w *WordPressBootstrap) installWordPressSite(projectDir, siteURL string) er
 		httpsValue = "on"
 	}
 
-	code := strings.Join([]string{
-		"$_SERVER['HTTP_HOST'] = " + strconv.Quote(host) + ";",
-		"$_SERVER['SERVER_NAME'] = " + strconv.Quote(host) + ";",
-		"$_SERVER['REQUEST_URI'] = '/';",
-		"$_SERVER['HTTPS'] = " + strconv.Quote(httpsValue) + ";",
-		"require " + strconv.Quote(loadPath) + ";",
-		"require " + strconv.Quote(upgradePath) + ";",
-		"if (!is_blog_installed()) {",
-		"    wp_install(" + strconv.Quote("WordPress Site") + ", " + strconv.Quote(conventions.DefaultAdminUser) + ", " + strconv.Quote(conventions.DefaultAdminEmail) + ", true, '', " + strconv.Quote(conventions.DefaultAdminPassword) + ");",
-		"}",
-	}, "\n")
+	code := buildWordPressInstallCode(host, httpsValue, loadPath, upgradePath)
 
 	if err := bootstrap.RunPHPOneLiner(projectDir, w.Options.Runner, code); err != nil {
 		pterm.Warning.Printf("PHP one-liner install failed (%v), trying wp-cli fallback...\n", err)
@@ -260,6 +250,31 @@ func (w *WordPressBootstrap) installWordPressSite(projectDir, siteURL string) er
 	}
 
 	return nil
+}
+
+func BuildWordPressInstallCodeForTest(host, httpsValue, loadPath, upgradePath string) string {
+	return buildWordPressInstallCode(host, httpsValue, loadPath, upgradePath)
+}
+
+// buildWordPressInstallCode renders the php -r one-liner that installs the
+// site on a fresh database. WP_INSTALLING must be defined before wp-load.php:
+// wp-settings.php unconditionally calls wp_not_installed(), which
+// wp_redirect()s to install.php and dies when the DB is empty and the
+// constant is absent. Without it the one-liner exits 0 having installed
+// nothing while the caller reports success (issue #246).
+func buildWordPressInstallCode(host, httpsValue, loadPath, upgradePath string) string {
+	return strings.Join([]string{
+		"if (!defined('WP_INSTALLING')) { define('WP_INSTALLING', true); }",
+		"$_SERVER['HTTP_HOST'] = " + strconv.Quote(host) + ";",
+		"$_SERVER['SERVER_NAME'] = " + strconv.Quote(host) + ";",
+		"$_SERVER['REQUEST_URI'] = '/';",
+		"$_SERVER['HTTPS'] = " + strconv.Quote(httpsValue) + ";",
+		"require " + strconv.Quote(loadPath) + ";",
+		"require " + strconv.Quote(upgradePath) + ";",
+		"if (!is_blog_installed()) {",
+		"    wp_install(" + strconv.Quote("WordPress Site") + ", " + strconv.Quote(conventions.DefaultAdminUser) + ", " + strconv.Quote(conventions.DefaultAdminEmail) + ", true, '', " + strconv.Quote(conventions.DefaultAdminPassword) + ");",
+		"}",
+	}, "\n")
 }
 
 func (w *WordPressBootstrap) updateWordPressSiteURL(projectDir, siteURL string) error {
