@@ -82,16 +82,11 @@ brews:
     test: |
       system "#{bin}/govard", "version"
 
-dockers:
-  - image_templates:
-      - ghcr.io/ddtcorex/govard:{{ .Version }}
-      - ghcr.io/ddtcorex/govard:latest
-    dockerfile: Dockerfile.govard
-    use: buildx
-    build_flag_templates:
-      - --platform=linux/amd64,linux/arm64
-      - --build-arg=GOVARD_VERSION={{ .Version }}
-      - --build-arg=GLINT_DIGEST={{ index .Env "GOVARD_GLINT_DIGEST" }}
+# NOTE: no dockers publisher here by design. GoReleaser's buildx flow
+# exports multi-arch manifests locally instead of pushing them (proven by
+# two failed beta rehearsals), so the GHCR runtime image is built and
+# pushed by explicit workflow steps below (release.yml "Publish GHCR
+# runtime image"), mirroring the proven audit-glint-image pipeline.
 
 nfpms:
   - id: govard-cli
