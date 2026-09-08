@@ -138,6 +138,20 @@ verify_asset() {
     info "Checksum OK: ${asset_name}"
 }
 
+assert_installed_version() {
+    # assert_installed_version <binary_path>: fails loudly on version mismatch.
+    local bin_path="$1"
+    local got expected="${SPECIFIC_VERSION#v}"
+    if [[ ! -x "$bin_path" ]]; then
+        error "Installed binary not found or not executable: ${bin_path}"
+    fi
+    got="$("$bin_path" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)"
+    if [[ "$got" != "$expected" ]]; then
+        error "Installed version '${got}' does not match requested '${expected}'."
+    fi
+    info "Version OK: ${got}"
+}
+
 run_as_user() {
     if [[ -n "${SUDO_USER:-}" && "$USER" == "root" ]]; then
         sudo -u "$SUDO_USER" "$@"
@@ -594,6 +608,7 @@ install_via_deb() {
         if sudo apt-get install -y "$cli_deb_path"; then
             rm -rf "$tmp_dir"
             write_install_source_marker "/usr/local/bin"
+            assert_installed_version "/usr/local/bin/govard"
             success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
             return 0
         fi
@@ -613,6 +628,7 @@ install_via_deb() {
         if sudo apt-get install -y "$cli_deb_path"; then
             rm -rf "$tmp_dir"
             write_install_source_marker "/usr/local/bin"
+            assert_installed_version "/usr/local/bin/govard"
             success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
             return 0
         fi
@@ -627,6 +643,7 @@ install_via_deb() {
     if sudo apt-get install -y "$cli_deb_path" "$desktop_deb_path"; then
         rm -rf "$tmp_dir"
         write_install_source_marker "/usr/local/bin"
+        assert_installed_version "/usr/local/bin/govard"
         success "Govard $SPECIFIC_VERSION installed via Debian package (CLI + Desktop)!"
         return 0
     fi
@@ -635,6 +652,7 @@ install_via_deb() {
     if sudo apt-get install -y "$cli_deb_path"; then
         rm -rf "$tmp_dir"
         write_install_source_marker "/usr/local/bin"
+        assert_installed_version "/usr/local/bin/govard"
         success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
         return 0
     fi
@@ -714,6 +732,7 @@ install_binary() {
     done
 
     rm -rf "$TMP_DIR"
+    assert_installed_version "${INSTALL_DIR%/}/govard"
     if [[ "$CLI_ONLY" == true ]]; then
         success "Govard $SPECIFIC_VERSION installed (CLI only)!"
     else
