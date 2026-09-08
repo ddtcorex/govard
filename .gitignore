@@ -3,6 +3,7 @@
 /govard-desktop
 /bin/
 /dist/
+/completion/
 *.exe
 *.out
 
