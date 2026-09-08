@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.71.0] - 2026-09-08
+
+### ✨ New Features
+
+- **Multi-channel distribution:** govard now ships everywhere users look — npm wrapper `@ddtcorex/govard` (thin installer resolving the matching binary), Homebrew tap `ddtcorex/tap/govard`, multi-arch GHCR image `ghcr.io/ddtcorex/govard`, and the `ddtcorex/setup-govard` GitHub Action for CI. `install.sh --source` gains a guard that reads the Go floor from `go.mod` and refuses PATH-shadowing installs. (#229, closes #228)
+- **Git tag is the single source of truth:** releases bump nothing but the tag (+ this file). Go binaries default to `dev` with version injected at build time, desktop/npm metadata stamps from the tag in release scripts, docs use `<version>` placeholders, and the Go floor is read from `go.mod` — Dependabot keeps action majors moving. (#229)
+- **Release pipeline hardened by beta rehearsals:** eight `-beta.N` rehearsals caught and fixed four real defects before stable — GHCR push auth, an unresolvable `login-action` ref, GoReleaser's local docker export, and cross-repo Homebrew tap push (now via dedicated PAT step). (#235, #236, #237, #238, #240, closes #234, #239)
+
 ## [1.70.3] - 2026-09-08
 
 ### 🐛 Bug Fixes
