@@ -84,6 +84,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_PREVIOUS_TAG: ${{ steps.prev_tag.outputs.tag }}
+          # Feeds the winget publisher (fork PR). A missing secret fails
+          # the release loudly instead of skipping WinGet silently.
+          DISTRIBUTION_PAT: ${{ secrets.DISTRIBUTION_PAT }}
           # Linked into internal/audit.GovardGlintDigest by .goreleaser.yml. An empty value is a valid,
           # degraded state rather than a build failure: ToolchainManager treats
           # it as "no official image pinned" and builds the embedded lint
