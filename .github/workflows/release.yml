@@ -40,12 +40,12 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      # NOTE: docker/login-action is deliberately NOT used here — its v3
+      # ref is currently unresolvable by GitHub's action fetcher (proven by
+      # probe runs: any workflow containing it dies at startup with zero
+      # jobs). CLI login needs no external action fetch on this path.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Install dependencies
         run: |
