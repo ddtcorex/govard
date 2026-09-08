@@ -160,13 +160,6 @@ brew install ddtcorex/tap/govard
 
 # Docker (no install needed — CI-friendly)
 docker run --rm ghcr.io/ddtcorex/govard:<version> version
-
-# Windows (WinGet — auto-updated every release)
-winget install DDTCoreX.Govard
-
-# Windows (Scoop — owned bucket, auto-updated every release)
-scoop bucket add ddtcorex https://github.com/ddtcorex/scoop-bucket
-scoop install govard
 ```
 
 Replace `<version>` with a tag from the [releases page](https://github.com/ddtcorex/govard/releases).
