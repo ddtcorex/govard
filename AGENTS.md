@@ -134,6 +134,11 @@ committed values, each with an owner:
 - Dockerfile base-image defaults (`ARG GO_IMAGE`, stack `FROM`s) —
   deliberate pins for reproducible builds; bump by hand when needed.
 - GitHub Action major pins — watched by Dependabot; merge its PRs.
+  A ref that is valid via API can still break GitHub's startup fetch
+  (zero-job runs; seen with docker/* and goreleaser/* refs). Any NEW
+  third-party ref in a tag-only workflow (release.yml) must first run
+  green in a throwaway branch probe workflow before merging — PR CI
+  never executes tag-only files, so green checks prove nothing there.
 - Release-time stamp scripts (`build-macos-pkg.sh`, npm-publish job) —
   they read the tag, they are not bumped.
 
