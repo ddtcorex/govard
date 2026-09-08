@@ -129,7 +129,7 @@ jobs:
           path: bin/
 
   verify:
-    name: verify / verify
+    name: Verify
     runs-on: ubuntu-latest
     needs: [quality_checks, fast_tests, integration_tests, build_binaries]
     if: always()
