@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.71.1] - 2026-09-08
+
+### 🔧 Release Pipeline
+
+- **npm publish attestation:** the `npm-publish` job gains the `id-token: write` permission its `--provenance` attestation requires — v1.71.0 shipped every channel except the npm wrapper, which this release completes. No user-facing changes. (#242)
+
 ## [1.71.0] - 2026-09-08
 
 ### ✨ New Features
