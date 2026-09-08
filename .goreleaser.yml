@@ -48,6 +48,13 @@ archives:
       - govard
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{- title .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - completion/govard.bash
+      - completion/govard.zsh
+      - completion/govard.fish
+      - completion/govard.ps1
     formats:
       - tar.gz
     format_overrides:
@@ -111,6 +118,13 @@ nfpms:
     dependencies:
       - ca-certificates
       - libnss3-tools
+    contents:
+      - src: ./completion/govard.bash
+        dst: /etc/bash_completion.d/govard
+      - src: ./completion/govard.fish
+        dst: /usr/share/fish/vendor_completions.d/govard.fish
+      - src: ./completion/govard.zsh
+        dst: /usr/local/share/zsh/site-functions/_govard
 
   - id: govard-desktop
     package_name: govard-desktop

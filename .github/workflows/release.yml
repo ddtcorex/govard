@@ -61,6 +61,18 @@ jobs:
             | head -n1)
           echo "tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: Generate shell completions
+        run: |
+          mkdir -p completion dist
+          for sh in bash zsh fish powershell; do
+            go run ./cmd/govard completion "$sh" > "completion/govard.$sh"
+          done
+          mv completion/govard.powershell completion/govard.ps1
+          test -s completion/govard.bash
+          test -s completion/govard.zsh
+          test -s completion/govard.fish
+          test -s completion/govard.ps1
+
       - name: Run GoReleaser
         # Pinned v6: the v7 SHA (f06c13b) breaks GitHub's startup fetch
         # (proven by probe + beta.7) though valid via API. Revisit only
