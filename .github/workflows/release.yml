@@ -205,3 +205,36 @@ jobs:
         run: npm publish ./npm --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_AUTH }}
+
+  # Proves both install channels work on a fresh machine for every tag
+  # (stable and beta). Beta tags exercise this job without touching
+  # stable channels — that is the rehearsal path for install changes.
+  # NOTE: the npm leg installs the published wrapper, which only exists
+  # for stable tags (npm-publish skips prereleases), so it is gated to
+  # non-prerelease tags; install.sh covers beta rehearsals.
+  install-e2e:
+    name: install e2e (${{ matrix.channel }} on ${{ matrix.ubuntu }})
+    needs: release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [install-sh, npm]
+        ubuntu: ["22.04", "24.04"]
+    container:
+      image: ubuntu:${{ matrix.ubuntu }}
+    steps:
+      - name: Install prerequisites
+        run: |
+          apt-get update
+          apt-get install -y curl sudo ca-certificates nodejs npm
+      - name: Install via install.sh
+        if: matrix.channel == 'install-sh'
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only -y
+          test "$(govard version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)" = "${GITHUB_REF_NAME#v}"
+      - name: Install via npm
+        if: ${{ matrix.channel == 'npm' && !contains(github.ref_name, '-') }}
+        run: |
+          npm install -g "@ddtcorex/govard@${GITHUB_REF_NAME#v}"
+          test "$(govard version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)" = "${GITHUB_REF_NAME#v}"
