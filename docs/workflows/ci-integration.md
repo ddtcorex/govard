@@ -7,13 +7,14 @@ description: Run Govard in CI with pinned versions via the setup-govard action, 
 
 Three ways to run Govard in CI, from most convenient to most manual.
 All support version pinning — never float on `latest` in a release pipeline.
+Replace `<version>` with a tag from the [releases page](https://github.com/ddtcorex/govard/releases).
 
 ## GitHub Actions (recommended)
 
 ```yaml
 - uses: ddtcorex/setup-govard@v1
   with:
-    version: '1.70.3'
+    version: '<version>'
 
 - run: govard audit --ci
 ```
@@ -28,7 +29,7 @@ Any runner with Docker can use the published image directly:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    container: ghcr.io/ddtcorex/govard:1.70.3
+    container: ghcr.io/ddtcorex/govard:<version>
     steps:
       - run: govard version
 ```
@@ -36,7 +37,7 @@ jobs:
 ```bash
 # GitLab CI
 audit:
-  image: ghcr.io/ddtcorex/govard:1.70.3
+  image: ghcr.io/ddtcorex/govard:<version>
   script:
     - govard version
 ```
@@ -46,7 +47,7 @@ audit:
 When the job already runs on Node 20+:
 
 ```bash
-npm i -g @ddtcorex/govard@1.70.3
+npm i -g @ddtcorex/govard@<version>
 govard version
 ```
 

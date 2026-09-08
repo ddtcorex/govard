@@ -153,14 +153,16 @@ One command per platform — pick one channel and stick to it:
 # npm (Node 20+, any OS, CLI only)
 npm i -g @ddtcorex/govard
 # Pin for reproducible environments:
-npm i -g @ddtcorex/govard@1.70.3
+npm i -g @ddtcorex/govard@<version>
 
 # Homebrew (macOS + Linuxbrew, CLI only)
 brew install ddtcorex/tap/govard
 
 # Docker (no install needed — CI-friendly)
-docker run --rm ghcr.io/ddtcorex/govard:1.70.3 version
+docker run --rm ghcr.io/ddtcorex/govard:<version> version
 ```
+
+Replace `<version>` with a tag from the [releases page](https://github.com/ddtcorex/govard/releases).
 
 Installs from npm, Homebrew, or Docker record their install source
 (check with `govard doctor`). `govard self-update` on those installs

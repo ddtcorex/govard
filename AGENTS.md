@@ -123,16 +123,36 @@ When adding/modifying commands:
 - Bump `BlueprintVersion` only when Go rendering logic changes (`render.go`, `config_normalize.go`, `framework_config.go`, `profile.go`, etc.) in a way that changes rendered output *without* changing blueprint file bytes — those changes aren't hash-detected.
 - When bumped, note it in `CHANGELOG.md` under a "Blueprint Lifecycle" bullet (see prior entries for wording).
 
+## Version Truth
+
+The git tag (`vX.Y.Z`) is the single source of truth for the release
+version. Never commit a version literal for it. Allowed version-like
+committed values, each with an owner:
+
+- `go.mod` toolchain line — read by CI (`go-version-file`), `install.sh`
+  (`govard_go_floor`), docs ("see `go.mod`").
+- Dockerfile base-image defaults (`ARG GO_IMAGE`, stack `FROM`s) —
+  deliberate pins for reproducible builds; bump by hand when needed.
+- GitHub Action major pins — watched by Dependabot; merge its PRs.
+- Release-time stamp scripts (`build-macos-pkg.sh`, npm-publish job) —
+  they read the tag, they are not bumped.
+
+Docs use `<version>` placeholders pointing at the releases page.
+Quarterly drift audit (any hit outside the list above is a bug):
+
+`grep -rEn '[0-9]+\.[0-9]+\.[0-9]+' --include='*.go' --include='*.md' --include='*.yml' --include='*.json' . | grep -v node_modules | grep -v CHANGELOG.md`
+
 ## Release Checklist
 
 `CHANGELOG.md` changes belong only to the release commit below — never add/edit `CHANGELOG.md` on a feature branch, even for a Blueprint Version bump; describe the change in the PR body instead.
 
 Update version in:
-1. `internal/cmd/root.go` (`var Version`)
-2. `internal/desktop/app.go` (`var Version`)
-3. `desktop/frontend/package.json` (`"version"`)
-4. `desktop/wails.json` (`"info": { "productVersion" }`)
-5. `CHANGELOG.md` (add new version section)
+1. `CHANGELOG.md` (add new version section)
+
+That is the only file. Binaries and metadata take the version from the
+git tag at build/release time (`var Version` defaults to `dev`,
+desktop/npm metadata defaults to `0.0.0-dev` and is stamped by release
+scripts) — never commit a version literal for the release itself.
 
 **Verification:** `make test && make build && ./bin/govard version`
 

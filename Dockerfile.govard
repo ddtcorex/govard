@@ -4,8 +4,11 @@
 # Version metadata arrives via build args (see .goreleaser.yml dockers).
 ARG GOVARD_VERSION=dev
 ARG GLINT_DIGEST=
+# Single knob for the Go toolchain image (tracks go.mod; release may
+# override with --build-arg without editing this file).
+ARG GO_IMAGE=golang:1.25-alpine
 
-FROM golang:1.25-alpine AS build
+FROM ${GO_IMAGE} AS build
 ARG GOVARD_VERSION
 ARG GLINT_DIGEST
 WORKDIR /src

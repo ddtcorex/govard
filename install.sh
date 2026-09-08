@@ -28,6 +28,31 @@ REPO="ddtcorex/govard"
 INSTALL_DIR="/usr/local/bin"
 GOVARD_DIR="/opt/govard"
 MIN_GO_VERSION="1.25.0"
+# Fallback only: go.mod is the truth for the Go toolchain floor.
+# govard_go_floor() below reads it whenever a source tree is at hand.
+
+# Single reader for the Go toolchain floor: go.mod is the truth.
+# Falls back to MIN_GO_VERSION when no source tree is at hand
+# (e.g. binary mode, which needs no Go toolchain at all).
+govard_go_floor() {
+    local candidate mod floor
+    for candidate in "${SOURCE_DIR:-}" "$PWD" "$SCRIPT_DIR"; do
+        mod="${candidate%/}/go.mod"
+        if [[ -n "${candidate:-}" && -f "$mod" ]]; then
+            floor="$(grep -E '^go [0-9]+\.[0-9]+' "$mod" | awk '{print $2}')"
+            if [[ -n "$floor" ]]; then
+                # go.mod may pin major.minor (1.25) or full (1.25.0);
+                # normalize to full semver for sort -V comparisons.
+                if [[ "$floor" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                    floor="${floor}.0"
+                fi
+                echo "$floor"
+                return 0
+            fi
+        fi
+    done
+    echo "$MIN_GO_VERSION"
+}
 SOURCE_MODE=false
 CLI_ONLY=false
 FORCE_YES=false
@@ -441,7 +466,9 @@ extract_binary_from_deb() {
 install_go() {
     info "Checking Go environment..."
     GO_BIN_DIR="/usr/local/go/bin"
-    
+    local GO_FLOOR
+    GO_FLOOR="$(govard_go_floor)"
+
     need_go_install=false
     if ! command -v go >/dev/null 2>&1; then
         info "Go is not installed."
@@ -449,8 +476,8 @@ install_go() {
     else
         CURRENT_GO=$(go version | awk '{print $3}' | sed 's/go//')
         # Simple version comparison
-        if [[ "$(printf '%s\n' "$MIN_GO_VERSION" "$CURRENT_GO" | sort -V | head -n1)" != "$MIN_GO_VERSION" ]]; then
-            warn "Go version $CURRENT_GO is too old (Need $MIN_GO_VERSION+)"
+        if [[ "$(printf '%s\n' "$GO_FLOOR" "$CURRENT_GO" | sort -V | head -n1)" != "$GO_FLOOR" ]]; then
+            warn "Go version $CURRENT_GO is too old (Need $GO_FLOOR+)"
             need_go_install=true
         else
             success "Go: $CURRENT_GO"
@@ -460,14 +487,14 @@ install_go() {
 
     if [[ "$need_go_install" == true ]]; then
         if [[ "$FORCE_YES" == false ]]; then
-            read -p "Do you want to install Go $MIN_GO_VERSION automatically? (Y/n) " confirm </dev/tty
+            read -p "Do you want to install Go $GO_FLOOR automatically? (Y/n) " confirm </dev/tty
             if [[ -n "$confirm" && ! $confirm =~ ^[Yy]$ ]]; then
-                error "Go $MIN_GO_VERSION+ is required for source builds."
+                error "Go $GO_FLOOR+ is required for source builds."
             fi
         fi
 
-        info "Downloading Go $MIN_GO_VERSION..."
-        GO_TAR="go${MIN_GO_VERSION}.${OS}-${ARCH}.tar.gz"
+        info "Downloading Go $GO_FLOOR..."
+        GO_TAR="go${GO_FLOOR}.${OS}-${ARCH}.tar.gz"
         GO_URL="https://go.dev/dl/${GO_TAR}"
         
         TMP_DIR=$(mktemp -d)

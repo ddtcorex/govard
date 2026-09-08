@@ -28,11 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: glint-image
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
 
@@ -74,11 +74,11 @@ jobs:
       matrix:
         arch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
 
@@ -107,11 +107,11 @@ jobs:
     if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
