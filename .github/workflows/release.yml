@@ -12,10 +12,11 @@ jobs:
   # The lint image must be published before anything is linked, because
   # the release binaries carry its manifest digest in
   # internal/audit.GovardGlintDigest and only ever reference the official image
-  # pinned to that digest. packages: write is granted here and nowhere else: a
-  # reusable workflow cannot escalate beyond its calling job's token, so the grant
-  # has to live on this job, while the workflow-level block above stays
-  # contents: write only and neither `release` nor `macos-pkg` ever sees it.
+  # pinned to that digest. packages: write is granted to `glint-image` (a
+  # reusable workflow cannot escalate beyond its calling job's token, so the
+  # grant has to live on that job) and to `release` (the GoReleaser dockers
+  # publisher pushes GHCR images); the workflow-level block above stays
+  # contents: write only and `macos-pkg` never sees it.
   glint-image:
     permissions:
       contents: read
@@ -27,6 +28,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: glint-image
+    permissions:
+      contents: write
+      packages: write # GoReleaser dockers publisher pushes GHCR images
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,6 +39,13 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: |
