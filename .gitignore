@@ -55,6 +55,7 @@
 /desktop/frontend/package.json.md5
 
 # Extra
+!AGENTS.md
 !CLAUDE.md
 .planning/
 .worktrees/
