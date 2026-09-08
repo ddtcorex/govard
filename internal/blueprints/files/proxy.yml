@@ -50,7 +50,7 @@ services:
     restart: always
     cap_add:
       - NET_ADMIN
-    command: -k -A /.test/127.0.0.1
+    command: -k -A /.test/127.0.0.1 --local=/test/
     ports:
       - "127.0.0.1:53:53/udp"
       - "127.0.0.1:53:53/tcp"
