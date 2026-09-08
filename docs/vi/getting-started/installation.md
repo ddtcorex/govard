@@ -78,6 +78,32 @@ sudo installer -pkg govard_<version>_Darwin_arm64.pkg -target /
 
 ---
 
+## 📦 Package Managers
+
+Mỗi nền tảng một lệnh duy nhất — chọn một kênh và dùng cố định:
+
+```bash
+# npm (Node 20+, mọi OS, chỉ CLI)
+npm i -g @ddtcorex/govard
+
+# Homebrew (macOS + Linuxbrew, chỉ CLI)
+brew install ddtcorex/tap/govard
+
+# Docker (không cần cài — thân thiện CI)
+docker run --rm ghcr.io/ddtcorex/govard:<version> version
+
+# Windows (WinGet — tự cập nhật mỗi release)
+winget install DDTCoreX.Govard
+
+# Windows (Scoop — bucket riêng, tự cập nhật mỗi release)
+scoop bucket add ddtcorex https://github.com/ddtcorex/scoop-bucket
+scoop install govard
+```
+
+Thay `<version>` bằng tag từ [trang releases](https://github.com/ddtcorex/govard/releases).
+
+---
+
 ## 🔧 Build từ Source
 
 ### Điều kiện tiên quyết
