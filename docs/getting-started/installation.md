@@ -173,6 +173,21 @@ For CI pipelines, use the `ddtcorex/setup-govard` GitHub Action
 
 ---
 
+## 🖥️ Shell Completions
+
+Release archives bundle completion scripts under `completion/`, and the
+`.deb` package installs them automatically (bash, fish, zsh). For
+other install channels, generate them from the binary:
+
+```bash
+govard completion bash > /etc/bash_completion.d/govard   # root
+govard completion zsh > "${fpath[1]}/_govard"
+govard completion fish > ~/.config/fish/completions/govard.fish
+govard completion powershell | Out-String | Invoke-Expression
+```
+
+---
+
 ## 🔄 Updating Govard
 
 ```bash
@@ -191,6 +206,10 @@ govard doctor
 ```
 
 `govard doctor` runs system diagnostics including Docker, DNS, ports, and SSL trust checks.
+
+Release downloads (`install.sh` and npm) are sha256-verified against
+`checksums.txt` before anything is installed; on mismatch the install
+aborts. There is no bypass flag for this check by design.
 
 ---
 

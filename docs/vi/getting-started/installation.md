@@ -145,6 +145,19 @@ docker build -f docker/php/magento2/Dockerfile \
 
 ---
 
+## 🖥️ Shell Completions
+
+Release archives đóng gói sẵn scripts completion trong thư mục `completion/`, và package `.deb` tự cài chúng (bash, fish, zsh). Với các kênh cài khác, sinh từ binary:
+
+```bash
+govard completion bash > /etc/bash_completion.d/govard   # root
+govard completion zsh > "${fpath[1]}/_govard"
+govard completion fish > ~/.config/fish/completions/govard.fish
+govard completion powershell | Out-String | Invoke-Expression
+```
+
+---
+
 ## 🔄 Cập nhật Govard
 
 ```bash
@@ -163,6 +176,8 @@ govard doctor
 ```
 
 Lệnh `govard doctor` chạy các chẩn đoán hệ thống (system diagnostics) bao gồm kiểm tra Docker, DNS, ports và SSL trust store.
+
+Các bản tải release (`install.sh` và npm) đều được xác minh sha256 với `checksums.txt` trước khi cài đặt; nếu hash không khớp, quá trình cài đặt dừng ngay. Không có flag bỏ qua bước kiểm tra này theo thiết kế.
 
 ---
 
