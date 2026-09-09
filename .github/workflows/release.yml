@@ -79,10 +79,11 @@ jobs:
         # `login --with` (beta.5, exit 64) and enforces a keyring the
         # strictly-confined snap cannot reach headless (beta.6/7); the PyPI
         # build is uninstallable (its backend demands git metadata, beta.8).
-        # 8.x keeps `login --with` with the pre-9.x lenient credential store.
-        run: |
-          sudo snap install snapcraft --classic --channel=8.x/stable
-          snapcraft login --with <(echo "${{ secrets.SNAPCRAFT_TOKEN }}")
+        # 8.x keeps the pre-9.x lenient credential store. No `login --with`:
+        # it expects an INI session file and chokes on the raw exported
+        # token (beta.9: "File contains no section headers") — the env var
+        # alone carries auth for both the CLI and GoReleaser.
+        run: sudo snap install snapcraft --classic --channel=8.x/stable
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
