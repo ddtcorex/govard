@@ -75,9 +75,9 @@ jobs:
 
       - name: Log in to Snap Store
         # GoReleaser's snapcrafts publisher reads SNAPCRAFT_STORE_CREDENTIALS.
-        run: |
-          sudo snap install snapcraft --classic
-          snapcraft login --with <(echo "${{ secrets.SNAPCRAFT_TOKEN }}")
+        # snapcraft 9.x removed `login --with`: the env var alone authenticates
+        # both the CLI and GoReleaser (proven by beta.5 rehearsal).
+        run: sudo snap install snapcraft --classic
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
