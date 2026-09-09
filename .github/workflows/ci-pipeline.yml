@@ -128,14 +128,52 @@ jobs:
           name: govard-binaries
           path: bin/
 
+  # Validates the tag-only release config on every PR: GoReleaser --snapshot
+  # builds everything release.yml builds (archives, nfpms deb/rpm/apk, snap
+  # packs) without publishing anything. Added after beta.5-8 burned four tags
+  # on snap-login issues PR CI could never see. Store-upload auth remains
+  # beta-rehearsal-only (it needs real secrets).
+  release_snapshot:
+    name: Release Snapshot (GoReleaser --snapshot)
+    runs-on: ubuntu-latest
+    needs: [quality_checks, fast_tests]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Generate shell completions
+        run: |
+          mkdir -p completion dist
+          for sh in bash zsh fish powershell; do
+            go run ./cmd/govard completion "$sh" > "completion/govard.$sh"
+          done
+          mv completion/govard.powershell completion/govard.ps1
+
+      - name: Install snapcraft for snap packs
+        run: sudo snap install snapcraft --channel=8.x/stable
+
+      - name: Run GoReleaser snapshot
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   verify:
     name: Verify
     runs-on: ubuntu-latest
-    needs: [quality_checks, fast_tests, integration_tests, build_binaries]
+    needs: [quality_checks, fast_tests, integration_tests, build_binaries, release_snapshot]
     if: always()
     steps:
       - name: Gate
         run: |
-          for r in "${{ needs.quality_checks.result }}" "${{ needs.fast_tests.result }}" "${{ needs.integration_tests.result }}" "${{ needs.build_binaries.result }}"; do
+          for r in "${{ needs.quality_checks.result }}" "${{ needs.fast_tests.result }}" "${{ needs.integration_tests.result }}" "${{ needs.build_binaries.result }}" "${{ needs.release_snapshot.result }}"; do
             [ "$r" = "success" ] || [ "$r" = "skipped" ] || exit 1
           done
