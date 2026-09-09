@@ -193,12 +193,10 @@ changelog:
 # system paths). Name `govard` claimed by the maintainer; publish:true from
 # day one — if the Store holds the first revision for classic review the
 # release goes red once, which is the accepted rehearsal signal.
-# TEMPORARILY DISABLED (beta.11): headless Store auth unsolved after
-# beta.5-10. Disabled to prove the CloudSmith half green in isolation;
-# re-enable with the working auth on beta.12. Tracked in Plan C Task 5.
+# Re-enabled (beta.12): CloudSmith proven green on beta.11; snap returns
+# with a devmode install so the binary can reach the CI keyring.
 snapcrafts:
   - id: govard
-    disable: "true"
     name: govard
     ids:
       - govard
