@@ -76,16 +76,15 @@ jobs:
       - name: Log in to Snap Store
         # GoReleaser's snapcrafts publisher reads SNAPCRAFT_STORE_CREDENTIALS.
         # snapcraft 9.x removed `login --with`: the env var alone carries the
-        # exported credentials (beta.5), but snapcraft still needs a keyring
-        # to persist the session macaroon on headless CI (beta.6: "No keyring
-        # found"). Unlock an empty-password default keyring on the session bus
-        # and carry its address into the GoReleaser step via GITHUB_ENV.
+        # exported credentials (beta.5). The snapcraft SNAP is strictly
+        # confined and cannot reach any keyring on headless CI (beta.6: empty
+        # unlock; beta.7: still "No keyring found"), so install the unconfined
+        # PyPI build and point keyring at a file backend instead.
         run: |
-          sudo snap install snapcraft --classic
-          sudo apt-get install -y gnome-keyring
-          eval "$(dbus-launch --sh-syntax)"
-          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
-          echo -n "" | gnome-keyring-daemon --unlock
+          sudo apt-get install -y squashfs-tools
+          pip install --quiet --break-system-packages snapcraft keyrings.alt
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          echo "PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring" >> "${GITHUB_ENV}"
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
