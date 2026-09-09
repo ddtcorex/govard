@@ -160,6 +160,22 @@ brew install ddtcorex/tap/govard
 
 # Docker (no install needed — CI-friendly)
 docker run --rm ghcr.io/ddtcorex/govard:<version> version
+
+# Snap (Linux, CLI only — classic confinement is required:
+# Govard orchestrates Docker and writes system paths)
+sudo snap install govard --classic
+
+# Debian/Ubuntu via CloudSmith (one-time repo setup, then install)
+curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-deb/setup.deb.sh | sudo -E bash
+sudo apt install govard
+
+# Fedora/RHEL via CloudSmith (one-time repo setup, then install)
+curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-rpm/setup.rpm.sh | sudo -E bash
+sudo dnf install govard
+
+# Alpine via CloudSmith (one-time repo setup, then install)
+curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-apk/setup.alpine.sh | sudo -E bash
+sudo apk add govard
 ```
 
 Replace `<version>` with a tag from the [releases page](https://github.com/ddtcorex/govard/releases).

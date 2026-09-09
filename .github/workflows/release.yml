@@ -73,6 +73,14 @@ jobs:
           test -s completion/govard.fish
           test -s completion/govard.ps1
 
+      - name: Log in to Snap Store
+        # GoReleaser's snapcrafts publisher reads SNAPCRAFT_STORE_CREDENTIALS.
+        run: |
+          sudo snap install snapcraft --classic
+          snapcraft login --with <(echo "${{ secrets.SNAPCRAFT_TOKEN }}")
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
+
       - name: Run GoReleaser
         # Pinned v6: the v7 SHA (f06c13b) breaks GitHub's startup fetch
         # (proven by probe + beta.7) though valid via API. Revisit only
@@ -89,6 +97,28 @@ jobs:
           # it as "no official image pinned" and builds the embedded lint
           # context locally instead.
           GOVARD_GLINT_DIGEST: ${{ needs.glint-image.outputs.image_digest }}
+
+      # CloudSmith (apt/dnf/apk): GoReleaser OSS has no cloudsmiths publisher
+      # (Pro-only), so the workflow pushes the nfpms artifacts with
+      # CloudSmith CLI — same rendered-then-pushed pattern as the Homebrew
+      # formula below. Runs on every tag incl. betas; per-repo retention
+      # (keep last 5) bounds the free-tier storage.
+      - name: Push packages to Cloudsmith
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: |
+          pip install --quiet cloudsmith-cli
+          DEB=(dist/govard_*.deb)
+          RPM=(dist/govard_*.rpm)
+          APK=(dist/govard_*.apk)
+          test -f "${DEB[0]}" && test -f "${RPM[0]}" && test -f "${APK[0]}"
+          for d in ubuntu/22.04 ubuntu/24.04 debian/12; do
+            cloudsmith push deb "ddtcorex/govard-deb/${d}" "${DEB[0]}" --republish
+          done
+          for d in el/9 fedora/41; do
+            cloudsmith push rpm "ddtcorex/govard-rpm/${d}" "${RPM[0]}" --republish
+          done
+          cloudsmith push alpine "ddtcorex/govard-apk/alpine/3.20" "${APK[0]}" --republish
 
       # GHCR runtime image: built and pushed here (not via GoReleaser
       # dockers — its buildx flow exports multi-arch manifests locally

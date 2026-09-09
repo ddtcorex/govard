@@ -70,6 +70,26 @@ CLI + Desktop (WebKitGTK 4.1 / Ubuntu 22.04+):
 sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_linux_<arch>.deb
 ```
 
+### Kênh package (Snap / CloudSmith)
+
+```bash
+# Snap (Linux, chỉ CLI — bắt buộc classic confinement vì
+# Govard điều khiển Docker và ghi system paths)
+sudo snap install govard --classic
+
+# Debian/Ubuntu qua CloudSmith (setup repo một lần, rồi cài)
+curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-deb/setup.deb.sh | sudo -E bash
+sudo apt install govard
+
+# Fedora/RHEL qua CloudSmith (setup repo một lần, rồi cài)
+curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-rpm/setup.rpm.sh | sudo -E bash
+sudo dnf install govard
+
+# Alpine qua CloudSmith (setup repo một lần, rồi cài)
+curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-apk/setup.alpine.sh | sudo -E bash
+sudo apk add govard
+```
+
 ### macOS (`.pkg`)
 
 ```bash

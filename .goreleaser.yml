@@ -106,6 +106,8 @@ nfpms:
       - govard
     formats:
       - deb
+      - rpm
+      - apk
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     bindir: /usr/local/bin
     maintainer: DDTCoreX <kaido4492@gmail.com>
@@ -186,6 +188,22 @@ changelog:
     - title: 📦 Others
       order: 99
   format: "{{ .Message }}"
+
+# Snap Store: classic confinement (Govard orchestrates Docker and writes
+# system paths). Name `govard` claimed by the maintainer; publish:true from
+# day one — if the Store holds the first revision for classic review the
+# release goes red once, which is the accepted rehearsal signal.
+snapcrafts:
+  - id: govard
+    name: govard
+    ids:
+      - govard
+    summary: Govard local development orchestrator CLI
+    description: Govard local development orchestrator CLI
+    license: MIT
+    grade: stable
+    confinement: classic
+    publish: true
 
 release:
   prerelease: auto
