@@ -74,17 +74,15 @@ jobs:
           test -s completion/govard.ps1
 
       - name: Log in to Snap Store
-        # GoReleaser's snapcrafts publisher reads SNAPCRAFT_STORE_CREDENTIALS.
-        # snapcraft 9.x removed `login --with`: the env var alone carries the
-        # exported credentials (beta.5). The snapcraft SNAP is strictly
-        # confined and cannot reach any keyring on headless CI (beta.6: empty
-        # unlock; beta.7: still "No keyring found"), so install the unconfined
-        # PyPI build and point keyring at a file backend instead.
+        # GoReleaser's snapcrafts publisher shells out to the `snapcraft`
+        # binary for pack+upload. Pinned to the 8.x channel: 9.x removed
+        # `login --with` (beta.5, exit 64) and enforces a keyring the
+        # strictly-confined snap cannot reach headless (beta.6/7); the PyPI
+        # build is uninstallable (its backend demands git metadata, beta.8).
+        # 8.x keeps `login --with` with the pre-9.x lenient credential store.
         run: |
-          sudo apt-get install -y squashfs-tools
-          pip install --quiet --break-system-packages snapcraft keyrings.alt
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-          echo "PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring" >> "${GITHUB_ENV}"
+          sudo snap install snapcraft --channel=8.x/stable
+          snapcraft login --with <(echo "${{ secrets.SNAPCRAFT_TOKEN }}")
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
