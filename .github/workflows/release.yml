@@ -75,9 +75,17 @@ jobs:
 
       - name: Log in to Snap Store
         # GoReleaser's snapcrafts publisher reads SNAPCRAFT_STORE_CREDENTIALS.
-        # snapcraft 9.x removed `login --with`: the env var alone authenticates
-        # both the CLI and GoReleaser (proven by beta.5 rehearsal).
-        run: sudo snap install snapcraft --classic
+        # snapcraft 9.x removed `login --with`: the env var alone carries the
+        # exported credentials (beta.5), but snapcraft still needs a keyring
+        # to persist the session macaroon on headless CI (beta.6: "No keyring
+        # found"). Unlock an empty-password default keyring on the session bus
+        # and carry its address into the GoReleaser step via GITHUB_ENV.
+        run: |
+          sudo snap install snapcraft --classic
+          sudo apt-get install -y gnome-keyring
+          eval "$(dbus-launch --sh-syntax)"
+          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
+          echo -n "" | gnome-keyring-daemon --unlock
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
