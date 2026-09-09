@@ -81,7 +81,7 @@ jobs:
         # build is uninstallable (its backend demands git metadata, beta.8).
         # 8.x keeps `login --with` with the pre-9.x lenient credential store.
         run: |
-          sudo snap install snapcraft --channel=8.x/stable
+          sudo snap install snapcraft --classic --channel=8.x/stable
           snapcraft login --with <(echo "${{ secrets.SNAPCRAFT_TOKEN }}")
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}

@@ -156,7 +156,7 @@ jobs:
           mv completion/govard.powershell completion/govard.ps1
 
       - name: Install snapcraft for snap packs
-        run: sudo snap install snapcraft --channel=8.x/stable
+        run: sudo snap install snapcraft --classic --channel=8.x/stable
 
       - name: Run GoReleaser snapshot
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
