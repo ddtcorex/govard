@@ -86,9 +86,10 @@ jobs:
         # --devmode (beta.12): devmode lifts confinement so snapcraft can
         # reach the session keyring; strict mode could not (beta.6/7/10).
         # PyPI is dead (4.8.1 from 2021, beta.8) — Canonical ships new
-        # snapcraft as snaps only.
+        # snapcraft as snaps only. --classic and --devmode are mutually
+        # exclusive (beta.12 install failed) — devmode alone it is.
         run: |
-          sudo snap install snapcraft --classic --channel=8.x/stable --devmode
+          sudo snap install snapcraft --channel=8.x/stable --devmode
           sudo apt-get install -y gnome-keyring
           eval "$(dbus-launch --sh-syntax)"
           echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
