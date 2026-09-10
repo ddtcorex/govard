@@ -51,12 +51,16 @@ jobs:
               cloudsmith_api.ApiClient(config)
           )
 
+          import re
+
           def version_key(version):
               # "1.72.0-beta.11" -> ((1,72,0),(0,11)); "1.72.0" -> ((1,72,0),(1,))
+              # Tolerates distro suffixes (dry-run found "beta.11-0~beta").
               base, _, pre = version.partition("-")
               nums = tuple(int(p) for p in base.split("."))
-              if pre.startswith("beta."):
-                  return (nums, (0, int(pre[len("beta."):])))
+              m = re.match(r"beta\.(\d+)", pre)
+              if m:
+                  return (nums, (0, int(m.group(1))))
               return (nums, (1,))
 
           deleted = 0
