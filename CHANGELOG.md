@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.72.0] - 2026-09-10
+
+### ✨ New Features
+
+- **Snap + CloudSmith channels:** govard now ships as the `govard` snap (classic confinement, released to edge/beta/candidate/stable) and via CloudSmith APT/RPM/APK repos (`govard-deb`, `govard-rpm`, `govard-apk`), alongside the existing deb asset and npm/brew/GHCR channels. Eighteen `-beta.N` rehearsals hardened the pipeline before stable — Snap Store headless auth (keyring unlock + token scoping across step boundaries) and a monthly retention workflow keeping the last 5 versions per repo. (#261, #262–#281)
+- **Shell completions in every artifact:** generated `completion/` scripts now ship inside the archives and deb/rpm/apk packages, covered by hermetic tests. (#248)
+- **Windows channels deliberately dropped:** the Scoop bucket and WinGet publisher shipped in #250 were reverted — Govard is WSL2-only, so Windows users install inside WSL2 via `install.sh` or the APT repo instead of a native package that could never work. (#257)
+
+### 🐛 Bug Fixes
+
+- **WordPress fresh install actually installs:** the installer now defines `WP_INSTALLING` during bootstrap, without which WordPress silently skipped the installation step on fresh projects. (#258)
+
+### 🔧 Release Pipeline
+
+- **`install.sh` verifies checksums:** every download-then-use path checks sha256 against `checksums.txt` before `apt install` / extract, mirroring the npm postinstall gate. (#248)
+- **install-e2e job:** each tag proves both install channels on fresh Ubuntu containers and asserts the reported version (pins the exact tag under test). (#248, #256)
+- **Release snapshot on PR CI:** `goreleaser --snapshot` runs on every PR, catching pack/config issues (missing `--classic`, desktop deps) before a tag is burned. (#261)
+
 ## [1.71.2] - 2026-09-08
 
 ### 🔧 Release Pipeline
