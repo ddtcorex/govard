@@ -100,8 +100,10 @@ jobs:
           # appears in logs, never the value.
           KEYRING_PASS="$(openssl rand -hex 16)"
           printf '%s' "${KEYRING_PASS}" | gnome-keyring-daemon --daemonize --components=secrets --login
-          secret-tool store --label=ci-keyring-probe probe-key probe-value
-          [ "$(secret-tool lookup probe-key probe-value)" = "probe-value" ]
+          # secret-tool reads the SECRET from stdin (beta.20: bare call
+          # stored empty, lookup mismatch failed silently under bash -e).
+          printf '%s' 'probe-secret' | secret-tool store --label=ci-keyring-probe probe-key probe-attr
+          [ "$(secret-tool lookup probe-key probe-attr)" = "probe-secret" ]
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
