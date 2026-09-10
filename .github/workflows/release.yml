@@ -91,13 +91,13 @@ jobs:
         run: |
           sudo snap install snapcraft --classic --channel=8.x/stable
           sudo apt-get install -y gnome-keyring libsecret-1-0 dbus-x11 libsecret-tools
-          pip install --quiet secretstorage
           eval "$(dbus-launch --sh-syntax)"
           echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
-          echo -n "" | gnome-keyring-daemon --daemonize --components=secrets --unlock
-          # --unlock cannot CREATE the login collection (beta.17: Secret
-          # Service up but /collection/login missing) — create it explicitly.
-          python3 -c "import secretstorage; b=secretstorage.dbus_init(); secretstorage.create_collection(b,'login','') if 'login' not in [c.get_label() for c in secretstorage.get_all_collections(b)] else None"
+          # --login (not --unlock): unlocks the login keyring OR CREATES it
+          # from the stdin password. --unlock alone leaves /collection/login
+          # missing (beta.17), and creating it via API hits a headless
+          # confirmation prompt (beta.18: Prompt dismissed).
+          echo -n "" | gnome-keyring-daemon --daemonize --components=secrets --login
           secret-tool store --label=ci-keyring-probe probe-key probe-value
           [ "$(secret-tool lookup probe-key probe-value)" = "probe-value" ]
         env:
