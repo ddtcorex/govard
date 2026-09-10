@@ -76,18 +76,26 @@ jobs:
       - name: Log in to Snap Store
         # GoReleaser's snapcrafts publisher shells out to the `snapcraft`
         # binary for pack+upload. Pinned to the 8.x channel: 9.x removed
-        # `login --with` (beta.5, exit 64). The exported token MUST go
-        # through a real temp file: process substitution `<(...)` yields a
-        # non-seekable pipe that 8.x parses as empty (beta.9: "File contains
-        # no section headers"). A file-based `login --with` stores a session
-        # (this is also how snapcore/action-publish works) — no keyring
-        # needed, so the dbus/keyring and devmode experiments (beta.6/7,
-        # beta.10/12/13) are dropped. PyPI is dead (4.8.1 from 2021).
+        # `login --with` (beta.5, exit 64). Source-read (8.14.5
+        # snapcraft/store/_legacy_account.py + commands/account.py): --with
+        # is a LEGACY-Ubuntu-One shim — modern export-login output can NEVER
+        # parse (beta.9/14/15 "no section headers" is expected, not a pipe
+        # or format bug). The only headless auth is SNAPCRAFT_STORE_CREDENTIALS,
+        # and craft-store persists the session in a keyring — so provide a
+        # real one: dbus session bus + gnome-keyring (daemonized, secrets
+        # component) with a secret-tool round-trip that fails fast if the
+        # daemon is broken. 8.x installs --classic (unconfined) so it can
+        # reach the session bus. If upload still says "No keyring", the
+        # keyring works (secret-tool proved it) and the snap is confined
+        # despite --classic — park snap and ship CloudSmith-only.
         run: |
           sudo snap install snapcraft --classic --channel=8.x/stable
-          printf '%s' "${{ secrets.SNAPCRAFT_TOKEN }}" > "${RUNNER_TEMP}/snap-login.txt"
-          snapcraft login --with "${RUNNER_TEMP}/snap-login.txt"
-          rm -f "${RUNNER_TEMP}/snap-login.txt"
+          sudo apt-get install -y gnome-keyring libsecret-1-0
+          eval "$(dbus-launch --sh-syntax)"
+          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
+          echo -n "" | gnome-keyring-daemon --daemonize --components=secrets --unlock
+          secret-tool store --label=ci-keyring-probe probe-key probe-value
+          [ "$(secret-tool lookup probe-key probe-value)" = "probe-value" ]
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
