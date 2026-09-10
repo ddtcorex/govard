@@ -76,24 +76,18 @@ jobs:
       - name: Log in to Snap Store
         # GoReleaser's snapcrafts publisher shells out to the `snapcraft`
         # binary for pack+upload. Pinned to the 8.x channel: 9.x removed
-        # `login --with` (beta.5, exit 64) and enforces a keyring the
-        # strictly-confined snap cannot reach headless (beta.6/7); the PyPI
-        # build is uninstallable (its backend demands git metadata, beta.8).
-        # 8.x keeps the pre-9.x lenient credential store. No `login --with`:
-        # it expects an INI session file and chokes on the raw exported
-        # token (beta.9: "File contains no section headers") — the env var
-        # alone carries auth for both the CLI and GoReleaser.
-        # --devmode (beta.12): devmode lifts confinement so snapcraft can
-        # reach the session keyring; strict mode could not (beta.6/7/10).
-        # PyPI is dead (4.8.1 from 2021, beta.8) — Canonical ships new
-        # snapcraft as snaps only. --classic and --devmode are mutually
-        # exclusive (beta.12 install failed) — devmode alone it is.
+        # `login --with` (beta.5, exit 64). The exported token MUST go
+        # through a real temp file: process substitution `<(...)` yields a
+        # non-seekable pipe that 8.x parses as empty (beta.9: "File contains
+        # no section headers"). A file-based `login --with` stores a session
+        # (this is also how snapcore/action-publish works) — no keyring
+        # needed, so the dbus/keyring and devmode experiments (beta.6/7,
+        # beta.10/12/13) are dropped. PyPI is dead (4.8.1 from 2021).
         run: |
-          sudo snap install snapcraft --channel=8.x/stable --devmode
-          sudo apt-get install -y gnome-keyring
-          eval "$(dbus-launch --sh-syntax)"
-          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
-          echo -n "" | gnome-keyring-daemon --unlock
+          sudo snap install snapcraft --classic --channel=8.x/stable
+          printf '%s' "${{ secrets.SNAPCRAFT_TOKEN }}" > "${RUNNER_TEMP}/snap-login.txt"
+          snapcraft login --with "${RUNNER_TEMP}/snap-login.txt"
+          rm -f "${RUNNER_TEMP}/snap-login.txt"
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
