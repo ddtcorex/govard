@@ -90,7 +90,7 @@ jobs:
         # despite --classic — park snap and ship CloudSmith-only.
         run: |
           sudo snap install snapcraft --classic --channel=8.x/stable
-          sudo apt-get install -y gnome-keyring libsecret-1-0
+          sudo apt-get install -y gnome-keyring libsecret-1-0 dbus-x11 libsecret-tools
           eval "$(dbus-launch --sh-syntax)"
           echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
           echo -n "" | gnome-keyring-daemon --daemonize --components=secrets --unlock
