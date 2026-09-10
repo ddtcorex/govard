@@ -287,7 +287,15 @@ jobs:
       - name: Install prerequisites
         run: |
           apt-get update
-          apt-get install -y curl sudo ca-certificates nodejs npm
+          apt-get install -y curl sudo ca-certificates gnupg
+          # Distro nodejs is too old (22.04 ships Node 12; the wrapper
+          # declares engines >= 20), so install Node 20 via NodeSource.
+          mkdir -p /etc/apt/keyrings
+          curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+          apt-get update
+          apt-get install -y nodejs
+          node --version && npm --version
       - name: Install via install.sh
         if: matrix.channel == 'install-sh'
         run: |
@@ -298,5 +306,11 @@ jobs:
       - name: Install via npm
         if: ${{ matrix.channel == 'npm' && !contains(github.ref_name, '-') }}
         run: |
-          npm install -g "@ddtcorex/govard@${GITHUB_REF_NAME#v}"
+          # The registry can lag the publish by minutes (ETARGET on a
+          # just-published version), so retry before failing.
+          for i in 1 2 3 4 5 6; do
+            npm install -g "@ddtcorex/govard@${GITHUB_REF_NAME#v}" && break
+            echo "npm install attempt $i failed, retrying in 60s..."
+            sleep 60
+          done
           test "$(govard version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)" = "${GITHUB_REF_NAME#v}"
