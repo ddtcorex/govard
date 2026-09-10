@@ -8,3 +8,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # goreleaser-action stays on the v6 pin: the v7 SHA breaks GitHub's
+    # startup fetch (zero-job runs, proven by probe + beta.7, reverted in
+    # f142245). Ignore majors so the bot stops re-proposing it; revisit
+    # only with a branch-level probe run first (see release.yml comment).
+    ignore:
+      - dependency-name: goreleaser/goreleaser-action
+        update-types: ["version-update:semver-major"]
