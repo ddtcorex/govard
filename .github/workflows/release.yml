@@ -118,6 +118,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_PREVIOUS_TAG: ${{ steps.prev_tag.outputs.tag }}
+          # Step env does NOT cross step boundaries (beta.21: snapcraft
+          # upload ran credential-less and fell back to an interactive
+          # login prompt) — the Store token must be re-declared here.
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
           # Linked into internal/audit.GovardGlintDigest by .goreleaser.yml. An empty value is a valid,
           # degraded state rather than a build failure: ToolchainManager treats
           # it as "no official image pinned" and builds the embedded lint
