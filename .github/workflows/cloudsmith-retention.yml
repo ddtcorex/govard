@@ -69,22 +69,28 @@ jobs:
           deleted = 0
           for repo in repos:
               items = packages.packages_list(owner, repo, page_size=100)
-              by_slug = {}
+              # Group by package NAME: every upload mints a unique slug
+              # (dry-run showed one slug per file), so slug-grouping would
+              # never delete. Keep the newest keep_last DISTINCT versions
+              # per name, all files of those versions included.
+              by_name = {}
               for pkg in items:
-                  by_slug.setdefault(pkg.slug, []).append(pkg)
-              for slug, versions in sorted(by_slug.items()):
-                  ordered = sorted(
-                      versions, key=lambda p: version_key(p.version)
+                  by_name.setdefault(pkg.name, []).append(pkg)
+              for name, files in sorted(by_name.items()):
+                  versions = sorted(
+                      {p.version for p in files}, key=version_key
                   )
-                  for old in ordered[:-keep_last] if len(ordered) > keep_last else []:
+                  keep = set(versions[-keep_last:])
+                  print(f"VERSIONS {repo}/{name}: {', '.join(versions)}")
+                  for pkg in sorted(files, key=lambda p: version_key(p.version)):
+                      if pkg.version in keep:
+                          continue
                       if live:
-                          packages.packages_delete(owner, repo, old.slug_perm)
+                          packages.packages_delete(owner, repo, pkg.slug_perm)
                           deleted += 1
-                          print(f"DELETED {repo}/{slug} {old.version}")
+                          print(f"DELETED {repo}/{name} {pkg.version}")
                       else:
-                          print(f"WOULD-DELETE {repo}/{slug} {old.version}")
-                  kept = [p.version for p in ordered[-keep_last:]]
-                  print(f"KEEP {repo}/{slug}: {', '.join(kept)}")
+                          print(f"WOULD-DELETE {repo}/{name} {pkg.version}")
           print(f"mode={'LIVE' if live else 'DRY-RUN'} deleted={deleted}")
           EOF
         env:
