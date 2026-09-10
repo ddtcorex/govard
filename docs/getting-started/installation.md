@@ -145,6 +145,49 @@ docker build -f docker/php/magento2/Dockerfile \
 
 ---
 
+## 📦 Package Managers & Containers
+
+One command per platform — pick one channel and stick to it:
+
+```bash
+# npm (Node 20+, any OS, CLI only)
+npm i -g @ddtcorex/govard
+# Pin for reproducible environments:
+npm i -g @ddtcorex/govard@<version>
+
+# Homebrew (macOS + Linuxbrew, CLI only)
+brew install ddtcorex/tap/govard
+
+# Docker (no install needed — CI-friendly)
+docker run --rm ghcr.io/ddtcorex/govard:<version> version
+```
+
+Replace `<version>` with a tag from the [releases page](https://github.com/ddtcorex/govard/releases).
+
+Installs from npm, Homebrew, or Docker record their install source
+(check with `govard doctor`). `govard self-update` on those installs
+defers to the owning package manager instead of overwriting the binary.
+
+For CI pipelines, use the `ddtcorex/setup-govard` GitHub Action
+(see [CI Integration](/workflows/ci-integration)).
+
+---
+
+## 🖥️ Shell Completions
+
+Release archives bundle completion scripts under `completion/`, and the
+`.deb` package installs them automatically (bash, fish, zsh). For
+other install channels, generate them from the binary:
+
+```bash
+govard completion bash > /etc/bash_completion.d/govard   # root
+govard completion zsh > "${fpath[1]}/_govard"
+govard completion fish > ~/.config/fish/completions/govard.fish
+govard completion powershell | Out-String | Invoke-Expression
+```
+
+---
+
 ## 🔄 Updating Govard
 
 ```bash
@@ -163,6 +206,10 @@ govard doctor
 ```
 
 `govard doctor` runs system diagnostics including Docker, DNS, ports, and SSL trust checks.
+
+Release downloads (`install.sh` and npm) are sha256-verified against
+`checksums.txt` before anything is installed; on mismatch the install
+aborts. There is no bypass flag for this check by design.
 
 ---
 

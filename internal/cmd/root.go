@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"govard/internal/engine"
 	_ "govard/internal/frameworks" // registers framework detection/config data via init()
@@ -17,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var Version = "1.70.3"
+var Version = "dev"
 
 var verbose bool
 
@@ -85,6 +86,29 @@ func versionChannelNotice(channel string) string {
 // VersionChannelNoticeForTest exposes versionChannelNotice for tests in /tests.
 func VersionChannelNoticeForTest(channel string) string {
 	return versionChannelNotice(channel)
+}
+
+// GenCompletionForTest exposes cobra completion generation for tests
+// and release packaging.
+func GenCompletionForTest(shell string) (string, error) {
+	var buf strings.Builder
+	var err error
+	switch shell {
+	case "bash":
+		err = rootCmd.GenBashCompletion(&buf)
+	case "zsh":
+		err = rootCmd.GenZshCompletion(&buf)
+	case "fish":
+		err = rootCmd.GenFishCompletion(&buf, true)
+	case "powershell":
+		err = rootCmd.GenPowerShellCompletion(&buf)
+	default:
+		return "", fmt.Errorf("unsupported shell: %s", shell)
+	}
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 func Execute() {

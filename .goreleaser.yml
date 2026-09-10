@@ -48,6 +48,13 @@ archives:
       - govard
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{- title .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - completion/govard.bash
+      - completion/govard.zsh
+      - completion/govard.fish
+      - completion/govard.ps1
     formats:
       - tar.gz
     format_overrides:
@@ -65,6 +72,32 @@ archives:
 
 checksum:
   name_template: checksums.txt
+
+brews:
+  - name: govard
+    ids:
+      - govard-archive
+    # Rendered only: GITHUB_TOKEN cannot push cross-repo, so the workflow
+    # pushes dist/homebrew/govard.rb to the tap with a dedicated PAT
+    # (release.yml "Publish Homebrew formula").
+    skip_upload: true
+    repository:
+      owner: ddtcorex
+      name: homebrew-tap
+    homepage: https://github.com/ddtcorex/govard
+    description: Govard local development orchestrator CLI
+    license: MIT
+    # Records install ownership so `govard self-update` defers to brew.
+    post_install: |
+      (bin/".install-source").write "brew"
+    test: |
+      system "#{bin}/govard", "version"
+
+# NOTE: no dockers publisher here by design. GoReleaser's buildx flow
+# exports multi-arch manifests locally instead of pushing them (proven by
+# two failed beta rehearsals), so the GHCR runtime image is built and
+# pushed by explicit workflow steps below (release.yml "Publish GHCR
+# runtime image"), mirroring the proven audit-glint-image pipeline.
 
 nfpms:
   - id: govard-cli
@@ -85,6 +118,13 @@ nfpms:
     dependencies:
       - ca-certificates
       - libnss3-tools
+    contents:
+      - src: ./completion/govard.bash
+        dst: /etc/bash_completion.d/govard
+      - src: ./completion/govard.fish
+        dst: /usr/share/fish/vendor_completions.d/govard.fish
+      - src: ./completion/govard.zsh
+        dst: /usr/local/share/zsh/site-functions/_govard
 
   - id: govard-desktop
     package_name: govard-desktop

@@ -12,10 +12,11 @@ jobs:
   # The lint image must be published before anything is linked, because
   # the release binaries carry its manifest digest in
   # internal/audit.GovardGlintDigest and only ever reference the official image
-  # pinned to that digest. packages: write is granted here and nowhere else: a
-  # reusable workflow cannot escalate beyond its calling job's token, so the grant
-  # has to live on this job, while the workflow-level block above stays
-  # contents: write only and neither `release` nor `macos-pkg` ever sees it.
+  # pinned to that digest. packages: write is granted to `glint-image` (a
+  # reusable workflow cannot escalate beyond its calling job's token, so the
+  # grant has to live on that job) and to `release` (the GoReleaser dockers
+  # publisher pushes GHCR images); the workflow-level block above stays
+  # contents: write only and `macos-pkg` never sees it.
   glint-image:
     permissions:
       contents: read
@@ -27,14 +28,24 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: glint-image
+    permissions:
+      contents: write
+      packages: write # GoReleaser dockers publisher pushes GHCR images
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
+
+      # NOTE: docker/login-action is deliberately NOT used here — its v3
+      # ref is currently unresolvable by GitHub's action fetcher (proven by
+      # probe runs: any workflow containing it dies at startup with zero
+      # jobs). CLI login needs no external action fetch on this path.
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Install dependencies
         run: |
@@ -50,7 +61,22 @@ jobs:
             | head -n1)
           echo "tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: Generate shell completions
+        run: |
+          mkdir -p completion dist
+          for sh in bash zsh fish powershell; do
+            go run ./cmd/govard completion "$sh" > "completion/govard.$sh"
+          done
+          mv completion/govard.powershell completion/govard.ps1
+          test -s completion/govard.bash
+          test -s completion/govard.zsh
+          test -s completion/govard.fish
+          test -s completion/govard.ps1
+
       - name: Run GoReleaser
+        # Pinned v6: the v7 SHA (f06c13b) breaks GitHub's startup fetch
+        # (proven by probe + beta.7) though valid via API. Revisit only
+        # with a branch-level probe run first. See #230.
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           version: "~> v2"
@@ -64,6 +90,56 @@ jobs:
           # context locally instead.
           GOVARD_GLINT_DIGEST: ${{ needs.glint-image.outputs.image_digest }}
 
+      # GHCR runtime image: built and pushed here (not via GoReleaser
+      # dockers — its buildx flow exports multi-arch manifests locally
+      # instead of pushing). Mirrors the proven audit-glint-image
+      # pipeline: binfmt first (the builder learns platforms at bootstrap),
+      # then an explicit --push build. :latest only for stable tags.
+      - name: Enable arm64 emulation
+        run: docker run --privileged --rm "tonistiigi/binfmt@sha256:2d2918e86e5327d0661f7083d67a95280b0f7be8f77ed79a8418f81d7d90ce6f" --install arm64
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Publish GHCR runtime image
+        run: |
+          IMAGE="ghcr.io/ddtcorex/govard"
+          TAGS=(--tag "${IMAGE}:${GITHUB_REF_NAME}")
+          if [[ "${GITHUB_REF_NAME}" != *-* ]]; then
+            TAGS+=(--tag "${IMAGE}:latest")
+          fi
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --push \
+            "${TAGS[@]}" \
+            --build-arg "GOVARD_VERSION=${GITHUB_REF_NAME#v}" \
+            --build-arg "GLINT_DIGEST=${{ needs.glint-image.outputs.image_digest }}" \
+            --file Dockerfile.govard \
+            .
+
+      # Homebrew formula: pushed here, not by GoReleaser brews
+      # (skip_upload — GITHUB_TOKEN cannot write cross-repo, so this uses
+      # the dedicated HOMEBREW_TAP_TOKEN PAT).
+      - name: Checkout tap
+        uses: actions/checkout@v6
+        with:
+          repository: ddtcorex/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Publish Homebrew formula
+        run: |
+          cp dist/homebrew/govard.rb tap/govard.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add govard.rb
+          if git diff --cached --quiet; then
+            echo "formula unchanged"
+          else
+            git commit -m "chore: bump govard to ${GITHUB_REF_NAME}"
+            git push origin HEAD:master
+          fi
+
   macos-pkg:
     name: macOS Installer (${{ matrix.arch }})
     needs: release
@@ -74,11 +150,11 @@ jobs:
       matrix:
         arch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
 
@@ -97,3 +173,70 @@ jobs:
           gh release download "${GITHUB_REF_NAME}" -p checksums.txt -O dist/checksums.txt --clobber
           (cd dist && shasum -a 256 *.tar.gz >> checksums.txt)
           gh release upload "${GITHUB_REF_NAME}" dist/checksums.txt --clobber
+
+  # Publishes the thin installer wrapper (npm/) as @ddtcorex/govard.
+  # Stable tags only: prerelease tags contain "-" (e.g. v1.71.0-beta.1)
+  # and skip this job, matching the repo's beta-channel policy.
+  npm-publish:
+    name: npm wrapper (@ddtcorex/govard)
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm --provenance attestation
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Stamp wrapper version from tag
+        run: node -e "const fs=require('fs');const p='npm/package.json';const j=JSON.parse(fs.readFileSync(p));j.version='${GITHUB_REF_NAME}'.replace(/^v/,'');fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+
+      - name: Smoke-test wrapper logic
+        run: node ./npm/test-install.mjs
+
+      - name: Publish
+        run: npm publish ./npm --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_AUTH }}
+
+  # Proves both install channels work on a fresh machine for every tag
+  # (stable and beta). Beta tags exercise this job without touching
+  # stable channels — that is the rehearsal path for install changes.
+  # NOTE: the npm leg installs the published wrapper, which only exists
+  # for stable tags (npm-publish skips prereleases), so it is gated to
+  # non-prerelease tags; install.sh covers beta rehearsals.
+  install-e2e:
+    name: install e2e (${{ matrix.channel }} on ${{ matrix.ubuntu }})
+    needs: release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [install-sh, npm]
+        ubuntu: ["22.04", "24.04"]
+    container:
+      image: ubuntu:${{ matrix.ubuntu }}
+    steps:
+      - name: Install prerequisites
+        run: |
+          apt-get update
+          apt-get install -y curl sudo ca-certificates nodejs npm
+      - name: Install via install.sh
+        if: matrix.channel == 'install-sh'
+        run: |
+          # --version pins the exact tag: without it install.sh resolves
+          # releases/latest (stable only), which can never equal a beta tag.
+          curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only -y --version "${GITHUB_REF_NAME}"
+          test "$(govard version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)" = "${GITHUB_REF_NAME#v}"
+      - name: Install via npm
+        if: ${{ matrix.channel == 'npm' && !contains(github.ref_name, '-') }}
+        run: |
+          npm install -g "@ddtcorex/govard@${GITHUB_REF_NAME#v}"
+          test "$(govard version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)" = "${GITHUB_REF_NAME#v}"

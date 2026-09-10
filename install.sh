@@ -28,6 +28,31 @@ REPO="ddtcorex/govard"
 INSTALL_DIR="/usr/local/bin"
 GOVARD_DIR="/opt/govard"
 MIN_GO_VERSION="1.25.0"
+# Fallback only: go.mod is the truth for the Go toolchain floor.
+# govard_go_floor() below reads it whenever a source tree is at hand.
+
+# Single reader for the Go toolchain floor: go.mod is the truth.
+# Falls back to MIN_GO_VERSION when no source tree is at hand
+# (e.g. binary mode, which needs no Go toolchain at all).
+govard_go_floor() {
+    local candidate mod floor
+    for candidate in "${SOURCE_DIR:-}" "$PWD" "$SCRIPT_DIR"; do
+        mod="${candidate%/}/go.mod"
+        if [[ -n "${candidate:-}" && -f "$mod" ]]; then
+            floor="$(grep -E '^go [0-9]+\.[0-9]+' "$mod" | awk '{print $2}')"
+            if [[ -n "$floor" ]]; then
+                # go.mod may pin major.minor (1.25) or full (1.25.0);
+                # normalize to full semver for sort -V comparisons.
+                if [[ "$floor" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                    floor="${floor}.0"
+                fi
+                echo "$floor"
+                return 0
+            fi
+        fi
+    done
+    echo "$MIN_GO_VERSION"
+}
 SOURCE_MODE=false
 CLI_ONLY=false
 FORCE_YES=false
@@ -71,6 +96,61 @@ info()    { echo -e "${BLUE}info:${NC} $1"; }
 success() { echo -e "${GREEN}success:${NC} $1"; }
 warn()    { echo -e "${YELLOW}warning:${NC} $1"; }
 error()   { echo -e "${RED}error:${NC} $1"; exit 1; }
+
+CHECKSUMS_FILE=""
+
+fetch_checksums() {
+    # Downloads checksums.txt for SPECIFIC_VERSION into a directory once per run.
+    local dest_dir="$1"
+    CHECKSUMS_FILE="${dest_dir}/checksums.txt"
+    if [[ -f "$CHECKSUMS_FILE" ]]; then
+        return 0
+    fi
+    local url="https://github.com/${REPO}/releases/download/${SPECIFIC_VERSION}/checksums.txt"
+    info "Downloading checksums.txt..."
+    if ! curl -fsSL "$url" -o "$CHECKSUMS_FILE"; then
+        error "Failed to download checksums.txt for ${SPECIFIC_VERSION}; refusing to install unverified binaries."
+    fi
+}
+
+sha256_file() {
+    # Portable sha256: sha256sum (Linux) or shasum -a 256 (macOS).
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
+verify_asset() {
+    # verify_asset <file_path> <asset_name>: sha256-checks file against CHECKSUMS_FILE.
+    local file_path="$1"
+    local asset_name="$2"
+    local expected actual
+    expected="$(grep -E "[[:space:]](\\*?)${asset_name}\$" "$CHECKSUMS_FILE" | awk '{print $1}' | head -n1)"
+    if [[ -z "$expected" ]]; then
+        error "Checksum entry for ${asset_name} not found in checksums.txt; refusing to install."
+    fi
+    actual="$(sha256_file "$file_path")"
+    if [[ "$expected" != "$actual" ]]; then
+        error "Checksum mismatch for ${asset_name}: expected ${expected}, got ${actual}."
+    fi
+    info "Checksum OK: ${asset_name}"
+}
+
+assert_installed_version() {
+    # assert_installed_version <binary_path>: fails loudly on version mismatch.
+    local bin_path="$1"
+    local got expected="${SPECIFIC_VERSION#v}"
+    if [[ ! -x "$bin_path" ]]; then
+        error "Installed binary not found or not executable: ${bin_path}"
+    fi
+    got="$("$bin_path" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' | head -n1)"
+    if [[ "$got" != "$expected" ]]; then
+        error "Installed version '${got}' does not match requested '${expected}'."
+    fi
+    info "Version OK: ${got}"
+}
 
 run_as_user() {
     if [[ -n "${SUDO_USER:-}" && "$USER" == "root" ]]; then
@@ -318,6 +398,25 @@ install_binary_file() {
             error "Cannot chmod $target_path and sudo is not available."
         fi
     fi
+
+    # Record how this binary was installed so govard self-update knows
+    # whether a package manager owns the installation.
+    write_install_source_marker "$(dirname "$target_path")"
+}
+
+# Writes the unmanaged install-source marker next to script-installed
+# binaries (shared by the archive path and the .deb path, which bypasses
+# install_binary_file via apt).
+write_install_source_marker() {
+    local bin_dir="$1"
+    local marker_path="${bin_dir}/.install-source"
+    if [ -w "$bin_dir" ]; then
+        echo "unmanaged" > "$marker_path"
+    else
+        if command -v sudo >/dev/null 2>&1; then
+            echo "unmanaged" | sudo tee "$marker_path" >/dev/null
+        fi
+    fi
 }
 
 warn_if_mixed_install_channels() {
@@ -422,7 +521,9 @@ extract_binary_from_deb() {
 install_go() {
     info "Checking Go environment..."
     GO_BIN_DIR="/usr/local/go/bin"
-    
+    local GO_FLOOR
+    GO_FLOOR="$(govard_go_floor)"
+
     need_go_install=false
     if ! command -v go >/dev/null 2>&1; then
         info "Go is not installed."
@@ -430,8 +531,8 @@ install_go() {
     else
         CURRENT_GO=$(go version | awk '{print $3}' | sed 's/go//')
         # Simple version comparison
-        if [[ "$(printf '%s\n' "$MIN_GO_VERSION" "$CURRENT_GO" | sort -V | head -n1)" != "$MIN_GO_VERSION" ]]; then
-            warn "Go version $CURRENT_GO is too old (Need $MIN_GO_VERSION+)"
+        if [[ "$(printf '%s\n' "$GO_FLOOR" "$CURRENT_GO" | sort -V | head -n1)" != "$GO_FLOOR" ]]; then
+            warn "Go version $CURRENT_GO is too old (Need $GO_FLOOR+)"
             need_go_install=true
         else
             success "Go: $CURRENT_GO"
@@ -441,14 +542,14 @@ install_go() {
 
     if [[ "$need_go_install" == true ]]; then
         if [[ "$FORCE_YES" == false ]]; then
-            read -p "Do you want to install Go $MIN_GO_VERSION automatically? (Y/n) " confirm </dev/tty
+            read -p "Do you want to install Go $GO_FLOOR automatically? (Y/n) " confirm </dev/tty
             if [[ -n "$confirm" && ! $confirm =~ ^[Yy]$ ]]; then
-                error "Go $MIN_GO_VERSION+ is required for source builds."
+                error "Go $GO_FLOOR+ is required for source builds."
             fi
         fi
 
-        info "Downloading Go $MIN_GO_VERSION..."
-        GO_TAR="go${MIN_GO_VERSION}.${OS}-${ARCH}.tar.gz"
+        info "Downloading Go $GO_FLOOR..."
+        GO_TAR="go${GO_FLOOR}.${OS}-${ARCH}.tar.gz"
         GO_URL="https://go.dev/dl/${GO_TAR}"
         
         TMP_DIR=$(mktemp -d)
@@ -499,11 +600,15 @@ install_via_deb() {
         rm -rf "$tmp_dir"
         return 1
     fi
+    fetch_checksums "$tmp_dir"
+    verify_asset "$cli_deb_path" "$cli_deb_name"
 
     if [[ "$CLI_ONLY" == true ]]; then
         info "Installing Govard CLI via APT..."
         if sudo apt-get install -y "$cli_deb_path"; then
             rm -rf "$tmp_dir"
+            write_install_source_marker "/usr/local/bin"
+            assert_installed_version "/usr/local/bin/govard"
             success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
             return 0
         fi
@@ -522,6 +627,8 @@ install_via_deb() {
         warn "Failed to download ${desktop_deb_name}; installing Govard CLI only."
         if sudo apt-get install -y "$cli_deb_path"; then
             rm -rf "$tmp_dir"
+            write_install_source_marker "/usr/local/bin"
+            assert_installed_version "/usr/local/bin/govard"
             success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
             return 0
         fi
@@ -530,10 +637,13 @@ install_via_deb() {
         rm -rf "$tmp_dir"
         return 1
     fi
+    verify_asset "$desktop_deb_path" "$desktop_deb_name"
 
     info "Installing Govard CLI and Desktop via APT..."
     if sudo apt-get install -y "$cli_deb_path" "$desktop_deb_path"; then
         rm -rf "$tmp_dir"
+        write_install_source_marker "/usr/local/bin"
+        assert_installed_version "/usr/local/bin/govard"
         success "Govard $SPECIFIC_VERSION installed via Debian package (CLI + Desktop)!"
         return 0
     fi
@@ -541,6 +651,8 @@ install_via_deb() {
     warn "Govard Desktop Debian package installation failed; installing Govard CLI only."
     if sudo apt-get install -y "$cli_deb_path"; then
         rm -rf "$tmp_dir"
+        write_install_source_marker "/usr/local/bin"
+        assert_installed_version "/usr/local/bin/govard"
         success "Govard $SPECIFIC_VERSION installed via Debian package (CLI only)!"
         return 0
     fi
@@ -567,6 +679,7 @@ install_binary() {
     OS_CAP="$(echo "${OS:0:1}" | tr '[:lower:]' '[:upper:]')${OS:1}"
 
     TMP_DIR=$(mktemp -d)
+    fetch_checksums "$TMP_DIR"
     binaries=("$CLI_BINARY_NAME")
     if [[ "$CLI_ONLY" == false ]]; then
         binaries+=("$DESKTOP_BINARY_NAME")
@@ -580,6 +693,7 @@ install_binary() {
 
         info "Downloading $download_url..."
         if curl -fsSL "$download_url" -o "$archive_path"; then
+            verify_asset "$archive_path" "$archive_name"
             tar -xzf "$archive_path" -C "$TMP_DIR"
             extracted_path="${TMP_DIR}/${binary_name}"
             if [[ ! -f "$extracted_path" ]]; then
@@ -598,6 +712,7 @@ install_binary() {
             if ! curl -fsSL "$deb_url" -o "$deb_path"; then
                 error "Failed to download ${deb_name} for desktop fallback."
             fi
+            verify_asset "$deb_path" "$deb_name"
 
             extracted_path="${TMP_DIR}/${binary_name}"
             if ! extract_binary_from_deb "$deb_path" "$binary_name" "$extracted_path"; then
@@ -617,6 +732,7 @@ install_binary() {
     done
 
     rm -rf "$TMP_DIR"
+    assert_installed_version "${INSTALL_DIR%/}/govard"
     if [[ "$CLI_ONLY" == true ]]; then
         success "Govard $SPECIFIC_VERSION installed (CLI only)!"
     else

@@ -49,8 +49,24 @@ func TestLinuxPackageLayout(t *testing.T) {
 	if slices.Contains(cli.Dependencies, "libwebkit2gtk-4.1-0") {
 		t.Errorf("CLI dependencies unexpectedly include WebKitGTK: %v", cli.Dependencies)
 	}
-	if len(cli.Contents) != 0 {
-		t.Errorf("CLI package unexpectedly contains Desktop assets: %v", cli.Contents)
+	// The CLI package carries shell completions only — no Desktop assets.
+	completionContents := [][2]string{
+		{"./completion/govard.bash", "/etc/bash_completion.d/govard"},
+		{"./completion/govard.fish", "/usr/share/fish/vendor_completions.d/govard.fish"},
+		{"./completion/govard.zsh", "/usr/local/share/zsh/site-functions/_govard"},
+	}
+	if len(cli.Contents) != len(completionContents) {
+		t.Errorf("CLI package contents = %v, want exactly the shell completion files", cli.Contents)
+	}
+	for _, want := range completionContents {
+		if !releaseNFPMHasContent(cli, want[0], want[1]) {
+			t.Errorf("CLI package is missing completion file %q -> %q", want[0], want[1])
+		}
+	}
+	for _, content := range cli.Contents {
+		if strings.HasPrefix(content.Source, "./packaging/") {
+			t.Errorf("CLI package unexpectedly contains Desktop asset: %v", content)
+		}
 	}
 
 	desktop := findReleaseNFPM(t, config.NFPMS, "govard-desktop")

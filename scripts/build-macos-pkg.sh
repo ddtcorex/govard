@@ -36,6 +36,10 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
+# Stamp release version into desktop metadata (committed files carry
+# 0.0.0-dev so no bump is ever needed; the tag is the truth).
+node -e "const fs=require('fs');for (const p of ['$ROOT_DIR/desktop/frontend/package.json', '$ROOT_DIR/desktop/wails.json']) { const j=JSON.parse(fs.readFileSync(p)); if ('version' in j) j.version='$VERSION'; if (j.info && 'productVersion' in j.info) j.info.productVersion='$VERSION'; fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n'); }"
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 

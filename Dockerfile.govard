@@ -1,0 +1,27 @@
+# Govard CLI runtime image (ghcr.io/ddtcorex/govard).
+# Self-contained multi-stage build: compiles the CLI from source so the
+# GoReleaser dockers publisher needs no artifact-injection semantics.
+# Version metadata arrives via build args (see .goreleaser.yml dockers).
+ARG GOVARD_VERSION=dev
+ARG GLINT_DIGEST=
+# Single knob for the Go toolchain image (tracks go.mod; release may
+# override with --build-arg without editing this file).
+ARG GO_IMAGE=golang:1.25-alpine
+
+FROM ${GO_IMAGE} AS build
+ARG GOVARD_VERSION
+ARG GLINT_DIGEST
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build \
+  -ldflags "-s -w -X govard/internal/cmd.Version=${GOVARD_VERSION} -X govard/internal/desktop.Version=${GOVARD_VERSION} -X govard/internal/audit.GovardGlintDigest=${GLINT_DIGEST}" \
+  -o /out/govard ./cmd/govard
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates docker-cli
+COPY --from=build /out/govard /usr/local/bin/govard
+# Install-source marker: in-container self-update defers to `docker pull`.
+RUN printf 'docker\n' > /usr/local/bin/.install-source
+ENTRYPOINT ["/usr/local/bin/govard"]

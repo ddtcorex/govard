@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # GitHub Actions only, by design: Go modules ride the existing
+  # govulncheck/manual flow, Docker bases stay hand-pinned for
+  # reproducible builds (see AGENTS.md "Version Truth").
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

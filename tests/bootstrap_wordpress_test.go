@@ -107,3 +107,19 @@ require_once ABSPATH . 'wp-settings.php';
 		t.Fatalf("expected default admin password in runner commands, got:\n%s", joined)
 	}
 }
+
+func TestWordPressInstallCodeDefinesInstallingBeforeLoad(t *testing.T) {
+	code := wordpress.BuildWordPressInstallCodeForTest("wp-repro-246.test", "", "/var/www/html/wp-load.php", "/var/www/html/wp-admin/includes/upgrade.php")
+
+	defIdx := strings.Index(code, "WP_INSTALLING")
+	loadIdx := strings.Index(code, "wp-load.php")
+	if defIdx < 0 {
+		t.Fatalf("install code must define WP_INSTALLING (issue #246), got:\n%s", code)
+	}
+	if loadIdx < 0 || defIdx > loadIdx {
+		t.Fatalf("WP_INSTALLING must be defined before wp-load.php is required, got:\n%s", code)
+	}
+	if !strings.Contains(code, "wp_install(") || !strings.Contains(code, "is_blog_installed()") {
+		t.Fatalf("install code must keep the guarded wp_install call, got:\n%s", code)
+	}
+}

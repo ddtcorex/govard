@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"govard/internal/engine"
+	"govard/internal/updater"
 	"os"
 	"strings"
 
@@ -64,6 +65,7 @@ func ExecuteDoctor(cmd *cobra.Command, outputJSON bool, fixEnabled bool, packEna
 		fmt.Println()
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Govard System Doctor ")
 		fmt.Println()
+		pterm.Info.Printf("Install source: %s\n", updater.InstallSource())
 	}
 
 	report := runDoctorDiagnostics()

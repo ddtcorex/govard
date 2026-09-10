@@ -357,7 +357,7 @@ func TestCLIVersionFlag(t *testing.T) {
 		t.Fatal("Version output should not be empty")
 	}
 
-	if !strings.Contains(combined, "govard") && !strings.Contains(combined, "v1.") {
+	if !strings.Contains(combined, "govard") && !strings.Contains(combined, "v1.") && !strings.Contains(combined, "dev") {
 		t.Error("Version output should contain Govard name or version marker")
 	}
 }
