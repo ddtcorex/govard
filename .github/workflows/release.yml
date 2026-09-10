@@ -94,10 +94,12 @@ jobs:
           eval "$(dbus-launch --sh-syntax)"
           echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
           # --login (not --unlock): unlocks the login keyring OR CREATES it
-          # from the stdin password. --unlock alone leaves /collection/login
-          # missing (beta.17), and creating it via API hits a headless
-          # confirmation prompt (beta.18: Prompt dismissed).
-          echo -n "" | gnome-keyring-daemon --daemonize --components=secrets --login
+          # from the stdin password. Empty password is treated as "no
+          # keyring" (beta.19: still no /collection/login), so generate a
+          # random one — ephemeral runner, and only the openssl invocation
+          # appears in logs, never the value.
+          KEYRING_PASS="$(openssl rand -hex 16)"
+          printf '%s' "${KEYRING_PASS}" | gnome-keyring-daemon --daemonize --components=secrets --login
           secret-tool store --label=ci-keyring-probe probe-key probe-value
           [ "$(secret-tool lookup probe-key probe-value)" = "probe-value" ]
         env:
