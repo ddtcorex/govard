@@ -1,0 +1,86 @@
+name: CloudSmith Retention
+
+# Free-tier CloudSmith has no Retention UI section (owner-confirmed), so this
+# workflow enforces keep-last-N per package instead: monthly cron + manual
+# dispatch. Dry-run by default — pass live=true to actually delete.
+# Deletes address individual versions by their immutable slug_perm, never by
+# package name, so a bug can at worst remove one version, not a package.
+
+on:
+  schedule:
+    - cron: "0 3 1 * *" # monthly, 10:00 ICT
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Actually delete old versions (default dry-run)"
+        type: boolean
+        default: false
+      keep_last:
+        description: "Versions to keep per package"
+        default: "5"
+
+permissions:
+  contents: read
+
+env:
+  OWNER: ddtcorex
+  REPOS: govard-deb govard-rpm govard-apk
+
+jobs:
+  retention:
+    name: Prune old package versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install CloudSmith SDK
+        run: pip install --quiet cloudsmith-api
+
+      - name: Run retention
+        run: |
+          python3 - <<'EOF'
+          import os
+          import cloudsmith_api
+
+          owner = os.environ["OWNER"]
+          repos = os.environ["REPOS"].split()
+          keep_last = int(os.environ.get("KEEP_LAST", "5"))
+          live = os.environ.get("LIVE", "false").lower() == "true"
+
+          config = cloudsmith_api.Configuration()
+          config.api_key["X-Api-Key"] = os.environ["CLOUDSMITH_API_KEY"]
+          packages = cloudsmith_api.PackagesApi(
+              cloudsmith_api.ApiClient(config)
+          )
+
+          def version_key(version):
+              # "1.72.0-beta.11" -> ((1,72,0),(0,11)); "1.72.0" -> ((1,72,0),(1,))
+              base, _, pre = version.partition("-")
+              nums = tuple(int(p) for p in base.split("."))
+              if pre.startswith("beta."):
+                  return (nums, (0, int(pre[len("beta."):])))
+              return (nums, (1,))
+
+          deleted = 0
+          for repo in repos:
+              items = packages.packages_list(owner, repo, page_size=100)
+              by_slug = {}
+              for pkg in items:
+                  by_slug.setdefault(pkg.slug, []).append(pkg)
+              for slug, versions in sorted(by_slug.items()):
+                  ordered = sorted(
+                      versions, key=lambda p: version_key(p.version)
+                  )
+                  for old in ordered[:-keep_last] if len(ordered) > keep_last else []:
+                      if live:
+                          packages.packages_delete(owner, repo, old.slug_perm)
+                          deleted += 1
+                          print(f"DELETED {repo}/{slug} {old.version}")
+                      else:
+                          print(f"WOULD-DELETE {repo}/{slug} {old.version}")
+                  kept = [p.version for p in ordered[-keep_last:]]
+                  print(f"KEEP {repo}/{slug}: {', '.join(kept)}")
+          print(f"mode={'LIVE' if live else 'DRY-RUN'} deleted={deleted}")
+          EOF
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+          LIVE: ${{ inputs.live || 'false' }}
+          KEEP_LAST: ${{ inputs.keep_last || '5' }}
