@@ -147,24 +147,64 @@ func checkSandboxMirror(ctx context.Context, sc *StepContext) error {
 	return nil
 }
 
-// checkRepositoryReachable proves the *target* can reach the repository. The
-// most common first-deploy failure is a server without the deploy key, and it is
-// worth catching before a release directory exists.
+// checkRepositoryReachable proves the *target* can reach the repository and that
+// the ref this deploy will actually fetch exists there. The most common
+// first-deploy failure is a server without the deploy key, and "forgot to push"
+// is the second: both are worth catching before a release directory exists.
+//
+// The ref is checked fully qualified — `refs/heads/<branch>` or
+// `refs/tags/<tag>` — because `git ls-remote <repo> main` matches *any* ref named
+// `main`, including a tag, and would then bless a branch that does not exist.
+//
+// `--revision` names a commit rather than a ref, and `ls-remote` lists refs only,
+// so a revision-only deploy proves reachability here and the commit itself in
+// deploy:code, which runs before anything live changes.
 func checkRepositoryReachable(ctx context.Context, sc *StepContext) error {
 	repository := strings.TrimSpace(sc.Opts.Repository)
 	if repository == "" {
 		repository = strings.TrimSpace(sc.Host.Repository)
 	}
-	branch := strings.TrimSpace(sc.Opts.Branch)
-	if repository == "" || branch == "" {
+	if repository == "" {
 		return nil
 	}
-	command := "git ls-remote --exit-code " + Shell(repository) + " " + Shell(branch)
-	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
-		return fmt.Errorf("target %s cannot reach %s branch %s (deploy key or network): %w", sc.Host.Name, repository, branch, err)
+
+	ref := ""
+	switch {
+	case strings.TrimSpace(sc.Opts.Tag) != "":
+		ref = qualifyRef("refs/tags/", strings.TrimSpace(sc.Opts.Tag))
+	case strings.TrimSpace(sc.Opts.Branch) != "":
+		ref = qualifyRef("refs/heads/", strings.TrimSpace(sc.Opts.Branch))
 	}
-	sc.Notes = append(sc.Notes, "repository reachable from the target: "+branch)
+
+	command := "git ls-remote --exit-code " + Shell(repository)
+	if ref != "" {
+		command += " " + Shell(ref)
+	}
+	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+		if ref == "" {
+			return fmt.Errorf("target %s cannot reach %s (deploy key or network): %w", sc.Host.Name, repository, err)
+		}
+		return fmt.Errorf("target %s cannot reach %s %s (deploy key, network, or the ref was never pushed): %w", sc.Host.Name, repository, ref, err)
+	}
+	if ref != "" {
+		sc.Notes = append(sc.Notes, "repository reachable from the target: "+ref)
+	}
 	return nil
+}
+
+// qualifyRef prefixes a short ref name, leaving one that is already a full ref
+// path alone so `branch: refs/heads/main` keeps working.
+func qualifyRef(prefix, name string) string {
+	if strings.HasPrefix(name, "refs/") {
+		return name
+	}
+	return prefix + name
+}
+
+// CheckRepositoryReachableForTest exposes checkRepositoryReachable to the
+// tests/ package.
+func CheckRepositoryReachableForTest(ctx context.Context, sc *StepContext) error {
+	return checkRepositoryReachable(ctx, sc)
 }
 
 // probeAtomicRename verifies the target's mv supports the atomic rename the

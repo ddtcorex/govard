@@ -528,3 +528,103 @@ func runGitInDir(t *testing.T, dir string, args ...string) string {
 	}
 	return string(out)
 }
+
+// seedOriginWithDevBranch builds a bare origin whose only branch is `dev`, plus
+// a tag named `main`. The tag name is the trap: an unqualified `ls-remote main`
+// matches it, so a branch check that is not fully qualified passes on a
+// repository that has no such branch at all.
+func seedOriginWithDevBranch(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	origin := filepath.Join(root, "origin.git")
+	work := filepath.Join(root, "work")
+	runGit := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = work
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatalf("mkdir work: %v", err)
+	}
+	if _, err := exec.Command("git", "init", "--bare", "-q", origin).CombinedOutput(); err != nil {
+		t.Fatalf("init bare: %v", err)
+	}
+	runGit("init", "-q", "-b", "dev")
+	writeFile(t, filepath.Join(work, "app.txt"), "v1\n")
+	runGit("add", ".")
+	runGit("commit", "-q", "-m", "v1")
+	runGit("tag", "main")
+	runGit("remote", "add", "origin", origin)
+	runGit("push", "-q", "origin", "dev", "refs/tags/main")
+	return origin
+}
+
+func TestRepositoryCheckFullyQualifiesTheBranchRef(t *testing.T) {
+	origin := seedOriginWithDevBranch(t)
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+
+	reachable := func(branch string) error {
+		sc := deploy.StepContextForTest(host, deploy.Options{
+			Remote: "local", Repository: origin, Branch: branch, Revision: "abc",
+		})
+		return deploy.CheckRepositoryReachableForTest(context.Background(), sc)
+	}
+
+	// A tag named `main` must not satisfy a check for the branch `main`.
+	if err := reachable("main"); err == nil {
+		t.Fatal("a tag named main satisfied the branch check: the ref must be fully qualified")
+	}
+	if err := reachable("dev"); err != nil {
+		t.Fatalf("the origin's real branch must pass: %v", err)
+	}
+}
+
+func TestRepositoryCheckVerifiesATagExists(t *testing.T) {
+	origin := seedOriginWithDevBranch(t)
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+
+	withTag := func(tag string) error {
+		sc := deploy.StepContextForTest(host, deploy.Options{
+			Remote: "local", Repository: origin, Tag: tag,
+		})
+		return deploy.CheckRepositoryReachableForTest(context.Background(), sc)
+	}
+	if err := withTag("main"); err != nil {
+		t.Fatalf("a tag deploy must verify the tag it fetches, and it exists: %v", err)
+	}
+	if err := withTag("v9.9.9"); err == nil {
+		t.Fatal("a tag that was never pushed must fail the preflight, not the deploy")
+	}
+	// A branch named `dev` must not satisfy a check for the tag `dev`.
+	if err := withTag("dev"); err == nil {
+		t.Fatal("a branch named dev satisfied the tag check: the ref must be fully qualified")
+	}
+}
+
+func TestRepositoryCheckStillProvesReachabilityForARevisionOnlyDeploy(t *testing.T) {
+	origin := seedOriginWithDevBranch(t)
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote: "local", Repository: origin, Revision: "0123456789abcdef0123456789abcdef01234567",
+	})
+	if err := deploy.CheckRepositoryReachableForTest(context.Background(), sc); err != nil {
+		t.Fatalf("a revision-only deploy still has to reach the repository: %v", err)
+	}
+
+	broken := deploy.StepContextForTest(host, deploy.Options{
+		Remote: "local", Repository: filepath.Join(t.TempDir(), "nope.git"), Revision: "abc",
+	})
+	if err := deploy.CheckRepositoryReachableForTest(context.Background(), broken); err == nil {
+		t.Fatal("an unreachable repository must fail even without a branch")
+	}
+}
