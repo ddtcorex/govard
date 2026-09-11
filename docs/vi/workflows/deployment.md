@@ -59,6 +59,27 @@ Mọi hành vi nâng cao đều nằm sau một flag và mặc định là bản
 lại revision mà target đã chạy, còn `--build`, `--artifact-dir` và `--publish`
 đổi cách release được tạo và publish.
 
+`deploy.settings` được đối chiếu với recipe trước khi chạy bất cứ thứ gì: key mà
+framework không biết, hoặc giá trị sai dạng, là lỗi cấu hình (exit 4) có nêu tên
+key và gợi ý key gần đúng. Trước đây gõ sai là im lặng bỏ qua —
+`static_content_locale: en_US` deploy mọi locale mà recipe mặc định. Giá trị chuỗi
+phải được quote nếu trông giống số (`php_version: "8.2"`): engine đọc các setting
+này dưới dạng chuỗi, nên `8.2` không quote sẽ đọc thành rỗng.
+
+### Composer repository riêng
+
+Release build trên target thì cài dependency ngay trên đó, nên cần credential cho
+mọi repository không phải packagist. `COMPOSER_AUTH` từ môi trường được chuyển
+tiếp tới bước cài dependency — qua standard input, không nằm trong command, nên
+không lộ trong process list của target và không lọt vào log deploy — và
+`shared/auth.json` trên target cũng dùng được như với công cụ deploy kia. Govard
+không lưu cái nào.
+
+`govard deploy check` cho biết đang dùng nguồn nào, và cảnh báo khi dự án khai báo
+repository riêng mà không có nguồn nào. Nó cảnh báo chứ không từ chối: thứ govard
+đọc được chỉ là URL, và URL không cho biết repository có cần credential hay không.
+Hãy đặt `COMPOSER_AUTH` ở cả job build lẫn job deploy khi artifact được build ở đó.
+
 ## Build mode
 
 `--build=auto` (mặc định) quyết định theo **sự hiện diện**, không dò đoán môi
@@ -143,6 +164,15 @@ govard deploy rollback staging --with-db --yes  # ... kèm cả dump database
 Rollback không bao giờ build lại: layout symlink được trỏ lại, còn layout
 in-place chạy lại phần publish từ thư mục release đã có trên server.
 
+`deploy.lock_stale_after` (mặc định 2h) là ngưỡng để `govard deploy unlock` nhả
+lock mà không cần `--force`; thông báo từ chối khi lock đang bị giữ có nêu người
+giữ, revision và đã giữ bao lâu.
+
+`deploy.maintenance_timeout` (mặc định 15m) chặn mỗi bước chạy trong lúc site đang
+maintenance, thấp hơn hẳn `deploy.command_timeout` là có chủ đích: bước chậm trong
+window là đang giữ site down. Hãy nâng lên với dự án có dump database vốn mất
+nhiều thời gian.
+
 Một lần deploy lỗi vẫn giữ thư mục release và record của nó. Lỗi ở đâu quyết định
 số phận của lock: lỗi trong `prepare` hoặc `build` sẽ nhả lock vì chưa có gì live
 thay đổi, nên chỉ cần sửa lỗi rồi deploy lại — còn lỗi từ `publish` trở đi thì giữ
@@ -150,6 +180,23 @@ lock, vì target có thể đang dở dang, và đường đi tiếp là `govard
 --resume` để tiếp tục release mới nhất chưa xong thay vì tạo release mới.
 `--from <task>` bắt đầu từ một task hoặc hook chỉ định, và `govard deploy unlock`
 giải phóng lock do lần lỗi để lại.
+
+## Output cho máy đọc
+
+`--json` ghi đúng một JSON document ra stdout, còn mọi thứ cho người đọc ra stderr,
+nên job CI có thể pipe stdout vào parser và giữ stderr trong log:
+
+```json
+{"schema_version":1,"remote":"production","branch":"main","revision":"0123abc…",
+ "release":"42","build":{"mode":"server"},"publish":{"strategy":"symlink"},
+ "verify":"ok","result":"ok","duration_ms":94300,
+ "tasks":[{"id":"deploy:check","stage":"prepare","status":"ok","duration_ms":19}]}
+```
+
+Deploy lỗi cho ra cùng document đó với `"result":"failed"` và `"error"` nêu task,
+host, command; tiến trình thoát 1. Release record mang `ci.pipeline`/`ci.job` khi
+lần chạy đó là CI, nhờ vậy câu "pipeline nào đã deploy cái này" trả lời được sau
+đó từ `govard deploy status`.
 
 ## Sandbox
 

@@ -790,6 +790,28 @@ earlier build cannot ship: pass `--force` to replace its contents.
 `--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. It needs no
 capability at all: `none`.
 
+**Settings and credentials.** `deploy.settings` is validated against the recipe
+before anything runs: an unknown key, or a value with the wrong shape, exits 4 with
+the key named and the near miss suggested. String settings must be quoted if they
+look numeric — the engine reads them as strings. `COMPOSER_AUTH` from the
+environment is forwarded to the dependency step on its standard input (never in the
+command), and a `shared/auth.json` on the target works too; `govard deploy check`
+reports which source is in play and warns when a target-side build will need one
+and there is none.
+
+**Machine-readable output.** With `--json`, stdout carries exactly one JSON
+document and the human timeline goes to stderr: `schema_version`, `remote`,
+`branch`, `revision`, `release`, `build.mode`, `publish.strategy`,
+`publish.previous_release`, `verify`, `result`, `duration_ms` and
+`tasks[{id,stage,status,duration_ms}]`. A failed deploy emits the same document
+with `result: "failed"` and `error`, and exits 1. The release record carries
+`ci.pipeline`/`ci.job` when the run is a CI run.
+
+`deploy.lock_stale_after` (2h) and `deploy.maintenance_timeout` (15m) are the two
+timeouts beyond `command_timeout`: the first is how old a lock must be for
+`deploy unlock` to release it without `--force`, the second bounds one step inside
+the maintenance window.
+
 **The sandbox.** `govard deploy sandbox up` builds a container, publishes SSH on
 a free loopback port, generates a dedicated key under `.govard/sandbox/`
 (gitignored), mounts a read-only mirror of your local repository and writes a

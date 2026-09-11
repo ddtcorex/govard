@@ -748,6 +748,26 @@ Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--bran
 `--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. Lệnh này không
 cần capability nào: `none`.
 
+**Setting và credential.** `deploy.settings` được đối chiếu với recipe trước khi
+chạy: key lạ, hoặc giá trị sai dạng, thoát với mã 4 kèm tên key và gợi ý key gần
+đúng. Setting dạng chuỗi phải quote nếu trông giống số — engine đọc chúng dưới dạng
+chuỗi. `COMPOSER_AUTH` từ môi trường được chuyển tới bước cài dependency qua
+standard input (không bao giờ nằm trong command), và `shared/auth.json` trên target
+cũng dùng được; `govard deploy check` cho biết đang dùng nguồn nào và cảnh báo khi
+build trên target cần mà không có.
+
+**Output cho máy đọc.** Với `--json`, stdout chứa đúng một JSON document còn
+timeline cho người đọc đi ra stderr: `schema_version`, `remote`, `branch`,
+`revision`, `release`, `build.mode`, `publish.strategy`,
+`publish.previous_release`, `verify`, `result`, `duration_ms` và
+`tasks[{id,stage,status,duration_ms}]`. Deploy lỗi phát ra cùng document với
+`result: "failed"` và `error`, thoát mã 1. Release record mang `ci.pipeline`/`ci.job`
+khi lần chạy là CI.
+
+`deploy.lock_stale_after` (2h) và `deploy.maintenance_timeout` (15m) là hai timeout
+ngoài `command_timeout`: cái đầu là ngưỡng để `deploy unlock` nhả lock không cần
+`--force`, cái sau chặn một bước trong maintenance window.
+
 **Sandbox.** `govard deploy sandbox up` build một container, publish SSH trên một
 cổng loopback còn trống, sinh khoá riêng dưới `.govard/sandbox/` (đã gitignore),
 mount read-only một mirror repository local và ghi remote `sandbox` vào

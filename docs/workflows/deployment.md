@@ -61,6 +61,29 @@ ones: `--no-verify`, `--no-db-backup` and `--lock=false` turn work off, `--force
 re-deploys a revision the target already runs, and `--build`, `--artifact-dir`
 and `--publish` change how the release is produced and published.
 
+`deploy.settings` is validated against the recipe before anything runs: a key the
+framework does not know, or a value with the wrong shape, is a configuration error
+(exit 4) that names the key and suggests the near miss. A misspelling used to be a
+silent no-op — `static_content_locale: en_US` deployed every locale the recipe
+defaulted to. String values must be quoted if they look numeric (`php_version:
+"8.2"`): the engine reads those settings as strings, so an unquoted `8.2` reads as
+empty.
+
+### Private Composer repositories
+
+A release built on the target installs its dependencies there, so it needs
+credentials for any repository that is not packagist. `COMPOSER_AUTH` from the
+environment is forwarded to the dependency step — on its standard input, not in the
+command, so it stays out of the target's process list and out of the deploy log —
+and a `shared/auth.json` on the target works as it does for the other deploy tool.
+Govard stores neither.
+
+`govard deploy check` reports which source is in play, and warns when the project
+declares a private repository and neither is available. It warns rather than
+refuses: the declaration it can read is a URL, and a URL cannot tell it whether a
+repository needs credentials. Set `COMPOSER_AUTH` in the CI build job as well as in
+the deploy job when the artifact is built there.
+
 ## Build modes
 
 `--build=auto` (the default) resolves **by presence**, never by sniffing the
@@ -148,6 +171,15 @@ govard deploy rollback staging --with-db --yes  # ... and its database dump
 Rollback never rebuilds: a symlink layout is re-pointed, and an in-place layout
 re-runs the publish tail from the release directory already on the server.
 
+`deploy.lock_stale_after` (default 2h) is how old a lock must be for
+`govard deploy unlock` to release it without `--force`; the refusal a held lock
+produces names the holder, its revision and how long it has been held.
+
+`deploy.maintenance_timeout` (default 15m) bounds any single step that runs with
+the site in maintenance mode, which is far below `deploy.command_timeout` on
+purpose: a slow step there is holding the site down. Raise it for a project whose
+database dump legitimately takes longer.
+
 A failed deploy keeps its release directory and its record. Where it failed
 decides the lock: a failure in `prepare` or `build` releases it, because nothing
 live has changed, so the fault can simply be fixed and the deploy retried — while
@@ -156,6 +188,24 @@ half-changed, and the way forward is `govard deploy <remote> --resume`, which
 continues the newest unfinished release instead of starting a new one.
 `--from <task>` starts at a named task or hook, and `govard deploy unlock`
 releases a lock a failed run left behind.
+
+## Machine-readable output
+
+`--json` writes exactly one JSON document to stdout and everything a human would
+read to stderr, so a CI job can pipe stdout into a parser and keep stderr in the
+log:
+
+```json
+{"schema_version":1,"remote":"production","branch":"main","revision":"0123abc…",
+ "release":"42","build":{"mode":"server"},"publish":{"strategy":"symlink"},
+ "verify":"ok","result":"ok","duration_ms":94300,
+ "tasks":[{"id":"deploy:check","stage":"prepare","status":"ok","duration_ms":19}]}
+```
+
+A failing deploy produces the same document with `"result":"failed"` and an
+`"error"` that names the task, host and command; the process exits 1. The release
+record carries `ci.pipeline`/`ci.job` when the run is a CI run, which is how "which
+pipeline deployed this" is answered afterwards from `govard deploy status`.
 
 ## The sandbox
 

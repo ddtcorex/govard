@@ -822,7 +822,6 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 	}
 
 	// A credential source silences it: the environment…
-	notes = strings.Join(check(t, private, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
 	t.Setenv("COMPOSER_AUTH", `{"http-basic":{}}`)
 	notes = strings.Join(check(t, private, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
 	if strings.Contains(notes, "warning") {
