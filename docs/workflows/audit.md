@@ -47,7 +47,7 @@ Exit code: `0` when all checks pass, non-zero after the summary when any check f
 | Check | What it does |
 | :--- | :--- |
 | `lint` | Static analysis via the Govard-native backend (`phpcs` + `phpstan` + media guard). |
-| `integrity` | Magento 2 / Mage-OS: container-free analysis of the checkout itself — Composer manifest/lock agreement and module/DI/sequence consistency. Runs on the host, so it works on a machine with no Docker. |
+| `integrity` | Magento 2 / Mage-OS: container-free analysis of the checkout itself — Composer manifest/lock agreement (including whether `composer.lock` was generated from the `composer.json` next to it, compared through Composer's own `content-hash`) and module/DI/sequence consistency plus well-formedness of the route definitions a module ships (`webapi.xml`, `routes.xml`). Runs on the host, so it works on a machine with no Docker. |
 | `profiler` | Captures Magento's stock `MAGE_PROFILER=csvfile` via a lease-protected web-server include, one bounded `GET` to `--url`, then restores everything. |
 
 `profiler` requires:
