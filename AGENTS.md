@@ -172,6 +172,26 @@ envelope **before** the command does any work.
   job (no docker binary, no socket): a new requirement-free command or a new
   representative gate belongs there too.
 
+**Which commands must be Docker-free.** The Docker-free surface is supported, not
+incidental: a command whose work does not need a running container declares its
+real requirement — `none`, or `ssh`/`rsync`/`cloudflared`/`net` — instead of
+inheriting `docker`. The bar, by kind of work:
+
+- host discovery and diagnostics: `capabilities`, `doctor`, `version`, `help`,
+  `completion`;
+- project configuration, the registry, and local caches: `config get|set|auto`,
+  `config profile`, `lock *`, `blueprint cache *`, `init`, `custom list`;
+- static analysis of the checkout: `audit run --checks integrity` plus the
+  host-side audit lifecycle (`status`, `result`, `diff`, `cleanup`);
+- direct host or network work: `remote *` (SSH), `sync` (rsync), `tunnel *`
+  (`cloudflared`), `trust`, `self-update`.
+
+Container orchestration keeps `docker`: `env`, `svc`, `db`, `shell`, `tool`,
+`test`, `frontend`, `logs`, `ps`, `status`, `deploy`, `bootstrap`, `debug`,
+`extensions`, `snapshot`, `upgrade`, launching `desktop`, `audit toolchain`, and
+the container-backed audit checks. A command that regresses out of the free set
+is a bug, and `docs/reference/docker-free.md` is the enforced list.
+
 ## Blueprint Versioning
 
 `internal/engine/render.go`'s `BlueprintVersion` const forces existing projects to re-render (`govard env up`) by invalidating a stored content hash.
