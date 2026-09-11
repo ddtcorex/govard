@@ -121,11 +121,11 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 	return nil
 }
 
-// CoreCleanup prunes old releases.
+// CoreCleanup prunes old releases and the database dumps that belong to them.
 //
-// It only ever removes a directory that carries a govard release record. A
-// directory created by another deploy tool has no such record and is left alone,
-// which is what makes running next to another tool during a migration safe.
+// It only ever removes a release directory that carries a govard release record.
+// A directory created by another deploy tool has no such record and is left
+// alone, which is what makes running next to another tool during a migration safe.
 func CoreCleanup(ctx context.Context, sc *StepContext) error {
 	host := sc.Host
 	keep := sc.Opts.KeepReleases
@@ -134,22 +134,14 @@ func CoreCleanup(ctx context.Context, sc *StepContext) error {
 	}
 	// The live release is skipped below, so `keep` never has to account for it.
 
-	result, err := sc.Runner.Run(ctx, "ls -1 "+Shell(host.ReleasesPath())+" 2>/dev/null || true", RunOptions{Timeout: shortCommandTimeout})
+	stale, err := numberedEntries(ctx, sc, host.ReleasesPath())
 	if err != nil {
 		return fmt.Errorf("list releases: %w", err)
 	}
 
-	type candidate struct {
-		name   string
-		number int
-	}
-	candidates := make([]candidate, 0, 8)
 	foreign := make([]string, 0, 4)
-	for _, line := range strings.Split(result.Stdout, "\n") {
-		name := strings.TrimSpace(line)
-		if name == "" {
-			continue
-		}
+	candidates := make([]string, 0, len(stale))
+	for _, name := range stale {
 		if sc.Release != nil && name == sc.Release.Release {
 			continue
 		}
@@ -158,30 +150,89 @@ func CoreCleanup(ctx context.Context, sc *StepContext) error {
 			foreign = append(foreign, name)
 			continue
 		}
-		number, err := strconv.Atoi(name)
-		if err != nil {
-			number = 1 << 30
-		}
-		candidates = append(candidates, candidate{name: name, number: number})
+		candidates = append(candidates, name)
 	}
 
-	// Newest first, then keep the requested number.
-	for i := 1; i < len(candidates); i++ {
-		for j := i; j > 0 && candidates[j].number > candidates[j-1].number; j-- {
-			candidates[j], candidates[j-1] = candidates[j-1], candidates[j]
+	for _, name := range pruneWindow(candidates, keep) {
+		if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(host.ReleasePath(name)), RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+			return fmt.Errorf("prune release %s: %w", name, err)
 		}
 	}
-	if len(candidates) <= keep {
-		reportForeignReleases(sc, foreign)
-		return nil
-	}
-	for _, stale := range candidates[keep:] {
-		if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(host.ReleasePath(stale.name)), RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
-			return fmt.Errorf("prune release %s: %w", stale.name, err)
-		}
+	if err := pruneBackups(ctx, sc, keep); err != nil {
+		return err
 	}
 	reportForeignReleases(sc, foreign)
 	return nil
+}
+
+// pruneBackups keeps the newest `keep` dump directories under
+// shared/backups/deploy/.
+//
+// The window is the releases' own: a dump is the way back from the migration a
+// specific release ran, so keeping more dumps than releases keeps nothing
+// useful. There is no record to consult here — the directory name is the release
+// number a backup belongs to — so an unparsable name sorts oldest and is pruned
+// first, exactly as it is for releases.
+func pruneBackups(ctx context.Context, sc *StepContext, keep int) error {
+	root := sc.Host.BackupRootPath()
+	entries, err := numberedEntries(ctx, sc, root)
+	if err != nil {
+		return fmt.Errorf("list backups: %w", err)
+	}
+	if len(entries) <= keep {
+		return nil
+	}
+	for _, name := range pruneWindow(entries, keep) {
+		if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(path.Join(root, name)), RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+			return fmt.Errorf("prune backup %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// numberedEntries lists a directory whose children are release numbers. A
+// missing directory is an empty one: a target with no releases yet, or a project
+// that never ran --db-backup, is not an error.
+func numberedEntries(ctx context.Context, sc *StepContext, directory string) ([]string, error) {
+	result, err := sc.Runner.Run(ctx, "ls -1 "+Shell(directory)+" 2>/dev/null || true", RunOptions{Timeout: shortCommandTimeout})
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]string, 0, 8)
+	for _, line := range strings.Split(result.Stdout, "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			entries = append(entries, name)
+		}
+	}
+	return entries, nil
+}
+
+// pruneWindow returns the entries outside the newest `keep`, oldest first. A
+// name that is not a number sorts as the oldest thing present, so a stray
+// directory is pruned before a release that is still a rollback target.
+func pruneWindow(entries []string, keep int) []string {
+	sorted := make([]string, len(entries))
+	copy(sorted, entries)
+	for i := 1; i < len(sorted); i++ {
+		for j := i; j > 0 && entryNumber(sorted[j]) > entryNumber(sorted[j-1]); j-- {
+			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
+		}
+	}
+	if len(sorted) <= keep {
+		return nil
+	}
+	return sorted[keep:]
+}
+
+// entryNumber is the release number a directory name encodes. An unparsable
+// name is treated as the largest, which is what pushes it out of the window
+// first — the safe direction for a name govard did not write.
+func entryNumber(name string) int {
+	number, err := strconv.Atoi(name)
+	if err != nil {
+		return 1 << 30
+	}
+	return number
 }
 
 // reportForeignReleases tells the operator which directories were left alone,

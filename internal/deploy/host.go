@@ -75,9 +75,16 @@ func (h Host) ReleaseRecordPath(release string) string {
 	return path.Join(h.ReleasePath(release), ".dep", "release.json")
 }
 
+// BackupRootPath holds one directory per release that has a pre-migration
+// database dump. It is its own namespace so cleanup can prune it by the same
+// window as the releases without guessing which files are govard's.
+func (h Host) BackupRootPath() string {
+	return path.Join(h.SharedPath(), "backups", "deploy")
+}
+
 // SharedBackupPath is where a pre-migration database dump for a release lives.
 func (h Host) SharedBackupPath(release string) string {
-	return path.Join(h.SharedPath(), "backups", "deploy", release)
+	return path.Join(h.BackupRootPath(), release)
 }
 
 // Shell returns a path quoted for the target shell. A path under `~` keeps a

@@ -477,3 +477,46 @@ func TestVerifySkipsARecipeCheckThatDoesNotApplyToTheStrategy(t *testing.T) {
 		t.Fatal("an in-place-only check ran against a symlink release")
 	}
 }
+
+// Spec 12.4: backups under shared/backups/deploy/ are pruned on the same window
+// as releases. A dump exists to roll that release back, so keeping more dumps
+// than releases keeps nothing useful and fills the disk instead.
+func TestCleanupPrunesBackupsOnTheSameWindowAsReleases(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	for _, release := range []string{"1", "2", "3", "4", "5", "6"} {
+		if _, err := runner.Run(ctx, "mkdir -p "+host.SharedBackupPath(release)+" && echo dump > "+host.SharedBackupPath(release)+"/db.sql", deploy.RunOptions{}); err != nil {
+			t.Fatalf("seed backup %s: %v", release, err)
+		}
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", KeepReleases: 2})
+	sc.Release = deploy.NewReleaseForTest("7", "abc", "local")
+	if err := deploy.CoreCleanup(ctx, sc); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
+	for _, release := range []string{"1", "2", "3", "4"} {
+		if _, err := runner.Run(ctx, "test ! -e "+host.SharedBackupPath(release), deploy.RunOptions{}); err != nil {
+			t.Errorf("backup %s must be pruned on the keep_releases window", release)
+		}
+	}
+	for _, release := range []string{"5", "6"} {
+		if _, err := runner.Run(ctx, "test -d "+host.SharedBackupPath(release), deploy.RunOptions{}); err != nil {
+			t.Errorf("backup %s is inside the window and must survive", release)
+		}
+	}
+}
+
+// A deploy that never used --db-backup has no backup directory at all, and
+// cleanup must not turn that into a failure.
+func TestCleanupToleratesAMissingBackupRoot(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", KeepReleases: 2})
+	sc.Release = deploy.NewReleaseForTest("1", "abc", "local")
+	if err := deploy.CoreCleanup(context.Background(), sc); err != nil {
+		t.Fatalf("cleanup without a backup root: %v", err)
+	}
+}
