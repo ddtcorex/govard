@@ -192,7 +192,9 @@ inheriting `docker`. The bar, by kind of work:
   host-side audit lifecycle (`status`, `result`, `diff`, `cleanup`);
 - direct host or network work: `remote *` (SSH), `sync` (rsync), `deploy`
   (SSH + rsync, with `deploy plan` and `deploy build` requirement-free and
-  `deploy check` / `releases` / `status` / `unlock` SSH-only),
+  `deploy check` / `releases` / `status` / `unlock` SSH-only; `deploy sandbox *`
+  is the one exception — it creates the container that plays the target, then
+  talks to it over SSH),
   `tunnel *` (`cloudflared`), `trust`, `self-update`.
 
 Container orchestration keeps `docker`: `env`, `svc`, `db`, `shell`, `tool`,

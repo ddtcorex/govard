@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"govard/internal/deploy"
+	"govard/internal/engine"
 )
 
 func TestLockIsAtomicAndRefusesASecondHolder(t *testing.T) {
@@ -425,4 +426,105 @@ func TestCoreCheckLeavesAServerBuildAlone(t *testing.T) {
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("a server build must not read an artifact: %v", err)
 	}
+}
+
+// sandboxHost builds a local host marked as a govard sandbox, rooted at a real
+// checkout so the mirror refresh has something to fetch from.
+func sandboxHost(t *testing.T, work string, runner deploy.Runner) deploy.Host {
+	t.Helper()
+	host := deploy.HostForTest(t.TempDir(), runner)
+	host.Name = "sandbox"
+	host.Remote = engine.RemoteConfig{Sandbox: true, Host: "127.0.0.1", User: "deployer", Port: 49153}
+	_ = work
+	return host
+}
+
+func TestCoreCheckRefreshesTheSandboxMirror(t *testing.T) {
+	work, _ := seedBuildRepo(t)
+	mirror := filepath.Join(work, ".govard", "sandbox", "repo.git")
+	// The mirror exists because `sandbox up` created it; the commit that
+	// follows is one the mirror has never seen.
+	if err := deploy.RefreshSandboxMirrorForTest(context.Background(), deploy.LocalRunner{}, work, mirror); err != nil {
+		t.Fatalf("seed the mirror: %v", err)
+	}
+	writeFile(t, filepath.Join(work, "app.php"), "<?php echo 'v2';\n")
+	runGitInDir(t, work, "add", ".")
+	runGitInDir(t, work, "commit", "-q", "-m", "v2")
+	revision := strings.TrimSpace(runGitInDir(t, work, "rev-parse", "HEAD"))
+
+	host := sandboxHost(t, work, deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "sandbox", Publish: deploy.PublishSymlink})
+	sc.WorkDir = work
+
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	mirrored := strings.TrimSpace(runGitInDir(t, mirror, "rev-parse", "refs/heads/main"))
+	if mirrored != revision {
+		t.Fatalf("the mirror holds %q, want the commit just made %q", mirrored, revision)
+	}
+	if joined := strings.Join(sc.Notes, " | "); !strings.Contains(joined, "mirror refreshed") {
+		t.Errorf("the notes must say the mirror was refreshed, got %q", joined)
+	}
+}
+
+func TestCoreCheckRefusesASandboxWithoutAMirror(t *testing.T) {
+	work, _ := seedBuildRepo(t)
+	host := sandboxHost(t, work, deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "sandbox", Publish: deploy.PublishSymlink})
+	sc.WorkDir = work
+
+	err := deploy.CoreCheck(context.Background(), sc)
+	if err == nil {
+		t.Fatal("want a refusal when the sandbox mirror is missing")
+	}
+	if !strings.Contains(err.Error(), "sandbox up") {
+		t.Fatalf("the refusal must name the command that creates it, got %q", err.Error())
+	}
+}
+
+func TestCoreCheckNamesTheSandboxWhenTheContainerIsGone(t *testing.T) {
+	work, _ := seedBuildRepo(t)
+	host := sandboxHost(t, work, scriptedRunner{base: deploy.LocalRunner{}, failSubstring: "true"})
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "sandbox", Publish: deploy.PublishSymlink})
+	sc.WorkDir = work
+
+	err := deploy.CoreCheck(context.Background(), sc)
+	if err == nil {
+		t.Fatal("want a failure when the sandbox container is gone")
+	}
+	// A generic "unreachable" sends the operator looking at a network; the
+	// actual remedy is to bring the container back.
+	if !strings.Contains(err.Error(), "sandbox") || !strings.Contains(err.Error(), "sandbox up") {
+		t.Fatalf("the failure must name the sandbox and the remedy, got %q", err.Error())
+	}
+}
+
+func TestCoreCheckLeavesANonSandboxRemoteAlone(t *testing.T) {
+	work, _ := seedBuildRepo(t)
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishSymlink})
+	sc.WorkDir = work
+
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(work, ".govard", "sandbox", "repo.git")); !os.IsNotExist(err) {
+		t.Fatalf("a normal remote must not create a sandbox mirror (%v)", err)
+	}
+}
+
+func runGitInDir(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	command := exec.Command("git", args...)
+	command.Dir = dir
+	command.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	out, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return string(out)
 }

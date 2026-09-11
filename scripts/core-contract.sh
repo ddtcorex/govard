@@ -146,6 +146,14 @@ domain: integrity-fixture.test
 framework: magento2
 stack:
   php_version: "8.3"
+remotes:
+  staging:
+    host: staging.example.invalid
+    user: deploy
+    path: /srv/app/public_html
+    deploy_path: /srv/app
+    branch: main
+    repository: git@example.invalid:acme/demo.git
 YAML
 
 set +e
@@ -226,6 +234,34 @@ check_runs "blueprint cache list" "$fixture_dir" "blueprint cache listing"
 #    container.
 check_gate "lock generate" docker
 check_gate "config auto" docker
+
+# 8. `govard deploy` must be gated on ssh and rsync, never on docker. This
+#    container has neither ssh nor rsync — it is exactly the host the deploy job
+#    runs on once the build job has produced an artifact, so the command has to
+#    fail on the capability it actually needs rather than demanding a container
+#    runtime it does not use.
+set +e
+deploy_out="$(cd "$fixture_dir" && GOVARD_HOME_DIR="$govard_home" "$BIN" deploy staging --error-json 2>&1)"
+deploy_code=$?
+set -e
+if [ "$deploy_code" -ne 3 ]; then
+  echo "core-contract: FAIL govard deploy exited $deploy_code, want 3 on a host without ssh" >&2
+  printf '%s\n' "$deploy_out" >&2
+  failures=$((failures + 1))
+fi
+if printf '%s' "$deploy_out" | grep -q '"capability": "docker"'; then
+  echo "core-contract: FAIL govard deploy still demands Docker" >&2
+  failures=$((failures + 1))
+fi
+if ! printf '%s' "$deploy_out" | grep -q '"capability": "ssh"'; then
+  echo "core-contract: FAIL govard deploy did not name the ssh capability it needs" >&2
+  printf '%s\n' "$deploy_out" >&2
+  failures=$((failures + 1))
+fi
+
+# The sandbox is the one deploy command that does use the container runtime, and
+# it must be gated rather than failing with a raw docker error.
+check_gate "deploy sandbox status" docker
 
 if [ "$failures" -ne 0 ]; then
   echo "core-contract: $failures failure(s)" >&2

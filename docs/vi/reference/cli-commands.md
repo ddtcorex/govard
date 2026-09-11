@@ -666,6 +666,18 @@ govard deploy rollback staging --with-db --yes   # ... kèm cả dump database
 govard deploy unlock staging --force     # giải phóng lock do lần deploy lỗi
 ```
 
+Quản lý sandbox ở máy local — một container đóng vai đích triển khai:
+
+```bash
+govard deploy sandbox up                      # tạo (mặc định profile php)
+govard deploy sandbox up --profile basic      # chỉ sshd, rsync và git
+govard deploy sandbox up --docroot real       # docroot thật: publish in-place
+govard deploy sandbox status
+govard deploy sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
+govard deploy sandbox ssh
+govard deploy sandbox down [--purge]
+```
+
 Đích là một remote trong `.govard.yml`. Branch, repository, deploy path và chiến
 lược publish lấy từ block `deploy:` của dự án; mỗi remote có thể ghi đè bằng các
 field topology trên remote (`branch`, `repository`, `deploy_path`, `publish`,
@@ -723,6 +735,25 @@ Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--bran
 `--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. Lệnh này không
 cần capability nào: `none`.
 
+**Sandbox.** `govard deploy sandbox up` build một container, publish SSH trên một
+cổng loopback còn trống, sinh khoá riêng dưới `.govard/sandbox/` (đã gitignore),
+mount read-only một mirror repository local và ghi remote `sandbox` vào
+`.govard.local.yml`. Mirror được refresh trước mỗi lần deploy nên commit bạn chưa
+từng push vẫn triển khai được, và không phần nào trong pipeline biết nó đang nói
+chuyện với container — deploy sandbox chính là deploy production trỏ vào container.
+
+Vì `sandbox` là subcommand, hãy deploy bằng dạng flag:
+`govard deploy --remote sandbox --yes`.
+
+Profile: `basic` (sshd, rsync, git), `php` (thêm php-cli, composer, node) và
+`full` (thêm database và cache), mặc định `php`. `--docroot` định hình target để
+chiến lược publish resolve đúng thứ bạn muốn kiểm chứng: `absent` hoặc `symlink`
+chọn cú swap nguyên tử, `real` chọn in-place. `down` xoá container và remote mà nó
+đã ghi; `--purge` xoá thêm image, khoá và mirror. `reset` xoá các thư mục deploy
+trên target, và `--layout=deployer` seed một target trông như của công cụ deploy kia.
+
+Sandbox là lệnh deploy duy nhất cần `docker`.
+
 `--resume` tiếp tục release mới nhất có record chưa `ok`; `--from <task>` bắt đầu
 từ một task hoặc hook được chỉ định và báo mọi bước trước đó là skipped. Cả hai
 đều là đường phục hồi do người vận hành chủ động yêu cầu, không tự động.
@@ -736,7 +767,8 @@ Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thi�
 capability, `4` lỗi cấu hình. `govard deploy` và `govard deploy rollback` cần
 `ssh` và `rsync`; `deploy check`, `deploy releases`, `deploy status` và
 `deploy unlock` chỉ cần `ssh`; `deploy build` và `deploy plan` không cần gì.
-Không lệnh nào cần Docker.
+`govard deploy sandbox *` là ngoại lệ: tạo server giả cần `docker`, sau đó govard
+nói chuyện với nó qua SSH như mọi target khác.
 
 ### `govard snapshot`
 

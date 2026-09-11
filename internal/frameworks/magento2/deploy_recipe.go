@@ -107,6 +107,15 @@ func DeployRecipe() deploy.Recipe {
 	recipe.ReplaceTask(backup)
 
 	recipe.Restore = magentoRestoreCommand
+
+	// What the recipe's own commands need from a sandbox container. The list is
+	// the application's, not govard's: a different framework asks for a
+	// different set, and nothing here is interpreted by the core.
+	recipe.Sandbox = deploy.SandboxRequirements{
+		Packages:   []string{"libxslt1-dev", "libzip-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "default-mysql-client"},
+		Extensions: []string{"bcmath", "gd", "intl", "mysql", "soap", "sockets", "xsl", "zip"},
+		Services:   []string{"mariadb"},
+	}
 	return recipe
 }
 

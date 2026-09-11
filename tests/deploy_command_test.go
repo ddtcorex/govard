@@ -199,3 +199,48 @@ func TestDeployFlagUsageStringsCarryNoBackquotes(t *testing.T) {
 		})
 	}
 }
+
+func TestDeploySandboxIsPartOfTheDeployGroupAndNeedsDocker(t *testing.T) {
+	// The sandbox is the one deploy command that uses the container runtime:
+	// govard creates the fake server with it and then talks to it over SSH.
+	if got := runtime.Requires(cmd.DeploySandboxCommand()); len(got) != 1 || got[0] != runtime.CapDocker {
+		t.Fatalf("govard deploy sandbox requires %v, want [docker]", got)
+	}
+	parent := cmd.DeploySandboxCommand().Parent()
+	if parent == nil || parent.Name() != "deploy" {
+		t.Fatalf("deploy sandbox is not attached to the deploy group: %v", parent)
+	}
+	// A subcommand inherits the group's requirement, so the gate covers them all
+	// without repeating the annotation.
+	for _, child := range []*cobra.Command{cmd.DeploySandboxUpCommand(), cmd.DeploySandboxStatusCommand(), cmd.DeploySandboxResetCommand(), cmd.DeploySandboxDownCommand()} {
+		if got := runtime.Requires(child); len(got) != 1 || got[0] != runtime.CapDocker {
+			t.Errorf("%s requires %v, want the group's [docker]", child.Name(), got)
+		}
+	}
+}
+
+func TestDeploySandboxFlagsAreTheDocumentedSet(t *testing.T) {
+	for name, want := range map[string][]string{
+		"up":     {"profile", "docroot", "recreate"},
+		"reset":  {"docroot", "layout"},
+		"down":   {"purge"},
+		"status": {},
+	} {
+		var command *cobra.Command
+		switch name {
+		case "up":
+			command = cmd.DeploySandboxUpCommand()
+		case "reset":
+			command = cmd.DeploySandboxResetCommand()
+		case "down":
+			command = cmd.DeploySandboxDownCommand()
+		case "status":
+			command = cmd.DeploySandboxStatusCommand()
+		}
+		for _, flag := range want {
+			if command.Flags().Lookup(flag) == nil {
+				t.Errorf("deploy sandbox %s is missing --%s", name, flag)
+			}
+		}
+	}
+}

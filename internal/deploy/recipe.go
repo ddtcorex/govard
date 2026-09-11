@@ -176,6 +176,10 @@ type Recipe struct {
 	// database dump back. It is empty for a framework with no dump support, and
 	// `rollback --with-db` refuses rather than guessing.
 	Restore string
+	// Sandbox is what the framework needs a `govard deploy sandbox` container to
+	// provide beyond its profile: the extensions and services the recipe's own
+	// commands depend on. The core renders them and never interprets them.
+	Sandbox SandboxRequirements
 }
 
 // Task returns the declared task with the given id, or the zero Task when this

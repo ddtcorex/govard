@@ -116,7 +116,10 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
   `govard deploy build` cũng không cần gì: đây là nửa CI của artifact mode, chạy
   trên runner có toolchain của dự án và không hề kết nối tới server. Chính sự
   tách đôi này cho phép job deploy chỉ cần govard, SSH và rsync — không PHP,
-  không Composer, không container runtime. `govard deploy check`,
+  không Composer, không container runtime. Ngoại lệ duy nhất trong nhóm deploy là
+  `govard deploy sandbox *`: nó tạo một container đóng vai target, tức là việc của
+  container runtime theo đúng định nghĩa, và đó là cách duy nhất để một buổi diễn
+  tập dùng chung code path với production. `govard deploy check`,
   `govard deploy releases`, `govard deploy status` và
   `govard deploy unlock` chỉ cần SSH. `govard deploy plan` không cần gì cả: nó
   đọc `.govard.yml` và in kế hoạch thực thi mà không kết nối đi đâu. Rollback chỉ

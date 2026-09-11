@@ -124,7 +124,10 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   of the artifact mode, it runs on the runner that owns the project's
   toolchain, and it never connects to the target. That split is what lets a
   deploy job run with govard, SSH and rsync alone — no PHP, no Composer, no
-  container runtime.
+  container runtime. The one exception in the deploy group is
+  `govard deploy sandbox *`, which creates a container that plays the target:
+  that is container work by definition, and it is the only way a rehearsal can
+  use the same code path as production.
 
 - **Remote and sync.** `govard remote add|test|copy-id|exec`,
   `govard remote audit stats|tail`, and `govard sync` need SSH and rsync, not

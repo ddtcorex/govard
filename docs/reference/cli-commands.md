@@ -704,6 +704,18 @@ govard deploy rollback staging --with-db --yes   # ... and its database dump
 govard deploy unlock staging --force     # release a lock a failed run left behind
 ```
 
+Managing the local sandbox — a container that plays the deployment target:
+
+```bash
+govard deploy sandbox up                      # create it (php profile by default)
+govard deploy sandbox up --profile basic      # sshd, rsync and git only
+govard deploy sandbox up --docroot real       # a real docroot: in-place publishing
+govard deploy sandbox status
+govard deploy sandbox reset --layout deployer # seed a target the other tool owns
+govard deploy sandbox ssh
+govard deploy sandbox down [--purge]
+```
+
 The target is a remote from `.govard.yml`. The branch, repository, deploy path
 and publish strategy come from the project `deploy:` block; a remote overrides
 them either through the topology fields on the remote (`branch`, `repository`,
@@ -764,6 +776,28 @@ earlier build cannot ship: pass `--force` to replace its contents.
 `--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. It needs no
 capability at all: `none`.
 
+**The sandbox.** `govard deploy sandbox up` builds a container, publishes SSH on
+a free loopback port, generates a dedicated key under `.govard/sandbox/`
+(gitignored), mounts a read-only mirror of your local repository and writes a
+`sandbox` remote into `.govard.local.yml`. The mirror is refreshed before every
+deploy, so a commit you have never pushed is deployable, and nothing in the
+pipeline knows it is talking to a container — a sandbox deploy is a production
+deploy pointed at one.
+
+Because `sandbox` is a subcommand, deploy to it with the flag form:
+`govard deploy --remote sandbox --yes`.
+
+Profiles: `basic` (sshd, rsync, git), `php` (adds php-cli, composer, node) and
+`full` (adds a database and a cache), defaulting to `php`. `--docroot` shapes the
+target so the publish strategy resolves the way you want to exercise it:
+`absent` or `symlink` selects the atomic swap, `real` selects in-place
+publishing. `down` removes the container and the remote it wrote; `--purge` also
+removes the image, the key and the mirror. `reset` wipes the target's deploy
+directories, and `--layout=deployer` seeds a target that looks like one the other
+deploy tool owns.
+
+The sandbox is the only deploy command that needs `docker`.
+
 `--resume` continues the newest release whose record is not `ok`; `--from <task>`
 starts at a named task or hook and reports everything before it as skipped. Both
 are recovery paths an operator asks for explicitly — neither is automatic.
@@ -777,7 +811,8 @@ Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
 capability, `4` configuration. `govard deploy` and `govard deploy rollback` need
 `ssh` and `rsync`; `deploy check`, `deploy releases`, `deploy status` and
 `deploy unlock` need only `ssh`; `deploy build` and `deploy plan` need nothing.
-None of them need Docker.
+`govard deploy sandbox *` is the exception: creating the fake server needs
+`docker`, and then govard talks to it over SSH like any other target.
 
 ### `govard snapshot`
 

@@ -47,12 +47,18 @@ type RemoteConfig struct {
 	// Deploy topology. These describe this server and therefore live on the
 	// remote, not in the project `deploy:` block; the only cross-over is
 	// Deploy, which overrides individual project-level deploy keys.
-	Branch     string        `yaml:"branch,omitempty"`
-	Repository string        `yaml:"repository,omitempty"`
-	DeployPath string        `yaml:"deploy_path,omitempty"`
-	Publish    string        `yaml:"publish,omitempty"`
-	Local      bool          `yaml:"local,omitempty"`
-	Deploy     *DeployConfig `yaml:"deploy,omitempty"`
+	Branch     string `yaml:"branch,omitempty"`
+	Repository string `yaml:"repository,omitempty"`
+	DeployPath string `yaml:"deploy_path,omitempty"`
+	Publish    string `yaml:"publish,omitempty"`
+	Local      bool   `yaml:"local,omitempty"`
+	// Sandbox marks a remote govard itself created with `deploy sandbox up`:
+	// a container on this machine that plays the remote. It is a topology fact
+	// about the remote, not a framework name, which is why the deploy pipeline
+	// may act on it (refreshing the local mirror the container mounts, and
+	// naming the container rather than the host when it is unreachable).
+	Sandbox bool          `yaml:"sandbox,omitempty"`
+	Deploy  *DeployConfig `yaml:"deploy,omitempty"`
 }
 
 // RemoteConfigMap is a specialized map that preserves sort order during YAML marshaling.

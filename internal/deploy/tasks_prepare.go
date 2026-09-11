@@ -62,7 +62,17 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	opts := RunOptions{Timeout: shortCommandTimeout}
 
 	if _, err := sc.Runner.Run(ctx, "true", opts); err != nil {
+		// A sandbox that is not answering is almost always a container that is
+		// not running, and "unreachable" would send the operator to look at a
+		// network that was never involved.
+		if sc.Host.Remote.Sandbox {
+			return fmt.Errorf("the sandbox container behind remote %q is not running; run `govard deploy sandbox up` and retry: %w", host.Name, err)
+		}
 		return fmt.Errorf("target %s is not reachable: %w", host.Name, err)
+	}
+
+	if err := checkSandboxMirror(ctx, sc); err != nil {
+		return err
 	}
 
 	if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(host.DeployPath)+" && test -w "+Shell(host.DeployPath), opts); err != nil {
@@ -104,6 +114,36 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 		}
 	}
 
+	return nil
+}
+
+// checkSandboxMirror refreshes the local bare mirror a sandbox container mounts.
+//
+// The sandbox has no credentials for the real repository and must be able to
+// deploy a commit that was never pushed, so the mirror is refreshed from the
+// local checkout on the way in. Doing it here rather than in `sandbox up` means
+// `govard deploy sandbox` sees the commit the operator just made.
+func checkSandboxMirror(ctx context.Context, sc *StepContext) error {
+	if !sc.Host.Remote.Sandbox {
+		return nil
+	}
+	root := sc.WorkDir
+	if strings.TrimSpace(root) == "" {
+		if resolved, err := os.Getwd(); err == nil {
+			root = resolved
+		}
+	}
+	if strings.TrimSpace(root) == "" {
+		return fmt.Errorf("cannot locate the project checkout to refresh the sandbox mirror")
+	}
+	mirror := SandboxMirrorPath(root)
+	if _, err := os.Stat(mirror); err != nil {
+		return fmt.Errorf("the sandbox mirror %s is missing; run `govard deploy sandbox up` and retry", mirror)
+	}
+	if err := RefreshSandboxMirror(ctx, LocalRunner{}, root, mirror); err != nil {
+		return err
+	}
+	sc.Notes = append(sc.Notes, "sandbox mirror refreshed from the local checkout")
 	return nil
 }
 
