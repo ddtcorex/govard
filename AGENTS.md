@@ -118,6 +118,12 @@ install -m0755 bin/govard ~/.local/bin/govard     # only to test PATH consumers 
 - Prefer mocks over live network in unit tests
 - Isolate state via `GOVARD_HOME_DIR` (use `TestMain` where appropriate)
 - Gate external service tests with explicit env checks
+- A test that drives a capability-gated command **out of process** (the
+  integration suite runs the real binary) cannot use the in-process stubs: force
+  the requirement with `GOVARD_TEST_SATISFIED_CAPABILITIES=<caps>` instead of
+  letting the host decide. The network dial is the probe no command shim can
+  satisfy, which is why `self-update` tests need it; name only the capability the
+  test actually needs, and note that an empty value disables the override.
 - A framework's test functions for a given subject live in `tests/<subject>_<framework>_test.go` (e.g. `bootstrap_dagster_test.go`, `table_prefix_prestashop_test.go`) — never inside a shared/grab-bag file alongside other frameworks' tests. A test that genuinely compares/depends on ≥2 specific frameworks (priority ordering, package aliasing) stays in the framework-generic `<subject>_test.go`, written table-driven with framework names only in test data/`t.Run` labels, never in the Go function name.
 
 **Test pattern for internal packages:**

@@ -24,11 +24,17 @@ import (
 	govcmd "govard/internal/cmd"
 )
 
+// satisfiedNetCapability forces the `net` requirement for the tests below. They
+// exercise `govard self-update` against local mock release servers, so letting
+// the real connectivity probe decide would make the outcome depend on the
+// host's network instead of on the code under test.
+const satisfiedNetCapability = "GOVARD_TEST_SATISFIED_CAPABILITIES=net"
+
 func TestSelfUpdateCommandDoesNotBlockInNonInteractiveMode(t *testing.T) {
 	env := NewTestEnvironment(t)
 	projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "self-update-m2")
 
-	result := runGovardWithTimeout(t, env, projectDir, 2*time.Second, nil, "self-update")
+	result := runGovardWithTimeout(t, env, projectDir, 2*time.Second, []string{satisfiedNetCapability}, "self-update")
 	if errorsContain(result.Error, "context deadline exceeded") {
 		t.Fatalf("self-update blocked in non-interactive mode; output:\nstdout=%s\nstderr=%s", result.Stdout, result.Stderr)
 	}
@@ -50,6 +56,7 @@ func TestSelfUpdateAutoConfirmViaEnv(t *testing.T) {
 		projectDir,
 		10*time.Second,
 		[]string{
+			satisfiedNetCapability,
 			"GOVARD_SELF_UPDATE_CONFIRM=yes",
 			"GOVARD_SELF_UPDATE_RELEASE_BASE_URL=" + mockReleaseServer.URL,
 			"GOVARD_SKIP_DEP_CHECK=true",
@@ -146,6 +153,7 @@ func TestSelfUpdateAutoConfirmSuccessWithMockRelease(t *testing.T) {
 	cmd.Dir = projectDir
 	cmd.Env = envWithOverrides(
 		os.Environ(),
+		satisfiedNetCapability,
 		"GOVARD_SELF_UPDATE_CONFIRM=yes",
 		"GOVARD_SELF_UPDATE_RELEASE_BASE_URL="+mockReleaseServer.URL,
 		"GOVARD_SKIP_DEP_CHECK=true",
