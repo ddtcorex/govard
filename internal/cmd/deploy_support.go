@@ -368,7 +368,9 @@ func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
 	// of the same revision writes the same static URLs, and a new revision
 	// still changes them. A project can still override it.
 	if text, ok := options.Settings["content_version"].(string); ok && strings.TrimSpace(text) == "" {
-		vars = vars.Set("settings.content_version", options.Revision)
+		// Short, per spec 10.4: readable in an asset URL, and still different
+		// for every revision so a deploy busts caches exactly once.
+		vars = vars.Set("settings.content_version", deploy.ShortRevision(options.Revision))
 	}
 	return vars
 }

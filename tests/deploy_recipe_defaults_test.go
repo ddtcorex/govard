@@ -147,14 +147,18 @@ func TestSettingsBecomeVariablesWhateverTheirShape(t *testing.T) {
 		t.Fatalf("expanded = %q, want the number rendered as a string", expanded)
 	}
 
-	// An empty content_version defaults to the revision, so a retry of the same
-	// revision writes the same static URLs instead of busting every cache.
+	// An empty content_version defaults to the *short* revision (spec 10.4), so
+	// a retry of the same revision writes the same static URLs instead of
+	// busting every cache, and the URL stays readable.
 	expanded, err = vars.Expand("{{settings.content_version}}")
 	if err != nil {
 		t.Fatalf("expand content_version: %v", err)
 	}
-	if !strings.Contains(expanded, "abcdef123456") {
-		t.Fatalf("content_version expanded to %q, want the revision", expanded)
+	if !strings.Contains(expanded, "abcdef12") {
+		t.Fatalf("content_version expanded to %q, want the short revision", expanded)
+	}
+	if strings.Contains(expanded, "abcdef123456") {
+		t.Fatalf("content_version expanded to %q, want a short revision", expanded)
 	}
 
 	expanded, err = vars.Expand("{{settings.themes_args}}")

@@ -257,8 +257,5 @@ func printDeploySummary(cmd *cobra.Command, remote string, host deploy.Host, opt
 }
 
 func shortRevisionForOutput(revision string) string {
-	if len(revision) > 8 {
-		return revision[:8]
-	}
-	return revision
+	return deploy.ShortRevision(revision)
 }

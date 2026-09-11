@@ -368,12 +368,22 @@ func branchLabel(branch string) string {
 	return branch
 }
 
-func shortRevision(revision string) string {
+// ShortRevision is the eight-character form of a revision, which is what a
+// human reads in a timeline, a static content version or a log line. Git's
+// abbreviations are longer because they have to stay unique across a repository;
+// this one is only ever a label or a cache-busting token.
+func ShortRevision(revision string) string {
 	if len(revision) > 8 {
 		return revision[:8]
 	}
+	return revision
+}
+
+// shortRevision is ShortRevision with a label for a missing revision, which is
+// how the timeline renders one.
+func shortRevision(revision string) string {
 	if revision == "" {
 		return "unknown"
 	}
-	return revision
+	return ShortRevision(revision)
 }
