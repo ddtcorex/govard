@@ -38,6 +38,10 @@ type Step struct {
 	Optional bool
 	// Source records which layer contributed the step: "recipe" or "config".
 	Source string
+	// Checks are the recipe's post-publish verifications. They travel with the
+	// verify step because that is the step that runs them, which keeps them
+	// reachable from `RunStep` (rollback) as well as from the executor.
+	Checks []Check
 	// Skipped marks a step the run's mode deliberately does not perform, even
 	// though the recipe implements it. It is how the build mode's branch is
 	// visible in `govard deploy plan` without a second source of truth.
@@ -223,7 +227,7 @@ func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
 		if title == "" {
 			title = defaultTaskTitles[id]
 		}
-		steps = append(steps, Step{
+		step := Step{
 			ID:       id,
 			Kind:     StepTask,
 			Stage:    stage,
@@ -233,7 +237,14 @@ func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
 			Optional: task.Optional,
 			Source:   "recipe",
 			core:     task.Core,
-		})
+		}
+		// The recipe's verifications belong to the verify step: that is what
+		// runs them, and it keeps them reachable from `RunStep`, which rollback
+		// uses to re-verify an existing release.
+		if id == TaskVerify {
+			step.Checks = recipe.Checks
+		}
+		steps = append(steps, step)
 	}
 
 	recipeHooks := make([]Hook, 0, len(recipe.Hooks))

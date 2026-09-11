@@ -1,6 +1,9 @@
 package tests
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -193,10 +196,110 @@ func TestMagento2RecipeCommandsAllExpand(t *testing.T) {
 			t.Errorf("task %q does not expand: %v\n%s", task.ID, err, task.Command)
 		}
 	}
+	// The verification checks are templates too, and a check that cannot expand
+	// would fail the deploy after it had already published.
+	for _, check := range recipe.Checks {
+		if _, err := vars.Expand(check.Command); err != nil {
+			t.Errorf("check %q does not expand: %v\n%s", check.ID, err, check.Command)
+		}
+	}
+
 	// The restore command additionally references {{backup_path}}, which the
 	// engine supplies from the release record at restore time.
 	restoreVars := vars.SetRaw("backup_path", "/srv/app/shared/backups/deploy/1/dump.sql")
 	if _, err := restoreVars.Expand(recipe.Restore); err != nil {
 		t.Errorf("the restore command does not expand: %v\n%s", err, recipe.Restore)
+	}
+}
+
+// The two checks the engine cannot supply: an application check that needs the
+// database, and the in-place artifact comparison. Spec 11 names both.
+func TestMagento2RecipeDeclaresItsVerificationChecks(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	byID := map[string]deploy.Check{}
+	for _, check := range recipe.Checks {
+		if check.ID == "" || check.Title == "" || check.Command == "" {
+			t.Fatalf("an incomplete check: %+v", check)
+		}
+		byID[check.ID] = check
+	}
+
+	app, ok := byID["app"]
+	if !ok {
+		t.Fatal("the recipe must declare an application check")
+	}
+	if !strings.Contains(app.Command, "setup:db:status") {
+		t.Fatalf("the application check must touch the database, got %q", app.Command)
+	}
+	// `--version` succeeds with neither env.php nor a database, which is why the
+	// spec names it as the wrong check.
+	if strings.Contains(app.Command, "--version") {
+		t.Fatalf("`--version` proves nothing about the application: %q", app.Command)
+	}
+	if !strings.Contains(app.Command, "{{release_path}}") || !strings.Contains(app.Command, "{{php_bin}}") {
+		t.Fatalf("the check must run the deployed code with the configured interpreter: %q", app.Command)
+	}
+
+	artifact, ok := byID["artifact"]
+	if !ok {
+		t.Fatal("the recipe must declare the in-place artifact check")
+	}
+	if artifact.OnlyForPublishStrategy != deploy.PublishInPlace {
+		t.Fatalf("the artifact check only means something in place, got %q", artifact.OnlyForPublishStrategy)
+	}
+	if !strings.Contains(artifact.Command, "deployed_version.txt") {
+		t.Fatalf("the artifact check must compare the version file, got %q", artifact.Command)
+	}
+}
+
+// The artifact check's command has to mean what its title claims, so it is run
+// for real against a matching, a stale and an absent version file.
+func TestMagento2ArtifactCheckComparesTheDocrootWithTheRelease(t *testing.T) {
+	var artifact deploy.Check
+	for _, check := range magento2.DeployRecipe().Checks {
+		if check.ID == "artifact" {
+			artifact = check
+		}
+	}
+	if artifact.Command == "" {
+		t.Fatal("no artifact check to exercise")
+	}
+
+	root := t.TempDir()
+	releaseDir := filepath.Join(root, "releases", "1")
+	docroot := filepath.Join(root, "current")
+	version := filepath.Join("pub", "static", "deployed_version.txt")
+	for _, dir := range []string{releaseDir, docroot} {
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(version)), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	writeFile(t, filepath.Join(releaseDir, version), "abc123\n")
+	writeFile(t, filepath.Join(docroot, version), "abc123\n")
+
+	run := func() error {
+		command, err := deploy.NewVars().
+			SetPath("release_path", releaseDir).
+			SetPath("current_path", docroot).
+			Expand(artifact.Command)
+		if err != nil {
+			t.Fatalf("expand: %v", err)
+		}
+		_, err = (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{})
+		return err
+	}
+
+	if err := run(); err != nil {
+		t.Fatalf("matching version files must pass, got: %v", err)
+	}
+	writeFile(t, filepath.Join(docroot, version), "stale\n")
+	if err := run(); err == nil {
+		t.Fatal("a docroot serving a stale static content version must fail the check")
+	}
+	if err := os.Remove(filepath.Join(releaseDir, version)); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := run(); err != nil {
+		t.Fatalf("a release with no version file has nothing to compare: %v", err)
 	}
 }

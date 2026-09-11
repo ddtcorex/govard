@@ -89,6 +89,27 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 		pass("shared:"+entry, "linked and readable")
 	}
 
+	for _, check := range sc.Checks {
+		if strings.TrimSpace(check.Command) == "" {
+			continue
+		}
+		if check.OnlyForPublishStrategy != "" && check.OnlyForPublishStrategy != sc.Release.Publish.Strategy {
+			continue
+		}
+		command, err := sc.Vars.Expand(check.Command)
+		if err != nil {
+			return fail(check.ID, "expand the check command: "+err.Error())
+		}
+		timeout := sc.Opts.CommandTimeout
+		if timeout <= 0 {
+			timeout = DefaultCommandTimeout
+		}
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: timeout}); err != nil {
+			return fail(check.ID, check.Title+": "+err.Error())
+		}
+		pass(check.ID, check.Title)
+	}
+
 	if url := strings.TrimSpace(sc.Opts.VerifyURL); url != "" {
 		if err := VerifyURL(ctx, url, sc.Opts.VerifyTimeout); err != nil {
 			return fail("http", err.Error())

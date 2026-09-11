@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -387,5 +388,92 @@ func TestVerifyFailsWhenTheRecordDoesNotNameAPublishStrategy(t *testing.T) {
 				t.Fatalf("checks = %+v, want a failed revision check", release.Verify.Checks)
 			}
 		})
+	}
+}
+
+// verifiedRelease seeds a release that its own revision check passes for, so a
+// test can reach the later checks.
+func verifiedRelease(t *testing.T, host deploy.Host) *deploy.Release {
+	t.Helper()
+	release := deploy.NewReleaseForTest("1", "abc", "local")
+	release.Path = host.ReleasePath("1")
+	if err := os.MkdirAll(release.Path, 0o755); err != nil {
+		t.Fatalf("mkdir release: %v", err)
+	}
+	if err := os.Symlink(release.Path, host.CurrentPath); err != nil {
+		t.Fatalf("symlink current: %v", err)
+	}
+	release.Publish.Strategy = deploy.PublishSymlink
+	return release
+}
+
+// Spec 11: the checks are "recipe-provided Check values plus the generic HTTP
+// check". The core cannot know how to touch a framework's real dependencies, so
+// the recipe supplies the command and the engine runs it in the verify stage.
+func TestVerifyRunsTheRecipeProvidedChecks(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	marker := filepath.Join(t.TempDir(), "app-check-ran")
+	release := verifiedRelease(t, host)
+
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+	sc.Release = release
+	sc.Checks = []deploy.Check{{ID: "app", Title: "the application answers", Command: "touch " + marker}}
+
+	if err := deploy.CoreVerify(context.Background(), sc); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatal("the recipe's check did not run")
+	}
+	recorded := false
+	for _, check := range release.Verify.Checks {
+		if check.ID == "app" && check.Status == "ok" {
+			recorded = true
+		}
+	}
+	if !recorded {
+		t.Fatalf("the check result was not recorded: %+v", release.Verify.Checks)
+	}
+}
+
+func TestVerifyFailsWhenARecipeCheckFails(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := verifiedRelease(t, host)
+
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+	sc.Release = release
+	sc.Checks = []deploy.Check{{ID: "app", Title: "the application answers", Command: "exit 3"}}
+
+	err := deploy.CoreVerify(context.Background(), sc)
+	if err == nil {
+		t.Fatal("a failed recipe check must fail the deploy")
+	}
+	if !strings.Contains(err.Error(), "app") {
+		t.Fatalf("the failure must name the check, got %q", err.Error())
+	}
+	if release.Verify.Status != "failed" {
+		t.Fatalf("verify status = %q, want failed", release.Verify.Status)
+	}
+}
+
+// A check that only makes sense for one publish strategy declares it, so an
+// in-place check is not run against a symlink target where it cannot mean
+// anything.
+func TestVerifySkipsARecipeCheckThatDoesNotApplyToTheStrategy(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	marker := filepath.Join(t.TempDir(), "in-place-only")
+	release := verifiedRelease(t, host)
+
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+	sc.Release = release
+	sc.Checks = []deploy.Check{{
+		ID: "artifact", Command: "touch " + marker, OnlyForPublishStrategy: deploy.PublishInPlace,
+	}}
+
+	if err := deploy.CoreVerify(context.Background(), sc); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("an in-place-only check ran against a symlink release")
 	}
 }

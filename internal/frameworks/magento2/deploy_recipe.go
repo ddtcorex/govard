@@ -108,6 +108,32 @@ func DeployRecipe() deploy.Recipe {
 
 	recipe.Restore = magentoRestoreCommand
 
+	// The two verifications the core cannot supply, because both need the
+	// deployed application rather than only its files. Declaration order is the
+	// order the verify stage runs them in.
+	recipe.Checks = []deploy.Check{
+		{
+			ID:    "artifact",
+			Title: "the docroot serves the release's static content version",
+			// In place only: a symlink target publishes the whole release, so
+			// `current` *is* the release directory and the file trivially
+			// matches. The guard also covers a recipe that produced no version
+			// file (mage_mode developer skips static content deployment).
+			OnlyForPublishStrategy: deploy.PublishInPlace,
+			Command: "if [ -e {{release_path}}/pub/static/deployed_version.txt ]; then " +
+				"test \"$(cat {{release_path}}/pub/static/deployed_version.txt)\" = \"$(cat {{current_path}}/pub/static/deployed_version.txt)\"; fi",
+		},
+		{
+			ID:    "app",
+			Title: "the application answers against its real dependencies",
+			// setup:db:status reads app/etc/env.php and queries the database, and
+			// reports a schema that is out of date. `--version` succeeds with
+			// neither a working env.php nor a reachable database, which is
+			// exactly the failure this check exists to catch.
+			Command: "cd {{release_path}} && {{php_bin}} bin/magento setup:db:status",
+		},
+	}
+
 	// What the recipe's own commands need from a sandbox container. The list is
 	// the application's, not govard's: a different framework asks for a
 	// different set, and nothing here is interpreted by the core.

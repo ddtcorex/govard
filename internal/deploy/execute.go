@@ -245,6 +245,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			Opts:    e.opts,
 			Out:     e.out,
 			WorkDir: e.workDir,
+			Checks:  step.Checks,
 		}
 
 		stepStarted := time.Now()

@@ -210,7 +210,7 @@ func RunStep(ctx context.Context, host Host, opts Options, vars Vars, step Step,
 	if release.Path != "" {
 		stepVars = stepVars.SetPath("release_path", release.Path)
 	}
-	sc := StepContext{Host: host, Runner: host.Runner(), Vars: stepVars, Release: release, Opts: opts, Out: out}
+	sc := StepContext{Host: host, Runner: host.Runner(), Vars: stepVars, Release: release, Opts: opts, Out: out, Checks: step.Checks}
 
 	if step.core != nil {
 		return step.core(ctx, &sc)

@@ -125,6 +125,9 @@ type StepContext struct {
 	// WorkDir is the local checkout a step inspects (for example the
 	// `.gitmodules` probe); empty means the process working directory.
 	WorkDir string
+	// Checks are the recipe's verifications, carried by the verify step. The
+	// executor fills this from the step; a direct call (rollback) can too.
+	Checks []Check
 	// Notes collects human-readable findings a step wants the operator to see
 	// (`govard deploy check` prints them).
 	Notes []string
@@ -159,6 +162,27 @@ func (t Task) IsEmpty() bool {
 	return t.Command == "" && t.Core == nil
 }
 
+// Check is one recipe-provided verification, run by the verify stage after the
+// engine's own revision and shared-file checks (spec 11).
+//
+// The core cannot know how to touch a framework's real dependencies: the check
+// that matters is one that needs the application to answer with its database and
+// its configuration in place, not a binary that exits zero without either. The
+// recipe therefore declares the command, and the engine only runs it, records it
+// and fails on it.
+type Check struct {
+	// ID names the check in the release record and in the failure message.
+	ID string
+	// Title is the human description carried by the recorded result.
+	Title string
+	// Command is a shell template expanded with the deploy variables, exactly
+	// like a recipe task command.
+	Command string
+	// OnlyForPublishStrategy limits the check to one strategy; empty means
+	// every run. An in-place check has no meaning on a symlink target.
+	OnlyForPublishStrategy string
+}
+
 // Recipe is a task list plus the defaults a framework contributes. Extends is
 // documentation for `plan` output; the resolved recipe is built by the caller
 // that owns the framework registry, because internal/deploy must not import
@@ -168,6 +192,9 @@ type Recipe struct {
 	Extends string
 	Tasks   []Task
 	Hooks   []Hook
+	// Checks are the framework's post-publish verifications. The core runs them
+	// in `deploy:verify`, in declaration order, after its own checks.
+	Checks []Check
 	// Defaults are layered under the project's deploy settings (see
 	// WithRecipeDefaults). A value may be an ArgsSpec, which is rendered into
 	// "<key>_args" rather than stored.
