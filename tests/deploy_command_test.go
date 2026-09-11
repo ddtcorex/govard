@@ -244,3 +244,53 @@ func TestDeploySandboxFlagsAreTheDocumentedSet(t *testing.T) {
 		}
 	}
 }
+
+// The CLI surface documents `--verify/--no-verify`, `--db-backup/--no-db-backup`
+// and `--lock/--no-lock`. pflag has no built-in negation, so the negated half
+// has to be registered and resolved explicitly — otherwise it is an unknown
+// flag and the documented spelling fails at parse time.
+func TestDeployAcceptsTheDocumentedNegatedFlags(t *testing.T) {
+	over, err := cmd.DeployOverridesForTest([]string{"--no-verify", "--no-db-backup", "--no-lock"})
+	if err != nil {
+		t.Fatalf("the documented negated flags must parse: %v", err)
+	}
+	if over.Verify == nil || *over.Verify {
+		t.Errorf("--no-verify must turn verification off, got %v", over.Verify)
+	}
+	if over.DBBackup == nil || *over.DBBackup {
+		t.Errorf("--no-db-backup must turn the backup off, got %v", over.DBBackup)
+	}
+	if over.Lock == nil || *over.Lock {
+		t.Errorf("--no-lock must turn locking off, got %v", over.Lock)
+	}
+
+	// The `=false` spelling must keep working, and the two must agree.
+	over, err = cmd.DeployOverridesForTest([]string{"--verify=false", "--db-backup=true", "--lock=true"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if over.Verify == nil || *over.Verify || over.DBBackup == nil || !*over.DBBackup || over.Lock == nil || !*over.Lock {
+		t.Fatalf("the =value spellings changed meaning: %+v", over)
+	}
+
+	// Saying both, consistently, is not a contradiction.
+	if _, err := cmd.DeployOverridesForTest([]string{"--verify=false", "--no-verify"}); err != nil {
+		t.Fatalf("--verify=false with --no-verify agree and must be accepted: %v", err)
+	}
+}
+
+func TestDeployRejectsContradictoryNegatedFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"--verify=true", "--no-verify"},
+		{"--verify", "--no-verify"},
+		{"--no-lock", "--lock=true"},
+	} {
+		_, err := cmd.DeployOverridesForTest(args)
+		if err == nil {
+			t.Fatalf("%v: the two spellings contradict each other and must be a usage error", args)
+		}
+		if got := cliCodeForTest(err); got != 2 {
+			t.Errorf("%v: exit code %d, want 2", args, got)
+		}
+	}
+}

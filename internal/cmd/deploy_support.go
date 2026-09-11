@@ -11,6 +11,7 @@ import (
 	"govard/internal/frameworks"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // deployFlagTimeout is the CLI spelling of the per-command timeout.
@@ -24,9 +25,9 @@ func bindDeployFlags(command *cobra.Command) {
 	command.Flags().String("artifact-dir", "", "Artifact directory built by govard deploy build (implies --build=artifact)")
 	command.Flags().String("publish", deploy.PublishAuto, "Publish strategy: auto, symlink or in_place")
 	command.Flags().Int("keep", 0, "How many releases to keep on the target")
-	command.Flags().Bool("verify", true, "Verify the target after publishing")
-	command.Flags().Bool("db-backup", false, "Dump the database before the first database-mutating task")
-	command.Flags().Bool("lock", true, "Take the deploy lock")
+	negatableBool(command, "verify", true, "Verify the target after publishing")
+	negatableBool(command, "db-backup", false, "Dump the database before the first database-mutating task")
+	negatableBool(command, "lock", true, "Take the deploy lock")
 	command.Flags().Bool("ignore-deployer-lock", false, "Run even when another deploy tool holds its lock")
 	command.Flags().Duration(deployFlagTimeout, 0, "Timeout for a single remote command")
 	command.Flags().Bool("force", false, "Deploy even when the target already runs this revision")
@@ -46,6 +47,35 @@ func bindDeploySourceFlags(command *cobra.Command) {
 	command.Flags().String("branch", "", "Branch to deploy (overrides the remote's configured branch)")
 	command.Flags().String("revision", "", "Exact commit to deploy")
 	command.Flags().String("tag", "", "Tag to deploy")
+}
+
+// negatableBool registers a boolean flag together with the `--no-<name>` spelling
+// the CLI reference documents.
+//
+// pflag has no built-in negation: `--no-verify` would be an unknown flag, which
+// is what the docs promised it was not. The negated twin is a separate flag
+// resolved by negatedBool, so `--verify=false` and `--no-verify` stay the same
+// request expressed twice.
+func negatableBool(command *cobra.Command, name string, value bool, usage string) {
+	command.Flags().Bool(name, value, usage)
+	command.Flags().Bool("no-"+name, false, "Disable --"+name+" (same as --"+name+"=false)")
+}
+
+// negatedBool resolves a boolean flag and its `--no-<name>` twin.
+//
+// A contradiction — asking for both values at once — is refused rather than
+// resolved by precedence: one of the two was not what the operator meant, and
+// guessing which would make a deploy do the opposite of the request.
+func negatedBool(flags *pflag.FlagSet, name string) (bool, error) {
+	value, _ := flags.GetBool(name)
+	negation := flags.Lookup("no-" + name)
+	if negation == nil || !negation.Changed {
+		return value, nil
+	}
+	if flags.Changed(name) && value {
+		return false, fmt.Errorf("--%s and --no-%s contradict each other", name, name)
+	}
+	return false, nil
 }
 
 // overridesFromFlags reads the flag values.
@@ -92,17 +122,22 @@ func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 	// their flag. A subcommand (`deploy plan`, `deploy check`, `deploy unlock`)
 	// deliberately declares a narrower set, and "the flag is absent" must not be
 	// read as "the operator turned it off".
-	if flags.Lookup("verify") != nil {
-		verify, _ := flags.GetBool("verify")
-		over.Verify = &verify
-	}
-	if flags.Lookup("db-backup") != nil {
-		dbBackup, _ := flags.GetBool("db-backup")
-		over.DBBackup = &dbBackup
-	}
-	if flags.Lookup("lock") != nil {
-		lock, _ := flags.GetBool("lock")
-		over.Lock = &lock
+	for _, name := range []string{"verify", "db-backup", "lock"} {
+		if flags.Lookup(name) == nil {
+			continue
+		}
+		value, err := negatedBool(flags, name)
+		if err != nil {
+			return deploy.Overrides{}, &cli.UsageError{Err: err}
+		}
+		switch name {
+		case "verify":
+			over.Verify = &value
+		case "db-backup":
+			over.DBBackup = &value
+		case "lock":
+			over.Lock = &value
+		}
 	}
 
 	// A flag combination the engine would have to guess about is a usage error,
