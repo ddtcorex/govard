@@ -124,3 +124,56 @@ func seedDeployOrigin(t *testing.T) (string, string) {
 	runGit(root, "clone", "-q", "--bare", work, origin)
 	return origin, revision
 }
+
+// A value in `.govard.yml` that the configuration layer cannot parse is a
+// configuration error, not a usage error. The distinction is what lets a
+// pipeline tell "the operator typed the command wrong" from "the project is
+// misconfigured", and the exit-code table has reserved 4 for it since the
+// capability contract landed.
+func TestDeployConfigurationErrorsExitFour(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-config-error")
+	origin, revision := seedDeployOrigin(t)
+	deployRoot := t.TempDir()
+
+	override := fmt.Sprintf(`deploy:
+  verify:
+    timeout: not-a-duration
+remotes:
+  local:
+    host: 127.0.0.1
+    user: deployer
+    path: %s/public_html
+    deploy_path: %s/.deployer
+    branch: main
+    repository: %s
+    local: true
+`, deployRoot, deployRoot, origin)
+	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(override), 0o644); err != nil {
+		t.Fatalf("failed to write .govard.local.yml: %v", err)
+	}
+
+	result := env.RunGovard(t, projectDir, "deploy", "local", "--revision", revision, "--yes", "--error-json")
+	result.AssertExitCode(t, 4)
+	if !strings.Contains(result.Stdout, `"code": "CONFIG"`) {
+		t.Fatalf("a configuration error must carry the CONFIG envelope, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout+result.Stderr, "verify.timeout") {
+		t.Fatalf("the error must name the setting, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+}
+
+// The other half of the split: a bad flag value stays a usage error (exit 2),
+// so the two classes never collapse into one.
+func TestDeployBadFlagValuesStayUsageErrors(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-usage-error")
+	origin, revision := seedDeployOrigin(t)
+	writeLocalRemote(t, projectDir, t.TempDir(), origin)
+
+	result := env.RunGovard(t, projectDir, "deploy", "local", "--revision", revision, "--command-timeout", "-5s", "--error-json")
+	result.AssertExitCode(t, 2)
+	if !strings.Contains(result.Stdout, `"code": "USAGE"`) {
+		t.Fatalf("a bad flag value must carry the USAGE envelope, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+}

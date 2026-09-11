@@ -88,7 +88,7 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 	}
 	hooks, err := hooksFromConfig(options.Hooks)
 	if err != nil {
-		return &cli.UsageError{Err: err}
+		return configOrUsageError(err)
 	}
 	recipe, options := deployRecipe(config, options)
 

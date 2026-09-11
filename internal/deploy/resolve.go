@@ -9,12 +9,21 @@
 package deploy
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"govard/internal/engine"
 )
+
+// ErrInvalidConfiguration marks a value that came from the project's
+// configuration and cannot be used.
+//
+// It exists so the CLI can map it to the configuration exit code (4) while a bad
+// *flag* stays a usage error (2): one is fixed by editing `.govard.yml`, the
+// other by editing the command line.
+var ErrInvalidConfiguration = errors.New("invalid deploy configuration")
 
 // Publish strategies. A remote may declare one explicitly; `auto` lets the
 // engine decide from the layout the server actually has.
@@ -129,14 +138,14 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 	if raw := strings.TrimSpace(effective.Verify.Timeout); raw != "" {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			return Options{}, fmt.Errorf("deploy.verify.timeout: %w", err)
+			return Options{}, fmt.Errorf("%w: deploy.verify.timeout: %v", ErrInvalidConfiguration, err)
 		}
 		opts.VerifyTimeout = parsed
 	}
 	if raw := strings.TrimSpace(effective.CommandTimeout); raw != "" {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			return Options{}, fmt.Errorf("deploy.command_timeout: %w", err)
+			return Options{}, fmt.Errorf("%w: deploy.command_timeout: %v", ErrInvalidConfiguration, err)
 		}
 		opts.CommandTimeout = parsed
 	}
@@ -192,10 +201,10 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 		return Options{}, err
 	}
 	if opts.Branch == "" && opts.Tag == "" && opts.Revision == "" {
-		return Options{}, fmt.Errorf("remote %q has no branch configured and no --branch, --revision or --tag was given", name)
+		return Options{}, fmt.Errorf("%w: remote %q has no branch configured and no --branch, --revision or --tag was given", ErrInvalidConfiguration, name)
 	}
 	if !isKnownPublishStrategy(opts.Publish) {
-		return Options{}, fmt.Errorf("unsupported publish strategy %q; use %s, %s or %s", opts.Publish, PublishAuto, PublishSymlink, PublishInPlace)
+		return Options{}, fmt.Errorf("%w: unsupported publish strategy %q on remote %q; use %s, %s or %s", ErrInvalidConfiguration, opts.Publish, name, PublishAuto, PublishSymlink, PublishInPlace)
 	}
 	return opts, nil
 }

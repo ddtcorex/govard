@@ -106,12 +106,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	hooks, err := hooksFromConfig(options.Hooks)
 	if err != nil {
-		return &cli.UsageError{Err: err}
+		return configOrUsageError(err)
 	}
 	recipe, options := deployRecipe(config, options)
 	plan, err := deployPlanFor(recipe, hooks, remote, options)
 	if err != nil {
-		return &cli.UsageError{Err: err}
+		return configOrUsageError(err)
 	}
 	// A --from that names nothing would silently run the whole pipeline, which
 	// is the opposite of what the operator asked for.

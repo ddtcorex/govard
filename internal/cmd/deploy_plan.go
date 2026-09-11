@@ -46,12 +46,12 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 	}
 	hooks, err := hooksFromConfig(options.Hooks)
 	if err != nil {
-		return err
+		return configOrUsageError(err)
 	}
 	recipe, options := deployRecipe(config, options)
 	plan, err := deployPlanFor(recipe, hooks, remote, options)
 	if err != nil {
-		return err
+		return configOrUsageError(err)
 	}
 
 	out := cmd.OutOrStdout()

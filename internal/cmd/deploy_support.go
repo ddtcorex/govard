@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -209,6 +210,10 @@ func deployRemoteName(command *cobra.Command, args []string) (string, error) {
 
 // resolveDeployOptions loads the project config and resolves the effective
 // options for one remote.
+//
+// A flag problem is a usage error and a `.govard.yml` problem is a configuration
+// error: the exit code tells an operator which file to open, and CI which class
+// of failure it is looking at.
 func resolveDeployOptions(command *cobra.Command, remote string) (engine.Config, deploy.Options, error) {
 	// Flag validation comes first: a bad flag combination is a usage error even
 	// when the project config is missing or unreadable.
@@ -218,13 +223,31 @@ func resolveDeployOptions(command *cobra.Command, remote string) (engine.Config,
 	}
 	config, err := loadFullConfig()
 	if err != nil {
-		return engine.Config{}, deploy.Options{}, err
+		return engine.Config{}, deploy.Options{}, &cli.ConfigError{Err: err}
 	}
 	options, err := deploy.ResolveOptions(config, remote, over)
 	if err != nil {
+		if errors.Is(err, deploy.ErrInvalidConfiguration) {
+			return engine.Config{}, deploy.Options{}, &cli.ConfigError{Err: err}
+		}
 		return engine.Config{}, deploy.Options{}, &cli.UsageError{Err: err}
 	}
 	return config, options, nil
+}
+
+// configOrUsageError classifies an error that comes from a configuration file
+// the plan builder refused — an unknown hook anchor, a duplicate hook name, a
+// cycle. The remedy is always an edit to `.govard.yml`, never to the command.
+func configOrUsageError(err error) error {
+	switch {
+	case errors.Is(err, deploy.ErrUnknownAnchor),
+		errors.Is(err, deploy.ErrDuplicateHook),
+		errors.Is(err, deploy.ErrHookCycle),
+		errors.Is(err, deploy.ErrInvalidConfiguration):
+		return &cli.ConfigError{Err: err}
+	default:
+		return &cli.UsageError{Err: err}
+	}
 }
 
 // recipeFor returns the deploy recipe for the project's framework.

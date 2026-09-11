@@ -93,12 +93,12 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 
 	hooks, err := hooksFromConfig(options.Hooks)
 	if err != nil {
-		return err
+		return configOrUsageError(err)
 	}
 	recipe, options := deployRecipe(config, options)
 	plan, err := deploy.BuildPlan(recipe, hooks, remote)
 	if err != nil {
-		return err
+		return configOrUsageError(err)
 	}
 	vars := deployVars(host, options)
 	out := cmd.OutOrStdout()
