@@ -138,8 +138,39 @@ When adding/modifying commands:
 2. Register with `rootCmd.AddCommand(...)`
 3. Ensure flags are explicit, help text is actionable
 4. Return errors with context (`fmt.Errorf("operation: %w", err)`)
-5. Add tests in `tests/`
-6. Update docs for user-visible changes
+5. Declare the runtime requirement (see below)
+6. Add tests in `tests/`
+7. Update docs for user-visible changes
+
+### Runtime requirements — the capability contract
+
+Every runnable command declares what it needs, and the root `PersistentPreRunE`
+gate turns a missing requirement into exit `3` with a `CAPABILITY_MISSING`
+envelope **before** the command does any work.
+
+- Declare it with `Annotations: {runtime.AnnotationRequires: "<caps>"}`, where
+  `<caps>` is a comma-separated subset of `none`, `docker`, `ssh`, `rsync`,
+  `cloudflared`, `net`. A runnable command that declares nothing defaults to
+  `docker`; `TestEveryRunnableCommandDeclaresRequirements` fails until it states
+  a requirement, and the fix is the annotation — never an allowlist entry.
+- Resolution walks up the parents and the **nearest annotation wins**. A group
+  that declares `none` (e.g. `audit`, so the container-free integrity check runs
+  on a host without Docker) makes its whole subtree `none`: a container-backed
+  child re-declares the requirement on its own group.
+- Never probe or gate inside `RunE`. The gate owns the message, the hint, and
+  the exit code; an ad-hoc check leaks a raw runtime error and breaks the
+  contract.
+- `runtime.AlwaysRunnable` exempts `help`, `completion`, `doctor`,
+  `capabilities`, and `version` **by top-level command**. Their subcommands ride
+  along (a host with no container runtime must still print `completion bash`),
+  while a nested command that merely shares the name — `desktop doctor` — is a
+  different command and keeps its own declaration.
+- Exit codes are frozen: `0` ok, `1` execution, `2` usage, `3`
+  `CAPABILITY_MISSING`, `4` configuration. With `--error-json` the failure is an
+  envelope on stdout and no hint may be printed to it.
+- `scripts/core-contract.sh` proves the contract in the `core_sans_docker` CI
+  job (no docker binary, no socket): a new requirement-free command or a new
+  representative gate belongs there too.
 
 ## Blueprint Versioning
 
@@ -220,6 +251,12 @@ Update `README.md` for: installation, upgrade flow, command/flag changes, releas
 Update `docs/*.md` for: command names/aliases/flags, config behavior, remote/sync/db workflows, framework support, desktop behavior. `docs/**/*.md` auto-syncs to the GitHub Wiki on every push to `master` (`.github/workflows/sync-wiki.yml`) — no separate wiki edit needed.
 
 **Treat stale docs as incomplete work.**
+
+The Docker-free command list in `docs/reference/docker-free.md` is checked
+against the shipped binary by `tests/integration/docker_free_docs_test.go`: a
+command added, removed, or re-gated fails CI until that page matches, and the
+page must stay reachable (sidebar entry, link from README/installation/CLI
+reference, VI counterpart).
 
 ## Git Workflow
 
