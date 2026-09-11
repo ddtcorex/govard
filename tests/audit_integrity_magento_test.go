@@ -58,3 +58,21 @@ func TestMagentoIntegrityIgnoresNonModuleTrees(t *testing.T) {
 		t.Fatalf("expected no findings outside a Magento tree, got %v", rulesOf(findings))
 	}
 }
+
+func TestMagentoIntegritySequenceAcceptsVendorModules(t *testing.T) {
+	findings := analyzeMagentoFixture(t, "magento-sequence-vendor")
+	// Magento core modules live under vendor/: a <sequence> entry naming one is
+	// not an unknown module, and vendor code is not itself reviewed.
+	assertNoRule(t, findings, "MAGENTO_SEQUENCE_UNKNOWN_MODULE")
+	if len(findings) != 0 {
+		t.Fatalf("expected a clean module, got %v", rulesOf(findings))
+	}
+}
+
+func TestMagentoIntegritySequenceAcceptsVendorSrcLayout(t *testing.T) {
+	findings := analyzeMagentoFixture(t, "magento-sequence-vendor-src")
+	assertNoRule(t, findings, "MAGENTO_SEQUENCE_UNKNOWN_MODULE")
+	if len(findings) != 0 {
+		t.Fatalf("expected a clean module, got %v", rulesOf(findings))
+	}
+}

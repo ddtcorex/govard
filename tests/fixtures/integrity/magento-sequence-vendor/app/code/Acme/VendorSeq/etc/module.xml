@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<config>
+    <module name="Acme_VendorSeq">
+        <sequence>
+            <module name="Magento_Catalog"/>
+        </sequence>
+    </module>
+</config>
