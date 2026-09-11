@@ -157,3 +157,36 @@ func TestExecutorFromSkipsEverythingBeforeTheNamedTask(t *testing.T) {
 		}
 	}
 }
+
+// A step the plan marked skipped must not run. `ForBuildMode` marks the five
+// build tasks skipped in artifact mode but leaves their command in place, so a
+// skip that lived only in the plan would still run `composer install` and
+// `setup:di:compile` on the target — exactly what artifact mode exists to move
+// off the production box.
+func TestExecutorDoesNotRunAStepThePlanMarkedSkipped(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "build-ran")
+	host, plan := executorForTest(t, []deploy.Task{
+		{ID: deploy.TaskVendors, Stage: deploy.StageBuild, Command: "touch " + marker},
+		{ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: "true"},
+	})
+	plan = plan.ForBuildMode(deploy.BuildArtifact)
+
+	options := deploy.Options{Remote: "local", Build: deploy.BuildArtifact, CommandTimeout: time.Minute}
+	outcome, err := deploy.NewExecutor(host, options, io.Discard).Run(
+		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("artifact mode ran build:vendors, which the plan marked skipped")
+	}
+	for _, step := range outcome.Steps {
+		if step.ID == deploy.TaskVendors && step.Status != deploy.StepSkipped {
+			t.Fatalf("build:vendors status = %q, want %q", step.Status, deploy.StepSkipped)
+		}
+		if step.ID == deploy.TaskDBMigrate && step.Status != deploy.StepOK {
+			t.Fatalf("db:migrate status = %q, want %q (only the marked step may be skipped)", step.Status, deploy.StepOK)
+		}
+	}
+}

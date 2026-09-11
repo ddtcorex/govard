@@ -137,7 +137,11 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			e.record(release, step, StepSkipped, 0, nil)
 			continue
 		}
-		if step.Command == "" && step.core == nil {
+		// A step the plan marked skipped is not run, whatever it carries. The
+		// build-mode branch is decided at plan-build time and shows up only as
+		// `Skipped`, so an executor that ignored the flag would run the server
+		// build in artifact mode as well.
+		if step.Skipped || (step.Command == "" && step.core == nil) {
 			e.record(release, step, StepSkipped, 0, nil)
 			continue
 		}
