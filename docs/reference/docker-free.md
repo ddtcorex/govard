@@ -42,14 +42,18 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard config set` | `none` |
 | `govard custom` | `none` |
 | `govard custom list` | `none` |
+| `govard desktop doctor` | `none` |
 | `govard doctor` | `none` |
 | `govard doctor trust` | `none` |
+| `govard domain list` | `none` |
 | `govard help` | `none` |
 | `govard init` | `none` |
 | `govard lock` | `none` |
 | `govard lock check` | `none` |
 | `govard lock diff` | `none` |
 | `govard lock generate` | `none` |
+| `govard project list` | `none` |
+| `govard project open` | `none` |
 | `govard remote add` | `ssh,rsync` |
 | `govard remote audit stats` | `ssh,rsync` |
 | `govard remote audit tail` | `ssh,rsync` |
@@ -64,6 +68,7 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard tunnel status` | `cloudflared` |
 | `govard tunnel stop` | `cloudflared` |
 | `govard version` | `none` |
+| `govard vscode setup` | `none` |
 
 The `Requirement` column is the exact token `govard capabilities` reports:
 
@@ -76,8 +81,10 @@ The `Requirement` column is the exact token `govard capabilities` reports:
 
 Commands whose requirement includes `docker` are gated instead: the stack
 lifecycle (`env`, `restart`, `down`, `ps`, `logs`, `svc`, `db`, `shell`, `tool`,
-`test`, `frontend`), project and domain management, `deploy`, `bootstrap`,
-`debug`, `desktop`, and the container-backed audit paths (`audit toolchain`,
+`test`, `frontend`), the parts of project and domain management that touch
+containers (`project delete`, `project orphans`, `domain add`, `domain remove`),
+the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
+`desktop`, and the container-backed audit paths (`audit toolchain`,
 `audit run --checks lint`, `audit run --checks profiler`).
 
 ## Docker-free features
@@ -98,6 +105,10 @@ lifecycle (`env`, `restart`, `down`, `ps`, `logs`, `svc`, `db`, `shell`, `tool`,
   work on files and the local cache. Applying a profile to a running stack
   (`config profile apply|switch`) is container work.
 - **Project scaffolding.** `govard init` and `govard custom list`.
+- **Registry and domains.** `project list` and `project open` read the registry;
+  `domain list` prints the project's domains; `vscode setup` derives the editor
+  settings from the project's own files. `project orphans` inspects Docker
+  resources, so it keeps the requirement.
 - **Remote and sync.** `govard remote add|test|copy-id|exec`,
   `govard remote audit stats|tail`, and `govard sync` need SSH and rsync, not
   Docker.

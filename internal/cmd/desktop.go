@@ -58,6 +58,13 @@ func init() {
 }
 
 var desktopDoctorCmd = &cobra.Command{
+	Annotations: map[string]string{
+		// The diagnosis is entirely local: the desktop binary, the display
+		// environment, WebKitGTK, and the user-namespace sysctl. Requiring
+		// Docker here would make the diagnostic unusable on exactly the host
+		// that needs it, so it overrides the group's requirement.
+		govardruntime.AnnotationRequires: string(govardruntime.CapNone),
+	},
 	Use:   "doctor",
 	Short: "Diagnose issues with the desktop environment",
 	Run: func(cmd *cobra.Command, args []string) {

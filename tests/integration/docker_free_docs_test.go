@@ -17,6 +17,10 @@ import (
 // without Docker.
 const dockerFreeDocsPage = "docs/reference/docker-free.md"
 
+// dockerFreeDocsPageVi is its Vietnamese counterpart, which carries the same
+// table and is checked the same way so a translated page cannot drift.
+const dockerFreeDocsPageVi = "docs/vi/reference/docker-free.md"
+
 // dockerFreeDocsRow matches one row of that page's command table. Only rows
 // whose first cell is a `govard ...` command are considered, so the page can
 // carry unrelated tables (requirement legend, exit codes) without confusing the
@@ -64,22 +68,24 @@ func TestDockerFreeDocsListMatchesCapabilities(t *testing.T) {
 		t.Fatal("capabilities reported no Docker-free command; the guard would be vacuous")
 	}
 
-	documented := parseDockerFreeDocsPage(t, env.ProjectRoot)
+	for _, page := range []string{dockerFreeDocsPage, dockerFreeDocsPageVi} {
+		documented := parseDockerFreeDocsPage(t, env.ProjectRoot, page)
 
-	for _, command := range sortedKeys(fromBinary) {
-		requires := fromBinary[command]
-		got, ok := documented[command]
-		if !ok {
-			t.Errorf("%s is Docker-free in govard capabilities but missing from %s", command, dockerFreeDocsPage)
-			continue
+		for _, command := range sortedKeys(fromBinary) {
+			requires := fromBinary[command]
+			got, ok := documented[command]
+			if !ok {
+				t.Errorf("%s is Docker-free in govard capabilities but missing from %s", command, page)
+				continue
+			}
+			if got != requires {
+				t.Errorf("%s requires %q in govard capabilities but %q in %s", command, requires, got, page)
+			}
 		}
-		if got != requires {
-			t.Errorf("%s requires %q in govard capabilities but %q in %s", command, requires, got, dockerFreeDocsPage)
-		}
-	}
-	for _, command := range sortedKeys(documented) {
-		if _, ok := fromBinary[command]; !ok {
-			t.Errorf("%s is documented as Docker-free but govard capabilities does not list it", command)
+		for _, command := range sortedKeys(documented) {
+			if _, ok := fromBinary[command]; !ok {
+				t.Errorf("%s is documented as Docker-free in %s but govard capabilities does not list it", command, page)
+			}
 		}
 	}
 }
@@ -103,13 +109,13 @@ func sortedKeys(rows map[string]string) []string {
 }
 
 // parseDockerFreeDocsPage reads the command table of the Docker-free page.
-func parseDockerFreeDocsPage(t *testing.T, projectRoot string) map[string]string {
+func parseDockerFreeDocsPage(t *testing.T, projectRoot, page string) map[string]string {
 	t.Helper()
 
-	path := filepath.Join(projectRoot, filepath.FromSlash(dockerFreeDocsPage))
+	path := filepath.Join(projectRoot, filepath.FromSlash(page))
 	content, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read %s: %v", dockerFreeDocsPage, err)
+		t.Fatalf("read %s: %v", page, err)
 	}
 
 	documented := map[string]string{}
@@ -120,12 +126,12 @@ func parseDockerFreeDocsPage(t *testing.T, projectRoot string) map[string]string
 		}
 		command := strings.TrimSpace(match[1])
 		if previous, duplicate := documented[command]; duplicate {
-			t.Fatalf("%s line %d: %s is listed twice (%q and %q)", dockerFreeDocsPage, number+1, command, previous, match[2])
+			t.Fatalf("%s line %d: %s is listed twice (%q and %q)", page, number+1, command, previous, match[2])
 		}
 		documented[command] = strings.TrimSpace(match[2])
 	}
 	if len(documented) == 0 {
-		t.Fatalf("%s lists no command rows; expected rows shaped `| `govard <path>` | `<requirement>` |`", dockerFreeDocsPage)
+		t.Fatalf("%s lists no command rows; expected rows shaped `| `govard <path>` | `<requirement>` |`", page)
 	}
 	return documented
 }

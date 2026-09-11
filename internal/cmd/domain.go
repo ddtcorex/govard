@@ -87,6 +87,12 @@ var domainRemoveCmd = &cobra.Command{
 }
 
 var domainListCmd = &cobra.Command{
+	Annotations: map[string]string{
+		// Listing reads .govard.yml and prints it: `domain add`/`remove` mutate
+		// the config and `govard env up` applies it to the stack, but neither
+		// happens here, so this one runs on a host with no container runtime.
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "list",
 	Short: "List all domains for the project",
 	Args:  cobra.NoArgs,

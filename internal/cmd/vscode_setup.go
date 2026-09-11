@@ -11,6 +11,7 @@ import (
 
 	"govard/internal/engine"
 	"govard/internal/frameworks"
+	govardruntime "govard/internal/runtime"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -31,6 +32,13 @@ var vscodeSetupGlobal bool
 var vscodeSetupYes bool
 
 var vscodeSetupCmd = &cobra.Command{
+	Annotations: map[string]string{
+		// Setup derives every value from the project's own files (composer.json,
+		// .govard.yml, vendor/) and writes .vscode/**. It never runs a tool
+		// inside a container, so it must work on a host without one; the
+		// `vscode <tool>` wrappers next to it keep the group's requirement.
+		govardruntime.AnnotationRequires: string(govardruntime.CapNone),
+	},
 	Use:   "setup",
 	Short: "Write or update VSCode settings to use this project's container instead of the host",
 	Long: `Write (or merge into) the VSCode settings needed to run PHP tooling inside the

@@ -42,14 +42,18 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard config set` | `none` |
 | `govard custom` | `none` |
 | `govard custom list` | `none` |
+| `govard desktop doctor` | `none` |
 | `govard doctor` | `none` |
 | `govard doctor trust` | `none` |
+| `govard domain list` | `none` |
 | `govard help` | `none` |
 | `govard init` | `none` |
 | `govard lock` | `none` |
 | `govard lock check` | `none` |
 | `govard lock diff` | `none` |
 | `govard lock generate` | `none` |
+| `govard project list` | `none` |
+| `govard project open` | `none` |
 | `govard remote add` | `ssh,rsync` |
 | `govard remote audit stats` | `ssh,rsync` |
 | `govard remote audit tail` | `ssh,rsync` |
@@ -64,6 +68,7 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard tunnel status` | `cloudflared` |
 | `govard tunnel stop` | `cloudflared` |
 | `govard version` | `none` |
+| `govard vscode setup` | `none` |
 
 Cột `Yêu cầu` là đúng token mà `govard capabilities` báo:
 
@@ -76,8 +81,9 @@ Cột `Yêu cầu` là đúng token mà `govard capabilities` báo:
 
 Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời stack (`env`,
 `restart`, `down`, `ps`, `logs`, `svc`, `db`, `shell`, `tool`, `test`,
-`frontend`), quản lý project và domain, `deploy`, `bootstrap`, `debug`,
-`desktop`, và các nhánh audit cần container (`audit toolchain`,
+`frontend`), phần quản lý project/domain có chạm container (`project delete`,
+`project orphans`, `domain add`, `domain remove`), các wrapper `vscode <tool>`,
+`deploy`, `bootstrap`, `debug`, mở `desktop`, và các nhánh audit cần container (`audit toolchain`,
 `audit run --checks lint`, `audit run --checks profiler`).
 
 ## Tính năng không cần Docker
@@ -98,6 +104,9 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
   và cache local. Áp profile vào stack đang chạy (`config profile apply|switch`)
   là việc của container.
 - **Khởi tạo project.** `govard init` và `govard custom list`.
+- **Registry và domain.** `project list` và `project open` đọc registry;
+  `domain list` in ra domain của project; `vscode setup` suy ra cấu hình editor từ
+  chính file của project. `project orphans` quét tài nguyên Docker nên vẫn cần runtime.
 - **Remote và đồng bộ.** `govard remote add|test|copy-id|exec`,
   `govard remote audit stats|tail`, và `govard sync` cần SSH và rsync, không cần
   Docker.
