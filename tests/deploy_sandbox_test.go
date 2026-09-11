@@ -87,6 +87,21 @@ func TestSandboxDeployerIsNotALockedAccount(t *testing.T) {
 	}
 }
 
+func TestSandboxMirrorIsASafeGitDirectory(t *testing.T) {
+	// The mirror is bind-mounted from the host, so the container's deployer is
+	// usually not its owner — git then refuses with "detected dubious
+	// ownership" and the deploy cannot materialise a revision. It only shows up
+	// when the host uid differs from the image's deployer uid, which is exactly
+	// the case on a CI runner.
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileBasic, deploy.SandboxRequirements{})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(dockerfile, "git config --system --add safe.directory "+deploy.SandboxRepoPath) {
+		t.Fatalf("the mounted mirror must be declared a safe git directory, got:\n%s", dockerfile)
+	}
+}
+
 func TestSandboxDockerfileCarriesTheFrameworkRequirements(t *testing.T) {
 	requirements := deploy.SandboxRequirements{
 		Packages:   []string{"libxslt1-dev"},

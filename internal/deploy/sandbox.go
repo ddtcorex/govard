@@ -148,6 +148,15 @@ func SandboxDockerfile(profile string, requirements SandboxRequirements) (string
     rm -rf /var/lib/apt/lists/*
 `, strings.Join(quoteWords(append(packages, extensionPackages...)), " "), SandboxPackagesTxt)
 
+	// The mirror is bind-mounted from the host, which is a different user than
+	// the container's deployer whenever the two uids differ — a CI runner is
+	// 1001, the image's deployer is 1000. Git refuses to read a repository
+	// owned by someone else ("detected dubious ownership"), so the mirror is
+	// declared safe for every user in the container. The path is the mount, not
+	// `*`: the only repository the container reads from outside its own home is
+	// exactly this one.
+	fmt.Fprintf(&builder, "\nRUN git config --system --add safe.directory %s\n", SandboxRepoPath)
+
 	// The deployer identity is fixed at build time, so a sandbox release has an
 	// owner a settings.owner can name.
 	fmt.Fprintf(&builder, "\nRUN set -eux; \\\n")
