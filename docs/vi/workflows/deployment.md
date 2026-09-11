@@ -45,6 +45,11 @@ deploy:
 `govard deploy plan` in ra cây thực thi kèm nguồn và cách hiện thực của từng bước,
 nên có thể soi vị trí hook mà không cần kết nối tới đâu.
 
+Mọi hành vi nâng cao đều nằm sau một flag và mặc định là bản tối ưu:
+`--no-verify`, `--no-db-backup` và `--lock=false` tắt bớt việc, `--force` deploy
+lại revision mà target đã chạy, còn `--build`, `--artifact-dir` và `--publish`
+đổi cách release được tạo và publish.
+
 ## Build mode
 
 `--build=auto` (mặc định) quyết định theo **sự hiện diện**, không dò đoán môi
@@ -72,10 +77,14 @@ deploy:
 ```
 
 Image của job `deploy` chỉ cần govard, SSH và rsync: không PHP, không Composer,
-không Node, không container runtime. Artifact được upload vào release và manifest
-của nó được đối chiếu với revision đang triển khai cùng phiên bản PHP của target —
-image CI không khớp server bị từ chối trước khi publish. `govard deploy plan
---artifact-dir artifacts` cho biết đang chạy nhánh nào của stage build.
+không Node, không container runtime. Ở mode này năm task build bị bỏ qua trên
+target — artifact đã mang sẵn phần chúng tạo ra — nên không có gì trên server phải
+chạy `composer install`, `setup:di:compile` hay `setup:static-content:deploy`.
+Artifact được upload vào release và manifest của nó được đối chiếu với chính các
+file, với revision đang triển khai và với phiên bản PHP của target — image CI không
+khớp server, hoặc artifact đã bị đổi byte sau khi build, đều bị từ chối trước khi
+publish. `govard deploy plan --artifact-dir artifacts` cho biết đang chạy nhánh nào
+của stage build.
 
 Thư mục output không rỗng sẽ bị từ chối để một file còn sót từ lần build trước
 không thể lọt ra production. Dùng `--force` nếu muốn thay nội dung.
@@ -87,7 +96,8 @@ không thể lọt ra production. Dùng `--force` nếu muốn thay nội dung.
 - current path không tồn tại hoặc là symlink → **symlink**: release nằm trong
   `releases/<n>` và cú swap là `mv -T` nguyên tử, nên không khách nào thấy một
   cây file publish dở;
-- current path là thư mục thật → **in_place**: docroot được reset về đúng
+- current path là thư mục thật → **in_place**: object của docroot được fetch trong
+  `prepare`, ngoài mọi maintenance window, rồi docroot được reset về đúng
   revision, các path cấu hình được copy vào, và file static content version được
   ghi cuối cùng.
 
@@ -95,11 +105,12 @@ không thể lọt ra production. Dùng `--force` nếu muốn thay nội dung.
 
 ## Kiểm chứng, backup và rollback
 
-`deploy:verify` chạy sau publish và bật mặc định: revision đang live, dấu artifact,
-các shared file recipe yêu cầu, một kiểm tra ứng dụng do recipe cung cấp có chạm
-vào dependency thật, và kiểm tra HTTP khi đã đặt `deploy.verify.url`. Một lần
-deploy có migrate database mà không có kiểm tra HTTP sẽ in cảnh báo rõ ràng thay
-vì giả vờ rằng kiểm chứng chỉ bằng SSH là đủ.
+`deploy:verify` chạy sau publish và bật mặc định: revision đang live (symlink
+`current` được resolve, hoặc `HEAD` của docroot với target in-place), các shared
+file recipe yêu cầu, và kiểm tra HTTP khi đã đặt `deploy.verify.url`. Không cấu
+hình URL thì kiểm chứng chỉ bằng SSH: nó chứng minh đúng file đã nằm đúng chỗ,
+không chứng minh ứng dụng phục vụ được. Hãy đặt `deploy.verify.url` cho mọi môi
+trường có chạy migration.
 
 `--db-backup` dump database vào `shared/backups/deploy/<n>/` ngay trước task đầu
 tiên thay đổi database và ghi lại đường dẫn trong release.
@@ -115,10 +126,13 @@ govard deploy rollback staging --with-db --yes  # ... kèm cả dump database
 Rollback không bao giờ build lại: layout symlink được trỏ lại, còn layout
 in-place chạy lại phần publish từ thư mục release đã có trên server.
 
-Một lần deploy lỗi vẫn giữ thư mục release và record của nó. `--resume` tiếp tục
-release mới nhất chưa xong thay vì tạo release mới, và `--from <task>` bắt đầu từ
-một task hoặc hook chỉ định. `govard deploy unlock` giải phóng lock do lần lỗi để
-lại.
+Một lần deploy lỗi vẫn giữ thư mục release và record của nó. Lỗi ở đâu quyết định
+số phận của lock: lỗi trong `prepare` hoặc `build` sẽ nhả lock vì chưa có gì live
+thay đổi, nên chỉ cần sửa lỗi rồi deploy lại — còn lỗi từ `publish` trở đi thì giữ
+lock, vì target có thể đang dở dang, và đường đi tiếp là `govard deploy <remote>
+--resume` để tiếp tục release mới nhất chưa xong thay vì tạo release mới.
+`--from <task>` bắt đầu từ một task hoặc hook chỉ định, và `govard deploy unlock`
+giải phóng lock do lần lỗi để lại.
 
 ## Sandbox
 

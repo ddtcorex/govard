@@ -47,6 +47,11 @@ deploy:
 implementation, so a hook's placement can be reviewed without connecting to
 anything.
 
+Every enhanced behaviour is behind a flag and the defaults are the optimised
+ones: `--no-verify`, `--no-db-backup` and `--lock=false` turn work off, `--force`
+re-deploys a revision the target already runs, and `--build`, `--artifact-dir`
+and `--publish` change how the release is produced and published.
+
 ## Build modes
 
 `--build=auto` (the default) resolves **by presence**, never by sniffing the
@@ -75,11 +80,15 @@ deploy:
 ```
 
 The `deploy` job's image needs govard, SSH and rsync and nothing else: no PHP, no
-Composer, no Node, no container runtime. The artifact is uploaded into the
-release and its manifest is checked against the revision being deployed and the
-PHP the target runs — a CI image that does not match the server is refused
-before anything is published. `govard deploy plan --artifact-dir artifacts`
-shows which branch of the build stage is in effect.
+Composer, no Node, no container runtime. The five build tasks are skipped on the
+target in this mode — the artifact carries what they generate — so nothing on the
+server runs `composer install`, `setup:di:compile` or
+`setup:static-content:deploy`. The artifact is uploaded into the release and its
+manifest is checked against the files themselves, the revision being deployed and
+the PHP the target runs — a CI image that does not match the server, or an
+artifact whose bytes changed after the build, is refused before anything is
+published. `govard deploy plan --artifact-dir artifacts` shows which branch of
+the build stage is in effect.
 
 An output directory that is not empty is refused, so a file left over from an
 earlier build cannot ship. Pass `--force` to replace its contents.
@@ -91,20 +100,21 @@ earlier build cannot ship. Pass `--force` to replace its contents.
 - the current path is missing or a symlink → **symlink**: releases live in
   `releases/<n>` and the swap is an atomic `mv -T`, so no visitor ever sees a
   half-published tree;
-- the current path is a real directory → **in_place**: the docroot is reset to
-  the exact revision, the configured paths are copied in, and the static content
-  version file is written last.
+- the current path is a real directory → **in_place**: the docroot's objects are
+  fetched during `prepare`, outside any maintenance window, then the docroot is
+  reset to the exact revision, the configured paths are copied in, and the static
+  content version file is written last.
 
 `deploy check` reports which one the layout implies and why.
 
 ## Verification, backup and rollback
 
-`deploy:verify` runs after publish and is on by default: the live revision, the
-artifact marker, the shared files the recipe requires, a recipe-provided
-application check that touches real dependencies, and an HTTP check when
-`deploy.verify.url` is set. A deploy that migrates the database without an HTTP
-check prints a prominent warning rather than pretending SSH-only verification
-proves the site serves.
+`deploy:verify` runs after publish and is on by default: the live revision
+(the resolved `current` symlink, or the docroot's `HEAD` for an in-place target),
+the shared files the recipe requires, and an HTTP check when `deploy.verify.url`
+is set. Without a configured URL verification is SSH-only: it proves the right
+files are in place, not that the application serves. Set `deploy.verify.url` for
+any environment that runs migrations.
 
 `--db-backup` dumps the database into `shared/backups/deploy/<n>/` immediately
 before the first database-mutating task and records the path in the release.
@@ -120,10 +130,14 @@ govard deploy rollback staging --with-db --yes  # ... and its database dump
 Rollback never rebuilds: a symlink layout is re-pointed, and an in-place layout
 re-runs the publish tail from the release directory already on the server.
 
-A failed deploy keeps its release directory and its record. `--resume`
-continues the newest unfinished release instead of starting a new one, and
-`--from <task>` starts at a named task or hook. `govard deploy unlock` releases
-a lock a failed run left behind.
+A failed deploy keeps its release directory and its record. Where it failed
+decides the lock: a failure in `prepare` or `build` releases it, because nothing
+live has changed, so the fault can simply be fixed and the deploy retried — while
+a failure from `publish` onwards keeps it, because the target may be
+half-changed, and the way forward is `govard deploy <remote> --resume`, which
+continues the newest unfinished release instead of starting a new one.
+`--from <task>` starts at a named task or hook, and `govard deploy unlock`
+releases a lock a failed run left behind.
 
 ## The sandbox
 
