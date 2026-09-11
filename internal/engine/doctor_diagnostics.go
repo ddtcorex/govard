@@ -25,6 +25,9 @@ type DoctorCheck struct {
 	ID               string            `json:"id" yaml:"id"`
 	Title            string            `json:"title" yaml:"title"`
 	Status           DoctorCheckStatus `json:"status" yaml:"status"`
+	Required         bool              `json:"required" yaml:"required"`
+	Severity         string            `json:"severity" yaml:"severity"`
+	Affects          []string          `json:"affects,omitempty" yaml:"affects,omitempty"`
 	Message          string            `json:"message" yaml:"message"`
 	Hint             string            `json:"hint,omitempty" yaml:"hint,omitempty"`
 	SuggestedCommand string            `json:"suggested_command,omitempty" yaml:"suggested_command,omitempty"`
@@ -378,20 +381,38 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 		})
 	}
 
-	if missing := dependencies.CheckSystemDependencies(); len(missing) > 0 {
+	missingDependencies := dependencies.CheckSystemDependencies()
+	if missing := missingStackDependencies(missingDependencies); len(missing) > 0 {
 		report.Checks = append(report.Checks, DoctorCheck{
-			ID:      "host.system.deps",
-			Title:   "Host system dependencies",
+			ID:      "host.deps.docker",
+			Title:   "Container tooling",
 			Status:  DoctorStatusFail,
-			Message: fmt.Sprintf("Missing required system dependencies: %s", strings.Join(missing, ", ")),
-			Hint:    "Please install the missing tools using your system package manager.",
+			Message: fmt.Sprintf("Missing container tooling: %s", strings.Join(missing, ", ")),
+			Hint:    "Stack commands need it; core commands do not (run `govard capabilities`).",
 		})
 	} else {
 		report.Checks = append(report.Checks, DoctorCheck{
-			ID:      "host.system.deps",
-			Title:   "Host system dependencies",
+			ID:      "host.deps.docker",
+			Title:   "Container tooling",
 			Status:  DoctorStatusPass,
-			Message: "All required system dependencies are installed.",
+			Message: "Container tooling is installed.",
+		})
+	}
+
+	if missing := missingRemoteDependencies(missingDependencies); len(missing) > 0 {
+		report.Checks = append(report.Checks, DoctorCheck{
+			ID:      "host.deps.remote",
+			Title:   "Remote workflow tooling",
+			Status:  DoctorStatusFail,
+			Message: fmt.Sprintf("Missing remote workflow tooling: %s", strings.Join(missing, ", ")),
+			Hint:    "Remote and sync commands need ssh and rsync.",
+		})
+	} else {
+		report.Checks = append(report.Checks, DoctorCheck{
+			ID:      "host.deps.remote",
+			Title:   "Remote workflow tooling",
+			Status:  DoctorStatusPass,
+			Message: "Remote workflow tooling is installed.",
 		})
 	}
 
@@ -420,14 +441,15 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 		})
 	}
 
+	classifyDoctorChecks(report.Checks)
 	for _, check := range report.Checks {
-		switch check.Status {
-		case DoctorStatusPass:
-			report.Passed++
-		case DoctorStatusWarn:
-			report.Warnings++
-		case DoctorStatusFail:
+		switch {
+		case check.Status == DoctorStatusFail && check.Required:
 			report.Failures++
+		case check.Status == DoctorStatusPass:
+			report.Passed++
+		default:
+			report.Warnings++
 		}
 	}
 	report.IssueCards = buildDoctorIssueCards(report.Checks)
@@ -828,4 +850,59 @@ func checkConfigDrift() error {
 		return fmt.Errorf("configuration drift: %s", strings.Join(warnings, ", "))
 	}
 	return nil
+}
+
+// optionalDoctorChecks are the checks that gate a command group rather than the
+// core itself: a host missing them can still run the Docker-free core, so they
+// report as warnings by default. `doctor --strict` promotes them to failures.
+var optionalDoctorChecks = map[string]struct {
+	severity string
+	affects  []string
+}{
+	"docker.daemon":          {"warning", []string{"env", "svc", "db", "shell", "test", "audit", "frontend", "snapshot", "project"}},
+	"docker.compose":         {"warning", []string{"env", "svc", "db", "shell", "test", "audit", "frontend", "snapshot", "project"}},
+	"host.deps.docker":       {"warning", []string{"env", "svc", "db", "shell", "test", "audit", "frontend", "snapshot"}},
+	"host.deps.remote":       {"warning", []string{"remote", "sync", "bootstrap"}},
+	"host.ssh.agent":         {"warning", []string{"remote", "sync"}},
+	"host.network.outbound":  {"warning", []string{"self-update", "remote", "tunnel"}},
+	"project.runtime.images": {"warning", []string{"env", "audit"}},
+}
+
+// classifyDoctorChecks marks every check as required (core-blocking) unless it
+// only gates a command group, and downgrades optional failures to warnings.
+func classifyDoctorChecks(checks []DoctorCheck) {
+	for index := range checks {
+		optional, isOptional := optionalDoctorChecks[checks[index].ID]
+		if !isOptional {
+			checks[index].Required = true
+			if checks[index].Severity == "" {
+				checks[index].Severity = "error"
+			}
+			continue
+		}
+		checks[index].Required = false
+		checks[index].Severity = optional.severity
+		checks[index].Affects = optional.affects
+		if checks[index].Status == DoctorStatusFail {
+			checks[index].Status = DoctorStatusWarn
+		}
+	}
+}
+
+func missingStackDependencies(missing []string) []string {
+	return filterDependencies(missing, map[string]bool{"docker": true, "docker compose plugin": true})
+}
+
+func missingRemoteDependencies(missing []string) []string {
+	return filterDependencies(missing, map[string]bool{"ssh": true, "rsync": true})
+}
+
+func filterDependencies(missing []string, wanted map[string]bool) []string {
+	filtered := make([]string, 0, len(missing))
+	for _, dependency := range missing {
+		if wanted[dependency] {
+			filtered = append(filtered, dependency)
+		}
+	}
+	return filtered
 }

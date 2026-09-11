@@ -12,6 +12,7 @@ import (
 	"govard/internal/frameworks"
 
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 type FrameworkCommand struct {
@@ -31,6 +32,9 @@ type commandExecutionTarget struct {
 }
 
 var toolCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "tool [command]",
 	Short: "Run framework/tooling commands inside project containers",
 	Long: `Run framework CLIs and common package manager commands directly inside the project containers.

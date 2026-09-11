@@ -110,7 +110,7 @@ sudo installer -pkg govard_<version>_Darwin_arm64.pkg -target /
 | Node.js | `20+` |
 | Yarn | v1.x |
 | golangci-lint | v2.11+ |
-| Docker + Docker Compose | Bản mới nhất |
+| Docker + Docker Compose | Bản mới nhất (chỉ cho lệnh stack — bản thân CLI không phụ thuộc Docker) |
 | Wails | `v2.11+` (chỉ khi phát triển desktop app) |
 
 ### Cài đặt từ Source

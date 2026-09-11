@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"govard/internal/desktop"
+	govardruntime "govard/internal/runtime"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -33,6 +34,9 @@ func desktopBuildTags(isProd bool) string {
 }
 
 var desktopCmd = &cobra.Command{
+	Annotations: map[string]string{
+		govardruntime.AnnotationRequires: string(govardruntime.CapDocker),
+	},
 	Use:     "desktop",
 	Aliases: []string{"gui"},
 	Short:   "Launch the Govard Desktop app",

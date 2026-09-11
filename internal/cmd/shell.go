@@ -9,9 +9,13 @@ import (
 	"govard/internal/engine"
 
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var shellCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:     "shell [-c <command>] [--] [args...]",
 	Aliases: []string{"sh"},
 	Short:   "Enter the application container",

@@ -9,9 +9,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var projectCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:     "project",
 	Aliases: []string{"prj", "projects", "registry"},
 	Short:   "Browse known projects from registry",

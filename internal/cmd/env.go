@@ -14,6 +14,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 type EnvDependenciesForTest struct {
@@ -43,6 +44,9 @@ var envDeps = EnvDependenciesForTest{
 }
 
 var envCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "env [command]",
 	Short: "Control project environment via docker compose",
 	Long: `Manage the lifecycle and services of your project's development environment.

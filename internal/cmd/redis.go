@@ -6,9 +6,13 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var redisCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "redis [command]",
 	Short: "Control the redis cache service",
 	Long: `Interact with the Redis or Valkey cache service. 

@@ -1,0 +1,7 @@
+{
+  "content-hash": "fixture",
+  "packages": [
+    { "name": "psr/log", "version": "3.0.0" }
+  ],
+  "packages-dev": []
+}

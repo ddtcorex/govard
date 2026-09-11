@@ -259,7 +259,7 @@ check_dependencies() {
     if command -v docker >/dev/null 2>&1; then
         success "  Docker: $(docker --version | awk '{print $3}' | tr -d ',')"
     else
-        warn "  Docker: Not found (Required to run Govard stacks)"
+        info "  Docker: not found - core commands work without it; stack commands need it"
     fi
 
     # Docker Compose
@@ -269,7 +269,7 @@ check_dependencies() {
         success "  Docker Compose (v1): $(docker-compose --version | awk '{print $3}')"
         warn "  Docker Compose V2 (plugin) is recommended."
     else
-        warn "  Docker Compose: Not found (Required to run Govard stacks)"
+        info "  Docker Compose: not found - stack commands need the Compose v2 plugin"
     fi
     # Git (for source mode)
     if command -v git >/dev/null 2>&1; then
@@ -821,8 +821,13 @@ main() {
     # Post-installation automation
     local govard_bin="${INSTALL_DIR%/}/${CLI_BINARY_NAME}"
     if [[ -x "$govard_bin" ]]; then
-        info "Initializing global services..."
-        run_as_user "$govard_bin" svc up -d --remove-orphans || warn "Failed to start global services automatically."
+        if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+            info "Initializing global services..."
+            run_as_user "$govard_bin" svc up -d --remove-orphans || warn "Failed to start global services automatically."
+        else
+            info "Skipping global services: Docker/Compose is not available on this host."
+            info "Core commands are ready - run '$govard_bin capabilities' to list them."
+        fi
         echo ""
     fi
 

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 // vscodeCmd groups PHP tooling entry points meant to be wired into editor
@@ -22,6 +23,9 @@ import (
 // local to this file rather than folded into the shared config loader, so it
 // can't change directory-resolution behavior for any other command.
 var vscodeCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "vscode [command]",
 	Short: "Run PHP tooling inside the project container for editor integrations",
 	Long: `Run PHP, Composer, and common PHP tool binaries inside the project's container,

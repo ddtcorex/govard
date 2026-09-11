@@ -11,9 +11,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var valkeyCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:                "valkey [command]",
 	Short:              "Control the valkey cache service",
 	Long:               `Interact with the Valkey cache service. Supports standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
@@ -40,6 +44,9 @@ var valkeyCmd = &cobra.Command{
 }
 
 var elasticsearchCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:                "elasticsearch [command|path]",
 	Short:              "Control the elasticsearch service",
 	Long:               `Interact with the Elasticsearch service. Supports custom queries (via path) and standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
@@ -56,6 +63,9 @@ var elasticsearchCmd = &cobra.Command{
 }
 
 var opensearchCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:                "opensearch [command|path]",
 	Short:              "Control the opensearch service",
 	Long:               `Interact with the Opensearch service. Supports custom queries (via path) and standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,

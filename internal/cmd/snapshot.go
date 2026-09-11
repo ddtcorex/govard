@@ -13,9 +13,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var snapshotCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:     "snapshot",
 	Aliases: []string{"snap"},
 	Short:   "Manage local snapshots for database and media",

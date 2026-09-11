@@ -12,6 +12,7 @@ import (
 	"govard/internal/cmd"
 	"govard/internal/engine"
 	"govard/internal/engine/tunnel"
+	"govard/internal/runtime"
 )
 
 type fakeTunnelProvider struct {
@@ -82,6 +83,9 @@ func TestCloudflareTunnelProviderBuildStartPlan(t *testing.T) {
 }
 
 func TestTunnelStartPlanUsesConfigDomainByDefault(t *testing.T) {
+	restoreCapabilities := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapCloudflared)
+	defer restoreCapabilities()
+
 	tempDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(`project_name: demo
 domain: demo.test
@@ -149,6 +153,9 @@ framework: laravel
 }
 
 func TestTunnelStartRejectsConflictingURLInputs(t *testing.T) {
+	restoreCapabilities := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapCloudflared)
+	defer restoreCapabilities()
+
 	tempDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tempDir, ".govard.yml"), []byte(`project_name: demo
 domain: demo.test

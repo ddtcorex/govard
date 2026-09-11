@@ -13,9 +13,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var deployCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "deploy",
 	Short: "Deploy the application",
 	Run: func(cmd *cobra.Command, args []string) {

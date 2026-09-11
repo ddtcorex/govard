@@ -8,9 +8,13 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var configCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:     "config",
 	Aliases: []string{"cfg"},
 	Short:   "Manage .govard.yml configuration from CLI",
