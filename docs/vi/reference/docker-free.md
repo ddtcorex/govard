@@ -35,7 +35,6 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard completion powershell` | `none` |
 | `govard completion zsh` | `none` |
 | `govard config` | `none` |
-| `govard config auto` | `none` |
 | `govard config get` | `none` |
 | `govard config profile` | `none` |
 | `govard config profile clear` | `none` |
@@ -48,10 +47,6 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard domain list` | `none` |
 | `govard help` | `none` |
 | `govard init` | `none` |
-| `govard lock` | `none` |
-| `govard lock check` | `none` |
-| `govard lock diff` | `none` |
-| `govard lock generate` | `none` |
 | `govard project list` | `none` |
 | `govard project open` | `none` |
 | `govard remote add` | `ssh,rsync` |
@@ -98,11 +93,13 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
 - **Chẩn đoán.** `govard doctor` chạy ở mọi nơi; Docker chỉ là một check tùy
   chọn và thiếu nó không làm lệnh fail (`--strict` khôi phục hard gate cho
   script bootstrap). `govard trust` cài CA nội bộ vào trust store của máy.
-- **Cấu hình.** `govard config get|set|auto` và `govard config profile` đọc/ghi
-  cấu hình project; `govard config profile clear`, `govard lock
-  check|diff|generate`, `govard blueprint cache list|clear` làm việc trên file
-  và cache local. Áp profile vào stack đang chạy (`config profile apply|switch`)
-  là việc của container.
+- **Cấu hình.** `govard config get|set` và `govard config profile` đọc/ghi
+  cấu hình project; `govard config profile clear` và
+  `govard blueprint cache list|clear` làm việc trên file và cache local. Áp
+  profile vào stack đang chạy (`config profile apply|switch`), `govard config
+  auto` (nó cấu hình framework bên trong container) và mọi lệnh `govard lock` là
+  việc của container: lock file ghi lại version docker/compose đã phân giải và
+  digest image của từng service.
 - **Khởi tạo project.** `govard init` và `govard custom list`.
 - **Registry và domain.** `project list` và `project open` đọc registry;
   `domain list` in ra domain của project; `vscode setup` suy ra cấu hình editor từ

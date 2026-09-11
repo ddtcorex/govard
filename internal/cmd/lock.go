@@ -17,7 +17,12 @@ var lockDependencies = engine.LockDependencies{}
 
 var lockCmd = &cobra.Command{
 	Annotations: map[string]string{
-		runtime.AnnotationRequires: string(runtime.CapNone),
+		// The lock file records the resolved runtime environment: docker and
+		// compose versions plus the digest of every service image. Generating,
+		// checking, and diffing all read that environment through
+		// BuildLockFileFromConfig, so every lock command needs the container
+		// runtime — declaring none here only moved the failure past the gate.
+		runtime.AnnotationRequires: string(runtime.CapDocker),
 	},
 	Use:   "lock",
 	Short: "Manage project lock file",

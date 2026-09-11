@@ -185,9 +185,9 @@ inheriting `docker`. The bar, by kind of work:
 
 - host discovery and diagnostics: `capabilities`, `doctor`, `version`, `help`,
   `completion`, `desktop doctor`;
-- project configuration, the registry, and local caches: `config get|set|auto`,
-  `config profile`, `lock *`, `blueprint cache *`, `init`, `custom list`,
-  `project list`, `project open`, `domain list`, `vscode setup`;
+- project configuration, the registry, and local caches: `config get|set`,
+  `config profile`, `blueprint cache *`, `init`, `custom list`, `project list`,
+  `project open`, `domain list`, `vscode setup`;
 - static analysis of the checkout: `audit run --checks integrity` plus the
   host-side audit lifecycle (`status`, `result`, `diff`, `cleanup`);
 - direct host or network work: `remote *` (SSH), `sync` (rsync), `tunnel *`

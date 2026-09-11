@@ -201,12 +201,31 @@ check_runs() {
     echo "core-contract: FAIL govard $command is gated on a capability it must not need" >&2
     failures=$((failures + 1))
   fi
+  # The gate can only own a failure the command declares. A requirement-free
+  # command that still reaches for the container runtime fails here instead of
+  # surfacing as a raw runtime error on a user's host — the way `lock generate`
+  # and `config auto` did before they declared docker.
+  if printf '%s' "$out" | grep -qE 'exec: "docker"|Cannot connect to the Docker daemon|resolve docker version|resolve docker compose version|resolve service images'; then
+    echo "core-contract: FAIL govard $command declared no requirement but reached for the container runtime" >&2
+    printf '%s\n' "$out" >&2
+    failures=$((failures + 1))
+  fi
 }
 
 check_runs "project list" "$fixture_dir" "registry listing"
 check_runs "desktop doctor" "$fixture_dir" "desktop diagnostics"
 check_runs "domain list" "$fixture_dir" "domain listing"
 check_runs "vscode setup" "$fixture_dir" "editor setup"
+check_runs "config get domain" "$fixture_dir" "config read"
+check_runs "custom list" "$fixture_dir" "custom command listing"
+check_runs "blueprint cache list" "$fixture_dir" "blueprint cache listing"
+
+# 7. Commands that resolve the runtime environment must be gated, not fail with a
+#    raw docker error: the lock file records the docker/compose versions and
+#    service image digests, and `config auto` configures the framework inside the
+#    container.
+check_gate "lock generate" docker
+check_gate "config auto" docker
 
 if [ "$failures" -ne 0 ]; then
   echo "core-contract: $failures failure(s)" >&2
