@@ -1,8 +1,11 @@
 package audit
 
 import (
+	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,9 +14,10 @@ import (
 	"strings"
 )
 
-// magentoModuleDIAnalyzer checks Magento module registration and dependency
-// injection wiring. It parses XML and PHP registration files directly, so it
-// runs without PHP, Composer, or a container.
+// magentoModuleDIAnalyzer checks Magento module registration, dependency
+// injection wiring, and that the route definitions a module ships are
+// well formed. It parses XML and PHP registration files directly, so it runs
+// without PHP, Composer, or a container.
 type magentoModuleDIAnalyzer struct{}
 
 func init() { RegisterIntegrityAnalyzer(magentoModuleDIAnalyzer{}) }
@@ -76,6 +80,7 @@ func (magentoModuleDIAnalyzer) Analyze(request IntegrityRequest) ([]LintFinding,
 	findings := []LintFinding{}
 	modules := []magentoModuleFile{}
 	diFiles := []string{}
+	routeFiles := []string{}
 
 	walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -99,18 +104,24 @@ func (magentoModuleDIAnalyzer) Analyze(request IntegrityRequest) ([]LintFinding,
 			modules = append(modules, magentoModuleFile{moduleXMLPath: path})
 		case "di.xml":
 			diFiles = append(diFiles, path)
+		case "webapi.xml", "routes.xml":
+			// Both are route definitions: a broken one silently disables an
+			// endpoint or a frontName, and neither carries identity or wiring
+			// this analyzer could reason about beyond well-formedness.
+			routeFiles = append(routeFiles, path)
 		}
 		return nil
 	})
 	if walkErr != nil {
 		return nil, fmt.Errorf("scan Magento modules: %w", walkErr)
 	}
-	if len(modules) == 0 && len(diFiles) == 0 {
+	if len(modules) == 0 && len(diFiles) == 0 && len(routeFiles) == 0 {
 		return nil, nil // not a Magento module tree
 	}
 
 	sort.Slice(modules, func(i, j int) bool { return modules[i].moduleXMLPath < modules[j].moduleXMLPath })
 	sort.Strings(diFiles)
+	sort.Strings(routeFiles)
 
 	for index := range modules {
 		module := &modules[index]
@@ -180,6 +191,18 @@ func (magentoModuleDIAnalyzer) Analyze(request IntegrityRequest) ([]LintFinding,
 		findings = append(findings, duplicateDITargets(relative, parsed)...)
 	}
 
+	for _, path := range routeFiles {
+		relative := relativeTo(root, path)
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil, fmt.Errorf("read %s: %w", relative, readErr)
+		}
+		if err := wellFormedXML(raw); err != nil {
+			findings = append(findings, integrityFinding("MAGENTO_XML_INVALID", relative,
+				fmt.Sprintf("%s is not valid XML: %v", filepath.Base(path), err)))
+		}
+	}
+
 	sort.Slice(findings, func(i, j int) bool {
 		if findings[i].Rule != findings[j].Rule {
 			return findings[i].Rule < findings[j].Rule
@@ -190,6 +213,23 @@ func (magentoModuleDIAnalyzer) Analyze(request IntegrityRequest) ([]LintFinding,
 		return findings[i].Message < findings[j].Message
 	})
 	return findings, nil
+}
+
+// wellFormedXML parses one XML document and discards it.
+//
+// Well-formedness is the whole check for a route definition: its schema says
+// nothing about module identity or DI wiring, and a file that cannot be parsed
+// at all is a defect regardless of what it was meant to declare.
+func wellFormedXML(raw []byte) error {
+	decoder := xml.NewDecoder(bytes.NewReader(raw))
+	for {
+		if _, err := decoder.Token(); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
 }
 
 func duplicateDITargets(relative string, config magentoConfigXML) []LintFinding {
