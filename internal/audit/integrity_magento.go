@@ -142,11 +142,18 @@ func (magentoModuleDIAnalyzer) Analyze(request IntegrityRequest) ([]LintFinding,
 		}
 	}
 
+	// The known-module set spans first-party modules and installed Composer
+	// modules: a <sequence> entry routinely names a Magento core module that
+	// lives under vendor/. Vendor code is read for names only — it is never the
+	// subject of the DI or identity checks below.
 	known := map[string]bool{}
 	for _, module := range modules {
 		if module.name != "" {
 			known[module.name] = true
 		}
+	}
+	for _, name := range vendorModuleNames(root) {
+		known[name] = true
 	}
 	for _, module := range modules {
 		for _, dependency := range module.sequence {
@@ -240,4 +247,40 @@ func relativeTo(root string, path string) string {
 		return filepath.ToSlash(path)
 	}
 	return filepath.ToSlash(relative)
+}
+
+// vendorModuleNames reads module names declared by installed Composer packages.
+// Both package layouts are covered explicitly — `etc/module.xml` at the package
+// root and the `src/etc/module.xml` variant — instead of walking vendor/ deeply,
+// which keeps the scan bounded and fast on a real Magento install. Vendor code
+// is read for names only; it is never the subject of the checks themselves.
+func vendorModuleNames(root string) []string {
+	vendorRoot := filepath.Join(root, "vendor")
+	if info, err := os.Stat(vendorRoot); err != nil || !info.IsDir() {
+		return nil
+	}
+	names := []string{}
+	for _, pattern := range []string{
+		filepath.Join(vendorRoot, "*", "*", "etc", "module.xml"),
+		filepath.Join(vendorRoot, "*", "*", "src", "etc", "module.xml"),
+	} {
+		matches, globErr := filepath.Glob(pattern)
+		if globErr != nil {
+			continue
+		}
+		for _, path := range matches {
+			raw, readErr := os.ReadFile(path)
+			if readErr != nil {
+				continue
+			}
+			var parsed magentoModuleXML
+			if xmlErr := xml.Unmarshal(raw, &parsed); xmlErr != nil {
+				continue
+			}
+			if name := strings.TrimSpace(parsed.Module.Name); name != "" {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
 }

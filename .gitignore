@@ -26,6 +26,10 @@
 
 # Dependencies and caches
 **/vendor/
+# Integrity fixtures model an installed Composer package tree: their vendor/
+# directories are test data, and the analyzer tests fail without them.
+!tests/fixtures/integrity/**/vendor/
+!tests/fixtures/integrity/**/vendor/**
 **/node_modules/
 **/.next/
 **/var/
