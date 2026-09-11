@@ -3,6 +3,7 @@ package deploy
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // StepKind distinguishes a pipeline task from an inserted hook.
@@ -131,6 +132,35 @@ func TaskPlan(recipe Recipe, id, remote string) Plan {
 		return Plan{Remote: remote}
 	}
 	return plan.Only(id)
+}
+
+// MissingVerifyWarning returns the warning a deploy must print when it migrates
+// the database without any HTTP check configured, or "" when the rule does not
+// apply (spec 11).
+//
+// It never invents a URL and never fails the deploy: a project without a
+// reachable hostname must still be deployable, but an operator who has just
+// changed a schema deserves to know that nothing verified the application
+// afterwards.
+func MissingVerifyWarning(plan Plan, opts Options) string {
+	if strings.TrimSpace(opts.VerifyURL) != "" {
+		return ""
+	}
+	if !plan.Runs(TaskDBMigrate) {
+		return ""
+	}
+	return "this deploy runs " + TaskDBMigrate + " and no deploy.verify.url is configured: verification is SSH-only, so it proves the files are in place and not that the application serves. Set deploy.verify.url for this remote."
+}
+
+// Runs reports whether the step with this id will actually execute: it is in the
+// plan, the recipe implements it, and the run's mode did not skip it.
+func (p Plan) Runs(id string) bool {
+	for _, step := range p.Steps {
+		if step.ID == id {
+			return step.Kind == StepTask && step.Implemented()
+		}
+	}
+	return false
 }
 
 // ForBuildMode returns the plan as one build mode shapes it.

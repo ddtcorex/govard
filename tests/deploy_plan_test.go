@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"govard/internal/deploy"
@@ -215,5 +216,52 @@ func TestPlanForBuildModeLeavesHooksAlone(t *testing.T) {
 				t.Errorf("%s mode: hook %s was disabled by the build mode", mode, step.ID)
 			}
 		}
+	}
+}
+
+// Spec 11: a deploy that runs `db:migrate` with no HTTP check configured must
+// say so. "The CLI ran" is not "the site serves", and SSH-only verification
+// cannot tell the difference.
+func TestMissingVerifyWarningNamesTheSetting(t *testing.T) {
+	migrating := deploy.DefaultRecipe()
+	deploy.OverrideTaskForTest(&migrating, deploy.TaskDBMigrate, deploy.Task{
+		ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: "bin/migrate",
+	})
+	plan, err := deploy.BuildPlanForTest(migrating, nil, "production")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	warning := deploy.MissingVerifyWarning(plan, deploy.Options{Remote: "production"})
+	if warning == "" {
+		t.Fatal("a deploy that migrates without a verify URL must warn")
+	}
+	if !strings.Contains(warning, "deploy.verify.url") {
+		t.Fatalf("the warning must name the setting, got %q", warning)
+	}
+
+	if got := deploy.MissingVerifyWarning(plan, deploy.Options{VerifyURL: "https://shop.test"}); got != "" {
+		t.Fatalf("a configured verify URL must silence the warning, got %q", got)
+	}
+
+	// No migration in the plan, no warning: the stage's SSH-only checks are
+	// proportionate for a code-only deploy.
+	codeOnly, err := deploy.BuildPlanForTest(deploy.RecipeForTest("plain", []deploy.Task{
+		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "true"},
+	}), nil, "production")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := deploy.MissingVerifyWarning(codeOnly, deploy.Options{}); got != "" {
+		t.Fatalf("a deploy with no migration must not warn, got %q", got)
+	}
+
+	// A recipe that leaves db:migrate empty does not migrate.
+	empty, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "production")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := deploy.MissingVerifyWarning(empty, deploy.Options{}); got != "" {
+		t.Fatalf("an unimplemented db:migrate is not a migration, got %q", got)
 	}
 }

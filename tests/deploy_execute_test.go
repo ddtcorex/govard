@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -326,5 +327,28 @@ func TestDisabledLockingTakesNoLockAndLeavesOtherLocksAlone(t *testing.T) {
 	}
 	if _, err := host.Runner().Run(ctx, "test -d "+host.LockPath(), deploy.RunOptions{}); err != nil {
 		t.Fatalf("a disabled-lock run removed a lock it never took: %v", err)
+	}
+}
+
+// The warning has to reach the operator's screen, not just exist as a function.
+func TestExecutorPrintsTheMissingVerifyWarning(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	recipe := deploy.DefaultRecipe()
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskDBMigrate, deploy.Task{
+		ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: "true",
+	})
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "production")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	var out bytes.Buffer
+	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute, From: deploy.TaskDBMigrate}
+	if _, err := deploy.NewExecutor(host, options, &out).Run(
+		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out.String(), "deploy.verify.url") {
+		t.Fatalf("the run must print the warning, got:\n%s", out.String())
 	}
 }

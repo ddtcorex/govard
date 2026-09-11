@@ -162,6 +162,12 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 
 	fmt.Fprintf(e.out, "▶ deploy %s (%s @ %s)\n", e.host.Name, branchLabel(release.Branch), shortRevision(release.Revision))
 
+	// Said before anything runs, so it is on screen when the deploy fails later
+	// for the reason it warns about.
+	if warning := MissingVerifyWarning(plan, e.opts); warning != "" {
+		fmt.Fprintf(e.out, "  ! WARNING: %s\n", warning)
+	}
+
 	// No-op fast path: a target already running the requested revision is not
 	// deployed again. Without it a CI retry would rebuild and re-publish an
 	// identical release. --force overrides.
