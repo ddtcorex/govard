@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -131,6 +132,114 @@ func TestInPlaceActivationRefusesADocrootThatIsNotAGitCheckout(t *testing.T) {
 	sc.Release.Path = host.ReleasePath("1")
 	if err := deploy.CoreActivate(ctx, sc); !errors.Is(err, deploy.ErrDocrootNotAGitCheckout) {
 		t.Fatalf("err = %v, want ErrDocrootNotAGitCheckout", err)
+	}
+}
+
+// pushingToOrigin adds one commit on top of the origin's branch and returns it.
+// The docroot clone made beforehand therefore does not contain it, which is what
+// makes "the docroot must be fetched" observable.
+func pushingToOrigin(t *testing.T, origin string) string {
+	t.Helper()
+	work := t.TempDir()
+	run(t, work, "clone", "-q", "--branch", "main", origin, ".")
+	writeFile(t, filepath.Join(work, "app.txt"), "a newer revision\n")
+	run(t, work, "add", ".")
+	run(t, work, "commit", "-q", "-m", "newer")
+	revision := run(t, work, "rev-parse", "HEAD")
+	run(t, work, "push", "-q", "origin", "main")
+	return revision
+}
+
+// The in-place docroot fetch is the one network call an in-place publish needs.
+// Spec 7.3/9.2 put it in prepare, before any maintenance window exists: a fetch
+// that stalls while the site is down is how a deploy becomes an outage.
+func TestInPlaceCodePrepFetchesTheDocrootDuringPrepare(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	if _, err := runner.Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	revision := pushingToOrigin(t, origin)
+
+	if _, err := runner.Run(ctx, "git -C "+host.CurrentPath+" cat-file -e "+revision, deploy.RunOptions{}); err == nil {
+		t.Fatal("precondition: the docroot already holds the revision, so this test proves nothing")
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+	})
+	sc.Release = deploy.NewReleaseForTest("1", revision, "main")
+	sc.Release.Path = host.ReleasePath("1")
+	if _, err := runner.Run(ctx, "mkdir -p "+host.ReleasePath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed release: %v", err)
+	}
+
+	if err := deploy.CoreCode(ctx, sc); err != nil {
+		t.Fatalf("deploy:code: %v", err)
+	}
+	if _, err := runner.Run(ctx, "git -C "+host.CurrentPath+" cat-file -e "+revision, deploy.RunOptions{}); err != nil {
+		t.Fatalf("deploy:code did not fetch the revision into the docroot: %v", err)
+	}
+}
+
+func TestInPlaceCodePrepRefusesANonGitDocrootBeforeBuildingAnything(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	ctx := context.Background()
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.CurrentPath+" "+host.ReleasePath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed docroot: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+	})
+	sc.Release = deploy.NewReleaseForTest("1", revision, "main")
+	sc.Release.Path = host.ReleasePath("1")
+
+	if err := deploy.CoreCode(ctx, sc); !errors.Is(err, deploy.ErrDocrootNotAGitCheckout) {
+		t.Fatalf("err = %v, want ErrDocrootNotAGitCheckout", err)
+	}
+}
+
+func TestCodePrepLeavesASymlinkTargetWithoutADocroot(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	ctx := context.Background()
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishAuto,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+	})
+	sc.Release = deploy.NewReleaseForTest("1", revision, "main")
+	sc.Release.Path = host.ReleasePath("1")
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.ReleasePath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed release: %v", err)
+	}
+
+	if err := deploy.CoreCode(ctx, sc); err != nil {
+		t.Fatalf("deploy:code: %v", err)
+	}
+	// The docroot does not exist yet on a symlink target, and prepare must not
+	// create it: `current` is the symlink the publish stage swaps.
+	if _, err := host.Runner().Run(ctx, "test ! -e "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("a symlink target must not gain a docroot during prepare: %v", err)
 	}
 }
 

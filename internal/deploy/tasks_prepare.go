@@ -431,6 +431,9 @@ func CoreRelease(ctx context.Context, sc *StepContext) error {
 // CoreCode materialises the exact revision into the release from a bare mirror.
 // A mirror plus `git archive` replaces a full clone per release; the release
 // directory stays self-contained, with no worktree bookkeeping to prune.
+//
+// For the in-place strategy it is also where the docroot's own clone is brought
+// up to date, before anything is created: see prepareInPlaceDocroot.
 func CoreCode(ctx context.Context, sc *StepContext) error {
 	host := sc.Host
 	releasePath := releasePathOf(sc)
@@ -453,6 +456,12 @@ func CoreCode(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("no revision resolved for remote %q", host.Name)
 	}
 
+	// The docroot half of code preparation comes first, so a target that cannot
+	// be reset is refused before a mirror is fetched for it.
+	if err := prepareInPlaceDocroot(ctx, sc, repository); err != nil {
+		return err
+	}
+
 	opts := RunOptions{Timeout: shortCommandTimeout}
 	if _, err := sc.Runner.Run(ctx, "test -d "+Shell(host.RepoPath())+" || git init --bare -q "+Shell(host.RepoPath()), opts); err != nil {
 		return fmt.Errorf("prepare mirror: %w", err)
@@ -473,6 +482,45 @@ func CoreCode(ctx context.Context, sc *StepContext) error {
 	extract := "git --git-dir=" + Shell(host.RepoPath()) + " archive " + Shell(revision) + " | tar -x -C " + Shell(releasePath)
 	if _, err := sc.Runner.Run(ctx, extract, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
 		return fmt.Errorf("extract %s: %w", revision, err)
+	}
+	return nil
+}
+
+// prepareInPlaceDocroot transfers the objects an in-place activation will need
+// into the docroot's own clone, while prepare is still running.
+//
+// The in-place publish resets the docroot to the deployed revision, and that
+// reset can only succeed once the objects are local. Fetching them next to the
+// reset would put the pipeline's one network call inside an open maintenance
+// window, where a stalled fetch holds the site down for as long as the command
+// timeout allows — the failure mode spec 9.2 singles out as unacceptable. It
+// happens here instead, before any window exists.
+//
+// A symlink target has no docroot to fetch into, so this is a no-op there.
+// `git fetch <repository> <branch>` also follows the tags that point into the
+// fetched history, which is what makes a `--tag` deploy resolvable afterwards.
+func prepareInPlaceDocroot(ctx context.Context, sc *StepContext, repository string) error {
+	strategy, err := ResolvePublishStrategy(sc.Host, sc.Opts)
+	if err != nil {
+		return err
+	}
+	if strategy != PublishInPlace {
+		return nil
+	}
+	if repository == "" {
+		// Nothing to fetch from. The docroot must already hold the revision;
+		// the reset in publish:activate reports it clearly if it does not.
+		return nil
+	}
+	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(sc.Host.CurrentPath)+" rev-parse --git-dir", RunOptions{Timeout: shortCommandTimeout}); err != nil {
+		return fmt.Errorf("%w: %s", ErrDocrootNotAGitCheckout, sc.Host.CurrentPath)
+	}
+	fetch := "git -C " + Shell(sc.Host.CurrentPath) + " fetch -q " + Shell(repository)
+	if branch := strings.TrimSpace(sc.Opts.Branch); branch != "" {
+		fetch += " " + Shell(branch)
+	}
+	if _, err := sc.Runner.Run(ctx, fetch, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+		return fmt.Errorf("fetch %s into the docroot: %w", repository, err)
 	}
 	return nil
 }

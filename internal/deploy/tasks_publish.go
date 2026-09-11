@@ -100,6 +100,12 @@ func activateSymlink(ctx context.Context, sc *StepContext, releasePath string) e
 // the configured paths are copied with no error swallowing, and the static
 // content version file goes last so asset URLs only ever point at files that are
 // already present.
+//
+// There is deliberately no `git fetch` here even though the reset needs the
+// revision present: fetching is the pipeline's one network call for an in-place
+// target, and it belongs in prepare (prepareInPlaceDocroot) so that a stall
+// cannot happen while the site is in maintenance mode. A rollback re-activates
+// a revision this docroot already served, so it needs no fetch either.
 func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) error {
 	host := sc.Host
 	revision := strings.TrimSpace(sc.Opts.Revision)
@@ -115,20 +121,6 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 
 	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(host.CurrentPath)+" rev-parse --git-dir", RunOptions{Timeout: shortCommandTimeout}); err != nil {
 		return fmt.Errorf("%w: %s", ErrDocrootNotAGitCheckout, host.CurrentPath)
-	}
-
-	repository := strings.TrimSpace(sc.Opts.Repository)
-	if repository == "" {
-		repository = strings.TrimSpace(host.Repository)
-	}
-	if repository != "" {
-		fetch := "git -C " + Shell(host.CurrentPath) + " fetch -q " + Shell(repository)
-		if branch := strings.TrimSpace(sc.Opts.Branch); branch != "" {
-			fetch += " " + Shell(branch)
-		}
-		if _, err := sc.Runner.Run(ctx, fetch, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
-			return fmt.Errorf("fetch into the docroot: %w", err)
-		}
 	}
 
 	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(host.CurrentPath)+" reset --hard "+Shell(revision), RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
