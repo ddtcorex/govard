@@ -48,6 +48,13 @@ type AuditLintProfile struct {
 	PHPStanExtension      string
 }
 
+// AuditIntegrityProfile declares the container-free analyzers a framework
+// supports. Analyzer IDs are resolved against the audit integrity registry, so
+// this package carries no analyzer implementations.
+type AuditIntegrityProfile struct {
+	Analyzers []string
+}
+
 // AuditProfilerProfile declares the stock runtime profiler contract owned by a
 // framework. The command layer consumes these values through the generic
 // FastCGI adapter without branching on the framework name.
@@ -55,6 +62,15 @@ type AuditProfilerProfile struct {
 	EnvironmentVariable string
 	EnvironmentValue    string
 	OutputPath          string
+}
+
+func cloneAuditIntegrityProfile(profile *AuditIntegrityProfile) *AuditIntegrityProfile {
+	if profile == nil {
+		return nil
+	}
+	cloned := *profile
+	cloned.Analyzers = cloneStrings(profile.Analyzers)
+	return &cloned
 }
 
 func cloneAuditProfilerProfile(profile *AuditProfilerProfile) *AuditProfilerProfile {

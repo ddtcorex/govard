@@ -41,6 +41,11 @@ func Definition() types.FrameworkDefinition {
 			PHPStanLevel:          5,
 			PHPStanExtension:      "bitexpert/phpstan-magento",
 		},
+		AuditIntegrity: &types.AuditIntegrityProfile{
+			// Container-free analyzers: the composer manifest/lock and Magento
+			// module registration + DI wiring checks.
+			Analyzers: []string{"composer", "magento-module-di"},
+		},
 		AuditProfiler: &types.AuditProfilerProfile{
 			EnvironmentVariable: "MAGE_PROFILER",
 			EnvironmentValue:    "csvfile",

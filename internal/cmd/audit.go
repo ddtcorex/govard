@@ -81,6 +81,9 @@ type auditPreparation struct {
 	LintBackendRequired     bool
 	ProfilerRuntimeRequired bool
 	RequireProfilerURL      bool
+	// ContainerRuntimeRequired reports whether the selected checks execute in a
+	// container, which is what a Docker-free host cannot satisfy.
+	ContainerRuntimeRequired bool
 }
 
 type auditCommandDependencies struct {
@@ -186,7 +189,9 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	options := &auditCommandOptions{Scope: string(audit.ScopeProject), Checks: []string{"lint"}, Format: "text", LintProvider: audit.GovardLintProvider, LintJobs: engine.AuditRunJobs(), Timeout: "auto"}
 	command := &cobra.Command{
 		Annotations: map[string]string{
-			runtime.AnnotationRequires: string(runtime.CapDocker),
+			// The integrity check runs on a Docker-free host; container-backed
+			// checks are gated by the check selection instead.
+			runtime.AnnotationRequires: string(runtime.CapNone),
 		},
 		Use:   "audit",
 		Short: "Run and inspect persistent project audits",
@@ -244,10 +249,11 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		lintRequested := auditChecksInclude(options.Checks, "lint")
 		profilerRequested := auditChecksInclude(options.Checks, "profiler")
 		runner, resolvedTarget, err := prepareAudit(cmd, options, dependencies, auditPreparation{
-			ResolvePHPPolicy:        lintRequested,
-			LintBackendRequired:     lintRequested,
-			ProfilerRuntimeRequired: profilerRequested,
-			RequireProfilerURL:      profilerRequested,
+			ResolvePHPPolicy:         lintRequested,
+			LintBackendRequired:      lintRequested,
+			ProfilerRuntimeRequired:  profilerRequested,
+			RequireProfilerURL:       profilerRequested,
+			ContainerRuntimeRequired: lintRequested || profilerRequested,
 		})
 		if err != nil {
 			return err
@@ -304,6 +310,8 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 			Environment:         auditTargetEnvironment(resolvedTarget),
 			Source:              resolvedTarget.Source,
 			LintProfile:         lintProfile,
+			IntegrityProfile:    auditIntegrityProfile(resolvedTarget.Definition),
+			StackPHPVersion:     auditStackPHPVersion(resolvedTarget.Config),
 			Target:              resolvedTarget.Target,
 			ProfilerURL:         options.URL,
 			SelectedPHPVersions: resolvedTarget.PHPVersions,
@@ -360,8 +368,9 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 		lintRequested := auditChecksInclude(effectiveChecks, "lint")
 		profilerRequested := auditChecksInclude(effectiveChecks, "profiler")
 		runner, resolvedTarget, err := prepareAudit(cmd, options, dependencies, auditPreparation{
-			LintBackendRequired:     lintRequested,
-			ProfilerRuntimeRequired: profilerRequested,
+			LintBackendRequired:      lintRequested,
+			ProfilerRuntimeRequired:  profilerRequested,
+			ContainerRuntimeRequired: lintRequested || profilerRequested,
 		})
 		if err != nil {
 			return err
@@ -476,6 +485,15 @@ func prepareAudit(cmd *cobra.Command, options *auditCommandOptions, dependencies
 		mode = types.AuditTargetAuto
 	}
 	resolved := currentAuditDependencies(dependencies)
+	// Container-backed checks need a container runtime. This is evaluated before
+	// target resolution because resolving the PHP policy probes the application
+	// container, and a raw probe failure would bypass the capability contract.
+	// The container-free integrity check never reaches this path.
+	if preparation.ContainerRuntimeRequired {
+		if err := requireContainerRuntime(); err != nil {
+			return nil, resolvedAuditTarget{}, err
+		}
+	}
 	target, err := resolveAuditTarget(cmd.Context(), commandStartDirectory(), mode, options.PHPVersions, resolved.runtimePHPProbe, preparation.ResolvePHPPolicy)
 	if err != nil {
 		return nil, resolvedAuditTarget{}, err
@@ -544,6 +562,11 @@ func auditScope(value string, forceDiff, scopeExplicit bool) (audit.Scope, error
 func validateAuditOptions(options *auditCommandOptions, definition types.FrameworkDefinition) error {
 	if err := validateAuditCommandOptions(options); err != nil {
 		return err
+	}
+	if auditChecksInclude(options.Checks, audit.IntegrityCheck) {
+		if definition.AuditIntegrity == nil {
+			return fmt.Errorf("framework %q does not support integrity audit", definition.Name)
+		}
 	}
 	if auditChecksInclude(options.Checks, "lint") {
 		if definition.AuditLint == nil {
@@ -878,3 +901,47 @@ type auditRunExitError struct {
 
 func (e auditRunExitError) Error() string { return e.cause.Error() }
 func (e auditRunExitError) Unwrap() error { return e.cause }
+
+// requireContainerRuntime fails fast when a container-backed check was selected
+// on a host with no container runtime, pointing at the container-free
+// alternative instead of letting the run die mid-flight.
+func requireContainerRuntime() error {
+	err := runtime.Probe(runtime.CapDocker)
+	if err == nil {
+		return nil
+	}
+	var missing *runtime.MissingError
+	detail := err.Error()
+	if errors.As(err, &missing) {
+		detail = missing.Detail
+	}
+	hint := "run `govard audit run --checks integrity` for container-free analysis on this host"
+	// In machine mode the hint travels inside the JSON envelope, so stdout stays
+	// parseable.
+	if !errorJSON {
+		pterm.Info.Printf("Hint: %s\n", hint)
+	}
+	return &runtime.MissingError{
+		Caps:   []runtime.Capability{runtime.CapDocker},
+		Detail: detail,
+		Hint:   hint,
+	}
+}
+
+// auditIntegrityProfile returns the framework's container-free analyzer set, or
+// an empty profile when the framework declares none.
+func auditIntegrityProfile(definition types.FrameworkDefinition) types.AuditIntegrityProfile {
+	if definition.AuditIntegrity == nil {
+		return types.AuditIntegrityProfile{}
+	}
+	return *definition.AuditIntegrity
+}
+
+// auditStackPHPVersion reads the configured runtime PHP version, which analyzers
+// cross-check against the project manifest.
+func auditStackPHPVersion(config *engine.Config) string {
+	if config == nil {
+		return ""
+	}
+	return config.Stack.PHPVersion
+}

@@ -7,6 +7,8 @@
 #   2. A command whose requirement is unmet fails fast with exit 3 and a
 #      CAPABILITY_MISSING envelope instead of leaking a raw runtime error.
 #   3. `govard doctor` reports without failing; `--strict` is the hard gate.
+#   4. The container-free analysis check runs here, and the container-backed
+#      check fails with the capability contract instead of a raw runtime error.
 set -euo pipefail
 
 BIN="${1:-./govard}"
@@ -107,6 +109,72 @@ check_gate() {
 
 check_gate "env up" docker
 check_gate "tunnel status" cloudflared
+
+# 5. Container-free analysis. The integrity check reads the checkout directly;
+#    the container-backed lint check must refuse with exit 3 and point here.
+fixture_dir="/tmp/govard-integrity-fixture"
+govard_home="/tmp/govard-contract-home"
+rm -rf "$fixture_dir" "$govard_home"
+mkdir -p "$fixture_dir/app/code/Acme/Demo/etc" "$fixture_dir/bin"
+cat > "$fixture_dir/composer.json" <<'JSON'
+{"name":"acme/demo","require":{"php":">=8.1 <8.4","magento/product-community-edition":"2.4.7"}}
+JSON
+cat > "$fixture_dir/composer.lock" <<'JSON'
+{"content-hash":"fixture","packages":[{"name":"magento/product-community-edition","version":"2.4.7"}],"packages-dev":[]}
+JSON
+printf '#!/usr/bin/env php\n<?php\n' > "$fixture_dir/bin/magento"
+chmod +x "$fixture_dir/bin/magento"
+cat > "$fixture_dir/app/code/Acme/Demo/registration.php" <<'PHP'
+<?php
+\Magento\Framework\Component\ComponentRegistrar::register(\Magento\Framework\Component\ComponentRegistrar::MODULE, 'Acme_Demo', __DIR__);
+PHP
+cat > "$fixture_dir/app/code/Acme/Demo/etc/module.xml" <<'XML'
+<?xml version="1.0"?>
+<config>
+    <module name="Acme_Demo"/>
+</config>
+XML
+cat > "$fixture_dir/.govard.yml" <<'YAML'
+project_name: integrity-fixture
+domain: integrity-fixture.test
+framework: magento2
+stack:
+  php_version: "8.3"
+YAML
+
+set +e
+integrity_out="$(cd "$fixture_dir" && GOVARD_HOME_DIR="$govard_home" "$BIN" audit run --checks integrity --format json 2>&1)"
+integrity_code=$?
+set -e
+case "$integrity_code" in
+  0|1) ;;
+  *)
+    echo "core-contract: FAIL govard audit run --checks integrity exited $integrity_code" >&2
+    failures=$((failures + 1))
+    ;;
+esac
+if printf '%s' "$integrity_out" | grep -q "Cannot connect to the Docker daemon"; then
+  echo "core-contract: FAIL the integrity check touched the container runtime" >&2
+  failures=$((failures + 1))
+fi
+if ! printf '%s' "$integrity_out" | grep -q '"id":"integrity"'; then
+  echo "core-contract: FAIL the integrity job did not run:" >&2
+  printf '%s\n' "$integrity_out" >&2
+  failures=$((failures + 1))
+fi
+
+set +e
+lint_out="$(cd "$fixture_dir" && GOVARD_HOME_DIR="$govard_home" "$BIN" audit run --checks lint 2>&1)"
+lint_code=$?
+set -e
+if [ "$lint_code" -ne 3 ]; then
+  echo "core-contract: FAIL govard audit run --checks lint exited $lint_code, want 3" >&2
+  failures=$((failures + 1))
+fi
+if ! printf '%s' "$lint_out" | grep -q -- "--checks integrity"; then
+  echo "core-contract: FAIL the lint gate did not point at the container-free check" >&2
+  failures=$((failures + 1))
+fi
 
 if [ "$failures" -ne 0 ]; then
   echo "core-contract: $failures failure(s)" >&2

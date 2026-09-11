@@ -281,9 +281,10 @@ func registerEngineDefinition(def types.FrameworkDefinition) {
 	engine.RegisterDBDriverCategory(def.Name, def.DBDriverCategory)
 	engine.RegisterDefaultChownDirectories(def.Name, def.DefaultChownDirectories)
 	engine.RegisterFrameworkCapabilities(def.Name, engine.FrameworkCapabilities{
-		FrontendSync:  def.FrontendSyncRenderer != nil,
-		AuditProfiler: def.AuditProfiler != nil,
-		AuditLint:     def.AuditLint != nil,
+		FrontendSync:   def.FrontendSyncRenderer != nil,
+		AuditProfiler:  def.AuditProfiler != nil,
+		AuditLint:      def.AuditLint != nil,
+		AuditIntegrity: def.AuditIntegrity != nil,
 	})
 	for _, migrationType := range def.MigrationTypes.DDEV {
 		engine.RegisterMigrationFramework("ddev", migrationType, def.Name)

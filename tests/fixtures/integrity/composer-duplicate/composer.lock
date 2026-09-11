@@ -1,0 +1,8 @@
+{
+  "content-hash": "fixture",
+  "packages": [
+    { "name": "monolog/monolog", "version": "2.9.1" },
+    { "name": "monolog/monolog", "version": "2.9.0" }
+  ],
+  "packages-dev": []
+}

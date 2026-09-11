@@ -19,15 +19,21 @@ import (
 // RunRequest describes one explicit audit execution. The session manifest
 // captures the immutable project/source/scope inputs before work starts.
 type RunRequest struct {
-	ProjectRoot         string
-	ProjectID           string
-	Scope               Scope
-	BaseRef             string
-	Checks              []string
-	LintJobs            int
-	Environment         EnvironmentFingerprint
-	Source              SourceFingerprint
-	LintProfile         types.AuditLintProfile
+	ProjectRoot string
+	ProjectID   string
+	Scope       Scope
+	BaseRef     string
+	Checks      []string
+	LintJobs    int
+	Environment EnvironmentFingerprint
+	Source      SourceFingerprint
+	LintProfile types.AuditLintProfile
+	// IntegrityProfile declares the container-free analyzers to run when the
+	// integrity check is selected. It is ignored when the check is not requested.
+	IntegrityProfile types.AuditIntegrityProfile
+	// StackPHPVersion is the configured runtime PHP version, used by analyzers
+	// that cross-check the manifest against the project config.
+	StackPHPVersion     string
 	Target              types.AuditTarget
 	ProfilerURL         string
 	SelectedPHPVersions []string
@@ -155,6 +161,16 @@ func (runner *Runner) Rerun(ctx context.Context, sessionID, projectID string, ch
 		}
 		target = savedLintTarget(settings.Target, manifest)
 	}
+	integritySettings := savedIntegritySettings{}
+	if includesCheck(checks, IntegrityCheck) {
+		integritySettings, err = runner.latestIntegritySettings(projectID, sessionID, manifest.Runs)
+		if err != nil {
+			return RunResult{}, err
+		}
+		if target == (types.AuditTarget{}) {
+			target = savedLintTarget(integritySettings.Target, manifest)
+		}
+	}
 	if includesCheck(checks, "profiler") {
 		profilerSettings, err := runner.latestProfilerSettings(projectID, sessionID, manifest.Runs)
 		if err != nil {
@@ -175,6 +191,8 @@ func (runner *Runner) Rerun(ctx context.Context, sessionID, projectID string, ch
 		Environment:         manifest.Environment,
 		Source:              manifest.Source,
 		LintProfile:         settings.Profile,
+		IntegrityProfile:    integritySettings.Profile,
+		StackPHPVersion:     integritySettings.StackPHPVersion,
 		Target:              target,
 		ProfilerURL:         requestURL,
 		SelectedPHPVersions: settings.SelectedPHPVersions,
@@ -210,7 +228,7 @@ func (runner *Runner) latestRunChecks(projectID, sessionID string, runs []RunRef
 		}
 		checks := make([]string, 0, 2)
 		for _, job := range result.Jobs {
-			if job.ID == "lint" || job.ID == "profiler" {
+			if job.ID == "lint" || job.ID == "profiler" || job.ID == IntegrityCheck {
 				checks = append(checks, job.ID)
 			}
 		}
@@ -278,6 +296,7 @@ func (runner *Runner) runInSession(ctx context.Context, manifest SessionManifest
 		jobsResult, scheduleErr := NewScheduler(runner.resources).Run(ctx, jobs)
 		result.Jobs = jobsResult
 		result.Artifacts = append(result.Artifacts, profilerArtifacts(jobsResult)...)
+		result.Artifacts = append(result.Artifacts, integrityArtifacts(jobsResult)...)
 		err = scheduleErr
 		if err == nil {
 			err = infrastructureError(jobsResult)
@@ -311,6 +330,12 @@ func (runner *Runner) jobsFor(request RunRequest, manifest SessionManifest, runI
 				return nil, err
 			}
 			jobs = append(jobs, lintJob)
+		case IntegrityCheck:
+			integrityJob, err := runner.integrityJob(request, manifest, runID)
+			if err != nil {
+				return nil, err
+			}
+			jobs = append(jobs, integrityJob)
 		case "profiler":
 			if runner.profilerRuntime == nil {
 				return nil, errors.New("audit runner profiler runtime is not configured")
@@ -551,7 +576,7 @@ func NormalizeChecks(checks []string) ([]string, error) {
 	normalized := make([]string, 0, len(checks))
 	for _, check := range checks {
 		check = strings.TrimSpace(check)
-		if check != "lint" && check != "profiler" {
+		if check != "lint" && check != "profiler" && check != IntegrityCheck {
 			return nil, fmt.Errorf("audit check %q is not implemented", check)
 		}
 		if !seen[check] {
@@ -597,8 +622,9 @@ type savedProfilerSettings struct {
 }
 
 var (
-	errNoPersistedLintSettings     = errors.New("audit session has no persisted lint settings")
-	errNoPersistedProfilerSettings = errors.New("audit session has no persisted profiler settings")
+	errNoPersistedIntegritySettings = errors.New("audit session has no persisted integrity settings")
+	errNoPersistedLintSettings      = errors.New("audit session has no persisted lint settings")
+	errNoPersistedProfilerSettings  = errors.New("audit session has no persisted profiler settings")
 )
 
 type legacySavedLintSettings struct {
@@ -724,4 +750,40 @@ func (runner *Runner) latestProfilerSettings(projectID, sessionID string, runs [
 		return settings, err
 	}
 	return savedProfilerSettings{}, errNoPersistedProfilerSettings
+}
+
+func persistedIntegritySettings(result RunResult) (savedIntegritySettings, error) {
+	for _, job := range result.Jobs {
+		if job.ID != IntegrityCheck {
+			continue
+		}
+		value, ok := job.Evidence["integrity_settings"]
+		if !ok {
+			continue
+		}
+		raw, marshalErr := json.Marshal(value)
+		if marshalErr != nil {
+			return savedIntegritySettings{}, marshalErr
+		}
+		var settings savedIntegritySettings
+		if unmarshalErr := json.Unmarshal(raw, &settings); unmarshalErr != nil {
+			return savedIntegritySettings{}, fmt.Errorf("decode saved integrity settings: %w", unmarshalErr)
+		}
+		return settings, nil
+	}
+	return savedIntegritySettings{}, errNoPersistedIntegritySettings
+}
+
+func (runner *Runner) latestIntegritySettings(projectID, sessionID string, runs []RunReference) (savedIntegritySettings, error) {
+	for index := len(runs) - 1; index >= 0; index-- {
+		result, err := runner.store.ReadResult(projectID, sessionID, runs[index].RunID)
+		if err != nil {
+			return savedIntegritySettings{}, err
+		}
+		settings, settingsErr := persistedIntegritySettings(result)
+		if settingsErr == nil {
+			return settings, nil
+		}
+	}
+	return savedIntegritySettings{}, errNoPersistedIntegritySettings
 }

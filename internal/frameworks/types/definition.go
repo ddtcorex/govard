@@ -118,7 +118,8 @@ type FrameworkDefinition struct {
 
 	// AuditLint declares exact lint policy for frameworks that support the
 	// generic audit runner. Nil means lint audit is unsupported.
-	AuditLint *AuditLintProfile
+	AuditLint      *AuditLintProfile
+	AuditIntegrity *AuditIntegrityProfile
 	// AuditTargetResolver resolves a framework-specific path into an audit
 	// target. Nil means lint audit target selection is unsupported.
 	AuditTargetResolver AuditTargetResolver

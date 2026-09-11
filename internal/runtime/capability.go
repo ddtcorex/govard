@@ -183,3 +183,13 @@ func StubSatisfiedCapabilitiesForTest(satisfied ...Capability) func() {
 	forcedSatisfied = forced
 	return func() { forcedSatisfied = previous }
 }
+
+// StubLookPathForTest replaces the executable lookup for the duration of a test
+// and returns a restore function.
+func StubLookPathForTest(lookup func(string) (string, error)) func() {
+	previous := lookPath
+	if lookup != nil {
+		lookPath = lookup
+	}
+	return func() { lookPath = previous }
+}
