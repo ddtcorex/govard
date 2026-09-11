@@ -37,6 +37,11 @@ type RunOptions struct {
 	// it; the executor always sets one, because an unbounded remote command is
 	// how a deploy hangs forever.
 	Timeout time.Duration
+	// Stdin is fed to the command's standard input. It exists for one thing:
+	// handing a secret to a remote command without putting it in argv (visible
+	// in the target's process list) or in the command text (printed by
+	// --verbose and kept in CI logs).
+	Stdin string
 }
 
 // CommandError reports a command that ran and failed. It always carries the
@@ -78,6 +83,9 @@ func (LocalRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
+	}
+	if opts.Stdin != "" {
+		cmd.Stdin = strings.NewReader(opts.Stdin)
 	}
 	// A killed process does not necessarily close the pipes its children
 	// inherited, and Wait would then block until those children exit — a

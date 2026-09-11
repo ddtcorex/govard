@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -572,5 +573,145 @@ func TestNoOpFastPathRequiresACompleteRecord(t *testing.T) {
 	running, plan := seed(deploy.StatusRunning)
 	if outcome := run(running, plan); outcome.AlreadyDeployed {
 		t.Fatal("an unfinished record must not be reported as already deployed")
+	}
+}
+
+// recordingRunner captures what the executor asked the transport to run. A test
+// cannot assert the credential handoff through LocalRunner: a local command
+// inherits the test process's environment, so the variable would be there whether
+// or not govard passed it.
+type recordingRunner struct {
+	inner    deploy.Runner
+	commands []string
+	options  []deploy.RunOptions
+}
+
+func (r *recordingRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
+	r.commands = append(r.commands, command)
+	r.options = append(r.options, opts)
+	return r.inner.Run(ctx, command, opts)
+}
+
+// Spec 10.4: "the recipe passes credentials from COMPOSER_AUTH when the
+// environment provides it (the CI and server case)". Nothing forwarded them.
+//
+// The handoff must keep the secret out of the target's process list (argv) and
+// out of the deploy log, so it travels on the step's standard input.
+func TestComposerAuthIsHandedToTheDependencyStepThroughStdin(t *testing.T) {
+	const secret = `{"http-basic":{"repo.example.com":{"username":"u","password":"s3cret"}}}`
+	t.Setenv("COMPOSER_AUTH", secret)
+
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	runner := &recordingRunner{inner: deploy.LocalRunner{}}
+	host = host.WithRunner(runner)
+
+	recipe := deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskVendors, Stage: deploy.StageBuild, Command: "echo installing-dependencies"},
+		{ID: deploy.TaskCompile, Stage: deploy.StageBuild, Command: "echo compiling"},
+	})
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	var timeline bytes.Buffer
+	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	if _, err := deploy.NewExecutor(host, options, &timeline).Run(
+		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	index := -1
+	for i := range runner.options {
+		if strings.Contains(runner.commands[i], "installing-dependencies") {
+			index = i
+		}
+	}
+	if index < 0 {
+		t.Fatalf("the dependency step never ran: %v", runner.commands)
+	}
+	if runner.options[index].Stdin != secret {
+		t.Fatalf("the dependency step's stdin = %q, want the credentials", runner.options[index].Stdin)
+	}
+	if !strings.Contains(runner.commands[index], `COMPOSER_AUTH="$(cat)"`) {
+		t.Fatalf("the command must read the credentials from stdin, got %q", runner.commands[index])
+	}
+	// Every other step is left exactly as the recipe wrote it.
+	for i, command := range runner.commands {
+		if i != index && strings.Contains(command, "COMPOSER_AUTH") {
+			t.Fatalf("step %d was wrapped too: %q", i, command)
+		}
+	}
+	if strings.Contains(timeline.String(), secret) || strings.Contains(timeline.String(), "s3cret") {
+		t.Fatalf("the deploy log must never contain the credentials:\n%s", timeline.String())
+	}
+}
+
+// The prelude is what actually puts the value in the environment, so it is run
+// for real — with COMPOSER_AUTH removed from the environment, which is the
+// situation a remote command is in.
+func TestComposerAuthPreludeSetsTheEnvironmentFromStdin(t *testing.T) {
+	const secret = "credential-value"
+	marker := filepath.Join(t.TempDir(), "seen")
+
+	command := deploy.ComposerAuthCommandForTest(`printf '%s' "$COMPOSER_AUTH" > ` + marker)
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Stdin = strings.NewReader(secret)
+	env := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "COMPOSER_AUTH=") {
+			env = append(env, entry)
+		}
+	}
+	cmd.Env = env
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("run the prelude: %v\n%s", err, out)
+	}
+
+	seen, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	if string(seen) != secret {
+		t.Fatalf("COMPOSER_AUTH = %q, want the value carried on stdin", seen)
+	}
+}
+
+func TestNoComposerAuthLeavesTheCommandAlone(t *testing.T) {
+	t.Setenv("COMPOSER_AUTH", "")
+
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	runner := &recordingRunner{inner: deploy.LocalRunner{}}
+	host = host.WithRunner(runner)
+
+	recipe := deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskVendors, Stage: deploy.StageBuild, Command: "echo installing-dependencies"},
+	})
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	if _, err := deploy.NewExecutor(host, options, io.Discard).Run(
+		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	index := -1
+	for i, command := range runner.commands {
+		if strings.Contains(command, "installing-dependencies") {
+			index = i
+		}
+		if strings.Contains(command, "COMPOSER_AUTH") {
+			t.Fatalf("without credentials no command may be wrapped: %q", command)
+		}
+	}
+	if index < 0 {
+		t.Fatalf("the dependency step never ran: %v", runner.commands)
+	}
+	if runner.commands[index] != "echo installing-dependencies" {
+		t.Fatalf("the command must be untouched, got %q", runner.commands[index])
+	}
+	if runner.options[index].Stdin != "" {
+		t.Fatalf("without credentials nothing may be piped, got %q", runner.options[index].Stdin)
 	}
 }

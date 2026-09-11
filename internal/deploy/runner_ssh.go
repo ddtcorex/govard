@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"strings"
 
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
@@ -35,6 +36,11 @@ func (r SSHRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	cmd := exec.CommandContext(ctx, "ssh", r.Args(command)...)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
+	}
+	if opts.Stdin != "" {
+		// Over the SSH channel, which needs no server-side configuration —
+		// unlike SendEnv, which requires AcceptEnv the project may not control.
+		cmd.Stdin = strings.NewReader(opts.Stdin)
 	}
 	// A killed process does not necessarily close the pipes its children
 	// inherited, and Wait would then block until those children exit — a

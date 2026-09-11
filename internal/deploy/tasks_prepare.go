@@ -106,6 +106,10 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 		return err
 	}
 
+	if err := noteComposerCredentials(ctx, sc); err != nil {
+		return err
+	}
+
 	// Fail before building when the checkout uses submodules: git archive does
 	// not include their content, and a release with empty submodule
 	// directories would look successful.
@@ -776,4 +780,87 @@ func settingsStringList(settings map[string]any, keys ...string) []string {
 		}
 	}
 	return cleaned
+}
+
+// noteComposerCredentials records where a target-side build will get its Composer
+// credentials, and warns when it will need them and none are available.
+//
+// Spec 10.4 asks `deploy check` to "verify that Composer can authenticate before
+// the deploy starts". What is checkable without running Composer *on the target*
+// — the dependency artifact mode exists to remove — is whether credentials are
+// available at all, which is the failure that actually happens: an environment
+// whose private repository is unreachable fails at build:vendors, half a pipeline
+// in. A warning rather than a refusal, because the declaration govard can read is
+// a URL and it cannot tell a private repository from a public one; refusing a
+// working deploy over a URL would be worse than saying so.
+func noteComposerCredentials(ctx context.Context, sc *StepContext) error {
+	if sc.Opts.Build == BuildArtifact {
+		// Dependencies were installed where the artifact was built.
+		return nil
+	}
+	repositories, err := privateComposerRepositories(sc.WorkDir)
+	if err != nil {
+		return err
+	}
+	if len(repositories) == 0 {
+		return nil
+	}
+
+	if strings.TrimSpace(os.Getenv(ComposerAuthEnv)) != "" {
+		sc.Notes = append(sc.Notes, "composer credentials: "+ComposerAuthEnv+" is set for this run")
+		return nil
+	}
+	if _, err := sc.Runner.Run(ctx, "test -f "+Shell(path.Join(sc.Host.SharedPath(), "auth.json")), RunOptions{Timeout: shortCommandTimeout}); err == nil {
+		sc.Notes = append(sc.Notes, "composer credentials: shared/auth.json exists on the target")
+		return nil
+	}
+
+	sc.Notes = append(sc.Notes, fmt.Sprintf(
+		"warning: this project declares private composer repositories (%s) and the target builds the release, but no credentials are available: set %s in the environment, or provide %s on the target",
+		strings.Join(repositories, ", "), ComposerAuthEnv, path.Join(sc.Host.SharedPath(), "auth.json")))
+	return nil
+}
+
+// NoteComposerCredentialsForTest exposes noteComposerCredentials to the tests/
+// package, which cannot reach the artifact-mode branch through CoreCheck without
+// a real manifest and a PHP on the target.
+func NoteComposerCredentialsForTest(ctx context.Context, sc *StepContext) error {
+	return noteComposerCredentials(ctx, sc)
+}
+
+// privateComposerRepositories reads the `repositories` URLs a checkout declares
+// that are not packagist, which is the only statically visible sign that an
+// install will need credentials.
+func privateComposerRepositories(workDir string) ([]string, error) {
+	if strings.TrimSpace(workDir) == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(filepath.Join(workDir, "composer.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read composer.json: %w", err)
+	}
+	var manifest struct {
+		Repositories []struct {
+			URL string `json:"url"`
+		} `json:"repositories"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		// A manifest this shape cannot read is the recipe's business, not the
+		// preflight's: a malformed composer.json fails the build with a better
+		// message than this step could give.
+		return nil, nil
+	}
+
+	repositories := make([]string, 0, len(manifest.Repositories))
+	for _, repository := range manifest.Repositories {
+		url := strings.TrimSpace(repository.URL)
+		if url == "" || strings.Contains(url, "packagist.org") || strings.Contains(url, "packagist.com") {
+			continue
+		}
+		repositories = append(repositories, url)
+	}
+	return repositories, nil
 }

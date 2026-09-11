@@ -783,3 +783,99 @@ func TestDescribeLockOwnerReadsTheRecord(t *testing.T) {
 		t.Fatalf("missing owner.json -> (%q, %s), want (unknown, -1)", described, heldFor)
 	}
 }
+
+// Spec 10.4 asks `deploy check` to verify Composer can authenticate before the
+// deploy starts. What is checkable without running Composer on the target is
+// whether credentials are *available* at all — and that is the failure that
+// actually happens ("the first project to migrate an environment that pulls from a
+// private repository has build:vendors fail with no preflight warning").
+func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
+	t.Setenv("COMPOSER_AUTH", "")
+
+	private := `{"require":{"vendor/pkg":"^1.0"},"repositories":[{"type":"composer","url":"https://repo.example.com"},{"type":"composer","url":"https://repo.packagist.org"}]}`
+	check := func(t *testing.T, composerJSON string, seedSharedAuth bool, options deploy.Options) []string {
+		t.Helper()
+		work := t.TempDir()
+		writeFile(t, filepath.Join(work, "composer.json"), composerJSON)
+
+		host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+		if seedSharedAuth {
+			if _, err := host.Runner().Run(context.Background(),
+				"mkdir -p "+host.SharedPath()+" && echo '{}' > "+host.SharedPath()+"/auth.json", deploy.RunOptions{}); err != nil {
+				t.Fatalf("seed shared auth.json: %v", err)
+			}
+		}
+		sc := deploy.StepContextForTest(host, options)
+		sc.WorkDir = work
+		if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+			t.Fatalf("check: %v", err)
+		}
+		return sc.Notes
+	}
+
+	notes := strings.Join(check(t, private, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	if !strings.Contains(notes, "COMPOSER_AUTH") || !strings.Contains(notes, "auth.json") {
+		t.Fatalf("the warning must name both remedies, got %q", notes)
+	}
+	if !strings.Contains(notes, "repo.example.com") {
+		t.Fatalf("the warning must name the repository, got %q", notes)
+	}
+
+	// A credential source silences it: the environment…
+	notes = strings.Join(check(t, private, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	t.Setenv("COMPOSER_AUTH", `{"http-basic":{}}`)
+	notes = strings.Join(check(t, private, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	if strings.Contains(notes, "warning") {
+		t.Fatalf("a set COMPOSER_AUTH must silence the warning, got %q", notes)
+	}
+
+	// …or the shared file the other deploy tool leaves behind.
+	t.Setenv("COMPOSER_AUTH", "")
+	notes = strings.Join(check(t, private, true, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	if strings.Contains(notes, "warning") {
+		t.Fatalf("a shared auth.json must silence the warning, got %q", notes)
+	}
+
+	// A packagist-only project needs nothing.
+	public := `{"repositories":[{"type":"composer","url":"https://repo.packagist.org"}]}`
+	notes = strings.Join(check(t, public, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	if strings.Contains(notes, "warning") {
+		t.Fatalf("a public-only manifest must not warn, got %q", notes)
+	}
+
+}
+
+// An artifact deploy installs nothing on the target: the build job already had
+// whatever credentials it needed, and warning about the target would be noise.
+//
+// It is asserted at the check's own boundary rather than through CoreCheck,
+// because the rest of the artifact preflight needs a real manifest and a PHP on
+// the target, neither of which this case is about.
+func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
+	t.Setenv("COMPOSER_AUTH", "")
+
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "composer.json"),
+		`{"repositories":[{"type":"composer","url":"https://repo.example.com"}]}`)
+
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Build: deploy.BuildArtifact, ArtifactDir: t.TempDir()})
+	sc.WorkDir = work
+	if err := deploy.NoteComposerCredentialsForTest(context.Background(), sc); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+	if len(sc.Notes) != 0 {
+		t.Fatalf("an artifact deploy must not warn about target-side credentials, got %v", sc.Notes)
+	}
+
+	// The same checkout in server mode warns, which is what makes the silence
+	// above a decision rather than an accident.
+	server := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Build: deploy.BuildServer})
+	server.WorkDir = work
+	if err := deploy.NoteComposerCredentialsForTest(context.Background(), server); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+	if len(server.Notes) == 0 || !strings.Contains(strings.Join(server.Notes, "\n"), "warning") {
+		t.Fatalf("a server build with no credentials must warn, got %v", server.Notes)
+	}
+}

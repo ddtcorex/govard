@@ -117,12 +117,19 @@ func (e *Executor) lockWasAcquired() bool {
 	return false
 }
 
+// ComposerAuthEnv is the environment variable a CI job or a server sets to give
+// Composer credentials for private repositories. Govard passes it through and
+// never stores it: it is not written to the release record, not put in a command
+// and not kept on the target.
+const ComposerAuthEnv = "COMPOSER_AUTH"
+
 // Executor runs one plan against one host.
 type Executor struct {
-	host    Host
-	opts    Options
-	out     io.Writer
-	results []StepResult
+	host         Host
+	opts         Options
+	out          io.Writer
+	composerAuth string
+	results      []StepResult
 	// workDir is the checkout a step inspects (the .gitmodules probe).
 	workDir string
 }
@@ -137,7 +144,15 @@ func NewExecutor(host Host, opts Options, out io.Writer) *Executor {
 	if err != nil {
 		workDir = ""
 	}
-	return &Executor{host: host, opts: opts, out: out, workDir: workDir}
+	return &Executor{
+		host:    host,
+		opts:    opts,
+		out:     out,
+		workDir: workDir,
+		// Read once, at construction: the value never enters Options or the
+		// release record, so it cannot be logged or persisted by accident.
+		composerAuth: strings.TrimSpace(os.Getenv(ComposerAuthEnv)),
+	}
 }
 
 // Run executes every step in order and stops at the first failure that is not
@@ -384,8 +399,29 @@ func (e *Executor) runStep(ctx context.Context, step Step, stepCtx StepContext, 
 	if step.RunOn == RunLocal {
 		runner = LocalRunner{}
 	}
-	_, err = runner.Run(stepCtxRun, command, RunOptions{Timeout: timeout})
+	runOptions := RunOptions{Timeout: timeout}
+	if step.ID == TaskVendors && step.RunOn != RunLocal && e.composerAuth != "" {
+		command = ComposerAuthCommand(command)
+		runOptions.Stdin = e.composerAuth
+	}
+	_, err = runner.Run(stepCtxRun, command, runOptions)
 	return err
+}
+
+// ComposerAuthCommand makes a command read its credentials from standard input
+// into COMPOSER_AUTH.
+//
+// Standard input is the only channel that keeps the secret out of everything that
+// outlives the run: argv is visible to `ps` on the target, the command text is
+// printed by --verbose and captured in CI logs, and a file on the target is a
+// credential govard promised not to store.
+func ComposerAuthCommand(command string) string {
+	return ComposerAuthEnv + `="$(cat)"; export ` + ComposerAuthEnv + `; ` + command
+}
+
+// ComposerAuthCommandForTest exposes ComposerAuthCommand to the tests/ package.
+func ComposerAuthCommandForTest(command string) string {
+	return ComposerAuthCommand(command)
 }
 
 // record appends a result, mirrors it into the release record, and stores the
