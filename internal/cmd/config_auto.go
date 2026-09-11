@@ -5,6 +5,7 @@ import (
 	"govard/internal/engine"
 	"govard/internal/frameworks"
 	"govard/internal/frameworks/types"
+	"govard/internal/runtime"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -17,6 +18,13 @@ import (
 var frameworkLookupForAutoConfigure = frameworks.Get
 
 var configAutoCmd = &cobra.Command{
+	Annotations: map[string]string{
+		// "Auto-configure runtime files" is done inside the project's container:
+		// it runs composer install, prepares the Magento writable dirs, and
+		// enables developer mode. Declaring none only moved the failure past the
+		// gate and surfaced it as `exec: "docker"` mid-run.
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "auto",
 	Short: "Auto-configure framework runtime files",
 	RunE: func(cmd *cobra.Command, args []string) error {

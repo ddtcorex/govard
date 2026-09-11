@@ -35,7 +35,6 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard completion powershell` | `none` |
 | `govard completion zsh` | `none` |
 | `govard config` | `none` |
-| `govard config auto` | `none` |
 | `govard config get` | `none` |
 | `govard config profile` | `none` |
 | `govard config profile clear` | `none` |
@@ -48,10 +47,6 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard domain list` | `none` |
 | `govard help` | `none` |
 | `govard init` | `none` |
-| `govard lock` | `none` |
-| `govard lock check` | `none` |
-| `govard lock diff` | `none` |
-| `govard lock generate` | `none` |
 | `govard project list` | `none` |
 | `govard project open` | `none` |
 | `govard remote add` | `ssh,rsync` |
@@ -99,11 +94,13 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   and its absence does not fail the command (`--strict` restores the hard gate
   for bootstrap scripts). `govard trust` installs the local CA into the host
   trust store.
-- **Configuration.** `govard config get|set|auto` and `govard config profile`
-  read and write project configuration; `govard config profile clear`,
-  `govard lock check|diff|generate`, and `govard blueprint cache list|clear`
-  work on files and the local cache. Applying a profile to a running stack
-  (`config profile apply|switch`) is container work.
+- **Configuration.** `govard config get|set` and `govard config profile`
+  read and write project configuration; `govard config profile clear` and
+  `govard blueprint cache list|clear` work on files and the local cache.
+  Applying a profile to a running stack (`config profile apply|switch`),
+  `govard config auto` (it configures the framework inside the container), and
+  every `govard lock` command are container work: the lock file records the
+  resolved docker/compose versions and service image digests.
 - **Project scaffolding.** `govard init` and `govard custom list`.
 - **Registry and domains.** `project list` and `project open` read the registry;
   `domain list` prints the project's domains; `vscode setup` derives the editor

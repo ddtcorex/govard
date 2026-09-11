@@ -55,6 +55,14 @@ func TestContainerBackedSiblingsKeepDocker(t *testing.T) {
 		"domain remove",
 		"project delete",
 		"project orphans",
+		// The lock file records the resolved runtime environment — docker and
+		// compose versions plus every service image digest — so all three lock
+		// commands read the container runtime.
+		"config auto",
+		"lock",
+		"lock generate",
+		"lock check",
+		"lock diff",
 	} {
 		command := resolveCommandForTest(t, path)
 		if got, want := runtime.Requires(command), []runtime.Capability{runtime.CapDocker}; !reflect.DeepEqual(got, want) {
