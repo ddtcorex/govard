@@ -42,7 +42,7 @@ func runDeployReleases(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	host, err := deploy.HostForConfig(config, remote, options)
+	host, err := deployHostFor(cmd.Context(), config, remote, options, cmd.OutOrStdout())
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,8 @@ func deployStatusForRemote(cmd *cobra.Command, config engine.Config, name string
 		result.Error = err.Error()
 		return result
 	}
-	host, err := deploy.HostForConfig(config, name, options)
+	// No note here: this runs once per remote and its output is a table.
+	host, err := deployHostFor(cmd.Context(), config, name, options, nil)
 	if err != nil {
 		result.Status = "unknown"
 		result.Error = err.Error()

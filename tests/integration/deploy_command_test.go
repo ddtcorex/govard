@@ -177,3 +177,60 @@ func TestDeployBadFlagValuesStayUsageErrors(t *testing.T) {
 		t.Fatalf("a bad flag value must carry the USAGE envelope, got:\n%s%s", result.Stdout, result.Stderr)
 	}
 }
+
+// Spec 5.1: `deploy_path` has no default, but the layout a server already has is
+// discoverable — that is the migration aid for an environment another tool set
+// up. The discovered path has to be the one the rest of the command then uses,
+// not just something printed.
+func TestDeployDiscoversAnExistingLayoutWhenNoDeployPathIsConfigured(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-discovery")
+	origin, _ := seedDeployOrigin(t)
+
+	home := t.TempDir()
+	deployRoot := filepath.Join(home, ".deployer") // reached as ~/.deployer
+	releaseDir := filepath.Join(deployRoot, "releases", "3")
+	for _, dir := range []string{filepath.Join(releaseDir, ".dep"), filepath.Join(deployRoot, "shared")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	record := `{"schema_version":1,"tool":"govard","release":"3","revision":"abc1234","branch":"main","status":"ok"}`
+	if err := os.WriteFile(filepath.Join(releaseDir, ".dep", "release.json"), []byte(record), 0o644); err != nil {
+		t.Fatalf("write release record: %v", err)
+	}
+
+	// The remote deliberately has no deploy_path: the layout is the only source.
+	override := fmt.Sprintf(`remotes:
+  local:
+    host: 127.0.0.1
+    user: deployer
+    path: %s/public_html
+    branch: main
+    repository: %s
+    local: true
+`, deployRoot, origin)
+	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(override), 0o644); err != nil {
+		t.Fatalf("write .govard.local.yml: %v", err)
+	}
+
+	result := env.RunGovardWithEnv(t, projectDir, []string{"HOME=" + home}, "deploy", "releases", "local")
+	result.AssertSuccess(t)
+	// The note reports the candidate as written, because that is the value the
+	// operator can paste into `deploy_path`.
+	if !strings.Contains(result.Stdout, "~/.deployer") {
+		t.Fatalf("the discovered layout must be reported, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "3") {
+		t.Fatalf("the release inside the discovered layout must be listed, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+
+	// With no layout anywhere, the refusal must name deploy_path: the operator
+	// has a file to edit, so it is a configuration error.
+	empty := t.TempDir()
+	refused := env.RunGovardWithEnv(t, projectDir, []string{"HOME=" + empty}, "deploy", "releases", "local", "--error-json")
+	refused.AssertExitCode(t, 4)
+	if !strings.Contains(refused.Stdout, "deploy_path") {
+		t.Fatalf("the refusal must name the setting, got:\n%s%s", refused.Stdout, refused.Stderr)
+	}
+}

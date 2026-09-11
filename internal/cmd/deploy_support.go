@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -233,6 +235,35 @@ func resolveDeployOptions(command *cobra.Command, remote string) (engine.Config,
 		return engine.Config{}, deploy.Options{}, &cli.UsageError{Err: err}
 	}
 	return config, options, nil
+}
+
+// deployHostFor resolves the target host for a remote and, when the remote does
+// not configure a deploy path, adopts the layout the server already has.
+//
+// `deploy_path` has no safe default, so an empty one cannot simply be joined
+// into paths — that would silently address a directory nobody chose. It is
+// instead read from the server (spec 5.1), adopted only when the answer is
+// unambiguous, and reported so the operator can make it explicit. A remote with
+// no discoverable layout is a configuration error: the fix is a file edit.
+func deployHostFor(ctx context.Context, config engine.Config, remote string, options deploy.Options, out io.Writer) (deploy.Host, error) {
+	host, err := deploy.HostForConfig(config, remote, options)
+	if err != nil {
+		return deploy.Host{}, err
+	}
+	if strings.TrimSpace(host.DeployPath) != "" {
+		return host, nil
+	}
+
+	discovered, err := deploy.DiscoverDeployPath(ctx, host)
+	if err != nil {
+		return deploy.Host{}, &cli.ConfigError{Err: fmt.Errorf("remote %q: %w", remote, err)}
+	}
+	host.DeployPath = discovered
+	if out != nil {
+		fmt.Fprintf(out, "using the deploy layout already on %s: %s (set remotes.%s.deploy_path to make it explicit)\n",
+			remote, discovered, remote)
+	}
+	return host, nil
 }
 
 // configOrUsageError classifies an error that comes from a configuration file

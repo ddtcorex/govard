@@ -628,3 +628,101 @@ func TestRepositoryCheckStillProvesReachabilityForARevisionOnlyDeploy(t *testing
 		t.Fatal("an unreachable repository must fail even without a branch")
 	}
 }
+
+// Spec 5.1: `deploy_path` has no default, but the layout the server already has
+// is discoverable. Exactly one candidate must match — adopting one of several is
+// the guess the no-default rule exists to prevent.
+// discoveryHostForTest is a host with no deploy path configured, which is the
+// only state discovery applies to.
+func discoveryHostForTest() deploy.Host {
+	return deploy.Host{Name: "local", Local: true}.WithRunner(deploy.LocalRunner{})
+}
+
+func TestDeployPathDiscoveryReadsTheLayoutFromTheServer(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	deployerDir := filepath.Join(home, ".deployer")
+	for _, dir := range []string{deployerDir, filepath.Join(deployerDir, "releases"), filepath.Join(deployerDir, "shared")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	host := discoveryHostForTest()
+	candidates := []string{home, deployerDir}
+
+	found, err := deploy.DiscoverDeployPathForTest(context.Background(), host, candidates)
+	if err != nil {
+		t.Fatalf("discovery: %v", err)
+	}
+	if found != deployerDir {
+		t.Fatalf("discovered %q, want %q", found, deployerDir)
+	}
+
+	// A configured deploy_path is never overridden by a probe.
+	configured := host
+	configured.DeployPath = filepath.Join(root, "chosen")
+	got, err := deploy.DiscoverDeployPathForTest(context.Background(), configured, candidates)
+	if err != nil || got != configured.DeployPath {
+		t.Fatalf("a configured deploy_path must win: got %q (err %v)", got, err)
+	}
+}
+
+func TestDeployPathDiscoveryRefusesToGuess(t *testing.T) {
+	root := t.TempDir()
+	bare := filepath.Join(root, "empty")
+	if err := os.MkdirAll(bare, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	host := discoveryHostForTest()
+
+	// Nothing there: the error has to name what was probed, because the operator
+	// has to write deploy_path.
+	if _, err := deploy.DiscoverDeployPathForTest(context.Background(), host, []string{bare}); !errors.Is(err, deploy.ErrDeployPathMissing) {
+		t.Fatalf("err = %v, want ErrDeployPathMissing", err)
+	} else if !strings.Contains(err.Error(), bare) {
+		t.Fatalf("the refusal must name the candidates, got %q", err.Error())
+	}
+
+	// Two layouts: choosing either would point the pipeline at a directory
+	// nobody picked.
+	first, second := filepath.Join(root, "one"), filepath.Join(root, "two")
+	for _, dir := range []string{first, second} {
+		if err := os.MkdirAll(filepath.Join(dir, "releases"), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	_, err := deploy.DiscoverDeployPathForTest(context.Background(), host, []string{first, second})
+	if !errors.Is(err, deploy.ErrDeployPathMissing) {
+		t.Fatalf("two layouts must be a refusal, got %v", err)
+	}
+	if !strings.Contains(err.Error(), first) || !strings.Contains(err.Error(), second) {
+		t.Fatalf("the refusal must name both candidates, got %q", err.Error())
+	}
+}
+
+// A `current` symlink alone is a layout: an in-place target may have no
+// releases directory at all.
+func TestDeployPathDiscoveryAcceptsACurrentSymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "public_html")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(home, "current")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	host := discoveryHostForTest()
+	found, err := deploy.DiscoverDeployPathForTest(context.Background(), host, []string{home})
+	if err != nil {
+		t.Fatalf("discovery: %v", err)
+	}
+	if found != home {
+		t.Fatalf("discovered %q, want %q", found, home)
+	}
+}

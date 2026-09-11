@@ -45,7 +45,7 @@ func runDeployUnlock(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	host, err := deploy.HostForConfig(config, remote, options)
+	host, err := deployHostFor(cmd.Context(), config, remote, options, cmd.OutOrStdout())
 	if err != nil {
 		return err
 	}
