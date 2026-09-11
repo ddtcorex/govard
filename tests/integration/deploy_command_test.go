@@ -4,7 +4,9 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
+	"govard/internal/deploy"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -232,5 +234,70 @@ func TestDeployDiscoversAnExistingLayoutWhenNoDeployPathIsConfigured(t *testing.
 	refused.AssertExitCode(t, 4)
 	if !strings.Contains(refused.Stdout, "deploy_path") {
 		t.Fatalf("the refusal must name the setting, got:\n%s%s", refused.Stdout, refused.Stderr)
+	}
+}
+
+// Spec 13: `--json` "emits a machine-readable equivalent for CI:
+// schema_version, remote, branch, revision, release, build.mode,
+// publish.strategy, tasks[…], verify, result. Failures name the task id, host,
+// command and the resume command; exit 1."
+//
+// The fields were flat (`build_mode`, `publish` as a string), `result` was
+// hardcoded "ok", and JSON was emitted only on the success path — while the
+// human timeline was written to the same stream, so stdout was not parseable at
+// all.
+func TestDeployJSONIsAMachineReadableContract(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-json")
+	origin, revision := seedDeployOrigin(t)
+	writeLocalRemote(t, projectDir, t.TempDir(), origin)
+
+	parse := func(t *testing.T, result *CommandResult) map[string]any {
+		t.Helper()
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(result.Stdout)), &payload); err != nil {
+			t.Fatalf("stdout is not one JSON document (%v)\nstdout: %s\nstderr: %s", err, result.Stdout, result.Stderr)
+		}
+		return payload
+	}
+
+	result := env.RunGovard(t, projectDir, "deploy", "local", "--revision", revision, "--yes", "--json")
+	result.AssertSuccess(t)
+	payload := parse(t, result)
+
+	if payload["result"] != "ok" {
+		t.Errorf("result = %v, want ok", payload["result"])
+	}
+	if payload["schema_version"] != float64(1) {
+		t.Errorf("schema_version = %v, want 1", payload["schema_version"])
+	}
+	build, _ := payload["build"].(map[string]any)
+	if build == nil || build["mode"] != deploy.BuildServer {
+		t.Errorf("build = %v, want a nested {mode:%s}", payload["build"], deploy.BuildServer)
+	}
+	publish, _ := payload["publish"].(map[string]any)
+	if publish == nil || publish["strategy"] == "" {
+		t.Errorf("publish = %v, want a nested {strategy:…}", payload["publish"])
+	}
+	tasks, ok := payload["tasks"].([]any)
+	if !ok || len(tasks) == 0 {
+		t.Fatalf("tasks = %v, want a list of steps", payload["tasks"])
+	}
+	if payload["remote"] != "local" || payload["revision"] != revision {
+		t.Errorf("remote/revision = %v/%v, want local/%s", payload["remote"], payload["revision"], revision)
+	}
+
+	// The failure path must produce the same document on the same stream: CI
+	// reads one shape, not two.
+	failed := env.RunGovard(t, projectDir, "deploy", "local", "--revision", strings.Repeat("0", 40), "--yes", "--json")
+	if failed.ExitCode != 1 {
+		t.Fatalf("a failing deploy exited %d, want 1\nstdout: %s\nstderr: %s", failed.ExitCode, failed.Stdout, failed.Stderr)
+	}
+	failure := parse(t, failed)
+	if failure["result"] != "failed" {
+		t.Errorf("result = %v, want failed", failure["result"])
+	}
+	if message, _ := failure["error"].(string); message == "" {
+		t.Errorf("a failed deploy must say what failed: %v", failure)
 	}
 }

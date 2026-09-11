@@ -178,39 +178,66 @@ func revisionOrSymbolic(options deploy.Options) string {
 	}
 }
 
-// writeDeployJSON emits the machine-readable result CI consumes.
-func writeDeployJSON(cmd *cobra.Command, remote string, options deploy.Options, release *deploy.Release, outcome deploy.Outcome) {
-	type taskJSON struct {
-		ID         string `json:"id"`
-		Status     string `json:"status"`
-		DurationMS int64  `json:"duration_ms"`
+// deployJSONTask is one step in the machine-readable result.
+type deployJSONTask struct {
+	ID         string `json:"id"`
+	Stage      string `json:"stage,omitempty"`
+	Status     string `json:"status"`
+	DurationMS int64  `json:"duration_ms"`
+}
+
+// deployJSONPayload is the contract spec 13 describes: nested build and publish
+// objects, a result that reflects what happened, and the same shape on the
+// failure path so a pipeline parses one document, not two.
+type deployJSONPayload struct {
+	SchemaVersion int    `json:"schema_version"`
+	Remote        string `json:"remote"`
+	Branch        string `json:"branch"`
+	Revision      string `json:"revision"`
+	Release       string `json:"release"`
+	Build         struct {
+		Mode string `json:"mode"`
+	} `json:"build"`
+	Publish struct {
+		Strategy        string `json:"strategy"`
+		PreviousRelease string `json:"previous_release,omitempty"`
+	} `json:"publish"`
+	Verify          string           `json:"verify"`
+	Result          string           `json:"result"`
+	Error           string           `json:"error,omitempty"`
+	AlreadyDeployed bool             `json:"already_deployed,omitempty"`
+	DurationMS      int64            `json:"duration_ms"`
+	Tasks           []deployJSONTask `json:"tasks"`
+}
+
+// writeDeployJSON emits the machine-readable result CI consumes. `runErr` is nil
+// on success; on failure it is what makes the document say so.
+func writeDeployJSON(cmd *cobra.Command, remote string, options deploy.Options, release *deploy.Release, outcome deploy.Outcome, runErr error) {
+	payload := deployJSONPayload{
+		SchemaVersion:   1,
+		Remote:          remote,
+		Branch:          options.Branch,
+		Revision:        release.Revision,
+		Release:         release.Release,
+		Verify:          release.Verify.Status,
+		Result:          "ok",
+		AlreadyDeployed: outcome.AlreadyDeployed,
+		DurationMS:      outcome.Total.Milliseconds(),
 	}
-	payload := struct {
-		SchemaVersion int        `json:"schema_version"`
-		Remote        string     `json:"remote"`
-		Branch        string     `json:"branch"`
-		Revision      string     `json:"revision"`
-		Release       string     `json:"release"`
-		BuildMode     string     `json:"build_mode"`
-		Publish       string     `json:"publish"`
-		Verify        string     `json:"verify"`
-		Result        string     `json:"result"`
-		DurationMS    int64      `json:"duration_ms"`
-		Tasks         []taskJSON `json:"tasks"`
-	}{
-		SchemaVersion: 1,
-		Remote:        remote,
-		Branch:        options.Branch,
-		Revision:      release.Revision,
-		Release:       release.Release,
-		BuildMode:     options.Build,
-		Publish:       options.Publish,
-		Verify:        release.Verify.Status,
-		Result:        "ok",
-		DurationMS:    outcome.Total.Milliseconds(),
+	payload.Build.Mode = options.Build
+	payload.Publish.Strategy = options.Publish
+	payload.Publish.PreviousRelease = release.Publish.PreviousRelease
+	if runErr != nil {
+		payload.Result = "failed"
+		payload.Error = runErr.Error()
 	}
 	for _, step := range outcome.Steps {
-		payload.Tasks = append(payload.Tasks, taskJSON{ID: step.ID, Status: step.Status, DurationMS: step.Duration.Milliseconds()})
+		payload.Tasks = append(payload.Tasks, deployJSONTask{
+			ID:         step.ID,
+			Stage:      string(step.Stage),
+			Status:     step.Status,
+			DurationMS: step.Duration.Milliseconds(),
+		})
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

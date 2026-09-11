@@ -82,7 +82,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	host, err := deployHostFor(cmd.Context(), config, remote, options, cmd.OutOrStdout())
+	noteOut := cmd.OutOrStdout()
+	if options.JSON {
+		noteOut = cmd.ErrOrStderr()
+	}
+	host, err := deployHostFor(cmd.Context(), config, remote, options, noteOut)
 	if err != nil {
 		return err
 	}
@@ -125,6 +129,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("pre-deploy hooks failed: %w", err)
 	}
 
+	// `--json` reserves stdout for one JSON document, so everything a human
+	// would read — the stage timeline, the discovery note, the warning about a
+	// missing verify URL — goes to stderr instead. A CI job pipes stdout into a
+	// parser and keeps stderr in the job log.
+	timeline := cmd.OutOrStdout()
+	if options.JSON {
+		timeline = cmd.ErrOrStderr()
+	}
+
 	release := deploy.NewRelease("", options.Revision, options.Branch)
 	if options.Resume {
 		resumed, err := prepareResume(cmd.Context(), host, release)
@@ -132,7 +145,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		if resumed == nil {
-			pterm.Info.Printf("%s has no unfinished release; starting a new one\n", remote)
+			if !options.JSON {
+				pterm.Info.Printf("%s has no unfinished release; starting a new one\n", remote)
+			}
 		} else {
 			// The record's revision is the release's identity: every command
 			// the recipe expands and the content version must describe the
@@ -142,12 +157,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	outcome, runErr := deploy.NewExecutor(host, options, cmd.OutOrStdout()).Run(cmd.Context(), plan, deployVars(host, options), release)
+	outcome, runErr := deploy.NewExecutor(host, options, timeline).Run(cmd.Context(), plan, deployVars(host, options), release)
 
 	if hookErr := engine.RunHooks(config, engine.HookPostDeploy, cmd.OutOrStdout(), cmd.ErrOrStderr()); hookErr != nil && runErr == nil {
 		return fmt.Errorf("post-deploy hooks failed: %w", hookErr)
 	}
 	if runErr != nil {
+		// A failure is reported in the same document shape as a success: CI
+		// reads one contract, and the human explanation goes to stderr with the
+		// returned error.
+		if options.JSON {
+			writeDeployJSON(cmd, remote, options, release, outcome, runErr)
+		}
 		return fmt.Errorf("%w\n%s", runErr, deploy.RecoveryHint(remote, outcome.LockHeld))
 	}
 
@@ -236,7 +257,7 @@ func resolveLocalRevision(ctx context.Context) (string, error) {
 
 func printDeploySummary(cmd *cobra.Command, remote string, host deploy.Host, options deploy.Options, release *deploy.Release, outcome deploy.Outcome) {
 	if options.JSON {
-		writeDeployJSON(cmd, remote, options, release, outcome)
+		writeDeployJSON(cmd, remote, options, release, outcome, nil)
 		return
 	}
 
