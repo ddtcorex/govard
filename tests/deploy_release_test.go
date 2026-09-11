@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -62,4 +63,42 @@ func TestHostPathsAndShellQuotingForATildePath(t *testing.T) {
 	if got := deploy.Shell(host.LockPath()); !strings.HasPrefix(got, "$HOME/") {
 		t.Fatalf("Shell(%q) = %q, want a $HOME/ prefix so the remote shell expands it", host.LockPath(), got)
 	}
+}
+
+// Spec 6's example record carries a `ci` block. The field did not exist at all,
+// so "which pipeline deployed this" was unanswerable from the record.
+func TestReleaseRecordCarriesTheCIRun(t *testing.T) {
+	t.Setenv("CI_PIPELINE_ID", "12345")
+	t.Setenv("CI_JOB_NAME", "deploy-production")
+	t.Setenv("GITHUB_RUN_ID", "")
+	t.Setenv("GITHUB_JOB", "")
+
+	release := deploy.NewReleaseForTest("", "abc", "main")
+	if release.CI == nil || release.CI.Pipeline != "12345" || release.CI.Job != "deploy-production" {
+		t.Fatalf("ci = %+v, want the GitLab pipeline and job", release.CI)
+	}
+	encoded, err := json.Marshal(release)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"ci":{"pipeline":"12345","job":"deploy-production"}`) {
+		t.Fatalf("the record does not carry the ci block: %s", encoded)
+	}
+
+	// A local run is not a CI run, and the block is omitted rather than empty.
+	t.Setenv("CI_PIPELINE_ID", "")
+	t.Setenv("CI_JOB_NAME", "")
+	local := deploy.NewReleaseForTest("", "abc", "main")
+	if local.CI != nil || strings.Contains(mustJSON(t, local), `"ci"`) {
+		t.Fatalf("a non-CI run must not claim a pipeline: %+v", local.CI)
+	}
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(encoded)
 }

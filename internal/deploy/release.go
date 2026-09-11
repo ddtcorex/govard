@@ -33,6 +33,7 @@ type Release struct {
 	Repository    string         `json:"repository,omitempty"`
 	CreatedAt     string         `json:"created_at"`
 	CreatedBy     string         `json:"created_by"`
+	CI            *CIRecord      `json:"ci,omitempty"`
 	Build         BuildRecord    `json:"build"`
 	Tasks         []StepRecord   `json:"tasks,omitempty"`
 	Publish       PublishRecord  `json:"publish"`
@@ -43,6 +44,15 @@ type Release struct {
 	// Path is where this release lives on the target. It is local knowledge,
 	// never part of the stored record.
 	Path string `json:"-"`
+}
+
+// CIRecord identifies the pipeline a deploy ran in, when it ran in one. The
+// record points at it so a deploy from a laptop omits the block entirely: a
+// struct field would always be encoded, and `"ci":{}` claims a pipeline that does
+// not exist.
+type CIRecord struct {
+	Pipeline string `json:"pipeline,omitempty"`
+	Job      string `json:"job,omitempty"`
 }
 
 // BuildRecord describes how the release was produced. The artifact fields are
@@ -105,6 +115,7 @@ func NewRelease(release, revision, branch string) *Release {
 		Branch:        branch,
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
 		CreatedBy:     currentActor(),
+		CI:            currentCI(),
 		Status:        StatusRunning,
 	}
 }
@@ -243,6 +254,27 @@ const shortCommandTimeout = 2 * time.Minute
 // currentActor names whoever is deploying, for the release record. CI
 // identities win over the local user because that is what an operator needs
 // when reading `deploy status` after an automated deploy.
+// currentCI reads the pipeline identity the running CI exposes, if any. The
+// variable names are the ones the two hosted forges document; a project on
+// something else deploys with an empty block rather than a wrong one.
+func currentCI() *CIRecord {
+	pipeline := firstEnv("CI_PIPELINE_ID", "GITHUB_RUN_ID")
+	job := firstEnv("CI_JOB_NAME", "GITHUB_JOB")
+	if pipeline == "" && job == "" {
+		return nil
+	}
+	return &CIRecord{Pipeline: pipeline, Job: job}
+}
+
+func firstEnv(names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func currentActor() string {
 	for _, name := range []string{"GITLAB_USER_LOGIN", "GITHUB_ACTOR", "USER", "LOGNAME"} {
 		if value := strings.TrimSpace(os.Getenv(name)); value != "" {

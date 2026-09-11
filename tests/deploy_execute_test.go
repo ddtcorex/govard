@@ -468,3 +468,53 @@ func TestExecutorKeepsTheReleaseRecordCurrent(t *testing.T) {
 		t.Fatalf("the record already claimed deploy:code before it finished:\n%s", seen)
 	}
 }
+
+// Spec 6 shows `publish.previous_release` populated and spec 7.5 lists
+// `{{previous_release}}` as a variable available to recipe commands. Neither was
+// ever filled in: the variable was always empty and the field never written, so a
+// recipe could not address the release it was replacing.
+func TestExecutorRecordsThePreviousReleaseAndExposesItsPath(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	// Release 1 is live, through the current symlink.
+	if _, err := runner.Run(ctx, "mkdir -p "+host.ReleasePath("1")+"/.dep", deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed release: %v", err)
+	}
+	live := deploy.NewReleaseForTest("1", "aaa", "main")
+	live.Status = deploy.StatusOK
+	if err := deploy.WriteRelease(ctx, host, live); err != nil {
+		t.Fatalf("seed record: %v", err)
+	}
+	if _, err := runner.Run(ctx, "ln -s "+host.ReleasePath("1")+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed symlink: %v", err)
+	}
+
+	marker := filepath.Join(t.TempDir(), "previous-release")
+	recipe := deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "echo {{previous_release}} > " + marker},
+	})
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	options := deploy.Options{Remote: "local", Publish: deploy.PublishSymlink, CommandTimeout: time.Minute}
+	release := deploy.NewReleaseForTest("2", "bbb", "main")
+	release.Path = host.ReleasePath("2")
+	if _, err := deploy.NewExecutor(host, options, io.Discard).Run(ctx, plan, deploy.NewVars(), release); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if release.Publish.PreviousRelease != "1" {
+		t.Fatalf("publish.previous_release = %q, want 1", release.Publish.PreviousRelease)
+	}
+	seen, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	if got := strings.Trim(strings.TrimSpace(string(seen)), "'"); got != host.ReleasePath("1") {
+		t.Fatalf("{{previous_release}} expanded to %q, want %q", got, host.ReleasePath("1"))
+	}
+}

@@ -179,6 +179,15 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 	}
 
+	// Which release is live right now is what `{{previous_release}}` and the
+	// record's `publish.previous_release` mean, and it has to be read before
+	// activation replaces it. Best effort: not knowing is not a reason to stop.
+	if release.Publish.PreviousRelease == "" {
+		if live := liveReleaseName(ctx, e.host); live != "" && live != release.Release {
+			release.Publish.PreviousRelease = live
+		}
+	}
+
 	// A resumed deploy repeats only what did not succeed: a task already
 	// recorded as ok is not run twice.
 	completed := map[string]bool{}
@@ -249,6 +258,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		stepVars := vars.Set("release", release.Release)
 		if release.Path != "" {
 			stepVars = stepVars.SetPath("release_path", release.Path)
+		}
+		if release.Publish.PreviousRelease != "" {
+			stepVars = stepVars.SetPath("previous_release", e.host.ReleasePath(release.Publish.PreviousRelease))
 		}
 
 		stepCtx := StepContext{
