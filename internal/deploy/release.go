@@ -203,6 +203,19 @@ func mustAtoi(value string) int {
 	return number
 }
 
+// ResumeTarget returns the release a `--resume` continues, or nil when there is
+// nothing unfinished.
+//
+// It hands back the stored record rather than a fresh one seeded from a few of
+// its fields. Later steps read more of the record than "which release is this":
+// `CoreVerify` switches on Publish.Strategy, `deploy rollback --with-db` reads
+// Database.Backup, and the record the run rewrites carries Build and CreatedAt.
+// A partial copy silently hollows all of them out, so the caller continues this
+// record and never rebuilds it.
+func ResumeTarget(ctx context.Context, host Host) (*Release, error) {
+	return IncompleteRelease(ctx, host)
+}
+
 // AppendHistory appends one line per deploy, which is what `deploy status`
 // reads across environments.
 func AppendHistory(ctx context.Context, host Host, release *Release) error {

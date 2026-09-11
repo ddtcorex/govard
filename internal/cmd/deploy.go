@@ -127,12 +127,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	release := deploy.NewRelease("", options.Revision, options.Branch)
 	if options.Resume {
-		resumed, err := prepareResume(cmd, host, release)
+		resumed, err := prepareResume(cmd.Context(), host, release)
 		if err != nil {
 			return err
 		}
 		if resumed == nil {
 			pterm.Info.Printf("%s has no unfinished release; starting a new one\n", remote)
+		} else {
+			// The record's revision is the release's identity: every command
+			// the recipe expands and the content version must describe the
+			// revision being resumed, not the local HEAD resolved a moment ago.
+			options.Revision = release.Revision
+			options.Tag = ""
 		}
 	}
 
@@ -152,10 +158,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 // prepareResume points the run at the newest unfinished release and clears the
 // lock its failed run left behind. Recovery has to be explicit, so the operator
 // asks for it with --resume rather than a retry silently taking over.
-func prepareResume(cmd *cobra.Command, host deploy.Host, release *deploy.Release) (*deploy.Release, error) {
-	ctx := cmd.Context()
-
-	incomplete, err := deploy.IncompleteRelease(ctx, host)
+//
+// The release the run continues is the stored record itself, copied whole onto
+// the caller's value. Rebuilding it from a few fields looks equivalent and is
+// not: `CoreVerify` reads Publish.Strategy and `deploy rollback --with-db` reads
+// Database.Backup, so a partial record verifies nothing and loses the dump path.
+func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Release) (*deploy.Release, error) {
+	incomplete, err := deploy.ResumeTarget(ctx, host)
 	if err != nil {
 		return nil, err
 	}
@@ -163,19 +172,24 @@ func prepareResume(cmd *cobra.Command, host deploy.Host, release *deploy.Release
 		return nil, nil
 	}
 
-	release.Release = incomplete.Release
-	release.Path = incomplete.Path
-	release.Revision = incomplete.Revision
-	release.Branch = incomplete.Branch
-	release.Tasks = incomplete.Tasks
+	*release = *incomplete
 
 	// The stale lock belongs to the run being resumed; releasing it is part of
 	// resuming, and the operator asked for that explicitly.
 	if err := deploy.CoreUnlock(ctx, deploy.StepContextForTest(host, deploy.Options{})); err != nil {
 		return nil, err
 	}
-	pterm.Info.Printf("resuming release %s (previously failed)\n", incomplete.Release)
-	return incomplete, nil
+	pterm.Info.Printf("resuming release %s (previously failed)\n", release.Release)
+	return release, nil
+}
+
+// PrepareResumeForTest exposes prepareResume to the tests/ package. The
+// invariant it pins — that a resume continues the stored record whole — is the
+// whole reason the function exists, so it is tested through this rather than
+// restated in the caller.
+func PrepareResumeForTest(ctx context.Context, host deploy.Host, release *deploy.Release) error {
+	_, err := prepareResume(ctx, host, release)
+	return err
 }
 
 // confirmProtectedRemote refuses to deploy to a protected environment without an

@@ -360,3 +360,32 @@ func TestRecordWritesTheReleaseAndTheHistory(t *testing.T) {
 		t.Fatalf("history must be written: %v", err)
 	}
 }
+
+// A record that does not say how the release was published cannot have its live
+// revision checked, and the verify stage must say so instead of passing.
+//
+// This is the guard behind the resume bug: `CoreVerify` switches on
+// `Release.Publish.Strategy` with no default, so a release reconstructed from a
+// few stored fields verified nothing and still recorded status "ok".
+func TestVerifyFailsWhenTheRecordDoesNotNameAPublishStrategy(t *testing.T) {
+	for _, strategy := range []string{"", "by-hand"} {
+		t.Run("strategy="+strategy, func(t *testing.T) {
+			host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+			release := deploy.NewReleaseForTest("1", "abc", "local")
+			release.Publish.Strategy = strategy
+			sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+			sc.Release = release
+
+			err := deploy.CoreVerify(context.Background(), sc)
+			if err == nil {
+				t.Fatal("verify passed without checking the live revision")
+			}
+			if release.Verify.Status != "failed" {
+				t.Fatalf("verify status = %q, want failed", release.Verify.Status)
+			}
+			if len(release.Verify.Checks) == 0 || release.Verify.Checks[0].ID != "revision" {
+				t.Fatalf("checks = %+v, want a failed revision check", release.Verify.Checks)
+			}
+		})
+	}
+}

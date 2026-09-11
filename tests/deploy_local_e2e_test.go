@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"govard/internal/cmd"
 	"govard/internal/deploy"
 	"govard/internal/engine"
 )
@@ -432,5 +433,72 @@ func TestResumeContinuesTheFailedReleaseInsteadOfStartingANewOne(t *testing.T) {
 	}
 	if !skipped[deploy.TaskCode] {
 		t.Error("deploy:code already succeeded and must be skipped on resume")
+	}
+}
+
+// A resume continues the stored record, so the record must reach the run whole.
+//
+// Copying a few fields into a fresh Release looks equivalent and is not: the new
+// object is an empty one, and `CoreVerify` switches on
+// `Release.Publish.Strategy` while `deploy rollback --with-db` reads
+// `Release.Database`. A resume that dropped them would run no revision check at
+// all (and still report success) and would lose the dump path of a release whose
+// dump is sitting on the server.
+func TestResumeContinuesTheWholeStoredRecord(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+
+	record := deploy.NewReleaseForTest("2", "bbb", "main")
+	record.Status = deploy.StatusFailed
+	record.CreatedAt = "2026-09-11T10:00:00Z"
+	record.Build = deploy.BuildRecord{Mode: deploy.BuildServer, DurationMS: 1234}
+	record.Publish = deploy.PublishRecord{Strategy: deploy.PublishInPlace, Docroot: "/srv/public_html"}
+	record.Database = deploy.DatabaseRecord{Backup: "shared/backups/deploy/2/dump.sql"}
+	if err := deploy.WriteRelease(ctx, host, record); err != nil {
+		t.Fatalf("seed failed release: %v", err)
+	}
+	// The failed run left its lock behind, which is what resuming clears.
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.LockPath(), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed stale lock: %v", err)
+	}
+
+	release := deploy.NewReleaseForTest("", "local-head", "main")
+	if err := cmd.PrepareResumeForTest(ctx, host, release); err != nil {
+		t.Fatalf("prepare resume: %v", err)
+	}
+
+	if release.Release != "2" {
+		t.Fatalf("release = %q, want the stored release 2", release.Release)
+	}
+	if release.Publish.Strategy != deploy.PublishInPlace || release.Publish.Docroot != "/srv/public_html" {
+		t.Errorf("publish record = %+v, want the stored strategy and docroot", release.Publish)
+	}
+	if release.Database.Backup != "shared/backups/deploy/2/dump.sql" {
+		t.Errorf("database record = %+v, want the stored dump path", release.Database)
+	}
+	if release.Build.Mode != deploy.BuildServer || release.Build.DurationMS != 1234 {
+		t.Errorf("build record = %+v, want the stored build", release.Build)
+	}
+	if release.CreatedAt != "2026-09-11T10:00:00Z" {
+		t.Errorf("created_at = %q, want the original creation time", release.CreatedAt)
+	}
+	if release.Path != host.ReleasePath("2") {
+		t.Errorf("path = %q, want %q", release.Path, host.ReleasePath("2"))
+	}
+	if _, err := host.Runner().Run(ctx, "test ! -e "+host.LockPath(), deploy.RunOptions{}); err != nil {
+		t.Errorf("a resume must clear the lock its failed run left: %v", err)
+	}
+}
+
+func TestResumeWithoutAnUnfinishedReleaseLeavesTheNewRecordAlone(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+
+	release := deploy.NewReleaseForTest("", "local-head", "main")
+	if err := cmd.PrepareResumeForTest(ctx, host, release); err != nil {
+		t.Fatalf("prepare resume: %v", err)
+	}
+	if release.Release != "" || release.Revision != "local-head" {
+		t.Fatalf("a resume with nothing to continue must start a new release, got %+v", release)
 	}
 }

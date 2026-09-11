@@ -74,6 +74,12 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 			return fail("revision", fmt.Sprintf("docroot HEAD is %q, want %q", strings.TrimSpace(result.Stdout), sc.Release.Revision))
 		}
 		pass("revision", "docroot HEAD matches the deployed revision")
+	default:
+		// No default would mean "the record does not say how the release went
+		// live, so check nothing and pass" — the one answer the verify stage
+		// must never give. A record can only lose this field by being
+		// reconstructed from part of itself, which is a bug worth failing on.
+		return fail("revision", fmt.Sprintf("the release record names publish strategy %q, so the live revision cannot be checked", sc.Release.Publish.Strategy))
 	}
 
 	for _, entry := range settingsStringList(sc.Opts.Settings, "shared_files") {
