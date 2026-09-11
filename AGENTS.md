@@ -75,6 +75,32 @@ go vet ./...                    # static analysis
 gofmt -s -w .                   # format
 ```
 
+### Local binary for development testing
+
+`make build` writes `bin/govard`, stamped by `git describe` (e.g.
+`v1.72.0-5-gfd88cb4`; a `-dirty` suffix means uncommitted changes). `bin/` is
+gitignored, so the binary itself is never committed. To exercise a change
+before it is released:
+
+```bash
+make build                                        # from the branch you changed
+./bin/govard <command>                            # explicit path, never a bare `govard`
+install -m0755 bin/govard ~/.local/bin/govard     # only to test PATH consumers (plugin, skills)
+```
+
+- Always call the built binary **by path**. A bare `govard` resolves through
+  `PATH`, which can hold several copies (user install, `/usr/local/bin`, a stale
+  shim directory); a probe that silently ran an older one has already produced a
+  bogus result.
+- `~/.local/bin` precedes `/usr/local/bin`, so a user-level copy shadows the
+  installed CLI without sudo. Confirm what is actually in effect with
+  `which -a govard && govard version`.
+- **Delete the binary when the testing is done**:
+  `rm -f ~/.local/bin/govard bin/govard`. A leftover outlives the branch it came
+  from — the next session then reads a version that matches no commit, and a
+  shadowing copy keeps answering for the installed CLI. Rebuilding takes
+  seconds, so never keep one "just in case".
+
 ## Code Standards
 
 - Run `gofmt` after Go edits
