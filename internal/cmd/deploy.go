@@ -45,7 +45,18 @@ func init() {
 
 	deployUnlockCmd.Flags().Bool("force", false, "Release a lock that is not stale")
 
+	// plan and check read the same source and build-mode flags as deploy: the
+	// plan has to express the mode it is planning, and the preflight has to
+	// know an artifact is coming before it can compare it with the target.
+	bindDeploySourceFlags(deployPlanCmd)
+	deployPlanCmd.Flags().String("build", deploy.BuildAuto, "Where the build runs: auto, server or artifact")
+	deployPlanCmd.Flags().String("artifact-dir", "", "Artifact directory built by govard deploy build")
 	deployPlanCmd.Flags().Bool("json", false, "Emit machine-readable output")
+
+	bindDeploySourceFlags(deployCheckCmd)
+	deployCheckCmd.Flags().String("build", deploy.BuildAuto, "Where the build runs: auto, server or artifact")
+	deployCheckCmd.Flags().String("artifact-dir", "", "Artifact directory built by govard deploy build")
+
 	deployReleasesCmd.Flags().Bool("json", false, "Emit machine-readable output")
 	deployStatusCmd.Flags().Bool("json", false, "Emit machine-readable output")
 
@@ -98,7 +109,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return &cli.UsageError{Err: err}
 	}
 	recipe, options := deployRecipe(config, options)
-	plan, err := deploy.BuildPlan(recipe, hooks, remote)
+	plan, err := deployPlanFor(recipe, hooks, remote, options)
 	if err != nil {
 		return &cli.UsageError{Err: err}
 	}

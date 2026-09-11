@@ -99,3 +99,23 @@ func (v Vars) Names() []string {
 	sort.Strings(names)
 	return names
 }
+
+// Clone returns an independent copy of the set.
+//
+// Vars shares its maps between copies, so a caller that layers values onto a
+// set it does not own must clone first. The zero value clones to an empty set
+// rather than panicking, which is what makes a request struct safe to leave
+// half-filled.
+func (v Vars) Clone() Vars {
+	clone := NewVars()
+	for key, value := range v.values {
+		clone.values[key] = value
+	}
+	for key := range v.paths {
+		clone.paths[key] = true
+	}
+	for key := range v.raw {
+		clone.raw[key] = true
+	}
+	return clone
+}

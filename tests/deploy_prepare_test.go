@@ -325,3 +325,104 @@ func TestCoreCheckComparesTheDeclaredPHPVersion(t *testing.T) {
 		t.Fatalf("err = %v, want a php version mismatch", err)
 	}
 }
+
+// artifactGateFixture writes an artifact whose manifest records a PHP version,
+// so the parity gate has something to compare.
+func artifactGateFixture(t *testing.T, revision, phpVersion string) string {
+	t.Helper()
+	artifactDir := t.TempDir()
+	writeFile(t, filepath.Join(artifactDir, "composer.json"), `{"name":"sample/project"}`)
+	manifest, err := deploy.BuildManifest(artifactDir, revision, phpVersion)
+	if err != nil {
+		t.Fatalf("build manifest: %v", err)
+	}
+	if err := deploy.WriteManifest(artifactDir, manifest); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	return artifactDir
+}
+
+func TestCoreCheckGatesAnArtifactOnTheTargetsPHPVersion(t *testing.T) {
+	runner := scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "PHP_VERSION", answerStdout: "8.2.11\n"}
+
+	matching := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
+		Remote:      "local",
+		Publish:     deploy.PublishSymlink,
+		Build:       deploy.BuildArtifact,
+		ArtifactDir: artifactGateFixture(t, "abc123", "8.2.11"),
+		Revision:    "abc123",
+	})
+	if err := deploy.CoreCheck(context.Background(), matching); err != nil {
+		t.Fatalf("an artifact built for the target's php must pass: %v", err)
+	}
+	if joined := strings.Join(matching.Notes, " | "); !strings.Contains(joined, "artifact php 8.2.11") {
+		t.Errorf("the notes must record the comparison, got %q", joined)
+	}
+
+	mismatched := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
+		Remote:      "local",
+		Publish:     deploy.PublishSymlink,
+		Build:       deploy.BuildArtifact,
+		ArtifactDir: artifactGateFixture(t, "abc123", "8.3.6"),
+		Revision:    "abc123",
+	})
+	err := deploy.CoreCheck(context.Background(), mismatched)
+	if err == nil {
+		t.Fatal("want a refusal when the artifact was built for a different php")
+	}
+	for _, want := range []string{"8.3.6", "8.2.11", "deploy build"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal must name %q, got %q", want, err.Error())
+		}
+	}
+}
+
+func TestCoreCheckRefusesAnArtifactBuiltForAnotherRevision(t *testing.T) {
+	runner := scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "PHP_VERSION", answerStdout: "8.2.11\n"}
+	sc := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
+		Remote:      "local",
+		Publish:     deploy.PublishSymlink,
+		Build:       deploy.BuildArtifact,
+		ArtifactDir: artifactGateFixture(t, "abc123", ""),
+		Revision:    "def456",
+	})
+	err := deploy.CoreCheck(context.Background(), sc)
+	if err == nil {
+		t.Fatal("want a refusal when the artifact was built for another revision")
+	}
+	if !strings.Contains(err.Error(), "abc123") || !strings.Contains(err.Error(), "def456") {
+		t.Fatalf("the refusal must name both revisions, got %q", err.Error())
+	}
+}
+
+func TestCoreCheckDoesNotGateAnArtifactWithoutAPHPVersion(t *testing.T) {
+	// A project that is not a PHP project records no version, and the gate must
+	// not invent one: a probe that cannot compare is not a failure.
+	runner := scriptedRunner{base: deploy.LocalRunner{}, failSubstring: "PHP_VERSION"}
+	sc := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
+		Remote:      "local",
+		Publish:     deploy.PublishSymlink,
+		Build:       deploy.BuildArtifact,
+		ArtifactDir: artifactGateFixture(t, "abc123", ""),
+		Revision:    "abc123",
+	})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("an artifact without a php version must not be gated: %v", err)
+	}
+	if joined := strings.Join(sc.Notes, " | "); !strings.Contains(joined, "no PHP version") {
+		t.Errorf("the operator must be told the comparison did not happen, got %q", joined)
+	}
+}
+
+func TestCoreCheckLeavesAServerBuildAlone(t *testing.T) {
+	runner := scriptedRunner{base: deploy.LocalRunner{}, failSubstring: "PHP_VERSION"}
+	sc := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
+		Remote:      "local",
+		Publish:     deploy.PublishSymlink,
+		Build:       deploy.BuildServer,
+		ArtifactDir: artifactGateFixture(t, "abc123", "8.3.6"),
+	})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("a server build must not read an artifact: %v", err)
+	}
+}

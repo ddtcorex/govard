@@ -91,6 +91,9 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	if err := checkPHPVersion(ctx, sc); err != nil {
 		return err
 	}
+	if err := checkArtifactParity(ctx, sc); err != nil {
+		return err
+	}
 
 	// Fail before building when the checkout uses submodules: git archive does
 	// not include their content, and a release with empty submodule
@@ -192,6 +195,83 @@ func checkPHPVersion(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("target runs php %s but the project declares %s", actual, want)
 	}
 	return nil
+}
+
+// checkArtifactParity is the artifact mode's preflight. An artifact was built
+// somewhere else, so two facts have to be proven before it is published: it was
+// built for the revision being deployed, and it was built for the PHP the target
+// runs.
+//
+// The comparison happens here, on the machine running govard, from the manifest's
+// recorded version — which is what lets the deploy job run without PHP of its
+// own. Nothing is probed when the manifest records no PHP version: a project
+// that is not a PHP project must not be blocked by a gate it never opted into.
+func checkArtifactParity(ctx context.Context, sc *StepContext) error {
+	if sc.Opts.Build != BuildArtifact {
+		return nil
+	}
+
+	artifactDir := strings.TrimSpace(sc.Opts.ArtifactDir)
+	if artifactDir == "" {
+		return fmt.Errorf("artifact mode needs an artifact directory: pass --artifact-dir <dir> or set deploy.artifact_dir")
+	}
+	manifest, err := ReadManifest(artifactDir)
+	if err != nil {
+		return err
+	}
+
+	revision := strings.TrimSpace(sc.Opts.Revision)
+	if revision == "" {
+		revision = strings.TrimSpace(sc.Opts.Tag)
+	}
+	if manifest.Revision != "" && revision != "" && manifest.Revision != revision {
+		return fmt.Errorf("the artifact at %s was built for revision %s but %s is being deployed; rebuild it or pass --revision %s",
+			artifactDir, manifest.Revision, revision, manifest.Revision)
+	}
+	sc.Notes = append(sc.Notes, fmt.Sprintf("artifact: %d files, %.1f MiB, revision %s",
+		manifest.FileCount, float64(manifest.TotalBytes)/1024/1024, manifest.Revision))
+
+	if manifest.PHPVersion == "" {
+		sc.Notes = append(sc.Notes, "artifact records no PHP version; the target's PHP is not compared")
+		return nil
+	}
+
+	actual, err := probeTargetPHP(ctx, sc)
+	if err != nil {
+		return fmt.Errorf("the artifact was built with PHP %s but the target's PHP could not be determined (set settings.php_bin, or deploy with --build=server and build on the target): %w",
+			manifest.PHPVersion, err)
+	}
+	sc.Notes = append(sc.Notes, "artifact php "+manifest.PHPVersion+", target php "+actual)
+	if !strings.HasPrefix(actual, phpSeries(manifest.PHPVersion)) {
+		return fmt.Errorf("the artifact was built with PHP %s but the target runs PHP %s; rebuild it with `govard deploy build` in an image that matches the target, or deploy with --build=server",
+			manifest.PHPVersion, actual)
+	}
+	return nil
+}
+
+// probeTargetPHP asks the target which PHP it runs. The binary is the project's
+// configured one, or `php` — the same default the recipe commands expand.
+func probeTargetPHP(ctx context.Context, sc *StepContext) (string, error) {
+	phpBin := settingsString(sc.Opts.Settings, "php_bin")
+	if phpBin == "" {
+		phpBin = "php"
+	}
+	result, err := sc.Runner.Run(ctx, phpBin+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(result.Stdout), nil
+}
+
+// phpSeries reduces a full version to major.minor, which is the granularity a
+// build machine and a server have to agree on. 8.2.11 and 8.2.27 are the same
+// series; 8.2 and 8.3 are not.
+func phpSeries(version string) string {
+	parts := strings.Split(strings.TrimSpace(version), ".")
+	if len(parts) < 2 {
+		return strings.TrimSpace(version)
+	}
+	return parts[0] + "." + parts[1]
 }
 
 // CoreLock acquires the deploy lock with a single atomic mkdir. Read-then-write

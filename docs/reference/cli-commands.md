@@ -692,6 +692,8 @@ Deploy a git revision to a remote environment.
 ```bash
 govard deploy <remote>                   # deploy the local HEAD
 govard deploy staging --revision <sha>   # deploy an exact commit (CI)
+govard deploy build staging --output artifacts --revision <sha>   # build an artifact (CI)
+govard deploy staging --artifact-dir artifacts --revision <sha>   # deploy that artifact
 govard deploy plan staging               # print the plan, connect nowhere
 govard deploy check staging              # preflight and report the publish strategy
 govard deploy releases staging           # list the releases on the target
@@ -725,10 +727,42 @@ neutral pipeline. Every step a recipe leaves empty is reported as skipped, not
 as a failure.
 
 Flags: `--remote`, `--branch`, `--revision`, `--tag` (mutually exclusive),
-`--publish=auto|symlink|in_place`, `--keep`, `--verify/--no-verify`,
-`--db-backup/--no-db-backup`, `--lock/--no-lock`, `--ignore-deployer-lock`,
-`--command-timeout`, `--resume`, `--from <task>`, `--force`, `--yes`, `--json`,
-`--verbose`.
+`--build=auto|server|artifact`, `--artifact-dir`, `--publish=auto|symlink|in_place`,
+`--keep`, `--verify/--no-verify`, `--db-backup/--no-db-backup`,
+`--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--resume`,
+`--from <task>`, `--force`, `--yes`, `--json`, `--verbose`.
+
+**Build modes.** `--build=auto` (the default) resolves by presence, never by
+sniffing the environment: an artifact directory — `--artifact-dir <dir>` or
+`deploy.artifact_dir` in the project — means the build already happened, so the
+mode is `artifact`; otherwise it is `server`. `--build=artifact` with no artifact
+directory is a usage error rather than a silent fall back to building on the
+server, which is the outcome the mode exists to avoid.
+
+**The two-job CI shape.** The point of the artifact mode is that the job which
+touches production needs no toolchain:
+
+| Job | Image needs | Command |
+|---|---|---|
+| `build` | PHP, Composer, Node — whatever the recipe's build tasks need | `govard deploy build production --output artifacts --revision $CI_COMMIT_SHA` |
+| `deploy` | govard, ssh, rsync — nothing else | `govard deploy production --artifact-dir artifacts --revision $CI_COMMIT_SHA --yes` |
+
+`govard deploy build` materialises the revision into the output directory, runs
+the recipe's build tasks there, and writes a `manifest.json` recording the
+revision, the PHP version, the `composer.lock` hash and a sha256 list of every
+file. It needs no target and no container runtime. The deploy job verifies the
+manifest against the revision it is deploying and compares the recorded PHP
+version with the target's, refusing with an actionable message on a mismatch —
+so a CI image that does not match the server is caught before anything is
+published. An artifact deploy skips the five build tasks and runs
+`deploy:artifact` instead; `govard deploy plan` shows which branch is in effect.
+
+An output directory that is not empty is refused, so a stale file from an
+earlier build cannot ship: pass `--force` to replace its contents.
+
+`govard deploy build` flags: `--remote`, `--output` (required), `--branch`,
+`--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. It needs no
+capability at all: `none`.
 
 `--resume` continues the newest release whose record is not `ok`; `--from <task>`
 starts at a named task or hook and reports everything before it as skipped. Both
@@ -742,8 +776,8 @@ current data, so it needs `--yes` (or an interactive confirmation).
 Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
 capability, `4` configuration. `govard deploy` and `govard deploy rollback` need
 `ssh` and `rsync`; `deploy check`, `deploy releases`, `deploy status` and
-`deploy unlock` need only `ssh`; `deploy plan` needs nothing. None of them need
-Docker.
+`deploy unlock` need only `ssh`; `deploy build` and `deploy plan` need nothing.
+None of them need Docker.
 
 ### `govard snapshot`
 

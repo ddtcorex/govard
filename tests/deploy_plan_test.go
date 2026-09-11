@@ -1,7 +1,9 @@
 package tests
 
 import (
+	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"govard/internal/deploy"
@@ -114,5 +116,104 @@ func TestPlanRejectsBadHooks(t *testing.T) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
 		})
+	}
+}
+
+// buildStageSteps are the tasks a server build runs and an artifact build
+// replaces with deploy:artifact. They are the exact set the plan must flip.
+var buildStageSteps = []string{
+	deploy.TaskVendors, deploy.TaskPatches, deploy.TaskCompile,
+	deploy.TaskFrontend, deploy.TaskAssets,
+}
+
+func TestPlanForBuildModeSwitchesTheBuildBranch(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	// The neutral recipe leaves the framework steps empty, so give them a
+	// command: the mode must flip an implemented step, not an empty one.
+	for _, id := range buildStageSteps {
+		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Command: "build " + id})
+	}
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskArtifact, deploy.Task{ID: deploy.TaskArtifact, Core: func(context.Context, *deploy.StepContext) error { return nil }})
+
+	base, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+
+	server := base.ForBuildMode(deploy.BuildServer)
+	assertBuildBranch(t, server, deploy.BuildServer)
+	artifact := base.ForBuildMode(deploy.BuildArtifact)
+	assertBuildBranch(t, artifact, deploy.BuildArtifact)
+
+	// The mode never changes the shape of the pipeline: every step id is still
+	// there, in the same order. A mode that dropped a step would make `--from`
+	// and the resume bookkeeping disagree with the timeline.
+	if got, want := server.StepIDs(), base.StepIDs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("server mode changed the step list:\n got %v\nwant %v", got, want)
+	}
+	if got, want := artifact.StepIDs(), base.StepIDs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("artifact mode changed the step list:\n got %v\nwant %v", got, want)
+	}
+}
+
+func assertBuildBranch(t *testing.T, plan deploy.Plan, mode string) {
+	t.Helper()
+	for _, id := range buildStageSteps {
+		step := stepForTest(t, plan, id)
+		wantSkipped := mode == deploy.BuildArtifact
+		if step.Skipped != wantSkipped {
+			t.Errorf("%s mode: %s skipped = %v, want %v", mode, id, step.Skipped, wantSkipped)
+		}
+		if step.Implemented() == wantSkipped {
+			t.Errorf("%s mode: %s implemented = %v, want %v", mode, id, step.Implemented(), !wantSkipped)
+		}
+		if wantSkipped && step.SkipReason == "" {
+			t.Errorf("%s mode: %s is skipped with no reason for the operator", mode, id)
+		}
+	}
+
+	artifactStep := stepForTest(t, plan, deploy.TaskArtifact)
+	wantArtifactSkipped := mode == deploy.BuildServer
+	if artifactStep.Skipped != wantArtifactSkipped {
+		t.Errorf("%s mode: deploy:artifact skipped = %v, want %v", mode, artifactStep.Skipped, wantArtifactSkipped)
+	}
+	if artifactStep.Implemented() == wantArtifactSkipped {
+		t.Errorf("%s mode: deploy:artifact implemented = %v, want %v", mode, artifactStep.Implemented(), !wantArtifactSkipped)
+	}
+	if wantArtifactSkipped && artifactStep.SkipReason == "" {
+		t.Errorf("%s mode: deploy:artifact is skipped with no reason", mode)
+	}
+}
+
+func stepForTest(t *testing.T, plan deploy.Plan, id string) deploy.Step {
+	t.Helper()
+	for _, step := range plan.Steps {
+		if step.ID == id {
+			return step
+		}
+	}
+	t.Fatalf("%s is not in the plan %v", id, plan.StepIDs())
+	return deploy.Step{}
+}
+
+func TestPlanForBuildModeLeavesHooksAlone(t *testing.T) {
+	hooks := []deploy.Hook{
+		{Name: "before-build", On: "build:vendors", Position: deploy.PositionBefore, Run: "true"},
+		{Name: "after-build", On: "stage:build", Run: "true"},
+	}
+	base, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), hooks, "staging")
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+	for _, mode := range []string{deploy.BuildServer, deploy.BuildArtifact} {
+		plan := base.ForBuildMode(mode)
+		for _, step := range plan.Steps {
+			if step.Kind != deploy.StepHook {
+				continue
+			}
+			if step.Skipped || !step.Implemented() {
+				t.Errorf("%s mode: hook %s was disabled by the build mode", mode, step.ID)
+			}
+		}
 	}
 }

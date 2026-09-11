@@ -19,10 +19,9 @@ const deployFlagTimeout = "command-timeout"
 // bindDeployFlags registers the deploy command's flags. The set is deliberately
 // closed: a flag exists here only if the engine honours it.
 func bindDeployFlags(command *cobra.Command) {
-	command.Flags().String("remote", "", "Remote environment to deploy (alternative to the positional argument)")
-	command.Flags().String("branch", "", "Branch to deploy (overrides the remote's configured branch)")
-	command.Flags().String("revision", "", "Exact commit to deploy")
-	command.Flags().String("tag", "", "Tag to deploy")
+	bindDeploySourceFlags(command)
+	command.Flags().String("build", deploy.BuildAuto, "Where the build runs: auto, server or artifact")
+	command.Flags().String("artifact-dir", "", "Artifact directory built by govard deploy build (implies --build=artifact)")
 	command.Flags().String("publish", deploy.PublishAuto, "Publish strategy: auto, symlink or in_place")
 	command.Flags().Int("keep", 0, "How many releases to keep on the target")
 	command.Flags().Bool("verify", true, "Verify the target after publishing")
@@ -38,6 +37,17 @@ func bindDeployFlags(command *cobra.Command) {
 	command.Flags().Bool("verbose", false, "Stream remote command output")
 }
 
+// bindDeploySourceFlags registers the flags that select what is deployed and how
+// it is built. Reading commands (`plan`) and preflight (`check`) declare the same
+// set: a plan that cannot express the mode it is planning is a plan of a
+// different run.
+func bindDeploySourceFlags(command *cobra.Command) {
+	command.Flags().String("remote", "", "Remote environment to deploy (alternative to the positional argument)")
+	command.Flags().String("branch", "", "Branch to deploy (overrides the remote's configured branch)")
+	command.Flags().String("revision", "", "Exact commit to deploy")
+	command.Flags().String("tag", "", "Tag to deploy")
+}
+
 // overridesFromFlags reads the flag values.
 func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 	flags := command.Flags()
@@ -46,6 +56,8 @@ func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 	branch, _ := flags.GetString("branch")
 	revision, _ := flags.GetString("revision")
 	tag, _ := flags.GetString("tag")
+	build, _ := flags.GetString("build")
+	artifactDir, _ := flags.GetString("artifact-dir")
 	publish, _ := flags.GetString("publish")
 	keep, _ := flags.GetInt("keep")
 	ignoreDeployerLock, _ := flags.GetBool("ignore-deployer-lock")
@@ -61,6 +73,8 @@ func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 		Branch:             strings.TrimSpace(branch),
 		Revision:           strings.TrimSpace(revision),
 		Tag:                strings.TrimSpace(tag),
+		Build:              strings.TrimSpace(build),
+		ArtifactDir:        strings.TrimSpace(artifactDir),
 		Publish:            strings.TrimSpace(publish),
 		KeepReleases:       keep,
 		IgnoreDeployerLock: ignoreDeployerLock,
@@ -114,9 +128,17 @@ func validateDeployFlagCombination(over deploy.Overrides) error {
 	}
 	switch over.Publish {
 	case "", deploy.PublishAuto, deploy.PublishSymlink, deploy.PublishInPlace:
-		return nil
 	default:
 		return fmt.Errorf("--publish must be %s, %s or %s", deploy.PublishAuto, deploy.PublishSymlink, deploy.PublishInPlace)
+	}
+	// Only the value is checked here: `--build=artifact` with no flag is legal
+	// when the project sets deploy.artifact_dir, and that is resolved after the
+	// configuration is loaded.
+	switch strings.ToLower(over.Build) {
+	case "", deploy.BuildAuto, deploy.BuildServer, deploy.BuildArtifact:
+		return nil
+	default:
+		return fmt.Errorf("--build must be %s, %s or %s", deploy.BuildAuto, deploy.BuildServer, deploy.BuildArtifact)
 	}
 }
 
@@ -188,6 +210,17 @@ func recipeFor(config engine.Config) deploy.Recipe {
 func deployRecipe(config engine.Config, options deploy.Options) (deploy.Recipe, deploy.Options) {
 	recipe := recipeFor(config)
 	return recipe, deploy.WithRecipeDefaults(recipe, options)
+}
+
+// deployPlanFor composes the recipe with the project's hooks and shapes the
+// result for the resolved build mode. `plan` and `deploy` share it, so the tree
+// an operator reviews is the tree the executor runs.
+func deployPlanFor(recipe deploy.Recipe, hooks []deploy.Hook, remote string, options deploy.Options) (deploy.Plan, error) {
+	plan, err := deploy.BuildPlan(recipe, hooks, remote)
+	if err != nil {
+		return deploy.Plan{}, err
+	}
+	return plan.ForBuildMode(options.Build), nil
 }
 
 // hooksFromConfig converts the project's deploy hooks, reporting the first

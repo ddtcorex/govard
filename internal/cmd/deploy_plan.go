@@ -49,13 +49,14 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	recipe, options := deployRecipe(config, options)
-	plan, err := deploy.BuildPlan(recipe, hooks, remote)
+	plan, err := deployPlanFor(recipe, hooks, remote, options)
 	if err != nil {
 		return err
 	}
 
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "Deploy plan for %s (%s @ %s)\n", remote, branchOrDetached(options), revisionOrSymbolic(options))
+	fmt.Fprintf(out, "Build mode: %s\n", options.Build)
 	fmt.Fprintf(out, "Publish strategy: %s\n\n", options.Publish)
 
 	currentStage := deploy.Stage("")
@@ -70,7 +71,12 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 		}
 		implementation := step.Command
 		switch {
-		case implementation != "":
+		case implementation != "" && !step.Skipped:
+		case step.SkipReason != "":
+			// The run's mode, not a missing recipe: name the reason so the
+			// operator can tell "this framework does not do that" from "this
+			// mode does not do that".
+			implementation = "skipped — " + step.SkipReason
 		case step.Implemented():
 			// A core step runs in the engine rather than as a shell command.
 			implementation = "implemented in the engine"
@@ -185,6 +191,7 @@ func writeDeployJSON(cmd *cobra.Command, remote string, options deploy.Options, 
 		Branch        string     `json:"branch"`
 		Revision      string     `json:"revision"`
 		Release       string     `json:"release"`
+		BuildMode     string     `json:"build_mode"`
 		Publish       string     `json:"publish"`
 		Verify        string     `json:"verify"`
 		Result        string     `json:"result"`
@@ -196,6 +203,7 @@ func writeDeployJSON(cmd *cobra.Command, remote string, options deploy.Options, 
 		Branch:        options.Branch,
 		Revision:      release.Revision,
 		Release:       release.Release,
+		BuildMode:     options.Build,
 		Publish:       options.Publish,
 		Verify:        release.Verify.Status,
 		Result:        "ok",

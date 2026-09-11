@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 
 	"govard/internal/cli"
@@ -8,6 +9,7 @@ import (
 	"govard/internal/runtime"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func cliCodeForTest(err error) int {
@@ -17,7 +19,7 @@ func cliCodeForTest(err error) int {
 func TestDeployFlagsAreTheDocumentedSet(t *testing.T) {
 	command := cmd.DeployCommand()
 	for _, name := range []string{
-		"remote", "branch", "revision", "tag", "publish", "keep", "verify", "db-backup", "lock",
+		"remote", "branch", "revision", "tag", "build", "artifact-dir", "publish", "keep", "verify", "db-backup", "lock",
 		"ignore-deployer-lock", "command-timeout", "force", "resume", "from", "yes", "json", "verbose",
 	} {
 		if command.Flags().Lookup(name) == nil {
@@ -117,6 +119,35 @@ func TestDeployRejectsAnUnknownPublishStrategy(t *testing.T) {
 	}
 }
 
+func TestDeployRejectsAnUnknownBuildMode(t *testing.T) {
+	_, err := cmd.DeployOverridesForTest([]string{"--build", "cloud"})
+	if err == nil {
+		t.Fatal("want a usage error for an unknown build mode")
+	}
+	if code := cliCodeForTest(err); code != 2 {
+		t.Fatalf("exit code = %d, want 2 (%v)", code, err)
+	}
+}
+
+func TestDeployAcceptsEachBuildModeAlone(t *testing.T) {
+	// `--build=artifact` is accepted here on purpose: whether an artifact
+	// directory exists is only knowable once the configuration is loaded.
+	for _, args := range [][]string{
+		{"--build", "auto"},
+		{"--build", "server"},
+		{"--build", "artifact", "--artifact-dir", "artifacts"},
+	} {
+		over, err := cmd.DeployOverridesForTest(args)
+		if err != nil {
+			t.Errorf("DeployOverridesForTest(%v) = %v, want no error", args, err)
+			continue
+		}
+		if over.ArtifactDir != "" && over.Build != "artifact" {
+			t.Errorf("DeployOverridesForTest(%v) = %+v, want the artifact dir preserved", args, over)
+		}
+	}
+}
+
 func TestDeployAcceptsEachSourceSelectorAlone(t *testing.T) {
 	for _, args := range [][]string{
 		{"--branch", "main"},
@@ -126,5 +157,45 @@ func TestDeployAcceptsEachSourceSelectorAlone(t *testing.T) {
 		if _, err := cmd.DeployOverridesForTest(args); err != nil {
 			t.Errorf("DeployOverridesForTest(%v) = %v, want no error", args, err)
 		}
+	}
+}
+
+func TestDeployBuildFlagsAreTheDocumentedSet(t *testing.T) {
+	command := cmd.DeployBuildCommand()
+	for _, name := range []string{"remote", "output", "branch", "revision", "tag", "force", "json", "command-timeout"} {
+		if command.Flags().Lookup(name) == nil {
+			t.Errorf("missing --%s flag on deploy build", name)
+		}
+	}
+	parent := command.Parent()
+	if parent == nil || parent.Name() != "deploy" {
+		t.Fatalf("deploy build is not attached to the deploy group: %v", parent)
+	}
+}
+
+func TestDeployBuildNeedsNeitherSSHNorRsync(t *testing.T) {
+	// The whole point of the split: the build job has the project's toolchain
+	// and the deploy job has govard, ssh and rsync. A build must run on a host
+	// with no container runtime and no target connectivity.
+	got := runtime.Requires(cmd.DeployBuildCommand())
+	if len(got) != 1 || got[0] != runtime.CapNone {
+		t.Fatalf("govard deploy build requires %v, want [none]", got)
+	}
+}
+
+func TestDeployFlagUsageStringsCarryNoBackquotes(t *testing.T) {
+	// cobra reads a backquoted token in a usage string as the flag's value
+	// placeholder, so `--artifact-dir ` + "`govard deploy build`" + ` would print the
+	// command as its own type instead of "string".
+	for _, command := range []*cobra.Command{
+		cmd.DeployCommand(), cmd.DeployPlanCommand(), cmd.DeployCheckCommand(),
+		cmd.DeployBuildCommand(), cmd.DeployRollbackCommand(), cmd.DeployReleasesCommand(),
+		cmd.DeployStatusCommand(), cmd.DeployUnlockCommand(),
+	} {
+		command.Flags().VisitAll(func(flag *pflag.Flag) {
+			if strings.Contains(flag.Usage, "`") {
+				t.Errorf("%s --%s: backquotes in the usage string become the value placeholder", command.Name(), flag.Name)
+			}
+		})
 	}
 }

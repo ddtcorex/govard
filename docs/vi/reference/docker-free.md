@@ -42,6 +42,7 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard custom` | `none` |
 | `govard custom list` | `none` |
 | `govard deploy` | `ssh,rsync` |
+| `govard deploy build` | `none` |
 | `govard deploy check` | `ssh` |
 | `govard deploy plan` | `none` |
 | `govard deploy releases` | `ssh` |
@@ -112,7 +113,11 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
   `domain list` in ra domain của project; `vscode setup` suy ra cấu hình editor từ
   chính file của project. `project orphans` quét tài nguyên Docker nên vẫn cần runtime.
 - **Triển khai.** `govard deploy` và `govard deploy rollback` cần SSH và rsync;
-  `govard deploy check`, `govard deploy releases`, `govard deploy status` và
+  `govard deploy build` cũng không cần gì: đây là nửa CI của artifact mode, chạy
+  trên runner có toolchain của dự án và không hề kết nối tới server. Chính sự
+  tách đôi này cho phép job deploy chỉ cần govard, SSH và rsync — không PHP,
+  không Composer, không container runtime. `govard deploy check`,
+  `govard deploy releases`, `govard deploy status` và
   `govard deploy unlock` chỉ cần SSH. `govard deploy plan` không cần gì cả: nó
   đọc `.govard.yml` và in kế hoạch thực thi mà không kết nối đi đâu. Rollback chỉ
   trỏ lại symlink hoặc chạy lại phần publish từ thư mục release đã có trên

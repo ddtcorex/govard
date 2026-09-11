@@ -654,6 +654,8 @@ Triển khai một revision git lên môi trường remote.
 ```bash
 govard deploy <remote>                   # triển khai HEAD ở máy local
 govard deploy staging --revision <sha>   # triển khai đúng một commit (CI)
+govard deploy build staging --output artifacts --revision <sha>   # build artifact (CI)
+govard deploy staging --artifact-dir artifacts --revision <sha>   # triển khai artifact đó
 govard deploy plan staging               # in kế hoạch, không kết nối
 govard deploy check staging              # kiểm tra trước và báo chiến lược publish
 govard deploy releases staging           # liệt kê các release trên server
@@ -685,10 +687,41 @@ chưa có recipe vẫn triển khai code qua pipeline trung tính. Task nào rec
 trống sẽ được báo là skipped, không phải lỗi.
 
 Flag: `--remote`, `--branch`, `--revision`, `--tag` (loại trừ lẫn nhau),
-`--publish=auto|symlink|in_place`, `--keep`, `--verify/--no-verify`,
-`--db-backup/--no-db-backup`, `--lock/--no-lock`, `--ignore-deployer-lock`,
-`--command-timeout`, `--resume`, `--from <task>`, `--force`, `--yes`, `--json`,
-`--verbose`.
+`--build=auto|server|artifact`, `--artifact-dir`, `--publish=auto|symlink|in_place`,
+`--keep`, `--verify/--no-verify`, `--db-backup/--no-db-backup`,
+`--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--resume`,
+`--from <task>`, `--force`, `--yes`, `--json`, `--verbose`.
+
+**Build mode.** `--build=auto` (mặc định) quyết định theo sự hiện diện, không dò
+đoán môi trường: có thư mục artifact — `--artifact-dir <dir>` hoặc
+`deploy.artifact_dir` của dự án — nghĩa là đã build xong, nên mode là `artifact`;
+ngược lại là `server`. `--build=artifact` mà không có thư mục artifact là lỗi
+cách dùng, chứ không âm thầm quay về build trên server — đúng cái mà mode này
+sinh ra để tránh.
+
+**Mô hình CI hai job.** Điểm mấu chốt của artifact mode là job chạm vào
+production không cần toolchain:
+
+| Job | Image cần gì | Lệnh |
+|---|---|---|
+| `build` | PHP, Composer, Node — bất cứ thứ gì task build của recipe cần | `govard deploy build production --output artifacts --revision $CI_COMMIT_SHA` |
+| `deploy` | govard, ssh, rsync — không gì khác | `govard deploy production --artifact-dir artifacts --revision $CI_COMMIT_SHA --yes` |
+
+`govard deploy build` materialise revision vào thư mục output, chạy các task build
+của recipe ở đó, rồi ghi `manifest.json` gồm revision, phiên bản PHP, hash
+`composer.lock` và danh sách sha256 của từng file. Lệnh này không cần target và
+không cần container runtime. Job deploy kiểm tra manifest khớp với revision đang
+triển khai và so phiên bản PHP đã ghi với PHP của server, từ chối kèm thông báo
+hành động được nếu lệch — nhờ vậy image CI không khớp server bị chặn trước khi
+publish. Deploy artifact bỏ qua 5 task build và chạy `deploy:artifact` thay thế;
+`govard deploy plan` cho biết đang ở nhánh nào.
+
+Thư mục output không rỗng sẽ bị từ chối để một file cũ từ lần build trước không
+thể lọt ra production: dùng `--force` nếu muốn thay nội dung.
+
+Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--branch`,
+`--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. Lệnh này không
+cần capability nào: `none`.
 
 `--resume` tiếp tục release mới nhất có record chưa `ok`; `--from <task>` bắt đầu
 từ một task hoặc hook được chỉ định và báo mọi bước trước đó là skipped. Cả hai
@@ -702,8 +735,8 @@ nên cần `--yes` (hoặc xác nhận tương tác).
 Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thiếu
 capability, `4` lỗi cấu hình. `govard deploy` và `govard deploy rollback` cần
 `ssh` và `rsync`; `deploy check`, `deploy releases`, `deploy status` và
-`deploy unlock` chỉ cần `ssh`; `deploy plan` không cần gì. Không lệnh nào cần
-Docker.
+`deploy unlock` chỉ cần `ssh`; `deploy build` và `deploy plan` không cần gì.
+Không lệnh nào cần Docker.
 
 ### `govard snapshot`
 

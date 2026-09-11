@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -46,10 +45,19 @@ type Release struct {
 	Path string `json:"-"`
 }
 
-// BuildRecord describes how the release was produced.
+// BuildRecord describes how the release was produced. The artifact fields are
+// empty for a server build, and their absence in a record written before
+// artifact mode existed decodes to exactly that.
 type BuildRecord struct {
 	Mode       string `json:"mode,omitempty"`
 	DurationMS int64  `json:"duration_ms,omitempty"`
+	// ArtifactRevision is the revision the artifact was built for. It is the
+	// manifest's own claim, kept next to the release it was published into so
+	// "which build is live" is answerable from the record alone.
+	ArtifactRevision string `json:"artifact_revision,omitempty"`
+	// ArtifactFiles and ArtifactBytes are what the manifest listed.
+	ArtifactFiles int   `json:"artifact_files,omitempty"`
+	ArtifactBytes int64 `json:"artifact_bytes,omitempty"`
 }
 
 // StepRecord is the outcome of one step.
@@ -134,19 +142,7 @@ func WriteRelease(ctx context.Context, host Host, release *Release) error {
 		return fmt.Errorf("encode release record: %w", err)
 	}
 
-	target := host.ReleaseRecordPath(release.Release)
-	temporary := target + ".tmp"
-	command := fmt.Sprintf(
-		"mkdir -p %s && cat > %s <<'%s'\n%s\n%s\nmv %s %s",
-		Shell(path.Dir(target)),
-		Shell(temporary),
-		releaseHeredocDelimiter,
-		string(payload),
-		releaseHeredocDelimiter,
-		Shell(temporary),
-		Shell(target),
-	)
-	if _, err := host.Runner().Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if err := writeTargetFile(ctx, host, host.ReleaseRecordPath(release.Release), payload); err != nil {
 		return fmt.Errorf("write release record %s: %w", release.Release, err)
 	}
 	return nil

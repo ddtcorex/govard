@@ -262,7 +262,11 @@ func (e *Executor) record(release *Release, step Step, status string, duration t
 	case StepFailed:
 		icon = "✖"
 	}
-	fmt.Fprintf(e.out, "  %s %-22s %8s  %s\n", icon, step.ID, duration.Round(time.Millisecond), step.Title)
+	title := step.Title
+	if status == StepSkipped && step.SkipReason != "" {
+		title += " — " + step.SkipReason
+	}
+	fmt.Fprintf(e.out, "  %s %-22s %8s  %s\n", icon, step.ID, duration.Round(time.Millisecond), title)
 }
 
 func branchLabel(branch string) string {

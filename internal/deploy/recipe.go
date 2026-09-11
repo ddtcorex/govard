@@ -236,6 +236,7 @@ func wireCoreTasks(recipe *Recipe) {
 		TaskShared:   CoreShared,
 		TaskWritable: CoreWritable,
 		TaskActivate: CoreActivate,
+		TaskArtifact: CoreArtifact,
 		TaskRecord:   CoreRecord,
 		TaskVerify:   CoreVerify,
 		TaskCleanup:  CoreCleanup,

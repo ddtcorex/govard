@@ -24,6 +24,14 @@ const (
 	PublishInPlace = "in_place"
 )
 
+// Build modes. `auto` resolves by presence, never by sniffing the environment:
+// an artifact directory means the caller already built one.
+const (
+	BuildAuto     = "auto"
+	BuildServer   = "server"
+	BuildArtifact = "artifact"
+)
+
 // Defaults applied when neither the project nor the remote configures a value.
 const (
 	DefaultCommandTimeout = 30 * time.Minute
@@ -36,6 +44,8 @@ type Overrides struct {
 	Branch             string
 	Revision           string
 	Tag                string
+	Build              string
+	ArtifactDir        string
 	Publish            string
 	KeepReleases       int
 	Verify             *bool
@@ -55,11 +65,16 @@ type Overrides struct {
 // defaults, then the project deploy block, then the per-remote override block,
 // then the flags.
 type Options struct {
-	Remote             string
-	Branch             string
-	Revision           string
-	Tag                string
-	Repository         string
+	Remote     string
+	Branch     string
+	Revision   string
+	Tag        string
+	Repository string
+	// Build is the resolved build mode: BuildServer or BuildArtifact. `auto`
+	// never reaches a caller, because a mode that still has to be decided is
+	// not a mode.
+	Build              string
+	ArtifactDir        string
 	Publish            string
 	KeepReleases       int
 	Verify             bool
@@ -134,6 +149,19 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 	if opts.Publish == "" {
 		opts.Publish = PublishAuto
 	}
+
+	// Build mode. The flag wins, the project's deploy.artifact_dir is the
+	// fallback, and the default resolves by presence: an artifact directory
+	// means "somebody already built this".
+	opts.ArtifactDir = strings.TrimSpace(over.ArtifactDir)
+	if opts.ArtifactDir == "" {
+		opts.ArtifactDir = strings.TrimSpace(effective.ArtifactDir)
+	}
+	build, err := ResolveBuildMode(over.Build, opts.ArtifactDir)
+	if err != nil {
+		return Options{}, err
+	}
+	opts.Build = build
 	if over.KeepReleases > 0 {
 		opts.KeepReleases = over.KeepReleases
 	}
@@ -182,6 +210,42 @@ func isKnownPublishStrategy(value string) bool {
 	default:
 		return false
 	}
+}
+
+// ResolveBuildMode turns the raw `--build` value into the mode the pipeline
+// runs. `auto` resolves by presence: a supplied artifact directory means the
+// build already happened, so there is nothing to guess about the environment.
+//
+// An explicit `artifact` without a directory is refused rather than silently
+// downgraded to a server build: the operator asked for a mode the run cannot
+// deliver, and building on the server instead is exactly the outcome the mode
+// exists to avoid.
+func ResolveBuildMode(requested, artifactDir string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(requested))
+	if mode == "" {
+		mode = BuildAuto
+	}
+	switch mode {
+	case BuildAuto:
+		if strings.TrimSpace(artifactDir) != "" {
+			return BuildArtifact, nil
+		}
+		return BuildServer, nil
+	case BuildServer:
+		return BuildServer, nil
+	case BuildArtifact:
+		if strings.TrimSpace(artifactDir) == "" {
+			return "", fmt.Errorf("--build=artifact needs an artifact to deploy: pass --artifact-dir <dir> or set deploy.artifact_dir")
+		}
+		return BuildArtifact, nil
+	default:
+		return "", fmt.Errorf("--build must be %s, %s or %s", BuildAuto, BuildServer, BuildArtifact)
+	}
+}
+
+// ResolveBuildModeForTest exposes ResolveBuildMode to the tests/ package.
+func ResolveBuildModeForTest(requested, artifactDir string) (string, error) {
+	return ResolveBuildMode(requested, artifactDir)
 }
 
 func validateSourceSelector(over Overrides) error {

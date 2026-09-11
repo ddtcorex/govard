@@ -37,6 +37,12 @@ type Step struct {
 	Optional bool
 	// Source records which layer contributed the step: "recipe" or "config".
 	Source string
+	// Skipped marks a step the run's mode deliberately does not perform, even
+	// though the recipe implements it. It is how the build mode's branch is
+	// visible in `govard deploy plan` without a second source of truth.
+	Skipped bool
+	// SkipReason explains a skipped step to the operator.
+	SkipReason string
 
 	// order is the hook ordering key. It is unexported because it only exists
 	// to break ties between hooks that share an anchor and a position.
@@ -50,6 +56,9 @@ type Step struct {
 // command, a Go implementation, or a hook. An unimplemented task is reported as
 // skipped by the executor, and `govard deploy plan` shows it as such.
 func (s Step) Implemented() bool {
+	if s.Skipped {
+		return false
+	}
 	return s.Command != "" || s.core != nil || s.Kind == StepHook
 }
 
@@ -122,6 +131,45 @@ func TaskPlan(recipe Recipe, id, remote string) Plan {
 		return Plan{Remote: remote}
 	}
 	return plan.Only(id)
+}
+
+// ForBuildMode returns the plan as one build mode shapes it.
+//
+// An artifact deploy does not run the build tasks: the artifact a CI runner
+// produced already holds what they generate. A server deploy does not run
+// deploy:artifact, because there is no artifact to receive. Both branches are
+// marked skipped rather than removed, so the timeline, `--from` and the resume
+// bookkeeping keep addressing the same step ids in every mode, and an operator
+// reading `govard deploy plan` sees which branch is in effect.
+func (p Plan) ForBuildMode(mode string) Plan {
+	artifact := mode == BuildArtifact
+	steps := make([]Step, len(p.Steps))
+	copy(steps, p.Steps)
+	for idx := range steps {
+		if steps[idx].Kind != StepTask {
+			continue
+		}
+		switch {
+		case artifact && artifactReplacedBuildTasks[steps[idx].ID]:
+			steps[idx].Skipped = true
+			steps[idx].SkipReason = "artifact mode: the artifact already provides this"
+		case !artifact && steps[idx].ID == TaskArtifact:
+			steps[idx].Skipped = true
+			steps[idx].SkipReason = "server mode: the target builds this release"
+		}
+	}
+	return Plan{Remote: p.Remote, Steps: steps}
+}
+
+// artifactReplacedBuildTasks are the build-stage tasks `--build=artifact`
+// replaces with deploy:artifact. The list is the engine's, not a recipe's: it
+// is the same five neutral ids for every framework.
+var artifactReplacedBuildTasks = map[string]bool{
+	TaskVendors:  true,
+	TaskPatches:  true,
+	TaskCompile:  true,
+	TaskFrontend: true,
+	TaskAssets:   true,
 }
 
 // BuildPlan composes a recipe with hooks into one deterministic plan.

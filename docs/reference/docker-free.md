@@ -42,6 +42,7 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard custom` | `none` |
 | `govard custom list` | `none` |
 | `govard deploy` | `ssh,rsync` |
+| `govard deploy build` | `none` |
 | `govard deploy check` | `ssh` |
 | `govard deploy plan` | `none` |
 | `govard deploy releases` | `ssh` |
@@ -119,7 +120,11 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   all: it reads `.govard.yml` and prints the execution plan without connecting
   anywhere. Rolling back re-points a symlink or re-runs the publish tail from a
   release directory that is already on the server, so it never needs a local
-  build toolchain.
+  build toolchain. `govard deploy build` also needs nothing: it is the CI half
+  of the artifact mode, it runs on the runner that owns the project's
+  toolchain, and it never connects to the target. That split is what lets a
+  deploy job run with govard, SSH and rsync alone — no PHP, no Composer, no
+  container runtime.
 
 - **Remote and sync.** `govard remote add|test|copy-id|exec`,
   `govard remote audit stats|tail`, and `govard sync` need SSH and rsync, not
