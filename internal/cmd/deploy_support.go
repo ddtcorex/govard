@@ -309,7 +309,7 @@ func deployPlanFor(recipe deploy.Recipe, hooks []deploy.Hook, remote string, opt
 	if err != nil {
 		return deploy.Plan{}, err
 	}
-	return plan.ForBuildMode(options.Build), nil
+	return plan.ForBuildMode(options.Build).ForPublishStrategy(options.Publish), nil
 }
 
 // hooksFromConfig converts the project's deploy hooks, reporting the first

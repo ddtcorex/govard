@@ -3,6 +3,9 @@ package tests
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -263,5 +266,84 @@ func TestMissingVerifyWarningNamesTheSetting(t *testing.T) {
 	}
 	if got := deploy.MissingVerifyWarning(empty, deploy.Options{}); got != "" {
 		t.Fatalf("an unimplemented db:migrate is not a migration, got %q", got)
+	}
+}
+
+// P6 and 9.1: an atomic symlink activation needs no maintenance window at all,
+// because nothing serving the site is being rewritten. 7.2/10.4 keep the
+// maintenance tasks in the neutral pipeline because a *migration* does need one,
+// so the window follows what the plan actually does.
+func TestPlanForPublishStrategySkipsTheMaintenanceWindowOnASymlinkActivation(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable} {
+		stage, _ := deploy.StageForTask(id)
+		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "bin/maintenance " + id})
+	}
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	symlink := plan.ForPublishStrategy(deploy.PublishSymlink)
+	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable} {
+		step := symlink.Steps[symlink.IndexOf(id)]
+		if !step.Skipped {
+			t.Errorf("%s must be skipped for a symlink activation with nothing to migrate", id)
+		}
+		if step.SkipReason == "" {
+			t.Errorf("%s must say why it was skipped", id)
+		}
+	}
+
+	inPlace := plan.ForPublishStrategy(deploy.PublishInPlace)
+	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable} {
+		if inPlace.Steps[inPlace.IndexOf(id)].Skipped {
+			t.Errorf("%s must run in place: the docroot itself is rewritten while serving", id)
+		}
+	}
+}
+
+func TestPlanForPublishStrategyKeepsTheWindowWhenTheDeployMigrates(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable, deploy.TaskDBMigrate} {
+		stage, _ := deploy.StageForTask(id)
+		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "true # " + id})
+	}
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	symlink := plan.ForPublishStrategy(deploy.PublishSymlink)
+	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable} {
+		if symlink.Steps[symlink.IndexOf(id)].Skipped {
+			t.Errorf("%s must run: a schema migration against a serving site is what the window is for", id)
+		}
+	}
+}
+
+// The skip has to reach the executor, not just the plan: the maintenance command
+// would otherwise run on a target that needs no window.
+func TestExecutorDoesNotRunASkippedMaintenanceStep(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "maintenance-ran")
+	recipe := deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskMaintenanceEnable, Stage: deploy.StagePublish, Command: "touch " + marker},
+		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "true"},
+	})
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	plan = plan.ForPublishStrategy(deploy.PublishSymlink)
+
+	if _, err := deploy.NewExecutor(
+		deploy.HostForTest(t.TempDir(), deploy.LocalRunner{}),
+		deploy.Options{Remote: "local", Publish: deploy.PublishSymlink},
+		io.Discard,
+	).Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a symlink activation with nothing to migrate ran maintenance:enable")
 	}
 }

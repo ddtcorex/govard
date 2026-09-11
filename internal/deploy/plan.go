@@ -195,6 +195,49 @@ func (p Plan) ForBuildMode(mode string) Plan {
 	return Plan{Remote: p.Remote, Steps: steps}
 }
 
+// ForPublishStrategy returns the plan as the resolved publish strategy shapes
+// it.
+//
+// An atomic symlink swap needs no maintenance window: nothing serving the site
+// is rewritten, and P6/9.1 say so. The maintenance tasks stay in the neutral
+// pipeline because a *migration* does need a window — a schema change is visible
+// to the release still serving traffic — so the window follows what this plan
+// actually does. In place, the docroot itself is rewritten while serving, so the
+// window is always needed there.
+//
+// The steps are marked skipped rather than removed, so the timeline, `--from`
+// and the resume bookkeeping keep addressing the same ids.
+func (p Plan) ForPublishStrategy(strategy string) Plan {
+	if strategy != PublishSymlink || p.needsMaintenanceWindow() {
+		return p
+	}
+	steps := make([]Step, len(p.Steps))
+	copy(steps, p.Steps)
+	for idx := range steps {
+		if steps[idx].Kind != StepTask {
+			continue
+		}
+		if steps[idx].ID == TaskMaintenanceEnable || steps[idx].ID == TaskMaintenanceDisable {
+			steps[idx].Skipped = true
+			steps[idx].SkipReason = "a symlink activation is atomic and nothing in this plan changes state the live release depends on"
+		}
+	}
+	return Plan{Remote: p.Remote, Steps: steps}
+}
+
+// needsMaintenanceWindow reports whether any task in the plan changes state the
+// release being served still depends on. The list is the engine's, not a
+// recipe's: both ids are neutral, and a recipe that leaves them empty is not a
+// migration.
+func (p Plan) needsMaintenanceWindow() bool {
+	for _, id := range []string{TaskDBMigrate, TaskAppConfigure} {
+		if p.Runs(id) {
+			return true
+		}
+	}
+	return false
+}
+
 // artifactReplacedBuildTasks are the build-stage tasks `--build=artifact`
 // replaces with deploy:artifact. The list is the engine's, not a recipe's: it
 // is the same five neutral ids for every framework.

@@ -212,6 +212,11 @@ func RunStep(ctx context.Context, host Host, opts Options, vars Vars, step Step,
 	}
 	sc := StepContext{Host: host, Runner: host.Runner(), Vars: stepVars, Release: release, Opts: opts, Out: out, Checks: step.Checks}
 
+	// A step the plan marked skipped is not run here either: the executor and
+	// this entry point have to agree on what "skipped" means.
+	if step.Skipped {
+		return nil
+	}
 	if step.core != nil {
 		return step.core(ctx, &sc)
 	}
