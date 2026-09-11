@@ -301,3 +301,42 @@ func TestDeployJSONIsAMachineReadableContract(t *testing.T) {
 		t.Errorf("a failed deploy must say what failed: %v", failure)
 	}
 }
+
+// Spec 5.2 makes an unknown `deploy.settings` key a configuration error (exit 4),
+// which is what `/reference/cli-commands` already documents. Without it a typo was
+// a silent no-op.
+func TestDeployRefusesAnUnknownSetting(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-unknown-setting")
+	origin, revision := seedDeployOrigin(t)
+	deployRoot := t.TempDir()
+
+	override := fmt.Sprintf(`deploy:
+  settings:
+    shared_file: app/etc/env.php
+remotes:
+  local:
+    host: 127.0.0.1
+    user: deployer
+    path: %s/public_html
+    deploy_path: %s/.deployer
+    branch: main
+    repository: %s
+    local: true
+`, deployRoot, deployRoot, origin)
+	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(override), 0o644); err != nil {
+		t.Fatalf("failed to write .govard.local.yml: %v", err)
+	}
+
+	result := env.RunGovard(t, projectDir, "deploy", "local", "--revision", revision, "--error-json")
+	result.AssertExitCode(t, 4)
+	if !strings.Contains(result.Stdout, `"code": "CONFIG"`) {
+		t.Fatalf("an unknown setting must carry the CONFIG envelope, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout+result.Stderr, "shared_file") {
+		t.Fatalf("the refusal must name the key, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout+result.Stderr, "shared_files") {
+		t.Fatalf("the refusal must suggest the near miss, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+}

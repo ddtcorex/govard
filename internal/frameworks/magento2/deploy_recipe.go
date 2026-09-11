@@ -108,6 +108,23 @@ func DeployRecipe() deploy.Recipe {
 
 	recipe.Restore = magentoRestoreCommand
 
+	// The keys this recipe reads. The engine's own keys arrive already declared
+	// through DefaultRecipe, so only the framework-specific ones are named here.
+	recipe.Settings = append(recipe.Settings, []deploy.Setting{
+		{Key: "frontend_dir", Kind: deploy.SettingString, Title: "the theme's Tailwind directory; empty skips the frontend build"},
+		{Key: "frontend_command", Kind: deploy.SettingString, Title: "the command run inside frontend_dir"},
+		{Key: "static_jobs", Kind: deploy.SettingInt, Title: "parallelism for static content deployment"},
+		{Key: "static_content_locales", Kind: deploy.SettingArgs, Title: "locales to deploy (string, list or map)"},
+		{Key: "magento_themes", Kind: deploy.SettingArgs, Title: "themes to deploy (string, list or theme-to-locales map)"},
+		{Key: "mage_mode", Kind: deploy.SettingString, Title: "production or developer; developer skips static content"},
+		{Key: "worker_control", Kind: deploy.SettingBool, Title: "remove cron and stop consumers around the migration"},
+		{Key: "runtime_reload_command", Kind: deploy.SettingString, Title: "run after the cache flush, for example an FPM reload"},
+
+		// Declared as unsupported rather than left unknown: the spec lists it,
+		// so a project that sets it would otherwise believe it is in effect.
+		{Key: "split_static_deployment", Kind: deploy.SettingUnsupported, Title: "static content deploys in one pass; the adminhtml/frontend split is not implemented"},
+	}...)
+
 	// The two verifications the core cannot supply, because both need the
 	// deployed application rather than only its files. Declaration order is the
 	// order the verify stage runs them in.

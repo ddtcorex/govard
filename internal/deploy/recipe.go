@@ -195,6 +195,10 @@ type Recipe struct {
 	// Checks are the framework's post-publish verifications. The core runs them
 	// in `deploy:verify`, in declaration order, after its own checks.
 	Checks []Check
+	// Settings declares the `deploy.settings` keys this recipe understands, so an
+	// unknown or misshapen value is a configuration error rather than a silent
+	// no-op (spec 5.2). DefaultRecipe declares the engine's own keys.
+	Settings []Setting
 	// Defaults are layered under the project's deploy settings (see
 	// WithRecipeDefaults). A value may be an ArgsSpec, which is rendered into
 	// "<key>_args" rather than stored.
@@ -249,7 +253,11 @@ func DefaultRecipe() Recipe {
 			RunOn: RunRemote,
 		})
 	}
-	recipe := Recipe{ID: "default", Tasks: tasks}
+	recipe := Recipe{
+		ID:       "default",
+		Tasks:    tasks,
+		Settings: append([]Setting(nil), engineSettings...),
+	}
 	wireCoreTasks(&recipe)
 	return recipe
 }

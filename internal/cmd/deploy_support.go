@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"govard/internal/cli"
@@ -293,12 +292,21 @@ func recipeFor(config engine.Config) deploy.Recipe {
 	return deploy.DefaultRecipe()
 }
 
-// deployRecipe resolves the recipe and layers its defaults under the options, so
-// `plan` and `deploy` can never disagree about the values a command expands
-// with: both go through here.
-func deployRecipe(config engine.Config, options deploy.Options) (deploy.Recipe, deploy.Options) {
+// deployRecipe resolves the recipe, validates the project's settings against it,
+// and layers the recipe's defaults under the options — so `plan`, `check`,
+// `build` and `deploy` can never disagree about the values a command expands
+// with, and a setting the recipe does not know is refused before anything runs
+// (spec 5.2, exit 4).
+//
+// The validation sees the settings as the operator wrote them: the recipe's own
+// defaults are layered afterwards, so a key govard invented is never mistaken for
+// one a project configured.
+func deployRecipe(config engine.Config, options deploy.Options) (deploy.Recipe, deploy.Options, error) {
 	recipe := recipeFor(config)
-	return recipe, deploy.WithRecipeDefaults(recipe, options)
+	if err := deploy.ValidateSettings(recipe, options.Settings); err != nil {
+		return deploy.Recipe{}, deploy.Options{}, err
+	}
+	return recipe, deploy.WithRecipeDefaults(recipe, options), nil
 }
 
 // deployPlanFor composes the recipe with the project's hooks and shapes the
@@ -380,23 +388,7 @@ func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
 // `[ "{{settings.worker_control}}" = "true" ]` must not fail with "unknown
 // variable" just because the configuration expressed the value as a bool.
 func settingText(value any) (string, bool) {
-	switch typed := value.(type) {
-	case string:
-		return typed, true
-	case bool:
-		return strconv.FormatBool(typed), true
-	case int:
-		return strconv.Itoa(typed), true
-	case int64:
-		return strconv.FormatInt(typed, 10), true
-	case float64:
-		if typed == float64(int64(typed)) {
-			return strconv.FormatInt(int64(typed), 10), true
-		}
-		return strconv.FormatFloat(typed, 'f', -1, 64), true
-	default:
-		return "", false
-	}
+	return deploy.SettingText(value)
 }
 
 // DeployVarsForTest exposes deployVars to the tests/ package.

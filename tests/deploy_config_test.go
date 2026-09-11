@@ -2,6 +2,7 @@ package tests
 
 import (
 	"errors"
+	"govard/internal/frameworks/magento2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -385,5 +386,100 @@ remotes:
 	}
 	if _, err := deploy.ResolveOptionsForTest(loaded, "local", deploy.Overrides{}); !errors.Is(err, deploy.ErrInvalidConfiguration) {
 		t.Fatalf("a malformed duration must be a configuration error, got %v", err)
+	}
+}
+
+// Spec 5.2: the recipe validates `deploy.settings` and reports an unknown or
+// invalid key as a configuration error. Without it a typo was silently ignored:
+// `static_content_locale: en_US` shipped content in every locale the recipe
+// happened to default to.
+func TestValidateSettingsRefusesWhatTheRecipeDoesNotKnow(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+
+	err := deploy.ValidateSettings(recipe, map[string]any{"static_content_locale": "en_US"})
+	if !errors.Is(err, deploy.ErrInvalidConfiguration) {
+		t.Fatalf("err = %v, want ErrInvalidConfiguration", err)
+	}
+	if !strings.Contains(err.Error(), "static_content_locale") {
+		t.Fatalf("the refusal must name the key, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "static_content_locales") {
+		t.Fatalf("the refusal must suggest the near miss, got %q", err.Error())
+	}
+
+	// A key the engine reads is known to every recipe, including the neutral one.
+	if err := deploy.ValidateSettings(deploy.DefaultRecipe(), map[string]any{"shared_files": []string{"app/etc/env.php"}}); err != nil {
+		t.Fatalf("an engine setting must be known: %v", err)
+	}
+	if err := deploy.ValidateSettings(deploy.DefaultRecipe(), map[string]any{"mage_mode": "production"}); !errors.Is(err, deploy.ErrInvalidConfiguration) {
+		t.Fatalf("a framework setting must be unknown to the neutral recipe, got %v", err)
+	}
+}
+
+func TestValidateSettingsChecksTheShape(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+
+	valid := map[string]any{
+		"shared_files":           []string{"app/etc/env.php"},
+		"shared_dirs":            []any{"var/log", "pub/media"},
+		"writable_mode":          "chmod",
+		"static_jobs":            4,
+		"worker_control":         true,
+		"mage_mode":              "production",
+		"magento_themes":         []string{"Magento/luma"},
+		"static_content_locales": []any{"en_US", "fr_FR"},
+		"content_version":        "",
+		// The shared-path readers accept a bare string as well as a list, so
+		// validation must not refuse what works.
+		"sync_paths": "vendor",
+	}
+	if err := deploy.ValidateSettings(recipe, valid); err != nil {
+		t.Fatalf("every declared shape must validate: %v", err)
+	}
+
+	// Each of these is silently wrong today: a number where the engine asserts a
+	// string is read as empty, "four" is handed to `-j`, "yes" never equals the
+	// "true" the recipe compares against, and a number where the theme list
+	// belongs deploys every theme instead of the intended one.
+	invalid := map[string]any{
+		"mage_mode":      42,
+		"static_jobs":    "four",
+		"worker_control": "yes",
+		"magento_themes": 42,
+		"shared_dirs":    map[string]any{"var/log": true},
+	}
+	for key, value := range invalid {
+		err := deploy.ValidateSettings(recipe, map[string]any{key: value})
+		if !errors.Is(err, deploy.ErrInvalidConfiguration) {
+			t.Errorf("deploy.settings.%s = %#v must be refused, got %v", key, value, err)
+			continue
+		}
+		if !strings.Contains(err.Error(), key) {
+			t.Errorf("the refusal for %s must name it, got %q", key, err.Error())
+		}
+	}
+}
+
+// A key the spec names but the recipe does not implement is declared as such, so
+// a project setting it gets "not implemented" rather than a silent no-op.
+func TestValidateSettingsNamesAnUnimplementedKey(t *testing.T) {
+	err := deploy.ValidateSettings(magento2.DeployRecipe(), map[string]any{"split_static_deployment": true})
+	if !errors.Is(err, deploy.ErrInvalidConfiguration) {
+		t.Fatalf("err = %v, want ErrInvalidConfiguration", err)
+	}
+	if !strings.Contains(err.Error(), "not implemented") {
+		t.Fatalf("the refusal must say the key is unimplemented, got %q", err.Error())
+	}
+}
+
+// The rendered argument lists the recipe itself produces must not be mistaken for
+// project typos.
+func TestValidateSettingsAcceptsRenderedArgumentLists(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Settings: map[string]any{"magento_themes": []string{"Magento/luma"}},
+	})
+	if err := deploy.ValidateSettings(recipe, options.Settings); err != nil {
+		t.Fatalf("the settings the engine renders must validate: %v", err)
 	}
 }

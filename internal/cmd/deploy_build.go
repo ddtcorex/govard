@@ -90,7 +90,10 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return configOrUsageError(err)
 	}
-	recipe, options := deployRecipe(config, options)
+	recipe, options, err := deployRecipe(config, options)
+	if err != nil {
+		return configOrUsageError(err)
+	}
 
 	absolute, err := filepath.Abs(output)
 	if err != nil {
