@@ -508,6 +508,13 @@ func CoreArtifact(ctx context.Context, sc *StepContext) error {
 	if manifest.FileCount == 0 && len(manifest.Files) == 0 {
 		return fmt.Errorf("the artifact at %s holds no files; run `govard deploy build` first", artifactDir)
 	}
+	// The hashes are checked here, on the machine the artifact is on, before
+	// anything is transferred: a truncated cache download or a half-written
+	// build is otherwise indistinguishable from a good one until the site serves
+	// it.
+	if err := manifest.Verify(artifactDir); err != nil {
+		return fmt.Errorf("the artifact at %s does not match its own manifest: %w", artifactDir, err)
+	}
 
 	revision := strings.TrimSpace(sc.Opts.Revision)
 	if revision == "" {

@@ -342,3 +342,30 @@ func TestCoreArtifactRefusesAnEmptyArtifact(t *testing.T) {
 		t.Fatalf("the refusal must name the command that produces one, got %q", err.Error())
 	}
 }
+
+// The manifest's hashes are the only thing that separates an artifact CI built
+// from one a truncated cache download left behind, so deploy:artifact has to
+// check them before the release is populated rather than after a visitor finds
+// out. The check itself already existed and was unit-tested; nothing called it.
+func TestCoreArtifactRefusesAnArtifactThatNoLongerMatchesItsManifest(t *testing.T) {
+	artifactDir, releaseDir := artifactFixture(t, "abc123")
+	writeFile(t, filepath.Join(artifactDir, "vendor", "autoload.php"), "<?php // tampered\n")
+
+	host := deploy.HostForTest(filepath.Dir(filepath.Dir(releaseDir)), deploy.LocalRunner{})
+	release := deploy.NewRelease("1", "abc123", "main")
+	release.Path = releaseDir
+	sc := deploy.StepContextForTest(host, deploy.Options{Build: deploy.BuildArtifact, ArtifactDir: artifactDir})
+	sc.Release = release
+
+	err := deploy.CoreArtifact(context.Background(), sc)
+	if err == nil {
+		t.Fatal("deploy:artifact accepted an artifact modified after the build")
+	}
+	if !strings.Contains(err.Error(), "autoload.php") {
+		t.Fatalf("the error must name the damaged file, got %q", err.Error())
+	}
+	// The check gates the upload: a corrupt artifact must not reach the release.
+	if _, statErr := os.Stat(filepath.Join(releaseDir, "vendor", "autoload.php")); statErr == nil {
+		t.Fatal("the corrupt artifact was uploaded into the release anyway")
+	}
+}
