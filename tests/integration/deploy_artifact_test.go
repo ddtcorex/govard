@@ -100,10 +100,16 @@ func TestDeployArtifactBuildAndDeploy(t *testing.T) {
 	}
 }
 
-// TestDeployArtifactModeSkipsTheServerBuild proves the mode really is the branch
-// it claims: the plan says the build tasks are skipped, and the run does not
-// execute them. The fixture's recipe has no build tasks, so the observable
-// evidence is the plan plus the presence of the artifact step.
+// TestDeployArtifactModeSkipsTheServerBuild pins what `deploy plan` reports for
+// this mode: the build tasks are marked skipped, and the reason says why.
+//
+// It cannot observe whether the run executes them — the fixture's recipe
+// declares no build tasks, so there is nothing to execute either way. That
+// contract is pinned by TestExecutorDoesNotRunAStepThePlanMarkedSkipped in the
+// unit suite, which puts a marked-skipped build task in front of a real
+// executor. Keep the two apart: a plan assertion is not a run assertion, and
+// reading this one as proof of the other is how the executor silently ignored
+// the skip in the first place.
 func TestDeployArtifactModeSkipsTheServerBuild(t *testing.T) {
 	env := NewTestEnvironment(t)
 	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-artifact-plan")
