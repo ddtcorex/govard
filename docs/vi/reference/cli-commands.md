@@ -656,6 +656,12 @@ govard deploy <remote>                   # triển khai HEAD ở máy local
 govard deploy staging --revision <sha>   # triển khai đúng một commit (CI)
 govard deploy plan staging               # in kế hoạch, không kết nối
 govard deploy check staging              # kiểm tra trước và báo chiến lược publish
+govard deploy releases staging           # liệt kê các release trên server
+govard deploy status                     # mỗi môi trường đang chạy revision nào
+govard deploy rollback staging           # đưa release trước đó trở lại
+govard deploy rollback staging --to 12   # ... hoặc một release chỉ định
+govard deploy rollback staging --with-db --yes   # ... kèm cả dump database
+govard deploy unlock staging --force     # giải phóng lock do lần deploy lỗi
 ```
 
 Đích là một remote trong `.govard.yml`. Branch, repository, deploy path và chiến
@@ -673,13 +679,30 @@ deploy:
     - { name: apache-reload, on: "publish:activate", position: after, order: 10, run: "touch ~/apache-reload" }
 ```
 
+Mỗi framework tự đóng góp recipe của mình thay vì govard rẽ nhánh theo tên
+framework: `magento2` điền các task build/publish bằng lệnh Magento, còn framework
+chưa có recipe vẫn triển khai code qua pipeline trung tính. Task nào recipe bỏ
+trống sẽ được báo là skipped, không phải lỗi.
+
 Flag: `--remote`, `--branch`, `--revision`, `--tag` (loại trừ lẫn nhau),
 `--publish=auto|symlink|in_place`, `--keep`, `--verify/--no-verify`,
-`--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--force`,
-`--yes`, `--json`, `--verbose`.
+`--db-backup/--no-db-backup`, `--lock/--no-lock`, `--ignore-deployer-lock`,
+`--command-timeout`, `--resume`, `--from <task>`, `--force`, `--yes`, `--json`,
+`--verbose`.
+
+`--resume` tiếp tục release mới nhất có record chưa `ok`; `--from <task>` bắt đầu
+từ một task hoặc hook được chỉ định và báo mọi bước trước đó là skipped. Cả hai
+đều là đường phục hồi do người vận hành chủ động yêu cầu, không tự động.
+
+`govard deploy rollback` không bao giờ build lại: layout symlink được trỏ lại,
+còn layout in-place chạy lại phần publish từ thư mục release đã có trên server.
+`--with-db` phục hồi dump mà release đó đã ghi lại và sẽ phá huỷ dữ liệu hiện tại,
+nên cần `--yes` (hoặc xác nhận tương tác).
 
 Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thiếu
-capability, `4` lỗi cấu hình. `govard deploy` cần `ssh` và `rsync`; không cần
+capability, `4` lỗi cấu hình. `govard deploy` và `govard deploy rollback` cần
+`ssh` và `rsync`; `deploy check`, `deploy releases`, `deploy status` và
+`deploy unlock` chỉ cần `ssh`; `deploy plan` không cần gì. Không lệnh nào cần
 Docker.
 
 ### `govard snapshot`

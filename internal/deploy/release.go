@@ -26,19 +26,20 @@ const ReleaseTool = "govard"
 // Release is the durable record of one deploy. It is the only state the engine
 // keeps: resume, rollback and status all read it rather than a side file.
 type Release struct {
-	SchemaVersion int           `json:"schema_version"`
-	Tool          string        `json:"tool"`
-	Release       string        `json:"release"`
-	Revision      string        `json:"revision"`
-	Branch        string        `json:"branch"`
-	Repository    string        `json:"repository,omitempty"`
-	CreatedAt     string        `json:"created_at"`
-	CreatedBy     string        `json:"created_by"`
-	Build         BuildRecord   `json:"build"`
-	Tasks         []StepRecord  `json:"tasks,omitempty"`
-	Publish       PublishRecord `json:"publish"`
-	Verify        VerifyRecord  `json:"verify"`
-	Status        string        `json:"status"`
+	SchemaVersion int            `json:"schema_version"`
+	Tool          string         `json:"tool"`
+	Release       string         `json:"release"`
+	Revision      string         `json:"revision"`
+	Branch        string         `json:"branch"`
+	Repository    string         `json:"repository,omitempty"`
+	CreatedAt     string         `json:"created_at"`
+	CreatedBy     string         `json:"created_by"`
+	Build         BuildRecord    `json:"build"`
+	Tasks         []StepRecord   `json:"tasks,omitempty"`
+	Publish       PublishRecord  `json:"publish"`
+	Verify        VerifyRecord   `json:"verify"`
+	Database      DatabaseRecord `json:"database"`
+	Status        string         `json:"status"`
 
 	// Path is where this release lives on the target. It is local knowledge,
 	// never part of the stored record.
@@ -70,6 +71,13 @@ type PublishRecord struct {
 type VerifyRecord struct {
 	Status string        `json:"status,omitempty"`
 	Checks []CheckResult `json:"checks,omitempty"`
+}
+
+// DatabaseRecord is the pre-migration dump a release was taken with. It is what
+// `govard deploy rollback --with-db` restores, and its absence is a refusal
+// rather than a guess.
+type DatabaseRecord struct {
+	Backup string `json:"backup,omitempty"`
 }
 
 // CheckResult is one verification check.

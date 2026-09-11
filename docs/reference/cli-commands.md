@@ -694,6 +694,12 @@ govard deploy <remote>                   # deploy the local HEAD
 govard deploy staging --revision <sha>   # deploy an exact commit (CI)
 govard deploy plan staging               # print the plan, connect nowhere
 govard deploy check staging              # preflight and report the publish strategy
+govard deploy releases staging           # list the releases on the target
+govard deploy status                     # what every environment is serving
+govard deploy rollback staging           # put the previous release back
+govard deploy rollback staging --to 12   # ... or a named one
+govard deploy rollback staging --with-db --yes   # ... and its database dump
+govard deploy unlock staging --force     # release a lock a failed run left behind
 ```
 
 The target is a remote from `.govard.yml`. The branch, repository, deploy path
@@ -712,14 +718,32 @@ deploy:
     - { name: apache-reload, on: "publish:activate", position: after, order: 10, run: "touch ~/apache-reload" }
 ```
 
+A framework contributes its own recipe rather than govard branching on a
+framework name: `magento2` fills the build and publish tasks with Magento
+commands, and a framework without a recipe still deploys code through the
+neutral pipeline. Every step a recipe leaves empty is reported as skipped, not
+as a failure.
+
 Flags: `--remote`, `--branch`, `--revision`, `--tag` (mutually exclusive),
 `--publish=auto|symlink|in_place`, `--keep`, `--verify/--no-verify`,
-`--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--force`,
-`--yes`, `--json`, `--verbose`.
+`--db-backup/--no-db-backup`, `--lock/--no-lock`, `--ignore-deployer-lock`,
+`--command-timeout`, `--resume`, `--from <task>`, `--force`, `--yes`, `--json`,
+`--verbose`.
+
+`--resume` continues the newest release whose record is not `ok`; `--from <task>`
+starts at a named task or hook and reports everything before it as skipped. Both
+are recovery paths an operator asks for explicitly — neither is automatic.
+
+`govard deploy rollback` never rebuilds: a symlink layout is re-pointed, and an
+in-place layout re-runs the publish tail from the release directory already on
+the server. `--with-db` restores the dump recorded by that release and destroys
+current data, so it needs `--yes` (or an interactive confirmation).
 
 Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
-capability, `4` configuration. `govard deploy` needs `ssh` and `rsync`; it does
-not need Docker.
+capability, `4` configuration. `govard deploy` and `govard deploy rollback` need
+`ssh` and `rsync`; `deploy check`, `deploy releases`, `deploy status` and
+`deploy unlock` need only `ssh`; `deploy plan` needs nothing. None of them need
+Docker.
 
 ### `govard snapshot`
 

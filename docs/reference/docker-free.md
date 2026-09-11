@@ -44,6 +44,9 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard deploy` | `ssh,rsync` |
 | `govard deploy check` | `ssh` |
 | `govard deploy plan` | `none` |
+| `govard deploy releases` | `ssh` |
+| `govard deploy rollback` | `ssh,rsync` |
+| `govard deploy status` | `ssh` |
 | `govard deploy unlock` | `ssh` |
 | `govard desktop doctor` | `none` |
 | `govard doctor` | `none` |
@@ -110,9 +113,13 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   `domain list` prints the project's domains; `vscode setup` derives the editor
   settings from the project's own files. `project orphans` inspects Docker
   resources, so it keeps the requirement.
-- **Deployment.** `govard deploy` needs SSH and rsync, `govard deploy check`
-  needs SSH, and `govard deploy plan` needs nothing at all: it reads
-  `.govard.yml` and prints the execution plan without connecting anywhere.
+- **Deployment.** `govard deploy` and `govard deploy rollback` need SSH and
+  rsync; `govard deploy check`, `govard deploy releases`, `govard deploy status`
+  and `govard deploy unlock` need SSH. `govard deploy plan` needs nothing at
+  all: it reads `.govard.yml` and prints the execution plan without connecting
+  anywhere. Rolling back re-points a symlink or re-runs the publish tail from a
+  release directory that is already on the server, so it never needs a local
+  build toolchain.
 
 - **Remote and sync.** `govard remote add|test|copy-id|exec`,
   `govard remote audit stats|tail`, and `govard sync` need SSH and rsync, not

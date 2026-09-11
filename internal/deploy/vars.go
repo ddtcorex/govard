@@ -24,11 +24,12 @@ var ErrUnknownVariable = errors.New("unknown deploy variable")
 type Vars struct {
 	values map[string]string
 	paths  map[string]bool
+	raw    map[string]bool
 }
 
 // NewVars returns an empty variable set.
 func NewVars() Vars {
-	return Vars{values: map[string]string{}, paths: map[string]bool{}}
+	return Vars{values: map[string]string{}, paths: map[string]bool{}, raw: map[string]bool{}}
 }
 
 // Set records a plain value.
@@ -41,6 +42,16 @@ func (v Vars) Set(key, value string) Vars {
 func (v Vars) SetPath(key, value string) Vars {
 	v.values[key] = value
 	v.paths[key] = true
+	return v
+}
+
+// SetRaw records a value that is substituted verbatim, with no quoting. It
+// exists for argument lists the recipe already rendered (a list of locales, a
+// theme list): quoting them would turn several arguments into one. It is never
+// used for a value that came from outside the project configuration.
+func (v Vars) SetRaw(key, value string) Vars {
+	v.values[key] = value
+	v.raw[key] = true
 	return v
 }
 
@@ -61,6 +72,9 @@ func (v Vars) Expand(raw string) (string, error) {
 		}
 		if v.paths[name] {
 			return remote.QuoteRemotePath(value)
+		}
+		if v.raw[name] {
+			return value
 		}
 		return conventions.ShellQuote(value)
 	})

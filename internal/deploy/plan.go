@@ -69,6 +69,61 @@ func (p Plan) StepIDs() []string {
 	return ids
 }
 
+// IndexOf returns the position of a step, or -1. A hook id ("hook:<name>") is
+// addressable exactly like a task id, which is what makes `--from hook:x` work.
+func (p Plan) IndexOf(id string) int {
+	for idx, step := range p.Steps {
+		if step.ID == id {
+			return idx
+		}
+	}
+	return -1
+}
+
+// From returns the sub-plan that starts at the first step with the given id,
+// including that step. found is false when the id is not in the plan.
+//
+// It is how a recovery command re-runs part of a pipeline — rollback re-runs
+// the publish tail from the existing release directory instead of rebuilding.
+func (p Plan) From(id string) (Plan, bool) {
+	index := p.IndexOf(id)
+	if index < 0 {
+		return Plan{}, false
+	}
+	steps := make([]Step, len(p.Steps)-index)
+	copy(steps, p.Steps[index:])
+	return Plan{Remote: p.Remote, Steps: steps}, true
+}
+
+// Only returns the sub-plan holding just the named steps, in plan order. A name
+// that is not in the plan contributes nothing, so a caller that wants an
+// optional step to run can ask for it unconditionally.
+func (p Plan) Only(ids ...string) Plan {
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		wanted[id] = true
+	}
+	steps := make([]Step, 0, len(ids))
+	for _, step := range p.Steps {
+		if wanted[step.ID] {
+			steps = append(steps, step)
+		}
+	}
+	return Plan{Remote: p.Remote, Steps: steps}
+}
+
+// TaskPlan returns a one-step plan for a task id, used by commands that run a
+// single task outside the pipeline. An id the recipe does not declare produces
+// an empty plan rather than an error: the caller decides whether that is a
+// refusal.
+func TaskPlan(recipe Recipe, id, remote string) Plan {
+	plan, err := BuildPlan(recipe, nil, remote)
+	if err != nil {
+		return Plan{Remote: remote}
+	}
+	return plan.Only(id)
+}
+
 // BuildPlan composes a recipe with hooks into one deterministic plan.
 //
 // The plan carries exactly the tasks the recipe declares, ordered by the

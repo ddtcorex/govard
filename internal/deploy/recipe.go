@@ -164,11 +164,18 @@ func (t Task) IsEmpty() bool {
 // that owns the framework registry, because internal/deploy must not import
 // internal/frameworks.
 type Recipe struct {
-	ID       string
-	Extends  string
-	Tasks    []Task
-	Hooks    []Hook
+	ID      string
+	Extends string
+	Tasks   []Task
+	Hooks   []Hook
+	// Defaults are layered under the project's deploy settings (see
+	// WithRecipeDefaults). A value may be an ArgsSpec, which is rendered into
+	// "<key>_args" rather than stored.
 	Defaults map[string]any
+	// Restore is the command template that loads the release's recorded
+	// database dump back. It is empty for a framework with no dump support, and
+	// `rollback --with-db` refuses rather than guessing.
+	Restore string
 }
 
 // Task returns the declared task with the given id, or the zero Task when this
@@ -181,6 +188,21 @@ func (r Recipe) Task(id string) Task {
 		}
 	}
 	return Task{}
+}
+
+// ReplaceTask swaps a declared task for a modified copy. Replacing rather than
+// appending is what keeps a recipe that starts from DefaultRecipe() equivalent
+// to one that declares its tasks explicitly: the task is still declared once.
+// The receiver is a pointer because a recipe is assembled into a copy of the
+// default pipeline.
+func (r *Recipe) ReplaceTask(task Task) {
+	for idx := range r.Tasks {
+		if r.Tasks[idx].ID == task.ID {
+			r.Tasks[idx] = task
+			return
+		}
+	}
+	r.Tasks = append(r.Tasks, task)
 }
 
 // DefaultRecipe declares every neutral task. The framework-specific steps are

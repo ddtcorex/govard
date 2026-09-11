@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"govard/internal/conventions"
 )
 
 // Prepare-stage failures. They are all detectable before anything live changes,
@@ -394,6 +396,34 @@ func CoreWritable(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("release path is unknown; deploy:release must run first")
 	}
 
+	mode := settingsString(sc.Opts.Settings, "writable_mode")
+	if mode == "" {
+		mode = writableModeChmod
+	}
+	if mode == writableModeSkip {
+		return nil
+	}
+	// The four modes mirror what another deploy tool calls them, so a project
+	// migrating over keeps the semantics it already relies on. The deploying SSH
+	// user is frequently not the web server's runtime user, which is why the
+	// ownership half exists at all.
+	doChmod := mode == writableModeChmod || mode == writableModeChmodChown
+	doChown := mode == writableModeChown || mode == writableModeChmodChown
+	if !doChmod && !doChown {
+		return fmt.Errorf("unsupported writable_mode %q; use %s, %s, %s or %s",
+			mode, writableModeChmod, writableModeChown, writableModeChmodChown, writableModeSkip)
+	}
+	owner := settingsString(sc.Opts.Settings, "owner")
+	if doChown && owner == "" {
+		// Guessing an owner would silently produce a release the web server
+		// cannot read, which is worse than refusing.
+		return fmt.Errorf("writable_mode %q needs deploy.settings.owner (user:group) to be set", mode)
+	}
+	modeBits := settingsString(sc.Opts.Settings, "writable_permissions")
+	if modeBits == "" {
+		modeBits = defaultWritablePermissions
+	}
+
 	paths := settingsStringList(sc.Opts.Settings, "writable_dirs")
 	if len(paths) == 0 {
 		paths = []string{"."}
@@ -402,9 +432,12 @@ func CoreWritable(ctx context.Context, sc *StepContext) error {
 		target := releasePath + "/" + entry
 		// A fresh checkout legitimately lacks generated/, pub/static and var/,
 		// so the writable step creates them before applying the mode.
-		command := "mkdir -p " + Shell(target) + " && chmod -R 0775 " + Shell(target)
-		if owner := settingsString(sc.Opts.Settings, "owner"); owner != "" {
-			command += " && chown -R " + owner + " " + Shell(target)
+		command := "mkdir -p " + Shell(target)
+		if doChmod {
+			command += " && chmod -R " + Shell(modeBits) + " " + Shell(target)
+		}
+		if doChown {
+			command += " && chown -R " + conventions.ShellQuote(owner) + " " + Shell(target)
 		}
 		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
 			return fmt.Errorf("apply writable mode to %s: %w", entry, err)
@@ -412,6 +445,17 @@ func CoreWritable(ctx context.Context, sc *StepContext) error {
 	}
 	return nil
 }
+
+// The writable modes a project may choose. They are settings, not task ids:
+// every framework's release directory has the same permission problem.
+const (
+	writableModeChmod      = "chmod"
+	writableModeChown      = "chown"
+	writableModeChmodChown = "chmod+chown"
+	writableModeSkip       = "skip"
+
+	defaultWritablePermissions = "0775"
+)
 
 func releasePathOf(sc *StepContext) string {
 	if sc.Release != nil && sc.Release.Path != "" {

@@ -3,6 +3,7 @@ package types
 import (
 	"text/template"
 
+	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/engine/remote"
@@ -82,6 +83,7 @@ type FrameworkPatch struct {
 	TablePrefixDetector                     Override[engine.TablePrefixDetector]
 	ResolveBootstrapTablePrefix             Override[func(string) (string, error)]
 	BuildDeployLocalesQuery                 Override[func(string) string]
+	DeployRecipe                            Override[func() deploy.Recipe]
 	BootstrapPlanSteps                      Override[func(bool) []BootstrapPlanStep]
 	EnableVarnishOnInit                     Override[bool]
 	VersionProfileResolver                  Override[engine.VersionProfileResolver]
@@ -166,6 +168,7 @@ func (s FrameworkSpec) Resolve(parent FrameworkDefinition) FrameworkDefinition {
 	s.Patch.TablePrefixDetector.apply(&resolved.TablePrefixDetector)
 	s.Patch.ResolveBootstrapTablePrefix.apply(&resolved.ResolveBootstrapTablePrefix)
 	s.Patch.BuildDeployLocalesQuery.apply(&resolved.BuildDeployLocalesQuery)
+	s.Patch.DeployRecipe.apply(&resolved.DeployRecipe)
 	s.Patch.BootstrapPlanSteps.apply(&resolved.BootstrapPlanSteps)
 	s.Patch.EnableVarnishOnInit.apply(&resolved.EnableVarnishOnInit)
 	s.Patch.VersionProfileResolver.apply(&resolved.VersionProfileResolver)

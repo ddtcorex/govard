@@ -39,10 +39,12 @@ type Overrides struct {
 	Publish            string
 	KeepReleases       int
 	Verify             *bool
+	DBBackup           *bool
 	Lock               *bool
 	IgnoreDeployerLock bool
 	CommandTimeout     time.Duration
 	Resume             bool
+	From               string
 	Force              bool
 	Yes                bool
 	JSON               bool
@@ -63,10 +65,12 @@ type Options struct {
 	Verify             bool
 	VerifyURL          string
 	VerifyTimeout      time.Duration
+	DBBackup           bool
 	Lock               bool
 	IgnoreDeployerLock bool
 	CommandTimeout     time.Duration
 	Resume             bool
+	From               string
 	Force              bool
 	Yes                bool
 	JSON               bool
@@ -95,6 +99,7 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 		Publish:        remoteCfg.Publish,
 		KeepReleases:   effective.KeepReleasesOr(),
 		Verify:         true,
+		DBBackup:       effective.DBBackup,
 		Lock:           true,
 		VerifyURL:      effective.Verify.URL,
 		VerifyTimeout:  DefaultVerifyTimeout,
@@ -135,6 +140,9 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 	if over.Verify != nil {
 		opts.Verify = *over.Verify
 	}
+	if over.DBBackup != nil {
+		opts.DBBackup = *over.DBBackup
+	}
 	if over.Lock != nil {
 		opts.Lock = *over.Lock
 	}
@@ -143,6 +151,7 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 		opts.CommandTimeout = over.CommandTimeout
 	}
 	opts.Resume = over.Resume
+	opts.From = strings.TrimSpace(over.From)
 	opts.Force, opts.Yes, opts.JSON, opts.Verbose = over.Force, over.Yes, over.JSON, over.Verbose
 
 	// Mutual exclusion applies to the flags only. A configured `branch` plus an
@@ -250,4 +259,40 @@ func mergedSettings(settings map[string]any) map[string]any {
 		merged[key] = value
 	}
 	return merged
+}
+
+// WithRecipeDefaults layers a recipe's defaults *under* the project's resolved
+// settings: a key the project configured always wins, and a key it did not is
+// filled from the recipe. Lists are replaced, not appended, matching the list
+// semantics the configuration merge already documents.
+//
+// A default declared as ArgsSpec is not written to the settings map: it is
+// rendered into "<key>_args" for the command template, so a project can express
+// the same value as a string, a list or a map and the recipe stays unaware.
+func WithRecipeDefaults(recipe Recipe, opts Options) Options {
+	if len(recipe.Defaults) == 0 {
+		return opts
+	}
+	layered := make(map[string]any, len(opts.Settings)+len(recipe.Defaults))
+	for key, value := range opts.Settings {
+		layered[key] = value
+	}
+
+	for key, value := range recipe.Defaults {
+		spec, isArgs := value.(ArgsSpec)
+		if !isArgs {
+			if _, configured := layered[key]; !configured {
+				layered[key] = value
+			}
+			continue
+		}
+		layered[key+"_args"] = RenderSettingArgs(spec, layered[key])
+	}
+	opts.Settings = layered
+	return opts
+}
+
+// WithRecipeDefaultsForTest exposes WithRecipeDefaults to the tests/ package.
+func WithRecipeDefaultsForTest(recipe Recipe, opts Options) Options {
+	return WithRecipeDefaults(recipe, opts)
 }

@@ -121,6 +121,17 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 	}
 
+	// --from names the first step to run. Everything before it is recorded as
+	// skipped rather than dropped, so the timeline still shows the whole
+	// pipeline and an operator can see what was deliberately not repeated.
+	if e.opts.From != "" {
+		if index := plan.IndexOf(e.opts.From); index > 0 {
+			for _, step := range plan.Steps[:index] {
+				completed[step.ID] = true
+			}
+		}
+	}
+
 	for _, step := range plan.Steps {
 		if completed[step.ID] {
 			e.record(release, step, StepSkipped, 0, nil)

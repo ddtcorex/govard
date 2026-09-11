@@ -16,9 +16,14 @@ import (
 // run, in order, around a real deploy. The command used to run the hooks and
 // nothing else; it now performs a deployment, so the test drives one against a
 // local remote instead of relying on a remote being optional.
+//
+// The fixture is deliberately a framework with no deploy recipe: the pipeline
+// under test here is the neutral one (release, code, publish, verify), and a
+// Magento fixture would now also exercise the framework recipe's build steps,
+// which need a real application to run against.
 func TestDeployHooksExecute(t *testing.T) {
 	env := NewTestEnvironment(t)
-	projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "deploy-hooks")
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-hooks")
 
 	origin, revision := seedDeployOrigin(t)
 	deployRoot := t.TempDir()

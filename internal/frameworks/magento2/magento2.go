@@ -87,6 +87,7 @@ func Definition() types.FrameworkDefinition {
 		TablePrefixDetector:         DetectTablePrefix,
 		ResolveBootstrapTablePrefix: ResolveBootstrapTablePrefix,
 		BuildDeployLocalesQuery:     BuildDeployLocalesQuery,
+		DeployRecipe:                DeployRecipe,
 		BootstrapPlanSteps:          BootstrapPlanSteps,
 		EnableVarnishOnInit:         true,
 		VersionProfileResolver:      ResolveVersionProfile,

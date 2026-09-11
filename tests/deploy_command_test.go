@@ -6,6 +6,8 @@ import (
 	"govard/internal/cli"
 	"govard/internal/cmd"
 	"govard/internal/runtime"
+
+	"github.com/spf13/cobra"
 )
 
 func cliCodeForTest(err error) int {
@@ -15,8 +17,8 @@ func cliCodeForTest(err error) int {
 func TestDeployFlagsAreTheDocumentedSet(t *testing.T) {
 	command := cmd.DeployCommand()
 	for _, name := range []string{
-		"remote", "branch", "revision", "tag", "publish", "keep", "verify", "lock",
-		"ignore-deployer-lock", "command-timeout", "force", "resume", "yes", "json", "verbose",
+		"remote", "branch", "revision", "tag", "publish", "keep", "verify", "db-backup", "lock",
+		"ignore-deployer-lock", "command-timeout", "force", "resume", "from", "yes", "json", "verbose",
 	} {
 		if command.Flags().Lookup(name) == nil {
 			t.Errorf("missing --%s flag", name)
@@ -43,6 +45,35 @@ func TestDeployCapabilityContract(t *testing.T) {
 	}
 	if got := runtime.Requires(cmd.DeployUnlockCommand()); len(got) != 1 || got[0] != runtime.CapSSH {
 		t.Fatalf("govard deploy unlock requires %v, want [ssh]", got)
+	}
+	// Reading a target is ssh-only work: an operator must be able to inspect a
+	// server from a machine with no Docker and no rsync.
+	if got := runtime.Requires(cmd.DeployReleasesCommand()); len(got) != 1 || got[0] != runtime.CapSSH {
+		t.Fatalf("govard deploy releases requires %v, want [ssh]", got)
+	}
+	if got := runtime.Requires(cmd.DeployStatusCommand()); len(got) != 1 || got[0] != runtime.CapSSH {
+		t.Fatalf("govard deploy status requires %v, want [ssh]", got)
+	}
+	if got := runtime.Requires(cmd.DeployRollbackCommand()); len(got) != 2 || got[0] != runtime.CapSSH || got[1] != runtime.CapRsync {
+		t.Fatalf("govard deploy rollback requires %v, want [ssh rsync]", got)
+	}
+}
+
+func TestDeployRollbackFlagsAreTheDocumentedSet(t *testing.T) {
+	command := cmd.DeployRollbackCommand()
+	for _, name := range []string{"remote", "to", "with-db", "yes"} {
+		if command.Flags().Lookup(name) == nil {
+			t.Errorf("missing --%s flag on deploy rollback", name)
+		}
+	}
+}
+
+func TestDeployRollbackIsRegisteredUnderTheDeployGroup(t *testing.T) {
+	for _, command := range []*cobra.Command{cmd.DeployRollbackCommand(), cmd.DeployReleasesCommand(), cmd.DeployStatusCommand()} {
+		parent := command.Parent()
+		if parent == nil || parent.Name() != "deploy" {
+			t.Errorf("%s is not attached to the deploy group", command.Name())
+		}
 	}
 }
 

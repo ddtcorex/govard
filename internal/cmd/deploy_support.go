@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"govard/internal/cli"
 	"govard/internal/deploy"
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/spf13/cobra"
 )
@@ -24,11 +26,13 @@ func bindDeployFlags(command *cobra.Command) {
 	command.Flags().String("publish", deploy.PublishAuto, "Publish strategy: auto, symlink or in_place")
 	command.Flags().Int("keep", 0, "How many releases to keep on the target")
 	command.Flags().Bool("verify", true, "Verify the target after publishing")
+	command.Flags().Bool("db-backup", false, "Dump the database before the first database-mutating task")
 	command.Flags().Bool("lock", true, "Take the deploy lock")
 	command.Flags().Bool("ignore-deployer-lock", false, "Run even when another deploy tool holds its lock")
 	command.Flags().Duration(deployFlagTimeout, 0, "Timeout for a single remote command")
 	command.Flags().Bool("force", false, "Deploy even when the target already runs this revision")
 	command.Flags().Bool("resume", false, "Continue the newest unfinished release instead of starting a new one")
+	command.Flags().String("from", "", "Start at this task id or hook name instead of at the beginning")
 	command.Flags().Bool("yes", false, "Do not prompt for confirmation")
 	command.Flags().Bool("json", false, "Emit machine-readable output")
 	command.Flags().Bool("verbose", false, "Stream remote command output")
@@ -44,12 +48,11 @@ func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 	tag, _ := flags.GetString("tag")
 	publish, _ := flags.GetString("publish")
 	keep, _ := flags.GetInt("keep")
-	verify, _ := flags.GetBool("verify")
-	lock, _ := flags.GetBool("lock")
 	ignoreDeployerLock, _ := flags.GetBool("ignore-deployer-lock")
 	timeout, _ := flags.GetDuration(deployFlagTimeout)
 	force, _ := flags.GetBool("force")
 	resume, _ := flags.GetBool("resume")
+	from, _ := flags.GetString("from")
 	yes, _ := flags.GetBool("yes")
 	jsonOut, _ := flags.GetBool("json")
 	verbose, _ := flags.GetBool("verbose")
@@ -60,17 +63,33 @@ func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 		Tag:                strings.TrimSpace(tag),
 		Publish:            strings.TrimSpace(publish),
 		KeepReleases:       keep,
-		Verify:             &verify,
-		Lock:               &lock,
 		IgnoreDeployerLock: ignoreDeployerLock,
 		CommandTimeout:     timeout,
 		Resume:             resume,
+		From:               strings.TrimSpace(from),
 		Force:              force,
 		Yes:                yes,
 		JSON:               jsonOut,
 		Verbose:            verbose,
 	}
 	_ = remote
+
+	// The three-state options are read only when the command actually declares
+	// their flag. A subcommand (`deploy plan`, `deploy check`, `deploy unlock`)
+	// deliberately declares a narrower set, and "the flag is absent" must not be
+	// read as "the operator turned it off".
+	if flags.Lookup("verify") != nil {
+		verify, _ := flags.GetBool("verify")
+		over.Verify = &verify
+	}
+	if flags.Lookup("db-backup") != nil {
+		dbBackup, _ := flags.GetBool("db-backup")
+		over.DBBackup = &dbBackup
+	}
+	if flags.Lookup("lock") != nil {
+		lock, _ := flags.GetBool("lock")
+		over.Lock = &lock
+	}
 
 	// A flag combination the engine would have to guess about is a usage error,
 	// not something to resolve silently.
@@ -153,12 +172,22 @@ func resolveDeployOptions(command *cobra.Command, remote string) (engine.Config,
 
 // recipeFor returns the deploy recipe for the project's framework.
 //
-// This is the single seam where a framework recipe enters the pipeline: PR 1
-// returns the neutral default recipe, and a framework recipe is looked up in
-// the framework registry here once it exists.
+// This is the single seam where a framework recipe enters the pipeline: the
+// registry owns the recipe, internal/deploy never imports it, and a framework
+// without one still gets the neutral default pipeline.
 func recipeFor(config engine.Config) deploy.Recipe {
-	_ = config
+	if recipe, ok := frameworks.DeployRecipe(config.Framework); ok {
+		return recipe
+	}
 	return deploy.DefaultRecipe()
+}
+
+// deployRecipe resolves the recipe and layers its defaults under the options, so
+// `plan` and `deploy` can never disagree about the values a command expands
+// with: both go through here.
+func deployRecipe(config engine.Config, options deploy.Options) (deploy.Recipe, deploy.Options) {
+	recipe := recipeFor(config)
+	return recipe, deploy.WithRecipeDefaults(recipe, options)
 }
 
 // hooksFromConfig converts the project's deploy hooks, reporting the first
@@ -201,9 +230,52 @@ func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
 		vars = vars.Set("composer_bin", "composer")
 	}
 	for key, value := range options.Settings {
-		if text, ok := value.(string); ok {
+		if text, ok := settingText(value); ok {
 			vars = vars.Set("settings."+key, text)
 		}
 	}
+	// The argument lists a recipe rendered are substituted verbatim: quoting
+	// them would collapse several arguments into one.
+	for key, value := range options.Settings {
+		if text, ok := settingText(value); ok && strings.HasSuffix(key, "_args") {
+			vars = vars.SetRaw("settings."+key, text)
+		}
+	}
+	// Deployer's content version was a timestamp, which busts every browser
+	// cache on every deploy. The revision is deterministic: a retry or a resume
+	// of the same revision writes the same static URLs, and a new revision
+	// still changes them. A project can still override it.
+	if text, ok := options.Settings["content_version"].(string); ok && strings.TrimSpace(text) == "" {
+		vars = vars.Set("settings.content_version", options.Revision)
+	}
 	return vars
+}
+
+// settingText renders a setting as the string a command template substitutes.
+// Booleans and numbers are rendered too: a recipe that guards a step with
+// `[ "{{settings.worker_control}}" = "true" ]` must not fail with "unknown
+// variable" just because the configuration expressed the value as a bool.
+func settingText(value any) (string, bool) {
+	switch typed := value.(type) {
+	case string:
+		return typed, true
+	case bool:
+		return strconv.FormatBool(typed), true
+	case int:
+		return strconv.Itoa(typed), true
+	case int64:
+		return strconv.FormatInt(typed, 10), true
+	case float64:
+		if typed == float64(int64(typed)) {
+			return strconv.FormatInt(int64(typed), 10), true
+		}
+		return strconv.FormatFloat(typed, 'f', -1, 64), true
+	default:
+		return "", false
+	}
+}
+
+// DeployVarsForTest exposes deployVars to the tests/ package.
+func DeployVarsForTest(host deploy.Host, options deploy.Options) deploy.Vars {
+	return deployVars(host, options)
 }

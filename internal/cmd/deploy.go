@@ -45,8 +45,15 @@ func init() {
 
 	deployUnlockCmd.Flags().Bool("force", false, "Release a lock that is not stale")
 
+	deployPlanCmd.Flags().Bool("json", false, "Emit machine-readable output")
+	deployReleasesCmd.Flags().Bool("json", false, "Emit machine-readable output")
+	deployStatusCmd.Flags().Bool("json", false, "Emit machine-readable output")
+
 	deployCmd.AddCommand(deployPlanCmd)
 	deployCmd.AddCommand(deployCheckCmd)
+	deployCmd.AddCommand(deployReleasesCmd)
+	deployCmd.AddCommand(deployStatusCmd)
+	deployCmd.AddCommand(deployRollbackCmd)
 	deployCmd.AddCommand(deployUnlockCmd)
 
 	rootCmd.AddCommand(deployCmd)
@@ -68,7 +75,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := confirmProtectedRemote(cmd, config, remote, options); err != nil {
+	if err := confirmProtectedRemote(cmd, config, remote, options, "Deploy "+options.Revision+" to"); err != nil {
 		return err
 	}
 
@@ -90,9 +97,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return &cli.UsageError{Err: err}
 	}
-	plan, err := deploy.BuildPlan(recipeFor(config), hooks, remote)
+	recipe, options := deployRecipe(config, options)
+	plan, err := deploy.BuildPlan(recipe, hooks, remote)
 	if err != nil {
 		return &cli.UsageError{Err: err}
+	}
+	// A --from that names nothing would silently run the whole pipeline, which
+	// is the opposite of what the operator asked for.
+	if options.From != "" && plan.IndexOf(options.From) < 0 {
+		return &cli.UsageError{Err: fmt.Errorf("--from %q does not name a task or hook in this deploy plan (see `govard deploy plan %s`)", options.From, remote)}
 	}
 
 	// The local lifecycle hooks keep working: pre_deploy wraps the pipeline,
@@ -157,7 +170,7 @@ func prepareResume(cmd *cobra.Command, host deploy.Host, release *deploy.Release
 // confirmProtectedRemote refuses to deploy to a protected environment without an
 // explicit confirmation. With no terminal there is nothing to confirm with, so a
 // missing --yes is a usage error rather than an assumption.
-func confirmProtectedRemote(cmd *cobra.Command, config engine.Config, remote string, options deploy.Options) error {
+func confirmProtectedRemote(cmd *cobra.Command, config engine.Config, remote string, options deploy.Options, action string) error {
 	remoteCfg, ok := config.Remotes[remote]
 	if !ok {
 		return nil
@@ -167,16 +180,16 @@ func confirmProtectedRemote(cmd *cobra.Command, config engine.Config, remote str
 		return nil
 	}
 	if !stdinIsTerminal() {
-		return &cli.UsageError{Err: fmt.Errorf("%s is protected (%s); pass --yes to deploy non-interactively", remote, reason)}
+		return &cli.UsageError{Err: fmt.Errorf("%s is protected (%s); pass --yes to run non-interactively", remote, reason)}
 	}
 	confirm, err := pterm.DefaultInteractiveConfirm.
 		WithDefaultValue(false).
-		Show(fmt.Sprintf("Deploy %s to protected remote %q?", options.Revision, remote))
+		Show(fmt.Sprintf("%s protected remote %q?", action, remote))
 	if err != nil {
 		return err
 	}
 	if !confirm {
-		return &cli.UsageError{Err: fmt.Errorf("deploy to %s cancelled", remote)}
+		return &cli.UsageError{Err: fmt.Errorf("operation on %s cancelled", remote)}
 	}
 	return nil
 }

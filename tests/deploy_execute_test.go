@@ -3,6 +3,8 @@ package tests
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -107,5 +109,51 @@ func TestExecutorTreatsOptionalFailuresAsNonFatal(t *testing.T) {
 	}
 	if len(outcome.Steps) != 2 {
 		t.Fatalf("ran %d steps, want 2", len(outcome.Steps))
+	}
+}
+
+func TestExecutorFromSkipsEverythingBeforeTheNamedTask(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	marker := func(name string) string { return "touch " + filepath.Join(host.DeployPath, name) }
+
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskCheck, Stage: deploy.StagePrepare, Command: marker("ran-check")},
+		{ID: deploy.TaskCode, Stage: deploy.StagePrepare, Command: marker("ran-code")},
+		{ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: marker("ran-migrate")},
+		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: marker("ran-record")},
+	}), nil, "local")
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+
+	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute, From: deploy.TaskDBMigrate}
+	executor := deploy.NewExecutor(host, options, io.Discard)
+	outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	want := map[string]string{
+		deploy.TaskCheck:     deploy.StepSkipped,
+		deploy.TaskCode:      deploy.StepSkipped,
+		deploy.TaskDBMigrate: deploy.StepOK,
+		deploy.TaskRecord:    deploy.StepOK,
+	}
+	for _, step := range outcome.Steps {
+		if want[step.ID] != step.Status {
+			t.Errorf("step %s status = %q, want %q", step.ID, step.Status, want[step.ID])
+		}
+	}
+
+	// Skipped means skipped: the earlier commands must not have run at all.
+	for _, name := range []string{"ran-check", "ran-code"} {
+		if _, err := os.Stat(filepath.Join(host.DeployPath, name)); err == nil {
+			t.Errorf("--from ran %s, which is before the named task", name)
+		}
+	}
+	for _, name := range []string{"ran-migrate", "ran-record"} {
+		if _, err := os.Stat(filepath.Join(host.DeployPath, name)); err != nil {
+			t.Errorf("--from did not run %s: %v", name, err)
+		}
 	}
 }
