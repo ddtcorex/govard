@@ -254,7 +254,11 @@ evidence vì thế báo `effective_scope: project`.
 ### `govard audit toolchain`
 
 Quản lý lint image dùng chung cho cả máy. Các lệnh này không cần chạy bên trong
-một Govard project và không bao giờ gọi external lint provider.
+một Govard project và không bao giờ gọi external lint provider. Chúng cần
+container runtime — trên host không có Docker, chúng thoát với mã `3` kèm
+`CAPABILITY_MISSING` trước khi chạm vào Docker, giống mọi lệnh khác có yêu cầu
+trong manifest là `docker`. Phân tích không cần container vẫn dùng được:
+`govard audit run --checks integrity`.
 
 ```bash
 govard audit toolchain status

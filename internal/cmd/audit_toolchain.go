@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"govard/internal/audit"
+	"govard/internal/runtime"
 
 	"github.com/spf13/cobra"
 )
@@ -54,11 +55,21 @@ type auditToolchainStatusReport struct {
 // never resolve an audit target and work outside a Govard project.
 func newAuditToolchainCommand(options *auditCommandOptions, dependencies auditCommandDependencies) *cobra.Command {
 	command := &cobra.Command{
+		Annotations: map[string]string{
+			// The audit group declares "none" so the container-free integrity
+			// check stays runnable on a host without Docker, and the nearest
+			// annotation wins when requirements are resolved. These commands
+			// inspect, pull, and build a Docker image, so the group re-declares
+			// the requirement its children would otherwise inherit as "none".
+			runtime.AnnotationRequires: string(runtime.CapDocker),
+		},
 		Use:   "toolchain",
 		Short: "Inspect, pull, or build the Govard lint toolchain image",
 		Long: "Manage the Govard-owned Magento lint image.\n\n" +
 			"These commands act on a machine-wide image and do not need to run inside a\n" +
-			"Govard project. They never run an externally configured lint provider.",
+			"Govard project. They never run an externally configured lint provider.\n\n" +
+			"They do require a container runtime: without one they exit 3 with\n" +
+			"CAPABILITY_MISSING before touching Docker.",
 	}
 	command.AddCommand(
 		newAuditToolchainStatusCommand(options, dependencies),

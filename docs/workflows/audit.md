@@ -16,6 +16,9 @@ Govard persists every audit as an immutable session under `~/.govard/audit/<proj
 govard audit run --checks lint               # Magento2
 govard audit run --checks lint --mode project # Laravel/Symfony/WordPress (auto resolves)
 
+# Container-free analysis (Magento 2 / Mage-OS) — runs on the host, needs no Docker
+govard audit run --checks integrity
+
 # Lint + profiler on one URL (first run needs --url) — profiler is Magento-only
 govard audit run --checks lint,profiler --url 'https://shop.test/category.html?product_list_limit=48'
 
@@ -44,6 +47,7 @@ Exit code: `0` when all checks pass, non-zero after the summary when any check f
 | Check | What it does |
 | :--- | :--- |
 | `lint` | Static analysis via the Govard-native backend (`phpcs` + `phpstan` + media guard). |
+| `integrity` | Magento 2 / Mage-OS: container-free analysis of the checkout itself — Composer manifest/lock agreement and module/DI/sequence consistency. Runs on the host, so it works on a machine with no Docker. |
 | `profiler` | Captures Magento's stock `MAGE_PROFILER=csvfile` via a lease-protected web-server include, one bounded `GET` to `--url`, then restores everything. |
 
 `profiler` requires:
@@ -154,6 +158,13 @@ govard audit toolchain status  # local only — what to run next
 govard audit toolchain pull    # only pinned official image, never builds
 govard audit toolchain build   # only embedded context, never pulls
 ```
+
+These commands are container-backed: `status` inspects local images, `pull`
+fetches one, and `build` builds one. On a host without a container runtime they
+exit `3` with `CAPABILITY_MISSING` before touching anything, like every other
+Docker-requiring command ([Runs Without Docker](/getting-started/installation#runs-without-docker)).
+Container-free analysis is unaffected — `govard audit run --checks integrity`
+never touches a container.
 
 ---
 

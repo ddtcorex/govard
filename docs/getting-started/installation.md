@@ -135,10 +135,14 @@ govard capabilities          # command, requirement, and whether this host meets
 govard capabilities --json   # machine-readable
 ```
 
-Stack commands (`govard env up`, `svc`, `db`, `shell`, `test`, `audit`) need
-Docker; without it they exit `3` with `CAPABILITY_MISSING` before doing any work.
-`govard doctor` treats Docker as optional and exits `0`; `govard doctor --strict`
-restores the hard gate for bootstrap scripts.
+Stack commands (`govard env up`, `svc`, `db`, `shell`, `test`) need Docker;
+without it they exit `3` with `CAPABILITY_MISSING` before doing any work.
+`govard audit` is gated per check instead: `--checks lint` and `--checks
+profiler` need Docker, `--checks integrity` analyses the checkout on the host,
+and the `govard audit toolchain` commands always need Docker because they
+inspect, pull, and build a container image. `govard doctor` treats Docker as
+optional and exits `0`; `govard doctor --strict` restores the hard gate for
+bootstrap scripts.
 
 ## 🐳 Docker Images
 

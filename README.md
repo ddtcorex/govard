@@ -122,9 +122,12 @@ govard capabilities          # every command, its requirements, and host status
 govard capabilities --json   # same, machine-readable
 ```
 
-Docker is required only for stack commands. When it is missing, those commands
-exit `3` with `CAPABILITY_MISSING` instead of failing midway through their
-workflow, and `--error-json` prints the failure as a machine-readable envelope.
+Docker is required only for container-backed commands: the stack commands and
+`govard audit toolchain`, plus `govard audit run --checks lint|profiler`. When it
+is missing, those commands exit `3` with `CAPABILITY_MISSING` instead of failing
+midway through their workflow, and `--error-json` prints the failure as a
+machine-readable envelope. Container-free analysis (`govard audit run --checks
+integrity`) runs on the host and needs no Docker.
 `govard doctor` reports Docker as an optional capability (exit `0`); use
 `govard doctor --strict` when a script needs the old hard gate.
 

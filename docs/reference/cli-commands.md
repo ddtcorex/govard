@@ -290,7 +290,10 @@ analyzes the full target; result evidence therefore reports
 ### `govard audit toolchain`
 
 Manage the machine-wide Govard lint image. These commands do not need to run
-inside a Govard project and never invoke an external lint provider.
+inside a Govard project and never invoke an external lint provider. They do
+require a container runtime — without one they exit `3` with
+`CAPABILITY_MISSING` before touching Docker, like every other command whose
+manifest requirement is `docker` ([Runs Without Docker](/getting-started/installation#runs-without-docker)).
 
 ```bash
 govard audit toolchain status

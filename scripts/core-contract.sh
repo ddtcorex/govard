@@ -109,6 +109,12 @@ check_gate() {
 
 check_gate "env up" docker
 check_gate "tunnel status" cloudflared
+# The toolchain commands inspect, pull, and build a Docker image. They live
+# under `audit`, which declares no requirement so the container-free integrity
+# check stays runnable here, so the group re-declares docker itself.
+check_gate "audit toolchain status" docker
+check_gate "audit toolchain pull" docker
+check_gate "audit toolchain build" docker
 
 # 5. Container-free analysis. The integrity check reads the checkout directly;
 #    the container-backed lint check must refuse with exit 3 and point here.
