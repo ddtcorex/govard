@@ -168,11 +168,15 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		fmt.Fprintf(e.out, "  ! WARNING: %s\n", warning)
 	}
 
-	// No-op fast path: a target already running the requested revision is not
-	// deployed again. Without it a CI retry would rebuild and re-publish an
-	// identical release. --force overrides.
+	// No-op fast path: a target already running the requested revision, with a
+	// *complete* record behind it, is not deployed again. Without it a CI retry
+	// would rebuild and re-publish an identical release. --force overrides.
+	//
+	// The completeness half matters: a release whose record says failed or still
+	// running served the revision at some point, and reporting "already
+	// deployed" for it would turn a retry into a success that never happened.
 	if !e.opts.Force && strings.TrimSpace(release.Revision) != "" {
-		if live, ok := e.liveRevision(ctx); ok && live == release.Revision {
+		if live, complete, ok := e.liveRevision(ctx); ok && complete && live == release.Revision {
 			outcome.AlreadyDeployed = true
 			fmt.Fprintf(e.out, "  = already deployed %s\n", shortRevision(release.Revision))
 			return e.finish(outcome, started), nil
@@ -301,27 +305,52 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	return e.finish(outcome, started), nil
 }
 
-// liveRevision reports the revision the target is currently serving, and
-// whether it could be determined at all. It reads the current release's record
-// for a symlink layout and the docroot's HEAD for an in-place one.
-func (e *Executor) liveRevision(ctx context.Context) (string, bool) {
+// liveRevision reports the revision the target is serving, whether the record
+// behind it is complete, and whether either could be determined at all. It reads
+// the current release's record for a symlink layout and the docroot's HEAD for an
+// in-place one.
+//
+// "Complete" means the record says the release finished: an unfinished or failed
+// release may still be serving its revision, and the caller must not treat that
+// as a deployment that is already in place.
+func (e *Executor) liveRevision(ctx context.Context) (string, bool, bool) {
 	runner := e.host.Runner()
 
 	if result, err := runner.Run(ctx, "readlink -f "+Shell(e.host.CurrentPath), RunOptions{Timeout: shortCommandTimeout}); err == nil {
 		resolved := strings.TrimSpace(result.Stdout)
 		if resolved != "" && resolved != e.host.CurrentPath {
 			if record, err := ReadRelease(ctx, e.host, path.Base(resolved)); err == nil && record.Revision != "" {
-				return record.Revision, true
+				return record.Revision, record.Status == StatusOK, true
 			}
 		}
 	}
 
 	if result, err := runner.Run(ctx, "git -C "+Shell(e.host.CurrentPath)+" rev-parse HEAD", RunOptions{Timeout: shortCommandTimeout}); err == nil {
 		if revision := strings.TrimSpace(result.Stdout); revision != "" {
-			return revision, true
+			// An in-place docroot has no record of its own, so completeness is
+			// whether some release govard recorded for that revision finished.
+			return revision, e.hasCompleteRecordFor(ctx, revision), true
 		}
 	}
-	return "", false
+	return "", false, false
+}
+
+// hasCompleteRecordFor reports whether a finished release was recorded for this
+// revision.
+func (e *Executor) hasCompleteRecordFor(ctx context.Context, revision string) bool {
+	entries, err := ListReleases(ctx, e.host)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.Foreign || entry.Status != StatusOK {
+			continue
+		}
+		if record, err := ReadRelease(ctx, e.host, entry.Release); err == nil && record.Revision == revision {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Executor) finish(outcome Outcome, started time.Time) Outcome {

@@ -518,3 +518,59 @@ func TestExecutorRecordsThePreviousReleaseAndExposesItsPath(t *testing.T) {
 		t.Fatalf("{{previous_release}} expanded to %q, want %q", got, host.ReleasePath("1"))
 	}
 }
+
+// Spec 7.3: the no-op fast path fires when "the live revision already equals the
+// target *and its record is complete*". Only the revision was checked, so a
+// retry after a deploy that failed post-activation reported "already deployed"
+// and exited 0 — success reported for a release whose record says it failed.
+func TestNoOpFastPathRequiresACompleteRecord(t *testing.T) {
+	seed := func(status string) (deploy.Host, deploy.Plan) {
+		t.Helper()
+		host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+		ctx := context.Background()
+		if _, err := host.Runner().Run(ctx, "mkdir -p "+host.ReleasePath("1")+"/.dep", deploy.RunOptions{}); err != nil {
+			t.Fatalf("seed release: %v", err)
+		}
+		record := deploy.NewReleaseForTest("1", "abc", "main")
+		record.Status = status
+		if err := deploy.WriteRelease(ctx, host, record); err != nil {
+			t.Fatalf("seed record: %v", err)
+		}
+		if _, err := host.Runner().Run(ctx, "ln -s "+host.ReleasePath("1")+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+			t.Fatalf("seed symlink: %v", err)
+		}
+		plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+			{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "true"},
+		}), nil, "local")
+		if err != nil {
+			t.Fatalf("plan: %v", err)
+		}
+		return host, plan
+	}
+
+	run := func(host deploy.Host, plan deploy.Plan) deploy.Outcome {
+		t.Helper()
+		options := deploy.Options{Remote: "local", Publish: deploy.PublishSymlink, CommandTimeout: time.Minute}
+		outcome, err := deploy.NewExecutor(host, options, io.Discard).Run(
+			context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("", "abc", "main"))
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		return outcome
+	}
+
+	complete, plan := seed(deploy.StatusOK)
+	if outcome := run(complete, plan); !outcome.AlreadyDeployed {
+		t.Fatal("a complete record for the same revision must take the no-op path")
+	}
+
+	failed, plan := seed(deploy.StatusFailed)
+	if outcome := run(failed, plan); outcome.AlreadyDeployed {
+		t.Fatal("a failed record must not be reported as already deployed")
+	}
+
+	running, plan := seed(deploy.StatusRunning)
+	if outcome := run(running, plan); outcome.AlreadyDeployed {
+		t.Fatal("an unfinished record must not be reported as already deployed")
+	}
+}
