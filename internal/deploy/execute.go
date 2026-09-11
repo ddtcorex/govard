@@ -207,7 +207,21 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 	}
 
-	for _, step := range plan.Steps {
+	window := plan.maintenanceWindow()
+	timeoutFor := func(index int) time.Duration {
+		if window[index] {
+			if e.opts.MaintenanceTimeout > 0 {
+				return e.opts.MaintenanceTimeout
+			}
+			return DefaultMaintenanceTimeout
+		}
+		if e.opts.CommandTimeout > 0 {
+			return e.opts.CommandTimeout
+		}
+		return DefaultCommandTimeout
+	}
+
+	for index, step := range plan.Steps {
 		if completed[step.ID] {
 			e.record(release, step, StepSkipped, 0, nil)
 			continue
@@ -249,7 +263,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 
 		stepStarted := time.Now()
-		stepErr := e.runStep(ctx, step, stepCtx)
+		stepErr := e.runStep(ctx, step, stepCtx, timeoutFor(index))
 		elapsed := time.Since(stepStarted)
 
 		if stepErr != nil && !step.Optional {
@@ -306,13 +320,10 @@ func (e *Executor) finish(outcome Outcome, started time.Time) Outcome {
 }
 
 // runStep executes one step: a Go implementation when the task has one, a shell
-// command otherwise. Both are bounded by the configured command timeout, because
-// an unbounded remote command is how a deploy hangs.
-func (e *Executor) runStep(ctx context.Context, step Step, stepCtx StepContext) error {
-	timeout := e.opts.CommandTimeout
-	if timeout <= 0 {
-		timeout = DefaultCommandTimeout
-	}
+// command otherwise. Both are bounded, because an unbounded remote command is how
+// a deploy hangs; `timeout` is the bound the caller chose for this step, which is
+// smaller inside a maintenance window (spec 7.3).
+func (e *Executor) runStep(ctx context.Context, step Step, stepCtx StepContext, timeout time.Duration) error {
 	stepCtxRun := ctx
 	if step.RunOn != RunLocal {
 		var cancel context.CancelFunc

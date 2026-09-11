@@ -225,6 +225,33 @@ func (p Plan) ForPublishStrategy(strategy string) Plan {
 	return Plan{Remote: p.Remote, Steps: steps}
 }
 
+// maintenanceWindow returns the plan indexes that run with the site in
+// maintenance mode: from `maintenance:enable` through `maintenance:disable`,
+// hooks included, because a hook anchored between them runs in the window too.
+//
+// It is empty when no window opens — either the recipe implements neither task
+// or the resolved strategy skipped them (ForPublishStrategy) — which is what
+// lets the executor apply the much smaller in-window bound only where it is real.
+func (p Plan) maintenanceWindow() map[int]bool {
+	if !p.Runs(TaskMaintenanceEnable) {
+		return nil
+	}
+	window := make(map[int]bool, 8)
+	open := false
+	for index, step := range p.Steps {
+		if step.Kind == StepTask && step.ID == TaskMaintenanceEnable && step.Implemented() {
+			open = true
+		}
+		if open {
+			window[index] = true
+		}
+		if step.Kind == StepTask && step.ID == TaskMaintenanceDisable && step.Implemented() {
+			open = false
+		}
+	}
+	return window
+}
+
 // needsMaintenanceWindow reports whether any task in the plan changes state the
 // release being served still depends on. The list is the engine's, not a
 // recipe's: both ids are neutral, and a recipe that leaves them empty is not a

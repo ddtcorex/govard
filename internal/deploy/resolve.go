@@ -48,6 +48,11 @@ const (
 	// DefaultLockStaleAfter is how old a deploy lock must be before
 	// `deploy unlock` releases it without --force.
 	DefaultLockStaleAfter = 2 * time.Hour
+	// DefaultMaintenanceTimeout bounds one step inside an open maintenance
+	// window (spec 7.3). It is deliberately far below DefaultCommandTimeout:
+	// nothing in the window should be slow, and a stalled rsync there is what
+	// leaves a site down.
+	DefaultMaintenanceTimeout = 15 * time.Minute
 )
 
 // Overrides carries the CLI flag values for one invocation. Zero values mean
@@ -95,7 +100,12 @@ type Options struct {
 	// LockStaleAfter is how old a deploy lock must be for `deploy unlock` to
 	// release it without --force.
 	LockStaleAfter time.Duration
-	DBBackup       bool
+	// MaintenanceTimeout bounds a step that runs with the site in maintenance
+	// mode. It is much smaller than CommandTimeout on purpose: a step inside the
+	// window that is slow is keeping the site down, so it must fail fast. A
+	// database dump on a large database is the one step that may need it raised.
+	MaintenanceTimeout time.Duration
+	DBBackup           bool
 	// SkipLock disables locking. It is stated as a skip rather than as "take
 	// the lock" so that the zero value is the safe one: an Options built
 	// without resolving the CLI flags takes the lock, which is the behaviour a
@@ -127,19 +137,20 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 	}
 
 	opts := Options{
-		Remote:         name,
-		Branch:         remoteCfg.Branch,
-		Repository:     remoteCfg.Repository,
-		Publish:        remoteCfg.Publish,
-		KeepReleases:   effective.KeepReleasesOr(),
-		Verify:         true,
-		DBBackup:       effective.DBBackup,
-		VerifyURL:      effective.Verify.URL,
-		VerifyTimeout:  DefaultVerifyTimeout,
-		CommandTimeout: DefaultCommandTimeout,
-		LockStaleAfter: DefaultLockStaleAfter,
-		Settings:       mergedSettings(effective.Settings),
-		Hooks:          effective.Hooks,
+		Remote:             name,
+		Branch:             remoteCfg.Branch,
+		Repository:         remoteCfg.Repository,
+		Publish:            remoteCfg.Publish,
+		KeepReleases:       effective.KeepReleasesOr(),
+		Verify:             true,
+		DBBackup:           effective.DBBackup,
+		VerifyURL:          effective.Verify.URL,
+		VerifyTimeout:      DefaultVerifyTimeout,
+		CommandTimeout:     DefaultCommandTimeout,
+		LockStaleAfter:     DefaultLockStaleAfter,
+		MaintenanceTimeout: DefaultMaintenanceTimeout,
+		Settings:           mergedSettings(effective.Settings),
+		Hooks:              effective.Hooks,
 	}
 
 	if raw := strings.TrimSpace(effective.Verify.Timeout); raw != "" {
@@ -162,6 +173,13 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 			return Options{}, fmt.Errorf("%w: deploy.lock_stale_after: %v", ErrInvalidConfiguration, err)
 		}
 		opts.LockStaleAfter = parsed
+	}
+	if raw := strings.TrimSpace(effective.MaintenanceTimeout); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return Options{}, fmt.Errorf("%w: deploy.maintenance_timeout: %v", ErrInvalidConfiguration, err)
+		}
+		opts.MaintenanceTimeout = parsed
 	}
 
 	// Flags win over every configuration layer.

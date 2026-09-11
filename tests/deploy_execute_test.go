@@ -352,3 +352,65 @@ func TestExecutorPrintsTheMissingVerifyWarning(t *testing.T) {
 		t.Fatalf("the run must print the warning, got:\n%s", out.String())
 	}
 }
+
+// Spec 7.3: steps inside the maintenance window get their own, much smaller
+// limit, because a slow step there is holding the site down. Outside the window
+// the ordinary command timeout applies.
+func TestExecutorBoundsInWindowStepsMoreTightly(t *testing.T) {
+	build := func() (deploy.Host, deploy.Plan) {
+		recipe := deploy.DefaultRecipe()
+		for _, id := range deploy.TaskIDList() {
+			stage, _ := deploy.StageForTask(id)
+			command := "true"
+			switch id {
+			case deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable, deploy.TaskDBMigrate:
+				// The migration is the step whose timeout is under test.
+			default:
+				deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: command})
+				continue
+			}
+			if id == deploy.TaskDBMigrate {
+				command = "sleep 1"
+			}
+			deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: command})
+		}
+		plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+		if err != nil {
+			t.Fatalf("plan: %v", err)
+		}
+		return deploy.HostForTest(t.TempDir(), deploy.LocalRunner{}), plan
+	}
+
+	t.Run("the window budget applies inside", func(t *testing.T) {
+		host, plan := build()
+		options := deploy.Options{
+			Remote: "local", CommandTimeout: time.Minute, MaintenanceTimeout: 300 * time.Millisecond,
+		}
+		_, err := deploy.NewExecutor(host, options, io.Discard).Run(
+			context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
+		if err == nil {
+			t.Fatal("a step inside the window must be bounded by the maintenance timeout")
+		}
+		if !strings.Contains(err.Error(), "timed out") {
+			t.Fatalf("err = %v, want a timeout", err)
+		}
+	})
+
+	t.Run("the command budget applies when no window opens", func(t *testing.T) {
+		recipe := deploy.RecipeForTest("test", []deploy.Task{
+			{ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: "sleep 1"},
+		})
+		plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+		if err != nil {
+			t.Fatalf("plan: %v", err)
+		}
+		host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+		options := deploy.Options{
+			Remote: "local", CommandTimeout: 30 * time.Second, MaintenanceTimeout: 300 * time.Millisecond,
+		}
+		if _, err := deploy.NewExecutor(host, options, io.Discard).Run(
+			context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
+			t.Fatalf("without maintenance:enable the command timeout applies: %v", err)
+		}
+	})
+}
