@@ -1,6 +1,6 @@
 {
   "_readme": ["fixture"],
-  "content-hash": "fixture",
+  "content-hash": "8a5795ddba926b78c49f1a5e6303da24",
   "packages": [
     { "name": "monolog/monolog", "version": "2.9.1" }
   ],

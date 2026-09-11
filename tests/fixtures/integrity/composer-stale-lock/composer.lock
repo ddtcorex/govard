@@ -1,0 +1,13 @@
+{
+  "_readme": [
+    "fixture"
+  ],
+  "content-hash": "00000000000000000000000000000000",
+  "packages": [
+    {
+      "name": "monolog/monolog",
+      "version": "2.9.1"
+    }
+  ],
+  "packages-dev": []
+}
