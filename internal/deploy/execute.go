@@ -41,11 +41,80 @@ type StepResult struct {
 
 // Outcome is what one `Run` produced.
 type Outcome struct {
-	Steps           []StepResult
-	Release         string
-	Total           time.Duration
+	Steps   []StepResult
+	Release string
+	Total   time.Duration
+	// LockHeld reports whether the deploy lock is still held on the target
+	// after this run. A failure before publish releases it; from publish
+	// onwards it survives, so recovery has to be explicit.
 	LockHeld        bool
 	AlreadyDeployed bool
+}
+
+// LockKeptOnFailure reports whether a failure in this stage must keep the deploy
+// lock (spec 7.3).
+//
+// Prepare and build only produced local state — a release directory, a mirror,
+// build output — so releasing the lock is safe and a plain retry must not be
+// refused by a lock nothing is using. From publish onwards the target may have
+// been changed (maintenance enabled, code reset, schema migrated), so the lock
+// stays and recovery is an explicit `--resume` or `deploy unlock --force`.
+func LockKeptOnFailure(stage Stage) bool {
+	switch stage {
+	case StagePrepare, StageBuild:
+		return false
+	default:
+		return true
+	}
+}
+
+// RecoveryHint names the command that actually recovers a failed deploy.
+//
+// The two failures need different commands: a run holding the lock cannot be
+// retried — the retry is refused — while one that released its lock only needs
+// the fault fixed (spec P4, 7.3).
+func RecoveryHint(remote string, lockHeld bool) string {
+	if lockHeld {
+		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)
+	}
+	return fmt.Sprintf("nothing live changed and the deploy lock was released; fix the reported error and retry `govard deploy %s`", remote)
+}
+
+// releaseLockAfterFailure removes the lock a failed pre-publish run still holds.
+//
+// It only removes a lock this run took. A run that never acquired one — a
+// rejected preflight, or a plan with locking disabled — has nothing to release,
+// and removing a lock another deploy holds would be worse than leaving this
+// one behind.
+func (e *Executor) releaseLockAfterFailure(ctx context.Context, release *Release) {
+	if !e.lockWasAcquired() {
+		return
+	}
+	sc := StepContext{
+		Host:    e.host,
+		Runner:  e.host.Runner(),
+		Vars:    NewVars(),
+		Release: release,
+		Opts:    e.opts,
+		Out:     e.out,
+	}
+	// The deploy context may be cancelled by the failure; releasing the lock is
+	// cleanup and must still happen.
+	if err := CoreUnlock(context.WithoutCancel(ctx), &sc); err != nil {
+		fmt.Fprintf(e.out, "  ! the deploy lock could not be released: %v\n", err)
+		return
+	}
+	fmt.Fprintf(e.out, "  lock released (failure before publish; nothing live changed)\n")
+}
+
+// lockWasAcquired reports whether the lock step of this run succeeded.
+func (e *Executor) lockWasAcquired() bool {
+	for _, result := range e.results {
+		if result.ID == TaskLock {
+			return result.Status == StepOK
+		}
+	}
+	return false
 }
 
 // Executor runs one plan against one host.
@@ -173,7 +242,10 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			// Best effort: the failure that matters is the step's, not the
 			// record write.
 			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
-			outcome.LockHeld = step.Stage == PublishStage
+			outcome.LockHeld = LockKeptOnFailure(step.Stage)
+			if !outcome.LockHeld {
+				e.releaseLockAfterFailure(ctx, release)
+			}
 			return e.finish(outcome, started), fmt.Errorf("step %s failed on %s: %w", step.ID, e.host.Name, stepErr)
 		}
 

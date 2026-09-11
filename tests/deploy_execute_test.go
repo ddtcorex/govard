@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,17 +84,97 @@ func TestExecutorStopsAtTheFirstFailureAndKeepsTheLockInPublish(t *testing.T) {
 	}
 }
 
-func TestExecutorReleasesTheLockWhenAFailureHappensBeforePublish(t *testing.T) {
-	host, plan := executorForTest(t, []deploy.Task{
-		{ID: deploy.TaskCheck, Stage: deploy.StagePrepare, Command: "exit 4"},
-	})
-	executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard)
-	outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
-	if err == nil {
-		t.Fatal("want an error")
+// lockRecipe builds a plan that takes the real lock and then fails at exactly
+// one task. Every other step is a no-op, so the failure stage is the only
+// variable.
+func lockRecipe(t *testing.T, failing string) (deploy.Host, deploy.Plan) {
+	t.Helper()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	recipe := deploy.DefaultRecipe()
+	for _, id := range deploy.TaskIDList() {
+		if id == deploy.TaskLock || id == failing {
+			continue
+		}
+		stage, _ := deploy.StageForTask(id)
+		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "true"})
 	}
-	if outcome.LockHeld {
-		t.Fatal("a prepare-stage failure must release the lock: nothing live has changed yet")
+	stage, _ := deploy.StageForTask(failing)
+	deploy.OverrideTaskForTest(&recipe, failing, deploy.Task{ID: failing, Stage: stage, Command: "exit 9"})
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+	return host, plan
+}
+
+// The lock policy is stage-dependent (spec 7.3): a failure before publish
+// releases it, because nothing live has changed and the next attempt must not
+// be blocked by a lock nothing is using.
+func TestExecutorReleasesTheLockWhenAFailureHappensBeforePublish(t *testing.T) {
+	for _, failing := range []string{deploy.TaskCheck, deploy.TaskRelease, deploy.TaskCode, deploy.TaskVendors} {
+		t.Run(failing, func(t *testing.T) {
+			host, plan := lockRecipe(t, failing)
+			executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", Lock: true, CommandTimeout: time.Minute}, io.Discard)
+			outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if outcome.LockHeld {
+				t.Fatal("a prepare/build failure must release the lock: nothing live has changed yet")
+			}
+			if _, err := host.Runner().Run(context.Background(), "test ! -e "+host.LockPath(), deploy.RunOptions{}); err != nil {
+				t.Fatalf("the lock directory must be gone after a %s failure: %v", failing, err)
+			}
+		})
+	}
+}
+
+func TestExecutorKeepsTheLockWhenAPublishFailureHappens(t *testing.T) {
+	for _, failing := range []string{deploy.TaskMaintenanceEnable, deploy.TaskDBMigrate, deploy.TaskActivate} {
+		t.Run(failing, func(t *testing.T) {
+			host, plan := lockRecipe(t, failing)
+			executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", Lock: true, CommandTimeout: time.Minute}, io.Discard)
+			outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if !outcome.LockHeld {
+				t.Fatal("a publish-stage failure must keep the lock: the target may be half-migrated")
+			}
+			if _, err := host.Runner().Run(context.Background(), "test -d "+host.LockPath(), deploy.RunOptions{}); err != nil {
+				t.Fatalf("the lock directory must survive a %s failure: %v", failing, err)
+			}
+		})
+	}
+}
+
+func TestLockPolicyFollowsTheFailureStage(t *testing.T) {
+	for stage, kept := range map[deploy.Stage]bool{
+		deploy.StagePrepare: false,
+		deploy.StageBuild:   false,
+		deploy.StagePublish: true,
+		deploy.StageVerify:  true,
+		deploy.StageCleanup: true,
+	} {
+		if got := deploy.LockKeptOnFailure(stage); got != kept {
+			t.Errorf("LockKeptOnFailure(%s) = %v, want %v", stage, got, kept)
+		}
+	}
+}
+
+// The printed recovery hint has to name the command that actually works: a run
+// holding the lock cannot simply be retried, because the retry is refused.
+func TestRecoveryHintNamesTheCommandThatWorks(t *testing.T) {
+	resumed := deploy.RecoveryHint("production", true)
+	if !strings.Contains(resumed, "--resume") {
+		t.Errorf("a kept lock must be recovered with --resume, got %q", resumed)
+	}
+	retried := deploy.RecoveryHint("production", false)
+	if strings.Contains(retried, "--resume") {
+		t.Errorf("a released lock needs a plain retry, not a resume, got %q", retried)
+	}
+	if !strings.Contains(retried, "retry") {
+		t.Errorf("the hint must name the retry, got %q", retried)
 	}
 }
 

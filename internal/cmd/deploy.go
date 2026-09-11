@@ -148,7 +148,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("post-deploy hooks failed: %w", hookErr)
 	}
 	if runErr != nil {
-		return fmt.Errorf("%w\nthe release directory and its record were kept on %s; inspect them with `govard deploy check %s` before retrying", runErr, remote, remote)
+		return fmt.Errorf("%w\n%s", runErr, deploy.RecoveryHint(remote, outcome.LockHeld))
 	}
 
 	printDeploySummary(cmd, remote, host, options, release, outcome)
