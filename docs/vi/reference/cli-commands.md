@@ -990,6 +990,19 @@ Host truy cập search cũng được route tự động qua `http://<domain>:92
 Tất cả các lệnh của Govard đều hỗ trợ:
 
 - `-h, --help` — Hiển thị trợ giúp của lệnh
+- `--verbose` — Bật log có cấu trúc chi tiết
+- `--error-json` — In lỗi ra stdout dưới dạng envelope JSON machine-readable
+  (`schema_version`, `code`, `capability`, `command`, `message`, `hint`) thay vì
+  text, để script không phải parse dạng người đọc
+
+Các lệnh forward tham số cho tool khác (`govard tool php ...`,
+`govard redis cli ...`) không parse được `--error-json`; lỗi của chúng vẫn giữ
+đúng mã thoát đã tài liệu hóa.
+
+Mã thoát ổn định trên toàn CLI: `0` thành công, `1` lỗi thực thi, `2` lỗi usage,
+`3` `CAPABILITY_MISSING` (một yêu cầu runtime đã khai báo không có sẵn), `4` lỗi
+cấu hình. Danh sách lệnh không cần container runtime nằm ở
+[Chạy không cần Docker](/vi/reference/docker-free).
 
 ---
 

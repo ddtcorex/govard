@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -60,6 +61,29 @@ var (
 // probe as available.
 var forcedSatisfied map[Capability]bool
 
+// testSatisfiedCapabilitiesEnv names capabilities that must probe as available
+// for one process, as a comma-separated list. The integration suite runs the
+// real binary against local mock servers, where a live probe — the network dial
+// in particular — would make the result depend on the host's connectivity
+// instead of on the code under test. Production never sets it; GOVARD_TEST_RUNTIME
+// is the same kind of switch.
+const testSatisfiedCapabilitiesEnv = "GOVARD_TEST_SATISFIED_CAPABILITIES"
+
+// envForcedSatisfied reports whether the environment forces capability to probe
+// as available.
+func envForcedSatisfied(capability Capability) bool {
+	raw := strings.TrimSpace(os.Getenv(testSatisfiedCapabilitiesEnv))
+	if raw == "" {
+		return false
+	}
+	for _, part := range strings.Split(raw, ",") {
+		if Capability(strings.ToLower(strings.TrimSpace(part))) == capability {
+			return true
+		}
+	}
+	return false
+}
+
 var capabilityHints = map[Capability]string{
 	CapDocker:      "start Docker Desktop/daemon and ensure the current user can reach the Docker socket; commands that need no containers are listed by `govard capabilities`",
 	CapSSH:         "install an SSH client (openssh-client) and retry",
@@ -99,7 +123,7 @@ func Probe(caps ...Capability) error {
 
 // probeOne returns an empty string when the capability is satisfied.
 func probeOne(capability Capability) string {
-	if forcedSatisfied[capability] {
+	if forcedSatisfied[capability] || envForcedSatisfied(capability) {
 		return ""
 	}
 	ctx := context.Background()

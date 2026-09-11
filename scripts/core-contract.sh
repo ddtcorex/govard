@@ -182,6 +182,32 @@ if ! printf '%s' "$lint_out" | grep -q -- "--checks integrity"; then
   failures=$((failures + 1))
 fi
 
+# 6. Host-only commands inside groups that orchestrate containers must run for
+#    real here, not merely be declared. `desktop doctor` is the case that
+#    matters: it diagnoses a broken install, so it has to work on a host where
+#    the container runtime is the broken part.
+check_runs() {
+  local command="$1" dir="$2" label="$3"
+  set +e
+  out="$(cd "$dir" && GOVARD_HOME_DIR="$govard_home" "$BIN" $command 2>&1)"
+  code=$?
+  set -e
+  if [ "$code" -ne 0 ]; then
+    echo "core-contract: FAIL govard $command exited $code without docker ($label):" >&2
+    printf '%s\n' "$out" >&2
+    failures=$((failures + 1))
+  fi
+  if printf '%s' "$out" | grep -q "missing capability"; then
+    echo "core-contract: FAIL govard $command is gated on a capability it must not need" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+check_runs "project list" "$fixture_dir" "registry listing"
+check_runs "desktop doctor" "$fixture_dir" "desktop diagnostics"
+check_runs "domain list" "$fixture_dir" "domain listing"
+check_runs "vscode setup" "$fixture_dir" "editor setup"
+
 if [ "$failures" -ne 0 ]; then
   echo "core-contract: $failures failure(s)" >&2
   exit 1

@@ -118,6 +118,12 @@ install -m0755 bin/govard ~/.local/bin/govard     # only to test PATH consumers 
 - Prefer mocks over live network in unit tests
 - Isolate state via `GOVARD_HOME_DIR` (use `TestMain` where appropriate)
 - Gate external service tests with explicit env checks
+- A test that drives a capability-gated command **out of process** (the
+  integration suite runs the real binary) cannot use the in-process stubs: force
+  the requirement with `GOVARD_TEST_SATISFIED_CAPABILITIES=<caps>` instead of
+  letting the host decide. The network dial is the probe no command shim can
+  satisfy, which is why `self-update` tests need it; name only the capability the
+  test actually needs, and note that an empty value disables the override.
 - A framework's test functions for a given subject live in `tests/<subject>_<framework>_test.go` (e.g. `bootstrap_dagster_test.go`, `table_prefix_prestashop_test.go`) — never inside a shared/grab-bag file alongside other frameworks' tests. A test that genuinely compares/depends on ≥2 specific frameworks (priority ordering, package aliasing) stays in the framework-generic `<subject>_test.go`, written table-driven with framework names only in test data/`t.Run` labels, never in the Go function name.
 
 **Test pattern for internal packages:**
@@ -138,8 +144,60 @@ When adding/modifying commands:
 2. Register with `rootCmd.AddCommand(...)`
 3. Ensure flags are explicit, help text is actionable
 4. Return errors with context (`fmt.Errorf("operation: %w", err)`)
-5. Add tests in `tests/`
-6. Update docs for user-visible changes
+5. Declare the runtime requirement (see below)
+6. Add tests in `tests/`
+7. Update docs for user-visible changes
+
+### Runtime requirements — the capability contract
+
+Every runnable command declares what it needs, and the root `PersistentPreRunE`
+gate turns a missing requirement into exit `3` with a `CAPABILITY_MISSING`
+envelope **before** the command does any work.
+
+- Declare it with `Annotations: {runtime.AnnotationRequires: "<caps>"}`, where
+  `<caps>` is a comma-separated subset of `none`, `docker`, `ssh`, `rsync`,
+  `cloudflared`, `net`. A runnable command that declares nothing defaults to
+  `docker`; `TestEveryRunnableCommandDeclaresRequirements` fails until it states
+  a requirement, and the fix is the annotation — never an allowlist entry.
+- Resolution walks up the parents and the **nearest annotation wins**. A group
+  that declares `none` (e.g. `audit`, so the container-free integrity check runs
+  on a host without Docker) makes its whole subtree `none`: a container-backed
+  child re-declares the requirement on its own group.
+- Never probe or gate inside `RunE`. The gate owns the message, the hint, and
+  the exit code; an ad-hoc check leaks a raw runtime error and breaks the
+  contract.
+- `runtime.AlwaysRunnable` exempts `help`, `completion`, `doctor`,
+  `capabilities`, and `version` **by top-level command**. Their subcommands ride
+  along (a host with no container runtime must still print `completion bash`),
+  while a nested command that merely shares the name — `desktop doctor` — is a
+  different command and keeps its own declaration.
+- Exit codes are frozen: `0` ok, `1` execution, `2` usage, `3`
+  `CAPABILITY_MISSING`, `4` configuration. With `--error-json` the failure is an
+  envelope on stdout and no hint may be printed to it.
+- `scripts/core-contract.sh` proves the contract in the `core_sans_docker` CI
+  job (no docker binary, no socket): a new requirement-free command or a new
+  representative gate belongs there too.
+
+**Which commands must be Docker-free.** The Docker-free surface is supported, not
+incidental: a command whose work does not need a running container declares its
+real requirement — `none`, or `ssh`/`rsync`/`cloudflared`/`net` — instead of
+inheriting `docker`. The bar, by kind of work:
+
+- host discovery and diagnostics: `capabilities`, `doctor`, `version`, `help`,
+  `completion`, `desktop doctor`;
+- project configuration, the registry, and local caches: `config get|set|auto`,
+  `config profile`, `lock *`, `blueprint cache *`, `init`, `custom list`,
+  `project list`, `project open`, `domain list`, `vscode setup`;
+- static analysis of the checkout: `audit run --checks integrity` plus the
+  host-side audit lifecycle (`status`, `result`, `diff`, `cleanup`);
+- direct host or network work: `remote *` (SSH), `sync` (rsync), `tunnel *`
+  (`cloudflared`), `trust`, `self-update`.
+
+Container orchestration keeps `docker`: `env`, `svc`, `db`, `shell`, `tool`,
+`test`, `frontend`, `logs`, `ps`, `status`, `deploy`, `bootstrap`, `debug`,
+`extensions`, `snapshot`, `upgrade`, launching `desktop`, `audit toolchain`, and
+the container-backed audit checks. A command that regresses out of the free set
+is a bug, and `docs/reference/docker-free.md` is the enforced list.
 
 ## Blueprint Versioning
 
@@ -220,6 +278,12 @@ Update `README.md` for: installation, upgrade flow, command/flag changes, releas
 Update `docs/*.md` for: command names/aliases/flags, config behavior, remote/sync/db workflows, framework support, desktop behavior. `docs/**/*.md` auto-syncs to the GitHub Wiki on every push to `master` (`.github/workflows/sync-wiki.yml`) — no separate wiki edit needed.
 
 **Treat stale docs as incomplete work.**
+
+The Docker-free command list in `docs/reference/docker-free.md` is checked
+against the shipped binary by `tests/integration/docker_free_docs_test.go`: a
+command added, removed, or re-gated fails CI until that page matches, and the
+page must stay reachable (sidebar entry, link from README/installation/CLI
+reference, VI counterpart).
 
 ## Git Workflow
 

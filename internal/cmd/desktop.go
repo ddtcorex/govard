@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"govard/internal/desktop"
 	govardruntime "govard/internal/runtime"
@@ -19,6 +22,34 @@ var desktopDev bool
 var desktopBackground bool
 var desktopExecutablePath = os.Executable
 var desktopBinaryLookPath = exec.LookPath
+
+// desktopVersionProbeTimeout bounds the `--version` probe `desktop doctor` runs
+// against the desktop binary: an old build ignores the flag and opens its GUI,
+// which would otherwise block the diagnosis forever.
+const desktopVersionProbeTimeout = 5 * time.Second
+
+// desktopVersionProbeWaitDelay bounds how long the probe keeps reading the
+// child's output pipe after the deadline has passed.
+const desktopVersionProbeWaitDelay = time.Second
+
+// probeDesktopVersion asks a desktop binary for its version, bounded by ctx.
+//
+// Killing the child is not enough on its own: a build that ignores --version
+// spawns its own children that inherit the output pipe, and reading it would
+// then wait for them. WaitDelay closes the pipe, and the caller's deadline is
+// reported as its own error so the diagnosis can name the cause.
+func probeDesktopVersion(ctx context.Context, binaryPath string) (string, error) {
+	cmd := exec.CommandContext(ctx, binaryPath, "--version")
+	cmd.WaitDelay = desktopVersionProbeWaitDelay
+	out, err := cmd.Output()
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", ctxErr
+		}
+		return "", err
+	}
+	return string(out), nil
+}
 
 func desktopBuildTags(isProd bool) string {
 	tags := []string{"desktop"}
@@ -58,6 +89,13 @@ func init() {
 }
 
 var desktopDoctorCmd = &cobra.Command{
+	Annotations: map[string]string{
+		// The diagnosis is entirely local: the desktop binary, the display
+		// environment, WebKitGTK, and the user-namespace sysctl. Requiring
+		// Docker here would make the diagnostic unusable on exactly the host
+		// that needs it, so it overrides the group's requirement.
+		govardruntime.AnnotationRequires: string(govardruntime.CapNone),
+	},
 	Use:   "doctor",
 	Short: "Diagnose issues with the desktop environment",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -69,12 +107,20 @@ var desktopDoctorCmd = &cobra.Command{
 			pterm.Error.Println("govard-desktop binary not found in PATH or repo.")
 		} else {
 			pterm.Success.Printf("Found desktop binary at: %s\n", binaryPath)
-			// Try running it with --version
-			out, err := exec.Command(binaryPath, "--version").Output()
-			if err != nil {
+			// Try running it with --version. A desktop build that predates the
+			// flag ignores it and starts the GUI instead, so the probe is
+			// bounded: a diagnostic that hangs cannot report anything.
+			probeCtx, cancel := context.WithTimeout(context.Background(), desktopVersionProbeTimeout)
+			out, err := probeDesktopVersion(probeCtx, binaryPath)
+			cancel()
+			switch {
+			case errors.Is(err, context.DeadlineExceeded):
+				pterm.Error.Printf("Version check timed out after %s: %s did not answer --version (old or broken build).\n",
+					desktopVersionProbeTimeout, binaryPath)
+			case err != nil:
 				pterm.Error.Printf("Failed to execute binary for version check: %v\n", err)
-			} else {
-				pterm.Success.Printf("Binary execution check: %s", string(out))
+			default:
+				pterm.Success.Printf("Binary execution check: %s", out)
 			}
 		}
 

@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	"govard/internal/cli"
 	"govard/internal/engine"
 	"govard/internal/ui"
 
@@ -22,6 +24,11 @@ var projectCmd = &cobra.Command{
 }
 
 var projectOpenCmd = &cobra.Command{
+	Annotations: map[string]string{
+		// Resolves a registry entry and prints its path; nothing here starts or
+		// inspects a container.
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "open <query>",
 	Short: "Find a project by fuzzy query and print its path",
 	Args:  cobra.ExactArgs(1),
@@ -33,12 +40,30 @@ var projectOpenCmd = &cobra.Command{
 var projectListShowOrphans bool
 
 var projectListCmd = &cobra.Command{
+	Annotations: map[string]string{
+		// The listing reads the Govard registry only. The Docker-resource scan
+		// that used to ride on --orphans now lives in `project orphans`, which
+		// keeps the group's requirement.
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List all available projects in the registry",
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runProjectList(cmd)
+	},
+}
+
+var projectOrphansCmd = &cobra.Command{
+	Use:   "orphans",
+	Short: "Show Docker resources that are not in the registry",
+	Long: `List compose projects that exist in Docker but are absent from the Govard
+registry. This inspects the container runtime, so unlike 'project list' it needs
+Docker.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runProjectOrphans(cmd)
 	},
 }
 
@@ -67,7 +92,12 @@ func initProjectCommands() {
 	projectCmd.AddCommand(projectOpenCmd)
 
 	projectListCmd.Flags().BoolVar(&projectListShowOrphans, "orphans", false, "Show projects that have Docker resources but are not in the registry")
+	// Kept hidden and refused: the scan moved to `project orphans` so that
+	// `project list` itself needs no container runtime. An old invocation gets
+	// the new command instead of "unknown flag".
+	_ = projectListCmd.Flags().MarkHidden("orphans")
 	projectCmd.AddCommand(projectListCmd)
+	projectCmd.AddCommand(projectOrphansCmd)
 
 	projectDeleteCmd.Flags().BoolVarP(&projectDeleteForce, "force", "f", false, "Delete without confirmation")
 	projectCmd.AddCommand(projectDeleteCmd)
@@ -170,6 +200,10 @@ func runOrphanDelete(cmd *cobra.Command, orphan engine.OrphanProject) error {
 }
 
 func runProjectList(cmd *cobra.Command) error {
+	if projectListShowOrphans {
+		return &cli.UsageError{Err: errors.New("project list --orphans moved to `govard project orphans`")}
+	}
+
 	entries, err := engine.ReadProjectRegistryEntries()
 	if err != nil {
 		return err
@@ -202,26 +236,31 @@ func runProjectList(cmd *cobra.Command) error {
 		return err
 	}
 
-	if projectListShowOrphans {
-		orphans, err := engine.GetOrphanedComposeProjects(cmd.Context())
-		if err != nil {
-			return err
-		}
+	return nil
+}
 
-		if len(orphans) > 0 {
-			fmt.Println()
-			pterm.NewStyle(pterm.BgLightYellow, pterm.FgBlack, pterm.Bold).Println(" ORPHANED PROJECTS (IN DOCKER BUT NOT REGISTRY) ")
-			fmt.Println()
-
-			orphanData := [][]string{
-				{"Project", "Status", "ConfigFiles"},
-			}
-			for _, o := range orphans {
-				orphanData = append(orphanData, []string{o.Name, o.Status, o.ConfigFiles})
-			}
-			_ = pterm.DefaultTable.WithHasHeader().WithData(orphanData).Render()
-		}
+// runProjectOrphans reports compose projects that exist in Docker but not in the
+// Govard registry. It inspects the container runtime, which is why it is its own
+// command instead of a flag on the registry-only listing.
+func runProjectOrphans(cmd *cobra.Command) error {
+	orphans, err := engine.GetOrphanedComposeProjects(cmd.Context())
+	if err != nil {
+		return err
 	}
 
-	return nil
+	if len(orphans) == 0 {
+		pterm.Info.Println("No orphaned Docker resources: every compose project is in the registry.")
+		return nil
+	}
+
+	pterm.NewStyle(pterm.BgLightYellow, pterm.FgBlack, pterm.Bold).Println(" ORPHANED PROJECTS (IN DOCKER BUT NOT REGISTRY) ")
+	fmt.Println()
+
+	orphanData := [][]string{
+		{"Project", "Status", "ConfigFiles"},
+	}
+	for _, o := range orphans {
+		orphanData = append(orphanData, []string{o.Name, o.Status, o.ConfigFiles})
+	}
+	return pterm.DefaultTable.WithHasHeader().WithData(orphanData).Render()
 }

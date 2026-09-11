@@ -82,3 +82,30 @@ func TestStubSatisfiedCapabilitiesForTest(t *testing.T) {
 		t.Fatal("Probe(CapDocker) after restore = nil, want the stubbed failure")
 	}
 }
+
+// TestSatisfiedCapabilitiesEnvForcesOnlyItsCapabilities covers the switch the
+// integration suite uses for commands that are gated on a probe an out-of-process
+// test cannot shim: the network dial. The override must name exactly the
+// capability it forces and must not leak to the others.
+func TestSatisfiedCapabilitiesEnvForcesOnlyItsCapabilities(t *testing.T) {
+	restoreProbes := stubProbes()
+	defer restoreProbes()
+	dockerStatus = func(context.Context) error { return errors.New("cannot connect to the docker daemon") }
+	dockerCompose = func(context.Context) error { return nil }
+	lookPath = func(string) (string, error) { return "/usr/bin/docker", nil }
+	networkConnectivity = func() error { return errors.New("dial tcp 1.1.1.1:53: i/o timeout") }
+
+	t.Setenv(testSatisfiedCapabilitiesEnv, "net")
+
+	if err := Probe(CapNet); err != nil {
+		t.Fatalf("Probe(CapNet) with %s=net = %v, want nil", testSatisfiedCapabilitiesEnv, err)
+	}
+	if err := Probe(CapDocker); err == nil {
+		t.Fatal("Probe(CapDocker) = nil, want the stubbed failure: the override must not leak")
+	}
+
+	t.Setenv(testSatisfiedCapabilitiesEnv, "")
+	if err := Probe(CapNet); err == nil {
+		t.Fatal("Probe(CapNet) = nil without the override, want the stubbed failure")
+	}
+}
