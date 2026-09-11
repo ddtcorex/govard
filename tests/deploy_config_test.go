@@ -175,8 +175,8 @@ remotes:
 	if opts.Branch != "staging" {
 		t.Fatalf("branch = %q, want staging", opts.Branch)
 	}
-	if !opts.Verify || !opts.Lock {
-		t.Fatalf("verify/lock must default to true, got verify=%v lock=%v", opts.Verify, opts.Lock)
+	if !opts.Verify || opts.SkipLock {
+		t.Fatalf("verify must default to true and locking must default to on, got verify=%v skip_lock=%v", opts.Verify, opts.SkipLock)
 	}
 	if opts.CommandTimeout <= 0 || opts.VerifyTimeout <= 0 {
 		t.Fatalf("timeouts must default to positive values, got %s / %s", opts.CommandTimeout, opts.VerifyTimeout)
@@ -301,5 +301,31 @@ func TestDeployArtifactDirConfigurationReachesOptions(t *testing.T) {
 	}
 	if opts.ArtifactDir != "artifacts" {
 		t.Fatalf("artifact dir = %q, want artifacts", opts.ArtifactDir)
+	}
+}
+
+// `--lock=false` is the only spelling pflag accepts for turning the lock off, so
+// it must actually reach the option the executor reads. It was once stored in a
+// field nothing read, which made the flag a no-op.
+func TestDisablingTheLockReachesTheResolvedOptions(t *testing.T) {
+	dir := t.TempDir()
+	cfg := deployRemoteConfig(t, dir, "git@example.com:acme/shop.git")
+
+	disabled := false
+	opts, err := deploy.ResolveOptionsForTest(cfg, "local", deploy.Overrides{Lock: &disabled})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !opts.SkipLock {
+		t.Fatal("--lock=false must reach Options.SkipLock")
+	}
+
+	enabled := true
+	opts, err = deploy.ResolveOptionsForTest(cfg, "local", deploy.Overrides{Lock: &enabled})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if opts.SkipLock {
+		t.Fatal("--lock=true must keep locking on")
 	}
 }

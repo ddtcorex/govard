@@ -73,15 +73,19 @@ type Options struct {
 	// Build is the resolved build mode: BuildServer or BuildArtifact. `auto`
 	// never reaches a caller, because a mode that still has to be decided is
 	// not a mode.
-	Build              string
-	ArtifactDir        string
-	Publish            string
-	KeepReleases       int
-	Verify             bool
-	VerifyURL          string
-	VerifyTimeout      time.Duration
-	DBBackup           bool
-	Lock               bool
+	Build         string
+	ArtifactDir   string
+	Publish       string
+	KeepReleases  int
+	Verify        bool
+	VerifyURL     string
+	VerifyTimeout time.Duration
+	DBBackup      bool
+	// SkipLock disables locking. It is stated as a skip rather than as "take
+	// the lock" so that the zero value is the safe one: an Options built
+	// without resolving the CLI flags takes the lock, which is the behaviour a
+	// deploy must never lose by accident.
+	SkipLock           bool
 	IgnoreDeployerLock bool
 	CommandTimeout     time.Duration
 	Resume             bool
@@ -115,7 +119,6 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 		KeepReleases:   effective.KeepReleasesOr(),
 		Verify:         true,
 		DBBackup:       effective.DBBackup,
-		Lock:           true,
 		VerifyURL:      effective.Verify.URL,
 		VerifyTimeout:  DefaultVerifyTimeout,
 		CommandTimeout: DefaultCommandTimeout,
@@ -172,7 +175,7 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 		opts.DBBackup = *over.DBBackup
 	}
 	if over.Lock != nil {
-		opts.Lock = *over.Lock
+		opts.SkipLock = !*over.Lock
 	}
 	opts.IgnoreDeployerLock = over.IgnoreDeployerLock
 	if over.CommandTimeout > 0 {

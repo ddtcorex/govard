@@ -92,14 +92,18 @@ func lockRecipe(t *testing.T, failing string) (deploy.Host, deploy.Plan) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	recipe := deploy.DefaultRecipe()
 	for _, id := range deploy.TaskIDList() {
-		if id == deploy.TaskLock || id == failing {
+		// The two lock steps keep their real implementations: what happens to
+		// the lock directory is the thing under test.
+		if id == deploy.TaskLock || id == deploy.TaskUnlock || id == failing {
 			continue
 		}
 		stage, _ := deploy.StageForTask(id)
 		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "true"})
 	}
-	stage, _ := deploy.StageForTask(failing)
-	deploy.OverrideTaskForTest(&recipe, failing, deploy.Task{ID: failing, Stage: stage, Command: "exit 9"})
+	if failing != "" {
+		stage, _ := deploy.StageForTask(failing)
+		deploy.OverrideTaskForTest(&recipe, failing, deploy.Task{ID: failing, Stage: stage, Command: "exit 9"})
+	}
 	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
@@ -114,7 +118,7 @@ func TestExecutorReleasesTheLockWhenAFailureHappensBeforePublish(t *testing.T) {
 	for _, failing := range []string{deploy.TaskCheck, deploy.TaskRelease, deploy.TaskCode, deploy.TaskVendors} {
 		t.Run(failing, func(t *testing.T) {
 			host, plan := lockRecipe(t, failing)
-			executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", Lock: true, CommandTimeout: time.Minute}, io.Discard)
+			executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard)
 			outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 			if err == nil {
 				t.Fatal("want an error")
@@ -133,7 +137,7 @@ func TestExecutorKeepsTheLockWhenAPublishFailureHappens(t *testing.T) {
 	for _, failing := range []string{deploy.TaskMaintenanceEnable, deploy.TaskDBMigrate, deploy.TaskActivate} {
 		t.Run(failing, func(t *testing.T) {
 			host, plan := lockRecipe(t, failing)
-			executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", Lock: true, CommandTimeout: time.Minute}, io.Discard)
+			executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard)
 			outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 			if err == nil {
 				t.Fatal("want an error")
@@ -269,5 +273,58 @@ func TestExecutorDoesNotRunAStepThePlanMarkedSkipped(t *testing.T) {
 		if step.ID == deploy.TaskDBMigrate && step.Status != deploy.StepOK {
 			t.Fatalf("db:migrate status = %q, want %q (only the marked step may be skipped)", step.Status, deploy.StepOK)
 		}
+	}
+}
+
+// Locking is on unless the operator turns it off, and the zero value of the
+// option must not be able to turn it off by accident.
+func TestLockingIsOnWhenTheOptionIsNotSet(t *testing.T) {
+	host, plan := lockRecipe(t, "")
+	outcome, err := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard).
+		Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	status := map[string]string{}
+	for _, step := range outcome.Steps {
+		status[step.ID] = step.Status
+	}
+	if status[deploy.TaskLock] != deploy.StepOK {
+		t.Fatalf("deploy:lock = %q, want %q", status[deploy.TaskLock], deploy.StepOK)
+	}
+	if status[deploy.TaskUnlock] != deploy.StepOK {
+		t.Fatalf("deploy:unlock = %q, want %q", status[deploy.TaskUnlock], deploy.StepOK)
+	}
+	if _, err := host.Runner().Run(context.Background(), "test ! -e "+host.LockPath(), deploy.RunOptions{}); err != nil {
+		t.Fatalf("the lock must be released at the end of a successful run: %v", err)
+	}
+}
+
+// `--lock=false` skips both lock steps. Skipping only the acquisition would be
+// worse than ignoring the flag: the run would finish by removing whatever lock
+// it found, including one belonging to a deploy that is still running.
+func TestDisabledLockingTakesNoLockAndLeavesOtherLocksAlone(t *testing.T) {
+	host, plan := lockRecipe(t, "")
+	ctx := context.Background()
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.LockPath(), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed a concurrent deploy's lock: %v", err)
+	}
+
+	outcome, err := deploy.NewExecutor(host, deploy.Options{Remote: "local", SkipLock: true, CommandTimeout: time.Minute}, io.Discard).
+		Run(ctx, plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
+	if err != nil {
+		t.Fatalf("a run with locking disabled must not be refused by an existing lock: %v", err)
+	}
+	status := map[string]string{}
+	for _, step := range outcome.Steps {
+		status[step.ID] = step.Status
+	}
+	for _, id := range []string{deploy.TaskLock, deploy.TaskUnlock} {
+		if status[id] != deploy.StepSkipped {
+			t.Errorf("%s = %q, want %q with locking disabled", id, status[id], deploy.StepSkipped)
+		}
+	}
+	if _, err := host.Runner().Run(ctx, "test -d "+host.LockPath(), deploy.RunOptions{}); err != nil {
+		t.Fatalf("a disabled-lock run removed a lock it never took: %v", err)
 	}
 }

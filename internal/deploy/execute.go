@@ -214,6 +214,15 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			e.record(release, step, StepSkipped, 0, nil)
 			continue
 		}
+		// Locking is the one policy the run decides for itself rather than the
+		// plan, because it comes from a flag and not from a build mode. Both
+		// lock steps go together: taking no lock and then removing whatever is
+		// at the lock path would delete the lock of a deploy still running.
+		if e.opts.SkipLock && (step.ID == TaskLock || step.ID == TaskUnlock) {
+			step.SkipReason = "locking is disabled"
+			e.record(release, step, StepSkipped, 0, nil)
+			continue
+		}
 
 		// Release-derived variables must reflect what earlier steps produced,
 		// so `{{release_path}}` is correct in every command after deploy:release.
