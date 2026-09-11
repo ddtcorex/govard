@@ -414,3 +414,57 @@ func TestExecutorBoundsInWindowStepsMoreTightly(t *testing.T) {
 		}
 	})
 }
+
+// Spec 6: `release.json` "is rewritten after every task, so it is always written
+// to release.json.tmp and mv-ed into place — the same write-then-rename
+// discipline … because deploy status and monitoring may read it mid-deploy".
+// Nothing observed it mid-deploy, so a run that died in the build stage left no
+// evidence of how far it had got.
+func TestExecutorKeepsTheReleaseRecordCurrent(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	recordPath := host.ReleaseRecordPath("1")
+	snapshot := filepath.Join(t.TempDir(), "record-seen-from-deploy-code")
+
+	recipe := deploy.DefaultRecipe()
+	for _, id := range deploy.TaskIDList() {
+		stage, _ := deploy.StageForTask(id)
+		switch id {
+		case deploy.TaskLock, deploy.TaskRelease:
+			// Real implementations: the lock, and the release number every
+			// later write depends on.
+		case deploy.TaskCode:
+			// Runs after deploy:release, so it can observe what the record holds
+			// at that moment.
+			deploy.OverrideTaskForTest(&recipe, id, deploy.Task{
+				ID: id, Stage: stage, Command: "cp " + recordPath + " " + snapshot,
+			})
+		default:
+			deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "true"})
+		}
+	}
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	if _, err := deploy.NewExecutor(host, options, io.Discard).Run(
+		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("", "abc", "local")); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	seen, err := os.ReadFile(snapshot)
+	if err != nil {
+		t.Fatalf("deploy:code could not read the record: %v", err)
+	}
+	for _, want := range []string{`"deploy:release"`, `"deploy:lock"`, `"status":"running"`} {
+		if !strings.Contains(string(seen), want) {
+			t.Fatalf("the record read mid-deploy does not contain %s:\n%s", want, seen)
+		}
+	}
+	// The step that is running is not in the record yet: the write happens as
+	// each step completes, which is what makes the file a progress log.
+	if strings.Contains(string(seen), `"deploy:code"`) {
+		t.Fatalf("the record already claimed deploy:code before it finished:\n%s", seen)
+	}
+}

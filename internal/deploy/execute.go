@@ -223,7 +223,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 
 	for index, step := range plan.Steps {
 		if completed[step.ID] {
-			e.record(release, step, StepSkipped, 0, nil)
+			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
 		}
 		// A step the plan marked skipped is not run, whatever it carries. The
@@ -231,7 +231,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		// `Skipped`, so an executor that ignored the flag would run the server
 		// build in artifact mode as well.
 		if step.Skipped || (step.Command == "" && step.core == nil) {
-			e.record(release, step, StepSkipped, 0, nil)
+			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
 		}
 		// Locking is the one policy the run decides for itself rather than the
@@ -240,7 +240,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		// at the lock path would delete the lock of a deploy still running.
 		if e.opts.SkipLock && (step.ID == TaskLock || step.ID == TaskUnlock) {
 			step.SkipReason = "locking is disabled"
-			e.record(release, step, StepSkipped, 0, nil)
+			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
 		}
 
@@ -267,7 +267,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		elapsed := time.Since(stepStarted)
 
 		if stepErr != nil && !step.Optional {
-			e.record(release, step, StepFailed, elapsed, stepErr)
+			e.record(ctx, release, step, StepFailed, elapsed, stepErr)
 			release.Status = StatusFailed
 			// Best effort: the failure that matters is the step's, not the
 			// record write.
@@ -279,7 +279,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			return e.finish(outcome, started), fmt.Errorf("step %s failed on %s: %w", step.ID, e.host.Name, stepErr)
 		}
 
-		e.record(release, step, StepOK, elapsed, nil)
+		e.record(ctx, release, step, StepOK, elapsed, nil)
 	}
 
 	release.Status = StatusOK
@@ -347,8 +347,16 @@ func (e *Executor) runStep(ctx context.Context, step Step, stepCtx StepContext, 
 	return err
 }
 
-// record appends a result and mirrors it into the release record.
-func (e *Executor) record(release *Release, step Step, status string, duration time.Duration, err error) {
+// record appends a result, mirrors it into the release record, and stores the
+// record on the target.
+//
+// Storing after every step is what spec 6 asks for: `deploy status` and
+// monitoring read that file while a deploy is running, and a run that dies in
+// the build stage otherwise leaves no evidence of how far it got. The write is
+// skipped until the release number exists — before `deploy:release` there is no
+// release directory to write into, and creating one early would be worse than
+// writing late.
+func (e *Executor) record(ctx context.Context, release *Release, step Step, status string, duration time.Duration, err error) {
 	result := StepResult{ID: step.ID, Stage: step.Stage, Status: status, Duration: duration, Err: err}
 	e.results = append(e.results, result)
 
@@ -357,6 +365,14 @@ func (e *Executor) record(release *Release, step Step, status string, duration t
 		record.Error = err.Error()
 	}
 	release.RecordTask(record)
+
+	if release.Release != "" {
+		// Never the run's context: a failed step may have cancelled it, and the
+		// record is exactly what the operator needs afterwards.
+		if writeErr := WriteRelease(context.WithoutCancel(ctx), e.host, release); writeErr != nil {
+			fmt.Fprintf(e.out, "  ! the release record could not be updated: %v\n", writeErr)
+		}
+	}
 
 	icon := "✔"
 	switch status {
