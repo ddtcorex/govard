@@ -62,3 +62,46 @@ func TestRequiresTreatsUnknownCapabilityAsDocker(t *testing.T) {
 		t.Fatalf("Requires = %#v, want %#v", got, want)
 	}
 }
+
+// TestAlwaysRunnableMatchesTopLevelCommand pins the always-runnable set to the
+// top-level entry points. Matching the leaf name let `desktop doctor` skip the
+// gate although it declares docker, and gated `completion bash` although
+// `completion` is on the list.
+func TestAlwaysRunnableMatchesTopLevelCommand(t *testing.T) {
+	root := newCmd("govard", false, "")
+	desktop := newCmd("desktop", true, "docker")
+	doctor := newCmd("doctor", true, "")
+	completion := newCmd("completion", true, "")
+	bash := newCmd("bash", true, "")
+	root.AddCommand(desktop, completion)
+	desktop.AddCommand(doctor)
+	completion.AddCommand(bash)
+
+	if AlwaysRunnable(doctor) {
+		t.Error("desktop doctor must not be always-runnable")
+	}
+	if !AlwaysRunnable(bash) {
+		t.Error("completion bash must be always-runnable")
+	}
+	if !AlwaysRunnable(newCmd("doctor", true, "")) {
+		t.Error("the top-level doctor must be always-runnable")
+	}
+}
+
+// TestRequiresReportsNoneForAlwaysRunnableCommands keeps the manifest honest:
+// these commands carry no runtime requirement, so `govard capabilities` must not
+// report one the gate never enforces.
+func TestRequiresReportsNoneForAlwaysRunnableCommands(t *testing.T) {
+	root := newCmd("govard", false, "")
+	completion := newCmd("completion", true, "")
+	bash := newCmd("bash", true, "")
+	root.AddCommand(completion)
+	completion.AddCommand(bash)
+
+	if got, want := Requires(bash), []Capability{CapNone}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Requires(completion bash) = %#v, want %#v", got, want)
+	}
+	if got, want := Requires(root), []Capability(nil); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Requires(govard) = %#v, want %#v", got, want)
+	}
+}

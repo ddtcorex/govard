@@ -15,6 +15,9 @@ Govard lưu mỗi lần audit như một session bất biến tại `~/.govard/a
 # Lint toàn project (tự dò mode)
 govard audit run
 
+# Phân tích không cần container (Magento 2 / Mage-OS) — chạy trên host, không cần Docker
+govard audit run --checks integrity
+
 # Lint + profiler trên một URL (lần đầu cần --url)
 govard audit run --checks lint,profiler --url 'https://shop.test/category.html?product_list_limit=48'
 
@@ -42,6 +45,7 @@ Exit code: `0` khi mọi check pass, khác `0` sau summary khi có check fail/ca
 | Check | Chức năng |
 | :--- | :--- |
 | `lint` | Phân tích tĩnh qua backend native (`phpcs` + `phpstan` + media guard). |
+| `integrity` | Magento 2 / Mage-OS: phân tích không cần container, đọc trực tiếp checkout — Composer manifest/lock có khớp nhau, và tính nhất quán module/DI/sequence. Chạy trên host nên dùng được cả khi máy không có Docker. |
 | `profiler` | Capture `MAGE_PROFILER=csvfile` stock của Magento qua include web-server có lease, một `GET` có giới hạn tới `--url`, rồi khôi phục. |
 
 `profiler` yêu cầu:
@@ -115,6 +119,13 @@ govard audit toolchain status  # chỉ local — nên chạy gì tiếp
 govard audit toolchain pull    # chỉ image official đã ghim, không build
 govard audit toolchain build   # chỉ context nhúng, không pull
 ```
+
+Các lệnh này cần container runtime: `status` kiểm tra image local, `pull` tải
+một image, `build` build một image. Trên host không có Docker, chúng thoát với
+mã `3` kèm `CAPABILITY_MISSING` trước khi chạm vào bất cứ thứ gì, giống mọi lệnh
+cần Docker khác ([Runs Without Docker](/vi/getting-started/installation)). Phân
+tích không cần container không bị ảnh hưởng — `govard audit run --checks
+integrity` không hề chạm tới container.
 
 ---
 
