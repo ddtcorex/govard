@@ -87,6 +87,7 @@ type Config struct {
 	Remotes           RemoteConfigMap         `yaml:"remotes,omitempty"`
 	Hooks             map[string][]HookStep   `yaml:"hooks,omitempty"`
 	Audit             AuditConfig             `yaml:"audit,omitempty"`
+	Deploy            DeployConfig            `yaml:"deploy,omitempty"`
 }
 
 // ExternalLintProviderConfig identifies an explicitly selected, local Docker

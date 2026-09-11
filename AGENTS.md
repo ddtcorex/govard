@@ -190,11 +190,12 @@ inheriting `docker`. The bar, by kind of work:
   `project open`, `domain list`, `vscode setup`;
 - static analysis of the checkout: `audit run --checks integrity` plus the
   host-side audit lifecycle (`status`, `result`, `diff`, `cleanup`);
-- direct host or network work: `remote *` (SSH), `sync` (rsync), `tunnel *`
-  (`cloudflared`), `trust`, `self-update`.
+- direct host or network work: `remote *` (SSH), `sync` (rsync), `deploy`
+  (SSH + rsync, with `deploy plan` requirement-free and `deploy check` SSH-only),
+  `tunnel *` (`cloudflared`), `trust`, `self-update`.
 
 Container orchestration keeps `docker`: `env`, `svc`, `db`, `shell`, `tool`,
-`test`, `frontend`, `logs`, `ps`, `status`, `deploy`, `bootstrap`, `debug`,
+`test`, `frontend`, `logs`, `ps`, `status`, `bootstrap`, `debug`,
 `extensions`, `snapshot`, `upgrade`, launching `desktop`, `audit toolchain`, and
 the container-backed audit checks. A command that regresses out of the free set
 is a bug, and `docs/reference/docker-free.md` is the enforced list.

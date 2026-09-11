@@ -41,6 +41,10 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard config set` | `none` |
 | `govard custom` | `none` |
 | `govard custom list` | `none` |
+| `govard deploy` | `ssh,rsync` |
+| `govard deploy check` | `ssh` |
+| `govard deploy plan` | `none` |
+| `govard deploy unlock` | `ssh` |
 | `govard desktop doctor` | `none` |
 | `govard doctor` | `none` |
 | `govard doctor trust` | `none` |
@@ -104,6 +108,10 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
 - **Registry và domain.** `project list` và `project open` đọc registry;
   `domain list` in ra domain của project; `vscode setup` suy ra cấu hình editor từ
   chính file của project. `project orphans` quét tài nguyên Docker nên vẫn cần runtime.
+- **Triển khai.** `govard deploy` cần SSH và rsync, `govard deploy check` cần
+  SSH, còn `govard deploy plan` không cần gì cả: nó đọc `.govard.yml` và in kế
+  hoạch thực thi mà không kết nối đi đâu.
+
 - **Remote và đồng bộ.** `govard remote add|test|copy-id|exec`,
   `govard remote audit stats|tail`, và `govard sync` cần SSH và rsync, không cần
   Docker.

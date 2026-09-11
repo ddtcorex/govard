@@ -41,6 +41,10 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard config set` | `none` |
 | `govard custom` | `none` |
 | `govard custom list` | `none` |
+| `govard deploy` | `ssh,rsync` |
+| `govard deploy check` | `ssh` |
+| `govard deploy plan` | `none` |
+| `govard deploy unlock` | `ssh` |
 | `govard desktop doctor` | `none` |
 | `govard doctor` | `none` |
 | `govard doctor trust` | `none` |
@@ -106,6 +110,10 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   `domain list` prints the project's domains; `vscode setup` derives the editor
   settings from the project's own files. `project orphans` inspects Docker
   resources, so it keeps the requirement.
+- **Deployment.** `govard deploy` needs SSH and rsync, `govard deploy check`
+  needs SSH, and `govard deploy plan` needs nothing at all: it reads
+  `.govard.yml` and prints the execution plan without connecting anywhere.
+
 - **Remote and sync.** `govard remote add|test|copy-id|exec`,
   `govard remote audit stats|tail`, and `govard sync` need SSH and rsync, not
   Docker.

@@ -649,11 +649,38 @@ govard db clone-volume warden_magento2_dbdata
 
 ### `govard deploy`
 
-Chạy các deploy lifecycle hook được cấu hình cho dự án hiện tại.
+Triển khai một revision git lên môi trường remote.
 
 ```bash
-govard deploy
+govard deploy <remote>                   # triển khai HEAD ở máy local
+govard deploy staging --revision <sha>   # triển khai đúng một commit (CI)
+govard deploy plan staging               # in kế hoạch, không kết nối
+govard deploy check staging              # kiểm tra trước và báo chiến lược publish
 ```
+
+Đích là một remote trong `.govard.yml`. Branch, repository, deploy path và chiến
+lược publish lấy từ block `deploy:` của dự án; mỗi remote có thể ghi đè bằng các
+field topology trên remote (`branch`, `repository`, `deploy_path`, `publish`,
+`local`) hoặc bằng `remotes.<name>.deploy.<key>` cho các key của block `deploy:`.
+Flag có độ ưu tiên cao nhất.
+
+Pipeline là một chuỗi task trung tính cố định. Dự án tuỳ biến bằng cách neo hook
+vào một task id, vào alias của stage (`stage:build`) hoặc vào một hook khác:
+
+```yaml
+deploy:
+  hooks:
+    - { name: apache-reload, on: "publish:activate", position: after, order: 10, run: "touch ~/apache-reload" }
+```
+
+Flag: `--remote`, `--branch`, `--revision`, `--tag` (loại trừ lẫn nhau),
+`--publish=auto|symlink|in_place`, `--keep`, `--verify/--no-verify`,
+`--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--force`,
+`--yes`, `--json`, `--verbose`.
+
+Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thiếu
+capability, `4` lỗi cấu hình. `govard deploy` cần `ssh` và `rsync`; không cần
+Docker.
 
 ### `govard snapshot`
 

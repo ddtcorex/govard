@@ -687,11 +687,39 @@ govard db clone-volume warden_magento2_dbdata
 
 ### `govard deploy`
 
-Run deploy lifecycle hooks for the current project.
+Deploy a git revision to a remote environment.
 
 ```bash
-govard deploy
+govard deploy <remote>                   # deploy the local HEAD
+govard deploy staging --revision <sha>   # deploy an exact commit (CI)
+govard deploy plan staging               # print the plan, connect nowhere
+govard deploy check staging              # preflight and report the publish strategy
 ```
+
+The target is a remote from `.govard.yml`. The branch, repository, deploy path
+and publish strategy come from the project `deploy:` block; a remote overrides
+them either through the topology fields on the remote (`branch`, `repository`,
+`deploy_path`, `publish`, `local`) or through `remotes.<name>.deploy.<key>` for
+keys of the `deploy:` block. Flags win over both.
+
+The pipeline is a fixed sequence of neutral tasks. A project customises it by
+anchoring hooks on a task id, on a stage alias (`stage:build`) or on another
+hook:
+
+```yaml
+deploy:
+  hooks:
+    - { name: apache-reload, on: "publish:activate", position: after, order: 10, run: "touch ~/apache-reload" }
+```
+
+Flags: `--remote`, `--branch`, `--revision`, `--tag` (mutually exclusive),
+`--publish=auto|symlink|in_place`, `--keep`, `--verify/--no-verify`,
+`--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--force`,
+`--yes`, `--json`, `--verbose`.
+
+Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
+capability, `4` configuration. `govard deploy` needs `ssh` and `rsync`; it does
+not need Docker.
 
 ### `govard snapshot`
 

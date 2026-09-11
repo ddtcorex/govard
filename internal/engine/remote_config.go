@@ -43,6 +43,16 @@ type RemoteConfig struct {
 	DBUser       string              `yaml:"db_user,omitempty"`
 	DBPass       string              `yaml:"db_pass,omitempty"`
 	DBPort       int                 `yaml:"db_port,omitempty"`
+
+	// Deploy topology. These describe this server and therefore live on the
+	// remote, not in the project `deploy:` block; the only cross-over is
+	// Deploy, which overrides individual project-level deploy keys.
+	Branch     string        `yaml:"branch,omitempty"`
+	Repository string        `yaml:"repository,omitempty"`
+	DeployPath string        `yaml:"deploy_path,omitempty"`
+	Publish    string        `yaml:"publish,omitempty"`
+	Local      bool          `yaml:"local,omitempty"`
+	Deploy     *DeployConfig `yaml:"deploy,omitempty"`
 }
 
 // RemoteConfigMap is a specialized map that preserves sort order during YAML marshaling.
