@@ -307,7 +307,11 @@ func mergeDeployConfig(project, override engine.DeployConfig) engine.DeployConfi
 	if len(override.Hooks) > 0 {
 		merged.Hooks = override.Hooks
 	}
-	merged.Settings = make(map[string]any, len(project.Settings)+len(override.Settings))
+	// The capacity hint is one layer's size, not the sum of both: a sum is a
+	// size computation whose result a static analyser has to treat as
+	// overflowable, and a map that grows is cheaper than a security alert that
+	// has to be argued about.
+	merged.Settings = make(map[string]any, len(project.Settings))
 	for key, value := range project.Settings {
 		merged.Settings[key] = value
 	}
@@ -337,7 +341,7 @@ func WithRecipeDefaults(recipe Recipe, opts Options) Options {
 	if len(recipe.Defaults) == 0 {
 		return opts
 	}
-	layered := make(map[string]any, len(opts.Settings)+len(recipe.Defaults))
+	layered := make(map[string]any, len(opts.Settings))
 	for key, value := range opts.Settings {
 		layered[key] = value
 	}
