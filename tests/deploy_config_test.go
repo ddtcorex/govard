@@ -1,10 +1,12 @@
 package tests
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"govard/internal/deploy"
 	"govard/internal/engine"
@@ -327,5 +329,61 @@ func TestDisablingTheLockReachesTheResolvedOptions(t *testing.T) {
 	}
 	if opts.SkipLock {
 		t.Fatal("--lock=true must keep locking on")
+	}
+}
+
+// `deploy.lock_stale_after` is presented as configurable in spec 12.1; the
+// threshold was a constant in the command layer, so a deploy that legitimately
+// runs longer than two hours could not say so.
+func TestLockStaleAfterIsConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	cfg := deployRemoteConfig(t, dir, "git@example.com:acme/shop.git")
+
+	opts, err := deploy.ResolveOptionsForTest(cfg, "local", deploy.Overrides{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if opts.LockStaleAfter != deploy.DefaultLockStaleAfter {
+		t.Fatalf("default lock_stale_after = %s, want %s", opts.LockStaleAfter, deploy.DefaultLockStaleAfter)
+	}
+
+	writeFile(t, filepath.Join(dir, ".govard.local.yml"), `
+deploy:
+  lock_stale_after: 30m
+remotes:
+  local:
+    local: true
+    path: /srv/public_html
+    deploy_path: /srv
+    branch: main
+`)
+	loaded, _, err := engine.LoadConfigFromDir(dir, false)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	opts, err = deploy.ResolveOptionsForTest(loaded, "local", deploy.Overrides{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if opts.LockStaleAfter != 30*time.Minute {
+		t.Fatalf("lock_stale_after = %s, want 30m", opts.LockStaleAfter)
+	}
+
+	writeFile(t, filepath.Join(dir, ".govard.local.yml"), `
+deploy:
+  lock_stale_after: not-a-duration
+remotes:
+  local:
+    local: true
+    path: /srv/public_html
+    deploy_path: /srv
+    branch: main
+`)
+	loaded, _, err = engine.LoadConfigFromDir(dir, false)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if _, err := deploy.ResolveOptionsForTest(loaded, "local", deploy.Overrides{}); !errors.Is(err, deploy.ErrInvalidConfiguration) {
+		t.Fatalf("a malformed duration must be a configuration error, got %v", err)
 	}
 }

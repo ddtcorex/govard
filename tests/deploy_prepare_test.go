@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"govard/internal/deploy"
 	"govard/internal/engine"
@@ -724,5 +725,61 @@ func TestDeployPathDiscoveryAcceptsACurrentSymlink(t *testing.T) {
 	}
 	if found != home {
 		t.Fatalf("discovered %q, want %q", found, home)
+	}
+}
+
+// Spec 12.1: a held lock refuses a second deploy "with a message naming the
+// holder". The refusal named only the path, so an operator had to run
+// `deploy unlock` just to find out who was holding it.
+func TestLockRefusalNamesTheHolder(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	// Another run holds the lock, with a known identity on disk.
+	owner := `{"pid":4242,"actor":"ci-runner","revision":"0123456789abcdef","branch":"main","host":"production","started_at":"2026-01-01T00:00:00Z"}`
+	seed := "mkdir -p " + host.LockPath() + " && printf '%s\n' '" + owner + "' > " + host.LockOwnerPath()
+	if _, err := runner.Run(ctx, seed, deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed lock: %v", err)
+	}
+
+	err := deploy.CoreLock(ctx, deploy.StepContextForTest(host, deploy.Options{Remote: "local"}))
+	if !errors.Is(err, deploy.ErrLockHeld) {
+		t.Fatalf("err = %v, want ErrLockHeld", err)
+	}
+	for _, want := range []string{"ci-runner", "01234567", host.LockPath()} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal must name %q, got %q", want, err.Error())
+		}
+	}
+}
+
+func TestDescribeLockOwnerReadsTheRecord(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.LockPath(), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed lock: %v", err)
+	}
+	owner := `{"pid":4242,"actor":"ci","revision":"0123456789abcdef","branch":"main","host":"production","started_at":"2026-01-01T00:00:00Z"}`
+	if _, err := host.Runner().Run(ctx, "cat > "+host.LockOwnerPath()+" <<'EOF'\n"+owner+"\nEOF", deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed owner: %v", err)
+	}
+
+	described, heldFor := deploy.DescribeLockOwnerForTest(ctx, host, time.Now())
+	if !strings.Contains(described, "ci") || !strings.Contains(described, "01234567") {
+		t.Fatalf("described = %q, want the actor and the short revision", described)
+	}
+	if heldFor <= 0 {
+		t.Fatalf("heldFor = %s, want a positive duration for a lock from 2026-01-01", heldFor)
+	}
+
+	// A lock whose metadata is unreadable is still describable, because
+	// refusing to unlock it would be worse than naming it "unknown".
+	if _, err := host.Runner().Run(ctx, "rm -f "+host.LockOwnerPath(), deploy.RunOptions{}); err != nil {
+		t.Fatalf("remove owner: %v", err)
+	}
+	described, heldFor = deploy.DescribeLockOwnerForTest(ctx, host, time.Now())
+	if described != "unknown" || heldFor != -1 {
+		t.Fatalf("missing owner.json -> (%q, %s), want (unknown, -1)", described, heldFor)
 	}
 }

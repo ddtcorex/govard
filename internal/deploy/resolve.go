@@ -45,6 +45,9 @@ const (
 const (
 	DefaultCommandTimeout = 30 * time.Minute
 	DefaultVerifyTimeout  = 30 * time.Second
+	// DefaultLockStaleAfter is how old a deploy lock must be before
+	// `deploy unlock` releases it without --force.
+	DefaultLockStaleAfter = 2 * time.Hour
 )
 
 // Overrides carries the CLI flag values for one invocation. Zero values mean
@@ -89,7 +92,10 @@ type Options struct {
 	Verify        bool
 	VerifyURL     string
 	VerifyTimeout time.Duration
-	DBBackup      bool
+	// LockStaleAfter is how old a deploy lock must be for `deploy unlock` to
+	// release it without --force.
+	LockStaleAfter time.Duration
+	DBBackup       bool
 	// SkipLock disables locking. It is stated as a skip rather than as "take
 	// the lock" so that the zero value is the safe one: an Options built
 	// without resolving the CLI flags takes the lock, which is the behaviour a
@@ -131,6 +137,7 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 		VerifyURL:      effective.Verify.URL,
 		VerifyTimeout:  DefaultVerifyTimeout,
 		CommandTimeout: DefaultCommandTimeout,
+		LockStaleAfter: DefaultLockStaleAfter,
 		Settings:       mergedSettings(effective.Settings),
 		Hooks:          effective.Hooks,
 	}
@@ -148,6 +155,13 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 			return Options{}, fmt.Errorf("%w: deploy.command_timeout: %v", ErrInvalidConfiguration, err)
 		}
 		opts.CommandTimeout = parsed
+	}
+	if raw := strings.TrimSpace(effective.LockStaleAfter); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return Options{}, fmt.Errorf("%w: deploy.lock_stale_after: %v", ErrInvalidConfiguration, err)
+		}
+		opts.LockStaleAfter = parsed
 	}
 
 	// Flags win over every configuration layer.

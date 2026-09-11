@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"govard/internal/deploy"
@@ -11,11 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-// deployLockStaleAfter is how old a lock must be before `unlock` releases it
-// without --force. A deploy that legitimately takes longer than this should
-// raise the value rather than be interrupted.
-const deployLockStaleAfter = 2 * time.Hour
 
 var deployUnlockCmd = &cobra.Command{
 	Annotations: map[string]string{
@@ -57,8 +50,8 @@ func runDeployUnlock(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	holder, heldFor := describeLockHolder(cmd, host)
-	if !force && heldFor >= 0 && heldFor < deployLockStaleAfter {
+	holder, heldFor := deploy.DescribeLockOwner(ctx, host)
+	if !force && heldFor >= 0 && heldFor < options.LockStaleAfter {
 		return fmt.Errorf("%s holds a lock started %s ago by %s; pass --force to release it", remote, heldFor.Round(time.Second), holder)
 	}
 
@@ -67,36 +60,4 @@ func runDeployUnlock(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "released the deploy lock on %s (held by %s)\n", remote, holder)
 	return nil
-}
-
-// describeLockHolder reads owner.json. "unknown" is a legitimate answer: the
-// lock may predate the fields, and refusing to unlock because the metadata is
-// unreadable would be worse than releasing it with --force.
-func describeLockHolder(cmd *cobra.Command, host deploy.Host) (string, time.Duration) {
-	result, err := host.Runner().Run(cmd.Context(), "cat "+deploy.Shell(host.LockOwnerPath()), deploy.RunOptions{Timeout: time.Minute})
-	if err != nil {
-		return "unknown", -1
-	}
-	var owner struct {
-		Actor     string `json:"actor"`
-		Revision  string `json:"revision"`
-		StartedAt string `json:"started_at"`
-	}
-	if err := json.Unmarshal([]byte(result.Stdout), &owner); err != nil {
-		return "unknown", -1
-	}
-
-	who := strings.TrimSpace(owner.Actor)
-	if who == "" {
-		who = "unknown"
-	}
-	if revision := strings.TrimSpace(owner.Revision); revision != "" {
-		who += " at " + shortRevisionForOutput(revision)
-	}
-
-	started, err := time.Parse(time.RFC3339, strings.TrimSpace(owner.StartedAt))
-	if err != nil {
-		return who, -1
-	}
-	return who, time.Since(started)
 }

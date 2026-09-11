@@ -13,6 +13,7 @@ const DefaultKeepReleases = 5
 type DeployConfig struct {
 	KeepReleases   int                `yaml:"keep_releases,omitempty"`
 	CommandTimeout string             `yaml:"command_timeout,omitempty"`
+	LockStaleAfter string             `yaml:"lock_stale_after,omitempty"`
 	ArtifactDir    string             `yaml:"artifact_dir,omitempty"`
 	DBBackup       bool               `yaml:"db_backup,omitempty"`
 	Verify         DeployVerifyConfig `yaml:"verify,omitempty"`
@@ -60,6 +61,7 @@ func NormalizeDeployConfig(config *Config) {
 
 	config.Deploy.ArtifactDir = strings.TrimSpace(config.Deploy.ArtifactDir)
 	config.Deploy.CommandTimeout = strings.TrimSpace(config.Deploy.CommandTimeout)
+	config.Deploy.LockStaleAfter = strings.TrimSpace(config.Deploy.LockStaleAfter)
 	config.Deploy.Verify.URL = strings.TrimSpace(config.Deploy.Verify.URL)
 	config.Deploy.Verify.Timeout = strings.TrimSpace(config.Deploy.Verify.Timeout)
 
@@ -81,6 +83,7 @@ func NormalizeDeployConfig(config *Config) {
 			override := *remote.Deploy
 			override.ArtifactDir = strings.TrimSpace(override.ArtifactDir)
 			override.CommandTimeout = strings.TrimSpace(override.CommandTimeout)
+			override.LockStaleAfter = strings.TrimSpace(override.LockStaleAfter)
 			override.Verify.URL = strings.TrimSpace(override.Verify.URL)
 			override.Verify.Timeout = strings.TrimSpace(override.Verify.Timeout)
 			for idx := range override.Hooks {

@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -376,7 +377,14 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
 		var commandErr *CommandError
 		if errors.As(err, &commandErr) && commandErr.ExitCode == lockHeldExitCode {
-			return fmt.Errorf("%w: %s", ErrLockHeld, host.LockPath())
+			// Name the holder, not just the path: an operator reading "deploy
+			// lock is held" has to know whether it is their own CI run or
+			// somebody else's deploy before deciding to unlock it.
+			holder, heldFor := DescribeLockOwner(ctx, host)
+			if heldFor >= 0 {
+				return fmt.Errorf("%w: %s held for %s by %s", ErrLockHeld, host.LockPath(), heldFor.Round(time.Second), holder)
+			}
+			return fmt.Errorf("%w: %s held by %s", ErrLockHeld, host.LockPath(), holder)
 		}
 		return fmt.Errorf("acquire deploy lock: %w", err)
 	}
@@ -395,6 +403,57 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 // lockHeldExitCode is the shell exit code CoreLock uses to signal "another
 // deploy holds the lock", as opposed to any other mkdir failure.
 const lockHeldExitCode = 9
+
+// LockOwner is who holds the deploy lock, as recorded in owner.json.
+type LockOwner struct {
+	PID       int    `json:"pid"`
+	Actor     string `json:"actor"`
+	Revision  string `json:"revision"`
+	Branch    string `json:"branch"`
+	Host      string `json:"host"`
+	StartedAt string `json:"started_at"`
+}
+
+// DescribeLockOwner renders the lock's holder and how long it has been held.
+//
+// "unknown" and -1 are legitimate answers: the lock may predate these fields or
+// owner.json may be unreadable, and refusing to talk about it would be worse
+// than naming it unknown. A -1 duration means "cannot say", which every caller
+// must treat as "not provably stale".
+func DescribeLockOwner(ctx context.Context, host Host) (string, time.Duration) {
+	return describeLockOwner(ctx, host, time.Now())
+}
+
+// DescribeLockOwnerForTest pins the clock so a test can assert the held-for
+// duration.
+func DescribeLockOwnerForTest(ctx context.Context, host Host, now time.Time) (string, time.Duration) {
+	return describeLockOwner(ctx, host, now)
+}
+
+func describeLockOwner(ctx context.Context, host Host, now time.Time) (string, time.Duration) {
+	result, err := host.Runner().Run(ctx, "cat "+Shell(host.LockOwnerPath()), RunOptions{Timeout: shortCommandTimeout})
+	if err != nil {
+		return "unknown", -1
+	}
+	var owner LockOwner
+	if err := json.Unmarshal([]byte(result.Stdout), &owner); err != nil {
+		return "unknown", -1
+	}
+
+	who := strings.TrimSpace(owner.Actor)
+	if who == "" {
+		who = "unknown"
+	}
+	if revision := strings.TrimSpace(owner.Revision); revision != "" {
+		who += " at " + ShortRevision(revision)
+	}
+
+	started, err := time.Parse(time.RFC3339, strings.TrimSpace(owner.StartedAt))
+	if err != nil {
+		return who, -1
+	}
+	return who, now.Sub(started)
+}
 
 // CoreUnlock releases the lock.
 func CoreUnlock(ctx context.Context, sc *StepContext) error {
