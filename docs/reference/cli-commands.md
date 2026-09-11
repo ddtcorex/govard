@@ -1032,6 +1032,20 @@ Host access for search is also routed automatically via `http://<your-domain>:92
 All commands support:
 
 - `-h, --help` — Show help
+- `--verbose` — Enable verbose structured logging
+- `--error-json` — Print failures as a machine-readable JSON envelope on stdout
+  (`schema_version`, `code`, `capability`, `command`, `message`, `hint`)
+  instead of text, so scripts never parse the human form
+
+Commands that forward their arguments to a tool (`govard tool php ...`,
+`govard redis cli ...`) cannot parse `--error-json`; their failures still carry
+the documented exit codes.
+
+Exit codes are stable across the CLI: `0` success, `1` execution failure,
+`2` usage error, `3` `CAPABILITY_MISSING` (a declared runtime requirement is
+unavailable), `4` configuration error. See
+[Runs Without Docker](/reference/docker-free) for the commands that need no
+container runtime and what the gate does when something is missing.
 
 ---
 

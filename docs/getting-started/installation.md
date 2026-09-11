@@ -144,6 +144,10 @@ inspect, pull, and build a container image. `govard doctor` treats Docker as
 optional and exits `0`; `govard doctor --strict` restores the hard gate for
 bootstrap scripts.
 
+The complete list of commands that run without a container runtime — grouped by
+what they do need (nothing at all, SSH + rsync, `cloudflared`, network) — is in
+[Runs Without Docker](/reference/docker-free).
+
 ## 🐳 Docker Images
 
 Govard uses a single PHP Dockerfile with build args instead of versioned folders.

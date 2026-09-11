@@ -135,6 +135,10 @@ Note: commands that forward their arguments to a tool (`govard tool php ...`,
 `govard redis cli ...`) cannot parse the `--error-json` flag; their failures
 still carry the documented exit codes.
 
+The full list of commands that run without a container runtime — and what each
+one needs instead (nothing, SSH + rsync, `cloudflared`, network) — is in the
+[Runs Without Docker reference](docs/reference/docker-free.md).
+
 ### Release Installers
 
 Every tagged release publishes these Linux packages:
