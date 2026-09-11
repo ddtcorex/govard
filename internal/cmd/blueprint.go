@@ -6,9 +6,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var blueprintCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "blueprint",
 	Short: "Manage blueprint components and registry",
 	Run: func(cmd *cobra.Command, args []string) {

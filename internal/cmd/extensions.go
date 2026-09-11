@@ -7,11 +7,15 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var extensionForce bool
 
 var extensionsCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:     "extensions",
 	Aliases: []string{"ext"},
 	Short:   "Manage project extension contract in .govard",

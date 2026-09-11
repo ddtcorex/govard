@@ -7,6 +7,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var (
@@ -18,6 +19,9 @@ var (
 )
 
 var upgradeCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "upgrade",
 	Short: "Upgrade the framework version",
 	RunE: func(cmd *cobra.Command, args []string) error {

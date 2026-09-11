@@ -1,8 +1,15 @@
 package cmd
 
+import (
+	"govard/internal/runtime"
+)
+
 import "github.com/spf13/cobra"
 
 var upShortcutCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:     "up [flags]",
 	Short:   "Shortcut for `govard env up`",
 	Long:    "Start the development environment. This is a root shortcut for `govard env up` and supports the same Govard-specific flags.",
@@ -36,6 +43,9 @@ var logsShortcutCmd = newEnvShortcutCommand(
 
 func newEnvShortcutCommand(use string, short string, long string) *cobra.Command {
 	return &cobra.Command{
+		Annotations: map[string]string{
+			runtime.AnnotationRequires: string(runtime.CapDocker),
+		},
 		Use:                use + " [args]",
 		Short:              short,
 		Long:               long,

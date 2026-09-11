@@ -12,9 +12,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var testCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "test [phpunit|phpstan|mftf|unit|integration]",
 	Short: "Run project tests (PHPUnit, PHPStan, etc.)",
 	Long: `Run various test suites directly inside the project containers.

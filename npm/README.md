@@ -7,6 +7,10 @@ checksum, and exposes it as the `govard` bin.
 
 CLI only — the Desktop app is distributed via `.deb` / `.pkg` releases.
 
+The package installs and runs without Docker. Stack commands (`govard env up`,
+`svc`, `db`, `shell`, `test`, `audit`) need it; run `govard capabilities` for the
+list of commands that work without a container runtime.
+
 ## Usage
 
 ```sh

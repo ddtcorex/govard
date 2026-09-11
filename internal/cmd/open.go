@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"govard/internal/runtime"
 )
 
 const openSupportedTargets = "admin, db, mail, mftf, portainer, shell, sftp, elasticsearch, opensearch"
@@ -15,6 +16,9 @@ var openPma bool
 var openClient bool
 
 var openCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "open [target]",
 	Short: "Open common service URLs",
 	Long: strings.TrimSpace(`

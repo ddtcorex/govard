@@ -8,9 +8,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var varnishCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "varnish [command]",
 	Short: "Control the varnish service",
 	Long: `Interact with the Varnish service. 

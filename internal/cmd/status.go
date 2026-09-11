@@ -6,9 +6,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var statusCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "status",
 	Short: "List running Govard project environments across the workspace",
 	Long:  "Workspace-wide environment overview. Use `govard env ps` for the current project only.",

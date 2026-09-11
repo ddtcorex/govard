@@ -11,9 +11,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var verifyCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "verify",
 	Short: "Run 5-phase Govard checklist (executable)",
 	Long: `Run the 5-phase Govard verify harness (replaces manual checklist tick).

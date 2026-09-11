@@ -16,6 +16,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 const (
@@ -55,6 +56,9 @@ var (
 )
 
 var bootstrapCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:     "bootstrap [flags]",
 	Aliases: []string{"boot"},
 	Short:   "Bootstrap local environment: import DB/media from remote, or full clone with --clone",

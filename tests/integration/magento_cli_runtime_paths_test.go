@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"govard/internal/engine"
@@ -63,7 +62,7 @@ hooks:
 	}
 }
 
-func TestStatusHandlesDockerConnectionErrors(t *testing.T) {
+func TestStatusFailsFastWhenDockerDaemonUnreachable(t *testing.T) {
 	env := NewTestEnvironment(t)
 	projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "status-m2")
 
@@ -73,12 +72,15 @@ func TestStatusHandlesDockerConnectionErrors(t *testing.T) {
 		[]string{"DOCKER_HOST=unix:///tmp/govard-int-status-missing.sock"},
 		"status",
 	)
-	result.AssertSuccess(t)
 
-	output := result.Stdout + result.Stderr
-	if !strings.Contains(output, "failed to connect to Docker") && !strings.Contains(output, "failed to list containers") {
-		t.Fatalf("expected docker connection error output, got:\n%s", output)
+	// An unreachable daemon is a missing capability: the command must fail
+	// before its workflow starts rather than mid-way through listing containers.
+	if result.ExitCode != 3 {
+		t.Fatalf("expected exit code 3 (missing capability), got %d\nstdout=%s\nstderr=%s",
+			result.ExitCode, result.Stdout, result.Stderr)
 	}
+	output := result.Stdout + result.Stderr
+	assertContains(t, output, `missing capability "docker"`)
 }
 
 func TestShellFallsBackToShWhenBashFails(t *testing.T) {
@@ -86,7 +88,11 @@ func TestShellFallsBackToShWhenBashFails(t *testing.T) {
 	projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "shell-fallback-m2")
 	shim := env.SetupRuntimeShims(t, map[string]int{"docker": 127, "ssh": 0, "rsync": 0})
 
-	result := env.RunGovardWithEnv(t, projectDir, shim.Env(), "shell")
+	// The one-shot failure must target the in-container bash attempt, not the
+	// capability probe's `docker compose version` call.
+	shellEnv := append(shim.Env(), "GOVARD_TEST_FAIL_MATCH_DOCKER=bash")
+
+	result := env.RunGovardWithEnv(t, projectDir, shellEnv, "shell")
 	result.AssertSuccess(t)
 
 	logs := shim.ReadLog(t)

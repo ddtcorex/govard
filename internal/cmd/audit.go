@@ -21,6 +21,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 type auditCommandOptions struct {
@@ -184,6 +185,9 @@ func currentAuditDependencies(defaults auditCommandDependencies) auditCommandDep
 func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	options := &auditCommandOptions{Scope: string(audit.ScopeProject), Checks: []string{"lint"}, Format: "text", LintProvider: audit.GovardLintProvider, LintJobs: engine.AuditRunJobs(), Timeout: "auto"}
 	command := &cobra.Command{
+		Annotations: map[string]string{
+			runtime.AnnotationRequires: string(runtime.CapDocker),
+		},
 		Use:   "audit",
 		Short: "Run and inspect persistent project audits",
 	}

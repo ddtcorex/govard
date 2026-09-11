@@ -14,9 +14,13 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"govard/internal/runtime"
 )
 
 var syncCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: "ssh,rsync",
+	},
 	Use:   "sync [flags]",
 	Short: "Synchronize files, media, and databases between environments",
 	Long: `Synchronize your local development environment with a remote server (e.g., staging, production).

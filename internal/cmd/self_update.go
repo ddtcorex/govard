@@ -23,6 +23,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	govardruntime "govard/internal/runtime"
 )
 
 const (
@@ -46,6 +47,9 @@ var selfUpdateChannel string
 var selfUpdateForce bool
 
 var selfUpdateCmd = &cobra.Command{
+	Annotations: map[string]string{
+		govardruntime.AnnotationRequires: string(govardruntime.CapNet),
+	},
 	Use:   "self-update",
 	Short: "Upgrade installed Govard binaries",
 	RunE: func(cmd *cobra.Command, _ []string) error {

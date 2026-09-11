@@ -171,14 +171,37 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  core_sans_docker:
+    name: Core Contract (no Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build CLI
+        run: go build -o /tmp/govard ./cmd/govard
+
+      - name: Run the Docker-free contract
+        run: |
+          docker run --rm \
+            -v /tmp/govard:/govard:ro \
+            -v "$PWD/scripts/core-contract.sh:/core-contract.sh:ro" \
+            debian:bookworm-slim /core-contract.sh /govard
+
   verify:
     name: Verify
     runs-on: ubuntu-latest
-    needs: [quality_checks, fast_tests, integration_tests, build_binaries, release_snapshot]
+    needs: [quality_checks, fast_tests, integration_tests, build_binaries, release_snapshot, core_sans_docker]
     if: always()
     steps:
       - name: Gate
         run: |
-          for r in "${{ needs.quality_checks.result }}" "${{ needs.fast_tests.result }}" "${{ needs.integration_tests.result }}" "${{ needs.build_binaries.result }}" "${{ needs.release_snapshot.result }}"; do
+          for r in "${{ needs.quality_checks.result }}" "${{ needs.fast_tests.result }}" "${{ needs.integration_tests.result }}" "${{ needs.build_binaries.result }}" "${{ needs.release_snapshot.result }}" "${{ needs.core_sans_docker.result }}"; do
             [ "$r" = "success" ] || [ "$r" = "skipped" ] || exit 1
           done

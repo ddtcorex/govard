@@ -17,9 +17,13 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+	"govard/internal/runtime"
 )
 
 var initCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "init [flags]",
 	Short: "Initialize a new project configuration",
 	Long: `Initialize a Govard project configuration in the current directory.

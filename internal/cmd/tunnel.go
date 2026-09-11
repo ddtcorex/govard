@@ -17,6 +17,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 type tunnelCommandDependencies struct {
@@ -38,6 +39,9 @@ type TunnelDependenciesForTest struct {
 }
 
 var tunnelCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapCloudflared),
+	},
 	Use:   "tunnel",
 	Short: "Manage local project tunnels",
 	Long: `Manage public tunnels to your local project. Tunnels allow you to securely

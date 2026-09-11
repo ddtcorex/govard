@@ -9,9 +9,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var customCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "custom",
 	Short: "Run custom commands from project and global plugin directories",
 	Run: func(cmd *cobra.Command, args []string) {

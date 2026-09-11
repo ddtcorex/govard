@@ -20,7 +20,9 @@ func TestDoctorJSONWithShims(t *testing.T) {
 		t.Fatalf("expected doctor exit code 0 or 1, got %d\nstderr=%s", doctorResult.ExitCode, doctorResult.Stderr)
 	}
 	assertContains(t, doctorResult.Stdout, `"checks":`)
-	assertContains(t, doctorResult.Stdout, `"host.system.deps"`)
+	// System dependencies are split by the command group they gate.
+	assertContains(t, doctorResult.Stdout, `"host.deps.docker"`)
+	assertContains(t, doctorResult.Stdout, `"host.deps.remote"`)
 }
 
 func TestTrustCommandWithShims(t *testing.T) {

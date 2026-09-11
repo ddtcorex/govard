@@ -45,14 +45,16 @@ func TestRunDoctorDiagnosticsComposeFailure(t *testing.T) {
 		CheckSSHAgentStatus:      func() (string, error) { return "ok", nil },
 	})
 
-	if report.Failures != 1 {
-		t.Fatalf("expected 1 failure, got %d", report.Failures)
+	// The Compose plugin gates the stack commands, not the core, so its absence
+	// is a warning rather than a blocking failure.
+	if report.Failures != 0 {
+		t.Fatalf("expected compose failure to be optional, got %d failure(s)", report.Failures)
+	}
+	if report.Warnings == 0 {
+		t.Fatal("expected the compose failure to surface as a warning")
 	}
 	if len(report.IssueCards) == 0 {
-		t.Fatal("expected issue cards for failure report")
-	}
-	if report.IssueCards[0].Severity != "error" {
-		t.Fatalf("expected first issue card severity error, got %s", report.IssueCards[0].Severity)
+		t.Fatal("expected issue cards for the warning report")
 	}
 
 	found := false
@@ -61,8 +63,17 @@ func TestRunDoctorDiagnosticsComposeFailure(t *testing.T) {
 			continue
 		}
 		found = true
-		if check.Status != engine.DoctorStatusFail {
-			t.Fatalf("expected docker.compose fail status, got %s", check.Status)
+		if check.Status != engine.DoctorStatusWarn {
+			t.Fatalf("expected docker.compose warn status, got %s", check.Status)
+		}
+		if check.Required {
+			t.Fatal("docker.compose must not be required")
+		}
+		if check.Severity != "warning" {
+			t.Fatalf("expected warning severity, got %s", check.Severity)
+		}
+		if len(check.Affects) == 0 {
+			t.Fatal("docker.compose must name the command groups it blocks")
 		}
 		if check.SuggestedCommand != "docker compose version" {
 			t.Fatalf("expected suggested command docker compose version, got %s", check.SuggestedCommand)

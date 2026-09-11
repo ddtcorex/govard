@@ -24,9 +24,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
+	"govard/internal/runtime"
 )
 
 var dbCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "db [connect|import|dump|query|info|top|clone-volume]",
 	Short: "Interact with the database container",
 	Long: `Manage your project's database. Supports connecting to the container shell,

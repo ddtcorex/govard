@@ -13,9 +13,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var remoteCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: "ssh,rsync",
+	},
 	Use:     "remote",
 	Aliases: []string{"rmt"},
 	Short:   "Manage remote environments",

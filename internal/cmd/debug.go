@@ -8,9 +8,13 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"govard/internal/conventions"
+	"govard/internal/runtime"
 )
 
 var debugCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:     "debug [on|off|status|shell] [args...]",
 	Aliases: []string{"dbg"},
 	Short:   "Manage Xdebug for the current environment",

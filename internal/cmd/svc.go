@@ -14,6 +14,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 const globalProxyProjectName = "proxy"
@@ -21,6 +22,9 @@ const globalProxyProjectName = "proxy"
 var errGlobalServicesNotInitialized = errors.New("global services are not initialized")
 
 var svcCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "svc",
 	Short: "Manage global services and workspace sleep state",
 	Long: strings.TrimSpace(`

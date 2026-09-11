@@ -11,6 +11,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var (
@@ -51,6 +52,9 @@ type profileOutputPayload struct {
 }
 
 var profileCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "profile",
 	Short: "Manage environment profiles (show, switch, apply, clear)",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -150,6 +154,9 @@ var profileCmd = &cobra.Command{
 }
 
 var profileApplyCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "apply",
 	Short: "Apply the recommended runtime profile to .govard.yml",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -173,6 +180,9 @@ var profileApplyCmd = &cobra.Command{
 }
 
 var profileSwitchCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "switch [profile_name]",
 	Short: "Switch to a different environment profile",
 	Long: `Switches the active environment profile for the current project.
@@ -192,6 +202,9 @@ Use 'govard config profile clear' to reset to default profile.`,
 }
 
 var profileClearCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "clear",
 	Short: "Reset to default profile (clears saved profile)",
 	Long:  `Clears the saved profile, reverting to the default (no profile) behavior.`,

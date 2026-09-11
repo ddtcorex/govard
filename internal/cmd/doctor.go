@@ -10,12 +10,16 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var doctorCommit bool
 var doctorDryRun bool
 
 var doctorCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:     "doctor",
 	Aliases: []string{"diag"},
 	Short:   "Run system diagnostics",
@@ -135,6 +139,9 @@ func ExecuteDoctor(cmd *cobra.Command, outputJSON bool, fixEnabled bool, packEna
 		}
 	}
 
+	if strict, _ := cmd.Flags().GetBool("strict"); strict && report.Warnings > 0 {
+		return fmt.Errorf("doctor --strict found %d warning(s)", report.Warnings)
+	}
 	if report.HasFailures() {
 		return fmt.Errorf("doctor found %d blocking issue(s)", report.Failures)
 	}
@@ -142,6 +149,9 @@ func ExecuteDoctor(cmd *cobra.Command, outputJSON bool, fixEnabled bool, packEna
 }
 
 var doctorTrustCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "trust",
 	Short: "Trust the local CA for SSL certificates",
 	Args:  cobra.NoArgs,
@@ -193,6 +203,7 @@ func DoctorCommand() *cobra.Command {
 
 func init() {
 	doctorCmd.Flags().Bool("json", false, "Print diagnostics as JSON")
+	doctorCmd.Flags().Bool("strict", false, "Treat optional warnings as failures (stack-ready gate)")
 	doctorCmd.Flags().Bool("fix", false, "Apply safe automatic fixes when available")
 	doctorCmd.Flags().Bool("commit", false, "Commit .govard.yml drift fixes via git (implies --fix)")
 	doctorCmd.Flags().Bool("dry-run", false, "Show what would be fixed without writing files (use with --fix)")

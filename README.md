@@ -112,6 +112,26 @@ The installer automatically handles required system dependencies, starts global 
 Do not mix install channels on the same machine (for example: `.deb` + `make install` + `self-update` across different paths).  
 Use one channel only, otherwise you can end up with conflicting binaries in `/usr/bin` and `/usr/local/bin`.
 
+### Runs without Docker
+
+Govard installs and runs without Docker. Commands that never touch a container
+declare that requirement in the manifest, and the resulting set is listed by:
+
+```bash
+govard capabilities          # every command, its requirements, and host status
+govard capabilities --json   # same, machine-readable
+```
+
+Docker is required only for stack commands. When it is missing, those commands
+exit `3` with `CAPABILITY_MISSING` instead of failing midway through their
+workflow, and `--error-json` prints the failure as a machine-readable envelope.
+`govard doctor` reports Docker as an optional capability (exit `0`); use
+`govard doctor --strict` when a script needs the old hard gate.
+
+Note: commands that forward their arguments to a tool (`govard tool php ...`,
+`govard redis cli ...`) cannot parse the `--error-json` flag; their failures
+still carry the documented exit codes.
+
 ### Release Installers
 
 Every tagged release publishes these Linux packages:
@@ -149,7 +169,7 @@ Ensure you have the following prerequisites installed:
 - **Node.js 20+**
 - **Yarn (v1.x)**
 - **golangci-lint (v2.11+)**
-- **Docker & Docker Compose**
+- **Docker & Docker Compose** — required for stack commands (`env`, `svc`, `db`, `shell`, `test`, `audit`)
 - **Wails v2.11+** (required for desktop app development)
 
 ```bash

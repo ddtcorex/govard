@@ -90,7 +90,7 @@ Ensure you have the following installed:
 | Node.js | `20+` |
 | Yarn | v1.x |
 | golangci-lint | v2.11+ |
-| Docker + Docker Compose | latest |
+| Docker + Docker Compose | latest (stack commands only — the CLI itself has no Docker dependency) |
 | Wails | `v2.11+` (desktop development only) |
 
 ### Source Install
@@ -124,6 +124,21 @@ cd govard
 No `sudo` required — install everything locally and update your `PATH`.
 
 ---
+
+## Runs Without Docker
+
+The CLI installs and runs with no Docker at all. The commands that never touch a
+container are declared in the binary's manifest and listed by:
+
+```bash
+govard capabilities          # command, requirement, and whether this host meets it
+govard capabilities --json   # machine-readable
+```
+
+Stack commands (`govard env up`, `svc`, `db`, `shell`, `test`, `audit`) need
+Docker; without it they exit `3` with `CAPABILITY_MISSING` before doing any work.
+`govard doctor` treats Docker as optional and exits `0`; `govard doctor --strict`
+restores the hard gate for bootstrap scripts.
 
 ## 🐳 Docker Images
 

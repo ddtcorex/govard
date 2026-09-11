@@ -7,9 +7,13 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var rabbitmqCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "rabbitmq [command]",
 	Short: "Control the rabbitmq queue service",
 	Long: `Interact with the RabbitMQ queue service.

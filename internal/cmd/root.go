@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"govard/internal/cli"
 	"govard/internal/engine"
 	_ "govard/internal/frameworks" // registers framework detection/config data via init()
 	"govard/internal/ui"
@@ -16,11 +17,13 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var Version = "dev"
 
 var verbose bool
+var errorJSON bool
 
 var rootCmd = &cobra.Command{
 	Use:   "govard",
@@ -42,7 +45,7 @@ Documentation: https://github.com/ddtcorex/govard`,
 	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if verbose {
 			pterm.EnableDebugMessages()
 			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -62,10 +65,15 @@ Documentation: https://github.com/ddtcorex/govard`,
 
 		// Cleanup stale compose files in background once a day
 		engine.AutoCleanupComposeFiles()
+
+		return gateError(cmd)
 	},
 }
 
 var versionCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "version",
 	Short: "Print the version number of Govard",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -112,14 +120,35 @@ func GenCompletionForTest(shell string) (string, error) {
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		pterm.Error.Println(err)
-		os.Exit(1)
+	executed, err := rootCmd.ExecuteC()
+	if err == nil {
+		return
 	}
+	// ExecuteC reports the executed command even when it failed before the
+	// pre-run gate (for example on argument validation).
+	command := rootCmd.CommandPath()
+	if executed != nil {
+		command = executed.CommandPath()
+	}
+	err = asUsageIfArgumentError(err)
+	if errorJSON {
+		if raw, marshalErr := cli.NewErrorEnvelope(command, err).JSON(); marshalErr == nil {
+			fmt.Println(string(raw))
+			os.Exit(cli.Code(err))
+		}
+	}
+	pterm.Error.Println(err)
+	os.Exit(cli.Code(err))
 }
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable verbose structured logging")
+	rootCmd.PersistentFlags().BoolVar(&errorJSON, "error-json", false, "Print failures as a machine-readable JSON envelope on stdout")
+
+	// Flag and argument errors are usage errors, not execution failures.
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return &cli.UsageError{Err: err}
+	})
 
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(bootstrapCmd)
@@ -167,4 +196,19 @@ func init() {
 	rootCmd.AddCommand(trustCmd)
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(capabilitiesCmd)
+}
+
+// asUsageIfArgumentError maps cobra's own argument-validation errors to the
+// usage exit code, so callers can tell "you called it wrong" from "it failed".
+// Cobra reports these as plain errors; the markers below are its generated
+// message shapes.
+func asUsageIfArgumentError(err error) error {
+	message := err.Error()
+	for _, marker := range []string{"arg(s), received", "unknown command", "requires at least", "accepts between"} {
+		if strings.Contains(message, marker) {
+			return &cli.UsageError{Err: err}
+		}
+	}
+	return err
 }

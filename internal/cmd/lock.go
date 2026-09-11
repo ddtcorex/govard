@@ -10,11 +10,15 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var lockDependencies = engine.LockDependencies{}
 
 var lockCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "lock",
 	Short: "Manage project lock file",
 	Run: func(cmd *cobra.Command, args []string) {

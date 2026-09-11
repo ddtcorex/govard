@@ -249,6 +249,7 @@ func (env *TestEnvironment) SetupRuntimeShims(t *testing.T, exitCodes map[string
 
 func runtimeShimScript(name string, exitCode int) string {
 	exitVar := "GOVARD_TEST_EXIT_" + strings.ToUpper(name)
+	matchVar := "GOVARD_TEST_FAIL_MATCH_" + strings.ToUpper(name)
 
 	sshBehavior := ""
 	if name == "ssh" {
@@ -294,6 +295,17 @@ fi
 
 current_exit="${%s:-%d}"
 
+# A match-scoped one-shot failure applies only to invocations whose arguments
+# contain the pattern, so the caller can target the call it means to fail
+# instead of whichever invocation happens to run first (the capability probe).
+fail_match="${%s:-}"
+if [ -n "$fail_match" ]; then
+  case "$*" in
+    *"$fail_match"*) ;;
+    *) current_exit=0 ;;
+  esac
+fi
+
 # Support for one-shot failure testing (good for fallbacks)
 if [ "$current_exit" = "127" ] || [ "$current_exit" = "126" ]; then
   state_file="$(dirname "$log")/.shim_state_%s"
@@ -311,7 +323,7 @@ if [ ! -t 0 ]; then
   cat >/dev/null 2>&1 || true
 fi
 exit "$current_exit"
-`, name, exitVar, exitCode, name, sshBehavior, dockerBehavior)
+`, name, exitVar, exitCode, matchVar, name, sshBehavior, dockerBehavior)
 }
 
 // Env returns additional environment variables required to use the runtime shims.

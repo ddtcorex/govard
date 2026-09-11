@@ -16,6 +16,7 @@ import (
 	"govard/internal/proxy"
 
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 const frontendReadinessTimeout = 90 * time.Second
@@ -45,6 +46,9 @@ var frontendDeps = FrontendDependenciesForTest{
 }
 
 var frontendCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapDocker),
+	},
 	Use:   "frontend",
 	Short: "Control the project-owned frontend development runtime",
 }
