@@ -722,6 +722,20 @@ them either through the topology fields on the remote (`branch`, `repository`,
 `deploy_path`, `publish`, `local`) or through `remotes.<name>.deploy.<key>` for
 keys of the `deploy:` block. Flags win over both.
 
+`deploy_path` has no default and does not get one: a remote that omits it gets
+the layout the target already has (`releases/`, `shared/`, `.dep/` or a `current`
+symlink), adopted only when exactly one candidate matches, and govard says which
+one it used. No layout, or several, is a configuration error (exit 4) naming what
+was probed. A configured `deploy_path` is never probed.
+
+`deploy:verify` runs the live-revision check, the recipe's required shared files,
+the recipe's own checks — for Magento, `setup:db:status` and, in place, the
+docroot's static content version — and an HTTP request when `deploy.verify.url`
+is set. A deploy that runs `db:migrate` with no verify URL prints a warning
+before its first step. `maintenance:enable`/`disable` are skipped for a symlink
+activation unless the plan also migrates or imports configuration, which is when
+a maintenance window is genuinely needed.
+
 The pipeline is a fixed sequence of neutral tasks. A project customises it by
 anchoring hooks on a task id, on a stage alias (`stage:build`) or on another
 hook:

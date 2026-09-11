@@ -18,7 +18,10 @@ govard deploy check staging              # preflight and report what the target 
 
 The target is a remote from `.govard.yml`. The branch, repository, deploy path
 and publish strategy come from the project `deploy:` block; a remote overrides
-them.
+them. `deploy_path` has no default, so a remote that omits it gets the layout the
+target already has — `releases/`, `shared/`, `.dep/` or a `current` symlink — and
+govard adopts it only when exactly one candidate matches, saying which. No layout
+or several is a configuration error naming what was probed.
 
 ## The pipeline
 
@@ -30,6 +33,12 @@ rather than by a recipe:
 | `prepare` | preflight, lock, release directory, code, shared files, permissions |
 | `build` | dependencies, patches, code generation, frontend assets, static assets — or the artifact |
 | `publish` | maintenance, workers, database backup, configuration, migrations, activation, caches, release record |
+
+The maintenance window is opened only when it buys something: a symlink
+activation is an atomic rename, so nothing serving the site is rewritten, and the
+window appears only if the same plan also migrates or imports configuration. An
+in-place activation always opens it, because the docroot itself is rewritten
+while serving.
 | `verify` | post-publish checks |
 | `cleanup` | prune old releases, release the lock |
 
@@ -111,13 +120,22 @@ earlier build cannot ship. Pass `--force` to replace its contents.
 
 `deploy:verify` runs after publish and is on by default: the live revision
 (the resolved `current` symlink, or the docroot's `HEAD` for an in-place target),
-the shared files the recipe requires, and an HTTP check when `deploy.verify.url`
-is set. Without a configured URL verification is SSH-only: it proves the right
-files are in place, not that the application serves. Set `deploy.verify.url` for
-any environment that runs migrations.
+the shared files the recipe requires, the recipe's own checks, and an HTTP check
+when `deploy.verify.url` is set. The recipe's checks are the ones the engine
+cannot supply — for Magento that is `bin/magento setup:db:status`, which needs a
+working `app/etc/env.php` *and* a reachable database, plus a comparison of the
+docroot's static content version against the release when publishing in place.
+
+Without a configured URL verification is SSH-only: it proves the right files are
+in place, not that the application serves. A deploy that runs `db:migrate` with
+no verify URL says so before its first step, rather than leaving the operator to
+assume the opposite.
 
 `--db-backup` dumps the database into `shared/backups/deploy/<n>/` immediately
 before the first database-mutating task and records the path in the release.
+`deploy:cleanup` prunes those dumps on the same `keep_releases` window as the
+releases they belong to, so backups cannot accumulate forever on a production
+box.
 
 ```bash
 govard deploy releases staging                  # what is on the target

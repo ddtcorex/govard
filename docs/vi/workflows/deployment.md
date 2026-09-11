@@ -18,6 +18,10 @@ govard deploy check staging              # kiểm tra trước và báo target n
 
 Đích là một remote trong `.govard.yml`. Branch, repository, deploy path và chiến
 lược publish lấy từ block `deploy:` của dự án; mỗi remote có thể ghi đè.
+`deploy_path` không có mặc định, nên remote nào bỏ trống sẽ dùng layout mà target
+đã có sẵn — `releases/`, `shared/`, `.dep/` hoặc symlink `current` — và govard chỉ
+nhận khi đúng một ứng viên khớp, đồng thời nói rõ là cái nào. Không có layout nào,
+hoặc có nhiều cái, đều là lỗi cấu hình kèm danh sách đã dò.
 
 ## Pipeline
 
@@ -29,6 +33,11 @@ phải do recipe:
 | `prepare` | preflight, lock, thư mục release, code, shared, quyền ghi |
 | `build` | dependencies, patches, sinh code, frontend, static — hoặc artifact |
 | `publish` | maintenance, workers, backup DB, cấu hình, migration, kích hoạt, cache, ghi record |
+
+Maintenance window chỉ được mở khi nó thật sự cần: kích hoạt bằng symlink là một
+cú rename nguyên tử nên không có gì đang phục vụ bị ghi đè, và window chỉ xuất
+hiện nếu cùng plan đó còn migrate hoặc import cấu hình. Kích hoạt in-place luôn mở
+window, vì chính docroot bị ghi đè trong lúc đang phục vụ.
 | `verify` | kiểm tra sau publish |
 | `cleanup` | dọn release cũ, nhả lock |
 
@@ -107,13 +116,21 @@ không thể lọt ra production. Dùng `--force` nếu muốn thay nội dung.
 
 `deploy:verify` chạy sau publish và bật mặc định: revision đang live (symlink
 `current` được resolve, hoặc `HEAD` của docroot với target in-place), các shared
-file recipe yêu cầu, và kiểm tra HTTP khi đã đặt `deploy.verify.url`. Không cấu
-hình URL thì kiểm chứng chỉ bằng SSH: nó chứng minh đúng file đã nằm đúng chỗ,
-không chứng minh ứng dụng phục vụ được. Hãy đặt `deploy.verify.url` cho mọi môi
-trường có chạy migration.
+file recipe yêu cầu, các check do recipe khai báo, và kiểm tra HTTP khi đã đặt
+`deploy.verify.url`. Check của recipe là những thứ engine không thể tự biết — với
+Magento là `bin/magento setup:db:status`, cần `app/etc/env.php` hoạt động *và*
+database kết nối được, cộng thêm so sánh static content version của docroot với
+release khi publish in-place.
+
+Không cấu hình URL thì kiểm chứng chỉ bằng SSH: nó chứng minh đúng file đã nằm
+đúng chỗ, không chứng minh ứng dụng phục vụ được. Một lần deploy có chạy
+`db:migrate` mà không có verify URL sẽ nói rõ điều đó trước bước đầu tiên, thay vì
+để người vận hành tưởng ngược lại.
 
 `--db-backup` dump database vào `shared/backups/deploy/<n>/` ngay trước task đầu
-tiên thay đổi database và ghi lại đường dẫn trong release.
+tiên thay đổi database và ghi lại đường dẫn trong release. `deploy:cleanup` dọn
+các dump đó theo đúng window `keep_releases` như các release mà chúng thuộc về,
+nên backup không thể phình mãi trên máy production.
 
 ```bash
 govard deploy releases staging                  # target đang có gì
