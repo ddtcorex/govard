@@ -28,9 +28,15 @@ func DeployRecipe() deploy.Recipe {
 		"writable_dirs": []string{
 			"var", "pub/static", "pub/media", "generated", "app/etc",
 		},
-		// Only meaningful for the in-place strategy; empty for a symlink
-		// layout, where the whole release directory is published.
-		"sync_paths": []string{},
+		// Only read by the in-place strategy, where the docroot is reset to the
+		// revision and everything the build produced under a gitignored path has to
+		// be copied in — otherwise the new code runs on the previous deployment's
+		// `vendor/`, `generated/` and `pub/static/`. The list is what the release
+		// *builds*, and never a path `deploy:shared` links from `shared/`: those
+		// symlinks are relative to the release and resolve elsewhere from a docroot.
+		// `pub/static/_cache` is shared, which is why `pub/static` is named by its
+		// two built children rather than as a whole.
+		"sync_paths": []string{"vendor", "generated", "pub/static/adminhtml", "pub/static/frontend"},
 
 		// Deployment settings with a sane default. Each one is overridable in
 		// .govard.yml under deploy.settings.

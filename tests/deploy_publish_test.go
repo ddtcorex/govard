@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"govard/internal/deploy"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestSymlinkActivationIsAnAtomicRenameAndKeepsTheOldReleaseUntilThen(t *testing.T) {
@@ -646,5 +647,219 @@ func TestInPlaceActivationWarnsWhenNothingIsConfiguredToSync(t *testing.T) {
 	}
 	if len(symlink.Notes) != 0 {
 		t.Fatalf("a symlink activation must not warn, got %q", symlink.Notes)
+	}
+}
+
+// A build step is allowed to produce nothing: `generated/` only exists after
+// `setup:di:compile`, and `pub/static/adminhtml` only when the admin area was
+// deployed. A `sync_paths` entry whose source is absent must therefore be skipped,
+// not fail the activation — the shipped default lists paths that some projects
+// never build.
+func TestInPlaceActivationSkipsPathsTheReleaseDidNotBuild(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	if _, err := runner.Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	// The release built `vendor` and nothing else.
+	if _, err := runner.Run(ctx, "mkdir -p "+host.ReleasePath("2")+"/vendor && echo built > "+host.ReleasePath("2")+"/vendor/autoload.php", deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed release: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+		Settings:   map[string]any{"sync_paths": []string{"generated", "vendor", "pub/static/adminhtml"}},
+	})
+	sc.Release = deploy.NewReleaseForTest("2", revision, "main")
+	sc.Release.Path = host.ReleasePath("2")
+	if err := deploy.CoreActivate(ctx, sc); err != nil {
+		t.Fatalf("a path the release did not build must be skipped, not fatal: %v", err)
+	}
+	if _, err := runner.Run(ctx, "test ! -e "+host.CurrentPath+"/generated", deploy.RunOptions{}); err != nil {
+		t.Fatal("a path the release did not build must not appear in the docroot")
+	}
+	if _, err := runner.Run(ctx, "cat "+host.CurrentPath+"/vendor/autoload.php", deploy.RunOptions{}); err != nil {
+		t.Fatalf("the paths it did build must still be published: %v", err)
+	}
+}
+
+// `deploy:shared` links a shared directory into the release with a *relative*
+// symlink, which only resolves at the release's depth. Copying it into a docroot
+// replaces the docroot's own directory with a link that points somewhere else — so
+// an entry that is shared is not synced at all, and a shared path *inside* a synced
+// entry is excluded from it.
+func TestInPlaceActivationNeverPublishesASharedLink(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	if _, err := runner.Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	release := host.ReleasePath("2")
+	shared := filepath.Join(host.SharedPath(), "pub", "static", "_cache")
+	if _, err := runner.Run(ctx, "mkdir -p "+shared+" && echo shared > "+shared+"/shared.txt", deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed shared state: %v", err)
+	}
+	if _, err := runner.Run(ctx, "mkdir -p "+release+"/pub/static/adminhtml && echo new > "+release+"/pub/static/adminhtml/new.txt"+
+		" && ln -s "+shared+" "+release+"/pub/static/_cache", deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed release: %v", err)
+	}
+	// The docroot's own copy of the shared path: a real directory with content that
+	// a sync would replace or delete.
+	docrootCache := filepath.Join(host.CurrentPath, "pub", "static", "_cache")
+	if err := os.MkdirAll(docrootCache, 0o755); err != nil {
+		t.Fatalf("mkdir docroot cache: %v", err)
+	}
+	writeFile(t, filepath.Join(docrootCache, "keep.txt"), "keep\n")
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+		Settings: map[string]any{
+			"shared_dirs": []string{"pub/static/_cache"},
+			"sync_paths":  []string{"pub/static"},
+		},
+	})
+	sc.Release = deploy.NewReleaseForTest("2", revision, "main")
+	sc.Release.Path = release
+	if err := deploy.CoreActivate(ctx, sc); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	info, err := os.Lstat(docrootCache)
+	if err != nil {
+		t.Fatalf("the docroot's shared path must survive: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("the release's shared symlink was copied into the docroot, where it resolves elsewhere")
+	}
+	if _, err := os.Stat(filepath.Join(docrootCache, "keep.txt")); err != nil {
+		t.Fatalf("the docroot's own cache content was deleted: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(docrootCache, "shared.txt")); err == nil {
+		t.Fatal("the shared target's content was copied into the docroot")
+	}
+	if _, err := os.Stat(filepath.Join(host.CurrentPath, "pub/static/adminhtml/new.txt")); err != nil {
+		t.Fatalf("the rest of the synced entry must still land: %v", err)
+	}
+
+	// An entry that *is* the shared path is skipped outright.
+	sc2 := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+		Settings: map[string]any{
+			"shared_dirs": []string{"pub/static/_cache"},
+			"sync_paths":  []string{"pub/static/_cache"},
+		},
+	})
+	sc2.Release = deploy.NewReleaseForTest("2", revision, "main")
+	sc2.Release.Path = release
+	if err := deploy.CoreActivate(ctx, sc2); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(docrootCache, "keep.txt")); err != nil {
+		t.Fatalf("a shared entry must not be synced at all: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(docrootCache, "shared.txt")); err == nil {
+		t.Fatal("a shared entry must not be synced at all")
+	}
+}
+
+// The recipe's default has to be the list the strategy needs: paths the release
+// *built*, and none of them shared (a shared path is a relative symlink, and
+// syncing it into a docroot at another depth points it elsewhere).
+func TestMagento2RecipeShipsTheInPlaceSyncPaths(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	raw, ok := recipe.Defaults["sync_paths"].([]string)
+	if !ok || len(raw) == 0 {
+		t.Fatalf("sync_paths default = %#v, want the paths an in-place activation must publish", recipe.Defaults["sync_paths"])
+	}
+
+	shared := map[string]bool{}
+	for _, entry := range defaultsStringList(recipe, "shared_dirs") {
+		shared[entry] = true
+	}
+	for _, entry := range defaultsStringList(recipe, "shared_files") {
+		shared[entry] = true
+	}
+	for _, entry := range raw {
+		if shared[entry] {
+			t.Errorf("sync_paths default lists %q, which the release links from shared/", entry)
+		}
+		for candidate := range shared {
+			if strings.HasPrefix(candidate, entry+"/") {
+				t.Errorf("sync_paths default lists %q, which contains the shared path %q", entry, candidate)
+			}
+		}
+	}
+}
+
+// defaultsStringList reads a list default from a recipe, whichever list shape it
+// was written in.
+func defaultsStringList(recipe deploy.Recipe, key string) []string {
+	switch typed := recipe.Defaults[key].(type) {
+	case []string:
+		return typed
+	case []any:
+		rendered := make([]string, 0, len(typed))
+		for _, entry := range typed {
+			if text, ok := entry.(string); ok {
+				rendered = append(rendered, text)
+			}
+		}
+		return rendered
+	default:
+		return nil
+	}
+}
+
+// The preflight says which `sync_paths` entries cannot travel before anything runs:
+// a shared path is a relative symlink in the release, and a shared path inside an
+// entry is excluded rather than deleted.
+func TestInPlacePreflightNamesTheSharedPathsInSyncPaths(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	docroot := filepath.Join(host.DeployPath, "public_html")
+	if err := os.MkdirAll(docroot, 0o755); err != nil {
+		t.Fatalf("mkdir docroot: %v", err)
+	}
+	host.CurrentPath = docroot
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:  "local",
+		Publish: deploy.PublishInPlace,
+		Settings: map[string]any{
+			"shared_dirs": []string{"pub/static/_cache"},
+			"sync_paths":  []string{"pub/static/_cache", "pub/static", "vendor"},
+		},
+	})
+	sc.Release = deploy.NewReleaseForTest("1", "abcdef", "main")
+	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), sc); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+
+	joined := strings.Join(sc.Notes, "\n")
+	if !strings.Contains(joined, "pub/static/_cache, which the release links from shared/") {
+		t.Fatalf("notes = %q, want the shared entry named as not copied", joined)
+	}
+	if !strings.Contains(joined, "pub/static, which contains the shared path pub/static/_cache") {
+		t.Fatalf("notes = %q, want the shared child named as excluded", joined)
+	}
+	if strings.Contains(joined, "vendor") {
+		t.Fatalf("notes = %q, want no warning for a plain built path", joined)
 	}
 }

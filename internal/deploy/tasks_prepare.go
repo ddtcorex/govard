@@ -888,12 +888,32 @@ func noteInPlaceSyncPaths(ctx context.Context, sc *StepContext) error {
 		// that should fail.
 		return nil
 	}
-	if strategy != PublishInPlace || len(settingsStringList(sc.Opts.Settings, "sync_paths")) > 0 {
+	if strategy != PublishInPlace {
 		return nil
 	}
-	sc.Notes = append(sc.Notes, "warning: this target publishes in place and deploy.settings.sync_paths is empty: "+
-		"the activation resets the docroot to the revision and copies nothing, so paths the release built "+
-		"(vendor/, generated/, pub/static/) keep whatever the previous deployment left there")
+	paths := settingsStringList(sc.Opts.Settings, "sync_paths")
+	if len(paths) == 0 {
+		sc.Notes = append(sc.Notes, "warning: this target publishes in place and deploy.settings.sync_paths is empty: "+
+			"the activation resets the docroot to the revision and copies nothing, so paths the release built "+
+			"(vendor/, generated/, pub/static/) keep whatever the previous deployment left there")
+		return nil
+	}
+
+	// A path the release links from `shared/` cannot travel into the docroot: the
+	// link is relative to the release. Say which entries are affected before the
+	// deploy runs, rather than only while it is copying.
+	shared := settingsStringList(sc.Opts.Settings, "shared_files", "shared_dirs")
+	for _, entry := range paths {
+		if covering, isShared := sharedCovering(entry, shared); isShared {
+			sc.Notes = append(sc.Notes, "warning: deploy.settings.sync_paths lists "+entry+
+				", which the release links from shared/ ("+covering+"): it is not copied into the docroot, "+
+				"where a relative link would resolve elsewhere")
+		}
+		for _, inside := range sharedInside(entry, shared) {
+			sc.Notes = append(sc.Notes, "warning: deploy.settings.sync_paths lists "+entry+", which contains the shared path "+
+				entry+"/"+inside+": that path is excluded from the copy so the docroot keeps its own")
+		}
+	}
 	return nil
 }
 

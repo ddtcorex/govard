@@ -93,6 +93,68 @@ func activateSymlink(ctx context.Context, sc *StepContext, releasePath string) e
 	return nil
 }
 
+// noteStep writes a line about the activation to the deploy's output when there is
+// somewhere to write it. A step that quietly leaves the previous deployment's
+// directory in place is the failure this whole list exists to prevent, so it says
+// so.
+func noteStep(sc *StepContext, line string) {
+	if sc.Out == nil {
+		return
+	}
+	fmt.Fprint(sc.Out, line)
+}
+
+// sharedCovering reports the shared entry that covers a sync path — the path is
+// that entry or lives inside it. Syncing it would replace the docroot's own
+// content with a symlink that only resolves at the release's depth.
+func sharedCovering(entry string, shared []string) (string, bool) {
+	cleaned := cleanRelPath(entry)
+	if cleaned == "" {
+		return "", false
+	}
+	for _, candidate := range shared {
+		sharedClean := cleanRelPath(candidate)
+		if sharedClean == "" {
+			continue
+		}
+		if cleaned == sharedClean || strings.HasPrefix(cleaned, sharedClean+"/") {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+// sharedInside returns the shared entries inside a sync path, relative to it, so
+// the copy can exclude them instead of deleting the docroot's own copy.
+func sharedInside(entry string, shared []string) []string {
+	cleaned := cleanRelPath(entry)
+	if cleaned == "" {
+		return nil
+	}
+	inside := make([]string, 0, 2)
+	for _, candidate := range shared {
+		sharedClean := cleanRelPath(candidate)
+		if sharedClean == "" {
+			continue
+		}
+		if strings.HasPrefix(sharedClean, cleaned+"/") {
+			inside = append(inside, strings.TrimPrefix(sharedClean, cleaned+"/"))
+		}
+	}
+	return inside
+}
+
+// cleanRelPath normalises a configured path for comparison: a leading `./` or `/`
+// and a trailing slash are noise, and `..` inside a path is not a path this
+// pipeline will follow.
+func cleanRelPath(entry string) string {
+	cleaned := path.Clean("/" + strings.TrimSpace(entry))
+	if cleaned == "/" || cleaned == "" {
+		return ""
+	}
+	return strings.TrimPrefix(cleaned, "/")
+}
+
 // activateInPlace publishes into a real directory.
 //
 // The order is the whole point: the docroot is reset to the *exact* revision
@@ -128,10 +190,35 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 	}
 
 	syncPaths := settingsStringList(sc.Opts.Settings, "sync_paths")
+	shared := settingsStringList(sc.Opts.Settings, "shared_files", "shared_dirs")
 	for _, entry := range syncPaths {
-		source := path.Join(releasePath, entry) + "/"
-		target := path.Join(host.CurrentPath, entry) + "/"
-		command := "mkdir -p " + Shell(path.Join(host.CurrentPath, entry)) + " && rsync -a --delete " + Shell(source) + " " + Shell(target)
+		source := path.Join(releasePath, entry)
+
+		// A build step is allowed to produce nothing — `generated/` only exists
+		// after `setup:di:compile`, `pub/static/adminhtml` only when the admin area
+		// was deployed — and a path with nothing to copy must not fail the
+		// activation.
+		if _, err := sc.Runner.Run(ctx, "test -e "+Shell(source), RunOptions{Timeout: shortCommandTimeout}); err != nil {
+			noteStep(sc, "  - "+entry+": the release did not build it; the docroot keeps its own\n")
+			continue
+		}
+
+		// A path the release links from `shared/` is a *relative* symlink: copied
+		// into a docroot at a different depth it resolves somewhere else, so the
+		// docroot keeps its own copy instead.
+		if covering, isShared := sharedCovering(entry, shared); isShared {
+			noteStep(sc, "  ! "+entry+" is linked from shared/ ("+covering+"); not copied into the docroot\n")
+			continue
+		}
+
+		command := "mkdir -p " + Shell(path.Join(host.CurrentPath, entry)) + " && rsync -a --delete"
+		// A shared path *inside* the entry is excluded rather than deleted: the
+		// docroot's own copy of it has to survive the sync.
+		for _, inside := range sharedInside(entry, shared) {
+			command += " --exclude=" + Shell("/"+inside)
+			noteStep(sc, "  ! "+entry+"/"+inside+" is linked from shared/; excluded from the copy\n")
+		}
+		command += " " + Shell(source+"/") + " " + Shell(path.Join(host.CurrentPath, entry)+"/")
 		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
 			return fmt.Errorf("sync %s into the docroot: %w", entry, err)
 		}

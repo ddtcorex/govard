@@ -328,13 +328,14 @@ earlier build cannot ship. Pass `--force` to replace its contents.
 
 ### In-place publishing needs `sync_paths`
 
-An in-place activation resets the docroot to the exact revision and then copies
-the configured `sync_paths` from the built release into it (with `--delete`), and
-writes `pub/static/deployed_version.txt` last. It warns before anything runs when
-the strategy is in place and `sync_paths` is empty, because the reset leaves the
-*previous* deployment's gitignored directories exactly where they are: new code
-over the old `vendor/`, `generated/` and `pub/static/` is a mixed tree that still
-reports a successful deploy.
+An in-place activation resets the docroot to the exact revision, copies the
+configured `sync_paths` from the built release into it (with `--delete`), and writes
+`pub/static/deployed_version.txt` last. `git reset --hard` leaves the previous
+deployment's gitignored directories where they are, so **a path that is not copied is
+a path the site keeps from the old release** — new code over the old `vendor/`,
+`generated/` and `pub/static/`, reported as a successful deploy.
+
+The Magento recipe ships the list the strategy needs, and it is the list to keep:
 
 ```yaml
 deploy:
@@ -342,14 +343,21 @@ deploy:
     sync_paths: [vendor, generated, pub/static/adminhtml, pub/static/frontend]
 ```
 
-Two rules when choosing them. List directories the *release built*, and do not list
-a path the release links from `shared/` (a shared directory is a symlink relative
-to the release, so copied into a docroot at a different depth it points somewhere
-else — `pub/static/_cache` is shared by default and belongs in neither list). And
-remember that a path left out keeps the previous deployment's contents, which is
-sometimes what you want (`var/` is shared and cache directories are flushed) and
-sometimes not (`generated/`).
+Three rules the engine applies to whatever the project configures:
 
+- **a path the release did not build is skipped, not fatal** — `generated/` only
+  exists after `setup:di:compile` and `pub/static/adminhtml` only when the admin area
+  was deployed; the activation prints the skip;
+- **a path the release links from `shared/` is not copied** — `deploy:shared` links it
+  with a symlink relative to the release, which resolves elsewhere from a docroot at a
+  different depth, so the docroot keeps its own copy and the step says so. This is why
+  `pub/static` is named by its two built children instead of as a whole:
+  `pub/static/_cache` is shared;
+- **a shared path inside a synced entry is excluded from the copy** rather than
+  deleted, so a project that lists `pub/static` still keeps the docroot's `_cache`.
+
+`sync_paths: []` is allowed and means "copy nothing"; the preflight warns, because that
+has to be a deliberate decision rather than an omission.
 
 ## Verification, backup and rollback
 

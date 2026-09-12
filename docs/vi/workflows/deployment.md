@@ -315,12 +315,13 @@ không thể lọt ra production. Dùng `--force` nếu muốn thay nội dung.
 
 ### Publish in-place cần `sync_paths`
 
-Kích hoạt in-place reset docroot về đúng revision rồi copy các `sync_paths` đã cấu
-hình từ release đã build vào đó (kèm `--delete`), và ghi
-`pub/static/deployed_version.txt` cuối cùng. Nó cảnh báo trước khi chạy bất cứ thứ
-gì khi chiến lược là in-place mà `sync_paths` trống, vì cú reset để nguyên những
-thư mục gitignored của lần deploy *trước*: code mới nằm trên `vendor/`, `generated/`
-và `pub/static/` cũ là một cây trộn lẫn mà vẫn báo deploy thành công.
+Kích hoạt in-place reset docroot về đúng revision, copy các `sync_paths` đã cấu hình
+từ release đã build vào đó (kèm `--delete`), và ghi `pub/static/deployed_version.txt`
+cuối cùng. `git reset --hard` để nguyên những thư mục gitignored của lần deploy trước,
+nên **path không được copy là path site giữ lại từ release cũ** — code mới nằm trên
+`vendor/`, `generated/`, `pub/static/` cũ mà vẫn báo deploy thành công.
+
+Recipe Magento đã ship sẵn danh sách mà chiến lược này cần, và nên giữ nguyên:
 
 ```yaml
 deploy:
@@ -328,13 +329,20 @@ deploy:
     sync_paths: [vendor, generated, pub/static/adminhtml, pub/static/frontend]
 ```
 
-Hai nguyên tắc khi chọn. Chỉ liệt kê thư mục mà *release build ra*, và đừng liệt kê
-path mà release link từ `shared/` (thư mục shared là symlink tương đối theo release,
-copy sang docroot ở độ sâu khác là nó trỏ sai chỗ — `pub/static/_cache` mặc định là
-shared và không thuộc danh sách nào). Và nhớ rằng path bị bỏ ra sẽ giữ nội dung của
-lần deploy trước — có khi đó là điều bạn muốn (`var/` là shared và cache được flush)
-và có khi không (`generated/`).
+Ba quy tắc engine áp dụng cho bất cứ danh sách nào dự án cấu hình:
 
+- **path mà release không build ra thì bị bỏ qua, không làm fail** — `generated/` chỉ
+  có sau `setup:di:compile`, `pub/static/adminhtml` chỉ có khi area admin được deploy;
+  bước kích hoạt in ra việc bỏ qua đó;
+- **path mà release link từ `shared/` thì không được copy** — `deploy:shared` link nó
+  bằng symlink tương đối theo release, sang docroot ở độ sâu khác là trỏ sai chỗ, nên
+  docroot giữ bản của chính nó và bước đó nói rõ. Đây là lý do `pub/static` được ghi
+  bằng hai con đã build thay vì ghi cả thư mục: `pub/static/_cache` là shared;
+- **path shared nằm trong một entry được sync thì bị loại khỏi bản copy** thay vì bị
+  xoá, nên dự án ghi `pub/static` vẫn giữ `_cache` của docroot.
+
+`sync_paths: []` vẫn hợp lệ và nghĩa là "không copy gì"; preflight sẽ cảnh báo, vì đó
+phải là quyết định có chủ ý chứ không phải thiếu sót.
 
 ## Kiểm chứng, backup và rollback
 
