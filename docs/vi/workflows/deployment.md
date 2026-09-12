@@ -80,6 +80,27 @@ frontend (theme admin sẽ bị bỏ sót) và deployment lớn nơi một tiế
 area sẽ hết bộ nhớ. Lượt thứ hai được nối bằng `&&`, nên lượt admin lỗi thì deploy
 dừng lại thay vì publish một nửa static content.
 
+### Build frontend (Hyvä)
+
+Theme Hyvä được build bằng Node ngay trong thư mục của nó, dự án khai báo qua
+`settings.frontend_dir`:
+
+```yaml
+deploy:
+  settings:
+    frontend_dir: app/design/frontend/Acme/hyva/web/tailwind
+    frontend_command: npm ci && npm run build   # mặc định
+```
+
+`frontend_command` chạy bên trong `frontend_dir`, trong release, như một command
+shell: mặc định nối hai command, nên giá trị một command như
+`npx tailwindcss -i input.css -o output.css` cũng viết y hệt. Để `frontend_dir`
+trống thì bước này bị bỏ qua — đúng ý cho dự án Luma hoặc theme mặc định.
+
+Node cần ở nơi *build*, không phải nơi deploy: với `--artifact-dir`, theme được
+build ở job build của CI và `build:frontend` bị bỏ qua trên target, nên image của
+job deploy vẫn chỉ cần govard + ssh + rsync.
+
 ### Composer repository riêng
 
 Release build trên target thì cài dependency ngay trên đó, nên cần credential cho

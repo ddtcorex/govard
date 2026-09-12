@@ -120,7 +120,12 @@ type Options struct {
 	JSON               bool
 	Verbose            bool
 	Settings           map[string]any
-	Hooks              []engine.DeployHookConfig
+	// RawSettings names the settings that are shell fragments and must reach a
+	// command template verbatim. It is filled from the recipe's declarations
+	// (SettingCommand) by WithRecipeDefaults, so a recipe states once which of
+	// its settings are commands.
+	RawSettings map[string]bool
+	Hooks       []engine.DeployHookConfig
 }
 
 // ResolveOptions resolves one remote's effective deploy options.
@@ -389,6 +394,22 @@ func WithRecipeDefaults(recipe Recipe, opts Options) Options {
 	for key, value := range opts.Settings {
 		layered[key] = value
 	}
+	raw := make(map[string]bool, 2)
+	for key := range opts.RawSettings {
+		raw[key] = true
+	}
+	for _, setting := range recipe.Settings {
+		if setting.Kind == SettingCommand {
+			raw[setting.Key] = true
+			// A command the project did not configure still has to render as the
+			// recipe's default, so the default is materialised here.
+			if _, configured := layered[setting.Key]; !configured {
+				if value, ok := recipe.Defaults[setting.Key]; ok {
+					layered[setting.Key] = value
+				}
+			}
+		}
+	}
 
 	for key, value := range recipe.Defaults {
 		spec, isArgs := value.(ArgsSpec)
@@ -413,6 +434,7 @@ func WithRecipeDefaults(recipe Recipe, opts Options) Options {
 		layered[key+"_args"] = RenderSettingArgs(spec, configured)
 	}
 	opts.Settings = layered
+	opts.RawSettings = raw
 	return opts
 }
 

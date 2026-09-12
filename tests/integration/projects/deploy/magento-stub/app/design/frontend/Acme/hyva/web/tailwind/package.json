@@ -1,0 +1,9 @@
+{
+  "name": "acme-hyva-tailwind",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The theme's Tailwind directory, shaped like a Hyva project's",
+  "scripts": {
+    "build": "node record-build.js"
+  }
+}

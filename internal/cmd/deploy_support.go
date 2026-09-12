@@ -364,10 +364,28 @@ func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
 			vars = vars.Set("settings."+key, text)
 		}
 	}
-	// The argument lists a recipe rendered are substituted verbatim: quoting
-	// them would collapse several arguments into one.
+	// Argument lists and shell fragments are substituted verbatim: quoting an
+	// argument list collapses several arguments into one, and quoting a command
+	// turns `npm ci && npm run build` into a single word the shell cannot find.
+	// Which settings are fragments is the recipe's declaration, carried on the
+	// options (see SettingCommand).
 	for key, value := range options.Settings {
-		if text, ok := settingText(value); ok && strings.HasSuffix(key, "_args") {
+		text, ok := settingText(value)
+		if !ok {
+			continue
+		}
+		switch {
+		case strings.HasSuffix(key, "_args"):
+			// An argument list renders to nothing when it is empty, because it
+			// is appended to a command that already has its own arguments.
+			vars = vars.SetRaw("settings."+key, text)
+		case options.RawSettings[key]:
+			// A shell fragment is substituted verbatim, and an empty one becomes
+			// `true`: rendering nothing at all leaves `cmd && ` behind, which is
+			// a syntax error, and `''` is a command the shell cannot find.
+			if strings.TrimSpace(text) == "" {
+				text = "true"
+			}
 			vars = vars.SetRaw("settings."+key, text)
 		}
 	}

@@ -473,3 +473,140 @@ func TestMagento2WorkerControlActuallyRuns(t *testing.T) {
 		t.Fatalf("worker_control unset must leave cron and consumers alone, got %v", calls)
 	}
 }
+
+// The Hyvä path: `settings.frontend_dir` names the theme's Tailwind directory and
+// `frontend_command` builds it. Everything about it used to be asserted by reading
+// the template, and reading it could not see that the command was substituted as
+// ONE quoted word — `'npm ci && npm run build'` — so the shell reported a command
+// that does not exist and every Hyvä deploy failed at build:frontend.
+func TestMagento2FrontendBuildRunsTheConfiguredCommandInsideTheTheme(t *testing.T) {
+	release := t.TempDir()
+	log := filepath.Join(t.TempDir(), "frontend.log")
+	theme := filepath.Join(release, "app/design/frontend/Acme/hyva/web/tailwind")
+	if err := os.MkdirAll(theme, 0o755); err != nil {
+		t.Fatalf("mkdir theme: %v", err)
+	}
+
+	recipe := magento2.DeployRecipe()
+	first := filepath.Join(t.TempDir(), "first")
+	second := filepath.Join(t.TempDir(), "second")
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: map[string]any{
+			"frontend_dir": "app/design/frontend/Acme/hyva/web/tailwind",
+			// A command shaped like the default one: two commands joined, plus a
+			// working directory that only exists inside the theme directory.
+			"frontend_command": "pwd > " + log + " && touch " + first + " && touch " + second,
+		},
+	})
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	vars := cmd.DeployVarsForTest(host, options).SetPath("release_path", release)
+
+	command, err := vars.Expand(recipe.Task(deploy.TaskFrontend).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("the frontend build must run: %v\n%s", err, command)
+	}
+	for _, want := range []string{first, second} {
+		if _, err := os.Stat(want); err != nil {
+			t.Fatalf("the second half of the command did not run: %v\n%s", err, command)
+		}
+	}
+	ran, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("read the working directory: %v", err)
+	}
+	if got := strings.TrimSpace(string(ran)); !strings.HasSuffix(got, "/app/design/frontend/Acme/hyva/web/tailwind") {
+		t.Fatalf("the build must run inside the theme directory, ran in %q", got)
+	}
+
+	// The default command has to survive substitution as a command.
+	spec := recipe.Defaults["frontend_command"]
+	if _, isString := spec.(string); !isString {
+		t.Fatalf("frontend_command default = %#v, want a command string", spec)
+	}
+	plain := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{Revision: "abcdef123456", Settings: map[string]any{}})
+	expanded, err := cmd.DeployVarsForTest(host, plain).Expand("cd {{release_path}} && {{settings.frontend_command}}")
+	if err != nil {
+		t.Fatalf("expand the default frontend command: %v", err)
+	}
+	if !strings.Contains(expanded, "npm ci && npm run build") {
+		t.Fatalf("the default command must expand as a command, got %q", expanded)
+	}
+	if strings.Contains(expanded, "'npm ci") {
+		t.Fatalf("a shell fragment must not be quoted, got %q", expanded)
+	}
+}
+
+func TestMagento2FrontendBuildIsSkippedWithoutAThemeDirectory(t *testing.T) {
+	release := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "ran")
+	recipe := magento2.DeployRecipe()
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: map[string]any{"frontend_command": "touch " + marker},
+	})
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", release).
+		Expand(recipe.Task(deploy.TaskFrontend).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("a project without a frontend_dir must not fail the step: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a Luma/stock project must not run a frontend build")
+	}
+}
+
+// The same defect made the runtime reload a command that does not exist, so the
+// opcache/realpath mitigation spec 9.1 asks for never ran.
+func TestMagento2RuntimeReloadCommandActuallyRuns(t *testing.T) {
+	release := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "reloaded")
+	recipe := magento2.DeployRecipe()
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: map[string]any{"runtime_reload_command": "printf reloaded > " + marker},
+	})
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	stub, _ := cmd.DeployVarsForTest(host, options).SetPath("release_path", release).
+		Expand(recipe.Task(deploy.TaskAppCacheFlush).Command)
+	// The stub `php` stands in for bin/magento here: this test is about the
+	// reload fragment, not about the cache flush.
+	command := strings.Replace(stub, "'php' bin/magento cache:flush", "true", 1)
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("the cache step must run with a reload command configured: %v\n%s", err, command)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the configured reload must run: %v\n%s", err, command)
+	}
+}
+
+// A shell fragment that is not configured must render as a no-op that still fits
+// in the command line. Rendering nothing leaves `cmd && ` behind, which made the
+// cache step a syntax error — caught by running the recipe in the sandbox, not by
+// reading it.
+func TestMagento2UnsetRuntimeReloadIsANoOp(t *testing.T) {
+	release := t.TempDir()
+	recipe := magento2.DeployRecipe()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{Revision: "abcdef123456", Settings: map[string]any{}})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", release).
+		Expand(recipe.Task(deploy.TaskAppCacheFlush).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if strings.Contains(command, "&& ;") || strings.Contains(command, "&&  ") || strings.HasSuffix(strings.TrimSpace(command), "&&") {
+		t.Fatalf("an unset fragment must not leave a dangling operator:\n%s", command)
+	}
+	stub := strings.Replace(command, "'php' bin/magento cache:flush", "true", 1)
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), stub, deploy.RunOptions{}); err != nil {
+		t.Fatalf("the cache step must run with no reload configured: %v\n%s", err, stub)
+	}
+}

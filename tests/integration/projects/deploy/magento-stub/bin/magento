@@ -71,6 +71,24 @@ if ($command === 'setup:db:status') {
     if ($deploys !== $expected) {
         $fail("expected {$expected} static content pass(es), saw {$deploys}");
     }
+
+    // The Hyvä path: `frontend_dir` names the theme's Tailwind directory and the
+    // default `frontend_command` builds it there.
+    $frontend = trim((string) @file_get_contents($release . '/frontend-expectation.txt'));
+    if ($frontend === 'hyva') {
+        $built = trim((string) @file_get_contents($release . '/var/frontend-built.txt'));
+        if ($built === '') {
+            $fail('the theme frontend build did not run');
+        }
+        if (!str_ends_with($built, 'app/design/frontend/Acme/hyva/web/tailwind')) {
+            $fail("the frontend build ran in '{$built}' instead of the theme directory");
+        }
+    } else {
+        $unexpected = trim((string) @file_get_contents($release . '/var/frontend-built.txt'));
+        if ($unexpected !== '') {
+            $fail('a project without frontend_dir must not build a theme');
+        }
+    }
 }
 
 exit(0);

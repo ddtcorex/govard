@@ -196,11 +196,13 @@ func seedOriginFromProject(t *testing.T, projectDir string) (string, string) {
 // which order, with which `--area`, and that worker control actually moved cron
 // and the consumers.
 //
-// The stub is the point. Both the static-content split and the worker-control
-// guard live inside one shell command, and the recipe's own guards were inert
-// until they were executed: `[ "{{settings.mage_mode}}" != "developer" ]` expands
-// to `[ "'developer'" != "developer" ]`, which is always true. A test that reads
-// the template cannot see that; one that runs it against a target can.
+// The stub is the point. The static-content split, the worker-control guard and
+// the Hyva frontend build all live inside one shell command each, and the recipe's
+// guards and fragments were inert until they were executed: `[ "{{settings.mage_mode}}"
+// != "developer" ]` expands to `[ "'developer'" != "developer" ]` (always true),
+// and `{{settings.frontend_command}}` expands to one quoted word, so the default
+// `npm ci && npm run build` was a command the shell could not find. A test that
+// reads the template cannot see either; one that runs it against a target can.
 //
 // A real Magento cannot be installed here — every Magento package is behind
 // repo.magento.com credentials, verified with Composer — so the application
@@ -208,14 +210,44 @@ func seedOriginFromProject(t *testing.T, projectDir string) (string, string) {
 // is taken from Magento's option definition (Magento_Deploy\Console\
 // DeployStaticOptions) and the reference deploy tool's recipe.
 func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
-	for _, expectation := range []string{"single", "split"} {
+	for _, testCase := range []struct {
+		name     string
+		static   string
+		frontend string
+		settings string
+	}{
+		{
+			name:   "single",
+			static: "single",
+		},
+		{
+			name:     "split",
+			static:   "split",
+			settings: "    split_static_deployment: true\n    worker_control: true\n",
+		},
+		{
+			// A Hyva theme: frontend_dir points at the theme's Tailwind
+			// directory and the default `frontend_command` builds it there, with
+			// the Node toolchain on the build machine rather than in govard.
+			name:     "hyva",
+			static:   "single",
+			frontend: "hyva",
+			settings: "    frontend_dir: app/design/frontend/Acme/hyva/web/tailwind\n",
+		},
+	} {
+		expectation := testCase.name
 		t.Run(expectation, func(t *testing.T) {
 			env := NewTestEnvironment(t)
 			projectDir := env.CreateProjectFromFixture(t, "deploy/magento-stub", "deploy-magento-stub-"+expectation)
 
-			// The stub reads this from the release, so it has to be committed.
-			if err := os.WriteFile(filepath.Join(projectDir, "deploy-expectation.txt"), []byte(expectation+"\n"), 0o644); err != nil {
+			// The stub reads these from the release, so they have to be committed.
+			if err := os.WriteFile(filepath.Join(projectDir, "deploy-expectation.txt"), []byte(testCase.static+"\n"), 0o644); err != nil {
 				t.Fatalf("write the expectation: %v", err)
+			}
+			if testCase.frontend != "" {
+				if err := os.WriteFile(filepath.Join(projectDir, "frontend-expectation.txt"), []byte(testCase.frontend+"\n"), 0o644); err != nil {
+					t.Fatalf("write the frontend expectation: %v", err)
+				}
 			}
 			origin, revision := seedOriginFromProject(t, projectDir)
 			seedSandboxCheckout(t, projectDir, origin)
@@ -229,14 +261,14 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			}
 			t.Cleanup(func() { env.RunGovard(t, projectDir, "deploy", "sandbox", "down", "--purge") })
 
-			if expectation == "split" {
+			if testCase.settings != "" {
 				// Written after `up`, because `up` rewrites .govard.local.yml to
 				// add the sandbox remote.
 				content, err := os.ReadFile(filepath.Join(projectDir, ".govard.local.yml"))
 				if err != nil {
 					t.Fatalf("read the local layer: %v", err)
 				}
-				withSettings := string(content) + "\ndeploy:\n  settings:\n    split_static_deployment: true\n    worker_control: true\n"
+				withSettings := string(content) + "\ndeploy:\n  settings:\n" + testCase.settings
 				if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(withSettings), 0o644); err != nil {
 					t.Fatalf("write the local layer: %v", err)
 				}

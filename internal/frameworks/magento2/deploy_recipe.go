@@ -114,7 +114,10 @@ func DeployRecipe() deploy.Recipe {
 		"cd {{release_path}} && {{php_bin}} bin/magento setup:upgrade --keep-generated")
 
 	fill(deploy.TaskAppCacheFlush, "flush caches",
-		`cd {{release_path}} && {{php_bin}} bin/magento cache:flush && if [ -n {{settings.runtime_reload_command}} ]; then {{settings.runtime_reload_command}}; fi`)
+		// The reload is a fragment, so it is run directly: with nothing
+		// configured it renders as `true` (see deployVars), which is why there is
+		// no `[ -n ... ]` guard to get wrong here.
+		`cd {{release_path}} && {{php_bin}} bin/magento cache:flush && {{settings.runtime_reload_command}}`)
 
 	fill(deploy.TaskWorkersResume, "resume cron and message consumers",
 		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:install && {{php_bin}} bin/magento queue:consumers:restart; fi`)
@@ -134,7 +137,7 @@ func DeployRecipe() deploy.Recipe {
 	// through DefaultRecipe, so only the framework-specific ones are named here.
 	recipe.Settings = append(recipe.Settings, []deploy.Setting{
 		{Key: "frontend_dir", Kind: deploy.SettingString, Title: "the theme's Tailwind directory; empty skips the frontend build"},
-		{Key: "frontend_command", Kind: deploy.SettingString, Title: "the command run inside frontend_dir"},
+		{Key: "frontend_command", Kind: deploy.SettingCommand, Title: "the command run inside frontend_dir"},
 		{Key: "static_jobs", Kind: deploy.SettingInt, Title: "parallelism for static content deployment"},
 		{Key: "static_content_locales", Kind: deploy.SettingArgs, Title: "locales to deploy (string, list or map)"},
 		{Key: "magento_themes", Kind: deploy.SettingArgs, Title: "themes to deploy (string, list or theme-to-locales map)"},
@@ -143,7 +146,7 @@ func DeployRecipe() deploy.Recipe {
 		{Key: "magento_themes_backend", Kind: deploy.SettingArgs, Title: "adminhtml themes; defaults to the admin theme"},
 		{Key: "static_content_locales_backend", Kind: deploy.SettingArgs, Title: "adminhtml languages; defaults to the frontend ones"},
 		{Key: "worker_control", Kind: deploy.SettingBool, Title: "remove cron and stop consumers around the migration"},
-		{Key: "runtime_reload_command", Kind: deploy.SettingString, Title: "run after the cache flush, for example an FPM reload"},
+		{Key: "runtime_reload_command", Kind: deploy.SettingCommand, Title: "run after the cache flush, for example an FPM reload"},
 	}...)
 
 	// The two verifications the core cannot supply, because both need the

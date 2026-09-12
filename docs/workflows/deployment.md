@@ -84,6 +84,28 @@ where one process holding every area runs out of memory. The second pass is
 chained to the first, so a failed admin pass stops the deploy rather than
 publishing half of the static content.
 
+### Frontend builds (Hyvä)
+
+A Hyvä theme is built by Node inside its own directory, which the project names
+with `settings.frontend_dir`:
+
+```yaml
+deploy:
+  settings:
+    frontend_dir: app/design/frontend/Acme/hyva/web/tailwind
+    frontend_command: npm ci && npm run build   # the default
+```
+
+`frontend_command` runs inside `frontend_dir`, inside the release, as one shell
+command: the default chains two commands, so a single-command value such as
+`npx tailwindcss -i input.css -o output.css` is written exactly the same way.
+Leaving `frontend_dir` empty skips the step, which is what a Luma or stock-theme
+project wants.
+
+Node is needed where the *build* runs, not where the deploy runs: with
+`--artifact-dir` the theme is built in the CI build job and `build:frontend` is
+skipped on the target, so the deploy job's image stays govard + ssh + rsync.
+
 ### Private Composer repositories
 
 A release built on the target installs its dependencies there, so it needs

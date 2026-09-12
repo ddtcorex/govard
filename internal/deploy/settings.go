@@ -19,6 +19,11 @@ const (
 	// SettingArgs is a value the recipe renders into a "<key>_args" argument
 	// list (see ArgsSpec), so it may be a string, a list or a map.
 	SettingArgs SettingKind = "args"
+	// SettingCommand is a shell fragment — a command line the recipe runs — and
+	// is substituted verbatim rather than quoted. Quoting it turns
+	// `npm ci && npm run build` into one word, and the shell reports a command
+	// that does not exist.
+	SettingCommand SettingKind = "command"
 	// SettingUnsupported is a key the recipe knows about and does not implement.
 	// Naming it is better than leaving it unknown, and much better than letting
 	// a project believe it is in effect.
@@ -165,6 +170,11 @@ func validateSettingValue(key string, setting Setting, value any) error {
 			}
 		}
 		return nil
+	case SettingCommand:
+		if _, ok := value.(string); ok {
+			return nil
+		}
+		return describe("a command line")
 	case SettingArgs:
 		if settingArgsValue(value) {
 			return nil
