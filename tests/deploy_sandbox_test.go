@@ -755,6 +755,76 @@ func TestSandboxUpReusesAnExistingSandbox(t *testing.T) {
 	}
 }
 
+// `up` is the command an operator runs to *reuse* a sandbox — to refresh the
+// mirror so a new revision is deployable, to read the published ports, to bring a
+// stopped container back. It must not delete the application the target is
+// serving.
+//
+// It did: the current path was re-shaped on every `up`, and the default shape is
+// a symlink to `releases/0`, so `up` on a live in-place target replaced the
+// deployed application with a dangling link and every request answered
+// "File not found". Found on a real sandbox right after a successful deploy,
+// when the next revision was committed and `up` was run to refresh the mirror.
+func TestSandboxUpDoesNotReshapeAnExistingTarget(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake()
+	fake.answers["image inspect"] = "sha256:abc\n"
+
+	request := deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfilePHP,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("first up: %v", err)
+	}
+
+	reuse := sandboxFake()
+	reuse.answers["image inspect"] = "sha256:abc\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(reuse.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("second up: %v", err)
+	}
+	if reuse.has("rm -rf " + deploy.SandboxDefaultPaths().Current) {
+		t.Fatalf("a reused sandbox had its current path deleted:\n%v", reuse.calls)
+	}
+}
+
+// The shape is still applied where it is meaningful: when the container is
+// created, and when the operator asks for it by naming one.
+func TestSandboxUpShapesTheTargetOnCreateOrOnRequest(t *testing.T) {
+	root := sandboxProject(t)
+	created := absentContainerFake()
+	created.fail["image inspect"] = "Error: No such image"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(created.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfilePHP,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}); err != nil {
+		t.Fatalf("first up: %v", err)
+	}
+	if !created.has("rm -rf " + deploy.SandboxDefaultPaths().Current) {
+		t.Fatalf("a new sandbox must still be shaped:\n%v", created.calls)
+	}
+
+	reshaped := sandboxFake()
+	reshaped.answers["image inspect"] = "sha256:abc\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(reshaped.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot:    root,
+		ProjectName:    "sample-project",
+		Profile:        deploy.SandboxProfilePHP,
+		DocRoot:        deploy.SandboxDocRootReal,
+		ReshapeDocRoot: true,
+		Probe:          func(context.Context, string, int, time.Duration) error { return nil },
+	}); err != nil {
+		t.Fatalf("reshaping up: %v", err)
+	}
+	if !reshaped.has("rm -rf " + deploy.SandboxDefaultPaths().Current) {
+		t.Fatalf("an explicitly requested shape must be applied:\n%v", reshaped.calls)
+	}
+}
+
 func TestSandboxRecreateRebuilds(t *testing.T) {
 	root := sandboxProject(t)
 	fake := sandboxFake()
@@ -893,7 +963,10 @@ func TestSandboxDocRootRealInitialisesAGitCheckout(t *testing.T) {
 		ProjectName: "sample-project",
 		Profile:     deploy.SandboxProfileBasic,
 		DocRoot:     deploy.SandboxDocRootReal,
-		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+		// The CLI sets this whenever `--docroot` is named, which is what makes
+		// re-shaping an existing target the operator's decision.
+		ReshapeDocRoot: true,
+		Probe:          func(context.Context, string, int, time.Duration) error { return nil },
 	}); err != nil {
 		t.Fatalf("up --docroot=real: %v", err)
 	}

@@ -42,8 +42,22 @@ type SandboxRequest struct {
 	ProjectName string
 	Profile     string
 	DocRoot     string
-	Layout      string
-	RemoteName  string
+	// ReshapeDocRoot makes `up` re-shape the current path of a container that
+	// already exists. It separates "make this target available" — the reuse half
+	// of `up`, which is also how the mirror is refreshed before a new revision is
+	// deployed — from "delete whatever is being served and lay the directory out
+	// again", which `reset` exists for and which an operator asks for by naming a
+	// shape.
+	//
+	// Without the guard, every `up` re-shaped the current path, and the default
+	// shape is a symlink to `releases/0`: running `up` on a live in-place target
+	// replaced the deployed application with a dangling link and every request
+	// answered "File not found". Found on a real sandbox right after a successful
+	// deploy, when the next revision was committed and `up` was run to refresh
+	// the mirror.
+	ReshapeDocRoot bool
+	Layout         string
+	RemoteName     string
 	// PHP is the series the image must provide, for example "8.4". Empty keeps
 	// the base image's own version.
 	PHP string
@@ -260,8 +274,15 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err := installSandboxAuthorizedKey(ctx, runtime, container, key.PublicKey); err != nil {
 		return nil, err
 	}
-	if err := prepareSandboxDocRoot(ctx, runtime, container, docRoot); err != nil {
-		return nil, err
+	// Shape a target that is being created, and one the operator explicitly asked
+	// to re-shape. An existing target is left as the last deploy left it: `up` is
+	// also how a stopped sandbox is started and how the mirror is refreshed
+	// before the next revision is deployed, and neither may cost the application
+	// currently being served.
+	if !exists || request.ReshapeDocRoot {
+		if err := prepareSandboxDocRoot(ctx, runtime, container, docRoot); err != nil {
+			return nil, err
+		}
 	}
 
 	probe := request.Probe

@@ -122,6 +122,9 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	layout, _ := cmd.Flags().GetString("layout")
 	recreate, _ := cmd.Flags().GetBool("recreate")
 	purge, _ := cmd.Flags().GetBool("purge")
+	// Naming a shape is what turns "reuse this sandbox" into "lay it out again".
+	// The `reset` command overrides this: wiping is what reset does.
+	reshapeDocRoot := cmd.Flags().Changed("docroot")
 
 	// The framework recipe owns what the container has to provide beyond its
 	// profile; the core renders it and never interprets it.
@@ -135,13 +138,14 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		// Where the web server serves from comes from the project, not from a flag:
 		// `stack.web_root` is already the answer for the local environment, and two
 		// answers would be one too many.
-		WebRoot:      config.Stack.WebRoot,
-		DocRoot:      docRoot,
-		Layout:       layout,
-		Requirements: requirements,
-		Recreate:     recreate,
-		Purge:        purge,
-		Out:          cmd.OutOrStdout(),
+		WebRoot:        config.Stack.WebRoot,
+		DocRoot:        docRoot,
+		ReshapeDocRoot: reshapeDocRoot,
+		Layout:         layout,
+		Requirements:   requirements,
+		Recreate:       recreate,
+		Purge:          purge,
+		Out:            cmd.OutOrStdout(),
 	}, nil
 }
 
@@ -184,6 +188,9 @@ func runDeploySandboxReset(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	// `reset` wipes the deploy directories and lays the target out again: shaping
+	// the current path is what it is for, whether or not a shape was named.
+	request.ReshapeDocRoot = true
 	state, err := deploy.SandboxReset(cmd.Context(), deploy.NewDockerCLI(), request)
 	if err != nil {
 		return err
