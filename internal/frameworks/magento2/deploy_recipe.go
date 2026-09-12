@@ -47,16 +47,20 @@ func DeployRecipe() deploy.Recipe {
 		"owner":         "",
 
 		// A list or a map is rendered into command arguments; a string is
-		// passed through verbatim so raw flags keep working.
+		// passed through verbatim so raw flags keep working. The themes list
+		// renders the locales as `--language` options: a bare locale after
+		// `-t <theme>` is Magento's positional `languages` argument, and that
+		// argument is assigned over `--language`, so a theme map would silently
+		// replace the project's locale list instead of adding to it.
 		"static_content_locales": deploy.ArgsSpec{Flag: "--language"},
-		"magento_themes":         deploy.ArgsSpec{Flag: "-t"},
+		"magento_themes":         deploy.ArgsSpec{Flag: "-t", ValueFlag: "--language"},
 
 		// The adminhtml/frontend split. The admin pass deploys the backend
 		// theme, which a frontend theme list never covers, and its languages
 		// default to the frontend ones so the two passes agree unless the
 		// project says otherwise.
 		"split_static_deployment":        false,
-		"magento_themes_backend":         deploy.ArgsSpec{Flag: "-t", Default: []string{"Magento/backend"}},
+		"magento_themes_backend":         deploy.ArgsSpec{Flag: "-t", ValueFlag: "--language", Default: []string{"Magento/backend"}},
 		"static_content_locales_backend": deploy.ArgsSpec{Flag: "--language", DefaultFrom: "static_content_locales"},
 	}
 
@@ -140,7 +144,7 @@ func DeployRecipe() deploy.Recipe {
 		{Key: "frontend_command", Kind: deploy.SettingCommand, Title: "the command run inside frontend_dir"},
 		{Key: "static_jobs", Kind: deploy.SettingInt, Title: "parallelism for static content deployment"},
 		{Key: "static_content_locales", Kind: deploy.SettingArgs, Title: "locales to deploy (string, list or map)"},
-		{Key: "magento_themes", Kind: deploy.SettingArgs, Title: "themes to deploy (string, list or theme-to-locales map)"},
+		{Key: "magento_themes", Kind: deploy.SettingArgs, Title: "themes to deploy, each with its locales (string, list or theme-to-locales map); locales are added to static_content_locales"},
 		{Key: "mage_mode", Kind: deploy.SettingString, Title: "production or developer; developer skips static content"},
 		{Key: "split_static_deployment", Kind: deploy.SettingBool, Title: "deploy adminhtml and frontend static content in two passes"},
 		{Key: "magento_themes_backend", Kind: deploy.SettingArgs, Title: "adminhtml themes; defaults to the admin theme"},

@@ -67,6 +67,34 @@ func TestRecipeArgumentSpecsRenderEverySupportedShape(t *testing.T) {
 	}
 }
 
+// A theme→locales map is the multi-website form: each site has its own theme with
+// its own locales. Its values must render as their OWN flag, because a bare token
+// after `-t <theme>` is not a second value for `-t` — it is Magento's positional
+// `languages` argument, and `DeployStaticContentCommand::execute()` assigns that
+// argument OVER `--language` (`$input->getArgument(LANGUAGES_ARGUMENT) ?:
+// $languageOption`). Executed against Magento's own option definition,
+// `--language en_US --language fr_FR -t Acme/a en_US` resolves to
+// theme=[Acme/a] and language=[en_US]: the project's locale list is discarded.
+func TestRecipeArgumentSpecsRenderMapValuesAsTheirOwnFlag(t *testing.T) {
+	spec := deploy.ArgsSpec{Flag: "-t", ValueFlag: "--language"}
+
+	got := deploy.RenderSettingArgsForTest(spec, map[string]any{
+		"Magento/luma":  []any{"en_US"},
+		"Magento/blank": []any{"fr_FR", "en_US"},
+	})
+	want := "-t Magento/blank -t Magento/luma --language en_US --language fr_FR"
+	if got != want {
+		t.Fatalf("RenderSettingArgs = %q, want %q", got, want)
+	}
+
+	// A recipe that declares no value flag keeps the older shape: its map values
+	// really are loose arguments to it.
+	plain := deploy.RenderSettingArgsForTest(deploy.ArgsSpec{Flag: "-t"}, map[string]any{"a": []any{"b"}})
+	if plain != "-t a b" {
+		t.Fatalf("a spec without ValueFlag must render as before, got %q", plain)
+	}
+}
+
 func TestRecipeArgumentSpecsBecomeSettingsVariables(t *testing.T) {
 	recipe := recipeWithDefaults(map[string]any{"magento_themes": deploy.ArgsSpec{Flag: "-t"}})
 

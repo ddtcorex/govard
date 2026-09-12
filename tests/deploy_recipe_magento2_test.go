@@ -413,6 +413,30 @@ func TestMagento2SplitStaticDeploymentRunsBothAreasInOrder(t *testing.T) {
 	}
 }
 
+// The map form is the multi-website one, so its locales have to reach Magento as
+// `--language` options, and they have to add to the project's locale list rather
+// than replace it. Asserted on the command line the stub actually received: the
+// difference between `-t Acme/other de_DE` (a loose argument that silently
+// overrides `--language`) and `-t Acme/other --language de_DE` is invisible in the
+// template and decides whether a store view gets its locales.
+func TestMagento2ThemeMapLocalesReachMagentoAsLanguageFlags(t *testing.T) {
+	calls := assetCalls(t, map[string]any{
+		"magento_themes": map[string]any{
+			"Acme/theme": []any{"en_US"},
+			"Acme/other": []any{"de_DE"},
+		},
+		"static_content_locales": []string{"fr_FR"},
+	})
+	if len(calls) != 1 {
+		t.Fatalf("without the split there is one pass, got %v", calls)
+	}
+	want := "setup:static-content:deploy -f --content-version=abcdef12 -j 4" +
+		" --language fr_FR -t Acme/other -t Acme/theme --language de_DE --language en_US"
+	if calls[0] != want {
+		t.Fatalf("the map form rendered\n  %q\nwant\n  %q", calls[0], want)
+	}
+}
+
 func TestMagento2StaticContentStaysSinglePassByDefault(t *testing.T) {
 	calls := assetCalls(t, map[string]any{"magento_themes": []string{"Acme/theme"}})
 	if len(calls) != 1 {
