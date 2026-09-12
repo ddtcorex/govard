@@ -282,19 +282,28 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			stepVars = stepVars.SetPath("previous_release", e.host.ReleasePath(release.Publish.PreviousRelease))
 		}
 
+		// One writer per step, shared by the command's output and the heartbeat: the
+		// heartbeat takes its lock, so a tick can never land inside a half-written
+		// line. It only becomes the command's Out when the operator asked to watch,
+		// which is what keeps the default run's output identical.
+		live := newLiveWriter(e.out, linePrefix)
 		stepCtx := StepContext{
-			Host:    e.host,
-			Runner:  e.host.Runner(),
-			Vars:    stepVars,
-			Release: release,
-			Opts:    e.opts,
-			Out:     e.out,
-			WorkDir: e.workDir,
-			Checks:  step.Checks,
+			Host:     e.host,
+			Runner:   e.host.Runner(),
+			Vars:     stepVars,
+			Release:  release,
+			Opts:     e.opts,
+			Out:      e.out,
+			WorkDir:  e.workDir,
+			Checks:   step.Checks,
+			Terminal: isTerminal(e.out),
+		}
+		if e.opts.Verbose && !e.opts.JSON {
+			stepCtx.Live = live
 		}
 
 		stepStarted := time.Now()
-		stepErr := e.runStep(ctx, step, stepCtx, timeoutFor(index))
+		stepErr := e.runStep(ctx, step, stepCtx, timeoutFor(index), live)
 		elapsed := time.Since(stepStarted)
 
 		if stepErr != nil && !step.Optional {
@@ -379,7 +388,12 @@ func (e *Executor) finish(outcome Outcome, started time.Time) Outcome {
 // command otherwise. Both are bounded, because an unbounded remote command is how
 // a deploy hangs; `timeout` is the bound the caller chose for this step, which is
 // smaller inside a maintenance window (spec 7.3).
-func (e *Executor) runStep(ctx context.Context, step Step, stepCtx StepContext, timeout time.Duration) error {
+func (e *Executor) runStep(ctx context.Context, step Step, stepCtx StepContext, timeout time.Duration, live *liveWriter) error {
+	// The heartbeat covers every step, core or shell: a step whose command prints
+	// nothing is otherwise indistinguishable from a hung one until the timeout.
+	stopHeartbeat := e.startHeartbeat(step, live)
+	defer stopHeartbeat()
+
 	stepCtxRun := ctx
 	if step.RunOn != RunLocal {
 		var cancel context.CancelFunc
@@ -399,7 +413,7 @@ func (e *Executor) runStep(ctx context.Context, step Step, stepCtx StepContext, 
 	if step.RunOn == RunLocal {
 		runner = LocalRunner{}
 	}
-	runOptions := RunOptions{Timeout: timeout}
+	runOptions := RunOptions{Timeout: timeout, Out: stepCtx.Live}
 	if step.ID == TaskVendors && step.RunOn != RunLocal && e.composerAuth != "" {
 		command = ComposerAuthCommand(command)
 		runOptions.Stdin = e.composerAuth

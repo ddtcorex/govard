@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -42,6 +43,12 @@ type RunOptions struct {
 	// in the target's process list) or in the command text (printed by
 	// --verbose and kept in CI logs).
 	Stdin string
+	// Out, when set, receives the command's output as it is produced, in addition
+	// to the buffered copy the Result carries. It exists for `--verbose`: a step
+	// like `setup:di:compile` or `npm ci` otherwise shows nothing at all until it
+	// finishes, and a slow step looks exactly like a hung one. Nil is the default
+	// and keeps the buffered behaviour byte for byte.
+	Out io.Writer
 }
 
 // CommandError reports a command that ran and failed. It always carries the
@@ -94,8 +101,8 @@ func (LocalRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	cmd.WaitDelay = waitDelayAfterKill
 
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = streamTo(&stdout, opts.Out)
+	cmd.Stderr = streamTo(&stderr, opts.Out)
 
 	err := cmd.Run()
 	result := Result{Stdout: stdout.String(), Stderr: stderr.String()}

@@ -49,8 +49,8 @@ func (r SSHRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	cmd.WaitDelay = waitDelayAfterKill
 
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = streamTo(&stdout, opts.Out)
+	cmd.Stderr = streamTo(&stderr, opts.Out)
 
 	err := cmd.Run()
 	result := Result{Stdout: stdout.String(), Stderr: stderr.String()}

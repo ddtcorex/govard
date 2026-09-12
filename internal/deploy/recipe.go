@@ -131,6 +131,15 @@ type StepContext struct {
 	// Notes collects human-readable findings a step wants the operator to see
 	// (`govard deploy check` prints them).
 	Notes []string
+	// Live is where a step's commands stream their output while they run. It is
+	// nil unless the operator asked to watch (--verbose, and not --json), and every
+	// step hands it to the commands it runs, so a step implemented in Go streams
+	// exactly like a recipe's shell command.
+	Live io.Writer
+	// Terminal records whether the run's output is a terminal. The executor decides
+	// it once, because the OS-level check belongs there; the branching that depends
+	// on it (rsync progress) belongs to the step.
+	Terminal bool
 }
 
 // TaskFunc is a core step implemented in Go rather than as a shell command.
