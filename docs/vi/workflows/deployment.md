@@ -23,6 +23,159 @@ lược publish lấy từ block `deploy:` của dự án; mỗi remote có th�
 nhận khi đúng một ứng viên khớp, đồng thời nói rõ là cái nào. Không có layout nào,
 hoặc có nhiều cái, đều là lỗi cấu hình kèm danh sách đã dò.
 
+## Cài đặt cho một dự án Magento
+
+Bốn thứ phải tồn tại trước lần deploy đầu tiên: một target đã đang phục vụ dự án,
+một remote mà govard kết nối được, credential cho những gì release sẽ cài, và một
+quyết định về cách một release trở thành live. Mỗi thứ hỏng theo một thông báo
+riêng, và không bước nào suy ra bước khác.
+
+### 1. Target đã chạy ứng dụng
+
+`govard deploy` publish *vào* một installation đang chạy; nó không tạo ra
+installation đó. Với dự án Magento, target cần:
+
+- **một ứng dụng đã cài** — `shared/app/etc/env.php`, file mà `deploy:shared` link
+  vào mọi release, trỏ tới database, cache backend và session handler mà target
+  kết nối được;
+- **database phía sau nó**, có cấu hình store trong đó.
+  `setup:static-content:deploy` dừng với `The default website isn't defined` khi
+  thiếu bảng store, và migration thì không chạy được;
+- **một search engine được hỗ trợ** nếu dự án dùng. `setup:upgrade` từ chối thẳng
+  fallback MySQL của Magento — `Your current search engine, 'MySQL', is not
+  supported` — nên dự án ElasticSuite/OpenSearch phải có cluster kết nối được
+  *trước* lần deploy đầu, không phải sau;
+- **SSH** cho user deploy kèm `rsync` trên target, và quyền ghi vào thư mục layout;
+- **credential** cho các nguồn private, đặt ở target (mục sau).
+
+Target chưa từng chạy ứng dụng là target không recipe nào publish được. Sandbox là
+chỗ để phát hiện điều đó trước khi dính tới server.
+
+### 2. Khai báo remote
+
+```yaml
+remotes:
+  staging:
+    host: m2-staging.example.com
+    user: m2-staging
+    port: 22
+    path: /home/m2-staging/public_html      # docroot đang được phục vụ
+    auth:
+      method: keyfile
+      key_path: ~/.ssh/staging
+    branch: main                            # tuỳ chọn; mặc định là HEAD local
+    deploy:
+      path: /home/m2-staging/.deployer      # releases/, shared/, .dep/ nằm ở đây
+      settings:
+        php_bin: php8.3
+        composer_bin: composer
+        php_version: "8.3"                  # target chạy gì, không phải mong muốn
+        owner: m2-staging:m2-staging
+        writable_mode: chmod+chown
+      verify:
+        url: https://staging.example.com/
+```
+
+`php_version` là một cổng chặn: `deploy:check` chạy `<php_bin> -r 'echo
+PHP_VERSION;'` trên target và từ chối deploy khi series không khớp, vì release
+build bằng interpreter sai sẽ hỏng muộn hơn và nói ít hơn về lý do. `deploy:check`
+cũng báo layout nó tìm thấy, chiến lược publish mà layout đó ngụ ý, dung lượng
+trống ở deploy path, và repository có tới được từ target hay không — hãy chạy nó
+trước lần deploy đầu và đọc như câu trả lời cho "remote này đã sẵn sàng chưa".
+
+### 3. Recipe Magento đã làm sẵn những gì
+
+Recipe điền các task theo framework và có mặc định cho layout shared, nên dự án
+chuẩn không cần `deploy.settings` nào cả:
+
+| Setting | Mặc định |
+| --- | --- |
+| `shared_files` | `app/etc/env.php`, `var/.maintenance.ip` |
+| `shared_dirs` | `var/log`, `var/report`, `var/session`, `var/backups`, `var/tmp`, `pub/media`, `pub/sitemap`, `pub/static/_cache` |
+| `writable_dirs` | `var`, `pub/static`, `pub/media`, `generated`, `app/etc` |
+| `sync_paths` | `vendor`, `generated`, `pub/static/adminhtml`, `pub/static/frontend` — chỉ khi publish in-place |
+
+Chỉ ghi đè những gì dự án của bạn khác:
+
+- **frontend**: `frontend_dir` (một hoặc nhiều đường dẫn theme Hyvä) và
+  `frontend_command` (mặc định `npm ci && npm run build`) — xem *Build frontend*;
+- **static content**: `static_jobs`, `static_content_locales`,
+  `static_deploy_options`, việc tách adminhtml/frontend, và các danh sách theme —
+  xem *Tách static content* và *Nhiều store, website và theme*;
+- **workers**: `worker_control: true` chạy `cron:remove`/`queue:consumers:stop`
+  quanh lúc deploy rồi khôi phục lại;
+- **opcache**: `runtime_reload_command` sau bước flush cache, cho target mà opcache
+  truy cập được từ user deploy — xem *Cache, opcache và cú swap symlink*;
+- **ownership**: `owner`, `writable_mode` (`chmod`, `chown`, `chmod+chown`, `acl`,
+  `skip`) và `writable_permissions` — xem *Quyền ghi và ownership*.
+
+### 4. Credential Composer đến từ đâu
+
+Ba đường, theo đúng thứ tự Composer resolve, và thứ tự này quan trọng:
+
+| Đường | Cách nó tới bước build |
+| --- | --- |
+| `COMPOSER_AUTH` trong môi trường deploy | được chuyển tiếp vào `build:vendors` qua **standard input** (không bao giờ vào argv, không vào log) và **đè lên mọi file trên target** |
+| `auth.json` trong dự án | được `deploy:code` materialise vào release, nên Composer đọc nó từ gốc release — đây là đường mà dự án commit sẵn file này dựa vào |
+| `shared/auth.json` trên target | chỉ được đọc nếu release có `auth.json` trỏ tới nó, nghĩa là phải liệt kê `auth.json` trong `deploy.settings.shared_files` |
+
+Vì `COMPOSER_AUTH` thắng, một **token dùng chung cho cả máy nhưng sai với dự án
+còn tệ hơn không có gì**: nó đè lên `auth.json` đang chạy tốt của dự án và build
+hỏng với lỗi authentication của nguồn, trông y hệt một dự án không có credential.
+Hãy export đúng credential của dự án cho lần deploy, hoặc không export gì và để
+file sẵn có trên target trả lời.
+
+Package kiểu `git` là vấn đề khác: Composer clone qua SSH, nên *target* cần khoá và
+một dòng `known_hosts` cho host đó. Không biến môi trường nào mang được hai thứ
+ấy.
+
+`govard deploy check` nói nó tìm thấy đường nào — `COMPOSER_AUTH is set for this
+run`, `shared/auth.json exists on the target`, hay cảnh báo rằng dự án khai báo
+repository private mà không có credential nào.
+
+### 5. Release trở thành live thế nào
+
+`auto` (mặc định) resolve từ target: docroot không tồn tại hoặc là symlink thì
+publish bằng cú rename nguyên tử của symlink `current`; docroot đang là checkout
+thật thì cập nhật in-place. Chọn tường minh bằng `publish: symlink` hoặc
+`publish: in_place` trên remote khi target mơ hồ — ví dụ docroot là thư mục nhưng
+không phải checkout.
+
+Với in-place, release được reset vào docroot và chỉ `sync_paths` được copy, nên
+danh sách đó phải nêu đúng những gì release *build ra*; xem *Publish in-place cần
+`sync_paths`*. Ở cả hai chiến lược, maintenance window mở trên release đang **được
+phục vụ**, và với symlink nó đóng trước cú swap.
+
+### 6. Lần deploy đầu tiên
+
+```bash
+govard deploy plan staging     # toàn bộ danh sách task, không kết nối đi đâu
+govard deploy check staging    # preflight: kết nối, layout, quyền, php, dung lượng, lock
+govard deploy staging --yes    # ... hoặc --remote staging
+```
+
+Theo dõi bằng `--verbose`, nó stream output của từng command dưới đúng task của nó
+và không gom lại. Khi một bước hỏng, lần chạy nói rõ bước nào và làm gì tiếp: hỏng
+sau khi maintenance window đã mở thì giữ lock và chỉ tới `govard deploy --remote
+staging --resume`, còn hỏng trước đó thì nhả lock và chỉ tới một lần retry
+thường. Exit code là hợp đồng của CLI (`0` thành công, `1` lỗi thực thi, `2` dùng
+sai, `3` thiếu capability, `4` lỗi cấu hình), và `--json` phát ra một document thay
+cho timeline.
+
+### 7. Diễn tập ngay trên máy này trước
+
+```bash
+govard deploy sandbox up --profile full --php 8.4   # một target thật, trên loopback
+# provision nó: credential, shared/app/etc/env.php, database, search engine
+govard deploy --remote sandbox --yes
+govard deploy sandbox down --purge
+```
+
+Sandbox là một lần deploy production trỏ vào container — cùng SSH, cùng mirror,
+cùng recipe — nên hỏng ở đó chính là hỏng bạn sẽ gặp trên server, mà không cần
+server. Nó cần đúng những prerequisite ứng dụng như mọi target; mục *Sandbox* bên
+dưới nói từng lỗi nghĩa là gì.
+
 ## Pipeline
 
 Triển khai là một chuỗi task trung tính cố định, do engine sắp thứ tự chứ không
@@ -271,11 +424,13 @@ khác.
 ### Composer repository riêng
 
 Release build trên target thì cài dependency ngay trên đó, nên cần credential cho
-mọi repository không phải packagist. `COMPOSER_AUTH` từ môi trường được chuyển
-tiếp tới bước cài dependency — qua standard input, không nằm trong command, nên
-không lộ trong process list của target và không lọt vào log deploy — và
-`shared/auth.json` trên target cũng dùng được như với công cụ deploy kia. Govard
-không lưu cái nào.
+mọi repository không phải packagist. Ba đường và thứ tự ưu tiên nằm ở *Credential
+Composer đến từ đâu*: `COMPOSER_AUTH` từ môi trường deploy được chuyển tiếp tới
+bước cài dependency qua standard input — không nằm trong command, nên không lộ
+trong process list của target và không lọt vào log deploy — và nó đè lên mọi file
+trên target. `shared/auth.json` chỉ được đọc khi dự án liệt kê `auth.json` trong
+`shared_files`, tức là có link nó vào release. Govard không lưu credential nào của
+riêng nó.
 
 `govard deploy check` cho biết đang dùng nguồn nào, và cảnh báo khi dự án khai báo
 repository riêng mà không có nguồn nào. Nó cảnh báo chứ không từ chối: thứ govard
@@ -441,6 +596,7 @@ phỏng.
 ```bash
 govard deploy sandbox up                      # tạo (mặc định profile php)
 govard deploy sandbox up --profile basic      # chỉ sshd, rsync, git
+govard deploy sandbox up --profile full --php 8.4   # database, cache, PHP 8.4
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
 govard deploy sandbox ssh
@@ -457,10 +613,31 @@ là một subcommand, hãy deploy bằng dạng flag:
 govard deploy --remote sandbox --yes
 ```
 
+`--php` chọn series PHP mà image cung cấp, ví dụ `--php 8.4`; không có thì image
+giữ version của distribution gốc. Series lấy từ repository sury và kéo theo `php`
+binary, các extension, `php_bin` và `php_version` mà remote khai — nên dự án có
+`composer.lock` đòi PHP mới hơn image gốc vẫn diễn tập được đúng interpreter mà
+target thật chạy. Series nằm trong image tag, nên đổi series là build image khác
+chứ không tái dùng image cũ.
+
 `--docroot` định hình target để chiến lược publish resolve theo đúng thứ bạn muốn
 kiểm chứng: `absent` hoặc `symlink` chọn cú swap nguyên tử, `real` chọn in-place.
 `down` xoá container và remote mà nó đã ghi; `--purge` xoá thêm image, khoá và
 mirror.
+
+Một lần diễn tập chỉ đầy đủ bằng credential và ứng dụng mà target có. Package
+`git` cần khoá và `known_hosts` *bên trong container*, và credential chỉ nằm trong
+shell profile của bạn chính là loại có thể đè lên `auth.json` đang chạy tốt của dự
+án rồi làm hỏng build (xem *Credential Composer đến từ đâu*). Ứng dụng thì cần
+`shared/app/etc/env.php` trỏ tới database, cache và session mà target kết nối
+được, cộng thêm search engine được hỗ trợ nếu dự án dùng: thiếu chúng thì
+`build:assets` dừng ở `The default website isn't defined` và `db:migrate` dừng ở
+`Your current search engine, 'MySQL', is not supported`. Đó là prerequisite của
+target, không phải của engine — một server chưa từng chạy ứng dụng thì không
+publish release lên được, và sandbox từ chối giả vờ ngược lại. Đặt credential và
+`env.php` vào container (`docker exec`, hoặc mount file) rồi chạy lại `govard
+deploy --remote sandbox --yes`; bước hỏng sẽ đi tiếp từ release directory sạch và
+Composer cache được giữ nguyên.
 
 ## Một kết nối cho mỗi target
 

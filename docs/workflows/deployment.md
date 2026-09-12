@@ -23,6 +23,161 @@ target already has — `releases/`, `shared/`, `.dep/` or a `current` symlink �
 govard adopts it only when exactly one candidate matches, saying which. No layout
 or several is a configuration error naming what was probed.
 
+## Setting up a Magento project
+
+Four things have to exist before the first deploy: a target that already serves
+the project, a remote govard can reach, credentials for whatever the release
+installs, and a decision about how a release becomes live. Each one fails with its
+own message, and no step infers another.
+
+### 1. The target already runs the application
+
+`govard deploy` publishes *into* a running installation; it does not create one.
+For a Magento project the target needs:
+
+- **an installed application** — `shared/app/etc/env.php`, the file `deploy:shared`
+  links into every release, naming a database, a cache backend and a session
+  handler the target can reach;
+- **the database behind it**, with the store configuration in it.
+  `setup:static-content:deploy` stops at `The default website isn't defined` when
+  the store tables are missing, and migration cannot run at all;
+- **a supported search engine** where the project uses one. `setup:upgrade`
+  refuses Magento's MySQL fallback outright — `Your current search engine, 'MySQL',
+  is not supported` — so an ElasticSuite or OpenSearch project needs its cluster
+  reachable *before* the first deploy, not after;
+- **SSH** for the deploy user with `rsync` on the target, and write access to the
+  layout directory;
+- **credentials** for private sources, on the target (next section).
+
+A target that has never run the application is a target no recipe can publish to.
+The sandbox is the place to find that out before a server is involved.
+
+### 2. The remote
+
+```yaml
+remotes:
+  staging:
+    host: m2-staging.example.com
+    user: m2-staging
+    port: 22
+    path: /home/m2-staging/public_html      # the docroot that is served
+    auth:
+      method: keyfile
+      key_path: ~/.ssh/staging
+    branch: main                            # optional; defaults to the local HEAD
+    deploy:
+      path: /home/m2-staging/.deployer      # releases/, shared/, .dep/ live here
+      settings:
+        php_bin: php8.3
+        composer_bin: composer
+        php_version: "8.3"                  # what the target runs, not a preference
+        owner: m2-staging:m2-staging
+        writable_mode: chmod+chown
+      verify:
+        url: https://staging.example.com/
+```
+
+`php_version` is a gate: `deploy:check` runs `<php_bin> -r 'echo PHP_VERSION;'` on
+the target and refuses the deploy when the series does not match, because a release
+built by the wrong interpreter fails later and says less about why. `deploy:check`
+also reports the layout it found, the publish strategy that implies, the free space
+at the deploy path, and whether the repository is reachable from the target — run
+it before the first deploy, and read it as the answer to "is this remote ready".
+
+### 3. What the Magento recipe already does
+
+The recipe fills the framework tasks and ships defaults for the shared layout, so
+a stock project needs no `deploy.settings` at all:
+
+| Setting | Default |
+| --- | --- |
+| `shared_files` | `app/etc/env.php`, `var/.maintenance.ip` |
+| `shared_dirs` | `var/log`, `var/report`, `var/session`, `var/backups`, `var/tmp`, `pub/media`, `pub/sitemap`, `pub/static/_cache` |
+| `writable_dirs` | `var`, `pub/static`, `pub/media`, `generated`, `app/etc` |
+| `sync_paths` | `vendor`, `generated`, `pub/static/adminhtml`, `pub/static/frontend` — in-place publishing only |
+
+Override what your project differs on, and nothing else:
+
+- **frontend**: `frontend_dir` (one or more Hyvä theme paths) and
+  `frontend_command` (default `npm ci && npm run build`) — see *Frontend builds*;
+- **static content**: `static_jobs`, `static_content_locales`,
+  `static_deploy_options`, the adminhtml/frontend split, and the theme lists — see
+  *The static content split* and *Multiple stores, websites and themes*;
+- **workers**: `worker_control: true` runs `cron:remove`/`queue:consumers:stop`
+  around the deploy and restores them after — see the pipeline table;
+- **opcache**: `runtime_reload_command` after the cache flush, for a target whose
+  opcache is reachable from the deploying user — see *Caches, opcache and the
+  symlink swap*;
+- **ownership**: `owner`, `writable_mode` (`chmod`, `chown`, `chmod+chown`, `acl`,
+  `skip`) and `writable_permissions` — see *Permissions and ownership*.
+
+### 4. Where Composer credentials come from
+
+Three routes, in the order Composer resolves them, and the order matters:
+
+| Route | How it reaches the build |
+| --- | --- |
+| `COMPOSER_AUTH` in the deploying environment | forwarded to `build:vendors` on the command's **standard input** (never argv, never the log) and **overrides every file on the target** |
+| `auth.json` in the project | materialised into the release by `deploy:code`, so Composer reads it from the release root — this is what a project that commits one relies on |
+| `shared/auth.json` on the target | only read if the release has an `auth.json` pointing at it, which means listing `auth.json` in `deploy.settings.shared_files` |
+
+Because `COMPOSER_AUTH` wins, a **machine-wide token that is wrong for the project
+is worse than none at all**: it overrides the project's own working `auth.json` and
+the build fails with the source's authentication error, looking exactly like a
+project that has no credentials. Export the project's credentials for the deploy,
+or export nothing and let the target's own file answer.
+
+A `git`-type package is a different problem: Composer clones it over SSH, so the
+*target* needs a key and a `known_hosts` entry for the host. No environment
+variable carries those.
+
+`govard deploy check` says which route it found — `COMPOSER_AUTH is set for this
+run`, `shared/auth.json exists on the target`, or a warning that a project
+declaring private repositories has no credentials available.
+
+### 5. How a release becomes live
+
+`auto` (the default) resolves from the target: an absent or symlinked docroot
+publishes by an atomic rename of a `current` symlink, an existing docroot that is a
+real checkout is updated in place. Pick one explicitly with `publish: symlink` or
+`publish: in_place` on the remote when the target is ambiguous — for example its
+docroot is a directory that is not a checkout.
+
+In place, the release is reset into the docroot and only `sync_paths` is copied, so
+that list has to name what the release *built*; see *In-place publishing needs
+`sync_paths`*. In both strategies the maintenance window opens on the release that
+is being **served**, and for a symlink it closes before the swap.
+
+### 6. The first deploy
+
+```bash
+govard deploy plan staging     # the entire task list, connecting nowhere
+govard deploy check staging    # preflight: connectivity, layout, permissions, php, disk, lock
+govard deploy staging --yes    # ... or --remote staging
+```
+
+Watch it with `--verbose`, which streams each command's own output under its task
+and never batches it. When a step fails the run says which step, and what to do
+next: a failure after the maintenance window opened keeps the lock and points at
+`govard deploy --remote staging --resume`, while a failure before it releases the
+lock and points at a plain retry. Exit codes are the CLI contract (`0` success, `1`
+execution, `2` usage, `3` missing capability, `4` configuration), and `--json`
+emits one document instead of the timeline.
+
+### 7. Rehearse it on this machine first
+
+```bash
+govard deploy sandbox up --profile full --php 8.4   # a real target, on loopback
+# provision it: credentials, shared/app/etc/env.php, a database, a search engine
+govard deploy --remote sandbox --yes
+govard deploy sandbox down --purge
+```
+
+The sandbox is a production deploy pointed at a container — same SSH, same mirror,
+same recipe — so a failure there is a failure you would have met on the server,
+without a server. It needs the same application prerequisites as any target; the
+section below says what each failure means.
+
 ## The pipeline
 
 Deployment is a fixed sequence of framework-neutral tasks, ordered by the engine
@@ -291,17 +446,19 @@ restart hook, or the same command through a different tool.
 ### Private Composer repositories
 
 A release built on the target installs its dependencies there, so it needs
-credentials for any repository that is not packagist. `COMPOSER_AUTH` from the
-environment is forwarded to the dependency step — on its standard input, not in the
-command, so it stays out of the target's process list and out of the deploy log —
-and a `shared/auth.json` on the target works as it does for the other deploy tool.
-Govard stores neither.
+credentials for any repository that is not packagist. The three routes and their
+precedence are in *Where Composer credentials come from*: `COMPOSER_AUTH` from the
+deploying environment is forwarded to the dependency step on standard input — not
+in the command, so it stays out of the target's process list and out of the deploy
+log — and it overrides every file on the target. `shared/auth.json` is read only
+when the project lists `auth.json` in `shared_files`, which links it into the
+release. Govard stores no credentials of its own.
 
 `govard deploy check` reports which source is in play, and warns when the project
-declares a private repository and neither is available. It warns rather than
-refuses: the declaration it can read is a URL, and a URL cannot tell it whether a
-repository needs credentials. Set `COMPOSER_AUTH` in the CI build job as well as in
-the deploy job when the artifact is built there.
+declares a private repository and none is available. It warns rather than refuses:
+the declaration it can read is a URL, and a URL cannot tell it whether a repository
+needs credentials. Set `COMPOSER_AUTH` in the CI build job as well as in the deploy
+job when the artifact is built there.
 
 ## Build modes
 
@@ -500,16 +657,16 @@ against the PHP its target actually runs, instead of failing in the middle of a
 dependency install. The series is part of the image tag, so asking for a
 different one builds a different image rather than reusing the old one.
 
-A rehearsal is only as complete as the credentials the target has. A project that
-installs from private repositories needs those credentials *on the target*,
-exactly as a real server does: Composer reads `auth.json` in the deploy user's
-Composer home, and a `git`-type package needs a key plus the host in
-`known_hosts`. govard deliberately does not forward the deploying machine's
-credentials — the sandbox exists to show what the target can do with what the
-target has — so a private dependency fails at `build:vendors` with the source's
-own authentication error. Put the credentials in the container (`docker exec`, or
-a mounted file) and re-run `govard deploy --remote sandbox --yes`; the failing
-step resumes from a clean release directory and the Composer cache is kept.
+A rehearsal is only as complete as the credentials the deployment has, and the
+three routes are not interchangeable — see *Where Composer credentials come from*
+above. What matters for a sandbox is that it is a fresh target: a `git`-type
+package needs a key and a `known_hosts` entry *inside the container*, and a
+credential that lives only in your shell profile is exactly the kind that can
+override the project's own working `auth.json` and fail the build where a plain
+`govard deploy` would have succeeded. Put the credentials where the target can use
+them (`docker exec`, or a mounted file) and re-run `govard deploy --remote sandbox
+--yes`; the failing step resumes from a clean release directory and the Composer
+cache is kept.
 
 The same is true of the application the target is supposed to be serving. A
 brand-new sandbox has no installed application, so a pipeline that reaches
