@@ -14,6 +14,10 @@ func BuildSSHArgs(remoteName string, remoteCfg engine.RemoteConfig, forwardAgent
 		"-o", "ServerAliveInterval=60",
 		"-o", "ServerAliveCountMax=10",
 	}
+	// One connection per target for the whole run: a deploy runs a command per
+	// step, and without this every one of them pays a full handshake and
+	// authentication (see multiplexArgs).
+	args = append(args, multiplexArgs()...)
 	if !interactive {
 		args = append(args, "-o", "BatchMode=yes")
 	} else {
