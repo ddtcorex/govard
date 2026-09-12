@@ -39,6 +39,17 @@ activation is an atomic rename, so nothing serving the site is rewritten, and th
 window appears only if the same plan also migrates or imports configuration. An
 in-place activation always opens it, because the docroot itself is rewritten
 while serving.
+
+The window is opened and closed **on the release being served** (`current`), not
+on the release being built. Maintenance mode is read from the docroot a request
+lands in, so a flag written into the incoming release would protect nothing while
+`setup:upgrade` changes the schema the live code depends on, and would switch the
+site off the moment that release became live. For a symlink that also decides
+where the window *ends*: it closes before the swap, because the swap changes
+which release is being served — closing it afterwards would leave a flag in the
+release the swap replaced, which is what a rollback would then serve. In place
+there is one directory throughout, so the window stays open across the rewrite.
+A first deploy has no served release yet, so both steps are a no-op.
 | `verify` | post-publish checks |
 | `cleanup` | prune old releases, release the lock |
 
@@ -77,6 +88,16 @@ pass uses `magento_themes_backend` (the admin theme by default) and
 `static_content_locales_backend`, which defaults to the frontend languages so the
 two passes agree unless the project says otherwise. The frontend pass uses
 `magento_themes` and `static_content_locales`.
+
+`static_deploy_options` passes extra flags to every pass — `--no-parent` for a
+theme whose parent is deployed on its own, `-s standard`, or `--exclude-theme`.
+A string is passed through verbatim and a list contributes one word per entry:
+
+```yaml
+deploy:
+  settings:
+    static_deploy_options: --no-parent
+```
 
 It exists for the two cases a single pass handles badly: a theme list that covers
 only frontend themes (the admin theme would be missed) and a large deployment
@@ -173,6 +194,32 @@ in the admin are the application's data, not the release's, and a deploy that
 rewrote them would be a deploy that can overwrite a live storefront's settings.
 `deploy.verify.url` checks one URL; a multi-store project that wants every
 storefront checked should anchor a hook on `verify` and run the checks it wants.
+
+### Caches, opcache and the symlink swap
+
+The release flushes the application cache as part of the pipeline, so the new
+release never serves a cache built by the old code. What a cache flush does not
+touch is PHP's own state: after a swap, a worker that already resolved `current`
+can keep the old release in its `realpath_cache` and its compiled files in
+opcache for up to `realpath_cache_ttl`. That is how a deploy looks successful and
+still serves the previous release's code.
+
+`settings.runtime_reload_command` is the supported way to clear that state. It
+runs as the last part of the `app:cache:flush` step — inside the window in place,
+after the swap for a symlink:
+
+```yaml
+deploy:
+  settings:
+    runtime_reload_command: cachetool opcache:reset && cachetool stat:clear
+```
+
+Resetting opcache and the realpath cache is preferred to reloading PHP-FPM: a
+reload can drop requests that are already in flight, which is why the reference
+deploy tool's own PHP-FPM recipe warns against it and points at this cache reset
+instead. The setting is a raw shell command, so anything equivalent works where
+opcache is not reachable from the deploying user — a PHP-FPM reload, a container
+restart hook, or the same command through a different tool.
 
 ### Private Composer repositories
 

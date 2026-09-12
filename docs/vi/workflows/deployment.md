@@ -38,6 +38,16 @@ Maintenance window chỉ được mở khi nó thật sự cần: kích hoạt b
 cú rename nguyên tử nên không có gì đang phục vụ bị ghi đè, và window chỉ xuất
 hiện nếu cùng plan đó còn migrate hoặc import cấu hình. Kích hoạt in-place luôn mở
 window, vì chính docroot bị ghi đè trong lúc đang phục vụ.
+
+Window được mở và đóng **trên release đang được phục vụ** (`current`), không phải
+trên release đang build. Maintenance mode được đọc từ docroot mà request rơi vào,
+nên cờ viết vào release mới sẽ không bảo vệ gì trong lúc `setup:upgrade` đổi schema
+mà code đang chạy phụ thuộc vào, và sẽ tắt site ngay khi release đó lên live. Với
+symlink, điều đó cũng quyết định window **kết thúc ở đâu**: nó đóng trước cú swap,
+vì swap đổi release đang được phục vụ — đóng sau đó sẽ để lại cờ trong release vừa
+bị thay, và rollback về release đó là serve maintenance mode cho mọi khách. Với
+in-place chỉ có một thư mục duy nhất, nên window vẫn mở xuyên qua lúc ghi đè.
+Lần deploy đầu chưa có release nào đang phục vụ, nên cả hai bước là no-op.
 | `verify` | kiểm tra sau publish |
 | `cleanup` | dọn release cũ, nhả lock |
 
@@ -74,6 +84,16 @@ dùng `magento_themes_backend` (mặc định là theme admin) và
 `static_content_locales_backend`, mặc định lấy theo ngôn ngữ frontend để hai lượt
 khớp nhau trừ khi dự án nói khác. Lượt frontend dùng `magento_themes` và
 `static_content_locales`.
+
+`static_deploy_options` truyền thêm cờ cho mọi lượt — `--no-parent` cho theme có
+theme cha được deploy riêng, `-s standard`, hay `--exclude-theme`. Chuỗi được truyền
+nguyên văn, list thì mỗi entry thành một từ:
+
+```yaml
+deploy:
+  settings:
+    static_deploy_options: --no-parent
+```
 
 Nó dành cho hai trường hợp mà một lượt xử lý kém: danh sách theme chỉ có theme
 frontend (theme admin sẽ bị bỏ sót) và deployment lớn nơi một tiến trình ôm mọi
@@ -167,6 +187,31 @@ của ứng dụng, không phải của release; một deploy ghi đè chúng l�
 xoá cấu hình của storefront đang chạy. `deploy.verify.url` kiểm một URL; dự án
 multi-store muốn kiểm mọi storefront thì gắn hook vào `verify` và chạy kiểm tra
 mình cần.
+
+### Cache, opcache và cú swap symlink
+
+Release flush cache của ứng dụng ngay trong pipeline, nên release mới không bao giờ
+phục vụ cache do code cũ dựng. Thứ mà flush cache không chạm tới là trạng thái của
+chính PHP: sau cú swap, một worker đã resolve `current` có thể vẫn giữ release cũ
+trong `realpath_cache` và file đã compile trong opcache tới `realpath_cache_ttl`.
+Đó là cách một deploy trông thành công mà vẫn phục vụ code của release trước.
+
+`settings.runtime_reload_command` là cách được hỗ trợ để xoá trạng thái đó. Nó chạy
+như phần cuối của bước `app:cache:flush` — trong window với in-place, sau cú swap với
+symlink:
+
+```yaml
+deploy:
+  settings:
+    runtime_reload_command: cachetool opcache:reset && cachetool stat:clear
+```
+
+Reset opcache và realpath cache được ưu tiên hơn reload PHP-FPM: reload có thể làm
+rớt những request đang bay, đó là lý do recipe PHP-FPM của công cụ deploy tham chiếu
+tự cảnh báo đừng reload và chỉ đúng vào cách reset cache này. Setting là một command
+shell thô, nên mọi cách tương đương đều dùng được khi user deploy không với tới được
+opcache — reload PHP-FPM, hook restart container, hay cùng command đó qua công cụ
+khác.
 
 ### Composer repository riêng
 
