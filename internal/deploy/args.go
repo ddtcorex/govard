@@ -17,6 +17,15 @@ import (
 // meant those flags.
 type ArgsSpec struct {
 	Flag string
+	// Default is the value rendered when the project configured nothing, so a
+	// recipe can supply a framework default (the admin theme, for instance)
+	// without writing it into every project's configuration.
+	Default any
+	// DefaultFrom names another setting whose configured value becomes this
+	// one's default. It is how "the backend languages default to the frontend
+	// ones" is expressed: the two settings must agree unless a project says
+	// otherwise.
+	DefaultFrom string
 }
 
 // RenderSettingArgs renders a setting value as a raw shell argument string.

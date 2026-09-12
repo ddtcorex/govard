@@ -1,0 +1,76 @@
+<?php
+/**
+ * A Magento CLI stub that verifies the arguments the recipe builds instead of
+ * pretending to compile assets.
+ *
+ * The expectation is read from deploy-expectation.txt, which the test writes
+ * before seeding the origin, so one stub covers the split and the single-pass
+ * mode. A text assertion cannot tell which branch of a shell conditional ran —
+ * only running it can — which is why this replaces one.
+ */
+
+$release = dirname(__DIR__);
+$expectation = trim((string) @file_get_contents($release . '/deploy-expectation.txt'));
+if ($expectation === '') {
+    $expectation = 'single';
+}
+
+$log = $release . '/var/stub-calls.log';
+if (!is_dir($release . '/var')) {
+    mkdir($release . '/var', 0777, true);
+}
+
+$arguments = array_slice($argv, 1);
+file_put_contents($log, implode(' ', $arguments) . "\n", FILE_APPEND);
+
+$fail = static function (string $message): void {
+    fwrite(STDERR, "magento stub: {$message}\n");
+    exit(1);
+};
+
+$calls = static function (string $needle) use ($log): int {
+    $contents = (string) @file_get_contents($log);
+
+    return substr_count($contents, $needle);
+};
+
+$command = $arguments[0] ?? '';
+
+if ($command === 'setup:static-content:deploy') {
+    $area = 'none';
+    foreach ($arguments as $argument) {
+        if (str_starts_with($argument, '--area=')) {
+            $area = substr($argument, strlen('--area='));
+        }
+    }
+    if ($expectation === 'split') {
+        if ($area === 'adminhtml') {
+            if ($calls('setup:static-content:deploy') !== 1) {
+                $fail('the adminhtml pass must come first');
+            }
+            if ($calls('--area=frontend') !== 0) {
+                $fail('the frontend pass must come after the adminhtml pass');
+            }
+        } elseif ($area === 'frontend') {
+            if ($calls('--area=adminhtml') !== 1) {
+                $fail('the frontend pass must follow exactly one adminhtml pass');
+            }
+        } else {
+            $fail("the split must name an area, got '{$area}'");
+        }
+    } elseif ($area !== 'none') {
+        $fail("without split_static_deployment there must be no --area, got '{$area}'");
+    }
+}
+
+if ($command === 'setup:db:status') {
+    // The verify stage runs last, so this is where "the static content step never
+    // ran at all" is caught rather than assumed.
+    $deploys = $calls('setup:static-content:deploy');
+    $expected = $expectation === 'split' ? 2 : 1;
+    if ($deploys !== $expected) {
+        $fail("expected {$expected} static content pass(es), saw {$deploys}");
+    }
+}
+
+exit(0);

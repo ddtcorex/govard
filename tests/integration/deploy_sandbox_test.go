@@ -171,3 +171,87 @@ func sandboxRemote(t *testing.T, projectDir string) (sandboxRemoteInfo, bool, er
 	}
 	return result, true, nil
 }
+
+// seedOriginFromProject publishes the project directory itself as the origin, so
+// the release the target materialises carries the fixture's files — the stub
+// `bin/magento` included.
+func seedOriginFromProject(t *testing.T, projectDir string) (string, string) {
+	t.Helper()
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	origin := filepath.Join(root, "origin.git")
+
+	copyDir(t, projectDir, work)
+	runGitIn(t, work, "init", "-q", "-b", "main")
+	runGitIn(t, work, "add", "-A")
+	runGitIn(t, work, "commit", "-q", "-m", "initial")
+	revision := runGitIn(t, work, "rev-parse", "HEAD")
+	runGitIn(t, root, "clone", "-q", "--bare", work, origin)
+	return origin, revision
+}
+
+// TestDeploySandboxRunsTheMagentoRecipeOverRealSSH deploys a Magento 2 project to
+// a real container over real SSH and real rsync, with a `bin/magento` stub that
+// *asserts* the arguments the recipe builds: which static-content passes ran, in
+// which order, with which `--area`, and that worker control actually moved cron
+// and the consumers.
+//
+// The stub is the point. Both the static-content split and the worker-control
+// guard live inside one shell command, and the recipe's own guards were inert
+// until they were executed: `[ "{{settings.mage_mode}}" != "developer" ]` expands
+// to `[ "'developer'" != "developer" ]`, which is always true. A test that reads
+// the template cannot see that; one that runs it against a target can.
+//
+// A real Magento cannot be installed here — every Magento package is behind
+// repo.magento.com credentials, verified with Composer — so the application
+// contract that remains unexecuted is Magento's own acceptance of `--area`, which
+// is taken from Magento's option definition (Magento_Deploy\Console\
+// DeployStaticOptions) and the reference deploy tool's recipe.
+func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
+	for _, expectation := range []string{"single", "split"} {
+		t.Run(expectation, func(t *testing.T) {
+			env := NewTestEnvironment(t)
+			projectDir := env.CreateProjectFromFixture(t, "deploy/magento-stub", "deploy-magento-stub-"+expectation)
+
+			// The stub reads this from the release, so it has to be committed.
+			if err := os.WriteFile(filepath.Join(projectDir, "deploy-expectation.txt"), []byte(expectation+"\n"), 0o644); err != nil {
+				t.Fatalf("write the expectation: %v", err)
+			}
+			origin, revision := seedOriginFromProject(t, projectDir)
+			seedSandboxCheckout(t, projectDir, origin)
+
+			// The `php` profile: the recipe runs `{{php_bin}} bin/magento`, and
+			// the stub is a PHP script so the target can execute it the way a
+			// real Magento would be executed.
+			up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "php")
+			if up.ExitCode != 0 {
+				t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
+			}
+			t.Cleanup(func() { env.RunGovard(t, projectDir, "deploy", "sandbox", "down", "--purge") })
+
+			if expectation == "split" {
+				// Written after `up`, because `up` rewrites .govard.local.yml to
+				// add the sandbox remote.
+				content, err := os.ReadFile(filepath.Join(projectDir, ".govard.local.yml"))
+				if err != nil {
+					t.Fatalf("read the local layer: %v", err)
+				}
+				withSettings := string(content) + "\ndeploy:\n  settings:\n    split_static_deployment: true\n    worker_control: true\n"
+				if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(withSettings), 0o644); err != nil {
+					t.Fatalf("write the local layer: %v", err)
+				}
+			}
+
+			deploy := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revision, "--yes")
+			if deploy.ExitCode != 0 {
+				t.Fatalf("the sandbox deploy failed (%d) — the stub's assertion is the verdict\nstdout: %s\nstderr: %s",
+					deploy.ExitCode, deploy.Stdout, deploy.Stderr)
+			}
+			// The stub fails the deploy if a pass is missing or out of order, so a
+			// green deploy is the assertion. Assert the deploy really published.
+			status := env.RunGovard(t, projectDir, "deploy", "status", "sandbox")
+			status.AssertSuccess(t)
+			status.AssertOutputContains(t, revision[:8])
+		})
+	}
+}

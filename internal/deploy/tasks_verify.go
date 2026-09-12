@@ -83,8 +83,16 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 	}
 
 	for _, entry := range settingsStringList(sc.Opts.Settings, "shared_files") {
-		if _, err := sc.Runner.Run(ctx, "test -r "+Shell(path.Join(sc.Release.Path, entry)), RunOptions{Timeout: shortCommandTimeout}); err != nil {
-			return fail("shared:"+entry, "shared file is missing or unreadable in the release")
+		// The requirement is conditional on the shared entry existing, because
+		// that is what `deploy:shared` does: the first deploy of a project
+		// legitimately has no shared state yet, and treating that as a broken
+		// link failed the deploy after it had already activated. A shared file
+		// that *does* exist must be readable in the release, which is what
+		// catches the broken symlink this check is here for.
+		command := fmt.Sprintf("if [ -e %s ]; then test -r %s; fi",
+			Shell(path.Join(sc.Host.SharedPath(), entry)), Shell(path.Join(sc.Release.Path, entry)))
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+			return fail("shared:"+entry, "the shared file exists on the target but is missing or unreadable in the release")
 		}
 		pass("shared:"+entry, "linked and readable")
 	}

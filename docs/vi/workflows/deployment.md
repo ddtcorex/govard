@@ -66,6 +66,20 @@ key và gợi ý key gần đúng. Trước đây gõ sai là im lặng bỏ qua
 phải được quote nếu trông giống số (`php_version: "8.2"`): engine đọc các setting
 này dưới dạng chuỗi, nên `8.2` không quote sẽ đọc thành rỗng.
 
+### Tách static content
+
+`split_static_deployment` deploy static content của adminhtml và frontend thành
+hai lượt thay vì một, với `--area=adminhtml` rồi `--area=frontend`. Lượt admin
+dùng `magento_themes_backend` (mặc định là theme admin) và
+`static_content_locales_backend`, mặc định lấy theo ngôn ngữ frontend để hai lượt
+khớp nhau trừ khi dự án nói khác. Lượt frontend dùng `magento_themes` và
+`static_content_locales`.
+
+Nó dành cho hai trường hợp mà một lượt xử lý kém: danh sách theme chỉ có theme
+frontend (theme admin sẽ bị bỏ sót) và deployment lớn nơi một tiến trình ôm mọi
+area sẽ hết bộ nhớ. Lượt thứ hai được nối bằng `&&`, nên lượt admin lỗi thì deploy
+dừng lại thay vì publish một nửa static content.
+
 ### Composer repository riêng
 
 Release build trên target thì cài dependency ngay trên đó, nên cần credential cho

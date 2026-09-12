@@ -69,6 +69,21 @@ defaulted to. String values must be quoted if they look numeric (`php_version:
 "8.2"`): the engine reads those settings as strings, so an unquoted `8.2` reads as
 empty.
 
+### The static content split
+
+`split_static_deployment` deploys the adminhtml and frontend static content in two
+passes instead of one, with `--area=adminhtml` then `--area=frontend`. The admin
+pass uses `magento_themes_backend` (the admin theme by default) and
+`static_content_locales_backend`, which defaults to the frontend languages so the
+two passes agree unless the project says otherwise. The frontend pass uses
+`magento_themes` and `static_content_locales`.
+
+It exists for the two cases a single pass handles badly: a theme list that covers
+only frontend themes (the admin theme would be missed) and a large deployment
+where one process holding every area runs out of memory. The second pass is
+chained to the first, so a failed admin pass stops the deploy rather than
+publishing half of the static content.
+
 ### Private Composer repositories
 
 A release built on the target installs its dependencies there, so it needs

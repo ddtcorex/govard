@@ -398,7 +398,19 @@ func WithRecipeDefaults(recipe Recipe, opts Options) Options {
 			}
 			continue
 		}
-		layered[key+"_args"] = RenderSettingArgs(spec, layered[key])
+		configured := layered[key]
+		if configured == nil {
+			switch {
+			case spec.DefaultFrom != "":
+				// The sibling is read as configured, not as rendered: a project
+				// that set the frontend languages gets them for the backend too,
+				// and one that set nothing gets no language flag for either.
+				configured = layered[spec.DefaultFrom]
+			case spec.Default != nil:
+				configured = spec.Default
+			}
+		}
+		layered[key+"_args"] = RenderSettingArgs(spec, configured)
 	}
 	opts.Settings = layered
 	return opts

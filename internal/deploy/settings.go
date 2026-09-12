@@ -34,7 +34,7 @@ type Setting struct {
 
 // SettingText renders a setting value as the string a command template
 // substitutes. Booleans and numbers are rendered too: a recipe that guards a step
-// with `[ "{{settings.worker_control}}" = "true" ]` must not fail with "unknown
+// with `[ {{settings.worker_control}} = true ]` must not fail with "unknown
 // variable" just because the configuration expressed the value as a bool.
 func SettingText(value any) (string, bool) {
 	switch typed := value.(type) {
@@ -223,6 +223,17 @@ func settingArgsValue(value any) bool {
 	}
 	_, ok := value.([]string)
 	return ok
+}
+
+// SettingsDeclare reports whether the recipe knows this setting. It exists so a
+// test can assert that a setting the recipe reads is one it declared.
+func (r Recipe) SettingsDeclare(key string) bool {
+	for _, setting := range r.Settings {
+		if setting.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 func sortedSettingKeys(settings map[string]any) []string {

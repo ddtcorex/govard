@@ -520,3 +520,44 @@ func TestCleanupToleratesAMissingBackupRoot(t *testing.T) {
 		t.Fatalf("cleanup without a backup root: %v", err)
 	}
 }
+
+// `deploy:shared` links a shared entry only when the shared directory has one,
+// because "the first deploy of a project legitimately has no shared state yet".
+// The verify check demanded all of them unconditionally, so a first deploy of a
+// recipe whose defaults name a file the project has not created yet failed AFTER
+// activating the release.
+func TestVerifyToleratesASharedFileWithNoSharedCopyYet(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	release := verifiedRelease(t, host)
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote: "local", Verify: true,
+		Settings: map[string]any{"shared_files": []string{"app/etc/env.php", "var/.maintenance.ip"}},
+	})
+	sc.Release = release
+
+	// Nothing in shared/ and nothing in the release: this is a first deploy, not
+	// a broken link.
+	if err := deploy.CoreVerify(ctx, sc); err != nil {
+		t.Fatalf("a shared file the project has not created yet must not fail verification: %v", err)
+	}
+
+	// Once shared/ has the file, the release must be serving it: a missing or
+	// broken link is exactly what this check exists to catch.
+	writeFile(t, filepath.Join(host.SharedPath(), "app/etc/env.php"), "<?php return [];\n")
+	sc.Release.Verify = deploy.VerifyRecord{}
+	if err := deploy.CoreVerify(ctx, sc); err == nil {
+		t.Fatal("a shared file that exists in shared/ but not in the release must fail verification")
+	}
+
+	// And it passes once the release is linked to it.
+	linked := filepath.Join(release.Path, "app/etc/env.php")
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+filepath.Dir(linked)+" && ln -sfn "+filepath.Join(host.SharedPath(), "app/etc/env.php")+" "+linked, deploy.RunOptions{}); err != nil {
+		t.Fatalf("link the shared file: %v", err)
+	}
+	sc.Release.Verify = deploy.VerifyRecord{}
+	if err := deploy.CoreVerify(ctx, sc); err != nil {
+		t.Fatalf("a linked shared file must verify: %v", err)
+	}
+}

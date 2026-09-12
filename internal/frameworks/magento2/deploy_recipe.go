@@ -50,8 +50,20 @@ func DeployRecipe() deploy.Recipe {
 		// passed through verbatim so raw flags keep working.
 		"static_content_locales": deploy.ArgsSpec{Flag: "--language"},
 		"magento_themes":         deploy.ArgsSpec{Flag: "-t"},
+
+		// The adminhtml/frontend split. The admin pass deploys the backend
+		// theme, which a frontend theme list never covers, and its languages
+		// default to the frontend ones so the two passes agree unless the
+		// project says otherwise.
+		"split_static_deployment":        false,
+		"magento_themes_backend":         deploy.ArgsSpec{Flag: "-t", Default: []string{"Magento/backend"}},
+		"static_content_locales_backend": deploy.ArgsSpec{Flag: "--language", DefaultFrom: "static_content_locales"},
 	}
 
+	// A setting is substituted shell-quoted, so a guard writes the value bare:
+	// `[ {{settings.mage_mode}} != developer ]` reaches `test` as `developer`.
+	// Wrapping it in quotes compares the literal quotes — `[ "'developer'" !=
+	// "developer" ]` is always true — which silently makes the guard inert.
 	fill := func(id, title, command string) {
 		task := recipe.Task(id)
 		task.Title = title
@@ -76,14 +88,24 @@ func DeployRecipe() deploy.Recipe {
 	fill(deploy.TaskFrontend, "build frontend assets",
 		`cd {{release_path}} && if [ -n {{settings.frontend_dir}} ]; then cd {{settings.frontend_dir}} && {{settings.frontend_command}}; fi`)
 
+	// The two-area split runs the admin pass first and chains the frontend pass
+	// with `&&`, so a failed admin pass stops the deploy instead of publishing
+	// half the static content. The single pass is unchanged when the split is
+	// off, which is the default.
 	fill(deploy.TaskAssets, "deploy static content",
-		`cd {{release_path}} && if [ "{{settings.mage_mode}}" != "developer" ]; then {{php_bin}} bin/magento setup:static-content:deploy -f --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; fi`)
+		`cd {{release_path}} && if [ {{settings.mage_mode}} != developer ]; then `+
+			`if [ {{settings.split_static_deployment}} = true ]; then `+
+			`{{php_bin}} bin/magento setup:static-content:deploy -f --area=adminhtml --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_content_locales_backend_args}} {{settings.magento_themes_backend_args}} && `+
+			`{{php_bin}} bin/magento setup:static-content:deploy -f --area=frontend --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; `+
+			`else `+
+			`{{php_bin}} bin/magento setup:static-content:deploy -f --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; `+
+			`fi; fi`)
 
 	fill(deploy.TaskMaintenanceEnable, "enable maintenance mode",
 		"cd {{release_path}} && {{php_bin}} bin/magento maintenance:enable")
 
 	fill(deploy.TaskWorkersPause, "pause cron and message consumers",
-		`cd {{release_path}} && if [ "{{settings.worker_control}}" = "true" ]; then {{php_bin}} bin/magento cron:remove && {{php_bin}} bin/magento queue:consumers:stop; fi`)
+		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:remove && {{php_bin}} bin/magento queue:consumers:stop; fi`)
 
 	fill(deploy.TaskAppConfigure, "import application configuration",
 		"cd {{release_path}} && {{php_bin}} bin/magento app:config:import --no-interaction")
@@ -95,7 +117,7 @@ func DeployRecipe() deploy.Recipe {
 		`cd {{release_path}} && {{php_bin}} bin/magento cache:flush && if [ -n {{settings.runtime_reload_command}} ]; then {{settings.runtime_reload_command}}; fi`)
 
 	fill(deploy.TaskWorkersResume, "resume cron and message consumers",
-		`cd {{release_path}} && if [ "{{settings.worker_control}}" = "true" ]; then {{php_bin}} bin/magento cron:install && {{php_bin}} bin/magento queue:consumers:restart; fi`)
+		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:install && {{php_bin}} bin/magento queue:consumers:restart; fi`)
 
 	fill(deploy.TaskMaintenanceDisable, "disable maintenance mode",
 		"cd {{release_path}} && {{php_bin}} bin/magento maintenance:disable")
@@ -117,12 +139,11 @@ func DeployRecipe() deploy.Recipe {
 		{Key: "static_content_locales", Kind: deploy.SettingArgs, Title: "locales to deploy (string, list or map)"},
 		{Key: "magento_themes", Kind: deploy.SettingArgs, Title: "themes to deploy (string, list or theme-to-locales map)"},
 		{Key: "mage_mode", Kind: deploy.SettingString, Title: "production or developer; developer skips static content"},
+		{Key: "split_static_deployment", Kind: deploy.SettingBool, Title: "deploy adminhtml and frontend static content in two passes"},
+		{Key: "magento_themes_backend", Kind: deploy.SettingArgs, Title: "adminhtml themes; defaults to the admin theme"},
+		{Key: "static_content_locales_backend", Kind: deploy.SettingArgs, Title: "adminhtml languages; defaults to the frontend ones"},
 		{Key: "worker_control", Kind: deploy.SettingBool, Title: "remove cron and stop consumers around the migration"},
 		{Key: "runtime_reload_command", Kind: deploy.SettingString, Title: "run after the cache flush, for example an FPM reload"},
-
-		// Declared as unsupported rather than left unknown: the spec lists it,
-		// so a project that sets it would otherwise believe it is in effect.
-		{Key: "split_static_deployment", Kind: deploy.SettingUnsupported, Title: "static content deploys in one pass; the adminhtml/frontend split is not implemented"},
 	}...)
 
 	// The two verifications the core cannot supply, because both need the

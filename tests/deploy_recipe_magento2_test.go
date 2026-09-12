@@ -101,11 +101,17 @@ func TestMagento2RecipeStaticContentIsDeterministic(t *testing.T) {
 	}
 }
 
+// The guard has to hold when the command runs, not merely be present in the
+// template. This test used to assert the presence of `[ "{{settings.mage_mode}}"
+// != "developer" ]` — which is always true, because the substituted value is
+// already shell-quoted, so it compared `'developer'` with `developer` and passed
+// while developer mode deployed static content anyway.
 func TestMagento2RecipeSkipsStaticContentInDeveloperMode(t *testing.T) {
-	command := magento2.DeployRecipe().Task("build:assets").Command
-
-	if !strings.Contains(command, `"{{settings.mage_mode}}" != "developer"`) {
-		t.Fatalf("build:assets does not skip developer mode, where static files are generated on demand:\n%s", command)
+	if calls := assetCalls(t, map[string]any{"mage_mode": "developer"}); len(calls) != 0 {
+		t.Fatalf("developer mode must deploy no static content, got %v", calls)
+	}
+	if calls := assetCalls(t, map[string]any{"mage_mode": "production"}); len(calls) == 0 {
+		t.Fatal("production mode must deploy static content")
 	}
 }
 
@@ -301,5 +307,169 @@ func TestMagento2ArtifactCheckComparesTheDocrootWithTheRelease(t *testing.T) {
 	}
 	if err := run(); err != nil {
 		t.Fatalf("a release with no version file has nothing to compare: %v", err)
+	}
+}
+
+// assetCalls runs the recipe's real static-content command and returns the argv
+// of every `bin/magento` invocation it made, one per line.
+//
+// The command is *executed*, not inspected: both the split and the single-pass
+// path live inside the same shell command, so a text assertion cannot tell which
+// branch ran — which is exactly the kind of test that passes while the feature is
+// broken. `php_bin` is set to `sh` and the stub is a shell script, so no PHP is
+// needed to run the branch Magento would run.
+func assetCalls(t *testing.T, settings map[string]any) []string {
+	t.Helper()
+	return recipeCalls(t, deploy.TaskAssets, settings)
+}
+
+// recipeCalls expands and runs one recipe task against a recording stub.
+func recipeCalls(t *testing.T, taskID string, settings map[string]any) []string {
+	t.Helper()
+	recipe := magento2.DeployRecipe()
+	release := t.TempDir()
+	log := filepath.Join(t.TempDir(), "calls.log")
+
+	settings["php_bin"] = "sh"
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: settings,
+	})
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	vars := cmd.DeployVarsForTest(host, options).SetPath("release_path", release)
+
+	stub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + log + "\n"
+	writeFile(t, filepath.Join(release, "bin", "magento"), stub)
+	if err := os.Chmod(filepath.Join(release, "bin", "magento"), 0o755); err != nil {
+		t.Fatalf("chmod stub: %v", err)
+	}
+
+	command, err := vars.Expand(recipe.Task(taskID).Command)
+	if err != nil {
+		t.Fatalf("expand %s: %v", taskID, err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("run %s: %v\n%s", taskID, err, command)
+	}
+
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatalf("read the stub log: %v", err)
+	}
+	calls := []string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if strings.TrimSpace(line) != "" {
+			calls = append(calls, line)
+		}
+	}
+	return calls
+}
+
+// Spec 10.4: `split_static_deployment` deploys adminhtml and frontend
+// separately. `--area` and its two values come from Magento's own option
+// definition (Magento_Deploy\Console\DeployStaticOptions), and the order — admin
+// first, frontend second — is the one the reference deploy tool uses.
+func TestMagento2SplitStaticDeploymentRunsBothAreasInOrder(t *testing.T) {
+	calls := assetCalls(t, map[string]any{
+		"split_static_deployment": true,
+		"magento_themes":          []string{"Acme/theme"},
+		"static_content_locales":  []string{"en_US", "fr_FR"},
+	})
+	if len(calls) != 2 {
+		t.Fatalf("the split must deploy two passes, got %d: %v", len(calls), calls)
+	}
+	if !strings.Contains(calls[0], "--area=adminhtml") {
+		t.Fatalf("the first pass must be adminhtml, got %q", calls[0])
+	}
+	if !strings.Contains(calls[1], "--area=frontend") {
+		t.Fatalf("the second pass must be frontend, got %q", calls[1])
+	}
+	// The admin pass carries the backend theme and the frontend languages it
+	// defaults to; the frontend pass carries the project's themes.
+	if !strings.Contains(calls[0], "-t Magento/backend") {
+		t.Fatalf("the admin pass must deploy the backend theme, got %q", calls[0])
+	}
+	if strings.Contains(calls[0], "Acme/theme") {
+		t.Fatalf("the admin pass must not deploy a frontend theme, got %q", calls[0])
+	}
+	if !strings.Contains(calls[0], "--language en_US") || !strings.Contains(calls[0], "--language fr_FR") {
+		t.Fatalf("the admin languages must default to the frontend ones, got %q", calls[0])
+	}
+	if !strings.Contains(calls[1], "-t Acme/theme") || strings.Contains(calls[1], "Magento/backend") {
+		t.Fatalf("the frontend pass must deploy the project's themes only, got %q", calls[1])
+	}
+	// The backend can be given its own theme and languages.
+	calls = assetCalls(t, map[string]any{
+		"split_static_deployment":        true,
+		"magento_themes":                 []string{"Acme/theme"},
+		"magento_themes_backend":         []string{"Acme/admin"},
+		"static_content_locales_backend": []string{"de_DE"},
+	})
+	if !strings.Contains(calls[0], "-t Acme/admin") || !strings.Contains(calls[0], "--language de_DE") {
+		t.Fatalf("a configured backend theme and languages must win, got %q", calls[0])
+	}
+}
+
+func TestMagento2StaticContentStaysSinglePassByDefault(t *testing.T) {
+	calls := assetCalls(t, map[string]any{"magento_themes": []string{"Acme/theme"}})
+	if len(calls) != 1 {
+		t.Fatalf("without the split there must be one pass, got %v", calls)
+	}
+	if strings.Contains(calls[0], "--area=") {
+		t.Fatalf("without the split there must be no --area flag, got %q", calls[0])
+	}
+	if !strings.Contains(calls[0], "-t Acme/theme") {
+		t.Fatalf("the project's themes must still be deployed, got %q", calls[0])
+	}
+}
+
+func TestMagento2StaticContentIsSkippedInDeveloperMode(t *testing.T) {
+	calls := assetCalls(t, map[string]any{
+		"mage_mode":               "developer",
+		"split_static_deployment": true,
+	})
+	if len(calls) != 0 {
+		t.Fatalf("developer mode deploys no static content, got %v", calls)
+	}
+}
+
+// A recipe that declares the same setting twice is a copy-paste bug that
+// validation tolerates silently, because the last declaration wins.
+func TestMagento2RecipeDeclaresEachSettingOnce(t *testing.T) {
+	seen := map[string]bool{}
+	for _, setting := range magento2.DeployRecipe().Settings {
+		if seen[setting.Key] {
+			t.Errorf("deploy.settings.%s is declared twice", setting.Key)
+		}
+		seen[setting.Key] = true
+		if setting.Title == "" {
+			t.Errorf("deploy.settings.%s has no description", setting.Key)
+		}
+	}
+}
+
+// The same quoting bug made worker control inert, which is the one that touches
+// production: with `worker_control: true` the window is supposed to stop cron and
+// consumers *before* the schema changes, and it never did.
+func TestMagento2WorkerControlActuallyRuns(t *testing.T) {
+	pause := recipeCalls(t, deploy.TaskWorkersPause, map[string]any{"worker_control": true})
+	if !strings.Contains(strings.Join(pause, "\n"), "cron:remove") ||
+		!strings.Contains(strings.Join(pause, "\n"), "queue:consumers:stop") {
+		t.Fatalf("worker_control must stop cron and consumers before the migration, got %v", pause)
+	}
+	if calls := recipeCalls(t, deploy.TaskWorkersPause, map[string]any{"worker_control": false}); len(calls) != 0 {
+		t.Fatalf("worker_control off must leave cron and consumers alone, got %v", calls)
+	}
+
+	resume := recipeCalls(t, deploy.TaskWorkersResume, map[string]any{"worker_control": true})
+	if !strings.Contains(strings.Join(resume, "\n"), "cron:install") ||
+		!strings.Contains(strings.Join(resume, "\n"), "queue:consumers:restart") {
+		t.Fatalf("worker_control must restore cron and restart consumers afterwards, got %v", resume)
+	}
+	if calls := recipeCalls(t, deploy.TaskWorkersResume, map[string]any{}); len(calls) != 0 {
+		t.Fatalf("worker_control unset must leave cron and consumers alone, got %v", calls)
 	}
 }

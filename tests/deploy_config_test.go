@@ -460,15 +460,34 @@ func TestValidateSettingsChecksTheShape(t *testing.T) {
 	}
 }
 
-// A key the spec names but the recipe does not implement is declared as such, so
-// a project setting it gets "not implemented" rather than a silent no-op.
+// A key a recipe knows about and does not implement is declared as unsupported,
+// so a project setting it gets "not implemented" rather than a silent no-op.
 func TestValidateSettingsNamesAnUnimplementedKey(t *testing.T) {
-	err := deploy.ValidateSettings(magento2.DeployRecipe(), map[string]any{"split_static_deployment": true})
+	recipe := deploy.RecipeForTest("stub", nil)
+	recipe.Settings = []deploy.Setting{
+		{Key: "not_yet", Kind: deploy.SettingUnsupported, Title: "arrives in a later release"},
+	}
+	err := deploy.ValidateSettings(recipe, map[string]any{"not_yet": true})
 	if !errors.Is(err, deploy.ErrInvalidConfiguration) {
 		t.Fatalf("err = %v, want ErrInvalidConfiguration", err)
 	}
 	if !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("the refusal must say the key is unimplemented, got %q", err.Error())
+	}
+}
+
+// `split_static_deployment` is implemented now, so it is validated as the boolean
+// it is rather than refused as unknown.
+func TestSplitStaticDeploymentIsADeclaredBoolean(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	if !recipe.SettingsDeclare("split_static_deployment") {
+		t.Fatal("the recipe reads the setting, so it must declare it")
+	}
+	if err := deploy.ValidateSettings(recipe, map[string]any{"split_static_deployment": true}); err != nil {
+		t.Fatalf("a boolean must validate: %v", err)
+	}
+	if err := deploy.ValidateSettings(recipe, map[string]any{"split_static_deployment": "yes"}); !errors.Is(err, deploy.ErrInvalidConfiguration) {
+		t.Fatalf("'yes' is not a boolean and must be refused, got %v", err)
 	}
 }
 
