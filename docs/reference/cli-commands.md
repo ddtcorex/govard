@@ -756,7 +756,7 @@ Flags: `--remote`, `--branch`, `--revision`, `--tag` (mutually exclusive),
 `--build=auto|server|artifact`, `--artifact-dir`, `--publish=auto|symlink|in_place`,
 `--keep`, `--verify/--no-verify`, `--db-backup/--no-db-backup`,
 `--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--resume`,
-`--from <task>`, `--force`, `--yes`, `--json`, `--verbose`.
+`--from <task>`, `--force`, `--yes`, `--json`, `--verbose` (stream each command's output live, indented under its task; a no-op with `--json`).
 
 **Build modes.** `--build=auto` (the default) resolves by presence, never by
 sniffing the environment: an artifact directory — `--artifact-dir <dir>` or

@@ -715,7 +715,7 @@ Flag: `--remote`, `--branch`, `--revision`, `--tag` (loại trừ lẫn nhau),
 `--build=auto|server|artifact`, `--artifact-dir`, `--publish=auto|symlink|in_place`,
 `--keep`, `--verify/--no-verify`, `--db-backup/--no-db-backup`,
 `--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--resume`,
-`--from <task>`, `--force`, `--yes`, `--json`, `--verbose`.
+`--from <task>`, `--force`, `--yes`, `--json`, `--verbose` (stream output của từng command ngay khi chạy, thụt dưới task tương ứng; no-op khi có `--json`).
 
 **Build mode.** `--build=auto` (mặc định) quyết định theo sự hiện diện, không dò
 đoán môi trường: có thư mục artifact — `--artifact-dir <dir>` hoặc

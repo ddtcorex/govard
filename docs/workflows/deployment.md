@@ -92,6 +92,27 @@ defaulted to. String values must be quoted if they look numeric (`php_version:
 "8.2"`): the engine reads those settings as strings, so an unquoted `8.2` reads as
 empty.
 
+### Watching a running deploy
+
+The default output is one line per task when it finishes: quiet enough for a CI log,
+and enough to see which step is running. Two things fill the gap while a step is in
+flight:
+
+- a **heartbeat** every ten seconds — `… build:compile still running (42s)` — for
+  every step, whether or not its command prints anything. A silent `composer install`
+  and a stalled transfer look identical without it, and telling them apart matters
+  long before a timeout fires;
+- **`--verbose`**, which streams each command's own output live, indented under the
+  task it belongs to. Nothing is batched or reordered: what the command writes is what
+  you see, while it writes it.
+
+`--json` wins over `--verbose`: with both, the stream is a no-op and stdout stays
+exactly the one parseable document (`--json` already moves the timeline to stderr).
+Rsync transfers — the in-place `sync_paths` copy and the artifact upload — add
+`--info=progress2` only when the output is a terminal *and* `--verbose` is on: without
+a terminal rsync cannot redraw its progress line, so every update would become another
+line in a log instead of a moving one.
+
 ### The static content split
 
 `split_static_deployment` deploys the adminhtml and frontend static content in two

@@ -88,6 +88,26 @@ key và gợi ý key gần đúng. Trước đây gõ sai là im lặng bỏ qua
 phải được quote nếu trông giống số (`php_version: "8.2"`): engine đọc các setting
 này dưới dạng chuỗi, nên `8.2` không quote sẽ đọc thành rỗng.
 
+### Theo dõi một lần deploy đang chạy
+
+Mặc định, output là một dòng cho mỗi task khi task đó xong: đủ yên cho log CI, và đủ
+để thấy bước nào đang chạy. Hai thứ lấp khoảng trống trong lúc một bước đang chạy:
+
+- **heartbeat** mỗi mười giây — `… build:compile still running (42s)` — cho mọi bước,
+  bất kể command của nó có in gì hay không. Một `composer install` im lặng và một
+  transfer bị treo trông giống hệt nhau nếu thiếu nó, và phân biệt được hai thứ đó quan
+  trọng từ rất lâu trước khi timeout nổ;
+- **`--verbose`**, stream output của từng command ngay khi nó chạy, thụt vào dưới task
+  mà nó thuộc về. Không gom nhóm, không đổi thứ tự: command viết gì bạn thấy đúng cái
+  đó, ngay lúc nó viết.
+
+`--json` thắng `--verbose`: khi bật cả hai, stream trở thành no-op và stdout vẫn đúng
+một document parse được (`--json` đã chuyển timeline sang stderr). Các transfer bằng
+rsync — copy `sync_paths` của in-place và upload artifact — chỉ thêm
+`--info=progress2` khi output là terminal *và* `--verbose` đang bật: không có terminal
+thì rsync không vẽ lại được dòng tiến độ, nên mỗi cập nhật sẽ thành một dòng log mới
+thay vì một dòng đang chạy.
+
 ### Tách static content
 
 `split_static_deployment` deploy static content của adminhtml và frontend thành
