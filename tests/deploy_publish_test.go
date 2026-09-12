@@ -600,3 +600,51 @@ func TestVerifyToleratesASharedFileWithNoSharedCopyYet(t *testing.T) {
 		t.Fatalf("a linked shared file must verify: %v", err)
 	}
 }
+
+// An in-place activation resets the docroot to the revision and copies the
+// configured paths. `git reset --hard` does not touch the gitignored directories
+// of the previous deployment, so an empty `sync_paths` ships new code over the old
+// vendor/, generated/ and pub/static/ and reports success — the warning has to
+// arrive before anything runs.
+func TestInPlaceActivationWarnsWhenNothingIsConfiguredToSync(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	docroot := filepath.Join(host.DeployPath, "public_html")
+	if err := os.MkdirAll(docroot, 0o755); err != nil {
+		t.Fatalf("mkdir docroot: %v", err)
+	}
+	host.CurrentPath = docroot
+
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishInPlace})
+	sc.Release = deploy.NewReleaseForTest("1", "abcdef", "main")
+	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), sc); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+	joined := strings.Join(sc.Notes, "\n")
+	if !strings.Contains(joined, "sync_paths") || !strings.Contains(joined, "in place") {
+		t.Fatalf("notes = %q, want a warning naming sync_paths and the in-place strategy", joined)
+	}
+
+	// Configured: nothing to warn about.
+	configured := deploy.StepContextForTest(host, deploy.Options{
+		Remote:   "local",
+		Publish:  deploy.PublishInPlace,
+		Settings: map[string]any{"sync_paths": []string{"vendor", "generated"}},
+	})
+	configured.Release = sc.Release
+	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), configured); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+	if len(configured.Notes) != 0 {
+		t.Fatalf("a configured sync_paths must not warn, got %q", configured.Notes)
+	}
+
+	// A symlink activation copies nothing by design: no warning either.
+	symlink := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishSymlink})
+	symlink.Release = sc.Release
+	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), symlink); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+	if len(symlink.Notes) != 0 {
+		t.Fatalf("a symlink activation must not warn, got %q", symlink.Notes)
+	}
+}

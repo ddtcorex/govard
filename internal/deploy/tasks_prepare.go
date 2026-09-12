@@ -108,6 +108,9 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	if err := checkWritableMode(ctx, sc); err != nil {
 		return err
 	}
+	if err := noteInPlaceSyncPaths(ctx, sc); err != nil {
+		return err
+	}
 
 	if err := noteComposerCredentials(ctx, sc); err != nil {
 		return err
@@ -869,6 +872,36 @@ func settingsStringList(settings map[string]any, keys ...string) []string {
 // in. A warning rather than a refusal, because the declaration govard can read is
 // a URL and it cannot tell a private repository from a public one; refusing a
 // working deploy over a URL would be worse than saying so.
+// noteInPlaceSyncPaths warns when an in-place activation has nothing to copy.
+//
+// The activation resets the docroot to the exact revision and then copies the
+// configured `sync_paths` from the built release. `git reset --hard` leaves the
+// gitignored directories of the *previous* deployment alone, so an empty
+// `sync_paths` publishes new code over the old `vendor/`, `generated/` and
+// `pub/static/` — a mixed tree that still reports a successful deploy. Naming it
+// before anything runs is the difference between reading a warning and debugging a
+// storefront.
+func noteInPlaceSyncPaths(ctx context.Context, sc *StepContext) error {
+	strategy, err := ResolvePublishStrategy(sc.Host, sc.Opts)
+	if err != nil {
+		// The strategy is resolved and refused elsewhere; a note is not the step
+		// that should fail.
+		return nil
+	}
+	if strategy != PublishInPlace || len(settingsStringList(sc.Opts.Settings, "sync_paths")) > 0 {
+		return nil
+	}
+	sc.Notes = append(sc.Notes, "warning: this target publishes in place and deploy.settings.sync_paths is empty: "+
+		"the activation resets the docroot to the revision and copies nothing, so paths the release built "+
+		"(vendor/, generated/, pub/static/) keep whatever the previous deployment left there")
+	return nil
+}
+
+// NoteInPlaceSyncPathsForTest exposes the in-place warning to the tests/ package.
+func NoteInPlaceSyncPathsForTest(ctx context.Context, sc *StepContext) error {
+	return noteInPlaceSyncPaths(ctx, sc)
+}
+
 func noteComposerCredentials(ctx context.Context, sc *StepContext) error {
 	if sc.Opts.Build == BuildArtifact {
 		// Dependencies were installed where the artifact was built.
