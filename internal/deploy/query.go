@@ -31,12 +31,33 @@ type ReleaseEntry struct {
 // hiding the other tool's releases would make `deploy releases` lie about what
 // is on the server.
 func ListReleases(ctx context.Context, host Host) ([]ReleaseEntry, error) {
+	entries, err := releaseEntries(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+
+	live := liveReleaseName(ctx, host)
+	for idx := range entries {
+		entries[idx].Live = entries[idx].Release == live
+	}
+	return entries, nil
+}
+
+// releaseEntries reads the release directory and every record in it, without
+// deciding which release is live.
+//
+// The split matters: naming the live release needs this list (an in-place docroot
+// names a revision, and the release that recorded it is what is live), so a
+// `ListReleases` that asked `liveReleaseName` and a `liveReleaseName` that asked
+// `ListReleases` called each other for as long as the process lived. It fired only
+// on the target the in-place strategy exists for — a docroot that is a git
+// checkout with a commit — and every level cost three commands, so the deploy hung
+// before its first step.
+func releaseEntries(ctx context.Context, host Host) ([]ReleaseEntry, error) {
 	result, err := host.Runner().Run(ctx, "ls -1 "+Shell(host.ReleasesPath())+" 2>/dev/null || true", RunOptions{Timeout: shortCommandTimeout})
 	if err != nil {
 		return nil, fmt.Errorf("list releases: %w", err)
 	}
-
-	live := liveReleaseName(ctx, host)
 
 	entries := make([]ReleaseEntry, 0, 8)
 	for _, line := range strings.Split(result.Stdout, "\n") {
@@ -44,7 +65,7 @@ func ListReleases(ctx context.Context, host Host) ([]ReleaseEntry, error) {
 		if name == "" {
 			continue
 		}
-		entry := ReleaseEntry{Release: name, Live: name == live}
+		entry := ReleaseEntry{Release: name}
 		if number, convErr := strconv.Atoi(name); convErr == nil {
 			entry.Number = number
 		}
@@ -113,7 +134,7 @@ func liveReleaseName(ctx context.Context, host Host) string {
 	if revision == "" {
 		return ""
 	}
-	entries, err := ListReleases(ctx, host)
+	entries, err := releaseEntries(ctx, host)
 	if err != nil {
 		return ""
 	}

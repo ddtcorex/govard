@@ -3,12 +3,26 @@ package tests
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"govard/internal/deploy"
 )
+
+// runInDir runs git in a directory and returns its stdout, failing the test on a
+// non-zero exit.
+func runInDir(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v in %s: %v\n%s", args, dir, err, out)
+	}
+	return string(out)
+}
 
 // seedRelease writes a release record the way a real deploy does, so the query
 // helpers are exercised against the same on-disk shape the pipeline produces.
@@ -223,5 +237,94 @@ func TestPlanFromAndOnlySelectSubtrees(t *testing.T) {
 
 	if _, ok := plan.From("nope"); ok {
 		t.Fatal("From() accepted an id that is not in the plan")
+	}
+}
+
+// A bound on the commands a query is allowed to run, so an unbounded recursion
+// fails as "the query recursed" instead of overflowing the stack in the test
+// binary.
+type boundedRunner struct {
+	base  deploy.Runner
+	calls *int
+	limit int
+}
+
+func (r boundedRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
+	*r.calls++
+	if *r.calls > r.limit {
+		return deploy.Result{}, errQueryRecursed
+	}
+	return r.base.Run(ctx, command, opts)
+}
+
+var errQueryRecursed = errRecursed{}
+
+type errRecursed struct{}
+
+func (errRecursed) Error() string { return "the query recursed" }
+
+// `liveReleaseName` resolved an in-place docroot's HEAD by listing the releases,
+// and `ListReleases` asked `liveReleaseName` which release is live: the two called
+// each other for as long as the process lived. It only fired on the target that
+// matters — an in-place docroot that is a git checkout *with a commit*, which is
+// what a previously deployed docroot is — and every level cost three ssh commands,
+// so the deploy appeared to hang before its first step.
+func TestReleaseQueriesDoNotRecurseOnAnInPlaceDocroot(t *testing.T) {
+	host := seedDeployPath(t)
+	// An in-place docroot: a real directory (not a symlink) that is a git
+	// checkout with a commit, so its HEAD names a revision nobody recorded.
+	docroot := filepath.Join(host.DeployPath, "public_html")
+	if err := os.MkdirAll(docroot, 0o755); err != nil {
+		t.Fatalf("mkdir docroot: %v", err)
+	}
+	runInDir(t, docroot, "git", "init", "-q")
+	if err := os.WriteFile(filepath.Join(docroot, "index.php"), []byte("<?php\n"), 0o644); err != nil {
+		t.Fatalf("write a file: %v", err)
+	}
+	runInDir(t, docroot, "git", "add", "-A")
+	runInDir(t, docroot, "git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init")
+
+	calls := new(int)
+	bounded := deploy.HostForTest(host.DeployPath, boundedRunner{base: deploy.LocalRunner{}, calls: calls, limit: 40})
+	bounded.CurrentPath = docroot
+
+	// Both entry points must terminate well inside the bound.
+	if name := deploy.LiveReleaseNameForTest(context.Background(), bounded); name != "" {
+		t.Fatalf("live release = %q, want empty: no release recorded this revision", name)
+	}
+	afterName := *calls
+	if afterName > 12 {
+		t.Fatalf("resolving the live release ran %d commands: the queries are recursing", afterName)
+	}
+	if _, err := deploy.ListReleasesForTest(context.Background(), bounded); err != nil {
+		t.Fatalf("list releases: %v", err)
+	}
+	if total := *calls; total > 20 {
+		t.Fatalf("listing releases ran %d commands: the queries are recursing", total)
+	}
+}
+
+// The in-place branch still has to answer when a recorded release matches the
+// docroot's HEAD: that is which release a rollback and the record's
+// `previous_release` mean.
+func TestLiveReleaseNameFindsTheRecordOfAnInPlaceDocroot(t *testing.T) {
+	host := seedDeployPath(t)
+	docroot := filepath.Join(host.DeployPath, "public_html")
+	if err := os.MkdirAll(docroot, 0o755); err != nil {
+		t.Fatalf("mkdir docroot: %v", err)
+	}
+	runInDir(t, docroot, "git", "init", "-q")
+	if err := os.WriteFile(filepath.Join(docroot, "index.php"), []byte("<?php\n"), 0o644); err != nil {
+		t.Fatalf("write a file: %v", err)
+	}
+	runInDir(t, docroot, "git", "add", "-A")
+	runInDir(t, docroot, "git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init")
+	head := strings.TrimSpace(runInDir(t, docroot, "git", "rev-parse", "HEAD"))
+
+	seedRelease(t, host, "7", head, deploy.StatusOK)
+	host.CurrentPath = docroot
+
+	if name := deploy.LiveReleaseNameForTest(context.Background(), host); name != "7" {
+		t.Fatalf("live release = %q, want 7 (the record whose revision is the docroot's HEAD)", name)
 	}
 }
