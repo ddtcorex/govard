@@ -314,3 +314,63 @@ func TestSandboxUpWithoutPHPDeclaresNoSeries(t *testing.T) {
 		t.Fatalf("php_bin = %v, want the profile's own binary", got)
 	}
 }
+
+// A reused sandbox is what its image is. Re-running `up` — to start a stopped
+// container, or to refresh the mirror before the next revision is deployed — must
+// not erase the series the sandbox declares, and asking for a different one must
+// not silently relabel a container that still ships the old image.
+//
+// It did both: the remote was rewritten from the flags alone, so `up` with no
+// `--php` dropped `php_version` (after which `sandbox status` reported no series
+// for a php-8.4 image, and an artifact deploy lost the mismatch check), while
+// `up --php 8.3` on a php-8.4 container declared 8.3 without touching the image.
+func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake()
+	fake.answers["image inspect"] = "sha256:abc\n"
+	probe := func(context.Context, string, int, time.Duration) error { return nil }
+
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfileFull,
+		PHP:         "8.4",
+		Probe:       probe,
+	}); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+
+	reuse := sandboxFake()
+	reuse.answers["image inspect"] = "sha256:abc\n"
+	state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(reuse.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfileFull,
+		Probe:       probe,
+	})
+	if err != nil {
+		t.Fatalf("reusing up: %v", err)
+	}
+	if state.PHP != "8.4" {
+		t.Fatalf("reused sandbox reports PHP %q, want the series its image ships", state.PHP)
+	}
+	remote, _, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	if err != nil {
+		t.Fatalf("read the sandbox remote: %v", err)
+	}
+	if got := remote.Deploy.Settings["php_version"]; got != "8.4" {
+		t.Fatalf("php_version = %v after a reusing up, want 8.4 kept", got)
+	}
+
+	different := sandboxFake()
+	different.answers["image inspect"] = "sha256:abc\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(different.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfileFull,
+		PHP:         "8.3",
+		Probe:       probe,
+	}); err == nil || !strings.Contains(err.Error(), "--recreate") {
+		t.Fatalf("err = %v, want a refusal naming --recreate", err)
+	}
+}

@@ -175,6 +175,28 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, fmt.Errorf("create %s: %w", stateDir, err)
 	}
 
+	// Whether the container already exists decides what the flags mean, so it is
+	// asked before anything is written from them: reusing a sandbox must describe
+	// the sandbox that exists, not the one today's flags would create.
+	container := SandboxContainerName(request.ProjectName, request.ProjectRoot)
+	exists, err := runtime.ContainerExists(ctx, container)
+	if err != nil {
+		return nil, err
+	}
+	if exists && request.Recreate {
+		fmt.Fprintf(request.out(), "recreating %s\n", container)
+		if err := runtime.RemoveContainer(ctx, container); err != nil {
+			return nil, err
+		}
+		exists = false
+	}
+	if exists {
+		php, err = sandboxReusedRuntime(request, php)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	spec := SandboxSpec{
 		Project:      request.ProjectName,
 		Profile:      profile,
@@ -213,19 +235,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 
-	container := SandboxContainerName(request.ProjectName, request.ProjectRoot)
 	servesWeb := SandboxServesWeb(profile)
-	exists, err := runtime.ContainerExists(ctx, container)
-	if err != nil {
-		return nil, err
-	}
-	if exists && request.Recreate {
-		fmt.Fprintf(request.out(), "recreating %s\n", container)
-		if err := runtime.RemoveContainer(ctx, container); err != nil {
-			return nil, err
-		}
-		exists = false
-	}
 
 	imageExists, err := runtime.ImageExists(ctx, image)
 	if err != nil {
@@ -584,6 +594,53 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 
 // sandboxRemotePHP reads the PHP series out of a sandbox remote's deploy
 // settings, and is empty for a remote that does not record one.
+// sandboxReusedRuntime reports the profile and PHP series a sandbox container
+// already has, and refuses to relabel it.
+//
+// A reused container is what it is: its image was built for one profile and one
+// PHP series, and that is what the sandbox's remote has to declare. Without this,
+// `up` with no flags rewrote the remote without `php_version` — after which
+// `sandbox status` reported no series for a php-8.4 image, and an artifact deploy
+// lost the check that catches a series mismatch — while `up --php 8.3` on a
+// php-8.4 container relabelled the target without touching it.
+//
+// The profile is read from the container's own label and the series from the
+// sandbox remote the creation wrote, both of which describe what exists.
+// `--recreate` is the way to get a different one, and the refusal says so.
+// sandboxReusedRuntime reports the PHP series a sandbox container already
+// declares, and refuses to relabel it.
+//
+// A reused container is what it is: its image was built for one series, and that
+// is what the sandbox's remote has to declare. Without this, `up` with no flags
+// rewrote the remote without `php_version` — after which `sandbox status`
+// reported no series for a php-8.4 image, and an artifact deploy lost the check
+// that catches a series mismatch — while `up --php 8.3` on a php-8.4 container
+// relabelled the target without touching it.
+//
+// The series is read from the sandbox remote the creation wrote, which is what
+// `sandbox status` already treats as the record of what exists. `--recreate` is
+// the way to get a different one, and the refusal says so. The profile is left
+// alone: it is the same kind of statement, but the flags have always driven it
+// and changing that is a separate decision.
+func sandboxReusedRuntime(request SandboxRequest, php string) (string, error) {
+	config, err := LoadSandboxRemote(request.ProjectRoot, request.remoteName())
+	if err != nil || !config.RemoteSet {
+		return php, nil
+	}
+	declared := sandboxRemotePHP(config.Remote)
+	if php != "" && declared != "" && declared != php {
+		return php, fmt.Errorf(
+			"the sandbox container ships PHP %s; changing it to %s means a new image, so run `govard deploy sandbox up --php %s --recreate`",
+			declared, php, php)
+	}
+	if php == "" {
+		php = declared
+	}
+	return php, nil
+}
+
+// sandboxRemotePHP is the series the sandbox remote declares, empty when it
+// declares none.
 func sandboxRemotePHP(remote engine.RemoteConfig) string {
 	if remote.Deploy == nil {
 		return ""
