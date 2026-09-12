@@ -391,7 +391,7 @@ func (e *Executor) finish(outcome Outcome, started time.Time) Outcome {
 func (e *Executor) runStep(ctx context.Context, step Step, stepCtx StepContext, timeout time.Duration, live *liveWriter) error {
 	// The heartbeat covers every step, core or shell: a step whose command prints
 	// nothing is otherwise indistinguishable from a hung one until the timeout.
-	stopHeartbeat := e.startHeartbeat(step, live)
+	stopHeartbeat := startHeartbeat(step, live)
 	defer stopHeartbeat()
 
 	stepCtxRun := ctx

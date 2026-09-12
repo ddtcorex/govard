@@ -398,6 +398,17 @@ func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
 	return Plan{Remote: remote, Steps: ordered}, nil
 }
 
+// RecipeStepForTest builds one step the way a plan does, so a test can run a single
+// step through RunStep without a plan.
+func RecipeStepForTest(id, command string) Step {
+	stage, _ := StageForTask(id)
+	title := defaultTaskTitles[id]
+	if title == "" {
+		title = id
+	}
+	return Step{ID: id, Kind: StepTask, Stage: stage, Title: title, Command: command, Source: "recipe"}
+}
+
 // BuildPlanForTest exposes BuildPlan to the tests/ package.
 func BuildPlanForTest(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
 	return BuildPlan(recipe, hooks, remote)

@@ -146,7 +146,7 @@ func progressArgs(sc *StepContext) []string {
 // stalled rsync look identical from the timeline until one of them finishes, and the
 // whole point is that an operator can tell the difference without waiting for the
 // timeout.
-func (e *Executor) startHeartbeat(step Step, writer *liveWriter) func() {
+func startHeartbeat(step Step, writer *liveWriter) func() {
 	if heartbeatEvery <= 0 || writer == nil {
 		return func() {}
 	}

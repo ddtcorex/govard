@@ -250,3 +250,32 @@ type writerFunc func([]byte) (int, error)
 func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 var _ io.Writer = writerFunc(nil)
+
+// A rollback runs the same steps through `deploy.RunStep` rather than the executor,
+// and its longest ones are the ones worth watching (a database restore, a
+// re-activation). It has to offer the same visibility instead of being the one path
+// where a long command says nothing.
+func TestRollbackStepsStreamAndHeartbeatToo(t *testing.T) {
+	restore := deploy.SetHeartbeatForTest(40 * time.Millisecond)
+	defer restore()
+
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := deploy.NewReleaseForTest("1", "abcdef", "main")
+	release.Path = host.ReleasePath("1")
+	step := deploy.RecipeStepForTest("deploy:verify", "printf 'restoring\\n'; sleep 0.3")
+
+	out := &syncBuffer{}
+	if err := deploy.RunStep(context.Background(), host,
+		deploy.Options{Remote: "local", CommandTimeout: time.Minute, Verbose: true},
+		deploy.NewVars(), step, release, out); err != nil {
+		t.Fatalf("run step: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "  │ restoring") {
+		t.Fatalf("output = %q, want the step's own output streamed and indented", output)
+	}
+	if !strings.Contains(output, "still running") {
+		t.Fatalf("output = %q, want a heartbeat for a step run outside the executor", output)
+	}
+}

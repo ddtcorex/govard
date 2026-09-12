@@ -238,6 +238,18 @@ func RunStep(ctx context.Context, host Host, opts Options, vars Vars, step Step,
 	if step.Skipped {
 		return nil
 	}
+
+	// A rollback runs the same steps a deploy does, and its longest ones (a
+	// database restore, a re-activation) are exactly the ones an operator wants to
+	// watch: the same writer, terminal flag and heartbeat the executor gives them.
+	live := newLiveWriter(out, linePrefix)
+	if opts.Verbose && !opts.JSON {
+		sc.Live = live
+	}
+	sc.Terminal = isTerminal(out)
+	stopHeartbeat := startHeartbeat(step, live)
+	defer stopHeartbeat()
+
 	if step.core != nil {
 		return step.core(ctx, &sc)
 	}
@@ -252,7 +264,7 @@ func RunStep(ctx context.Context, host Host, opts Options, vars Vars, step Step,
 	if timeout <= 0 {
 		timeout = DefaultCommandTimeout
 	}
-	if _, err := sc.Runner.Run(ctx, expanded, RunOptions{Timeout: timeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, expanded, RunOptions{Timeout: timeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("%s: %w", step.ID, err)
 	}
 	return nil
