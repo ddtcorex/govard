@@ -63,6 +63,26 @@ if ($command === 'setup:static-content:deploy') {
     }
 }
 
+if ($command === 'maintenance:enable' || $command === 'maintenance:disable') {
+    // Maintenance mode is read by the application the web server serves, so the
+    // step must run in *that* directory: the docroot, never the release being
+    // built. A flag written into the incoming release protects nothing while the
+    // schema is migrated and takes the site down when the release goes live.
+    $served = trim((string) @file_get_contents($release . '/served-path.txt'));
+    if ($served === '') {
+        $fail('served-path.txt is missing, so the test cannot say where the site is served from');
+    }
+    if (realpath(getcwd()) !== realpath($served)) {
+        $fail("{$command} ran in '" . getcwd() . "' instead of the served directory '{$served}'");
+    }
+    if ($command === 'maintenance:enable') {
+        @mkdir('var', 0777, true);
+        file_put_contents('var/.maintenance.flag', "maintenance\n");
+    } else {
+        @unlink('var/.maintenance.flag');
+    }
+}
+
 if ($command === 'setup:db:status') {
     // The verify stage runs last, so this is where "the static content step never
     // ran at all" is caught rather than assumed.

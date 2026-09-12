@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"govard/internal/deploy"
 )
 
 // TestDeploySandboxEndToEnd is the deploy feature's regression suite: a real
@@ -215,6 +217,10 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 		static   string
 		frontend string
 		settings string
+		// docroot is the layout `sandbox up` should create: empty means the
+		// default dangling symlink, "real" means a docroot that is a git checkout
+		// already holding the application (an in-place target).
+		docroot string
 	}{
 		{
 			name:   "single",
@@ -246,6 +252,17 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 				"      - app/design/frontend/Acme/hyva/web/tailwind\n" +
 				"      - app/design/frontend/Acme/other/web/tailwind\n",
 		},
+		{
+			// The in-place layout: the docroot is a previous deployment that the
+			// activation rewrites while it is being served, which is the case the
+			// maintenance window exists for. It is also the case where the window
+			// used to be opened on the release being built — where the flag
+			// protected nothing — so the stub asserts that both maintenance steps
+			// ran in the served directory.
+			name:    "in-place",
+			static:  "single",
+			docroot: "real",
+		},
 	} {
 		expectation := testCase.name
 		t.Run(expectation, func(t *testing.T) {
@@ -261,13 +278,24 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 					t.Fatalf("write the frontend expectation: %v", err)
 				}
 			}
+			// Where the site is served from, so the stub can assert that the
+			// maintenance window was opened there. It is the sandbox's own
+			// configured current path, and it has to be committed before `up`
+			// because that is what seeds the mirror the target deploys from.
+			if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
+				t.Fatalf("write the served path: %v", err)
+			}
 			origin, revision := seedOriginFromProject(t, projectDir)
 			seedSandboxCheckout(t, projectDir, origin)
 
 			// The `php` profile: the recipe runs `{{php_bin}} bin/magento`, and
 			// the stub is a PHP script so the target can execute it the way a
 			// real Magento would be executed.
-			up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "php")
+			upArgs := []string{"deploy", "sandbox", "up", "--profile", "php"}
+			if testCase.docroot != "" {
+				upArgs = append(upArgs, "--docroot", testCase.docroot)
+			}
+			up := env.RunGovard(t, projectDir, upArgs...)
 			if up.ExitCode != 0 {
 				t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 			}

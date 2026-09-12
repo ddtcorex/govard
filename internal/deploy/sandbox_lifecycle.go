@@ -355,9 +355,17 @@ func prepareSandboxDocRoot(ctx context.Context, runtime SandboxRuntime, containe
 		return err
 	case SandboxDocRootReal:
 		// In-place publishing resets the docroot to an exact revision, so the
-		// docroot has to be a git checkout for that to be possible at all.
+		// docroot has to be a git checkout for that to be possible at all — and a
+		// target that publishes in place is one that is *already running* the
+		// application: the maintenance window opens on the served application, and
+		// requests never land in the release directory. An empty checkout would
+		// therefore be a target no recipe can deploy to, which is why the working
+		// tree is seeded from the mirror: the sandbox becomes a re-deploy target.
 		script := "rm -rf " + paths.Current + " && mkdir -p " + paths.Current +
-			" && git init -q " + paths.Current + sandboxChownTail
+			" && git init -q " + paths.Current +
+			" && git -C " + paths.Current + " fetch -q " + SandboxRepoPath + " HEAD" +
+			" && git -C " + paths.Current + " reset -q --hard FETCH_HEAD" +
+			sandboxChownTail
 		_, err := runtime.Exec(ctx, container, nil, "sh", "-c", script)
 		return err
 	default:

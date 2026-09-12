@@ -425,6 +425,16 @@ to exercise it: `absent` or `symlink` selects the atomic swap, `real` selects
 in-place publishing. `down` removes the container and the remote it wrote;
 `--purge` also removes the image, the key and the mirror.
 
+## One connection per target
+
+Every command a run issues shares a single SSH connection per target
+(`ControlMaster` with a socket under `~/.govard/ssh/`, reused for 60 seconds after
+the last command). A Magento pipeline runs around twenty commands, so the
+handshake and authentication are paid once instead of twenty times — and about
+half of those commands run inside the maintenance window, where a second saved is
+a second of downtime avoided. The sockets are local to the machine running the
+deploy, and they expire on their own; nothing is left on the target.
+
 ## Capabilities and exit codes
 
 Every deploy command declares what it needs, and a missing requirement is exit

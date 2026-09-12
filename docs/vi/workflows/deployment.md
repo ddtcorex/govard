@@ -409,6 +409,15 @@ kiểm chứng: `absent` hoặc `symlink` chọn cú swap nguyên tử, `real` c
 `down` xoá container và remote mà nó đã ghi; `--purge` xoá thêm image, khoá và
 mirror.
 
+## Một kết nối cho mỗi target
+
+Mọi command trong một lần chạy dùng chung một kết nối SSH cho mỗi target
+(`ControlMaster` với socket trong `~/.govard/ssh/`, giữ 60 giây sau command cuối).
+Pipeline Magento chạy khoảng hai mươi command, nên handshake và authentication
+trả một lần thay vì hai mươi lần — và khoảng một nửa số đó chạy bên trong
+maintenance window, nơi tiết kiệm một giây là bớt một giây downtime. Socket nằm
+ngay trên máy chạy deploy và tự hết hạn; trên target không để lại gì.
+
 ## Capability và exit code
 
 Mọi lệnh deploy khai báo thứ nó cần, và thiếu yêu cầu là exit `3` kèm thông báo
