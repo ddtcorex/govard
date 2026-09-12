@@ -60,7 +60,14 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "Deploy plan for %s (%s @ %s)\n", remote, branchOrDetached(options), revisionOrSymbolic(options))
 	fmt.Fprintf(out, "Build mode: %s\n", options.Build)
-	fmt.Fprintf(out, "Publish strategy: %s\n\n", options.Publish)
+	fmt.Fprintf(out, "Publish strategy: %s\n", options.Publish)
+	if options.Publish == deploy.PublishAuto {
+		// Printing a plan does not read the target, so the shape shown is the
+		// conservative one. The window is what differs, and it is what an
+		// operator reviewing the tree needs to know about.
+		fmt.Fprintln(out, "  the target decides: a symlink activation closes the maintenance window before the swap, an in-place one keeps it open across the rewrite")
+	}
+	fmt.Fprintln(out)
 
 	currentStage := deploy.Stage("")
 	for idx, step := range plan.Steps {

@@ -61,15 +61,21 @@ func TestMagento2RecipeFillsTheFrameworkSpecificTasks(t *testing.T) {
 	}
 }
 
-func TestMagento2RecipeCommandsEnterTheReleaseDirectory(t *testing.T) {
+// Every step runs as a fresh remote command, so it has to enter the absolute
+// directory it acts on rather than relying on an ambient working directory. That
+// is the release being built for everything that builds or migrates it, and the
+// *current* path for the maintenance tasks: maintenance mode belongs to the
+// application the web server is serving, which before the swap is the previous
+// release.
+func TestMagento2RecipeCommandsEnterTheDirectoryTheyActOn(t *testing.T) {
 	recipe := magento2.DeployRecipe()
 
 	for _, task := range recipe.Tasks {
 		if task.Command == "" {
 			continue
 		}
-		if !strings.Contains(task.Command, "{{release_path}}") {
-			t.Errorf("task %q does not reference {{release_path}}; each step runs as a fresh remote command:\n%s", task.ID, task.Command)
+		if !strings.Contains(task.Command, "{{release_path}}") && !strings.Contains(task.Command, "{{current_path}}") {
+			t.Errorf("task %q enters no directory; each step runs as a fresh remote command:\n%s", task.ID, task.Command)
 		}
 	}
 }

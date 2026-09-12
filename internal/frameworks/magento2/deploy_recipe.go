@@ -111,8 +111,15 @@ func DeployRecipe() deploy.Recipe {
 			`{{php_bin}} bin/magento setup:static-content:deploy -f --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; `+
 			`fi; fi`)
 
+	// Maintenance mode belongs to the application the web server is *serving*,
+	// not to the release being built: the flag is read from the docroot the
+	// request lands in. Running these commands in {{release_path}} opens a window
+	// nothing serves — the live release keeps answering while db:migrate changes
+	// the schema its code depends on — and leaves a flag in the incoming release
+	// that switches the site off the moment it goes live. The guard is the first
+	// deploy, which has nothing to protect yet.
 	fill(deploy.TaskMaintenanceEnable, "enable maintenance mode",
-		"cd {{release_path}} && {{php_bin}} bin/magento maintenance:enable")
+		"if [ -d {{current_path}} ]; then cd {{current_path}} && {{php_bin}} bin/magento maintenance:enable; fi")
 
 	fill(deploy.TaskWorkersPause, "pause cron and message consumers",
 		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:remove && {{php_bin}} bin/magento queue:consumers:stop; fi`)
@@ -133,7 +140,7 @@ func DeployRecipe() deploy.Recipe {
 		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:install && {{php_bin}} bin/magento queue:consumers:restart; fi`)
 
 	fill(deploy.TaskMaintenanceDisable, "disable maintenance mode",
-		"cd {{release_path}} && {{php_bin}} bin/magento maintenance:disable")
+		"if [ -d {{current_path}} ]; then cd {{current_path}} && {{php_bin}} bin/magento maintenance:disable; fi")
 
 	// The engine owns the path and the release record; the recipe owns the dump.
 	backup := recipe.Task(deploy.TaskDBBackup)

@@ -322,6 +322,48 @@ func TestPlanForPublishStrategyKeepsTheWindowWhenTheDeployMigrates(t *testing.T)
 	}
 }
 
+// The window has to close *before* the swap for a symlink activation, not after
+// it: the flag lives in the release being served, and the swap changes which
+// release that is. Closing it afterwards removes a flag the incoming release
+// never had and leaves one in the release the swap replaced — so the window would
+// protect nothing but the release it just retired, and a rollback onto that
+// release would serve maintenance mode to every visitor.
+//
+// In place there is one directory throughout: the docroot is rewritten while it
+// is being served, so the window must stay open across the activation.
+func TestPlanClosesTheMaintenanceWindowBeforeASymlinkSwap(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	for _, id := range []string{
+		deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable,
+		deploy.TaskDBMigrate, deploy.TaskActivate,
+	} {
+		stage, _ := deploy.StageForTask(id)
+		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "true # " + id})
+	}
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	symlink := plan.ForPublishStrategy(deploy.PublishSymlink)
+	enable, disable, activate := symlink.IndexOf(deploy.TaskMaintenanceEnable),
+		symlink.IndexOf(deploy.TaskMaintenanceDisable),
+		symlink.IndexOf(deploy.TaskActivate)
+	if enable >= disable || disable >= activate {
+		t.Fatalf("the symlink window must close before the swap: enable=%d disable=%d activate=%d",
+			enable, disable, activate)
+	}
+
+	inPlace := plan.ForPublishStrategy(deploy.PublishInPlace)
+	enable, disable, activate = inPlace.IndexOf(deploy.TaskMaintenanceEnable),
+		inPlace.IndexOf(deploy.TaskMaintenanceDisable),
+		inPlace.IndexOf(deploy.TaskActivate)
+	if enable >= activate || activate >= disable {
+		t.Fatalf("the in-place window must stay open across the activation: enable=%d activate=%d disable=%d",
+			enable, activate, disable)
+	}
+}
+
 // The skip has to reach the executor, not just the plan: the maintenance command
 // would otherwise run on a target that needs no window.
 func TestExecutorDoesNotRunASkippedMaintenanceStep(t *testing.T) {

@@ -205,12 +205,28 @@ func (p Plan) ForBuildMode(mode string) Plan {
 // actually does. In place, the docroot itself is rewritten while serving, so the
 // window is always needed there.
 //
+// The window also has to end where it began. The maintenance flag lives in the
+// release that is being served, so a symlink activation — which changes that
+// release mid-plan — closes the window *before* the swap: closing it afterwards
+// would remove a flag the incoming release never had and leave one in the release
+// the swap replaced, which is what a rollback would then serve. In place there is
+// one directory throughout, so the window stays open across the activation.
+//
 // The steps are marked skipped rather than removed, so the timeline, `--from`
 // and the resume bookkeeping keep addressing the same ids.
 func (p Plan) ForPublishStrategy(strategy string) Plan {
-	if strategy != PublishSymlink || p.needsMaintenanceWindow() {
+	if strategy != PublishSymlink {
 		return p
 	}
+	if !p.needsMaintenanceWindow() {
+		return p.withoutMaintenanceWindow()
+	}
+	return p.closeWindowBefore(TaskActivate)
+}
+
+// withoutMaintenanceWindow marks both maintenance steps skipped. They are
+// reported rather than removed so every step id keeps its address.
+func (p Plan) withoutMaintenanceWindow() Plan {
 	steps := make([]Step, len(p.Steps))
 	copy(steps, p.Steps)
 	for idx := range steps {
@@ -221,6 +237,50 @@ func (p Plan) ForPublishStrategy(strategy string) Plan {
 			steps[idx].Skipped = true
 			steps[idx].SkipReason = "a symlink activation is atomic and nothing in this plan changes state the live release depends on"
 		}
+	}
+	return Plan{Remote: p.Remote, Steps: steps}
+}
+
+// closeWindowBefore moves the `maintenance:disable` step to immediately before
+// the step with the given id, so the window spans everything up to it.
+//
+// Only the disable step moves: the window's opening stays where the pipeline
+// puts it, which keeps every other step — and every hook anchored to one — in
+// the order the operator reviewed.
+func (p Plan) closeWindowBefore(id string) Plan {
+	disableAt := -1
+	anchorAt := -1
+	for idx, step := range p.Steps {
+		if step.Kind != StepTask {
+			continue
+		}
+		switch step.ID {
+		case TaskMaintenanceDisable:
+			if disableAt < 0 {
+				disableAt = idx
+			}
+		case id:
+			if anchorAt < 0 {
+				anchorAt = idx
+			}
+		}
+	}
+	// Nothing to move: a plan whose recipe implements no disable step has no
+	// window to close, and one whose anchor is already behind it is in order.
+	if disableAt < 0 || anchorAt < 0 || disableAt < anchorAt {
+		return p
+	}
+
+	disable := p.Steps[disableAt]
+	steps := make([]Step, 0, len(p.Steps))
+	for idx, step := range p.Steps {
+		if idx == disableAt {
+			continue
+		}
+		if idx == anchorAt {
+			steps = append(steps, disable)
+		}
+		steps = append(steps, step)
 	}
 	return Plan{Remote: p.Remote, Steps: steps}
 }
