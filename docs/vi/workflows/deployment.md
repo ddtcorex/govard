@@ -234,7 +234,9 @@ mình cần.
 | `skip` | không làm gì — cho target đã được image hoặc bước provisioning cấp quyền |
 
 `owner` là `user` hoặc `user:group`; hai mode chown và `acl` bắt buộc phải có, vì
-owner sai sẽ tạo ra release mà web server không đọc được — tệ hơn là từ chối.
+owner sai sẽ tạo ra release mà web server không đọc được — tệ hơn là từ chối. Mode
+ngoài bảng là lỗi cấu hình (exit 4), bị từ chối ngay lúc validate settings chứ không
+phải fail giữa deploy.
 
 `acl` là mode bao luôn những file ứng dụng tạo *về sau*: default ACL được kế thừa,
 nên `var/`, `pub/static/` và `generated/` vẫn ghi được sau deploy mà không cần

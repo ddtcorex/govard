@@ -783,16 +783,11 @@ func aclEntriesFor(owner string) string {
 // setfacl, and discovering that at the writable step means discovering it after
 // the release directory exists; the preflight owns the message.
 func checkWritableMode(ctx context.Context, sc *StepContext) error {
-	mode := settingsString(sc.Opts.Settings, "writable_mode")
-	switch mode {
-	case "", writableModeChmod, writableModeChown, writableModeChmodChown, writableModeSkip:
+	// An unknown mode is a configuration error and is refused before a plan exists
+	// (see ValidateSettings); what is left for the target to answer is whether it can
+	// perform the mode it was given.
+	if settingsString(sc.Opts.Settings, "writable_mode") != writableModeACL {
 		return nil
-	case writableModeACL:
-	default:
-		// The writable step refuses this too, but by then the release directory
-		// exists; the preflight is where a configuration typo belongs.
-		return fmt.Errorf("unsupported writable_mode %q; use %s, %s, %s, %s or %s",
-			mode, writableModeChmod, writableModeChown, writableModeChmodChown, writableModeACL, writableModeSkip)
 	}
 	if _, err := sc.Runner.Run(ctx, "command -v setfacl >/dev/null 2>&1", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("writable_mode %q needs setfacl on the target; install the acl package or use %s",

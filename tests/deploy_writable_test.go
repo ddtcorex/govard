@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"os/user"
@@ -173,18 +174,26 @@ func assertFaclHasEntry(t *testing.T, path, want string) {
 	}
 }
 
-// A configuration typo belongs to the preflight, not to the writable step: by the
-// time that step runs the release directory exists.
-func TestCoreCheckRefusesAnUnknownWritableMode(t *testing.T) {
-	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:   "local",
-		Settings: map[string]any{"writable_mode": "teleport"},
-	})
-	sc.Release = deploy.NewReleaseForTest("1", "abcdef", "main")
+// A configuration typo is a *configuration* error: it is refused while the settings
+// are validated (exit 4), before a plan exists, rather than by the step that would
+// hit it after the release directory was built.
+func TestUnknownWritableModeIsAConfigurationError(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	err := deploy.ValidateSettings(recipe, map[string]any{"writable_mode": "teleport"})
+	if !errors.Is(err, deploy.ErrInvalidConfiguration) {
+		t.Fatalf("err = %v, want ErrInvalidConfiguration", err)
+	}
+	for _, want := range []string{"teleport", "acl"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("err = %q, want it to name %q", err, want)
+		}
+	}
 
-	err := deploy.CheckWritableModeForTest(context.Background(), sc)
-	if err == nil || !strings.Contains(err.Error(), "teleport") {
-		t.Fatalf("err = %v, want a refusal naming the mode", err)
+	// Every mode the writable step implements is accepted, including the empty
+	// value that means the default.
+	for _, mode := range []string{"", "chmod", "chown", "chmod+chown", "acl", "skip"} {
+		if err := deploy.ValidateSettings(recipe, map[string]any{"writable_mode": mode}); err != nil {
+			t.Fatalf("writable_mode %q: %v", mode, err)
+		}
 	}
 }

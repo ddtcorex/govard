@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +36,11 @@ type Setting struct {
 	Key   string
 	Kind  SettingKind
 	Title string
+	// Enum lists the values a string setting accepts. It exists so a mode a reader
+	// switches on is refused as a *configuration* error (exit 4) at resolve time
+	// rather than as a step failure later: `writable_mode: teleport` is a typo in the
+	// project's configuration, not a deploy that went wrong.
+	Enum []string
 }
 
 // SettingText renders a setting value as the string a command template
@@ -68,7 +74,8 @@ var engineSettings = []Setting{
 	{Key: "shared_files", Kind: SettingStringList, Title: "files linked from shared/ into the release"},
 	{Key: "shared_dirs", Kind: SettingStringList, Title: "directories linked from shared/ into the release"},
 	{Key: "writable_dirs", Kind: SettingStringList, Title: "paths made writable in the release"},
-	{Key: "writable_mode", Kind: SettingString, Title: "chmod, chown, chmod+chown or skip"},
+	{Key: "writable_mode", Kind: SettingString, Title: "how the writable paths are made writable",
+		Enum: []string{writableModeChmod, writableModeChown, writableModeChmodChown, writableModeACL, writableModeSkip}},
 	{Key: "writable_permissions", Kind: SettingString, Title: "the chmod mode, for example 775"},
 	{Key: "owner", Kind: SettingString, Title: "user:group applied to the writable paths"},
 	{Key: "sync_paths", Kind: SettingStringList, Title: "paths copied into an in-place docroot"},
@@ -149,10 +156,15 @@ func validateSettingValue(key string, setting Setting, value any) error {
 		// `settingsString` asserts `value.(string)`, so `php_version: 8.2`
 		// unquoted reads as empty and the version check silently compares
 		// nothing. Refusing it here says so instead.
-		if _, ok := value.(string); ok {
-			return nil
+		typed, ok := value.(string)
+		if !ok {
+			return describe("a quoted string")
 		}
-		return describe("a quoted string")
+		if len(setting.Enum) > 0 && typed != "" && !slices.Contains(setting.Enum, typed) {
+			return fmt.Errorf("deploy.settings.%s must be one of %s, got %q",
+				key, strings.Join(setting.Enum, ", "), typed)
+		}
+		return nil
 	case SettingBool:
 		switch typed := value.(type) {
 		case bool:

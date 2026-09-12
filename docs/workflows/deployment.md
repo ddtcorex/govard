@@ -243,7 +243,8 @@ storefront checked should anchor a hook on `verify` and run the checks it wants.
 
 `owner` is `user` or `user:group`, and the chown modes and `acl` require it: an
 unknown owner produces a release the web server cannot read, which is worse than
-refusing.
+refusing. A mode outside the table is a configuration error (exit 4), refused while
+the settings are validated rather than as a step failure halfway through a deploy.
 
 `acl` is the mode that also covers the files the application creates *later*: the
 default ACL is inherited, so `var/`, `pub/static/` and `generated/` stay writable
