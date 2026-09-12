@@ -105,6 +105,9 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	if err := checkArtifactParity(ctx, sc); err != nil {
 		return err
 	}
+	if err := checkWritableMode(ctx, sc); err != nil {
+		return err
+	}
 
 	if err := noteComposerCredentials(ctx, sc); err != nil {
 		return err
@@ -683,25 +686,32 @@ func CoreWritable(ctx context.Context, sc *StepContext) error {
 	if mode == writableModeSkip {
 		return nil
 	}
-	// The four modes mirror what another deploy tool calls them, so a project
+	// The modes mirror what another deploy tool calls them, so a project
 	// migrating over keeps the semantics it already relies on. The deploying SSH
 	// user is frequently not the web server's runtime user, which is why the
-	// ownership half exists at all.
+	// ownership half exists at all, and why `acl` exists: it is the only mode that
+	// also covers the files the web server creates later.
 	doChmod := mode == writableModeChmod || mode == writableModeChmodChown
 	doChown := mode == writableModeChown || mode == writableModeChmodChown
-	if !doChmod && !doChown {
-		return fmt.Errorf("unsupported writable_mode %q; use %s, %s, %s or %s",
-			mode, writableModeChmod, writableModeChown, writableModeChmodChown, writableModeSkip)
+	doACL := mode == writableModeACL
+	if !doChmod && !doChown && !doACL {
+		return fmt.Errorf("unsupported writable_mode %q; use %s, %s, %s, %s or %s",
+			mode, writableModeChmod, writableModeChown, writableModeChmodChown, writableModeACL, writableModeSkip)
 	}
 	owner := settingsString(sc.Opts.Settings, "owner")
-	if doChown && owner == "" {
+	if (doChown || doACL) && owner == "" {
 		// Guessing an owner would silently produce a release the web server
-		// cannot read, which is worse than refusing.
+		// cannot read, which is worse than refusing. An ACL without a subject is
+		// not even a command.
 		return fmt.Errorf("writable_mode %q needs deploy.settings.owner (user:group) to be set", mode)
 	}
 	modeBits := settingsString(sc.Opts.Settings, "writable_permissions")
 	if modeBits == "" {
 		modeBits = defaultWritablePermissions
+	}
+	aclEntries := ""
+	if doACL {
+		aclEntries = aclEntriesFor(owner)
 	}
 
 	paths := settingsStringList(sc.Opts.Settings, "writable_dirs")
@@ -719,6 +729,13 @@ func CoreWritable(ctx context.Context, sc *StepContext) error {
 		if doChown {
 			command += " && chown -R " + conventions.ShellQuote(owner) + " " + Shell(target)
 		}
+		if doACL {
+			// Two passes, as the reference deploy tool does: the access ACL covers
+			// what exists now, the default ACL covers what is created under it
+			// later — which is the whole reason a project chooses this mode.
+			command += " && setfacl -R -L -m " + aclEntries + " " + Shell(target) +
+				" && setfacl -R -d -m " + aclEntries + " " + Shell(target)
+		}
 		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
 			return fmt.Errorf("apply writable mode to %s: %w", entry, err)
 		}
@@ -732,10 +749,60 @@ const (
 	writableModeChmod      = "chmod"
 	writableModeChown      = "chown"
 	writableModeChmodChown = "chmod+chown"
+	writableModeACL        = "acl"
 	writableModeSkip       = "skip"
 
 	defaultWritablePermissions = "0775"
 )
+
+// aclEntriesFor renders the `setfacl -m` arguments for one `owner` setting.
+// `owner` is `user` or `user:group`, and the group half becomes a group entry, so
+// a project that already names both keeps both.
+func aclEntriesFor(owner string) string {
+	user := strings.TrimSpace(owner)
+	group := ""
+	if before, after, found := strings.Cut(owner, ":"); found {
+		user = strings.TrimSpace(before)
+		group = strings.TrimSpace(after)
+	}
+
+	entries := make([]string, 0, 2)
+	if user != "" {
+		entries = append(entries, conventions.ShellQuote("u:"+user+":rwX"))
+	}
+	if group != "" {
+		entries = append(entries, conventions.ShellQuote("g:"+group+":rwX"))
+	}
+	return strings.Join(entries, " -m ")
+}
+
+// checkWritableMode refuses a mode the target cannot perform. `acl` needs
+// setfacl, and discovering that at the writable step means discovering it after
+// the release directory exists; the preflight owns the message.
+func checkWritableMode(ctx context.Context, sc *StepContext) error {
+	mode := settingsString(sc.Opts.Settings, "writable_mode")
+	switch mode {
+	case "", writableModeChmod, writableModeChown, writableModeChmodChown, writableModeSkip:
+		return nil
+	case writableModeACL:
+	default:
+		// The writable step refuses this too, but by then the release directory
+		// exists; the preflight is where a configuration typo belongs.
+		return fmt.Errorf("unsupported writable_mode %q; use %s, %s, %s, %s or %s",
+			mode, writableModeChmod, writableModeChown, writableModeChmodChown, writableModeACL, writableModeSkip)
+	}
+	if _, err := sc.Runner.Run(ctx, "command -v setfacl >/dev/null 2>&1", RunOptions{Timeout: shortCommandTimeout}); err != nil {
+		return fmt.Errorf("writable_mode %q needs setfacl on the target; install the acl package or use %s",
+			writableModeACL, writableModeChmod)
+	}
+	return nil
+}
+
+// CheckWritableModeForTest exposes the writable-mode preflight to the tests/
+// package.
+func CheckWritableModeForTest(ctx context.Context, sc *StepContext) error {
+	return checkWritableMode(ctx, sc)
+}
 
 func releasePathOf(sc *StepContext) string {
 	if sc.Release != nil && sc.Release.Path != "" {

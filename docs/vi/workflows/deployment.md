@@ -200,6 +200,27 @@ xoá cấu hình của storefront đang chạy. `deploy.verify.url` kiểm một
 multi-store muốn kiểm mọi storefront thì gắn hook vào `verify` và chạy kiểm tra
 mình cần.
 
+### Quyền ghi và ownership
+
+`writable_dirs` liệt kê những path ứng dụng cần ghi được, và `writable_mode` quyết
+định cách cấp quyền:
+
+| Mode | Việc nó làm |
+|---|---|
+| `chmod` (mặc định) | `chmod -R` với `writable_permissions` (`0775`) |
+| `chown` | `chown -R` cho `owner` |
+| `chmod+chown` | cả hai |
+| `acl` | `setfacl` entry cho cả access *và* default của `owner` |
+| `skip` | không làm gì — cho target đã được image hoặc bước provisioning cấp quyền |
+
+`owner` là `user` hoặc `user:group`; hai mode chown và `acl` bắt buộc phải có, vì
+owner sai sẽ tạo ra release mà web server không đọc được — tệ hơn là từ chối.
+
+`acl` là mode bao luôn những file ứng dụng tạo *về sau*: default ACL được kế thừa,
+nên `var/`, `pub/static/` và `generated/` vẫn ghi được sau deploy mà không cần
+`chown -R` cả release. Mode này cần `setfacl` trên target, và `deploy check` từ chối
+deploy ngay trước khi thư mục release tồn tại nếu thiếu nó.
+
 ### Cache, opcache và cú swap symlink
 
 Release flush cache của ứng dụng ngay trong pipeline, nên release mới không bao giờ

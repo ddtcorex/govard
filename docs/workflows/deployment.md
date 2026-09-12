@@ -207,6 +207,29 @@ rewrote them would be a deploy that can overwrite a live storefront's settings.
 `deploy.verify.url` checks one URL; a multi-store project that wants every
 storefront checked should anchor a hook on `verify` and run the checks it wants.
 
+### Permissions and ownership
+
+`writable_dirs` lists the paths the application must be able to write, and
+`writable_mode` decides how they are made writable:
+
+| Mode | What it does |
+|---|---|
+| `chmod` (default) | `chmod -R` with `writable_permissions` (`0775`) |
+| `chown` | `chown -R` to `owner` |
+| `chmod+chown` | both |
+| `acl` | `setfacl` access *and* default entries for `owner` |
+| `skip` | nothing — for a target where an image or a provisioning step already set them |
+
+`owner` is `user` or `user:group`, and the chown modes and `acl` require it: an
+unknown owner produces a release the web server cannot read, which is worse than
+refusing.
+
+`acl` is the mode that also covers the files the application creates *later*: the
+default ACL is inherited, so `var/`, `pub/static/` and `generated/` stay writable
+after the deploy without a `chown -R` over the release. It needs `setfacl` on the
+target, and `deploy check` refuses the deploy before the release directory exists
+when it is missing.
+
 ### Caches, opcache and the symlink swap
 
 The release flushes the application cache as part of the pipeline, so the new

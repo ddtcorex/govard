@@ -3,6 +3,8 @@ package tests
 import (
 	"context"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -80,5 +82,109 @@ func TestWritableRejectsAnUnknownMode(t *testing.T) {
 
 	if err := deploy.CoreWritable(context.Background(), sc); err == nil {
 		t.Fatal("want a refusal for an unknown writable_mode")
+	}
+}
+
+// `writable_mode: acl` is the mode the reference deploy tool defaults to, and the
+// one a project migrating from it reaches for: permissions that inherit onto the
+// files the web server creates later, without a `chown -R` over the whole release.
+// Executed with the real `setfacl`/`getfacl`: the property is the ACL on the tree,
+// not the text of the command that sets it.
+func TestWritableAppliesACLWhenConfigured(t *testing.T) {
+	if _, err := exec.LookPath("setfacl"); err != nil {
+		t.Skip("setfacl is not installed")
+	}
+	current, err := user.Current()
+	if err != nil || current.Username == "" {
+		t.Skipf("no current user: %v", err)
+	}
+
+	sc, target := writableContext(t, map[string]any{
+		"writable_dirs": []string{"var"},
+		"writable_mode": "acl",
+		"owner":         current.Username,
+	})
+	if err := deploy.CoreWritable(context.Background(), sc); err != nil {
+		t.Fatalf("writable acl: %v", err)
+	}
+
+	assertFaclHasEntry(t, target, "user:"+current.Username+":")
+
+	// The default ACL is the half that makes the mode worth having: a file created
+	// after the deploy inherits the entry, so the web server can write what it
+	// generates without another chown.
+	inherited := filepath.Join(target, "cache-file.txt")
+	if err := os.WriteFile(inherited, []byte("generated after the deploy"), 0o644); err != nil {
+		t.Fatalf("create a file under the ACL: %v", err)
+	}
+	assertFaclHasEntry(t, inherited, "user:"+current.Username+":")
+}
+
+// An ACL without a subject is meaningless, so the mode needs `owner` exactly like
+// the chown modes do.
+func TestWritableACLNeedsAConfiguredOwner(t *testing.T) {
+	sc, _ := writableContext(t, map[string]any{
+		"writable_dirs": []string{"var"},
+		"writable_mode": "acl",
+	})
+
+	err := deploy.CoreWritable(context.Background(), sc)
+	if err == nil || !strings.Contains(err.Error(), "owner") {
+		t.Fatalf("err = %v, want a refusal naming settings.owner", err)
+	}
+}
+
+// A target without setfacl must be refused before the release is built, not at the
+// writable step after it exists.
+func TestCoreCheckProbesForSetfaclWhenTheModeIsACL(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	seen := new([]string)
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:         "local",
+		CommandTimeout: 0,
+		Settings:       map[string]any{"writable_mode": "acl", "owner": "www-data"},
+	})
+	sc.Runner = captureRunner{base: deploy.LocalRunner{}, seen: seen}
+	sc.Release = deploy.NewReleaseForTest("1", "abcdef", "main")
+
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	joined := strings.Join(*seen, "\n")
+	if !strings.Contains(joined, "setfacl") {
+		t.Fatalf("the preflight must probe for setfacl:\n%s", joined)
+	}
+
+	// And the probe fails the preflight when the binary is not there.
+	t.Setenv("PATH", t.TempDir())
+	if err := deploy.CheckWritableModeForTest(context.Background(), sc); err == nil {
+		t.Fatal("a target without setfacl must be refused")
+	}
+}
+
+func assertFaclHasEntry(t *testing.T, path, want string) {
+	t.Helper()
+	out, err := exec.Command("getfacl", "-p", path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("getfacl %s: %v\n%s", path, err, out)
+	}
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("getfacl %s = %q, want an entry %q", path, string(out), want)
+	}
+}
+
+// A configuration typo belongs to the preflight, not to the writable step: by the
+// time that step runs the release directory exists.
+func TestCoreCheckRefusesAnUnknownWritableMode(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:   "local",
+		Settings: map[string]any{"writable_mode": "teleport"},
+	})
+	sc.Release = deploy.NewReleaseForTest("1", "abcdef", "main")
+
+	err := deploy.CheckWritableModeForTest(context.Background(), sc)
+	if err == nil || !strings.Contains(err.Error(), "teleport") {
+		t.Fatalf("err = %v, want a refusal naming the mode", err)
 	}
 }
