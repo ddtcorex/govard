@@ -39,6 +39,15 @@ cú rename nguyên tử nên không có gì đang phục vụ bị ghi đè, và
 hiện nếu cùng plan đó còn migrate hoặc import cấu hình. Kích hoạt in-place luôn mở
 window, vì chính docroot bị ghi đè trong lúc đang phục vụ.
 
+Với dự án Magento, deploy symlink cũng mở window: recipe import cấu hình và chạy
+schema upgrade ở mọi lần deploy, nên plan luôn có migrate. Cách còn lại là hỏi
+target xem có gì đang chờ không rồi tin câu trả lời — một phép dò mà chính recipe
+của công cụ deploy tham chiếu ghi nhận là bỏ sót trường hợp — và một window không
+cần thiết chỉ tốn thời gian downtime bằng một lần migration, còn việc đổi schema
+mà release đang phục vụ vẫn chạy thì tốn cả site. Thứ giới hạn chi phí là
+`deploy.maintenance_timeout` (mặc định 15m) và việc dump database trong window là
+tuỳ chọn (`--no-db-backup`).
+
 Window được mở và đóng **trên release đang được phục vụ** (`current`), không phải
 trên release đang build. Maintenance mode được đọc từ docroot mà request rơi vào,
 nên cờ viết vào release mới sẽ không bảo vệ gì trong lúc `setup:upgrade` đổi schema

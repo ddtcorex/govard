@@ -112,3 +112,37 @@ func TestMagento2MaintenanceWindowIsANoOpWithoutAServedRelease(t *testing.T) {
 		}
 	}
 }
+
+// The Magento recipe imports configuration and upgrades the schema on every
+// deploy, so its plan always needs the window and a symlink deploy to a Magento
+// target always opens one. That is a deliberate answer, not an oversight: the
+// alternative is probing the target (`app:config:status`, `setup:db:status`) and
+// trusting the probe, and the reference deploy tool's own recipe records a case
+// the probe misses — a newly configured message queue needs a full upgrade that
+// `setup:db:status` does not report, which is why its "full upgrade needed" hook
+// is left hardcoded to false with a TODO.
+//
+// The cost is the migration window on every symlink deploy; the guarantee is that
+// a schema change is never visible to the release still serving traffic. A deploy
+// that must keep the window short bounds it with `deploy.maintenance_timeout`, and
+// a database dump — the one step inside it that can take minutes — is opt-in.
+func TestMagento2SymlinkDeployAlwaysTakesTheMaintenanceWindow(t *testing.T) {
+	plan, err := deploy.BuildPlanForTest(magento2.DeployRecipe(), nil, "staging")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	symlink := plan.ForPublishStrategy(deploy.PublishSymlink)
+
+	// The premise: without both of these the recipe would skip the window, and
+	// this test would be asserting nothing.
+	for _, id := range []string{deploy.TaskAppConfigure, deploy.TaskDBMigrate} {
+		if !symlink.Runs(id) {
+			t.Fatalf("the recipe must implement %s for the window question to be about Magento", id)
+		}
+	}
+	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable} {
+		if symlink.Steps[symlink.IndexOf(id)].Skipped {
+			t.Fatalf("%s is skipped although the plan imports configuration and upgrades the schema: the window would not protect the live release", id)
+		}
+	}
+}
