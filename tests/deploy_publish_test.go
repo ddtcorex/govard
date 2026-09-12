@@ -510,6 +510,45 @@ func TestCleanupPrunesBackupsOnTheSameWindowAsReleases(t *testing.T) {
 	}
 }
 
+// A directory under shared/backups/deploy/ that govard did not name must not
+// take a slot in the window. Release pruning already filters foreign names out of
+// the candidates; the backup path did not, and an unparsable name sorted as the
+// newest, so a stray directory survived while a real dump — the one a rollback
+// would restore — was deleted to make room for it.
+func TestCleanupKeepsForeignBackupDirectoriesOutOfTheWindow(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	for _, release := range []string{"1", "2", "3"} {
+		if _, err := runner.Run(ctx, "mkdir -p "+host.SharedBackupPath(release), deploy.RunOptions{}); err != nil {
+			t.Fatalf("seed backup %s: %v", release, err)
+		}
+	}
+	stray := filepath.Join(host.BackupRootPath(), "before-manual-upgrade")
+	if _, err := runner.Run(ctx, "mkdir -p "+stray+" && echo dump > "+filepath.Join(stray, "db.sql"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed a foreign backup directory: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", KeepReleases: 2})
+	sc.Release = deploy.NewReleaseForTest("4", "abc", "local")
+	if err := deploy.CoreCleanup(ctx, sc); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
+	for _, release := range []string{"2", "3"} {
+		if _, err := runner.Run(ctx, "test -d "+host.SharedBackupPath(release), deploy.RunOptions{}); err != nil {
+			t.Fatalf("backup %s is inside the window and must survive: a stray name must not consume a slot", release)
+		}
+	}
+	if _, err := runner.Run(ctx, "test ! -e "+host.SharedBackupPath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatal("backup 1 is outside the window and must be pruned")
+	}
+	if _, err := runner.Run(ctx, "test -d "+stray, deploy.RunOptions{}); err != nil {
+		t.Fatal("cleanup must not delete a directory govard did not name")
+	}
+}
+
 // A deploy that never used --db-backup has no backup directory at all, and
 // cleanup must not turn that into a failure.
 func TestCleanupToleratesAMissingBackupRoot(t *testing.T) {

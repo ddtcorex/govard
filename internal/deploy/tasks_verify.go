@@ -177,25 +177,49 @@ func CoreCleanup(ctx context.Context, sc *StepContext) error {
 // shared/backups/deploy/.
 //
 // The window is the releases' own: a dump is the way back from the migration a
-// specific release ran, so keeping more dumps than releases keeps nothing
-// useful. There is no record to consult here — the directory name is the release
-// number a backup belongs to — so an unparsable name sorts oldest and is pruned
-// first, exactly as it is for releases.
+// specific release ran, so keeping more dumps than releases keeps nothing useful.
+// There is no record to consult here — the directory name is the release number a
+// backup belongs to — so a name govard did not write is left out of the window
+// entirely, exactly as it is for releases. Counting it would push a real dump out
+// of the window and then keep the stranger, which is the one outcome a cleanup
+// must not produce: the dump is the way back from a migration.
 func pruneBackups(ctx context.Context, sc *StepContext, keep int) error {
 	root := sc.Host.BackupRootPath()
 	entries, err := numberedEntries(ctx, sc, root)
 	if err != nil {
 		return fmt.Errorf("list backups: %w", err)
 	}
-	if len(entries) <= keep {
-		return nil
+
+	candidates := make([]string, 0, len(entries))
+	foreign := make([]string, 0, 2)
+	for _, name := range entries {
+		if _, err := strconv.Atoi(name); err != nil {
+			foreign = append(foreign, name)
+			continue
+		}
+		candidates = append(candidates, name)
 	}
-	for _, name := range pruneWindow(entries, keep) {
+
+	for _, name := range pruneWindow(candidates, keep) {
 		if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(path.Join(root, name)), RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
 			return fmt.Errorf("prune backup %s: %w", name, err)
 		}
 	}
+	reportForeignBackups(sc, foreign)
 	return nil
+}
+
+// reportForeignBackups says which backup directories were left alone, so "cleanup
+// kept something" is never a mystery in the deploy log.
+func reportForeignBackups(sc *StepContext, foreign []string) {
+	if len(foreign) == 0 || sc.Out == nil {
+		return
+	}
+	noun := "directories"
+	if len(foreign) == 1 {
+		noun = "directory"
+	}
+	fmt.Fprintf(sc.Out, "  kept %d backup %s govard did not name: %s\n", len(foreign), noun, strings.Join(foreign, ", "))
 }
 
 // numberedEntries lists a directory whose children are release numbers. A
@@ -215,9 +239,11 @@ func numberedEntries(ctx context.Context, sc *StepContext, directory string) ([]
 	return entries, nil
 }
 
-// pruneWindow returns the entries outside the newest `keep`, oldest first. A
-// name that is not a number sorts as the oldest thing present, so a stray
-// directory is pruned before a release that is still a rollback target.
+// pruneWindow returns the entries outside the newest `keep`, newest kept. A name
+// that is not a number sorts as the *newest*, so it is kept: both callers filter
+// those names out before they get here, and the sentinel is the safe answer for a
+// caller that forgets — a directory govard did not name is never deleted, and
+// never counts against the window.
 func pruneWindow(entries []string, keep int) []string {
 	sorted := make([]string, len(entries))
 	copy(sorted, entries)
@@ -232,9 +258,9 @@ func pruneWindow(entries []string, keep int) []string {
 	return sorted[keep:]
 }
 
-// entryNumber is the release number a directory name encodes. An unparsable
-// name is treated as the largest, which is what pushes it out of the window
-// first — the safe direction for a name govard did not write.
+// entryNumber is the release number a directory name encodes. An unparsable name
+// is treated as the largest, so a caller that does not filter it keeps it rather
+// than deletes it — the safe direction for a name govard did not write.
 func entryNumber(name string) int {
 	number, err := strconv.Atoi(name)
 	if err != nil {
