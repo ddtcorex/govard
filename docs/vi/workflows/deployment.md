@@ -56,7 +56,10 @@ symlink, điều đó cũng quyết định window **kết thúc ở đâu**: n�
 vì swap đổi release đang được phục vụ — đóng sau đó sẽ để lại cờ trong release vừa
 bị thay, và rollback về release đó là serve maintenance mode cho mọi khách. Với
 in-place chỉ có một thư mục duy nhất, nên window vẫn mở xuyên qua lúc ghi đè.
-Lần deploy đầu chưa có release nào đang phục vụ, nên cả hai bước là no-op.
+Điều kiện chặn là *ứng dụng* đang được phục vụ (`bin/magento` trong thư mục đang
+phục vụ), không chỉ là thư mục: lần deploy đầu chưa có release nào đang phục vụ, và
+docroot của target in-place là một git checkout có thể chưa từng được deploy tới —
+cả hai đều không có gì để bảo vệ, nên hai bước đó là no-op.
 | `verify` | kiểm tra sau publish |
 | `cleanup` | dọn release cũ, nhả lock |
 

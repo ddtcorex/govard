@@ -58,7 +58,10 @@ where the window *ends*: it closes before the swap, because the swap changes
 which release is being served — closing it afterwards would leave a flag in the
 release the swap replaced, which is what a rollback would then serve. In place
 there is one directory throughout, so the window stays open across the rewrite.
-A first deploy has no served release yet, so both steps are a no-op.
+The guard is the served application (`bin/magento` in the served directory), not
+just the directory: a first deploy has no served release at all, and an in-place
+target's docroot is a git checkout that may never have been deployed to — neither
+has anything to protect, so both steps are a no-op there.
 | `verify` | post-publish checks |
 | `cleanup` | prune old releases, release the lock |
 

@@ -77,39 +77,63 @@ func TestMagento2MaintenanceModeIsSetOnTheServedRelease(t *testing.T) {
 	}
 }
 
-// A first deploy has no served release yet. The window must not turn that into a
-// failed step, and it must not fall back to the release being built: there is
-// nothing to protect, so nothing is written.
-func TestMagento2MaintenanceWindowIsANoOpWithoutAServedRelease(t *testing.T) {
-	deployPath := t.TempDir()
-	release := filepath.Join(deployPath, "releases", "1")
-	if err := os.MkdirAll(filepath.Join(release, "bin"), 0o755); err != nil {
-		t.Fatalf("mkdir the release: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(release, "bin", "magento"), []byte(maintenanceStub), 0o755); err != nil {
-		t.Fatalf("write the stub: %v", err)
-	}
+// A first deploy has no served release, and an in-place first deploy has a served
+// directory that holds no application yet. Neither has anything to protect, so the
+// window must be a no-op rather than a failed step — and it must never fall back to
+// the release being built, whose flag would take the site down at the swap.
+func TestMagento2MaintenanceWindowIsANoOpWithoutAServedApplication(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		serve func(t *testing.T, served string)
+	}{
+		{
+			name:  "no served directory at all",
+			serve: func(t *testing.T, served string) {},
+		},
+		{
+			// The in-place layout: the docroot is a git checkout that has not been
+			// deployed to yet, so it exists but holds no bin/magento.
+			name: "a served directory without the application",
+			serve: func(t *testing.T, served string) {
+				if err := os.MkdirAll(served, 0o755); err != nil {
+					t.Fatalf("mkdir the served directory: %v", err)
+				}
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			deployPath := t.TempDir()
+			release := filepath.Join(deployPath, "releases", "1")
+			if err := os.MkdirAll(filepath.Join(release, "bin"), 0o755); err != nil {
+				t.Fatalf("mkdir the release: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(release, "bin", "magento"), []byte(maintenanceStub), 0o755); err != nil {
+				t.Fatalf("write the stub: %v", err)
+			}
 
-	recipe := magento2.DeployRecipe()
-	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
-		Revision: "abcdef123456",
-		Settings: map[string]any{"php_bin": "sh"},
-	})
-	host := deploy.HostForTest(deployPath, deploy.LocalRunner{})
-	host.CurrentPath = filepath.Join(deployPath, "public_html") // never created: a first deploy
-	vars := cmd.DeployVarsForTest(host, options).SetPath("release_path", release)
+			recipe := magento2.DeployRecipe()
+			options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+				Revision: "abcdef123456",
+				Settings: map[string]any{"php_bin": "sh"},
+			})
+			host := deploy.HostForTest(deployPath, deploy.LocalRunner{})
+			host.CurrentPath = filepath.Join(deployPath, "public_html")
+			testCase.serve(t, host.CurrentPath)
+			vars := cmd.DeployVarsForTest(host, options).SetPath("release_path", release)
 
-	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable} {
-		command, err := vars.Expand(recipe.Task(id).Command)
-		if err != nil {
-			t.Fatalf("expand %s: %v", id, err)
-		}
-		if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
-			t.Fatalf("%s must be a no-op without a served release: %v\n%s", id, err, command)
-		}
-		if _, err := os.Stat(filepath.Join(release, "var", ".maintenance.flag")); err == nil {
-			t.Fatalf("%s wrote a flag into the release being built; nothing serves it, and the next activation would take the site down", id)
-		}
+			for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskMaintenanceDisable} {
+				command, err := vars.Expand(recipe.Task(id).Command)
+				if err != nil {
+					t.Fatalf("expand %s: %v", id, err)
+				}
+				if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+					t.Fatalf("%s must be a no-op, not a failure: %v\n%s", id, err, command)
+				}
+				if _, err := os.Stat(filepath.Join(release, "var", ".maintenance.flag")); err == nil {
+					t.Fatalf("%s wrote a flag into the release being built; nothing serves it, and the next activation would take the site down", id)
+				}
+			}
+		})
 	}
 }
 
