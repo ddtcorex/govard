@@ -87,7 +87,7 @@ func activateSymlink(ctx context.Context, sc *StepContext, releasePath string) e
 		Shell(temporary),
 		Shell(host.CurrentPath),
 	)
-	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("swap %s -> %s: %w", host.CurrentPath, releasePath, err)
 	}
 	return nil
@@ -181,11 +181,11 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 		sc.Release.Revision = revision
 	}
 
-	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(host.CurrentPath)+" rev-parse --git-dir", RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(host.CurrentPath)+" rev-parse --git-dir", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("%w: %s", ErrDocrootNotAGitCheckout, host.CurrentPath)
 	}
 
-	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(host.CurrentPath)+" reset --hard "+Shell(revision), RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(host.CurrentPath)+" reset --hard "+Shell(revision), RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("reset the docroot to %s: %w", revision, err)
 	}
 
@@ -198,7 +198,7 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 		// after `setup:di:compile`, `pub/static/adminhtml` only when the admin area
 		// was deployed — and a path with nothing to copy must not fail the
 		// activation.
-		if _, err := sc.Runner.Run(ctx, "test -e "+Shell(source), RunOptions{Timeout: shortCommandTimeout}); err != nil {
+		if _, err := sc.Runner.Run(ctx, "test -e "+Shell(source), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 			noteStep(sc, "  - "+entry+": the release did not build it; the docroot keeps its own\n")
 			continue
 		}
@@ -212,6 +212,9 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 		}
 
 		command := "mkdir -p " + Shell(path.Join(host.CurrentPath, entry)) + " && rsync -a --delete"
+		for _, flag := range progressArgs(sc) {
+			command += " " + flag
+		}
 		// A shared path *inside* the entry is excluded rather than deleted: the
 		// docroot's own copy of it has to survive the sync.
 		for _, inside := range sharedInside(entry, shared) {
@@ -219,7 +222,7 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 			noteStep(sc, "  ! "+entry+"/"+inside+" is linked from shared/; excluded from the copy\n")
 		}
 		command += " " + Shell(source+"/") + " " + Shell(path.Join(host.CurrentPath, entry)+"/")
-		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 			return fmt.Errorf("sync %s into the docroot: %w", entry, err)
 		}
 	}
@@ -235,7 +238,7 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 		Shell(versionSource),
 		Shell(path.Join(host.CurrentPath, "pub/static", versionFile)),
 	)
-	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("publish the static content version: %w", err)
 	}
 	return nil

@@ -75,7 +75,7 @@ func runDBCommand(ctx context.Context, sc *StepContext, command, backupPath, lab
 	if err != nil {
 		return fmt.Errorf("expand %s: %w", label, err)
 	}
-	if _, err := sc.Runner.Run(ctx, expanded, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, expanded, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	return nil

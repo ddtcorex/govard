@@ -57,7 +57,7 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 
 	switch sc.Release.Publish.Strategy {
 	case PublishSymlink:
-		result, err := sc.Runner.Run(ctx, "readlink -f "+Shell(sc.Host.CurrentPath), RunOptions{Timeout: shortCommandTimeout})
+		result, err := sc.Runner.Run(ctx, "readlink -f "+Shell(sc.Host.CurrentPath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 		if err != nil {
 			return fail("revision", "current symlink is unreadable: "+err.Error())
 		}
@@ -66,7 +66,7 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 		}
 		pass("revision", "current resolves to the release")
 	case PublishInPlace:
-		result, err := sc.Runner.Run(ctx, "git -C "+Shell(sc.Host.CurrentPath)+" rev-parse HEAD", RunOptions{Timeout: shortCommandTimeout})
+		result, err := sc.Runner.Run(ctx, "git -C "+Shell(sc.Host.CurrentPath)+" rev-parse HEAD", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 		if err != nil {
 			return fail("revision", "docroot HEAD is unreadable: "+err.Error())
 		}
@@ -91,7 +91,7 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 		// catches the broken symlink this check is here for.
 		command := fmt.Sprintf("if [ -e %s ]; then test -r %s; fi",
 			Shell(path.Join(sc.Host.SharedPath(), entry)), Shell(path.Join(sc.Release.Path, entry)))
-		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 			return fail("shared:"+entry, "the shared file exists on the target but is missing or unreadable in the release")
 		}
 		pass("shared:"+entry, "linked and readable")
@@ -112,7 +112,7 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 		if timeout <= 0 {
 			timeout = DefaultCommandTimeout
 		}
-		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: timeout}); err != nil {
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: timeout, Out: sc.Live}); err != nil {
 			return fail(check.ID, check.Title+": "+err.Error())
 		}
 		pass(check.ID, check.Title)
@@ -162,7 +162,7 @@ func CoreCleanup(ctx context.Context, sc *StepContext) error {
 	}
 
 	for _, name := range pruneWindow(candidates, keep) {
-		if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(host.ReleasePath(name)), RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+		if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(host.ReleasePath(name)), RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 			return fmt.Errorf("prune release %s: %w", name, err)
 		}
 	}
@@ -201,7 +201,7 @@ func pruneBackups(ctx context.Context, sc *StepContext, keep int) error {
 	}
 
 	for _, name := range pruneWindow(candidates, keep) {
-		if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(path.Join(root, name)), RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+		if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(path.Join(root, name)), RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 			return fmt.Errorf("prune backup %s: %w", name, err)
 		}
 	}
@@ -226,7 +226,7 @@ func reportForeignBackups(sc *StepContext, foreign []string) {
 // missing directory is an empty one: a target with no releases yet, or a project
 // that never ran --db-backup, is not an error.
 func numberedEntries(ctx context.Context, sc *StepContext, directory string) ([]string, error) {
-	result, err := sc.Runner.Run(ctx, "ls -1 "+Shell(directory)+" 2>/dev/null || true", RunOptions{Timeout: shortCommandTimeout})
+	result, err := sc.Runner.Run(ctx, "ls -1 "+Shell(directory)+" 2>/dev/null || true", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 	if err != nil {
 		return nil, err
 	}

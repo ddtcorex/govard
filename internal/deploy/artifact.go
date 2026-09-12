@@ -531,14 +531,14 @@ func CoreArtifact(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("release path is unknown; deploy:release must run first")
 	}
 
-	if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(releasePath), RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(releasePath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("prepare the release directory for the artifact: %w", err)
 	}
 	// The transfer runs on the machine that invoked govard, so it goes through
 	// a local runner whatever the target is: for a remote target that command
 	// is rsync, for a local one it is a copy.
-	command := ArtifactUploadCommand(sc.Host, artifactDir, releasePath)
-	if _, err := (LocalRunner{}).Run(ctx, command, RunOptions{Timeout: buildStepTimeout(sc.Opts)}); err != nil {
+	command := ArtifactUploadCommand(sc.Host, artifactDir, releasePath, len(progressArgs(sc)) > 0)
+	if _, err := (LocalRunner{}).Run(ctx, command, RunOptions{Timeout: buildStepTimeout(sc.Opts), Out: sc.Live}); err != nil {
 		return fmt.Errorf("upload the artifact to %s: %w", releasePath, err)
 	}
 
@@ -568,7 +568,7 @@ func CoreArtifact(ctx context.Context, sc *StepContext) error {
 // rsync would add a dependency the pipeline does not otherwise have. A remote
 // target gets rsync, with the manifest excluded: it is written separately to
 // `.dep/` so the release keeps one copy of it, next to its record.
-func ArtifactUploadCommand(host Host, source, destination string) string {
+func ArtifactUploadCommand(host Host, source, destination string, progress bool) string {
 	root := strings.TrimRight(source, "/")
 	if host.Local || strings.TrimSpace(host.Remote.Host) == "" {
 		return fmt.Sprintf("cp -a %s %s && rm -f %s",
@@ -579,7 +579,14 @@ func ArtifactUploadCommand(host Host, source, destination string) string {
 
 	sshArgs := append([]string{"ssh"}, remote.BuildSSHArgs(host.Name, host.Remote, false, false)...)
 	target := remote.RemoteTarget(host.Remote) + ":" + destination + "/"
-	return fmt.Sprintf("rsync -az --numeric-ids --exclude=%s -e %s %s %s",
+	// Progress only when a terminal is watching: rsync cannot redraw its progress
+	// line without one, and an artifact upload is exactly the transfer that takes
+	// long enough to want it (see rsyncProgressArgs).
+	progressFlag := ""
+	if progress {
+		progressFlag = "--info=progress2 "
+	}
+	return fmt.Sprintf("rsync -az --numeric-ids "+progressFlag+"--exclude=%s -e %s %s %s",
 		conventions.ShellQuote(ArtifactManifestName),
 		conventions.ShellQuote(strings.Join(sshArgs, " ")),
 		conventions.ShellQuote(root+"/"),
@@ -587,8 +594,8 @@ func ArtifactUploadCommand(host Host, source, destination string) string {
 }
 
 // ArtifactUploadCommandForTest exposes ArtifactUploadCommand to the tests/ package.
-func ArtifactUploadCommandForTest(host Host, source, destination string) string {
-	return ArtifactUploadCommand(host, source, destination)
+func ArtifactUploadCommandForTest(host Host, source, destination string, progress bool) string {
+	return ArtifactUploadCommand(host, source, destination, progress)
 }
 
 // writeTargetFile writes a file on the target atomically: a heredoc into a

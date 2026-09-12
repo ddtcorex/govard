@@ -186,7 +186,7 @@ func TestReadManifestWithoutAnArtifactIsAnError(t *testing.T) {
 
 func TestArtifactUploadCommandCopiesLocallyAndRsyncsRemotely(t *testing.T) {
 	local := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	localCommand := deploy.ArtifactUploadCommandForTest(local, "/tmp/artifact", "/srv/app/releases/1")
+	localCommand := deploy.ArtifactUploadCommandForTest(local, "/tmp/artifact", "/srv/app/releases/1", false)
 	if !strings.Contains(localCommand, "cp -a") {
 		t.Fatalf("a local target must be a copy, got %q", localCommand)
 	}
@@ -199,7 +199,7 @@ func TestArtifactUploadCommandCopiesLocallyAndRsyncsRemotely(t *testing.T) {
 		DeployPath: "/srv/app",
 		Remote:     engine.RemoteConfig{Host: "staging.example.com", User: "deploy"},
 	}
-	remoteCommand := deploy.ArtifactUploadCommandForTest(remoteHost, "/tmp/artifact", "/srv/app/releases/1")
+	remoteCommand := deploy.ArtifactUploadCommandForTest(remoteHost, "/tmp/artifact", "/srv/app/releases/1", false)
 	for _, want := range []string{"rsync", "--numeric-ids", "manifest.json", "deploy@staging.example.com:/srv/app/releases/1/"} {
 		if !strings.Contains(remoteCommand, want) {
 			t.Errorf("the remote upload command is missing %q:\n%s", want, remoteCommand)

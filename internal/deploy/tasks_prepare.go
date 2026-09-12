@@ -60,7 +60,7 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	if strings.TrimSpace(host.DeployPath) == "" {
 		return ErrDeployPathMissing
 	}
-	opts := RunOptions{Timeout: shortCommandTimeout}
+	opts := RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}
 
 	if _, err := sc.Runner.Run(ctx, "true", opts); err != nil {
 		// A sandbox that is not answering is almost always a container that is
@@ -191,7 +191,7 @@ func checkRepositoryReachable(ctx context.Context, sc *StepContext) error {
 	if ref != "" {
 		command += " " + Shell(ref)
 	}
-	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 		if ref == "" {
 			return fmt.Errorf("target %s cannot reach %s (deploy key or network): %w", sc.Host.Name, repository, err)
 		}
@@ -228,7 +228,7 @@ func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 		"mkdir -p %s && ln -sfn %s %s && mv -T %s %s && rm -f %s %s",
 		Shell(probeDir), Shell(probeDir), Shell(link), Shell(link), Shell(target), Shell(target), Shell(link),
 	)
-	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("%w: the symlink swap needs GNU mv (mv -T)", ErrMoveAtomicUnsupported)
 	}
 	sc.Notes = append(sc.Notes, "atomic symlink rename: supported")
@@ -239,7 +239,7 @@ func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 // release plus its build output is large, and a deploy that dies at 90% is worse
 // than one that never starts.
 func checkDiskSpace(ctx context.Context, sc *StepContext) error {
-	result, err := sc.Runner.Run(ctx, "df -Pk "+Shell(sc.Host.DeployPath), RunOptions{Timeout: shortCommandTimeout})
+	result, err := sc.Runner.Run(ctx, "df -Pk "+Shell(sc.Host.DeployPath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 	if err != nil {
 		// `df` is not universal; an unavailable probe must not block a deploy.
 		return nil
@@ -271,7 +271,7 @@ func checkPHPVersion(ctx context.Context, sc *StepContext) error {
 	if phpBin == "" {
 		return nil
 	}
-	result, err := sc.Runner.Run(ctx, phpBin+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout})
+	result, err := sc.Runner.Run(ctx, phpBin+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 	if err != nil {
 		return fmt.Errorf("php is not available as %q on the target: %w", phpBin, err)
 	}
@@ -347,7 +347,7 @@ func probeTargetPHP(ctx context.Context, sc *StepContext) (string, error) {
 	if phpBin == "" {
 		phpBin = "php"
 	}
-	result, err := sc.Runner.Run(ctx, phpBin+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout})
+	result, err := sc.Runner.Run(ctx, phpBin+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 	if err != nil {
 		return "", err
 	}
@@ -372,7 +372,7 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 	host := sc.Host
 
 	if !sc.Opts.IgnoreDeployerLock {
-		if _, err := sc.Runner.Run(ctx, "test -e "+Shell(host.DeployerLockPath()), RunOptions{Timeout: shortCommandTimeout}); err == nil {
+		if _, err := sc.Runner.Run(ctx, "test -e "+Shell(host.DeployerLockPath()), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
 			return fmt.Errorf("%w: %s exists (pass --ignore-deployer-lock to override)", ErrDeployerLockHeld, host.DeployerLockPath())
 		}
 	}
@@ -384,7 +384,7 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 		"mkdir -p %s && (mkdir %s 2>/dev/null || exit %d)",
 		Shell(host.DepPath()), Shell(host.LockPath()), lockHeldExitCode,
 	)
-	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		var commandErr *CommandError
 		if errors.As(err, &commandErr) && commandErr.ExitCode == lockHeldExitCode {
 			// Name the holder, not just the path: an operator reading "deploy
@@ -404,7 +404,7 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 		os.Getpid(), currentActor(), sc.Opts.Revision, sc.Opts.Branch, host.Name, time.Now().UTC().Format(time.RFC3339),
 	)
 	ownerCommand := fmt.Sprintf("cat > %s <<'%s'\n%s\n%s", Shell(host.LockOwnerPath()), releaseHeredocDelimiter, owner, releaseHeredocDelimiter)
-	if _, err := sc.Runner.Run(ctx, ownerCommand, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, ownerCommand, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("record lock owner: %w", err)
 	}
 	return nil
@@ -476,7 +476,7 @@ func describeLockOwner(ctx context.Context, host Host, now time.Time) (string, t
 
 // CoreUnlock releases the lock.
 func CoreUnlock(ctx context.Context, sc *StepContext) error {
-	if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(sc.Host.LockPath()), RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, "rm -rf "+Shell(sc.Host.LockPath()), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("release deploy lock: %w", err)
 	}
 	return nil
@@ -531,11 +531,11 @@ func CoreRelease(ctx context.Context, sc *StepContext) error {
 		number = computed
 	}
 
-	if _, err := sc.Runner.Run(ctx, "test -e "+Shell(host.ReleasePath(number)), RunOptions{Timeout: shortCommandTimeout}); err == nil {
+	if _, err := sc.Runner.Run(ctx, "test -e "+Shell(host.ReleasePath(number)), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
 		return fmt.Errorf("%w: %s", ErrReleaseExists, host.ReleasePath(number))
 	}
 
-	if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(host.ReleasePath(number)), RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(host.ReleasePath(number)), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("create release %s: %w", number, err)
 	}
 
@@ -580,7 +580,7 @@ func CoreCode(ctx context.Context, sc *StepContext) error {
 		return err
 	}
 
-	opts := RunOptions{Timeout: shortCommandTimeout}
+	opts := RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}
 	if _, err := sc.Runner.Run(ctx, "test -d "+Shell(host.RepoPath())+" || git init --bare -q "+Shell(host.RepoPath()), opts); err != nil {
 		return fmt.Errorf("prepare mirror: %w", err)
 	}
@@ -589,7 +589,7 @@ func CoreCode(ctx context.Context, sc *StepContext) error {
 	if branch != "" {
 		fetch += " " + Shell(branch)
 	}
-	if _, err := sc.Runner.Run(ctx, fetch, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, fetch, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("fetch %s into the mirror: %w", repository, err)
 	}
 
@@ -598,7 +598,7 @@ func CoreCode(ctx context.Context, sc *StepContext) error {
 	}
 
 	extract := "git --git-dir=" + Shell(host.RepoPath()) + " archive " + Shell(revision) + " | tar -x -C " + Shell(releasePath)
-	if _, err := sc.Runner.Run(ctx, extract, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, extract, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("extract %s: %w", revision, err)
 	}
 	return nil
@@ -630,14 +630,14 @@ func prepareInPlaceDocroot(ctx context.Context, sc *StepContext, repository stri
 		// the reset in publish:activate reports it clearly if it does not.
 		return nil
 	}
-	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(sc.Host.CurrentPath)+" rev-parse --git-dir", RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, "git -C "+Shell(sc.Host.CurrentPath)+" rev-parse --git-dir", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("%w: %s", ErrDocrootNotAGitCheckout, sc.Host.CurrentPath)
 	}
 	fetch := "git -C " + Shell(sc.Host.CurrentPath) + " fetch -q " + Shell(repository)
 	if branch := strings.TrimSpace(sc.Opts.Branch); branch != "" {
 		fetch += " " + Shell(branch)
 	}
-	if _, err := sc.Runner.Run(ctx, fetch, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, fetch, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("fetch %s into the docroot: %w", repository, err)
 	}
 	return nil
@@ -666,7 +666,7 @@ func CoreShared(ctx context.Context, sc *StepContext) error {
 			Shell(source),
 			Shell(target),
 		)
-		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 			return fmt.Errorf("link shared entry %s: %w", entry, err)
 		}
 	}
@@ -739,7 +739,7 @@ func CoreWritable(ctx context.Context, sc *StepContext) error {
 			command += " && setfacl -R -L -m " + aclEntries + " " + Shell(target) +
 				" && setfacl -R -d -m " + aclEntries + " " + Shell(target)
 		}
-		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout}); err != nil {
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 			return fmt.Errorf("apply writable mode to %s: %w", entry, err)
 		}
 	}
@@ -794,7 +794,7 @@ func checkWritableMode(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("unsupported writable_mode %q; use %s, %s, %s, %s or %s",
 			mode, writableModeChmod, writableModeChown, writableModeChmodChown, writableModeACL, writableModeSkip)
 	}
-	if _, err := sc.Runner.Run(ctx, "command -v setfacl >/dev/null 2>&1", RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := sc.Runner.Run(ctx, "command -v setfacl >/dev/null 2>&1", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("writable_mode %q needs setfacl on the target; install the acl package or use %s",
 			writableModeACL, writableModeChmod)
 	}
@@ -939,7 +939,7 @@ func noteComposerCredentials(ctx context.Context, sc *StepContext) error {
 		sc.Notes = append(sc.Notes, "composer credentials: "+ComposerAuthEnv+" is set for this run")
 		return nil
 	}
-	if _, err := sc.Runner.Run(ctx, "test -f "+Shell(path.Join(sc.Host.SharedPath(), "auth.json")), RunOptions{Timeout: shortCommandTimeout}); err == nil {
+	if _, err := sc.Runner.Run(ctx, "test -f "+Shell(path.Join(sc.Host.SharedPath(), "auth.json")), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
 		sc.Notes = append(sc.Notes, "composer credentials: shared/auth.json exists on the target")
 		return nil
 	}
