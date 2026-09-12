@@ -561,6 +561,19 @@ maintenance, thấp hơn hẳn `deploy.command_timeout` là có chủ đích: b�
 window là đang giữ site down. Hãy nâng lên với dự án có dump database vốn mất
 nhiều thời gian.
 
+`deploy.command_timeout` (mặc định 30m) chặn mọi bước còn lại, và là thứ cần nâng
+đầu tiên khi deploy timeout: một lần `composer install` **nguội** của dự án lớn —
+vài trăm package, repository private clone qua mạng — có thể lâu hơn mức đó trên
+target mới, và lỗi hiện ra là `command timed out` ở đúng bước đó. Bước bị timeout
+không phải trường hợp đặc biệt: lock được trả lại nếu lần chạy chưa tới maintenance
+window, record ghi rõ bước nào dừng, và lần chạy lại tiếp tục với Composer cache đã
+ấm trên target.
+
+```yaml
+deploy:
+  command_timeout: 90m
+```
+
 Một lần deploy lỗi vẫn giữ thư mục release và record của nó. Lỗi ở đâu quyết định
 số phận của lock: lỗi trong `prepare` hoặc `build` sẽ nhả lock vì chưa có gì live
 thay đổi, nên chỉ cần sửa lỗi rồi deploy lại — còn lỗi từ `publish` trở đi thì giữ
@@ -596,7 +609,7 @@ phỏng.
 ```bash
 govard deploy sandbox up                      # tạo (mặc định profile php)
 govard deploy sandbox up --profile basic      # chỉ sshd, rsync, git
-govard deploy sandbox up --profile full --php 8.4   # database, cache, PHP 8.4
+govard deploy sandbox up --profile full --php 8.4   # database, cache, web server, PHP 8.4
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
 govard deploy sandbox ssh
@@ -612,6 +625,23 @@ là một subcommand, hãy deploy bằng dạng flag:
 ```bash
 govard deploy --remote sandbox --yes
 ```
+
+Profile `php` và `full` còn có **web tier**: nginx phục vụ served path cộng
+`stack.web_root` của dự án (`/pub` với Magento), và PHP-FPM chạy bằng chính user
+deploy — nên ứng dụng ghi được những thư mục mà `deploy:writable` giao cho user đó.
+`up` publish luôn cổng đó trên loopback và trỏ `deploy.verify.url` của remote
+sandbox vào nó, nghĩa là deploy vào sandbox diễn tập **toàn bộ** pipeline, kể cả
+bước kiểm tra HTTP — bước mà một target không có web server không bao giờ chạy được.
+
+Kiểm tra đó là thật: target chưa phục vụ được sẽ fail ở bước cuối với đúng mã HTTP
+mà nó trả về (`verify http: http://127.0.0.1:PORT/ returned HTTP 403`) — đó là
+check đang làm việc, không phải lỗi. Có ứng dụng (env.php, database, search engine)
+thì nó pass; `--no-verify` để tắt cho lần diễn tập chỉ cần dừng ở mức file.
+
+Profile `full` start sẵn database và cache, và recipe Magento khai cả hai, nên
+`env.php` của target có thể trỏ `127.0.0.1` cho MariaDB và Redis/Valkey — đúng hình
+dạng server thật — thay vì phải sửa tay sang file cache. Profile `basic` không có
+gì trong số đó và không quảng cáo verify URL.
 
 `--php` chọn series PHP mà image cung cấp, ví dụ `--php 8.4`; không có thì image
 giữ version của distribution gốc. Series lấy từ repository sury và kéo theo `php`

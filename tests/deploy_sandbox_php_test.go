@@ -40,7 +40,7 @@ func TestSandboxPHPSeriesIsNormalized(t *testing.T) {
 	}
 	// The trim has to reach the image, or `--php " 8.4"` would pin the image and
 	// declare 8.4 to the pipeline while rendering `php 8.4-cli`.
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfilePHP, "  8.4\t", deploy.SandboxRequirements{})
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfilePHP, PHP: "  8.4\t"})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestSandboxDockerfileInstallsTheRequestedSeries(t *testing.T) {
 		Extensions: []string{"bcmath", "intl"},
 		Services:   []string{"mariadb"},
 	}
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, "8.4", requirements)
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileFull, PHP: "8.4", Requirements: requirements})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -100,8 +100,9 @@ func TestSandboxDockerfileInstallsTheRequestedSeries(t *testing.T) {
 func TestSandboxDockerfileWithoutPHPKeepsTheBaseImage(t *testing.T) {
 	// Two lists or a half-migrated render would put the base series and the
 	// requested one in the same image.
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfilePHP, "", deploy.SandboxRequirements{
-		Extensions: []string{"intl"},
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{
+		Profile:      deploy.SandboxProfilePHP,
+		Requirements: deploy.SandboxRequirements{Extensions: []string{"intl"}},
 	})
 	if err != nil {
 		t.Fatalf("render: %v", err)
@@ -133,10 +134,14 @@ func TestSandboxDockerfileIsParseable(t *testing.T) {
 	}
 	for _, profile := range []string{deploy.SandboxProfileBasic, deploy.SandboxProfilePHP, deploy.SandboxProfileFull} {
 		for _, php := range []string{"", "8.4"} {
-			dockerfile, err := deploy.SandboxDockerfile(profile, php, deploy.SandboxRequirements{
-				Packages:   []string{"libxslt1-dev"},
-				Extensions: []string{"intl"},
-				Services:   []string{"mariadb"},
+			dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{
+				Profile: profile,
+				PHP:     php,
+				Requirements: deploy.SandboxRequirements{
+					Packages:   []string{"libxslt1-dev"},
+					Extensions: []string{"intl"},
+					Services:   []string{"mariadb"},
+				},
 			})
 			if err != nil {
 				t.Fatalf("render %s/%q: %v", profile, php, err)
@@ -174,7 +179,7 @@ func TestSandboxBasicProfileNeverGetsPHP(t *testing.T) {
 	// `basic` is the profile that promises no PHP at all; a series must not turn
 	// it into a PHP image, and the composer phar step must not run without an
 	// interpreter to invoke it.
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileBasic, "8.4", deploy.SandboxRequirements{})
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileBasic, PHP: "8.4"})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

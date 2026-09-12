@@ -589,6 +589,19 @@ the site in maintenance mode, which is far below `deploy.command_timeout` on
 purpose: a slow step there is holding the site down. Raise it for a project whose
 database dump legitimately takes longer.
 
+`deploy.command_timeout` (default 30m) bounds every other step, and it is the one
+to raise first when a deploy times out: a *cold* `composer install` of a large
+project — several hundred packages, private repositories cloned over the network —
+can take longer than that on a fresh target, and the failure reads `command timed
+out` on that step. A timed-out step is not a special case of anything: the lock
+goes back if the run had not reached the maintenance window, the record says what
+stopped, and the retry resumes from a warm Composer cache on the target.
+
+```yaml
+deploy:
+  command_timeout: 90m
+```
+
 A failed deploy keeps its release directory and its record. Where it failed
 decides the lock: a failure in `prepare` or `build` releases it, because nothing
 live has changed, so the fault can simply be fixed and the deploy retried — while
@@ -626,7 +639,7 @@ is what makes it a rehearsal rather than a simulation.
 ```bash
 govard deploy sandbox up                      # create it (php profile by default)
 govard deploy sandbox up --profile basic      # sshd, rsync, git only
-govard deploy sandbox up --profile full --php 8.4   # a database, a cache, PHP 8.4
+govard deploy sandbox up --profile full --php 8.4   # database, cache, web server, PHP 8.4
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed a target the other tool owns
 govard deploy sandbox ssh
@@ -647,6 +660,25 @@ govard deploy --remote sandbox --yes
 to exercise it: `absent` or `symlink` selects the atomic swap, `real` selects
 in-place publishing. `down` removes the container and the remote it wrote;
 `--purge` also removes the image, the key and the mirror.
+
+The `php` and `full` profiles also ship a **web tier**: nginx serving the served
+path plus the project's `stack.web_root` (`/pub` for Magento), and PHP-FPM running
+as the deploy user, so the application can write the directories `deploy:writable`
+hands over. `up` publishes that port on loopback too and points the sandbox
+remote's `deploy.verify.url` at it, which means a sandbox deploy rehearses the
+*whole* pipeline, HTTP check included — the one step a target without a web server
+could never exercise.
+
+That check is real: a target that does not answer yet fails the last step with the
+HTTP status it returned (`verify http: http://127.0.0.1:PORT/ returned HTTP 403`),
+which is the check doing its job rather than a defect. Provide the application
+(env.php, a database, a search engine) and it passes; `--no-verify` turns it off
+for a rehearsal that stops at the files.
+
+The `full` profile starts a database and a cache, and the Magento recipe names
+both, so a target's `env.php` can point at `127.0.0.1` for MariaDB and Redis/Valkey
+— the shape a server has — instead of being hand-edited to use files. The `basic`
+profile ships neither and advertises no verify URL.
 
 `--php` picks the PHP series the image provides, for example `--php 8.4`; without
 it the image keeps the base distribution's own version. The series comes from the

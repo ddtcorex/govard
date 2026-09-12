@@ -128,10 +128,14 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	requirements := recipeFor(config).Sandbox
 
 	return deploy.SandboxRequest{
-		ProjectRoot:  root,
-		ProjectName:  config.ProjectName,
-		Profile:      profile,
-		PHP:          php,
+		ProjectRoot: root,
+		ProjectName: config.ProjectName,
+		Profile:     profile,
+		PHP:         php,
+		// Where the web server serves from comes from the project, not from a flag:
+		// `stack.web_root` is already the answer for the local environment, and two
+		// answers would be one too many.
+		WebRoot:      config.Stack.WebRoot,
 		DocRoot:      docRoot,
 		Layout:       layout,
 		Requirements: requirements,
@@ -232,6 +236,9 @@ func printSandboxState(cmd *cobra.Command, state *deploy.SandboxState, headline 
 	fmt.Fprintf(out, "  container:  %s\n", state.Container)
 	if state.Profile != "" {
 		fmt.Fprintf(out, "  profile:    %s\n", state.Profile)
+	}
+	if state.WebPort > 0 {
+		fmt.Fprintf(out, "  web:        http://127.0.0.1:%d/\n", state.WebPort)
 	}
 	if state.PHP != "" {
 		fmt.Fprintf(out, "  php:        %s\n", state.PHP)

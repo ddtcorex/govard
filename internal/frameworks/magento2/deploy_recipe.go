@@ -233,7 +233,18 @@ func DeployRecipe() deploy.Recipe {
 		// trial against a real project failed exactly there, and the rest of this
 		// list was already satisfied (composer check-platform-reqs).
 		Extensions: []string{"bcmath", "curl", "gd", "intl", "mysql", "soap", "sockets", "xsl", "zip"},
-		Services:   []string{"mariadb"},
+		// Both services are ones a real Magento target has, and both are needed
+		// for the rehearsal to mean anything: the database for `setup:upgrade`,
+		// and the cache because an env.php written for a server names a Redis (or
+		// Valkey) for cache and sessions — without it the target cannot start
+		// `bin/magento` at all, so the rehearsal would need a hand-edited env.php
+		// that no server would have.
+		//
+		// The names are the distribution's init scripts, not the product names:
+		// Debian installs `/etc/init.d/redis-server`, and the entrypoint starts what
+		// it is told and nothing else. `redis` reads better and starts nothing —
+		// found by asking a fresh sandbox whether its cache answered.
+		Services: []string{"mariadb", "redis-server"},
 	}
 	return recipe
 }

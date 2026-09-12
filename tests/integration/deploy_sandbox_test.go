@@ -313,6 +313,20 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			}
 			t.Cleanup(func() { env.RunGovard(t, projectDir, "deploy", "sandbox", "down", "--purge") })
 
+			// The `php` profile ships the web tier, so `up` advertises the HTTP
+			// half of `deploy:verify`. The verdict below is an exit code, so
+			// without this the run would prove nothing about the check happening at
+			// all — and the fixture serves `pub/index.php` precisely so that it can.
+			// The file is read as text on purpose (see sandboxRemote), so the
+			// expected URL is the one `up` prints rather than a decoded struct.
+			localLayer, readErr := os.ReadFile(filepath.Join(projectDir, ".govard.local.yml"))
+			if readErr != nil {
+				t.Fatalf("read the local layer: %v", readErr)
+			}
+			if !strings.Contains(string(localLayer), "verify:") || !strings.Contains(string(localLayer), "url: http://127.0.0.1:") {
+				t.Fatalf("the sandbox advertises no verify URL, so the HTTP check never runs:\n%s", localLayer)
+			}
+
 			if testCase.settings != "" {
 				// Written after `up`, because `up` rewrites .govard.local.yml to
 				// add the sandbox remote.

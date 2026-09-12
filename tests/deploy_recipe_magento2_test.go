@@ -801,9 +801,38 @@ func TestMagento2SandboxRequirementsCoverThePlatformCheck(t *testing.T) {
 	}
 
 	// The services the recipe's own commands need: setup:upgrade and setup:db:status
-	// talk to a database.
+	// talk to a database, and a Magento env.php written for a server names a Redis
+	// or Valkey for cache and sessions — without one the target cannot run
+	// `bin/magento` at all, and a rehearsal would need a hand-edited env.php that
+	// no server has.
 	services := strings.Join(requirements.Services, " ")
-	if !strings.Contains(services, "mariadb") {
-		t.Errorf("sandbox services = %q, want a database for the recipe's own commands", services)
+	for _, want := range []string{"mariadb", "redis"} {
+		if !strings.Contains(services, want) {
+			t.Errorf("sandbox services = %q, want %q for the recipe's own commands", services, want)
+		}
+	}
+}
+
+// The image is built from the recipe's requirements, so the service list has to
+// reach the container's entrypoint: `sandbox up` bakes it into the image, and a
+// recipe that asks for a cache the entrypoint never starts is a rehearsal that
+// fails for a reason no target would have.
+func TestMagento2SandboxImageStartsTheServicesTheRecipeAsksFor(t *testing.T) {
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileFull, PHP: "8.4", Requirements: magento2.DeployRecipe().Sandbox})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	services := sandboxServicesLine(t, dockerfile)
+	for _, want := range []string{"mariadb", "redis-server", "govard-sandbox-web"} {
+		if !strings.Contains(services, want) {
+			t.Fatalf("GOVARD_SANDBOX_SERVICES = %q, want it to start %s", services, want)
+		}
+	}
+	// The packages those services need come from the profile; `full` promises
+	// both, and the entrypoint skips a service whose init script is absent.
+	for _, want := range []string{"mariadb-server", "redis-server"} {
+		if !strings.Contains(dockerfile, want) {
+			t.Errorf("the full profile must install %s", want)
+		}
 	}
 }
