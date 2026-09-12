@@ -935,7 +935,22 @@ func noteComposerCredentials(ctx context.Context, sc *StepContext) error {
 		return nil
 	}
 	if _, err := sc.Runner.Run(ctx, "test -f "+Shell(path.Join(sc.Host.SharedPath(), "auth.json")), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
-		sc.Notes = append(sc.Notes, "composer credentials: shared/auth.json exists on the target")
+		// Composer reads `auth.json` from the project directory and from its home,
+		// never from `shared/`: the file only reaches the build when the release
+		// links it, which is a `shared_files` entry. Saying so here is the
+		// difference between "the credential is there" and "the credential is used".
+		sc.Notes = append(sc.Notes, "composer credentials: shared/auth.json exists on the target "+
+			"(it reaches the build when deploy.settings.shared_files lists auth.json)")
+		return nil
+	}
+	// A credential the project keeps in its own checkout. Composer reads an
+	// `auth.json` from the project directory as well as from its home, and
+	// `deploy:code` materialises the checkout into the release, so a committed one
+	// authenticates the build with nothing else in play. It is the route a project
+	// that has one actually uses, and warning "no credentials are available" at it
+	// sends the operator looking for a problem that is not there.
+	if _, err := os.Stat(filepath.Join(sc.WorkDir, "auth.json")); err == nil {
+		sc.Notes = append(sc.Notes, "composer credentials: the project itself carries auth.json")
 		return nil
 	}
 
