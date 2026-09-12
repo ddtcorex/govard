@@ -451,6 +451,15 @@ func describeLockOwner(ctx context.Context, host Host, now time.Time) (string, t
 	if revision := strings.TrimSpace(owner.Revision); revision != "" {
 		who += " at " + ShortRevision(revision)
 	}
+	// The machine and the process are part of the answer to "is this mine?": an
+	// operator reading the refusal has to be able to tell their own CI run from
+	// a colleague's deploy, and the lock file has recorded both all along.
+	if machine := strings.TrimSpace(owner.Host); machine != "" {
+		who += " on " + machine
+	}
+	if owner.PID > 0 {
+		who += " (pid " + strconv.Itoa(owner.PID) + ")"
+	}
 
 	started, err := time.Parse(time.RFC3339, strings.TrimSpace(owner.StartedAt))
 	if err != nil {

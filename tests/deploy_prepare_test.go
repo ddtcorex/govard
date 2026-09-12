@@ -766,8 +766,13 @@ func TestDescribeLockOwnerReadsTheRecord(t *testing.T) {
 	}
 
 	described, heldFor := deploy.DescribeLockOwnerForTest(ctx, host, time.Now())
-	if !strings.Contains(described, "ci") || !strings.Contains(described, "01234567") {
-		t.Fatalf("described = %q, want the actor and the short revision", described)
+	// Everything owner.json records has to reach the operator: which machine and
+	// which process hold the lock is what decides whether it is their own CI run
+	// (retry it) or a colleague's deploy (ask first).
+	for _, want := range []string{"ci", "01234567", "production", "4242"} {
+		if !strings.Contains(described, want) {
+			t.Fatalf("described = %q, want it to name %q", described, want)
+		}
 	}
 	if heldFor <= 0 {
 		t.Fatalf("heldFor = %s, want a positive duration for a lock from 2026-01-01", heldFor)
