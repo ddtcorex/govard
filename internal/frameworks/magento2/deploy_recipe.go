@@ -95,8 +95,23 @@ func DeployRecipe() deploy.Recipe {
 	// ece-patches only ships with Magento Cloud / Mage-OS projects. The guard is
 	// a test, not `|| true`: a project that has the binary and fails to apply a
 	// patch must fail the deploy.
+	//
+	// The step applies the patch set only when it is not applied yet, because
+	// `magento/magento-cloud-patches` is a Composer plugin and Magento Cloud
+	// projects run it from `post-install-cmd`: by the time this step runs, the
+	// patches `build:vendors` installed are applied, and a second `apply` fails
+	// hard — "Patch MCLOUD-… can't be applied to clean Magento instance" — which
+	// fails a deploy whose patches are, in fact, applied. The tool answers the
+	// question itself: `verify --cloud-only` exits 0 when the required patch set is
+	// applied and non-zero when it is not (measured against a real 2.4.9 project,
+	// both ways). `verify` without the flag is not usable: it also reports the
+	// project's deliberately unapplied *optional* quality patches, so it exits
+	// non-zero on a healthy target.
 	fill(deploy.TaskPatches, "apply Magento patches",
-		"cd {{release_path}} && if [ -x vendor/bin/ece-patches ]; then {{php_bin}} vendor/bin/ece-patches apply; fi")
+		`cd {{release_path}} && if [ -x vendor/bin/ece-patches ]; then `+
+			`if {{php_bin}} vendor/bin/ece-patches verify --cloud-only >/dev/null 2>&1; then `+
+			`echo "the Magento patch set is already applied"; `+
+			`else {{php_bin}} vendor/bin/ece-patches apply; fi; fi`)
 
 	fill(deploy.TaskCompile, "compile dependency injection",
 		"cd {{release_path}} && {{php_bin}} bin/magento setup:di:compile")
@@ -218,7 +233,18 @@ func DeployRecipe() deploy.Recipe {
 		// trial against a real project failed exactly there, and the rest of this
 		// list was already satisfied (composer check-platform-reqs).
 		Extensions: []string{"bcmath", "curl", "gd", "intl", "mysql", "soap", "sockets", "xsl", "zip"},
-		Services:   []string{"mariadb"},
+		// Both services are ones a real Magento target has, and both are needed
+		// for the rehearsal to mean anything: the database for `setup:upgrade`,
+		// and the cache because an env.php written for a server names a Redis (or
+		// Valkey) for cache and sessions — without it the target cannot start
+		// `bin/magento` at all, so the rehearsal would need a hand-edited env.php
+		// that no server would have.
+		//
+		// The names are the distribution's init scripts, not the product names:
+		// Debian installs `/etc/init.d/redis-server`, and the entrypoint starts what
+		// it is told and nothing else. `redis` reads better and starts nothing —
+		// found by asking a fresh sandbox whether its cache answered.
+		Services: []string{"mariadb", "redis-server"},
 	}
 	return recipe
 }

@@ -1,7 +1,6 @@
 package deploy
 
 import (
-	"bytes"
 	"context"
 	"os/exec"
 	"strings"
@@ -48,9 +47,9 @@ func (r SSHRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	// same failure the desktop doctor probe hit.
 	cmd.WaitDelay = waitDelayAfterKill
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = streamTo(&stdout, opts.Out)
-	cmd.Stderr = streamTo(&stderr, opts.Out)
+	stdout, stderr := newBoundedBuffer(captureLimit), newBoundedBuffer(captureLimit)
+	cmd.Stdout = streamTo(stdout, opts.Out)
+	cmd.Stderr = streamTo(stderr, opts.Out)
 
 	err := cmd.Run()
 	result := Result{Stdout: stdout.String(), Stderr: stderr.String()}

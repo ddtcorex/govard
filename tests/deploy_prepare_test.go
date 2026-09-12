@@ -840,6 +840,31 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 		t.Fatalf("a shared auth.json must silence the warning, got %q", notes)
 	}
 
+	// …or a credential the project keeps in its own checkout. Composer reads an
+	// `auth.json` from the project directory as well as from its home, and
+	// `deploy:code` materialises the checkout into the release — so a committed one
+	// authenticates the build with nothing else in play. This is the route a real
+	// Magento Cloud project used, and warning "no credentials are available" at it
+	// sends the operator hunting for a problem that is not there.
+	t.Setenv("COMPOSER_AUTH", "")
+	workWithAuth := t.TempDir()
+	writeFile(t, filepath.Join(workWithAuth, "composer.json"), private)
+	writeFile(t, filepath.Join(workWithAuth, "auth.json"),
+		`{"http-basic":{"repo.example.com":{"username":"u","password":"p"}}}`)
+	hostWithAuth := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	scWithAuth := deploy.StepContextForTest(hostWithAuth, deploy.Options{Remote: "local", Build: deploy.BuildServer})
+	scWithAuth.WorkDir = workWithAuth
+	if err := deploy.CoreCheck(context.Background(), scWithAuth); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	projectNotes := strings.Join(scWithAuth.Notes, "\n")
+	if strings.Contains(projectNotes, "warning") {
+		t.Fatalf("a project-committed auth.json must silence the warning, got %q", projectNotes)
+	}
+	if !strings.Contains(projectNotes, "the project itself carries auth.json") {
+		t.Fatalf("the note must say which source answered, got %q", projectNotes)
+	}
+
 	// A packagist-only project needs nothing.
 	public := `{"repositories":[{"type":"composer","url":"https://repo.packagist.org"}]}`
 	notes = strings.Join(check(t, public, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")

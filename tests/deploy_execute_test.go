@@ -184,6 +184,33 @@ func TestRecoveryHintNamesTheCommandThatWorks(t *testing.T) {
 	}
 }
 
+// A remote whose name is also a `govard deploy` subcommand cannot be named
+// positionally: cobra resolves the subcommand first, so `govard deploy sandbox`
+// prints the sandbox status instead of retrying the deploy. The hint therefore
+// names the remote with the flag, and this asserts the sandbox case that makes
+// the difference visible.
+func TestRecoveryHintNamesTheRemoteUnambiguously(t *testing.T) {
+	for _, hint := range []string{
+		deploy.RecoveryHint(deploy.SandboxRemoteName, true),
+		deploy.RecoveryHint(deploy.SandboxRemoteName, false),
+		deploy.RecoveryHint("production", false),
+	} {
+		for _, command := range []string{
+			"`govard deploy " + deploy.SandboxRemoteName + " ",
+			"`govard deploy " + deploy.SandboxRemoteName + "`",
+		} {
+			if strings.Contains(hint, command) {
+				t.Errorf("the hint names the remote positionally, which resolves to the %s subcommand: %q",
+					deploy.SandboxRemoteName, hint)
+			}
+		}
+	}
+	retried := deploy.RecoveryHint("production", false)
+	if !strings.Contains(retried, "`govard deploy --remote production`") {
+		t.Errorf("the hint must name the retry with the flag form, got %q", retried)
+	}
+}
+
 func TestExecutorTreatsOptionalFailuresAsNonFatal(t *testing.T) {
 	host, plan := executorForTest(t, []deploy.Task{
 		{ID: deploy.TaskCheck, Stage: deploy.StagePrepare, Command: "exit 5", Optional: true},

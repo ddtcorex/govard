@@ -1,7 +1,6 @@
 package deploy
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -68,6 +67,9 @@ func (e *CommandError) Error() string {
 	if errors.Is(e.Err, context.DeadlineExceeded) || errors.Is(e.Err, exec.ErrWaitDelay) {
 		prefix = "command timed out"
 	}
+	if errors.Is(e.Err, context.Canceled) {
+		prefix = "the run was interrupted"
+	}
 	message := prefix + ": " + e.Command
 	if trimmed := strings.TrimSpace(e.Stderr); trimmed != "" {
 		message += "\n" + trimmed
@@ -100,9 +102,9 @@ func (LocalRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	// same failure the desktop doctor probe hit.
 	cmd.WaitDelay = waitDelayAfterKill
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = streamTo(&stdout, opts.Out)
-	cmd.Stderr = streamTo(&stderr, opts.Out)
+	stdout, stderr := newBoundedBuffer(captureLimit), newBoundedBuffer(captureLimit)
+	cmd.Stdout = streamTo(stdout, opts.Out)
+	cmd.Stderr = streamTo(stderr, opts.Out)
 
 	err := cmd.Run()
 	result := Result{Stdout: stdout.String(), Stderr: stderr.String()}
@@ -124,6 +126,13 @@ func commandError(ctx context.Context, command, stderr string, err error) error 
 	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return &CommandError{Command: command, ExitCode: exitCode, Stderr: stderr, Err: fmt.Errorf("timed out: %w", context.DeadlineExceeded)}
+	}
+	// An interrupted run is not a failing command, and reading it as one ("exit
+	// -1") sends the operator looking for a defect that is not there. The deploy
+	// still reports it the same way — the record and the recovery hint are about
+	// the release, not about who stopped the run — but the sentence says so.
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return &CommandError{Command: command, ExitCode: exitCode, Stderr: stderr, Err: fmt.Errorf("interrupted: %w", context.Canceled)}
 	}
 	return &CommandError{Command: command, ExitCode: exitCode, Stderr: stderr, Err: err}
 }

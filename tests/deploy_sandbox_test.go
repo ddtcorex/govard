@@ -55,7 +55,7 @@ func TestSandboxDockerfileContainsWhatTheProfilePromises(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.profile, func(t *testing.T) {
-			dockerfile, err := deploy.SandboxDockerfile(tc.profile, deploy.SandboxRequirements{})
+			dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: tc.profile})
 			if err != nil {
 				t.Fatalf("render %s: %v", tc.profile, err)
 			}
@@ -78,7 +78,7 @@ func TestSandboxDeployerIsNotALockedAccount(t *testing.T) {
 	// a `useradd` that leaves the password field as `!` produces a sandbox no
 	// deploy can reach. The `*` field means no password can match, which is
 	// exactly right with PasswordAuthentication off.
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileBasic, deploy.SandboxRequirements{})
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileBasic})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestSandboxMirrorIsASafeGitDirectory(t *testing.T) {
 	// ownership" and the deploy cannot materialise a revision. It only shows up
 	// when the host uid differs from the image's deployer uid, which is exactly
 	// the case on a CI runner.
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileBasic, deploy.SandboxRequirements{})
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileBasic})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -108,14 +108,20 @@ func TestSandboxDockerfileCarriesTheFrameworkRequirements(t *testing.T) {
 		Extensions: []string{"bcmath", "intl"},
 		Services:   []string{"mariadb"},
 	}
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfilePHP, requirements)
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfilePHP, Requirements: requirements})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	for _, want := range []string{"libxslt1-dev", "php-bcmath", "php-intl", `GOVARD_SANDBOX_SERVICES="mariadb"`} {
+	for _, want := range []string{"libxslt1-dev", "php-bcmath", "php-intl"} {
 		if !strings.Contains(dockerfile, want) {
 			t.Errorf("the Dockerfile must carry the framework's %q requirement", want)
 		}
+	}
+	// The service list also carries the sandbox's own web tier, so the assertion
+	// is that the recipe's service is *named in it*, not that it is alone.
+	services := sandboxServicesLine(t, dockerfile)
+	if !strings.Contains(services, "mariadb") {
+		t.Errorf("GOVARD_SANDBOX_SERVICES = %q, want the framework's mariadb service", services)
 	}
 }
 
@@ -124,11 +130,11 @@ func TestSandboxDockerfileIsByteStable(t *testing.T) {
 		Extensions: []string{"intl", "bcmath"},
 		Services:   []string{"redis", "mariadb"},
 	}
-	first, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, requirements)
+	first, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileFull, Requirements: requirements})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	second, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, requirements)
+	second, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileFull, Requirements: requirements})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -138,9 +144,12 @@ func TestSandboxDockerfileIsByteStable(t *testing.T) {
 	// The order requirements arrive in must not change the image either: two
 	// recipes listing the same extensions in a different order are the same
 	// sandbox.
-	shuffled, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, deploy.SandboxRequirements{
-		Extensions: []string{"bcmath", "intl"},
-		Services:   []string{"mariadb", "redis"},
+	shuffled, err := deploy.SandboxDockerfile(deploy.SandboxSpec{
+		Profile: deploy.SandboxProfileFull,
+		Requirements: deploy.SandboxRequirements{
+			Extensions: []string{"bcmath", "intl"},
+			Services:   []string{"mariadb", "redis"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("render: %v", err)
@@ -210,7 +219,7 @@ func TestMagento2RecipeAsksForTheSandboxItNeeds(t *testing.T) {
 	if !ok {
 		t.Fatal("magento2 has no deploy recipe")
 	}
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfilePHP, recipe.Sandbox)
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfilePHP, Requirements: recipe.Sandbox})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -1018,4 +1027,20 @@ func TestSandboxContainerNameIsPerProjectPath(t *testing.T) {
 			t.Fatalf("container name %q holds %q, which Docker rejects", first, r)
 		}
 	}
+}
+
+// sandboxServicesLine is the GOVARD_SANDBOX_SERVICES value the entrypoint reads.
+func sandboxServicesLine(t *testing.T, dockerfile string) string {
+	t.Helper()
+	const marker = "GOVARD_SANDBOX_SERVICES="
+	index := strings.Index(dockerfile, marker)
+	if index < 0 {
+		t.Fatalf("the Dockerfile sets no service list:\n%s", dockerfile)
+	}
+	rest := dockerfile[index+len(marker):]
+	end := strings.IndexByte(rest, '\n')
+	if end < 0 {
+		end = len(rest)
+	}
+	return strings.Trim(rest[:end], `"`)
 }

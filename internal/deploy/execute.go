@@ -73,11 +73,19 @@ func LockKeptOnFailure(stage Stage) bool {
 // The two failures need different commands: a run holding the lock cannot be
 // retried — the retry is refused — while one that released its lock only needs
 // the fault fixed (spec P4, 7.3).
+//
+// The remote is named with `--remote` rather than as a positional argument. The
+// positional form reads better for most remotes, but `govard deploy` also has a
+// `sandbox` subcommand and cobra resolves a subcommand before a positional
+// argument: an operator following `govard deploy sandbox` would print the
+// sandbox status instead of retrying the deploy. One form that is correct for
+// every remote beats a special case that has to be kept in step with the command
+// tree.
 func RecoveryHint(remote string, lockHeld bool) string {
 	if lockHeld {
-		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)
+		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy --remote %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)
 	}
-	return fmt.Sprintf("nothing live changed and the deploy lock was released; fix the reported error and retry `govard deploy %s`", remote)
+	return fmt.Sprintf("nothing live changed and the deploy lock was released; fix the reported error and retry `govard deploy --remote %s`", remote)
 }
 
 // releaseLockAfterFailure removes the lock a failed pre-publish run still holds.

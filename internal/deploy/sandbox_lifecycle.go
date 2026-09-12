@@ -44,6 +44,13 @@ type SandboxRequest struct {
 	DocRoot     string
 	Layout      string
 	RemoteName  string
+	// PHP is the series the image must provide, for example "8.4". Empty keeps
+	// the base image's own version.
+	PHP string
+	// WebRoot is where inside the served path the web server serves from, from the
+	// project's `stack.web_root` (`/pub` for a storefront served from a subdirectory). Empty serves the served path
+	// itself, which is what a project with no web root has.
+	WebRoot string
 	// Requirements come from the framework recipe the command layer resolved.
 	Requirements SandboxRequirements
 	// Repository is the local checkout the mirror is refreshed from. Empty
@@ -57,10 +64,13 @@ type SandboxRequest struct {
 
 // SandboxState is what the sandbox commands report and what `down` needs to undo.
 type SandboxState struct {
-	Container   string
-	Image       string
-	Profile     string
-	Port        int
+	Container string
+	Image     string
+	Profile   string
+	PHP       string
+	Port      int
+	// WebPort is the published HTTP port, zero for a profile with no web tier.
+	WebPort     int
 	Running     bool
 	Exists      bool
 	RemoteName  string
@@ -127,9 +137,9 @@ func SandboxDefaultPaths() SandboxPaths {
 // idempotent: a second call reuses the key, the image, the container and the
 // port it already has.
 func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request SandboxRequest) (*SandboxState, error) {
-	if err := runtime.Available(ctx); err != nil {
-		return nil, err
-	}
+	// The request is validated before the runtime is probed: a flag that cannot
+	// name a sandbox is a usage error, and reporting it should not depend on
+	// whether this machine happens to have a container runtime.
 	profile, err := ValidateSandboxProfile(request.Profile)
 	if err != nil {
 		return nil, err
@@ -138,13 +148,27 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err != nil {
 		return nil, err
 	}
+	php, err := ValidateSandboxPHP(request.PHP)
+	if err != nil {
+		return nil, err
+	}
+	if err := runtime.Available(ctx); err != nil {
+		return nil, err
+	}
 
 	stateDir := SandboxStateDir(request.ProjectRoot)
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create %s: %w", stateDir, err)
 	}
 
-	dockerfile, err := SandboxDockerfile(profile, request.Requirements)
+	spec := SandboxSpec{
+		Project:      request.ProjectName,
+		Profile:      profile,
+		PHP:          php,
+		WebRoot:      request.WebRoot,
+		Requirements: request.Requirements,
+	}
+	dockerfile, err := SandboxDockerfile(spec)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +176,16 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err := os.WriteFile(dockerfilePath, []byte(dockerfile), 0o644); err != nil {
 		return nil, fmt.Errorf("write %s: %w", dockerfilePath, err)
 	}
+	// The files the Dockerfile copies travel beside it in the build context.
+	// They are written every time, so a run after a `stack.web_root` change builds
+	// the image the new definition describes rather than reusing the old one.
+	for name, content := range SandboxBuildFiles(spec) {
+		if err := os.WriteFile(filepath.Join(SandboxStateDir(request.ProjectRoot), name), []byte(content), 0o644); err != nil {
+			return nil, fmt.Errorf("write %s: %w", name, err)
+		}
+	}
 
-	image, err := SandboxImageTag(SandboxSpec{
-		Project:      request.ProjectName,
-		Profile:      profile,
-		Requirements: request.Requirements,
-	})
+	image, err := SandboxImageTag(spec)
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +200,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	}
 
 	container := SandboxContainerName(request.ProjectName, request.ProjectRoot)
+	servesWeb := SandboxServesWeb(profile)
 	exists, err := runtime.ContainerExists(ctx, container)
 	if err != nil {
 		return nil, err
@@ -207,6 +236,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 			MirrorPath:  mirror,
 			ProjectName: request.ProjectName,
 			Profile:     profile,
+			Web:         servesWeb,
 		}); err != nil {
 			return nil, err
 		}
@@ -242,12 +272,22 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 
+	// The web port is read back, not assumed: Docker chooses it, and a rehearsal
+	// whose `verify.url` named the wrong port would fail at the last step of every
+	// deploy for a reason that has nothing to do with the release.
+	webPort := 0
+	if servesWeb {
+		if published, err := runtime.PublishedPort(ctx, container, sandboxWebPort); err == nil {
+			webPort = published
+		}
+	}
+
 	paths := SandboxDefaultPaths()
 	// The remote carries the branch the checkout is on. A branch-less remote is
 	// not deployable with no flags at all — the option resolver refuses a
 	// remote with neither a branch nor an explicit revision — so "defaults to
 	// the local HEAD" is only true once the branch is named here.
-	remote := SandboxRemoteConfig(profile, port, paths, key)
+	remote := SandboxRemoteConfig(profile, php, port, webPort, paths, key)
 	remote.Branch = localBranch(ctx, git, request.repository())
 	if err := WriteSandboxRemote(request.ProjectRoot, request.remoteName(), remote); err != nil {
 		return nil, err
@@ -258,7 +298,9 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		Container:   container,
 		Image:       image,
 		Profile:     profile,
+		PHP:         php,
 		Port:        port,
+		WebPort:     webPort,
 		Running:     true,
 		Exists:      true,
 		RemoteName:  request.remoteName(),
@@ -294,7 +336,7 @@ func localBranch(ctx context.Context, git Runner, repository string) string {
 // SandboxRemoteConfig is the remote `up` writes. It is exported because it is
 // the contract between the sandbox and the deploy pipeline, and both are worth
 // asserting on independently.
-func SandboxRemoteConfig(profile string, port int, paths SandboxPaths, key SandboxKeyPair) engine.RemoteConfig {
+func SandboxRemoteConfig(profile, php string, port, webPort int, paths SandboxPaths, key SandboxKeyPair) engine.RemoteConfig {
 	settings := map[string]any{
 		// The image's deployer identity is fixed, so the ownership path is
 		// exercised rather than bypassed.
@@ -307,10 +349,17 @@ func SandboxRemoteConfig(profile string, port int, paths SandboxPaths, key Sandb
 	if profile == SandboxProfilePHP || profile == SandboxProfileFull {
 		settings["php_bin"] = "php"
 		settings["composer_bin"] = "composer"
+		// A deploy refuses to run when the target's PHP does not match the
+		// declared series, so the sandbox declares what it actually shipped.
+		// Without this, asking for 8.4 would pin the image correctly and then
+		// fail the very first check.
+		if php != "" {
+			settings["php_version"] = php
+		}
 	}
 
 	keyPath := filepath.ToSlash(filepath.Join(".govard", "sandbox", SandboxKeyName))
-	return engine.RemoteConfig{
+	remote := engine.RemoteConfig{
 		Host:       "127.0.0.1",
 		Port:       port,
 		User:       SandboxUser,
@@ -325,6 +374,16 @@ func SandboxRemoteConfig(profile string, port int, paths SandboxPaths, key Sandb
 		},
 		Deploy: &engine.DeployConfig{Settings: settings},
 	}
+
+	// A sandbox that serves the release is the only place the HTTP half of
+	// `deploy:verify` can be rehearsed, and a URL nobody wrote leaves it switched
+	// off: the check reports the files in place and says nothing about whether the
+	// application answers. The remote carries it as a per-remote override, which
+	// is exactly what `deploy.verify.url` on a remote means.
+	if webPort > 0 {
+		remote.Deploy.Verify.URL = fmt.Sprintf("http://127.0.0.1:%d/", webPort)
+	}
+	return remote
 }
 
 // installSandboxAuthorizedKey installs the generated public key for the
@@ -451,13 +510,17 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 	container := SandboxContainerName(project, request.ProjectRoot)
 
 	state := &SandboxState{
-		Container:   container,
-		RemoteName:  request.remoteName(),
-		RemoteSet:   config.RemoteSet,
-		Port:        config.Remote.Port,
-		MirrorPath:  SandboxMirrorPath(request.ProjectRoot),
-		KeyPath:     filepath.Join(SandboxStateDir(request.ProjectRoot), SandboxKeyName),
-		Profile:     containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel),
+		Container:  container,
+		RemoteName: request.remoteName(),
+		RemoteSet:  config.RemoteSet,
+		Port:       config.Remote.Port,
+		MirrorPath: SandboxMirrorPath(request.ProjectRoot),
+		KeyPath:    filepath.Join(SandboxStateDir(request.ProjectRoot), SandboxKeyName),
+		Profile:    containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel),
+		// The series the image was built with, read back from the remote the
+		// creation wrote: `status` must report what exists, not what a flag would
+		// now ask for.
+		PHP:         sandboxRemotePHP(config.Remote),
 		DeployPath:  config.Remote.DeployPath,
 		CurrentPath: config.Remote.Path,
 	}
@@ -487,7 +550,24 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 	if err == nil {
 		state.Port = port
 	}
+	// The web port is reported the same way, so `sandbox status` answers "where do
+	// I point a browser at this rehearsal" without the operator reading `up`'s
+	// output from a terminal that has since scrolled away.
+	if SandboxServesWeb(state.Profile) {
+		if webPort, err := runtime.PublishedPort(ctx, container, sandboxWebPort); err == nil {
+			state.WebPort = webPort
+		}
+	}
 	return state, nil
+}
+
+// sandboxRemotePHP reads the PHP series out of a sandbox remote's deploy
+// settings, and is empty for a remote that does not record one.
+func sandboxRemotePHP(remote engine.RemoteConfig) string {
+	if remote.Deploy == nil {
+		return ""
+	}
+	return settingsString(remote.Deploy.Settings, "php_version")
 }
 
 // SandboxDown removes the container and the remote `up` wrote, so a stale
