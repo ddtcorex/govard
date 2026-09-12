@@ -747,3 +747,33 @@ func TestMagento2UnsetRuntimeReloadIsANoOp(t *testing.T) {
 		t.Fatalf("the cache step must run with no reload configured: %v\n%s", err, stub)
 	}
 }
+
+// The sandbox image the recipe asks for has to satisfy the platform check a real
+// project's `composer install` performs. A first trial of the deploy sandbox against
+// a real Magento project stopped at build:vendors with "magento/framework requires
+// ext-curl * -> it is missing from your system"; installing php-curl in the running
+// container moved it to the next (project-side) failure, and `composer
+// check-platform-reqs` there then reported every other extension as satisfied — so
+// `curl` was the one gap in this list.
+func TestMagento2SandboxRequirementsCoverThePlatformCheck(t *testing.T) {
+	requirements := magento2.DeployRecipe().Sandbox
+
+	extensions := map[string]bool{}
+	for _, extension := range requirements.Extensions {
+		extensions[extension] = true
+	}
+	// Every extension Magento's own composer platform check names and Debian does not
+	// ship in php-cli. `curl` was the missing one.
+	for _, want := range []string{"curl", "bcmath", "gd", "intl", "mysql", "soap", "sockets", "xsl", "zip"} {
+		if !extensions[want] {
+			t.Errorf("sandbox requirements do not install ext-%s, so a real composer install cannot pass its platform check", want)
+		}
+	}
+
+	// The services the recipe's own commands need: setup:upgrade and setup:db:status
+	// talk to a database.
+	services := strings.Join(requirements.Services, " ")
+	if !strings.Contains(services, "mariadb") {
+		t.Errorf("sandbox services = %q, want a database for the recipe's own commands", services)
+	}
+}
