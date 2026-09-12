@@ -650,6 +650,17 @@ func prepareInPlaceDocroot(ctx context.Context, sc *StepContext, repository stri
 	if strategy != PublishInPlace {
 		return nil
 	}
+
+	// Before the build, not only at activation: the build steps run in the
+	// release, and they need the configuration the docroot already has. Adopting
+	// it here is what lets `deploy:shared` link the release to the live file
+	// instead of leaving it with the placeholder from the archive — a release
+	// built against a placeholder without a database connection fails at
+	// `db:migrate`, minutes later and for a reason that reads like a target fault.
+	if err := ensureInPlaceShared(ctx, sc); err != nil {
+		return err
+	}
+
 	if repository == "" {
 		// Nothing to fetch from. The docroot must already hold the revision;
 		// the reset in publish:activate reports it clearly if it does not.
