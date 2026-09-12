@@ -666,8 +666,22 @@ govard deploy --remote sandbox --yes
 
 `--docroot` shapes the target so the publish strategy resolves the way you want
 to exercise it: `absent` or `symlink` selects the atomic swap, `real` selects
-in-place publishing. `down` removes the container and the remote it wrote;
-`--purge` also removes the image, the key and the mirror.
+in-place publishing. Shaping happens when the target is created and when you name
+a shape, because `up` is also how a stopped sandbox is started and how the mirror
+is refreshed before the next revision is deployed — neither may cost the
+application currently being served. `reset` shapes unconditionally: wiping the
+deploy directories and laying them out again is what it is for. `down` removes
+the container and the remote it wrote; `--purge` also removes the image, the key
+and the mirror.
+
+A sandbox you already have is described by what it is, not by the flags of the
+command that reached it: `up` keeps the PHP series the container was built with,
+so a later `up` without `--php` does not erase it, and asking for a different
+series is refused with the flag that actually changes it (`--recreate`). The
+`sandbox` remote block itself is rewritten from the container's state on every
+`up` (host, port, paths, branch, mirror, verify URL, and the settings the profile
+implies), so an edit made there by hand does not survive; put what you want to
+keep in the project's own configuration instead.
 
 The `php` and `full` profiles also ship a **web tier**: nginx serving the served
 path plus the project's `stack.web_root` (`/pub` for Magento), and PHP-FPM running

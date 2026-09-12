@@ -659,8 +659,20 @@ chứ không tái dùng image cũ.
 
 `--docroot` định hình target để chiến lược publish resolve theo đúng thứ bạn muốn
 kiểm chứng: `absent` hoặc `symlink` chọn cú swap nguyên tử, `real` chọn in-place.
+Việc định hình chỉ xảy ra khi target được tạo và khi bạn nói rõ hình dạng muốn có —
+vì `up` còn là cách khởi động lại sandbox đang dừng và cách refresh mirror trước khi
+deploy revision kế tiếp, và cả hai đều không được phép làm mất ứng dụng đang phục
+vụ. `reset` thì luôn định hình: xoá thư mục deploy rồi dựng lại là việc của nó.
 `down` xoá container và remote mà nó đã ghi; `--purge` xoá thêm image, khoá và
 mirror.
+
+Một sandbox đã tồn tại được mô tả bằng chính nó, không bằng flag của lệnh vừa gọi
+tới: `up` giữ nguyên series PHP mà container được build, nên lần `up` sau không có
+`--php` sẽ không xoá mất nó, và đòi một series khác sẽ bị từ chối kèm đúng flag thay
+đổi được nó (`--recreate`). Riêng block remote `sandbox` được ghi lại từ trạng thái
+container ở mọi lần `up` (host, port, path, branch, mirror, verify URL và các setting
+mà profile hàm ý), nên sửa tay trong đó không giữ được — hãy đặt những gì cần giữ
+vào cấu hình của chính dự án.
 
 Một lần diễn tập chỉ đầy đủ bằng credential và ứng dụng mà target có. Package
 `git` cần khoá và `known_hosts` *bên trong container*, và credential chỉ nằm trong
