@@ -14,7 +14,14 @@ import (
 // maintenanceStub is a `bin/magento` that behaves like the real one for the two
 // maintenance commands: the flag is created in the working directory, which is
 // what makes "where did the step run" observable.
+//
+// It also fails the way the real one fails when the application's dependencies are
+// not installed — `Autoload error: Vendor autoload is not found` — because that is
+// the condition the maintenance guard has to recognise: a docroot that cannot run
+// has no window to open, and a step that runs there turns a repairable target into
+// a failed deploy.
 const maintenanceStub = "#!/bin/sh\n" +
+	"if [ ! -f vendor/autoload.php ]; then echo 'Autoload error: Vendor autoload is not found.' >&2; exit 1; fi\n" +
 	"case \"$1\" in\n" +
 	"  maintenance:enable) mkdir -p var && : > var/.maintenance.flag ;;\n" +
 	"  maintenance:disable) rm -f var/.maintenance.flag ;;\n" +
@@ -40,6 +47,16 @@ func TestMagento2MaintenanceModeIsSetOnTheServedRelease(t *testing.T) {
 		}
 		if err := os.WriteFile(filepath.Join(dir, "bin", "magento"), []byte(maintenanceStub), 0o755); err != nil {
 			t.Fatalf("write the stub in %s: %v", dir, err)
+		}
+		// The guard asks for a docroot that can actually run: a served application
+		// has its dependencies installed (the autoloader is the marker, because
+		// `vendor/` itself exists in a checkout that commits `vendor/.htaccess`),
+		// and one that cannot run has no window to open.
+		if err := os.MkdirAll(filepath.Join(dir, "vendor"), 0o755); err != nil {
+			t.Fatalf("mkdir vendor in %s: %v", dir, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "vendor", "autoload.php"), []byte("<?php\n"), 0o644); err != nil {
+			t.Fatalf("write the autoloader in %s: %v", dir, err)
 		}
 	}
 
@@ -97,6 +114,33 @@ func TestMagento2MaintenanceWindowIsANoOpWithoutAServedApplication(t *testing.T)
 			serve: func(t *testing.T, served string) {
 				if err := os.MkdirAll(served, 0o755); err != nil {
 					t.Fatalf("mkdir the served directory: %v", err)
+				}
+			},
+		},
+		{
+			// What `sandbox reset --docroot real` leaves, and what the reference
+			// tool leaves on a target nobody has deployed to yet: the application's
+			// files are there, its dependencies are not. Running it fails with
+			// "Autoload error: Vendor autoload is not found", so the window is a
+			// no-op — the first in-place deploy has to be allowed to copy vendor/ in
+			// through the activation instead of dying before it.
+			name: "a served directory with bin/magento but no dependencies",
+			serve: func(t *testing.T, served string) {
+				if err := os.MkdirAll(filepath.Join(served, "bin"), 0o755); err != nil {
+					t.Fatalf("mkdir the served directory: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(served, "bin", "magento"), []byte(maintenanceStub), 0o755); err != nil {
+					t.Fatalf("write the served stub: %v", err)
+				}
+				// The checkout's own `vendor/` — this project commits
+				// `vendor/.htaccess`, so the directory exists and only the
+				// autoloader is missing. A guard that looked for the directory
+				// passed here and the step failed anyway.
+				if err := os.MkdirAll(filepath.Join(served, "vendor"), 0o755); err != nil {
+					t.Fatalf("mkdir the served vendor: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(served, "vendor", ".htaccess"), []byte("Deny from all\n"), 0o644); err != nil {
+					t.Fatalf("write the served placeholder: %v", err)
 				}
 			},
 		},

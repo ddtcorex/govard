@@ -5,6 +5,7 @@ package integration
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,14 +225,22 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 		// sync names what the stub should verify the activation published into the
 		// served docroot. Empty means the case does not deploy in place.
 		sync string
+		// backup asks for `--db-backup` and names the dump shape the stub writes:
+		// "plain" is Magento's default (`<timestamp>_db.sql`), "compressed" is what
+		// a project with backup compression gets (`_db.sql.gz`). The recipe's
+		// command has to find both — it once looked for `*.gz` alone, which made
+		// every real deploy with --db-backup fail after a successful dump.
+		backup string
 	}{
 		{
 			name:   "single",
 			static: "single",
+			backup: "plain",
 		},
 		{
 			name:     "split",
 			static:   "split",
+			backup:   "compressed",
 			settings: "    split_static_deployment: true\n    worker_control: true\n",
 		},
 		{
@@ -289,6 +298,12 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
 				t.Fatalf("write the served path: %v", err)
 			}
+			if testCase.backup != "" {
+				// Read by the stub when the recipe asks for a dump.
+				if err := os.WriteFile(filepath.Join(projectDir, "backup-expectation.txt"), []byte(testCase.backup+"\n"), 0o644); err != nil {
+					t.Fatalf("write the backup expectation: %v", err)
+				}
+			}
 			if testCase.sync != "" {
 				// The stub checks, at verify time, that the served docroot holds what
 				// the build produced: an in-place activation that copies nothing
@@ -340,7 +355,11 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 				}
 			}
 
-			deploy := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revision, "--yes")
+			deployArgs := []string{"deploy", "--remote", "sandbox", "--revision", revision, "--yes"}
+			if testCase.backup != "" {
+				deployArgs = append(deployArgs, "--db-backup")
+			}
+			deploy := env.RunGovard(t, projectDir, deployArgs...)
 			if deploy.ExitCode != 0 {
 				t.Fatalf("the sandbox deploy failed (%d) — the stub's assertion is the verdict\nstdout: %s\nstderr: %s",
 					deploy.ExitCode, deploy.Stdout, deploy.Stderr)
@@ -352,4 +371,74 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			status.AssertOutputContains(t, revision[:8])
 		})
 	}
+}
+
+// `govard deploy rollback --with-db` restores the dump a release recorded. The
+// restore only works when the file reaches Magento under the name and in the
+// directory `setup:rollback` demands, which the stub enforces — so a regression
+// to "pass the absolute path" ends this deploy with Magento's own error.
+func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/magento-stub", "deploy-sandbox-db-restore")
+
+	if err := os.WriteFile(filepath.Join(projectDir, "deploy-expectation.txt"), []byte("single\n"), 0o644); err != nil {
+		t.Fatalf("write the expectation: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
+		t.Fatalf("write the served path: %v", err)
+	}
+	// Two revisions of the *fixture* project — the stub needs its own files, so
+	// this seeds from the checkout rather than from a minimal repository.
+	origin, revisions := seedFixtureRevisions(t, projectDir, 2)
+	seedSandboxCheckout(t, projectDir, origin)
+
+	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "php")
+	if up.ExitCode != 0 {
+		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
+	}
+	t.Cleanup(func() { env.RunGovard(t, projectDir, "deploy", "sandbox", "down", "--purge") })
+
+	// The first release records a dump …
+	first := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[0], "--db-backup", "--yes")
+	if first.ExitCode != 0 {
+		t.Fatalf("the first deploy failed (%d)\nstdout: %s\nstderr: %s", first.ExitCode, first.Stdout, first.Stderr)
+	}
+	// … the second becomes what is live, so the rollback has somewhere to go back to.
+	second := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[1], "--yes")
+	if second.ExitCode != 0 {
+		t.Fatalf("the second deploy failed (%d)\nstdout: %s\nstderr: %s", second.ExitCode, second.Stdout, second.Stderr)
+	}
+
+	rollback := env.RunGovard(t, projectDir, "deploy", "rollback", "sandbox", "--with-db", "--yes")
+	if rollback.ExitCode != 0 {
+		t.Fatalf("rollback --with-db failed (%d) — the stub enforces Magento's own validation\nstdout: %s\nstderr: %s",
+			rollback.ExitCode, rollback.Stdout, rollback.Stderr)
+	}
+	rollback.AssertOutputContains(t, revisions[0][:8])
+}
+
+// seedFixtureRevisions seeds an origin whose revisions carry the project's own
+// files, which the Magento recipe's steps need (composer.json, bin/magento, the
+// storefront) — unlike seedDeployRevisions, which writes a one-file repository for
+// the framework-neutral cases.
+func seedFixtureRevisions(t *testing.T, projectDir string, count int) (string, []string) {
+	t.Helper()
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	origin := filepath.Join(root, "origin.git")
+
+	copyDir(t, projectDir, work)
+	runGitIn(t, work, "init", "-q", "-b", "main")
+
+	revisions := make([]string, 0, count)
+	for index := 0; index < count; index++ {
+		if err := os.WriteFile(filepath.Join(work, "app.txt"), []byte(fmt.Sprintf("deployed revision %d\n", index)), 0o644); err != nil {
+			t.Fatalf("write the fixture file: %v", err)
+		}
+		runGitIn(t, work, "add", "-A")
+		runGitIn(t, work, "commit", "-q", "-m", fmt.Sprintf("revision %d", index))
+		revisions = append(revisions, runGitIn(t, work, "rev-parse", "HEAD"))
+	}
+	runGitIn(t, root, "clone", "-q", "--bare", work, origin)
+	return origin, revisions
 }

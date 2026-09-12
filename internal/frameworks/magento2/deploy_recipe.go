@@ -149,7 +149,7 @@ func DeployRecipe() deploy.Recipe {
 	// a git checkout that may not have been deployed to yet. Neither has anything
 	// to protect, and neither may fall back to the release being built.
 	fill(deploy.TaskMaintenanceEnable, "enable maintenance mode",
-		"if [ -f {{current_path}}/bin/magento ]; then cd {{current_path}} && {{php_bin}} bin/magento maintenance:enable; fi")
+		magentoMaintenanceGuard+" && {{php_bin}} bin/magento maintenance:enable; fi")
 
 	fill(deploy.TaskWorkersPause, "pause cron and message consumers",
 		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:remove && {{php_bin}} bin/magento queue:consumers:stop; fi`)
@@ -170,7 +170,7 @@ func DeployRecipe() deploy.Recipe {
 		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:install && {{php_bin}} bin/magento queue:consumers:restart; fi`)
 
 	fill(deploy.TaskMaintenanceDisable, "disable maintenance mode",
-		"if [ -f {{current_path}}/bin/magento ]; then cd {{current_path}} && {{php_bin}} bin/magento maintenance:disable; fi")
+		magentoMaintenanceGuard+" && {{php_bin}} bin/magento maintenance:disable; fi")
 
 	// The engine owns the path and the release record; the recipe owns the dump.
 	backup := recipe.Task(deploy.TaskDBBackup)
@@ -249,12 +249,68 @@ func DeployRecipe() deploy.Recipe {
 	return recipe
 }
 
+// magentoMaintenanceGuard is the opening of both maintenance commands. It asks
+// whether the *application* is being served, not whether a directory exists: the
+// flag is written into the docroot the web server reads, and a docroot that cannot
+// run — no `bin/magento`, or no installed dependencies behind it — has no window
+// to open and nothing to protect.
+//
+// The dependency half is what a first in-place deploy onto a fresh docroot needs.
+// `sandbox reset --docroot real` seeds the docroot as a checkout of the revision,
+// which is exactly what the reference tool leaves behind on a target that has
+// never been deployed to; running Magento there fails with `Autoload error: Vendor
+// autoload is not found`, and the deploy died at `maintenance:enable` — before the
+// activation that would have copied `vendor/` in and repaired it. Found by running
+// the in-place path against a real project.
+//
+// The marker is the autoloader, not the directory. This project commits
+// `vendor/.htaccess`, as Magento projects do, so a checkout that has never been
+// built *does* have a `vendor/` directory — `[ -d vendor ]` passed the guard and
+// the step failed anyway. `vendor/autoload.php` is what `bin/magento` actually
+// requires, so that is what is asked for.
+//
+// A docroot with a working application is unaffected: it has both.
+const magentoMaintenanceGuard = "if [ -f {{current_path}}/bin/magento ] && [ -f {{current_path}}/vendor/autoload.php ]; then cd {{current_path}}"
+
 // magentoDumpCommand writes a plain SQL dump to {{backup_path}}. It reads the
 // connection settings from app/etc/env.php through bin/magento, so credentials
 // are never duplicated into the project configuration.
-const magentoDumpCommand = "cd {{release_path}} && {{php_bin}} bin/magento setup:backup --db --no-interaction >/dev/null && latest=\"$(ls -1t var/backups/*.gz 2>/dev/null | head -n 1)\" && test -n \"$latest\" && cp \"$latest\" {{backup_path}}"
+//
+// The file the tool writes is `<timestamp>_db.sql` — `.sql.gz` only when the
+// project configures backup compression — and this command used to look for
+// `*.gz` alone: on a real project the dump succeeded, the glob matched nothing,
+// `test -n` failed, and `>/dev/null` had thrown away the tool's own output, so
+// the deploy said nothing but "exit 1". It now takes whichever of the two the
+// tool wrote, newest first, and lets its output through — the engine bounds what
+// it keeps, so a failure carries its own explanation.
+//
+// `setup:backup` toggles maintenance mode around the dump, which is safe inside
+// the deploy's window: Magento's own MaintenanceModeEnabler records that the flag
+// was already on and skips disabling it (verified in the vendored
+// framework/App/Console/MaintenanceModeEnabler.php of a real release).
+const magentoDumpCommand = "cd {{release_path}} && {{php_bin}} bin/magento setup:backup --db --no-interaction && " +
+	"latest=\"$(find var/backups -maxdepth 1 -type f \\( -name '*_db.sql' -o -name '*_db.sql.gz' \\) -printf '%T@ %p\\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2-)\" && " +
+	"test -n \"$latest\" && cp \"$latest\" {{backup_path}}"
 
 // magentoRestoreCommand loads a dump back over the live database. It is only
 // reached through `govard deploy rollback --with-db`, which is why the
 // destructive path is behind an explicit confirmation.
-const magentoRestoreCommand = "cd {{release_path}} && {{php_bin}} bin/magento setup:rollback --db-file={{backup_path}} --no-interaction"
+//
+// `setup:rollback --db-file` is not "import this file". Magento validates the
+// name against `/[0-9]_db.*\.sql$/` and looks it up inside the release's
+// `var/backups/`:
+//
+//	if (!$rollbackFile || preg_match('/[0-9]_(db)(.*?).(sql)$/', $rollbackFile) !== 1) {
+//	    throw new LocalizedException('The rollback file is invalid. ...');
+//	}
+//	if (!$this->file->isExists($this->backupsDir . '/' . $rollbackFile)) { ... }
+//
+// (Magento\Framework\Setup\BackupRollback::dbRollback, read in a real release's
+// vendor tree.) A dump copied to `shared/backups/deploy/<n>/dump.sql` matches
+// neither, so the restore failed with "The rollback file is invalid" — which is
+// what running `rollback --with-db` against a real target showed. The dump is
+// therefore copied back under a Magento-shaped name inside `var/backups`, where
+// the release already links that directory from `shared/`.
+const magentoRestoreCommand = "cd {{release_path}} && restore=\"$(date +%s)_db.sql\" && " +
+	"cp {{backup_path}} \"var/backups/$restore\" && " +
+	"{{php_bin}} bin/magento setup:rollback --db-file=\"$restore\" --no-interaction"
