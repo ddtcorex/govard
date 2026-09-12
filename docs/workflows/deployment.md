@@ -511,6 +511,18 @@ own authentication error. Put the credentials in the container (`docker exec`, o
 a mounted file) and re-run `govard deploy --remote sandbox --yes`; the failing
 step resumes from a clean release directory and the Composer cache is kept.
 
+The same is true of the application the target is supposed to be serving. A
+brand-new sandbox has no installed application, so a pipeline that reaches
+`build:assets` or `db:migrate` stops on a prerequisite rather than on a defect:
+`setup:static-content:deploy` needs the store configuration, and `setup:upgrade`
+needs a database and a *supported* search engine. `shared/app/etc/env.php` on the
+target is what the release links for all of it, so a rehearsal against a real
+project means writing that file (pointing at a database the target can reach, with
+a cache backend and session handler it can reach) and having the data behind it —
+a `govard bootstrap -e <env>` clone is the usual source. Those prerequisites are
+the target's, not the engine's: a server that has never run the application cannot
+publish a release to it, and the sandbox refuses to pretend otherwise.
+
 ## One connection per target
 
 Every command a run issues shares a single SSH connection per target
