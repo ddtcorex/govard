@@ -165,7 +165,12 @@ envelope **before** the command does any work.
   child re-declares the requirement on its own group.
 - Never probe or gate inside `RunE`. The gate owns the message, the hint, and
   the exit code; an ad-hoc check leaks a raw runtime error and breaks the
-  contract.
+  contract. The one sanctioned exception is `govard audit run`: whether Docker
+  is required depends on the parsed `--checks` value, which a static
+  per-command annotation cannot know, so it probes `runtime.CapDocker` in its
+  own preparation path (`requireContainerRuntime`) and returns the same
+  `*runtime.MissingError` — exit code and hint stay identical to the gate's.
+  Everywhere else the fix is an annotation, never a probe.
 - `runtime.AlwaysRunnable` exempts `help`, `completion`, `doctor`,
   `capabilities`, and `version` **by top-level command**. Their subcommands ride
   along (a host with no container runtime must still print `completion bash`),
@@ -190,11 +195,15 @@ inheriting `docker`. The bar, by kind of work:
   `project open`, `domain list`, `vscode setup`;
 - static analysis of the checkout: `audit run --checks integrity` plus the
   host-side audit lifecycle (`status`, `result`, `diff`, `cleanup`);
-- direct host or network work: `remote *` (SSH), `sync` (rsync), `tunnel *`
-  (`cloudflared`), `trust`, `self-update`.
+- direct host or network work: `remote *` (SSH), `sync` (rsync), `deploy`
+  (SSH + rsync, with `deploy plan` and `deploy build` requirement-free and
+  `deploy check` / `releases` / `status` / `unlock` SSH-only; `deploy sandbox *`
+  is the one exception — it creates the container that plays the target, then
+  talks to it over SSH),
+  `tunnel *` (`cloudflared`), `trust`, `self-update`.
 
 Container orchestration keeps `docker`: `env`, `svc`, `db`, `shell`, `tool`,
-`test`, `frontend`, `logs`, `ps`, `status`, `deploy`, `bootstrap`, `debug`,
+`test`, `frontend`, `logs`, `ps`, `status`, `bootstrap`, `debug`,
 `extensions`, `snapshot`, `upgrade`, launching `desktop`, `audit toolchain`, and
 the container-backed audit checks. A command that regresses out of the free set
 is a bug, and `docs/reference/docker-free.md` is the enforced list.

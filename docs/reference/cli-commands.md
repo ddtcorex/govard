@@ -687,11 +687,168 @@ govard db clone-volume warden_magento2_dbdata
 
 ### `govard deploy`
 
-Run deploy lifecycle hooks for the current project.
+Deploy a git revision to a remote environment.
 
 ```bash
-govard deploy
+govard deploy <remote>                   # deploy the local HEAD
+govard deploy staging --revision <sha>   # deploy an exact commit (CI)
+govard deploy build staging --output artifacts --revision <sha>   # build an artifact (CI)
+govard deploy staging --artifact-dir artifacts --revision <sha>   # deploy that artifact
+govard deploy plan staging               # print the plan, connect nowhere
+govard deploy check staging              # preflight and report the publish strategy
+govard deploy releases staging           # list the releases on the target
+govard deploy status                     # what every environment is serving
+govard deploy rollback staging           # put the previous release back
+govard deploy rollback staging --to 12   # ... or a named one
+govard deploy rollback staging --with-db --yes   # ... and its database dump
+govard deploy unlock staging --force     # release a lock a failed run left behind
 ```
+
+Managing the local sandbox — a container that plays the deployment target:
+
+```bash
+govard deploy sandbox up                      # create it (php profile by default)
+govard deploy sandbox up --profile basic      # sshd, rsync and git only
+govard deploy sandbox up --docroot real       # a real docroot: in-place publishing
+govard deploy sandbox status
+govard deploy sandbox reset --layout deployer # seed a target the other tool owns
+govard deploy sandbox ssh
+govard deploy sandbox down [--purge]
+```
+
+The target is a remote from `.govard.yml`. The branch, repository, deploy path
+and publish strategy come from the project `deploy:` block; a remote overrides
+them either through the topology fields on the remote (`branch`, `repository`,
+`deploy_path`, `publish`, `local`) or through `remotes.<name>.deploy.<key>` for
+keys of the `deploy:` block. Flags win over both.
+
+`deploy_path` has no default and does not get one: a remote that omits it gets
+the layout the target already has (`releases/`, `shared/`, `.dep/` or a `current`
+symlink), adopted only when exactly one candidate matches, and govard says which
+one it used. No layout, or several, is a configuration error (exit 4) naming what
+was probed. A configured `deploy_path` is never probed.
+
+`deploy:verify` runs the live-revision check, the recipe's required shared files,
+the recipe's own checks — for Magento, `setup:db:status` and, in place, the
+docroot's static content version — and an HTTP request when `deploy.verify.url`
+is set. A deploy that runs `db:migrate` with no verify URL prints a warning
+before its first step. `maintenance:enable`/`disable` are skipped for a symlink
+activation unless the plan also migrates or imports configuration, which is when
+a maintenance window is genuinely needed.
+
+The pipeline is a fixed sequence of neutral tasks. A project customises it by
+anchoring hooks on a task id, on a stage alias (`stage:build`) or on another
+hook:
+
+```yaml
+deploy:
+  hooks:
+    - { name: apache-reload, on: "publish:activate", position: after, order: 10, run: "touch ~/apache-reload" }
+```
+
+A framework contributes its own recipe rather than govard branching on a
+framework name: `magento2` fills the build and publish tasks with Magento
+commands, and a framework without a recipe still deploys code through the
+neutral pipeline. Every step a recipe leaves empty is reported as skipped, not
+as a failure.
+
+Flags: `--remote`, `--branch`, `--revision`, `--tag` (mutually exclusive),
+`--build=auto|server|artifact`, `--artifact-dir`, `--publish=auto|symlink|in_place`,
+`--keep`, `--verify/--no-verify`, `--db-backup/--no-db-backup`,
+`--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--resume`,
+`--from <task>`, `--force`, `--yes`, `--json`, `--verbose` (stream each command's output live, indented under its task; a no-op with `--json`).
+
+**Build modes.** `--build=auto` (the default) resolves by presence, never by
+sniffing the environment: an artifact directory — `--artifact-dir <dir>` or
+`deploy.artifact_dir` in the project — means the build already happened, so the
+mode is `artifact`; otherwise it is `server`. `--build=artifact` with no artifact
+directory is a usage error rather than a silent fall back to building on the
+server, which is the outcome the mode exists to avoid.
+
+**The two-job CI shape.** The point of the artifact mode is that the job which
+touches production needs no toolchain:
+
+| Job | Image needs | Command |
+|---|---|---|
+| `build` | PHP, Composer, Node — whatever the recipe's build tasks need | `govard deploy build production --output artifacts --revision $CI_COMMIT_SHA` |
+| `deploy` | govard, ssh, rsync — nothing else | `govard deploy production --artifact-dir artifacts --revision $CI_COMMIT_SHA --yes` |
+
+`govard deploy build` materialises the revision into the output directory, runs
+the recipe's build tasks there, and writes a `manifest.json` recording the
+revision, the PHP version, the `composer.lock` hash and a sha256 list of every
+file. It needs no target and no container runtime. The deploy job verifies the
+manifest against the revision it is deploying and compares the recorded PHP
+version with the target's, refusing with an actionable message on a mismatch —
+so a CI image that does not match the server is caught before anything is
+published. An artifact deploy skips the five build tasks and runs
+`deploy:artifact` instead; `govard deploy plan` shows which branch is in effect.
+
+An output directory that is not empty is refused, so a stale file from an
+earlier build cannot ship: pass `--force` to replace its contents.
+
+`govard deploy build` flags: `--remote`, `--output` (required), `--branch`,
+`--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. It needs no
+capability at all: `none`.
+
+**Settings and credentials.** `deploy.settings` is validated against the recipe
+before anything runs: an unknown key, or a value with the wrong shape, exits 4 with
+the key named and the near miss suggested. String settings must be quoted if they
+look numeric — the engine reads them as strings. `COMPOSER_AUTH` from the
+environment is forwarded to the dependency step on its standard input (never in the
+command), and a `shared/auth.json` on the target works too; `govard deploy check`
+reports which source is in play and warns when a target-side build will need one
+and there is none.
+
+**Machine-readable output.** With `--json`, stdout carries exactly one JSON
+document and the human timeline goes to stderr: `schema_version`, `remote`,
+`branch`, `revision`, `release`, `build.mode`, `publish.strategy`,
+`publish.previous_release`, `verify`, `result`, `duration_ms` and
+`tasks[{id,stage,status,duration_ms}]`. A failed deploy emits the same document
+with `result: "failed"` and `error`, and exits 1. The release record carries
+`ci.pipeline`/`ci.job` when the run is a CI run.
+
+`deploy.lock_stale_after` (2h) and `deploy.maintenance_timeout` (15m) are the two
+timeouts beyond `command_timeout`: the first is how old a lock must be for
+`deploy unlock` to release it without `--force`, the second bounds one step inside
+the maintenance window.
+
+**The sandbox.** `govard deploy sandbox up` builds a container, publishes SSH on
+a free loopback port, generates a dedicated key under `.govard/sandbox/`
+(gitignored), mounts a read-only mirror of your local repository and writes a
+`sandbox` remote into `.govard.local.yml`. The mirror is refreshed before every
+deploy, so a commit you have never pushed is deployable, and nothing in the
+pipeline knows it is talking to a container — a sandbox deploy is a production
+deploy pointed at one.
+
+Because `sandbox` is a subcommand, deploy to it with the flag form:
+`govard deploy --remote sandbox --yes`.
+
+Profiles: `basic` (sshd, rsync, git), `php` (adds php-cli, composer, node) and
+`full` (adds a database and a cache), defaulting to `php`. `--docroot` shapes the
+target so the publish strategy resolves the way you want to exercise it:
+`absent` or `symlink` selects the atomic swap, `real` selects in-place
+publishing. `down` removes the container and the remote it wrote; `--purge` also
+removes the image, the key and the mirror. `reset` wipes the target's deploy
+directories, and `--layout=deployer` seeds a target that looks like one the other
+deploy tool owns.
+
+The sandbox is the only deploy command that needs `docker`.
+
+`--resume` continues the newest release whose record is not `ok`; `--from <task>`
+starts at a named task or hook and reports everything before it as skipped. Both
+are recovery paths an operator asks for explicitly — neither is automatic.
+
+`govard deploy rollback` never rebuilds: a symlink layout is re-pointed, and an
+in-place layout re-runs the publish tail from the release directory already on
+the server. `--with-db` restores the dump recorded by that release and destroys
+current data, so it needs `--yes` (or an interactive confirmation).
+
+Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
+capability, `4` configuration. `govard deploy` and `govard deploy rollback` need
+`ssh` and `rsync`; `deploy check`, `deploy releases`, `deploy status` and
+`deploy unlock` need only `ssh`; `deploy build` and `deploy plan` need nothing.
+`govard deploy sandbox *` is the exception: creating the fake server needs
+`docker`, and then govard talks to it over SSH like any other target.
 
 ### `govard snapshot`
 

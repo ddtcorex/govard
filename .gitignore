@@ -10,6 +10,11 @@
 # Govard generated files
 /.govard/
 .govard.local.yml
+# ... but an integration fixture's project configuration is test data, not
+# local configuration. A developer machine whose global ignore lists
+# `.govard.yml` must not be able to keep CI from having it: the tests read it
+# straight out of the checkout, and an untracked fixture fails only in CI.
+!tests/integration/projects/**/.govard.yml
 **/.govard-compose.yml
 **/.govard-compose.yaml
 **/varnish/

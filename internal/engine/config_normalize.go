@@ -21,6 +21,7 @@ func NormalizeConfig(config *Config, root string) {
 	normalizeBlueprintRegistryConfig(&config.BlueprintRegistry)
 	config.Framework = NormalizeFrameworkAlias(config.Framework)
 	normalizeAuditConfig(&config.Audit)
+	NormalizeDeployConfig(config)
 	// Frameworks without a lint profile (e.g. symfony, laravel) must not
 	// carry a default audit.lint.provider that promises a non-existent gate.
 	// Clearing it here prevents govard init/bootstrap from writing

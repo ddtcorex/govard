@@ -88,6 +88,23 @@ func (composerIntegrityAnalyzer) Analyze(request IntegrityRequest) ([]LintFindin
 		return findings, nil
 	}
 
+	// The digest Composer records is of the manifest, so comparing it answers
+	// "was this lock generated from the composer.json that is next to it?" —
+	// the question no linter asks, and the one that catches an edited
+	// constraint or a removed requirement that nobody ran `composer update`
+	// for. A lock written before Composer recorded the field has nothing to
+	// compare against, and inventing a mismatch there would fail projects that
+	// are in fact fine.
+	if recorded := strings.ToLower(strings.TrimSpace(lock.ContentHash)); recorded != "" {
+		computed, hashErr := composerContentHash(raw)
+		// An unhashable manifest was already reported as COMPOSER_JSON_INVALID.
+		if hashErr == nil && computed != recorded {
+			findings = append(findings, integrityFinding("COMPOSER_LOCK_CONTENT_HASH_MISMATCH", "composer.lock",
+				fmt.Sprintf("composer.lock is not up to date with composer.json (recorded content-hash %s, composer.json hashes to %s); run `composer update --lock`",
+					lock.ContentHash, computed)))
+		}
+	}
+
 	locked := map[string]string{}
 	duplicates := map[string]bool{}
 	for _, pkg := range append(append([]composerLockedPackage{}, lock.Packages...), lock.PackagesDev...) {

@@ -41,6 +41,14 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard config set` | `none` |
 | `govard custom` | `none` |
 | `govard custom list` | `none` |
+| `govard deploy` | `ssh,rsync` |
+| `govard deploy build` | `none` |
+| `govard deploy check` | `ssh` |
+| `govard deploy plan` | `none` |
+| `govard deploy releases` | `ssh` |
+| `govard deploy rollback` | `ssh,rsync` |
+| `govard deploy status` | `ssh` |
+| `govard deploy unlock` | `ssh` |
 | `govard desktop doctor` | `none` |
 | `govard doctor` | `none` |
 | `govard doctor trust` | `none` |
@@ -106,6 +114,21 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   `domain list` prints the project's domains; `vscode setup` derives the editor
   settings from the project's own files. `project orphans` inspects Docker
   resources, so it keeps the requirement.
+- **Deployment.** `govard deploy` and `govard deploy rollback` need SSH and
+  rsync; `govard deploy check`, `govard deploy releases`, `govard deploy status`
+  and `govard deploy unlock` need SSH. `govard deploy plan` needs nothing at
+  all: it reads `.govard.yml` and prints the execution plan without connecting
+  anywhere. Rolling back re-points a symlink or re-runs the publish tail from a
+  release directory that is already on the server, so it never needs a local
+  build toolchain. `govard deploy build` also needs nothing: it is the CI half
+  of the artifact mode, it runs on the runner that owns the project's
+  toolchain, and it never connects to the target. That split is what lets a
+  deploy job run with govard, SSH and rsync alone — no PHP, no Composer, no
+  container runtime. The one exception in the deploy group is
+  `govard deploy sandbox *`, which creates a container that plays the target:
+  that is container work by definition, and it is the only way a rehearsal can
+  use the same code path as production.
+
 - **Remote and sync.** `govard remote add|test|copy-id|exec`,
   `govard remote audit stats|tail`, and `govard sync` need SSH and rsync, not
   Docker.

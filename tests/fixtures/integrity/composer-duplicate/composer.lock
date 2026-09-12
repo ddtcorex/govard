@@ -1,5 +1,5 @@
 {
-  "content-hash": "fixture",
+  "content-hash": "ad39ab44ecee2f04b581c2e1da182b73",
   "packages": [
     { "name": "monolog/monolog", "version": "2.9.1" },
     { "name": "monolog/monolog", "version": "2.9.0" }

@@ -45,7 +45,7 @@ Exit code: `0` khi mọi check pass, khác `0` sau summary khi có check fail/ca
 | Check | Chức năng |
 | :--- | :--- |
 | `lint` | Phân tích tĩnh qua backend native (`phpcs` + `phpstan` + media guard). |
-| `integrity` | Magento 2 / Mage-OS: phân tích không cần container, đọc trực tiếp checkout — Composer manifest/lock có khớp nhau, và tính nhất quán module/DI/sequence. Chạy trên host nên dùng được cả khi máy không có Docker. |
+| `integrity` | Magento 2 / Mage-OS: phân tích không cần container, đọc trực tiếp checkout — Composer manifest/lock có khớp nhau (kể cả `composer.lock` có được sinh từ đúng `composer.json` bên cạnh hay không, so bằng chính `content-hash` của Composer), tính nhất quán module/DI/sequence, và tính hợp lệ của các định nghĩa route mà module mang theo (`webapi.xml`, `routes.xml`). Chạy trên host nên dùng được cả khi máy không có Docker. |
 | `profiler` | Capture `MAGE_PROFILER=csvfile` stock của Magento qua include web-server có lease, một `GET` có giới hạn tới `--url`, rồi khôi phục. |
 
 `profiler` yêu cầu:

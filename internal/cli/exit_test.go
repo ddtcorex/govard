@@ -35,3 +35,23 @@ func TestUsageErrorReportsTwo(t *testing.T) {
 		t.Fatalf("Code = %d, want %d", got, CodeUsage)
 	}
 }
+
+// Exit code 4 was reserved in the capability contract and had no producer: every
+// configuration failure was reported as a usage error, which sent the operator
+// to the command line instead of the file.
+func TestConfigErrorReportsFour(t *testing.T) {
+	if got := Code(&ConfigError{Err: errors.New("deploy.verify.timeout: bad")}); got != CodeConfig {
+		t.Fatalf("Code = %d, want %d", got, CodeConfig)
+	}
+	wrapped := fmt.Errorf("deploy local: %w", &ConfigError{Err: errors.New("no branch configured")})
+	if got := Code(wrapped); got != CodeConfig {
+		t.Fatalf("Code(wrapped) = %d, want %d", got, CodeConfig)
+	}
+}
+
+func TestConfigErrorCarriesTheConfigEnvelopeCode(t *testing.T) {
+	envelope := NewErrorEnvelope("govard deploy", &ConfigError{Err: errors.New("bad value")})
+	if envelope.Error.Code != CodeConfigName {
+		t.Fatalf("envelope code = %q, want %q", envelope.Error.Code, CodeConfigName)
+	}
+}

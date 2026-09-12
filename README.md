@@ -628,7 +628,7 @@ Common command aliases:
 | `govard status`      | List running project environments across workspace                 |
 | `govard doctor`      | Run system diagnostics (including compose directory saturation) and remediation helpers |
 | `govard config`      | Manage `.govard.yml` configuration from CLI (`auto`, `profile`)      |
-| `govard deploy`      | Run deploy lifecycle hooks (pre/post deploy)                      |
+| `govard deploy`      | Deploy a git revision to a remote (`plan`, `build`, `check`, `releases`, `status`, `rollback`, `unlock`, `sandbox`) |
 | `govard snapshot`    | Manage local snapshots for database and media                      |
 | `govard lock`        | Generate and validate `govard.lock` snapshots                      |
 | `govard tunnel`      | Start a public tunnel to a local project URL                       |

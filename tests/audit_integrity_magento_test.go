@@ -2,6 +2,7 @@ package tests
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"govard/internal/audit"
@@ -75,4 +76,58 @@ func TestMagentoIntegritySequenceAcceptsVendorSrcLayout(t *testing.T) {
 	if len(findings) != 0 {
 		t.Fatalf("expected a clean module, got %v", rulesOf(findings))
 	}
+}
+
+// pathsWithRule returns the finding paths carrying one rule, so a test can
+// assert *which* file an XML well-formedness failure is reported against.
+func pathsWithRule(findings []audit.LintFinding, rule string) []string {
+	paths := make([]string, 0, len(findings))
+	for _, finding := range findings {
+		if finding.Rule == rule {
+			paths = append(paths, finding.Path)
+		}
+	}
+	return paths
+}
+
+func TestMagentoIntegrityReportsMalformedWebapiAndRoutesXML(t *testing.T) {
+	// `webapi.xml` and `routes.xml` are named by the walk filter, and a filter
+	// that matches a file without parsing it is worse than not matching it: it
+	// reads like coverage the analyzer does not have.
+	findings := analyzeMagentoFixture(t, "magento-routes/webapi-invalid")
+	for _, want := range []string{
+		"app/code/Acme/Web/etc/webapi.xml",
+		"app/code/Acme/Web/etc/routes.xml",
+	} {
+		found := false
+		for _, path := range pathsWithRule(findings, "MAGENTO_XML_INVALID") {
+			if strings.HasSuffix(path, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s was not reported as invalid XML; findings: %v", want, pathsWithRule(findings, "MAGENTO_XML_INVALID"))
+		}
+	}
+}
+
+func TestMagentoIntegrityChecksRoutesInATreeWithNoModuleXML(t *testing.T) {
+	// The analyzer used to give up when it found neither module.xml nor di.xml,
+	// which is exactly the shape of a tree that only carries route
+	// definitions: the malformed file has to be reported anyway.
+	findings := analyzeMagentoFixture(t, "magento-routes/webapi-only-invalid")
+	paths := pathsWithRule(findings, "MAGENTO_XML_INVALID")
+	if len(paths) == 0 {
+		t.Fatal("a malformed webapi.xml in a tree with no module.xml was silently accepted")
+	}
+	if !strings.HasSuffix(paths[0], "app/code/Acme/Solo/etc/webapi.xml") {
+		t.Fatalf("finding path = %q, want the webapi.xml", paths[0])
+	}
+}
+
+func TestMagentoIntegrityAcceptsWellFormedRouteDefinitions(t *testing.T) {
+	// The valid module fixture gains the two files in their correct form, so a
+	// rule that reports every route definition would fail here.
+	findings := analyzeMagentoFixture(t, "magento-valid")
+	assertNoRule(t, findings, "MAGENTO_XML_INVALID")
 }

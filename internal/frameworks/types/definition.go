@@ -3,6 +3,7 @@ package types
 import (
 	"text/template"
 
+	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/engine/remote"
@@ -292,9 +293,14 @@ type FrameworkDefinition struct {
 	// reports false for them, matching pre-existing behavior.
 	TablePrefixDetector         engine.TablePrefixDetector
 	ResolveBootstrapTablePrefix func(configuredPrefix string) (string, error)
-	BuildDeployLocalesQuery     func(tablePrefix string) string
-	BootstrapPlanSteps          func(createAdmin bool) []BootstrapPlanStep
-	EnableVarnishOnInit         bool
+	// DeployRecipe contributes this framework's deployment recipe: the neutral
+	// task ids filled with the commands this framework actually runs. It is a
+	// factory rather than a value so the definition stays a static literal.
+	// nil means "no recipe": the neutral default pipeline still deploys code.
+	DeployRecipe            func() deploy.Recipe
+	BuildDeployLocalesQuery func(tablePrefix string) string
+	BootstrapPlanSteps      func(createAdmin bool) []BootstrapPlanStep
+	EnableVarnishOnInit     bool
 
 	// VersionProfileResolver resolves this framework's version-specific
 	// runtime-profile overrides (e.g. Magento 2's per-patch-release stack),

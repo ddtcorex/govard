@@ -649,11 +649,159 @@ govard db clone-volume warden_magento2_dbdata
 
 ### `govard deploy`
 
-Chạy các deploy lifecycle hook được cấu hình cho dự án hiện tại.
+Triển khai một revision git lên môi trường remote.
 
 ```bash
-govard deploy
+govard deploy <remote>                   # triển khai HEAD ở máy local
+govard deploy staging --revision <sha>   # triển khai đúng một commit (CI)
+govard deploy build staging --output artifacts --revision <sha>   # build artifact (CI)
+govard deploy staging --artifact-dir artifacts --revision <sha>   # triển khai artifact đó
+govard deploy plan staging               # in kế hoạch, không kết nối
+govard deploy check staging              # kiểm tra trước và báo chiến lược publish
+govard deploy releases staging           # liệt kê các release trên server
+govard deploy status                     # mỗi môi trường đang chạy revision nào
+govard deploy rollback staging           # đưa release trước đó trở lại
+govard deploy rollback staging --to 12   # ... hoặc một release chỉ định
+govard deploy rollback staging --with-db --yes   # ... kèm cả dump database
+govard deploy unlock staging --force     # giải phóng lock do lần deploy lỗi
 ```
+
+Quản lý sandbox ở máy local — một container đóng vai đích triển khai:
+
+```bash
+govard deploy sandbox up                      # tạo (mặc định profile php)
+govard deploy sandbox up --profile basic      # chỉ sshd, rsync và git
+govard deploy sandbox up --docroot real       # docroot thật: publish in-place
+govard deploy sandbox status
+govard deploy sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
+govard deploy sandbox ssh
+govard deploy sandbox down [--purge]
+```
+
+Đích là một remote trong `.govard.yml`. Branch, repository, deploy path và chiến
+lược publish lấy từ block `deploy:` của dự án; mỗi remote có thể ghi đè bằng các
+field topology trên remote (`branch`, `repository`, `deploy_path`, `publish`,
+`local`) hoặc bằng `remotes.<name>.deploy.<key>` cho các key của block `deploy:`.
+Flag có độ ưu tiên cao nhất.
+
+`deploy_path` không có mặc định và cũng không được tự thêm: remote bỏ trống sẽ
+dùng layout mà target đã có (`releases/`, `shared/`, `.dep/` hoặc symlink
+`current`), chỉ nhận khi đúng một ứng viên khớp, và govard nói rõ đã dùng cái nào.
+Không có layout nào, hoặc nhiều cái, là lỗi cấu hình (exit 4) kèm danh sách đã dò.
+`deploy_path` đã cấu hình thì không bao giờ bị dò.
+
+`deploy:verify` chạy check revision đang live, các shared file recipe yêu cầu, các
+check do recipe khai báo — với Magento là `setup:db:status` và, khi in-place, so
+sánh static content version của docroot — và request HTTP khi đã đặt
+`deploy.verify.url`. Deploy có chạy `db:migrate` mà thiếu verify URL sẽ in cảnh
+báo trước bước đầu tiên. `maintenance:enable`/`disable` bị bỏ qua với kích hoạt
+symlink, trừ khi plan đó còn migrate hoặc import cấu hình.
+
+Pipeline là một chuỗi task trung tính cố định. Dự án tuỳ biến bằng cách neo hook
+vào một task id, vào alias của stage (`stage:build`) hoặc vào một hook khác:
+
+```yaml
+deploy:
+  hooks:
+    - { name: apache-reload, on: "publish:activate", position: after, order: 10, run: "touch ~/apache-reload" }
+```
+
+Mỗi framework tự đóng góp recipe của mình thay vì govard rẽ nhánh theo tên
+framework: `magento2` điền các task build/publish bằng lệnh Magento, còn framework
+chưa có recipe vẫn triển khai code qua pipeline trung tính. Task nào recipe bỏ
+trống sẽ được báo là skipped, không phải lỗi.
+
+Flag: `--remote`, `--branch`, `--revision`, `--tag` (loại trừ lẫn nhau),
+`--build=auto|server|artifact`, `--artifact-dir`, `--publish=auto|symlink|in_place`,
+`--keep`, `--verify/--no-verify`, `--db-backup/--no-db-backup`,
+`--lock/--no-lock`, `--ignore-deployer-lock`, `--command-timeout`, `--resume`,
+`--from <task>`, `--force`, `--yes`, `--json`, `--verbose` (stream output của từng command ngay khi chạy, thụt dưới task tương ứng; no-op khi có `--json`).
+
+**Build mode.** `--build=auto` (mặc định) quyết định theo sự hiện diện, không dò
+đoán môi trường: có thư mục artifact — `--artifact-dir <dir>` hoặc
+`deploy.artifact_dir` của dự án — nghĩa là đã build xong, nên mode là `artifact`;
+ngược lại là `server`. `--build=artifact` mà không có thư mục artifact là lỗi
+cách dùng, chứ không âm thầm quay về build trên server — đúng cái mà mode này
+sinh ra để tránh.
+
+**Mô hình CI hai job.** Điểm mấu chốt của artifact mode là job chạm vào
+production không cần toolchain:
+
+| Job | Image cần gì | Lệnh |
+|---|---|---|
+| `build` | PHP, Composer, Node — bất cứ thứ gì task build của recipe cần | `govard deploy build production --output artifacts --revision $CI_COMMIT_SHA` |
+| `deploy` | govard, ssh, rsync — không gì khác | `govard deploy production --artifact-dir artifacts --revision $CI_COMMIT_SHA --yes` |
+
+`govard deploy build` materialise revision vào thư mục output, chạy các task build
+của recipe ở đó, rồi ghi `manifest.json` gồm revision, phiên bản PHP, hash
+`composer.lock` và danh sách sha256 của từng file. Lệnh này không cần target và
+không cần container runtime. Job deploy kiểm tra manifest khớp với revision đang
+triển khai và so phiên bản PHP đã ghi với PHP của server, từ chối kèm thông báo
+hành động được nếu lệch — nhờ vậy image CI không khớp server bị chặn trước khi
+publish. Deploy artifact bỏ qua 5 task build và chạy `deploy:artifact` thay thế;
+`govard deploy plan` cho biết đang ở nhánh nào.
+
+Thư mục output không rỗng sẽ bị từ chối để một file cũ từ lần build trước không
+thể lọt ra production: dùng `--force` nếu muốn thay nội dung.
+
+Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--branch`,
+`--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. Lệnh này không
+cần capability nào: `none`.
+
+**Setting và credential.** `deploy.settings` được đối chiếu với recipe trước khi
+chạy: key lạ, hoặc giá trị sai dạng, thoát với mã 4 kèm tên key và gợi ý key gần
+đúng. Setting dạng chuỗi phải quote nếu trông giống số — engine đọc chúng dưới dạng
+chuỗi. `COMPOSER_AUTH` từ môi trường được chuyển tới bước cài dependency qua
+standard input (không bao giờ nằm trong command), và `shared/auth.json` trên target
+cũng dùng được; `govard deploy check` cho biết đang dùng nguồn nào và cảnh báo khi
+build trên target cần mà không có.
+
+**Output cho máy đọc.** Với `--json`, stdout chứa đúng một JSON document còn
+timeline cho người đọc đi ra stderr: `schema_version`, `remote`, `branch`,
+`revision`, `release`, `build.mode`, `publish.strategy`,
+`publish.previous_release`, `verify`, `result`, `duration_ms` và
+`tasks[{id,stage,status,duration_ms}]`. Deploy lỗi phát ra cùng document với
+`result: "failed"` và `error`, thoát mã 1. Release record mang `ci.pipeline`/`ci.job`
+khi lần chạy là CI.
+
+`deploy.lock_stale_after` (2h) và `deploy.maintenance_timeout` (15m) là hai timeout
+ngoài `command_timeout`: cái đầu là ngưỡng để `deploy unlock` nhả lock không cần
+`--force`, cái sau chặn một bước trong maintenance window.
+
+**Sandbox.** `govard deploy sandbox up` build một container, publish SSH trên một
+cổng loopback còn trống, sinh khoá riêng dưới `.govard/sandbox/` (đã gitignore),
+mount read-only một mirror repository local và ghi remote `sandbox` vào
+`.govard.local.yml`. Mirror được refresh trước mỗi lần deploy nên commit bạn chưa
+từng push vẫn triển khai được, và không phần nào trong pipeline biết nó đang nói
+chuyện với container — deploy sandbox chính là deploy production trỏ vào container.
+
+Vì `sandbox` là subcommand, hãy deploy bằng dạng flag:
+`govard deploy --remote sandbox --yes`.
+
+Profile: `basic` (sshd, rsync, git), `php` (thêm php-cli, composer, node) và
+`full` (thêm database và cache), mặc định `php`. `--docroot` định hình target để
+chiến lược publish resolve đúng thứ bạn muốn kiểm chứng: `absent` hoặc `symlink`
+chọn cú swap nguyên tử, `real` chọn in-place. `down` xoá container và remote mà nó
+đã ghi; `--purge` xoá thêm image, khoá và mirror. `reset` xoá các thư mục deploy
+trên target, và `--layout=deployer` seed một target trông như của công cụ deploy kia.
+
+Sandbox là lệnh deploy duy nhất cần `docker`.
+
+`--resume` tiếp tục release mới nhất có record chưa `ok`; `--from <task>` bắt đầu
+từ một task hoặc hook được chỉ định và báo mọi bước trước đó là skipped. Cả hai
+đều là đường phục hồi do người vận hành chủ động yêu cầu, không tự động.
+
+`govard deploy rollback` không bao giờ build lại: layout symlink được trỏ lại,
+còn layout in-place chạy lại phần publish từ thư mục release đã có trên server.
+`--with-db` phục hồi dump mà release đó đã ghi lại và sẽ phá huỷ dữ liệu hiện tại,
+nên cần `--yes` (hoặc xác nhận tương tác).
+
+Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thiếu
+capability, `4` lỗi cấu hình. `govard deploy` và `govard deploy rollback` cần
+`ssh` và `rsync`; `deploy check`, `deploy releases`, `deploy status` và
+`deploy unlock` chỉ cần `ssh`; `deploy build` và `deploy plan` không cần gì.
+`govard deploy sandbox *` là ngoại lệ: tạo server giả cần `docker`, sau đó govard
+nói chuyện với nó qua SSH như mọi target khác.
 
 ### `govard snapshot`
 

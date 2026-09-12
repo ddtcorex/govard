@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <route url="/V1/acme/demo/:id" method="GET">
+        <service class="Acme\Web\Api\DemoInterface" method="get"/>
+    </route>
+</routes

@@ -137,7 +137,11 @@ func Execute() {
 			os.Exit(cli.Code(err))
 		}
 	}
-	pterm.Error.Println(err)
+	// Errors belong on stderr. stdout carries machine-readable output — the
+	// deploy result document under `--json`, the error envelope under
+	// `--error-json` — and a decorated error line printed into the same stream
+	// makes that output unparseable.
+	pterm.Error.WithWriter(os.Stderr).Println(err)
 	os.Exit(cli.Code(err))
 }
 

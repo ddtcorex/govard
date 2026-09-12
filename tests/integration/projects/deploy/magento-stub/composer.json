@@ -1,0 +1,6 @@
+{
+  "name": "govard/deploy-sandbox-stub",
+  "description": "Fixture used to run the Magento 2 deploy recipe against a real sandbox target",
+  "type": "project",
+  "require": {}
+}

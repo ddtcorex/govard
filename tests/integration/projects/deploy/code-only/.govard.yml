@@ -1,0 +1,3 @@
+project_name: deploy-code-only
+domain: deploy-code-only.test
+framework: django

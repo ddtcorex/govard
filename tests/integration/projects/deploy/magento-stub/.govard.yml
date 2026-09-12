@@ -1,0 +1,3 @@
+project_name: deploy-magento-stub
+domain: deploy-magento-stub.test
+framework: magento2
