@@ -171,7 +171,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 
-	container := SandboxContainerName(request.ProjectName)
+	container := SandboxContainerName(request.ProjectName, request.ProjectRoot)
 	exists, err := runtime.ContainerExists(ctx, container)
 	if err != nil {
 		return nil, err
@@ -448,7 +448,7 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 	if project == "" {
 		project = config.ProjectName
 	}
-	container := SandboxContainerName(project)
+	container := SandboxContainerName(project, request.ProjectRoot)
 
 	state := &SandboxState{
 		Container:   container,

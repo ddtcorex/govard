@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -225,8 +226,19 @@ func SandboxImageTag(spec SandboxSpec) (string, error) {
 func SandboxImageTagForTest(spec SandboxSpec) (string, error) { return SandboxImageTag(spec) }
 
 // SandboxContainerName is the container one project's sandbox runs in.
-func SandboxContainerName(project string) string {
-	return "govard-" + sandboxSlug(project) + "-deploy-sandbox"
+//
+// The name carries a hash of the project *path* as well as its name. Two
+// checkouts of the same project would otherwise share one container, and the
+// second one's `up` would reuse a container whose mirror is bind-mounted from the
+// first checkout's state directory — which surfaces much later as "revision is
+// not present in the deploy mirror", long after the cause.
+func SandboxContainerName(project, projectRoot string) string {
+	name := "govard-" + sandboxSlug(project) + "-deploy-sandbox"
+	if root, err := filepath.Abs(filepath.Clean(projectRoot)); err == nil && root != "" {
+		sum := sha256.Sum256([]byte(root))
+		name += "-" + hex.EncodeToString(sum[:])[:8]
+	}
+	return name
 }
 
 // sandboxSlug reduces a project name to the character set Docker accepts in a

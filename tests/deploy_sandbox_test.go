@@ -994,3 +994,28 @@ func runGitOutput(t *testing.T, dir string, args ...string) string {
 	}
 	return string(out)
 }
+
+// Two checkouts of the same project must not share a sandbox container: the
+// container's mirror is a bind mount into one project's state directory, and the
+// second `up` reusing it fails much later with "revision is not present in the
+// deploy mirror".
+func TestSandboxContainerNameIsPerProjectPath(t *testing.T) {
+	first := deploy.SandboxContainerName("sample-project", "/home/dev/one/sample-project")
+	second := deploy.SandboxContainerName("sample-project", "/home/dev/two/sample-project")
+	if first == second {
+		t.Fatalf("two checkouts of the same project share a container name: %q", first)
+	}
+	if !strings.HasPrefix(first, "govard-sample-project-deploy-sandbox-") {
+		t.Fatalf("container name = %q, want the project slug and a path suffix", first)
+	}
+	// Stable for the same path, so `status` and `down` address the same container.
+	if again := deploy.SandboxContainerName("sample-project", "/home/dev/one/sample-project"); again != first {
+		t.Fatalf("container name is not stable: %q then %q", first, again)
+	}
+	// Docker accepts the name.
+	for _, r := range first {
+		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyz0123456789_.-", r) {
+			t.Fatalf("container name %q holds %q, which Docker rejects", first, r)
+		}
+	}
+}
