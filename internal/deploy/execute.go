@@ -198,7 +198,17 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	// The completeness half matters: a release whose record says failed or still
 	// running served the revision at some point, and reporting "already
 	// deployed" for it would turn a retry into a success that never happened.
-	if !e.opts.Force && strings.TrimSpace(release.Revision) != "" {
+	//
+	// A resumed run is exempt for the same reason, one step further on. It exists
+	// to finish an unfinished release, and the question this shortcut asks — "is
+	// the target serving this revision" — can be answered yes by an *older*
+	// successful release of the same revision while the unfinished one is mid-way
+	// through its maintenance window. Observed live: a hook failed after
+	// activation, the target answered 503 with the window open, and the resume
+	// that was supposed to close it printed "already deployed" in 1.3s and exited
+	// 0 — a success reported over a site that was down.
+	continuing := e.opts.Resume && strings.TrimSpace(release.Release) != ""
+	if !e.opts.Force && !continuing && strings.TrimSpace(release.Revision) != "" {
 		if live, complete, ok := e.liveRevision(ctx); ok && complete && live == release.Revision {
 			outcome.AlreadyDeployed = true
 			fmt.Fprintf(e.out, "  = already deployed %s\n", shortRevision(release.Revision))

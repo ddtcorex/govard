@@ -660,3 +660,58 @@ func TestAnInPlaceTargetIsAlreadyDeployedOnlyWithAFinishedRecord(t *testing.T) {
 		t.Fatalf("the no-op path must run no steps, ran %+v", outcome.Steps)
 	}
 }
+
+// A resume continues a release that is not finished, so the target is by
+// definition not settled. The no-op fast path answers a different question — "is
+// the target already serving this revision" — and an older *successful* release
+// for the same revision is enough to make it answer yes.
+//
+// Observed live: a hook failed after activation, so the target was inside its
+// maintenance window answering 503, and the `--resume` that exists to finish that
+// release printed "already deployed" in 1.3s and exited 0 — a success reported
+// over a site that was down.
+func TestAResumeNeverTakesTheAlreadyDeployedShortcut(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	if _, err := host.Runner().Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	if _, err := host.Runner().Run(ctx, "git -C "+host.CurrentPath+" reset -q --hard "+revision, deploy.RunOptions{}); err != nil {
+		t.Fatalf("put the docroot on the revision: %v", err)
+	}
+
+	// An older successful deploy of the same revision: without it there is no
+	// complete record and the fast path cannot fire at all.
+	ok := deploy.NewReleaseForTest("1", revision, "main")
+	ok.Status = deploy.StatusOK
+	if err := deploy.WriteRelease(ctx, host, ok); err != nil {
+		t.Fatalf("seed the successful release: %v", err)
+	}
+	// The release being continued, whose failure came after activation.
+	failed := deploy.NewReleaseForTest("2", revision, "main")
+	failed.Status = deploy.StatusFailed
+	if err := deploy.WriteRelease(ctx, host, failed); err != nil {
+		t.Fatalf("seed the failed release: %v", err)
+	}
+
+	options := deploy.Options{Remote: "local", Publish: deploy.PublishInPlace, Revision: revision, Resume: true}
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskMaintenanceDisable, Stage: deploy.StagePublish, Command: "echo closing the window"},
+	}), nil, "local")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	outcome, err := deploy.NewExecutor(host, options, io.Discard).Run(ctx, plan, deploy.NewVars(), deploy.NewReleaseForTest("2", revision, "main"))
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if outcome.AlreadyDeployed {
+		t.Fatal("a resume must finish the unfinished release, not report the target as already deployed")
+	}
+	if len(outcome.Steps) == 0 {
+		t.Fatal("the resumed run must execute the step that finishes the release")
+	}
+}
