@@ -564,6 +564,76 @@ func TestMagento2FrontendBuildRunsTheConfiguredCommandInsideTheTheme(t *testing.
 	}
 }
 
+// A project can have more than one theme that is built by Node — two Hyvä
+// storefronts, or a Hyvä theme plus a custom one — and a step that builds only the
+// first leaves the second storefront without its assets. Executed, because the
+// step is a shell loop and reading it proves neither that both iterations run nor
+// that each runs in its own directory.
+func TestMagento2FrontendBuildBuildsEveryThemeDirectory(t *testing.T) {
+	release := t.TempDir()
+	log := filepath.Join(t.TempDir(), "frontend.log")
+	dirs := []string{
+		"app/design/frontend/Acme/hyva/web/tailwind",
+		"app/design/frontend/Acme/other/web/tailwind",
+	}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(filepath.Join(release, dir), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	recipe := magento2.DeployRecipe()
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: map[string]any{
+			"frontend_dir":     dirs,
+			"frontend_command": "pwd >> " + log,
+		},
+	})
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", release).
+		Expand(recipe.Task(deploy.TaskFrontend).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("the frontend build must run for every theme: %v\n%s", err, command)
+	}
+
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("read the build log: %v", err)
+	}
+	lines := strings.Fields(string(raw))
+	if len(lines) != len(dirs) {
+		t.Fatalf("%d theme directories configured, %d builds ran: %q", len(dirs), len(lines), string(raw))
+	}
+	for index, dir := range dirs {
+		if !strings.HasSuffix(lines[index], "/"+dir) {
+			t.Fatalf("build %d ran in %q, want it inside %q", index, lines[index], dir)
+		}
+	}
+
+	// A failing build must stop the deploy rather than let the next theme's build
+	// hide it, which is what a loop without an exit status would do: the broken
+	// directory comes first and a working one after it.
+	broken := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: map[string]any{
+			"frontend_dir":     []string{"app/design/frontend/Acme/missing/web/tailwind", dirs[0]},
+			"frontend_command": "true",
+		},
+	})
+	brokenCommand, err := cmd.DeployVarsForTest(host, broken).SetPath("release_path", release).
+		Expand(recipe.Task(deploy.TaskFrontend).Command)
+	if err != nil {
+		t.Fatalf("expand the broken build: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), brokenCommand, deploy.RunOptions{}); err == nil {
+		t.Fatalf("a theme directory that cannot be entered must fail the step:\n%s", brokenCommand)
+	}
+}
+
 func TestMagento2FrontendBuildIsSkippedWithoutAThemeDirectory(t *testing.T) {
 	release := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "ran")

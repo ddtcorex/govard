@@ -234,6 +234,18 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			frontend: "hyva",
 			settings: "    frontend_dir: app/design/frontend/Acme/hyva/web/tailwind\n",
 		},
+		{
+			// Two Node-built themes — two storefronts, or a Hyva theme plus a
+			// custom one. Every configured directory must be built, each from its
+			// own working directory, which is what the list form and the loop are
+			// for.
+			name:     "hyva-multi",
+			static:   "single",
+			frontend: "hyva-multi",
+			settings: "    frontend_dir:\n" +
+				"      - app/design/frontend/Acme/hyva/web/tailwind\n" +
+				"      - app/design/frontend/Acme/other/web/tailwind\n",
+		},
 	} {
 		expectation := testCase.name
 		t.Run(expectation, func(t *testing.T) {

@@ -34,7 +34,10 @@ func DeployRecipe() deploy.Recipe {
 
 		// Deployment settings with a sane default. Each one is overridable in
 		// .govard.yml under deploy.settings.
-		"frontend_dir":           "",
+		// frontend_dir is a word list rather than a single path: a project can
+		// have two themes that are built by Node (two Hyvä storefronts), and
+		// naming one of them would leave the other without its assets.
+		"frontend_dir":           deploy.ArgsSpec{Words: true},
 		"frontend_command":       "npm ci && npm run build",
 		"content_version":        "",
 		"static_jobs":            "4",
@@ -87,10 +90,13 @@ func DeployRecipe() deploy.Recipe {
 	fill(deploy.TaskCompile, "compile dependency injection",
 		"cd {{release_path}} && {{php_bin}} bin/magento setup:di:compile")
 
-	// Tailwind/Hyva build. Skipped unless the project points at its theme
-	// directory, which is what keeps the stock-theme case dependency-free.
+	// Tailwind/Hyva build. Every configured theme directory is built in place, and
+	// the loop is skipped entirely when none is configured, which is what keeps the
+	// stock-theme case dependency-free. Each build is a subshell so the working
+	// directory does not leak into the next one, and `|| exit 1` stops the deploy
+	// on the first failure instead of letting the next theme's build hide it.
 	fill(deploy.TaskFrontend, "build frontend assets",
-		`cd {{release_path}} && if [ -n {{settings.frontend_dir}} ]; then cd {{settings.frontend_dir}} && {{settings.frontend_command}}; fi`)
+		`cd {{release_path}} && for dir in {{settings.frontend_dir_args}}; do (cd "$dir" && {{settings.frontend_command}}) || exit 1; done`)
 
 	// The two-area split runs the admin pass first and chains the frontend pass
 	// with `&&`, so a failed admin pass stops the deploy instead of publishing
@@ -140,7 +146,7 @@ func DeployRecipe() deploy.Recipe {
 	// The keys this recipe reads. The engine's own keys arrive already declared
 	// through DefaultRecipe, so only the framework-specific ones are named here.
 	recipe.Settings = append(recipe.Settings, []deploy.Setting{
-		{Key: "frontend_dir", Kind: deploy.SettingString, Title: "the theme's Tailwind directory; empty skips the frontend build"},
+		{Key: "frontend_dir", Kind: deploy.SettingArgs, Title: "the theme Tailwind directories to build (one path or a list); empty skips the frontend build"},
 		{Key: "frontend_command", Kind: deploy.SettingCommand, Title: "the command run inside frontend_dir"},
 		{Key: "static_jobs", Kind: deploy.SettingInt, Title: "parallelism for static content deployment"},
 		{Key: "static_content_locales", Kind: deploy.SettingArgs, Title: "locales to deploy (string, list or map)"},

@@ -72,21 +72,36 @@ if ($command === 'setup:db:status') {
         $fail("expected {$expected} static content pass(es), saw {$deploys}");
     }
 
-    // The Hyvä path: `frontend_dir` names the theme's Tailwind directory and the
-    // default `frontend_command` builds it there.
+    // The frontend build: `frontend_dir` names the theme Tailwind directories and
+    // the default `frontend_command` builds each one in place. The expectation file
+    // names which directories must have been built.
     $frontend = trim((string) @file_get_contents($release . '/frontend-expectation.txt'));
-    if ($frontend === 'hyva') {
-        $built = trim((string) @file_get_contents($release . '/var/frontend-built.txt'));
-        if ($built === '') {
-            $fail('the theme frontend build did not run');
-        }
-        if (!str_ends_with($built, 'app/design/frontend/Acme/hyva/web/tailwind')) {
-            $fail("the frontend build ran in '{$built}' instead of the theme directory");
-        }
-    } else {
-        $unexpected = trim((string) @file_get_contents($release . '/var/frontend-built.txt'));
-        if ($unexpected !== '') {
+    $built = trim((string) @file_get_contents($release . '/var/frontend-built.txt'));
+    $recorded = $built === '' ? [] : preg_split('/\R/', $built);
+
+    $expectedBuilds = [
+        'hyva' => ['app/design/frontend/Acme/hyva/web/tailwind'],
+        'hyva-multi' => [
+            'app/design/frontend/Acme/hyva/web/tailwind',
+            'app/design/frontend/Acme/other/web/tailwind',
+        ],
+    ];
+
+    if ($frontend === '') {
+        if ($recorded !== []) {
             $fail('a project without frontend_dir must not build a theme');
+        }
+    } elseif (!isset($expectedBuilds[$frontend])) {
+        $fail("unknown frontend expectation '{$frontend}'");
+    } else {
+        $wanted = $expectedBuilds[$frontend];
+        if (count($recorded) !== count($wanted)) {
+            $fail('expected ' . count($wanted) . ' frontend build(s), saw ' . count($recorded));
+        }
+        foreach ($wanted as $index => $suffix) {
+            if (!str_ends_with($recorded[$index], $suffix)) {
+                $fail("frontend build {$index} ran in '{$recorded[$index]}' instead of '{$suffix}'");
+            }
         }
     }
 }

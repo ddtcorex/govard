@@ -95,6 +95,27 @@ func TestRecipeArgumentSpecsRenderMapValuesAsTheirOwnFlag(t *testing.T) {
 	}
 }
 
+// A word list a recipe iterates itself must render shell-quoted: the values come
+// from the project, and unquoted a space would split one path into two words while
+// a stray `;` would add a command to the recipe's own loop.
+func TestRecipeArgumentSpecsRenderARecipesOwnWordList(t *testing.T) {
+	spec := deploy.ArgsSpec{Words: true}
+
+	if got := deploy.RenderSettingArgsForTest(spec, []string{"a b", "c"}); got != "'a b' 'c'" {
+		t.Fatalf("RenderSettingArgs = %q, want %q", got, "'a b' 'c'")
+	}
+	// One value and a list of one are the same thing to a recipe that iterates.
+	if got := deploy.RenderSettingArgsForTest(spec, "a b"); got != "'a' 'b'" {
+		t.Fatalf("a string is a word list too, got %q", got)
+	}
+	if got := deploy.RenderSettingArgsForTest(spec, nil); got != "" {
+		t.Fatalf("nothing configured renders nothing, got %q", got)
+	}
+	if got := deploy.RenderSettingArgsForTest(spec, "it's"); got != `'it'"'"'s'` {
+		t.Fatalf("a quote in a value must be escaped, got %q", got)
+	}
+}
+
 func TestRecipeArgumentSpecsBecomeSettingsVariables(t *testing.T) {
 	recipe := recipeWithDefaults(map[string]any{"magento_themes": deploy.ArgsSpec{Flag: "-t"}})
 
