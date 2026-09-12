@@ -92,14 +92,81 @@ deploy:
     frontend_command: npm ci && npm run build   # mặc định
 ```
 
-`frontend_command` chạy bên trong `frontend_dir`, trong release, như một command
+`frontend_command` chạy bên trong từng thư mục, trong release, như một command
 shell: mặc định nối hai command, nên giá trị một command như
 `npx tailwindcss -i input.css -o output.css` cũng viết y hệt. Để `frontend_dir`
 trống thì bước này bị bỏ qua — đúng ý cho dự án Luma hoặc theme mặc định.
 
+Dự án có nhiều hơn một theme build bằng Node thì khai báo hết, mỗi thư mục được
+build tại chỗ:
+
+```yaml
+deploy:
+  settings:
+    frontend_dir:
+      - app/design/frontend/Acme/hyva/web/tailwind
+      - app/design/frontend/Acme/other/web/tailwind
+```
+
+Các thư mục được build theo thứ tự, mỗi thư mục trong subshell riêng, và lỗi đầu
+tiên dừng deploy thay vì để build của theme sau che mất. Mọi entry đều được quote,
+nên một entry là đúng một thư mục: path có dấu cách phải viết dưới dạng list, vì
+dạng một path được đọc như danh sách tách theo khoảng trắng.
+
 Node cần ở nơi *build*, không phải nơi deploy: với `--artifact-dir`, theme được
 build ở job build của CI và `build:frontend` bị bỏ qua trên target, nên image của
 job deploy vẫn chỉ cần govard + ssh + rsync.
+
+### Nhiều store, website và theme
+
+Dự án multi-store deploy một release phục vụ mọi website, nên tập deploy là
+**theme × locale**: theme của mọi store view phải có trong `magento_themes` và
+locale của mọi store view phải có trong `static_content_locales`. Storefront mà
+theme hoặc locale không được build thì không có static file, và production mode
+trả `404` cho chúng: Magento chỉ publish lại static resource thiếu khi `env.php`
+bật `static_content_on_demand_in_production`, tức là tốn một lần chạy PHP mỗi
+request chứ không thay thế được việc deploy.
+
+```yaml
+deploy:
+  settings:
+    # Mọi theme mà store view dùng, kèm locale mà theme đó phục vụ.
+    magento_themes:
+      Acme/hyva: [en_US, fr_CA]
+      Acme/other: [de_DE]
+      Magento/luma: [en_US]
+    # Không bắt buộc, và mang tính cộng thêm: list này áp cho mọi theme ở trên.
+    static_content_locales: [en_US]
+```
+
+Locale trong map theme được **cộng vào** `static_content_locales`, và kết quả được
+deploy cho mọi theme trong map. Đây là chủ ý và là đặc tính của ứng dụng, không
+phải đơn giản hoá: một lần gọi `setup:static-content:deploy` chỉ resolve
+`--language` một lần cho cả lượt chạy, nên một lần gọi không thể compile theme A
+với bộ locale này và theme B với bộ locale khác. Muốn thu hẹp theo từng theme thì
+phải gọi một lần cho mỗi nhóm locale; union là thứ command diễn đạt được, và là
+hướng an toàn — thừa locale chỉ tốn thời gian build, thiếu locale thì mất
+storefront.
+
+Split vẫn áp dụng: `split_static_deployment` đẩy `magento_themes_backend` (và
+`static_content_locales_backend`, mặc định lấy theo locale frontend) sang lượt
+adminhtml, còn `magento_themes` sang lượt frontend.
+
+Phần còn lại của pipeline đã lo sẵn cho nhiều website:
+
+- `app/etc/env.php` và `pub/media` được **share** giữa các release, nên cấu hình
+  theo scope và media không mất khi swap;
+- `app:config:import` áp cấu hình nằm trong `config.php` và `env.php` — nơi cấu
+  hình theo scope thuộc về khi nó được version hoá;
+- `setup:upgrade`, flush cache và worker control là toàn cục, đúng với việc mọi
+  website dùng chung một database.
+
+Điều govard chủ động **không** làm: không bao giờ ghi cấu hình theo store vào
+database. Base URL, cấu hình scope và mọi thứ operator đổi trong admin là dữ liệu
+của ứng dụng, không phải của release; một deploy ghi đè chúng là một deploy có thể
+xoá cấu hình của storefront đang chạy. `deploy.verify.url` kiểm một URL; dự án
+multi-store muốn kiểm mọi storefront thì gắn hook vào `verify` và chạy kiểm tra
+mình cần.
 
 ### Composer repository riêng
 

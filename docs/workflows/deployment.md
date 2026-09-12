@@ -96,15 +96,83 @@ deploy:
     frontend_command: npm ci && npm run build   # the default
 ```
 
-`frontend_command` runs inside `frontend_dir`, inside the release, as one shell
+`frontend_command` runs inside each directory, inside the release, as one shell
 command: the default chains two commands, so a single-command value such as
 `npx tailwindcss -i input.css -o output.css` is written exactly the same way.
 Leaving `frontend_dir` empty skips the step, which is what a Luma or stock-theme
 project wants.
 
+A project with more than one Node-built theme names all of them, and each is built
+in place:
+
+```yaml
+deploy:
+  settings:
+    frontend_dir:
+      - app/design/frontend/Acme/hyva/web/tailwind
+      - app/design/frontend/Acme/other/web/tailwind
+```
+
+The directories are built in order, each in its own subshell, and the first failure
+stops the deploy rather than letting the next theme's build hide it. Every entry is
+quoted, so one list entry is exactly one directory: a path that contains a space
+has to be written as a list entry, because the single-path form is read as a
+whitespace-separated list.
+
 Node is needed where the *build* runs, not where the deploy runs: with
-`--artifact-dir` the theme is built in the CI build job and `build:frontend` is
+`--artifact-dir` the themes are built in the CI build job and `build:frontend` is
 skipped on the target, so the deploy job's image stays govard + ssh + rsync.
+
+### Multiple stores, websites and themes
+
+A multi-store project deploys one release that serves every website, so the deploy
+set is **themes × locales**: every store view's theme has to be in
+`magento_themes` and every store view's locale in `static_content_locales`.
+A storefront whose theme or locale was not built has no static files, and
+production mode answers `404` for them: Magento only re-publishes a missing static
+resource on demand when `env.php` sets `static_content_on_demand_in_production`,
+which is a per-request PHP cost rather than a substitute for deploying.
+
+```yaml
+deploy:
+  settings:
+    # Every theme a store view uses, each with the locales it serves.
+    magento_themes:
+      Acme/hyva: [en_US, fr_CA]
+      Acme/other: [de_DE]
+      Magento/luma: [en_US]
+    # Optional, and additive: the list applies to every theme above.
+    static_content_locales: [en_US]
+```
+
+The locales of a theme map are **added to** `static_content_locales`, and the
+result is deployed for every theme in the map. That is deliberate and it is a
+property of the application, not a simplification: one
+`setup:static-content:deploy` invocation resolves `--language` once for the whole
+run, so a single invocation cannot compile theme A for one set of locales and theme
+B for another. Narrowing per theme would mean one invocation per locale group; the
+union is what the command can express, and it is the safe direction — an extra
+locale costs build time, a missing one costs a storefront.
+
+The split still applies: `split_static_deployment` sends `magento_themes_backend`
+(and `static_content_locales_backend`, which defaults to the frontend locales) to
+the adminhtml pass and `magento_themes` to the frontend pass.
+
+What the rest of the pipeline already covers for several websites:
+
+- `app/etc/env.php` and `pub/media` are **shared** across releases, so per-scope
+  configuration and media survive the swap;
+- `app:config:import` applies the configuration that lives in `config.php` and
+  `env.php`, which is where per-scope settings belong when they are versioned;
+- `setup:upgrade`, the cache flush and worker control are global, which matches the
+  single database every website shares.
+
+What govard deliberately does not do: it never writes per-store configuration into
+the database. Base URLs, scope configuration and anything else an operator changes
+in the admin are the application's data, not the release's, and a deploy that
+rewrote them would be a deploy that can overwrite a live storefront's settings.
+`deploy.verify.url` checks one URL; a multi-store project that wants every
+storefront checked should anchor a hook on `verify` and run the checks it wants.
 
 ### Private Composer repositories
 
