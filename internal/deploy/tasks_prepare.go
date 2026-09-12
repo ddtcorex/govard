@@ -403,8 +403,8 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 		`{"pid":%d,"actor":%q,"revision":%q,"branch":%q,"host":%q,"started_at":%q}`,
 		os.Getpid(), currentActor(), sc.Opts.Revision, sc.Opts.Branch, host.Name, time.Now().UTC().Format(time.RFC3339),
 	)
-	ownerCommand := fmt.Sprintf("cat > %s <<'%s'\n%s\n%s", Shell(host.LockOwnerPath()), releaseHeredocDelimiter, owner, releaseHeredocDelimiter)
-	if _, err := sc.Runner.Run(ctx, ownerCommand, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
+	ownerCommand := fmt.Sprintf("cat > %s", Shell(host.LockOwnerPath()))
+	if _, err := sc.Runner.Run(ctx, ownerCommand, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live, Stdin: owner}); err != nil {
 		return fmt.Errorf("record lock owner: %w", err)
 	}
 	return nil

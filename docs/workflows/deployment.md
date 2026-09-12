@@ -108,6 +108,16 @@ flight:
 
 `--json` wins over `--verbose`: with both, the stream is a no-op and stdout stays
 exactly the one parseable document (`--json` already moves the timeline to stderr).
+
+Watching a command never costs the run its own record. What the engine *keeps* of a
+command's output is a bounded tail (256 KiB per step, introduced by a marker that says
+how much was dropped): that copy is what the error message and the release record carry,
+and a step is free to print far more than that. `--verbose` is the only thing that shows
+every byte, and only while it arrives. The bound is not cosmetic — a Magento static
+content deploy that fails inside a theme loop printed the same exception 27,333 times,
+and an unbounded copy made the release record 170 MiB, which cannot be written to the
+target as a command and left `status`, `--resume` and `rollback` with no record of the
+release at all.
 Rsync transfers — the in-place `sync_paths` copy and the artifact upload — add
 `--info=progress2` only when the output is a terminal *and* `--verbose` is on: without
 a terminal rsync cannot redraw its progress line, so every update would become another
@@ -459,6 +469,7 @@ is what makes it a rehearsal rather than a simulation.
 ```bash
 govard deploy sandbox up                      # create it (php profile by default)
 govard deploy sandbox up --profile basic      # sshd, rsync, git only
+govard deploy sandbox up --profile full --php 8.4   # a database, a cache, PHP 8.4
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed a target the other tool owns
 govard deploy sandbox ssh
@@ -479,6 +490,26 @@ govard deploy --remote sandbox --yes
 to exercise it: `absent` or `symlink` selects the atomic swap, `real` selects
 in-place publishing. `down` removes the container and the remote it wrote;
 `--purge` also removes the image, the key and the mirror.
+
+`--php` picks the PHP series the image provides, for example `--php 8.4`; without
+it the image keeps the base distribution's own version. The series comes from the
+sury repository and the image's `php` binary, its extensions, `php_bin` and the
+`php_version` the remote declares all follow it — so a project whose
+`composer.lock` requires a newer PHP than the base image carries can be rehearsed
+against the PHP its target actually runs, instead of failing in the middle of a
+dependency install. The series is part of the image tag, so asking for a
+different one builds a different image rather than reusing the old one.
+
+A rehearsal is only as complete as the credentials the target has. A project that
+installs from private repositories needs those credentials *on the target*,
+exactly as a real server does: Composer reads `auth.json` in the deploy user's
+Composer home, and a `git`-type package needs a key plus the host in
+`known_hosts`. govard deliberately does not forward the deploying machine's
+credentials — the sandbox exists to show what the target can do with what the
+target has — so a private dependency fails at `build:vendors` with the source's
+own authentication error. Put the credentials in the container (`docker exec`, or
+a mounted file) and re-run `govard deploy --remote sandbox --yes`; the failing
+step resumes from a clean release directory and the Composer cache is kept.
 
 ## One connection per target
 

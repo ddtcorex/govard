@@ -55,7 +55,7 @@ func TestSandboxDockerfileContainsWhatTheProfilePromises(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.profile, func(t *testing.T) {
-			dockerfile, err := deploy.SandboxDockerfile(tc.profile, deploy.SandboxRequirements{})
+			dockerfile, err := deploy.SandboxDockerfile(tc.profile, "", deploy.SandboxRequirements{})
 			if err != nil {
 				t.Fatalf("render %s: %v", tc.profile, err)
 			}
@@ -78,7 +78,7 @@ func TestSandboxDeployerIsNotALockedAccount(t *testing.T) {
 	// a `useradd` that leaves the password field as `!` produces a sandbox no
 	// deploy can reach. The `*` field means no password can match, which is
 	// exactly right with PasswordAuthentication off.
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileBasic, deploy.SandboxRequirements{})
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileBasic, "", deploy.SandboxRequirements{})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestSandboxMirrorIsASafeGitDirectory(t *testing.T) {
 	// ownership" and the deploy cannot materialise a revision. It only shows up
 	// when the host uid differs from the image's deployer uid, which is exactly
 	// the case on a CI runner.
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileBasic, deploy.SandboxRequirements{})
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfileBasic, "", deploy.SandboxRequirements{})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestSandboxDockerfileCarriesTheFrameworkRequirements(t *testing.T) {
 		Extensions: []string{"bcmath", "intl"},
 		Services:   []string{"mariadb"},
 	}
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfilePHP, requirements)
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfilePHP, "", requirements)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -124,11 +124,11 @@ func TestSandboxDockerfileIsByteStable(t *testing.T) {
 		Extensions: []string{"intl", "bcmath"},
 		Services:   []string{"redis", "mariadb"},
 	}
-	first, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, requirements)
+	first, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, "", requirements)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	second, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, requirements)
+	second, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, "", requirements)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestSandboxDockerfileIsByteStable(t *testing.T) {
 	// The order requirements arrive in must not change the image either: two
 	// recipes listing the same extensions in a different order are the same
 	// sandbox.
-	shuffled, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, deploy.SandboxRequirements{
+	shuffled, err := deploy.SandboxDockerfile(deploy.SandboxProfileFull, "", deploy.SandboxRequirements{
 		Extensions: []string{"bcmath", "intl"},
 		Services:   []string{"mariadb", "redis"},
 	})
@@ -210,7 +210,7 @@ func TestMagento2RecipeAsksForTheSandboxItNeeds(t *testing.T) {
 	if !ok {
 		t.Fatal("magento2 has no deploy recipe")
 	}
-	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfilePHP, recipe.Sandbox)
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxProfilePHP, "", recipe.Sandbox)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

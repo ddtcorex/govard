@@ -95,8 +95,23 @@ func DeployRecipe() deploy.Recipe {
 	// ece-patches only ships with Magento Cloud / Mage-OS projects. The guard is
 	// a test, not `|| true`: a project that has the binary and fails to apply a
 	// patch must fail the deploy.
+	//
+	// The step applies the patch set only when it is not applied yet, because
+	// `magento/magento-cloud-patches` is a Composer plugin and Magento Cloud
+	// projects run it from `post-install-cmd`: by the time this step runs, the
+	// patches `build:vendors` installed are applied, and a second `apply` fails
+	// hard — "Patch MCLOUD-… can't be applied to clean Magento instance" — which
+	// fails a deploy whose patches are, in fact, applied. The tool answers the
+	// question itself: `verify --cloud-only` exits 0 when the required patch set is
+	// applied and non-zero when it is not (measured against a real 2.4.9 project,
+	// both ways). `verify` without the flag is not usable: it also reports the
+	// project's deliberately unapplied *optional* quality patches, so it exits
+	// non-zero on a healthy target.
 	fill(deploy.TaskPatches, "apply Magento patches",
-		"cd {{release_path}} && if [ -x vendor/bin/ece-patches ]; then {{php_bin}} vendor/bin/ece-patches apply; fi")
+		`cd {{release_path}} && if [ -x vendor/bin/ece-patches ]; then `+
+			`if {{php_bin}} vendor/bin/ece-patches verify --cloud-only >/dev/null 2>&1; then `+
+			`echo "the Magento patch set is already applied"; `+
+			`else {{php_bin}} vendor/bin/ece-patches apply; fi; fi`)
 
 	fill(deploy.TaskCompile, "compile dependency injection",
 		"cd {{release_path}} && {{php_bin}} bin/magento setup:di:compile")

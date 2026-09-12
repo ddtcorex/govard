@@ -604,17 +604,20 @@ func ArtifactUploadCommandForTest(host Host, source, destination string, progres
 // cannot be terminated early by its content.
 func writeTargetFile(ctx context.Context, host Host, target string, payload []byte) error {
 	temporary := target + ".tmp"
+	// The payload is the command's standard input, never part of its argv. A
+	// record carrying the captured output of a chatty step used to be embedded in
+	// the command text, and a payload past the kernel's argument limit made the
+	// command unlaunchable — the deploy then failed to write the very record that
+	// says what happened. Standard input has no such limit, and it also keeps the
+	// payload out of the target's process list.
 	command := fmt.Sprintf(
-		"mkdir -p %s && cat > %s <<'%s'\n%s\n%s\nmv %s %s",
+		"mkdir -p %s && cat > %s && mv %s %s",
 		Shell(path.Dir(target)),
 		Shell(temporary),
-		releaseHeredocDelimiter,
-		string(payload),
-		releaseHeredocDelimiter,
 		Shell(temporary),
 		Shell(target),
 	)
-	if _, err := host.Runner().Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := host.Runner().Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Stdin: string(payload)}); err != nil {
 		return fmt.Errorf("write %s on %s: %w", target, host.Name, err)
 	}
 	return nil

@@ -44,6 +44,9 @@ type SandboxRequest struct {
 	DocRoot     string
 	Layout      string
 	RemoteName  string
+	// PHP is the series the image must provide, for example "8.4". Empty keeps
+	// the base image's own version.
+	PHP string
 	// Requirements come from the framework recipe the command layer resolved.
 	Requirements SandboxRequirements
 	// Repository is the local checkout the mirror is refreshed from. Empty
@@ -60,6 +63,7 @@ type SandboxState struct {
 	Container   string
 	Image       string
 	Profile     string
+	PHP         string
 	Port        int
 	Running     bool
 	Exists      bool
@@ -127,9 +131,9 @@ func SandboxDefaultPaths() SandboxPaths {
 // idempotent: a second call reuses the key, the image, the container and the
 // port it already has.
 func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request SandboxRequest) (*SandboxState, error) {
-	if err := runtime.Available(ctx); err != nil {
-		return nil, err
-	}
+	// The request is validated before the runtime is probed: a flag that cannot
+	// name a sandbox is a usage error, and reporting it should not depend on
+	// whether this machine happens to have a container runtime.
 	profile, err := ValidateSandboxProfile(request.Profile)
 	if err != nil {
 		return nil, err
@@ -138,13 +142,20 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err != nil {
 		return nil, err
 	}
+	php, err := ValidateSandboxPHP(request.PHP)
+	if err != nil {
+		return nil, err
+	}
+	if err := runtime.Available(ctx); err != nil {
+		return nil, err
+	}
 
 	stateDir := SandboxStateDir(request.ProjectRoot)
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create %s: %w", stateDir, err)
 	}
 
-	dockerfile, err := SandboxDockerfile(profile, request.Requirements)
+	dockerfile, err := SandboxDockerfile(profile, php, request.Requirements)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +167,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	image, err := SandboxImageTag(SandboxSpec{
 		Project:      request.ProjectName,
 		Profile:      profile,
+		PHP:          php,
 		Requirements: request.Requirements,
 	})
 	if err != nil {
@@ -247,7 +259,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	// not deployable with no flags at all — the option resolver refuses a
 	// remote with neither a branch nor an explicit revision — so "defaults to
 	// the local HEAD" is only true once the branch is named here.
-	remote := SandboxRemoteConfig(profile, port, paths, key)
+	remote := SandboxRemoteConfig(profile, php, port, paths, key)
 	remote.Branch = localBranch(ctx, git, request.repository())
 	if err := WriteSandboxRemote(request.ProjectRoot, request.remoteName(), remote); err != nil {
 		return nil, err
@@ -258,6 +270,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		Container:   container,
 		Image:       image,
 		Profile:     profile,
+		PHP:         php,
 		Port:        port,
 		Running:     true,
 		Exists:      true,
@@ -294,7 +307,7 @@ func localBranch(ctx context.Context, git Runner, repository string) string {
 // SandboxRemoteConfig is the remote `up` writes. It is exported because it is
 // the contract between the sandbox and the deploy pipeline, and both are worth
 // asserting on independently.
-func SandboxRemoteConfig(profile string, port int, paths SandboxPaths, key SandboxKeyPair) engine.RemoteConfig {
+func SandboxRemoteConfig(profile, php string, port int, paths SandboxPaths, key SandboxKeyPair) engine.RemoteConfig {
 	settings := map[string]any{
 		// The image's deployer identity is fixed, so the ownership path is
 		// exercised rather than bypassed.
@@ -307,6 +320,13 @@ func SandboxRemoteConfig(profile string, port int, paths SandboxPaths, key Sandb
 	if profile == SandboxProfilePHP || profile == SandboxProfileFull {
 		settings["php_bin"] = "php"
 		settings["composer_bin"] = "composer"
+		// A deploy refuses to run when the target's PHP does not match the
+		// declared series, so the sandbox declares what it actually shipped.
+		// Without this, asking for 8.4 would pin the image correctly and then
+		// fail the very first check.
+		if php != "" {
+			settings["php_version"] = php
+		}
 	}
 
 	keyPath := filepath.ToSlash(filepath.Join(".govard", "sandbox", SandboxKeyName))
@@ -451,13 +471,17 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 	container := SandboxContainerName(project, request.ProjectRoot)
 
 	state := &SandboxState{
-		Container:   container,
-		RemoteName:  request.remoteName(),
-		RemoteSet:   config.RemoteSet,
-		Port:        config.Remote.Port,
-		MirrorPath:  SandboxMirrorPath(request.ProjectRoot),
-		KeyPath:     filepath.Join(SandboxStateDir(request.ProjectRoot), SandboxKeyName),
-		Profile:     containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel),
+		Container:  container,
+		RemoteName: request.remoteName(),
+		RemoteSet:  config.RemoteSet,
+		Port:       config.Remote.Port,
+		MirrorPath: SandboxMirrorPath(request.ProjectRoot),
+		KeyPath:    filepath.Join(SandboxStateDir(request.ProjectRoot), SandboxKeyName),
+		Profile:    containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel),
+		// The series the image was built with, read back from the remote the
+		// creation wrote: `status` must report what exists, not what a flag would
+		// now ask for.
+		PHP:         sandboxRemotePHP(config.Remote),
 		DeployPath:  config.Remote.DeployPath,
 		CurrentPath: config.Remote.Path,
 	}
@@ -488,6 +512,15 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 		state.Port = port
 	}
 	return state, nil
+}
+
+// sandboxRemotePHP reads the PHP series out of a sandbox remote's deploy
+// settings, and is empty for a remote that does not record one.
+func sandboxRemotePHP(remote engine.RemoteConfig) string {
+	if remote.Deploy == nil {
+		return ""
+	}
+	return settingsString(remote.Deploy.Settings, "php_version")
 }
 
 // SandboxDown removes the container and the remote `up` wrote, so a stale

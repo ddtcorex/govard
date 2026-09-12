@@ -45,9 +45,13 @@ Because ` + "`sandbox`" + ` is a subcommand here, deploy to it with the flag for
   govard deploy --remote sandbox --yes
 
 Profiles: basic (sshd, rsync, git), php (adds php-cli, composer, node) and full
-(adds a database and a cache). --docroot shapes the target so the publish
-strategy resolves the way you want to exercise it: absent or symlink selects the
-atomic swap, real selects in-place publishing.
+(adds a database and a cache). --php picks the PHP series the image provides
+(e.g. --php 8.4); without it the image keeps the base distribution's version.
+The sandbox then declares that series to the pipeline, so a project whose
+composer.lock needs a newer PHP can be rehearsed against the PHP its target
+actually runs. --docroot shapes the target so the publish strategy resolves the
+way you want to exercise it: absent or symlink selects the atomic swap, real
+selects in-place publishing.
 
 Exit codes: 0 success, 1 execution failure, 2 usage, 3 missing capability,
 4 configuration.`,
@@ -69,6 +73,7 @@ var (
 
 func init() {
 	deploySandboxUpCmd.Flags().String("profile", deploy.DefaultSandboxProfile, "Container contents: basic, php or full")
+	deploySandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default: the base image's own)")
 	deploySandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	deploySandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
 
@@ -112,6 +117,7 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	}
 
 	profile, _ := cmd.Flags().GetString("profile")
+	php, _ := cmd.Flags().GetString("php")
 	docRoot, _ := cmd.Flags().GetString("docroot")
 	layout, _ := cmd.Flags().GetString("layout")
 	recreate, _ := cmd.Flags().GetBool("recreate")
@@ -125,6 +131,7 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		ProjectRoot:  root,
 		ProjectName:  config.ProjectName,
 		Profile:      profile,
+		PHP:          php,
 		DocRoot:      docRoot,
 		Layout:       layout,
 		Requirements: requirements,
@@ -225,6 +232,9 @@ func printSandboxState(cmd *cobra.Command, state *deploy.SandboxState, headline 
 	fmt.Fprintf(out, "  container:  %s\n", state.Container)
 	if state.Profile != "" {
 		fmt.Fprintf(out, "  profile:    %s\n", state.Profile)
+	}
+	if state.PHP != "" {
+		fmt.Fprintf(out, "  php:        %s\n", state.PHP)
 	}
 	if state.Image != "" {
 		fmt.Fprintf(out, "  image:      %s\n", state.Image)

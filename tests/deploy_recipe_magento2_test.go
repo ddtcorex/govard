@@ -132,6 +132,36 @@ func TestMagento2RecipePatchesStepIsGuardedNotSwallowed(t *testing.T) {
 	}
 }
 
+// `magento/magento-cloud-patches` is a Composer plugin, and Magento Cloud
+// projects run it from `post-install-cmd`, so `build:vendors` has already applied
+// the patch set by the time this step runs. An unconditional `apply` then fails
+// with "can't be applied to clean Magento instance" and kills a deploy whose
+// patches are in fact applied — observed on a real 2.4.9 project, where the
+// release could not get past `build:patches`.
+func TestMagento2RecipePatchesStepDoesNotReapplyAnAppliedSet(t *testing.T) {
+	command := magento2.DeployRecipe().Task("build:patches").Command
+
+	gate := strings.Index(command, "verify --cloud-only")
+	apply := strings.Index(command, "ece-patches apply")
+	if gate < 0 {
+		t.Fatalf("build:patches must ask the tool whether the set is applied before applying it:\n%s", command)
+	}
+	// `verify` without the flag also reports the project's deliberately unapplied
+	// optional quality patches and exits non-zero on a healthy target, so it cannot
+	// be the gate.
+	if strings.Contains(command, "ece-patches verify >") {
+		t.Fatalf("build:patches gates on a bare `verify`, which fails on a healthy target:\n%s", command)
+	}
+	// The gate decides whether to apply; it must not decide whether to succeed. A
+	// genuinely unapplied required patch has to reach `apply` and fail the step.
+	if apply < 0 {
+		t.Fatalf("build:patches no longer applies anything:\n%s", command)
+	}
+	if apply < gate {
+		t.Fatalf("the verify gate must come before the apply:\n%s", command)
+	}
+}
+
 func TestMagento2RecipeBackupWritesThroughTheEngine(t *testing.T) {
 	task := magento2.DeployRecipe().Task("db:backup")
 
