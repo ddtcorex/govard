@@ -601,3 +601,62 @@ func TestResumeWithoutAnUnfinishedReleaseLeavesTheNewRecordAlone(t *testing.T) {
 		t.Fatalf("a resume with nothing to continue must start a new release, got %+v", release)
 	}
 }
+
+// An in-place docroot has no `current` symlink to read, so "already deployed" is
+// answered by the docroot's own HEAD plus a *finished* record for that revision.
+//
+// The completeness half is what keeps a retry honest: a release whose record says
+// failed may still have served the revision, and calling that "already deployed"
+// turns a retry into a success that never happened. Only the symlink layout had
+// this covered.
+func TestAnInPlaceTargetIsAlreadyDeployedOnlyWithAFinishedRecord(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	if _, err := host.Runner().Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	// The bare origin's HEAD names a branch that was never pushed, so a fresh
+	// clone of it checks nothing out. A real in-place docroot is on a commit —
+	// the engine seeds it that way and this is the state the fast path reads.
+	if _, err := host.Runner().Run(ctx, "git -C "+host.CurrentPath+" reset -q --hard "+revision, deploy.RunOptions{}); err != nil {
+		t.Fatalf("put the docroot on the revision: %v", err)
+	}
+	options := deploy.Options{Remote: "local", Publish: deploy.PublishInPlace, Revision: revision}
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskCheck, Stage: deploy.StagePrepare, Command: "true"},
+	}), nil, "local")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	failed := deploy.NewReleaseForTest("1", revision, "main")
+	failed.Status = deploy.StatusFailed
+	if err := deploy.WriteRelease(ctx, host, failed); err != nil {
+		t.Fatalf("seed failed release: %v", err)
+	}
+	outcome, err := deploy.NewExecutor(host, options, io.Discard).Run(ctx, plan, deploy.NewVars(), deploy.NewReleaseForTest("2", revision, "main"))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if outcome.AlreadyDeployed {
+		t.Fatal("a failed record for the served revision must not be reported as already deployed")
+	}
+
+	done := deploy.NewReleaseForTest("1", revision, "main")
+	done.Status = deploy.StatusOK
+	if err := deploy.WriteRelease(ctx, host, done); err != nil {
+		t.Fatalf("mark the release ok: %v", err)
+	}
+	outcome, err = deploy.NewExecutor(host, options, io.Discard).Run(ctx, plan, deploy.NewVars(), deploy.NewReleaseForTest("2", revision, "main"))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !outcome.AlreadyDeployed {
+		t.Fatal("a finished record for the revision the docroot serves must take the no-op path")
+	}
+	if len(outcome.Steps) != 0 {
+		t.Fatalf("the no-op path must run no steps, ran %+v", outcome.Steps)
+	}
+}

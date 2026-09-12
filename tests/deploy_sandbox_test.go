@@ -1117,3 +1117,32 @@ func sandboxServicesLine(t *testing.T, dockerfile string) string {
 	}
 	return strings.Trim(rest[:end], `"`)
 }
+
+// `up` on a stopped sandbox is the other half of reuse: start the container and
+// leave the target exactly as the last deploy left it. The current path is as
+// much the application here as it is for a running container.
+func TestSandboxUpStartsAStoppedContainerWithoutReshaping(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake()
+	fake.answers["inspect --format {{.State.Running}}"] = "false\n"
+	fake.answers["image inspect"] = "sha256:abc\n"
+
+	state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfilePHP,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	if !fake.has("start ") {
+		t.Fatalf("a stopped sandbox must be started: %v", fake.calls)
+	}
+	if fake.has("rm -rf " + deploy.SandboxDefaultPaths().Current) {
+		t.Fatalf("starting a stopped sandbox must not reshape its target: %v", fake.calls)
+	}
+	if !state.Running {
+		t.Fatal("the state must report the container as running after up started it")
+	}
+}
