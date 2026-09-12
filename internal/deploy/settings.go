@@ -78,6 +78,25 @@ var engineSettings = []Setting{
 	{Key: "content_version", Kind: SettingString, Title: "static content version; defaults to the revision"},
 }
 
+// ValidateRecipe refuses a recipe that declares the same setting twice.
+//
+// The declarations behave as a map — the last one wins — so a duplicate is a
+// copy-paste bug that silently changes a setting's shape or its description, and
+// `ValidateSettings` would validate values against one declaration while
+// `deploy plan` prints the other. It is a recipe bug rather than a project
+// configuration error, so it is a plain refusal, raised wherever a plan is built
+// (every command goes through one).
+func ValidateRecipe(recipe Recipe) error {
+	seen := make(map[string]bool, len(recipe.Settings))
+	for _, setting := range recipe.Settings {
+		if seen[setting.Key] {
+			return fmt.Errorf("recipe %q declares deploy.settings.%s twice; the second declaration would silently win", recipe.ID, setting.Key)
+		}
+		seen[setting.Key] = true
+	}
+	return nil
+}
+
 // ValidateSettings refuses an unknown or misshapen `deploy.settings` key.
 //
 // Spec 5.2 makes this the recipe's job and calls the outcome a configuration

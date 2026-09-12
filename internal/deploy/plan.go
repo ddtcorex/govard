@@ -343,6 +343,13 @@ var artifactReplacedBuildTasks = map[string]bool{
 // reorder the lifecycle. The default recipe declares all 25 ids; a recipe that
 // declares fewer simply produces a shorter plan.
 func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
+	// A recipe that contradicts itself is refused before a step is shaped: the
+	// alternative is a deploy whose validation and whose documentation disagree
+	// about what a setting is.
+	if err := ValidateRecipe(recipe); err != nil {
+		return Plan{}, err
+	}
+
 	steps := make([]Step, 0, len(recipe.Tasks))
 	for _, id := range taskOrder {
 		task := recipe.Task(id)

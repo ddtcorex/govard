@@ -476,6 +476,33 @@ func TestValidateSettingsNamesAnUnimplementedKey(t *testing.T) {
 	}
 }
 
+// A recipe that declares the same deploy.settings key twice was undetectable: the
+// last declaration silently wins, so validation could read one shape and `plan`
+// print another, and only the Magento recipe had a test for it. Every path that
+// builds a plan now refuses it, which is every command.
+func TestBuildPlanRefusesARecipeThatDeclaresASettingTwice(t *testing.T) {
+	recipe := deploy.RecipeForTest("duplicate", []deploy.Task{
+		{ID: deploy.TaskCheck, Stage: deploy.StagePrepare, Command: "true"},
+	})
+	recipe.Settings = []deploy.Setting{
+		{Key: "php_bin", Kind: deploy.SettingString, Title: "the interpreter"},
+		{Key: "php_bin", Kind: deploy.SettingInt, Title: "the interpreter, again"},
+	}
+
+	_, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	if err == nil {
+		t.Fatal("a recipe that declares php_bin twice must be refused")
+	}
+	if !strings.Contains(err.Error(), "php_bin") || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("the refusal must name the key and the recipe, got %v", err)
+	}
+
+	// The shipped recipe is clean, so the refusal does not fire on it.
+	if _, err := deploy.BuildPlanForTest(magento2.DeployRecipe(), nil, "staging"); err != nil {
+		t.Fatalf("the Magento recipe must build a plan: %v", err)
+	}
+}
+
 // `split_static_deployment` is implemented now, so it is validated as the boolean
 // it is rather than refused as unknown.
 func TestSplitStaticDeploymentIsADeclaredBoolean(t *testing.T) {
