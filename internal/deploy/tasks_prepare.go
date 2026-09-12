@@ -531,19 +531,44 @@ func CoreRelease(ctx context.Context, sc *StepContext) error {
 		number = computed
 	}
 
-	if _, err := sc.Runner.Run(ctx, "test -e "+Shell(host.ReleasePath(number)), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
-		return fmt.Errorf("%w: %s", ErrReleaseExists, host.ReleasePath(number))
+	releasePath := host.ReleasePath(number)
+	exists := false
+	if _, err := sc.Runner.Run(ctx, "test -e "+Shell(releasePath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
+		exists = true
 	}
-
-	if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(host.ReleasePath(number)), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
-		return fmt.Errorf("create release %s: %w", number, err)
+	if exists && !releaseIsGovards(ctx, host, number) {
+		return fmt.Errorf("%w: %s", ErrReleaseExists, releasePath)
+	}
+	if !exists {
+		if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(releasePath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
+			return fmt.Errorf("create release %s: %w", number, err)
+		}
 	}
 
 	if sc.Release != nil {
 		sc.Release.Release = number
-		sc.Release.Path = host.ReleasePath(number)
+		sc.Release.Path = releasePath
 	}
 	return nil
+}
+
+// releaseIsGovards reports whether an existing release directory already carries
+// govard's own record for that same release.
+//
+// The record lives inside the release directory, so finding it proves both that
+// the directory is govard's and that govard got as far as writing something
+// about it. Such a release is one this tool already started — a run that died
+// between creating the directory and finishing, or a record an earlier version
+// left inconsistent — and continuing it is what `--resume` is for. Refusing it
+// made the failure permanent: the directory stayed, the step could not run
+// again, and every later resume hit the same wall.
+//
+// Anything else is refused. An empty directory or another tool's release is not
+// govard's to reuse, and overwriting it could destroy work govard did not
+// create.
+func releaseIsGovards(ctx context.Context, host Host, release string) bool {
+	record, err := ReadRelease(ctx, host, release)
+	return err == nil && record.Tool == ReleaseTool && record.Release == release
 }
 
 // CoreCode materialises the exact revision into the release from a bare mirror.

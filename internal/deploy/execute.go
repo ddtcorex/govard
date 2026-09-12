@@ -218,6 +218,12 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	// A resumed deploy repeats only what did not succeed: a task already
 	// recorded as ok is not run twice.
 	completed := map[string]bool{}
+	// carried holds the record entry of every step an earlier run of this
+	// release already succeeded at. The run does not repeat the step, and it
+	// must not rewrite the entry either: `ok` is what the next resume reads to
+	// decide what not to repeat, so recording the carry-over as `skipped`
+	// destroys the very fact that makes resuming safe.
+	carried := map[string]StepRecord{}
 	if e.opts.Resume && release.Release != "" {
 		if previous, err := ReadRelease(ctx, e.host, release.Release); err == nil {
 			for _, task := range previous.Tasks {
@@ -225,6 +231,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 					continue
 				}
 				completed[task.ID] = true
+				carried[task.ID] = task
 			}
 			if previous.Revision != "" {
 				release.Revision = previous.Revision
@@ -259,7 +266,13 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 
 	for index, step := range plan.Steps {
 		if completed[step.ID] {
-			e.record(ctx, release, step, StepSkipped, 0, nil)
+			if stored, ok := carried[step.ID]; ok {
+				e.carryOver(ctx, release, step, stored)
+			} else {
+				// `--from` put this step behind the run without an earlier run
+				// having succeeded at it, so there is no success to keep.
+				e.record(ctx, release, step, StepSkipped, 0, nil)
+			}
 			continue
 		}
 		// A step the plan marked skipped is not run, whatever it carries. The
@@ -473,6 +486,37 @@ func (e *Executor) record(ctx context.Context, release *Release, step Step, stat
 		}
 	}
 
+	e.printStep(step, status, duration)
+}
+
+// carryOver records a step a resumed run does not repeat because an earlier run
+// of the same release already succeeded at it.
+//
+// The run's own outcome says `skipped` — it did not run, and its timeline has to
+// say so. The durable record keeps the `ok` the earlier run stored, because the
+// record describes the release rather than this run, and a resume reads it to
+// decide what not to repeat. Recording the carry-over as `skipped` made a second
+// resume run the step again, and for `deploy:release` — which refuses a
+// directory that already exists — the second resume could then never succeed:
+// the directory was there, the step could not run, and the record said the step
+// had never succeeded.
+func (e *Executor) carryOver(ctx context.Context, release *Release, step Step, stored StepRecord) {
+	e.results = append(e.results, StepResult{ID: step.ID, Stage: step.Stage, Status: StepSkipped})
+
+	release.RecordTask(stored)
+	if release.Release != "" {
+		if writeErr := WriteRelease(context.WithoutCancel(ctx), e.host, release); writeErr != nil {
+			fmt.Fprintf(e.out, "  ! the release record could not be updated: %v\n", writeErr)
+		}
+	}
+
+	step.SkipReason = "already done in an earlier run"
+	e.printStep(step, StepSkipped, 0)
+}
+
+// printStep writes one line of the run timeline. It is shared by every path that
+// records a step so the timeline cannot drift from the record.
+func (e *Executor) printStep(step Step, status string, duration time.Duration) {
 	icon := "✔"
 	switch status {
 	case StepSkipped:

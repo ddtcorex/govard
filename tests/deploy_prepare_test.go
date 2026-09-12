@@ -80,6 +80,38 @@ func TestCoreReleaseRefusesToReuseAnExistingNumber(t *testing.T) {
 	}
 }
 
+// A release directory that carries govard's own record for that same release is
+// govard's own half-made release, not a stranger's.
+//
+// The refusal exists to protect a release the other deploy tool created. A
+// directory with govard's record inside belongs to this deploy: a run that died
+// between creating the directory and finishing, or a record a previous version
+// left inconsistent, must still be continuable. Refusing it turned every later
+// `--resume` into the same error with no way forward.
+func TestCoreReleaseContinuesAReleaseThatCarriesItsOwnRecord(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.ReleasePath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed release dir: %v", err)
+	}
+	record := deploy.NewReleaseForTest("1", "abc", "main")
+	record.Status = deploy.StatusFailed
+	record.Tasks = []deploy.StepRecord{{ID: deploy.TaskRelease, Status: deploy.StepFailed}}
+	if err := deploy.WriteRelease(ctx, host, record); err != nil {
+		t.Fatalf("seed release record: %v", err)
+	}
+
+	sc.Release = deploy.NewReleaseForTest("1", "abc", "main")
+	if err := deploy.CoreRelease(ctx, sc); err != nil {
+		t.Fatalf("a release carrying govard's own record must be continuable: %v", err)
+	}
+	if _, err := host.Runner().Run(ctx, "test -f "+host.ReleaseRecordPath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("the release record must survive the step: %v", err)
+	}
+}
+
 func TestCoreCheckRefusesSubmodules(t *testing.T) {
 	root := t.TempDir()
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})

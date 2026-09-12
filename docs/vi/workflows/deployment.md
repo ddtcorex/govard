@@ -582,6 +582,13 @@ lock, vì target có thể đang dở dang, và đường đi tiếp là `govard
 `--from <task>` bắt đầu từ một task hoặc hook chỉ định, và `govard deploy unlock`
 giải phóng lock do lần lỗi để lại.
 
+Có thể `--resume` bao nhiêu lần cũng được, và lần nào cũng tiếp tục đúng release
+đó. Bước mà lần chạy trước đã thành công sẽ không chạy lại, và record giữ nguyên
+trạng thái `ok` mà lần đó ghi, nên lần resume hiện bước đó là `already done in an
+earlier run` và không có gì bị build hai lần. Thư mục release chỉ bị từ chối khi nó
+không mang record của chính govard cho release đó: thư mục do công cụ khác tạo được
+bảo vệ, còn release dở dang của govard thì được đi tiếp chứ không bị chặn.
+
 ## Output cho máy đọc
 
 `--json` ghi đúng một JSON document ra stdout, còn mọi thứ cho người đọc ra stderr,

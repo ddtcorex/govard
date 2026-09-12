@@ -436,6 +436,105 @@ func TestResumeContinuesTheFailedReleaseInsteadOfStartingANewOne(t *testing.T) {
 	}
 }
 
+// A resumed run must leave the record it continues at least as complete as it
+// found it.
+//
+// The steps it carries over were not run this time, and the obvious way to say
+// so -- record them as skipped -- silently destroys the `ok` an earlier run
+// stored. The *next* resume reads `ok` to decide what not to repeat, so it would
+// run those steps again; for `deploy:release`, which refuses a directory that
+// already exists, that makes the second resume a permanent dead end: the
+// directory is there, the step cannot succeed, and the record now says the step
+// never succeeded.
+func TestASecondResumeDoesNotRepeatWhatTheFirstCarriedOver(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	cfg := deployRemoteConfig(t, root, origin)
+	options := deployOptionsForTest(t, cfg, revision)
+
+	host, err := deploy.HostForConfigForTest(cfg, "local", options)
+	if err != nil {
+		t.Fatalf("host: %v", err)
+	}
+	ctx := context.Background()
+	writeFile(t, filepath.Join(host.SharedPath(), "app/etc/env.php"), "<?php return [];\n")
+
+	broken := deploy.DefaultRecipe()
+	deploy.OverrideTaskForTest(&broken, deploy.TaskActivate, deploy.Task{
+		ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "exit 9",
+	})
+	brokenPlan, err := deploy.BuildPlanForTest(broken, nil, "local")
+	if err != nil {
+		t.Fatalf("broken plan: %v", err)
+	}
+	goodPlan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "local")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	first := deploy.NewReleaseForTest("", revision, "main")
+	if _, err := deploy.NewExecutor(host, options, io.Discard).Run(ctx, brokenPlan, deploy.NewVars(), first); err == nil {
+		t.Fatal("want the first attempt to fail")
+	}
+
+	// Two resumes that fail at the same step. The second one is the one that
+	// used to destroy the record the first one had carried over.
+	resumeOptions := options
+	resumeOptions.Resume = true
+	for attempt := 1; attempt <= 2; attempt++ {
+		incomplete, err := deploy.IncompleteRelease(ctx, host)
+		if err != nil || incomplete == nil {
+			t.Fatalf("attempt %d: incomplete = %+v (err %v), want release 1", attempt, incomplete, err)
+		}
+		if err := deploy.CoreUnlock(ctx, deploy.StepContextForTest(host, options)); err != nil {
+			t.Fatalf("attempt %d: clear the stale lock: %v", attempt, err)
+		}
+		if attempt == 2 {
+			// The fault is fixed; this resume has to finish the release the
+			// earlier runs left behind, not trip over its own directory.
+			outcome, err := deploy.NewExecutor(host, resumeOptions, io.Discard).Run(ctx, goodPlan, deploy.NewVars(), resumeRecord(incomplete))
+			if err != nil {
+				t.Fatalf("the second resume must finish release 1, got: %v\nsteps: %+v", err, outcome.Steps)
+			}
+			break
+		}
+		if _, err := deploy.NewExecutor(host, resumeOptions, io.Discard).Run(ctx, brokenPlan, deploy.NewVars(), resumeRecord(incomplete)); err == nil {
+			t.Fatal("want the resumed attempt to fail again")
+		}
+		stored, err := deploy.ReadRelease(ctx, host, "1")
+		if err != nil {
+			t.Fatalf("read release: %v", err)
+		}
+		for _, task := range stored.Tasks {
+			if task.ID == deploy.TaskRelease && task.Status != deploy.StepOK {
+				t.Fatalf("deploy:release = %q after a resume, want ok: a carried-over step must keep the status that says the work is done, or the next resume repeats it", task.Status)
+			}
+		}
+	}
+
+	stored, err := deploy.ReadRelease(ctx, host, "1")
+	if err != nil {
+		t.Fatalf("read release: %v", err)
+	}
+	if stored.Status != deploy.StatusOK {
+		t.Fatalf("release status = %q, want ok", stored.Status)
+	}
+	releases, err := host.Runner().Run(ctx, "ls -1 "+host.ReleasesPath()+" | wc -l", deploy.RunOptions{})
+	if err != nil {
+		t.Fatalf("count releases: %v", err)
+	}
+	if strings.TrimSpace(releases.Stdout) != "1" {
+		t.Fatalf("release count = %q, want 1 (resumes must not add a release)", strings.TrimSpace(releases.Stdout))
+	}
+}
+
+// resumeRecord is what the CLI hands the executor for a `--resume`.
+func resumeRecord(incomplete *deploy.Release) *deploy.Release {
+	record := deploy.NewReleaseForTest(incomplete.Release, incomplete.Revision, incomplete.Branch)
+	record.Path = incomplete.Path
+	return record
+}
+
 // A resume continues the stored record, so the record must reach the run whole.
 //
 // Copying a few fields into a fresh Release looks equivalent and is not: the new

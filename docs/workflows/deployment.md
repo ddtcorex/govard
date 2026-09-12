@@ -611,6 +611,14 @@ continues the newest unfinished release instead of starting a new one.
 `--from <task>` starts at a named task or hook, and `govard deploy unlock`
 releases a lock a failed run left behind.
 
+A resume can be repeated as often as it takes, and it continues the same release
+every time. A step an earlier attempt already succeeded at is not run again, and
+the record keeps the `ok` that attempt stored, so a resumed run shows it as
+`already done in an earlier run` and nothing is built twice. The release
+directory is only refused when it does not carry govard's own record for that
+release: a directory another tool created is protected, while govard's own
+half-finished release is continued rather than blocked.
+
 ## Machine-readable output
 
 `--json` writes exactly one JSON document to stdout and everything a human would
