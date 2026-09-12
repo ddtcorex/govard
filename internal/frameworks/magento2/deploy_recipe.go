@@ -212,8 +212,12 @@ func DeployRecipe() deploy.Recipe {
 	// the application's, not govard's: a different framework asks for a
 	// different set, and nothing here is interpreted by the core.
 	recipe.Sandbox = deploy.SandboxRequirements{
-		Packages:   []string{"libxslt1-dev", "libzip-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "default-mysql-client"},
-		Extensions: []string{"bcmath", "gd", "intl", "mysql", "soap", "sockets", "xsl", "zip"},
+		Packages: []string{"libxslt1-dev", "libzip-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "default-mysql-client"},
+		// `curl` is not optional: Magento's own composer platform check requires
+		// ext-curl, so without it a real project stops at build:vendors — a first
+		// trial against a real project failed exactly there, and the rest of this
+		// list was already satisfied (composer check-platform-reqs).
+		Extensions: []string{"bcmath", "curl", "gd", "intl", "mysql", "soap", "sockets", "xsl", "zip"},
 		Services:   []string{"mariadb"},
 	}
 	return recipe
