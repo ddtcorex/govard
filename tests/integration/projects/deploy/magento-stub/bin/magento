@@ -63,6 +63,14 @@ if ($command === 'setup:static-content:deploy') {
     }
 }
 
+if ($command === 'setup:di:compile') {
+    // What an in-place activation is supposed to publish: a path the build created
+    // that the docroot's git checkout cannot contain (it is gitignored), so its
+    // presence in the docroot afterwards can only come from the sync.
+    @mkdir('generated', 0777, true);
+    file_put_contents('generated/.deploy-marker', 'built-' . uniqid('', true) . "\n");
+}
+
 if ($command === 'maintenance:enable' || $command === 'maintenance:disable') {
     // Maintenance mode is read by the application the web server serves, so the
     // step must run in *that* directory: the docroot, never the release being
@@ -84,6 +92,23 @@ if ($command === 'maintenance:enable' || $command === 'maintenance:disable') {
 }
 
 if ($command === 'setup:db:status') {
+    // An in-place activation resets the docroot to the revision and copies the
+    // configured paths in. `git reset --hard` leaves the previous deployment's
+    // gitignored directories alone, so a built path missing from the docroot is a
+    // path the site keeps from the old release.
+    $sync = trim((string) @file_get_contents($release . '/sync-expectation.txt'));
+    if ($sync === 'generated') {
+        $served = trim((string) @file_get_contents($release . '/served-path.txt'));
+        $built = trim((string) @file_get_contents($release . '/generated/.deploy-marker'));
+        $published = trim((string) @file_get_contents($served . '/generated/.deploy-marker'));
+        if ($built === '') {
+            $fail('setup:di:compile produced no generated/.deploy-marker to publish');
+        }
+        if ($published !== $built) {
+            $fail("the docroot's generated/.deploy-marker is '{$published}', not the built '{$built}'");
+        }
+    }
+
     // The verify stage runs last, so this is where "the static content step never
     // ran at all" is caught rather than assumed.
     $deploys = $calls('setup:static-content:deploy');

@@ -221,6 +221,9 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 		// default dangling symlink, "real" means a docroot that is a git checkout
 		// already holding the application (an in-place target).
 		docroot string
+		// sync names what the stub should verify the activation published into the
+		// served docroot. Empty means the case does not deploy in place.
+		sync string
 	}{
 		{
 			name:   "single",
@@ -262,6 +265,7 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			name:    "in-place",
 			static:  "single",
 			docroot: "real",
+			sync:    "generated",
 		},
 	} {
 		expectation := testCase.name
@@ -284,6 +288,14 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			// because that is what seeds the mirror the target deploys from.
 			if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
 				t.Fatalf("write the served path: %v", err)
+			}
+			if testCase.sync != "" {
+				// The stub checks, at verify time, that the served docroot holds what
+				// the build produced: an in-place activation that copies nothing
+				// leaves the previous deployment's directories in place.
+				if err := os.WriteFile(filepath.Join(projectDir, "sync-expectation.txt"), []byte(testCase.sync+"\n"), 0o644); err != nil {
+					t.Fatalf("write the sync expectation: %v", err)
+				}
 			}
 			origin, revision := seedOriginFromProject(t, projectDir)
 			seedSandboxCheckout(t, projectDir, origin)
