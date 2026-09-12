@@ -90,6 +90,34 @@ func TestMagento2RecipeUsesTheConfiguredPHPBinary(t *testing.T) {
 	}
 }
 
+// The compiler clears `generated/code` before it compiles, while an optimized
+// autoloader built with that directory present maps every class inside it. The
+// map then points at files the compiler has just deleted, and the first lookup
+// dies with "Failed to open stream" instead of generating the class — a resumed
+// deploy that re-ran `build:vendors` over a release the previous attempt had
+// already compiled, observed on a real 2.4.9 project.
+//
+// A fresh release cannot reach it, so the order inside the step is the fix:
+// clear the tree, rebuild the map without it, and only then compile. Asserting
+// the three markers are present would pass for any order, including the broken
+// one.
+func TestMagento2CompileStepRebuildsTheAutoloaderWithoutStaleGeneratedCode(t *testing.T) {
+	command := magento2.DeployRecipe().Task("build:compile").Command
+
+	clear := strings.Index(command, "rm -rf generated/code")
+	dump := strings.Index(command, "dump-autoload")
+	compile := strings.Index(command, "setup:di:compile")
+	if clear < 0 || dump < 0 || compile < 0 {
+		t.Fatalf("build:compile must clear the generated tree, rebuild the autoloader and compile:\n%s", command)
+	}
+	if clear > dump || dump > compile {
+		t.Fatalf("build:compile must clear before it rebuilds the map and rebuild the map before it compiles:\n%s", command)
+	}
+	if !strings.Contains(command, "{{composer_bin}} dump-autoload") {
+		t.Fatalf("build:compile must rebuild the map with the configured Composer binary:\n%s", command)
+	}
+}
+
 func TestMagento2RecipeStaticContentIsDeterministic(t *testing.T) {
 	command := magento2.DeployRecipe().Task("build:assets").Command
 
