@@ -58,6 +58,11 @@ func DeployRecipe() deploy.Recipe {
 		"static_content_locales": deploy.ArgsSpec{Flag: "--language"},
 		"magento_themes":         deploy.ArgsSpec{Flag: "-t", ValueFlag: "--language"},
 
+		// Extra flags for every static content pass, in the reference tool's
+		// shape: `--no-parent`, `-s standard`, `--exclude-theme ...`. A string is
+		// passed through verbatim, a list contributes one word per entry.
+		"static_deploy_options": deploy.ArgsSpec{},
+
 		// The adminhtml/frontend split. The admin pass deploys the backend
 		// theme, which a frontend theme list never covers, and its languages
 		// default to the frontend ones so the two passes agree unless the
@@ -105,10 +110,10 @@ func DeployRecipe() deploy.Recipe {
 	fill(deploy.TaskAssets, "deploy static content",
 		`cd {{release_path}} && if [ {{settings.mage_mode}} != developer ]; then `+
 			`if [ {{settings.split_static_deployment}} = true ]; then `+
-			`{{php_bin}} bin/magento setup:static-content:deploy -f --area=adminhtml --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_content_locales_backend_args}} {{settings.magento_themes_backend_args}} && `+
-			`{{php_bin}} bin/magento setup:static-content:deploy -f --area=frontend --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; `+
+			`{{php_bin}} bin/magento setup:static-content:deploy -f --area=adminhtml --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_deploy_options_args}} {{settings.static_content_locales_backend_args}} {{settings.magento_themes_backend_args}} && `+
+			`{{php_bin}} bin/magento setup:static-content:deploy -f --area=frontend --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_deploy_options_args}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; `+
 			`else `+
-			`{{php_bin}} bin/magento setup:static-content:deploy -f --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; `+
+			`{{php_bin}} bin/magento setup:static-content:deploy -f --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_deploy_options_args}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; `+
 			`fi; fi`)
 
 	// Maintenance mode belongs to the application the web server is *serving*,
@@ -156,6 +161,7 @@ func DeployRecipe() deploy.Recipe {
 		{Key: "frontend_dir", Kind: deploy.SettingArgs, Title: "the theme Tailwind directories to build (one path or a list); empty skips the frontend build"},
 		{Key: "frontend_command", Kind: deploy.SettingCommand, Title: "the command run inside frontend_dir"},
 		{Key: "static_jobs", Kind: deploy.SettingInt, Title: "parallelism for static content deployment"},
+		{Key: "static_deploy_options", Kind: deploy.SettingArgs, Title: "extra flags for every setup:static-content:deploy pass"},
 		{Key: "static_content_locales", Kind: deploy.SettingArgs, Title: "locales to deploy (string, list or map)"},
 		{Key: "magento_themes", Kind: deploy.SettingArgs, Title: "themes to deploy, each with its locales (string, list or theme-to-locales map); locales are added to static_content_locales"},
 		{Key: "mage_mode", Kind: deploy.SettingString, Title: "production or developer; developer skips static content"},

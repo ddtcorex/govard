@@ -443,6 +443,43 @@ func TestMagento2ThemeMapLocalesReachMagentoAsLanguageFlags(t *testing.T) {
 	}
 }
 
+// The reference tool exposes the static content command's own flags as one
+// passthrough setting (`static_deploy_options`, e.g. `--no-parent`). Without it a
+// project that needs `--no-parent`, `-s standard` or `--exclude-theme` has to
+// write raw flags into the theme list, which is a setting about themes.
+func TestMagento2StaticDeployOptionsArePassedThroughEveryPass(t *testing.T) {
+	calls := assetCalls(t, map[string]any{"static_deploy_options": "--no-parent -s standard"})
+	if len(calls) != 1 {
+		t.Fatalf("one pass without the split, got %v", calls)
+	}
+	want := "setup:static-content:deploy -f --content-version=abcdef12 -j 4 --no-parent -s standard"
+	if calls[0] != want {
+		t.Fatalf("the passthrough rendered\n  %q\nwant\n  %q", calls[0], want)
+	}
+
+	// A list is the same thing written the other way, and the split pass carries
+	// the flags too.
+	split := assetCalls(t, map[string]any{
+		"static_deploy_options":   []string{"--no-parent"},
+		"split_static_deployment": true,
+	})
+	if len(split) != 2 {
+		t.Fatalf("the split must deploy two passes, got %v", split)
+	}
+	for index, area := range []string{"adminhtml", "frontend"} {
+		if !strings.Contains(split[index], "--no-parent") {
+			t.Fatalf("the %s pass must carry the passthrough flags, got %q", area, split[index])
+		}
+	}
+
+	// A project that sets nothing gets exactly the command it got before the
+	// setting existed.
+	plain := assetCalls(t, map[string]any{})
+	if len(plain) != 1 || strings.Contains(plain[0], "  ") || !strings.HasSuffix(plain[0], "-j 4") {
+		t.Fatalf("an unset passthrough must render nothing, got %q", plain)
+	}
+}
+
 func TestMagento2StaticContentStaysSinglePassByDefault(t *testing.T) {
 	calls := assetCalls(t, map[string]any{"magento_themes": []string{"Acme/theme"}})
 	if len(calls) != 1 {
