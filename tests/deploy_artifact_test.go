@@ -186,7 +186,7 @@ func TestReadManifestWithoutAnArtifactIsAnError(t *testing.T) {
 
 func TestArtifactUploadCommandCopiesLocallyAndRsyncsRemotely(t *testing.T) {
 	local := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	localCommand := deploy.ArtifactUploadCommandForTest(local, "/tmp/artifact", "/srv/app/releases/1", false)
+	localCommand := deploy.ArtifactUploadCommandForTest(local, "/tmp/artifact", "/srv/app/releases/1", false, nil)
 	if !strings.Contains(localCommand, "cp -a") {
 		t.Fatalf("a local target must be a copy, got %q", localCommand)
 	}
@@ -199,11 +199,45 @@ func TestArtifactUploadCommandCopiesLocallyAndRsyncsRemotely(t *testing.T) {
 		DeployPath: "/srv/app",
 		Remote:     engine.RemoteConfig{Host: "staging.example.com", User: "deploy"},
 	}
-	remoteCommand := deploy.ArtifactUploadCommandForTest(remoteHost, "/tmp/artifact", "/srv/app/releases/1", false)
+	remoteCommand := deploy.ArtifactUploadCommandForTest(remoteHost, "/tmp/artifact", "/srv/app/releases/1", false, nil)
 	for _, want := range []string{"rsync", "--numeric-ids", "manifest.json", "deploy@staging.example.com:/srv/app/releases/1/"} {
 		if !strings.Contains(remoteCommand, want) {
 			t.Errorf("the remote upload command is missing %q:\n%s", want, remoteCommand)
 		}
+	}
+}
+
+// The upload must not be able to replace the shared paths `deploy:shared` linked
+// on the target, even when the artifact it is handed still holds them: the
+// artifact is copied over a release whose `app/etc/env.php` is a symlink to the
+// target's own configuration, and a regular file would replace it.
+func TestArtifactUploadKeepsTheTargetsSharedState(t *testing.T) {
+	remoteHost := deploy.Host{
+		Name:       "staging",
+		DeployPath: "/srv/app",
+		Remote:     engine.RemoteConfig{Host: "staging.example.com", User: "deploy"},
+	}
+	// Driven through the step's own settings, so this pins the wiring as well as
+	// the formatting: the exclusion list comes from the recipe's shared paths.
+	sc := deploy.StepContextForTest(remoteHost, deploy.Options{
+		Settings: map[string]any{
+			"shared_files": []string{"app/etc/env.php"},
+			"shared_dirs":  []string{"var/log", "pub/media"},
+		},
+	})
+	command := deploy.ArtifactUploadCommandForContextForTest(sc, "/tmp/artifact", "/srv/app/releases/1")
+
+	for _, want := range []string{
+		"--exclude='app/etc/env.php'",
+		"--exclude='var/log'",
+		"--exclude='pub/media'",
+	} {
+		if !strings.Contains(command, want) {
+			t.Errorf("the upload can still replace the target's %s:\n%s", want, command)
+		}
+	}
+	if !strings.Contains(command, "--exclude='manifest.json'") {
+		t.Errorf("the manifest exclusion was lost:\n%s", command)
 	}
 }
 
