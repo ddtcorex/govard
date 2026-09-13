@@ -280,7 +280,14 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 	}
 	requirements := spec.Requirements
 
-	packages := []string{"openssh-server", "rsync", "git", "ca-certificates", "procps"}
+	// `patch` sits next to `unzip` on purpose: `unzip` is what Composer needs to
+	// install a dist, and `patch` is what it shells out to when a project patches
+	// a dependency (cweagans/composer-patches and friends). Without it the patch
+	// step fails, and a project configured to exit on a patch failure — the safe
+	// setting — cannot install at all. Measured: `composer install
+	// --prefer-dist` aborted on a patch while the same command with
+	// `--prefer-source` succeeded, because that path uses `git apply`.
+	packages := []string{"openssh-server", "rsync", "git", "ca-certificates", "procps", "patch"}
 	switch resolved {
 	case SandboxProfilePHP:
 		packages = append(packages, "nodejs", "npm", "unzip")
