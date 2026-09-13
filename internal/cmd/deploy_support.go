@@ -306,6 +306,12 @@ func deployRecipe(config engine.Config, options deploy.Options) (deploy.Recipe, 
 	if err := deploy.ValidateSettings(recipe, options.Settings); err != nil {
 		return deploy.Recipe{}, deploy.Options{}, err
 	}
+	// The flag is refused here rather than inside the task: a recipe with no
+	// dump skips `db:backup` in silence, which is the one outcome an operator
+	// asking for a backup right before a migration must never get.
+	if err := deploy.ValidateDBBackup(recipe, options); err != nil {
+		return deploy.Recipe{}, deploy.Options{}, err
+	}
 	return recipe, deploy.WithRecipeDefaults(recipe, options), nil
 }
 

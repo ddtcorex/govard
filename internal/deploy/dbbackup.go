@@ -15,6 +15,33 @@ var ErrNoDatabaseBackup = errors.New("the release recorded no database backup")
 // backupFileName is the dump's name inside the release's backup directory.
 const backupFileName = "dump.sql"
 
+// ValidateDBBackup refuses `--db-backup` for a recipe that has no dump command.
+//
+// The executor skips a task carrying neither a command nor a core implementation
+// without consulting anything, so without this check an operator who asked for a
+// backup immediately before a destructive `db:migrate` would get a successful
+// deploy, a `db:backup … skipped` line, no dump and no error — the failure mode
+// the flag exists to prevent. Refusing is a configuration error (exit 4) and it
+// happens before the run starts, so nothing has been published when it is
+// reported.
+//
+// The message names the flag, the recipe and the anchor a project can use
+// instead: a `deploy.hooks` entry on `db:backup` runs next to the skipped task,
+// which is the documented way to add a dump the framework does not provide.
+func ValidateDBBackup(recipe Recipe, opts Options) error {
+	if !opts.DBBackup {
+		return nil
+	}
+	if !recipe.Task(TaskDBBackup).IsEmpty() {
+		return nil
+	}
+	return fmt.Errorf(
+		"%w: %q: --db-backup needs a dump command this recipe does not provide; "+
+			"drop the flag, or take the dump yourself with a deploy.hooks entry anchored on db:backup",
+		ErrInvalidConfiguration, recipe.ID,
+	)
+}
+
 // CoreDBBackup wraps a framework's dump command into the `db:backup` task.
 //
 // The split is deliberate: the engine owns where the dump goes and that it is
