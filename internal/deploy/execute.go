@@ -73,11 +73,19 @@ func LockKeptOnFailure(stage Stage) bool {
 // The two failures need different commands: a run holding the lock cannot be
 // retried — the retry is refused — while one that released its lock only needs
 // the fault fixed (spec P4, 7.3).
+//
+// The remote is named with `--remote` rather than as a positional argument. The
+// positional form reads better for most remotes, but `govard deploy` also has a
+// `sandbox` subcommand and cobra resolves a subcommand before a positional
+// argument: an operator following `govard deploy sandbox` would print the
+// sandbox status instead of retrying the deploy. One form that is correct for
+// every remote beats a special case that has to be kept in step with the command
+// tree.
 func RecoveryHint(remote string, lockHeld bool) string {
 	if lockHeld {
-		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)
+		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy --remote %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)
 	}
-	return fmt.Sprintf("nothing live changed and the deploy lock was released; fix the reported error and retry `govard deploy %s`", remote)
+	return fmt.Sprintf("nothing live changed and the deploy lock was released; fix the reported error and retry `govard deploy --remote %s`", remote)
 }
 
 // releaseLockAfterFailure removes the lock a failed pre-publish run still holds.
@@ -190,7 +198,17 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	// The completeness half matters: a release whose record says failed or still
 	// running served the revision at some point, and reporting "already
 	// deployed" for it would turn a retry into a success that never happened.
-	if !e.opts.Force && strings.TrimSpace(release.Revision) != "" {
+	//
+	// A resumed run is exempt for the same reason, one step further on. It exists
+	// to finish an unfinished release, and the question this shortcut asks — "is
+	// the target serving this revision" — can be answered yes by an *older*
+	// successful release of the same revision while the unfinished one is mid-way
+	// through its maintenance window. Observed live: a hook failed after
+	// activation, the target answered 503 with the window open, and the resume
+	// that was supposed to close it printed "already deployed" in 1.3s and exited
+	// 0 — a success reported over a site that was down.
+	continuing := e.opts.Resume && strings.TrimSpace(release.Release) != ""
+	if !e.opts.Force && !continuing && strings.TrimSpace(release.Revision) != "" {
 		if live, complete, ok := e.liveRevision(ctx); ok && complete && live == release.Revision {
 			outcome.AlreadyDeployed = true
 			fmt.Fprintf(e.out, "  = already deployed %s\n", shortRevision(release.Revision))
@@ -210,6 +228,12 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	// A resumed deploy repeats only what did not succeed: a task already
 	// recorded as ok is not run twice.
 	completed := map[string]bool{}
+	// carried holds the record entry of every step an earlier run of this
+	// release already succeeded at. The run does not repeat the step, and it
+	// must not rewrite the entry either: `ok` is what the next resume reads to
+	// decide what not to repeat, so recording the carry-over as `skipped`
+	// destroys the very fact that makes resuming safe.
+	carried := map[string]StepRecord{}
 	if e.opts.Resume && release.Release != "" {
 		if previous, err := ReadRelease(ctx, e.host, release.Release); err == nil {
 			for _, task := range previous.Tasks {
@@ -217,6 +241,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 					continue
 				}
 				completed[task.ID] = true
+				carried[task.ID] = task
 			}
 			if previous.Revision != "" {
 				release.Revision = previous.Revision
@@ -251,7 +276,13 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 
 	for index, step := range plan.Steps {
 		if completed[step.ID] {
-			e.record(ctx, release, step, StepSkipped, 0, nil)
+			if stored, ok := carried[step.ID]; ok {
+				e.carryOver(ctx, release, step, stored)
+			} else {
+				// `--from` put this step behind the run without an earlier run
+				// having succeeded at it, so there is no success to keep.
+				e.record(ctx, release, step, StepSkipped, 0, nil)
+			}
 			continue
 		}
 		// A step the plan marked skipped is not run, whatever it carries. The
@@ -465,6 +496,37 @@ func (e *Executor) record(ctx context.Context, release *Release, step Step, stat
 		}
 	}
 
+	e.printStep(step, status, duration)
+}
+
+// carryOver records a step a resumed run does not repeat because an earlier run
+// of the same release already succeeded at it.
+//
+// The run's own outcome says `skipped` — it did not run, and its timeline has to
+// say so. The durable record keeps the `ok` the earlier run stored, because the
+// record describes the release rather than this run, and a resume reads it to
+// decide what not to repeat. Recording the carry-over as `skipped` made a second
+// resume run the step again, and for `deploy:release` — which refuses a
+// directory that already exists — the second resume could then never succeed:
+// the directory was there, the step could not run, and the record said the step
+// had never succeeded.
+func (e *Executor) carryOver(ctx context.Context, release *Release, step Step, stored StepRecord) {
+	e.results = append(e.results, StepResult{ID: step.ID, Stage: step.Stage, Status: StepSkipped})
+
+	release.RecordTask(stored)
+	if release.Release != "" {
+		if writeErr := WriteRelease(context.WithoutCancel(ctx), e.host, release); writeErr != nil {
+			fmt.Fprintf(e.out, "  ! the release record could not be updated: %v\n", writeErr)
+		}
+	}
+
+	step.SkipReason = "already done in an earlier run"
+	e.printStep(step, StepSkipped, 0)
+}
+
+// printStep writes one line of the run timeline. It is shared by every path that
+// records a step so the timeline cannot drift from the record.
+func (e *Executor) printStep(step Step, status string, duration time.Duration) {
 	icon := "✔"
 	switch status {
 	case StepSkipped:

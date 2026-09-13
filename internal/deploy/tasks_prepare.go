@@ -403,8 +403,8 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 		`{"pid":%d,"actor":%q,"revision":%q,"branch":%q,"host":%q,"started_at":%q}`,
 		os.Getpid(), currentActor(), sc.Opts.Revision, sc.Opts.Branch, host.Name, time.Now().UTC().Format(time.RFC3339),
 	)
-	ownerCommand := fmt.Sprintf("cat > %s <<'%s'\n%s\n%s", Shell(host.LockOwnerPath()), releaseHeredocDelimiter, owner, releaseHeredocDelimiter)
-	if _, err := sc.Runner.Run(ctx, ownerCommand, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
+	ownerCommand := fmt.Sprintf("cat > %s", Shell(host.LockOwnerPath()))
+	if _, err := sc.Runner.Run(ctx, ownerCommand, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live, Stdin: owner}); err != nil {
 		return fmt.Errorf("record lock owner: %w", err)
 	}
 	return nil
@@ -531,19 +531,44 @@ func CoreRelease(ctx context.Context, sc *StepContext) error {
 		number = computed
 	}
 
-	if _, err := sc.Runner.Run(ctx, "test -e "+Shell(host.ReleasePath(number)), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
-		return fmt.Errorf("%w: %s", ErrReleaseExists, host.ReleasePath(number))
+	releasePath := host.ReleasePath(number)
+	exists := false
+	if _, err := sc.Runner.Run(ctx, "test -e "+Shell(releasePath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
+		exists = true
 	}
-
-	if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(host.ReleasePath(number)), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
-		return fmt.Errorf("create release %s: %w", number, err)
+	if exists && !releaseIsGovards(ctx, host, number) {
+		return fmt.Errorf("%w: %s", ErrReleaseExists, releasePath)
+	}
+	if !exists {
+		if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(releasePath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
+			return fmt.Errorf("create release %s: %w", number, err)
+		}
 	}
 
 	if sc.Release != nil {
 		sc.Release.Release = number
-		sc.Release.Path = host.ReleasePath(number)
+		sc.Release.Path = releasePath
 	}
 	return nil
+}
+
+// releaseIsGovards reports whether an existing release directory already carries
+// govard's own record for that same release.
+//
+// The record lives inside the release directory, so finding it proves both that
+// the directory is govard's and that govard got as far as writing something
+// about it. Such a release is one this tool already started — a run that died
+// between creating the directory and finishing, or a record an earlier version
+// left inconsistent — and continuing it is what `--resume` is for. Refusing it
+// made the failure permanent: the directory stayed, the step could not run
+// again, and every later resume hit the same wall.
+//
+// Anything else is refused. An empty directory or another tool's release is not
+// govard's to reuse, and overwriting it could destroy work govard did not
+// create.
+func releaseIsGovards(ctx context.Context, host Host, release string) bool {
+	record, err := ReadRelease(ctx, host, release)
+	return err == nil && record.Tool == ReleaseTool && record.Release == release
 }
 
 // CoreCode materialises the exact revision into the release from a bare mirror.
@@ -625,6 +650,17 @@ func prepareInPlaceDocroot(ctx context.Context, sc *StepContext, repository stri
 	if strategy != PublishInPlace {
 		return nil
 	}
+
+	// Before the build, not only at activation: the build steps run in the
+	// release, and they need the configuration the docroot already has. Adopting
+	// it here is what lets `deploy:shared` link the release to the live file
+	// instead of leaving it with the placeholder from the archive — a release
+	// built against a placeholder without a database connection fails at
+	// `db:migrate`, minutes later and for a reason that reads like a target fault.
+	if err := ensureInPlaceShared(ctx, sc); err != nil {
+		return err
+	}
+
 	if repository == "" {
 		// Nothing to fetch from. The docroot must already hold the revision;
 		// the reset in publish:activate reports it clearly if it does not.
@@ -935,7 +971,22 @@ func noteComposerCredentials(ctx context.Context, sc *StepContext) error {
 		return nil
 	}
 	if _, err := sc.Runner.Run(ctx, "test -f "+Shell(path.Join(sc.Host.SharedPath(), "auth.json")), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
-		sc.Notes = append(sc.Notes, "composer credentials: shared/auth.json exists on the target")
+		// Composer reads `auth.json` from the project directory and from its home,
+		// never from `shared/`: the file only reaches the build when the release
+		// links it, which is a `shared_files` entry. Saying so here is the
+		// difference between "the credential is there" and "the credential is used".
+		sc.Notes = append(sc.Notes, "composer credentials: shared/auth.json exists on the target "+
+			"(it reaches the build when deploy.settings.shared_files lists auth.json)")
+		return nil
+	}
+	// A credential the project keeps in its own checkout. Composer reads an
+	// `auth.json` from the project directory as well as from its home, and
+	// `deploy:code` materialises the checkout into the release, so a committed one
+	// authenticates the build with nothing else in play. It is the route a project
+	// that has one actually uses, and warning "no credentials are available" at it
+	// sends the operator looking for a problem that is not there.
+	if _, err := os.Stat(filepath.Join(sc.WorkDir, "auth.json")); err == nil {
+		sc.Notes = append(sc.Notes, "composer credentials: the project itself carries auth.json")
 		return nil
 	}
 

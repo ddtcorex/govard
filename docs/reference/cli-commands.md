@@ -709,6 +709,7 @@ Managing the local sandbox — a container that plays the deployment target:
 ```bash
 govard deploy sandbox up                      # create it (php profile by default)
 govard deploy sandbox up --profile basic      # sshd, rsync and git only
+govard deploy sandbox up --profile full --php 8.4   # a database, a cache, PHP 8.4
 govard deploy sandbox up --docroot real       # a real docroot: in-place publishing
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed a target the other tool owns
@@ -824,13 +825,18 @@ Because `sandbox` is a subcommand, deploy to it with the flag form:
 `govard deploy --remote sandbox --yes`.
 
 Profiles: `basic` (sshd, rsync, git), `php` (adds php-cli, composer, node) and
-`full` (adds a database and a cache), defaulting to `php`. `--docroot` shapes the
-target so the publish strategy resolves the way you want to exercise it:
-`absent` or `symlink` selects the atomic swap, `real` selects in-place
-publishing. `down` removes the container and the remote it wrote; `--purge` also
-removes the image, the key and the mirror. `reset` wipes the target's deploy
-directories, and `--layout=deployer` seeds a target that looks like one the other
-deploy tool owns.
+`full` (adds a database and a cache), defaulting to `php`. `--php <series>` picks
+the PHP series the image provides (`--php 8.4`); without it the image keeps the
+base distribution's version. The series moves the `php` binary, its extensions,
+the remote's `php_bin` and the `php_version` the remote declares, and it is part
+of the image tag — so a project that needs a newer PHP than the base image
+carries is rehearsed against the right interpreter instead of failing mid-install.
+`--docroot` shapes the target so the publish strategy resolves the way you want to
+exercise it: `absent` or `symlink` selects the atomic swap, `real` selects
+in-place publishing. `down` removes the container and the remote it wrote;
+`--purge` also removes the image, the key and the mirror. `reset` wipes the
+target's deploy directories, and `--layout=deployer` seeds a target that looks
+like one the other deploy tool owns.
 
 The sandbox is the only deploy command that needs `docker`.
 

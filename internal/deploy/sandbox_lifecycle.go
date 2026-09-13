@@ -31,9 +31,10 @@ const (
 	SandboxDeployerLayout = "deployer"
 )
 
-// SandboxPortProbe waits until the container's SSH port answers. It is a field
-// on the request so the lifecycle is testable without a container: production
-// dials, tests do not have to.
+// SandboxPortProbe waits until the sandbox is *deployable*, which is a login and
+// not merely a listening port: Docker's proxy accepts a TCP connection before sshd
+// has finished starting. It is a field on the request so the lifecycle is testable
+// without a container: production runs the login, tests do not have to.
 type SandboxPortProbe func(ctx context.Context, host string, port int, timeout time.Duration) error
 
 // SandboxRequest is one `govard deploy sandbox` invocation.
@@ -42,8 +43,35 @@ type SandboxRequest struct {
 	ProjectName string
 	Profile     string
 	DocRoot     string
-	Layout      string
-	RemoteName  string
+	// ReshapeDocRoot makes `up` re-shape the current path of a container that
+	// already exists. It separates "make this target available" — the reuse half
+	// of `up`, which is also how the mirror is refreshed before a new revision is
+	// deployed — from "delete whatever is being served and lay the directory out
+	// again", which `reset` exists for and which an operator asks for by naming a
+	// shape.
+	//
+	// Without the guard, every `up` re-shaped the current path, and the default
+	// shape is a symlink to `releases/0`: running `up` on a live in-place target
+	// replaced the deployed application with a dangling link and every request
+	// answered "File not found". Found on a real sandbox right after a successful
+	// deploy, when the next revision was committed and `up` was run to refresh
+	// the mirror.
+	ReshapeDocRoot bool
+	// ProfileExplicit records that the operator named a profile on the command
+	// line rather than accepting the default. `--profile` has a default, so a
+	// reused container cannot tell "no preference" from "asked for the default
+	// one" by the value alone — and only an explicit choice may be refused when
+	// it disagrees with the container that exists.
+	ProfileExplicit bool
+	Layout          string
+	RemoteName      string
+	// PHP is the series the image must provide, for example "8.4". Empty keeps
+	// the base image's own version.
+	PHP string
+	// WebRoot is where inside the served path the web server serves from, from the
+	// project's `stack.web_root` (`/pub` for a storefront served from a subdirectory). Empty serves the served path
+	// itself, which is what a project with no web root has.
+	WebRoot string
 	// Requirements come from the framework recipe the command layer resolved.
 	Requirements SandboxRequirements
 	// Repository is the local checkout the mirror is refreshed from. Empty
@@ -57,10 +85,13 @@ type SandboxRequest struct {
 
 // SandboxState is what the sandbox commands report and what `down` needs to undo.
 type SandboxState struct {
-	Container   string
-	Image       string
-	Profile     string
-	Port        int
+	Container string
+	Image     string
+	Profile   string
+	PHP       string
+	Port      int
+	// WebPort is the published HTTP port, zero for a profile with no web tier.
+	WebPort     int
 	Running     bool
 	Exists      bool
 	RemoteName  string
@@ -127,9 +158,9 @@ func SandboxDefaultPaths() SandboxPaths {
 // idempotent: a second call reuses the key, the image, the container and the
 // port it already has.
 func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request SandboxRequest) (*SandboxState, error) {
-	if err := runtime.Available(ctx); err != nil {
-		return nil, err
-	}
+	// The request is validated before the runtime is probed: a flag that cannot
+	// name a sandbox is a usage error, and reporting it should not depend on
+	// whether this machine happens to have a container runtime.
 	profile, err := ValidateSandboxProfile(request.Profile)
 	if err != nil {
 		return nil, err
@@ -138,13 +169,49 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err != nil {
 		return nil, err
 	}
+	php, err := ValidateSandboxPHP(request.PHP)
+	if err != nil {
+		return nil, err
+	}
+	if err := runtime.Available(ctx); err != nil {
+		return nil, err
+	}
 
 	stateDir := SandboxStateDir(request.ProjectRoot)
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create %s: %w", stateDir, err)
 	}
 
-	dockerfile, err := SandboxDockerfile(profile, request.Requirements)
+	// Whether the container already exists decides what the flags mean, so it is
+	// asked before anything is written from them: reusing a sandbox must describe
+	// the sandbox that exists, not the one today's flags would create.
+	container := SandboxContainerName(request.ProjectName, request.ProjectRoot)
+	exists, err := runtime.ContainerExists(ctx, container)
+	if err != nil {
+		return nil, err
+	}
+	if exists && request.Recreate {
+		fmt.Fprintf(request.out(), "recreating %s\n", container)
+		if err := runtime.RemoveContainer(ctx, container); err != nil {
+			return nil, err
+		}
+		exists = false
+	}
+	if exists {
+		profile, php, err = sandboxReusedRuntime(ctx, runtime, request, container, profile, php)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	spec := SandboxSpec{
+		Project:      request.ProjectName,
+		Profile:      profile,
+		PHP:          php,
+		WebRoot:      request.WebRoot,
+		Requirements: request.Requirements,
+	}
+	dockerfile, err := SandboxDockerfile(spec)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +219,16 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err := os.WriteFile(dockerfilePath, []byte(dockerfile), 0o644); err != nil {
 		return nil, fmt.Errorf("write %s: %w", dockerfilePath, err)
 	}
+	// The files the Dockerfile copies travel beside it in the build context.
+	// They are written every time, so a run after a `stack.web_root` change builds
+	// the image the new definition describes rather than reusing the old one.
+	for name, content := range SandboxBuildFiles(spec) {
+		if err := os.WriteFile(filepath.Join(SandboxStateDir(request.ProjectRoot), name), []byte(content), 0o644); err != nil {
+			return nil, fmt.Errorf("write %s: %w", name, err)
+		}
+	}
 
-	image, err := SandboxImageTag(SandboxSpec{
-		Project:      request.ProjectName,
-		Profile:      profile,
-		Requirements: request.Requirements,
-	})
+	image, err := SandboxImageTag(spec)
 	if err != nil {
 		return nil, err
 	}
@@ -171,18 +242,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 
-	container := SandboxContainerName(request.ProjectName, request.ProjectRoot)
-	exists, err := runtime.ContainerExists(ctx, container)
-	if err != nil {
-		return nil, err
-	}
-	if exists && request.Recreate {
-		fmt.Fprintf(request.out(), "recreating %s\n", container)
-		if err := runtime.RemoveContainer(ctx, container); err != nil {
-			return nil, err
-		}
-		exists = false
-	}
+	servesWeb := SandboxServesWeb(profile)
 
 	imageExists, err := runtime.ImageExists(ctx, image)
 	if err != nil {
@@ -207,6 +267,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 			MirrorPath:  mirror,
 			ProjectName: request.ProjectName,
 			Profile:     profile,
+			Web:         servesWeb,
 		}); err != nil {
 			return nil, err
 		}
@@ -230,16 +291,36 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err := installSandboxAuthorizedKey(ctx, runtime, container, key.PublicKey); err != nil {
 		return nil, err
 	}
-	if err := prepareSandboxDocRoot(ctx, runtime, container, docRoot); err != nil {
-		return nil, err
+	// Shape a target that is being created, and one the operator explicitly asked
+	// to re-shape. An existing target is left as the last deploy left it: `up` is
+	// also how a stopped sandbox is started and how the mirror is refreshed
+	// before the next revision is deployed, and neither may cost the application
+	// currently being served.
+	if !exists || request.ReshapeDocRoot {
+		if err := prepareSandboxDocRoot(ctx, runtime, container, docRoot); err != nil {
+			return nil, err
+		}
 	}
 
 	probe := request.Probe
 	if probe == nil {
-		probe = DialSandboxPort
+		keyPath := key.PrivatePath
+		probe = func(ctx context.Context, host string, port int, timeout time.Duration) error {
+			return DialSandboxSSH(ctx, git, keyPath, host, port, timeout)
+		}
 	}
 	if err := probe(ctx, "127.0.0.1", port, 30*time.Second); err != nil {
 		return nil, err
+	}
+
+	// The web port is read back, not assumed: Docker chooses it, and a rehearsal
+	// whose `verify.url` named the wrong port would fail at the last step of every
+	// deploy for a reason that has nothing to do with the release.
+	webPort := 0
+	if servesWeb {
+		if published, err := runtime.PublishedPort(ctx, container, sandboxWebPort); err == nil {
+			webPort = published
+		}
 	}
 
 	paths := SandboxDefaultPaths()
@@ -247,18 +328,31 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	// not deployable with no flags at all — the option resolver refuses a
 	// remote with neither a branch nor an explicit revision — so "defaults to
 	// the local HEAD" is only true once the branch is named here.
-	remote := SandboxRemoteConfig(profile, port, paths, key)
+	remote := SandboxRemoteConfig(profile, php, port, webPort, paths, key)
 	remote.Branch = localBranch(ctx, git, request.repository())
 	if err := WriteSandboxRemote(request.ProjectRoot, request.remoteName(), remote); err != nil {
 		return nil, err
 	}
 
+	// The image the container was actually built from. A reused sandbox must be
+	// described as what it is rather than as the tag today's flags would build:
+	// `up` with no flags on a `full` sandbox printed the default profile's tag,
+	// which the container does not have and which the operator cannot act on.
+	stateImage := image
+	if exists {
+		if actual, err := runtime.ContainerImage(ctx, container); err == nil && actual != "" {
+			stateImage = actual
+		}
+	}
+
 	packages, _ := runtime.ImageFile(ctx, image, SandboxPackagesTxt)
 	return &SandboxState{
 		Container:   container,
-		Image:       image,
+		Image:       stateImage,
 		Profile:     profile,
+		PHP:         php,
 		Port:        port,
+		WebPort:     webPort,
 		Running:     true,
 		Exists:      true,
 		RemoteName:  request.remoteName(),
@@ -294,7 +388,7 @@ func localBranch(ctx context.Context, git Runner, repository string) string {
 // SandboxRemoteConfig is the remote `up` writes. It is exported because it is
 // the contract between the sandbox and the deploy pipeline, and both are worth
 // asserting on independently.
-func SandboxRemoteConfig(profile string, port int, paths SandboxPaths, key SandboxKeyPair) engine.RemoteConfig {
+func SandboxRemoteConfig(profile, php string, port, webPort int, paths SandboxPaths, key SandboxKeyPair) engine.RemoteConfig {
 	settings := map[string]any{
 		// The image's deployer identity is fixed, so the ownership path is
 		// exercised rather than bypassed.
@@ -307,10 +401,17 @@ func SandboxRemoteConfig(profile string, port int, paths SandboxPaths, key Sandb
 	if profile == SandboxProfilePHP || profile == SandboxProfileFull {
 		settings["php_bin"] = "php"
 		settings["composer_bin"] = "composer"
+		// A deploy refuses to run when the target's PHP does not match the
+		// declared series, so the sandbox declares what it actually shipped.
+		// Without this, asking for 8.4 would pin the image correctly and then
+		// fail the very first check.
+		if php != "" {
+			settings["php_version"] = php
+		}
 	}
 
 	keyPath := filepath.ToSlash(filepath.Join(".govard", "sandbox", SandboxKeyName))
-	return engine.RemoteConfig{
+	remote := engine.RemoteConfig{
 		Host:       "127.0.0.1",
 		Port:       port,
 		User:       SandboxUser,
@@ -325,6 +426,16 @@ func SandboxRemoteConfig(profile string, port int, paths SandboxPaths, key Sandb
 		},
 		Deploy: &engine.DeployConfig{Settings: settings},
 	}
+
+	// A sandbox that serves the release is the only place the HTTP half of
+	// `deploy:verify` can be rehearsed, and a URL nobody wrote leaves it switched
+	// off: the check reports the files in place and says nothing about whether the
+	// application answers. The remote carries it as a per-remote override, which
+	// is exactly what `deploy.verify.url` on a remote means.
+	if webPort > 0 {
+		remote.Deploy.Verify.URL = fmt.Sprintf("http://127.0.0.1:%d/", webPort)
+	}
+	return remote
 }
 
 // installSandboxAuthorizedKey installs the generated public key for the
@@ -384,24 +495,55 @@ func prepareSandboxDocRoot(ctx context.Context, runtime SandboxRuntime, containe
 // the kind of failure a sandbox exists to catch, not to cause.
 const sandboxChownTail = " ; chown -R " + SandboxUser + ":" + SandboxUser + " " + SandboxHome
 
-// DialSandboxPort waits for the container's published SSH port to answer.
-func DialSandboxPort(ctx context.Context, host string, port int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+// DialSandboxSSH waits until a real login to the sandbox succeeds.
+//
+// The port answering a TCP connection is not the same thing as the sandbox being
+// deployable: Docker's proxy accepts before sshd has finished starting, so a
+// readiness check that only dials lets `up` return at the moment a deploy will
+// fail. Observed under load — the integration suite running next to a live
+// rehearsal — as the first step of the deploy reporting
+// `the sandbox container behind remote "sandbox" is not running` (exit 255) for a
+// container that was up and answered seconds later.
+//
+// The login is the deploy's own: batch mode, the sandbox key, the published port,
+// and `true` as the command. Each attempt gets its own short timeout so a stalled
+// handshake cannot consume the whole budget.
+func DialSandboxSSH(ctx context.Context, runner Runner, keyPath, host string, port int, timeout time.Duration) error {
+	if runner == nil {
+		runner = LocalRunner{}
+	}
 	address := net.JoinHostPort(host, strconv.Itoa(port))
+	command := SandboxSSHCommand(keyPath, host, port)
+	deadline := time.Now().Add(timeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		conn, err := net.DialTimeout("tcp", address, time.Second)
+		attempt, cancel := context.WithTimeout(ctx, sandboxProbeAttempt)
+		_, err := runner.Run(attempt, command, RunOptions{Timeout: sandboxProbeAttempt})
+		cancel()
 		if err == nil {
-			_ = conn.Close()
 			return nil
 		}
 		lastErr = err
 		time.Sleep(300 * time.Millisecond)
 	}
 	return fmt.Errorf("the sandbox sshd did not answer on %s within %s: %w", address, timeout, lastErr)
+}
+
+// sandboxProbeAttempt bounds one login attempt of the readiness check.
+const sandboxProbeAttempt = 5 * time.Second
+
+// SandboxSSHCommand is the non-interactive login the readiness check uses: the
+// options `sandbox ssh` offers, with batch mode and a command instead of a tty, so
+// it can never block on a prompt or a host-key question.
+func SandboxSSHCommand(keyPath, host string, port int) string {
+	return "ssh -o BatchMode=yes -o LogLevel=ERROR -o StrictHostKeyChecking=no" +
+		" -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5" +
+		" -i " + conventions.ShellQuote(keyPath) +
+		" -p " + strconv.Itoa(port) +
+		" " + conventions.ShellQuote(SandboxUser+"@"+host) + " true"
 }
 
 // RefreshSandboxMirror makes the local bare mirror hold every local branch, so
@@ -451,13 +593,17 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 	container := SandboxContainerName(project, request.ProjectRoot)
 
 	state := &SandboxState{
-		Container:   container,
-		RemoteName:  request.remoteName(),
-		RemoteSet:   config.RemoteSet,
-		Port:        config.Remote.Port,
-		MirrorPath:  SandboxMirrorPath(request.ProjectRoot),
-		KeyPath:     filepath.Join(SandboxStateDir(request.ProjectRoot), SandboxKeyName),
-		Profile:     containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel),
+		Container:  container,
+		RemoteName: request.remoteName(),
+		RemoteSet:  config.RemoteSet,
+		Port:       config.Remote.Port,
+		MirrorPath: SandboxMirrorPath(request.ProjectRoot),
+		KeyPath:    filepath.Join(SandboxStateDir(request.ProjectRoot), SandboxKeyName),
+		Profile:    containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel),
+		// The series the image was built with, read back from the remote the
+		// creation wrote: `status` must report what exists, not what a flag would
+		// now ask for.
+		PHP:         sandboxRemotePHP(config.Remote),
 		DeployPath:  config.Remote.DeployPath,
 		CurrentPath: config.Remote.Path,
 	}
@@ -487,7 +633,81 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 	if err == nil {
 		state.Port = port
 	}
+	// The web port is reported the same way, so `sandbox status` answers "where do
+	// I point a browser at this rehearsal" without the operator reading `up`'s
+	// output from a terminal that has since scrolled away.
+	if SandboxServesWeb(state.Profile) {
+		if webPort, err := runtime.PublishedPort(ctx, container, sandboxWebPort); err == nil {
+			state.WebPort = webPort
+		}
+	}
 	return state, nil
+}
+
+// sandboxRemotePHP reads the PHP series out of a sandbox remote's deploy
+// settings, and is empty for a remote that does not record one.
+// sandboxReusedRuntime reports the profile and PHP series a sandbox container
+// already has, and refuses to relabel it.
+//
+// A reused container is what it is: its image was built for one profile and one
+// PHP series, and that is what the sandbox's remote has to declare. Without this,
+// `up` with no flags rewrote the remote without `php_version` — after which
+// `sandbox status` reported no series for a php-8.4 image, and an artifact deploy
+// lost the check that catches a series mismatch — while `up --php 8.3` on a
+// php-8.4 container relabelled the target without touching it.
+//
+// The profile is read from the container's own label and the series from the
+// sandbox remote the creation wrote, both of which describe what exists.
+// `--recreate` is the way to get a different one, and the refusal says so.
+// sandboxReusedRuntime reports the profile and PHP series a sandbox container
+// already has, and refuses to relabel it.
+//
+// A reused container is what it is: its image was built for one profile and one
+// PHP series, and that is what the sandbox remote has to describe — the profile
+// decides which settings the remote carries (a PHP binary, the web tier's verify
+// URL) and the series is what an artifact deploy is checked against. Reading them
+// from today's flags instead meant `up` with no flags erased `php_version` from a
+// php-8.4 sandbox and described a `full` container as the default profile, with a
+// computed image tag; on a host that did not have that tag it went further and
+// built the image, and `--recreate` would then hand back a container without the
+// services the first one had.
+//
+// The container's label is the record of its profile and the sandbox remote is the
+// record of its series, both of which `sandbox status` already reads. An explicit
+// flag that disagrees is refused rather than silently ignored: `--recreate` is the
+// way to get a different one, and the refusal says so.
+func sandboxReusedRuntime(ctx context.Context, runtime SandboxRuntime, request SandboxRequest, container, profile, php string) (string, string, error) {
+	if declared := containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel); declared != "" {
+		if request.ProfileExplicit && !strings.EqualFold(strings.TrimSpace(request.Profile), declared) {
+			return profile, php, fmt.Errorf(
+				"the sandbox container %s was built for the %s profile; changing it means a new image, so run `govard deploy sandbox up --profile %s --recreate`",
+				container, declared, strings.TrimSpace(request.Profile))
+		}
+		profile = declared
+	}
+	config, err := LoadSandboxRemote(request.ProjectRoot, request.remoteName())
+	if err != nil || !config.RemoteSet {
+		return profile, php, nil
+	}
+	declaredPHP := sandboxRemotePHP(config.Remote)
+	if php != "" && declaredPHP != "" && declaredPHP != php {
+		return profile, php, fmt.Errorf(
+			"the sandbox container ships PHP %s; changing it to %s means a new image, so run `govard deploy sandbox up --php %s --recreate`",
+			declaredPHP, php, php)
+	}
+	if php == "" {
+		php = declaredPHP
+	}
+	return profile, php, nil
+}
+
+// sandboxRemotePHP is the series the sandbox remote declares, empty when it
+// declares none.
+func sandboxRemotePHP(remote engine.RemoteConfig) string {
+	if remote.Deploy == nil {
+		return ""
+	}
+	return settingsString(remote.Deploy.Settings, "php_version")
 }
 
 // SandboxDown removes the container and the remote `up` wrote, so a stale

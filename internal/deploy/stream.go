@@ -31,15 +31,18 @@ func SetHeartbeatForTest(interval time.Duration) func() {
 	return func() { heartbeatEvery = previous }
 }
 
-// streamTo writes a command's stream to the buffer the Result carries and, when a
-// live writer was requested, to the operator watching it. A nil live writer is the
-// buffered behaviour exactly, which is what every caller that does not ask for
-// streaming keeps.
-func streamTo(buffer *bytes.Buffer, live io.Writer) io.Writer {
+// streamTo writes a command's stream to the bounded capture the Result carries
+// and, when a live writer was requested, to the operator watching it. A nil live
+// writer is the captured behaviour exactly, which is what every caller that does
+// not ask for streaming keeps.
+//
+// The bound is on the capture only: the operator watching a stream sees all of
+// it, because that is what asking to watch a running command means.
+func streamTo(capture *boundedBuffer, live io.Writer) io.Writer {
 	if live == nil {
-		return buffer
+		return capture
 	}
-	return io.MultiWriter(buffer, live)
+	return io.MultiWriter(capture, live)
 }
 
 // liveWriter is what a running command's output goes through when the operator asked

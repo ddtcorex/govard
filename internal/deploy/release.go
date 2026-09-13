@@ -136,14 +136,11 @@ func (r *Release) RecordTask(record StepRecord) {
 	r.Tasks = append(r.Tasks, record)
 }
 
-const releaseHeredocDelimiter = "GOVARD_RELEASE_EOF"
-
 // WriteRelease stores the record on the target.
 //
-// The write is a heredoc to a temporary path followed by a rename, for the same
+// The write goes to a temporary path and is renamed into place, for the same
 // reason the symlink swap is: a reader (`govard deploy status`, monitoring) must
-// never observe a half-written record. The JSON is a single line, so a quoted
-// delimiter cannot be terminated early by the content.
+// never observe a half-written record.
 func WriteRelease(ctx context.Context, host Host, release *Release) error {
 	if release == nil {
 		return fmt.Errorf("write release: nil record")
@@ -234,15 +231,16 @@ func AppendHistory(ctx context.Context, host Host, release *Release) error {
 	if err != nil {
 		return fmt.Errorf("encode history entry: %w", err)
 	}
+	// Fed through standard input for the same reason as the release record: the
+	// payload must not have to fit in the command's argv. The newline is part of
+	// the contract — the history is one JSON document per line, and the heredoc
+	// this replaced supplied the terminator for free.
 	command := fmt.Sprintf(
-		"mkdir -p %s && cat >> %s <<'%s'\n%s\n%s",
+		"mkdir -p %s && cat >> %s",
 		Shell(host.DepPath()),
 		Shell(host.HistoryPath()),
-		releaseHeredocDelimiter,
-		string(payload),
-		releaseHeredocDelimiter,
 	)
-	if _, err := host.Runner().Run(ctx, command, RunOptions{Timeout: shortCommandTimeout}); err != nil {
+	if _, err := host.Runner().Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Stdin: string(payload) + "\n"}); err != nil {
 		return fmt.Errorf("append deploy history: %w", err)
 	}
 	return nil

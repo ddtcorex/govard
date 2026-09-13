@@ -90,6 +90,34 @@ func TestMagento2RecipeUsesTheConfiguredPHPBinary(t *testing.T) {
 	}
 }
 
+// The compiler clears `generated/code` before it compiles, while an optimized
+// autoloader built with that directory present maps every class inside it. The
+// map then points at files the compiler has just deleted, and the first lookup
+// dies with "Failed to open stream" instead of generating the class — a resumed
+// deploy that re-ran `build:vendors` over a release the previous attempt had
+// already compiled, observed on a real 2.4.9 project.
+//
+// A fresh release cannot reach it, so the order inside the step is the fix:
+// clear the tree, rebuild the map without it, and only then compile. Asserting
+// the three markers are present would pass for any order, including the broken
+// one.
+func TestMagento2CompileStepRebuildsTheAutoloaderWithoutStaleGeneratedCode(t *testing.T) {
+	command := magento2.DeployRecipe().Task("build:compile").Command
+
+	clear := strings.Index(command, "rm -rf generated/code")
+	dump := strings.Index(command, "dump-autoload")
+	compile := strings.Index(command, "setup:di:compile")
+	if clear < 0 || dump < 0 || compile < 0 {
+		t.Fatalf("build:compile must clear the generated tree, rebuild the autoloader and compile:\n%s", command)
+	}
+	if clear > dump || dump > compile {
+		t.Fatalf("build:compile must clear before it rebuilds the map and rebuild the map before it compiles:\n%s", command)
+	}
+	if !strings.Contains(command, "{{composer_bin}} dump-autoload") {
+		t.Fatalf("build:compile must rebuild the map with the configured Composer binary:\n%s", command)
+	}
+}
+
 func TestMagento2RecipeStaticContentIsDeterministic(t *testing.T) {
 	command := magento2.DeployRecipe().Task("build:assets").Command
 
@@ -129,6 +157,36 @@ func TestMagento2RecipePatchesStepIsGuardedNotSwallowed(t *testing.T) {
 	}
 	if strings.Contains(command, "|| true") {
 		t.Fatalf("build:patches swallows its own failure:\n%s", command)
+	}
+}
+
+// `magento/magento-cloud-patches` is a Composer plugin, and Magento Cloud
+// projects run it from `post-install-cmd`, so `build:vendors` has already applied
+// the patch set by the time this step runs. An unconditional `apply` then fails
+// with "can't be applied to clean Magento instance" and kills a deploy whose
+// patches are in fact applied — observed on a real 2.4.9 project, where the
+// release could not get past `build:patches`.
+func TestMagento2RecipePatchesStepDoesNotReapplyAnAppliedSet(t *testing.T) {
+	command := magento2.DeployRecipe().Task("build:patches").Command
+
+	gate := strings.Index(command, "verify --cloud-only")
+	apply := strings.Index(command, "ece-patches apply")
+	if gate < 0 {
+		t.Fatalf("build:patches must ask the tool whether the set is applied before applying it:\n%s", command)
+	}
+	// `verify` without the flag also reports the project's deliberately unapplied
+	// optional quality patches and exits non-zero on a healthy target, so it cannot
+	// be the gate.
+	if strings.Contains(command, "ece-patches verify >") {
+		t.Fatalf("build:patches gates on a bare `verify`, which fails on a healthy target:\n%s", command)
+	}
+	// The gate decides whether to apply; it must not decide whether to succeed. A
+	// genuinely unapplied required patch has to reach `apply` and fail the step.
+	if apply < 0 {
+		t.Fatalf("build:patches no longer applies anything:\n%s", command)
+	}
+	if apply < gate {
+		t.Fatalf("the verify gate must come before the apply:\n%s", command)
 	}
 }
 
@@ -771,9 +829,38 @@ func TestMagento2SandboxRequirementsCoverThePlatformCheck(t *testing.T) {
 	}
 
 	// The services the recipe's own commands need: setup:upgrade and setup:db:status
-	// talk to a database.
+	// talk to a database, and a Magento env.php written for a server names a Redis
+	// or Valkey for cache and sessions — without one the target cannot run
+	// `bin/magento` at all, and a rehearsal would need a hand-edited env.php that
+	// no server has.
 	services := strings.Join(requirements.Services, " ")
-	if !strings.Contains(services, "mariadb") {
-		t.Errorf("sandbox services = %q, want a database for the recipe's own commands", services)
+	for _, want := range []string{"mariadb", "redis"} {
+		if !strings.Contains(services, want) {
+			t.Errorf("sandbox services = %q, want %q for the recipe's own commands", services, want)
+		}
+	}
+}
+
+// The image is built from the recipe's requirements, so the service list has to
+// reach the container's entrypoint: `sandbox up` bakes it into the image, and a
+// recipe that asks for a cache the entrypoint never starts is a rehearsal that
+// fails for a reason no target would have.
+func TestMagento2SandboxImageStartsTheServicesTheRecipeAsksFor(t *testing.T) {
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileFull, PHP: "8.4", Requirements: magento2.DeployRecipe().Sandbox})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	services := sandboxServicesLine(t, dockerfile)
+	for _, want := range []string{"mariadb", "redis-server", "govard-sandbox-web"} {
+		if !strings.Contains(services, want) {
+			t.Fatalf("GOVARD_SANDBOX_SERVICES = %q, want it to start %s", services, want)
+		}
+	}
+	// The packages those services need come from the profile; `full` promises
+	// both, and the entrypoint skips a service whose init script is absent.
+	for _, want := range []string{"mariadb-server", "redis-server"} {
+		if !strings.Contains(dockerfile, want) {
+			t.Errorf("the full profile must install %s", want)
+		}
 	}
 }

@@ -121,6 +121,150 @@ func TestInPlaceActivationResetsToTheExactRevisionAndSyncsConfiguredPaths(t *tes
 	}
 }
 
+// An in-place docroot is the live application, and its configuration is not the
+// checkout's to replace.
+//
+// `app/etc/env.php` is untracked in a Magento project and holds the database
+// credentials, so the docroot's own copy is the one the site reads. Nothing in
+// the pipeline linked the configured shared entries into the docroot —
+// `deploy:shared` links the release — so an in-place deploy finished with the
+// live site reading whatever the checkout carried: on a real 2.4.9 target
+// `maintenance:disable` failed with `Connection "default" is not defined` and the
+// storefront answered every request with a redirect to `/setup/`.
+//
+// The docroot's copy is adopted into `shared/` rather than overwritten: the live
+// configuration becomes the shared state, and the release that was built for this
+// deploy links the same file.
+func TestInPlaceActivationAdoptsTheDocrootsConfigurationIntoShared(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	if _, err := runner.Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	const live = "<?php return ['db' => ['host' => 'the live database']];\n"
+	writeFile(t, filepath.Join(host.CurrentPath, "app/etc/env.php"), live)
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+		Settings: map[string]any{
+			"shared_files": []string{"app/etc/env.php"},
+			"sync_paths":   []string{"vendor"},
+		},
+	})
+	sc.Release = deploy.NewReleaseForTest("1", revision, "main")
+	sc.Release.Path = host.ReleasePath("1")
+	if err := deploy.CoreActivate(ctx, sc); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	shared := filepath.Join(host.SharedPath(), "app/etc/env.php")
+	adopted, err := os.ReadFile(shared)
+	if err != nil {
+		t.Fatalf("the docroot's configuration must be adopted into shared/: %v", err)
+	}
+	if string(adopted) != live {
+		t.Fatalf("shared/app/etc/env.php = %q, want the docroot's own file", adopted)
+	}
+	served, err := os.ReadFile(filepath.Join(host.CurrentPath, "app/etc/env.php"))
+	if err != nil {
+		t.Fatalf("read the served configuration: %v", err)
+	}
+	if string(served) != live {
+		t.Fatalf("the served configuration = %q, want the adopted one", served)
+	}
+	resolved, err := runner.Run(ctx, "readlink -f "+filepath.Join(host.CurrentPath, "app/etc/env.php"), deploy.RunOptions{})
+	if err != nil {
+		t.Fatalf("readlink: %v", err)
+	}
+	if strings.TrimSpace(resolved.Stdout) != shared {
+		t.Fatalf("the docroot must read the shared file, got %q, want %q", strings.TrimSpace(resolved.Stdout), shared)
+	}
+}
+
+// The other half, and the one the rehearsal hit: `shared/` already holds the
+// configuration, and the docroot carries something else at that path — the
+// placeholder a checkout or a reset leaves. The shared file is canonical, so the
+// docroot reads it again once the deploy is activated.
+func TestInPlaceActivationRestoresTheDocrootsSharedLinks(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	if _, err := runner.Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	const canonical = "<?php return ['db' => ['host' => 'the live database']];\n"
+	writeFile(t, filepath.Join(host.SharedPath(), "app/etc/env.php"), canonical)
+	writeFile(t, filepath.Join(host.CurrentPath, "app/etc/env.php"), "<?php return ['cache_types' => []];\n")
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+		Settings:   map[string]any{"shared_files": []string{"app/etc/env.php"}},
+	})
+	sc.Release = deploy.NewReleaseForTest("1", revision, "main")
+	sc.Release.Path = host.ReleasePath("1")
+	if err := deploy.CoreActivate(ctx, sc); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	served, err := os.ReadFile(filepath.Join(host.CurrentPath, "app/etc/env.php"))
+	if err != nil {
+		t.Fatalf("read the served configuration: %v", err)
+	}
+	if string(served) != canonical {
+		t.Fatalf("the served configuration = %q, want the shared one", served)
+	}
+}
+
+// A real directory the docroot still owns is not deleted to make room for a
+// shared one: media that exists in both places is somebody's data, and losing it
+// is worse than not sharing it.
+func TestInPlaceActivationKeepsADocrootDirectoryItWouldHaveToDelete(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	if _, err := runner.Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	writeFile(t, filepath.Join(host.SharedPath(), "pub/media/from-shared.txt"), "shared\n")
+	writeFile(t, filepath.Join(host.CurrentPath, "pub/media/local.txt"), "local\n")
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+		Settings:   map[string]any{"shared_dirs": []string{"pub/media"}},
+	})
+	sc.Release = deploy.NewReleaseForTest("1", revision, "main")
+	sc.Release.Path = host.ReleasePath("1")
+	if err := deploy.CoreActivate(ctx, sc); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(host.CurrentPath, "pub/media/local.txt")); err != nil {
+		t.Fatalf("the docroot's own media must survive the activation: %v", err)
+	}
+}
+
 func TestInPlaceActivationRefusesADocrootThatIsNotAGitCheckout(t *testing.T) {
 	root := t.TempDir()
 	host := deploy.HostForTest(root, deploy.LocalRunner{})
@@ -150,6 +294,56 @@ func pushingToOrigin(t *testing.T, origin string) string {
 	revision := run(t, work, "rev-parse", "HEAD")
 	run(t, work, "push", "-q", "origin", "main")
 	return revision
+}
+
+// Adoption has to happen before the build, not only at activation: the build
+// steps run in the release, and a release whose `app/etc/env.php` is the
+// placeholder from the archive has no database connection — the deploy then dies
+// minutes later at `db:migrate`, for a reason that reads like a target fault.
+func TestInPlaceCodePrepAdoptsTheDocrootsConfigurationBeforeTheBuild(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+	ctx := context.Background()
+	runner := host.Runner()
+
+	if _, err := runner.Run(ctx, "git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	const live = "<?php return ['db' => ['host' => 'the live database']];\n"
+	writeFile(t, filepath.Join(host.CurrentPath, "app/etc/env.php"), live)
+	if _, err := runner.Run(ctx, "mkdir -p "+host.ReleasePath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed release: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Remote:     "local",
+		Publish:    deploy.PublishInPlace,
+		Repository: origin,
+		Revision:   revision,
+		Branch:     "main",
+		Settings:   map[string]any{"shared_files": []string{"app/etc/env.php"}},
+	})
+	sc.Release = deploy.NewReleaseForTest("1", revision, "main")
+	sc.Release.Path = host.ReleasePath("1")
+
+	if err := deploy.CoreCode(ctx, sc); err != nil {
+		t.Fatalf("deploy:code: %v", err)
+	}
+	// `deploy:code` adopts the docroot's file into shared/; `deploy:shared`, the
+	// step right after it, is what links it into the release — so everything
+	// built there, the DI compile and the database migration included, reads the
+	// live configuration instead of the archive's placeholder.
+	if err := deploy.CoreShared(ctx, sc); err != nil {
+		t.Fatalf("deploy:shared: %v", err)
+	}
+	served, err := os.ReadFile(filepath.Join(host.ReleasePath("1"), "app/etc/env.php"))
+	if err != nil {
+		t.Fatalf("read the release's configuration: %v", err)
+	}
+	if string(served) != live {
+		t.Fatalf("the release's configuration = %q, want the docroot's own file", served)
+	}
 }
 
 // The in-place docroot fetch is the one network call an in-place publish needs.

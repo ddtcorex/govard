@@ -227,6 +227,12 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 		}
 	}
 
+	// After the copy, never before: the reset and the path syncs both write over
+	// the docroot, and a link restored earlier is a link they can replace.
+	if err := ensureInPlaceShared(ctx, sc); err != nil {
+		return err
+	}
+
 	// Last, and only when the release actually produced one: this is what makes
 	// the asset switch happen after every asset file is in place.
 	versionFile := "deployed_version.txt"
@@ -240,6 +246,54 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 	)
 	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
 		return fmt.Errorf("publish the static content version: %w", err)
+	}
+	return nil
+}
+
+// ensureInPlaceShared makes an in-place docroot read the shared state its
+// releases read.
+//
+// An in-place docroot is the live application, not a fresh directory: it is where
+// the operator's own application configuration lives — typically an untracked
+// file holding the database credentials. `deploy:shared` links the shared entries
+// into the *release*, and nothing linked them into the docroot, so an in-place
+// deploy left the live site reading whatever the checkout carried. On a real
+// target the deploy finished with `maintenance:disable` failing on
+// `Connection "default" is not defined` and every request answered with a
+// redirect to `/setup/`.
+//
+// Two rules, in this order, per configured entry:
+//
+//   - adopt: a shared entry the docroot has and `shared/` does not is moved into
+//     `shared/`. The live configuration becomes the shared state instead of being
+//     replaced by a placeholder, and the release built for this deploy links the
+//     same file. Without this, the first in-place deploy of a project either
+//     discards the operator's configuration or builds against a placeholder.
+//   - link: once `shared/` has the entry, the docroot reads it through a symlink,
+//     which is also what repairs a link a reset or a sync put a tracked file back
+//     on top of.
+//
+// A real *directory* the docroot still owns is left alone rather than deleted:
+// media that exists in both places is somebody's data, and losing it is worse
+// than not sharing it. Files are always linked, because a shared file that the
+// checkout also carries is a placeholder by definition — that is the whole point
+// of naming it shared.
+func ensureInPlaceShared(ctx context.Context, sc *StepContext) error {
+	host := sc.Host
+	entries := settingsStringList(sc.Opts.Settings, "shared_files", "shared_dirs")
+	for _, entry := range entries {
+		source := path.Join(host.SharedPath(), entry)
+		target := path.Join(host.CurrentPath, entry)
+		command := "mkdir -p " + Shell(path.Dir(source)) +
+			" && if [ ! -e " + Shell(source) + " ] && [ -e " + Shell(target) + " ] && [ ! -L " + Shell(target) + " ]; then mv " + Shell(target) + " " + Shell(source) + "; fi" +
+			" && if [ -e " + Shell(source) + " ]; then " +
+			"if [ ! -e " + Shell(target) + " ] || [ -L " + Shell(target) + " ] || [ ! -d " + Shell(source) + " ]; then " +
+			"rm -rf " + Shell(target) + " && mkdir -p " + Shell(path.Dir(target)) + " && ln -sfn " + Shell(source) + " " + Shell(target) + "; " +
+			"else echo " + Shell("kept the docroot's own "+entry) + "; fi; " +
+			"fi"
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live}); err != nil {
+			return fmt.Errorf("link the shared entry %s into the docroot: %w", entry, err)
+		}
 	}
 	return nil
 }

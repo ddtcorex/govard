@@ -91,6 +91,43 @@ if ($command === 'maintenance:enable' || $command === 'maintenance:disable') {
     }
 }
 
+// `setup:backup --db` is what the recipe's db:backup step calls when the deploy
+// asks for a database dump. Real Magento writes `<timestamp>_db.sql` (`.sql.gz`
+// only with backup compression configured), and the recipe's command used to look
+// for `*.gz` alone — so the stub writes what the tool writes, and the integration
+// suite fails if the command stops finding it.
+if ($command === 'setup:backup') {
+    $backupExpectation = trim((string) @file_get_contents($release . '/backup-expectation.txt'));
+    $suffix = $backupExpectation === 'compressed' ? '_db.sql.gz' : '_db.sql';
+    $directory = $release . '/var/backups';
+    if (!is_dir($directory)) {
+        mkdir($directory, 0777, true);
+    }
+    file_put_contents($directory . '/' . time() . $suffix, "dump\n");
+    exit(0);
+}
+
+// `setup:rollback --db-file` is not "import this file": Magento validates the name
+// against /[0-9]_db.*\.sql$/ and looks the file up inside the release's
+// var/backups/. The stub enforces exactly that contract, so a restore command
+// that regresses to an absolute path ends the deploy with Magento's own words.
+if ($command === 'setup:rollback') {
+    $dbFile = '';
+    foreach ($arguments as $argument) {
+        if (str_starts_with($argument, '--db-file=')) {
+            $dbFile = substr($argument, strlen('--db-file='));
+        }
+    }
+    if ($dbFile === '' || preg_match('/[0-9]_db.*\.sql$/', $dbFile) !== 1) {
+        $fail("setup:rollback was given '{$dbFile}'; Magento rejects a name that does not match /[0-9]_db.*\\.sql$/");
+    }
+    if (!is_file($release . '/var/backups/' . $dbFile)) {
+        $fail("setup:rollback must be given a name inside var/backups; '{$dbFile}' is not there");
+    }
+    file_put_contents($log, 'setup:rollback ' . $dbFile . "\n", FILE_APPEND);
+    exit(0);
+}
+
 if ($command === 'setup:db:status') {
     // An in-place activation resets the docroot to the revision and copies the
     // configured paths in. `git reset --hard` leaves the previous deployment's

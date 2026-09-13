@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"govard/internal/conventions"
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"govard/internal/cli"
 	"govard/internal/engine"
@@ -120,6 +123,18 @@ func GenCompletionForTest(shell string) (string, error) {
 }
 
 func Execute() {
+	// A Ctrl-C has to reach the command rather than kill the process under it.
+	// The deploy's own failure path is what releases a pre-publish lock, keeps a
+	// post-publish one, writes the release record and prints the sentence that
+	// says how to continue; a process killed mid-step leaves the target holding a
+	// lock — and, past `maintenance:enable`, a maintenance flag — that nothing
+	// explains and only `deploy unlock` can clear.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// SetContext rather than ExecuteContext: the error envelope below needs the
+	// command ExecuteC reports, and ExecuteContext does not return it.
+	rootCmd.SetContext(ctx)
 	executed, err := rootCmd.ExecuteC()
 	if err == nil {
 		return

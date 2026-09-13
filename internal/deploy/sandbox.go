@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -32,6 +33,20 @@ const (
 // sandbox that silently changes under a rebuild is not a regression suite.
 // Bumping it is a one-line change with a visible diff.
 const SandboxBaseImage = "debian@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171"
+
+// sandboxDebianCodename is the release the pinned digest above is. It is named
+// because a second packaging repository (sury, for a PHP series Debian does not
+// carry) has to be pointed at a codename, and that pointer must move with the
+// digest: bumping one without the other installs nothing and fails the build
+// with an apt error rather than silently shipping the wrong PHP.
+const sandboxDebianCodename = "bookworm"
+
+// sandboxSuryKeyring and sandboxSurySource are where a requested PHP series
+// comes from when Debian's own is not the one asked for.
+const (
+	sandboxSuryKeyring = "/usr/share/keyrings/sury-php.gpg"
+	sandboxSurySource  = "/etc/apt/sources.list.d/sury-php.list"
+)
 
 // The package versions the image pins. They are bootstrapped from a Debian
 // point release, which rotates; the Dockerfile therefore installs the pinned
@@ -73,10 +88,36 @@ type SandboxRequirements struct {
 
 // SandboxSpec identifies one sandbox image.
 type SandboxSpec struct {
-	Project      string
-	Profile      string
+	Project string
+	Profile string
+	// PHP is the PHP series the image provides, for example "8.4". Empty means the
+	// base image's own version (Debian's), which is what a project that does not ask
+	// for one gets.
+	PHP string
+	// WebRoot is where inside the served path the web server serves from, from the
+	// project's `stack.web_root` (`/pub` for a storefront served from a subdirectory). It is part of the image
+	// because the tag is the hash of the rendered definition.
+	WebRoot      string
 	Requirements SandboxRequirements
 }
+
+// ValidateSandboxPHP normalizes a requested PHP series and refuses anything that is
+// not `major.minor`. The value is rendered into the image definition, so it is
+// checked rather than trusted: `8.4; rm -rf /` is a string, not a version.
+func ValidateSandboxPHP(php string) (string, error) {
+	trimmed := strings.TrimSpace(php)
+	if trimmed == "" {
+		return "", nil
+	}
+	if !sandboxPHPVersion.MatchString(trimmed) {
+		return "", fmt.Errorf("unsupported sandbox php version %q; use a series such as 8.3 or 8.4", php)
+	}
+	return trimmed, nil
+}
+
+// sandboxPHPVersion is `major.minor`, which is what every PHP packaging convention
+// (Debian's `php<series>-*` and sury's repository) keys on.
+var sandboxPHPVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
 
 // ValidateSandboxProfile normalizes a profile name and refuses an unknown one.
 // An empty name is the default profile, because "unspecified" is a legitimate
@@ -100,28 +141,61 @@ func ValidateSandboxProfile(profile string) (string, error) {
 // The render is deterministic and order-independent: the image tag is a hash of
 // this text, so two recipes that list the same requirements in a different order
 // must produce the same image rather than two.
-func SandboxDockerfile(profile string, requirements SandboxRequirements) (string, error) {
-	resolved, err := ValidateSandboxProfile(profile)
+func SandboxDockerfile(spec SandboxSpec) (string, error) {
+	resolved, err := ValidateSandboxProfile(spec.Profile)
 	if err != nil {
 		return "", err
 	}
+	series, err := ValidateSandboxPHP(spec.PHP)
+	if err != nil {
+		return "", err
+	}
+	servesWeb := SandboxServesWeb(resolved)
+	exposeWeb := ""
+	if servesWeb {
+		exposeWeb = fmt.Sprintf(" %d", sandboxWebPort)
+	}
+	requirements := spec.Requirements
 
 	packages := []string{"openssh-server", "rsync", "git", "ca-certificates", "procps"}
 	switch resolved {
 	case SandboxProfilePHP:
-		packages = append(packages, "php-cli", "composer", "nodejs", "npm", "unzip")
+		packages = append(packages, "nodejs", "npm", "unzip")
 	case SandboxProfileFull:
-		packages = append(packages, "php-cli", "composer", "nodejs", "npm", "unzip", "mariadb-server", "redis-server")
+		packages = append(packages, "nodejs", "npm", "unzip", "mariadb-server", "redis-server")
+	}
+	if servesWeb {
+		packages = append(packages, SandboxWebPackages(series)...)
 	}
 	packages = append(packages, sortedSandboxWords(requirements.Packages)...)
 
 	extensions := sortedSandboxWords(requirements.Extensions)
 	extensionPackages := make([]string, 0, len(extensions))
+	// `php<series>-*` is the packaging convention of both Debian and the sury
+	// repository, so the same extension list works either way; without a series the
+	// base image's own `php-*` names are used.
+	phpPrefix := "php-"
+	if series != "" {
+		phpPrefix = "php" + series + "-"
+	}
+	if resolved != SandboxProfileBasic {
+		packages = append(packages, phpPrefix+"cli")
+		// Composer comes from Debian only where Debian's PHP does: its package
+		// depends on php-cli, which would install the base image's series next to the
+		// requested one. The phar is version-independent and it is what the
+		// distribution package wraps anyway.
+		if series == "" {
+			packages = append(packages, "composer")
+		}
+	}
 	for _, extension := range extensions {
-		extensionPackages = append(extensionPackages, "php-"+extension)
+		extensionPackages = append(extensionPackages, phpPrefix+extension)
 	}
 
 	services := sortedSandboxWords(requirements.Services)
+	if servesWeb {
+		services = sortedSandboxWords(append(services, sandboxWebService))
+	}
 
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "# Generated by `govard deploy sandbox`. Do not edit: the image tag is\n")
@@ -132,6 +206,22 @@ func SandboxDockerfile(profile string, requirements SandboxRequirements) (string
 	fmt.Fprintf(&builder, "ARG GIT_VERSION=%s\n\n", sandboxGitVersion)
 
 	fmt.Fprintf(&builder, "ENV DEBIAN_FRONTEND=noninteractive GOVARD_SANDBOX_SERVICES=%q\n\n", strings.Join(services, " "))
+
+	// A PHP series other than the base image's comes from sury, the repository every
+	// Debian host that needs a version other than the distribution's uses. This is
+	// the difference between "rehearse the deploy" and "rehearse it on the PHP your
+	// target actually runs": a project whose lock requires 8.3+ cannot install on
+	// bookworm's 8.2 at all.
+	if series != "" {
+		fmt.Fprintf(&builder, `RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl gnupg ca-certificates; \
+    curl -fsSL https://packages.sury.org/php/apt.gpg -o %s; \
+    echo "deb [signed-by=%s] https://packages.sury.org/php/ %s main" > %s; \
+    apt-get update
+
+`, sandboxSuryKeyring, sandboxSuryKeyring, sandboxDebianCodename, sandboxSurySource)
+	}
 
 	// The pinned versions are tried first and the current ones are the fallback,
 	// so a rotated Debian point release degrades the sandbox instead of
@@ -148,6 +238,21 @@ func SandboxDockerfile(profile string, requirements SandboxRequirements) (string
     dpkg-query -W -f='${Package}=${Version}\n' openssh-server rsync git > %s; \
     rm -rf /var/lib/apt/lists/*
 `, strings.Join(quoteWords(append(packages, extensionPackages...)), " "), SandboxPackagesTxt)
+
+	// Composer is not a distribution package here (see above), and `php` has to mean
+	// the requested series: every recipe command, the sandbox remote's `php_bin` and
+	// the stub fixtures all call the plain binary.
+	if series != "" && resolved != SandboxProfileBasic {
+		fmt.Fprintf(&builder, `
+RUN set -eux; \
+    update-alternatives --install /usr/bin/php php /usr/bin/php%s 100; \
+    curl -fsSL https://getcomposer.org/download/latest-stable/composer.phar -o /usr/local/bin/composer; \
+    chmod 0755 /usr/local/bin/composer; \
+    php -r 'exit(strpos(PHP_VERSION, "%s") === 0 ? 0 : 1);'; \
+    php -v; \
+    composer --version
+`, series, series)
+	}
 
 	// The mirror is bind-mounted from the host, which is a different user than
 	// the container's deployer whenever the two uids differ — a CI runner is
@@ -169,6 +274,22 @@ func SandboxDockerfile(profile string, requirements SandboxRequirements) (string
 	fmt.Fprintf(&builder, "    useradd -m -d %s -u %d -g %d -s /bin/bash -p '*' %s; \\\n", SandboxHome, SandboxUserUID, SandboxUserGID, SandboxUser)
 	fmt.Fprintf(&builder, "    install -d -m 0700 -o %s -g %s %s/.ssh; \\\n", SandboxUser, SandboxUser, SandboxHome)
 	fmt.Fprintf(&builder, "    passwd -l root\n")
+
+	if servesWeb {
+		fmt.Fprintf(&builder, "\nRUN %s\n", sandboxFPMPoolPatch())
+		// The web tier cannot serve a directory the deployer will replace, so the
+		// served path is created here and handed over, exactly as the pipeline's
+		// own release step expects to find it.
+		fmt.Fprintf(&builder, "\nRUN set -eux; \\\n")
+		fmt.Fprintf(&builder, "    mkdir -p /run/php /var/log/nginx /var/lib/nginx; \\\n")
+		fmt.Fprintf(&builder, "    install -d -o %s -g %s %s\n", SandboxUser, SandboxUser, SandboxDefaultPaths().Current)
+		// The config files travel in the build context: a multi-line file spliced
+		// into a RUN has to escape every newline, and the first version of this
+		// render got that wrong — Docker rejected the file outright.
+		fmt.Fprintf(&builder, "\nCOPY %s /etc/nginx/conf.d/govard-sandbox.conf\n", sandboxNginxConfFile)
+		fmt.Fprintf(&builder, "COPY %s %s\n", sandboxWebInitFile, sandboxFPMServicePath)
+		fmt.Fprintf(&builder, "RUN chmod 0755 %s\n", sandboxFPMServicePath)
+	}
 
 	fmt.Fprintf(&builder, `
 RUN set -eux; \
@@ -192,24 +313,24 @@ RUN printf '%%s\n' \
       > /usr/local/bin/govard-sandbox-entrypoint; \
     chmod 0755 /usr/local/bin/govard-sandbox-entrypoint
 
-EXPOSE %d
+EXPOSE %d%s
 ENTRYPOINT ["/usr/local/bin/govard-sandbox-entrypoint"]
 CMD ["/usr/sbin/sshd", "-D", "-e"]
-`, SandboxSSHPort)
+`, SandboxSSHPort, exposeWeb)
 
 	return builder.String(), nil
 }
 
 // SandboxDockerfileForTest exposes SandboxDockerfile to the tests/ package.
-func SandboxDockerfileForTest(profile string, requirements SandboxRequirements) (string, error) {
-	return SandboxDockerfile(profile, requirements)
+func SandboxDockerfileForTest(spec SandboxSpec) (string, error) {
+	return SandboxDockerfile(spec)
 }
 
 // SandboxImageTag is the local image name for one spec. The hash of the
 // rendered Dockerfile is part of the tag, which is what makes "rebuild only when
 // the definition changes" a property of the name rather than of a cache check.
 func SandboxImageTag(spec SandboxSpec) (string, error) {
-	dockerfile, err := SandboxDockerfile(spec.Profile, spec.Requirements)
+	dockerfile, err := SandboxDockerfile(spec)
 	if err != nil {
 		return "", err
 	}
@@ -217,7 +338,13 @@ func SandboxImageTag(spec SandboxSpec) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256([]byte(dockerfile))
+	// The copied files are part of the definition: hashing the Dockerfile alone
+	// would reuse an image whose nginx serves a different root.
+	definition := dockerfile
+	for _, name := range sortedSandboxWords(mapKeys(SandboxBuildFiles(spec))) {
+		definition += "\x00" + name + "\x00" + SandboxBuildFiles(spec)[name]
+	}
+	digest := sha256.Sum256([]byte(definition))
 	return fmt.Sprintf("govard-deploy-sandbox:%s-%s-%s",
 		sandboxSlug(spec.Project), resolved, hex.EncodeToString(digest[:])[:12]), nil
 }
@@ -268,6 +395,15 @@ func sandboxSlug(project string) string {
 		return "project"
 	}
 	return slug
+}
+
+// mapKeys lists a file map's keys, for a deterministic render order.
+func mapKeys(files map[string]string) []string {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	return names
 }
 
 // quoteWords single-quotes every word for the shell line inside the Dockerfile.

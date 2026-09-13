@@ -70,7 +70,15 @@ type SandboxRunRequest struct {
 	MirrorPath  string
 	ProjectName string
 	Profile     string
+	// Web publishes the HTTP port as well. A profile with no web tier has
+	// nothing listening there, and Docker would publish a port that never
+	// answers — which `deploy:verify` would then report as a failed deploy.
+	Web bool
 }
+
+// SandboxWebPort is the container port the web tier listens on, readable so a
+// caller does not have to know it is 80.
+func SandboxWebPort() int { return sandboxWebPort }
 
 // SandboxPortBinding is the loopback binding the sandbox sshd is published on.
 // The empty host port means "Docker, choose one" — the port is then read back
@@ -188,9 +196,14 @@ func (d *DockerCLI) RunContainer(ctx context.Context, request SandboxRunRequest)
 		"--label", "govard.sandbox.project=" + request.ProjectName,
 		"--label", "govard.sandbox.profile=" + request.Profile,
 		"--publish", SandboxPortBinding,
-		"--mount", "type=bind,source=" + request.MirrorPath + ",target=" + SandboxRepoPath + ",readonly",
-		request.Image,
 	}
+	if request.Web {
+		args = append(args, "--publish", SandboxWebBinding)
+	}
+	args = append(args,
+		"--mount", "type=bind,source="+request.MirrorPath+",target="+SandboxRepoPath+",readonly",
+		request.Image,
+	)
 	if _, err := d.run(ctx, SandboxCommand{Args: args}); err != nil {
 		return fmt.Errorf("start the sandbox container %s: %w", request.Name, err)
 	}

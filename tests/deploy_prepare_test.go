@@ -80,6 +80,38 @@ func TestCoreReleaseRefusesToReuseAnExistingNumber(t *testing.T) {
 	}
 }
 
+// A release directory that carries govard's own record for that same release is
+// govard's own half-made release, not a stranger's.
+//
+// The refusal exists to protect a release the other deploy tool created. A
+// directory with govard's record inside belongs to this deploy: a run that died
+// between creating the directory and finishing, or a record a previous version
+// left inconsistent, must still be continuable. Refusing it turned every later
+// `--resume` into the same error with no way forward.
+func TestCoreReleaseContinuesAReleaseThatCarriesItsOwnRecord(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.ReleasePath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed release dir: %v", err)
+	}
+	record := deploy.NewReleaseForTest("1", "abc", "main")
+	record.Status = deploy.StatusFailed
+	record.Tasks = []deploy.StepRecord{{ID: deploy.TaskRelease, Status: deploy.StepFailed}}
+	if err := deploy.WriteRelease(ctx, host, record); err != nil {
+		t.Fatalf("seed release record: %v", err)
+	}
+
+	sc.Release = deploy.NewReleaseForTest("1", "abc", "main")
+	if err := deploy.CoreRelease(ctx, sc); err != nil {
+		t.Fatalf("a release carrying govard's own record must be continuable: %v", err)
+	}
+	if _, err := host.Runner().Run(ctx, "test -f "+host.ReleaseRecordPath("1"), deploy.RunOptions{}); err != nil {
+		t.Fatalf("the release record must survive the step: %v", err)
+	}
+}
+
 func TestCoreCheckRefusesSubmodules(t *testing.T) {
 	root := t.TempDir()
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
@@ -840,6 +872,31 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 		t.Fatalf("a shared auth.json must silence the warning, got %q", notes)
 	}
 
+	// …or a credential the project keeps in its own checkout. Composer reads an
+	// `auth.json` from the project directory as well as from its home, and
+	// `deploy:code` materialises the checkout into the release — so a committed one
+	// authenticates the build with nothing else in play. This is the route a real
+	// Magento Cloud project used, and warning "no credentials are available" at it
+	// sends the operator hunting for a problem that is not there.
+	t.Setenv("COMPOSER_AUTH", "")
+	workWithAuth := t.TempDir()
+	writeFile(t, filepath.Join(workWithAuth, "composer.json"), private)
+	writeFile(t, filepath.Join(workWithAuth, "auth.json"),
+		`{"http-basic":{"repo.example.com":{"username":"u","password":"p"}}}`)
+	hostWithAuth := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	scWithAuth := deploy.StepContextForTest(hostWithAuth, deploy.Options{Remote: "local", Build: deploy.BuildServer})
+	scWithAuth.WorkDir = workWithAuth
+	if err := deploy.CoreCheck(context.Background(), scWithAuth); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	projectNotes := strings.Join(scWithAuth.Notes, "\n")
+	if strings.Contains(projectNotes, "warning") {
+		t.Fatalf("a project-committed auth.json must silence the warning, got %q", projectNotes)
+	}
+	if !strings.Contains(projectNotes, "the project itself carries auth.json") {
+		t.Fatalf("the note must say which source answered, got %q", projectNotes)
+	}
+
 	// A packagist-only project needs nothing.
 	public := `{"repositories":[{"type":"composer","url":"https://repo.packagist.org"}]}`
 	notes = strings.Join(check(t, public, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
@@ -881,5 +938,36 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 	}
 	if len(server.Notes) == 0 || !strings.Contains(strings.Join(server.Notes, "\n"), "warning") {
 		t.Fatalf("a server build with no credentials must warn, got %v", server.Notes)
+	}
+}
+
+// The production discovery path reads the layouts a target actually has, and its
+// candidate list is the whole point: `~` is the reference tool's classic layout
+// (the deploy root *is* the home directory) and `~/.deployer` is the other. The
+// tests that existed passed the candidates in by hand, so this — the list, and the
+// ambiguity rule that depends on it — had never run.
+func TestDiscoverDeployPathReadsTheLayoutsARealTargetHas(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ctx := context.Background()
+	host := deploy.HostForTest("", deploy.LocalRunner{})
+
+	// The home directory itself is a deploy root.
+	writeFile(t, filepath.Join(home, "releases", ".keep"), "")
+	found, err := deploy.DiscoverDeployPath(ctx, host)
+	if err != nil {
+		t.Fatalf("discover a home-directory layout: %v", err)
+	}
+	if found != "~" {
+		t.Fatalf("found = %q, want ~ (the layout that exists)", found)
+	}
+
+	// Both shapes present is the ambiguous answer this exists to refuse: adopting
+	// either would be the guess the function is written to avoid.
+	if err := os.MkdirAll(filepath.Join(home, ".deployer", "releases"), 0o755); err != nil {
+		t.Fatalf("mkdir the second layout: %v", err)
+	}
+	if _, err := deploy.DiscoverDeployPath(ctx, host); !errors.Is(err, deploy.ErrDeployPathMissing) {
+		t.Fatalf("err = %v, want a refusal naming both layouts", err)
 	}
 }
