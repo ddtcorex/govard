@@ -84,6 +84,12 @@ type SandboxRequirements struct {
 	// Services are init services started inside the container before sshd
 	// (a database a migration step needs, a cache a cache-flush needs).
 	Services []string
+	// Tools are binaries the image installs on top of the distribution's
+	// packages, from the engine's closed table (`wp-cli`). The name is data: it
+	// arrives from a recipe and from project configuration, which is exactly why
+	// the table is closed — an open "run this command" field would be an
+	// injection point rather than a feature.
+	Tools []string
 }
 
 // SandboxSpec identifies one sandbox image.
@@ -135,6 +141,39 @@ func ValidateSandboxProfile(profile string) (string, error) {
 	}
 }
 
+// sandboxTools maps a tool name to the shell steps that install it. Composer is
+// installed by its own block below because every PHP profile needs it; these are
+// the binaries only some applications do.
+var sandboxTools = map[string]string{
+	"wp-cli": `curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /usr/local/bin/wp && ` +
+		`chmod 0755 /usr/local/bin/wp && wp --version`,
+}
+
+// sandboxToolNames returns the known names in a stable order, for the message an
+// unknown one produces.
+func sandboxToolNames() []string {
+	names := make([]string, 0, len(sandboxTools))
+	for name := range sandboxTools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ValidateSandboxTools refuses a tool the engine has no install recipe for.
+//
+// Refusing at render time is deliberate: a name outside the table cannot be
+// installed, and an image that fails to build is a far worse diagnosis than a
+// message naming the tools the engine knows.
+func ValidateSandboxTools(tools []string) error {
+	for _, tool := range sortedSandboxWords(tools) {
+		if _, ok := sandboxTools[tool]; !ok {
+			return fmt.Errorf("unsupported sandbox tool %q; known tools: %s", tool, strings.Join(sandboxToolNames(), ", "))
+		}
+	}
+	return nil
+}
+
 // SandboxDockerfile renders the image definition for a profile plus a recipe's
 // requirements.
 //
@@ -148,6 +187,9 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 	}
 	series, err := ValidateSandboxPHP(spec.PHP)
 	if err != nil {
+		return "", err
+	}
+	if err := ValidateSandboxTools(spec.Requirements.Tools); err != nil {
 		return "", err
 	}
 	servesWeb := SandboxServesWeb(resolved)
@@ -252,6 +294,24 @@ RUN set -eux; \
     php -v; \
     composer --version
 `, series, series)
+	}
+
+	// Tools are phars the distribution does not package, installed the way
+	// Composer is. `curl` is installed here rather than assumed: the base package
+	// list has none, and only the sury branch adds it — a tool requested without
+	// a PHP series would otherwise fail the build with "curl: not found".
+	if tools := sortedSandboxWords(requirements.Tools); len(tools) > 0 && resolved != SandboxProfileBasic {
+		steps := make([]string, 0, len(tools))
+		for _, tool := range tools {
+			steps = append(steps, sandboxTools[tool])
+		}
+		fmt.Fprintf(&builder, `
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    %s; \
+    rm -rf /var/lib/apt/lists/*
+`, strings.Join(steps, " && "))
 	}
 
 	// The mirror is bind-mounted from the host, which is a different user than
