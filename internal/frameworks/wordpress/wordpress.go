@@ -88,6 +88,7 @@ func Definition() types.FrameworkDefinition {
 		},
 		DBDriverCategory: "wordpress",
 		Upgrade:          Upgrade,
+		DeployRecipe:     DeployRecipe,
 		ProbeRemoteDB: func(remoteName string, remoteCfg engine.RemoteConfig) (remote.RemoteDatabaseMetadata, error) {
 			metadata, err := ProbeEnvironment(remoteName, remoteCfg)
 			if err != nil {
