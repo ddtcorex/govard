@@ -661,6 +661,10 @@ deploy:
 - Check `app` chạy `artisan db:show` (Laravel 11+), lùi về `migrate:status`.
   `about --only=environment` **không** được dùng: nó exit 0 ngay cả khi không có
   database, nên chẳng chứng minh được gì.
+- **Ở artifact mode** không bước nào của Laravel ở lại target: không bước nào được
+  đánh dấu *cần ứng dụng*, nên artifact phải mang `vendor/` và `public/build`.
+  `app:cache:flush` vẫn chạy trên target — đó là thứ giữ cho cache cấu hình không
+  bị dựng ở nơi nào khác.
 
 ## Ca 10: Symfony, migration Doctrine, target PostgreSQL {#case-10-symfony}
 
@@ -697,6 +701,10 @@ deploy:
   Dự án cần thì thêm hook — trang deployment có mẫu.
 - Check `app` chạy `dbal:run-sql "SELECT 1"`, hoặc `doctrine:query:sql` với
   DoctrineBundle cũ; nhánh được chọn bằng cách hỏi console.
+- **Ở artifact mode** `build:assets` vẫn chạy trên target — `assets:install` đọc
+  ứng dụng đã cài, nên artifact không thay thế được bước này. Artifact mang `vendor/`
+  và output build frontend; `public/bundles` được ghi trên target, đó cũng là lý do
+  nó nằm trong `sync_paths` cho docroot in-place.
 
 ## Ca 11: WordPress, layout classic, wp-cli trên target {#case-11-wordpress}
 
@@ -733,6 +741,10 @@ không được hỗ trợ.
   và `default-mysql-client` (`mysqldump`).
 - Laravel và Symfony **không có dump command**: bật `--db-backup` cho chúng sẽ fail
   kèm thông báo nêu rõ lý do, thay vì lặng lẽ không có backup nào.
+- **Ở artifact mode** bước build duy nhất là `composer install` có guard, nên
+  artifact mang `vendor/` với dự án có `composer.json` — và không mang gì khác.
+  `wp core update-db`, cache flush và check đều chạy trên target, đối diện database,
+  ở mọi mode.
 
 ## Diễn tập bất kỳ ca nào trong sandbox {#rehearsing-any-case-in-the-sandbox}
 

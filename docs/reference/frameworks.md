@@ -11,25 +11,27 @@ Govard detects supported frameworks and applies runtime defaults plus version-aw
 
 ## Support Matrix
 
-| Framework | Auto-Detection | Version-Aware Profile | Default Web Root | Audit Lint (`govard`) |
-| :--- | :---: | :---: | :---: | :---: |
-| Magento 2 | ✅ | ✅ | `/pub` | ✅ |
-| Mage-OS | ✅ | framework defaults | `/pub` | ✅ (via Magento 2) |
-| Magento 1 / OpenMage | ✅ | framework defaults | project root | — |
-| Laravel | ✅ | ✅ | `/public` | ✅ |
-| Next.js | ✅ | framework defaults | project root | — |
-| Emdash | ✅ | framework defaults | project root | — |
-| Drupal | ✅ | ✅ | `/web` | — |
-| Symfony | ✅ | ✅ | `/public` | ✅ |
-| Shopware | ✅ | framework defaults | `/public` | — |
-| CakePHP | ✅ | framework defaults | `/webroot` | — |
-| PrestaShop | ✅ | framework defaults | project root | — |
-| WordPress | ✅ | ✅ | `/` | ✅ |
-| Django | ✅ | framework defaults | project root | — |
-| Dagster | ✅ | framework defaults | project root | — |
-| Custom | manual | manual | project root | — |
+| Framework | Auto-Detection | Version-Aware Profile | Default Web Root | Audit Lint (`govard`) | Deploy Recipe |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| Magento 2 | ✅ | ✅ | `/pub` | ✅ | ✅ |
+| Mage-OS | ✅ | framework defaults | `/pub` | ✅ (via Magento 2) | ✅ (via Magento 2) |
+| Magento 1 / OpenMage | ✅ | framework defaults | project root | — | — |
+| Laravel | ✅ | ✅ | `/public` | ✅ | ✅ |
+| Next.js | ✅ | framework defaults | project root | — | — |
+| Emdash | ✅ | framework defaults | project root | — | — |
+| Drupal | ✅ | ✅ | `/web` | — | — |
+| Symfony | ✅ | ✅ | `/public` | ✅ | ✅ |
+| Shopware | ✅ | framework defaults | `/public` | — | — |
+| CakePHP | ✅ | framework defaults | `/webroot` | — | — |
+| PrestaShop | ✅ | framework defaults | project root | — | — |
+| WordPress | ✅ | ✅ | `/` | ✅ | ✅ |
+| Django | ✅ | framework defaults | project root | — | — |
+| Dagster | ✅ | framework defaults | project root | — | — |
+| Custom | manual | manual | project root | — | — |
 
 > **Linter column:** `Audit Lint (govard)` shows `govard audit run --checks lint` support. ✅ = native `govard` provider (Magento2: `Magento2` CS, Laravel: `PSR12`, Symfony: `Symfony`, WordPress: `WordPress`); every lint run also enforces the **media guard** (`pub/media` `*.php/*.phtml/*.pht` → `M2-LINT-MEDIA` `failed`, container `media-guard` phase plus host `ScanMediaGuard` fallback) and hygiene `.gitignore` (`pub/media/*.php` etc. via `internal/blueprints/files/.gitignore`). See [Audit — Lint & Profiler](/workflows/audit#scanned-paths-media-guard).
+>
+> **Deploy Recipe column:** a ✅ framework registers its own recipe, so `govard deploy` fills the neutral pipeline with the commands that application actually needs — each framework section below lists them. A `—` framework still deploys, but through the engine's **default** recipe: release creation, shared files, permissions, activation, verification, rollback — the steps that are framework-neutral. The application steps (dependencies, migrations, caches) are not filled in, because the engine will not guess a command an application did not declare; a project on one of those frameworks anchors `deploy.hooks` on the task ids instead. See [Deployment](/workflows/deployment) for the pipeline and [Deploy recipes](/workflows/deployment#laravel-symfony-and-wordpress) for the four that ship one.
 
 ---
 
@@ -277,6 +279,45 @@ govard upgrade --version 12
 - Runs full `composer update`
 - Runs `php artisan migrate --force`
 
+### Deployment
+
+Laravel ships the deploy recipe `laravel`, so `govard deploy` runs Laravel's own
+commands rather than the engine's neutral defaults:
+
+```bash
+govard deploy check production     # what the target implies, before anything runs
+govard deploy production --yes
+```
+
+| Step | Command on the target |
+| --- | --- |
+| `build:vendors` | `composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist` |
+| `build:frontend` | `frontend_command` inside each `frontend_dir`; empty `frontend_dir` skips the step |
+| `app:configure` | `artisan storage:link` |
+| `db:migrate` | `artisan migrate --force` |
+| `maintenance:enable` / `disable` | `artisan down` / `artisan up`, run in the **served** release |
+| `app:workers:pause` | with `worker_control` on: `artisan queue:restart`, plus `horizon:terminate` when Horizon is installed |
+| `app:cache:flush` | `artisan optimize:clear` then `artisan optimize` |
+| `deploy:verify` (`app`) | `artisan db:show`; `migrate:status` on Laravel 10 and older |
+| `db:backup` | — (no dump command: `--db-backup` fails and names the reason) |
+
+`.env` is a shared **file** and `storage` a shared **directory**, because the
+maintenance flag lives at `storage/framework/down` — a shared directory is what
+carries it across the release swap. `sync_paths` is `vendor` and `public/build`
+for an in-place docroot. The recipe declares four settings (`frontend_dir`,
+`frontend_command`, `worker_control`, `runtime_reload_command`) and asks the
+sandbox for `default-mysql-client`, the Laravel extension set (`bcmath`, `curl`,
+`gd`, `intl`, `mbstring`, `mysql`, `sqlite3`, `xml`, `zip`) and the `mariadb` +
+`redis-server` services.
+
+The caches are built **on the target**, never on a build machine: `artisan
+optimize` writes `bootstrap/cache/config.php`, and once that file exists the
+process environment no longer overrides `.env` — a cache built elsewhere would
+carry another machine's configuration to production.
+
+Full command list and rationale: [Laravel, Symfony and WordPress](/workflows/deployment#laravel-symfony-and-wordpress).
+Worked configuration: [Case 9 — Laravel, Vite frontend, symlinked webroot](/workflows/deploy-case-studies#case-9-laravel).
+
 ---
 
 ## 🌐 Drupal
@@ -307,6 +348,52 @@ govard upgrade --version 7
 - Runs `composer update`
 - Runs `doctrine:migrations:migrate`
 - Runs `cache:clear`
+
+### Deployment
+
+Symfony ships the deploy recipe `symfony`. It exists mainly to *undo* Composer's
+`auto-scripts`, which run `cache:clear` and `assets:install` in the wrong place:
+
+```bash
+govard deploy check production
+govard deploy production --yes
+```
+
+| Step | Command on the target |
+| --- | --- |
+| `build:vendors` | `composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts` |
+| `build:assets` | `bin/console assets:install public --symlink --relative` — marked *needs the application*, so the target runs it even in artifact mode |
+| `build:frontend` | `frontend_command` inside each `frontend_dir`; empty `frontend_dir` skips the step |
+| `db:migrate` | `doctrine:migrations:migrate --env=… --no-interaction --allow-no-migration` |
+| `app:cache:flush` | `cache:clear --env=… --no-warmup` then `cache:warmup --env=…` |
+| `app:workers:pause` | with `worker_control` on: `messenger:stop-workers --env=…` |
+| `maintenance:enable` / `disable` | **empty** — Symfony has no core mechanism, so both steps are reported as skipped |
+| `deploy:verify` (`app`) | `dbal:run-sql "SELECT 1"`; `doctrine:query:sql` on an older DoctrineBundle |
+| `db:backup` | — (no dump command: `--db-backup` fails and names the reason) |
+
+Every `bin/console` command above takes `--env` from the `symfony_env` setting:
+
+```bash
+bin/console doctrine:migrations:migrate --env={{settings.symfony_env}} --no-interaction --allow-no-migration
+bin/console cache:clear --env={{settings.symfony_env}} --no-warmup
+bin/console messenger:stop-workers --env={{settings.symfony_env}}
+```
+
+`.env.local` is a shared **file** and `var/log` a shared **directory**;
+`var/cache` is deliberately **not** shared, because the compiled container belongs
+to one release and one environment. `sync_paths` is `vendor` and `public/bundles`
+for an in-place docroot. `symfony_env` (default `prod`) decides the environment
+every console command runs under and is **not validated** — a typo builds the wrong
+cache directory. The sandbox gets `default-mysql-client`, the extension set
+(`intl`, `mysql`, `mbstring`, `xml`, `curl`, `zip`) and the `mariadb` +
+`redis-server` services.
+
+Because the maintenance tasks are empty, `db:migrate` runs against a live site; a
+project that needs a window adds it with two `deploy.hooks` on
+`maintenance:enable` / `maintenance:disable`.
+
+Full command list and rationale: [Laravel, Symfony and WordPress](/workflows/deployment#laravel-symfony-and-wordpress).
+Worked configuration: [Case 10 — Symfony, Doctrine migrations, PostgreSQL target](/workflows/deploy-case-studies#case-10-symfony).
 
 ---
 
@@ -365,6 +452,51 @@ govard upgrade --version 6.7
 - `wp core update --version=<version>`
 - `wp core update-db`
 - `wp cache flush`
+
+### Deployment
+
+WordPress ships the deploy recipe `wordpress`, for the **classic layout only**:
+core files and `wp-content/` in the repository root, no `composer.json`. A Bedrock
+layout (core in `vendor/`, docroot `web/`) and a content-only checkout are not
+supported.
+
+```bash
+govard deploy check production
+govard deploy production --yes
+```
+
+| Step | Command on the target |
+| --- | --- |
+| `build:vendors` | `composer install …` **only when** `composer.json` exists (a guarded step, not `\|\| true`) |
+| `build:frontend` | `frontend_command` inside each `frontend_dir`; empty `frontend_dir` skips the step |
+| `db:migrate` | `wp core update-db`, or `wp_upgrade()` through `wp-load.php` when the target has no wp-cli |
+| `app:cache:flush` | `wp cache flush` + `wp rewrite flush --hard`, or `wp_cache_flush()` + `flush_rewrite_rules(true)` |
+| `maintenance:enable` / `disable` | writes/removes `.maintenance` and a marked `wp-content/maintenance.php` in the **served** path |
+| `db:backup` / restore | `wp db export` / `wp db import` — the only recipe besides Magento's with a dump command |
+| `deploy:verify` (`app`) | `wp core is-installed`, or `is_blog_installed()` without wp-cli |
+
+Three tasks are **hybrids**, each running `wp` when the target has wp-cli and a
+`wp-load.php` PHP bootstrap when it does not: wp-cli is what a real server has, but
+govard cannot install it on a target, and a deploy must not fail for a reason that
+has nothing to do with the release.
+
+`wp-config.php` is a shared **file** and `wp-content/uploads` a shared
+**directory**; `wp-content/cache`, `upgrade` and `languages` are writable.
+`sync_paths` is `vendor`, which only matters for a project managing plugins or
+themes through Composer. The sandbox gets `default-mysql-client`, the extension set
+(`mysqli`, `curl`, `gd`, `intl`, `mbstring`, `xml`, `zip`), the `mariadb` +
+`redis-server` services and the `wp-cli` tool.
+
+Two things to know before the first deploy: **seed `shared/wp-config.php`**, because
+`deploy:shared` links a shared entry only when it already exists — an unseeded
+`shared/` leaves the first release with the repository's `wp-config.php`, the one
+naming the development database. And the maintenance flag is written with
+`time() + 86400` rather than WordPress's own `time()`, because
+`wp_is_maintenance_mode()` expires a flag older than ten minutes: a longer deploy
+window would otherwise reopen the site mid-migration.
+
+Full command list and rationale: [Laravel, Symfony and WordPress](/workflows/deployment#laravel-symfony-and-wordpress).
+Worked configuration: [Case 11 — WordPress, classic layout, wp-cli on the target](/workflows/deploy-case-studies#case-11-wordpress).
 
 ---
 
