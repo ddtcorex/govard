@@ -70,9 +70,6 @@ func (b *boundedBuffer) String() string {
 		humanBytes(b.dropped), humanBytes(len(b.buf)), b.buf)
 }
 
-// Len is the number of kept bytes.
-func (b *boundedBuffer) Len() int { return len(b.buf) }
-
 // humanBytes formats a byte count for a message a human reads.
 func humanBytes(count int) string {
 	switch {

@@ -61,3 +61,24 @@ func TestLocalRunnerHonoursRunOptionsTimeout(t *testing.T) {
 		t.Fatalf("error must name the timeout, got %q", cmdErr.Error())
 	}
 }
+
+// A caller detects an interrupted or timed-out run with `errors.Is`, which only
+// works because the command error unwraps to the error underneath it. That is the
+// documented way to tell "the run was interrupted" from "the command failed", so
+// the wrapper has to stay see-through.
+func TestCommandErrorUnwrapsToWhatCausedIt(t *testing.T) {
+	interrupted := &deploy.CommandError{Command: "sleep 60", ExitCode: -1, Err: context.Canceled}
+	if !errors.Is(interrupted, context.Canceled) {
+		t.Fatal("an interrupted command must be detectable with errors.Is(err, context.Canceled)")
+	}
+	if !strings.Contains(interrupted.Error(), "interrupted") {
+		t.Fatalf("message = %q, want it to say the run was interrupted", interrupted.Error())
+	}
+	timedOut := &deploy.CommandError{Command: "composer install", ExitCode: -1, Err: context.DeadlineExceeded}
+	if !errors.Is(timedOut, context.DeadlineExceeded) {
+		t.Fatal("a timed-out command must be detectable with errors.Is(err, context.DeadlineExceeded)")
+	}
+	if !strings.Contains(timedOut.Error(), "timed out") {
+		t.Fatalf("message = %q, want it to say the command timed out", timedOut.Error())
+	}
+}

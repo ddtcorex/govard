@@ -3,7 +3,6 @@ package deploy
 import (
 	"errors"
 	"regexp"
-	"sort"
 	"strings"
 
 	"govard/internal/conventions"
@@ -82,22 +81,6 @@ func (v Vars) Expand(raw string) (string, error) {
 		return "", failure
 	}
 	return expanded, nil
-}
-
-// Has reports whether a variable is defined.
-func (v Vars) Has(name string) bool {
-	_, ok := v.values[name]
-	return ok
-}
-
-// Names returns the defined variable names, sorted, for `deploy plan` output.
-func (v Vars) Names() []string {
-	names := make([]string, 0, len(v.values))
-	for name := range v.values {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }
 
 // Clone returns an independent copy of the set.

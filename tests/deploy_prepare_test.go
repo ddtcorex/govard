@@ -940,3 +940,34 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 		t.Fatalf("a server build with no credentials must warn, got %v", server.Notes)
 	}
 }
+
+// The production discovery path reads the layouts a target actually has, and its
+// candidate list is the whole point: `~` is the reference tool's classic layout
+// (the deploy root *is* the home directory) and `~/.deployer` is the other. The
+// tests that existed passed the candidates in by hand, so this — the list, and the
+// ambiguity rule that depends on it — had never run.
+func TestDiscoverDeployPathReadsTheLayoutsARealTargetHas(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ctx := context.Background()
+	host := deploy.HostForTest("", deploy.LocalRunner{})
+
+	// The home directory itself is a deploy root.
+	writeFile(t, filepath.Join(home, "releases", ".keep"), "")
+	found, err := deploy.DiscoverDeployPath(ctx, host)
+	if err != nil {
+		t.Fatalf("discover a home-directory layout: %v", err)
+	}
+	if found != "~" {
+		t.Fatalf("found = %q, want ~ (the layout that exists)", found)
+	}
+
+	// Both shapes present is the ambiguous answer this exists to refuse: adopting
+	// either would be the guess the function is written to avoid.
+	if err := os.MkdirAll(filepath.Join(home, ".deployer", "releases"), 0o755); err != nil {
+		t.Fatalf("mkdir the second layout: %v", err)
+	}
+	if _, err := deploy.DiscoverDeployPath(ctx, host); !errors.Is(err, deploy.ErrDeployPathMissing) {
+		t.Fatalf("err = %v, want a refusal naming both layouts", err)
+	}
+}

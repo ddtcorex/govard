@@ -322,10 +322,24 @@ func TestIncompleteReleaseFindsTheNewestFailedRelease(t *testing.T) {
 		t.Fatalf("found = %+v, want release 2", found)
 	}
 
+	// Two unfinished releases at once — a target where an earlier attempt was
+	// abandoned — and the newest number is the one a resume has to continue.
+	// Comparing numbers is the only reason this is not simply "the last one
+	// listed", and no test reached it: with one unfinished release the comparison
+	// short-circuits.
+	newer := deploy.NewReleaseForTest("3", "ccc", "main")
+	newer.Status = deploy.StatusRunning
+	if err := deploy.WriteRelease(ctx, host, newer); err != nil {
+		t.Fatalf("seed a second unfinished release: %v", err)
+	}
+	if found, err = deploy.IncompleteRelease(ctx, host); err != nil || found == nil || found.Release != "3" {
+		t.Fatalf("found = %+v (err %v), want the newest unfinished release 3", found, err)
+	}
+
 	allOK := deploy.NewReleaseForTest("3", "ccc", "main")
 	allOK.Status = deploy.StatusOK
 	if err := deploy.WriteRelease(ctx, host, allOK); err != nil {
-		t.Fatalf("seed third release: %v", err)
+		t.Fatalf("mark the unfinished release ok: %v", err)
 	}
 	if found, err = deploy.IncompleteRelease(ctx, host); err != nil || found == nil || found.Release != "2" {
 		t.Fatalf("found = %+v (err %v), want release 2 still", found, err)
