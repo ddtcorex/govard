@@ -116,7 +116,7 @@ install -m0755 bin/govard ~/.local/bin/govard     # only to test PATH consumers 
 ## Testing Conventions
 
 - Keep tests hermetic: no real projects, containers, or machine-specific state
-- Use neutral fixtures (e.g., `sample-project`), not legacy names like `magento2-test-instance`
+- Use neutral fixtures (e.g., `sample-project`), never a project-specific name from a developer machine
 - Prefer mocks over live network in unit tests
 - Isolate state via `GOVARD_HOME_DIR` (use `TestMain` where appropriate)
 - Gate external service tests with explicit env checks

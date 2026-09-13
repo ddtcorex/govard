@@ -147,7 +147,7 @@ This loads the real backend bridge with live project data.
 ### Test Hygiene Rules
 
 - **Keep tests hermetic** — no user-local projects, no real container state
-- **Neutral fixture names** — use `sample-project`, not `magento2-test-instance`
+- **Neutral fixture names** — use `sample-project`, never a project-specific name from a developer machine
 - **Mock over live network** — inject HTTP transport mocks; use fake `RoundTripper`
 - **Isolate `GOVARD_HOME_DIR`** — tests that need runtime state use `TestMain` setup
 - **Gate external services** — explicit env checks and skip reasons for tests touching real services

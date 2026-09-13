@@ -35,12 +35,12 @@ func TestGlintIgnoreQuickDeep(t *testing.T) {
 }
 
 func TestStableVolumeKey(t *testing.T) {
-	a := StableVolumeKey("bebe9")
-	b := StableVolumeKey("bebe9")
+	a := StableVolumeKey("example-project")
+	b := StableVolumeKey("example-project")
 	if a != b {
 		t.Fatal("stable")
 	}
-	if StableVolumeKey("bebe9") == StableVolumeKey("bebe9-123") {
+	if StableVolumeKey("example-project") == StableVolumeKey("example-project-123") {
 		t.Fatal("must differ")
 	}
 }

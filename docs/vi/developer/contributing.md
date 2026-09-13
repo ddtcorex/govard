@@ -147,7 +147,7 @@ http://localhost:34115
 ### Các quy tắc vệ sinh mã kiểm thử (Test Hygiene Rules)
 
 - **Đảm bảo tính cô lập (hermetic)** — không phụ thuộc vào dự án local của user, không phụ thuộc vào trạng thái container thực tế.
-- **Tên fixture trung lập** — sử dụng `sample-project`, tránh các tên mang tính đặc thù như `magento2-test-instance`.
+- **Tên fixture trung lập** — sử dụng `sample-project`, tuyệt đối không dùng tên dự án cụ thể của máy lập trình viên.
 - **Ưu tiên Mock thay vì gọi mạng thật** — inject các HTTP transport mock; sử dụng fake `RoundTripper`.
 - **Cô lập thư mục `GOVARD_HOME_DIR`** — các kiểm thử cần trạng thái runtime phải sử dụng thiết lập `TestMain` riêng.
 - **Kiểm soát dịch vụ ngoài** — viết các kiểm thử có điều kiện rõ ràng để bỏ qua (skip) nếu không có dịch vụ thật.
