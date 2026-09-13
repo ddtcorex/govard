@@ -267,6 +267,44 @@ Only remotes whose name normalizes to `prod` (i.e. `prod`, `production`, `live`)
 
 ---
 
+## Deploy Fields on a Remote
+
+Sync and deploy read two different paths out of the same remote block, and they are
+not the same directory:
+
+| Field | Meaning |
+| --- | --- |
+| `path` | the **served docroot** — what the web server answers from. Whether it is absent, a symlink or a real directory is what decides how `govard deploy` publishes a release. |
+| `deploy_path` (or `deploy.path`) | the **layout root** holding `releases/`, `shared/` and `.dep/`. Omitted, it is probed from the target and adopted only when exactly one candidate matches. |
+
+A remote may also override any key of the project-level `deploy:` block:
+
+```yaml
+remotes:
+  staging:
+    host: staging.example.com
+    user: deploy
+    path: /home/deploy/public_html       # served docroot (symlink on this target)
+    deploy_path: /home/deploy/.deployer  # releases/, shared/, .dep/
+    deploy:
+      publish: symlink                   # auto | symlink | in_place
+      branch: main
+      settings:
+        php_bin: php8.3
+        php_version: "8.3"
+        mage_mode: production
+      verify:
+        url: https://staging.example.com/
+```
+
+`govard deploy check <remote>` reports the layout it found and the publish strategy
+that implies, before anything is created.
+
+→ Full guides: [Deployment](/workflows/deployment) and
+[Deployment case studies](/workflows/deploy-case-studies)
+
+---
+
 ## Remote Snapshots
 
 ```bash

@@ -267,6 +267,42 @@ Chỉ các remote có tên chuẩn hóa thành `prod` (như `prod`, `production`
 
 ---
 
+## Các trường Deploy trên Remote
+
+Sync và deploy đọc hai path khác nhau từ cùng một block remote, và chúng không phải cùng một thư mục:
+
+| Trường | Ý nghĩa |
+| --- | --- |
+| `path` | **docroot đang được phục vụ** — nơi web server trả lời request. Việc nó không tồn tại, là symlink hay là thư mục thật chính là thứ quyết định cách `govard deploy` publish một release. |
+| `deploy_path` (hoặc `deploy.path`) | **layout root** chứa `releases/`, `shared/` và `.dep/`. Nếu bỏ trống, nó được dò từ target và chỉ được chấp nhận khi đúng một ứng viên khớp. |
+
+Remote cũng có thể ghi đè bất kỳ key nào của block `deploy:` ở cấp dự án:
+
+```yaml
+remotes:
+  staging:
+    host: staging.example.com
+    user: deploy
+    path: /home/deploy/public_html       # docroot đang phục vụ (target này dùng symlink)
+    deploy_path: /home/deploy/.deployer  # releases/, shared/, .dep/
+    deploy:
+      publish: symlink                   # auto | symlink | in_place
+      branch: main
+      settings:
+        php_bin: php8.3
+        php_version: "8.3"
+        mage_mode: production
+      verify:
+        url: https://staging.example.com/
+```
+
+`govard deploy check <remote>` báo cáo layout nó tìm thấy và chiến lược publish mà layout đó hàm ý, trước khi bất cứ thứ gì được tạo.
+
+→ Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment) và
+[Case study triển khai](/vi/workflows/deploy-case-studies)
+
+---
+
 ## Snapshot trên Remote (Remote Snapshots)
 
 ```bash

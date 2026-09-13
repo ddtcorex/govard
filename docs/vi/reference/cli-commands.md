@@ -678,6 +678,9 @@ govard deploy sandbox ssh
 govard deploy sandbox down [--purge]
 ```
 
+→ Những cấu hình đã làm sẵn (Luma, Hyvä, nhiều theme và store view, chế độ developer
+và production, docroot symlink và docroot thật): [Case study triển khai](/vi/workflows/deploy-case-studies).
+
 Đích là một remote trong `.govard.yml`. Branch, repository, deploy path và chiến
 lược publish lấy từ block `deploy:` của dự án; mỗi remote có thể ghi đè bằng các
 field topology trên remote (`branch`, `repository`, `deploy_path`, `publish`,
@@ -784,6 +787,14 @@ chiến lược publish resolve đúng thứ bạn muốn kiểm chứng: `absen
 chọn cú swap nguyên tử, `real` chọn in-place. `down` xoá container và remote mà nó
 đã ghi; `--purge` xoá thêm image, khoá và mirror. `reset` xoá các thư mục deploy
 trên target, và `--layout=deployer` seed một target trông như của công cụ deploy kia.
+
+Profile `php` và `full` còn ship một web tier — nginx phục vụ served path cộng
+`stack.web_root` của dự án (`/pub` với Magento), và PHP-FPM chạy bằng chính user
+deploy. `up` trỏ `deploy.verify.url` của remote sandbox vào cổng đó, nên deploy vào
+sandbox diễn tập nửa HTTP của `deploy:verify`; `basic` không có web tier và không
+quảng cáo URL nào. Recipe của framework đóng góp những gì command của nó cần ngoài
+profile (với Magento: thư viện build, PHP extension và hai service database cùng
+cache). Dự án cần thêm một extension thì thêm vào recipe, không phải vào flag.
 
 Sandbox là lệnh deploy duy nhất cần `docker`.
 
@@ -1129,7 +1140,7 @@ govard opensearch info
 govard elasticsearch curl -s http://elasticsearch:9200/_cat/indices
 ```
 
-Host truy cập search cũng được route tự động qua `http://<domain>:9200` (xem [Cấu hình](/vi/reference/configuration#connecting-to-elasticsearchopensearch-from-the-host)) — shortcut trên exec trong container, còn route `:9200` dành cho `curl`/browser trên host.
+Host truy cập search cũng được route tự động qua `http://<domain>:9200` (xem [Cấu hình](/vi/reference/configuration#truy-cap-elasticsearch-opensearch-tu-host)) — shortcut trên exec trong container, còn route `:9200` dành cho `curl`/browser trên host.
 
 ---
 

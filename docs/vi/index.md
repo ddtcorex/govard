@@ -24,6 +24,8 @@ features:
     details: Tích hợp sẵn Caddy proxy + dnsmasq + Root CA auto-trust cho các domain *.test — phát triển local an toàn với zero-config.
   - title: Remote Management
     details: Quản lý remote được định danh với scoped capabilities, SSH, sync, chặn ghi đè trên prod và audit logs cho các thao tác remote an toàn.
+  - title: Triển khai chuyên sâu
+    details: Phát hành một revision git qua SSH + rsync bằng recipe của framework, swap symlink nguyên tử hoặc publish in-place, kèm kiểm chứng, backup và rollback — diễn tập toàn bộ pipeline trên container sandbox ngay tại máy trước, và giữ job deploy trên CI không cần toolchain nhờ artifact mode.
   - title: Database Tools
     details: Hỗ trợ dump, import, query, giám sát real-time (db top) và bộ lọc bảo mật (--no-pii, --no-noise) cho toàn bộ quy trình làm việc với DB.
   - title: CLI + Desktop Parity

@@ -21,6 +21,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 | Magento depth | First-class Magento/OpenMage workflow (auto `env.php`/`local.xml` wiring, table prefix support, optional Varnish/Redis/queue/search, and dedicated `php-debug` routing). |
 | Local HTTPS/DNS | Built-in Caddy + `dnsmasq` + Root CA auto-trust flow for `*.test` domains, with automatic HTTP to HTTPS 308 redirection for all services. |
 | Remote safety | `remote`/`sync` protections for sensitive targets (`prod` write blocking, scoped capabilities, audit logs, resumable transfers). |
+| Deployment | A framework recipe drives a neutral task pipeline (`deploy`), a container-based sandbox rehearses it locally, and an artifact mode keeps the production job toolchain-free. |
 | Team reproducibility | `govard lock` + `lock.strict` to detect environment drift and enforce consistency across machines. |
 | Recovery workflow | `govard snapshot` for quick local DB/media checkpoints before risky operations or upgrades. |
 | CLI + Desktop parity | Same core engine exposed in both CLI and Wails Desktop app (live logs, operation events, quick actions). |
@@ -47,6 +48,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Smart Templating**: Uses Go `text/template` to render dynamic Docker Compose files from framework-specific blueprints.
 - **Magento 2 Optimized**: Deep integration for Magento 2, including automated `env.php` configuration, table prefix propagation, Varnish 7.x support, and Redis caching.
 - **Remote Management (Flagship)**: Manage named remotes for sync/deploy/db workflows with scope-based capabilities (`files,media,db,deploy`) and flexible auth modes (`keychain`, `ssh-agent`, `keyfile`).
+- **First-Class Deployment**: `govard deploy` publishes a revision over SSH + rsync with a framework recipe (Magento 2), an atomic symlink swap or in-place publish, maintenance windows, database backup, verification, rollback and resume — plus `govard deploy sandbox` for rehearsing the whole pipeline against a container on your machine, and a two-job artifact mode for CI.
 - **Remote Safety Guardrails**: Production remotes are write-protected by default, with policy checks to block risky destination writes and explicit capability enforcement per operation.
 - **Safe Cross-Environment Sync**: Bi-directional file/media/database sync with dry-run planning (`--plan`), privacy filters (`--no-noise`, `--no-pii`), auto-selection of the `staging` remote by default, resumable rsync by default (`--partial --append-verify`), include/exclude filters, and risk warnings for destructive flags.
 - **Remote Auditability & Observability**: Remote operations are logged to `~/.govard/remote.log` and also emitted to `~/.govard/operations.log` for command traceability and desktop notifications.
@@ -403,7 +405,32 @@ Remote defaults and protections:
 - File/media sync uses resumable rsync mode by default.
 - Full docs: [Remotes and Sync](https://github.com/ddtcorex/govard/wiki/Remotes-and-Sync).
 
-### 6. Common Operational Workflows
+### 6. Deployment
+
+`govard deploy` publishes one git revision to a remote over SSH and rsync — no Docker, no local PHP, no other deploy tool. The pipeline is framework-neutral; a framework recipe (Magento 2 today) fills the tasks it supports.
+
+```bash
+govard deploy plan staging     # the whole task list, connecting nowhere
+govard deploy check staging    # preflight: connectivity, layout, permissions, php, disk, lock
+govard deploy staging --yes    # deploy the local HEAD (or --revision <sha>)
+govard deploy releases staging # what is on the target
+govard deploy rollback staging # put the previous release back
+```
+
+Rehearse the same deploy against a container on your machine first — same SSH, same mirror, same recipe, nothing in the pipeline knows the difference:
+
+```bash
+govard deploy sandbox up --profile full --php 8.3
+govard deploy --remote sandbox --yes
+govard deploy sandbox down --purge
+```
+
+In CI the build moves off the target: `govard deploy build production --output artifacts` runs Composer, the DI compile and the Node builds in the build job, and `govard deploy production --artifact-dir artifacts --yes` runs in a deploy job whose image needs govard, ssh and rsync and nothing else.
+
+- Full guide: [Deployment](docs/workflows/deployment.md)
+- Worked configurations — Luma, Hyvä, several themes and store views, developer versus production mode, symlinked versus real webroot: [Deployment case studies](docs/workflows/deploy-case-studies.md)
+
+### 7. Common Operational Workflows
 
 - `govard db ...` for dump, import, query, and connection helpers.
 - `govard debug on|off` to toggle Xdebug for the current project.

@@ -24,6 +24,8 @@ features:
     details: Built-in Caddy proxy + dnsmasq + Root CA auto-trust for *.test domains — zero-config secure local development.
   - title: Remote Management
     details: Named remotes with scoped capabilities, SSH, sync, prod write blocking, and audit logs for safe remote operations.
+  - title: First-Class Deployment
+    details: Publish a git revision over SSH + rsync with a framework recipe, an atomic symlink swap or in-place publish, verification, backup and rollback — rehearse the whole pipeline against a local sandbox container first, and keep the CI deploy job toolchain-free with artifact mode.
   - title: Database Tools
     details: Dump, import, query, live monitoring (db top), and privacy filters (--no-pii, --no-noise) for complete DB workflows.
   - title: CLI + Desktop Parity
