@@ -278,6 +278,32 @@ Rsync transfers — the in-place `sync_paths` copy and the artifact upload — a
 a terminal rsync cannot redraw its progress line, so every update would become another
 line in a log instead of a moving one.
 
+### Stopping a deploy
+
+`Ctrl-C` (or a `SIGTERM`) cancels the run rather than killing the process where it
+stands. Govard reports the step as *the run was interrupted*, then applies the same
+rule a failure does: before the maintenance window the lock is released, because
+nothing live has changed and a retry must not be refused; once the window is open the
+lock, the release directory and its record stay, because the release is the only thing
+that says what the target is half-way through. `--resume` finishes it.
+
+Interrupting also stops the **work**, not just govard's own bookkeeping. Every step is
+a shell chain — `cd {{release_path}} && composer install …` — so the process govard
+starts is a shell and the compile, the install or the transfer is its child. A local
+step runs in its own process group: the group is sent `SIGTERM` when the run is
+cancelled, and anything that ignores it is killed as soon as the stopped command
+returns. Over SSH, killing the local client stops nothing on the other machine, so the
+step first records the remote shell's pid — `sshd` gives it a session and process group
+of its own — and the cancel path signals that group over a second, short-lived
+connection. The record is removed by a trap when the step ends on its own, so a normal
+run leaves nothing behind.
+
+On Windows there is no process group to signal and govard does not create a job
+object, so a cancelled step kills the shell govard started and a child of that shell
+may outlive the run. Interrupting is a request to stop, not a guarantee that a step
+which had already started did — check with `govard deploy releases` and `status`
+before starting another attempt.
+
 ### The static content split
 
 `split_static_deployment` deploys the adminhtml and frontend static content in two
