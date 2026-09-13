@@ -53,7 +53,7 @@ jobs:
           # Generate wiki-compatible Home.md from VitePress index.md
           # Note: Using printf to avoid YAML parsing issues with ** and --- in heredoc
           if [ -f "docs/index.md" ]; then
-            printf '# Govard\n\n**Go-based Versatile Runtime & Development**\n\nProfessional-grade local development orchestrator engineered in Go — replaces legacy bash-based tools with a high-performance native binary that manages complex containerized environments.\n\n## Key Features\n\n- **Docker SDK Orchestration** — Direct Docker SDK integration for predictable lifecycle behavior\n- **Framework Auto-Detection** — Automatically detects Magento, Laravel, Next.js, Drupal, and more\n- **Local HTTPS & DNS** — Built-in Caddy proxy + dnsmasq + Root CA auto-trust for *.test domains\n- **Remote Management** — Named remotes with scoped capabilities, SSH, sync, and audit logs\n- **Database Tools** — Dump, import, query, live monitoring, and privacy filters\n- **CLI + Desktop Parity** — Same core engine in both CLI and Wails Desktop app\n\n## Getting Started\n\n- [Installation](Installation) — Install Govard on Linux or macOS\n- [Getting Started](Getting-Started) — Create your first project\n- [CLI Commands](CLI-Commands) — Full CLI reference\n\n## Resources\n\n- [Configuration](Configuration) — Project configuration guide\n- [Remotes and Sync](Remotes-and-Sync) — Remote environments and sync workflows\n- [Changelog](Changelog) — Release history\n\n---\n\n[GitHub](https://github.com/ddtcorex/govard) · [Releases](https://github.com/ddtcorex/govard/releases) · [MIT License](https://github.com/ddtcorex/govard/blob/master/LICENSE)\n' > /tmp/wiki/Home.md
+            printf '# Govard\n\n**Go-based Versatile Runtime & Development**\n\nProfessional-grade local development orchestrator engineered in Go — replaces legacy bash-based tools with a high-performance native binary that manages complex containerized environments.\n\n## Key Features\n\n- **Docker SDK Orchestration** — Direct Docker SDK integration for predictable lifecycle behavior\n- **Framework Auto-Detection** — Automatically detects Magento, Laravel, Next.js, Drupal, and more\n- **Local HTTPS & DNS** — Built-in Caddy proxy + dnsmasq + Root CA auto-trust for *.test domains\n- **Remote Management** — Named remotes with scoped capabilities, SSH, sync, and audit logs\n- **First-Class Deployment** — Framework recipe, atomic symlink swap or in-place publish, verification, rollback, a local sandbox rehearsal, and a toolchain-free CI deploy job\n- **Database Tools** — Dump, import, query, live monitoring, and privacy filters\n- **CLI + Desktop Parity** — Same core engine in both CLI and Wails Desktop app\n\n## Getting Started\n\n- [Installation](Installation) — Install Govard on Linux or macOS\n- [Getting Started](Getting-Started) — Create your first project\n- [CLI Commands](CLI-Commands) — Full CLI reference\n\n## Resources\n\n- [Configuration](Configuration) — Project configuration guide\n- [Remotes and Sync](Remotes-and-Sync) — Remote environments and sync workflows\n- [Deployment](Deployment) — Deploy a git revision to a remote\n- [Deployment Case Studies](Deploy-case-studies) — Worked setups: Luma, Hyvä, multiple themes, developer and production mode, symlinked and real webroots\n- [Changelog](Changelog) — Release history\n\n---\n\n[GitHub](https://github.com/ddtcorex/govard) · [Releases](https://github.com/ddtcorex/govard/releases) · [MIT License](https://github.com/ddtcorex/govard/blob/master/LICENSE)\n' > /tmp/wiki/Home.md
           fi
 
           # Convert VitePress links back to wiki links (run before pre-processing)
@@ -65,10 +65,17 @@ jobs:
               -e 's|/reference/cli-commands|CLI-Commands|g' \
               -e 's|/reference/configuration|Configuration|g' \
               -e 's|/reference/frameworks|Frameworks|g' \
+              -e 's|/reference/docker-free|Docker-free|g' \
               -e 's|/workflows/remotes-and-sync|Remotes-and-Sync|g' \
               -e 's|/workflows/global-services|Global-Services|g' \
               -e 's|/workflows/ssl-and-domains|SSL-and-Domains|g' \
               -e 's|/workflows/desktop-app|Desktop-App|g' \
+              -e 's|/workflows/audit|Audit|g' \
+              -e 's|/workflows/lock|Lock|g' \
+              -e 's|/workflows/tunnel|Tunnel|g' \
+              -e 's|/workflows/ci-integration|Ci-integration|g' \
+              -e 's|/workflows/deployment|Deployment|g' \
+              -e 's|/workflows/deploy-case-studies|Deploy-case-studies|g' \
               -e 's|/developer/architecture|Architecture|g' \
               -e 's|/developer/adding-a-framework|Adding-a-framework|g' \
               -e 's|/developer/contributing|Contributing|g' \
@@ -207,6 +214,7 @@ jobs:
           - [CLI Commands](CLI-Commands)
           - [Configuration](Configuration)
           - [Frameworks](Frameworks)
+          - [Runs Without Docker](Docker-free)
 
           ---
 
@@ -215,6 +223,12 @@ jobs:
           - [Global Services](Global-Services)
           - [SSL and Domains](SSL-and-Domains)
           - [Desktop App](Desktop-App)
+          - [Audit](Audit)
+          - [Lock File](Lock)
+          - [Tunnel](Tunnel)
+          - [CI Integration](Ci-integration)
+          - [Deployment](Deployment)
+          - [Deployment Case Studies](Deploy-case-studies)
 
           ---
 
