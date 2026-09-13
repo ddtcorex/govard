@@ -331,6 +331,30 @@ deploy:
 | `settings` | recipe defaults | framework and engine settings, validated against the recipe |
 | `hooks` | — | steps anchored on a task id, a stage alias (`stage:build`) or another hook |
 
+Four engine settings decide what `govard deploy sandbox` has to provide beyond the
+profile. They are read from this project layer (a remote-level override is not
+consulted: the sandbox remote is created by that command), and each one
+**replaces** the recipe's list rather than extending it:
+
+| Setting | Default | What it does |
+| :--- | :--- | :--- |
+| `sandbox_packages` | recipe | extra apt packages the sandbox image installs |
+| `sandbox_extensions` | recipe | PHP extensions, installed as `php<series>-<name>` |
+| `sandbox_services` | recipe | init services started in the container before sshd |
+| `sandbox_tools` | recipe | binaries installed from the engine's known list (`wp-cli`) |
+
+```yaml
+deploy:
+  settings:
+    sandbox_packages: [postgresql]
+    sandbox_extensions: [intl, pgsql, mbstring, xml, curl, zip]
+    sandbox_services: [postgresql, redis-server]
+```
+
+A service name from the engine's table carries the package that provides it, so
+`postgresql` is enough to install and start it. A service the image cannot start
+is named when the container starts rather than skipped in silence.
+
 Remote-level fields the deploy engine reads:
 
 | Field | Description |

@@ -626,6 +626,114 @@ govard deploy sandbox reset --docroot real
 govard deploy --remote sandbox --yes     # giờ là đường in-place
 ```
 
+## Ca 9: Laravel, frontend Vite, webroot symlink {#case-9-laravel}
+
+**Ba quyết định:** build trên server (`--build=server`) — Laravel không có bước
+compile nào đáng chuyển đi, và cache của framework dù sao cũng phải dựng ở target;
+webroot là symlink vào `releases/` (`symlink`); chế độ target là `production` qua
+`APP_ENV` trong `.env` của target.
+
+```yaml
+deploy:
+  keep_releases: 5
+  settings:
+    shared_files: [".env"]
+    shared_dirs: ["storage"]
+    writable_dirs: ["storage", "bootstrap/cache"]
+    sync_paths: ["vendor", "public/build"]
+    frontend_dir: ["."]
+    frontend_command: "npm ci && npm run build"
+```
+
+- `build:vendors` chạy `composer install --no-dev --optimize-autoloader`.
+- `build:frontend` build từng `frontend_dir` (ở đây là gốc repo, nơi Vite nằm);
+  vòng lặp bị bỏ qua khi `frontend_dir` rỗng, nên dự án đã commit `public/build`
+  không tốn gì.
+- `app:configure` chạy `artisan storage:link`, để `public/storage` có trong mọi
+  release. Nó exit 0 khi link đã tồn tại, nên ca in-place vẫn an toàn.
+- `db:migrate` chạy `artisan migrate --force`.
+- `app:cache:flush` chạy `optimize:clear` rồi `optimize` **ở target**: `optimize`
+  ghi `bootstrap/cache/config.php`, và khi file đó tồn tại thì biến môi trường
+  không còn override `.env`. Cache dựng ở máy build sẽ mang cấu hình của máy đó lên
+  production.
+- `worker_control: true` gửi `queue:restart` trước khi migrate. Nó exit 0 với mọi
+  cache store, nên store phải bền thì worker mới thật sự thấy tín hiệu.
+- Check `app` chạy `artisan db:show` (Laravel 11+), lùi về `migrate:status`.
+  `about --only=environment` **không** được dùng: nó exit 0 ngay cả khi không có
+  database, nên chẳng chứng minh được gì.
+
+## Ca 10: Symfony, migration Doctrine, target PostgreSQL {#case-10-symfony}
+
+**Ba quyết định:** build trên server; webroot symlink; chế độ target là environment
+do `symfony_env` đặt tên (`prod` nếu dự án không nói khác).
+
+```yaml
+deploy:
+  settings:
+    shared_files: [".env.local"]
+    shared_dirs: ["var/log"]
+    writable_dirs: ["var"]
+    sync_paths: ["vendor", "public/bundles"]
+    symfony_env: prod
+  # Dự án dùng database không phải mặc định của recipe thì khai ở đây, và sandbox
+  # sẽ cấp nó. Thay thế, không nối thêm: một database, không phải hai.
+  #   sandbox_packages: [postgresql]
+  #   sandbox_extensions: [intl, pgsql, mbstring, xml, curl, zip]
+  #   sandbox_services: [postgresql, redis-server]
+```
+
+- `build:vendors` truyền `--no-scripts`. `auto-scripts` của Composer chạy
+  `cache:clear` và `assets:install`, cả hai đều thuộc về target: cache hâm nóng cho
+  máy build là vô giá trị, và link asset resolve theo cây vendor thật sự có mặt.
+- `build:assets` chạy `bin/console assets:install public --symlink --relative` — ở
+  target, vì `public/bundles` bị gitignore và link tương đối phải resolve được từ
+  bất kỳ độ sâu nào của docroot. Đó cũng là lý do `public/bundles` nằm trong
+  `sync_paths` cho docroot in-place.
+- `db:migrate` truyền `--allow-no-migration`: thư mục `migrations/` rỗng là dự án
+  khoẻ mạnh, và không có flag đó thì Doctrine exit khác 0.
+- `app:cache:flush` clear rồi warmup container cho `symfony_env`.
+- **Không có maintenance window.** Symfony không có cơ chế gốc, nên
+  `maintenance:enable`/`disable` bị skip và `db:migrate` chạy trên site đang sống.
+  Dự án cần thì thêm hook — trang deployment có mẫu.
+- Check `app` chạy `dbal:run-sql "SELECT 1"`, hoặc `doctrine:query:sql` với
+  DoctrineBundle cũ; nhánh được chọn bằng cách hỏi console.
+
+## Ca 11: WordPress, layout classic, wp-cli trên target {#case-11-wordpress}
+
+**Ba quyết định:** build trên server; webroot symlink; profile sandbox `full`, vì
+`db:migrate`, cache flush và check của recipe đều chạm database.
+
+```yaml
+deploy:
+  settings:
+    shared_files: ["wp-config.php"]
+    shared_dirs: ["wp-content/uploads"]
+    writable_dirs: ["wp-content/uploads", "wp-content/cache", "wp-content/upgrade", "wp-content/languages"]
+```
+
+Chỉ layout classic: file core và `wp-content/` ở gốc repo, không có `composer.json`.
+Layout Bedrock (core trong `vendor/`, docroot `web/`) và checkout chỉ có content
+không được hỗ trợ.
+
+- **Seed `shared/wp-config.php` trước lần deploy đầu.** `deploy:shared` chỉ link một
+  shared entry khi nó đã tồn tại, nên `shared/` chưa seed sẽ để release đầu tiên giữ
+  `wp-config.php` của repo — bản trỏ vào database phát triển. Check `app` sau đó
+  fail vì không kết nối được database, đúng và rõ, và đó là tín hiệu để seed.
+- `build:vendors` chỉ chạy `composer install` khi có `composer.json`.
+- `db:migrate` là `wp core update-db` với wp-cli, hoặc bootstrap `wp-load.php` gọi
+  `wp_upgrade()` khi không có. `app:cache:flush` cùng hình dạng (`wp cache flush`
+  và `wp rewrite flush --hard`, hoặc tương đương bằng PHP).
+- Maintenance ghi `.maintenance` và drop-in `wp-content/maintenance.php` vào đường
+  dẫn được serve. Timestamp được ghi **vượt đồng hồ** (`time() + 86400`), vì
+  WordPress coi cờ cũ hơn mười phút là hết hạn: với window dài hơn, site sẽ lặng lẽ
+  sống lại giữa lúc migrate. Drop-in mang marker, nên trang maintenance dự án tự
+  ship vẫn được giữ.
+- `--db-backup` dùng `wp db export`, và `rollback --with-db` restore bằng
+  `wp db import`; cả hai đọc kết nối từ `wp-config.php`. Sandbox tự yêu cầu wp-cli
+  và `default-mysql-client` (`mysqldump`).
+- Laravel và Symfony **không có dump command**: bật `--db-backup` cho chúng sẽ fail
+  kèm thông báo nêu rõ lý do, thay vì lặng lẽ không có backup nào.
+
 ## Diễn tập bất kỳ ca nào trong sandbox {#rehearsing-any-case-in-the-sandbox}
 
 `govard deploy sandbox` cho dự án một đích triển khai thật ngay trên máy này: một
@@ -774,7 +882,7 @@ govard deploy rollback sandbox --yes
 govard deploy sandbox down --purge
 ```
 
-## Tham chiếu: mọi setting mà recipe Magento đọc {#reference-every-setting-the-magento-recipe-reads}
+## Tham chiếu: mọi setting mà recipe framework đọc {#reference-every-setting-the-framework-recipes-read}
 
 Setting ở tầng engine (do recipe mặc định khai, core áp dụng):
 
@@ -814,6 +922,26 @@ recipe không biết, hoặc giá trị sai dạng, là lỗi cấu hình (exit 
 gợi ý key gần đúng. Giá trị chuỗi phải được quote nếu trông giống số
 (`php_version: "8.2"`) — engine đọc các setting này dưới dạng chuỗi, nên `8.2` không
 quote sẽ đọc thành rỗng.
+
+Setting của Laravel, Symfony và WordPress (do recipe của chúng khai):
+
+| Setting | Framework | Mặc định | Tác dụng |
+| --- | --- | --- | --- |
+| `frontend_dir` | cả ba | (rỗng → skip) | một path hoặc một list: các thư mục có frontend asset được build |
+| `frontend_command` | cả ba | `npm ci && npm run build` | command chạy trong mỗi `frontend_dir` |
+| `runtime_reload_command` | Laravel, Symfony, WordPress | (rỗng) | chạy ở phần cuối của bước cache |
+| `worker_control` | Laravel, Symfony | `false` | `queue:restart` / `messenger:stop-workers` trước khi migrate |
+| `symfony_env` | Symfony | `prod` | environment console mà deploy chạy dưới; **không được validate** |
+
+Sandbox cấp gì cho một dự án, ngoài mặc định của recipe — mỗi danh sách **thay thế**
+danh sách của recipe, và chỉ được đọc ở tầng project:
+
+| Setting | Mặc định | Tác dụng |
+| --- | --- | --- |
+| `sandbox_packages` | theo recipe | apt package bổ sung mà image sandbox cài |
+| `sandbox_extensions` | theo recipe | PHP extension, cài dưới dạng `php<series>-<name>` |
+| `sandbox_services` | theo recipe | init service start trước sshd; tên thuộc bảng của engine mang theo package của nó |
+| `sandbox_tools` | theo recipe | binary từ danh sách đóng của engine (`wp-cli`) |
 
 ## Checklist trước lần deploy đầu tiên lên target thật
 

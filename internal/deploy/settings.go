@@ -83,6 +83,13 @@ var engineSettings = []Setting{
 	{Key: "php_version", Kind: SettingString, Title: "the PHP series the project expects"},
 	{Key: "composer_bin", Kind: SettingString, Title: "the Composer binary on the target"},
 	{Key: "content_version", Kind: SettingString, Title: "static content version; defaults to the revision"},
+	// What the sandbox image has to provide beyond its profile. A recipe states
+	// the framework's default; these let a project state what its application
+	// actually needs — the database engine being the case that forced them.
+	{Key: "sandbox_packages", Kind: SettingStringList, Title: "extra apt packages the sandbox image installs"},
+	{Key: "sandbox_extensions", Kind: SettingStringList, Title: "PHP extensions the sandbox image installs, as php-<name>"},
+	{Key: "sandbox_services", Kind: SettingStringList, Title: "init services the sandbox starts before sshd"},
+	{Key: "sandbox_tools", Kind: SettingStringList, Title: "binaries the sandbox image installs, from the engine's known list"},
 }
 
 // ValidateRecipe refuses a recipe that declares the same setting twice.

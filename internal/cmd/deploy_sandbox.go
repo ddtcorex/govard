@@ -130,8 +130,20 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	profileExplicit := cmd.Flags().Changed("profile")
 
 	// The framework recipe owns what the container has to provide beyond its
-	// profile; the core renders it and never interprets it.
-	requirements := recipeFor(config).Sandbox
+	// profile; the core renders it and never interprets it. The project may
+	// extend it: its application's database is not the framework's default in
+	// every project, and a rehearsal against the wrong one proves nothing.
+	//
+	// The settings are validated here as well as in `deploy plan`, so a
+	// misspelled key is refused before an image is built rather than after.
+	recipe := recipeFor(config)
+	if err := deploy.ValidateSettings(recipe, config.Deploy.Settings); err != nil {
+		return deploy.SandboxRequest{}, configOrUsageError(err)
+	}
+	requirements := deploy.SandboxRequirementsWithSettings(recipe.Sandbox, config.Deploy.Settings)
+	if err := deploy.ValidateSandboxTools(requirements.Tools); err != nil {
+		return deploy.SandboxRequest{}, &cli.ConfigError{Err: err}
+	}
 
 	return deploy.SandboxRequest{
 		ProjectRoot: root,

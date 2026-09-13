@@ -84,6 +84,41 @@ type SandboxRequirements struct {
 	// Services are init services started inside the container before sshd
 	// (a database a migration step needs, a cache a cache-flush needs).
 	Services []string
+	// Tools are binaries the image installs on top of the distribution's
+	// packages, from the engine's closed table (`wp-cli`). The name is data: it
+	// arrives from a recipe and from project configuration, which is exactly why
+	// the table is closed — an open "run this command" field would be an
+	// injection point rather than a feature.
+	Tools []string
+}
+
+// SandboxRequirementsWithSettings layers a project's `sandbox_*` settings over
+// the requirements a framework recipe declared.
+//
+// A recipe states the framework's default; the project states what its
+// application needs. A key the project sets replaces the recipe's list — the
+// same rule every other list setting follows — because the case that forced this
+// is a project whose database is a different engine, where appending would
+// install two servers and start the wrong one.
+//
+// Presence, not emptiness, decides: `sandbox_services: []` is a project saying
+// "none", and it has to survive. `settingsStringList` returns a non-nil empty
+// slice for a map that simply lacks the key, so the lookup is the test.
+func SandboxRequirementsWithSettings(base SandboxRequirements, settings map[string]any) SandboxRequirements {
+	resolved := base
+	if _, ok := settings["sandbox_packages"]; ok {
+		resolved.Packages = settingsStringList(settings, "sandbox_packages")
+	}
+	if _, ok := settings["sandbox_extensions"]; ok {
+		resolved.Extensions = settingsStringList(settings, "sandbox_extensions")
+	}
+	if _, ok := settings["sandbox_services"]; ok {
+		resolved.Services = settingsStringList(settings, "sandbox_services")
+	}
+	if _, ok := settings["sandbox_tools"]; ok {
+		resolved.Tools = settingsStringList(settings, "sandbox_tools")
+	}
+	return resolved
 }
 
 // SandboxSpec identifies one sandbox image.
@@ -135,6 +170,91 @@ func ValidateSandboxProfile(profile string) (string, error) {
 	}
 }
 
+// sandboxTools maps a tool name to the shell steps that install it. Composer is
+// installed by its own block below because every PHP profile needs it; these are
+// the binaries only some applications do.
+var sandboxTools = map[string]string{
+	// `--allow-root` is not decoration: the image is built as root in a
+	// Dockerfile, and wp-cli refuses to run as root without it — the build failed
+	// with "YIKES! It looks like you're running this as root" until this flag was
+	// added. On a target the command runs as the deploy user and needs no flag.
+	"wp-cli": `curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /usr/local/bin/wp && ` +
+		`chmod 0755 /usr/local/bin/wp && wp --version --allow-root`,
+}
+
+// sandboxToolNames returns the known names in a stable order, for the message an
+// unknown one produces.
+func sandboxToolNames() []string {
+	names := make([]string, 0, len(sandboxTools))
+	for name := range sandboxTools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ValidateSandboxTools refuses a tool the engine has no install recipe for.
+//
+// Refusing at render time is deliberate: a name outside the table cannot be
+// installed, and an image that fails to build is a far worse diagnosis than a
+// message naming the tools the engine knows.
+func ValidateSandboxTools(tools []string) error {
+	for _, tool := range sortedSandboxWords(tools) {
+		if _, ok := sandboxTools[tool]; !ok {
+			return fmt.Errorf("unsupported sandbox tool %q; known tools: %s", tool, strings.Join(sandboxToolNames(), ", "))
+		}
+	}
+	return nil
+}
+
+// sandboxService is a service the sandbox can be asked to start that the
+// distribution's own packages do not fully provide.
+type sandboxService struct {
+	// Package is the apt package that provides the server. A service named
+	// without its package is a service that never starts, so the name carries it.
+	Package string
+	// InitScript is written when the distribution ships none. Debian bookworm
+	// runs PostgreSQL through systemd only, so `/etc/init.d/postgresql` does not
+	// exist even with the server installed — and the entrypoint's start loop
+	// skipped the request without a word, leaving a rehearsal whose database was
+	// never started and a failure that surfaced later as a connection error.
+	InitScript string
+}
+
+var sandboxServices = map[string]sandboxService{
+	"postgresql": {
+		Package: "postgresql",
+		InitScript: "#!/bin/sh\n" +
+			"set -e\n" +
+			"version=\"$(ls /etc/postgresql | head -n1)\"\n" +
+			"exec pg_ctlcluster \"$version\" main \"${1:-start}\"\n",
+	},
+}
+
+// sandboxRequestedInitScripts returns the requested services whose init script
+// the image has to write itself.
+func sandboxRequestedInitScripts(services []string) []string {
+	needed := []string{}
+	for _, service := range sortedSandboxWords(services) {
+		if entry, ok := sandboxServices[service]; ok && entry.InitScript != "" {
+			needed = append(needed, service)
+		}
+	}
+	return needed
+}
+
+// shellQuoteScriptLines renders a script as the arguments of a `printf`: one
+// single-quoted word per line, so the Dockerfile's shell writes the file
+// verbatim and nothing in the script is expanded at image build time.
+func shellQuoteScriptLines(script string) string {
+	lines := strings.Split(strings.TrimRight(script, "\n"), "\n")
+	quoted := make([]string, 0, len(lines))
+	for _, line := range lines {
+		quoted = append(quoted, "'"+strings.ReplaceAll(line, "'", `'\''`)+"'")
+	}
+	return strings.Join(quoted, " ")
+}
+
 // SandboxDockerfile renders the image definition for a profile plus a recipe's
 // requirements.
 //
@@ -150,6 +270,9 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := ValidateSandboxTools(spec.Requirements.Tools); err != nil {
+		return "", err
+	}
 	servesWeb := SandboxServesWeb(resolved)
 	exposeWeb := ""
 	if servesWeb {
@@ -157,7 +280,14 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 	}
 	requirements := spec.Requirements
 
-	packages := []string{"openssh-server", "rsync", "git", "ca-certificates", "procps"}
+	// `patch` sits next to `unzip` on purpose: `unzip` is what Composer needs to
+	// install a dist, and `patch` is what it shells out to when a project patches
+	// a dependency (cweagans/composer-patches and friends). Without it the patch
+	// step fails, and a project configured to exit on a patch failure — the safe
+	// setting — cannot install at all. Measured: `composer install
+	// --prefer-dist` aborted on a patch while the same command with
+	// `--prefer-source` succeeded, because that path uses `git apply`.
+	packages := []string{"openssh-server", "rsync", "git", "ca-certificates", "procps", "patch"}
 	switch resolved {
 	case SandboxProfilePHP:
 		packages = append(packages, "nodejs", "npm", "unzip")
@@ -168,6 +298,15 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 		packages = append(packages, SandboxWebPackages(series)...)
 	}
 	packages = append(packages, sortedSandboxWords(requirements.Packages)...)
+
+	// A service from the engine's table brings the package that provides it:
+	// naming a service that is installed nowhere is how a rehearsal came to run
+	// against a database that was never started.
+	for _, service := range sortedSandboxWords(requirements.Services) {
+		if entry, ok := sandboxServices[service]; ok && entry.Package != "" {
+			packages = append(packages, entry.Package)
+		}
+	}
 
 	extensions := sortedSandboxWords(requirements.Extensions)
 	extensionPackages := make([]string, 0, len(extensions))
@@ -239,6 +378,19 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
     rm -rf /var/lib/apt/lists/*
 `, strings.Join(quoteWords(append(packages, extensionPackages...)), " "), SandboxPackagesTxt)
 
+	// An init script the distribution does not ship, written for the services
+	// this image was asked to start. Without it the entrypoint's start loop finds
+	// no script and says nothing, and the rehearsal runs against a database that
+	// was never started.
+	if scripts := sandboxRequestedInitScripts(requirements.Services); len(scripts) > 0 {
+		fmt.Fprintf(&builder, "\nRUN set -eux; \\\n")
+		for _, service := range scripts {
+			fmt.Fprintf(&builder, "    if [ ! -x /etc/init.d/%s ]; then printf '%%s\\n' %s > /etc/init.d/%s; chmod 0755 /etc/init.d/%s; fi; \\\n",
+				service, shellQuoteScriptLines(sandboxServices[service].InitScript), service, service)
+		}
+		fmt.Fprintf(&builder, "    true\n")
+	}
+
 	// Composer is not a distribution package here (see above), and `php` has to mean
 	// the requested series: every recipe command, the sandbox remote's `php_bin` and
 	// the stub fixtures all call the plain binary.
@@ -252,6 +404,24 @@ RUN set -eux; \
     php -v; \
     composer --version
 `, series, series)
+	}
+
+	// Tools are phars the distribution does not package, installed the way
+	// Composer is. `curl` is installed here rather than assumed: the base package
+	// list has none, and only the sury branch adds it — a tool requested without
+	// a PHP series would otherwise fail the build with "curl: not found".
+	if tools := sortedSandboxWords(requirements.Tools); len(tools) > 0 && resolved != SandboxProfileBasic {
+		steps := make([]string, 0, len(tools))
+		for _, tool := range tools {
+			steps = append(steps, sandboxTools[tool])
+		}
+		fmt.Fprintf(&builder, `
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    %s; \
+    rm -rf /var/lib/apt/lists/*
+`, strings.Join(steps, " && "))
 	}
 
 	// The mirror is bind-mounted from the host, which is a different user than
@@ -307,7 +477,8 @@ RUN printf '%%s\n' \
       '#!/bin/sh' \
       'set -e' \
       'for service in $GOVARD_SANDBOX_SERVICES; do' \
-      '  if [ -x "/etc/init.d/$service" ]; then /etc/init.d/$service start || true; fi' \
+      '  if [ -x "/etc/init.d/$service" ]; then /etc/init.d/$service start || true; ' \
+      '  else echo "govard: this image has no init script for the service $service, so it was not started" >&2; fi' \
       'done' \
       'exec "$@"' \
       > /usr/local/bin/govard-sandbox-entrypoint; \

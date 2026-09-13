@@ -41,6 +41,17 @@ func Definition() types.FrameworkDefinition {
 		},
 		Detect: engine.DetectionSpec{
 			ComposerPackages: []string{"johnpbloch/wordpress", "roots/wordpress", "wordpress/wordpress"},
+			// The classic checkout: core files in the repository root and
+			// `wp-content/` holding the project, with no composer.json at all.
+			// Without these markers the largest kind of WordPress project there
+			// is was detected as `generic`, so nothing registered under the
+			// wordpress framework — the deploy recipe included — ever ran for
+			// it.
+			//
+			// `wp-load.php` is the marker rather than `wp-config.php`: a Bedrock
+			// project has a wp-config.php too, but only a classic tree has the
+			// core loader in the root, where its docroot is.
+			FilePaths: []string{"wp-load.php", "wp-includes/version.php"},
 		},
 		AuditLint: &types.AuditLintProfile{
 			ProjectPHPVersions:    []string{"8.1", "8.2", "8.3", "8.4"},
@@ -77,6 +88,7 @@ func Definition() types.FrameworkDefinition {
 		},
 		DBDriverCategory: "wordpress",
 		Upgrade:          Upgrade,
+		DeployRecipe:     DeployRecipe,
 		ProbeRemoteDB: func(remoteName string, remoteCfg engine.RemoteConfig) (remote.RemoteDatabaseMetadata, error) {
 			metadata, err := ProbeEnvironment(remoteName, remoteCfg)
 			if err != nil {

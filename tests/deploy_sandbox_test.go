@@ -1353,3 +1353,19 @@ func TestSandboxUpDescribesAReusedContainerAsWhatItIs(t *testing.T) {
 		t.Fatalf("err = %v, want a refusal naming --recreate", err)
 	}
 }
+
+// A Composer install that extracts a dist shells out to `patch` when the project
+// patches a dependency. The image had `unzip` and `git` but not `patch`, so
+// `composer install --prefer-dist` aborted on a real project's patch while the
+// same command with `--prefer-source` succeeded — that path uses `git apply`.
+func TestSandboxInstallsThePatcherComposerShellsOutTo(t *testing.T) {
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfilePHP, PHP: "8.4"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{"'patch'", "'unzip'"} {
+		if !strings.Contains(dockerfile, want) {
+			t.Errorf("the image does not install %s:\n%s", want, firstLineContaining(dockerfile, "apt-get install"))
+		}
+	}
+}

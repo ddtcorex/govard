@@ -41,6 +41,7 @@ var expectedDetection = map[string]engine.DetectionSpec{
 	},
 	"wordpress": {
 		ComposerPackages: []string{"johnpbloch/wordpress", "roots/wordpress", "wordpress/wordpress"},
+		FilePaths:        []string{"wp-load.php", "wp-includes/version.php"},
 	},
 	"prestashop": {
 		FilePaths: []string{"config/defines.inc.php"},

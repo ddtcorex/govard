@@ -331,6 +331,30 @@ deploy:
 | `settings` | mặc định của recipe | setting của framework và engine, được đối chiếu với recipe |
 | `hooks` | — | các bước neo vào task id, alias stage (`stage:build`) hoặc một hook khác |
 
+Bốn setting của engine quyết định `govard deploy sandbox` phải cung cấp gì ngoài
+profile. Chúng được đọc ở **tầng project** (override theo remote không được xét:
+remote sandbox do chính lệnh đó tạo), và mỗi key **thay thế** danh sách của recipe
+chứ không nối thêm:
+
+| Setting | Mặc định | Tác dụng |
+| :--- | :--- | :--- |
+| `sandbox_packages` | theo recipe | apt package bổ sung mà image sandbox cài |
+| `sandbox_extensions` | theo recipe | PHP extension, cài dưới dạng `php<series>-<name>` |
+| `sandbox_services` | theo recipe | init service được start trong container trước sshd |
+| `sandbox_tools` | theo recipe | binary cài từ danh sách đóng của engine (`wp-cli`) |
+
+```yaml
+deploy:
+  settings:
+    sandbox_packages: [postgresql]
+    sandbox_extensions: [intl, pgsql, mbstring, xml, curl, zip]
+    sandbox_services: [postgresql, redis-server]
+```
+
+Một tên service thuộc bảng của engine mang theo cả package cung cấp nó, nên chỉ cần
+khai `postgresql` là đủ để cài và start. Service mà image không start được sẽ được
+nêu tên lúc container khởi động, thay vì bị bỏ qua im lặng.
+
 Các field ở tầng remote mà engine deploy đọc:
 
 | Trường | Mô tả |

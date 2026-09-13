@@ -57,6 +57,7 @@ func Definition() types.FrameworkDefinition {
 		SupportsFreshInstall: true,
 		DBDriverCategory:     "symfony",
 		Upgrade:              Upgrade,
+		DeployRecipe:         DeployRecipe,
 		ProbeRemoteDB: func(remoteName string, remoteCfg engine.RemoteConfig) (remote.RemoteDatabaseMetadata, error) {
 			metadata, err := dotenv.ProbeEnvironment(remoteName, remoteCfg)
 			if err != nil {
