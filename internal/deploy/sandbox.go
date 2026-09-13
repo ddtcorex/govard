@@ -92,6 +92,35 @@ type SandboxRequirements struct {
 	Tools []string
 }
 
+// SandboxRequirementsWithSettings layers a project's `sandbox_*` settings over
+// the requirements a framework recipe declared.
+//
+// A recipe states the framework's default; the project states what its
+// application needs. A key the project sets replaces the recipe's list — the
+// same rule every other list setting follows — because the case that forced this
+// is a project whose database is a different engine, where appending would
+// install two servers and start the wrong one.
+//
+// Presence, not emptiness, decides: `sandbox_services: []` is a project saying
+// "none", and it has to survive. `settingsStringList` returns a non-nil empty
+// slice for a map that simply lacks the key, so the lookup is the test.
+func SandboxRequirementsWithSettings(base SandboxRequirements, settings map[string]any) SandboxRequirements {
+	resolved := base
+	if _, ok := settings["sandbox_packages"]; ok {
+		resolved.Packages = settingsStringList(settings, "sandbox_packages")
+	}
+	if _, ok := settings["sandbox_extensions"]; ok {
+		resolved.Extensions = settingsStringList(settings, "sandbox_extensions")
+	}
+	if _, ok := settings["sandbox_services"]; ok {
+		resolved.Services = settingsStringList(settings, "sandbox_services")
+	}
+	if _, ok := settings["sandbox_tools"]; ok {
+		resolved.Tools = settingsStringList(settings, "sandbox_tools")
+	}
+	return resolved
+}
+
 // SandboxSpec identifies one sandbox image.
 type SandboxSpec struct {
 	Project string
