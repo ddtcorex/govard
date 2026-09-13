@@ -63,6 +63,40 @@ func TestAnInterruptedLocalCommandTakesItsChildrenWithIt(t *testing.T) {
 	waitForWorkToStop(t, pid, "local command's work")
 }
 
+// A step is stopped two ways: the operator interrupts, and the step's own
+// timeout expires — `deploy.command_timeout` is the one that ends a hung
+// production deploy. Both go through the same cancellation, so both have to
+// leave the target as quiet as the other; this is the timeout half, and it is
+// the half that runs without anyone watching.
+func TestATimedOutLocalCommandTakesItsChildrenWithIt(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "work.pid")
+
+	command := "sh -c 'trap \"\" TERM; echo $$ > " + pidFile + "; exec sleep 300'"
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := deploy.LocalRunner{}.Run(context.Background(), command, deploy.RunOptions{Timeout: time.Second})
+		done <- err
+	}()
+
+	pid := waitForRecordedPID(t, pidFile)
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a command that ran out of time must fail")
+		}
+		if !strings.Contains(err.Error(), "timed out") {
+			t.Fatalf("the failure must say the command timed out, got %q", err.Error())
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the command that ran out of time never returned")
+	}
+
+	waitForWorkToStop(t, pid, "timed-out command's work")
+}
+
 // waitForRecordedPID waits until the work process has written its own pid. It
 // waits for the file rather than sleeping a fixed amount, so a slow shell cannot
 // turn the assertion into a race.
