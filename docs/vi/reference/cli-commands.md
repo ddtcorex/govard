@@ -219,6 +219,40 @@ giờ là fallback cho backend native và không bao giờ được suy diễn: 
 và lỗi của native vẫn là lỗi của native. Target standalone không có cấu hình dự
 án nên chỉ dùng được `govard`.
 
+#### Phạm vi (`--scope`, `--base`)
+
+`--scope project` (mặc định) audit toàn bộ target. `--scope diff --base <ref>` ghi
+base được yêu cầu vào manifest của session và chỉ lint những file đã đổi
+(`git diff --name-only --diff-filter=ACMRT <base>...HEAD` cộng với staged/unstaged
+so với `HEAD`, lọc còn `php/phtml` trong target, loại trừ
+`vendor/generated/var/pub/media` qua `diff-files.txt` được mount thành
+`GOVARD_LINT_DIFF_FILE`); diff rỗng thì short-circuit thành `passed` với cache
+`diff-empty` mà không khởi động container. Dùng `--base auto` để tự dò base qua
+`git merge-base HEAD origin/HEAD` (cùng fallback `origin/master`/`origin/main`, rồi
+`gh pr view --json baseRefName`). `git merge-base` trả về commit SHA (dùng thẳng làm
+base); `gh pr view` chuẩn hoá thành `origin/<branch>` khi thiếu tiền tố.
+Ví dụ cho skill review:
+
+```bash
+govard audit run --checks lint --mode project --scope diff --base auto --format json
+```
+
+#### Chạy đồng thời
+
+Nhiều lệnh `govard audit run` đồng thời trên cùng một dự án sẽ xếp hàng qua
+`~/.govard/audit/<projectId>/lock` (qua `GovardHomeDir`, tôn trọng
+`GOVARD_HOME_DIR`). Lần chạy thứ hai chờ tối đa 30s để lần trước nhả lock
+(`audit run waiting for prior run`) rồi tiếp tục; các run được xếp hàng chứ không
+bị huỷ (sửa hành vi `cancelled` trước đó). Nếu lock vẫn bị giữ sau 30s, run fail
+kèm gợi ý xoá lock cũ hoặc chạy `govard audit cleanup`.
+
+#### Guard Xdebug
+
+Khi `stack.features.xdebug: true`, lint audit thoát với thông báo
+`Xdebug enabled, ~10-20% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug`
+trừ khi truyền `--allow-xdebug`. Guard được thực thi trong command và trong backend
+lint của Govard.
+
 #### Cache
 
 State lint tái sử dụng nằm ở `~/.govard/cache/audit/lint/<target-id>/` và có chủ
@@ -967,11 +1001,25 @@ Khác với `govard tool`, các lệnh này tự tìm project bằng cách đi n
 govard config get stack.php_version
 govard config set stack.php_version 8.4
 govard config set table_prefix demo_
+govard config get deploy.settings.php_bin     # giá trị deploy sẽ expand
+govard config set deploy.keep_releases 3
 govard config profile              # Hiển thị cấu hình profile đề xuất cho framework
 govard config profile --json      # Output thông tin profile dạng JSON
 govard config profile apply       # Áp dụng profile đề xuất vào .govard.yml
 govard config auto                # Magento 2: inject các thiết lập kết nối vào env.php
 ```
+
+`config get` đọc được cả block `deploy:` bên cạnh các key của project và stack:
+`deploy.keep_releases` (số lượng hiệu lực), `deploy.command_timeout`,
+`deploy.maintenance_timeout`, `deploy.lock_stale_after`, `deploy.artifact_dir`,
+`deploy.db_backup`, `deploy.verify.url`, `deploy.verify.timeout`, và mọi key dưới
+`deploy.settings.` — kể cả key dự án chưa từng khai, khi đó trả về rỗng chứ không
+phải lỗi "unknown key". Danh sách trả về dạng ngăn cách bởi dấu phẩy, và
+`config set` ghi ngược lại thành danh sách; setting vốn là chuỗi thì vẫn là chuỗi.
+`config set` từ chối giá trị không thể đúng kiểu (`deploy.keep_releases` phải là số
+nguyên, `deploy.db_backup` là true/false) thay vì lưu số 0. Việc một key
+`deploy.settings` có tồn tại hay không là câu trả lời của recipe, nên gõ sai sẽ
+được `govard deploy plan` báo, không phải lệnh này.
 
 ### `govard config profile`
 

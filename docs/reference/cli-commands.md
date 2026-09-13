@@ -370,6 +370,8 @@ For Magento 2/Mage-OS, Magento 1/OpenMage, or PrestaShop projects with `table_pr
 
 **Magento special flags:**
 
+| Flag | Effect |
+| :--- | :--- |
 | `--include-sample` | Install sample data (fresh install) |
 | `--hyva-install` | Auto-install Hyva theme |
 
@@ -1021,11 +1023,25 @@ Unlike `govard tool`, these resolve the project by walking up from the current d
 govard config get stack.php_version
 govard config set stack.php_version 8.4
 govard config set table_prefix demo_
+govard config get deploy.settings.php_bin     # what the deploy will expand
+govard config set deploy.keep_releases 3
 govard config profile              # Show recommended profile for current framework
 govard config profile --json      # Output profile as JSON
 govard config profile apply       # Apply recommended profile to .govard.yml
 govard config auto                # Magento 2: inject settings into env.php
 ```
+
+`config get` reads the `deploy:` block as well as the project and stack keys:
+`deploy.keep_releases` (the effective count), `deploy.command_timeout`,
+`deploy.maintenance_timeout`, `deploy.lock_stale_after`, `deploy.artifact_dir`,
+`deploy.db_backup`, `deploy.verify.url`, `deploy.verify.timeout`, and any key
+under `deploy.settings.` — including one the project never wrote, which reads as
+empty rather than as an unknown key. Lists come back comma-separated, and
+`config set` writes them back as lists; a setting that is a plain string stays
+one. `config set` refuses a value that cannot be the type it claims
+(`deploy.keep_releases` must be a whole number, `deploy.db_backup` true or
+false) rather than storing a zero. Whether a `deploy.settings` key exists at all
+is the recipe's answer, so a typo is reported by `govard deploy plan`, not here.
 
 ### `govard config profile`
 
