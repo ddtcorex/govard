@@ -403,3 +403,43 @@ func TestCoreArtifactRefusesAnArtifactThatNoLongerMatchesItsManifest(t *testing.
 		t.Fatal("the corrupt artifact was uploaded into the release anyway")
 	}
 }
+
+// Artifact mode leaves the tasks that need the deployed application to the
+// target, and the transfer has to come first: a task that reads the
+// application's own configuration cannot run before the application is there.
+//
+// Measured on a real project: `setup:static-content:deploy` compiles every theme
+// and then fails with "The default website isn't defined" on a build machine,
+// because the store it asks about lives in the database.
+func TestArtifactModeRunsTheApplicationTasksOnTheTargetAfterTheUpload(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	task := recipe.Task(deploy.TaskAssets)
+	task.Command = "php bin/console assets:install"
+	task.NeedsApplication = true
+	recipe.ReplaceTask(task)
+
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "sandbox")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	plan = plan.ForBuildMode(deploy.BuildArtifact)
+
+	artifactAt, assetsAt := -1, -1
+	for idx, step := range plan.Steps {
+		switch step.ID {
+		case deploy.TaskArtifact:
+			artifactAt = idx
+		case deploy.TaskAssets:
+			assetsAt = idx
+			if step.Skipped {
+				t.Fatalf("a task that needs the application must run on the target, not be skipped: %s", step.SkipReason)
+			}
+		}
+	}
+	if artifactAt < 0 || assetsAt < 0 {
+		t.Fatalf("the plan is missing deploy:artifact (%d) or the assets task (%d)", artifactAt, assetsAt)
+	}
+	if artifactAt > assetsAt {
+		t.Fatalf("deploy:artifact (step %d) must come before the tasks that need the code it brings (step %d)", artifactAt, assetsAt)
+	}
+}

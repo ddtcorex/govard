@@ -164,6 +164,12 @@ type Task struct {
 	RunOn RunOn
 	// Optional marks a step whose failure must not fail the deploy.
 	Optional bool
+	// NeedsApplication marks a step that can only run where the application
+	// runs, because it reads the application's own configuration — the store,
+	// the database — and no build machine has that. `govard deploy build` skips
+	// it, and artifact mode deliberately leaves it in the deploy so the target
+	// runs it after receiving the artifact.
+	NeedsApplication bool
 }
 
 // IsEmpty reports whether the recipe left this step unimplemented.

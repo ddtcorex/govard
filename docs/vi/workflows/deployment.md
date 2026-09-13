@@ -470,6 +470,33 @@ trường: có thư mục artifact nghĩa là đã build xong, ngược lại ta
 | `server` | trên target | hotfix từ laptop, hoặc dự án chưa có CI |
 | `artifact` | trên máy chạy `govard deploy build` | CI, để job deploy không cần toolchain |
 
+### Artifact mang được gì và không mang được gì
+
+Job build chạy đúng recipe mà server build chạy, trừ những bước hỏi chính ứng dụng.
+Đáng chú ý nhất là deploy static content: `setup:static-content:deploy` đọc cấu
+hình store, website và locale từ database, nên một máy không có ứng dụng, không có
+`app/etc/env.php` và không có database thì không chạy được — khai báo theme và
+locale tường minh cũng không đổi được điều đó, vì store nó hỏi vẫn nằm trong
+database.
+
+Recipe đánh dấu những bước đó, và artifact mode để chúng **ở lại trong deploy**:
+target chạy chúng sau khi `deploy:artifact` đã bung artifact — đúng chỗ mà server
+build chạy chúng. Phân chia thành ra là:
+
+| Chạy trên máy build | Chạy trên target |
+| --- | --- |
+| Composer install, patches, DI compile, build frontend (node) | static content, `setup:upgrade`, import cấu hình, flush cache, verify |
+
+Job deploy vẫn không cần toolchain riêng — chỉ cần govard, ssh và rsync; target
+chạy các bước ứng dụng qua SSH như trước giờ.
+
+Artifact cũng không bao giờ mang những path mà recipe khai là **shared**
+(`shared_files`, `shared_dirs`): chúng thuộc về target, và `govard deploy build`
+in ra từng path bị loại. Nếu không, một artifact dựng trên máy tình cờ có
+`app/etc/env.php` riêng sẽ đè lên cái của target — file thường thay thế symlink mà
+`deploy:shared` vừa tạo — và release sẽ chết bằng đúng lời của ứng dụng:
+`Connection "default" is not defined`.
+
 ### Mô hình CI hai job
 
 ```yaml

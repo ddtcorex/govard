@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -149,15 +150,45 @@ func TestPlanForBuildModeSwitchesTheBuildBranch(t *testing.T) {
 	artifact := base.ForBuildMode(deploy.BuildArtifact)
 	assertBuildBranch(t, artifact, deploy.BuildArtifact)
 
-	// The mode never changes the shape of the pipeline: every step id is still
-	// there, in the same order. A mode that dropped a step would make `--from`
-	// and the resume bookkeeping disagree with the timeline.
-	if got, want := server.StepIDs(), base.StepIDs(); !reflect.DeepEqual(got, want) {
+	// The mode never changes which steps exist: a mode that dropped one would
+	// make `--from` and the resume bookkeeping disagree with the timeline.
+	if got, want := sortedStepIDs(server.StepIDs()), sortedStepIDs(base.StepIDs()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("server mode changed the step list:\n got %v\nwant %v", got, want)
 	}
-	if got, want := artifact.StepIDs(), base.StepIDs(); !reflect.DeepEqual(got, want) {
+	if got, want := sortedStepIDs(artifact.StepIDs()), sortedStepIDs(base.StepIDs()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("artifact mode changed the step list:\n got %v\nwant %v", got, want)
 	}
+
+	// Server mode keeps the recipe's order. Artifact mode moves exactly one step,
+	// and only within its own stage: the receive goes first, because the build
+	// tasks it does not replace run against the code it brings.
+	if got, want := server.StepIDs(), base.StepIDs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("server mode reordered the pipeline:\n got %v\nwant %v", got, want)
+	}
+	artifactAt := indexOfStep(artifact.StepIDs(), deploy.TaskArtifact)
+	for idx, step := range artifact.Steps {
+		if step.Stage != deploy.StageBuild || step.ID == deploy.TaskArtifact || step.Skipped {
+			continue
+		}
+		if idx < artifactAt {
+			t.Fatalf("%s runs before the artifact is received, so it would run against an empty release", step.ID)
+		}
+	}
+}
+
+func sortedStepIDs(ids []string) []string {
+	sorted := append([]string{}, ids...)
+	sort.Strings(sorted)
+	return sorted
+}
+
+func indexOfStep(ids []string, want string) int {
+	for idx, id := range ids {
+		if id == want {
+			return idx
+		}
+	}
+	return -1
 }
 
 func assertBuildBranch(t *testing.T, plan deploy.Plan, mode string) {

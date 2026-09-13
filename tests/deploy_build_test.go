@@ -353,3 +353,35 @@ func TestBuildArtifactDirDoesNotCarryTheTargetsSharedState(t *testing.T) {
 		}
 	}
 }
+
+// A task the recipe marks as needing the application must not run on the build
+// machine. Before this, `govard deploy build` ran it and died: static content
+// deployment compiled every theme and then asked for a store that only exists in
+// the target's database.
+func TestBuildArtifactDirLeavesApplicationTasksToTheTarget(t *testing.T) {
+	work, revision := seedBuildRepo(t)
+	output := filepath.Join(t.TempDir(), "artifact")
+
+	recipe := deploy.DefaultRecipe()
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskVendors,
+		deploy.Task{ID: deploy.TaskVendors, Command: "echo built > from-the-builder.txt"})
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskAssets,
+		deploy.Task{ID: deploy.TaskAssets, Command: "echo built > needs-the-application.txt", NeedsApplication: true})
+
+	if _, err := deploy.BuildArtifactDir(context.Background(), deploy.BuildRequest{
+		Recipe:    recipe,
+		Options:   deploy.Options{Revision: revision},
+		Vars:      deploy.NewVars(),
+		WorkDir:   work,
+		OutputDir: output,
+	}); err != nil {
+		t.Fatalf("build artifact: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(output, "from-the-builder.txt")); err != nil {
+		t.Fatalf("the builder must still run the tasks it can: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(output, "needs-the-application.txt")); !os.IsNotExist(err) {
+		t.Fatalf("a task that needs the application ran on the build machine (stat err = %v)", err)
+	}
+}

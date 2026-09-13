@@ -439,6 +439,16 @@ func runBuildTasks(ctx context.Context, runner Runner, req BuildRequest, vars Va
 		if !step.Implemented() {
 			continue
 		}
+		// A step that reads the application's own configuration cannot run here:
+		// there is no application, no database and no store configuration on a
+		// build machine. Measured on a real project, static content deployment
+		// compiled every theme and then failed with "The default website isn't
+		// defined" — with and without explicit themes and locales — because the
+		// store it asks about lives in the database.
+		if step.NeedsApplication {
+			fmt.Fprintf(out, "  → %s left to the target: it needs the deployed application\n", step.ID)
+			continue
+		}
 		if step.core != nil {
 			return fmt.Errorf("the build stage declares the core step %s; `govard deploy build` runs shell tasks only", step.ID)
 		}
