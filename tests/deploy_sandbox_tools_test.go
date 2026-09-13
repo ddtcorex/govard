@@ -46,6 +46,14 @@ func TestSandboxInstallsARequestedTool(t *testing.T) {
 			t.Errorf("the rendered image does not %q:\n%s", want, dockerfile)
 		}
 	}
+	// The build runs as root in a Dockerfile, and wp-cli refuses to run as root
+	// without this flag: the real image build failed with "YIKES! It looks like
+	// you're running this as root" while this test's string assertions passed.
+	// Pinning the flag is the least a unit test can do about a command whose
+	// failure only a real build shows.
+	if !strings.Contains(dockerfile, "wp --version --allow-root") {
+		t.Errorf("the tool is verified without --allow-root, which wp-cli refuses under the build's root user:\n%s", dockerfile)
+	}
 }
 
 // The basic profile has no PHP and no toolchain, and it promises neither.

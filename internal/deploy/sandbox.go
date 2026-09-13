@@ -174,8 +174,12 @@ func ValidateSandboxProfile(profile string) (string, error) {
 // installed by its own block below because every PHP profile needs it; these are
 // the binaries only some applications do.
 var sandboxTools = map[string]string{
+	// `--allow-root` is not decoration: the image is built as root in a
+	// Dockerfile, and wp-cli refuses to run as root without it — the build failed
+	// with "YIKES! It looks like you're running this as root" until this flag was
+	// added. On a target the command runs as the deploy user and needs no flag.
 	"wp-cli": `curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /usr/local/bin/wp && ` +
-		`chmod 0755 /usr/local/bin/wp && wp --version`,
+		`chmod 0755 /usr/local/bin/wp && wp --version --allow-root`,
 }
 
 // sandboxToolNames returns the known names in a stable order, for the message an
