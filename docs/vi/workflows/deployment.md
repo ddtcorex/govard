@@ -117,7 +117,7 @@ Chỉ ghi đè những gì dự án của bạn khác:
   `skip`) và `writable_permissions` — xem *Quyền ghi và ownership*.
 
 Mọi key mà cả hai recipe khai, kèm mặc định và hình dạng của nó, được bảng hoá trong
-[Case study triển khai — phần Tham chiếu](/vi/workflows/deploy-case-studies#reference-every-setting-the-magento-recipe-reads).
+[Case study triển khai — phần Tham chiếu](/vi/workflows/deploy-case-studies#reference-every-setting-the-framework-recipes-read).
 
 ### 4. Credential Composer đến từ đâu
 
@@ -187,6 +187,135 @@ server. Nó cần đúng những prerequisite ứng dụng như mọi target; m�
 dưới nói từng lỗi nghĩa là gì, và
 [Case study triển khai](/vi/workflows/deploy-case-studies#rehearsing-any-case-in-the-sandbox)
 đưa ra profile cùng hình dạng `--docroot` mà mỗi kiểu dự án cần.
+
+## Laravel, Symfony và WordPress
+
+Engine trung lập với framework; recipe là thứ điền command cụ thể của một ứng dụng
+vào các task trung tính của pipeline. Mọi thứ ở trên — release, chiến lược publish,
+rollback, `deploy check`, sandbox — áp dụng nguyên vẹn cho ba framework này. Phần
+dưới chỉ nói cái mà mỗi recipe thêm vào, và ba chỗ nó **không** hành xử như recipe
+Magento.
+
+| Task | Laravel | Symfony | WordPress |
+| --- | --- | --- | --- |
+| `build:vendors` | `composer install --no-dev --optimize-autoloader` | như trên, thêm `--no-scripts` | chỉ khi có `composer.json` |
+| `build:assets` | — | `assets:install public --symlink --relative` (chạy ở target) | — |
+| `build:frontend` | `frontend_dir` × `frontend_command` | như trên | như trên |
+| `app:configure` | `artisan storage:link` | — | — |
+| `db:migrate` | `artisan migrate --force` | `doctrine:migrations:migrate --allow-no-migration` | `wp core update-db` |
+| `maintenance:enable` / `disable` | `artisan down` / `up` | **để trống** | hai file trong đường dẫn được serve |
+| `app:cache:flush` | `artisan optimize:clear` rồi `optimize` | `cache:clear --no-warmup` rồi `cache:warmup` | `wp cache flush` + `wp rewrite flush --hard` |
+| `app:workers:pause` | `artisan queue:restart` (+ `horizon:terminate`) | `messenger:stop-workers` | — |
+| `db:backup` / restore | — | — | `wp db export` / `wp db import` |
+| check của `deploy:verify` | `artisan db:show` | `dbal:run-sql "SELECT 1"` | `wp core is-installed` |
+
+State dùng chung, theo từng framework:
+
+| Framework | `shared_files` | `shared_dirs` | `sync_paths` (chỉ in-place) |
+| --- | --- | --- | --- |
+| Laravel | `.env` | `storage` | `vendor`, `public/build` |
+| Symfony | `.env.local` | `var/log` | `vendor`, `public/bundles` |
+| WordPress | `wp-config.php` | `wp-content/uploads` | `vendor` |
+
+### Ba chỗ ba recipe này khác Magento
+
+**Symfony không có task maintenance.** Symfony không có cơ chế gốc cho việc đó, nên
+`maintenance:enable` và `maintenance:disable` để trống và engine báo chúng là
+skipped. Vì vậy `db:migrate` chạy thẳng trên site đang sống. Nếu dự án cần một
+window, đó là việc của hook:
+
+```yaml
+deploy:
+  hooks:
+    - { name: down, on: "maintenance:enable", position: after, order: 10, run: "touch {{current_path}}/maintenance.lock" }
+    - { name: up,   on: "maintenance:disable", position: after, order: 10, run: "rm -f {{current_path}}/maintenance.lock" }
+```
+
+**Maintenance của WordPress là ghi file, không phải gọi command.** Cơ chế của
+WordPress là hai file: `.maintenance` trong docroot mà `wp_is_maintenance_mode()`
+tìm, và drop-in `wp-content/maintenance.php` mà `wp_maintenance()` serve kèm 503.
+`wp_is_maintenance_mode()` coi cờ cũ hơn **mười phút** là hết hạn, nên recipe ghi
+`$upgrading = time() + 86400`: ghi đúng giá trị WordPress tự ghi sẽ mở lại site
+giữa một window dài hơn mười phút, và đưa traffic trở lại trên một database mới
+migrate một nửa nếu deploy fail ở phút thứ chín. Drop-in mang một marker và chỉ file
+có marker mới bị xoá, nên dự án tự ship trang maintenance của mình thì vẫn giữ được.
+
+Với chiến lược `symlink`, hai file này được ghi vào release đang sống lúc mở window,
+nên sau cú swap chúng thuộc release **trước** — release mới được serve bình thường,
+điều đó đúng, nhưng rollback về release trước đó sẽ thấy nó vẫn ở maintenance.
+`maintenance:disable` xoá chúng ở đường dẫn nó với tới được, và
+`rm -f {{current_path}}/.maintenance {{current_path}}/wp-content/maintenance.php`
+là cách xử lý thủ công.
+
+**`db:backup` là opt-in theo từng framework.** Mặc định tắt ở mọi nơi. Magento có
+qua `setup:backup`, WordPress có qua `wp db export/import`; Laravel và Symfony
+**không có dump command** trong recipe. Bật `--db-backup` cho framework không có nó
+là fail to và nêu rõ lý do — cố ý, vì bỏ qua im lặng sẽ khiến operator tin là đã có
+backup ngay trước một `db:migrate` phá hoại. Dự án muốn có thì thêm hook:
+
+```yaml
+deploy:
+  hooks:
+    - name: dump
+      on: "db:backup"
+      position: after
+      order: 10
+      run: "mysqldump --single-transaction \"$DATABASE_URL\" > {{shared_path}}/backups/manual.sql"
+```
+
+### Ghi chú riêng của từng framework
+
+**Laravel.** `storage` được share chứ không chỉ ghi được, vì cờ maintenance nằm ở
+`storage/framework/down`: thư mục share là thứ mang nó qua cú swap release. Cache
+của framework được dựng trong `app:cache:flush`, ở target, không bao giờ lúc build —
+`artisan optimize` ghi `bootstrap/cache/config.php`, và khi file đó tồn tại thì biến
+môi trường không còn override `.env` nữa, nên cache dựng ở máy khác sẽ mang cấu
+hình của máy đó lên production. `worker_control` gửi `queue:restart`, command này
+exit 0 với mọi cache store, nên dự án có cache không mang được tín hiệu cần một
+cache store bền thì bước này mới có nghĩa. Check `app` ưu tiên `artisan db:show` và
+lùi về `migrate:status` trên Laravel 10 trở xuống, nơi `db:show` chưa có; nhánh lùi
+exit 1 với dự án chưa có bảng migrations, mà đó là dự án khoẻ mạnh không migration.
+
+**Symfony.** `auto-scripts` của Composer chạy `cache:clear` và `assets:install`,
+đúng cho lập trình viên và sai cho deploy: cả hai phải xảy ra ở nơi ứng dụng sống,
+nên `build:vendors` truyền `--no-scripts` và `build:assets` chạy `assets:install` ở
+target với `--relative` (link nó ghi sau đó resolve được từ bất kỳ độ sâu nào của
+docroot, đúng thứ deploy in-place cần). `doctrine:migrations:migrate` nhận
+`--allow-no-migration`, vì dự án có thư mục migrations rỗng là dự án khoẻ mạnh.
+`var/cache` **không** được share: container đã compile thuộc về một release và một
+environment. `symfony_env` (mặc định `prod`) quyết định environment mà deploy chạy
+dưới, vì `.env` được commit ghi `APP_ENV=dev` là mặc định phát triển chứ không phải
+chỉ thị cho production; giá trị này không được validate, nên gõ sai sẽ dựng sai thư
+mục cache. Check `app` ưu tiên `dbal:run-sql` và lùi về `doctrine:query:sql`, chọn
+bằng cách hỏi `bin/console` chứ không đoán phiên bản DoctrineBundle.
+
+**WordPress.** Chỉ hỗ trợ layout classic — file core và `wp-content/` ở gốc repo,
+không có `composer.json`; layout Bedrock (core trong `vendor/`, docroot `web/`) và
+checkout chỉ có content không được hỗ trợ. `wp-config.php` là shared file, và ở lần
+deploy đầu `shared/` còn rỗng, nên **`wp-config.php` của target phải được seed trước
+khi deploy chạy**, nếu không release sẽ giữ bản của repo — bản trỏ vào database phát
+triển. `wp db export` gọi `mysqldump`, nên target cần cả wp-cli lẫn MySQL client.
+
+### Sandbox cấp gì cho các recipe này
+
+Mỗi recipe khai những gì ứng dụng của nó cần ngoài profile, và dự án có thể override
+— đó chính là thứ khiến một dự án dùng database không phải mặc định của framework
+diễn tập được:
+
+```yaml
+deploy:
+  settings:
+    sandbox_packages: [postgresql]
+    sandbox_extensions: [intl, pgsql, mbstring, xml, curl, zip]
+    sandbox_services: [postgresql, redis-server]
+    sandbox_tools: [wp-cli]
+```
+
+Bốn danh sách này **thay thế** danh sách của recipe chứ không nối thêm: dự án dùng
+PostgreSQL thay `[mariadb]`, không chạy cả hai. Một tên service thuộc bảng của engine
+mang theo package cung cấp nó, nên chỉ cần khai `postgresql` là đủ để cài và start;
+service mà image không start được sẽ được nêu tên lúc container khởi động thay vì bị
+bỏ qua im lặng.
 
 ## Pipeline
 

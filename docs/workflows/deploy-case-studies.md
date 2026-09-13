@@ -631,6 +631,120 @@ govard deploy sandbox reset --docroot real
 govard deploy --remote sandbox --yes     # now the in-place path
 ```
 
+## Case 9: Laravel, Vite frontend, symlinked webroot {#case-9-laravel}
+
+**The three decisions:** build on the server (`--build=server`) — Laravel has no
+compile step worth moving, and its framework caches must be built on the target
+anyway; webroot is a symlink into `releases/` (`symlink`); target mode is
+`production` through `APP_ENV` in the target's `.env`.
+
+```yaml
+deploy:
+  keep_releases: 5
+  settings:
+    shared_files: [".env"]
+    shared_dirs: ["storage"]
+    writable_dirs: ["storage", "bootstrap/cache"]
+    sync_paths: ["vendor", "public/build"]
+    frontend_dir: ["."]
+    frontend_command: "npm ci && npm run build"
+```
+
+- `build:vendors` runs `composer install --no-dev --optimize-autoloader`.
+- `build:frontend` builds each `frontend_dir` (here the repository root, where
+  Vite lives); the loop is skipped when `frontend_dir` is empty, so a project with
+  a committed `public/build` pays nothing.
+- `app:configure` runs `artisan storage:link`, so `public/storage` exists in every
+  release. It exits 0 when the link is already there, which is why the in-place
+  case is safe.
+- `db:migrate` runs `artisan migrate --force`.
+- `app:cache:flush` runs `optimize:clear` then `optimize` **on the target**:
+  `optimize` writes `bootstrap/cache/config.php`, and once that file exists the
+  process environment no longer overrides `.env`. A cache built on the build
+  machine would ship that machine's configuration to production.
+- `worker_control: true` sends `queue:restart` before the migration. It exits 0
+  with any cache store, so the store has to be persistent for the workers to
+  actually see the signal.
+- The `app` check runs `artisan db:show` (Laravel 11+), falling back to
+  `migrate:status`. `about --only=environment` is **not** used: it exits 0 with no
+  database at all, so it would prove nothing.
+
+## Case 10: Symfony, Doctrine migrations, PostgreSQL target {#case-10-symfony}
+
+**The three decisions:** build on the server; symlink webroot; target mode is the
+environment named by `symfony_env` (`prod` unless the project says otherwise).
+
+```yaml
+deploy:
+  settings:
+    shared_files: [".env.local"]
+    shared_dirs: ["var/log"]
+    writable_dirs: ["var"]
+    sync_paths: ["vendor", "public/bundles"]
+    symfony_env: prod
+  # A project whose database is not the recipe's default says so here, and the
+  # sandbox then provides it. Replace, not extend: one database, not two.
+  #   sandbox_packages: [postgresql]
+  #   sandbox_extensions: [intl, pgsql, mbstring, xml, curl, zip]
+  #   sandbox_services: [postgresql, redis-server]
+```
+
+- `build:vendors` passes `--no-scripts`. Composer's `auto-scripts` runs
+  `cache:clear` and `assets:install`, and both belong on the target: a cache
+  warmed for the build machine is worthless, and the asset links resolve against
+  the vendor tree that is actually present.
+- `build:assets` runs `bin/console assets:install public --symlink --relative` —
+  on the target, because `public/bundles` is gitignored and the relative links
+  have to resolve from wherever the docroot ends up. That is also why
+  `public/bundles` is in `sync_paths` for an in-place docroot.
+- `db:migrate` passes `--allow-no-migration`: an empty `migrations/` directory is
+  a healthy project, and without the flag Doctrine exits non-zero on it.
+- `app:cache:flush` clears and warms the container for `symfony_env`.
+- **There is no maintenance window.** Symfony has no core mechanism, so
+  `maintenance:enable`/`disable` are skipped and `db:migrate` runs against a live
+  site. Add a hook if the project needs one — the deployment page has the shape.
+- The `app` check runs `dbal:run-sql "SELECT 1"`, or `doctrine:query:sql` on an
+  older DoctrineBundle; the branch is chosen by asking the console.
+
+## Case 11: WordPress, classic layout, wp-cli on the target {#case-11-wordpress}
+
+**The three decisions:** build on the server; symlink webroot; the `full` sandbox
+profile, because the recipe's `db:migrate`, cache flush and check all touch the
+database.
+
+```yaml
+deploy:
+  settings:
+    shared_files: ["wp-config.php"]
+    shared_dirs: ["wp-content/uploads"]
+    writable_dirs: ["wp-content/uploads", "wp-content/cache", "wp-content/upgrade", "wp-content/languages"]
+```
+
+This is the classic layout only: core files and `wp-content/` in the repository
+root, no `composer.json`. A Bedrock layout (core in `vendor/`, docroot `web/`) and
+a content-only checkout are not supported.
+
+- **Seed `shared/wp-config.php` before the first deploy.** `deploy:shared` links a
+  shared entry only when it already exists, so an unseeded `shared/` leaves the
+  first release with the repository's `wp-config.php` — the one that names the
+  development database. The `app` check then fails against an unreachable
+  database, which is the honest outcome and the signal to seed it.
+- `build:vendors` runs `composer install` only when `composer.json` exists.
+- `db:migrate` is `wp core update-db` with wp-cli, or a `wp-load.php` bootstrap
+  calling `wp_upgrade()` without it. `app:cache:flush` has the same shape
+  (`wp cache flush` and `wp rewrite flush --hard`, or the PHP equivalents).
+- Maintenance writes `.maintenance` and the `wp-content/maintenance.php` drop-in
+  into the served path. The timestamp is written **ahead of the clock**
+  (`time() + 86400`), because WordPress expires a flag older than ten minutes: on
+  a longer window the site would quietly come back in the middle of the
+  migration. The drop-in carries a marker, so a maintenance page the project ships
+  is kept.
+- `--db-backup` uses `wp db export`, and `rollback --with-db` restores it with
+  `wp db import`; both read the connection from `wp-config.php`. The sandbox asks
+  for wp-cli and `default-mysql-client` (`mysqldump`) on its own.
+- Laravel and Symfony have **no dump command**: turning `--db-backup` on for them
+  fails with a message naming the reason instead of quietly producing no backup.
+
 ## Rehearsing any case in the sandbox
 
 `govard deploy sandbox` gives the project a real deployment target on this machine:
@@ -780,7 +894,7 @@ govard deploy rollback sandbox --yes
 govard deploy sandbox down --purge
 ```
 
-## Reference: every setting the Magento recipe reads
+## Reference: every setting the framework recipes read
 
 Engine-level settings (declared by the default recipe, applied by the core):
 
@@ -820,6 +934,26 @@ key, or a value with the wrong shape, is a configuration error (exit 4) naming t
 key and suggesting the near miss. String values must be quoted if they look numeric
 (`php_version: "8.2"`) — the engine reads those settings as strings, so an unquoted
 `8.2` reads as empty.
+
+Laravel, Symfony and WordPress settings (declared by their recipes):
+
+| Setting | Frameworks | Default | What it does |
+| --- | --- | --- | --- |
+| `frontend_dir` | all three | (empty → skip) | one path or a list: the directories whose frontend assets are built |
+| `frontend_command` | all three | `npm ci && npm run build` | the command run inside each `frontend_dir` |
+| `runtime_reload_command` | Laravel, Symfony, WordPress | (empty) | run as the last part of the cache step |
+| `worker_control` | Laravel, Symfony | `false` | `queue:restart` / `messenger:stop-workers` before the migration |
+| `symfony_env` | Symfony | `prod` | the console environment the deploy runs under; **not validated** |
+
+What the sandbox provides for a project, beyond its recipe's defaults — each list
+**replaces** the recipe's, and they are read from the project layer only:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `sandbox_packages` | recipe | extra apt packages the sandbox image installs |
+| `sandbox_extensions` | recipe | PHP extensions, installed as `php<series>-<name>` |
+| `sandbox_services` | recipe | init services started before sshd; a name from the engine's table carries its package |
+| `sandbox_tools` | recipe | binaries from the engine's known list (`wp-cli`) |
 
 ## Checklist before the first deploy to a real target
 

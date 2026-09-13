@@ -847,8 +847,8 @@ deploy user. `up` points the sandbox remote's `deploy.verify.url` at that port, 
 sandbox deploy rehearses the HTTP half of `deploy:verify`; `basic` has no web tier
 and advertises no URL. The framework recipe contributes what its own commands need
 beyond the profile (for Magento: build libraries, PHP extensions and the database
-and cache services). A project that needs one more extension adds it to the recipe,
-not to a flag.
+and cache services). A project that needs one more extension adds it to
+`deploy.settings.sandbox_extensions`, not to a flag.
 
 The sandbox is the only deploy command that needs `docker`.
 

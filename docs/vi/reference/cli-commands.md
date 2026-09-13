@@ -794,7 +794,8 @@ deploy. `up` trỏ `deploy.verify.url` của remote sandbox vào cổng đó, n�
 sandbox diễn tập nửa HTTP của `deploy:verify`; `basic` không có web tier và không
 quảng cáo URL nào. Recipe của framework đóng góp những gì command của nó cần ngoài
 profile (với Magento: thư viện build, PHP extension và hai service database cùng
-cache). Dự án cần thêm một extension thì thêm vào recipe, không phải vào flag.
+cache). Dự án cần thêm một extension thì khai trong `deploy.settings.sandbox_extensions`,
+không phải bằng flag.
 
 Sandbox là lệnh deploy duy nhất cần `docker`.
 

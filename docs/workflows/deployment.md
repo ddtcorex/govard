@@ -119,7 +119,7 @@ Override what your project differs on, and nothing else:
   `skip`) and `writable_permissions` — see *Permissions and ownership*.
 
 Every key either recipe declares, with its default and its shape, is tabulated in
-[Deployment case studies § Reference](/workflows/deploy-case-studies#reference-every-setting-the-magento-recipe-reads).
+[Deployment case studies § Reference](/workflows/deploy-case-studies#reference-every-setting-the-framework-recipes-read).
 
 ### 4. Where Composer credentials come from
 
@@ -189,6 +189,145 @@ without a server. It needs the same application prerequisites as any target; the
 section below says what each failure means, and
 [Deployment case studies](/workflows/deploy-case-studies#rehearsing-any-case-in-the-sandbox)
 gives the profile and `--docroot` shape each kind of project needs.
+
+## Laravel, Symfony and WordPress
+
+The engine is framework-neutral; a recipe is what fills the pipeline's neutral
+steps with the commands one application needs. Everything above — releases,
+publishing strategies, rollback, `deploy check`, the sandbox — applies to these
+three unchanged. What follows is only what each recipe adds, and the three
+places where it does **not** behave like the Magento one.
+
+| Task | Laravel | Symfony | WordPress |
+| --- | --- | --- | --- |
+| `build:vendors` | `composer install --no-dev --optimize-autoloader` | same, plus `--no-scripts` | only when `composer.json` exists |
+| `build:assets` | — | `assets:install public --symlink --relative` (on the target) | — |
+| `build:frontend` | `frontend_dir` × `frontend_command` | same | same |
+| `app:configure` | `artisan storage:link` | — | — |
+| `db:migrate` | `artisan migrate --force` | `doctrine:migrations:migrate --allow-no-migration` | `wp core update-db` |
+| `maintenance:enable` / `disable` | `artisan down` / `up` | **empty** | two files in the served path |
+| `app:cache:flush` | `artisan optimize:clear` then `optimize` | `cache:clear --no-warmup` then `cache:warmup` | `wp cache flush` + `wp rewrite flush --hard` |
+| `app:workers:pause` | `artisan queue:restart` (+ `horizon:terminate`) | `messenger:stop-workers` | — |
+| `db:backup` / restore | — | — | `wp db export` / `wp db import` |
+| `deploy:verify` check | `artisan db:show` | `dbal:run-sql "SELECT 1"` | `wp core is-installed` |
+
+Shared state, by framework:
+
+| Framework | `shared_files` | `shared_dirs` | `sync_paths` (in-place only) |
+| --- | --- | --- | --- |
+| Laravel | `.env` | `storage` | `vendor`, `public/build` |
+| Symfony | `.env.local` | `var/log` | `vendor`, `public/bundles` |
+| WordPress | `wp-config.php` | `wp-content/uploads` | `vendor` |
+
+### The three places these recipes differ from Magento's
+
+**Symfony has no maintenance task.** Symfony has no core mechanism for it, so
+`maintenance:enable` and `maintenance:disable` stay empty and the engine reports
+them as skipped. `db:migrate` therefore runs against a live site. If a project
+needs a window, that is a project hook:
+
+```yaml
+deploy:
+  hooks:
+    - { name: down, on: "maintenance:enable", position: after, order: 10, run: "touch {{current_path}}/maintenance.lock" }
+    - { name: up,   on: "maintenance:disable", position: after, order: 10, run: "rm -f {{current_path}}/maintenance.lock" }
+```
+
+**WordPress maintenance is written, not commanded.** WordPress's own mechanism is
+two files: `.maintenance` in the docroot, which `wp_is_maintenance_mode()` looks
+for, and the `wp-content/maintenance.php` drop-in, which `wp_maintenance()`
+serves with a 503. `wp_is_maintenance_mode()` treats a flag older than **ten
+minutes** as expired, so the recipe writes `$upgrading = time() + 86400`:
+writing the value WordPress itself writes would reopen the site in the middle of
+a window longer than ten minutes, and put traffic back on a half-migrated
+database if the deploy failed at minute nine. The drop-in carries a marker and
+only a marked file is removed, so a project that ships its own maintenance page
+keeps it.
+
+Under the `symlink` strategy these files are written into whichever release is
+live when the window opens, so after the swap they belong to the previous
+release — the new one is served normally, which is correct, but a rollback to
+that previous release would find it still in maintenance. `maintenance:disable`
+removes them from the path it can address, and `rm -f {{current_path}}/.maintenance
+{{current_path}}/wp-content/maintenance.php` is the manual remedy.
+
+**`db:backup` is opt-in per framework.** It defaults to off everywhere. Magento
+has it through `setup:backup` and WordPress has it through `wp db export/import`;
+Laravel and Symfony have **no dump command** in their recipes. Turning
+`--db-backup` on for a framework without one is a hard failure naming the
+reason — deliberately, because silently skipping it would let an operator
+believe a backup exists immediately before a destructive `db:migrate`. A project
+that wants one adds a hook:
+
+```yaml
+deploy:
+  hooks:
+    - name: dump
+      on: "db:backup"
+      position: after
+      order: 10
+      run: "mysqldump --single-transaction \"$DATABASE_URL\" > {{shared_path}}/backups/manual.sql"
+```
+
+### Framework-specific notes
+
+**Laravel.** `storage` is shared rather than merely writable because the
+maintenance flag lives at `storage/framework/down`: a shared directory is what
+carries it across the release swap. The framework caches are built in
+`app:cache:flush`, on the target, never at build time — `artisan optimize`
+writes `bootstrap/cache/config.php`, and once that file exists the process
+environment no longer overrides `.env`, so a cache built elsewhere would carry
+another machine's configuration to production. `worker_control` sends
+`queue:restart`, which exits 0 with any cache store, so a project whose cache
+cannot carry the signal needs a persistent one for the step to mean anything.
+The `app` check prefers `artisan db:show` and falls back to `migrate:status` on
+Laravel 10 and older, where `db:show` does not exist; the fallback exits 1 on a
+project that has no migrations table yet, which is a healthy zero-migration
+project.
+
+**Symfony.** Composer's `auto-scripts` runs `cache:clear` and `assets:install`,
+which is right for a developer and wrong for a deploy: both have to happen where
+the application lives, so `build:vendors` passes `--no-scripts` and
+`build:assets` runs `assets:install` on the target with `--relative` (the links
+it writes then resolve from wherever the docroot ends up, which an in-place
+deploy needs). `doctrine:migrations:migrate` takes `--allow-no-migration`,
+because a project with an empty migrations directory is a healthy project.
+`var/cache` is deliberately **not** shared: the compiled container belongs to one
+release and one environment. `symfony_env` (default `prod`) decides the
+environment the deploy runs under, because a committed `.env` saying
+`APP_ENV=dev` is a development default rather than an instruction to production;
+the value is not validated, so a typo builds the wrong cache directory. The
+`app` check prefers `dbal:run-sql` and falls back to `doctrine:query:sql`,
+chosen by asking `bin/console` rather than by guessing a DoctrineBundle version.
+
+**WordPress.** Only the classic layout — core files and `wp-content/` in the
+repository root, no `composer.json` — is supported; a Bedrock layout (core in
+`vendor/`, docroot `web/`) and a content-only checkout are not. `wp-config.php`
+is a shared file, and on a first deploy `shared/` is empty, so **the target's
+`wp-config.php` has to be seeded before the deploy runs** or the release keeps
+the repository's copy — which names the development database. `wp db export`
+shells out to `mysqldump`, so a target needs both wp-cli and a MySQL client.
+
+### What the sandbox provides for these recipes
+
+Each recipe declares what its application needs beyond the profile, and the
+project may override it — that is what makes a project whose database is not the
+framework's default rehearsable at all:
+
+```yaml
+deploy:
+  settings:
+    sandbox_packages: [postgresql]
+    sandbox_extensions: [intl, pgsql, mbstring, xml, curl, zip]
+    sandbox_services: [postgresql, redis-server]
+    sandbox_tools: [wp-cli]
+```
+
+The four lists **replace** the recipe's, rather than extending them: a project on
+PostgreSQL replaces `[mariadb]`, it does not run both. A service name from the
+engine's table carries the package that provides it, so naming `postgresql` is
+enough to install and start it; a service the image cannot start is named on
+container start rather than skipped in silence.
 
 ## The pipeline
 
