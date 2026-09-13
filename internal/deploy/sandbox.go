@@ -203,6 +203,54 @@ func ValidateSandboxTools(tools []string) error {
 	return nil
 }
 
+// sandboxService is a service the sandbox can be asked to start that the
+// distribution's own packages do not fully provide.
+type sandboxService struct {
+	// Package is the apt package that provides the server. A service named
+	// without its package is a service that never starts, so the name carries it.
+	Package string
+	// InitScript is written when the distribution ships none. Debian bookworm
+	// runs PostgreSQL through systemd only, so `/etc/init.d/postgresql` does not
+	// exist even with the server installed — and the entrypoint's start loop
+	// skipped the request without a word, leaving a rehearsal whose database was
+	// never started and a failure that surfaced later as a connection error.
+	InitScript string
+}
+
+var sandboxServices = map[string]sandboxService{
+	"postgresql": {
+		Package: "postgresql",
+		InitScript: "#!/bin/sh\n" +
+			"set -e\n" +
+			"version=\"$(ls /etc/postgresql | head -n1)\"\n" +
+			"exec pg_ctlcluster \"$version\" main \"${1:-start}\"\n",
+	},
+}
+
+// sandboxRequestedInitScripts returns the requested services whose init script
+// the image has to write itself.
+func sandboxRequestedInitScripts(services []string) []string {
+	needed := []string{}
+	for _, service := range sortedSandboxWords(services) {
+		if entry, ok := sandboxServices[service]; ok && entry.InitScript != "" {
+			needed = append(needed, service)
+		}
+	}
+	return needed
+}
+
+// shellQuoteScriptLines renders a script as the arguments of a `printf`: one
+// single-quoted word per line, so the Dockerfile's shell writes the file
+// verbatim and nothing in the script is expanded at image build time.
+func shellQuoteScriptLines(script string) string {
+	lines := strings.Split(strings.TrimRight(script, "\n"), "\n")
+	quoted := make([]string, 0, len(lines))
+	for _, line := range lines {
+		quoted = append(quoted, "'"+strings.ReplaceAll(line, "'", `'\''`)+"'")
+	}
+	return strings.Join(quoted, " ")
+}
+
 // SandboxDockerfile renders the image definition for a profile plus a recipe's
 // requirements.
 //
@@ -239,6 +287,15 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 		packages = append(packages, SandboxWebPackages(series)...)
 	}
 	packages = append(packages, sortedSandboxWords(requirements.Packages)...)
+
+	// A service from the engine's table brings the package that provides it:
+	// naming a service that is installed nowhere is how a rehearsal came to run
+	// against a database that was never started.
+	for _, service := range sortedSandboxWords(requirements.Services) {
+		if entry, ok := sandboxServices[service]; ok && entry.Package != "" {
+			packages = append(packages, entry.Package)
+		}
+	}
 
 	extensions := sortedSandboxWords(requirements.Extensions)
 	extensionPackages := make([]string, 0, len(extensions))
@@ -309,6 +366,19 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
     dpkg-query -W -f='${Package}=${Version}\n' openssh-server rsync git > %s; \
     rm -rf /var/lib/apt/lists/*
 `, strings.Join(quoteWords(append(packages, extensionPackages...)), " "), SandboxPackagesTxt)
+
+	// An init script the distribution does not ship, written for the services
+	// this image was asked to start. Without it the entrypoint's start loop finds
+	// no script and says nothing, and the rehearsal runs against a database that
+	// was never started.
+	if scripts := sandboxRequestedInitScripts(requirements.Services); len(scripts) > 0 {
+		fmt.Fprintf(&builder, "\nRUN set -eux; \\\n")
+		for _, service := range scripts {
+			fmt.Fprintf(&builder, "    if [ ! -x /etc/init.d/%s ]; then printf '%%s\\n' %s > /etc/init.d/%s; chmod 0755 /etc/init.d/%s; fi; \\\n",
+				service, shellQuoteScriptLines(sandboxServices[service].InitScript), service, service)
+		}
+		fmt.Fprintf(&builder, "    true\n")
+	}
 
 	// Composer is not a distribution package here (see above), and `php` has to mean
 	// the requested series: every recipe command, the sandbox remote's `php_bin` and
@@ -396,7 +466,8 @@ RUN printf '%%s\n' \
       '#!/bin/sh' \
       'set -e' \
       'for service in $GOVARD_SANDBOX_SERVICES; do' \
-      '  if [ -x "/etc/init.d/$service" ]; then /etc/init.d/$service start || true; fi' \
+      '  if [ -x "/etc/init.d/$service" ]; then /etc/init.d/$service start || true; ' \
+      '  else echo "govard: this image has no init script for the service $service, so it was not started" >&2; fi' \
       'done' \
       'exec "$@"' \
       > /usr/local/bin/govard-sandbox-entrypoint; \
