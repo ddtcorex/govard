@@ -89,6 +89,21 @@ func DeployRecipe() deploy.Recipe {
 		recipe.ReplaceTask(task)
 	}
 
+	// fillOnTarget fills a task the target has to run itself: the command asks
+	// the application about itself, and a build machine has no application, no
+	// database and no store configuration. `govard deploy build` skips it —
+	// measured: `setup:static-content:deploy` compiled every theme on the builder
+	// and then failed with "The default website isn't defined", with and without
+	// explicit themes and locales — and artifact mode leaves it in the deploy so
+	// the target runs it after receiving the artifact.
+	fillOnTarget := func(id, title, command string) {
+		task := recipe.Task(id)
+		task.Title = title
+		task.Command = command
+		task.NeedsApplication = true
+		recipe.ReplaceTask(task)
+	}
+
 	fill(deploy.TaskVendors, "install Composer dependencies",
 		"cd {{release_path}} && {{composer_bin}} install --no-dev --optimize-autoloader --no-interaction --prefer-dist")
 
@@ -142,7 +157,7 @@ func DeployRecipe() deploy.Recipe {
 	// with `&&`, so a failed admin pass stops the deploy instead of publishing
 	// half the static content. The single pass is unchanged when the split is
 	// off, which is the default.
-	fill(deploy.TaskAssets, "deploy static content",
+	fillOnTarget(deploy.TaskAssets, "deploy static content",
 		`cd {{release_path}} && if [ {{settings.mage_mode}} != developer ]; then `+
 			`if [ {{settings.split_static_deployment}} = true ]; then `+
 			`{{php_bin}} bin/magento setup:static-content:deploy -f --area=adminhtml --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_deploy_options_args}} {{settings.static_content_locales_backend_args}} {{settings.magento_themes_backend_args}} && `+

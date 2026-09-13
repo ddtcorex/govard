@@ -300,6 +300,12 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 	if runner == nil {
 		runner = LocalRunner{}
 	}
+	// The recipe's defaults are part of the settings a build reads — they are
+	// what says which paths belong to the target rather than to the artifact.
+	// Layering them here is idempotent, so a caller that already did it is
+	// unaffected, and a caller that forgot cannot produce an artifact holding
+	// target state.
+	req.Options = WithRecipeDefaults(req.Recipe, req.Options)
 	timeout := req.Options.CommandTimeout
 	if timeout <= 0 {
 		timeout = DefaultCommandTimeout
@@ -320,6 +326,14 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 		SetPath("deploy_path", filepath.Dir(output))
 
 	if err := runBuildTasks(ctx, runner, req, vars, output, out); err != nil {
+		return nil, err
+	}
+
+	// The recipe's shared paths belong to the target, and `deploy:shared` links
+	// them there. An artifact that also carries them is not a harmless extra
+	// file: it is copied over a release whose shared paths are already symlinks,
+	// and a regular file replaces a symlink.
+	if err := dropTargetOwnedPaths(output, sharedPaths(req.Options.Settings), out); err != nil {
 		return nil, err
 	}
 
@@ -423,6 +437,16 @@ func runBuildTasks(ctx context.Context, runner Runner, req BuildRequest, vars Va
 			continue
 		}
 		if !step.Implemented() {
+			continue
+		}
+		// A step that reads the application's own configuration cannot run here:
+		// there is no application, no database and no store configuration on a
+		// build machine. Measured on a real project, static content deployment
+		// compiled every theme and then failed with "The default website isn't
+		// defined" — with and without explicit themes and locales — because the
+		// store it asks about lives in the database.
+		if step.NeedsApplication {
+			fmt.Fprintf(out, "  → %s left to the target: it needs the deployed application\n", step.ID)
 			continue
 		}
 		if step.core != nil {
@@ -537,7 +561,7 @@ func CoreArtifact(ctx context.Context, sc *StepContext) error {
 	// The transfer runs on the machine that invoked govard, so it goes through
 	// a local runner whatever the target is: for a remote target that command
 	// is rsync, for a local one it is a copy.
-	command := ArtifactUploadCommand(sc.Host, artifactDir, releasePath, len(progressArgs(sc)) > 0)
+	command := artifactUploadCommand(sc, artifactDir, releasePath)
 	if _, err := (LocalRunner{}).Run(ctx, command, RunOptions{Timeout: buildStepTimeout(sc.Opts), Out: sc.Live}); err != nil {
 		return fmt.Errorf("upload the artifact to %s: %w", releasePath, err)
 	}
@@ -561,6 +585,61 @@ func CoreArtifact(ctx context.Context, sc *StepContext) error {
 	return nil
 }
 
+// sharedPaths returns the paths a recipe declares shared — the ones `deploy:shared`
+// links on the target and a release therefore does not own.
+func sharedPaths(settings map[string]any) []string {
+	paths := append([]string{}, settingsStringList(settings, "shared_files")...)
+	return append(paths, settingsStringList(settings, "shared_dirs")...)
+}
+
+// dropTargetOwnedPaths removes the target's shared state from an artifact before
+// it is hashed and shipped.
+//
+// The damage this prevents is not a stray file. The artifact is copied over a
+// release whose shared paths `deploy:shared` has already linked, and a regular
+// file replaces a symlink: measured on a real target, the build wrote a 78-byte
+// deployment configuration of its own where the target's was 4791 bytes, the
+// upload put that stub in the release's place, and the application then failed
+// with `Connection "default" is not defined` — after the upload had succeeded and
+// the maintenance window was already open.
+func dropTargetOwnedPaths(root string, paths []string, out io.Writer) error {
+	root = filepath.Clean(root)
+	for _, rel := range paths {
+		rel = strings.TrimSpace(rel)
+		if rel == "" {
+			continue
+		}
+		target := filepath.Clean(filepath.Join(root, rel))
+		// A path that escapes the artifact, or names it, is not a path this
+		// function may delete.
+		if target == root || !strings.HasPrefix(target, root+string(os.PathSeparator)) {
+			continue
+		}
+		if _, err := os.Lstat(target); err != nil {
+			continue
+		}
+		if err := os.RemoveAll(target); err != nil {
+			return fmt.Errorf("remove %s from the artifact: %w", rel, err)
+		}
+		fmt.Fprintf(out, "  excluded %s: it belongs to the target\n", rel)
+	}
+	return nil
+}
+
+// artifactUploadCommand is the transfer `deploy:artifact` performs. It is a seam
+// rather than an inline call because the exclusion list it carries is the only
+// thing standing between a target and an artifact that holds the target's own
+// shared state, and that list comes from the settings — not from the function
+// that formats the command.
+func artifactUploadCommand(sc *StepContext, artifactDir, releasePath string) string {
+	return ArtifactUploadCommand(sc.Host, artifactDir, releasePath, len(progressArgs(sc)) > 0, sharedPaths(sc.Opts.Settings))
+}
+
+// ArtifactUploadCommandForContextForTest exposes the seam above to the tests/ package.
+func ArtifactUploadCommandForContextForTest(sc *StepContext, artifactDir, releasePath string) string {
+	return artifactUploadCommand(sc, artifactDir, releasePath)
+}
+
 // ArtifactUploadCommand returns the command that copies an artifact root onto a
 // target path.
 //
@@ -568,7 +647,7 @@ func CoreArtifact(ctx context.Context, sc *StepContext) error {
 // rsync would add a dependency the pipeline does not otherwise have. A remote
 // target gets rsync, with the manifest excluded: it is written separately to
 // `.dep/` so the release keeps one copy of it, next to its record.
-func ArtifactUploadCommand(host Host, source, destination string, progress bool) string {
+func ArtifactUploadCommand(host Host, source, destination string, progress bool, exclude []string) string {
 	root := strings.TrimRight(source, "/")
 	if host.Local || strings.TrimSpace(host.Remote.Host) == "" {
 		return fmt.Sprintf("cp -a %s %s && rm -f %s",
@@ -586,7 +665,18 @@ func ArtifactUploadCommand(host Host, source, destination string, progress bool)
 	if progress {
 		progressFlag = "--info=progress2 "
 	}
-	return fmt.Sprintf("rsync -az --numeric-ids "+progressFlag+"--exclude=%s -e %s %s %s",
+	// The excluded paths are the target's own shared state. The artifact should
+	// not hold them either, and the exclusion is what protects a target from an
+	// artifact that does: without it the upload replaces the symlinks
+	// `deploy:shared` made with whatever the build machine had.
+	excludeFlags := ""
+	for _, path := range exclude {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		excludeFlags += "--exclude=" + conventions.ShellQuote(path) + " "
+	}
+	return fmt.Sprintf("rsync -az --numeric-ids "+progressFlag+excludeFlags+"--exclude=%s -e %s %s %s",
 		conventions.ShellQuote(ArtifactManifestName),
 		conventions.ShellQuote(strings.Join(sshArgs, " ")),
 		conventions.ShellQuote(root+"/"),
@@ -594,8 +684,8 @@ func ArtifactUploadCommand(host Host, source, destination string, progress bool)
 }
 
 // ArtifactUploadCommandForTest exposes ArtifactUploadCommand to the tests/ package.
-func ArtifactUploadCommandForTest(host Host, source, destination string, progress bool) string {
-	return ArtifactUploadCommand(host, source, destination, progress)
+func ArtifactUploadCommandForTest(host Host, source, destination string, progress bool, exclude []string) string {
+	return ArtifactUploadCommand(host, source, destination, progress, exclude)
 }
 
 // writeTargetFile writes a file on the target atomically: a heredoc into a

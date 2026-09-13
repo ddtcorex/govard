@@ -186,7 +186,7 @@ func TestReadManifestWithoutAnArtifactIsAnError(t *testing.T) {
 
 func TestArtifactUploadCommandCopiesLocallyAndRsyncsRemotely(t *testing.T) {
 	local := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	localCommand := deploy.ArtifactUploadCommandForTest(local, "/tmp/artifact", "/srv/app/releases/1", false)
+	localCommand := deploy.ArtifactUploadCommandForTest(local, "/tmp/artifact", "/srv/app/releases/1", false, nil)
 	if !strings.Contains(localCommand, "cp -a") {
 		t.Fatalf("a local target must be a copy, got %q", localCommand)
 	}
@@ -199,11 +199,45 @@ func TestArtifactUploadCommandCopiesLocallyAndRsyncsRemotely(t *testing.T) {
 		DeployPath: "/srv/app",
 		Remote:     engine.RemoteConfig{Host: "staging.example.com", User: "deploy"},
 	}
-	remoteCommand := deploy.ArtifactUploadCommandForTest(remoteHost, "/tmp/artifact", "/srv/app/releases/1", false)
+	remoteCommand := deploy.ArtifactUploadCommandForTest(remoteHost, "/tmp/artifact", "/srv/app/releases/1", false, nil)
 	for _, want := range []string{"rsync", "--numeric-ids", "manifest.json", "deploy@staging.example.com:/srv/app/releases/1/"} {
 		if !strings.Contains(remoteCommand, want) {
 			t.Errorf("the remote upload command is missing %q:\n%s", want, remoteCommand)
 		}
+	}
+}
+
+// The upload must not be able to replace the shared paths `deploy:shared` linked
+// on the target, even when the artifact it is handed still holds them: the
+// artifact is copied over a release whose `app/etc/env.php` is a symlink to the
+// target's own configuration, and a regular file would replace it.
+func TestArtifactUploadKeepsTheTargetsSharedState(t *testing.T) {
+	remoteHost := deploy.Host{
+		Name:       "staging",
+		DeployPath: "/srv/app",
+		Remote:     engine.RemoteConfig{Host: "staging.example.com", User: "deploy"},
+	}
+	// Driven through the step's own settings, so this pins the wiring as well as
+	// the formatting: the exclusion list comes from the recipe's shared paths.
+	sc := deploy.StepContextForTest(remoteHost, deploy.Options{
+		Settings: map[string]any{
+			"shared_files": []string{"app/etc/env.php"},
+			"shared_dirs":  []string{"var/log", "pub/media"},
+		},
+	})
+	command := deploy.ArtifactUploadCommandForContextForTest(sc, "/tmp/artifact", "/srv/app/releases/1")
+
+	for _, want := range []string{
+		"--exclude='app/etc/env.php'",
+		"--exclude='var/log'",
+		"--exclude='pub/media'",
+	} {
+		if !strings.Contains(command, want) {
+			t.Errorf("the upload can still replace the target's %s:\n%s", want, command)
+		}
+	}
+	if !strings.Contains(command, "--exclude='manifest.json'") {
+		t.Errorf("the manifest exclusion was lost:\n%s", command)
 	}
 }
 
@@ -367,5 +401,45 @@ func TestCoreArtifactRefusesAnArtifactThatNoLongerMatchesItsManifest(t *testing.
 	// The check gates the upload: a corrupt artifact must not reach the release.
 	if _, statErr := os.Stat(filepath.Join(releaseDir, "vendor", "autoload.php")); statErr == nil {
 		t.Fatal("the corrupt artifact was uploaded into the release anyway")
+	}
+}
+
+// Artifact mode leaves the tasks that need the deployed application to the
+// target, and the transfer has to come first: a task that reads the
+// application's own configuration cannot run before the application is there.
+//
+// Measured on a real project: `setup:static-content:deploy` compiles every theme
+// and then fails with "The default website isn't defined" on a build machine,
+// because the store it asks about lives in the database.
+func TestArtifactModeRunsTheApplicationTasksOnTheTargetAfterTheUpload(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	task := recipe.Task(deploy.TaskAssets)
+	task.Command = "php bin/console assets:install"
+	task.NeedsApplication = true
+	recipe.ReplaceTask(task)
+
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "sandbox")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	plan = plan.ForBuildMode(deploy.BuildArtifact)
+
+	artifactAt, assetsAt := -1, -1
+	for idx, step := range plan.Steps {
+		switch step.ID {
+		case deploy.TaskArtifact:
+			artifactAt = idx
+		case deploy.TaskAssets:
+			assetsAt = idx
+			if step.Skipped {
+				t.Fatalf("a task that needs the application must run on the target, not be skipped: %s", step.SkipReason)
+			}
+		}
+	}
+	if artifactAt < 0 || assetsAt < 0 {
+		t.Fatalf("the plan is missing deploy:artifact (%d) or the assets task (%d)", artifactAt, assetsAt)
+	}
+	if artifactAt > assetsAt {
+		t.Fatalf("deploy:artifact (step %d) must come before the tasks that need the code it brings (step %d)", artifactAt, assetsAt)
 	}
 }

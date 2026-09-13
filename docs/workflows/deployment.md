@@ -498,6 +498,34 @@ the target builds.
 | `server` | on the target | a hotfix from a laptop, or a project with no CI |
 | `artifact` | on the machine running `govard deploy build` | CI, so the deploy job needs no toolchain |
 
+### What an artifact can and cannot carry
+
+The build job runs the same recipe the server build runs, minus the steps that
+ask the application about itself. Static content deployment is the one that
+matters: `setup:static-content:deploy` reads the store, website and locale
+configuration out of the database, so a machine that has no application, no
+`app/etc/env.php` and no database cannot run it — naming the themes and locales
+explicitly does not change that, because the store it asks about is still in the
+database.
+
+A recipe marks those steps, and artifact mode leaves them **in the deploy**: the
+target runs them after `deploy:artifact` has unpacked the artifact, which is the
+same place a server build runs them. So the split is:
+
+| Runs on the build machine | Runs on the target |
+| --- | --- |
+| Composer install, patches, DI compile, frontend (node) build | static content, `setup:upgrade`, configuration import, cache flush, verification |
+
+The deploy job still needs no toolchain of its own — it needs govard, ssh and
+rsync; the target runs the application steps over SSH, as it always did.
+
+An artifact also never carries the paths the recipe declares **shared**
+(`shared_files`, `shared_dirs`): those belong to the target, and `govard deploy
+build` prints every one it drops. Without that, an artifact built on a machine
+that happens to hold its own `app/etc/env.php` would replace the target's — a
+regular file replacing the symlink `deploy:shared` made — and the release would
+fail with the application's own words: `Connection "default" is not defined`.
+
 ### The two-job CI shape
 
 ```yaml

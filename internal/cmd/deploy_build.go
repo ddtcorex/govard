@@ -82,15 +82,11 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 	force, _ := cmd.Flags().GetBool("force")
 	jsonOut, _ := cmd.Flags().GetBool("json")
 
-	config, options, err := resolveDeployOptions(cmd, remote)
-	if err != nil {
-		return err
-	}
-	hooks, err := hooksFromConfig(options.Hooks)
+	_, recipe, options, err := resolveDeployRecipeOptions(cmd, remote)
 	if err != nil {
 		return configOrUsageError(err)
 	}
-	recipe, options, err := deployRecipe(config, options)
+	hooks, err := hooksFromConfig(options.Hooks)
 	if err != nil {
 		return configOrUsageError(err)
 	}

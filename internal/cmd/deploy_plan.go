@@ -40,15 +40,11 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	config, options, err := resolveDeployOptions(cmd, remote)
-	if err != nil {
-		return err
-	}
-	hooks, err := hooksFromConfig(options.Hooks)
+	_, recipe, options, err := resolveDeployRecipeOptions(cmd, remote)
 	if err != nil {
 		return configOrUsageError(err)
 	}
-	recipe, options, err := deployRecipe(config, options)
+	hooks, err := hooksFromConfig(options.Hooks)
 	if err != nil {
 		return configOrUsageError(err)
 	}
@@ -121,7 +117,7 @@ func runDeployCheck(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	config, options, err := resolveDeployOptions(cmd, remote)
+	config, _, options, err := resolveDeployRecipeOptions(cmd, remote)
 	if err != nil {
 		return err
 	}

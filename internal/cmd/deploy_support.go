@@ -309,6 +309,29 @@ func deployRecipe(config engine.Config, options deploy.Options) (deploy.Recipe, 
 	return recipe, deploy.WithRecipeDefaults(recipe, options), nil
 }
 
+// resolveDeployRecipeOptions resolves a remote the way a deploy does: the
+// project's layers first, then the recipe under them.
+//
+// Every command that runs a deploy *or describes one* has to start here. A
+// command that stops at resolveDeployOptions sees the settings as the project
+// wrote them rather than as the deploy will use them: `sync_paths` comes back
+// empty for a project that never configured it, and `deploy check` then warns
+// about an in-place activation that copies no built files — an activation that
+// project does not get. Describing a deploy nobody will run is worse than
+// describing none, because the remedy it suggests is an edit to a file that was
+// already right.
+func resolveDeployRecipeOptions(command *cobra.Command, remote string) (engine.Config, deploy.Recipe, deploy.Options, error) {
+	config, options, err := resolveDeployOptions(command, remote)
+	if err != nil {
+		return engine.Config{}, deploy.Recipe{}, deploy.Options{}, err
+	}
+	recipe, options, err := deployRecipe(config, options)
+	if err != nil {
+		return engine.Config{}, deploy.Recipe{}, deploy.Options{}, err
+	}
+	return config, recipe, options, nil
+}
+
 // deployPlanFor composes the recipe with the project's hooks and shapes the
 // result for the resolved build mode. `plan` and `deploy` share it, so the tree
 // an operator reviews is the tree the executor runs.

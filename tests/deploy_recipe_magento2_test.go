@@ -979,3 +979,40 @@ func TestMagento2SandboxImageStartsTheServicesTheRecipeAsksFor(t *testing.T) {
 		}
 	}
 }
+
+// Static content deployment asks the application about itself — the store, the
+// website, the locales — and that configuration lives in the target's database.
+// A build machine cannot run it: measured on a real project,
+// `setup:static-content:deploy` compiled every theme and then failed with "The
+// default website isn't defined", with and without explicit themes and locales.
+//
+// The recipe therefore marks the task as needing the application, and artifact
+// mode leaves it in the deploy: the target runs it after receiving the artifact.
+func TestMagento2StaticContentRunsOnTheTargetNotTheBuilder(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	if task := recipe.Task(deploy.TaskAssets); !task.NeedsApplication {
+		t.Fatal("build:assets must be marked as needing the deployed application")
+	}
+
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "sandbox")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	plan = plan.ForBuildMode(deploy.BuildArtifact)
+
+	artifactAt, assetsAt := -1, -1
+	for idx, step := range plan.Steps {
+		switch step.ID {
+		case deploy.TaskArtifact:
+			artifactAt = idx
+		case deploy.TaskAssets:
+			assetsAt = idx
+			if step.Skipped {
+				t.Fatalf("artifact mode must leave static content to the target: %s", step.SkipReason)
+			}
+		}
+	}
+	if artifactAt < 0 || assetsAt < 0 || artifactAt > assetsAt {
+		t.Fatalf("the artifact must be received before static content runs: artifact at %d, static content at %d", artifactAt, assetsAt)
+	}
+}

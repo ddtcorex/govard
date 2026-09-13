@@ -307,3 +307,81 @@ func TestBuildArtifactDirDoesNotProbePHPForANonPHPProject(t *testing.T) {
 		t.Fatalf("manifest php version = %q, want empty", manifest.PHPVersion)
 	}
 }
+
+// An artifact a build machine produces is not allowed to carry the state the
+// recipe declares shared: that state belongs to the target, `deploy:shared` links
+// it there after the artifact lands, and an artifact that also holds it replaces
+// those links with whatever the build machine had.
+//
+// Measured on a real Magento project: `setup:di:compile` wrote a 78-byte
+// `app/etc/env.php` of its own, the artifact carried it, the upload replaced the
+// target's 4791-byte shared configuration with it, and the release failed with
+// `Connection "default" is not defined` — after a successful upload, with the
+// maintenance window already open.
+func TestBuildArtifactDirDoesNotCarryTheTargetsSharedState(t *testing.T) {
+	work, revision := seedBuildRepo(t)
+	output := filepath.Join(t.TempDir(), "artifact")
+
+	recipe := deploy.DefaultRecipe()
+	recipe.Defaults = map[string]any{
+		"shared_files": []string{"app/etc/env.php"},
+		"shared_dirs":  []string{"var/log"},
+	}
+	// The build writes both paths, exactly as Magento's own build does.
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskVendors,
+		deploy.Task{ID: deploy.TaskVendors, Command: "mkdir -p app/etc var/log && echo '<?php return [];' > app/etc/env.php && echo log > var/log/system.log"})
+
+	manifest, err := deploy.BuildArtifactDir(context.Background(), deploy.BuildRequest{
+		Recipe:    recipe,
+		Options:   deploy.Options{Revision: revision},
+		Vars:      deploy.NewVars(),
+		WorkDir:   work,
+		OutputDir: output,
+	})
+	if err != nil {
+		t.Fatalf("build artifact: %v", err)
+	}
+
+	for _, shared := range []string{"app/etc/env.php", "var/log"} {
+		if _, err := os.Lstat(filepath.Join(output, shared)); !os.IsNotExist(err) {
+			t.Errorf("the artifact still carries the target's %s (lstat err = %v)", shared, err)
+		}
+		for _, file := range manifest.Files {
+			if file.Path == shared || strings.HasPrefix(file.Path, shared+"/") {
+				t.Errorf("the manifest still lists the target's %s: %s", shared, file.Path)
+			}
+		}
+	}
+}
+
+// A task the recipe marks as needing the application must not run on the build
+// machine. Before this, `govard deploy build` ran it and died: static content
+// deployment compiled every theme and then asked for a store that only exists in
+// the target's database.
+func TestBuildArtifactDirLeavesApplicationTasksToTheTarget(t *testing.T) {
+	work, revision := seedBuildRepo(t)
+	output := filepath.Join(t.TempDir(), "artifact")
+
+	recipe := deploy.DefaultRecipe()
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskVendors,
+		deploy.Task{ID: deploy.TaskVendors, Command: "echo built > from-the-builder.txt"})
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskAssets,
+		deploy.Task{ID: deploy.TaskAssets, Command: "echo built > needs-the-application.txt", NeedsApplication: true})
+
+	if _, err := deploy.BuildArtifactDir(context.Background(), deploy.BuildRequest{
+		Recipe:    recipe,
+		Options:   deploy.Options{Revision: revision},
+		Vars:      deploy.NewVars(),
+		WorkDir:   work,
+		OutputDir: output,
+	}); err != nil {
+		t.Fatalf("build artifact: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(output, "from-the-builder.txt")); err != nil {
+		t.Fatalf("the builder must still run the tasks it can: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(output, "needs-the-application.txt")); !os.IsNotExist(err) {
+		t.Fatalf("a task that needs the application ran on the build machine (stat err = %v)", err)
+	}
+}

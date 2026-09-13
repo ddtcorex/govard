@@ -36,6 +36,8 @@ type Step struct {
 	Command  string
 	RunOn    RunOn
 	Optional bool
+	// NeedsApplication is copied from the recipe's task: see Task.NeedsApplication.
+	NeedsApplication bool
 	// Source records which layer contributed the step: "recipe" or "config".
 	Source string
 	// Checks are the recipe's post-publish verifications. They travel with the
@@ -172,7 +174,7 @@ func (p Plan) ForBuildMode(mode string) Plan {
 			continue
 		}
 		switch {
-		case artifact && artifactReplacedBuildTasks[steps[idx].ID]:
+		case artifact && artifactReplacedBuildTasks[steps[idx].ID] && !steps[idx].NeedsApplication:
 			steps[idx].Skipped = true
 			steps[idx].SkipReason = "artifact mode: the artifact already provides this"
 		case !artifact && steps[idx].ID == TaskArtifact:
@@ -180,7 +182,38 @@ func (p Plan) ForBuildMode(mode string) Plan {
 			steps[idx].SkipReason = "server mode: the target builds this release"
 		}
 	}
+	if artifact {
+		steps = moveArtifactBeforeTheBuildTasks(steps)
+	}
 	return Plan{Remote: p.Remote, Steps: steps}
+}
+
+// moveArtifactBeforeTheBuildTasks puts `deploy:artifact` where the mode needs it:
+// first among the build tasks.
+//
+// The build tasks an artifact does not provide still run, and they run against
+// the code the artifact brings — a task that reads the application's own
+// configuration cannot run before the application is there. Without this the
+// order would be whatever the recipe happens to declare, and the one task that
+// survives artifact mode would run in an empty release directory.
+func moveArtifactBeforeTheBuildTasks(steps []Step) []Step {
+	artifactAt, firstBuild := -1, -1
+	for idx, step := range steps {
+		if step.ID == TaskArtifact {
+			artifactAt = idx
+		}
+		if step.Stage == StageBuild && firstBuild < 0 {
+			firstBuild = idx
+		}
+	}
+	if artifactAt < 0 || firstBuild < 0 || artifactAt < firstBuild {
+		return steps
+	}
+	reordered := make([]Step, 0, len(steps))
+	reordered = append(reordered, steps[:firstBuild]...)
+	reordered = append(reordered, steps[artifactAt])
+	reordered = append(reordered, steps[firstBuild:artifactAt]...)
+	return append(reordered, steps[artifactAt+1:]...)
 }
 
 // ForPublishStrategy returns the plan as the resolved publish strategy shapes
@@ -315,7 +348,12 @@ func (p Plan) needsMaintenanceWindow() bool {
 
 // artifactReplacedBuildTasks are the build-stage tasks `--build=artifact`
 // replaces with deploy:artifact. The list is the engine's, not a recipe's: it
-// is the same five neutral ids for every framework.
+// is the same neutral ids for every framework.
+//
+// A recipe can exempt one of them by marking its task NeedsApplication: a task
+// that reads the application's own configuration cannot be produced by a build
+// machine at all, so artifact mode leaves it in the deploy and the target runs it
+// — which is also where a server build runs it.
 var artifactReplacedBuildTasks = map[string]bool{
 	TaskVendors:  true,
 	TaskPatches:  true,
@@ -360,8 +398,10 @@ func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
 			Command:  task.Command,
 			RunOn:    task.RunOn,
 			Optional: task.Optional,
-			Source:   "recipe",
-			core:     task.Core,
+
+			NeedsApplication: task.NeedsApplication,
+			Source:           "recipe",
+			core:             task.Core,
 		}
 		// The recipe's verifications belong to the verify step: that is what
 		// runs them, and it keeps them reachable from `RunStep`, which rollback
