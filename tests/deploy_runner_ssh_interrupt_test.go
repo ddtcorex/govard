@@ -33,6 +33,7 @@ import (
 func TestAnInterruptedRemoteCommandTakesItsProcessGroupWithIt(t *testing.T) {
 	runner, _, dir := sandboxedSSHRunner(t, "")
 	command := remoteWorkCommand(t, dir)
+	records := interruptRecords()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -49,6 +50,7 @@ func TestAnInterruptedRemoteCommandTakesItsProcessGroupWithIt(t *testing.T) {
 
 	waitForInterruptedRun(t, done)
 	waitForWorkToStop(t, pid, "remote command's work")
+	waitForRecordsToSettle(t, records)
 
 	// The teardown is a second connection, not a signal from here: it is the only
 	// thing that can reach work on the other machine. Asserted on what was sent,
@@ -93,6 +95,7 @@ func TestARemoteStepThatHasNotRecordedItsPIDYetIsStillStopped(t *testing.T) {
 	runner, _, dir := sandboxedSSHRunner(t, "1.5")
 	workPIDFile := filepath.Join(dir, "work.pid")
 	command := remoteWorkCommand(t, dir)
+	records := interruptRecords()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -114,6 +117,7 @@ func TestARemoteStepThatHasNotRecordedItsPIDYetIsStillStopped(t *testing.T) {
 	waitForInterruptedRun(t, done)
 	pid := waitForRecordedPID(t, workPIDFile)
 	waitForWorkToStop(t, pid, "late-starting remote command's work")
+	waitForRecordsToSettle(t, records)
 }
 
 // sandboxedSSHRunner points SSHRunner at a stand-in for sshd. startDelay is how
@@ -188,6 +192,38 @@ func waitForInterruptedRun(t *testing.T, done <-chan error) {
 	case <-time.After(60 * time.Second):
 		t.Fatal("the interrupted command never returned")
 	}
+}
+
+// waitForRecordsToSettle waits for the teardown of an interrupted step to remove
+// the record it read. That teardown runs on its own connection after the run has
+// already returned, so a test that ends first leaves the file behind on whatever
+// target it was pointed at — and the file's removal is part of the behaviour
+// being asserted, not housekeeping around it.
+func waitForRecordsToSettle(t *testing.T, before map[string]bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(recordsAddedSince(before)) == 0 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	left := recordsAddedSince(before)
+	for path := range left {
+		os.Remove(path)
+	}
+	t.Fatalf("the teardown left %d record(s) behind: %v", len(left), left)
+}
+
+func recordsAddedSince(before map[string]bool) map[string]bool {
+	added := map[string]bool{}
+	for path := range interruptRecords() {
+		if !before[path] {
+			added[path] = true
+		}
+	}
+	return added
 }
 
 // remoteWorkCommand starts the work in the background and records its pid. `$$`
