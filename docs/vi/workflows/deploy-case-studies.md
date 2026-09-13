@@ -66,16 +66,18 @@ Magento ship sẵn danh sách (`vendor`, `generated`, `pub/static/adminhtml`,
 `pub/static/frontend`); dự án ghi đè danh sách đó thì tự chịu hệ quả.
 :::
 
-### 3. Ứng dụng chạy ở mode nào
+### 3. Target chạy ở mode nào
 
-`mage_mode` là một **deploy setting**, không phải setting của môi trường local, và
-nó đổi việc bước static content làm:
+`mage_mode` **mô tả** target; nó không đổi target. Govard không bao giờ chạy
+`bin/magento deploy:mode:set`, và không chỗ nào khác trong pipeline đọc setting này —
+đây là deploy setting, không phải setting của môi trường local, và tác dụng duy nhất
+của nó là lên bước static content:
 
 | `mage_mode` | `build:assets` có chạy | Ý nghĩa |
 | --- | --- | --- |
 | không đặt (mặc định) | có | hành vi production: mọi theme và locale đã cấu hình được compile lúc deploy |
 | `production` | có | y như trên, nhưng nói rõ — mode mà target thật sự chạy |
-| `developer` | không | Magento sinh static file theo nhu cầu, nên deploy chúng là việc vô ích và có rủi ro asset cũ |
+| `developer` | không | target sinh static file theo nhu cầu, nên deploy chúng là việc vô ích và có rủi ro asset cũ |
 
 Điều kiện chặn chỉ là so sánh chuỗi, nên giá trị rỗng hành xử y hệt `production`.
 Chỉ đúng chuỗi `developer` mới bỏ qua bước này. Trên target ở developer mode, asset
@@ -83,11 +85,26 @@ Chỉ đúng chuỗi `developer` mới bỏ qua bước này. Trên target ở d
 một storefront lớn xong trong vài phút thay vì mất cả một phần tư giờ như static
 content deploy ở production.
 
+::: warning Setting chỉ giả định mode; nó không đặt mode
+Hai hệ quả kéo theo, và cả hai đều im lặng:
+
+- **Đặt `developer` cho một target đang chạy production không biến target đó thành
+  developer.** `env.php` của nó vẫn không sinh gì theo nhu cầu, nên static file của
+  theme chưa từng được deploy và cũng không được sinh khi có request — storefront trả
+  `404` cho chúng. Kiểm tra target thật sự chạy gì bằng `bin/magento deploy:mode:show`
+  trên target, rồi đặt `mage_mode` cho khớp.
+- **Giá trị không đúng chính xác chuỗi `developer` sẽ deploy static content.**
+  Validation chỉ đòi setting là string, không phải một tập đóng, nên một lỗi gõ như
+  `Development` vẫn được chấp nhận và hành xử như production.
+:::
+
 ::: info Môi trường nào thì dùng cái nào
 Target staging mà team duyệt và debug thường là `developer`. Target production là
 `production` (hoặc không đặt). Target staging **dùng chung** mà người ta đo hiệu
 năng thì nên là `production`, vì việc sinh theo nhu cầu làm đổi các con số.
-`govard deploy plan` in ra nhánh nào đang có hiệu lực trước khi kết nối tới đâu.
+`govard deploy plan` cho thấy điều kiện chặn sẽ so sánh với giá trị nào: command
+`build:assets` in ra mang sẵn nó, ví dụ `[ developer != developer ]` trên target ở
+developer mode.
 :::
 
 ## Chọn ca trong một cái nhìn
@@ -176,9 +193,12 @@ target khai). `basic` không có PHP lẫn Composer, nên dự án Magento dừn
 **Cần chờ đợi gì.** Lần deploy đầu tiên (nguội) là lần chậm: Composer tải mọi thứ,
 DI compile quét toàn bộ codebase, và static content được compile theo từng theme và
 locale. Trên một dự án 2.4.9 thật, kích thước trung bình, riêng lượt static ở
-production mode đã mất vài phút. Lần deploy thứ hai cho một thay đổi nhỏ nhanh hơn
-nhiều vì Composer cache trên target đã ấm và `--keep-generated` tái dùng được
-những gì có thể.
+production mode đã mất vài phút. Thứ làm lần deploy sau rẻ hơn là target giữ Composer
+cache giữa các release và `setup:upgrade` chạy với `--keep-generated`, nên bước cài
+dependency tải ít hơn. Hai lần chạy đo được của dự án này: một lần build server ở
+developer mode xong trong 2m35s, và một lần deploy production mode nhận artifact mất
+14m35s — khác biệt chủ yếu nằm ở lượt static content, thứ mà lần chạy developer mode
+bỏ qua hoàn toàn.
 
 **Những gì hay hỏng.**
 
@@ -302,8 +322,9 @@ govard deploy build sandbox --output /tmp/acme-artifact
 govard deploy --remote sandbox --artifact-dir /tmp/acme-artifact --yes
 ```
 
-**Cần chờ đợi gì.** `build:frontend` in ra output npm của chính theme; một lần build
-Tailwind mất vài chục giây. `build:assets` sau đó mới là bước dài.
+**Cần chờ đợi gì.** `build:frontend` in ra output npm của chính theme. Đó là một lần
+build Node như mọi lần build Node khác: nhanh khi `node_modules` đã ấm, chậm hơn khi
+phải cài dependency của theme trước. `build:assets` sau đó mới là bước dài.
 
 **Những gì hay hỏng.**
 
@@ -402,8 +423,8 @@ govard deploy --remote sandbox --yes
 ```
 
 **Cần chờ đợi gì.** Cả hai lần build npm đều chạy, rồi một lượt static content phủ
-cả hai theme và union locale. Thời gian build gần như cộng dồn theo số theme; lượt
-static thì tăng nhanh hơn tuyến tính theo theme × locale.
+cả hai theme và union locale. Thời gian build tăng theo số theme, và lượt static tăng
+theo theme × locale.
 
 **Những gì hay hỏng.**
 
@@ -534,9 +555,10 @@ govard deploy --remote sandbox --artifact-dir /tmp/acme-artifact --yes
 
 **Cần chờ đợi gì.** Trên một dự án 2.4.9 thật, lần build artifact tạo ra 101.366
 file / 752,8 MiB trong khoảng bảy phút, và lần deploy production mode nhận nó kết
-thúc trong 14m35s (release 11) — phần lớn thời gian đó là lượt static content trên
-target, bước buộc phải chạy ở đó. Thư mục output đã tồn tại sẽ bị từ chối trừ khi
-bạn truyền `--force`, nên một file còn sót từ lần build trước không thể lọt ra.
+thúc trong 14m35s (release 11), bước dài nhất là lượt static content trên target —
+khoảng năm đến sáu phút trong đó, và là bước buộc phải chạy ở đó. Thư mục output đã
+tồn tại sẽ bị từ chối trừ khi bạn truyền `--force`, nên một file còn sót từ lần build
+trước không thể lọt ra.
 
 **Những gì hay hỏng.**
 
@@ -559,18 +581,29 @@ govard deploy check legacy-staging
 ```
 
 Output nêu layout nó tìm thấy, chiến lược publish mà layout đó ngụ ý, dung lượng
-trống, repository có tới được từ target hay không, và đường credential Composer nào
-đang được dùng:
+trống, PHP mà target chạy, repository có tới được từ target hay không, và đường
+credential Composer nào đang được dùng. Các note đến trước, theo thứ tự các phép dò đã
+chạy, rồi mới tới các field đã resolve:
 
 ```
 Target legacy-staging is deployable
   publish strategy: in_place
+  repository reachable from the target: refs/heads/main
+  free space at the deploy path: 42.4 GiB
+  php on the target: 8.2.18
   host:            legacy-staging
   deploy path:     /var/www/shop
   current path:    /var/www/shop
   publish:         in_place
   layout:          current path is a real directory: releases are copied into it
 ```
+
+Note nào xuất hiện còn tuỳ target và lần chạy: chiến lược symlink thêm
+`atomic symlink rename: supported`, sandbox thêm việc mirror đã được refresh, artifact
+mode thêm số file, revision và so sánh PHP của artifact, còn dự án có repository riêng
+thêm đường credential nó tìm được. Hai note là cảnh báo chứ không phải dữ kiện —
+`deploy.settings.sync_paths is empty` với target in-place, và một entry `sync_paths` mà
+release link từ `shared/`.
 
 Nếu remote bỏ trống `deploy_path`, govard dò layout mà target đã có (`~`,
 `~/.deployer`) và chỉ nhận nó **khi đúng một ứng viên khớp**, đồng thời nói rõ là

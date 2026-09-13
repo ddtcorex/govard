@@ -215,6 +215,25 @@ govard remote add staging --host host.example.com --user deploy --path '~/public
 #                                                                          ^-- dấu nháy đơn
 ```
 
+### Q: `govard deploy` nằm ở đâu, và diễn tập thế nào?
+
+`govard deploy` phát hành một revision git lên remote qua SSH và rsync. Trước khi
+đụng tới server thật, hãy diễn tập toàn bộ pipeline trên một container ngay tại máy:
+
+```bash
+govard deploy sandbox up --profile full --php 8.3
+govard deploy --remote sandbox --yes
+govard deploy sandbox down --purge
+```
+
+- Tham chiếu engine, chiến lược publish, rollback: [Triển khai](/vi/workflows/deployment)
+- Cấu hình mẫu (Luma, Hyvä, nhiều theme, chế độ developer và production, docroot
+  symlink và docroot thật): [Case study triển khai](/vi/workflows/deploy-case-studies)
+
+`govard deploy check staging` trả lời câu "remote này đã sẵn sàng chưa" trước khi tạo
+bất cứ thứ gì, và `govard deploy plan staging` in ra toàn bộ danh sách task mà không
+cần kết nối.
+
 ---
 
 ## Lỗi Database

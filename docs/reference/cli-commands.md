@@ -216,7 +216,7 @@ the default path.
 
 Any other value must name an entry under `audit.lint.external_providers` in the
 project configuration (see
-[Configuration](./configuration.md#audit-lint-providers)). External providers are
+[Configuration](/reference/configuration#audit-lint-providers)). External providers are
 never a fallback for the native backend and are never inferred: an unknown name
 is an error, and a native failure stays a native failure. A standalone target has
 no project configuration, so only `govard` is available there. `--provider`

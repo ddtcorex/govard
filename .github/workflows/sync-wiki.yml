@@ -81,6 +81,7 @@ jobs:
               -e 's|/developer/contributing|Contributing|g' \
               -e 's|/more/faq|FAQ|g' \
               -e 's|/more/changelog|Changelog|g' \
+              -e 's@](/)@](Home)@g' \
               -e 's|(\[Home\])|[Home]|g' \
               "$f"
           done

@@ -332,13 +332,17 @@ Hai hệ quả cần nói thẳng:
   được chặn theo điều kiện file version tồn tại, nên nó pass một cách vô nghĩa khi
   không có gì được deploy.
 
-`govard deploy plan <remote>` in ra tác động của mode trước khi kết nối tới đâu: bước
-static content có mặt trong cả hai trường hợp, và setting mà plan resolve ra chính là
-thứ mà điều kiện chặn đem ra so sánh.
+`govard deploy plan <remote>` cho thấy điều kiện chặn sẽ so sánh với mode nào, trước
+khi kết nối tới đâu: bước static content có mặt trong cả hai trường hợp, và command mà
+plan in ra mang sẵn phép so sánh, ví dụ `[ developer != developer ]` trên target ở
+developer mode.
 
 Mode là một deploy setting, không phải setting của môi trường local: môi trường local
 trong `.govard.yml` tự chọn Magento mode cho việc phát triển, và hai bên không nhất
-thiết phải khớp nhau.
+thiết phải khớp nhau. Nó còn mang tính **mô tả**: govard không bao giờ chạy
+`bin/magento deploy:mode:set`, nên đặt `developer` ở đây là nói cho deploy biết target
+đang chạy gì, chứ không làm target chạy như vậy. Hãy kiểm tra target bằng
+`bin/magento deploy:mode:show` rồi đặt setting cho khớp.
 
 ### Tách static content
 

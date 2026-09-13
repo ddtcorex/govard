@@ -68,16 +68,18 @@ as a successful deploy. The Magento recipe ships the list
 that overrides it owns that consequence.
 :::
 
-### 3. Which mode the application runs in
+### 3. Which mode the target runs in
 
-`mage_mode` is a **deploy setting**, not a local environment setting, and it changes
-what the static content step does:
+`mage_mode` **describes** the target; it does not change it. Govard never runs
+`bin/magento deploy:mode:set`, and nothing else in the pipeline reads this setting —
+it is a deploy setting, not a local environment setting, and its only effect is on
+the static content step:
 
 | `mage_mode` | `build:assets` runs | Meaning |
 | --- | --- | --- |
 | not set (default) | yes | production behaviour: every configured theme and locale is compiled at deploy time |
 | `production` | yes | the same, stated explicitly — the mode the target actually runs |
-| `developer` | no | Magento generates static files on demand, so deploying them is wasted work and a stale-asset risk |
+| `developer` | no | the target generates static files on demand, so deploying them is wasted work and a stale-asset risk |
 
 The guard is a plain string comparison, so an empty value behaves exactly like
 `production`. Only the literal `developer` skips the step. On a developer-mode
@@ -85,12 +87,26 @@ target the compiled assets are produced by the application on first request, whi
 is why a developer-mode deploy of a large storefront finishes in minutes rather
 than in the quarter of an hour a production static content deploy costs.
 
+::: warning The setting assumes the mode; it does not set it
+Two consequences follow, and both are silent:
+
+- **Setting `developer` on a target that runs in production does not make the target
+  a developer target.** Its `env.php` keeps generating nothing on demand, so the
+  theme's static files were never deployed and are not produced on request — the
+  storefront answers `404` for them. Check what the target actually runs with
+  `bin/magento deploy:mode:show` on it, and set `mage_mode` to match.
+- **A value that is not exactly `developer` deploys static content.** Validation
+  requires the setting to be a string, not one of a closed set, so a typo such as
+  `Development` is accepted and behaves like production.
+:::
+
 ::: info Which is right for which environment
 A staging target that a team browses and debugs is usually `developer`. A production
 target is `production` (or unset). A **shared** staging target that performance is
 measured on should be `production`, because on-demand generation changes the
-numbers. `govard deploy plan` prints which branch is in effect before anything
-connects.
+numbers. `govard deploy plan` shows which one the guard will compare: the rendered
+`build:assets` command carries it, for example `[ developer != developer ]` on a
+developer-mode target.
 :::
 
 ## Choosing a case at a glance
@@ -179,9 +195,12 @@ at `build:vendors`; `php` has the toolchain but no database, so it stops at
 **What to expect.** A cold first deploy is the slow one: Composer downloads
 everything, DI compile scans the whole codebase, and static content is compiled per
 theme and locale. On a real 2.4.9 project of moderate size the production-mode
-static pass alone is several minutes. A second deploy of a small change is much
-faster because the Composer cache on the target is warm and `--keep-generated`
-reuses what it can.
+static pass alone is several minutes. What makes a later deploy cheaper is that the
+target keeps its Composer cache between releases and `setup:upgrade` runs with
+`--keep-generated`, so the dependency step downloads less. Two measured runs of this
+project: a developer-mode server build finished in 2m35s, and a production-mode
+deploy that received an artifact took 14m35s — and the difference is dominated by the
+static content pass, which the developer-mode run skips entirely.
 
 **What goes wrong.**
 
@@ -307,8 +326,9 @@ govard deploy build sandbox --output /tmp/acme-artifact
 govard deploy --remote sandbox --artifact-dir /tmp/acme-artifact --yes
 ```
 
-**What to expect.** `build:frontend` prints the theme's own npm output; a Tailwind
-build is tens of seconds. `build:assets` afterwards is the long one.
+**What to expect.** `build:frontend` prints the theme's own npm output. It is a Node
+build like any other: quick on a warm `node_modules`, slower when the theme's
+dependencies have to be installed first. `build:assets` afterwards is the long one.
 
 **What goes wrong.**
 
@@ -408,8 +428,8 @@ govard deploy --remote sandbox --yes
 ```
 
 **What to expect.** Both npm builds run, then one static content pass covering both
-themes and the union of locales. The build time is roughly additive in the number of
-themes; the static pass is superlinear in themes × locales.
+themes and the union of locales. The build time grows with the number of themes, and
+the static pass grows with themes × locales.
 
 **What goes wrong.**
 
@@ -541,10 +561,10 @@ govard deploy --remote sandbox --artifact-dir /tmp/acme-artifact --yes
 
 **What to expect.** On a real 2.4.9 project the artifact build produced 101,366
 files / 752.8 MiB in about seven minutes, and the production-mode deploy that
-received it finished in 14m35s (release 11) — most of that being the static content
-pass on the target, which is the step that must run there. An existing output
-directory is refused unless you pass `--force`, so a file left over from an earlier
-build cannot ship.
+received it finished in 14m35s (release 11), the largest single step being the static
+content pass on the target — about five to six minutes of it, and the step that must
+run there. An existing output directory is refused unless you pass `--force`, so a
+file left over from an earlier build cannot ship.
 
 **What goes wrong.**
 
@@ -567,18 +587,29 @@ govard deploy check legacy-staging
 ```
 
 The output names the layout it found, the publish strategy that implies, the free
-space, whether the repository is reachable from the target, and which Composer
-credential route is in play:
+space, the PHP the target runs, whether the repository is reachable from the target,
+and which Composer credential route is in play. The notes come first, in the order
+the probes ran, then the resolved fields:
 
 ```
 Target legacy-staging is deployable
   publish strategy: in_place
+  repository reachable from the target: refs/heads/main
+  free space at the deploy path: 42.4 GiB
+  php on the target: 8.2.18
   host:            legacy-staging
   deploy path:     /var/www/shop
   current path:    /var/www/shop
   publish:         in_place
   layout:          current path is a real directory: releases are copied into it
 ```
+
+Which notes appear depends on the target and the run: the symlink strategy adds
+`atomic symlink rename: supported`, a sandbox adds that its mirror was refreshed,
+artifact mode adds the artifact's file count, revision and PHP comparison, and a
+project with private repositories adds the credential route it found. Two notes are
+warnings rather than facts — `deploy.settings.sync_paths is empty` for an in-place
+target, and a `sync_paths` entry that the release links from `shared/`.
 
 If the remote omits `deploy_path`, govard probes the layout the target already has
 (`~`, `~/.deployer`) and adopts it **only when exactly one candidate matches**,

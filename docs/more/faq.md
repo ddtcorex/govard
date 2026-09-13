@@ -215,6 +215,26 @@ govard remote add staging --host host.example.com --user deploy --path '~/public
 #                                                                          ^-- single quotes
 ```
 
+### Q: Where does `govard deploy` fit in, and how do I rehearse it?
+
+`govard deploy` publishes a git revision to a remote over SSH and rsync. Before the
+first server is involved, rehearse the whole pipeline against a container on your
+machine:
+
+```bash
+govard deploy sandbox up --profile full --php 8.3
+govard deploy --remote sandbox --yes
+govard deploy sandbox down --purge
+```
+
+- Engine reference, publish strategies, rollback: [Deployment](/workflows/deployment)
+- Worked setups (Luma, Hyvä, several themes, developer vs production mode, symlinked
+  vs real webroot): [Deployment case studies](/workflows/deploy-case-studies)
+
+`govard deploy check staging` answers "is this remote ready" before anything is
+created, and `govard deploy plan staging` prints the whole task list without
+connecting.
+
 ---
 
 ## Database Issues

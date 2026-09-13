@@ -353,13 +353,17 @@ Two consequences worth stating plainly:
   content version check is guarded on the version file existing, so it passes
   vacuously when nothing was deployed.
 
-`govard deploy plan <remote>` prints the mode's effect before anything connects: the
-static content step is present in both cases, and the setting the plan resolves is
-what the guard will compare against.
+`govard deploy plan <remote>` shows which mode the guard will compare, before
+anything connects: the static content step is present either way, and the command the
+plan prints carries the comparison, for example `[ developer != developer ]` on a
+developer-mode target.
 
 The mode is a deploy setting, not a local environment setting: `.govard.yml`'s local
 environment picks its own Magento mode for development, and the two do not have to
-agree.
+agree. It is also **descriptive**: govard never runs `bin/magento deploy:mode:set`, so
+setting `developer` here tells the deploy what the target runs, it does not make the
+target run it. Check the target with `bin/magento deploy:mode:show` and set the
+setting to match.
 
 ### The static content split
 

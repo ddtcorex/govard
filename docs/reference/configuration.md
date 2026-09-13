@@ -384,7 +384,7 @@ Magento's `app/etc/env.php`.
 
 ### Audit Lint Providers
 
-`audit.lint` configures which backend [`govard audit`](./cli-commands.md#govard-audit)
+`audit.lint` configures which backend [`govard audit`](/reference/cli-commands#govard-audit)
 uses for lint checks. Both keys are optional; with neither set, audits run the
 Govard-owned native backend.
 
