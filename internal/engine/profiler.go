@@ -103,8 +103,8 @@ func profilerLeaseFromStore(_ string) (string, string, error) {
 	root := filepath.Join(GovardHomeDir(), "audit")
 	// The store is project-scoped (root/<projectID>/sessions/...). Without a
 	// projectID we cannot enumerate efficiently, so return not-found and let
-	// the caller fall back to synthetic generation. The live `bebe9` verification
-	// runs `govard audit run` directly, so this fallback is sufficient.
+	// the caller fall back to synthetic generation. A live verification runs
+	// `govard audit run` directly, so this fallback is sufficient.
 	if _, err := os.Stat(root); err != nil {
 		return "", "", err
 	}

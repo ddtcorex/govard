@@ -3,7 +3,7 @@ package engine
 import "testing"
 
 func TestProfilerLease(t *testing.T) {
-	csv, sha, err := ProfilerLease("https://bebe9.test/eveil/livres/livre-sonore.html")
+	csv, sha, err := ProfilerLease("https://example.test/catalog/product.html")
 	if err != nil {
 		t.Fatalf("ProfilerLease failed: %v", err)
 	}

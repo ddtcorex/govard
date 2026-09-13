@@ -22,9 +22,9 @@ func TestEndToEndMagento2Workflow(t *testing.T) {
 	CopyBlueprints(t, filepath.Join(projectDir, "blueprints"))
 
 	config := engine.Config{
-		ProjectName: "magento2-test",
+		ProjectName: "sample-project",
 		Framework:   "magento2",
-		Domain:      "magento2-test.test",
+		Domain:      "sample-project.test",
 		Stack: engine.Stack{
 			PHPVersion: "8.1",
 			WebServer:  "nginx",
