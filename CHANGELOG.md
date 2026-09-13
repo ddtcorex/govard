@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.73.0] - 2026-09-14
+
+### ✨ New Features
+
+- **A first-class deployment engine:** `govard deploy` runs a fixed pipeline (prepare → build → publish → verify → cleanup) whose neutral steps a framework *recipe* fills. It publishes by an atomic symlink swap or in place, opens the maintenance window only where it buys something, verifies the live revision, and can back up, roll back and unlock. `govard deploy plan` prints the resolved tree without connecting, and `deploy sandbox up` builds a container that plays the target over real ssh and rsync — a sandbox deploy is a production deploy pointed at one machine. (#300, #305, #306, #308, #310)
+- **Artifact build mode:** `govard deploy build --output <dir>` produces an artifact a CI job uploads, and the deploy job then needs govard, ssh and rsync and nothing else. The steps a build machine cannot produce — Magento's static content, Symfony's `assets:install` — stay on the target, where a server build runs them too. (#300, #308)
+- **Laravel, Symfony and WordPress recipes:** each ships the commands its application needs — Composer with the right flags, migrations that tolerate an empty migration history, framework caches rebuilt where the environment they bake in actually holds, Symfony's `auto-scripts` deliberately deferred to the target, WordPress's own `.maintenance` and drop-in written ahead of the clock so a long window does not expire, and a `wp-load.php` fallback for a target without wp-cli. (#312)
+- **A machine-readable deploy plan:** `govard deploy plan --json` emits a `kind: "plan"` document — every step with its `implementation`, `command`, `run_on` and skip reason — and carries no timestamp, so a pipeline can diff two plans and a reviewer can see where a step runs, which the human tree does not print. (#318)
+- **A Docker-free command contract:** every command declares the runtime it needs, so project configuration, `init`, `audit run --checks integrity`, `remote`, `sync`, `deploy`, `tunnel` and `self-update` work on a host without Docker, and a missing runtime is exit `3` with a `CAPABILITY_MISSING` envelope before any work starts. (#288, #291, #295, #298)
+
+### 🐛 Bug Fixes
+
+- **`--db-backup` is refused when the recipe provides no dump.** The flag was accepted and the step skipped in silence, so a deploy could migrate with no backup and no error; it is now exit 4, before the run starts, naming the recipe and the remedy. (#317)
+- **An interrupted deploy stops the work, not only the shell:** the local step's process group is signalled, and over ssh the remote shell's own process group is signalled on a second, short-lived connection. (#305)
+- **Audit:** sequence modules resolve against the installed vendor packages (#289), and the lint sandbox installs `ext-curl`, without which Magento's own platform check stopped a real rehearsal at `build:vendors` (#301).
+- **Rehearsal fixes found against real projects:** a chosen sandbox PHP series, a web tier that keeps the client's port, and a teardown that waits for its own record before the test ends. (#303, #306, #308)
+
+### 📚 Documentation
+
+- **Deployment is documented as an engine plus worked cases:** the pipeline, build modes, publish strategies and sandbox on one page, a configuration per project shape on another, and the per-framework recipe tables in the framework reference. (#310, #316)
+
+### 🔧 Release Pipeline
+
+- **The Docker-free contract is executable:** `scripts/core-contract.sh` proves the requirement-free commands in a job with no docker binary, and each tag's install-e2e proves both install channels on fresh containers while pinning the tag under test. (#284, #288)
+
 ## [1.72.0] - 2026-09-10
 
 ### ✨ New Features
