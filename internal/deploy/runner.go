@@ -96,6 +96,10 @@ func (LocalRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	if opts.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.Stdin)
 	}
+	// A step is a chain, so the shell govard starts is not the work: the work is
+	// its child. Cancellation has to reach the group, not just the shell — see
+	// prepareProcessGroup.
+	prepareProcessGroup(cmd, nil)
 	// A killed process does not necessarily close the pipes its children
 	// inherited, and Wait would then block until those children exit — a
 	// 500ms timeout observed as 30s. WaitDelay bounds that wait; this is the
@@ -107,6 +111,13 @@ func (LocalRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	cmd.Stderr = streamTo(stderr, opts.Out)
 
 	err := cmd.Run()
+	if ctx.Err() != nil {
+		// The command was stopped, not finished. SIGTERM went to its group when
+		// the context was cancelled; this is the escalation for the work that
+		// ignored it and would otherwise keep writing into the target after the
+		// operator believes the deploy is over.
+		sweepProcessGroup(cmd)
+	}
 	result := Result{Stdout: stdout.String(), Stderr: stderr.String()}
 	if err == nil {
 		return result, nil
