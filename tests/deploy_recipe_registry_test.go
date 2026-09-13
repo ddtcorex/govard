@@ -11,8 +11,22 @@ import (
 // closing an import cycle through the framework types, so this seam is the only
 // place a framework recipe can enter.
 func TestDeployRecipeIsReachableThroughTheFrameworkRegistry(t *testing.T) {
-	if _, ok := frameworks.DeployRecipe("laravel"); ok {
-		t.Fatal("laravel reported a deploy recipe; a framework without one must report false so the caller falls back to the neutral default")
+	// The example is found rather than named. Naming a framework here is what
+	// broke this test the day that framework got a recipe, and the subject is
+	// the registry seam, not any particular framework: the fallback has to work
+	// for whichever framework still has none.
+	var recipeless string
+	for _, definition := range frameworks.All() {
+		if _, ok := frameworks.DeployRecipe(definition.Name); !ok {
+			recipeless = definition.Name
+			break
+		}
+	}
+	if recipeless == "" {
+		t.Fatal("every registered framework reports a deploy recipe; this test needs one that does not")
+	}
+	if _, ok := frameworks.DeployRecipe(recipeless); ok {
+		t.Fatalf("%s reported a deploy recipe; a framework without one must report false so the caller falls back to the neutral default", recipeless)
 	}
 	if _, ok := frameworks.DeployRecipe("totally-unknown-framework"); ok {
 		t.Fatal("an unknown framework reported a deploy recipe")
