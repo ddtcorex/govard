@@ -102,20 +102,135 @@ func TestMagento2RecipeUsesTheConfiguredPHPBinary(t *testing.T) {
 // the three markers are present would pass for any order, including the broken
 // one.
 func TestMagento2CompileStepRebuildsTheAutoloaderWithoutStaleGeneratedCode(t *testing.T) {
-	command := magento2.DeployRecipe().Task("build:compile").Command
+	template := magento2.DeployRecipe().Task("build:compile").Command
 
-	clear := strings.Index(command, "rm -rf generated/code")
-	dump := strings.Index(command, "dump-autoload")
-	compile := strings.Index(command, "setup:di:compile")
+	clear := strings.Index(template, "rm -rf generated/code")
+	dump := strings.Index(template, "dump-autoload")
+	compile := strings.Index(template, "setup:di:compile")
 	if clear < 0 || dump < 0 || compile < 0 {
-		t.Fatalf("build:compile must clear the generated tree, rebuild the autoloader and compile:\n%s", command)
+		t.Fatalf("build:compile must clear the generated tree, rebuild the autoloader and compile:\n%s", template)
 	}
 	if clear > dump || dump > compile {
-		t.Fatalf("build:compile must clear before it rebuilds the map and rebuild the map before it compiles:\n%s", command)
+		t.Fatalf("build:compile must clear before it rebuilds the map and rebuild the map before it compiles:\n%s", template)
 	}
-	if !strings.Contains(command, "{{composer_bin}} dump-autoload") {
-		t.Fatalf("build:compile must rebuild the map with the configured Composer binary:\n%s", command)
+	if !strings.Contains(template, "{{composer_bin}} dump-autoload") {
+		t.Fatalf("build:compile must rebuild the map with the configured Composer binary:\n%s", template)
 	}
+
+	// The markers above say the step is written in the right order. This runs it,
+	// because a template can be reordered into the broken order and still read
+	// correctly: what makes the order the fix is the effect it has on the
+	// classmap, and the classmap is what the compiler then loads from.
+	//
+	// Two stand-ins model the only two behaviours that matter, so no PHP and no
+	// Composer are needed: the optimizer lists the project's generated tree in
+	// the map, and the compiler clears that tree before it loads what the map
+	// still points at.
+	dir := t.TempDir()
+	vars := deploy.NewVars().
+		SetPath("release_path", dir).
+		Set("composer_bin", filepath.Join(dir, "bin", "composer")).
+		Set("php_bin", filepath.Join(dir, "bin", "php"))
+	command, expandErr := vars.Expand(template)
+	if expandErr != nil {
+		t.Fatalf("render build:compile: %v", expandErr)
+	}
+	seedStandInDeployTools(t, dir)
+
+	// The state a previous compile leaves behind: a generated class, and the
+	// optimized map that lists it. A fresh release cannot be in this state, which
+	// is why the defect only appeared on a resumed or rebuilt one.
+	seedOptimizedRelease(t, dir)
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{Dir: dir}); err != nil {
+		t.Fatalf("a release that was compiled before must still compile: %v", err)
+	}
+	if classmap := readClassmap(t, dir); strings.Contains(classmap, "generated/code") {
+		t.Fatalf("the rebuilt map still lists the tree the compiler clears:\n%s", classmap)
+	}
+
+	// The other direction, in the same test: the same step with the clear removed
+	// must fail exactly the way the real defect failed. Without this the test
+	// would pass for a step that merely happens to work.
+	withoutClear := strings.Replace(command, "rm -rf generated/code generated/metadata && ", "", 1)
+	if withoutClear == command {
+		t.Fatalf("build:compile no longer clears the tree in the shape this test removes:\n%s", command)
+	}
+	seedOptimizedRelease(t, dir)
+	_, err := (deploy.LocalRunner{}).Run(context.Background(), withoutClear, deploy.RunOptions{Dir: dir})
+	if err == nil {
+		t.Fatal("without the clear, a compile over a previously compiled release must fail on the stale map")
+	}
+	if !strings.Contains(err.Error(), "Failed to open stream") {
+		t.Fatalf("the failure must be the one the clear removes, got %v", err)
+	}
+}
+
+// composerStandIn is `composer dump-autoload --optimize` reduced to the part this
+// defect turns on: the optimizer builds the classmap from the project's autoload
+// roots, and a Magento project registers `generated/code` as one of them.
+const composerStandIn = `#!/bin/sh
+map=vendor/composer/autoload_classmap.php
+mkdir -p vendor/composer
+{
+  echo '<?php return array('
+  find generated/code -name '*.php' 2>/dev/null | while read -r file; do
+    echo "  '"$file"' => __DIR__ . '/../../"$file"',"
+  done
+  echo ');'
+} > "$map"
+`
+
+// compileStandIn is `bin/magento setup:di:compile` reduced the same way: the
+// compiler clears the generated tree, and the class loader then loads every
+// class the optimized map still points at. Magento's own words for the failure
+// are what the assertions look for.
+const compileStandIn = `#!/bin/sh
+if [ "$2" != "setup:di:compile" ]; then
+  exit 0
+fi
+rm -rf generated/code generated/metadata
+for file in $(grep -o "generated/code[^']*" vendor/composer/autoload_classmap.php 2>/dev/null); do
+  if [ ! -f "$file" ]; then
+    echo "Warning: include($file): Failed to open stream: No such file or directory in vendor/composer/ClassLoader.php on line 576" >&2
+    exit 1
+  fi
+done
+exit 0
+`
+
+// seedOptimizedRelease puts a release in the state a compile leaves behind: a
+// generated class, and the optimized map that already lists it.
+func seedOptimizedRelease(t *testing.T, dir string) {
+	t.Helper()
+
+	writeFile(t, filepath.Join(dir, "generated/code/Acme/Framework/Proxy.php"), "<?php\n")
+	writeFile(t, filepath.Join(dir, "vendor/composer/autoload_classmap.php"),
+		"<?php return array(\n"+
+			"  'generated/code/Acme/Framework/Proxy.php' => __DIR__ . '/../../generated/code/Acme/Framework/Proxy.php',\n"+
+			");\n")
+}
+
+// seedStandInDeployTools installs the two stand-ins the rendered command calls.
+func seedStandInDeployTools(t *testing.T, dir string) {
+	t.Helper()
+
+	for name, script := range map[string]string{"composer": composerStandIn, "php": compileStandIn} {
+		path := filepath.Join(dir, "bin", name)
+		writeFile(t, path, script)
+		if err := os.Chmod(path, 0o755); err != nil {
+			t.Fatalf("make the %s stand-in executable: %v", name, err)
+		}
+	}
+}
+
+func readClassmap(t *testing.T, dir string) string {
+	t.Helper()
+
+	raw, err := os.ReadFile(filepath.Join(dir, "vendor/composer/autoload_classmap.php"))
+	if err != nil {
+		t.Fatalf("read the classmap: %v", err)
+	}
+	return string(raw)
 }
 
 func TestMagento2RecipeStaticContentIsDeterministic(t *testing.T) {
