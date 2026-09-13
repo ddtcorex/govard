@@ -261,6 +261,29 @@ rsync — copy `sync_paths` của in-place và upload artifact — chỉ thêm
 thì rsync không vẽ lại được dòng tiến độ, nên mỗi cập nhật sẽ thành một dòng log mới
 thay vì một dòng đang chạy.
 
+### Dừng một lần deploy
+
+`Ctrl-C` (hoặc `SIGTERM`) huỷ lần chạy thay vì giết tiến trình tại chỗ. Govard báo bước
+đó là *the run was interrupted*, rồi áp đúng luật mà một lần thất bại áp: trước
+maintenance window thì lock được nhả, vì chưa có gì live thay đổi và lần thử lại không
+được phép bị từ chối; khi window đã mở thì lock, thư mục release và record của nó ở lại,
+vì release là thứ duy nhất nói target đang dở dang ở đâu. `--resume` sẽ hoàn tất nó.
+
+Huỷ cũng dừng **công việc**, không chỉ sổ sách của govard. Mỗi bước là một chuỗi shell —
+`cd {{release_path}} && composer install …` — nên tiến trình govard khởi động là shell,
+còn compile, install hay transfer là con của nó. Bước chạy local nằm trong process group
+riêng: group nhận `SIGTERM` khi lần chạy bị huỷ, và thứ gì bỏ qua nó sẽ bị kill ngay khi
+command đã dừng trả về. Qua SSH, giết client local không dừng được gì trên máy kia, nên
+bước đó ghi lại pid của shell remote — `sshd` cấp cho nó session và process group riêng —
+rồi đường huỷ signal đúng group đó qua một kết nối thứ hai, ngắn. Bản ghi được xoá ngay khi bước kết thúc — kể cả bước thay shell của nó bằng
+`exec` hay tự đặt `EXIT` trap — và bởi đường teardown khi bước bị huỷ, nên lần chạy
+bình thường không để lại gì.
+
+Trên Windows không có process group để signal và govard không tạo job object, nên một
+bước bị huỷ chỉ giết shell mà govard khởi động, con của shell đó có thể sống lâu hơn lần
+chạy. Huỷ là yêu cầu dừng, không phải bảo đảm rằng bước đã bắt đầu thì đã dừng — hãy
+kiểm tra bằng `govard deploy releases` và `status` trước khi chạy lần nữa.
+
 ### Tách static content
 
 `split_static_deployment` deploy static content của adminhtml và frontend thành
