@@ -4,6 +4,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,7 +35,7 @@ func TestAnInterruptedLocalCommandTakesItsChildrenWithIt(t *testing.T) {
 	// `exec` makes the recorded pid the work itself rather than the shell that
 	// started it, so "is the work still running" is one process lookup and not a
 	// guess about which of two pids to watch.
-	command := "sh -c 'trap \"\" TERM; echo $$ > " + pidFile + "; exec sleep 300'"
+	command := "sh -c 'trap \"\" TERM; echo $$ > " + pidFile + "; exec sleep 60'"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -72,7 +73,7 @@ func TestATimedOutLocalCommandTakesItsChildrenWithIt(t *testing.T) {
 	dir := t.TempDir()
 	pidFile := filepath.Join(dir, "work.pid")
 
-	command := "sh -c 'trap \"\" TERM; echo $$ > " + pidFile + "; exec sleep 300'"
+	command := "sh -c 'trap \"\" TERM; echo $$ > " + pidFile + "; exec sleep 60'"
 
 	done := make(chan error, 1)
 	go func() {
@@ -127,27 +128,37 @@ func waitForWorkToStop(t *testing.T, pid int, detail string) {
 
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
-		if !runningAsSleep(t, pid) {
+		if !workIsRunning(t, pid) {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	if runningAsSleep(t, pid) {
+	if workIsRunning(t, pid) {
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 	}
-	t.Fatalf("the interrupted %s (pid %d, `sleep 300`) is still running", detail, pid)
+	t.Fatalf("the interrupted %s (pid %d, `sleep`) is still running", detail, pid)
 }
 
-// runningAsSleep reports whether pid is still the sleep the command started. A
-// process that is gone, or a different process that inherited the pid, both
-// answer no.
-func runningAsSleep(t *testing.T, pid int) bool {
+// workIsRunning reports whether pid is still the `sleep` the step started.
+//
+// The identity is the executable rather than the command line, because the step
+// runs under a shell — and, over ssh, under govard's own wrapper — whose command
+// line contains the text of the step: a substring lookup matches the shell and
+// then watches the wrong process.
+//
+// A `ps` that cannot run is an unknown answer, never "the work is gone". Reading
+// it as gone is how an assertion quietly stops asserting on a host without
+// `ps`, so the kernel is asked instead.
+func workIsRunning(t *testing.T, pid int) bool {
 	t.Helper()
 
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
-	if err != nil {
-		return false
+	out, err := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid)).Output()
+	if err == nil {
+		return strings.TrimSpace(string(out)) == "sleep"
 	}
-	return strings.Contains(string(out), "sleep 300")
+	if killErr := syscall.Kill(pid, 0); killErr == nil || errors.Is(killErr, syscall.EPERM) {
+		return true
+	}
+	return false
 }
