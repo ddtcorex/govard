@@ -219,6 +219,57 @@ Shared state, by framework:
 | Symfony | `.env.local` | `var/log` | `vendor`, `public/bundles` |
 | WordPress | `wp-config.php` | `wp-content/uploads` | `vendor` |
 
+### Where the build steps run, and what an artifact carries
+
+In `--build=server` every step runs on the target. In `--build=artifact` the build
+job runs `govard deploy build` on its own machine, and the target skips the five
+build tasks the artifact replaces — **except** the ones a recipe marks *needs the
+application* (`NeedsApplication`), which no build machine can produce because they
+read the installed application's own configuration:
+
+| Recipe | Build step that still runs on the target in artifact mode | What the artifact has to carry |
+| --- | --- | --- |
+| Magento 2 | `build:assets` (`setup:static-content:deploy`) | `vendor/`, `generated/`, the frontend build output |
+| Laravel | none | `vendor/`, the frontend build output (`public/build`) |
+| Symfony | `build:assets` (`assets:install public --symlink --relative`) | `vendor/`, the frontend build output |
+| WordPress | none | `vendor/` when the project has one, the frontend build output |
+
+No framework cache belongs in the artifact, and none of these recipes can put one
+there: `app:cache:flush` is a publish-stage step in all four, so it always runs on
+the target, where the environment the cache bakes in actually holds.
+
+### The steps these recipes leave empty
+
+An empty step is reported as **skipped**, never as a failure, and each one is a
+decision rather than an omission. `build:compile` and `build:patches` are empty for
+all three: none of them does ahead-of-time code generation, and none has a patch
+step. `app:workers:resume` is empty for Laravel and Symfony — `queue:restart` and
+`messenger:stop-workers` are the whole signal, and restarting the workers is the
+process manager's job — while WordPress has no worker tasks at all. Symfony leaves
+both maintenance steps and `app:configure` empty; Laravel and Symfony additionally
+leave `db:backup` empty, which is why `--db-backup` on them is refused instead of
+silently skipped.
+
+### What each recipe asks the sandbox for {#sandbox-recipe-defaults}
+
+These are the lists a recipe declares — the application's default, not a policy. A
+project overrides any of them with `deploy.settings.sandbox_*`, and each list
+**replaces** the recipe's rather than extending it:
+
+| Recipe | `sandbox_packages` | `sandbox_extensions` | `sandbox_services` | `sandbox_tools` |
+| --- | --- | --- | --- | --- |
+| Magento 2 | `libxslt1-dev`, `libzip-dev`, `libpng-dev`, `libjpeg-dev`, `libfreetype6-dev`, `default-mysql-client` | `bcmath`, `curl`, `gd`, `intl`, `mysql`, `soap`, `sockets`, `xsl`, `zip` | `mariadb`, `redis-server` | — |
+| Laravel | `default-mysql-client` | `bcmath`, `curl`, `gd`, `intl`, `mbstring`, `mysql`, `sqlite3`, `xml`, `zip` | `mariadb`, `redis-server` | — |
+| Symfony | `default-mysql-client` | `intl`, `mysql`, `mbstring`, `xml`, `curl`, `zip` | `mariadb`, `redis-server` | — |
+| WordPress | `default-mysql-client` | `mysqli`, `curl`, `gd`, `intl`, `mbstring`, `xml`, `zip` | `mariadb`, `redis-server` | `wp-cli` |
+
+A service name from the engine's table carries the package that provides it, so
+naming `postgresql` is enough to install and start it; a service the image cannot
+start is named on container start rather than skipped in silence. `sandbox_tools`
+accepts only the binaries the engine has an install recipe for — today that is
+`wp-cli` — and an unknown name is refused when the image is rendered, not when it
+fails to build.
+
 ### The three places these recipes differ from Magento's
 
 **Symfony has no maintenance task.** Symfony has no core mechanism for it, so
@@ -248,8 +299,11 @@ Under the `symlink` strategy these files are written into whichever release is
 live when the window opens, so after the swap they belong to the previous
 release — the new one is served normally, which is correct, but a rollback to
 that previous release would find it still in maintenance. `maintenance:disable`
-removes them from the path it can address, and `rm -f {{current_path}}/.maintenance
-{{current_path}}/wp-content/maintenance.php` is the manual remedy.
+removes them from the path it can address, and this is the manual remedy:
+
+```bash
+rm -f {{current_path}}/.maintenance {{current_path}}/wp-content/maintenance.php
+```
 
 **`db:backup` is opt-in per framework.** It defaults to off everywhere. Magento
 has it through `setup:backup` and WordPress has it through `wp db export/import`;
@@ -310,9 +364,9 @@ shells out to `mysqldump`, so a target needs both wp-cli and a MySQL client.
 
 ### What the sandbox provides for these recipes
 
-Each recipe declares what its application needs beyond the profile, and the
-project may override it — that is what makes a project whose database is not the
-framework's default rehearsable at all:
+A project whose database is not the framework's default says so in the project
+layer, which is what makes it rehearsable at all — a Symfony project on PostgreSQL
+replaces the recipe's lists instead of extending them:
 
 ```yaml
 deploy:
@@ -324,10 +378,7 @@ deploy:
 ```
 
 The four lists **replace** the recipe's, rather than extending them: a project on
-PostgreSQL replaces `[mariadb]`, it does not run both. A service name from the
-engine's table carries the package that provides it, so naming `postgresql` is
-enough to install and start it; a service the image cannot start is named on
-container start rather than skipped in silence.
+PostgreSQL replaces `[mariadb]`, it does not run both.
 
 ## The pipeline
 
@@ -439,7 +490,7 @@ lock, the release directory and its record stay, because the release is the only
 that says what the target is half-way through. `--resume` finishes it.
 
 Interrupting also stops the **work**, not just govard's own bookkeeping. Every step is
-a shell chain — `cd {{release_path}} && composer install …` — so the process govard
+a shell chain — <span v-pre>`cd {{release_path}} && composer install …`</span> — so the process govard
 starts is a shell and the compile, the install or the transfer is its child. A local
 step runs in its own process group: the group is sent `SIGTERM` when the run is
 cancelled, and anything that ignores it is killed as soon as the stopped command

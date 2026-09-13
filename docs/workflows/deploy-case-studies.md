@@ -668,6 +668,10 @@ deploy:
 - The `app` check runs `artisan db:show` (Laravel 11+), falling back to
   `migrate:status`. `about --only=environment` is **not** used: it exits 0 with no
   database at all, so it would prove nothing.
+- **In artifact mode** no Laravel step stays on the target: nothing is marked
+  *needs the application*, so the artifact must carry `vendor/` and `public/build`.
+  `app:cache:flush` still runs on the target, which is what keeps the configuration
+  cache from being built anywhere else.
 
 ## Case 10: Symfony, Doctrine migrations, PostgreSQL target {#case-10-symfony}
 
@@ -705,6 +709,10 @@ deploy:
   site. Add a hook if the project needs one — the deployment page has the shape.
 - The `app` check runs `dbal:run-sql "SELECT 1"`, or `doctrine:query:sql` on an
   older DoctrineBundle; the branch is chosen by asking the console.
+- **In artifact mode** `build:assets` still runs on the target — `assets:install`
+  reads the installed application, so an artifact cannot replace it. The artifact
+  carries `vendor/` and the frontend build output; `public/bundles` is written on
+  the target, which is also why it is in `sync_paths` for an in-place docroot.
 
 ## Case 11: WordPress, classic layout, wp-cli on the target {#case-11-wordpress}
 
@@ -744,6 +752,10 @@ a content-only checkout are not supported.
   for wp-cli and `default-mysql-client` (`mysqldump`) on its own.
 - Laravel and Symfony have **no dump command**: turning `--db-backup` on for them
   fails with a message naming the reason instead of quietly producing no backup.
+- **In artifact mode** the only build step is the guarded `composer install`, so the
+  artifact carries `vendor/` for a project that has a `composer.json` — and nothing
+  else. `wp core update-db`, the cache flush and the check run on the target,
+  against the database, in every mode.
 
 ## Rehearsing any case in the sandbox
 

@@ -217,6 +217,55 @@ State dùng chung, theo từng framework:
 | Symfony | `.env.local` | `var/log` | `vendor`, `public/bundles` |
 | WordPress | `wp-config.php` | `wp-content/uploads` | `vendor` |
 
+### Các bước build chạy ở đâu, và artifact mang theo gì
+
+Ở `--build=server` mọi bước chạy trên target. Ở `--build=artifact`, job build chạy
+`govard deploy build` trên máy của nó, và target bỏ qua năm task build mà artifact
+thay thế — **trừ** những task được recipe đánh dấu *cần ứng dụng*
+(`NeedsApplication`), thứ mà không máy build nào làm được vì chúng đọc chính cấu
+hình của ứng dụng đã cài:
+
+| Recipe | Bước build vẫn chạy trên target ở artifact mode | Artifact phải mang theo |
+| --- | --- | --- |
+| Magento 2 | `build:assets` (`setup:static-content:deploy`) | `vendor/`, `generated/`, output build frontend |
+| Laravel | không có | `vendor/`, output build frontend (`public/build`) |
+| Symfony | `build:assets` (`assets:install public --symlink --relative`) | `vendor/`, output build frontend |
+| WordPress | không có | `vendor/` nếu dự án có, output build frontend |
+
+Không cache của framework nào thuộc về artifact, và không recipe nào ở đây đặt được
+nó vào đó: `app:cache:flush` là bước thuộc giai đoạn publish ở cả bốn recipe, nên nó
+luôn chạy trên target — nơi môi trường mà cache "nướng" vào thực sự tồn tại.
+
+### Những bước các recipe này để trống
+
+Bước trống được báo là **skipped**, không bao giờ là fail, và mỗi bước là một quyết
+định chứ không phải thiếu sót. `build:compile` và `build:patches` trống ở cả ba:
+không framework nào sinh code trước, và không framework nào có bước patch.
+`app:workers:resume` trống với Laravel và Symfony — `queue:restart` và
+`messenger:stop-workers` đã là toàn bộ tín hiệu, còn restart worker là việc của
+process manager — trong khi WordPress không có task worker nào. Symfony để trống cả
+hai bước maintenance và `app:configure`; Laravel và Symfony còn để trống `db:backup`,
+đó là lý do bật `--db-backup` trên chúng bị từ chối thay vì bị bỏ qua im lặng.
+
+### Mỗi recipe yêu cầu sandbox cấp những gì {#sandbox-recipe-defaults}
+
+Đây là danh sách recipe khai — mặc định của ứng dụng, không phải chính sách. Dự án
+override bất kỳ danh sách nào bằng `deploy.settings.sandbox_*`, và mỗi danh sách
+**thay thế** danh sách của recipe chứ không nối thêm:
+
+| Recipe | `sandbox_packages` | `sandbox_extensions` | `sandbox_services` | `sandbox_tools` |
+| --- | --- | --- | --- | --- |
+| Magento 2 | `libxslt1-dev`, `libzip-dev`, `libpng-dev`, `libjpeg-dev`, `libfreetype6-dev`, `default-mysql-client` | `bcmath`, `curl`, `gd`, `intl`, `mysql`, `soap`, `sockets`, `xsl`, `zip` | `mariadb`, `redis-server` | — |
+| Laravel | `default-mysql-client` | `bcmath`, `curl`, `gd`, `intl`, `mbstring`, `mysql`, `sqlite3`, `xml`, `zip` | `mariadb`, `redis-server` | — |
+| Symfony | `default-mysql-client` | `intl`, `mysql`, `mbstring`, `xml`, `curl`, `zip` | `mariadb`, `redis-server` | — |
+| WordPress | `default-mysql-client` | `mysqli`, `curl`, `gd`, `intl`, `mbstring`, `xml`, `zip` | `mariadb`, `redis-server` | `wp-cli` |
+
+Một tên service thuộc bảng của engine mang theo package cung cấp nó, nên chỉ cần
+khai `postgresql` là đủ để cài và start; service mà image không start được sẽ được
+nêu tên lúc container khởi động thay vì bị bỏ qua im lặng. `sandbox_tools` chỉ nhận
+những binary mà engine có công thức cài — hiện tại là `wp-cli` — và tên lạ bị từ chối
+ngay khi render image, không phải khi image build fail.
+
 ### Ba chỗ ba recipe này khác Magento
 
 **Symfony không có task maintenance.** Symfony không có cơ chế gốc cho việc đó, nên
@@ -243,9 +292,12 @@ có marker mới bị xoá, nên dự án tự ship trang maintenance của mìn
 Với chiến lược `symlink`, hai file này được ghi vào release đang sống lúc mở window,
 nên sau cú swap chúng thuộc release **trước** — release mới được serve bình thường,
 điều đó đúng, nhưng rollback về release trước đó sẽ thấy nó vẫn ở maintenance.
-`maintenance:disable` xoá chúng ở đường dẫn nó với tới được, và
-`rm -f {{current_path}}/.maintenance {{current_path}}/wp-content/maintenance.php`
-là cách xử lý thủ công.
+`maintenance:disable` xoá chúng ở đường dẫn nó với tới được, và đây là cách xử lý
+thủ công:
+
+```bash
+rm -f {{current_path}}/.maintenance {{current_path}}/wp-content/maintenance.php
+```
 
 **`db:backup` là opt-in theo từng framework.** Mặc định tắt ở mọi nơi. Magento có
 qua `setup:backup`, WordPress có qua `wp db export/import`; Laravel và Symfony
@@ -298,9 +350,9 @@ triển. `wp db export` gọi `mysqldump`, nên target cần cả wp-cli lẫn M
 
 ### Sandbox cấp gì cho các recipe này
 
-Mỗi recipe khai những gì ứng dụng của nó cần ngoài profile, và dự án có thể override
-— đó chính là thứ khiến một dự án dùng database không phải mặc định của framework
-diễn tập được:
+Dự án dùng database không phải mặc định của framework thì khai ở tầng project — đó
+chính là thứ khiến nó diễn tập được. Ví dụ một dự án Symfony dùng PostgreSQL thay
+thế danh sách của recipe chứ không nối thêm:
 
 ```yaml
 deploy:
@@ -312,10 +364,7 @@ deploy:
 ```
 
 Bốn danh sách này **thay thế** danh sách của recipe chứ không nối thêm: dự án dùng
-PostgreSQL thay `[mariadb]`, không chạy cả hai. Một tên service thuộc bảng của engine
-mang theo package cung cấp nó, nên chỉ cần khai `postgresql` là đủ để cài và start;
-service mà image không start được sẽ được nêu tên lúc container khởi động thay vì bị
-bỏ qua im lặng.
+PostgreSQL thay `[mariadb]`, không chạy cả hai.
 
 ## Pipeline
 
@@ -411,7 +460,7 @@ maintenance window thì lock được nhả, vì chưa có gì live thay đổi 
 vì release là thứ duy nhất nói target đang dở dang ở đâu. `--resume` sẽ hoàn tất nó.
 
 Huỷ cũng dừng **công việc**, không chỉ sổ sách của govard. Mỗi bước là một chuỗi shell —
-`cd {{release_path}} && composer install …` — nên tiến trình govard khởi động là shell,
+<span v-pre>`cd {{release_path}} && composer install …`</span> — nên tiến trình govard khởi động là shell,
 còn compile, install hay transfer là con của nó. Bước chạy local nằm trong process group
 riêng: group nhận `SIGTERM` khi lần chạy bị huỷ, và thứ gì bỏ qua nó sẽ bị kill ngay khi
 command đã dừng trả về. Qua SSH, giết client local không dừng được gì trên máy kia, nên

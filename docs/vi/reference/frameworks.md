@@ -11,23 +11,27 @@ Govard tự động nhận diện các framework được hỗ trợ và áp d�
 
 ## Bảng hỗ trợ (Support Matrix)
 
-| Framework | Tự động nhận diện | Profile theo phiên bản | Web Root mặc định |
-| :--- | :---: | :---: | :--- |
-| Magento 2 | ✅ | ✅ | `/pub` |
-| Mage-OS | ✅ | cấu hình mặc định | `/pub` |
-| Magento 1 / OpenMage | ✅ | cấu hình mặc định | thư mục gốc dự án |
-| Laravel | ✅ | ✅ | `/public` |
-| Next.js | ✅ | cấu hình mặc định | thư mục gốc dự án |
-| Emdash | ✅ | cấu hình mặc định | thư mục gốc dự án |
-| Drupal | ✅ | ✅ | `/web` |
-| Symfony | ✅ | ✅ | `/public` |
-| Shopware | ✅ | cấu hình mặc định | `/public` |
-| CakePHP | ✅ | cấu hình mặc định | `/webroot` |
-| PrestaShop | ✅ | cấu hình mặc định | thư mục gốc dự án |
-| WordPress | ✅ | ✅ | `/` |
-| Django | ✅ | cấu hình mặc định | thư mục gốc dự án |
-| Dagster | ✅ | cấu hình mặc định | thư mục gốc dự án |
-| Tùy chỉnh (Custom) | thủ công | thủ công | thư mục gốc dự án |
+| Framework | Tự động nhận diện | Profile theo phiên bản | Web Root mặc định | Audit Lint (`govard`) | Deploy Recipe |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| Magento 2 | ✅ | ✅ | `/pub` | ✅ | ✅ |
+| Mage-OS | ✅ | cấu hình mặc định | `/pub` | ✅ (qua Magento 2) | ✅ (qua Magento 2) |
+| Magento 1 / OpenMage | ✅ | cấu hình mặc định | thư mục gốc dự án | — | — |
+| Laravel | ✅ | ✅ | `/public` | ✅ | ✅ |
+| Next.js | ✅ | cấu hình mặc định | thư mục gốc dự án | — | — |
+| Emdash | ✅ | cấu hình mặc định | thư mục gốc dự án | — | — |
+| Drupal | ✅ | ✅ | `/web` | — | — |
+| Symfony | ✅ | ✅ | `/public` | ✅ | ✅ |
+| Shopware | ✅ | cấu hình mặc định | `/public` | — | — |
+| CakePHP | ✅ | cấu hình mặc định | `/webroot` | — | — |
+| PrestaShop | ✅ | cấu hình mặc định | thư mục gốc dự án | — | — |
+| WordPress | ✅ | ✅ | `/` | ✅ | ✅ |
+| Django | ✅ | cấu hình mặc định | thư mục gốc dự án | — | — |
+| Dagster | ✅ | cấu hình mặc định | thư mục gốc dự án | — | — |
+| Tùy chỉnh (Custom) | thủ công | thủ công | thư mục gốc dự án | — | — |
+
+> **Cột Linter:** `Audit Lint (govard)` cho biết `govard audit run --checks lint` có được hỗ trợ không. ✅ = có provider `govard` gốc (Magento2: chuẩn `Magento2` CS, Laravel: `PSR12`, Symfony: `Symfony`, WordPress: `WordPress`); mọi lần lint còn bắt buộc **media guard** (`pub/media` chứa `*.php/*.phtml/*.pht` → `M2-LINT-MEDIA` `failed`, pha `media-guard` trong container kèm fallback `ScanMediaGuard` trên host) và vệ sinh `.gitignore` (`pub/media/*.php` v.v. qua `internal/blueprints/files/.gitignore`). Xem [Audit — Lint & Profiler](/vi/workflows/audit#scanned-paths-media-guard).
+>
+> **Cột Deploy Recipe:** ✅ nghĩa là framework tự đăng ký recipe, nên `govard deploy` lấp các bước trung tính của pipeline bằng đúng lệnh mà ứng dụng đó cần — mỗi mục framework bên dưới liệt kê cụ thể. Dấu `—` nghĩa là framework vẫn deploy được, nhưng qua recipe **mặc định** của engine: tạo release, shared files, quyền, kích hoạt, verify, rollback — những bước vốn không phụ thuộc framework. Các bước thuộc về ứng dụng (cài dependency, migration, cache) không được lấp, vì engine không tự đoán một lệnh mà ứng dụng chưa khai; dự án thuộc nhóm này gắn `deploy.hooks` vào task id tương ứng. Xem [Triển khai](/vi/workflows/deployment) cho toàn bộ pipeline và [Deploy recipe](/vi/workflows/deployment#laravel-symfony-va-wordpress) cho bốn framework đã có recipe.
 
 ---
 
@@ -79,10 +83,13 @@ Ký hiệu `—` nghĩa là Govard không ép buộc giá trị mặc định ch
 | Magento 2 | 2.4.7 | 8.3 | MariaDB 10.6 hoặc 10.11, Redis 7.2, OpenSearch 2.12.0-2.19.0 |
 | Magento 2 | 2.4.6 | 8.2 | MariaDB 10.6 hoặc 10.11, Redis 7.0-7.2, OpenSearch 2.5.0-2.19.0 |
 
+> **Audit lint:** `govard audit run --checks lint` (provider `govard`) được hỗ trợ cho Magento 2, Laravel, Symfony và WordPress — 4 framework. `audit lint supported for 4`. Image `govard-glint` đóng gói sẵn các coding standard gốc (WPCS 3.1 cho WordPress, Symfony CS cho Symfony, PSR12 cho Laravel, Magento2 cho Magento) + `phpstan/phpstan-symfony` + `phpstan/phpstan-wordpress`, nên WordPress/Symfony chạy native mà không phải fallback về PSR12.
+
 ```bash
 # Kiểm tra profile được áp dụng thực tế
 govard config profile --json
 govard config profile --framework laravel --framework-version 11 --json
+# Matrix: ProjectPHPVersions [8.1-8.4], PHPStanLevel 5, Linters [phpcs,phpstan]
 ```
 
 ---
@@ -272,6 +279,44 @@ govard upgrade --version 12
 - Chạy lệnh `composer update`.
 - Chạy lệnh `php artisan migrate --force`.
 
+### Triển khai (Deployment)
+
+Laravel có deploy recipe tên `laravel`, nên `govard deploy` chạy đúng lệnh của
+Laravel thay vì các bước mặc định trung tính của engine:
+
+```bash
+govard deploy check production     # xem target ngụ ý gì, trước khi chạy bất cứ thứ gì
+govard deploy production --yes
+```
+
+| Bước | Lệnh chạy trên target |
+| --- | --- |
+| `build:vendors` | `composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist` |
+| `build:frontend` | `frontend_command` trong từng `frontend_dir`; `frontend_dir` rỗng thì bỏ qua bước |
+| `app:configure` | `artisan storage:link` |
+| `db:migrate` | `artisan migrate --force` |
+| `maintenance:enable` / `disable` | `artisan down` / `artisan up`, chạy trong release **đang được phục vụ** |
+| `app:workers:pause` | khi bật `worker_control`: `artisan queue:restart`, thêm `horizon:terminate` nếu dự án có Horizon |
+| `app:cache:flush` | `artisan optimize:clear` rồi `artisan optimize` |
+| `deploy:verify` (`app`) | `artisan db:show`; Laravel 10 trở xuống dùng `migrate:status` |
+| `db:backup` | — (không có lệnh dump: bật `--db-backup` sẽ fail kèm lý do) |
+
+`.env` là **file** shared và `storage` là **thư mục** shared, vì cờ maintenance nằm
+tại `storage/framework/down` — chỉ thư mục shared mới mang được nó qua lần swap
+release. `sync_paths` gồm `vendor` và `public/build` cho docroot in-place. Recipe
+khai bốn setting (`frontend_dir`, `frontend_command`, `worker_control`,
+`runtime_reload_command`) và yêu cầu sandbox cài `default-mysql-client`, bộ
+extension của Laravel (`bcmath`, `curl`, `gd`, `intl`, `mbstring`, `mysql`,
+`sqlite3`, `xml`, `zip`) cùng hai service `mariadb` + `redis-server`.
+
+Cache được build **trên target**, không bao giờ trên máy build: `artisan optimize`
+ghi ra `bootstrap/cache/config.php`, và khi file đó tồn tại thì biến môi trường
+của tiến trình không còn ghi đè `.env` nữa — cache build ở máy khác sẽ mang cấu
+hình của máy đó lên production.
+
+Danh sách lệnh đầy đủ và lý do: [Laravel, Symfony và WordPress](/vi/workflows/deployment#laravel-symfony-va-wordpress).
+Cấu hình mẫu: [Ca 9 — Laravel, frontend Vite, webroot symlink](/vi/workflows/deploy-case-studies#case-9-laravel).
+
 ---
 
 ## 🌐 Drupal
@@ -302,6 +347,51 @@ govard upgrade --version 7
 - Chạy lệnh `composer update`.
 - Chạy lệnh `doctrine:migrations:migrate`.
 - Chạy lệnh `cache:clear`.
+
+### Triển khai (Deployment)
+
+Symfony có deploy recipe tên `symfony`. Recipe này tồn tại chủ yếu để *vô hiệu*
+`auto-scripts` của Composer — thứ chạy `cache:clear` và `assets:install` sai chỗ:
+
+```bash
+govard deploy check production
+govard deploy production --yes
+```
+
+| Bước | Lệnh chạy trên target |
+| --- | --- |
+| `build:vendors` | `composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts` |
+| `build:assets` | `bin/console assets:install public --symlink --relative` — đánh dấu *cần ứng dụng*, nên target vẫn chạy cả ở artifact mode |
+| `build:frontend` | `frontend_command` trong từng `frontend_dir`; `frontend_dir` rỗng thì bỏ qua bước |
+| `db:migrate` | `doctrine:migrations:migrate --env=… --no-interaction --allow-no-migration` |
+| `app:cache:flush` | `cache:clear --env=… --no-warmup` rồi `cache:warmup --env=…` |
+| `app:workers:pause` | khi bật `worker_control`: `messenger:stop-workers --env=…` |
+| `maintenance:enable` / `disable` | **rỗng** — Symfony không có cơ chế lõi, nên cả hai bước được báo là skipped |
+| `deploy:verify` (`app`) | `dbal:run-sql "SELECT 1"`; DoctrineBundle cũ dùng `doctrine:query:sql` |
+| `db:backup` | — (không có lệnh dump: bật `--db-backup` sẽ fail kèm lý do) |
+
+Mọi lệnh `bin/console` ở trên lấy `--env` từ setting `symfony_env`:
+
+```bash
+bin/console doctrine:migrations:migrate --env={{settings.symfony_env}} --no-interaction --allow-no-migration
+bin/console cache:clear --env={{settings.symfony_env}} --no-warmup
+bin/console messenger:stop-workers --env={{settings.symfony_env}}
+```
+
+`.env.local` là **file** shared và `var/log` là **thư mục** shared; `var/cache`
+**cố ý không** shared, vì container đã compile thuộc về đúng một release và một
+environment. `sync_paths` gồm `vendor` và `public/bundles` cho docroot in-place.
+`symfony_env` (mặc định `prod`) quyết định environment mà mọi lệnh console chạy
+dưới đó, và **không được validate** — gõ sai tên sẽ build sai thư mục cache.
+Sandbox nhận `default-mysql-client`, bộ extension (`intl`, `mysql`, `mbstring`,
+`xml`, `curl`, `zip`) cùng hai service `mariadb` + `redis-server`.
+
+Vì hai bước maintenance rỗng, `db:migrate` chạy trên site đang sống; dự án cần
+khoảng downtime thì tự thêm bằng hai `deploy.hooks` gắn vào `maintenance:enable` /
+`maintenance:disable`.
+
+Danh sách lệnh đầy đủ và lý do: [Laravel, Symfony và WordPress](/vi/workflows/deployment#laravel-symfony-va-wordpress).
+Cấu hình mẫu: [Ca 10 — Symfony, migration Doctrine, target PostgreSQL](/vi/workflows/deploy-case-studies#case-10-symfony).
 
 ---
 
@@ -360,6 +450,48 @@ govard upgrade --version 6.7
 - Chạy `wp core update --version=<version>`
 - Chạy `wp core update-db`
 - Chạy `wp cache flush`
+
+### Triển khai (Deployment)
+
+WordPress có deploy recipe tên `wordpress`, **chỉ cho layout classic**: file core và
+`wp-content/` nằm ở thư mục gốc repository, không có `composer.json`. Layout Bedrock
+(core trong `vendor/`, docroot `web/`) và checkout chỉ có content đều không được hỗ
+trợ.
+
+```bash
+govard deploy check production
+govard deploy production --yes
+```
+
+| Bước | Lệnh chạy trên target |
+| --- | --- |
+| `build:vendors` | `composer install …` **chỉ khi** có `composer.json` (bước có guard, không phải `\|\| true`) |
+| `build:frontend` | `frontend_command` trong từng `frontend_dir`; `frontend_dir` rỗng thì bỏ qua bước |
+| `db:migrate` | `wp core update-db`, hoặc `wp_upgrade()` qua `wp-load.php` khi target không có wp-cli |
+| `app:cache:flush` | `wp cache flush` + `wp rewrite flush --hard`, hoặc `wp_cache_flush()` + `flush_rewrite_rules(true)` |
+| `maintenance:enable` / `disable` | ghi/xoá `.maintenance` và file `wp-content/maintenance.php` có marker, trong path **đang phục vụ** |
+| `db:backup` / restore | `wp db export` / `wp db import` — ngoài Magento, đây là recipe duy nhất có lệnh dump |
+| `deploy:verify` (`app`) | `wp core is-installed`, hoặc `is_blog_installed()` khi không có wp-cli |
+
+Ba bước là **hybrid**: chạy `wp` khi target có wp-cli, và bootstrap PHP qua
+`wp-load.php` khi không. wp-cli là thứ server thật có, nhưng govard không thể cài
+nó lên target, và deploy không được fail vì lý do không liên quan tới release.
+
+`wp-config.php` là **file** shared và `wp-content/uploads` là **thư mục** shared;
+`wp-content/cache`, `upgrade` và `languages` được ghi. `sync_paths` là `vendor`,
+chỉ có ý nghĩa với dự án quản lý plugin/theme bằng Composer. Sandbox nhận
+`default-mysql-client`, bộ extension (`mysqli`, `curl`, `gd`, `intl`, `mbstring`,
+`xml`, `zip`), hai service `mariadb` + `redis-server` và tool `wp-cli`.
+
+Hai điều cần biết trước lần deploy đầu: **phải seed `shared/wp-config.php`**, vì
+`deploy:shared` chỉ link một entry shared khi nó đã tồn tại — `shared/` rỗng sẽ để
+release đầu tiên giữ `wp-config.php` của repository, tức file trỏ vào database
+development. Và cờ maintenance được ghi bằng `time() + 86400` thay vì `time()` của
+chính WordPress, vì `wp_is_maintenance_mode()` coi cờ cũ hơn mười phút là hết hạn:
+một cửa sổ deploy dài hơn thế sẽ âm thầm mở lại site giữa lúc migration.
+
+Danh sách lệnh đầy đủ và lý do: [Laravel, Symfony và WordPress](/vi/workflows/deployment#laravel-symfony-va-wordpress).
+Cấu hình mẫu: [Ca 11 — WordPress, layout classic, wp-cli trên target](/vi/workflows/deploy-case-studies#case-11-wordpress).
 
 ---
 
