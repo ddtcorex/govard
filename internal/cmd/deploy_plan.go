@@ -53,6 +53,10 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 		return configOrUsageError(err)
 	}
 
+	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
+		return writePlanJSON(cmd, remote, options, plan)
+	}
+
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "Deploy plan for %s (%s @ %s)\n", remote, branchOrDetached(options), revisionOrSymbolic(options))
 	fmt.Fprintf(out, "Build mode: %s\n", options.Build)
@@ -94,6 +98,105 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(out, "      source: %s\n", step.Source)
 		}
 	}
+	return nil
+}
+
+// planJSONStep is one step of the machine-readable plan.
+type planJSONStep struct {
+	Index            int    `json:"index"`
+	ID               string `json:"id"`
+	Kind             string `json:"kind"`
+	Stage            string `json:"stage,omitempty"`
+	Title            string `json:"title"`
+	RunOn            string `json:"run_on"`
+	Source           string `json:"source,omitempty"`
+	Implementation   string `json:"implementation"`
+	Command          string `json:"command,omitempty"`
+	Skipped          bool   `json:"skipped"`
+	SkipReason       string `json:"skip_reason,omitempty"`
+	NeedsApplication bool   `json:"needs_application,omitempty"`
+}
+
+// planJSONPayload is the machine-readable plan: schema 1, `kind: "plan"`.
+//
+// The `kind` discriminator exists because the run's document carries a
+// schema_version too and has no kind, so a pipeline that consumes both has to be
+// able to tell them apart by a field rather than by guessing from the shape.
+type planJSONPayload struct {
+	SchemaVersion int    `json:"schema_version"`
+	Kind          string `json:"kind"`
+	Remote        string `json:"remote"`
+	Branch        string `json:"branch"`
+	Revision      string `json:"revision"`
+	Build         struct {
+		Mode string `json:"mode"`
+	} `json:"build"`
+	Publish struct {
+		Strategy  string `json:"strategy"`
+		DecidedBy string `json:"decided_by"`
+	} `json:"publish"`
+	Steps []planJSONStep `json:"steps"`
+}
+
+// writePlanJSON emits the plan as one document on stdout and nothing else.
+//
+// It is a pure function of the project, the recipe, the hooks and the flags: no
+// timestamp, no host, no environment. A pipeline can therefore diff one run's
+// plan against another's and get a stable answer, which is most of the point of
+// making the plan machine-readable at all.
+func writePlanJSON(cmd *cobra.Command, remote string, options deploy.Options, plan deploy.Plan) error {
+	payload := planJSONPayload{
+		SchemaVersion: 1,
+		Kind:          "plan",
+		Remote:        remote,
+		Branch:        branchOrDetached(options),
+		Revision:      revisionOrSymbolic(options),
+		Steps:         make([]planJSONStep, 0, len(plan.Steps)),
+	}
+	payload.Build.Mode = options.Build
+	payload.Publish.Strategy = options.Publish
+	// Only the target can resolve `auto`, and a plan that never connects must not
+	// report a strategy it did not read.
+	payload.Publish.DecidedBy = "configuration"
+	if options.Publish == deploy.PublishAuto {
+		payload.Publish.DecidedBy = "target"
+	}
+
+	for idx, step := range plan.Steps {
+		runOn := string(step.RunOn)
+		if runOn == "" {
+			runOn = string(deploy.RunRemote)
+		}
+		entry := planJSONStep{
+			Index:            idx + 1,
+			ID:               step.ID,
+			Kind:             string(step.Kind),
+			Stage:            string(step.Stage),
+			Title:            step.Title,
+			RunOn:            runOn,
+			Source:           step.Source,
+			Implementation:   string(step.Implementation()),
+			Command:          step.Command,
+			NeedsApplication: step.NeedsApplication,
+		}
+		// The document has to agree with the executor, not with the printer: a
+		// step is skipped when the mode says so, and when it carries neither a
+		// command nor an engine implementation.
+		entry.Skipped = step.Skipped || step.Implementation() == deploy.ImplementationNone
+		switch {
+		case step.SkipReason != "":
+			entry.SkipReason = step.SkipReason
+		case entry.Skipped:
+			entry.SkipReason = "no implementation for this framework"
+		}
+		payload.Steps = append(payload.Steps, entry)
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), string(encoded))
 	return nil
 }
 
