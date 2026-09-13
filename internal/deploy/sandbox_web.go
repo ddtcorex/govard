@@ -123,6 +123,19 @@ func sandboxNginxConfig(webRoot string) string {
     location ~ \.php$ {
         include fastcgi_params;
         fastcgi_pass unix:%s;
+        # Debian's fastcgi_params sets HTTP_HOST from the nginx variable "host",
+        # and its own comment says why that matters here: it does not preserve the
+        # client-supplied port. The sandbox is served on an ephemeral host port,
+        # so an application that canonicalises on the host it is asked for — one
+        # that stores its own site URL, as most do — sees a host different from
+        # the one it is configured with and redirects to it forever. Measured
+        # against a real application: the client asked for
+        # http://127.0.0.1:PORT/ while PHP received HTTP_HOST=127.0.0.1 and
+        # SERVER_PORT=80, so "/" answered 301 to "/" until the ten-redirect limit.
+        # This container is a loopback rehearsal target, which is why forwarding
+        # the client's own Host header is the fidelity a real proxy gives an
+        # application rather than a risk worth trading that for.
+        fastcgi_param HTTP_HOST $http_host;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_read_timeout 120s;
     }

@@ -264,3 +264,35 @@ func TestSandboxStatusReportsTheServedURL(t *testing.T) {
 		t.Fatal("the stopped fake reported a running container")
 	}
 }
+
+// The sandbox is served on an ephemeral host port, and Debian's fastcgi_params
+// sets HTTP_HOST from `$host`, which drops that port. An application that
+// canonicalises on the host it was asked for then sees a host different from the
+// one it is configured with: measured with WordPress, the client asked for
+// http://127.0.0.1:PORT/ while PHP received HTTP_HOST=127.0.0.1 and
+// SERVER_PORT=80, and "/" answered 301 to "/" until the redirect limit.
+func TestSandboxWebPassesTheClientsHostToTheApplication(t *testing.T) {
+	files := deploy.SandboxBuildFiles(deploy.SandboxSpec{
+		Profile: deploy.SandboxProfileFull,
+		PHP:     "8.3",
+	})
+	var nginx string
+	for _, content := range files {
+		if strings.Contains(content, "server {") {
+			nginx = content
+		}
+	}
+	if nginx == "" {
+		t.Fatal("no nginx server block among the build files")
+	}
+	// $http_host is the Host header as the client sent it, port included.
+	if !strings.Contains(nginx, "fastcgi_param HTTP_HOST $http_host;") {
+		t.Errorf("the web tier does not pass the client's host, so a canonicalising application loops:\n%s", nginx)
+	}
+	// The rest of the PHP location must stay: the fix adds one parameter.
+	for _, want := range []string{"include fastcgi_params;", "fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;"} {
+		if !strings.Contains(nginx, want) {
+			t.Errorf("the web tier lost %q:\n%s", want, nginx)
+		}
+	}
+}
