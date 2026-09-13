@@ -295,8 +295,9 @@ cancelled, and anything that ignores it is killed as soon as the stopped command
 returns. Over SSH, killing the local client stops nothing on the other machine, so the
 step first records the remote shell's pid — `sshd` gives it a session and process group
 of its own — and the cancel path signals that group over a second, short-lived
-connection. The record is removed by a trap when the step ends on its own, so a normal
-run leaves nothing behind.
+connection. The record is removed when the step ends — including a step that replaces its own
+shell with `exec` or installs its own `EXIT` trap — and by the teardown when the step
+is interrupted, so a normal run leaves nothing behind.
 
 On Windows there is no process group to signal and govard does not create a job
 object, so a cancelled step kills the shell govard started and a child of that shell

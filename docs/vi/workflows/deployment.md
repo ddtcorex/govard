@@ -275,8 +275,9 @@ còn compile, install hay transfer là con của nó. Bước chạy local nằm
 riêng: group nhận `SIGTERM` khi lần chạy bị huỷ, và thứ gì bỏ qua nó sẽ bị kill ngay khi
 command đã dừng trả về. Qua SSH, giết client local không dừng được gì trên máy kia, nên
 bước đó ghi lại pid của shell remote — `sshd` cấp cho nó session và process group riêng —
-rồi đường huỷ signal đúng group đó qua một kết nối thứ hai, ngắn. Bản ghi được trap xoá
-khi bước tự kết thúc, nên lần chạy bình thường không để lại gì.
+rồi đường huỷ signal đúng group đó qua một kết nối thứ hai, ngắn. Bản ghi được xoá ngay khi bước kết thúc — kể cả bước thay shell của nó bằng
+`exec` hay tự đặt `EXIT` trap — và bởi đường teardown khi bước bị huỷ, nên lần chạy
+bình thường không để lại gì.
 
 Trên Windows không có process group để signal và govard không tạo job object, nên một
 bước bị huỷ chỉ giết shell mà govard khởi động, con của shell đó có thể sống lâu hơn lần

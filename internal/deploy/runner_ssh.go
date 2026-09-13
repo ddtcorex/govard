@@ -92,17 +92,32 @@ func (r SSHRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 // is taken only while the group is demonstrably still there: a group id belongs
 // to whoever owns it, and signalling one that had emptied and been handed to an
 // unrelated process is worse than leaving an obstinate child running.
+//
+// The record is read with a short retry because a cancel can land in the window
+// between the connection being established and the remote shell executing its
+// first statement. Giving up there would leave a step running that nothing can
+// reach any more — the one outcome this whole mechanism exists to prevent.
 func (r SSHRunner) terminateRemote(pidFile string) {
 	ctx, cancel := context.WithTimeout(context.Background(), remoteInterruptTimeout)
 	defer cancel()
 
-	script := fmt.Sprintf(
-		"p=$(cat %s 2>/dev/null) || exit 0; "+
-			"kill -TERM -$p 2>/dev/null; "+
-			"n=0; while [ $n -lt 2 ] && kill -0 -$p 2>/dev/null; do sleep 1; n=$((n+1)); done; "+
-			"kill -0 -$p 2>/dev/null && kill -KILL -$p 2>/dev/null; "+
-			"rm -f %s",
-		conventions.ShellQuote(pidFile), pidFile)
+	script := fmt.Sprintf(`p=$(cat %s 2>/dev/null)
+n=0
+while [ -z "$p" ] && [ $n -lt 2 ]; do
+  sleep 1
+  p=$(cat %s 2>/dev/null)
+  n=$((n+1))
+done
+if [ -n "$p" ]; then
+  kill -TERM -$p 2>/dev/null
+  n=0
+  while [ $n -lt 2 ] && kill -0 -$p 2>/dev/null; do
+    sleep 1
+    n=$((n+1))
+  done
+  kill -0 -$p 2>/dev/null && kill -KILL -$p 2>/dev/null
+fi
+rm -f %s`, conventions.ShellQuote(pidFile), conventions.ShellQuote(pidFile), pidFile)
 
 	cmd := exec.CommandContext(ctx, "ssh", r.Args(script)...)
 	cmd.WaitDelay = waitDelayAfterKill
@@ -110,13 +125,23 @@ func (r SSHRunner) terminateRemote(pidFile string) {
 }
 
 // recordRemoteProcessGroup prefixes a step with the two things the cancel path
-// needs and nothing else: the pid of the shell sshd started, which is also the
-// session and process group leader, and a trap that removes the record when the
-// step ends by itself so a normal run leaves nothing behind.
+// needs: the pid of the shell sshd started, which is also the session and process
+// group leader, and a cleanup that runs when the step ends by itself.
+//
+// The step runs in a subshell rather than under an EXIT trap, because a trap is
+// not the step's to keep: a command that ends in `exec` replaces the shell that
+// would have run it, and a command that installs its own EXIT trap replaces
+// govard's. Both are things a project's deploy hook can legitimately do, and both
+// left the record on the target after a run that succeeded. A subshell survives
+// either, so the file is removed by the step's own end rather than by a promise
+// about how it ends. The exit status is carried out by hand for the same reason:
+// the last statement is now the cleanup, not the step.
 func recordRemoteProcessGroup(command, pidFile string) string {
+	// The newline before the closing parenthesis is load-bearing: a step whose
+	// last line is a comment would otherwise comment it out.
 	return fmt.Sprintf(
-		"printf '%%s\\n' $$ > %s; trap 'rm -f %s' EXIT; %s",
-		conventions.ShellQuote(pidFile), pidFile, command)
+		"printf '%%s\\n' $$ > %s; ( %s\n); rc=$?; rm -f %s; exit $rc",
+		conventions.ShellQuote(pidFile), command, pidFile)
 }
 
 // remoteInterruptPIDFile names the per-run record. The path is built here from a
