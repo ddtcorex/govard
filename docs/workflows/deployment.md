@@ -308,10 +308,10 @@ rm -f {{current_path}}/.maintenance {{current_path}}/wp-content/maintenance.php
 **`db:backup` is opt-in per framework.** It defaults to off everywhere. Magento
 has it through `setup:backup` and WordPress has it through `wp db export/import`;
 Laravel and Symfony have **no dump command** in their recipes. Turning
-`--db-backup` on for a framework without one is a hard failure naming the
-reason — deliberately, because silently skipping it would let an operator
-believe a backup exists immediately before a destructive `db:migrate`. A project
-that wants one adds a hook:
+`--db-backup` on for a framework without one is refused before the run starts
+(exit 4), with a message naming the recipe and the remedy — deliberately, because
+silently skipping it would let an operator believe a backup exists immediately
+before a destructive `db:migrate`. A project that wants one adds a hook:
 
 ```yaml
 deploy:
@@ -432,9 +432,9 @@ deploy:
     - { name: varnish-purge, on: "publish:activate", position: after, order: 10, run: "varnishadm ban req.url ~ /" }
 ```
 
-`govard deploy plan` prints the resolved tree with each step's source and
-implementation, so a hook's placement can be reviewed without connecting to
-anything.
+`govard deploy plan` prints the resolved tree with each step's implementation, and
+the source of every hook, so a hook's placement can be reviewed without connecting
+to anything.
 
 Every enhanced behaviour is behind a flag and the defaults are the optimised
 ones: `--no-verify`, `--no-db-backup` and `--lock=false` turn work off, `--force`

@@ -302,8 +302,9 @@ rm -f {{current_path}}/.maintenance {{current_path}}/wp-content/maintenance.php
 **`db:backup` là opt-in theo từng framework.** Mặc định tắt ở mọi nơi. Magento có
 qua `setup:backup`, WordPress có qua `wp db export/import`; Laravel và Symfony
 **không có dump command** trong recipe. Bật `--db-backup` cho framework không có nó
-là fail to và nêu rõ lý do — cố ý, vì bỏ qua im lặng sẽ khiến operator tin là đã có
-backup ngay trước một `db:migrate` phá hoại. Dự án muốn có thì thêm hook:
+bị từ chối ngay trước khi lần chạy bắt đầu (exit 4), kèm thông báo nêu tên recipe
+và cách xử lý — cố ý, vì bỏ qua im lặng sẽ khiến operator tin là đã có backup ngay
+trước một `db:migrate` phá hoại. Dự án muốn có thì thêm hook:
 
 ```yaml
 deploy:
@@ -416,8 +417,8 @@ deploy:
     - { name: varnish-purge, on: "publish:activate", position: after, order: 10, run: "varnishadm ban req.url ~ /" }
 ```
 
-`govard deploy plan` in ra cây thực thi kèm nguồn và cách hiện thực của từng bước,
-nên có thể soi vị trí hook mà không cần kết nối tới đâu.
+`govard deploy plan` in ra cây thực thi kèm cách hiện thực của từng bước, và nguồn
+của từng hook, nên có thể soi vị trí hook mà không cần kết nối tới đâu.
 
 Mọi hành vi nâng cao đều nằm sau một flag và mặc định là bản tối ưu:
 `--no-verify`, `--no-db-backup` và `--lock=false` tắt bớt việc, `--force` deploy
