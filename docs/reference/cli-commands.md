@@ -216,7 +216,7 @@ the default path.
 
 Any other value must name an entry under `audit.lint.external_providers` in the
 project configuration (see
-[Configuration](./configuration.md#audit-lint-providers)). External providers are
+[Configuration](/reference/configuration#audit-lint-providers)). External providers are
 never a fallback for the native backend and are never inferred: an unknown name
 is an error, and a native failure stays a native failure. A standalone target has
 no project configuration, so only `govard` is available there. `--provider`
@@ -717,6 +717,9 @@ govard deploy sandbox ssh
 govard deploy sandbox down [--purge]
 ```
 
+→ Worked configurations (Luma, Hyvä, several themes and store views, developer and
+production mode, symlinked and real webroots): [Deployment case studies](/workflows/deploy-case-studies).
+
 The target is a remote from `.govard.yml`. The branch, repository, deploy path
 and publish strategy come from the project `deploy:` block; a remote overrides
 them either through the topology fields on the remote (`branch`, `repository`,
@@ -837,6 +840,15 @@ in-place publishing. `down` removes the container and the remote it wrote;
 `--purge` also removes the image, the key and the mirror. `reset` wipes the
 target's deploy directories, and `--layout=deployer` seeds a target that looks
 like one the other deploy tool owns.
+
+The `php` and `full` profiles also ship a web tier — nginx serving the served path
+plus the project's `stack.web_root` (`/pub` for Magento), and PHP-FPM running as the
+deploy user. `up` points the sandbox remote's `deploy.verify.url` at that port, so a
+sandbox deploy rehearses the HTTP half of `deploy:verify`; `basic` has no web tier
+and advertises no URL. The framework recipe contributes what its own commands need
+beyond the profile (for Magento: build libraries, PHP extensions and the database
+and cache services). A project that needs one more extension adds it to the recipe,
+not to a flag.
 
 The sandbox is the only deploy command that needs `docker`.
 
@@ -1186,7 +1198,7 @@ govard opensearch info
 govard elasticsearch curl -s http://elasticsearch:9200/_cat/indices
 ```
 
-Host access for search is also routed automatically via `http://<your-domain>:9200` (see [Configuration](/reference/configuration#connecting-to-elasticsearchopensearch-from-the-host)) — the shortcuts above exec inside the container, while the `:9200` route is for host-side `curl`/browser.
+Host access for search is also routed automatically via `http://<your-domain>:9200` (see [Configuration](/reference/configuration#connecting-to-elasticsearch-opensearch-from-the-host)) — the shortcuts above exec inside the container, while the `:9200` route is for host-side `curl`/browser.
 
 ---
 

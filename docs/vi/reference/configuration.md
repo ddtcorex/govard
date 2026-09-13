@@ -201,6 +201,22 @@ Govard sử dụng giá trị này cho Magento 2/Mage-OS `env.php`, Magento 1/Op
 
 Chỉ đặt `stack.features.frontend_sync: true` cho dự án Magento 2 hoặc Mage-OS. Tùy chọn này bật phát hiện runtime frontend theo yêu cầu; `govard env up` không khởi động, chờ, hoặc proxy các dịch vụ frontend development.
 
+#### Truy cập Elasticsearch/OpenSearch từ Host
+
+Khi `stack.services.search` là `elasticsearch` hoặc `opensearch`, Govard tự động mở REST API của search engine cho host tại:
+
+```
+http://<your-domain>:9200
+```
+
+Ví dụ, nếu domain của dự án là `myshop.test`, chạy:
+
+```bash
+curl http://myshop.test:9200/_cluster/health
+```
+
+Cách này hoạt động đồng thời cho mọi dự án — proxy dùng chung của Govard route cổng `9200` theo hostname, giống hệt cách nó đã route cổng `443`. Nếu dự án của bạn được tạo trước khi tính năng này ra đời, hãy chạy `govard env up` một lần để render lại file compose và tạo lại container `elasticsearch`/`opensearch` trên network `govard-proxy` trước khi cổng `:9200` truy cập được. Cổng này không có authentication hay TLS (khớp với cấu hình local-dev của chính engine), nên hãy coi nó chỉ dành cho phát triển cục bộ và không expose ra ngoài máy của bạn.
+
 Đối với các framework ưu tiên Node, hệ thống tự động nhận diện package manager từ `package.json`, `pnpm-workspace.yaml` hoặc các file lock.
 
 #### Tối ưu hóa phiên bản Composer
@@ -273,6 +289,64 @@ Các trường con chính:
 Các trường thông tin remote hỗ trợ các tham chiếu `op://...` được giải quyết thông qua 1Password CLI.
 
 → Hướng dẫn đầy đủ: [Remote & Đồng bộ](/vi/workflows/remotes-and-sync)
+
+---
+
+### Deploy
+
+Block `deploy:` cấu hình cách một revision git trở thành một release trên target. Mỗi
+remote có thể ghi đè bất kỳ key nào của nó qua `remotes.<name>.deploy.<key>` (và các
+field topology `branch`, `repository`, `deploy_path`, `publish`, `local` ngay trên
+remote); flag dòng lệnh thắng cả hai.
+
+```yaml
+deploy:
+  keep_releases: 5
+  command_timeout: 90m            # mọi bước ngoài maintenance window
+  maintenance_timeout: 15m        # một bước bên trong window
+  lock_stale_after: 2h            # lock cũ bao lâu thì `unlock` được lấy
+  db_backup: true
+  artifact_dir: artifacts         # chỉ cần nó tồn tại là chọn artifact mode
+  verify:
+    url: https://shop.example.com/
+    timeout: 30s
+  settings:                       # đối chiếu với recipe; key lạ thì exit 4
+    php_bin: php8.3
+    php_version: "8.3"
+    mage_mode: production
+  hooks:
+    - { name: varnish-purge, on: "publish:activate", position: after, order: 10, run: "varnishadm ban req.url ~ /" }
+```
+
+| Trường | Mặc định | Mô tả |
+| :--- | :--- | :--- |
+| `keep_releases` | `5` | số release mà `deploy:cleanup` giữ lại, cùng dump database của chúng |
+| `command_timeout` | `30m` | chặn mọi bước ngoài maintenance window |
+| `maintenance_timeout` | `15m` | chặn một bước bên trong window |
+| `lock_stale_after` | `2h` | tuổi mà `govard deploy unlock` nhả lock không cần `--force` |
+| `db_backup` | `false` | dump database trước task đầu tiên thay đổi dữ liệu (`--db-backup` theo từng lần chạy) |
+| `artifact_dir` | — | thư mục artifact; chỉ cần nó tồn tại là `--build=auto` resolve thành `artifact` |
+| `verify.url` | — | request HTTP mà `deploy:verify` chạy sau publish |
+| `verify.timeout` | `30s` | request đó được phép mất bao lâu |
+| `settings` | mặc định của recipe | setting của framework và engine, được đối chiếu với recipe |
+| `hooks` | — | các bước neo vào task id, alias stage (`stage:build`) hoặc một hook khác |
+
+Các field ở tầng remote mà engine deploy đọc:
+
+| Trường | Mô tả |
+| :--- | :--- |
+| `path` | **docroot đang được phục vụ**; việc nó không tồn tại, là symlink hay là thư mục thật sẽ quyết định chiến lược publish |
+| `deploy_path` | layout root chứa `releases/`, `shared/` và `.dep/`; được dò từ target khi bỏ trống |
+| `deploy.publish` | `auto` (mặc định), `symlink` hoặc `in_place` |
+| `deploy.branch` / `deploy.repository` | ghi đè giá trị ở tầng dự án |
+| `deploy.local` | chạy pipeline ngay trên máy này thay vì qua SSH |
+
+`deploy.settings` được đối chiếu với recipe của framework trước khi chạy bất cứ thứ
+gì: key lạ hoặc giá trị sai dạng sẽ thoát với mã `4` kèm tên key. Setting dạng chuỗi
+phải được quote nếu trông giống số (`php_version: "8.2"`).
+
+→ Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment) và
+[Case study triển khai](/vi/workflows/deploy-case-studies)
 
 ---
 

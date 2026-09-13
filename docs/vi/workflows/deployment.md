@@ -23,6 +23,11 @@ lược publish lấy từ block `deploy:` của dự án; mỗi remote có th�
 nhận khi đúng một ứng viên khớp, đồng thời nói rõ là cái nào. Không có layout nào,
 hoặc có nhiều cái, đều là lỗi cấu hình kèm danh sách đã dò.
 
+Trang này mô tả engine và mọi thứ có thể điều chỉnh trong đó. Về những cấu hình đã làm sẵn —
+một store Luma, một storefront Hyvä, nhiều theme và store view, chế độ developer so
+với production, và docroot symlink so với docroot thật — xem
+[Case study triển khai](/vi/workflows/deploy-case-studies).
+
 ## Cài đặt cho một dự án Magento
 
 Bốn thứ phải tồn tại trước lần deploy đầu tiên: một target đã đang phục vụ dự án,
@@ -102,12 +107,17 @@ Chỉ ghi đè những gì dự án của bạn khác:
 - **static content**: `static_jobs`, `static_content_locales`,
   `static_deploy_options`, việc tách adminhtml/frontend, và các danh sách theme —
   xem *Tách static content* và *Nhiều store, website và theme*;
+- **mode**: `mage_mode` (`developer` bỏ qua việc deploy static content) — xem
+  *Chế độ developer và production*;
 - **workers**: `worker_control: true` chạy `cron:remove`/`queue:consumers:stop`
   quanh lúc deploy rồi khôi phục lại;
 - **opcache**: `runtime_reload_command` sau bước flush cache, cho target mà opcache
   truy cập được từ user deploy — xem *Cache, opcache và cú swap symlink*;
 - **ownership**: `owner`, `writable_mode` (`chmod`, `chown`, `chmod+chown`, `acl`,
   `skip`) và `writable_permissions` — xem *Quyền ghi và ownership*.
+
+Mọi key mà cả hai recipe khai, kèm mặc định và hình dạng của nó, được bảng hoá trong
+[Case study triển khai — phần Tham chiếu](/vi/workflows/deploy-case-studies#reference-every-setting-the-magento-recipe-reads).
 
 ### 4. Credential Composer đến từ đâu
 
@@ -174,7 +184,9 @@ govard deploy sandbox down --purge
 Sandbox là một lần deploy production trỏ vào container — cùng SSH, cùng mirror,
 cùng recipe — nên hỏng ở đó chính là hỏng bạn sẽ gặp trên server, mà không cần
 server. Nó cần đúng những prerequisite ứng dụng như mọi target; mục *Sandbox* bên
-dưới nói từng lỗi nghĩa là gì.
+dưới nói từng lỗi nghĩa là gì, và
+[Case study triển khai](/vi/workflows/deploy-case-studies#rehearsing-any-case-in-the-sandbox)
+đưa ra profile cùng hình dạng `--docroot` mà mỗi kiểu dự án cần.
 
 ## Pipeline
 
@@ -186,6 +198,8 @@ phải do recipe:
 | `prepare` | preflight, lock, thư mục release, code, shared, quyền ghi |
 | `build` | dependencies, patches, sinh code, frontend, static — hoặc artifact |
 | `publish` | maintenance, workers, backup DB, cấu hình, migration, kích hoạt, cache, ghi record |
+| `verify` | kiểm tra sau publish |
+| `cleanup` | dọn release cũ, nhả lock |
 
 Maintenance window chỉ được mở khi nó thật sự cần: kích hoạt bằng symlink là một
 cú rename nguyên tử nên không có gì đang phục vụ bị ghi đè, và window chỉ xuất
@@ -213,8 +227,6 @@ in-place chỉ có một thư mục duy nhất, nên window vẫn mở xuyên qu
 phục vụ), không chỉ là thư mục: lần deploy đầu chưa có release nào đang phục vụ, và
 docroot của target in-place là một git checkout có thể chưa từng được deploy tới —
 cả hai đều không có gì để bảo vệ, nên hai bước đó là no-op.
-| `verify` | kiểm tra sau publish |
-| `cleanup` | dọn release cũ, nhả lock |
 
 Mỗi framework đóng góp một **recipe** điền những task nó hỗ trợ; task bỏ trống
 được báo là skipped, không phải lỗi. Dự án tuỳ biến pipeline bằng **hook** neo vào
@@ -284,6 +296,54 @@ bước bị huỷ chỉ giết shell mà govard khởi động, con của shell
 chạy. Huỷ là yêu cầu dừng, không phải bảo đảm rằng bước đã bắt đầu thì đã dừng — hãy
 kiểm tra bằng `govard deploy releases` và `status` trước khi chạy lần nữa.
 
+### Chế độ developer và production
+
+`mage_mode` là setting duy nhất đổi *việc deploy làm gì* chứ không phải cách nó làm,
+nên đáng để ghi tường minh trong mọi dự án:
+
+| `mage_mode` | `build:assets` có chạy | Dùng khi |
+| --- | --- | --- |
+| không đặt (mặc định) | có | hành vi production; tương đương `production` |
+| `production` | có | target mà static content được compile lúc deploy |
+| `developer` | không | target mà Magento sinh static file theo nhu cầu |
+
+Điều kiện chặn của recipe chỉ là so sánh chuỗi, nên giá trị rỗng hành xử y hệt
+`production`; chỉ đúng chuỗi `developer` mới bỏ qua bước này. Vì vậy deploy ở
+developer mode nhanh hơn vài phút trên một storefront lớn — không hề có
+`setup:static-content:deploy` — và ứng dụng compile những gì một trang cần ở request
+đầu tiên.
+
+```yaml
+deploy:
+  settings:
+    mage_mode: developer      # staging mà team duyệt; bỏ qua static content
+```
+
+Hai hệ quả cần nói thẳng:
+
+- **`developer` là sai trên target production** trừ khi `env.php` của nó bật
+  `static_content_on_demand_in_production`. `env.php` của production thường tắt cờ
+  này, nên theme mà static file chưa từng được deploy sẽ trả `404` cho chúng. Target
+  staging **dùng chung** mà người ta đo hiệu năng cũng nên dùng `production`, vì
+  việc sinh theo nhu cầu làm đổi các con số.
+- **Split không áp dụng ở developer mode.** `split_static_deployment` chỉ mô tả *cách*
+  sắp xếp các lượt static content, mà ở developer mode thì không có lượt nào. Phần
+  kiểm chứng của chính recipe cũng theo đó: check static content version cho in-place
+  được chặn theo điều kiện file version tồn tại, nên nó pass một cách vô nghĩa khi
+  không có gì được deploy.
+
+`govard deploy plan <remote>` cho thấy điều kiện chặn sẽ so sánh với mode nào, trước
+khi kết nối tới đâu: bước static content có mặt trong cả hai trường hợp, và command mà
+plan in ra mang sẵn phép so sánh, ví dụ `[ developer != developer ]` trên target ở
+developer mode.
+
+Mode là một deploy setting, không phải setting của môi trường local: môi trường local
+trong `.govard.yml` tự chọn Magento mode cho việc phát triển, và hai bên không nhất
+thiết phải khớp nhau. Nó còn mang tính **mô tả**: govard không bao giờ chạy
+`bin/magento deploy:mode:set`, nên đặt `developer` ở đây là nói cho deploy biết target
+đang chạy gì, chứ không làm target chạy như vậy. Hãy kiểm tra target bằng
+`bin/magento deploy:mode:show` rồi đặt setting cho khớp.
+
 ### Tách static content
 
 `split_static_deployment` deploy static content của adminhtml và frontend thành
@@ -345,6 +405,10 @@ Node cần ở nơi *build*, không phải nơi deploy: với `--artifact-dir`, 
 build ở job build của CI và `build:frontend` bị bỏ qua trên target, nên image của
 job deploy vẫn chỉ cần govard + ssh + rsync.
 
+[Case study triển khai](/vi/workflows/deploy-case-studies) đi qua một theme Hyvä
+(case 3), chính theme đó ở developer mode (case 4) và hai theme build bằng Node
+(case 5), kèm cấu hình và lệnh sandbox cho từng ca.
+
 ### Nhiều store, website và theme
 
 Dự án multi-store deploy một release phục vụ mọi website, nên tập deploy là
@@ -395,6 +459,10 @@ của ứng dụng, không phải của release; một deploy ghi đè chúng l�
 xoá cấu hình của storefront đang chạy. `deploy.verify.url` kiểm một URL; dự án
 multi-store muốn kiểm mọi storefront thì gắn hook vào `verify` và chạy kiểm tra
 mình cần.
+
+[Case study triển khai — Ca 6](/vi/workflows/deploy-case-studies#case-6-multi-store-hyva-storefront-with-a-luma-admin) chính là mục này
+áp vào một dự án thật: một storefront Hyvä với admin Luma, split được bật, quy tắc
+union-of-locales, và hook verify kiểm mọi storefront.
 
 ### Quyền ghi và ownership
 

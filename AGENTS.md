@@ -34,9 +34,11 @@ internal/cmd/                   # Cobra commands
   bootstrap*.go                  # Bootstrap workflows
   config_*.go                    # Config management
   db*.go                         # Database commands
+  deploy*.go                     # Deployment commands (deploy, plan/check, build, sandbox, rollback, unlock)
   doctor*.go                     # Diagnostics & fixes
   profile*.go                    # Profile detection/apply
   up*.go                         # Environment startup
+internal/deploy/                 # Deployment engine (framework-neutral pipeline, recipes, SSH/rsync runners, sandbox)
 internal/engine/                 # Core engine (framework-agnostic dispatch + registries)
   config*.go                     # Config structs, normalize, persist
   compose*.go                    # Docker compose generation
@@ -285,6 +287,17 @@ Compiles backend and serves frontend at `http://localhost:34115`
 Update `README.md` for: installation, upgrade flow, command/flag changes, release consumption
 
 Update `docs/*.md` for: command names/aliases/flags, config behavior, remote/sync/db workflows, framework support, desktop behavior. `docs/**/*.md` auto-syncs to the GitHub Wiki on every push to `master` (`.github/workflows/sync-wiki.yml`) — no separate wiki edit needed.
+
+Deployment documentation lives in two pages, and a user-visible deploy change
+belongs in **both**: `docs/workflows/deployment.md` is the engine reference (the
+pipeline, build modes, publish strategies, rollback, the sandbox), while
+`docs/workflows/deploy-case-studies.md` is the project-facing half — a worked
+configuration per project shape (Luma, Hyvä, several themes and store views,
+developer versus production mode, a symlinked versus a real webroot), the sandbox
+command that rehearses it, and the messages a failed run produces. A new recipe
+setting belongs in the case-studies reference table; a new flag or task belongs in
+the engine page. Each has a `docs/vi/workflows/` counterpart and a sidebar entry in
+`docs/.vitepress/config.ts`.
 
 **Treat stale docs as incomplete work.**
 

@@ -23,6 +23,11 @@ target already has — `releases/`, `shared/`, `.dep/` or a `current` symlink �
 govard adopts it only when exactly one candidate matches, saying which. No layout
 or several is a configuration error naming what was probed.
 
+This page describes the engine and every lever it has. For worked configurations —
+a Luma store, a Hyvä storefront, several themes and store views, developer versus
+production mode, and a symlinked versus a real webroot — see
+[Deployment case studies](/workflows/deploy-case-studies).
+
 ## Setting up a Magento project
 
 Four things have to exist before the first deploy: a target that already serves
@@ -103,6 +108,8 @@ Override what your project differs on, and nothing else:
 - **static content**: `static_jobs`, `static_content_locales`,
   `static_deploy_options`, the adminhtml/frontend split, and the theme lists — see
   *The static content split* and *Multiple stores, websites and themes*;
+- **mode**: `mage_mode` (`developer` skips static content deployment) — see
+  *Developer and production mode*;
 - **workers**: `worker_control: true` runs `cron:remove`/`queue:consumers:stop`
   around the deploy and restores them after — see the pipeline table;
 - **opcache**: `runtime_reload_command` after the cache flush, for a target whose
@@ -110,6 +117,9 @@ Override what your project differs on, and nothing else:
   symlink swap*;
 - **ownership**: `owner`, `writable_mode` (`chmod`, `chown`, `chmod+chown`, `acl`,
   `skip`) and `writable_permissions` — see *Permissions and ownership*.
+
+Every key either recipe declares, with its default and its shape, is tabulated in
+[Deployment case studies § Reference](/workflows/deploy-case-studies#reference-every-setting-the-magento-recipe-reads).
 
 ### 4. Where Composer credentials come from
 
@@ -176,7 +186,9 @@ govard deploy sandbox down --purge
 The sandbox is a production deploy pointed at a container — same SSH, same mirror,
 same recipe — so a failure there is a failure you would have met on the server,
 without a server. It needs the same application prerequisites as any target; the
-section below says what each failure means.
+section below says what each failure means, and
+[Deployment case studies](/workflows/deploy-case-studies#rehearsing-any-case-in-the-sandbox)
+gives the profile and `--docroot` shape each kind of project needs.
 
 ## The pipeline
 
@@ -188,6 +200,8 @@ rather than by a recipe:
 | `prepare` | preflight, lock, release directory, code, shared files, permissions |
 | `build` | dependencies, patches, code generation, frontend assets, static assets — or the artifact |
 | `publish` | maintenance, workers, database backup, configuration, migrations, activation, caches, release record |
+| `verify` | post-publish checks |
+| `cleanup` | prune old releases, release the lock |
 
 The maintenance window is opened only when it buys something: a symlink
 activation is an atomic rename, so nothing serving the site is rewritten, and the
@@ -217,8 +231,6 @@ The guard is the served application (`bin/magento` in the served directory), not
 just the directory: a first deploy has no served release at all, and an in-place
 target's docroot is a git checkout that may never have been deployed to — neither
 has anything to protect, so both steps are a no-op there.
-| `verify` | post-publish checks |
-| `cleanup` | prune old releases, release the lock |
 
 A framework contributes a **recipe** that fills the tasks it supports; anything
 it leaves empty is reported as skipped, not as a failure. A project customises
@@ -305,6 +317,54 @@ may outlive the run. Interrupting is a request to stop, not a guarantee that a s
 which had already started did — check with `govard deploy releases` and `status`
 before starting another attempt.
 
+### Developer and production mode
+
+`mage_mode` is the one setting that changes *what the deploy does* rather than how it
+does it, so it is worth being explicit about in every project:
+
+| `mage_mode` | `build:assets` runs | When to use it |
+| --- | --- | --- |
+| not set (the default) | yes | production behaviour; equivalent to `production` |
+| `production` | yes | a target whose static content is compiled at deploy time |
+| `developer` | no | a target Magento generates static files for on demand |
+
+The recipe's guard is a plain string comparison, so an empty value behaves exactly
+like `production`; only the literal `developer` skips the step. A developer-mode
+deploy is therefore minutes faster on a large storefront — no
+`setup:static-content:deploy` at all — and the application compiles what a page needs
+on first request.
+
+```yaml
+deploy:
+  settings:
+    mage_mode: developer      # staging a team browses; skip static content
+```
+
+Two consequences worth stating plainly:
+
+- **`developer` is wrong on a production target** unless its `env.php` sets
+  `static_content_on_demand_in_production`. A production `env.php` normally leaves it
+  off, so a theme whose static files were never deployed answers `404` for them. A
+  shared staging target whose performance is measured should also use `production`,
+  because on-demand generation changes the numbers.
+- **The split does not apply in developer mode.** `split_static_deployment` only
+  describes *how* the static content passes are arranged, and in developer mode there
+  are no passes. The recipe's own verification follows suit: the in-place static
+  content version check is guarded on the version file existing, so it passes
+  vacuously when nothing was deployed.
+
+`govard deploy plan <remote>` shows which mode the guard will compare, before
+anything connects: the static content step is present either way, and the command the
+plan prints carries the comparison, for example `[ developer != developer ]` on a
+developer-mode target.
+
+The mode is a deploy setting, not a local environment setting: `.govard.yml`'s local
+environment picks its own Magento mode for development, and the two do not have to
+agree. It is also **descriptive**: govard never runs `bin/magento deploy:mode:set`, so
+setting `developer` here tells the deploy what the target runs, it does not make the
+target run it. Check the target with `bin/magento deploy:mode:show` and set the
+setting to match.
+
 ### The static content split
 
 `split_static_deployment` deploys the adminhtml and frontend static content in two
@@ -369,6 +429,10 @@ Node is needed where the *build* runs, not where the deploy runs: with
 `--artifact-dir` the themes are built in the CI build job and `build:frontend` is
 skipped on the target, so the deploy job's image stays govard + ssh + rsync.
 
+[Deployment case studies](/workflows/deploy-case-studies) works through one Hyvä
+theme (case 3), the same theme in developer mode (case 4) and two Node-built themes
+(case 5), with the configuration and the sandbox command for each.
+
 ### Multiple stores, websites and themes
 
 A multi-store project deploys one release that serves every website, so the deploy
@@ -419,6 +483,11 @@ in the admin are the application's data, not the release's, and a deploy that
 rewrote them would be a deploy that can overwrite a live storefront's settings.
 `deploy.verify.url` checks one URL; a multi-store project that wants every
 storefront checked should anchor a hook on `verify` and run the checks it wants.
+
+[Deployment case studies § Case 6](/workflows/deploy-case-studies#case-6-multi-store-hyva-storefront-with-a-luma-admin)
+is this section applied to a real project: a Hyvä storefront with a Luma admin,
+the split enabled, the union-of-locales rule, and the verify hook that checks every
+storefront.
 
 ### Permissions and ownership
 

@@ -73,4 +73,4 @@ govard lock generate
 
 ---
 
-→ Tham khảo: [Lệnh CLI](/vi/reference/cli-commands#govard-lock) · [Cấu hình](/vi/reference/configuration#safety-and-reproducibility)
+→ Tham khảo: [Lệnh CLI](/vi/reference/cli-commands#govard-lock) · [Cấu hình](/vi/reference/configuration#an-toan-va-tinh-tai-lap-safety-and-reproducibility)

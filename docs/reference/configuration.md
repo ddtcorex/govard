@@ -292,6 +292,64 @@ Remote fields support `op://...` references resolved through the 1Password CLI.
 
 ---
 
+### Deploy
+
+The `deploy:` block configures how a git revision becomes a release on a target. A
+remote may override any of its keys through `remotes.<name>.deploy.<key>` (and the
+topology fields `branch`, `repository`, `deploy_path`, `publish`, `local` directly on
+the remote); a command-line flag wins over both.
+
+```yaml
+deploy:
+  keep_releases: 5
+  command_timeout: 90m            # every step outside the maintenance window
+  maintenance_timeout: 15m        # one step inside it
+  lock_stale_after: 2h            # how old a lock may be before `unlock` takes it
+  db_backup: true
+  artifact_dir: artifacts         # its presence alone selects artifact mode
+  verify:
+    url: https://shop.example.com/
+    timeout: 30s
+  settings:                       # validated against the recipe; an unknown key exits 4
+    php_bin: php8.3
+    php_version: "8.3"
+    mage_mode: production
+  hooks:
+    - { name: varnish-purge, on: "publish:activate", position: after, order: 10, run: "varnishadm ban req.url ~ /" }
+```
+
+| Field | Default | Description |
+| :--- | :--- | :--- |
+| `keep_releases` | `5` | how many releases `deploy:cleanup` keeps, with their database dumps |
+| `command_timeout` | `30m` | bounds every step outside the maintenance window |
+| `maintenance_timeout` | `15m` | bounds one step inside the window |
+| `lock_stale_after` | `2h` | age at which `govard deploy unlock` releases a lock without `--force` |
+| `db_backup` | `false` | dump the database before the first mutating task (`--db-backup` per run) |
+| `artifact_dir` | — | an artifact directory; its presence resolves `--build=auto` to `artifact` |
+| `verify.url` | — | the HTTP check `deploy:verify` runs after publish |
+| `verify.timeout` | `30s` | how long that request may take |
+| `settings` | recipe defaults | framework and engine settings, validated against the recipe |
+| `hooks` | — | steps anchored on a task id, a stage alias (`stage:build`) or another hook |
+
+Remote-level fields the deploy engine reads:
+
+| Field | Description |
+| :--- | :--- |
+| `path` | the **served docroot**; whether it is absent, a symlink or a real directory decides the publish strategy |
+| `deploy_path` | the layout root holding `releases/`, `shared/` and `.dep/`; probed from the target when omitted |
+| `deploy.publish` | `auto` (default), `symlink` or `in_place` |
+| `deploy.branch` / `deploy.repository` | overrides for the project-level values |
+| `deploy.local` | run the pipeline against this machine instead of over SSH |
+
+`deploy.settings` is validated against the framework's recipe before anything runs: an
+unknown key or a value with the wrong shape exits `4` with the key named. String
+settings must be quoted if they look numeric (`php_version: "8.2"`).
+
+→ Full guides: [Deployment](/workflows/deployment) and
+[Deployment case studies](/workflows/deploy-case-studies)
+
+---
+
 ### Project Extensions
 
 | Path | Purpose |
@@ -326,7 +384,7 @@ Magento's `app/etc/env.php`.
 
 ### Audit Lint Providers
 
-`audit.lint` configures which backend [`govard audit`](./cli-commands.md#govard-audit)
+`audit.lint` configures which backend [`govard audit`](/reference/cli-commands#govard-audit)
 uses for lint checks. Both keys are optional; with neither set, audits run the
 Govard-owned native backend.
 
