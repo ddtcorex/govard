@@ -242,7 +242,7 @@ func TestSandboxUpDeclaresThePHPItShipped(t *testing.T) {
 	// still said nothing (or 8.2) would fail its very first check — the failure
 	// the flag exists to avoid.
 	root := sandboxProject(t)
-	fake := sandboxFake()
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileFull)
 	fake.answers["image inspect"] = "sha256:abc\n"
 
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
@@ -326,7 +326,7 @@ func TestSandboxUpWithoutPHPDeclaresNoSeries(t *testing.T) {
 // `up --php 8.3` on a php-8.4 container declared 8.3 without touching the image.
 func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
 	root := sandboxProject(t)
-	fake := sandboxFake()
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileFull)
 	fake.answers["image inspect"] = "sha256:abc\n"
 	probe := func(context.Context, string, int, time.Duration) error { return nil }
 
@@ -340,7 +340,7 @@ func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
 		t.Fatalf("sandbox up: %v", err)
 	}
 
-	reuse := sandboxFake()
+	reuse := sandboxFake().containerProfile(deploy.SandboxProfileFull)
 	reuse.answers["image inspect"] = "sha256:abc\n"
 	state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(reuse.run), deploy.LocalRunner{}, deploy.SandboxRequest{
 		ProjectRoot: root,
@@ -362,7 +362,7 @@ func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
 		t.Fatalf("php_version = %v after a reusing up, want 8.4 kept", got)
 	}
 
-	different := sandboxFake()
+	different := sandboxFake().containerProfile(deploy.SandboxProfileFull)
 	different.answers["image inspect"] = "sha256:abc\n"
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(different.run), deploy.LocalRunner{}, deploy.SandboxRequest{
 		ProjectRoot: root,

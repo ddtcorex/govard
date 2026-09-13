@@ -237,10 +237,41 @@ type fakeSandboxRuntime struct {
 	answers map[string]string
 	fail    map[string]string
 	streams []string
+	// labels answers container label queries by label name.
+	labels map[string]string
 }
 
 func newFakeSandboxRuntime() *fakeSandboxRuntime {
 	return &fakeSandboxRuntime{answers: map[string]string{}, fail: map[string]string{}}
+}
+
+// containerProfile makes the fake describe a container built for one profile,
+// which is what the real label says. Labels are answered by name rather than
+// through the substring table: the generic `inspect --format {{index .Config.Labels`
+// entry answers every label query, so a test that needs one label answered
+// precisely cannot express that with a longer marker.
+func (f *fakeSandboxRuntime) containerProfile(profile string) *fakeSandboxRuntime {
+	if f.labels == nil {
+		f.labels = map[string]string{}
+	}
+	f.labels["govard.sandbox.profile"] = profile + "\n"
+	return f
+}
+
+// labelQuery is the label name in an `inspect --format {{index .Config.Labels "x"}}`
+// invocation, empty for any other command.
+func labelQuery(key string) string {
+	const marker = "{{index .Config.Labels \""
+	start := strings.Index(key, marker)
+	if start < 0 {
+		return ""
+	}
+	rest := key[start+len(marker):]
+	end := strings.Index(rest, "\"")
+	if end < 0 {
+		return ""
+	}
+	return rest[:end]
 }
 
 func (f *fakeSandboxRuntime) run(ctx context.Context, request deploy.SandboxCommand) (string, error) {
@@ -249,6 +280,14 @@ func (f *fakeSandboxRuntime) run(ctx context.Context, request deploy.SandboxComm
 	for marker, message := range f.fail {
 		if strings.Contains(key, marker) {
 			return "", &deploy.CommandError{Command: "docker " + key, ExitCode: 1, Stderr: message}
+		}
+	}
+	if name := labelQuery(key); name != "" {
+		if answer, ok := f.labels[name]; ok {
+			if request.Out != nil {
+				fmt.Fprint(request.Out, answer)
+			}
+			return answer, nil
 		}
 	}
 	for marker, answer := range f.answers {
@@ -955,7 +994,7 @@ func TestSandboxResetRefusesWithoutAContainer(t *testing.T) {
 
 func TestSandboxDocRootRealInitialisesAGitCheckout(t *testing.T) {
 	root := sandboxProject(t)
-	fake := sandboxFake()
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileBasic)
 	fake.answers["image inspect"] = "sha256:abc\n"
 
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
@@ -1144,5 +1183,173 @@ func TestSandboxUpStartsAStoppedContainerWithoutReshaping(t *testing.T) {
 	}
 	if !state.Running {
 		t.Fatal("the state must report the container as running after up started it")
+	}
+}
+
+// flakyRunner fails the first `failures` commands and then succeeds, which is what
+// a sandbox that is still starting its sshd looks like.
+type flakyRunner struct {
+	failures int
+	attempts int
+	commands []string
+}
+
+func (r *flakyRunner) Run(_ context.Context, command string, _ deploy.RunOptions) (deploy.Result, error) {
+	r.attempts++
+	r.commands = append(r.commands, command)
+	if r.attempts <= r.failures {
+		return deploy.Result{}, &deploy.CommandError{Command: command, ExitCode: 255, Stderr: "Connection refused"}
+	}
+	return deploy.Result{}, nil
+}
+
+// The readiness check has to prove a login, not a listening port: Docker's proxy
+// accepts a TCP connection before sshd is ready, and a deploy started in that
+// window fails its first step with exit 255.
+func TestDialSandboxSSHWaitsForARealLogin(t *testing.T) {
+	runner := &flakyRunner{failures: 2}
+	if err := deploy.DialSandboxSSH(context.Background(), runner, "/keys/id_ed25519", "127.0.0.1", 49153, 10*time.Second); err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if runner.attempts != 3 {
+		t.Fatalf("attempts = %d, want 3 (two refusals then a login)", runner.attempts)
+	}
+	command := runner.commands[0]
+	for _, want := range []string{"BatchMode=yes", "-p 49153", "deployer@127.0.0.1", "/keys/id_ed25519", " true"} {
+		if !strings.Contains(command, want) {
+			t.Errorf("the probe command is missing %q:\n%s", want, command)
+		}
+	}
+	if strings.Contains(command, "-t ") {
+		t.Errorf("a readiness probe must not allocate a tty:\n%s", command)
+	}
+}
+
+func TestDialSandboxSSHReportsWhatKeptFailing(t *testing.T) {
+	runner := &flakyRunner{failures: 1 << 30}
+	err := deploy.DialSandboxSSH(context.Background(), runner, "/keys/id_ed25519", "127.0.0.1", 49153, 400*time.Millisecond)
+	if err == nil {
+		t.Fatal("want an error when the sandbox never answers")
+	}
+	if !strings.Contains(err.Error(), "did not answer") || !strings.Contains(err.Error(), "127.0.0.1:49153") {
+		t.Fatalf("err = %v, want the address and the fact that it never answered", err)
+	}
+}
+
+// sshNotReadyRunner refuses the first `failures` ssh commands and delegates
+// everything else to the real local runner: the sandbox mirror is still built by
+// real git, and only the target's sshd is late.
+type sshNotReadyRunner struct {
+	failures int
+	attempts int
+	commands []string
+	inner    deploy.Runner
+}
+
+func (r *sshNotReadyRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
+	r.commands = append(r.commands, command)
+	if strings.HasPrefix(command, "ssh ") {
+		r.attempts++
+		if r.attempts <= r.failures {
+			return deploy.Result{}, &deploy.CommandError{Command: command, ExitCode: 255, Stderr: "Connection refused"}
+		}
+		// Answered: the probe is what is under test, so no real login is made.
+		return deploy.Result{}, nil
+	}
+	return r.inner.Run(ctx, command, opts)
+}
+
+// `up` must not report a sandbox ready before it can be deployed to. The probe it
+// uses by default is a login over the sandbox key; this asserts the wiring, which
+// the unit test above cannot see.
+func TestSandboxUpProvesTheTargetAnswersBeforeItReportsReady(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake()
+	fake.answers["image inspect"] = "sha256:abc\n"
+	runner := &sshNotReadyRunner{failures: 1, inner: deploy.LocalRunner{}}
+
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), runner, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfilePHP,
+	}); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	logins := 0
+	for _, command := range runner.commands {
+		if strings.HasPrefix(command, "ssh ") && strings.Contains(command, "BatchMode=yes") {
+			logins++
+		}
+	}
+	if logins != 2 {
+		t.Fatalf("up must retry the login until the sandbox answers, saw %d of %d commands:\n%v", logins, len(runner.commands), runner.commands)
+	}
+}
+
+// A reused sandbox is described by its container, not by the flags of the command
+// that reached it.
+//
+// `up` with no profile used to write the *default* profile's settings and a
+// computed image tag for a container built for a different one: on a host that did
+// not have that tag it built the image, and `--recreate` would then have handed
+// back a container without the services the first one had. Found live — a `full`
+// sandbox reported itself as the `php` profile whose image tag did not exist.
+func TestSandboxUpDescribesAReusedContainerAsWhatItIs(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileBasic)
+	fake.answers["image inspect"] = "sha256:abc\n"
+	const actualImage = "govard-deploy-sandbox:sample-project-basic-deadbeef"
+	fake.answers["inspect --format {{.Config.Image}}"] = actualImage + "\n"
+	probe := func(context.Context, string, int, time.Duration) error { return nil }
+
+	state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Probe:       probe,
+	})
+	if err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	if state.Profile != deploy.SandboxProfileBasic {
+		t.Fatalf("profile = %q, want the profile the container was built for", state.Profile)
+	}
+	if state.Image != actualImage {
+		t.Fatalf("image = %q, want the container's own image %q", state.Image, actualImage)
+	}
+	if fake.has("build --file") {
+		t.Fatalf("a reused sandbox must not build another profile's image:\n%v", fake.calls)
+	}
+	remote, _, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	if err != nil {
+		t.Fatalf("read the sandbox remote: %v", err)
+	}
+	if _, ok := remote.Deploy.Settings["php_bin"]; ok {
+		t.Fatal("a profile with no PHP must not declare a PHP binary")
+	}
+
+	// The default profile is what the CLI passes when the flag is not named, and it
+	// must not conflict with the container: "no preference" and "asked for the
+	// default" are the same value. Only an explicit choice is refused.
+	named := sandboxFake().containerProfile(deploy.SandboxProfileFull)
+	named.answers["image inspect"] = "sha256:abc\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(named.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.DefaultSandboxProfile,
+		Probe:       probe,
+	}); err != nil {
+		t.Fatalf("an unnamed profile must adopt the container's: %v", err)
+	}
+
+	explicit := sandboxFake().containerProfile(deploy.SandboxProfileBasic)
+	explicit.answers["image inspect"] = "sha256:abc\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(explicit.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot:     root,
+		ProjectName:     "sample-project",
+		Profile:         deploy.SandboxProfileFull,
+		ProfileExplicit: true,
+		Probe:           probe,
+	}); err == nil || !strings.Contains(err.Error(), "--recreate") {
+		t.Fatalf("err = %v, want a refusal naming --recreate", err)
 	}
 }

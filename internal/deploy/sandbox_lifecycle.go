@@ -31,9 +31,10 @@ const (
 	SandboxDeployerLayout = "deployer"
 )
 
-// SandboxPortProbe waits until the container's SSH port answers. It is a field
-// on the request so the lifecycle is testable without a container: production
-// dials, tests do not have to.
+// SandboxPortProbe waits until the sandbox is *deployable*, which is a login and
+// not merely a listening port: Docker's proxy accepts a TCP connection before sshd
+// has finished starting. It is a field on the request so the lifecycle is testable
+// without a container: production runs the login, tests do not have to.
 type SandboxPortProbe func(ctx context.Context, host string, port int, timeout time.Duration) error
 
 // SandboxRequest is one `govard deploy sandbox` invocation.
@@ -56,8 +57,14 @@ type SandboxRequest struct {
 	// deploy, when the next revision was committed and `up` was run to refresh
 	// the mirror.
 	ReshapeDocRoot bool
-	Layout         string
-	RemoteName     string
+	// ProfileExplicit records that the operator named a profile on the command
+	// line rather than accepting the default. `--profile` has a default, so a
+	// reused container cannot tell "no preference" from "asked for the default
+	// one" by the value alone — and only an explicit choice may be refused when
+	// it disagrees with the container that exists.
+	ProfileExplicit bool
+	Layout          string
+	RemoteName      string
 	// PHP is the series the image must provide, for example "8.4". Empty keeps
 	// the base image's own version.
 	PHP string
@@ -191,7 +198,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		exists = false
 	}
 	if exists {
-		php, err = sandboxReusedRuntime(request, php)
+		profile, php, err = sandboxReusedRuntime(ctx, runtime, request, container, profile, php)
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +304,10 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 
 	probe := request.Probe
 	if probe == nil {
-		probe = DialSandboxPort
+		keyPath := key.PrivatePath
+		probe = func(ctx context.Context, host string, port int, timeout time.Duration) error {
+			return DialSandboxSSH(ctx, git, keyPath, host, port, timeout)
+		}
 	}
 	if err := probe(ctx, "127.0.0.1", port, 30*time.Second); err != nil {
 		return nil, err
@@ -324,10 +334,21 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 
+	// The image the container was actually built from. A reused sandbox must be
+	// described as what it is rather than as the tag today's flags would build:
+	// `up` with no flags on a `full` sandbox printed the default profile's tag,
+	// which the container does not have and which the operator cannot act on.
+	stateImage := image
+	if exists {
+		if actual, err := runtime.ContainerImage(ctx, container); err == nil && actual != "" {
+			stateImage = actual
+		}
+	}
+
 	packages, _ := runtime.ImageFile(ctx, image, SandboxPackagesTxt)
 	return &SandboxState{
 		Container:   container,
-		Image:       image,
+		Image:       stateImage,
 		Profile:     profile,
 		PHP:         php,
 		Port:        port,
@@ -474,24 +495,55 @@ func prepareSandboxDocRoot(ctx context.Context, runtime SandboxRuntime, containe
 // the kind of failure a sandbox exists to catch, not to cause.
 const sandboxChownTail = " ; chown -R " + SandboxUser + ":" + SandboxUser + " " + SandboxHome
 
-// DialSandboxPort waits for the container's published SSH port to answer.
-func DialSandboxPort(ctx context.Context, host string, port int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+// DialSandboxSSH waits until a real login to the sandbox succeeds.
+//
+// The port answering a TCP connection is not the same thing as the sandbox being
+// deployable: Docker's proxy accepts before sshd has finished starting, so a
+// readiness check that only dials lets `up` return at the moment a deploy will
+// fail. Observed under load — the integration suite running next to a live
+// rehearsal — as the first step of the deploy reporting
+// `the sandbox container behind remote "sandbox" is not running` (exit 255) for a
+// container that was up and answered seconds later.
+//
+// The login is the deploy's own: batch mode, the sandbox key, the published port,
+// and `true` as the command. Each attempt gets its own short timeout so a stalled
+// handshake cannot consume the whole budget.
+func DialSandboxSSH(ctx context.Context, runner Runner, keyPath, host string, port int, timeout time.Duration) error {
+	if runner == nil {
+		runner = LocalRunner{}
+	}
 	address := net.JoinHostPort(host, strconv.Itoa(port))
+	command := SandboxSSHCommand(keyPath, host, port)
+	deadline := time.Now().Add(timeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		conn, err := net.DialTimeout("tcp", address, time.Second)
+		attempt, cancel := context.WithTimeout(ctx, sandboxProbeAttempt)
+		_, err := runner.Run(attempt, command, RunOptions{Timeout: sandboxProbeAttempt})
+		cancel()
 		if err == nil {
-			_ = conn.Close()
 			return nil
 		}
 		lastErr = err
 		time.Sleep(300 * time.Millisecond)
 	}
 	return fmt.Errorf("the sandbox sshd did not answer on %s within %s: %w", address, timeout, lastErr)
+}
+
+// sandboxProbeAttempt bounds one login attempt of the readiness check.
+const sandboxProbeAttempt = 5 * time.Second
+
+// SandboxSSHCommand is the non-interactive login the readiness check uses: the
+// options `sandbox ssh` offers, with batch mode and a command instead of a tty, so
+// it can never block on a prompt or a host-key question.
+func SandboxSSHCommand(keyPath, host string, port int) string {
+	return "ssh -o BatchMode=yes -o LogLevel=ERROR -o StrictHostKeyChecking=no" +
+		" -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5" +
+		" -i " + conventions.ShellQuote(keyPath) +
+		" -p " + strconv.Itoa(port) +
+		" " + conventions.ShellQuote(SandboxUser+"@"+host) + " true"
 }
 
 // RefreshSandboxMirror makes the local bare mirror hold every local branch, so
@@ -607,36 +659,46 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 // The profile is read from the container's own label and the series from the
 // sandbox remote the creation wrote, both of which describe what exists.
 // `--recreate` is the way to get a different one, and the refusal says so.
-// sandboxReusedRuntime reports the PHP series a sandbox container already
-// declares, and refuses to relabel it.
+// sandboxReusedRuntime reports the profile and PHP series a sandbox container
+// already has, and refuses to relabel it.
 //
-// A reused container is what it is: its image was built for one series, and that
-// is what the sandbox's remote has to declare. Without this, `up` with no flags
-// rewrote the remote without `php_version` — after which `sandbox status`
-// reported no series for a php-8.4 image, and an artifact deploy lost the check
-// that catches a series mismatch — while `up --php 8.3` on a php-8.4 container
-// relabelled the target without touching it.
+// A reused container is what it is: its image was built for one profile and one
+// PHP series, and that is what the sandbox remote has to describe — the profile
+// decides which settings the remote carries (a PHP binary, the web tier's verify
+// URL) and the series is what an artifact deploy is checked against. Reading them
+// from today's flags instead meant `up` with no flags erased `php_version` from a
+// php-8.4 sandbox and described a `full` container as the default profile, with a
+// computed image tag; on a host that did not have that tag it went further and
+// built the image, and `--recreate` would then hand back a container without the
+// services the first one had.
 //
-// The series is read from the sandbox remote the creation wrote, which is what
-// `sandbox status` already treats as the record of what exists. `--recreate` is
-// the way to get a different one, and the refusal says so. The profile is left
-// alone: it is the same kind of statement, but the flags have always driven it
-// and changing that is a separate decision.
-func sandboxReusedRuntime(request SandboxRequest, php string) (string, error) {
+// The container's label is the record of its profile and the sandbox remote is the
+// record of its series, both of which `sandbox status` already reads. An explicit
+// flag that disagrees is refused rather than silently ignored: `--recreate` is the
+// way to get a different one, and the refusal says so.
+func sandboxReusedRuntime(ctx context.Context, runtime SandboxRuntime, request SandboxRequest, container, profile, php string) (string, string, error) {
+	if declared := containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel); declared != "" {
+		if request.ProfileExplicit && !strings.EqualFold(strings.TrimSpace(request.Profile), declared) {
+			return profile, php, fmt.Errorf(
+				"the sandbox container %s was built for the %s profile; changing it means a new image, so run `govard deploy sandbox up --profile %s --recreate`",
+				container, declared, strings.TrimSpace(request.Profile))
+		}
+		profile = declared
+	}
 	config, err := LoadSandboxRemote(request.ProjectRoot, request.remoteName())
 	if err != nil || !config.RemoteSet {
-		return php, nil
+		return profile, php, nil
 	}
-	declared := sandboxRemotePHP(config.Remote)
-	if php != "" && declared != "" && declared != php {
-		return php, fmt.Errorf(
+	declaredPHP := sandboxRemotePHP(config.Remote)
+	if php != "" && declaredPHP != "" && declaredPHP != php {
+		return profile, php, fmt.Errorf(
 			"the sandbox container ships PHP %s; changing it to %s means a new image, so run `govard deploy sandbox up --php %s --recreate`",
-			declared, php, php)
+			declaredPHP, php, php)
 	}
 	if php == "" {
-		php = declared
+		php = declaredPHP
 	}
-	return php, nil
+	return profile, php, nil
 }
 
 // sandboxRemotePHP is the series the sandbox remote declares, empty when it

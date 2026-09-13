@@ -183,7 +183,7 @@ func TestSandboxUpPublishesTheWebPortAndPointsVerifyAtIt(t *testing.T) {
 
 func TestSandboxUpWithoutWebPublishesNoHTTPPort(t *testing.T) {
 	root := sandboxProject(t)
-	fake := sandboxFake()
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileBasic)
 	fake.answers["image inspect"] = "sha256:abc\n"
 
 	state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{

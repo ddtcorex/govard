@@ -126,18 +126,6 @@ func (p Plan) Only(ids ...string) Plan {
 	return Plan{Remote: p.Remote, Steps: steps}
 }
 
-// TaskPlan returns a one-step plan for a task id, used by commands that run a
-// single task outside the pipeline. An id the recipe does not declare produces
-// an empty plan rather than an error: the caller decides whether that is a
-// refusal.
-func TaskPlan(recipe Recipe, id, remote string) Plan {
-	plan, err := BuildPlan(recipe, nil, remote)
-	if err != nil {
-		return Plan{Remote: remote}
-	}
-	return plan.Only(id)
-}
-
 // MissingVerifyWarning returns the warning a deploy must print when it migrates
 // the database without any HTTP check configured, or "" when the rule does not
 // apply (spec 11).

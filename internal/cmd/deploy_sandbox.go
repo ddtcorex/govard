@@ -125,6 +125,9 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	// Naming a shape is what turns "reuse this sandbox" into "lay it out again".
 	// The `reset` command overrides this: wiping is what reset does.
 	reshapeDocRoot := cmd.Flags().Changed("docroot")
+	// `--profile` has a default, so "no preference" and "asked for the default"
+	// are the same value; only the second may conflict with an existing container.
+	profileExplicit := cmd.Flags().Changed("profile")
 
 	// The framework recipe owns what the container has to provide beyond its
 	// profile; the core renders it and never interprets it.
@@ -138,14 +141,15 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		// Where the web server serves from comes from the project, not from a flag:
 		// `stack.web_root` is already the answer for the local environment, and two
 		// answers would be one too many.
-		WebRoot:        config.Stack.WebRoot,
-		DocRoot:        docRoot,
-		ReshapeDocRoot: reshapeDocRoot,
-		Layout:         layout,
-		Requirements:   requirements,
-		Recreate:       recreate,
-		Purge:          purge,
-		Out:            cmd.OutOrStdout(),
+		WebRoot:         config.Stack.WebRoot,
+		DocRoot:         docRoot,
+		ReshapeDocRoot:  reshapeDocRoot,
+		ProfileExplicit: profileExplicit,
+		Layout:          layout,
+		Requirements:    requirements,
+		Recreate:        recreate,
+		Purge:           purge,
+		Out:             cmd.OutOrStdout(),
 	}, nil
 }
 

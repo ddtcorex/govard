@@ -667,9 +667,13 @@ vụ. `reset` thì luôn định hình: xoá thư mục deploy rồi dựng lạ
 mirror.
 
 Một sandbox đã tồn tại được mô tả bằng chính nó, không bằng flag của lệnh vừa gọi
-tới: `up` giữ nguyên series PHP mà container được build, nên lần `up` sau không có
-`--php` sẽ không xoá mất nó, và đòi một series khác sẽ bị từ chối kèm đúng flag thay
-đổi được nó (`--recreate`). Riêng block remote `sandbox` được ghi lại từ trạng thái
+tới: `up` báo đúng profile và series PHP mà container được build, cùng image thật
+của nó — nên lần `up` sau không có `--php` không xoá mất series, và không mô tả một
+sandbox `full` thành profile mặc định. Đòi một profile hoặc series khác sẽ bị từ
+chối kèm đúng flag thay đổi được nó (`--recreate`), thay vì dán nhãn mới cho một
+container mà image vẫn là image cũ. `up` cũng chờ một lần đăng nhập thật trước khi
+báo sandbox sẵn sàng — cổng đã publish và chấp nhận kết nối chưa phải là một target
+deploy được. Riêng block remote `sandbox` được ghi lại từ trạng thái
 container ở mọi lần `up` (host, port, path, branch, mirror, verify URL và các setting
 mà profile hàm ý), nên sửa tay trong đó không giữ được — hãy đặt những gì cần giữ
 vào cấu hình của chính dự án.

@@ -675,9 +675,14 @@ the container and the remote it wrote; `--purge` also removes the image, the key
 and the mirror.
 
 A sandbox you already have is described by what it is, not by the flags of the
-command that reached it: `up` keeps the PHP series the container was built with,
-so a later `up` without `--php` does not erase it, and asking for a different
-series is refused with the flag that actually changes it (`--recreate`). The
+command that reached it: `up` reports the profile and the PHP series the container
+was built for, and the image it actually came from, so a later `up` without
+`--php` does not erase the series and does not describe a `full` sandbox as the
+default profile. Naming a profile or series that disagrees is refused with the
+flag that actually changes it (`--recreate`), rather than silently relabelling a
+container whose image still ships the old one. `up` also waits for a real login
+before it reports the sandbox ready — a published port that accepts a connection
+is not a target a deploy can start against. The
 `sandbox` remote block itself is rewritten from the container's state on every
 `up` (host, port, paths, branch, mirror, verify URL, and the settings the profile
 implies), so an edit made there by hand does not survive; put what you want to
