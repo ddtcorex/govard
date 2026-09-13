@@ -59,6 +59,41 @@ type Step struct {
 	core TaskFunc
 }
 
+// StepImplementation says how a step is carried out, which a machine-readable
+// plan has to state without prose.
+//
+// It is deliberately orthogonal to Skipped: artifact mode leaves a build task
+// its command and skips it anyway, and both facts are worth keeping.
+type StepImplementation string
+
+const (
+	// ImplementationEngine is a framework-agnostic task the engine runs in Go,
+	// which `govard deploy plan` shows as "implemented in the engine".
+	ImplementationEngine StepImplementation = "engine"
+	// ImplementationCommand is a shell command, contributed by the recipe or by
+	// a project hook.
+	ImplementationCommand StepImplementation = "command"
+	// ImplementationNone is a task no recipe filled: the executor records it as
+	// skipped, and it is the one shape an operator can neither run nor review.
+	ImplementationNone StepImplementation = "none"
+)
+
+// Implementation reports how this step runs.
+//
+// `core` is unexported, so this is the only way the command layer can tell an
+// engine step from an unimplemented one: both carry an empty Command, and only
+// one of them will do anything.
+func (s Step) Implementation() StepImplementation {
+	switch {
+	case s.core != nil:
+		return ImplementationEngine
+	case s.Command != "":
+		return ImplementationCommand
+	default:
+		return ImplementationNone
+	}
+}
+
 // Implemented reports whether a step will actually do something: a shell
 // command, a Go implementation, or a hook. An unimplemented task is reported as
 // skipped by the executor, and `govard deploy plan` shows it as such.

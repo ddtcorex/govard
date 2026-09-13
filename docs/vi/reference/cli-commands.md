@@ -801,6 +801,19 @@ timeline cho người đọc đi ra stderr: `schema_version`, `remote`, `branch`
 `result: "failed"` và `error`, thoát mã 1. Release record mang `ci.pipeline`/`ci.job`
 khi lần chạy là CI.
 
+`govard deploy plan --json` phát ra một document **khác** — `kind: "plan"`, để
+pipeline dùng cả hai phân biệt bằng field chứ không phải đoán theo hình dạng — mô
+tả lần chạy **sẽ** làm gì: `schema_version`, `kind`, `remote`, `branch`, `revision`,
+`build.mode`, `publish.strategy` cùng `publish.decided_by` (`configuration`, hoặc
+`target` khi strategy là `auto` và chỉ có kết nối mới resolve được), và
+`steps[{index,id,kind,stage,title,run_on,source,implementation,command,skipped,skip_reason,needs_application}]`.
+`implementation` là `engine`, `command` hoặc `none`; `skipped` phản ánh đúng
+executor, nên cả bước bị build mode bỏ qua lẫn task không recipe nào điền đều là
+`skipped`, mỗi bước mang `skip_reason` của nó. `run_on` là thứ cây cho người đọc
+không thể hiện được: hook khai `run_on: local` trông y hệt mọi bước khác ở đó.
+Document không có timestamp, nên hai lần chạy cùng một plan giống nhau từng byte và
+CI diff được. Không có kết nối nào: `deploy plan` không cần ssh, rsync hay Docker.
+
 `deploy.lock_stale_after` (2h) và `deploy.maintenance_timeout` (15m) là hai timeout
 ngoài `command_timeout`: cái đầu là ngưỡng để `deploy unlock` nhả lock không cần
 `--force`, cái sau chặn một bước trong maintenance window.

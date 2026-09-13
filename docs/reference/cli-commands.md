@@ -813,6 +813,20 @@ document and the human timeline goes to stderr: `schema_version`, `remote`,
 with `result: "failed"` and `error`, and exits 1. The release record carries
 `ci.pipeline`/`ci.job` when the run is a CI run.
 
+`govard deploy plan --json` emits a **different** document — `kind: "plan"`, so a
+pipeline consuming both tells them apart by field rather than by shape — that
+describes what the run *would* do: `schema_version`, `kind`, `remote`, `branch`,
+`revision`, `build.mode`, `publish.strategy` with `publish.decided_by`
+(`configuration`, or `target` while the strategy is `auto` and only a connection
+could resolve it), and
+`steps[{index,id,kind,stage,title,run_on,source,implementation,command,skipped,skip_reason,needs_application}]`.
+`implementation` is `engine`, `command` or `none`; `skipped` mirrors the executor,
+so both a step the build mode skips and a task no recipe implements are `skipped`,
+each carrying its `skip_reason`. `run_on` is the fact the human tree cannot show:
+a hook declared `run_on: local` looks like every other step there. The document
+has no timestamp, so two runs of the same plan are byte-identical and a CI job can
+diff them. Nothing connects: `deploy plan` needs no ssh, no rsync and no Docker.
+
 `deploy.lock_stale_after` (2h) and `deploy.maintenance_timeout` (15m) are the two
 timeouts beyond `command_timeout`: the first is how old a lock must be for
 `deploy unlock` to release it without `--force`, the second bounds one step inside
