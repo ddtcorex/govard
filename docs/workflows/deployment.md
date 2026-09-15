@@ -815,6 +815,10 @@ the build stage is in effect.
 An output directory that is not empty is refused, so a file left over from an
 earlier build cannot ship. Pass `--force` to replace its contents.
 
+For the full pipeline around these commands — integrity, lint, per-remote
+single-job ships sharing one workspace, manual rollbacks — see
+[CI pipelines](/workflows/ci-pipeline).
+
 ## Publishing
 
 `--publish=auto` reads the target instead of guessing:
