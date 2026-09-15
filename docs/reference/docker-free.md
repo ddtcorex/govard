@@ -30,6 +30,7 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard blueprint cache clear` | `none` |
 | `govard blueprint cache list` | `none` |
 | `govard capabilities` | `none` |
+| `govard ci generate` | `none` |
 | `govard completion bash` | `none` |
 | `govard completion fish` | `none` |
 | `govard completion powershell` | `none` |

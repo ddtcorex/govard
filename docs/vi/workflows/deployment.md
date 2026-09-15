@@ -773,6 +773,11 @@ của stage build.
 Thư mục output không rỗng sẽ bị từ chối để một file còn sót từ lần build trước
 không thể lọt ra production. Dùng `--force` nếu muốn thay nội dung.
 
+Khi dự án đã mô tả môi trường trong `.govard.yml`, cặp job viết tay trên có thể
+sinh tự động: [`govard ci generate`](/vi/workflows/ci-generate) render cả
+pipeline với ship một job cho mỗi remote (build và deploy chung một workspace
+nên artifact không chạy qua lại giữa các job) kèm mode `--check` cho CI.
+
 ## Publish
 
 `--publish=auto` đọc target thay vì đoán:

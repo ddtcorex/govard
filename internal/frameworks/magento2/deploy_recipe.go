@@ -55,6 +55,12 @@ func DeployRecipe() deploy.Recipe {
 		"writable_mode": "chmod",
 		"owner":         "",
 
+		// CI lint inputs read by `govard ci generate`. The neutral emitter
+		// only knows the key names; the values are Magento's own, which is
+		// why they live in this recipe and not in the deploy package.
+		"ci_lint_phpcs_standard": "Magento2",
+		"ci_lint_paths":          "app/code app/design",
+
 		// A list or a map is rendered into command arguments; a string is
 		// passed through verbatim so raw flags keep working. The themes list
 		// renders the locales as `--language` options: a bare locale after
@@ -224,6 +230,8 @@ func DeployRecipe() deploy.Recipe {
 		{Key: "static_content_locales_backend", Kind: deploy.SettingArgs, Title: "adminhtml languages; defaults to the frontend ones"},
 		{Key: "worker_control", Kind: deploy.SettingBool, Title: "remove cron and stop consumers around the migration"},
 		{Key: "runtime_reload_command", Kind: deploy.SettingCommand, Title: "run after the cache flush, for example an FPM reload"},
+		{Key: "ci_lint_phpcs_standard", Kind: deploy.SettingString, Title: "phpcs standard for generated CI lint jobs"},
+		{Key: "ci_lint_paths", Kind: deploy.SettingString, Title: "code paths for generated CI deep lint jobs; empty disables the scoped phpcs line"},
 	}...)
 
 	// The two verifications the core cannot supply, because both need the

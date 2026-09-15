@@ -815,6 +815,12 @@ the build stage is in effect.
 An output directory that is not empty is refused, so a file left over from an
 earlier build cannot ship. Pass `--force` to replace its contents.
 
+When the project already describes its environments in `.govard.yml`, the
+hand-written pair above can be generated instead: [`govard ci
+generate`](/workflows/ci-generate) renders the full pipeline with per-remote
+single-job ships (build and deploy share one workspace, so the artifact never
+crosses between jobs) plus a `--check` mode for CI.
+
 ## Publishing
 
 `--publish=auto` reads the target instead of guessing:

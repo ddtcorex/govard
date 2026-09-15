@@ -1016,3 +1016,30 @@ func TestMagento2StaticContentRunsOnTheTargetNotTheBuilder(t *testing.T) {
 		t.Fatalf("the artifact must be received before static content runs: artifact at %d, static content at %d", artifactAt, assetsAt)
 	}
 }
+
+func TestMagento2RecipeDeclaresCILintDefaults(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	if got := recipe.Defaults["ci_lint_phpcs_standard"]; got != "Magento2" {
+		t.Fatalf("ci_lint_phpcs_standard default = %v, want Magento2", got)
+	}
+	if got := recipe.Defaults["ci_lint_paths"]; got != "app/code app/design" {
+		t.Fatalf("ci_lint_paths default = %v, want app/code app/design", got)
+	}
+	// A project that overrides these keys must pass settings validation, so
+	// the recipe has to declare them; an undeclared key is refused (exit 4).
+	declared := map[string]bool{}
+	for _, setting := range recipe.Settings {
+		declared[setting.Key] = true
+	}
+	for _, key := range []string{"ci_lint_phpcs_standard", "ci_lint_paths"} {
+		if !declared[key] {
+			t.Errorf("recipe does not declare setting %q", key)
+		}
+	}
+	if err := deploy.ValidateSettings(recipe, map[string]any{
+		"ci_lint_phpcs_standard": "Magento2",
+		"ci_lint_paths":          "app/code",
+	}); err != nil {
+		t.Fatalf("declared CI lint keys must validate: %v", err)
+	}
+}

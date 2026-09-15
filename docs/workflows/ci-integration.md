@@ -71,6 +71,7 @@ application (static content) run on the target after the artifact is unpacked.
 
 - Two-job shape in full, and what an artifact can and cannot carry: [Deployment](/workflows/deployment)
 - Which steps run where for a given project shape: [Deployment case studies](/workflows/deploy-case-studies)
+- Skip hand-writing the jobs: [`govard ci generate`](/workflows/ci-generate) renders integrity, lint, per-remote single-job ships and manual rollbacks from `.govard.yml`, with a `--check` mode that fails CI when the committed file drifted.
 
 There is no Vietnamese counterpart of this page; the deploy pages themselves are
 bilingual.
