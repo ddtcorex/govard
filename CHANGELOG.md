@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.74.0] - 2026-09-16
+
+### ✨ New Features
+
+- **Deploy topology defaults in the project `deploy:` block:** `repository`, `branch`, `publish` and `deploy_path` can now default once under `deploy:` instead of repeating on every remote, with remote-level values overriding the default and remote-level shorthands kept as-is. A value set in both places is a configuration error (exit 4) naming both locations. (`~` paths still pass through to the remote shell untouched.) (#323, #324)
+
 ## [1.73.0] - 2026-09-14
 
 ### ✨ New Features
