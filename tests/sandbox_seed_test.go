@@ -272,7 +272,8 @@ func TestMagentoEnvRewriteLocalizesServiceHosts(t *testing.T) {
 	}
 }
 
-func TestMagentoEnvRewriteSkipsAbsentKeysLoudly(t *testing.T) {	in := []byte(`'db' => ['connection' => ['default' => ['host' => '127.0.0.1']]]`)
+func TestMagentoEnvRewriteSkipsAbsentKeysLoudly(t *testing.T) {
+	in := []byte(`'db' => ['connection' => ['default' => ['host' => '127.0.0.1']]]`)
 	mapping := map[string]string{"base_url": "https://shop-sandbox.test/"}
 	got, skipped, err := magento2.RewriteMagentoEnvForSandbox(in, mapping)
 	if err != nil {
