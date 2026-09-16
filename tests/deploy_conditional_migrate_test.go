@@ -70,13 +70,19 @@ func (r *probeStubRunner) Run(ctx context.Context, command string, opts deploy.R
 func conditionalMigrateTestPlan(t *testing.T) deploy.Plan {
 	t.Helper()
 	recipe := deploy.RecipeForTest("test", []deploy.Task{
+		// The release directory has to exist before the probe can ask the
+		// application anything: the real probe starts with
+		// `cd {{release_path}}`, which fails in a directory that was never
+		// created — and a failed cd exits 1, which the probe reads as
+		// "drifted". The ordering assertion below locks this in.
+		{ID: deploy.TaskRelease, Command: "mkdir -p {{release_path}} && echo release-marker"},
 		{ID: deploy.TaskMaintenanceEnable, Command: "echo maintenance-enable-marker"},
 		{ID: deploy.TaskDBMigrate, Command: "echo db-migrate-marker"},
 		{ID: deploy.TaskAppCacheFlush, Command: "echo cache-flush-marker"},
 	})
 	recipe.MigrationProbe = &deploy.MigrationProbe{
 		Title:   "database schema is current",
-		Command: "echo probe-stub {{release_path}}",
+		Command: "cd {{release_path}} && echo probe-stub",
 	}
 	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskDBMigrate} {
 		task := recipe.Task(id)
@@ -105,6 +111,15 @@ func ranMarker(ran []string, marker string) bool {
 		}
 	}
 	return false
+}
+
+func markerIndex(ran []string, marker string) int {
+	for idx, command := range ran {
+		if strings.Contains(command, marker) {
+			return idx
+		}
+	}
+	return -1
 }
 
 func TestConditionalMigrateExecutorGatesOnProbeExit(t *testing.T) {
@@ -137,6 +152,9 @@ func TestConditionalMigrateExecutorGatesOnProbeExit(t *testing.T) {
 			}
 			if !ranMarker(stub.ran, "probe-stub") {
 				t.Errorf("the probe must run before the gated block (commands: %v)", stub.ran)
+			}
+			if idxRelease, idxProbe := markerIndex(stub.ran, "release-marker"), markerIndex(stub.ran, "probe-stub"); idxRelease < 0 || idxProbe < 0 || idxRelease > idxProbe {
+				t.Errorf("the probe must run after the release exists (release at %d, probe at %d): %v", idxRelease, idxProbe, stub.ran)
 			}
 			_ = outcome
 		})

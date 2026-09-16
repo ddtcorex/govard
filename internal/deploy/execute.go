@@ -266,29 +266,20 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 	}
 
-	// The migration probe runs once per run, before anything it gates. A
-	// resumed run re-probes rather than trusting an earlier skip: the code may
-	// have changed since, and the probe costs one cheap command. Steps an
-	// earlier run recorded as ok are still carried over below, so a resume
-	// never repeats a migration that already succeeded.
+	// The migration probe resolves lazily, at the first gated step that would
+	// otherwise run — not upfront. The release directory does not exist until
+	// deploy:release creates it, and the probe starts with
+	// `cd {{release_path}}`: running it earlier makes the cd fail, whose exit
+	// 1 reads as "drifted", so every deploy would migrate. A resumed run still
+	// re-probes rather than trusting an earlier skip — the code may have
+	// changed since, and the probe costs one cheap command — while steps an
+	// earlier run recorded as ok are carried over below, so a resume never
+	// repeats a migration that already succeeded. When every gated step was
+	// already carried over, the probe never runs because there is nothing to
+	// decide.
 	migrationRequired := true
-	if plan.MigrationProbe != nil {
-		required, err := e.checkMigrationRequired(ctx, plan, vars, release)
-		if err != nil {
-			release.Status = StatusFailed
-			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
-			return e.finish(outcome, started), err
-		}
-		migrationRequired = required
-	}
-
+	probeDone := false
 	window := plan.maintenanceWindow()
-	// The probe answered "current", so no window ever opens: the static plan
-	// still lists the maintenance tasks, but the runtime knows they will all
-	// be skipped, and the in-window timeout must not apply to anything.
-	if plan.MigrationProbe != nil && !migrationRequired {
-		window = nil
-	}
 	timeoutFor := func(index int) time.Duration {
 		if window[index] {
 			if e.opts.MaintenanceTimeout > 0 {
@@ -320,6 +311,32 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		if step.Skipped || (step.Command == "" && step.core == nil) {
 			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
+		}
+		// The probe resolves here, at the first gated step that would otherwise
+		// run: everything it asks about — the release directory, the code, the
+		// shared links — exists by now. A probe failure stops the deploy like a
+		// step failure, with the lock policy of the stage it failed in.
+		if step.NeedsMigration && !probeDone && plan.MigrationProbe != nil {
+			probeDone = true
+			required, err := e.checkMigrationRequired(ctx, plan, vars, release)
+			if err != nil {
+				release.Status = StatusFailed
+				_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
+				outcome.LockHeld = LockKeptOnFailure(step.Stage)
+				if !outcome.LockHeld {
+					e.releaseLockAfterFailure(ctx, release)
+				}
+				return e.finish(outcome, started), err
+			}
+			migrationRequired = required
+			if !migrationRequired {
+				// No window ever opens: the static plan still lists the
+				// maintenance tasks, but the runtime knows they will all be
+				// skipped, and the in-window timeout must not apply to
+				// anything from here on. timeoutFor reads this per step, so
+				// reassigning mid-loop is safe.
+				window = nil
+			}
 		}
 		// A step the probe excused is not run either. The timeline still shows
 		// it, with the reason the engine — not the framework — supplies.
