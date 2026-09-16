@@ -170,11 +170,28 @@ type Task struct {
 	// it, and artifact mode deliberately leaves it in the deploy so the target
 	// runs it after receiving the artifact.
 	NeedsApplication bool
+	// NeedsMigration marks a step that only runs when the migration probe says
+	// the target drifted. The executor runs the recipe's MigrationProbe once
+	// before the publish block and skips every flagged step when the probe
+	// reports the target is current.
+	NeedsMigration bool
 }
 
 // IsEmpty reports whether the recipe left this step unimplemented.
 func (t Task) IsEmpty() bool {
 	return t.Command == "" && t.Core == nil
+}
+
+// MigrationProbe is one framework-declared command that answers whether the
+// gated tasks must run. The engine runs it and interprets only the exit
+// code: 0 means the target is current (skip), 1 or 2 means it drifted
+// (migrate); anything else fails the deploy rather than guessing.
+type MigrationProbe struct {
+	// Title is the human description carried by `govard deploy plan` output.
+	Title string
+	// Command is a shell template expanded with the deploy variables, exactly
+	// like a recipe task command.
+	Command string
 }
 
 // Check is one recipe-provided verification, run by the verify stage after the
@@ -222,6 +239,10 @@ type Recipe struct {
 	// database dump back. It is empty for a framework with no dump support, and
 	// `rollback --with-db` refuses rather than guessing.
 	Restore string
+	// MigrationProbe answers whether the NeedsMigration tasks must run. It is
+	// nil for a framework with nothing conditional: a recipe that flags a task
+	// without declaring a probe is refused by ValidateRecipe.
+	MigrationProbe *MigrationProbe
 	// Sandbox is what the framework needs a `govard deploy sandbox` container to
 	// provide beyond its profile: the extensions and services the recipe's own
 	// commands depend on. The core renders them and never interprets them.

@@ -38,6 +38,8 @@ type Step struct {
 	Optional bool
 	// NeedsApplication is copied from the recipe's task: see Task.NeedsApplication.
 	NeedsApplication bool
+	// NeedsMigration is copied from the recipe's task: see Task.NeedsMigration.
+	NeedsMigration bool
 	// Source records which layer contributed the step: "recipe" or "config".
 	Source string
 	// Checks are the recipe's post-publish verifications. They travel with the
@@ -108,6 +110,9 @@ func (s Step) Implemented() bool {
 type Plan struct {
 	Remote string
 	Steps  []Step
+	// MigrationProbe is copied from the recipe: see Recipe.MigrationProbe.
+	// The executor runs it; `govard deploy plan` only displays it.
+	MigrationProbe *MigrationProbe
 }
 
 // StepIDs returns the step ids in execution order, which is what tests and
@@ -435,6 +440,7 @@ func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
 			Optional: task.Optional,
 
 			NeedsApplication: task.NeedsApplication,
+			NeedsMigration:   task.NeedsMigration,
 			Source:           "recipe",
 			core:             task.Core,
 		}
@@ -458,7 +464,7 @@ func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Remote: remote, Steps: ordered}, nil
+	return Plan{Remote: remote, Steps: ordered, MigrationProbe: recipe.MigrationProbe}, nil
 }
 
 // RecipeStepForTest builds one step the way a plan does, so a test can run a single
