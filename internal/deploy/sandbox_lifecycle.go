@@ -101,6 +101,10 @@ type SandboxState struct {
 	DeployPath  string
 	CurrentPath string
 	Packages    string
+	// DerivedFrom records the origin project this sandbox was seeded from.
+	// Nil means nothing was ever seeded (a --no-seed sandbox, or one built
+	// before derivation existed): old states without it stay valid.
+	DerivedFrom *DerivedFrom `json:"derived_from,omitempty"`
 }
 
 func (r SandboxRequest) remoteName() string {
