@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -163,6 +164,11 @@ func NewExecutor(host Host, opts Options, out io.Writer) *Executor {
 	}
 }
 
+// migrationSkipReason is the timeline reason for a task the probe excused. It
+// names the probe, not a framework command, because the engine never knows
+// which framework it runs for.
+const migrationSkipReason = "db up-to-date (probe exit 0)"
+
 // Run executes every step in order and stops at the first failure that is not
 // marked optional.
 //
@@ -260,7 +266,29 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 	}
 
+	// The migration probe runs once per run, before anything it gates. A
+	// resumed run re-probes rather than trusting an earlier skip: the code may
+	// have changed since, and the probe costs one cheap command. Steps an
+	// earlier run recorded as ok are still carried over below, so a resume
+	// never repeats a migration that already succeeded.
+	migrationRequired := true
+	if plan.MigrationProbe != nil {
+		required, err := e.checkMigrationRequired(ctx, plan, vars, release)
+		if err != nil {
+			release.Status = StatusFailed
+			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
+			return e.finish(outcome, started), err
+		}
+		migrationRequired = required
+	}
+
 	window := plan.maintenanceWindow()
+	// The probe answered "current", so no window ever opens: the static plan
+	// still lists the maintenance tasks, but the runtime knows they will all
+	// be skipped, and the in-window timeout must not apply to anything.
+	if plan.MigrationProbe != nil && !migrationRequired {
+		window = nil
+	}
 	timeoutFor := func(index int) time.Duration {
 		if window[index] {
 			if e.opts.MaintenanceTimeout > 0 {
@@ -290,6 +318,13 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		// `Skipped`, so an executor that ignored the flag would run the server
 		// build in artifact mode as well.
 		if step.Skipped || (step.Command == "" && step.core == nil) {
+			e.record(ctx, release, step, StepSkipped, 0, nil)
+			continue
+		}
+		// A step the probe excused is not run either. The timeline still shows
+		// it, with the reason the engine — not the framework — supplies.
+		if step.NeedsMigration && !migrationRequired {
+			step.SkipReason = migrationSkipReason
 			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
 		}
@@ -358,6 +393,53 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		return e.finish(outcome, started), err
 	}
 	return e.finish(outcome, started), nil
+}
+
+// checkMigrationRequired runs the plan's migration probe once and reports
+// whether the NeedsMigration tasks must run. Only the exit code is read: 0
+// means the target is current, 1 or 2 means it drifted. Anything else — an
+// unexpected exit, a timeout, a transport error — fails the run rather than
+// guessing, because a skipped migration on a drifted database breaks the site
+// while a failed probe merely stops the deploy.
+func (e *Executor) checkMigrationRequired(ctx context.Context, plan Plan, vars Vars, release *Release) (bool, error) {
+	probe := plan.MigrationProbe
+	probeVars := vars.Set("release", release.Release)
+	probePath := release.Path
+	if probePath == "" {
+		probePath = e.host.ReleasePath(release.Release)
+	}
+	probeVars = probeVars.SetPath("release_path", probePath)
+	if release.Publish.PreviousRelease != "" {
+		probeVars = probeVars.SetPath("previous_release", e.host.ReleasePath(release.Publish.PreviousRelease))
+	}
+	command, err := probeVars.Expand(probe.Command)
+	if err != nil {
+		return false, fmt.Errorf("expand the migration probe: %w", err)
+	}
+	timeout := e.opts.CommandTimeout
+	if timeout <= 0 {
+		timeout = DefaultCommandTimeout
+	}
+	result, err := e.host.Runner().Run(ctx, command, RunOptions{Timeout: timeout})
+	code := result.ExitCode
+	if err != nil {
+		var cmdErr *CommandError
+		if !errors.As(err, &cmdErr) {
+			return false, fmt.Errorf("migration probe failed on %s: %w", e.host.Name, err)
+		}
+		code = cmdErr.ExitCode
+	}
+	switch code {
+	case 0:
+		if err != nil {
+			return false, fmt.Errorf("migration probe reported success with an error on %s: %w", e.host.Name, err)
+		}
+		return false, nil
+	case 1, 2:
+		return true, nil
+	default:
+		return false, fmt.Errorf("migration probe exited %d on %s (want 0 = current, 1/2 = migrate); refusing to guess: %s", code, e.host.Name, command)
+	}
 }
 
 // liveRevision reports the revision the target is serving, whether the record
