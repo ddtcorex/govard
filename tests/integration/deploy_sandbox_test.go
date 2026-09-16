@@ -30,7 +30,7 @@ func TestDeploySandboxEndToEnd(t *testing.T) {
 	origin, revisions := seedDeployRevisions(t, 2)
 	seedSandboxCheckout(t, projectDir, origin)
 
-	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "basic")
+	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "basic", "--no-seed")
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
@@ -97,7 +97,7 @@ func TestDeploySandboxInPlaceAndDeployerLayout(t *testing.T) {
 	origin, revisions := seedDeployRevisions(t, 1)
 	seedSandboxCheckout(t, projectDir, origin)
 
-	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "basic", "--docroot", "real")
+	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "basic", "--docroot", "real", "--no-seed")
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up --docroot=real failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
@@ -318,7 +318,7 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			// The `php` profile: the recipe runs `{{php_bin}} bin/magento`, and
 			// the stub is a PHP script so the target can execute it the way a
 			// real Magento would be executed.
-			upArgs := []string{"deploy", "sandbox", "up", "--profile", "php"}
+			upArgs := []string{"deploy", "sandbox", "up", "--profile", "php", "--no-seed"}
 			if testCase.docroot != "" {
 				upArgs = append(upArgs, "--docroot", testCase.docroot)
 			}
@@ -392,7 +392,7 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	origin, revisions := seedFixtureRevisions(t, projectDir, 2)
 	seedSandboxCheckout(t, projectDir, origin)
 
-	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "php")
+	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "php", "--no-seed")
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
