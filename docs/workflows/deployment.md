@@ -272,6 +272,18 @@ accepts only the binaries the engine has an install recipe for — today that is
 `wp-cli` — and an unknown name is refused when the image is rendered, not when it
 fails to build.
 
+No recipe asks for a search service, so the sandbox ships none: every rehearsal
+before the migrate path was green on probe-exit-0 skips, and the first real
+`setup:upgrade` on a search-dependent project fails when the engine cannot be
+reached (ElasticSuite validation, then any recurring step that pings the
+cluster). To rehearse the migrate path on such a project, either disable the
+search-dependent modules in a scratch release before the run, or point the
+sandbox at a reachable engine for the rehearsal — join the container to the
+origin env's network so its search hostname resolves, override the engine's
+server hostname to it, and revert both afterwards. A search service inside the
+sandbox image is future work, not a rejected idea: it needs its own version
+matrix against whatever the origin runs.
+
 ### The three places these recipes differ from Magento's
 
 **Symfony has no maintenance task.** Symfony has no core mechanism for it, so

@@ -268,6 +268,16 @@ nêu tên lúc container khởi động thay vì bị bỏ qua im lặng. `sandb
 những binary mà engine có công thức cài — hiện tại là `wp-cli` — và tên lạ bị từ chối
 ngay khi render image, không phải khi image build fail.
 
+Không recipe nào đòi search service, nên sandbox không có: mọi rehearsal trước đường
+migrate đều xanh nhờ probe-exit-0 skip, và lần `setup:upgrade` thật đầu tiên trên dự án
+dính search sẽ fail khi không với tới engine (ElasticSuite validate connection, rồi bất
+kỳ recurring step nào ping cluster). Muốn rehearse đường migrate trên dự án như vậy thì
+hoặc disable các module dính search trong một scratch release trước khi chạy, hoặc trỏ
+sandbox sang một engine với tới được cho buổi rehearsal — nối container vào network của
+origin env để hostname search resolve được, override server hostname của engine sang đó,
+rồi revert cả hai sau. Search service nằm trong image sandbox là việc tương lai, không
+phải ý tưởng bị loại: nó cần version matrix riêng khớp với thứ origin đang chạy.
+
 ### Ba chỗ ba recipe này khác Magento
 
 **Symfony không có task maintenance.** Symfony không có cơ chế gốc cho việc đó, nên
