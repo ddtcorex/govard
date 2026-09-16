@@ -22,6 +22,11 @@ const (
 // deploy tool safe.
 const ReleaseTool = "govard"
 
+// ReleaseSchemaVersion is the record layout this binary writes and reads. A
+// record carrying a newer version was written by a newer govard, and running
+// an old pipeline against a layout it does not know would silently misread it.
+const ReleaseSchemaVersion = 1
+
 // Release is the durable record of one deploy. It is the only state the engine
 // keeps: resume, rollback and status all read it rather than a side file.
 type Release struct {
@@ -30,7 +35,6 @@ type Release struct {
 	Release       string         `json:"release"`
 	Revision      string         `json:"revision"`
 	Branch        string         `json:"branch"`
-	Repository    string         `json:"repository,omitempty"`
 	CreatedAt     string         `json:"created_at"`
 	CreatedBy     string         `json:"created_by"`
 	CI            *CIRecord      `json:"ci,omitempty"`
@@ -74,7 +78,8 @@ type CIRecord struct {
 
 // BuildRecord describes how the release was produced. The artifact fields are
 // empty for a server build, and their absence in a record written before
-// artifact mode existed decodes to exactly that.
+// artifact mode existed decodes to exactly that. DurationMS is not timed yet;
+// it is reserved so a future server-build timer does not change the layout.
 type BuildRecord struct {
 	Mode       string `json:"mode,omitempty"`
 	DurationMS int64  `json:"duration_ms,omitempty"`
@@ -87,7 +92,9 @@ type BuildRecord struct {
 	ArtifactBytes int64 `json:"artifact_bytes,omitempty"`
 }
 
-// StepRecord is the outcome of one step.
+// StepRecord is the outcome of one step. Error is evidence for the operator
+// reading the record (`deploy status` shows the release status, not per-task
+// errors); resume decisions read Status, never this text.
 type StepRecord struct {
 	ID         string `json:"id"`
 	Status     string `json:"status"`
@@ -125,7 +132,7 @@ type CheckResult struct {
 // NewRelease starts a record for a release being created.
 func NewRelease(release, revision, branch string) *Release {
 	return &Release{
-		SchemaVersion: 1,
+		SchemaVersion: ReleaseSchemaVersion,
 		Tool:          ReleaseTool,
 		Release:       release,
 		Revision:      revision,
@@ -173,7 +180,10 @@ func WriteRelease(ctx context.Context, host Host, release *Release) error {
 	return nil
 }
 
-// ReadRelease loads one release record from the target.
+// ReadRelease loads one release record from the target. A record carrying a
+// schema version newer than ReleaseSchemaVersion was written by a newer
+// govard; refusing it is what keeps an old binary from misreading a layout it
+// does not know (a missing version decodes to zero and is accepted as legacy).
 func ReadRelease(ctx context.Context, host Host, release string) (*Release, error) {
 	result, err := host.Runner().Run(ctx, "cat "+Shell(host.ReleaseRecordPath(release)), RunOptions{Timeout: shortCommandTimeout})
 	if err != nil {
@@ -182,6 +192,9 @@ func ReadRelease(ctx context.Context, host Host, release string) (*Release, erro
 	var record Release
 	if err := json.Unmarshal([]byte(result.Stdout), &record); err != nil {
 		return nil, fmt.Errorf("parse release record %s: %w", release, err)
+	}
+	if record.SchemaVersion > ReleaseSchemaVersion {
+		return nil, fmt.Errorf("release record %s has schema version %d; this govard only reads up to %d — upgrade govard to manage it", release, record.SchemaVersion, ReleaseSchemaVersion)
 	}
 	record.Path = host.ReleasePath(release)
 	return &record, nil

@@ -17,7 +17,6 @@ import (
 func DeployRecipe() deploy.Recipe {
 	recipe := deploy.DefaultRecipe()
 	recipe.ID = "magento2"
-	recipe.Extends = "default"
 	recipe.Defaults = map[string]any{
 		// Shared state: a release is thrown away, the data it points at is not.
 		"shared_files": []string{"app/etc/env.php", "var/.maintenance.ip"},

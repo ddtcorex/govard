@@ -89,8 +89,10 @@ type SandboxRequest struct {
 	// SeedOrigin names the origin project the snapshot is taken from and
 	// recorded under. Empty means "no derivation claimed".
 	SeedOrigin string
-	// SeedBlueprintRev is the origin blueprint revision at seed time, kept
-	// honestly: empty when the caller could not determine one.
+	// SeedBlueprintRev is the origin blueprint revision at seed time. Nothing
+	// stamps one today (there is no single revision source to read it from),
+	// so the field stays empty and DerivedFrom keeps the gap honestly instead
+	// of inventing a value. Reserved for the day a source exists.
 	SeedBlueprintRev string
 	// SeedOriginRunning gates the seed: a stopped origin is a refusal, never
 	// a silent empty sandbox. The caller (cmd) resolves it from the origin
@@ -181,7 +183,6 @@ func (r SandboxRequest) docRoot() (string, error) {
 // SandboxPaths are the fixed server-side paths a sandbox uses. They match the
 // documented production layout so the pipeline sees nothing unusual.
 type SandboxPaths struct {
-	Home       string
 	Current    string
 	DeployPath string
 }
@@ -189,7 +190,6 @@ type SandboxPaths struct {
 // SandboxDefaultPaths returns the layout every sandbox uses.
 func SandboxDefaultPaths() SandboxPaths {
 	return SandboxPaths{
-		Home:       SandboxHome,
 		Current:    SandboxHome + "/public_html",
 		DeployPath: SandboxHome + "/.deployer",
 	}
@@ -709,8 +709,6 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 	return state, nil
 }
 
-// sandboxRemotePHP reads the PHP series out of a sandbox remote's deploy
-// settings, and is empty for a remote that does not record one.
 // sandboxReusedRuntime reports the profile and PHP series a sandbox container
 // already has, and refuses to relabel it.
 //
@@ -874,7 +872,13 @@ func SandboxReset(ctx context.Context, runtime SandboxRuntime, request SandboxRe
 // It is asserted rather than executed by the tests: the point is that the
 // sandbox is reached exactly the way a real remote is.
 func SandboxSSHArgs(request SandboxRequest, state *SandboxState) []string {
+	// The state learned the key path when the sandbox was created; a project
+	// root alone re-derives the same default. Preferring the record keeps `ssh`
+	// working when the two ever disagree.
 	keyPath := filepath.Join(SandboxStateDir(request.ProjectRoot), SandboxKeyName)
+	if state != nil && strings.TrimSpace(state.KeyPath) != "" {
+		keyPath = state.KeyPath
+	}
 	args := []string{
 		"-t",
 		"-o", "LogLevel=ERROR",

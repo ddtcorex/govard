@@ -34,7 +34,7 @@ func TestConditionalMigratePlanCarriesProbeAndFlag(t *testing.T) {
 	task.NeedsMigration = true
 	recipe.ReplaceTask(task)
 
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "sample-remote")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("BuildPlan: %v", err)
 	}
@@ -94,7 +94,7 @@ func conditionalMigrateTestPlan(t *testing.T) deploy.Plan {
 		task.NeedsMigration = true
 		recipe.ReplaceTask(task)
 	}
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestConditionalMigrateExecutorGatesOnProbeExit(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) {
 			stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: row.probeExit}
 			plan := conditionalMigrateTestPlan(t)
-			opts := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+			opts := deploy.Options{CommandTimeout: time.Minute}
 			outcome, err := runConditionalMigratePlan(t, stub, plan, opts)
 			if err != nil {
 				t.Fatalf("run: %v", err)
@@ -169,7 +169,7 @@ func TestConditionalMigrateExecutorGatesOnProbeExit(t *testing.T) {
 func TestConditionalMigrateUninterpretableProbeFails(t *testing.T) {
 	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 3}
 	plan := conditionalMigrateTestPlan(t)
-	opts := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	opts := deploy.Options{CommandTimeout: time.Minute}
 	if _, err := runConditionalMigratePlan(t, stub, plan, opts); err == nil {
 		t.Fatal("a probe exit outside 0/1/2 must fail the deploy, not guess")
 	}
@@ -201,7 +201,7 @@ func runConditionalMigrateResume(t *testing.T, stub *probeStubRunner, plan deplo
 }
 
 func resumeOpts() deploy.Options {
-	return deploy.Options{Remote: "local", CommandTimeout: time.Minute, Resume: true}
+	return deploy.Options{CommandTimeout: time.Minute, Resume: true}
 }
 
 // A recorded migrate verdict is sticky across resume: the database was
@@ -214,7 +214,7 @@ func resumeOpts() deploy.Options {
 func TestResumeAdoptsStoredMigrateVerdict(t *testing.T) {
 	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 2, failOn: "db-migrate-marker"}
 	plan := conditionalMigrateTestPlan(t)
-	opts := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	opts := deploy.Options{CommandTimeout: time.Minute}
 	_, secondRan := runConditionalMigrateResume(t, stub, plan, opts, resumeOpts(), func() {
 		// The drift was healed out of band after the failure (the operator
 		// finished the upgrade by hand): a re-probe would now say skip.
@@ -241,7 +241,7 @@ func TestResumeAdoptsStoredMigrateVerdict(t *testing.T) {
 func TestResumeReprobesAfterStoredSkip(t *testing.T) {
 	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 0, failOn: "cache-flush-marker"}
 	plan := conditionalMigrateTestPlan(t)
-	opts := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	opts := deploy.Options{CommandTimeout: time.Minute}
 	_, secondRan := runConditionalMigrateResume(t, stub, plan, opts, resumeOpts(), func() {
 		// Drift appeared out of band after the first run's skip.
 		stub.probeExit = 2

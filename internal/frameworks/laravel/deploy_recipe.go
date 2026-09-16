@@ -14,7 +14,6 @@ import (
 func DeployRecipe() deploy.Recipe {
 	recipe := deploy.DefaultRecipe()
 	recipe.ID = "laravel"
-	recipe.Extends = "default"
 	recipe.Defaults = map[string]any{
 		// The target's environment file, and the runtime state that must outlive
 		// a release. `storage` is shared rather than merely writable because the

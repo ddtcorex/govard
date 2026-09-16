@@ -994,7 +994,7 @@ func TestMagento2StaticContentRunsOnTheTargetNotTheBuilder(t *testing.T) {
 		t.Fatal("build:assets must be marked as needing the deployed application")
 	}
 
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "sandbox")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

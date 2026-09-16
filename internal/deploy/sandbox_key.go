@@ -92,9 +92,6 @@ func EnsureSandboxKey(dir string) (SandboxKeyPair, error) {
 	return pair, nil
 }
 
-// EnsureSandboxKeyForTest exposes EnsureSandboxKey to the tests/ package.
-func EnsureSandboxKeyForTest(dir string) (SandboxKeyPair, error) { return EnsureSandboxKey(dir) }
-
 func readSandboxPublicKey(path string) (string, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {

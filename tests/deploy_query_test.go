@@ -194,12 +194,12 @@ func TestRunStepExpandsTheReleasePathAndSkipsUnimplementedSteps(t *testing.T) {
 	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
 		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "touch " + filepath.Join(host.DeployPath, "activated") + " && test -d {{release_path}}"},
 		{ID: deploy.TaskArtifact, Stage: deploy.StageBuild},
-	}), nil, "local")
+	}), nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
 
-	options := deploy.Options{Remote: "local", CommandTimeout: 30_000_000_000}
+	options := deploy.Options{CommandTimeout: 30_000_000_000}
 	if err := deploy.RunStep(context.Background(), host, options, deploy.NewVars(), plan.Only(deploy.TaskActivate).Steps[0], release, os.Stderr); err != nil {
 		t.Fatalf("run activate: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestRunStepExpandsTheReleasePathAndSkipsUnimplementedSteps(t *testing.T) {
 }
 
 func TestPlanFromAndOnlySelectSubtrees(t *testing.T) {
-	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "local")
+	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}

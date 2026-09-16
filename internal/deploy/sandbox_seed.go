@@ -21,7 +21,6 @@ type SeedDB struct {
 	User      string
 	Password  string
 	Name      string
-	Engine    string
 }
 
 // SeedSource is what the seed reads: the origin must be running (fail-loud
@@ -34,7 +33,7 @@ type SeedSource struct {
 }
 
 // SeedSpec is the resolved snapshot plan: per-container client argv without
-// secrets, media endpoints, and the env-file rewrite mapping. The caller
+// secrets, media endpoints, and the env-file rewrite target. The caller
 // executes it through the container runtime; argv never names a secret.
 type SeedSpec struct {
 	// DBDumpContainer is the origin database container. DBDumpFlags is the
@@ -50,7 +49,6 @@ type SeedSpec struct {
 	MediaSource  string
 	MediaTarget  string
 	EnvSource    string
-	EnvMapping   map[string]string
 }
 
 // SeedEnvRewriter rewrites one env file's content for the sandbox. It is an
@@ -77,7 +75,6 @@ func ResolveSeedSpec(source SeedSource) (SeedSpec, error) {
 		DBPassword:       source.DB.Password,
 		MediaSource:      source.MediaSource,
 		EnvSource:        source.EnvSource,
-		EnvMapping:       map[string]string{},
 	}, nil
 }
 

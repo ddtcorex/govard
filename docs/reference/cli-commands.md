@@ -716,7 +716,7 @@ govard deploy sandbox up --docroot real       # a real docroot: in-place publish
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed a target the other tool owns
 govard deploy sandbox ssh
-govard deploy sandbox down [--purge]
+govard deploy sandbox down [--purge] [--volumes]
 ```
 
 → Worked configurations (Luma, Hyvä, several themes and store views, developer and
@@ -851,8 +851,10 @@ the remote's `php_bin` and the `php_version` the remote declares, and it is part
 of the image tag — so a project that needs a newer PHP than the base image
 carries is rehearsed against the right interpreter instead of failing mid-install.
 `--docroot` shapes the target so the publish strategy resolves the way you want to
-exercise it: `absent` or `symlink` selects the atomic swap, `real` selects
-in-place publishing. `down` removes the container and the remote it wrote;
+exercise it: `absent` or `symlink` (the default) selects the atomic swap, `real`
+selects in-place publishing. `down` removes the container and the remote it wrote,
+keeping every data volume so a rehearsal resumes (`--volumes` deletes the derived
+volumes too);
 `--purge` also removes the image, the key and the mirror. `reset` wipes the
 target's deploy directories, and `--layout=deployer` seeds a target that looks
 like one the other deploy tool owns.

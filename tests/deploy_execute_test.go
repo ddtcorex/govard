@@ -17,7 +17,7 @@ import (
 func executorForTest(t *testing.T, tasks []deploy.Task) (deploy.Host, deploy.Plan) {
 	t.Helper()
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", tasks), nil, "local")
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", tasks), nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestExecutorRunsStepsInOrderAndRecordsStatus(t *testing.T) {
 	})
 
 	release := deploy.NewReleaseForTest("1", "abc", "local")
-	executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard)
+	executor := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute}, io.Discard)
 	outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), release)
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -65,7 +65,7 @@ func TestExecutorStopsAtTheFirstFailureAndKeepsTheLockInPublish(t *testing.T) {
 		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "exit 3"},
 		{ID: deploy.TaskVerify, Stage: deploy.StageVerify, Command: "echo never"},
 	})
-	executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard)
+	executor := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute}, io.Discard)
 	outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 	if err == nil {
 		t.Fatal("want an error from the failing publish step")
@@ -106,7 +106,7 @@ func lockRecipe(t *testing.T, failing string) (deploy.Host, deploy.Plan) {
 		stage, _ := deploy.StageForTask(failing)
 		deploy.OverrideTaskForTest(&recipe, failing, deploy.Task{ID: failing, Stage: stage, Command: "exit 9"})
 	}
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestExecutorReleasesTheLockWhenAFailureHappensBeforePublish(t *testing.T) {
 	for _, failing := range []string{deploy.TaskCheck, deploy.TaskRelease, deploy.TaskCode, deploy.TaskVendors} {
 		t.Run(failing, func(t *testing.T) {
 			host, plan := lockRecipe(t, failing)
-			executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard)
+			executor := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute}, io.Discard)
 			outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 			if err == nil {
 				t.Fatal("want an error")
@@ -139,7 +139,7 @@ func TestExecutorKeepsTheLockWhenAPublishFailureHappens(t *testing.T) {
 	for _, failing := range []string{deploy.TaskMaintenanceEnable, deploy.TaskDBMigrate, deploy.TaskActivate} {
 		t.Run(failing, func(t *testing.T) {
 			host, plan := lockRecipe(t, failing)
-			executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard)
+			executor := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute}, io.Discard)
 			outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 			if err == nil {
 				t.Fatal("want an error")
@@ -216,7 +216,7 @@ func TestExecutorTreatsOptionalFailuresAsNonFatal(t *testing.T) {
 		{ID: deploy.TaskCheck, Stage: deploy.StagePrepare, Command: "exit 5", Optional: true},
 		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "true"},
 	})
-	executor := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard)
+	executor := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute}, io.Discard)
 	outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 	if err != nil {
 		t.Fatalf("an optional failure must not fail the deploy: %v", err)
@@ -235,12 +235,12 @@ func TestExecutorFromSkipsEverythingBeforeTheNamedTask(t *testing.T) {
 		{ID: deploy.TaskCode, Stage: deploy.StagePrepare, Command: marker("ran-code")},
 		{ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: marker("ran-migrate")},
 		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: marker("ran-record")},
-	}), nil, "local")
+	}), nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
 
-	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute, From: deploy.TaskDBMigrate}
+	options := deploy.Options{CommandTimeout: time.Minute, From: deploy.TaskDBMigrate}
 	executor := deploy.NewExecutor(host, options, io.Discard)
 	outcome, err := executor.Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 	if err != nil {
@@ -285,7 +285,7 @@ func TestExecutorDoesNotRunAStepThePlanMarkedSkipped(t *testing.T) {
 	})
 	plan = plan.ForBuildMode(deploy.BuildArtifact)
 
-	options := deploy.Options{Remote: "local", Build: deploy.BuildArtifact, CommandTimeout: time.Minute}
+	options := deploy.Options{Build: deploy.BuildArtifact, CommandTimeout: time.Minute}
 	outcome, err := deploy.NewExecutor(host, options, io.Discard).Run(
 		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 	if err != nil {
@@ -309,7 +309,7 @@ func TestExecutorDoesNotRunAStepThePlanMarkedSkipped(t *testing.T) {
 // option must not be able to turn it off by accident.
 func TestLockingIsOnWhenTheOptionIsNotSet(t *testing.T) {
 	host, plan := lockRecipe(t, "")
-	outcome, err := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, io.Discard).
+	outcome, err := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute}, io.Discard).
 		Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -339,7 +339,7 @@ func TestDisabledLockingTakesNoLockAndLeavesOtherLocksAlone(t *testing.T) {
 		t.Fatalf("seed a concurrent deploy's lock: %v", err)
 	}
 
-	outcome, err := deploy.NewExecutor(host, deploy.Options{Remote: "local", SkipLock: true, CommandTimeout: time.Minute}, io.Discard).
+	outcome, err := deploy.NewExecutor(host, deploy.Options{SkipLock: true, CommandTimeout: time.Minute}, io.Discard).
 		Run(ctx, plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
 	if err != nil {
 		t.Fatalf("a run with locking disabled must not be refused by an existing lock: %v", err)
@@ -365,13 +365,13 @@ func TestExecutorPrintsTheMissingVerifyWarning(t *testing.T) {
 	deploy.OverrideTaskForTest(&recipe, deploy.TaskDBMigrate, deploy.Task{
 		ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: "true",
 	})
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "production")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
 
 	var out bytes.Buffer
-	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute, From: deploy.TaskDBMigrate}
+	options := deploy.Options{CommandTimeout: time.Minute, From: deploy.TaskDBMigrate}
 	if _, err := deploy.NewExecutor(host, options, &out).Run(
 		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
 		t.Fatalf("run: %v", err)
@@ -402,7 +402,7 @@ func TestExecutorBoundsInWindowStepsMoreTightly(t *testing.T) {
 			}
 			deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: command})
 		}
-		plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+		plan, err := deploy.BuildPlanForTest(recipe, nil)
 		if err != nil {
 			t.Fatalf("plan: %v", err)
 		}
@@ -412,7 +412,7 @@ func TestExecutorBoundsInWindowStepsMoreTightly(t *testing.T) {
 	t.Run("the window budget applies inside", func(t *testing.T) {
 		host, plan := build()
 		options := deploy.Options{
-			Remote: "local", CommandTimeout: time.Minute, MaintenanceTimeout: 300 * time.Millisecond,
+			CommandTimeout: time.Minute, MaintenanceTimeout: 300 * time.Millisecond,
 		}
 		_, err := deploy.NewExecutor(host, options, io.Discard).Run(
 			context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
@@ -428,13 +428,13 @@ func TestExecutorBoundsInWindowStepsMoreTightly(t *testing.T) {
 		recipe := deploy.RecipeForTest("test", []deploy.Task{
 			{ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: "sleep 1"},
 		})
-		plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+		plan, err := deploy.BuildPlanForTest(recipe, nil)
 		if err != nil {
 			t.Fatalf("plan: %v", err)
 		}
 		host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 		options := deploy.Options{
-			Remote: "local", CommandTimeout: 30 * time.Second, MaintenanceTimeout: 300 * time.Millisecond,
+			CommandTimeout: 30 * time.Second, MaintenanceTimeout: 300 * time.Millisecond,
 		}
 		if _, err := deploy.NewExecutor(host, options, io.Discard).Run(
 			context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
@@ -470,12 +470,12 @@ func TestExecutorKeepsTheReleaseRecordCurrent(t *testing.T) {
 			deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "true"})
 		}
 	}
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
 
-	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	options := deploy.Options{CommandTimeout: time.Minute}
 	if _, err := deploy.NewExecutor(host, options, io.Discard).Run(
 		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("", "abc", "local")); err != nil {
 		t.Fatalf("run: %v", err)
@@ -523,12 +523,12 @@ func TestExecutorRecordsThePreviousReleaseAndExposesItsPath(t *testing.T) {
 	recipe := deploy.RecipeForTest("test", []deploy.Task{
 		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "echo {{previous_release}} > " + marker},
 	})
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
 
-	options := deploy.Options{Remote: "local", Publish: deploy.PublishSymlink, CommandTimeout: time.Minute}
+	options := deploy.Options{Publish: deploy.PublishSymlink, CommandTimeout: time.Minute}
 	release := deploy.NewReleaseForTest("2", "bbb", "main")
 	release.Path = host.ReleasePath("2")
 	if _, err := deploy.NewExecutor(host, options, io.Discard).Run(ctx, plan, deploy.NewVars(), release); err != nil {
@@ -569,7 +569,7 @@ func TestNoOpFastPathRequiresACompleteRecord(t *testing.T) {
 		}
 		plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
 			{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "true"},
-		}), nil, "local")
+		}), nil)
 		if err != nil {
 			t.Fatalf("plan: %v", err)
 		}
@@ -578,7 +578,7 @@ func TestNoOpFastPathRequiresACompleteRecord(t *testing.T) {
 
 	run := func(host deploy.Host, plan deploy.Plan) deploy.Outcome {
 		t.Helper()
-		options := deploy.Options{Remote: "local", Publish: deploy.PublishSymlink, CommandTimeout: time.Minute}
+		options := deploy.Options{Publish: deploy.PublishSymlink, CommandTimeout: time.Minute}
 		outcome, err := deploy.NewExecutor(host, options, io.Discard).Run(
 			context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("", "abc", "main"))
 		if err != nil {
@@ -636,13 +636,13 @@ func TestComposerAuthIsHandedToTheDependencyStepThroughStdin(t *testing.T) {
 		{ID: deploy.TaskVendors, Stage: deploy.StageBuild, Command: "echo installing-dependencies"},
 		{ID: deploy.TaskCompile, Stage: deploy.StageBuild, Command: "echo compiling"},
 	})
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
 
 	var timeline bytes.Buffer
-	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	options := deploy.Options{CommandTimeout: time.Minute}
 	if _, err := deploy.NewExecutor(host, options, &timeline).Run(
 		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
 		t.Fatalf("run: %v", err)
@@ -714,11 +714,11 @@ func TestNoComposerAuthLeavesTheCommandAlone(t *testing.T) {
 	recipe := deploy.RecipeForTest("test", []deploy.Task{
 		{ID: deploy.TaskVendors, Stage: deploy.StageBuild, Command: "echo installing-dependencies"},
 	})
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
-	options := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	options := deploy.Options{CommandTimeout: time.Minute}
 	if _, err := deploy.NewExecutor(host, options, io.Discard).Run(
 		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
 		t.Fatalf("run: %v", err)

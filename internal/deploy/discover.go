@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// DeployPathCandidates are the layouts a target may already have when its remote
+// deployPathCandidates are the layouts a target may already have when its remote
 // does not configure `deploy_path`. They are the two shapes the reference
 // projects use: the home directory itself, and a hidden subdirectory.
-var DeployPathCandidates = []string{"~", "~/.deployer"}
+var deployPathCandidates = []string{"~", "~/.deployer"}
 
 // DiscoverDeployPath returns the deploy path a target already has.
 //
@@ -25,7 +25,7 @@ var DeployPathCandidates = []string{"~", "~/.deployer"}
 // are both refusals that name what was probed — adopting one of several would be
 // the guess this function exists to avoid.
 func DiscoverDeployPath(ctx context.Context, host Host) (string, error) {
-	return discoverDeployPath(ctx, host, DeployPathCandidates)
+	return discoverDeployPath(ctx, host, deployPathCandidates)
 }
 
 // DiscoverDeployPathForTest exposes the candidate list so a test can point the

@@ -341,6 +341,38 @@ func TestDisablingTheLockReachesTheResolvedOptions(t *testing.T) {
 	}
 }
 
+// `releases`, `status` and `unlock` only read the target, so they resolve
+// read options: a remote with no branch configured is still readable, while a
+// deploy to it is rightly refused.
+func TestResolveReadOptionsNeedsNoSourceSelector(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".govard.yml"), `
+project_name: sample
+framework: generic
+domain: sample.test
+remotes:
+  bare:
+    host: bare.example.com
+    user: deploy
+    path: /home/deploy/public_html
+`)
+	cfg, _, err := engine.LoadConfigFromDir(root, true)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if _, err := deploy.ResolveOptionsForTest(cfg, "bare", deploy.Overrides{}); err == nil {
+		t.Fatal("a deploy to a branchless remote must be refused")
+	}
+	opts, err := deploy.ResolveReadOptions(cfg, "bare", deploy.Overrides{})
+	if err != nil {
+		t.Fatalf("read resolve: %v", err)
+	}
+	if opts.SkipLock || opts.CommandTimeout <= 0 || opts.LockStaleAfter <= 0 {
+		t.Fatalf("read options must keep the lock and timeout defaults, got %+v", opts)
+	}
+}
+
 // `deploy.lock_stale_after` is presented as configurable in spec 12.1; the
 // threshold was a constant in the command layer, so a deploy that legitimately
 // runs longer than two hours could not say so.
@@ -499,7 +531,7 @@ func TestBuildPlanRefusesARecipeThatDeclaresASettingTwice(t *testing.T) {
 		{Key: "php_bin", Kind: deploy.SettingInt, Title: "the interpreter, again"},
 	}
 
-	_, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	_, err := deploy.BuildPlanForTest(recipe, nil)
 	if err == nil {
 		t.Fatal("a recipe that declares php_bin twice must be refused")
 	}
@@ -508,7 +540,7 @@ func TestBuildPlanRefusesARecipeThatDeclaresASettingTwice(t *testing.T) {
 	}
 
 	// The shipped recipe is clean, so the refusal does not fire on it.
-	if _, err := deploy.BuildPlanForTest(magento2.DeployRecipe(), nil, "staging"); err != nil {
+	if _, err := deploy.BuildPlanForTest(magento2.DeployRecipe(), nil); err != nil {
 		t.Fatalf("the Magento recipe must build a plan: %v", err)
 	}
 }

@@ -30,7 +30,7 @@ func TestSymlinkActivationIsAnAtomicRenameAndKeepsTheOldReleaseUntilThen(t *test
 		t.Fatalf("seed current: %v", err)
 	}
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishSymlink})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	sc.Release = deploy.NewReleaseForTest("2", "abc", "local")
 	sc.Release.Path = host.ReleasePath("2")
 	if err := deploy.CoreActivate(ctx, sc); err != nil {
@@ -92,7 +92,6 @@ func TestInPlaceActivationResetsToTheExactRevisionAndSyncsConfiguredPaths(t *tes
 	}
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -149,7 +148,6 @@ func TestInPlaceActivationAdoptsTheDocrootsConfigurationIntoShared(t *testing.T)
 	writeFile(t, filepath.Join(host.CurrentPath, "app/etc/env.php"), live)
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -208,7 +206,6 @@ func TestInPlaceActivationRestoresTheDocrootsSharedLinks(t *testing.T) {
 	writeFile(t, filepath.Join(host.CurrentPath, "app/etc/env.php"), "<?php return ['cache_types' => []];\n")
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -247,7 +244,6 @@ func TestInPlaceActivationKeepsADocrootDirectoryItWouldHaveToDelete(t *testing.T
 	writeFile(t, filepath.Join(host.CurrentPath, "pub/media/local.txt"), "local\n")
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -273,7 +269,7 @@ func TestInPlaceActivationRefusesADocrootThatIsNotAGitCheckout(t *testing.T) {
 		t.Fatalf("seed docroot: %v", err)
 	}
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishInPlace, Revision: "abc"})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishInPlace, Revision: "abc"})
 	sc.Release = deploy.NewReleaseForTest("1", "abc", "main")
 	sc.Release.Path = host.ReleasePath("1")
 	if err := deploy.CoreActivate(ctx, sc); !errors.Is(err, deploy.ErrDocrootNotAGitCheckout) {
@@ -317,7 +313,6 @@ func TestInPlaceCodePrepAdoptsTheDocrootsConfigurationBeforeTheBuild(t *testing.
 	}
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -366,7 +361,6 @@ func TestInPlaceCodePrepFetchesTheDocrootDuringPrepare(t *testing.T) {
 	}
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -396,7 +390,6 @@ func TestInPlaceCodePrepRefusesANonGitDocrootBeforeBuildingAnything(t *testing.T
 	}
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -417,7 +410,6 @@ func TestCodePrepLeavesASymlinkTargetWithoutADocroot(t *testing.T) {
 	ctx := context.Background()
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishAuto,
 		Repository: origin,
 		Revision:   revision,
@@ -458,7 +450,7 @@ func TestVerifyChecksTheLiveRevision(t *testing.T) {
 	release.Publish.Strategy = deploy.PublishInPlace
 	release.Publish.Docroot = host.CurrentPath
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+	sc := deploy.StepContextForTest(host, deploy.Options{Verify: true})
 	sc.Release = release
 	if err := deploy.CoreVerify(ctx, sc); err != nil {
 		t.Fatalf("verify: %v", err)
@@ -475,7 +467,7 @@ func TestVerifyChecksTheLiveRevision(t *testing.T) {
 
 func TestVerifyIsSkippedWhenDisabled(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: false})
+	sc := deploy.StepContextForTest(host, deploy.Options{Verify: false})
 	sc.Release = deploy.NewReleaseForTest("1", "abc", "main")
 	if err := deploy.CoreVerify(context.Background(), sc); err != nil {
 		t.Fatalf("--no-verify must skip verification entirely: %v", err)
@@ -516,7 +508,7 @@ func TestCleanupKeepsTheNewestReleasesAndNeverTouchesForeignOnes(t *testing.T) {
 		t.Fatalf("seed foreign release: %v", err)
 	}
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", KeepReleases: 2})
+	sc := deploy.StepContextForTest(host, deploy.Options{KeepReleases: 2})
 	if err := deploy.CoreCleanup(ctx, sc); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
@@ -539,7 +531,7 @@ func TestRecordWritesTheReleaseAndTheHistory(t *testing.T) {
 	release := deploy.NewReleaseForTest("5", "abc", "main")
 	release.Path = host.ReleasePath("5")
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+	sc := deploy.StepContextForTest(host, deploy.Options{})
 	sc.Release = release
 	if err := deploy.CoreRecord(ctx, sc); err != nil {
 		t.Fatalf("record: %v", err)
@@ -569,7 +561,7 @@ func TestVerifyFailsWhenTheRecordDoesNotNameAPublishStrategy(t *testing.T) {
 			host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 			release := deploy.NewReleaseForTest("1", "abc", "local")
 			release.Publish.Strategy = strategy
-			sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+			sc := deploy.StepContextForTest(host, deploy.Options{Verify: true})
 			sc.Release = release
 
 			err := deploy.CoreVerify(context.Background(), sc)
@@ -610,7 +602,7 @@ func TestVerifyRunsTheRecipeProvidedChecks(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "app-check-ran")
 	release := verifiedRelease(t, host)
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+	sc := deploy.StepContextForTest(host, deploy.Options{Verify: true})
 	sc.Release = release
 	sc.Checks = []deploy.Check{{ID: "app", Title: "the application answers", Command: "touch " + marker}}
 
@@ -635,7 +627,7 @@ func TestVerifyFailsWhenARecipeCheckFails(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	release := verifiedRelease(t, host)
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+	sc := deploy.StepContextForTest(host, deploy.Options{Verify: true})
 	sc.Release = release
 	sc.Checks = []deploy.Check{{ID: "app", Title: "the application answers", Command: "exit 3"}}
 
@@ -659,7 +651,7 @@ func TestVerifySkipsARecipeCheckThatDoesNotApplyToTheStrategy(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "in-place-only")
 	release := verifiedRelease(t, host)
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Verify: true})
+	sc := deploy.StepContextForTest(host, deploy.Options{Verify: true})
 	sc.Release = release
 	sc.Checks = []deploy.Check{{
 		ID: "artifact", Command: "touch " + marker, OnlyForPublishStrategy: deploy.PublishInPlace,
@@ -687,7 +679,7 @@ func TestCleanupPrunesBackupsOnTheSameWindowAsReleases(t *testing.T) {
 		}
 	}
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", KeepReleases: 2})
+	sc := deploy.StepContextForTest(host, deploy.Options{KeepReleases: 2})
 	sc.Release = deploy.NewReleaseForTest("7", "abc", "local")
 	if err := deploy.CoreCleanup(ctx, sc); err != nil {
 		t.Fatalf("cleanup: %v", err)
@@ -725,7 +717,7 @@ func TestCleanupKeepsForeignBackupDirectoriesOutOfTheWindow(t *testing.T) {
 		t.Fatalf("seed a foreign backup directory: %v", err)
 	}
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", KeepReleases: 2})
+	sc := deploy.StepContextForTest(host, deploy.Options{KeepReleases: 2})
 	sc.Release = deploy.NewReleaseForTest("4", "abc", "local")
 	if err := deploy.CoreCleanup(ctx, sc); err != nil {
 		t.Fatalf("cleanup: %v", err)
@@ -748,7 +740,7 @@ func TestCleanupKeepsForeignBackupDirectoriesOutOfTheWindow(t *testing.T) {
 // cleanup must not turn that into a failure.
 func TestCleanupToleratesAMissingBackupRoot(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", KeepReleases: 2})
+	sc := deploy.StepContextForTest(host, deploy.Options{KeepReleases: 2})
 	sc.Release = deploy.NewReleaseForTest("1", "abc", "local")
 	if err := deploy.CoreCleanup(context.Background(), sc); err != nil {
 		t.Fatalf("cleanup without a backup root: %v", err)
@@ -766,7 +758,7 @@ func TestVerifyToleratesASharedFileWithNoSharedCopyYet(t *testing.T) {
 	release := verifiedRelease(t, host)
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote: "local", Verify: true,
+		Verify:   true,
 		Settings: map[string]any{"shared_files": []string{"app/etc/env.php", "var/.maintenance.ip"}},
 	})
 	sc.Release = release
@@ -809,7 +801,7 @@ func TestInPlaceActivationWarnsWhenNothingIsConfiguredToSync(t *testing.T) {
 	}
 	host.CurrentPath = docroot
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishInPlace})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishInPlace})
 	sc.Release = deploy.NewReleaseForTest("1", "abcdef", "main")
 	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), sc); err != nil {
 		t.Fatalf("note: %v", err)
@@ -821,7 +813,6 @@ func TestInPlaceActivationWarnsWhenNothingIsConfiguredToSync(t *testing.T) {
 
 	// Configured: nothing to warn about.
 	configured := deploy.StepContextForTest(host, deploy.Options{
-		Remote:   "local",
 		Publish:  deploy.PublishInPlace,
 		Settings: map[string]any{"sync_paths": []string{"vendor", "generated"}},
 	})
@@ -834,7 +825,7 @@ func TestInPlaceActivationWarnsWhenNothingIsConfiguredToSync(t *testing.T) {
 	}
 
 	// A symlink activation copies nothing by design: no warning either.
-	symlink := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishSymlink})
+	symlink := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	symlink.Release = sc.Release
 	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), symlink); err != nil {
 		t.Fatalf("note: %v", err)
@@ -864,7 +855,6 @@ func TestInPlaceActivationSkipsPathsTheReleaseDidNotBuild(t *testing.T) {
 	}
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -916,7 +906,6 @@ func TestInPlaceActivationNeverPublishesASharedLink(t *testing.T) {
 	writeFile(t, filepath.Join(docrootCache, "keep.txt"), "keep\n")
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -951,7 +940,6 @@ func TestInPlaceActivationNeverPublishesASharedLink(t *testing.T) {
 
 	// An entry that *is* the shared path is skipped outright.
 	sc2 := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Publish:    deploy.PublishInPlace,
 		Repository: origin,
 		Revision:   revision,
@@ -1034,7 +1022,6 @@ func TestInPlacePreflightNamesTheSharedPathsInSyncPaths(t *testing.T) {
 	host.CurrentPath = docroot
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:  "local",
 		Publish: deploy.PublishInPlace,
 		Settings: map[string]any{
 			"shared_dirs": []string{"pub/static/_cache"},

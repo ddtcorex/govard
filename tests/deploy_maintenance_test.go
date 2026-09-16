@@ -45,20 +45,19 @@ func TestExecutorMaintainsTheServedReleaseAcrossASymlinkSwap(t *testing.T) {
 		{ID: deploy.TaskRecord, Core: deploy.CoreRecord},
 	})
 
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
 	plan = plan.ForPublishStrategy(deploy.PublishSymlink)
 
 	executor := deploy.NewExecutor(host, deploy.Options{
-		Remote:         "local",
 		Publish:        deploy.PublishSymlink,
 		CommandTimeout: time.Minute,
 	}, io.Discard)
 	// The variable set is the real one: `current_path` is what the window's
 	// commands address, and the executor layers the per-step `release_path` on top.
-	vars := cmd.DeployVarsForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishSymlink})
+	vars := cmd.DeployVarsForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	if _, err := executor.Run(context.Background(), plan, vars, deploy.NewReleaseForTest("2", "abc123", "main")); err != nil {
 		t.Fatalf("the window must protect the served release: %v", err)
 	}

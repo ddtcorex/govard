@@ -82,7 +82,6 @@ type Overrides struct {
 // defaults, then the project deploy block, then the per-remote override block,
 // then the flags.
 type Options struct {
-	Remote     string
 	Branch     string
 	Revision   string
 	Tag        string
@@ -130,10 +129,47 @@ type Options struct {
 
 // ResolveOptions resolves one remote's effective deploy options.
 func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, error) {
+	opts, name, err := resolveBaseOptions(cfg, remote, over)
+	if err != nil {
+		return Options{}, err
+	}
+
+	// Mutual exclusion applies to the flags only. A configured `branch` plus an
+	// explicit `--revision` is the normal CI invocation: the branch is the ref
+	// the target fetches, the revision is the exact commit to check out.
+	if err := ValidateSourceSelector(over); err != nil {
+		return Options{}, err
+	}
+	if opts.Branch == "" && opts.Tag == "" && opts.Revision == "" {
+		return Options{}, fmt.Errorf("%w: remote %q has no branch configured and no --branch, --revision or --tag was given", ErrInvalidConfiguration, name)
+	}
+	if !isKnownPublishStrategy(opts.Publish) {
+		return Options{}, fmt.Errorf("%w: unsupported publish strategy %q on remote %q; use %s, %s or %s", ErrInvalidConfiguration, opts.Publish, name, PublishAuto, PublishSymlink, PublishInPlace)
+	}
+	return opts, nil
+}
+
+// ResolveReadOptions resolves one remote's effective options for commands that
+// only read the target (`releases`, `status`, `unlock`). They need the host,
+// the timeouts and the lock settings, but no source selector: a remote with no
+// branch configured is still readable.
+func ResolveReadOptions(cfg engine.Config, remote string, over Overrides) (Options, error) {
+	opts, _, err := resolveBaseOptions(cfg, remote, over)
+	if err != nil {
+		return Options{}, err
+	}
+	return opts, nil
+}
+
+// resolveBaseOptions resolves everything a source selector does not decide:
+// the remote lookup, the layered configuration, and the flag overrides. Both
+// ResolveOptions and ResolveReadOptions share it so a read command sees the
+// same timeouts and lock settings a deploy would use.
+func resolveBaseOptions(cfg engine.Config, remote string, over Overrides) (Options, string, error) {
 	name := strings.ToLower(strings.TrimSpace(remote))
 	remoteCfg, ok := cfg.Remotes[name]
 	if !ok {
-		return Options{}, errUnknownRemote(remote, cfg)
+		return Options{}, "", errUnknownRemote(remote, cfg)
 	}
 
 	effective := cfg.Deploy
@@ -142,7 +178,6 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 	}
 
 	opts := Options{
-		Remote:             name,
 		Branch:             effective.Branch,
 		Repository:         effective.Repository,
 		Publish:            effective.Publish,
@@ -161,28 +196,28 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 	if raw := strings.TrimSpace(effective.Verify.Timeout); raw != "" {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			return Options{}, fmt.Errorf("%w: deploy.verify.timeout: %v", ErrInvalidConfiguration, err)
+			return Options{}, "", fmt.Errorf("%w: deploy.verify.timeout: %v", ErrInvalidConfiguration, err)
 		}
 		opts.VerifyTimeout = parsed
 	}
 	if raw := strings.TrimSpace(effective.CommandTimeout); raw != "" {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			return Options{}, fmt.Errorf("%w: deploy.command_timeout: %v", ErrInvalidConfiguration, err)
+			return Options{}, "", fmt.Errorf("%w: deploy.command_timeout: %v", ErrInvalidConfiguration, err)
 		}
 		opts.CommandTimeout = parsed
 	}
 	if raw := strings.TrimSpace(effective.LockStaleAfter); raw != "" {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			return Options{}, fmt.Errorf("%w: deploy.lock_stale_after: %v", ErrInvalidConfiguration, err)
+			return Options{}, "", fmt.Errorf("%w: deploy.lock_stale_after: %v", ErrInvalidConfiguration, err)
 		}
 		opts.LockStaleAfter = parsed
 	}
 	if raw := strings.TrimSpace(effective.MaintenanceTimeout); raw != "" {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			return Options{}, fmt.Errorf("%w: deploy.maintenance_timeout: %v", ErrInvalidConfiguration, err)
+			return Options{}, "", fmt.Errorf("%w: deploy.maintenance_timeout: %v", ErrInvalidConfiguration, err)
 		}
 		opts.MaintenanceTimeout = parsed
 	}
@@ -208,7 +243,7 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 	}
 	build, err := ResolveBuildMode(over.Build, opts.ArtifactDir)
 	if err != nil {
-		return Options{}, err
+		return Options{}, "", err
 	}
 	opts.Build = build
 	if over.KeepReleases > 0 {
@@ -230,20 +265,7 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 	opts.Resume = over.Resume
 	opts.From = strings.TrimSpace(over.From)
 	opts.Force, opts.Yes, opts.JSON, opts.Verbose = over.Force, over.Yes, over.JSON, over.Verbose
-
-	// Mutual exclusion applies to the flags only. A configured `branch` plus an
-	// explicit `--revision` is the normal CI invocation: the branch is the ref
-	// the target fetches, the revision is the exact commit to check out.
-	if err := validateSourceSelector(over); err != nil {
-		return Options{}, err
-	}
-	if opts.Branch == "" && opts.Tag == "" && opts.Revision == "" {
-		return Options{}, fmt.Errorf("%w: remote %q has no branch configured and no --branch, --revision or --tag was given", ErrInvalidConfiguration, name)
-	}
-	if !isKnownPublishStrategy(opts.Publish) {
-		return Options{}, fmt.Errorf("%w: unsupported publish strategy %q on remote %q; use %s, %s or %s", ErrInvalidConfiguration, opts.Publish, name, PublishAuto, PublishSymlink, PublishInPlace)
-	}
-	return opts, nil
+	return opts, name, nil
 }
 
 // ResolveOptionsForTest exposes ResolveOptions to the tests/ package, which
@@ -292,12 +314,10 @@ func ResolveBuildMode(requested, artifactDir string) (string, error) {
 	}
 }
 
-// ResolveBuildModeForTest exposes ResolveBuildMode to the tests/ package.
-func ResolveBuildModeForTest(requested, artifactDir string) (string, error) {
-	return ResolveBuildMode(requested, artifactDir)
-}
-
-func validateSourceSelector(over Overrides) error {
+// ValidateSourceSelector refuses a flag combination the engine would have to
+// guess about. It runs on the flag values (ResolveOptions) and is shared with
+// the CLI layer so `deploy plan` fails the same combination the same way.
+func ValidateSourceSelector(over Overrides) error {
 	chosen := 0
 	for _, value := range []string{over.Branch, over.Revision, over.Tag} {
 		if strings.TrimSpace(value) != "" {

@@ -8,7 +8,10 @@ import (
 	"strings"
 )
 
-// SettingKind is the shape a setting's value must have.
+// SettingKind is the shape a setting's value must have. Not every kind has a
+// declaring recipe today (no recipe declares a string-list-map or an
+// unsupported key yet); the kinds stay because the validator must already know
+// what to do with one the day a recipe does.
 type SettingKind string
 
 const (
@@ -336,14 +339,4 @@ func editDistance(a, b string) int {
 		previous, current = current, previous
 	}
 	return previous[len(b)]
-}
-
-func min(values ...int) int {
-	smallest := values[0]
-	for _, value := range values[1:] {
-		if value < smallest {
-			smallest = value
-		}
-	}
-	return smallest
 }

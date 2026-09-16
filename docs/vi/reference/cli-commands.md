@@ -709,7 +709,7 @@ govard deploy sandbox up --docroot real       # docroot thật: publish in-place
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
 govard deploy sandbox ssh
-govard deploy sandbox down [--purge]
+govard deploy sandbox down [--purge] [--volumes]
 ```
 
 → Những cấu hình đã làm sẵn (Luma, Hyvä, nhiều theme và store view, chế độ developer
@@ -831,8 +831,9 @@ Vì `sandbox` là subcommand, hãy deploy bằng dạng flag:
 Profile: `basic` (sshd, rsync, git), `php` (thêm php-cli, composer, node) và
 `full` (thêm database và cache), mặc định `php`. `--docroot` định hình target để
 chiến lược publish resolve đúng thứ bạn muốn kiểm chứng: `absent` hoặc `symlink`
-chọn cú swap nguyên tử, `real` chọn in-place. `down` xoá container và remote mà nó
-đã ghi; `--purge` xoá thêm image, khoá và mirror. `reset` xoá các thư mục deploy
+(mặc định) chọn cú swap nguyên tử, `real` chọn in-place. `down` xoá container và
+remote mà nó đã ghi, nhưng giữ mọi data volume để mai diễn tập tiếp (`--volumes`
+xoá luôn data); `--purge` xoá thêm image, khoá và mirror. `reset` xoá các thư mục deploy
 trên target, và `--layout=deployer` seed một target trông như của công cụ deploy kia.
 
 Profile `php` và `full` còn ship một web tier — nginx phục vụ served path cộng

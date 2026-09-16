@@ -117,12 +117,6 @@ func isTerminal(w io.Writer) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-// SetTerminalForTest exposes the terminal probe. It exists so a test can assert what
-// the step context records without pretending a buffer is a terminal.
-func SetTerminalForTest(w io.Writer) bool {
-	return isTerminal(w)
-}
-
 // rsyncProgressArgs returns the flags that make rsync report progress while it runs.
 //
 // Two conditions, both necessary: without a terminal rsync cannot redraw its progress

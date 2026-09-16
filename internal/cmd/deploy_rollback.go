@@ -99,14 +99,14 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return configOrUsageError(err)
 	}
-	plan, err := deploy.BuildPlan(recipe, hooks, remote)
+	plan, err := deploy.BuildPlan(recipe, hooks)
 	if err != nil {
 		return configOrUsageError(err)
 	}
 	vars := deployVars(host, options)
 	out := cmd.OutOrStdout()
 
-	pterm.Info.Printf("rolling %s back to release %s (%s)\n", remote, target.Release, shortRevisionForOutput(target.Revision))
+	pterm.Info.Printf("rolling %s back to release %s (%s)\n", remote, target.Release, deploy.ShortRevision(target.Revision))
 
 	if strategy == deploy.PublishSymlink {
 		activate := firstStep(plan, deploy.TaskActivate)
@@ -140,7 +140,7 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	pterm.Success.Printf("%s now serves release %s (%s)\n", remote, target.Release, shortRevisionForOutput(target.Revision))
+	pterm.Success.Printf("%s now serves release %s (%s)\n", remote, target.Release, deploy.ShortRevision(target.Revision))
 	if previous != nil && previous.Release != target.Release {
 		pterm.Info.Printf("it replaced release %s; `govard deploy releases %s` shows every release on the target\n", previous.Release, remote)
 	}

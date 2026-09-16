@@ -63,6 +63,8 @@ type ArtifactManifest struct {
 	PHPVersion string `json:"php_version,omitempty"`
 	// ComposerLockSHA256 identifies the dependency set the artifact was built
 	// against, which is what makes "same revision, different vendor/" visible.
+	// It is evidence, not a gate: composer.lock itself is one of Files, so
+	// manifest.Verify already enforces its integrity on receipt.
 	ComposerLockSHA256 string         `json:"composer_lock_sha256,omitempty"`
 	FileCount          int            `json:"file_count"`
 	TotalBytes         int64          `json:"total_bytes"`
@@ -150,11 +152,6 @@ func BuildManifest(root, revision, phpVersion string) (*ArtifactManifest, error)
 		manifest.ComposerLockSHA256 = lock
 	}
 	return manifest, nil
-}
-
-// BuildManifestForTest exposes BuildManifest to the tests/ package.
-func BuildManifestForTest(root, revision, phpVersion string) (*ArtifactManifest, error) {
-	return BuildManifest(root, revision, phpVersion)
 }
 
 // WriteManifest stores the manifest at the root of the artifact it describes.
@@ -315,7 +312,7 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 	if err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(out, "▶ build %s (%s)\n", revisionOrShort(revision), output)
+	fmt.Fprintf(out, "▶ build %s (%s)\n", shortRevision(revision), output)
 
 	if err := materialiseRevision(ctx, runner, workDir, output, revision, timeout); err != nil {
 		return nil, err
@@ -355,7 +352,7 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 		return nil, err
 	}
 	fmt.Fprintf(out, "  artifact: %d files, %.1f MiB, revision %s\n",
-		manifest.FileCount, float64(manifest.TotalBytes)/1024/1024, revisionOrShort(manifest.Revision))
+		manifest.FileCount, float64(manifest.TotalBytes)/1024/1024, shortRevision(manifest.Revision))
 	return manifest, nil
 }
 
@@ -424,7 +421,7 @@ func materialiseRevision(ctx context.Context, runner Runner, workDir, output, re
 // plan a server build would run. That is the parity guarantee: one task list,
 // one expansion, two places to execute it.
 func runBuildTasks(ctx context.Context, runner Runner, req BuildRequest, vars Vars, output string, out io.Writer) error {
-	plan, err := BuildPlan(req.Recipe, req.Hooks, "build")
+	plan, err := BuildPlan(req.Recipe, req.Hooks)
 	if err != nil {
 		return err
 	}
@@ -498,16 +495,6 @@ func projectUsesPHP(root string) bool {
 		}
 	}
 	return false
-}
-
-func revisionOrShort(revision string) string {
-	if revision == "" {
-		return "unknown"
-	}
-	if len(revision) > 8 {
-		return revision[:8]
-	}
-	return revision
 }
 
 // CoreArtifact receives a prebuilt artifact into the release directory.

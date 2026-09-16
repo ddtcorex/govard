@@ -18,10 +18,6 @@ const (
 	StepFailed  = "failed"
 )
 
-// PublishStage is the stage after which a failure must keep the lock: the
-// target may already be mid-change, so a second deploy must not start silently.
-const PublishStage = StagePublish
-
 // resumeAlwaysReruns lists the idempotent, safety-relevant steps a resumed
 // deploy must repeat. Skipping the lock would let a resumed run proceed
 // unprotected, which defeats the point of the lock.
@@ -42,9 +38,8 @@ type StepResult struct {
 
 // Outcome is what one `Run` produced.
 type Outcome struct {
-	Steps   []StepResult
-	Release string
-	Total   time.Duration
+	Steps []StepResult
+	Total time.Duration
 	// LockHeld reports whether the deploy lock is still held on the target
 	// after this run. A failure before publish releases it; from publish
 	// onwards it survives, so recovery has to be explicit.
@@ -177,7 +172,7 @@ const migrationSkipReason = "db up-to-date (probe exit 0)"
 // operator needs afterwards.
 func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Release) (Outcome, error) {
 	started := time.Now()
-	outcome := Outcome{Release: release.Release}
+	outcome := Outcome{}
 
 	if release.Path == "" {
 		release.Path = e.host.ReleasePath(release.Release)
@@ -185,11 +180,8 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	if release.Branch == "" {
 		release.Branch = e.opts.Branch
 	}
-	if release.Repository == "" {
-		release.Repository = e.opts.Repository
-	}
 
-	fmt.Fprintf(e.out, "▶ deploy %s (%s @ %s)\n", e.host.Name, branchLabel(release.Branch), shortRevision(release.Revision))
+	fmt.Fprintf(e.out, "▶ deploy %s (%s @ %s)\n", e.host.Name, BranchLabel(release.Branch), shortRevision(release.Revision))
 
 	// Said before anything runs, so it is on screen when the deploy fails later
 	// for the reason it warns about.
@@ -661,8 +653,11 @@ func (e *Executor) printStep(step Step, status string, duration time.Duration) {
 	fmt.Fprintf(e.out, "  %s %-22s %8s  %s\n", icon, step.ID, duration.Round(time.Millisecond), title)
 }
 
-func branchLabel(branch string) string {
-	if branch == "" {
+// BranchLabel renders a branch for a human line, naming the detached state
+// instead of printing nothing. The plan renderer shares it so both outputs
+// spell the state the same way.
+func BranchLabel(branch string) string {
+	if strings.TrimSpace(branch) == "" {
 		return "detached"
 	}
 	return branch
