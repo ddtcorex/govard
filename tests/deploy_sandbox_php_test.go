@@ -374,3 +374,27 @@ func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
 		t.Fatalf("err = %v, want a refusal naming --recreate", err)
 	}
 }
+
+// Debian's nodejs (18) predates the Node 20+ current frontend toolchains need:
+// Tailwind v4's native oxide binding never lands under npm 9 (found live:
+// MODULE_NOT_FOUND tailwindcss-oxide.linux-x64-gnu.node after a green npm ci).
+// Images with a node toolchain track Node 24, the series the projects deploy
+// with; basic ships no node and stays untouched.
+func TestSandboxImageTracksNode24ForNodeProfiles(t *testing.T) {
+	for _, profile := range []string{deploy.SandboxProfilePHP, deploy.SandboxProfileFull} {
+		dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: profile, Requirements: deploy.SandboxRequirements{}})
+		if err != nil {
+			t.Fatalf("render %s: %v", profile, err)
+		}
+		if !strings.Contains(dockerfile, "nodesource") || !strings.Contains(dockerfile, "setup_24.x") {
+			t.Errorf("profile %s must install Node 24 from NodeSource, got:\n%s", profile, dockerfile)
+		}
+	}
+	basic, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileBasic, Requirements: deploy.SandboxRequirements{}})
+	if err != nil {
+		t.Fatalf("render basic: %v", err)
+	}
+	if strings.Contains(basic, "nodesource") {
+		t.Errorf("basic ships no node toolchain and must not add NodeSource:\n%s", basic)
+	}
+}

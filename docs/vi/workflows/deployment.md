@@ -268,6 +268,16 @@ nêu tên lúc container khởi động thay vì bị bỏ qua im lặng. `sandb
 những binary mà engine có công thức cài — hiện tại là `wp-cli` — và tên lạ bị từ chối
 ngay khi render image, không phải khi image build fail.
 
+Không recipe nào đòi search service, nên sandbox không có: mọi rehearsal trước đường
+migrate đều xanh nhờ probe-exit-0 skip, và lần `setup:upgrade` thật đầu tiên trên dự án
+dính search sẽ fail khi không với tới engine (ElasticSuite validate connection, rồi bất
+kỳ recurring step nào ping cluster). Muốn rehearse đường migrate trên dự án như vậy thì
+hoặc disable các module dính search trong một scratch release trước khi chạy, hoặc trỏ
+sandbox sang một engine với tới được cho buổi rehearsal — nối container vào network của
+origin env để hostname search resolve được, override server hostname của engine sang đó,
+rồi revert cả hai sau. Search service nằm trong image sandbox là việc tương lai, không
+phải ý tưởng bị loại: nó cần version matrix riêng khớp với thứ origin đang chạy.
+
 ### Ba chỗ ba recipe này khác Magento
 
 **Symfony không có task maintenance.** Symfony không có cơ chế gốc cho việc đó, nên
@@ -988,8 +998,10 @@ bước kiểm tra HTTP — bước mà một target không có web server khôn
 
 Kiểm tra đó là thật: target chưa phục vụ được sẽ fail ở bước cuối với đúng mã HTTP
 mà nó trả về (`verify http: http://127.0.0.1:PORT/ returned HTTP 403`) — đó là
-check đang làm việc, không phải lỗi. Có ứng dụng (env.php, database, search engine)
-thì nó pass; `--no-verify` để tắt cho lần diễn tập chỉ cần dừng ở mức file.
+check đang làm việc, không phải lỗi. Sandbox đã seed thì có sẵn ứng dụng
+(database, media, env đã viết lại) nên check pass mà không cần dựng tay;
+`--no-verify` để tắt cho lần diễn tập chỉ cần dừng ở mức file, còn `--no-seed`
+là lần diễn tập tự lo ứng dụng.
 
 Profile `full` start sẵn database và cache, và recipe Magento khai cả hai, nên
 `env.php` của target có thể trỏ `127.0.0.1` cho MariaDB và Redis/Valkey — đúng hình
@@ -1009,8 +1021,23 @@ Việc định hình chỉ xảy ra khi target được tạo và khi bạn nói
 vì `up` còn là cách khởi động lại sandbox đang dừng và cách refresh mirror trước khi
 deploy revision kế tiếp, và cả hai đều không được phép làm mất ứng dụng đang phục
 vụ. `reset` thì luôn định hình: xoá thư mục deploy rồi dựng lại là việc của nó.
-`down` xoá container và remote mà nó đã ghi; `--purge` xoá thêm image, khoá và
+`down` dừng và xoá container cùng remote mà nó đã ghi, nhưng giữ mọi data volume để
+mai diễn tập tiếp; `down --volumes` xoá luôn data. `--purge` xoá thêm image, khoá và
 mirror.
+
+Sandbox là một dự án phái sinh, không phải container generic: `up` render đúng
+blueprint của dự án gốc dưới tên `<project>-sandbox` — cùng series PHP, cùng
+services — nên target diễn tập khớp dự án theo cấu trúc thay vì `--php` truyền tay
+(flag vẫn còn cho ca đặc biệt). Dự án phái sinh không bao giờ vào project list;
+state của nó nằm dưới `.govard/sandbox/` của dự án gốc, ghi rõ nó được seed từ đâu.
+
+`up` còn seed ứng dụng một lần, từ môi trường gốc đang chạy: dump database dạng
+logical (môi trường gốc vẫn chạy — không dừng, không sửa gì), cây media, và file
+env được viết lại cho sandbox (base_url thành URL web của sandbox; host
+container-local giữ nguyên). Seed chỉ chạy trên container mới; sandbox đã có giữ
+nguyên data và `--recreate` là cách làm mới. Môi trường gốc phải đang chạy, nếu
+không `up` từ chối và nói rõ — sandbox câm mà im lặng thì không giúp được ai.
+`--no-seed` để khởi đầu trắng một cách chủ đích.
 
 Một sandbox đã tồn tại được mô tả bằng chính nó, không bằng flag của lệnh vừa gọi
 tới: `up` báo đúng profile và series PHP mà container được build, cùng image thật

@@ -136,6 +136,38 @@ type SandboxSpec struct {
 	Requirements SandboxRequirements
 }
 
+// OriginProject is what `sandbox up` reads from the current project to shape
+// the derived sandbox: the framework recipe's sandbox requirements plus the
+// effective PHP series and profile. The caller (cmd) resolves these from the
+// project config and env; this package never reads project files.
+type OriginProject struct {
+	Name         string
+	Framework    string
+	PHP          string
+	Profile      string
+	Requirements SandboxRequirements
+}
+
+// SandboxSpecForOrigin builds the sandbox spec from the origin project: the
+// derived name, the origin PHP series (an explicit --php flag overrides this
+// before the call, so by here empty means "could not determine" and fails),
+// and the origin framework's package/extension/service requirements verbatim.
+func SandboxSpecForOrigin(origin OriginProject) (SandboxSpec, error) {
+	if strings.TrimSpace(origin.PHP) == "" {
+		return SandboxSpec{}, fmt.Errorf("cannot derive the sandbox PHP series for %q; pass --php explicitly", origin.Name)
+	}
+	php, err := ValidateSandboxPHP(origin.PHP)
+	if err != nil {
+		return SandboxSpec{}, err
+	}
+	return SandboxSpec{
+		Project:      DerivedProjectName(origin.Name),
+		PHP:          php,
+		Profile:      origin.Profile,
+		Requirements: origin.Requirements,
+	}, nil
+}
+
 // ValidateSandboxPHP normalizes a requested PHP series and refuses anything that is
 // not `major.minor`. The value is rendered into the image definition, so it is
 // checked rather than trusted: `8.4; rm -rf /` is a string, not a version.
@@ -288,11 +320,14 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 	// --prefer-dist` aborted on a patch while the same command with
 	// `--prefer-source` succeeded, because that path uses `git apply`.
 	packages := []string{"openssh-server", "rsync", "git", "ca-certificates", "procps", "patch"}
+	// Node comes from NodeSource (added below), whose nodejs bundle ships its
+	// own npm: the distribution npm would pair a stale client with the new
+	// runtime, which is exactly the combination that drops native bindings.
 	switch resolved {
 	case SandboxProfilePHP:
-		packages = append(packages, "nodejs", "npm", "unzip")
+		packages = append(packages, "nodejs", "unzip")
 	case SandboxProfileFull:
-		packages = append(packages, "nodejs", "npm", "unzip", "mariadb-server", "redis-server")
+		packages = append(packages, "nodejs", "unzip", "mariadb-server", "redis-server")
 	}
 	if servesWeb {
 		packages = append(packages, SandboxWebPackages(series)...)
@@ -362,6 +397,24 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 `, sandboxSuryKeyring, sandboxSuryKeyring, sandboxDebianCodename, sandboxSurySource)
 	}
 
+	// Node 24 from NodeSource, the same third-party-repository shape as sury
+	// above. Debian's nodejs (18) predates the Node 20+ current frontend
+	// toolchains require, and its npm mishandles their optional dependencies;
+	// the version tracks the Node series the projects deploy with. Basic ships
+	// no node toolchain, so it adds no repository.
+	if resolved != SandboxProfileBasic {
+		fmt.Fprintf(&builder, `RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl gnupg ca-certificates; \
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash -; \
+    apt-get install -y --no-install-recommends nodejs; \
+    node --version; \
+    npm --version; \
+    rm -rf /var/lib/apt/lists/*
+
+`)
+	}
+
 	// The pinned versions are tried first and the current ones are the fallback,
 	// so a rotated Debian point release degrades the sandbox instead of
 	// breaking it. Whichever was installed is recorded in the image.
@@ -406,6 +459,17 @@ RUN set -eux; \
 `, series, series)
 	}
 
+	// Composer on a rehearsal target clones private git repos the image cannot
+	// know at build time, so strict host-key checking would fail every private
+	// VCS package. The dev environments already disable it in base.yml for the
+	// same reason; production targets keep real known_hosts (infra-managed).
+	// Basic ships no PHP toolchain, so the variable would point at nothing.
+	// The ENV covers `docker exec` paths; ~/.ssh/environment (below) covers
+	// SSH sessions, which never inherit container ENV.
+	if resolved != SandboxProfileBasic {
+		fmt.Fprintf(&builder, "\nENV GIT_SSH_COMMAND=\"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\"\n")
+	}
+
 	// Tools are phars the distribution does not package, installed the way
 	// Composer is. `curl` is installed here rather than assumed: the base package
 	// list has none, and only the sury branch adds it — a tool requested without
@@ -443,6 +507,14 @@ RUN set -eux; \
 	// so nothing can use it anyway.
 	fmt.Fprintf(&builder, "    useradd -m -d %s -u %d -g %d -s /bin/bash -p '*' %s; \\\n", SandboxHome, SandboxUserUID, SandboxUserGID, SandboxUser)
 	fmt.Fprintf(&builder, "    install -d -m 0700 -o %s -g %s %s/.ssh; \\\n", SandboxUser, SandboxUser, SandboxHome)
+	// SSH sessions do not inherit container ENV, so the GIT_SSH_COMMAND the
+	// image declares would never reach the recipe's composer step over SSH.
+	// ~/.ssh/environment (opted into above) carries it into every session.
+	// PermitUserEnvironment on a loopback-only rehearsal box whose only key is
+	// generated per sandbox is the documented tradeoff; production targets
+	// keep real known_hosts instead.
+	fmt.Fprintf(&builder, "    printf '%%s\\n' 'GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' > %s/.ssh/environment; \\\n", SandboxHome)
+	fmt.Fprintf(&builder, "    chown %s:%s %s/.ssh/environment; \\\n", SandboxUser, SandboxUser, SandboxHome)
 	fmt.Fprintf(&builder, "    passwd -l root\n")
 
 	if servesWeb {
@@ -469,6 +541,7 @@ RUN set -eux; \
       'PermitRootLogin no' \
       'PubkeyAuthentication yes' \
       'AuthorizedKeysFile .ssh/authorized_keys' \
+      'PermitUserEnvironment yes' \
       'UsePAM no' \
       'PrintMotd no' \
       > /etc/ssh/sshd_config.d/govard-sandbox.conf

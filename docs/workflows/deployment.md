@@ -272,6 +272,18 @@ accepts only the binaries the engine has an install recipe for — today that is
 `wp-cli` — and an unknown name is refused when the image is rendered, not when it
 fails to build.
 
+No recipe asks for a search service, so the sandbox ships none: every rehearsal
+before the migrate path was green on probe-exit-0 skips, and the first real
+`setup:upgrade` on a search-dependent project fails when the engine cannot be
+reached (ElasticSuite validation, then any recurring step that pings the
+cluster). To rehearse the migrate path on such a project, either disable the
+search-dependent modules in a scratch release before the run, or point the
+sandbox at a reachable engine for the rehearsal — join the container to the
+origin env's network so its search hostname resolves, override the engine's
+server hostname to it, and revert both afterwards. A search service inside the
+sandbox image is future work, not a rejected idea: it needs its own version
+matrix against whatever the origin runs.
+
 ### The three places these recipes differ from Magento's
 
 **Symfony has no maintenance task.** Symfony has no core mechanism for it, so
@@ -1036,9 +1048,25 @@ in-place publishing. Shaping happens when the target is created and when you nam
 a shape, because `up` is also how a stopped sandbox is started and how the mirror
 is refreshed before the next revision is deployed — neither may cost the
 application currently being served. `reset` shapes unconditionally: wiping the
-deploy directories and laying them out again is what it is for. `down` removes
-the container and the remote it wrote; `--purge` also removes the image, the key
-and the mirror.
+deploy directories and laying them out again is what it is for. `down` stops and
+removes the container and the remote it wrote, and keeps every data volume so a
+rehearsal resumes tomorrow; `down --volumes` deletes the derived volumes too.
+`--purge` also removes the image, the key and the mirror.
+
+A sandbox is a derived project, not a generic container: `up` renders the origin
+project's own blueprint under the name `<project>-sandbox` — same PHP series,
+same services — so the rehearsal target matches the project by construction
+instead of by hand-passed `--php` (which remains as an override for exceptional
+cases). The derived project never appears in the project list; its state lives
+under the origin's `.govard/sandbox/`, recording what it was seeded from.
+
+`up` also seeds the application once, from the running origin environment: a
+logical database dump (the origin keeps running — nothing is stopped or
+mutated), the media tree, and the env file rewritten for the sandbox (base_url
+becomes the sandbox web URL; container-local hosts stay as they are). The seed
+runs only on a fresh container; a reused sandbox keeps its data and `--recreate`
+is the refresh. The origin environment must be running, or `up` refuses and says
+so — a silent empty sandbox helps nobody. `--no-seed` starts deliberately empty.
 
 A sandbox you already have is described by what it is, not by the flags of the
 command that reached it: `up` reports the profile and the PHP series the container
@@ -1064,9 +1092,11 @@ could never exercise.
 
 That check is real: a target that does not answer yet fails the last step with the
 HTTP status it returned (`verify http: http://127.0.0.1:PORT/ returned HTTP 403`),
-which is the check doing its job rather than a defect. Provide the application
-(env.php, a database, a search engine) and it passes; `--no-verify` turns it off
-for a rehearsal that stops at the files.
+which is the check doing its job rather than a defect. A seeded sandbox already
+provides the application (database, media, rewritten env file), so the check
+passes with no hand provisioning; `--no-verify` turns it off for a rehearsal
+that stops at the files, and `--no-seed` is the rehearsal that provides its own
+application instead.
 
 The `full` profile starts a database and a cache, and the Magento recipe names
 both, so a target's `env.php` can point at `127.0.0.1` for MariaDB and Redis/Valkey
