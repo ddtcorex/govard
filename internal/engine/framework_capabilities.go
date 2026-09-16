@@ -50,9 +50,12 @@ func FrameworkSupportsAuditLint(name string) bool {
 }
 
 // SandboxSeedRewriter rewrites one env file's content for a derived sandbox
-// (base_url, local hosts). Frameworks own their file's grammar; the deploy
-// core only dispatches the function the framework registered.
-type SandboxSeedRewriter func(content []byte, mapping map[string]string) ([]byte, error)
+// (base_url, local hosts). It returns the rewritten content plus the mapped
+// keys it did not find: absent keys are skipped loudly, never invented —
+// inserting new structure into a grammar the project may not use corrupts
+// files. Frameworks own their file's grammar; the deploy core only dispatches
+// the function the framework registered.
+type SandboxSeedRewriter func(content []byte, mapping map[string]string) (rewritten []byte, skipped []string, err error)
 
 // SandboxSeedDefinition is what a framework contributes to sandbox seeding:
 // the env/media paths relative to the app workdir, and the rewriter. Absent

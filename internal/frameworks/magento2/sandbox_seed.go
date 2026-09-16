@@ -1,7 +1,6 @@
 package magento2
 
 import (
-	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -20,23 +19,28 @@ func singleQuotedValue(key string) *regexp.Regexp {
 // RewriteMagentoEnvForSandbox rewrites app/etc/env.php for a derived sandbox.
 // Every key present in mapping is replaced everywhere it appears (base_url
 // occurs twice: secure and unsecure); anything unmapped passes through
-// byte-identical. An empty mapping is a copy.
-func RewriteMagentoEnvForSandbox(content []byte, mapping map[string]string) ([]byte, error) {
+// byte-identical. Mapped keys the file does not have are reported skipped:
+// inventing new array structure textually is where corruption lives, so the
+// caller prints the skip and the database keeps whatever base_url it has. An
+// empty mapping is a copy.
+func RewriteMagentoEnvForSandbox(content []byte, mapping map[string]string) ([]byte, []string, error) {
 	if len(mapping) == 0 {
 		out := make([]byte, len(content))
 		copy(out, content)
-		return out, nil
+		return out, nil, nil
 	}
 	out := string(content)
+	var skipped []string
 	for _, key := range slices.Sorted(maps.Keys(mapping)) {
 		value := mapping[key]
 		re := singleQuotedValue(key)
 		if !re.MatchString(out) {
-			return nil, fmt.Errorf("cannot rewrite env.php: key %q not found as a single-quoted value", key)
+			skipped = append(skipped, key)
+			continue
 		}
 		// The value is replacement text, where `$` starts a group reference:
 		// double it so a `$` in the value survives verbatim.
 		out = re.ReplaceAllString(out, "${1}"+strings.ReplaceAll(value, "$", "$$")+"${3}")
 	}
-	return []byte(out), nil
+	return []byte(out), skipped, nil
 }

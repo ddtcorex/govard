@@ -36,10 +36,13 @@ type SeedSource struct {
 // secrets, media endpoints, and the env-file rewrite mapping. The caller
 // executes it through the container runtime; argv never names a secret.
 type SeedSpec struct {
-	// DBDumpContainer is the origin database container; DBDumpArgs is the
-	// mysqldump client argv run inside it (password arrives via MYSQL_PWD).
-	DBDumpContainer string
-	DBDumpArgs      []string
+	// DBDumpContainer is the origin database container. DBDumpFlags is the
+	// client argv without the binary: minimal MariaDB images ship
+	// mariadb-dump without the mysqldump symlink (and MySQL images only have
+	// mysqldump), so DBDumpCandidates is probed in order at seed time.
+	DBDumpContainer  string
+	DBDumpFlags      []string
+	DBDumpCandidates []string
 	// DBImportArgs is the mysql client argv run inside the sandbox container.
 	DBImportArgs []string
 	DBPassword   string
@@ -66,14 +69,36 @@ func ResolveSeedSpec(source SeedSource) (SeedSpec, error) {
 		return SeedSpec{}, fmt.Errorf("cannot seed without the origin database container and name")
 	}
 	return SeedSpec{
-		DBDumpContainer: source.DB.Container,
-		DBDumpArgs:      []string{"mysqldump", "-u", source.DB.User, "--single-transaction", "--skip-lock-tables", source.DB.Name},
-		DBImportArgs:    []string{"mysql", "-u", source.DB.User, source.DB.Name},
-		DBPassword:      source.DB.Password,
-		MediaSource:     source.MediaSource,
-		EnvSource:       source.EnvSource,
-		EnvMapping:      map[string]string{},
+		DBDumpContainer:  source.DB.Container,
+		DBDumpFlags:      []string{"-u", source.DB.User, "--single-transaction", "--skip-lock-tables", source.DB.Name},
+		DBDumpCandidates: []string{"mariadb-dump", "mysqldump"},
+		DBImportArgs:     []string{"mysql", "-u", source.DB.User, source.DB.Name},
+		DBPassword:       source.DB.Password,
+		MediaSource:      source.MediaSource,
+		EnvSource:        source.EnvSource,
+		EnvMapping:       map[string]string{},
 	}, nil
+}
+
+// resolveDumpBinary picks the dump client the origin container actually has.
+// `command -v` prints the resolved path; the answer must name the candidate
+// asked for, otherwise a canned answer for one query would satisfy another.
+func resolveDumpBinary(ctx context.Context, runtime SandboxRuntime, container string, candidates []string) (string, error) {
+	for _, candidate := range candidates {
+		out, err := runtime.Exec(ctx, container, nil, "sh", "-c", "command -v "+candidate)
+		if err != nil {
+			continue
+		}
+		if path := strings.TrimSpace(out); path != "" && strings.Contains(path, candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no dump client (%s) in %s", strings.Join(candidates, ", "), container)
+}
+
+// ResolveDumpBinaryForTest exposes resolveDumpBinary to the tests/ package.
+func ResolveDumpBinaryForTest(ctx context.Context, runtime SandboxRuntime, container string) (string, error) {
+	return resolveDumpBinary(ctx, runtime, container, []string{"mariadb-dump", "mysqldump"})
 }
 
 var definerRe = regexp.MustCompile(`(?i)/\*!50013 DEFINER=` + "`[^`]+`@`[^`]+`" + ` SQL SECURITY DEFINER \*/`)
@@ -156,7 +181,11 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 	}
 
 	fmt.Fprintf(out, "dumping the origin database %s\n", request.SeedDBName)
-	dumpArgs := append(mysqlPasswordEnv(request.SeedDBPassword), spec.DBDumpArgs...)
+	dumpBin, err := resolveDumpBinary(ctx, runtime, spec.DBDumpContainer, spec.DBDumpCandidates)
+	if err != nil {
+		return err
+	}
+	dumpArgs := append(mysqlPasswordEnv(request.SeedDBPassword), append([]string{dumpBin}, spec.DBDumpFlags...)...)
 	dump, err := runtime.Exec(ctx, spec.DBDumpContainer, nil, dumpArgs...)
 	if err != nil {
 		return fmt.Errorf("dump the origin database: %w", err)
@@ -199,9 +228,12 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 		for key, value := range request.SeedEnvMapping {
 			mapping[key] = value
 		}
-		rewritten, err := request.EnvRewriter([]byte(raw), mapping)
+		rewritten, skipped, err := request.EnvRewriter([]byte(raw), mapping)
 		if err != nil {
 			return fmt.Errorf("rewrite the env file: %w", err)
+		}
+		for _, key := range skipped {
+			fmt.Fprintf(out, "note: env key %q not present, left as-is\n", key)
 		}
 		if _, err := runtime.Exec(ctx, sandbox, rewritten, "tee", request.SeedEnvTarget); err != nil {
 			return fmt.Errorf("write the sandbox env file: %w", err)

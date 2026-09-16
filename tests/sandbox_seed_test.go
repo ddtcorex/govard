@@ -41,14 +41,46 @@ func TestDumpArgsAreSingleTransactionWithoutLocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed spec: %v", err)
 	}
-	joined := strings.Join(spec.DBDumpArgs, " ")
+	joined := strings.Join(spec.DBDumpFlags, " ")
 	for _, want := range []string{"--single-transaction", "--skip-lock-tables"} {
 		if !strings.Contains(joined, want) {
-			t.Errorf("dump args must contain %s (the origin app user has no LOCK TABLES): %q", want, joined)
+			t.Errorf("dump flags must contain %s (the origin app user has no LOCK TABLES): %q", want, joined)
 		}
 	}
 	if strings.Contains(joined, " -p") || strings.Contains(joined, "--password=") {
 		t.Errorf("the password must never travel in argv (visible in ps): %q", joined)
+	}
+	// Minimal MariaDB images ship mariadb-dump without the mysqldump symlink
+	// (found live: the origin env db container), while MySQL images only have
+	// mysqldump — so the binary is probed at seed time, in this order.
+	if len(spec.DBDumpCandidates) != 2 || spec.DBDumpCandidates[0] != "mariadb-dump" || spec.DBDumpCandidates[1] != "mysqldump" {
+		t.Errorf("dump candidates = %v, want [mariadb-dump mysqldump]", spec.DBDumpCandidates)
+	}
+}
+
+func TestResolveDumpBinaryPrefersMariaDBDump(t *testing.T) {
+	fake := newFakeSandboxRuntime()
+	fake.answers["command -v"] = "/usr/bin/mariadb-dump\n"
+	runtime := deploy.NewDockerCLIForTest(fake.run)
+	got, err := deploy.ResolveDumpBinaryForTest(context.Background(), runtime, "shop-db-1")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if got != "mariadb-dump" {
+		t.Errorf("resolved = %q, want mariadb-dump", got)
+	}
+}
+
+func TestResolveDumpBinaryFallsBackToMysqldump(t *testing.T) {
+	fake := newFakeSandboxRuntime()
+	fake.answers["command -v"] = "/usr/bin/mysqldump\n"
+	runtime := deploy.NewDockerCLIForTest(fake.run)
+	got, err := deploy.ResolveDumpBinaryForTest(context.Background(), runtime, "shop-db-1")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if got != "mysqldump" {
+		t.Errorf("resolved = %q, want mysqldump", got)
 	}
 }
 
@@ -196,15 +228,33 @@ func TestSandboxDownKeepsVolumesByDefault(t *testing.T) {
 func TestMagentoEnvRewritePointsAtSandbox(t *testing.T) {
 	in := []byte(`'db' => ['connection' => ['default' => ['host' => '127.0.0.1', 'dbname' => 'magento']]], 'system' => ['default' => ['web' => ['unsecure' => ['base_url' => 'https://shop.test/']]]]`)
 	mapping := map[string]string{"base_url": "https://shop-sandbox.test/"}
-	got, err := magento2.RewriteMagentoEnvForSandbox(in, mapping)
+	got, skipped, err := magento2.RewriteMagentoEnvForSandbox(in, mapping)
 	if err != nil {
 		t.Fatalf("rewrite: %v", err)
+	}
+	if len(skipped) != 0 {
+		t.Errorf("skipped = %v, want none (the key is present)", skipped)
 	}
 	if !strings.Contains(string(got), "https://shop-sandbox.test/") {
 		t.Errorf("base_url was not rewritten: %s", got)
 	}
 	if !strings.Contains(string(got), "'dbname' => 'magento'") {
 		t.Errorf("unrelated keys must pass through untouched: %s", got)
+	}
+}
+
+func TestMagentoEnvRewriteSkipsAbsentKeysLoudly(t *testing.T) {
+	in := []byte(`'db' => ['connection' => ['default' => ['host' => '127.0.0.1']]]`)
+	mapping := map[string]string{"base_url": "https://shop-sandbox.test/"}
+	got, skipped, err := magento2.RewriteMagentoEnvForSandbox(in, mapping)
+	if err != nil {
+		t.Fatalf("an absent key must not fail the seed: %v", err)
+	}
+	if len(skipped) != 1 || skipped[0] != "base_url" {
+		t.Errorf("skipped = %v, want [base_url]", skipped)
+	}
+	if string(got) != string(in) {
+		t.Errorf("nothing present means byte-identical output, got: %s", got)
 	}
 }
 
