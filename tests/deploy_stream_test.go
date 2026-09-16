@@ -84,11 +84,10 @@ func TestVerboseOutputIsIndentedAndSuppressedByJSON(t *testing.T) {
 	run := func(options deploy.Options) string {
 		t.Helper()
 		out := &syncBuffer{}
-		plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+		plan, err := deploy.BuildPlanForTest(recipe, nil)
 		if err != nil {
 			t.Fatalf("plan: %v", err)
 		}
-		options.Remote = "local"
 		options.CommandTimeout = time.Minute
 		if _, err := deploy.NewExecutor(host, options, out).
 			Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abcdef", "main")); err != nil {
@@ -124,11 +123,11 @@ func TestHeartbeatReportsAStepThatIsStillRunning(t *testing.T) {
 	})
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	out := &syncBuffer{}
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
-	if _, err := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, out).
+	if _, err := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute}, out).
 		Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abcdef", "main")); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -143,12 +142,12 @@ func TestHeartbeatReportsAStepThatIsStillRunning(t *testing.T) {
 	fastRecipe := deploy.RecipeForTest("quick", []deploy.Task{
 		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "true"},
 	})
-	fastPlan, err := deploy.BuildPlanForTest(fastRecipe, nil, "local")
+	fastPlan, err := deploy.BuildPlanForTest(fastRecipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
 	fast := &syncBuffer{}
-	if _, err := deploy.NewExecutor(host, deploy.Options{Remote: "local", CommandTimeout: time.Minute}, fast).
+	if _, err := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute}, fast).
 		Run(context.Background(), fastPlan, deploy.NewVars(), deploy.NewReleaseForTest("2", "abcdef", "main")); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -192,7 +191,6 @@ func TestRsyncProgressOnlyWhenATerminalIsWatching(t *testing.T) {
 			}
 			seen := new([]string)
 			sc := deploy.StepContextForTest(host, deploy.Options{
-				Remote:   "local",
 				Publish:  deploy.PublishInPlace,
 				Revision: revision,
 				Verbose:  testCase.verbose,
@@ -266,7 +264,7 @@ func TestRollbackStepsStreamAndHeartbeatToo(t *testing.T) {
 
 	out := &syncBuffer{}
 	if err := deploy.RunStep(context.Background(), host,
-		deploy.Options{Remote: "local", CommandTimeout: time.Minute, Verbose: true},
+		deploy.Options{CommandTimeout: time.Minute, Verbose: true},
 		deploy.NewVars(), step, release, out); err != nil {
 		t.Fatalf("run step: %v", err)
 	}

@@ -31,8 +31,8 @@ func TestDefaultRecipeDeclaresEveryNeutralTaskInStageOrder(t *testing.T) {
 	}
 
 	recipe := deploy.DefaultRecipe()
-	if recipe.ID != "default" || recipe.Extends != "" {
-		t.Fatalf("default recipe = %+v, want id=default with no parent", recipe)
+	if recipe.ID != "default" {
+		t.Fatalf("default recipe = %+v, want id=default", recipe)
 	}
 	for _, id := range want {
 		task := recipe.Task(id)

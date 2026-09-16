@@ -17,12 +17,9 @@ import (
 )
 
 func TestBuildPlanKeepsRecipeOrderWithoutHooks(t *testing.T) {
-	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "staging")
+	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
-	}
-	if plan.Remote != "staging" {
-		t.Fatalf("plan remote = %q, want staging", plan.Remote)
 	}
 	ids := plan.StepIDs()
 	want := deploy.TaskIDList()
@@ -53,7 +50,7 @@ func TestPlanHookInsertionOrderAndTieBreak(t *testing.T) {
 		{Name: "on-stage", On: "stage:build", Position: deploy.PositionAfter, Run: "echo stage"},
 		{Name: "on-hook", On: "hook:zeroth", Position: deploy.PositionAfter, Run: "echo nested"},
 	}
-	plan, err := deploy.BuildPlanForTest(recipe, hooks, "staging")
+	plan, err := deploy.BuildPlanForTest(recipe, hooks)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
@@ -118,7 +115,7 @@ func TestPlanRejectsBadHooks(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), tc.hooks, "staging")
+			_, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), tc.hooks)
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
@@ -142,7 +139,7 @@ func TestPlanForBuildModeSwitchesTheBuildBranch(t *testing.T) {
 	}
 	deploy.OverrideTaskForTest(&recipe, deploy.TaskArtifact, deploy.Task{ID: deploy.TaskArtifact, Core: func(context.Context, *deploy.StepContext) error { return nil }})
 
-	base, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	base, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
@@ -238,7 +235,7 @@ func TestPlanForBuildModeLeavesHooksAlone(t *testing.T) {
 		{Name: "before-build", On: "build:vendors", Position: deploy.PositionBefore, Run: "true"},
 		{Name: "after-build", On: "stage:build", Run: "true"},
 	}
-	base, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), hooks, "staging")
+	base, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), hooks)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
@@ -263,12 +260,12 @@ func TestMissingVerifyWarningNamesTheSetting(t *testing.T) {
 	deploy.OverrideTaskForTest(&migrating, deploy.TaskDBMigrate, deploy.Task{
 		ID: deploy.TaskDBMigrate, Stage: deploy.StagePublish, Command: "bin/migrate",
 	})
-	plan, err := deploy.BuildPlanForTest(migrating, nil, "production")
+	plan, err := deploy.BuildPlanForTest(migrating, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
 
-	warning := deploy.MissingVerifyWarning(plan, deploy.Options{Remote: "production"})
+	warning := deploy.MissingVerifyWarning(plan, deploy.Options{})
 	if warning == "" {
 		t.Fatal("a deploy that migrates without a verify URL must warn")
 	}
@@ -284,7 +281,7 @@ func TestMissingVerifyWarningNamesTheSetting(t *testing.T) {
 	// proportionate for a code-only deploy.
 	codeOnly, err := deploy.BuildPlanForTest(deploy.RecipeForTest("plain", []deploy.Task{
 		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "true"},
-	}), nil, "production")
+	}), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -293,7 +290,7 @@ func TestMissingVerifyWarningNamesTheSetting(t *testing.T) {
 	}
 
 	// A recipe that leaves db:migrate empty does not migrate.
-	empty, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "production")
+	empty, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -312,7 +309,7 @@ func TestPlanForPublishStrategySkipsTheMaintenanceWindowOnASymlinkActivation(t *
 		stage, _ := deploy.StageForTask(id)
 		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "bin/maintenance " + id})
 	}
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -342,7 +339,7 @@ func TestPlanForPublishStrategyKeepsTheWindowWhenTheDeployMigrates(t *testing.T)
 		stage, _ := deploy.StageForTask(id)
 		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "true # " + id})
 	}
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -373,7 +370,7 @@ func TestPlanClosesTheMaintenanceWindowBeforeASymlinkSwap(t *testing.T) {
 		stage, _ := deploy.StageForTask(id)
 		deploy.OverrideTaskForTest(&recipe, id, deploy.Task{ID: id, Stage: stage, Command: "true # " + id})
 	}
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -405,7 +402,7 @@ func TestExecutorDoesNotRunASkippedMaintenanceStep(t *testing.T) {
 		{ID: deploy.TaskMaintenanceEnable, Stage: deploy.StagePublish, Command: "touch " + marker},
 		{ID: deploy.TaskRecord, Stage: deploy.StagePublish, Command: "true"},
 	})
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "staging")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -413,7 +410,7 @@ func TestExecutorDoesNotRunASkippedMaintenanceStep(t *testing.T) {
 
 	if _, err := deploy.NewExecutor(
 		deploy.HostForTest(t.TempDir(), deploy.LocalRunner{}),
-		deploy.Options{Remote: "local", Publish: deploy.PublishSymlink},
+		deploy.Options{Publish: deploy.PublishSymlink},
 		io.Discard,
 	).Run(context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local")); err != nil {
 		t.Fatalf("run: %v", err)

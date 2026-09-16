@@ -48,7 +48,7 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return configOrUsageError(err)
 	}
-	plan, err := deployPlanFor(recipe, hooks, remote, options)
+	plan, err := deployPlanFor(recipe, hooks, options)
 	if err != nil {
 		return configOrUsageError(err)
 	}
@@ -58,7 +58,7 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 	}
 
 	out := cmd.OutOrStdout()
-	fmt.Fprintf(out, "Deploy plan for %s (%s @ %s)\n", remote, branchOrDetached(options), revisionOrSymbolic(options))
+	fmt.Fprintf(out, "Deploy plan for %s (%s @ %s)\n", remote, deploy.BranchLabel(options.Branch), revisionOrSymbolic(options))
 	fmt.Fprintf(out, "Build mode: %s\n", options.Build)
 	fmt.Fprintf(out, "Publish strategy: %s\n", options.Publish)
 	if options.Publish == deploy.PublishAuto {
@@ -160,7 +160,7 @@ func writePlanJSON(cmd *cobra.Command, remote string, options deploy.Options, pl
 		SchemaVersion: 1,
 		Kind:          "plan",
 		Remote:        remote,
-		Branch:        branchOrDetached(options),
+		Branch:        deploy.BranchLabel(options.Branch),
 		Revision:      revisionOrSymbolic(options),
 		Steps:         make([]planJSONStep, 0, len(plan.Steps)),
 	}
@@ -279,13 +279,6 @@ func describeLayout(strategy string) string {
 	}
 }
 
-func branchOrDetached(options deploy.Options) string {
-	if strings.TrimSpace(options.Branch) == "" {
-		return "detached"
-	}
-	return options.Branch
-}
-
 // revisionOrSymbolic deliberately avoids resolving git: plan must stay
 // requirement-free.
 func revisionOrSymbolic(options deploy.Options) string {
@@ -299,12 +292,15 @@ func revisionOrSymbolic(options deploy.Options) string {
 	}
 }
 
-// deployJSONTask is one step in the machine-readable result.
+// deployJSONTask is one step in the machine-readable result. Error carries the
+// step's failure text; it is empty for steps that did not fail, which keeps
+// the success document unchanged.
 type deployJSONTask struct {
 	ID         string `json:"id"`
 	Stage      string `json:"stage,omitempty"`
 	Status     string `json:"status"`
 	DurationMS int64  `json:"duration_ms"`
+	Error      string `json:"error,omitempty"`
 }
 
 // deployJSONPayload is the contract spec 13 describes: nested build and publish
@@ -353,12 +349,16 @@ func writeDeployJSON(cmd *cobra.Command, remote string, options deploy.Options, 
 		payload.Error = runErr.Error()
 	}
 	for _, step := range outcome.Steps {
-		payload.Tasks = append(payload.Tasks, deployJSONTask{
+		task := deployJSONTask{
 			ID:         step.ID,
 			Stage:      string(step.Stage),
 			Status:     step.Status,
 			DurationMS: step.Duration.Milliseconds(),
-		})
+		}
+		if step.Err != nil {
+			task.Error = step.Err.Error()
+		}
+		payload.Tasks = append(payload.Tasks, task)
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

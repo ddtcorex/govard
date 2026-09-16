@@ -85,7 +85,6 @@ func runParityDeploy(t *testing.T, recipe deploy.Recipe, origin, revision, mode,
 	host := deploy.HostForTest(deployRoot, deploy.LocalRunner{})
 
 	options := deploy.Options{
-		Remote:         "local",
 		Branch:         "main",
 		Revision:       revision,
 		Repository:     origin,
@@ -97,7 +96,7 @@ func runParityDeploy(t *testing.T, recipe deploy.Recipe, origin, revision, mode,
 		Settings:       map[string]any{},
 	}
 
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}

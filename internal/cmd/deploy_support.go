@@ -84,7 +84,6 @@ func negatedBool(flags *pflag.FlagSet, name string) (bool, error) {
 func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 	flags := command.Flags()
 
-	remote, _ := flags.GetString("remote")
 	branch, _ := flags.GetString("branch")
 	revision, _ := flags.GetString("revision")
 	tag, _ := flags.GetString("tag")
@@ -118,7 +117,8 @@ func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 		JSON:               jsonOut,
 		Verbose:            verbose,
 	}
-	_ = remote
+	// `remote` is resolved separately by deployRemoteName (positional or flag),
+	// so the overrides deliberately carry everything else.
 
 	// The three-state options are read only when the command actually declares
 	// their flag. A subcommand (`deploy plan`, `deploy check`, `deploy unlock`)
@@ -154,14 +154,8 @@ func overridesFromFlags(command *cobra.Command) (deploy.Overrides, error) {
 }
 
 func validateDeployFlagCombination(over deploy.Overrides) error {
-	chosen := 0
-	for _, value := range []string{over.Branch, over.Revision, over.Tag} {
-		if value != "" {
-			chosen++
-		}
-	}
-	if chosen > 1 {
-		return fmt.Errorf("--branch, --revision and --tag are mutually exclusive")
+	if err := deploy.ValidateSourceSelector(over); err != nil {
+		return err
 	}
 	switch over.Publish {
 	case "", deploy.PublishAuto, deploy.PublishSymlink, deploy.PublishInPlace:
@@ -227,6 +221,30 @@ func resolveDeployOptions(command *cobra.Command, remote string) (engine.Config,
 		return engine.Config{}, deploy.Options{}, &cli.ConfigError{Err: err}
 	}
 	options, err := deploy.ResolveOptions(config, remote, over)
+	if err != nil {
+		if errors.Is(err, deploy.ErrInvalidConfiguration) {
+			return engine.Config{}, deploy.Options{}, &cli.ConfigError{Err: err}
+		}
+		return engine.Config{}, deploy.Options{}, &cli.UsageError{Err: err}
+	}
+	return config, options, nil
+}
+
+// resolveDeployReadOptions loads the project config and resolves the options
+// for a command that only reads the target (`releases`, `status`, `unlock`).
+// No source selector is required: a remote with no branch configured is still
+// readable, and refusing it would make `status` unable to report on exactly
+// the remotes that need attention.
+func resolveDeployReadOptions(command *cobra.Command, remote string) (engine.Config, deploy.Options, error) {
+	over, err := overridesFromFlags(command)
+	if err != nil {
+		return engine.Config{}, deploy.Options{}, err
+	}
+	config, err := loadFullConfig()
+	if err != nil {
+		return engine.Config{}, deploy.Options{}, &cli.ConfigError{Err: err}
+	}
+	options, err := deploy.ResolveReadOptions(config, remote, over)
 	if err != nil {
 		if errors.Is(err, deploy.ErrInvalidConfiguration) {
 			return engine.Config{}, deploy.Options{}, &cli.ConfigError{Err: err}
@@ -342,8 +360,8 @@ func resolveDeployRecipeOptions(command *cobra.Command, remote string) (engine.C
 // deployPlanFor composes the recipe with the project's hooks and shapes the
 // result for the resolved build mode. `plan` and `deploy` share it, so the tree
 // an operator reviews is the tree the executor runs.
-func deployPlanFor(recipe deploy.Recipe, hooks []deploy.Hook, remote string, options deploy.Options) (deploy.Plan, error) {
-	plan, err := deploy.BuildPlan(recipe, hooks, remote)
+func deployPlanFor(recipe deploy.Recipe, hooks []deploy.Hook, options deploy.Options) (deploy.Plan, error) {
+	plan, err := deploy.BuildPlan(recipe, hooks)
 	if err != nil {
 		return deploy.Plan{}, err
 	}
@@ -390,7 +408,7 @@ func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
 		vars = vars.Set("composer_bin", "composer")
 	}
 	for key, value := range options.Settings {
-		if text, ok := settingText(value); ok {
+		if text, ok := deploy.SettingText(value); ok {
 			vars = vars.Set("settings."+key, text)
 		}
 	}
@@ -400,7 +418,7 @@ func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
 	// Which settings are fragments is the recipe's declaration, carried on the
 	// options (see SettingCommand).
 	for key, value := range options.Settings {
-		text, ok := settingText(value)
+		text, ok := deploy.SettingText(value)
 		if !ok {
 			continue
 		}
@@ -429,14 +447,6 @@ func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
 		vars = vars.Set("settings.content_version", deploy.ShortRevision(options.Revision))
 	}
 	return vars
-}
-
-// settingText renders a setting as the string a command template substitutes.
-// Booleans and numbers are rendered too: a recipe that guards a step with
-// `[ "{{settings.worker_control}}" = "true" ]` must not fail with "unknown
-// variable" just because the configuration expressed the value as a bool.
-func settingText(value any) (string, bool) {
-	return deploy.SettingText(value)
 }
 
 // DeployVarsForTest exposes deployVars to the tests/ package.

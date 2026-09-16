@@ -22,7 +22,11 @@ type Runner interface {
 	Run(ctx context.Context, command string, opts RunOptions) (Result, error)
 }
 
-// Result is the outcome of one command.
+// Result is the outcome of one command. A nil error means the command ran and
+// reported success, and ExitCode is then 0; a failure's exit code travels on
+// the returned *CommandError instead, because a bare code cannot say whether
+// the command timed out, was interrupted, or exited nonzero. Stubs and tests
+// may populate ExitCode directly.
 type Result struct {
 	Stdout   string
 	Stderr   string
@@ -31,7 +35,10 @@ type Result struct {
 
 // RunOptions controls one command invocation.
 type RunOptions struct {
-	// Dir is the working directory. Empty means the host's default.
+	// Dir is the working directory of the local process running the command:
+	// the local runner's cwd, the ssh client's cwd. It never changes the
+	// remote working directory — remote commands cd explicitly. Empty means
+	// the host's default.
 	Dir string
 	// Timeout bounds the command. Zero means the caller's context alone bounds
 	// it; the executor always sets one, because an unbounded remote command is

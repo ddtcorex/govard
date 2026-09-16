@@ -418,7 +418,7 @@ func TestArtifactModeRunsTheApplicationTasksOnTheTargetAfterTheUpload(t *testing
 	task.NeedsApplication = true
 	recipe.ReplaceTask(task)
 
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "sandbox")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestConditionalMigrateArtifactKeepsProbeAndGatedBlockOnTarget(t *testing.T)
 	task.NeedsMigration = true
 	recipe.ReplaceTask(task)
 
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "sandbox")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

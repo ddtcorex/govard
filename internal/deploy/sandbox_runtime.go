@@ -81,10 +81,6 @@ type SandboxRunRequest struct {
 	Web bool
 }
 
-// SandboxWebPort is the container port the web tier listens on, readable so a
-// caller does not have to know it is 80.
-func SandboxWebPort() int { return sandboxWebPort }
-
 // SandboxPortBinding is the loopback binding the sandbox sshd is published on.
 // The empty host port means "Docker, choose one" — the port is then read back
 // with PublishedPort. A guessed port collides with whatever else the developer

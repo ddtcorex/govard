@@ -215,15 +215,13 @@ type Check struct {
 	OnlyForPublishStrategy string
 }
 
-// Recipe is a task list plus the defaults a framework contributes. Extends is
-// documentation for `plan` output; the resolved recipe is built by the caller
-// that owns the framework registry, because internal/deploy must not import
-// internal/frameworks.
+// Recipe is a task list plus the defaults a framework contributes. The
+// resolved recipe is built by the caller that owns the framework registry,
+// because internal/deploy must not import internal/frameworks.
 type Recipe struct {
-	ID      string
-	Extends string
-	Tasks   []Task
-	Hooks   []Hook
+	ID    string
+	Tasks []Task
+	Hooks []Hook
 	// Checks are the framework's post-publish verifications. The core runs them
 	// in `deploy:verify`, in declaration order, after its own checks.
 	Checks []Check

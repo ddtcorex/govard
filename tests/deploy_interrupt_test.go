@@ -80,7 +80,7 @@ remotes:
 	if len(hooks) == 0 {
 		t.Fatal("the project's hook did not reach the options, so the run cannot be interrupted inside it")
 	}
-	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), hooks, "local")
+	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), hooks)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

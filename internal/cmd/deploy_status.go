@@ -38,7 +38,7 @@ func runDeployReleases(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	config, options, err := resolveDeployOptions(cmd, remote)
+	config, options, err := resolveDeployReadOptions(cmd, remote)
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,7 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 		if branch == "" {
 			branch = "-"
 		}
-		fmt.Fprintf(out, "%-16s %-10s %-10s %-12s %s\n", result.Remote, release, shortRevisionForOutput(revision), result.Status, branch)
+		fmt.Fprintf(out, "%-16s %-10s %-10s %-12s %s\n", result.Remote, release, deploy.ShortRevision(revision), result.Status, branch)
 	}
 	if ok == 0 {
 		return fmt.Errorf("no configured remote could be reached")
@@ -192,7 +192,7 @@ func statusRemoteNames(cmd *cobra.Command, args []string, config engine.Config) 
 func deployStatusForRemote(cmd *cobra.Command, config engine.Config, name string) statusResult {
 	result := statusResult{Remote: name}
 
-	options, err := deploy.ResolveOptions(config, name, deploy.Overrides{Verify: boolPointer(false), Lock: boolPointer(false)})
+	options, err := deploy.ResolveReadOptions(config, name, deploy.Overrides{Verify: boolPointer(false), Lock: boolPointer(false)})
 	if err != nil {
 		result.Status = "unknown"
 		result.Error = err.Error()

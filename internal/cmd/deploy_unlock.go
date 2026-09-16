@@ -34,7 +34,7 @@ func runDeployUnlock(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	config, options, err := resolveDeployOptions(cmd, remote)
+	config, options, err := resolveDeployReadOptions(cmd, remote)
 	if err != nil {
 		return err
 	}
@@ -55,7 +55,14 @@ func runDeployUnlock(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s holds a lock started %s ago by %s; pass --force to release it", remote, heldFor.Round(time.Second), holder)
 	}
 
-	if err := deploy.CoreUnlock(ctx, deploy.StepContextForTest(host, options)); err != nil {
+	if err := deploy.CoreUnlock(ctx, &deploy.StepContext{
+		Host:    host,
+		Runner:  host.Runner(),
+		Vars:    deploy.NewVars(),
+		Release: &deploy.Release{},
+		Opts:    options,
+		Out:     cmd.OutOrStdout(),
+	}); err != nil {
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "released the deploy lock on %s (held by %s)\n", remote, holder)

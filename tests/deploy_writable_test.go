@@ -24,7 +24,6 @@ func writableContext(t *testing.T, settings map[string]any) (*deploy.StepContext
 	}
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:         "local",
 		CommandTimeout: 0,
 		Settings:       settings,
 	})
@@ -141,7 +140,6 @@ func TestCoreCheckProbesForSetfaclWhenTheModeIsACL(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	seen := new([]string)
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:         "local",
 		CommandTimeout: 0,
 		Settings:       map[string]any{"writable_mode": "acl", "owner": "www-data"},
 	})

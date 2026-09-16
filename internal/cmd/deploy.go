@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -116,7 +117,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return configOrUsageError(err)
 	}
-	plan, err := deployPlanFor(recipe, hooks, remote, options)
+	plan, err := deployPlanFor(recipe, hooks, options)
 	if err != nil {
 		return configOrUsageError(err)
 	}
@@ -143,7 +144,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	release := deploy.NewRelease("", options.Revision, options.Branch)
 	if options.Resume {
-		resumed, err := prepareResume(cmd.Context(), host, release)
+		resumed, err := prepareResume(cmd.Context(), host, release, options, timeline)
 		if err != nil {
 			return err
 		}
@@ -187,7 +188,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 // the caller's value. Rebuilding it from a few fields looks equivalent and is
 // not: `CoreVerify` reads Publish.Strategy and `deploy rollback --with-db` reads
 // Database.Backup, so a partial record verifies nothing and loses the dump path.
-func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Release) (*deploy.Release, error) {
+func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Release, options deploy.Options, out io.Writer) (*deploy.Release, error) {
 	incomplete, err := deploy.ResumeTarget(ctx, host)
 	if err != nil {
 		return nil, err
@@ -199,8 +200,17 @@ func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Releas
 	*release = *incomplete
 
 	// The stale lock belongs to the run being resumed; releasing it is part of
-	// resuming, and the operator asked for that explicitly.
-	if err := deploy.CoreUnlock(ctx, deploy.StepContextForTest(host, deploy.Options{})); err != nil {
+	// resuming, and the operator asked for that explicitly. The context carries
+	// the run's own options and output rather than a test helper's zero value.
+	unlock := &deploy.StepContext{
+		Host:    host,
+		Runner:  host.Runner(),
+		Vars:    deploy.NewVars(),
+		Release: release,
+		Opts:    options,
+		Out:     out,
+	}
+	if err := deploy.CoreUnlock(ctx, unlock); err != nil {
 		return nil, err
 	}
 	pterm.Info.Printf("resuming release %s (previously failed)\n", release.Release)
@@ -212,7 +222,7 @@ func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Releas
 // whole reason the function exists, so it is tested through this rather than
 // restated in the caller.
 func PrepareResumeForTest(ctx context.Context, host deploy.Host, release *deploy.Release) error {
-	_, err := prepareResume(ctx, host, release)
+	_, err := prepareResume(ctx, host, release, deploy.Options{}, io.Discard)
 	return err
 }
 
@@ -265,11 +275,11 @@ func printDeploySummary(cmd *cobra.Command, remote string, host deploy.Host, opt
 	}
 
 	if outcome.AlreadyDeployed {
-		pterm.Info.Printf("%s already runs %s; nothing to do (use --force to deploy again)\n", remote, shortRevisionForOutput(release.Revision))
+		pterm.Info.Printf("%s already runs %s; nothing to do (use --force to deploy again)\n", remote, deploy.ShortRevision(release.Revision))
 		return
 	}
 	pterm.Success.Printf("Deployed %s to %s as release %s in %s\n",
-		shortRevisionForOutput(release.Revision), remote, release.Release, outcome.Total.Round(1e6))
+		deploy.ShortRevision(release.Revision), remote, release.Release, outcome.Total.Round(1e6))
 	if options.Publish == deploy.PublishInPlace {
 		pterm.Info.Printf("Publish strategy: in_place (%s)\n", host.CurrentPath)
 	} else {
@@ -278,8 +288,4 @@ func printDeploySummary(cmd *cobra.Command, remote string, host deploy.Host, opt
 	if !options.Verify {
 		pterm.Warning.Println("Verification was skipped (--no-verify)")
 	}
-}
-
-func shortRevisionForOutput(revision string) string {
-	return deploy.ShortRevision(revision)
 }

@@ -18,7 +18,6 @@ import (
 func DeployRecipe() deploy.Recipe {
 	recipe := deploy.DefaultRecipe()
 	recipe.ID = "wordpress"
-	recipe.Extends = "default"
 	recipe.Defaults = map[string]any{
 		// The target's own configuration: a repository `wp-config.php` names the
 		// development database service, which is exactly the file that must not

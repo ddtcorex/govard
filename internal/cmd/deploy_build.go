@@ -128,6 +128,6 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	pterm.Success.Printf("Built artifact for %s in %s (%d files, revision %s)\n",
-		remote, absolute, manifest.FileCount, shortRevisionForOutput(manifest.Revision))
+		remote, absolute, manifest.FileCount, deploy.ShortRevision(manifest.Revision))
 	return nil
 }

@@ -37,7 +37,7 @@ func TestStripDefinerRemovesForeignDefiners(t *testing.T) {
 func TestDumpArgsAreSingleTransactionWithoutLocks(t *testing.T) {
 	spec, err := deploy.ResolveSeedSpec(deploy.SeedSource{
 		OriginRunning: true,
-		DB:            deploy.SeedDB{Container: "shop-php-1", User: "magento", Password: "magento", Name: "magento", Engine: "mariadb"},
+		DB:            deploy.SeedDB{Container: "shop-php-1", User: "magento", Password: "magento", Name: "magento"},
 	})
 	if err != nil {
 		t.Fatalf("seed spec: %v", err)

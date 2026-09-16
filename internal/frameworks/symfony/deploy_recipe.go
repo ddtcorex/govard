@@ -23,7 +23,6 @@ import (
 func DeployRecipe() deploy.Recipe {
 	recipe := deploy.DefaultRecipe()
 	recipe.ID = "symfony"
-	recipe.Extends = "default"
 	recipe.Defaults = map[string]any{
 		// `.env.local` is the machine's environment file and is gitignored in a
 		// real project. `var/cache` is deliberately *not* shared: the compiled

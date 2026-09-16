@@ -18,7 +18,7 @@ func TestDBBackupIsANoOpUnlessRequested(t *testing.T) {
 
 	// The command would fail loudly if it ran at all: --db-backup defaults off,
 	// and an optional step that nobody asked for must not touch the database.
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+	sc := deploy.StepContextForTest(host, deploy.Options{})
 	sc.Release = release
 
 	if err := deploy.CoreDBBackup("exit 9")(context.Background(), sc); err != nil {
@@ -34,7 +34,7 @@ func TestDBBackupWritesIntoTheReleasesBackupDirectoryAndRecordsIt(t *testing.T) 
 	release := deploy.NewReleaseForTest("3", "abcdef", "main")
 	release.Path = host.ReleasePath("3")
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", DBBackup: true})
+	sc := deploy.StepContextForTest(host, deploy.Options{DBBackup: true})
 	sc.Release = release
 
 	command := `printf 'dump' > {{backup_path}}`
@@ -60,7 +60,7 @@ func TestDBRestoreRefusesAReleaseWithoutARecordedBackup(t *testing.T) {
 	release := deploy.NewReleaseForTest("2", "abcdef", "main")
 	release.Path = host.ReleasePath("2")
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+	sc := deploy.StepContextForTest(host, deploy.Options{})
 	sc.Release = release
 
 	err := deploy.CoreDBRestore("true")(context.Background(), sc)
@@ -83,7 +83,7 @@ func TestDBRestoreReadsThePathFromTheReleaseRecord(t *testing.T) {
 	release.Path = host.ReleasePath("2")
 	release.Database.Backup = backup
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+	sc := deploy.StepContextForTest(host, deploy.Options{})
 	sc.Release = release
 
 	var seen []string

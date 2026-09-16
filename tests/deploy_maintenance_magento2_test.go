@@ -195,7 +195,7 @@ func TestMagento2MaintenanceWindowIsANoOpWithoutAServedApplication(t *testing.T)
 // that must keep the window short bounds it with `deploy.maintenance_timeout`, and
 // a database dump — the one step inside it that can take minutes — is opt-in.
 func TestMagento2SymlinkDeployAlwaysTakesTheMaintenanceWindow(t *testing.T) {
-	plan, err := deploy.BuildPlanForTest(magento2.DeployRecipe(), nil, "staging")
+	plan, err := deploy.BuildPlanForTest(magento2.DeployRecipe(), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

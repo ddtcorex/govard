@@ -17,7 +17,7 @@ import (
 func TestLockIsAtomicAndRefusesASecondHolder(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	ctx := context.Background()
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+	sc := deploy.StepContextForTest(host, deploy.Options{})
 
 	if err := deploy.CoreLock(ctx, sc); err != nil {
 		t.Fatalf("first lock: %v", err)
@@ -39,7 +39,7 @@ func TestLockRefusesWhileDeployerHoldsItsOwnLock(t *testing.T) {
 	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.DepPath()+" && touch "+host.DeployerLockPath(), deploy.RunOptions{}); err != nil {
 		t.Fatalf("seed deployer lock: %v", err)
 	}
-	err := deploy.CoreLock(ctx, deploy.StepContextForTest(host, deploy.Options{Remote: "local"}))
+	err := deploy.CoreLock(ctx, deploy.StepContextForTest(host, deploy.Options{}))
 	if !errors.Is(err, deploy.ErrDeployerLockHeld) {
 		t.Fatalf("err = %v, want ErrDeployerLockHeld", err)
 	}
@@ -48,7 +48,7 @@ func TestLockRefusesWhileDeployerHoldsItsOwnLock(t *testing.T) {
 func TestCoreReleaseRefusesToReuseAnExistingNumber(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	ctx := context.Background()
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+	sc := deploy.StepContextForTest(host, deploy.Options{})
 
 	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.ReleasePath("1"), deploy.RunOptions{}); err != nil {
 		t.Fatalf("seed release dir: %v", err)
@@ -91,7 +91,7 @@ func TestCoreReleaseRefusesToReuseAnExistingNumber(t *testing.T) {
 func TestCoreReleaseContinuesAReleaseThatCarriesItsOwnRecord(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	ctx := context.Background()
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+	sc := deploy.StepContextForTest(host, deploy.Options{})
 
 	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.ReleasePath("1"), deploy.RunOptions{}); err != nil {
 		t.Fatalf("seed release dir: %v", err)
@@ -118,7 +118,7 @@ func TestCoreCheckRefusesSubmodules(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".gitmodules"), []byte("[submodule \"x\"]\n"), 0o644); err != nil {
 		t.Fatalf("seed .gitmodules: %v", err)
 	}
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local"})
+	sc := deploy.StepContextForTest(host, deploy.Options{})
 	sc.WorkDir = root
 	if err := deploy.CoreCheck(context.Background(), sc); !errors.Is(err, deploy.ErrSubmodulesUnsupported) {
 		t.Fatalf("err = %v, want ErrSubmodulesUnsupported", err)
@@ -130,7 +130,7 @@ func TestCoreCodeFetchesIntoTheMirrorAndExtractsExactlyTheRevision(t *testing.T)
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	ctx := context.Background()
 
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Repository: origin, Revision: revision, Branch: "main"})
+	sc := deploy.StepContextForTest(host, deploy.Options{Repository: origin, Revision: revision, Branch: "main"})
 	sc.Release = deploy.NewReleaseForTest("1", revision, "main")
 	if err := deploy.CoreRelease(ctx, sc); err != nil {
 		t.Fatalf("release: %v", err)
@@ -154,7 +154,7 @@ func TestCoreCodeFetchesIntoTheMirrorAndExtractsExactlyTheRevision(t *testing.T)
 func TestCoreCodeFailsLoudlyForAnUnknownRevision(t *testing.T) {
 	origin, _ := seedGitRepo(t)
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Repository: origin, Revision: "0000000000000000000000000000000000000000", Branch: "main"})
+	sc := deploy.StepContextForTest(host, deploy.Options{Repository: origin, Revision: "0000000000000000000000000000000000000000", Branch: "main"})
 	sc.Release = deploy.NewReleaseForTest("1", "deadbeef", "main")
 	sc.Release.Path = host.ReleasePath("1")
 	if err := deploy.CoreCode(context.Background(), sc); !errors.Is(err, deploy.ErrRevisionMissing) {
@@ -212,7 +212,6 @@ func TestCoreSharedLinksExistingSharedEntries(t *testing.T) {
 	}
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:   "local",
 		Settings: map[string]any{"shared_files": []string{"app/etc/env.php"}},
 	})
 	sc.Release = deploy.NewReleaseForTest("1", "abc", "local")
@@ -239,7 +238,6 @@ func TestCoreWritableAppliesTheMode(t *testing.T) {
 	}
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:   "local",
 		Settings: map[string]any{"writable_dirs": []string{"var"}},
 	})
 	sc.Release = deploy.NewReleaseForTest("1", "abc", "local")
@@ -296,7 +294,7 @@ func (r scriptedRunner) Run(ctx context.Context, command string, opts deploy.Run
 
 func TestCoreCheckRefusesATargetWithoutAtomicRename(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), scriptedRunner{base: deploy.LocalRunner{}, failSubstring: "mv -T"})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishSymlink})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	if err := deploy.CoreCheck(context.Background(), sc); !errors.Is(err, deploy.ErrMoveAtomicUnsupported) {
 		t.Fatalf("err = %v, want ErrMoveAtomicUnsupported", err)
 	}
@@ -305,7 +303,6 @@ func TestCoreCheckRefusesATargetWithoutAtomicRename(t *testing.T) {
 func TestCoreCheckReportsAnUnreachableRepository(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), scriptedRunner{base: deploy.LocalRunner{}, failSubstring: "ls-remote"})
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Repository: "git@example.invalid:nope.git",
 		Branch:     "main",
 	})
@@ -319,7 +316,6 @@ func TestCoreCheckCollectsNotesOnAHealthyTarget(t *testing.T) {
 	origin, _ := seedGitRepo(t)
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote:     "local",
 		Repository: origin,
 		Branch:     "main",
 		Publish:    deploy.PublishSymlink,
@@ -341,7 +337,6 @@ func TestCoreCheckComparesTheDeclaredPHPVersion(t *testing.T) {
 	runner := scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "PHP_VERSION", answerStdout: "8.3.6\n"}
 
 	match := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
-		Remote:   "local",
 		Publish:  deploy.PublishSymlink,
 		Settings: map[string]any{"php_bin": "php", "php_version": "8.3"},
 	})
@@ -350,7 +345,6 @@ func TestCoreCheckComparesTheDeclaredPHPVersion(t *testing.T) {
 	}
 
 	mismatch := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
-		Remote:   "local",
 		Publish:  deploy.PublishSymlink,
 		Settings: map[string]any{"php_bin": "php", "php_version": "9.9"},
 	})
@@ -380,7 +374,6 @@ func TestCoreCheckGatesAnArtifactOnTheTargetsPHPVersion(t *testing.T) {
 	runner := scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "PHP_VERSION", answerStdout: "8.2.11\n"}
 
 	matching := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
-		Remote:      "local",
 		Publish:     deploy.PublishSymlink,
 		Build:       deploy.BuildArtifact,
 		ArtifactDir: artifactGateFixture(t, "abc123", "8.2.11"),
@@ -394,7 +387,6 @@ func TestCoreCheckGatesAnArtifactOnTheTargetsPHPVersion(t *testing.T) {
 	}
 
 	mismatched := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
-		Remote:      "local",
 		Publish:     deploy.PublishSymlink,
 		Build:       deploy.BuildArtifact,
 		ArtifactDir: artifactGateFixture(t, "abc123", "8.3.6"),
@@ -414,7 +406,6 @@ func TestCoreCheckGatesAnArtifactOnTheTargetsPHPVersion(t *testing.T) {
 func TestCoreCheckRefusesAnArtifactBuiltForAnotherRevision(t *testing.T) {
 	runner := scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "PHP_VERSION", answerStdout: "8.2.11\n"}
 	sc := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
-		Remote:      "local",
 		Publish:     deploy.PublishSymlink,
 		Build:       deploy.BuildArtifact,
 		ArtifactDir: artifactGateFixture(t, "abc123", ""),
@@ -434,7 +425,6 @@ func TestCoreCheckDoesNotGateAnArtifactWithoutAPHPVersion(t *testing.T) {
 	// not invent one: a probe that cannot compare is not a failure.
 	runner := scriptedRunner{base: deploy.LocalRunner{}, failSubstring: "PHP_VERSION"}
 	sc := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
-		Remote:      "local",
 		Publish:     deploy.PublishSymlink,
 		Build:       deploy.BuildArtifact,
 		ArtifactDir: artifactGateFixture(t, "abc123", ""),
@@ -451,7 +441,6 @@ func TestCoreCheckDoesNotGateAnArtifactWithoutAPHPVersion(t *testing.T) {
 func TestCoreCheckLeavesAServerBuildAlone(t *testing.T) {
 	runner := scriptedRunner{base: deploy.LocalRunner{}, failSubstring: "PHP_VERSION"}
 	sc := deploy.StepContextForTest(deploy.HostForTest(t.TempDir(), runner), deploy.Options{
-		Remote:      "local",
 		Publish:     deploy.PublishSymlink,
 		Build:       deploy.BuildServer,
 		ArtifactDir: artifactGateFixture(t, "abc123", "8.3.6"),
@@ -486,7 +475,7 @@ func TestCoreCheckRefreshesTheSandboxMirror(t *testing.T) {
 	revision := strings.TrimSpace(runGitInDir(t, work, "rev-parse", "HEAD"))
 
 	host := sandboxHost(t, work, deploy.LocalRunner{})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "sandbox", Publish: deploy.PublishSymlink})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	sc.WorkDir = work
 
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
@@ -504,7 +493,7 @@ func TestCoreCheckRefreshesTheSandboxMirror(t *testing.T) {
 func TestCoreCheckRefusesASandboxWithoutAMirror(t *testing.T) {
 	work, _ := seedBuildRepo(t)
 	host := sandboxHost(t, work, deploy.LocalRunner{})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "sandbox", Publish: deploy.PublishSymlink})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	sc.WorkDir = work
 
 	err := deploy.CoreCheck(context.Background(), sc)
@@ -519,7 +508,7 @@ func TestCoreCheckRefusesASandboxWithoutAMirror(t *testing.T) {
 func TestCoreCheckNamesTheSandboxWhenTheContainerIsGone(t *testing.T) {
 	work, _ := seedBuildRepo(t)
 	host := sandboxHost(t, work, scriptedRunner{base: deploy.LocalRunner{}, failSubstring: "true"})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "sandbox", Publish: deploy.PublishSymlink})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	sc.WorkDir = work
 
 	err := deploy.CoreCheck(context.Background(), sc)
@@ -536,7 +525,7 @@ func TestCoreCheckNamesTheSandboxWhenTheContainerIsGone(t *testing.T) {
 func TestCoreCheckLeavesANonSandboxRemoteAlone(t *testing.T) {
 	work, _ := seedBuildRepo(t)
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Publish: deploy.PublishSymlink})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	sc.WorkDir = work
 
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
@@ -607,7 +596,7 @@ func TestRepositoryCheckFullyQualifiesTheBranchRef(t *testing.T) {
 
 	reachable := func(branch string) error {
 		sc := deploy.StepContextForTest(host, deploy.Options{
-			Remote: "local", Repository: origin, Branch: branch, Revision: "abc",
+			Repository: origin, Branch: branch, Revision: "abc",
 		})
 		return deploy.CheckRepositoryReachableForTest(context.Background(), sc)
 	}
@@ -627,7 +616,7 @@ func TestRepositoryCheckVerifiesATagExists(t *testing.T) {
 
 	withTag := func(tag string) error {
 		sc := deploy.StepContextForTest(host, deploy.Options{
-			Remote: "local", Repository: origin, Tag: tag,
+			Repository: origin, Tag: tag,
 		})
 		return deploy.CheckRepositoryReachableForTest(context.Background(), sc)
 	}
@@ -648,14 +637,14 @@ func TestRepositoryCheckStillProvesReachabilityForARevisionOnlyDeploy(t *testing
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 
 	sc := deploy.StepContextForTest(host, deploy.Options{
-		Remote: "local", Repository: origin, Revision: "0123456789abcdef0123456789abcdef01234567",
+		Repository: origin, Revision: "0123456789abcdef0123456789abcdef01234567",
 	})
 	if err := deploy.CheckRepositoryReachableForTest(context.Background(), sc); err != nil {
 		t.Fatalf("a revision-only deploy still has to reach the repository: %v", err)
 	}
 
 	broken := deploy.StepContextForTest(host, deploy.Options{
-		Remote: "local", Repository: filepath.Join(t.TempDir(), "nope.git"), Revision: "abc",
+		Repository: filepath.Join(t.TempDir(), "nope.git"), Revision: "abc",
 	})
 	if err := deploy.CheckRepositoryReachableForTest(context.Background(), broken); err == nil {
 		t.Fatal("an unreachable repository must fail even without a branch")
@@ -775,7 +764,7 @@ func TestLockRefusalNamesTheHolder(t *testing.T) {
 		t.Fatalf("seed lock: %v", err)
 	}
 
-	err := deploy.CoreLock(ctx, deploy.StepContextForTest(host, deploy.Options{Remote: "local"}))
+	err := deploy.CoreLock(ctx, deploy.StepContextForTest(host, deploy.Options{}))
 	if !errors.Is(err, deploy.ErrLockHeld) {
 		t.Fatalf("err = %v, want ErrLockHeld", err)
 	}
@@ -850,7 +839,7 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 		return sc.Notes
 	}
 
-	notes := strings.Join(check(t, private, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	notes := strings.Join(check(t, private, false, deploy.Options{Build: deploy.BuildServer}), "\n")
 	if !strings.Contains(notes, "COMPOSER_AUTH") || !strings.Contains(notes, "auth.json") {
 		t.Fatalf("the warning must name both remedies, got %q", notes)
 	}
@@ -860,14 +849,14 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 
 	// A credential source silences it: the environment…
 	t.Setenv("COMPOSER_AUTH", `{"http-basic":{}}`)
-	notes = strings.Join(check(t, private, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	notes = strings.Join(check(t, private, false, deploy.Options{Build: deploy.BuildServer}), "\n")
 	if strings.Contains(notes, "warning") {
 		t.Fatalf("a set COMPOSER_AUTH must silence the warning, got %q", notes)
 	}
 
 	// …or the shared file the other deploy tool leaves behind.
 	t.Setenv("COMPOSER_AUTH", "")
-	notes = strings.Join(check(t, private, true, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	notes = strings.Join(check(t, private, true, deploy.Options{Build: deploy.BuildServer}), "\n")
 	if strings.Contains(notes, "warning") {
 		t.Fatalf("a shared auth.json must silence the warning, got %q", notes)
 	}
@@ -884,7 +873,7 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 	writeFile(t, filepath.Join(workWithAuth, "auth.json"),
 		`{"http-basic":{"repo.example.com":{"username":"u","password":"p"}}}`)
 	hostWithAuth := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	scWithAuth := deploy.StepContextForTest(hostWithAuth, deploy.Options{Remote: "local", Build: deploy.BuildServer})
+	scWithAuth := deploy.StepContextForTest(hostWithAuth, deploy.Options{Build: deploy.BuildServer})
 	scWithAuth.WorkDir = workWithAuth
 	if err := deploy.CoreCheck(context.Background(), scWithAuth); err != nil {
 		t.Fatalf("check: %v", err)
@@ -899,7 +888,7 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 
 	// A packagist-only project needs nothing.
 	public := `{"repositories":[{"type":"composer","url":"https://repo.packagist.org"}]}`
-	notes = strings.Join(check(t, public, false, deploy.Options{Remote: "local", Build: deploy.BuildServer}), "\n")
+	notes = strings.Join(check(t, public, false, deploy.Options{Build: deploy.BuildServer}), "\n")
 	if strings.Contains(notes, "warning") {
 		t.Fatalf("a public-only manifest must not warn, got %q", notes)
 	}
@@ -920,7 +909,7 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 		`{"repositories":[{"type":"composer","url":"https://repo.example.com"}]}`)
 
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	sc := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Build: deploy.BuildArtifact, ArtifactDir: t.TempDir()})
+	sc := deploy.StepContextForTest(host, deploy.Options{Build: deploy.BuildArtifact, ArtifactDir: t.TempDir()})
 	sc.WorkDir = work
 	if err := deploy.NoteComposerCredentialsForTest(context.Background(), sc); err != nil {
 		t.Fatalf("note: %v", err)
@@ -931,7 +920,7 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 
 	// The same checkout in server mode warns, which is what makes the silence
 	// above a decision rather than an accident.
-	server := deploy.StepContextForTest(host, deploy.Options{Remote: "local", Build: deploy.BuildServer})
+	server := deploy.StepContextForTest(host, deploy.Options{Build: deploy.BuildServer})
 	server.WorkDir = work
 	if err := deploy.NoteComposerCredentialsForTest(context.Background(), server); err != nil {
 		t.Fatalf("note: %v", err)

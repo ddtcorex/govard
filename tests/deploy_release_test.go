@@ -55,6 +55,23 @@ func TestHistoryAppendsOneLinePerDeploy(t *testing.T) {
 	}
 }
 
+// A record carrying a newer schema was written by a newer govard. Reading it
+// with an old binary would silently misread the layout, so the read is
+// refused with an upgrade hint instead.
+func TestReadReleaseRefusesNewerSchemaVersion(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	record := deploy.NewReleaseForTest("7", "abc123", "staging")
+	record.SchemaVersion = deploy.ReleaseSchemaVersion + 1
+	if err := deploy.WriteRelease(context.Background(), host, record); err != nil {
+		t.Fatalf("write release: %v", err)
+	}
+	if _, err := deploy.ReadRelease(context.Background(), host, "7"); err == nil {
+		t.Fatal("a newer-schema record must be refused, not misread")
+	} else if !strings.Contains(err.Error(), "schema version") {
+		t.Fatalf("the refusal must name the schema version, got %q", err)
+	}
+}
+
 func TestHostPathsAndShellQuotingForATildePath(t *testing.T) {
 	host := deploy.HostForTest("~/.deployer", deploy.LocalRunner{})
 	if host.LockPath() != "~/.deployer/.dep/govard.lock" {

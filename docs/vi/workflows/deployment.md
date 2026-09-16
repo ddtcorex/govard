@@ -178,7 +178,7 @@ cho timeline.
 
 ```bash
 govard deploy sandbox up --profile full --php 8.4   # một target thật, trên loopback
-# provision nó: credential, shared/app/etc/env.php, database, search engine
+# seed là tự động (database, media, env.php); chỉ cần lo credential + search engine nếu dự án dùng
 govard deploy --remote sandbox --yes
 govard deploy sandbox down --purge
 ```
@@ -976,7 +976,7 @@ govard deploy sandbox up --profile full --php 8.4   # database, cache, web serve
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
 govard deploy sandbox ssh
-govard deploy sandbox down [--purge]
+govard deploy sandbox down [--purge] [--volumes]
 ```
 
 `up` publish SSH trên một cổng loopback còn trống, sinh khoá riêng dưới
@@ -1016,7 +1016,7 @@ target thật chạy. Series nằm trong image tag, nên đổi series là build
 chứ không tái dùng image cũ.
 
 `--docroot` định hình target để chiến lược publish resolve theo đúng thứ bạn muốn
-kiểm chứng: `absent` hoặc `symlink` chọn cú swap nguyên tử, `real` chọn in-place.
+kiểm chứng: `absent` hoặc `symlink` (mặc định) chọn cú swap nguyên tử, `real` chọn in-place.
 Việc định hình chỉ xảy ra khi target được tạo và khi bạn nói rõ hình dạng muốn có —
 vì `up` còn là cách khởi động lại sandbox đang dừng và cách refresh mirror trước khi
 deploy revision kế tiếp, và cả hai đều không được phép làm mất ứng dụng đang phục
@@ -1026,10 +1026,11 @@ mai diễn tập tiếp; `down --volumes` xoá luôn data. `--purge` xoá thêm 
 mirror.
 
 Sandbox là một dự án phái sinh, không phải container generic: `up` render đúng
-blueprint của dự án gốc dưới tên `<project>-sandbox` — cùng series PHP, cùng
-services — nên target diễn tập khớp dự án theo cấu trúc thay vì `--php` truyền tay
-(flag vẫn còn cho ca đặc biệt). Dự án phái sinh không bao giờ vào project list;
-state của nó nằm dưới `.govard/sandbox/` của dự án gốc, ghi rõ nó được seed từ đâu.
+blueprint của dự án gốc — cùng series PHP, cùng services — thành các container
+riêng (`govard-<project>-deploy-sandbox-…`), nên target diễn tập khớp dự án
+theo cấu trúc thay vì `--php` truyền tay (flag vẫn còn cho ca đặc biệt). Dự án
+phái sinh không bao giờ vào project list; state của nó nằm dưới
+`.govard/sandbox/` của dự án gốc, ghi rõ nó được seed từ đâu.
 
 `up` còn seed ứng dụng một lần, từ môi trường gốc đang chạy: dump database dạng
 logical (môi trường gốc vẫn chạy — không dừng, không sửa gì), cây media, và file
@@ -1051,16 +1052,19 @@ container ở mọi lần `up` (host, port, path, branch, mirror, verify URL và
 mà profile hàm ý), nên sửa tay trong đó không giữ được — hãy đặt những gì cần giữ
 vào cấu hình của chính dự án.
 
-Một lần diễn tập chỉ đầy đủ bằng credential và ứng dụng mà target có. Package
-`git` cần khoá và `known_hosts` *bên trong container*, và credential chỉ nằm trong
-shell profile của bạn chính là loại có thể đè lên `auth.json` đang chạy tốt của dự
-án rồi làm hỏng build (xem *Credential Composer đến từ đâu*). Ứng dụng thì cần
+Một lần diễn tập chỉ đầy đủ bằng credential và ứng dụng mà target có — với một
+ngoại lệ: sandbox đã seed (mặc định) thì tự mang ứng dụng theo. Chỉ sandbox
+`--no-seed` mới khởi đầu trắng, và ở đó pipeline tới `build:assets` hay
+`db:migrate` sẽ dừng ở prerequisite chứ không phải ở lỗi: Package `git` cần
+khoá và `known_hosts` *bên trong container*, và credential chỉ nằm trong shell
+profile của bạn chính là loại có thể đè lên `auth.json` đang chạy tốt của dự án
+rồi làm hỏng build (xem *Credential Composer đến từ đâu*). Ứng dụng thì cần
 `shared/app/etc/env.php` trỏ tới database, cache và session mà target kết nối
 được, cộng thêm search engine được hỗ trợ nếu dự án dùng: thiếu chúng thì
 `build:assets` dừng ở `The default website isn't defined` và `db:migrate` dừng ở
 `Your current search engine, 'MySQL', is not supported`. Đó là prerequisite của
 target, không phải của engine — một server chưa từng chạy ứng dụng thì không
-publish release lên được, và sandbox từ chối giả vờ ngược lại. Đặt credential và
+publish release lên được, và sandbox chưa seed từ chối giả vờ ngược lại. Đặt credential và
 `env.php` vào container (`docker exec`, hoặc mount file) rồi chạy lại `govard
 deploy --remote sandbox --yes`; bước hỏng sẽ đi tiếp từ release directory sạch và
 Composer cache được giữ nguyên.

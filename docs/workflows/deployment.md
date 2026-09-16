@@ -180,7 +180,7 @@ emits one document instead of the timeline.
 
 ```bash
 govard deploy sandbox up --profile full --php 8.4   # a real target, on loopback
-# provision it: credentials, shared/app/etc/env.php, a database, a search engine
+# the seed is automatic (database, media, env.php); provide credentials + a search engine where the project needs one
 govard deploy --remote sandbox --yes
 govard deploy sandbox down --purge
 ```
@@ -1029,7 +1029,7 @@ govard deploy sandbox up --profile full --php 8.4   # database, cache, web serve
 govard deploy sandbox status
 govard deploy sandbox reset --layout deployer # seed a target the other tool owns
 govard deploy sandbox ssh
-govard deploy sandbox down [--purge]
+govard deploy sandbox down [--purge] [--volumes]
 ```
 
 `up` publishes SSH on a free loopback port, generates a dedicated key under
@@ -1043,8 +1043,8 @@ govard deploy --remote sandbox --yes
 ```
 
 `--docroot` shapes the target so the publish strategy resolves the way you want
-to exercise it: `absent` or `symlink` selects the atomic swap, `real` selects
-in-place publishing. Shaping happens when the target is created and when you name
+to exercise it: `absent` or `symlink` (the default) selects the atomic swap,
+`real` selects in-place publishing. Shaping happens when the target is created and when you name
 a shape, because `up` is also how a stopped sandbox is started and how the mirror
 is refreshed before the next revision is deployed — neither may cost the
 application currently being served. `reset` shapes unconditionally: wiping the
@@ -1054,11 +1054,12 @@ rehearsal resumes tomorrow; `down --volumes` deletes the derived volumes too.
 `--purge` also removes the image, the key and the mirror.
 
 A sandbox is a derived project, not a generic container: `up` renders the origin
-project's own blueprint under the name `<project>-sandbox` — same PHP series,
-same services — so the rehearsal target matches the project by construction
-instead of by hand-passed `--php` (which remains as an override for exceptional
-cases). The derived project never appears in the project list; its state lives
-under the origin's `.govard/sandbox/`, recording what it was seeded from.
+project's own blueprint — same PHP series, same services — into dedicated
+containers (`govard-<project>-deploy-sandbox-…`), so the rehearsal target
+matches the project by construction instead of by hand-passed `--php` (which
+remains as an override for exceptional cases). The derived project never
+appears in the project list; its state lives under the origin's
+`.govard/sandbox/`, recording what it was seeded from.
 
 `up` also seeds the application once, from the running origin environment: a
 logical database dump (the origin keeps running — nothing is stopped or
@@ -1123,17 +1124,19 @@ them (`docker exec`, or a mounted file) and re-run `govard deploy --remote sandb
 --yes`; the failing step resumes from a clean release directory and the Composer
 cache is kept.
 
-The same is true of the application the target is supposed to be serving. A
-brand-new sandbox has no installed application, so a pipeline that reaches
-`build:assets` or `db:migrate` stops on a prerequisite rather than on a defect:
-`setup:static-content:deploy` needs the store configuration, and `setup:upgrade`
-needs a database and a *supported* search engine. `shared/app/etc/env.php` on the
-target is what the release links for all of it, so a rehearsal against a real
-project means writing that file (pointing at a database the target can reach, with
-a cache backend and session handler it can reach) and having the data behind it —
-a `govard bootstrap -e <env>` clone is the usual source. Those prerequisites are
-the target's, not the engine's: a server that has never run the application cannot
-publish a release to it, and the sandbox refuses to pretend otherwise.
+The same is true of the application the target is supposed to be serving — with
+one exception: a seeded sandbox (the default) already brings its own. Only a
+`--no-seed` sandbox starts with no installed application, and there a pipeline
+that reaches `build:assets` or `db:migrate` stops on a prerequisite rather than
+on a defect: `setup:static-content:deploy` needs the store configuration, and
+`setup:upgrade` needs a database and a *supported* search engine.
+`shared/app/etc/env.php` on the target is what the release links for all of it,
+so a rehearsal in an unseeded sandbox means writing that file (pointing at a
+database the target can reach, with a cache backend and session handler it can
+reach) and having the data behind it — a `govard bootstrap -e <env>` clone is
+the usual source. Those prerequisites are the target's, not the engine's: a
+server that has never run the application cannot publish a release to it, and
+an unseeded sandbox refuses to pretend otherwise.
 
 ## One connection per target
 

@@ -38,7 +38,7 @@ func TestDBBackupIsRefusedForRecipesWithoutADump(t *testing.T) {
 				t.Fatalf("%s reports no deploy recipe", tc.framework)
 			}
 
-			err := deploy.ValidateDBBackup(recipe, deploy.Options{Remote: "production", DBBackup: true})
+			err := deploy.ValidateDBBackup(recipe, deploy.Options{DBBackup: true})
 
 			if tc.supported {
 				if err != nil {
@@ -67,7 +67,7 @@ func TestDBBackupIsRefusedForRecipesWithoutADump(t *testing.T) {
 // The neutral default pipeline carries no dump either: a framework that ships no
 // recipe gets the same refusal rather than the same silence.
 func TestDBBackupIsRefusedForTheDefaultRecipe(t *testing.T) {
-	err := deploy.ValidateDBBackup(deploy.DefaultRecipe(), deploy.Options{Remote: "production", DBBackup: true})
+	err := deploy.ValidateDBBackup(deploy.DefaultRecipe(), deploy.Options{DBBackup: true})
 	if err == nil {
 		t.Fatal("the default recipe has no dump command, so --db-backup must be refused")
 	}
@@ -84,7 +84,7 @@ func TestDBBackupValidationIsSilentWithoutTheFlag(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s reports no deploy recipe", framework)
 		}
-		if err := deploy.ValidateDBBackup(recipe, deploy.Options{Remote: "production"}); err != nil {
+		if err := deploy.ValidateDBBackup(recipe, deploy.Options{}); err != nil {
 			t.Fatalf("%s: %v (no --db-backup was requested)", framework, err)
 		}
 	}

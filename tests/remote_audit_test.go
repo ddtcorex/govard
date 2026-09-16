@@ -19,7 +19,6 @@ func TestWriteAuditEventAppendsJSONLines(t *testing.T) {
 	if err := remote.WriteAuditEvent(remote.AuditEvent{
 		Operation: "remote.test.ssh",
 		Status:    remote.RemoteAuditStatusSuccess,
-		Remote:    "staging",
 		Message:   "ok",
 	}); err != nil {
 		t.Fatalf("write first event: %v", err)

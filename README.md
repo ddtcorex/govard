@@ -407,7 +407,7 @@ Remote defaults and protections:
 
 ### 6. Deployment
 
-`govard deploy` publishes one git revision to a remote over SSH and rsync — no Docker, no local PHP, no other deploy tool. The pipeline is framework-neutral; a framework recipe (Magento 2 today) fills the tasks it supports.
+`govard deploy` publishes one git revision to a remote over SSH and rsync — no Docker, no local PHP, no other deploy tool. The pipeline is framework-neutral; a framework recipe (Magento 2, Laravel, Symfony, WordPress) fills the tasks it supports.
 
 ```bash
 govard deploy plan staging     # the whole task list, connecting nowhere

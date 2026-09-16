@@ -65,7 +65,7 @@ func TestLocalEndToEndDeployPublishesAndVerifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("host: %v", err)
 	}
-	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "local")
+	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestLocalEndToEndStopsOnFailureAndKeepsTheLock(t *testing.T) {
 	deploy.OverrideTaskForTest(&recipe, deploy.TaskActivate, deploy.Task{
 		ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "exit 9",
 	})
-	plan, err := deploy.BuildPlanForTest(recipe, nil, "local")
+	plan, err := deploy.BuildPlanForTest(recipe, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestLocalEndToEndHooksRunWhereThePlanSays(t *testing.T) {
 	hooks := []deploy.Hook{
 		{Name: "after-activate", On: deploy.TaskActivate, Position: deploy.PositionAfter, Run: "printf done >> " + root + "/hook.log"},
 	}
-	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), hooks, "local")
+	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), hooks)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestExecutorSkipsAnAlreadyDeployedRevisionUnlessForced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("host: %v", err)
 	}
-	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "local")
+	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestResumeContinuesTheFailedReleaseInsteadOfStartingANewOne(t *testing.T) {
 	deploy.OverrideTaskForTest(&broken, deploy.TaskActivate, deploy.Task{
 		ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "exit 9",
 	})
-	brokenPlan, err := deploy.BuildPlanForTest(broken, nil, "local")
+	brokenPlan, err := deploy.BuildPlanForTest(broken, nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -403,7 +403,7 @@ func TestResumeContinuesTheFailedReleaseInsteadOfStartingANewOne(t *testing.T) {
 	resumeOptions.Resume = true
 	resumeRelease := deploy.NewReleaseForTest(incomplete.Release, incomplete.Revision, incomplete.Branch)
 	resumeRelease.Path = incomplete.Path
-	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "local")
+	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -479,11 +479,11 @@ func TestASecondResumeDoesNotRepeatWhatTheFirstCarriedOver(t *testing.T) {
 	deploy.OverrideTaskForTest(&broken, deploy.TaskActivate, deploy.Task{
 		ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "exit 9",
 	})
-	brokenPlan, err := deploy.BuildPlanForTest(broken, nil, "local")
+	brokenPlan, err := deploy.BuildPlanForTest(broken, nil)
 	if err != nil {
 		t.Fatalf("broken plan: %v", err)
 	}
-	goodPlan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil, "local")
+	goodPlan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -639,10 +639,10 @@ func TestAnInPlaceTargetIsAlreadyDeployedOnlyWithAFinishedRecord(t *testing.T) {
 	if _, err := host.Runner().Run(ctx, "git -C "+host.CurrentPath+" reset -q --hard "+revision, deploy.RunOptions{}); err != nil {
 		t.Fatalf("put the docroot on the revision: %v", err)
 	}
-	options := deploy.Options{Remote: "local", Publish: deploy.PublishInPlace, Revision: revision}
+	options := deploy.Options{Publish: deploy.PublishInPlace, Revision: revision}
 	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
 		{ID: deploy.TaskCheck, Stage: deploy.StagePrepare, Command: "true"},
-	}), nil, "local")
+	}), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -712,10 +712,10 @@ func TestAResumeNeverTakesTheAlreadyDeployedShortcut(t *testing.T) {
 		t.Fatalf("seed the failed release: %v", err)
 	}
 
-	options := deploy.Options{Remote: "local", Publish: deploy.PublishInPlace, Revision: revision, Resume: true}
+	options := deploy.Options{Publish: deploy.PublishInPlace, Revision: revision, Resume: true}
 	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
 		{ID: deploy.TaskMaintenanceDisable, Stage: deploy.StagePublish, Command: "echo closing the window"},
-	}), nil, "local")
+	}), nil)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

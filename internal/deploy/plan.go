@@ -108,8 +108,7 @@ func (s Step) Implemented() bool {
 
 // Plan is the ordered list of steps one deploy will run.
 type Plan struct {
-	Remote string
-	Steps  []Step
+	Steps []Step
 	// MigrationProbe is copied from the recipe: see Recipe.MigrationProbe.
 	// The executor runs it; `govard deploy plan` only displays it.
 	MigrationProbe *MigrationProbe
@@ -148,7 +147,7 @@ func (p Plan) From(id string) (Plan, bool) {
 	}
 	steps := make([]Step, len(p.Steps)-index)
 	copy(steps, p.Steps[index:])
-	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}, true
+	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}, true
 }
 
 // Only returns the sub-plan holding just the named steps, in plan order. A name
@@ -165,7 +164,7 @@ func (p Plan) Only(ids ...string) Plan {
 			steps = append(steps, step)
 		}
 	}
-	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}
+	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // MissingVerifyWarning returns the warning a deploy must print when it migrates
@@ -225,7 +224,7 @@ func (p Plan) ForBuildMode(mode string) Plan {
 	if artifact {
 		steps = moveArtifactBeforeTheBuildTasks(steps)
 	}
-	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}
+	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // moveArtifactBeforeTheBuildTasks puts `deploy:artifact` where the mode needs it:
@@ -299,7 +298,7 @@ func (p Plan) withoutMaintenanceWindow() Plan {
 			steps[idx].SkipReason = "a symlink activation is atomic and nothing in this plan changes state the live release depends on"
 		}
 	}
-	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}
+	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // closeWindowBefore moves the `maintenance:disable` step to immediately before
@@ -343,7 +342,7 @@ func (p Plan) closeWindowBefore(id string) Plan {
 		}
 		steps = append(steps, step)
 	}
-	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}
+	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // maintenanceWindow returns the plan indexes that run with the site in
@@ -408,7 +407,7 @@ var artifactReplacedBuildTasks = map[string]bool{
 // canonical task order rather than by declaration order, so a recipe cannot
 // reorder the lifecycle. The default recipe declares all 25 ids; a recipe that
 // declares fewer simply produces a shorter plan.
-func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
+func BuildPlan(recipe Recipe, hooks []Hook) (Plan, error) {
 	// A recipe that contradicts itself is refused before a step is shaped: the
 	// alternative is a deploy whose validation and whose documentation disagree
 	// about what a setting is.
@@ -464,7 +463,7 @@ func BuildPlan(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Remote: remote, Steps: ordered, MigrationProbe: recipe.MigrationProbe}, nil
+	return Plan{Steps: ordered, MigrationProbe: recipe.MigrationProbe}, nil
 }
 
 // RecipeStepForTest builds one step the way a plan does, so a test can run a single
@@ -479,8 +478,8 @@ func RecipeStepForTest(id, command string) Step {
 }
 
 // BuildPlanForTest exposes BuildPlan to the tests/ package.
-func BuildPlanForTest(recipe Recipe, hooks []Hook, remote string) (Plan, error) {
-	return BuildPlan(recipe, hooks, remote)
+func BuildPlanForTest(recipe Recipe, hooks []Hook) (Plan, error) {
+	return BuildPlan(recipe, hooks)
 }
 
 // insertHooks places every hook immediately before or after its anchor.
