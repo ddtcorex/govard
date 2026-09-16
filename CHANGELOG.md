@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.75.0] - 2026-09-17
+
+### ✨ New Features
+
+- **Conditional migrate:** the gated tasks (`maintenance:enable`, `db:migrate`, …) run only when the migration probe (`setup:db:status`, exit 1/2) reports a drifted database; exit 0 skips the maintenance window entirely and the plan renders them as `conditional (probe at runtime)`. (#328)
+- **Sandbox derived projects with seed-once at `up`:** `deploy sandbox up` renders the origin project's own blueprint and seeds the database, the media tree and the rewritten env file once from the running origin environment (`--no-seed` stays deliberately empty, `--recreate` reseeds). (#332)
+
+### 🐛 Bug Fixes
+
+- **Resume adopts the recorded migrate verdict** instead of re-probing: a recorded migrate is sticky (migrations are idempotent, re-running one is safe) while a recorded skip is never adopted, so an out-of-band database fix can no longer strand an open maintenance window by skipping `maintenance:disable`. (#330)
+
+### 🧹 Chores
+
+- **Deploy engine tidy:** dead symbols and write-only fields removed, duplicated helpers merged behind single owners (`shortRevision`, `BranchLabel`, `ValidateSourceSelector`), `releases`/`status`/`unlock` resolve read options without demanding a source selector, per-task errors surface in the deploy JSON, and records newer than the reader are refused with an upgrade hint. (#334)
+- **Docs:** seed-once replaces hand-provisioning as the default sandbox story, `down --volumes` and the symlink docroot default are in every synopsis, and the sandbox naming matches what the engine builds. (#334)
+
 ## [1.74.0] - 2026-09-16
 
 ### ✨ New Features
