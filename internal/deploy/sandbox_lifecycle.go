@@ -354,6 +354,17 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 
+	// The web port is read back, not assumed: Docker chooses it, and a rehearsal
+	// whose `verify.url` named the wrong port would fail at the last step of every
+	// deploy for a reason that has nothing to do with the release. It is read
+	// before the seed (not after) because the seed's base_url defaults to it.
+	webPort := 0
+	if servesWeb {
+		if published, err := runtime.PublishedPort(ctx, container, sandboxWebPort); err == nil {
+			webPort = published
+		}
+	}
+
 	// The snapshot runs once, on a fresh container, against the running
 	// services — never upfront (the container would not exist yet) and never
 	// on reuse (an existing sandbox keeps its data; --recreate is the
@@ -362,20 +373,10 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	derived := NewDerivedFrom(request.SeedOrigin, request.SeedBlueprintRev)
 	seeded := false
 	if request.SeedOrigin != "" && !request.NoSeed && !exists {
-		if err := runSandboxSeed(ctx, runtime, request.out(), container, request); err != nil {
+		if err := runSandboxSeed(ctx, runtime, request.out(), container, webPort, request); err != nil {
 			return nil, err
 		}
 		seeded = true
-	}
-
-	// The web port is read back, not assumed: Docker chooses it, and a rehearsal
-	// whose `verify.url` named the wrong port would fail at the last step of every
-	// deploy for a reason that has nothing to do with the release.
-	webPort := 0
-	if servesWeb {
-		if published, err := runtime.PublishedPort(ctx, container, sandboxWebPort); err == nil {
-			webPort = published
-		}
 	}
 
 	paths := SandboxDefaultPaths()

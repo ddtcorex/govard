@@ -8,6 +8,11 @@ import (
 	"time"
 
 	"govard/internal/deploy"
+	"govard/internal/engine"
+	// Side-effect import: the package init registers all 14 framework
+	// definitions (including their seed definitions) into engine.
+	_ "govard/internal/frameworks"
+	"govard/internal/frameworks/magento2"
 )
 
 func TestResolveSeedSpecRefusesStoppedOrigin(t *testing.T) {
@@ -185,5 +190,42 @@ func TestSandboxDownKeepsVolumesByDefault(t *testing.T) {
 		if strings.Contains(strings.Join(call, " "), "volume rm") {
 			t.Errorf("plain down must keep volumes, but removed: %v", call)
 		}
+	}
+}
+
+func TestMagentoEnvRewritePointsAtSandbox(t *testing.T) {
+	in := []byte(`'db' => ['connection' => ['default' => ['host' => '127.0.0.1', 'dbname' => 'magento']]], 'system' => ['default' => ['web' => ['unsecure' => ['base_url' => 'https://shop.test/']]]]`)
+	mapping := map[string]string{"base_url": "https://shop-sandbox.test/"}
+	got, err := magento2.RewriteMagentoEnvForSandbox(in, mapping)
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if !strings.Contains(string(got), "https://shop-sandbox.test/") {
+		t.Errorf("base_url was not rewritten: %s", got)
+	}
+	if !strings.Contains(string(got), "'dbname' => 'magento'") {
+		t.Errorf("unrelated keys must pass through untouched: %s", got)
+	}
+}
+
+func TestSandboxSeedRegistryServesMagento2(t *testing.T) {
+	definition, ok := engine.SandboxSeedFor("magento2")
+	if !ok {
+		t.Fatal("magento2 registered no sandbox seed definition")
+	}
+	if definition.EnvPath != "app/etc/env.php" {
+		t.Errorf("env path = %q, want app/etc/env.php", definition.EnvPath)
+	}
+	if definition.MediaPath != "pub/media" {
+		t.Errorf("media path = %q, want pub/media", definition.MediaPath)
+	}
+	if definition.Rewrite == nil {
+		t.Fatal("magento2 registered no env rewriter")
+	}
+}
+
+func TestSandboxSeedRegistryIgnoresUnknownFrameworks(t *testing.T) {
+	if _, ok := engine.SandboxSeedFor("no-such-framework"); ok {
+		t.Fatal("an unregistered framework must report no seed definition")
 	}
 }

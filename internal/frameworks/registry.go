@@ -304,6 +304,9 @@ func registerEngineDefinition(def types.FrameworkDefinition) {
 	if def.TablePrefixDetector != nil {
 		engine.RegisterTablePrefixDetector(def.Name, def.TablePrefixDetector)
 	}
+	if def.SandboxSeed != nil {
+		engine.RegisterSandboxSeedDefinition(def.Name, *def.SandboxSeed)
+	}
 	if def.VersionProfileResolver != nil {
 		engine.RegisterVersionProfileResolver(def.Name, def.VersionProfileResolver)
 	}

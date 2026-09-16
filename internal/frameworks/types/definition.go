@@ -301,6 +301,11 @@ type FrameworkDefinition struct {
 	BuildDeployLocalesQuery func(tablePrefix string) string
 	BootstrapPlanSteps      func(createAdmin bool) []BootstrapPlanStep
 	EnableVarnishOnInit     bool
+	// SandboxSeed contributes this framework's seed definition: the env/media
+	// paths relative to the app workdir plus the env rewriter. Populated by
+	// frameworks.Register via engine.RegisterSandboxSeedDefinition. nil for
+	// frameworks with nothing to seed beyond the database.
+	SandboxSeed *engine.SandboxSeedDefinition
 
 	// VersionProfileResolver resolves this framework's version-specific
 	// runtime-profile overrides (e.g. Magento 2's per-patch-release stack),

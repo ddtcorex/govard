@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"govard/internal/cli"
+	"govard/internal/conventions"
 	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/runtime"
@@ -150,7 +151,7 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		return deploy.SandboxRequest{}, &cli.ConfigError{Err: err}
 	}
 
-	return deploy.SandboxRequest{
+	request := deploy.SandboxRequest{
 		ProjectRoot: root,
 		ProjectName: config.ProjectName,
 		Profile:     profile,
@@ -179,7 +180,36 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		SeedDBUser:        defaultDBCredentialsForFramework(config.Framework).Username,
 		SeedDBPassword:    defaultDBCredentialsForFramework(config.Framework).Password,
 		SeedDBName:        defaultDBCredentialsForFramework(config.Framework).Database,
-	}, nil
+	}
+	seedSandboxFramework(config, &request)
+	return request, nil
+}
+
+// seedSandboxFramework fills the framework-owned half of the snapshot: the app
+// container, the media/env paths and the rewriter, all from the framework's
+// registered seed definition — never from a per-framework switch here. A
+// framework with no definition seeds the database only.
+func seedSandboxFramework(config engine.Config, request *deploy.SandboxRequest) {
+	definition, ok := engine.SandboxSeedFor(config.Framework)
+	if !ok {
+		return
+	}
+	appContainer := config.ProjectName + conventions.PHPSuffix
+	shared := deploy.SandboxDefaultPaths().DeployPath + "/shared"
+	request.SeedAppContainer = appContainer
+	request.EnvRewriter = definition.Rewrite
+	if definition.MediaPath != "" {
+		request.SeedMediaSource = conventions.DefaultWorkDir + "/" + definition.MediaPath
+		request.SeedMediaTarget = shared + "/" + definition.MediaPath
+	}
+	if definition.EnvPath != "" {
+		request.SeedEnvSource = conventions.DefaultWorkDir + "/" + definition.EnvPath
+		request.SeedEnvTarget = shared + "/" + definition.EnvPath
+	}
+	// base_url defaults to the sandbox web URL inside the seed run (the port
+	// is docker-chosen, so cmd cannot know it); SeedEnvMapping only carries
+	// explicit overrides, none today.
+	request.SeedEnvMapping = map[string]string{}
 }
 
 // originEnvRunning reports whether the origin project's containers are up: the

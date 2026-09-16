@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"govard/internal/engine"
 )
 
 // SeedDB names the origin database to snapshot. The password travels in a
@@ -47,9 +49,11 @@ type SeedSpec struct {
 	EnvMapping   map[string]string
 }
 
-// SeedEnvRewriter rewrites one env file's content for the sandbox (base_url,
-// local hosts). Frameworks register implementations; the core only dispatches.
-type SeedEnvRewriter func(content []byte, mapping map[string]string) ([]byte, error)
+// SeedEnvRewriter rewrites one env file's content for the sandbox. It is an
+// alias, not a copy: the canonical type lives in engine beside the registry,
+// and deploy only carries values (deploy must not sprout a parallel type that
+// drifts from the registered one).
+type SeedEnvRewriter = engine.SandboxSeedRewriter
 
 // ResolveSeedSpec validates the source and resolves the snapshot plan. A
 // stopped origin is a refusal, not an empty sandbox: silent emptiness is the
@@ -120,9 +124,11 @@ func mysqlPasswordEnv(password string) []string {
 
 // runSandboxSeed snapshots the origin into a running sandbox container:
 // create the app user/database, dump (origin) → strip → import (sandbox),
-// stream one media tree, rewrite one env file. Every step is fail-loud;
-// nothing is skipped silently.
-func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, request SandboxRequest) error {
+// stream one media tree, rewrite one env file. webPort is the sandbox's
+// published HTTP port (0 when the profile serves no web tier): it defaults
+// base_url, because docker chooses the port and no caller can know it upfront.
+// Every step is fail-loud; nothing is skipped silently.
+func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
 	spec, err := ResolveSeedSpec(SeedSource{
 		OriginRunning: request.SeedOriginRunning,
 		DB: SeedDB{
@@ -185,7 +191,15 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 		if err != nil {
 			return fmt.Errorf("read the origin env file: %w", err)
 		}
-		rewritten, err := request.EnvRewriter([]byte(raw), request.SeedEnvMapping)
+		// base_url defaults to the sandbox web URL; explicit mapping wins.
+		mapping := map[string]string{}
+		if webPort > 0 {
+			mapping["base_url"] = fmt.Sprintf("http://127.0.0.1:%d/", webPort)
+		}
+		for key, value := range request.SeedEnvMapping {
+			mapping[key] = value
+		}
+		rewritten, err := request.EnvRewriter([]byte(raw), mapping)
 		if err != nil {
 			return fmt.Errorf("rewrite the env file: %w", err)
 		}
