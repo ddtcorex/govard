@@ -329,7 +329,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	// remote with neither a branch nor an explicit revision — so "defaults to
 	// the local HEAD" is only true once the branch is named here.
 	remote := SandboxRemoteConfig(profile, php, port, webPort, paths, key)
-	remote.Branch = localBranch(ctx, git, request.repository())
+	remote.Deploy.Branch = localBranch(ctx, git, request.repository())
 	if err := WriteSandboxRemote(request.ProjectRoot, request.remoteName(), remote); err != nil {
 		return nil, err
 	}
@@ -412,19 +412,21 @@ func SandboxRemoteConfig(profile, php string, port, webPort int, paths SandboxPa
 
 	keyPath := filepath.ToSlash(filepath.Join(".govard", "sandbox", SandboxKeyName))
 	remote := engine.RemoteConfig{
-		Host:       "127.0.0.1",
-		Port:       port,
-		User:       SandboxUser,
-		Path:       paths.Current,
-		DeployPath: paths.DeployPath,
-		Repository: SandboxRepoPath,
-		Sandbox:    true,
-		Protected:  engine.BoolPtr(false),
+		Host:      "127.0.0.1",
+		Port:      port,
+		User:      SandboxUser,
+		Path:      paths.Current,
+		Sandbox:   true,
+		Protected: engine.BoolPtr(false),
 		Auth: engine.RemoteAuth{
 			Method:  engine.RemoteAuthMethodKeyfile,
 			KeyPath: keyPath,
 		},
-		Deploy: &engine.DeployConfig{Settings: settings},
+		Deploy: &engine.DeployConfig{
+			Repository: SandboxRepoPath,
+			DeployPath: paths.DeployPath,
+			Settings:   settings,
+		},
 	}
 
 	// A sandbox that serves the release is the only place the HTTP half of
@@ -604,7 +606,7 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 		// creation wrote: `status` must report what exists, not what a flag would
 		// now ask for.
 		PHP:         sandboxRemotePHP(config.Remote),
-		DeployPath:  config.Remote.DeployPath,
+		DeployPath:  sandboxRemoteDeployPath(config.Remote),
 		CurrentPath: config.Remote.Path,
 	}
 
@@ -708,6 +710,15 @@ func sandboxRemotePHP(remote engine.RemoteConfig) string {
 		return ""
 	}
 	return settingsString(remote.Deploy.Settings, "php_version")
+}
+
+// sandboxRemoteDeployPath is the layout root the sandbox remote declares,
+// empty when it declares none (a remote written before the nested form).
+func sandboxRemoteDeployPath(remote engine.RemoteConfig) string {
+	if remote.Deploy == nil {
+		return ""
+	}
+	return remote.Deploy.DeployPath
 }
 
 // SandboxDown removes the container and the remote `up` wrote, so a stale

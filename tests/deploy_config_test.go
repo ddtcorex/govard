@@ -50,8 +50,9 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging
-    publish: symlink
+    deploy:
+      branch: staging
+      publish: symlink
 `)
 
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
@@ -71,7 +72,7 @@ remotes:
 		t.Fatalf("hooks = %+v, want one hook named reload", cfg.Deploy.Hooks)
 	}
 	remote := cfg.Remotes["staging"]
-	if remote.Branch != "staging" || remote.Publish != "symlink" {
+	if remote.Deploy.Branch != "staging" || remote.Deploy.Publish != "symlink" {
 		t.Fatalf("remote topology = %+v, want branch=staging publish=symlink", remote)
 	}
 }
@@ -118,8 +119,9 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: "  staging  "
-    publish: "  SYMLINK  "
+    deploy:
+      branch: "  staging  "
+      publish: "  SYMLINK  "
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -131,7 +133,7 @@ remotes:
 	if cfg.Deploy.Verify.URL != "https://sample.test" {
 		t.Fatalf("verify.url = %q, want trimmed", cfg.Deploy.Verify.URL)
 	}
-	if cfg.Remotes["staging"].Branch != "staging" || cfg.Remotes["staging"].Publish != "symlink" {
+	if cfg.Remotes["staging"].Deploy.Branch != "staging" || cfg.Remotes["staging"].Deploy.Publish != "symlink" {
 		t.Fatalf("remote = %+v, want trimmed branch and lowercased publish", cfg.Remotes["staging"])
 	}
 }
@@ -153,8 +155,8 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging
     deploy:
+      branch: staging
       keep_releases: 2
       verify:
         url: https://staging.example.com
@@ -209,7 +211,8 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging
+    deploy:
+      branch: staging
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -239,7 +242,8 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging
+    deploy:
+      branch: staging
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -359,8 +363,9 @@ remotes:
   local:
     local: true
     path: /srv/public_html
-    deploy_path: /srv
-    branch: main
+    deploy:
+      deploy_path: /srv
+      branch: main
 `)
 	loaded, _, err := engine.LoadConfigFromDir(dir, false)
 	if err != nil {
@@ -381,8 +386,9 @@ remotes:
   local:
     local: true
     path: /srv/public_html
-    deploy_path: /srv
-    branch: main
+    deploy:
+      deploy_path: /srv
+      branch: main
 `)
 	loaded, _, err = engine.LoadConfigFromDir(dir, false)
 	if err != nil {
@@ -550,7 +556,8 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging
+    deploy:
+      branch: staging
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -585,15 +592,16 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging
     deploy:
       repository: git@example.com:app/staging-fork.git
+      branch: staging
   production:
     host: prod.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: master
-    repository: git@example.com:app/shop-explicit.git
+    deploy:
+      branch: master
+      repository: git@example.com:app/shop-explicit.git
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -616,7 +624,7 @@ remotes:
 		t.Fatalf("resolve production: %v", err)
 	}
 	if production.Repository != "git@example.com:app/shop-explicit.git" {
-		t.Fatalf("repository = %q, want the explicit remote value", production.Repository)
+		t.Fatalf("repository = %q, want the remote deploy override", production.Repository)
 	}
 	if production.Branch != "master" {
 		t.Fatalf("branch = %q, want master", production.Branch)
@@ -636,13 +644,15 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging
+    deploy:
+      branch: staging
   production:
     host: prod.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: master
-    deploy_path: /srv/prod/.deployer
+    deploy:
+      branch: master
+      deploy_path: /srv/prod/.deployer
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -666,36 +676,6 @@ remotes:
 	}
 }
 
-func TestResolveOptionsRefusesTopologySetInTwoPlaces(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, ".govard.yml"), `
-project_name: sample
-framework: generic
-domain: sample.test
-remotes:
-  staging:
-    host: staging.example.com
-    user: deploy
-    path: /home/deploy/public_html
-    branch: staging
-    deploy:
-      branch: other
-`)
-	cfg, _, err := engine.LoadConfigFromDir(root, true)
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	_, err = deploy.ResolveOptionsForTest(cfg, "staging", deploy.Overrides{})
-	if err == nil {
-		t.Fatalf("expected a conflict error, got nil")
-	}
-	for _, want := range []string{"staging", "branch", "remotes.staging.branch", "remotes.staging.deploy.branch"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("conflict error must name %q, got %q", want, err.Error())
-		}
-	}
-}
-
 func TestDeployTopologyDefaultsPreserveTildePaths(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, ".govard.yml"), `
@@ -709,13 +689,15 @@ remotes:
     host: staging.example.com
     user: deploy
     path: ~/public_html
-    branch: staging
+    deploy:
+      branch: staging
   production:
     host: prod.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: master
-    deploy_path: ~/.prod-deployer
+    deploy:
+      branch: master
+      deploy_path: ~/.prod-deployer
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -803,7 +785,8 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging
+    deploy:
+      branch: staging
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -852,78 +835,6 @@ remotes:
 	}
 }
 
-func TestResolveOptionsConflictCoversAllKeys(t *testing.T) {
-	cases := []struct {
-		name       string
-		remoteLine string
-		deployLine string
-		key        string
-	}{
-		{"repository", "    repository: git@example.com:app/shop.git", "      repository: git@example.com:app/other.git", "repository"},
-		{"publish", "    publish: symlink", "      publish: in_place", "publish"},
-		{"deploy_path", "    deploy_path: /home/deploy/.deployer", "      deploy_path: /srv/other/.deployer", "deploy_path"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			writeFile(t, filepath.Join(root, ".govard.yml"), `
-project_name: sample
-framework: generic
-domain: sample.test
-remotes:
-  staging:
-    host: staging.example.com
-    user: deploy
-    path: /home/deploy/public_html
-    branch: staging
-`+tc.remoteLine+`
-    deploy:
-      branch: staging
-`+tc.deployLine+`
-`)
-			cfg, _, err := engine.LoadConfigFromDir(root, true)
-			if err != nil {
-				t.Fatalf("load config: %v", err)
-			}
-			_, err = deploy.ResolveOptionsForTest(cfg, "staging", deploy.Overrides{})
-			if err == nil {
-				t.Fatalf("expected a conflict error for %s, got nil", tc.key)
-			}
-			if !strings.Contains(err.Error(), "remotes.staging.deploy."+tc.key) {
-				t.Fatalf("conflict error must name the override location, got %q", err.Error())
-			}
-		})
-	}
-}
-
-func TestResolveOptionsAcceptsEqualValuesInBothPlaces(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, ".govard.yml"), `
-project_name: sample
-framework: generic
-domain: sample.test
-remotes:
-  staging:
-    host: staging.example.com
-    user: deploy
-    path: /home/deploy/public_html
-    branch: staging
-    deploy:
-      branch: staging
-`)
-	cfg, _, err := engine.LoadConfigFromDir(root, true)
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	opts, err := deploy.ResolveOptionsForTest(cfg, "staging", deploy.Overrides{})
-	if err != nil {
-		t.Fatalf("equal values must not conflict: %v", err)
-	}
-	if opts.Branch != "staging" {
-		t.Fatalf("branch = %q, want staging", opts.Branch)
-	}
-}
-
 func TestPlanJSONBranchComesFromProjectDefault(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, ".govard.yml"), `
@@ -968,5 +879,35 @@ remotes:
 	}
 	if document.Branch != "master" {
 		t.Fatalf("plan branch = %q, want the project default", document.Branch)
+	}
+}
+
+func TestFlatDeployTopologyKeysRejected(t *testing.T) {
+	for _, key := range []string{"branch", "repository", "publish", "deploy_path"} {
+		t.Run(key, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, filepath.Join(root, ".govard.yml"), `
+project_name: sample
+framework: generic
+domain: sample.test
+remotes:
+  staging:
+    host: staging.example.com
+    user: deploy
+    path: /home/deploy/public_html
+    `+key+`: some-value
+`)
+			_, _, err := engine.LoadConfigFromDir(root, true)
+			if err == nil {
+				t.Fatalf("load config with flat remotes.staging.%s: want error, got nil", key)
+			}
+			if !errors.Is(err, engine.ErrRemovedRemoteDeployKey) {
+				t.Fatalf("error = %v, want it wrapped in ErrRemovedRemoteDeployKey for exit 4", err)
+			}
+			want := "remotes.staging.deploy." + key
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %q, want it to name the nested replacement %q", err, want)
+			}
+		})
 	}
 }

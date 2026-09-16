@@ -157,7 +157,7 @@ remotes:
     user: m2-deploy
     path: /home/m2-deploy/public_html     # the served docroot: a symlink
     deploy:
-      path: /home/m2-deploy/.deployer     # releases/, shared/, .dep/
+      deploy_path: /home/m2-deploy/.deployer  # releases/, shared/, .dep/
       settings:
         php_bin: php8.3
         composer_bin: composer
@@ -227,7 +227,7 @@ remotes:
     user: deploy
     path: /var/www/shop                # a REAL directory, served directly
     deploy:
-      path: /var/www/shop              # releases/ and shared/ live under it
+      deploy_path: /var/www/shop          # releases/ and shared/ live under it
       settings:
         php_bin: php8.2
         composer_bin: composer

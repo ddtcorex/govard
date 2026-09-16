@@ -44,14 +44,13 @@ type RemoteConfig struct {
 	DBPass       string              `yaml:"db_pass,omitempty"`
 	DBPort       int                 `yaml:"db_port,omitempty"`
 
-	// Deploy topology. These describe this server and therefore live on the
-	// remote, not in the project `deploy:` block; the only cross-over is
-	// Deploy, which overrides individual project-level deploy keys.
-	Branch     string `yaml:"branch,omitempty"`
-	Repository string `yaml:"repository,omitempty"`
-	DeployPath string `yaml:"deploy_path,omitempty"`
-	Publish    string `yaml:"publish,omitempty"`
-	Local      bool   `yaml:"local,omitempty"`
+	// Deploy topology (branch, repository, publish strategy, deploy path) lives
+	// only in the nested form: project-wide defaults under the top-level
+	// `deploy:` block, per-remote overrides under `remotes.<name>.deploy:`.
+	// The flat remote-level shorthands were removed: the YAML decoder drops
+	// unknown keys silently, so the loader rejects them explicitly (see
+	// RejectRemovedRemoteDeployKeys) instead of deploying the wrong ref.
+	Local bool `yaml:"local,omitempty"`
 	// Sandbox marks a remote govard itself created with `deploy sandbox up`:
 	// a container on this machine that plays the remote. It is a topology fact
 	// about the remote, not a framework name, which is why the deploy pipeline

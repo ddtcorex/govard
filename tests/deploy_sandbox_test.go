@@ -461,14 +461,16 @@ domain: sample.test
 `)
 
 	remote := engine.RemoteConfig{
-		Host:       "127.0.0.1",
-		Port:       49153,
-		User:       deploy.SandboxUser,
-		Path:       "/home/deployer/public_html",
-		DeployPath: "/home/deployer/.deployer",
-		Repository: deploy.SandboxRepoPath,
-		Sandbox:    true,
-		Auth:       engine.RemoteAuth{KeyPath: ".govard/sandbox/id_ed25519"},
+		Host:    "127.0.0.1",
+		Port:    49153,
+		User:    deploy.SandboxUser,
+		Path:    "/home/deployer/public_html",
+		Sandbox: true,
+		Auth:    engine.RemoteAuth{KeyPath: ".govard/sandbox/id_ed25519"},
+		Deploy: &engine.DeployConfig{
+			Repository: deploy.SandboxRepoPath,
+			DeployPath: "/home/deployer/.deployer",
+		},
 	}
 	if err := deploy.WriteSandboxRemote(root, "sandbox", remote); err != nil {
 		t.Fatalf("write sandbox remote: %v", err)
@@ -482,7 +484,7 @@ domain: sample.test
 	if !ok {
 		t.Fatal("the sandbox remote did not survive the real config loader")
 	}
-	if loaded.Port != 49153 || loaded.Repository != deploy.SandboxRepoPath {
+	if loaded.Port != 49153 || loaded.Deploy.Repository != deploy.SandboxRepoPath {
 		t.Fatalf("loaded remote = %+v, want the port and repository written", loaded)
 	}
 	if !loaded.Sandbox {
@@ -512,7 +514,8 @@ remotes:
 
 	if err := deploy.WriteSandboxRemote(root, "sandbox", engine.RemoteConfig{
 		Host: "127.0.0.1", Port: 1234, User: deploy.SandboxUser, Sandbox: true,
-		Path: "/home/deployer/public_html", DeployPath: "/home/deployer/.deployer",
+		Path:   "/home/deployer/public_html",
+		Deploy: &engine.DeployConfig{DeployPath: "/home/deployer/.deployer"},
 	}); err != nil {
 		t.Fatalf("write sandbox remote: %v", err)
 	}
@@ -538,7 +541,8 @@ remotes:
 	// Rewriting replaces the entry instead of duplicating it.
 	if err := deploy.WriteSandboxRemote(root, "sandbox", engine.RemoteConfig{
 		Host: "127.0.0.1", Port: 2345, User: deploy.SandboxUser, Sandbox: true,
-		Path: "/home/deployer/public_html", DeployPath: "/home/deployer/.deployer",
+		Path:   "/home/deployer/public_html",
+		Deploy: &engine.DeployConfig{DeployPath: "/home/deployer/.deployer"},
 	}); err != nil {
 		t.Fatalf("rewrite sandbox remote: %v", err)
 	}
@@ -746,7 +750,7 @@ func TestSandboxUpCreatesTheContainerAndWritesTheRemote(t *testing.T) {
 	if !set {
 		t.Fatal("up did not write the sandbox remote")
 	}
-	if remote.Port != 49153 || remote.Repository != deploy.SandboxRepoPath {
+	if remote.Port != 49153 || remote.Deploy.Repository != deploy.SandboxRepoPath {
 		t.Fatalf("remote = %+v, want the published port and the mounted mirror", remote)
 	}
 	if !remote.Sandbox {

@@ -33,10 +33,11 @@ remotes:
     host: 127.0.0.1
     user: deployer
     path: `+filepath.Join(root, "public_html")+`
-    deploy_path: `+filepath.Join(root, ".deployer")+`
-    branch: main
-    repository: `+repository+`
     local: true
+    deploy:
+      deploy_path: `+filepath.Join(root, ".deployer")+`
+      branch: main
+      repository: `+repository+`
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {
@@ -222,9 +223,10 @@ remotes:
     host: 127.0.0.1
     user: deployer
     path: `+filepath.Join(root, "public_html")+`
-    deploy_path: `+filepath.Join(root, ".deployer")+`
-    branch: main
     local: true
+    deploy:
+      deploy_path: `+filepath.Join(root, ".deployer")+`
+      branch: main
 `)
 	cfg, _, err := engine.LoadConfigFromDir(root, true)
 	if err != nil {

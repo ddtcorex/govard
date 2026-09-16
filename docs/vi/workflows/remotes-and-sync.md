@@ -274,9 +274,10 @@ Sync và deploy đọc hai path khác nhau từ cùng một block remote, và ch
 | Trường | Ý nghĩa |
 | --- | --- |
 | `path` | **docroot đang được phục vụ** — nơi web server trả lời request. Việc nó không tồn tại, là symlink hay là thư mục thật chính là thứ quyết định cách `govard deploy` publish một release. |
-| `deploy_path` (hoặc `deploy.path`) | **layout root** chứa `releases/`, `shared/` và `.dep/`. Nếu bỏ trống, nó được dò từ target và chỉ được chấp nhận khi đúng một ứng viên khớp. |
+| `deploy.deploy_path` | **layout root** chứa `releases/`, `shared/` và `.dep/`. Nếu bỏ trống, nó được dò từ target và chỉ được chấp nhận khi đúng một ứng viên khớp. |
 
-Remote cũng có thể ghi đè bất kỳ key nào của block `deploy:` ở cấp dự án:
+Remote chỉ ghi đè hành vi deploy trong block `deploy:` lồng nhau — mỗi key
+đúng một cách viết, nên không thể xung đột:
 
 ```yaml
 remotes:
@@ -284,8 +285,8 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html       # docroot đang phục vụ (target này dùng symlink)
-    deploy_path: /home/deploy/.deployer  # releases/, shared/, .dep/
     deploy:
+      deploy_path: /home/deploy/.deployer  # releases/, shared/, .dep/
       publish: symlink                   # auto | symlink | in_place
       branch: main
       settings:
@@ -309,20 +310,21 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging        # khác nhau theo môi trường, giữ ở từng remote
+    deploy:
+      branch: staging        # khác nhau theo môi trường, giữ ở từng remote
 ```
 
-Thứ tự ưu tiên cho mỗi remote, trên thắng: giá trị ghi rõ ở remote → override
-`deploy.*` của remote đó → mặc định `deploy:` của dự án → hành vi cũ (thiếu
-branch mà không kèm flag vẫn lỗi, `deploy_path` trống vẫn dò từ target). Các
-dạng ghi ở remote như cũ vẫn chạy không đổi.
+Thứ tự ưu tiên cho mỗi remote, trên thắng: override `deploy.*` của remote
+đó → mặc định `deploy:` của dự án → hành vi cũ (thiếu branch mà không kèm
+flag vẫn lỗi, `deploy_path` trống vẫn dò từ target).
 
-Đặt cùng một key hai chỗ với giá trị khác nhau là lỗi cấu hình ghi rõ cả hai
-vị trí — không có bên nào thắng thầm lặng:
+Các dạng ghi flat ở remote (`remotes.<tên>.branch`,
+`remotes.<tên>.repository`, `remotes.<tên>.publish`,
+`remotes.<tên>.deploy_path`) đã bị xóa: trình đọc YAML bỏ qua key lạ trong
+lặng lẽ, nên loader từ chối chúng thật to thay vì deploy nhầm ref:
 
 ```
-remote "staging" sets "branch" in two places (remotes.staging.branch vs
-remotes.staging.deploy.branch) with different values; keep one
+remotes.staging: "branch" was removed; move it under remotes.staging.deploy.branch
 ```
 
 Giá trị path được giữ nguyên từng byte, kể cả dạng `~` — remote shell là nơi

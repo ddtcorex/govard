@@ -275,9 +275,10 @@ not the same directory:
 | Field | Meaning |
 | --- | --- |
 | `path` | the **served docroot** — what the web server answers from. Whether it is absent, a symlink or a real directory is what decides how `govard deploy` publishes a release. |
-| `deploy_path` (or `deploy.path`) | the **layout root** holding `releases/`, `shared/` and `.dep/`. Omitted, it is probed from the target and adopted only when exactly one candidate matches. |
+| `deploy.deploy_path` | the **layout root** holding `releases/`, `shared/` and `.dep/`. Omitted, it is probed from the target and adopted only when exactly one candidate matches. |
 
-A remote may also override any key of the project-level `deploy:` block:
+A remote overrides deploy behavior in its nested `deploy:` block only — there
+is exactly one spelling per key, so no conflict is possible:
 
 ```yaml
 remotes:
@@ -285,8 +286,8 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html       # served docroot (symlink on this target)
-    deploy_path: /home/deploy/.deployer  # releases/, shared/, .dep/
     deploy:
+      deploy_path: /home/deploy/.deployer  # releases/, shared/, .dep/
       publish: symlink                   # auto | symlink | in_place
       branch: main
       settings:
@@ -310,20 +311,22 @@ remotes:
     host: staging.example.com
     user: deploy
     path: /home/deploy/public_html
-    branch: staging        # differs per environment, stays per remote
+    deploy:
+      branch: staging        # differs per environment, stays per remote
 ```
 
-Precedence per remote, top wins: an explicit remote-level value → the remote
-`deploy.*` override → the project `deploy:` default → the previous behavior
-(branch still required without flags, empty `deploy_path` still probes the
-target). The old per-remote forms keep working unchanged.
+Precedence per remote, top wins: the remote `deploy.*` override → the project
+`deploy:` default → the previous behavior (branch still required without
+flags, empty `deploy_path` still probes the target).
 
-Setting the same key in both places with different values is a configuration
-error naming both locations — there is no silent winner:
+The flat remote-level forms (`remotes.<name>.branch`,
+`remotes.<name>.repository`, `remotes.<name>.publish`,
+`remotes.<name>.deploy_path`) were removed: the YAML decoder drops unknown
+keys silently, so the loader refuses them loudly instead of deploying the
+wrong ref:
 
 ```
-remote "staging" sets "branch" in two places (remotes.staging.branch vs
-remotes.staging.deploy.branch) with different values; keep one
+remotes.staging: "branch" was removed; move it under remotes.staging.deploy.branch
 ```
 
 Path values pass through untouched, including `~` forms — the remote shell

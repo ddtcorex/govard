@@ -53,10 +53,10 @@ func discoverDeployPath(ctx context.Context, host Host, candidates []string) (st
 	case 1:
 		return matches[0], nil
 	case 0:
-		return "", fmt.Errorf("%w: none of %s holds a deploy layout; set remotes.<name>.deploy_path",
+		return "", fmt.Errorf("%w: none of %s holds a deploy layout; set remotes.<name>.deploy.deploy_path",
 			ErrDeployPathMissing, strings.Join(candidates, ", "))
 	default:
-		return "", fmt.Errorf("%w: %s all hold a deploy layout; set remotes.<name>.deploy_path to choose one",
+		return "", fmt.Errorf("%w: %s all hold a deploy layout; set remotes.<name>.deploy.deploy_path to choose one",
 			ErrDeployPathMissing, strings.Join(matches, ", "))
 	}
 }

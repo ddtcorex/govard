@@ -42,10 +42,11 @@ remotes:
     host: 127.0.0.1
     user: deployer
     path: %s/public_html
-    deploy_path: %s/.deployer
-    branch: main
-    repository: %s
     local: true
+    deploy:
+      deploy_path: %s/.deployer
+      branch: main
+      repository: %s
 `, deployRoot, deployRoot, origin)
 	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(localOverride), 0o644); err != nil {
 		t.Fatalf("failed to write .govard.local.yml: %v", err)
@@ -146,10 +147,11 @@ remotes:
     host: 127.0.0.1
     user: deployer
     path: %s/public_html
-    deploy_path: %s/.deployer
-    branch: main
-    repository: %s
     local: true
+    deploy:
+      deploy_path: %s/.deployer
+      branch: main
+      repository: %s
 `, deployRoot, deployRoot, origin)
 	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(override), 0o644); err != nil {
 		t.Fatalf("failed to write .govard.local.yml: %v", err)
@@ -208,9 +210,10 @@ func TestDeployDiscoversAnExistingLayoutWhenNoDeployPathIsConfigured(t *testing.
     host: 127.0.0.1
     user: deployer
     path: %s/public_html
-    branch: main
-    repository: %s
     local: true
+    deploy:
+      branch: main
+      repository: %s
 `, deployRoot, origin)
 	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(override), 0o644); err != nil {
 		t.Fatalf("write .govard.local.yml: %v", err)
@@ -319,10 +322,11 @@ remotes:
     host: 127.0.0.1
     user: deployer
     path: %s/public_html
-    deploy_path: %s/.deployer
-    branch: main
-    repository: %s
     local: true
+    deploy:
+      deploy_path: %s/.deployer
+      branch: main
+      repository: %s
 `, deployRoot, deployRoot, origin)
 	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(override), 0o644); err != nil {
 		t.Fatalf("failed to write .govard.local.yml: %v", err)

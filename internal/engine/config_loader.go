@@ -90,6 +90,13 @@ func LoadConfigFromDirWithProfile(root string, requireBase bool, profile string)
 		return Config{}, nil, fmt.Errorf("%s not found", BaseConfigFile)
 	}
 
+	// The flat remote topology keys decode to nothing, so they must be
+	// rejected on the raw map: silently dropping a branch would deploy the
+	// wrong ref with a green preflight.
+	if err := RejectRemovedRemoteDeployKeys(merged); err != nil {
+		return Config{}, nil, err
+	}
+
 	var cfg Config
 	payload, err := yaml.Marshal(merged)
 	if err != nil {

@@ -151,9 +151,10 @@ remotes:
     host: staging.example.invalid
     user: deploy
     path: /srv/app/public_html
-    deploy_path: /srv/app
-    branch: main
-    repository: git@example.invalid:acme/demo.git
+    deploy:
+      deploy_path: /srv/app
+      branch: main
+      repository: git@example.invalid:acme/demo.git
 YAML
 
 set +e

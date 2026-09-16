@@ -155,7 +155,7 @@ remotes:
     user: m2-deploy
     path: /home/m2-deploy/public_html     # docroot đang được phục vụ: một symlink
     deploy:
-      path: /home/m2-deploy/.deployer     # releases/, shared/, .dep/
+      deploy_path: /home/m2-deploy/.deployer  # releases/, shared/, .dep/
       settings:
         php_bin: php8.3
         composer_bin: composer
@@ -225,7 +225,7 @@ remotes:
     user: deploy
     path: /var/www/shop                # một thư mục THẬT, được phục vụ trực tiếp
     deploy:
-      path: /var/www/shop              # releases/ và shared/ nằm dưới nó
+      deploy_path: /var/www/shop          # releases/ và shared/ nằm dưới nó
       settings:
         php_bin: php8.2
         composer_bin: composer

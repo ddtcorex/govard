@@ -1,6 +1,10 @@
 package engine
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
 // DefaultKeepReleases is how many releases a deploy keeps on the target. It
 // mirrors the reference project's Deployer setting so a migrated project does
@@ -19,8 +23,9 @@ type DeployConfig struct {
 	ArtifactDir        string `yaml:"artifact_dir,omitempty"`
 	DBBackup           bool   `yaml:"db_backup,omitempty"`
 	// Deploy topology defaults. Each is the project-wide default for the
-	// same-named remote field; an explicitly configured remote value always
-	// wins. Remote-level forms stay supported as shorthand (see ResolveOptions).
+	// same-named key under `remotes.<name>.deploy:`; an explicitly configured
+	// remote value always wins. There is exactly one place per layer, so no
+	// conflict check is needed.
 	Repository string             `yaml:"repository,omitempty"`
 	Branch     string             `yaml:"branch,omitempty"`
 	Publish    string             `yaml:"publish,omitempty"`
@@ -47,6 +52,68 @@ type DeployHookConfig struct {
 	Run      string `yaml:"run"`
 	RunOn    string `yaml:"run_on,omitempty"`
 	Optional bool   `yaml:"optional,omitempty"`
+}
+
+// RemovedRemoteDeployKeys are the former remote-level topology shorthands.
+// They were removed in favor of the single nested form
+// `remotes.<name>.deploy.<key>`: two spellings for one value caused the
+// conflict class the old checker patched over. The YAML decoder drops unknown
+// keys silently, so the loader must reject them explicitly on the raw merged
+// map before decoding, or a deploy would run against the wrong ref with no
+// error at all.
+var RemovedRemoteDeployKeys = []string{"branch", "repository", "publish", "deploy_path"}
+
+// ErrRemovedRemoteDeployKey marks a config that still uses a removed flat
+// remote topology key. It travels wrapped so command layers can classify the
+// failure as a configuration error (exit 4) instead of a usage error.
+var ErrRemovedRemoteDeployKey = errors.New("flat remote deploy topology is no longer supported")
+
+// RejectRemovedRemoteDeployKeys fails a merged config whose remotes section
+// still uses a removed flat topology key. An explicitly empty value reads the
+// same as an absent one, so only a set value is rejected.
+func RejectRemovedRemoteDeployKeys(merged map[string]interface{}) error {
+	remotes, ok := stringMap(merged["remotes"])
+	if !ok {
+		return nil
+	}
+	for name, raw := range remotes {
+		remote, ok := stringMap(raw)
+		if !ok {
+			continue
+		}
+		for _, key := range RemovedRemoteDeployKeys {
+			value, present := remote[key]
+			if !present || value == nil {
+				continue
+			}
+			if text, ok := value.(string); ok && strings.TrimSpace(text) == "" {
+				continue
+			}
+			return fmt.Errorf("%w: remotes.%s sets %q; move it under remotes.%s.deploy.%s", ErrRemovedRemoteDeployKey, name, key, name, key)
+		}
+	}
+	return nil
+}
+
+// stringMap reads a decoded YAML mapping regardless of the key type the
+// decoder produced.
+func stringMap(raw interface{}) (map[string]interface{}, bool) {
+	switch typed := raw.(type) {
+	case map[string]interface{}:
+		return typed, true
+	case map[interface{}]interface{}:
+		converted := make(map[string]interface{}, len(typed))
+		for key, value := range typed {
+			text, ok := key.(string)
+			if !ok {
+				return nil, false
+			}
+			converted[text] = value
+		}
+		return converted, true
+	default:
+		return nil, false
+	}
 }
 
 // KeepReleasesOr returns the configured keep_releases or the default. A
@@ -88,11 +155,6 @@ func NormalizeDeployConfig(config *Config) {
 	}
 
 	for name, remote := range config.Remotes {
-		remote.Branch = strings.TrimSpace(remote.Branch)
-		remote.Repository = strings.TrimSpace(remote.Repository)
-		remote.DeployPath = strings.TrimSpace(remote.DeployPath)
-		remote.Publish = strings.ToLower(strings.TrimSpace(remote.Publish))
-
 		if remote.Deploy != nil {
 			override := *remote.Deploy
 			override.ArtifactDir = strings.TrimSpace(override.ArtifactDir)
