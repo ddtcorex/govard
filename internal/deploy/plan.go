@@ -148,7 +148,7 @@ func (p Plan) From(id string) (Plan, bool) {
 	}
 	steps := make([]Step, len(p.Steps)-index)
 	copy(steps, p.Steps[index:])
-	return Plan{Remote: p.Remote, Steps: steps}, true
+	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}, true
 }
 
 // Only returns the sub-plan holding just the named steps, in plan order. A name
@@ -165,7 +165,7 @@ func (p Plan) Only(ids ...string) Plan {
 			steps = append(steps, step)
 		}
 	}
-	return Plan{Remote: p.Remote, Steps: steps}
+	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // MissingVerifyWarning returns the warning a deploy must print when it migrates
@@ -225,7 +225,7 @@ func (p Plan) ForBuildMode(mode string) Plan {
 	if artifact {
 		steps = moveArtifactBeforeTheBuildTasks(steps)
 	}
-	return Plan{Remote: p.Remote, Steps: steps}
+	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // moveArtifactBeforeTheBuildTasks puts `deploy:artifact` where the mode needs it:
@@ -299,7 +299,7 @@ func (p Plan) withoutMaintenanceWindow() Plan {
 			steps[idx].SkipReason = "a symlink activation is atomic and nothing in this plan changes state the live release depends on"
 		}
 	}
-	return Plan{Remote: p.Remote, Steps: steps}
+	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // closeWindowBefore moves the `maintenance:disable` step to immediately before
@@ -343,7 +343,7 @@ func (p Plan) closeWindowBefore(id string) Plan {
 		}
 		steps = append(steps, step)
 	}
-	return Plan{Remote: p.Remote, Steps: steps}
+	return Plan{Remote: p.Remote, Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // maintenanceWindow returns the plan indexes that run with the site in

@@ -443,3 +443,49 @@ func TestArtifactModeRunsTheApplicationTasksOnTheTargetAfterTheUpload(t *testing
 		t.Fatalf("deploy:artifact (step %d) must come before the tasks that need the code it brings (step %d)", artifactAt, assetsAt)
 	}
 }
+
+// Artifact mode must not decide the migration on the build machine: there is
+// no database there. The probe and the gated block travel to the target, which
+// runs the probe after receiving the artifact.
+func TestConditionalMigrateArtifactKeepsProbeAndGatedBlockOnTarget(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	recipe.ID = "sample-project"
+	recipe.MigrationProbe = &deploy.MigrationProbe{
+		Title:   "database schema is current",
+		Command: "echo probe-stub",
+	}
+	task := recipe.Task(deploy.TaskDBMigrate)
+	task.Command = "echo migrate"
+	task.NeedsMigration = true
+	recipe.ReplaceTask(task)
+
+	plan, err := deploy.BuildPlanForTest(recipe, nil, "sandbox")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	plan = plan.ForBuildMode(deploy.BuildArtifact)
+
+	if plan.MigrationProbe == nil || plan.MigrationProbe.Command == "" {
+		t.Fatal("artifact mode dropped the migration probe; the target would migrate unconditionally")
+	}
+	migrated := false
+	for _, step := range plan.Steps {
+		if step.ID == deploy.TaskDBMigrate {
+			migrated = true
+			if step.Skipped {
+				t.Fatalf("a gated task must run on the target, not be skipped: %s", step.SkipReason)
+			}
+			if !step.NeedsMigration {
+				t.Fatal("db:migrate lost NeedsMigration through ForBuildMode")
+			}
+		}
+	}
+	if !migrated {
+		t.Fatal("the artifact plan lost db:migrate entirely")
+	}
+
+	strategy := plan.ForPublishStrategy(deploy.PublishSymlink)
+	if strategy.MigrationProbe == nil {
+		t.Fatal("ForPublishStrategy dropped the migration probe")
+	}
+}

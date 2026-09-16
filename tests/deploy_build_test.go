@@ -385,3 +385,38 @@ func TestBuildArtifactDirLeavesApplicationTasksToTheTarget(t *testing.T) {
 		t.Fatalf("a task that needs the application ran on the build machine (stat err = %v)", err)
 	}
 }
+
+// A task gated on the migration probe must not run on the build machine
+// either: there is no database there, so the probe cannot answer and the task
+// cannot be decided. It travels to the target like a NeedsApplication task.
+func TestBuildArtifactDirLeavesMigrationTasksToTheTarget(t *testing.T) {
+	work, revision := seedBuildRepo(t)
+	output := filepath.Join(t.TempDir(), "artifact")
+
+	recipe := deploy.DefaultRecipe()
+	recipe.MigrationProbe = &deploy.MigrationProbe{
+		Title:   "database schema is current",
+		Command: "echo probe-stub",
+	}
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskVendors,
+		deploy.Task{ID: deploy.TaskVendors, Command: "echo built > from-the-builder.txt"})
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskCompile,
+		deploy.Task{ID: deploy.TaskCompile, Command: "echo built > needs-the-migration-decision.txt", NeedsMigration: true})
+
+	if _, err := deploy.BuildArtifactDir(context.Background(), deploy.BuildRequest{
+		Recipe:    recipe,
+		Options:   deploy.Options{Revision: revision},
+		Vars:      deploy.NewVars(),
+		WorkDir:   work,
+		OutputDir: output,
+	}); err != nil {
+		t.Fatalf("build artifact: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(output, "from-the-builder.txt")); err != nil {
+		t.Fatalf("the builder must still run the tasks it can: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(output, "needs-the-migration-decision.txt")); !os.IsNotExist(err) {
+		t.Fatalf("a task gated on the migration probe ran on the build machine (stat err = %v)", err)
+	}
+}
