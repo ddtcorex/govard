@@ -350,8 +350,10 @@ deploy:
 **Cái gì chạy ở đâu.** `build:assets` là no-op: điều kiện chặn so `developer` với
 `developer` và bỏ qua cả block, dù có split hay không. Magento sau đó sinh static
 file theo nhu cầu khi ứng dụng được duyệt. Mọi thứ còn lại — Composer, DI compile,
-build frontend bằng Node, `setup:upgrade`, `app:config:import`, `cache:flush`,
-verify — vẫn chạy.
+build frontend bằng Node, `cache:flush`, verify — vẫn chạy. `setup:upgrade`,
+`app:config:import` và maintenance window giờ có điều kiện: probe chạy
+`setup:db:status` trước, và deploy chỉ đổi code sẽ bỏ qua cả sáu task downtime mà
+không bao giờ mở window.
 
 **Diễn tập.**
 
@@ -363,7 +365,9 @@ govard deploy releases sandbox        # xác nhận cái gì đã lên live
 
 **Cần chờ đợi gì.** Nhanh hơn case 3 đáng kể trên cùng dự án: lượt static bị bỏ qua.
 Request đầu tiên tới một trang sau deploy chậm hơn trong lúc Magento compile những
-gì nó cần.
+gì nó cần. Deploy cùng một revision hai lần với `--force` và lần thứ hai sẽ cho thấy
+gate: probe exit `0`, sáu task downtime báo `skipped — db up-to-date (probe exit 0)`,
+và site không bao giờ mở maintenance window.
 
 **Những gì hay hỏng.**
 

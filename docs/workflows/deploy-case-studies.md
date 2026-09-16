@@ -354,8 +354,10 @@ deploy:
 **What runs where.** `build:assets` is a no-op: the guard compares `developer`
 against `developer` and skips the whole block, split or not. Magento then generates
 static files on demand as the application is browsed. Everything else — Composer,
-DI compile, the frontend Node build, `setup:upgrade`, `app:config:import`,
-`cache:flush`, verify — still runs.
+DI compile, the frontend Node build, `cache:flush`, verify — still runs.
+`setup:upgrade`, `app:config:import` and the maintenance window are conditional now:
+the probe runs `setup:db:status` first, and a code-only deploy skips all six downtime
+tasks without ever opening the window.
 
 **Rehearse it.**
 
@@ -367,7 +369,10 @@ govard deploy releases sandbox        # confirm what went live
 
 **What to expect.** Materially faster than case 3 on the same project: the static
 pass is skipped. The first request to a page after the deploy is slower while
-Magento compiles what it needs.
+Magento compiles what it needs. Deploy the same revision twice with `--force` and
+the second run shows the gate: the probe exits `0`, the six downtime tasks report
+`skipped — db up-to-date (probe exit 0)`, and the site never opens a maintenance
+window.
 
 **What goes wrong.**
 

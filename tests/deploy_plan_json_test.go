@@ -39,6 +39,7 @@ type planDocument struct {
 		Skipped          bool   `json:"skipped"`
 		SkipReason       string `json:"skip_reason"`
 		NeedsApplication bool   `json:"needs_application"`
+		NeedsMigration   bool   `json:"needs_migration,omitempty"`
 	} `json:"steps"`
 }
 
@@ -66,6 +67,7 @@ type planDocumentStep = struct {
 	Skipped          bool   `json:"skipped"`
 	SkipReason       string `json:"skip_reason"`
 	NeedsApplication bool   `json:"needs_application"`
+	NeedsMigration   bool   `json:"needs_migration,omitempty"`
 }
 
 // planProject writes a project whose plan exercises every fact the document has
@@ -289,5 +291,24 @@ func TestDeployPlanWithoutTheFlagStillPrintsTheTree(t *testing.T) {
 	}
 	if json.Valid([]byte(printed)) {
 		t.Error("without --json the output must not be a JSON document")
+	}
+}
+
+// The machine-readable plan carries the gate per step, so a pipeline can tell
+// "runs unconditionally" from "runs when the probe says drifted".
+func TestDeployPlanJSONCarriesNeedsMigration(t *testing.T) {
+	conditionalMigratePlanProject(t)
+
+	printed := runPlanJSON(t, "server")
+
+	var document planDocument
+	if err := json.Unmarshal([]byte(printed), &document); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, printed)
+	}
+	if !document.step(t, "db:migrate").NeedsMigration {
+		t.Error("db:migrate must carry needs_migration in the JSON plan")
+	}
+	if document.step(t, "app:cache:flush").NeedsMigration {
+		t.Error("app:cache:flush must not carry needs_migration in the JSON plan")
 	}
 }

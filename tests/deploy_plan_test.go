@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"govard/internal/cmd"
 	"govard/internal/deploy"
 )
 
@@ -418,5 +420,74 @@ func TestExecutorDoesNotRunASkippedMaintenanceStep(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("a symlink activation with nothing to migrate ran maintenance:enable")
+	}
+}
+
+// conditionalMigratePlanProject writes a Magento2 project, whose recipe gates
+// its downtime block on the migration probe. Both plan renderings (human and
+// JSON) are asserted against it.
+func conditionalMigratePlanProject(t *testing.T) {
+	t.Helper()
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".govard.yml"), `
+project_name: sample
+framework: magento2
+domain: sample.test
+remotes:
+  local:
+    host: 127.0.0.1
+    user: deployer
+    path: `+filepath.Join(root, "public_html")+`
+    local: true
+    deploy:
+      deploy_path: `+filepath.Join(root, ".deployer")+`
+      branch: main
+      repository: `+origin+`
+`)
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	// The cobra commands are package-level, so a flag another test sets stays
+	// set for this one (a JSON run before this test would print the document
+	// here). Reset everything the plan command touches.
+	t.Cleanup(func() {
+		flags := cmd.DeployPlanCommand().Flags()
+		_ = flags.Set("build", "auto")
+		_ = flags.Set("artifact-dir", "")
+		_ = flags.Set("json", "false")
+	})
+}
+
+// A gated step cannot be shown as "will run": the plan phase runs no commands,
+// so the probe has no answer yet. The tree must say so and name the probe.
+func TestConditionalMigratePlanRendersConditional(t *testing.T) {
+	conditionalMigratePlanProject(t)
+
+	out := &bytes.Buffer{}
+	command := cmd.RootCommandForTest()
+	command.SetArgs([]string{"deploy", "plan", "local"})
+	command.SetOut(out)
+	command.SetErr(io.Discard)
+	t.Cleanup(func() {
+		flags := cmd.DeployPlanCommand().Flags()
+		_ = flags.Set("build", "auto")
+		_ = flags.Set("artifact-dir", "")
+		_ = flags.Set("json", "false")
+	})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("deploy plan: %v\n%s", err, out.String())
+	}
+	printed := out.String()
+	if !strings.Contains(printed, "conditional (probe at runtime)") {
+		t.Errorf("a gated step must render conditional, got:\n%s", printed)
+	}
+	if !strings.Contains(printed, "probe:") || !strings.Contains(printed, "exit 0 = skip") {
+		t.Errorf("the plan must name the probe and its exit contract, got:\n%s", printed)
 	}
 }
