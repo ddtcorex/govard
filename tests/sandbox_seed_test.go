@@ -247,8 +247,32 @@ func TestMagentoEnvRewritePointsAtSandbox(t *testing.T) {
 	}
 }
 
-func TestMagentoEnvRewriteSkipsAbsentKeysLoudly(t *testing.T) {
-	in := []byte(`'db' => ['connection' => ['default' => ['host' => '127.0.0.1']]]`)
+func TestMagentoEnvRewriteLocalizesServiceHosts(t *testing.T) {
+	in := []byte(`'connection' => ['default' => ['host' => 'db', 'dbname' => 'magento']], 'cache' => ['frontend' => ['backend_options' => ['server' => 'redis', 'port' => '6379']]], 'session' => ['save' => 'redis', 'redis' => ['host' => 'redis']]`)
+	got, _, err := magento2.RewriteMagentoEnvForSandbox(in, map[string]string{})
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	// A single-container sandbox runs every service on loopback: any
+	// compose-network hostname left over would fail DNS at the first bin/magento
+	// call (found live: "getaddrinfo for db failed").
+	for _, want := range []string{`'host' => '127.0.0.1'`, `'server' => '127.0.0.1'`, `'port' => '6379'`, `'dbname' => 'magento'`} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("want %s in rewritten env, got: %s", want, got)
+		}
+	}
+	for _, gone := range []string{`'host' => 'db'`, `'server' => 'redis'`, `'host' => 'redis'`} {
+		if strings.Contains(string(got), gone) {
+			t.Errorf("compose hostname must not survive (%s): %s", gone, got)
+		}
+	}
+	// 'save' => 'redis' is a driver selector, not a hostname: it stays.
+	if !strings.Contains(string(got), `'save' => 'redis'`) {
+		t.Errorf("driver selectors are not hostnames and must survive: %s", got)
+	}
+}
+
+func TestMagentoEnvRewriteSkipsAbsentKeysLoudly(t *testing.T) {	in := []byte(`'db' => ['connection' => ['default' => ['host' => '127.0.0.1']]]`)
 	mapping := map[string]string{"base_url": "https://shop-sandbox.test/"}
 	got, skipped, err := magento2.RewriteMagentoEnvForSandbox(in, mapping)
 	if err != nil {
