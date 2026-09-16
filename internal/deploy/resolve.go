@@ -141,11 +141,15 @@ func ResolveOptions(cfg engine.Config, remote string, over Overrides) (Options, 
 		effective = mergeDeployConfig(cfg.Deploy, *remoteCfg.Deploy)
 	}
 
+	if err := checkDeployTopologyConflict(name, remoteCfg); err != nil {
+		return Options{}, err
+	}
+
 	opts := Options{
 		Remote:             name,
-		Branch:             remoteCfg.Branch,
-		Repository:         remoteCfg.Repository,
-		Publish:            remoteCfg.Publish,
+		Branch:             firstNonEmpty(remoteCfg.Branch, effective.Branch),
+		Repository:         firstNonEmpty(remoteCfg.Repository, effective.Repository),
+		Publish:            firstNonEmpty(remoteCfg.Publish, effective.Publish),
 		KeepReleases:       effective.KeepReleasesOr(),
 		Verify:             true,
 		DBBackup:           effective.DBBackup,
@@ -344,6 +348,18 @@ func mergeDeployConfig(project, override engine.DeployConfig) engine.DeployConfi
 	if override.ArtifactDir != "" {
 		merged.ArtifactDir = override.ArtifactDir
 	}
+	if override.Repository != "" {
+		merged.Repository = override.Repository
+	}
+	if override.Branch != "" {
+		merged.Branch = override.Branch
+	}
+	if override.Publish != "" {
+		merged.Publish = override.Publish
+	}
+	if override.DeployPath != "" {
+		merged.DeployPath = override.DeployPath
+	}
 	if override.DBBackup {
 		merged.DBBackup = true
 	}
@@ -368,6 +384,42 @@ func mergeDeployConfig(project, override engine.DeployConfig) engine.DeployConfi
 		merged.Settings[key] = value
 	}
 	return merged
+}
+
+// checkDeployTopologyConflict refuses a remote that sets a topology key in
+// both places with different values. The remote-level form is the historical
+// shorthand; the deploy hierarchy is canonical — when they disagree there is
+// no correct reading, so the file must pick one spot. Equal values are
+// accepted so a file can be explicit without being contradictory.
+func checkDeployTopologyConflict(name string, remoteCfg engine.RemoteConfig) error {
+	if remoteCfg.Deploy == nil {
+		return nil
+	}
+	over := remoteCfg.Deploy
+	pairs := [][3]string{
+		{remoteCfg.Branch, over.Branch, "branch"},
+		{remoteCfg.Repository, over.Repository, "repository"},
+		{remoteCfg.Publish, over.Publish, "publish"},
+		{remoteCfg.DeployPath, over.DeployPath, "deploy_path"},
+	}
+	for _, pair := range pairs {
+		if pair[0] != "" && pair[1] != "" && pair[0] != pair[1] {
+			return fmt.Errorf("%w: remote %q sets %q in two places (remotes.%s.%s vs remotes.%s.deploy.%s) with different values; keep one",
+				ErrInvalidConfiguration, name, pair[2], name, pair[2], name, pair[2])
+		}
+	}
+	return nil
+}
+
+// firstNonEmpty returns the first non-empty value: an explicitly configured
+// remote field always wins over the layered deploy default.
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func mergedSettings(settings map[string]any) map[string]any {

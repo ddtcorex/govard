@@ -296,6 +296,39 @@ remotes:
         url: https://staging.example.com/
 ```
 
+Bốn key topology nhận mặc định chung ở block `deploy:` của dự án, để giá trị
+dùng chung cho mọi remote chỉ viết một lần: `repository`, `branch`, `publish`
+và `deploy_path`.
+
+```yaml
+deploy:
+  repository: git@example.com:app/shop.git
+  keep_releases: 5
+remotes:
+  staging:
+    host: staging.example.com
+    user: deploy
+    path: /home/deploy/public_html
+    branch: staging        # khác nhau theo môi trường, giữ ở từng remote
+```
+
+Thứ tự ưu tiên cho mỗi remote, trên thắng: giá trị ghi rõ ở remote → override
+`deploy.*` của remote đó → mặc định `deploy:` của dự án → hành vi cũ (thiếu
+branch mà không kèm flag vẫn lỗi, `deploy_path` trống vẫn dò từ target). Các
+dạng ghi ở remote như cũ vẫn chạy không đổi.
+
+Đặt cùng một key hai chỗ với giá trị khác nhau là lỗi cấu hình ghi rõ cả hai
+vị trí — không có bên nào thắng thầm lặng:
+
+```
+remote "staging" sets "branch" in two places (remotes.staging.branch vs
+remotes.staging.deploy.branch) with different values; keep one
+```
+
+Giá trị path được giữ nguyên từng byte, kể cả dạng `~` — remote shell là nơi
+expand chúng, govard không bao giờ làm việc đó, nên đừng expand hay quote
+chúng đi.
+
 `govard deploy check <remote>` báo cáo layout nó tìm thấy và chiến lược publish mà layout đó hàm ý, trước khi bất cứ thứ gì được tạo.
 
 → Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment) và

@@ -17,10 +17,12 @@ govard deploy check staging              # preflight and report what the target 
 ```
 
 The target is a remote from `.govard.yml`. The branch, repository, deploy path
-and publish strategy come from the project `deploy:` block; a remote overrides
-them. `deploy_path` has no default, so a remote that omits it gets the layout the
-target already has — `releases/`, `shared/`, `.dep/` or a `current` symlink — and
-govard adopts it only when exactly one candidate matches, saying which. No layout
+and publish strategy default from the project `deploy:` block; a remote
+overrides them — either at remote level or under its own `deploy:` block, but
+not both with different values (that is a configuration error naming both
+places). A `deploy_path` set nowhere is probed from the target: govard adopts
+the layout already there — `releases/`, `shared/`, `.dep/` or a `current`
+symlink — only when exactly one candidate matches, saying which. No layout
 or several is a configuration error naming what was probed.
 
 This page describes the engine and every lever it has. For worked configurations —

@@ -15,12 +15,19 @@ type DeployConfig struct {
 	CommandTimeout string `yaml:"command_timeout,omitempty"`
 	LockStaleAfter string `yaml:"lock_stale_after,omitempty"`
 	// MaintenanceTimeout bounds one step inside the maintenance window.
-	MaintenanceTimeout string             `yaml:"maintenance_timeout,omitempty"`
-	ArtifactDir        string             `yaml:"artifact_dir,omitempty"`
-	DBBackup           bool               `yaml:"db_backup,omitempty"`
-	Verify             DeployVerifyConfig `yaml:"verify,omitempty"`
-	Settings           map[string]any     `yaml:"settings,omitempty"`
-	Hooks              []DeployHookConfig `yaml:"hooks,omitempty"`
+	MaintenanceTimeout string `yaml:"maintenance_timeout,omitempty"`
+	ArtifactDir        string `yaml:"artifact_dir,omitempty"`
+	DBBackup           bool   `yaml:"db_backup,omitempty"`
+	// Deploy topology defaults. Each is the project-wide default for the
+	// same-named remote field; an explicitly configured remote value always
+	// wins. Remote-level forms stay supported as shorthand (see ResolveOptions).
+	Repository string             `yaml:"repository,omitempty"`
+	Branch     string             `yaml:"branch,omitempty"`
+	Publish    string             `yaml:"publish,omitempty"`
+	DeployPath string             `yaml:"deploy_path,omitempty"`
+	Verify     DeployVerifyConfig `yaml:"verify,omitempty"`
+	Settings   map[string]any     `yaml:"settings,omitempty"`
+	Hooks      []DeployHookConfig `yaml:"hooks,omitempty"`
 }
 
 // DeployVerifyConfig configures the post-publish HTTP check.
@@ -65,6 +72,10 @@ func NormalizeDeployConfig(config *Config) {
 	config.Deploy.CommandTimeout = strings.TrimSpace(config.Deploy.CommandTimeout)
 	config.Deploy.LockStaleAfter = strings.TrimSpace(config.Deploy.LockStaleAfter)
 	config.Deploy.MaintenanceTimeout = strings.TrimSpace(config.Deploy.MaintenanceTimeout)
+	config.Deploy.Repository = strings.TrimSpace(config.Deploy.Repository)
+	config.Deploy.Branch = strings.TrimSpace(config.Deploy.Branch)
+	config.Deploy.Publish = strings.ToLower(strings.TrimSpace(config.Deploy.Publish))
+	config.Deploy.DeployPath = strings.TrimSpace(config.Deploy.DeployPath)
 	config.Deploy.Verify.URL = strings.TrimSpace(config.Deploy.Verify.URL)
 	config.Deploy.Verify.Timeout = strings.TrimSpace(config.Deploy.Verify.Timeout)
 
@@ -88,6 +99,10 @@ func NormalizeDeployConfig(config *Config) {
 			override.CommandTimeout = strings.TrimSpace(override.CommandTimeout)
 			override.LockStaleAfter = strings.TrimSpace(override.LockStaleAfter)
 			override.MaintenanceTimeout = strings.TrimSpace(override.MaintenanceTimeout)
+			override.Repository = strings.TrimSpace(override.Repository)
+			override.Branch = strings.TrimSpace(override.Branch)
+			override.Publish = strings.ToLower(strings.TrimSpace(override.Publish))
+			override.DeployPath = strings.TrimSpace(override.DeployPath)
 			override.Verify.URL = strings.TrimSpace(override.Verify.URL)
 			override.Verify.Timeout = strings.TrimSpace(override.Verify.Timeout)
 			for idx := range override.Hooks {
