@@ -108,6 +108,14 @@ func ValidateRecipe(recipe Recipe) error {
 		}
 		seen[setting.Key] = true
 	}
+	for _, task := range recipe.Tasks {
+		if task.NeedsMigration && task.Command == "" && task.Core == nil {
+			return fmt.Errorf("recipe %q marks %s NeedsMigration but implements nothing; a conditional step with no command can never run", recipe.ID, task.ID)
+		}
+		if task.NeedsMigration && recipe.MigrationProbe == nil {
+			return fmt.Errorf("recipe %q uses NeedsMigration without a migration probe; declare MigrationProbe or drop the flag", recipe.ID)
+		}
+	}
 	return nil
 }
 

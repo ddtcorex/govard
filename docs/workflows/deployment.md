@@ -557,6 +557,47 @@ setting `developer` here tells the deploy what the target runs, it does not make
 target run it. Check the target with `bin/magento deploy:mode:show` and set the
 setting to match.
 
+### Conditional migrate: skipping the downtime block
+
+Most deploys change code, not schema. Running `setup:upgrade` under a maintenance
+window for those is downtime the site does not need, so the Magento recipe asks the
+application first: before the publish block, the engine runs
+
+```
+bin/magento setup:db:status
+```
+
+and reads only its exit code — `0` means every module is up to date, `1` means code
+and database versions differ, `2` means an upgrade is required. On `0` the six
+downtime tasks are skipped with the reason `db up-to-date (probe exit 0)`:
+`maintenance:enable`, `app:workers:pause`, `app:config:import`, `db:migrate`,
+`app:workers:resume`, `maintenance:disable`. On `1` or `2` they run exactly as
+before. Any other exit — a dead database, a broken `env.php` — fails the deploy
+rather than guessing, because a skipped migration on a drifted database breaks the
+site while a failed probe merely stops the deploy.
+
+Three steps deliberately stay outside the gate and always run: `build:compile`
+(the compiler catches DI errors early, in both modes), `app:cache:flush` (code
+changes need a flush even with a current schema), and `db:backup` (the rollback
+insurance). The post-deploy verification already runs `setup:db:status` again, so a
+probe that lied is caught one stage later.
+
+The semantics around the gate:
+
+- **Resume re-probes.** A resumed run asks the probe again instead of trusting an
+  earlier skip — the code may have changed since. Steps an earlier run recorded as
+  `ok` are still carried over, so a resume never repeats a migration that already
+  succeeded.
+- **Artifact mode probes on the target.** A build machine has no database, so
+  `govard deploy build` leaves the probe and the gated block alone; the target runs
+  the probe after receiving the artifact.
+- **Rollback does not probe.** Returning to a previously-live release needs no
+  schema question.
+- **`govard deploy plan` shows the gate.** Gated steps render as
+  `conditional (probe at runtime)` with a `Migration probe: …; exit 0 = skip, 1/2
+  = migrate` line, because the plan phase runs no commands and the probe has no
+  answer yet. The JSON plan carries `needs_migration` per step for the same reason.
+
 ### The static content split
 
 `split_static_deployment` deploys the adminhtml and frontend static content in two
@@ -816,6 +857,10 @@ the build stage is in effect.
 
 An output directory that is not empty is refused, so a file left over from an
 earlier build cannot ship. Pass `--force` to replace its contents.
+
+For the full pipeline around these commands — integrity, lint, per-remote
+single-job ships sharing one workspace, manual rollbacks — see
+[CI pipelines](/workflows/ci-pipeline).
 
 ## Publishing
 

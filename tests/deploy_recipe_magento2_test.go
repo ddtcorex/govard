@@ -1016,3 +1016,34 @@ func TestMagento2StaticContentRunsOnTheTargetNotTheBuilder(t *testing.T) {
 		t.Fatalf("the artifact must be received before static content runs: artifact at %d, static content at %d", artifactAt, assetsAt)
 	}
 }
+
+// The downtime block runs only when the database drifted: the recipe gates it
+// on setup:db:status (exit 0 = current, 1/2 = migrate) while compile, the
+// cache flush and the backup always run.
+func TestMagento2ConditionalMigrateProbeAndFlags(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	if recipe.MigrationProbe == nil || recipe.MigrationProbe.Command == "" {
+		t.Fatal("magento2 recipe declares no migration probe")
+	}
+	if !strings.Contains(recipe.MigrationProbe.Command, "setup:db:status") {
+		t.Fatalf("the probe must be setup:db:status, got %q", recipe.MigrationProbe.Command)
+	}
+	flagged := map[string]bool{
+		deploy.TaskMaintenanceEnable:  true,
+		deploy.TaskWorkersPause:       true,
+		deploy.TaskAppConfigure:       true,
+		deploy.TaskDBMigrate:          true,
+		deploy.TaskWorkersResume:      true,
+		deploy.TaskMaintenanceDisable: true,
+	}
+	for _, task := range recipe.Tasks {
+		if want := flagged[task.ID]; task.NeedsMigration != want {
+			t.Errorf("task %s NeedsMigration = %v, want %v", task.ID, task.NeedsMigration, want)
+		}
+	}
+	for _, id := range []string{deploy.TaskCompile, deploy.TaskAppCacheFlush, deploy.TaskDBBackup, deploy.TaskAssets} {
+		if task := recipe.Task(id); task.NeedsMigration {
+			t.Errorf("task %s must not carry NeedsMigration", id)
+		}
+	}
+}

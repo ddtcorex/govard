@@ -525,6 +525,44 @@ thiết phải khớp nhau. Nó còn mang tính **mô tả**: govard không bao 
 đang chạy gì, chứ không làm target chạy như vậy. Hãy kiểm tra target bằng
 `bin/magento deploy:mode:show` rồi đặt setting cho khớp.
 
+### Migrate có điều kiện: bỏ qua khối downtime
+
+Hầu hết các lần deploy đổi code chứ không đổi schema. Chạy `setup:upgrade` dưới
+maintenance window cho những lần đó là downtime mà site không cần, nên recipe
+Magento hỏi ứng dụng trước: trước khối publish, engine chạy
+
+```
+bin/magento setup:db:status
+```
+
+và chỉ đọc exit code — `0` nghĩa là mọi module đều up-to-date, `1` nghĩa là version
+code và database lệch nhau, `2` nghĩa là bắt buộc upgrade. Với `0`, sáu task downtime
+được bỏ qua với lý do `db up-to-date (probe exit 0)`: `maintenance:enable`,
+`app:workers:pause`, `app:config:import`, `db:migrate`, `app:workers:resume`,
+`maintenance:disable`. Với `1` hoặc `2`, chúng chạy y như trước. Bất kỳ exit nào khác
+— database chết, `env.php` hỏng — đều làm deploy fail chứ không đoán mò, vì bỏ qua
+migration trên một database đã drift thì sập site, còn probe fail thì deploy chỉ dừng
+lại.
+
+Ba bước cố tình đứng ngoài gate và luôn chạy: `build:compile` (compiler bắt lỗi DI
+sớm, ở cả hai mode), `app:cache:flush` (đổi code vẫn cần flush dù schema còn hiện
+hành), và `db:backup` (bảo hiểm cho rollback). Bước kiểm chứng sau deploy vốn đã chạy
+lại `setup:db:status`, nên probe mà nói dối sẽ bị bắt ở stage ngay sau.
+
+Các ngữ nghĩa quanh gate:
+
+- **Resume chạy lại probe.** Lần resume hỏi lại probe thay vì tin lần skip trước —
+  code có thể đã đổi từ lúc đó. Các bước mà lần chạy trước đã ghi `ok` vẫn được giữ,
+  nên resume không bao giờ lặp lại migration đã thành công.
+- **Artifact mode probe trên target.** Máy build không có database, nên `govard
+  deploy build` để nguyên probe và khối gate; target chạy probe sau khi nhận artifact.
+- **Rollback không probe.** Quay về một release đã từng live thì không cần câu hỏi
+  schema.
+- **`govard deploy plan` hiện gate.** Các bước gate hiển thị
+  `conditional (probe at runtime)` kèm dòng `Migration probe: …; exit 0 = skip, 1/2
+  = migrate`, vì phase plan không chạy command nào nên probe chưa có câu trả lời.
+  JSON plan mang `needs_migration` cho từng bước cũng vì vậy.
+
 ### Tách static content
 
 `split_static_deployment` deploy static content của adminhtml và frontend thành
@@ -774,6 +812,10 @@ của stage build.
 
 Thư mục output không rỗng sẽ bị từ chối để một file còn sót từ lần build trước
 không thể lọt ra production. Dùng `--force` nếu muốn thay nội dung.
+
+Pipeline đầy đủ quanh các lệnh này — integrity, lint, ship một job cho mỗi
+remote chung một workspace, rollback tay — xem
+[Pipeline CI](/vi/workflows/ci-pipeline).
 
 ## Publish
 

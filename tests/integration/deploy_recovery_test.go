@@ -188,7 +188,10 @@ func TestDeployPlanShowsTheFrameworkRecipe(t *testing.T) {
 		result.AssertSuccess(t)
 
 		for _, want := range []string{
-			"bin/magento setup:upgrade",
+			// db:migrate is gated on the migration probe, so the plan shows the
+			// gate instead of the command that may never run.
+			"conditional (probe at runtime)",
+			"Migration probe: check whether the database schema is current",
 			"bin/magento setup:static-content:deploy",
 			"{{settings.static_content_locales_args}}",
 		} {

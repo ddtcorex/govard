@@ -444,8 +444,10 @@ func runBuildTasks(ctx context.Context, runner Runner, req BuildRequest, vars Va
 		// build machine. Measured on a real project, static content deployment
 		// compiled every theme and then failed with "The default website isn't
 		// defined" — with and without explicit themes and locales — because the
-		// store it asks about lives in the database.
-		if step.NeedsApplication {
+		// store it asks about lives in the database. A step gated on the
+		// migration probe stays for the same reason: the probe it depends on
+		// has no database to ask here.
+		if step.NeedsApplication || step.NeedsMigration {
 			fmt.Fprintf(out, "  → %s left to the target: it needs the deployed application\n", step.ID)
 			continue
 		}

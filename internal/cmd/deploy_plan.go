@@ -67,6 +67,11 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 		// operator reviewing the tree needs to know about.
 		fmt.Fprintln(out, "  the target decides: a symlink activation closes the maintenance window before the swap, an in-place one keeps it open across the rewrite")
 	}
+	if plan.MigrationProbe != nil {
+		// The plan phase runs no commands, so the probe has no answer yet: name
+		// it and its exit contract instead of guessing which gated steps run.
+		fmt.Fprintf(out, "Migration probe: %s (%s); exit 0 = skip, 1/2 = migrate\n", plan.MigrationProbe.Title, plan.MigrationProbe.Command)
+	}
 	fmt.Fprintln(out)
 
 	currentStage := deploy.Stage("")
@@ -81,6 +86,11 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 		}
 		implementation := step.Command
 		switch {
+		case step.NeedsMigration && !step.Skipped && implementation != "":
+			// A gated step cannot be shown as "will run": the probe answers at
+			// deploy time, so the tree shows the gate instead of a command that
+			// may never run.
+			implementation = "conditional (probe at runtime)"
 		case implementation != "" && !step.Skipped:
 		case step.SkipReason != "":
 			// The run's mode, not a missing recipe: name the reason so the
@@ -115,6 +125,7 @@ type planJSONStep struct {
 	Skipped          bool   `json:"skipped"`
 	SkipReason       string `json:"skip_reason,omitempty"`
 	NeedsApplication bool   `json:"needs_application,omitempty"`
+	NeedsMigration   bool   `json:"needs_migration,omitempty"`
 }
 
 // planJSONPayload is the machine-readable plan: schema 1, `kind: "plan"`.
@@ -178,6 +189,7 @@ func writePlanJSON(cmd *cobra.Command, remote string, options deploy.Options, pl
 			Implementation:   string(step.Implementation()),
 			Command:          step.Command,
 			NeedsApplication: step.NeedsApplication,
+			NeedsMigration:   step.NeedsMigration,
 		}
 		// The document has to agree with the executor, not with the printer: a
 		// step is skipped when the mode says so, and when it carries neither a
