@@ -320,11 +320,14 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 	// --prefer-dist` aborted on a patch while the same command with
 	// `--prefer-source` succeeded, because that path uses `git apply`.
 	packages := []string{"openssh-server", "rsync", "git", "ca-certificates", "procps", "patch"}
+	// Node comes from NodeSource (added below), whose nodejs bundle ships its
+	// own npm: the distribution npm would pair a stale client with the new
+	// runtime, which is exactly the combination that drops native bindings.
 	switch resolved {
 	case SandboxProfilePHP:
-		packages = append(packages, "nodejs", "npm", "unzip")
+		packages = append(packages, "nodejs", "unzip")
 	case SandboxProfileFull:
-		packages = append(packages, "nodejs", "npm", "unzip", "mariadb-server", "redis-server")
+		packages = append(packages, "nodejs", "unzip", "mariadb-server", "redis-server")
 	}
 	if servesWeb {
 		packages = append(packages, SandboxWebPackages(series)...)
@@ -392,6 +395,24 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
     apt-get update
 
 `, sandboxSuryKeyring, sandboxSuryKeyring, sandboxDebianCodename, sandboxSurySource)
+	}
+
+	// Node 24 from NodeSource, the same third-party-repository shape as sury
+	// above. Debian's nodejs (18) predates the Node 20+ current frontend
+	// toolchains require, and its npm mishandles their optional dependencies;
+	// the version tracks the Node series the projects deploy with. Basic ships
+	// no node toolchain, so it adds no repository.
+	if resolved != SandboxProfileBasic {
+		fmt.Fprintf(&builder, `RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl gnupg ca-certificates; \
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash -; \
+    apt-get install -y --no-install-recommends nodejs; \
+    node --version; \
+    npm --version; \
+    rm -rf /var/lib/apt/lists/*
+
+`)
 	}
 
 	// The pinned versions are tried first and the current ones are the fallback,
