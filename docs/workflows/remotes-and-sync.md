@@ -297,6 +297,38 @@ remotes:
         url: https://staging.example.com/
 ```
 
+Four topology keys accept a project-wide default in the `deploy:` block, so
+values shared by every remote are written once: `repository`, `branch`,
+`publish` and `deploy_path`.
+
+```yaml
+deploy:
+  repository: git@example.com:app/shop.git
+  keep_releases: 5
+remotes:
+  staging:
+    host: staging.example.com
+    user: deploy
+    path: /home/deploy/public_html
+    branch: staging        # differs per environment, stays per remote
+```
+
+Precedence per remote, top wins: an explicit remote-level value → the remote
+`deploy.*` override → the project `deploy:` default → the previous behavior
+(branch still required without flags, empty `deploy_path` still probes the
+target). The old per-remote forms keep working unchanged.
+
+Setting the same key in both places with different values is a configuration
+error naming both locations — there is no silent winner:
+
+```
+remote "staging" sets "branch" in two places (remotes.staging.branch vs
+remotes.staging.deploy.branch) with different values; keep one
+```
+
+Path values pass through untouched, including `~` forms — the remote shell
+expands them, govard never does, so do not expand or quote them away.
+
 `govard deploy check <remote>` reports the layout it found and the publish strategy
 that implies, before anything is created.
 

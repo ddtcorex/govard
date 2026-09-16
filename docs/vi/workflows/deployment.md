@@ -17,11 +17,13 @@ govard deploy check staging              # kiểm tra trước và báo target n
 ```
 
 Đích là một remote trong `.govard.yml`. Branch, repository, deploy path và chiến
-lược publish lấy từ block `deploy:` của dự án; mỗi remote có thể ghi đè.
-`deploy_path` không có mặc định, nên remote nào bỏ trống sẽ dùng layout mà target
-đã có sẵn — `releases/`, `shared/`, `.dep/` hoặc symlink `current` — và govard chỉ
-nhận khi đúng một ứng viên khớp, đồng thời nói rõ là cái nào. Không có layout nào,
-hoặc có nhiều cái, đều là lỗi cấu hình kèm danh sách đã dò.
+lược publish lấy mặc định từ block `deploy:` của dự án; mỗi remote có thể ghi đè —
+trực tiếp ở remote hoặc dưới block `deploy:` của chính nó, nhưng không được đặt
+hai chỗ khác nhau (đó là lỗi cấu hình ghi rõ cả hai vị trí). `deploy_path` không
+đặt ở đâu sẽ được dò từ target: govard chỉ nhận layout đã có sẵn — `releases/`,
+`shared/`, `.dep/` hoặc symlink `current` — khi đúng một ứng viên khớp, đồng thời
+nói rõ là cái nào. Không có layout nào, hoặc có nhiều cái, đều là lỗi cấu hình
+kèm danh sách đã dò.
 
 Trang này mô tả engine và mọi thứ có thể điều chỉnh trong đó. Về những cấu hình đã làm sẵn —
 một store Luma, một storefront Hyvä, nhiều theme và store view, chế độ developer so

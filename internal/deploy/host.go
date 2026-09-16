@@ -104,6 +104,17 @@ func HostForTest(deployPath string, runner Runner) Host {
 	return host
 }
 
+// effectiveDeployPath resolves the layout root for one remote: the explicit
+// remote field wins over the layered deploy default. Empty keeps the existing
+// probe-from-target behavior downstream.
+func effectiveDeployPath(cfg engine.Config, remoteCfg engine.RemoteConfig) string {
+	effective := cfg.Deploy
+	if remoteCfg.Deploy != nil {
+		effective = mergeDeployConfig(cfg.Deploy, *remoteCfg.Deploy)
+	}
+	return effective.DeployPath
+}
+
 // HostForConfig builds the host for one configured remote, resolving the deploy
 // path from configuration and the current path from the remote's `path`.
 func HostForConfig(cfg engine.Config, remoteName string, opts Options) (Host, error) {
@@ -116,7 +127,7 @@ func HostForConfig(cfg engine.Config, remoteName string, opts Options) (Host, er
 		Name:        name,
 		Local:       remoteCfg.Local,
 		Remote:      remoteCfg,
-		DeployPath:  remoteCfg.DeployPath,
+		DeployPath:  firstNonEmpty(remoteCfg.DeployPath, effectiveDeployPath(cfg, remoteCfg)),
 		CurrentPath: remoteCfg.Path,
 		Repository:  opts.Repository,
 	}
