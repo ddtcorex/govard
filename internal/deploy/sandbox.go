@@ -136,6 +136,38 @@ type SandboxSpec struct {
 	Requirements SandboxRequirements
 }
 
+// OriginProject is what `sandbox up` reads from the current project to shape
+// the derived sandbox: the framework recipe's sandbox requirements plus the
+// effective PHP series and profile. The caller (cmd) resolves these from the
+// project config and env; this package never reads project files.
+type OriginProject struct {
+	Name         string
+	Framework    string
+	PHP          string
+	Profile      string
+	Requirements SandboxRequirements
+}
+
+// SandboxSpecForOrigin builds the sandbox spec from the origin project: the
+// derived name, the origin PHP series (an explicit --php flag overrides this
+// before the call, so by here empty means "could not determine" and fails),
+// and the origin framework's package/extension/service requirements verbatim.
+func SandboxSpecForOrigin(origin OriginProject) (SandboxSpec, error) {
+	if strings.TrimSpace(origin.PHP) == "" {
+		return SandboxSpec{}, fmt.Errorf("cannot derive the sandbox PHP series for %q; pass --php explicitly", origin.Name)
+	}
+	php, err := ValidateSandboxPHP(origin.PHP)
+	if err != nil {
+		return SandboxSpec{}, err
+	}
+	return SandboxSpec{
+		Project:      DerivedProjectName(origin.Name),
+		PHP:          php,
+		Profile:      origin.Profile,
+		Requirements: origin.Requirements,
+	}, nil
+}
+
 // ValidateSandboxPHP normalizes a requested PHP series and refuses anything that is
 // not `major.minor`. The value is rendered into the image definition, so it is
 // checked rather than trusted: `8.4; rm -rf /` is a string, not a version.
