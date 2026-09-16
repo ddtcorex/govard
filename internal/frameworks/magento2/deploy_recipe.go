@@ -201,6 +201,26 @@ func DeployRecipe() deploy.Recipe {
 	fill(deploy.TaskMaintenanceDisable, "disable maintenance mode",
 		magentoMaintenanceGuard+" && {{php_bin}} bin/magento maintenance:disable; fi")
 
+	// The downtime block runs only when the database drifted. Adobe's contract
+	// for setup:db:status is the probe: exit 0 means every module is up to
+	// date, 1 means code and database versions differ, 2 means an upgrade is
+	// required — anything else fails the deploy rather than guessing. Compile,
+	// the cache flush and the backup deliberately stay outside the gate: the
+	// compiler catches DI errors early, code changes need a flush even with a
+	// current schema, and the backup is the rollback insurance.
+	recipe.MigrationProbe = &deploy.MigrationProbe{
+		Title:   "check whether the database schema is current",
+		Command: "cd {{release_path}} && {{php_bin}} bin/magento setup:db:status",
+	}
+	for _, id := range []string{
+		deploy.TaskMaintenanceEnable, deploy.TaskWorkersPause, deploy.TaskAppConfigure,
+		deploy.TaskDBMigrate, deploy.TaskWorkersResume, deploy.TaskMaintenanceDisable,
+	} {
+		task := recipe.Task(id)
+		task.NeedsMigration = true
+		recipe.ReplaceTask(task)
+	}
+
 	// The engine owns the path and the release record; the recipe owns the dump.
 	backup := recipe.Task(deploy.TaskDBBackup)
 	backup.Title = "dump the database into shared/backups"
