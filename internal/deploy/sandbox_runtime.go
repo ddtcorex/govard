@@ -52,6 +52,11 @@ type SandboxRuntime interface {
 	ContainerLabel(ctx context.Context, name, label string) (string, error)
 	PublishedPort(ctx context.Context, name string, containerPort int) (int, error)
 	Exec(ctx context.Context, name string, stdin []byte, args ...string) (string, error)
+	// RemoveVolumesByLabel deletes the named volumes carrying one label value
+	// (docker compose stamps com.docker.compose.project on every volume it
+	// creates). Zero matches is success: an `up` that never created named
+	// volumes has nothing to delete.
+	RemoveVolumesByLabel(ctx context.Context, label, value string) error
 }
 
 // SandboxBuildRequest is one image build.
@@ -172,6 +177,23 @@ func (d *DockerCLI) RemoveImage(ctx context.Context, image string) error {
 	_, err := d.run(ctx, SandboxCommand{Args: []string{"image", "rm", "--force", image}})
 	if err != nil {
 		return fmt.Errorf("remove the sandbox image %s: %w", image, err)
+	}
+	return nil
+}
+
+// RemoveVolumesByLabel deletes every volume carrying one label value. It
+// lists first and removes by name: `volume rm` accepts no filter, and
+// removing by listing keeps a sandbox that created no named volumes a
+// successful no-op.
+func (d *DockerCLI) RemoveVolumesByLabel(ctx context.Context, label, value string) error {
+	output, err := d.run(ctx, SandboxCommand{Args: []string{"volume", "ls", "--quiet", "--filter", "label=" + label + "=" + value}})
+	if err != nil {
+		return fmt.Errorf("list the %s=%s volumes: %w", label, value, err)
+	}
+	for _, name := range strings.Fields(output) {
+		if _, err := d.run(ctx, SandboxCommand{Args: []string{"volume", "rm", name}}); err != nil {
+			return fmt.Errorf("remove volume %s: %w", name, err)
+		}
 	}
 	return nil
 }

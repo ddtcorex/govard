@@ -79,8 +79,45 @@ type SandboxRequest struct {
 	Repository string
 	Recreate   bool
 	Purge      bool
-	Out        io.Writer
-	Probe      SandboxPortProbe
+	// NoSeed skips the snapshot: the sandbox starts empty (no DB, no media,
+	// no env file) and records no derivation.
+	NoSeed bool
+	// Volumes makes `down` delete the derived data volumes as well as the
+	// container. Without it `down` stops and removes the container and keeps
+	// every volume, so a rehearsal can resume tomorrow.
+	Volumes bool
+	// SeedOrigin names the origin project the snapshot is taken from and
+	// recorded under. Empty means "no derivation claimed".
+	SeedOrigin string
+	// SeedBlueprintRev is the origin blueprint revision at seed time, kept
+	// honestly: empty when the caller could not determine one.
+	SeedBlueprintRev string
+	// SeedOriginRunning gates the seed: a stopped origin is a refusal, never
+	// a silent empty sandbox. The caller (cmd) resolves it from the origin
+	// env before calling SandboxUp.
+	SeedOriginRunning bool
+	// SeedDB names the origin database to dump; the sandbox user/database of
+	// the same names are created before the import.
+	SeedDBContainer string
+	SeedDBUser      string
+	SeedDBPassword  string
+	SeedDBName      string
+	// SeedAppContainer, SeedMediaSource and SeedMediaTarget stream one media
+	// tree (tar through the caller) from the origin app container into the
+	// sandbox. Empty source skips the copy.
+	SeedAppContainer string
+	SeedMediaSource  string
+	SeedMediaTarget  string
+	// SeedEnvSource and SeedEnvTarget copy one env file through EnvRewriter.
+	// A nil rewriter skips the file (the registry wiring in cmd supplies the
+	// framework implementation; see Task 5).
+	SeedEnvSource  string
+	SeedEnvTarget  string
+	SeedEnvMapping map[string]string
+	// EnvRewriter rewrites the env file for the sandbox. Nil skips the file.
+	EnvRewriter SeedEnvRewriter
+	Out         io.Writer
+	Probe       SandboxPortProbe
 }
 
 // SandboxState is what the sandbox commands report and what `down` needs to undo.
@@ -317,6 +354,20 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 
+	// The snapshot runs once, on a fresh container, against the running
+	// services — never upfront (the container would not exist yet) and never
+	// on reuse (an existing sandbox keeps its data; --recreate is the
+	// refresh, and it arrives here as a fresh container). An empty SeedOrigin
+	// means plain `sandbox up` with no derivation: no seed, no record.
+	derived := NewDerivedFrom(request.SeedOrigin, request.SeedBlueprintRev)
+	seeded := false
+	if request.SeedOrigin != "" && !request.NoSeed && !exists {
+		if err := runSandboxSeed(ctx, runtime, request.out(), container, request); err != nil {
+			return nil, err
+		}
+		seeded = true
+	}
+
 	// The web port is read back, not assumed: Docker chooses it, and a rehearsal
 	// whose `verify.url` named the wrong port would fail at the last step of every
 	// deploy for a reason that has nothing to do with the release.
@@ -350,7 +401,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	}
 
 	packages, _ := runtime.ImageFile(ctx, image, SandboxPackagesTxt)
-	return &SandboxState{
+	state := &SandboxState{
 		Container:   container,
 		Image:       stateImage,
 		Profile:     profile,
@@ -366,7 +417,14 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		DeployPath:  paths.DeployPath,
 		CurrentPath: paths.Current,
 		Packages:    strings.TrimSpace(packages),
-	}, nil
+	}
+	// Only a run that seeded records a derivation: reuse keeps whatever the
+	// seeding run recorded (or nothing, for pre-derivation sandboxes), and a
+	// --no-seed run claims no origin at all.
+	if seeded {
+		state.DerivedFrom = &derived
+	}
+	return state, nil
 }
 
 // localBranch names the branch a checkout is on, and is empty for a detached
@@ -739,6 +797,15 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 			}
 		}
 		if err := runtime.RemoveContainer(ctx, state.Container); err != nil {
+			return nil, err
+		}
+	}
+	// Volumes are data, not runtime: plain `down` keeps them so a rehearsal
+	// resumes tomorrow. Only an explicit --volumes deletes the derived
+	// project's named volumes (matched by compose project label, so no caller
+	// has to know their names).
+	if request.Volumes && request.ProjectName != "" {
+		if err := runtime.RemoveVolumesByLabel(ctx, "com.docker.compose.project", request.ProjectName); err != nil {
 			return nil, err
 		}
 	}

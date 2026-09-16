@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -76,11 +77,13 @@ func init() {
 	deploySandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default: the base image's own)")
 	deploySandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	deploySandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
+	deploySandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: start with an empty sandbox (no DB, no media, no env file)")
 
 	deploySandboxResetCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	deploySandboxResetCmd.Flags().String("layout", "", "Seed a target the other deploy tool owns: deployer")
 
 	deploySandboxDownCmd.Flags().Bool("purge", false, "Also remove the image, the key and the mirror")
+	deploySandboxDownCmd.Flags().Bool("volumes", false, "Also delete the derived data volumes (plain down keeps them so a rehearsal resumes)")
 
 	deploySandboxCmd.AddCommand(deploySandboxUpCmd)
 	deploySandboxCmd.AddCommand(deploySandboxStatusCmd)
@@ -122,6 +125,8 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	layout, _ := cmd.Flags().GetString("layout")
 	recreate, _ := cmd.Flags().GetBool("recreate")
 	purge, _ := cmd.Flags().GetBool("purge")
+	noSeed, _ := cmd.Flags().GetBool("no-seed")
+	volumes, _ := cmd.Flags().GetBool("volumes")
 	// Naming a shape is what turns "reuse this sandbox" into "lay it out again".
 	// The `reset` command overrides this: wiping is what reset does.
 	reshapeDocRoot := cmd.Flags().Changed("docroot")
@@ -162,7 +167,36 @@ func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		Recreate:        recreate,
 		Purge:           purge,
 		Out:             cmd.OutOrStdout(),
+		NoSeed:          noSeed,
+		Volumes:         volumes,
+		// The snapshot derives from this project: its name for the record and
+		// its database for the data. Media, env file and rewrite arrive with
+		// the framework wiring; until then those sources stay empty and their
+		// steps skip.
+		SeedOrigin:        config.ProjectName,
+		SeedOriginRunning: originEnvRunning(cmd.Context(), config.ProjectName),
+		SeedDBContainer:   dbContainerName(config),
+		SeedDBUser:        defaultDBCredentialsForFramework(config.Framework).Username,
+		SeedDBPassword:    defaultDBCredentialsForFramework(config.Framework).Password,
+		SeedDBName:        defaultDBCredentialsForFramework(config.Framework).Database,
 	}, nil
+}
+
+// originEnvRunning reports whether the origin project's containers are up: the
+// seed gate needs it, and a stopped origin is a refusal rather than a silent
+// empty sandbox. Unknown (docker unreachable) counts as not running — the
+// seed's own error then names the remedy.
+func originEnvRunning(ctx context.Context, project string) bool {
+	names, err := engine.GetRunningProjectNames(ctx)
+	if err != nil {
+		return false
+	}
+	for _, name := range names {
+		if name == project {
+			return true
+		}
+	}
+	return false
 }
 
 func runDeploySandboxUp(cmd *cobra.Command, _ []string) error {
