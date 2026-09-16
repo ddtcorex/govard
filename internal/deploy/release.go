@@ -39,11 +39,28 @@ type Release struct {
 	Publish       PublishRecord  `json:"publish"`
 	Verify        VerifyRecord   `json:"verify"`
 	Database      DatabaseRecord `json:"database"`
-	Status        string         `json:"status"`
+	// Migration is the migration probe's verdict for this release, recorded
+	// when the probe resolves. A resume adopts a recorded migrate verdict
+	// instead of re-probing (see the executor): a recorded skip is not
+	// adopted, because drift may have appeared out of band since. Nil means
+	// the probe never resolved here — a record from before this existed, or
+	// a run that failed before the first gated step — and the probe runs.
+	Migration *MigrationRecord `json:"migration,omitempty"`
+	Status    string           `json:"status"`
 
 	// Path is where this release lives on the target. It is local knowledge,
 	// never part of the stored record.
 	Path string `json:"-"`
+}
+
+// MigrationRecord is one probe resolution: whether the NeedsMigration tasks
+// must run, the exit code that said so (0 = current, 1/2 = migrate), and
+// when. The executor writes it best-effort the moment the probe resolves,
+// alongside the step records it already stores after every step.
+type MigrationRecord struct {
+	Required   bool   `json:"required"`
+	ProbeExit  int    `json:"probe_exit"`
+	ResolvedAt string `json:"resolved_at"`
 }
 
 // CIRecord identifies the pipeline a deploy ran in, when it ran in one. The

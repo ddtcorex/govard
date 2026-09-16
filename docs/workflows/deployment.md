@@ -584,10 +584,15 @@ probe that lied is caught one stage later.
 
 The semantics around the gate:
 
-- **Resume re-probes.** A resumed run asks the probe again instead of trusting an
-  earlier skip — the code may have changed since. Steps an earlier run recorded as
-  `ok` are still carried over, so a resume never repeats a migration that already
-  succeeded.
+- **Resume adopts a recorded migrate verdict.** The probe's answer is stored in
+  the release record the moment it resolves, and a resumed run adopts a recorded
+  *migrate* verdict instead of asking again — the drift it records may have been
+  healed out of band since (an upgrade finished by hand), and a fresh probe would
+  then excuse the teardown the first run already started, stranding the
+  maintenance window open. A recorded *skip* is never adopted, because drift may
+  equally have appeared since; with no recorded migrate verdict the resume
+  re-probes. Steps an earlier run recorded as `ok` are still carried over, so a
+  resume never repeats a migration that already succeeded.
 - **Artifact mode probes on the target.** A build machine has no database, so
   `govard deploy build` leaves the probe and the gated block alone; the target runs
   the probe after receiving the artifact.

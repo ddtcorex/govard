@@ -551,8 +551,13 @@ lại `setup:db:status`, nên probe mà nói dối sẽ bị bắt ở stage nga
 
 Các ngữ nghĩa quanh gate:
 
-- **Resume chạy lại probe.** Lần resume hỏi lại probe thay vì tin lần skip trước —
-  code có thể đã đổi từ lúc đó. Các bước mà lần chạy trước đã ghi `ok` vẫn được giữ,
+- **Resume giữ verdict migrate đã ghi.** Câu trả lời của probe được lưu vào release
+  record ngay khi resolve, và lần resume giữ nguyên verdict *migrate* đã ghi thay vì
+  hỏi lại — drift mà nó ghi nhận có thể đã được xử lý ngoài pipeline từ lúc đó (ai đó
+  chạy tay setup:upgrade cho xong), và probe mới sẽ bỏ qua teardown mà lần chạy đầu
+  đã bắt đầu, để lại maintenance window mở. Verdict *skip* đã ghi thì không bao giờ
+  được giữ, vì drift cũng có thể mới xuất hiện; không có verdict migrate đã ghi thì
+  resume probe lại như thường. Các bước mà lần chạy trước đã ghi `ok` vẫn được giữ,
   nên resume không bao giờ lặp lại migration đã thành công.
 - **Artifact mode probe trên target.** Máy build không có database, nên `govard
   deploy build` để nguyên probe và khối gate; target chạy probe sau khi nhận artifact.
