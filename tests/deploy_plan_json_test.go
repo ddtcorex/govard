@@ -92,10 +92,11 @@ remotes:
     host: 127.0.0.1
     user: deployer
     path: `+filepath.Join(root, "public_html")+`
-    deploy_path: `+filepath.Join(root, ".deployer")+`
-    branch: main
-    repository: `+origin+`
     local: true
+    deploy:
+      deploy_path: `+filepath.Join(root, ".deployer")+`
+      branch: main
+      repository: `+origin+`
 `)
 	previous, err := os.Getwd()
 	if err != nil {

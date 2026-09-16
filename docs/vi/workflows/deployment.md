@@ -70,9 +70,9 @@ remotes:
     auth:
       method: keyfile
       key_path: ~/.ssh/staging
-    branch: main                            # tuỳ chọn; mặc định là HEAD local
     deploy:
-      path: /home/m2-staging/.deployer      # releases/, shared/, .dep/ nằm ở đây
+      branch: main                          # tuỳ chọn; mặc định là HEAD local
+      deploy_path: /home/m2-staging/.deployer  # releases/, shared/, .dep/ nằm ở đây
       settings:
         php_bin: php8.3
         composer_bin: composer

@@ -33,10 +33,11 @@ remotes:
     host: 127.0.0.1
     user: deployer
     path: `+filepath.Join(root, "public_html")+`
-    deploy_path: `+filepath.Join(root, ".deployer")+`
-    branch: main
-    repository: `+origin+`
     local: true
+    deploy:
+      deploy_path: `+filepath.Join(root, ".deployer")+`
+      branch: main
+      repository: `+origin+`
 `)
 	// An in-place layout: the served path is a real directory, which is the one
 	// the warning is about.

@@ -259,7 +259,7 @@ func deployHostFor(ctx context.Context, config engine.Config, remote string, opt
 	}
 	host.DeployPath = discovered
 	if out != nil {
-		fmt.Fprintf(out, "using the deploy layout already on %s: %s (set remotes.%s.deploy_path to make it explicit)\n",
+		fmt.Fprintf(out, "using the deploy layout already on %s: %s (set remotes.%s.deploy.deploy_path to make it explicit)\n",
 			remote, discovered, remote)
 	}
 	return host, nil
@@ -273,7 +273,8 @@ func configOrUsageError(err error) error {
 	case errors.Is(err, deploy.ErrUnknownAnchor),
 		errors.Is(err, deploy.ErrDuplicateHook),
 		errors.Is(err, deploy.ErrHookCycle),
-		errors.Is(err, deploy.ErrInvalidConfiguration):
+		errors.Is(err, deploy.ErrInvalidConfiguration),
+		errors.Is(err, engine.ErrRemovedRemoteDeployKey):
 		return &cli.ConfigError{Err: err}
 	default:
 		return &cli.UsageError{Err: err}

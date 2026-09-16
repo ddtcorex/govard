@@ -71,9 +71,9 @@ remotes:
     auth:
       method: keyfile
       key_path: ~/.ssh/staging
-    branch: main                            # optional; defaults to the local HEAD
     deploy:
-      path: /home/m2-staging/.deployer      # releases/, shared/, .dep/ live here
+      branch: main                          # optional; defaults to the local HEAD
+      deploy_path: /home/m2-staging/.deployer  # releases/, shared/, .dep/ live here
       settings:
         php_bin: php8.3
         composer_bin: composer
