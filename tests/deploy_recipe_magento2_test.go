@@ -1047,3 +1047,19 @@ func TestMagento2ConditionalMigrateProbeAndFlags(t *testing.T) {
 		}
 	}
 }
+
+// Composer on the sandbox clones private git repos the image cannot know at
+// build time, so host-key checking would fail every private VCS package
+// (found live: "Host key verification failed" for a git.sutunam.com repo on a
+// fresh sandbox). The dev environments already disable it in base.yml for the
+// same reason; the rehearsal box follows suit while production targets keep
+// real known_hosts.
+func TestMagento2SandboxImageDisablesGitHostKeyChecking(t *testing.T) {
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{Profile: deploy.SandboxProfileFull, PHP: "8.5", Requirements: magento2.DeployRecipe().Sandbox})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(dockerfile, "GIT_SSH_COMMAND") || !strings.Contains(dockerfile, "StrictHostKeyChecking=no") {
+		t.Fatalf("the sandbox image must let composer clone private repos without known_hosts, got:\n%s", dockerfile)
+	}
+}

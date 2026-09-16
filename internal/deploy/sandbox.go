@@ -438,6 +438,15 @@ RUN set -eux; \
 `, series, series)
 	}
 
+	// Composer on a rehearsal target clones private git repos the image cannot
+	// know at build time, so strict host-key checking would fail every private
+	// VCS package. The dev environments already disable it in base.yml for the
+	// same reason; production targets keep real known_hosts (infra-managed).
+	// Basic ships no PHP toolchain, so the variable would point at nothing.
+	if resolved != SandboxProfileBasic {
+		fmt.Fprintf(&builder, "\nENV GIT_SSH_COMMAND=\"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\"\n")
+	}
+
 	// Tools are phars the distribution does not package, installed the way
 	// Composer is. `curl` is installed here rather than assumed: the base package
 	// list has none, and only the sury branch adds it — a tool requested without
