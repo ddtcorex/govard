@@ -443,6 +443,8 @@ RUN set -eux; \
 	// VCS package. The dev environments already disable it in base.yml for the
 	// same reason; production targets keep real known_hosts (infra-managed).
 	// Basic ships no PHP toolchain, so the variable would point at nothing.
+	// The ENV covers `docker exec` paths; ~/.ssh/environment (below) covers
+	// SSH sessions, which never inherit container ENV.
 	if resolved != SandboxProfileBasic {
 		fmt.Fprintf(&builder, "\nENV GIT_SSH_COMMAND=\"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\"\n")
 	}
@@ -484,6 +486,14 @@ RUN set -eux; \
 	// so nothing can use it anyway.
 	fmt.Fprintf(&builder, "    useradd -m -d %s -u %d -g %d -s /bin/bash -p '*' %s; \\\n", SandboxHome, SandboxUserUID, SandboxUserGID, SandboxUser)
 	fmt.Fprintf(&builder, "    install -d -m 0700 -o %s -g %s %s/.ssh; \\\n", SandboxUser, SandboxUser, SandboxHome)
+	// SSH sessions do not inherit container ENV, so the GIT_SSH_COMMAND the
+	// image declares would never reach the recipe's composer step over SSH.
+	// ~/.ssh/environment (opted into above) carries it into every session.
+	// PermitUserEnvironment on a loopback-only rehearsal box whose only key is
+	// generated per sandbox is the documented tradeoff; production targets
+	// keep real known_hosts instead.
+	fmt.Fprintf(&builder, "    printf '%%s\\n' 'GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' > %s/.ssh/environment; \\\n", SandboxHome)
+	fmt.Fprintf(&builder, "    chown %s:%s %s/.ssh/environment; \\\n", SandboxUser, SandboxUser, SandboxHome)
 	fmt.Fprintf(&builder, "    passwd -l root\n")
 
 	if servesWeb {
@@ -510,6 +520,7 @@ RUN set -eux; \
       'PermitRootLogin no' \
       'PubkeyAuthentication yes' \
       'AuthorizedKeysFile .ssh/authorized_keys' \
+      'PermitUserEnvironment yes' \
       'UsePAM no' \
       'PrintMotd no' \
       > /etc/ssh/sshd_config.d/govard-sandbox.conf
