@@ -245,6 +245,15 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 			return fmt.Errorf("write the sandbox env file: %w", err)
 		}
 	}
+	// Exec runs as container root, so everything the seed wrote is root-owned
+	// while the pipeline runs as the deploy user: hand the tree over, or the
+	// first deploy dies in deploy:check on a non-writable deploy path (found
+	// live). Numeric IDs, never the name: the container's passwd is not
+	// guaranteed to resolve them, and chown accepts both.
+	if _, err := runtime.Exec(ctx, sandbox, nil, "chown", "-R",
+		fmt.Sprintf("%d:%d", SandboxUserUID, SandboxUserGID), SandboxDefaultPaths().DeployPath); err != nil {
+		return fmt.Errorf("hand the seeded tree to the deploy user: %w", err)
+	}
 	return nil
 }
 

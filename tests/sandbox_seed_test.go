@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -280,5 +281,24 @@ func TestSandboxSeedRegistryServesMagento2(t *testing.T) {
 func TestSandboxSeedRegistryIgnoresUnknownFrameworks(t *testing.T) {
 	if _, ok := engine.SandboxSeedFor("no-such-framework"); ok {
 		t.Fatal("an unregistered framework must report no seed definition")
+	}
+}
+
+func TestSandboxSeedHandsOwnershipToDeployer(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	runtime := deploy.NewDockerCLIForTest(fake.run)
+
+	if _, err := deploy.SandboxUp(context.Background(), runtime, deploy.LocalRunner{}, seedSandboxUpRequest(t, root, origin)); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	// Exec runs as container root, so every file the seed writes lands
+	// root-owned; the deploy pipeline runs as the deploy user and must own
+	// the tree, or deploy:check fails on a non-writable deploy path (found
+	// live: exit 1 on mkdir/test -w).
+	want := fmt.Sprintf("chown -R %d:%d", deploy.SandboxUserUID, deploy.SandboxUserGID)
+	if !fake.has(want) {
+		t.Errorf("the seed must hand the tree to the deploy user (%q), got: %v", want, fake.calls)
 	}
 }
