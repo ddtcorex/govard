@@ -112,6 +112,9 @@ func freshSandboxFake() *fakeSandboxRuntime {
 	// A real mysqladmin ping prints "mysqld is alive"; the wait accepts
 	// nothing less, so the fake answers the real contract.
 	fake.answers["mysqladmin ping"] = "mysqld is alive\n"
+	// The dump-binary probe asks per candidate; answer the first one the way
+	// a MariaDB container would.
+	fake.answers["command -v mariadb-dump"] = "/usr/bin/mariadb-dump\n"
 	return fake
 }
 
@@ -131,7 +134,7 @@ func TestSandboxUpWritesDerivedFromState(t *testing.T) {
 	if state.DerivedFrom.Origin != "seed-shop" {
 		t.Errorf("derived from = %q, want the origin project", state.DerivedFrom.Origin)
 	}
-	if !fake.has("mysqldump") {
+	if !fake.has("mariadb-dump -u magento") && !fake.has("mysqldump -u magento") {
 		t.Errorf("the seed must dump the origin database, got: %v", fake.calls)
 	}
 }

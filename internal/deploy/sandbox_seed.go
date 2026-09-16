@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -234,6 +235,11 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 		}
 		for _, key := range skipped {
 			fmt.Fprintf(out, "note: env key %q not present, left as-is\n", key)
+		}
+		// The shared tree does not exist until the first deploy links it: the
+		// seed is what creates the file's home.
+		if _, err := runtime.Exec(ctx, sandbox, nil, "mkdir", "-p", path.Dir(request.SeedEnvTarget)); err != nil {
+			return fmt.Errorf("prepare the sandbox env target: %w", err)
 		}
 		if _, err := runtime.Exec(ctx, sandbox, rewritten, "tee", request.SeedEnvTarget); err != nil {
 			return fmt.Errorf("write the sandbox env file: %w", err)
