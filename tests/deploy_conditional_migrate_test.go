@@ -53,11 +53,15 @@ func TestConditionalMigratePlanCarriesProbeAndFlag(t *testing.T) {
 type probeStubRunner struct {
 	inner     deploy.Runner
 	probeExit int
+	failOn    string
 	ran       []string
 }
 
 func (r *probeStubRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
 	r.ran = append(r.ran, command)
+	if r.failOn != "" && strings.Contains(command, r.failOn) {
+		return deploy.Result{ExitCode: 1}, &deploy.CommandError{Command: command, ExitCode: 1, Err: errors.New("stubbed step failure")}
+	}
 	if strings.Contains(command, "probe-stub") {
 		if r.probeExit == 0 {
 			return deploy.Result{}, nil
@@ -78,13 +82,14 @@ func conditionalMigrateTestPlan(t *testing.T) deploy.Plan {
 		{ID: deploy.TaskRelease, Command: "mkdir -p {{release_path}} && echo release-marker"},
 		{ID: deploy.TaskMaintenanceEnable, Command: "echo maintenance-enable-marker"},
 		{ID: deploy.TaskDBMigrate, Command: "echo db-migrate-marker"},
+		{ID: deploy.TaskMaintenanceDisable, Command: "echo maintenance-disable-marker"},
 		{ID: deploy.TaskAppCacheFlush, Command: "echo cache-flush-marker"},
 	})
 	recipe.MigrationProbe = &deploy.MigrationProbe{
 		Title:   "database schema is current",
 		Command: "cd {{release_path}} && echo probe-stub",
 	}
-	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskDBMigrate} {
+	for _, id := range []string{deploy.TaskMaintenanceEnable, deploy.TaskDBMigrate, deploy.TaskMaintenanceDisable} {
 		task := recipe.Task(id)
 		task.NeedsMigration = true
 		recipe.ReplaceTask(task)
@@ -170,5 +175,82 @@ func TestConditionalMigrateUninterpretableProbeFails(t *testing.T) {
 	}
 	if ranMarker(stub.ran, "db-migrate-marker") || ranMarker(stub.ran, "maintenance-enable-marker") {
 		t.Errorf("no gated task may run when the probe is uninterpretable (commands: %v)", stub.ran)
+	}
+}
+
+// runConditionalMigrateResume runs the plan twice on one host: the first run
+// is expected to fail (failOn names the step that breaks it), and the second
+// runs with Resume and a possibly changed probe answer. It returns the
+// commands each run issued, so the test can tell a re-probe from an adoption.
+func runConditionalMigrateResume(t *testing.T, stub *probeStubRunner, plan deploy.Plan, first, second deploy.Options, between func()) (firstRan, secondRan []string) {
+	t.Helper()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	host = host.WithRunner(stub)
+	release := deploy.NewReleaseForTest("1", "abc", "local")
+	if _, err := deploy.NewExecutor(host, first, io.Discard).Run(context.Background(), plan, deploy.NewVars(), release); err == nil {
+		t.Fatal("the first run must fail so the second has something to resume")
+	}
+	firstRan = append([]string(nil), stub.ran...)
+	stub.ran = nil
+	between()
+	release = deploy.NewReleaseForTest("1", "abc", "local")
+	if _, err := deploy.NewExecutor(host, second, io.Discard).Run(context.Background(), plan, deploy.NewVars(), release); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	return firstRan, append([]string(nil), stub.ran...)
+}
+
+func resumeOpts() deploy.Options {
+	return deploy.Options{Remote: "local", CommandTimeout: time.Minute, Resume: true}
+}
+
+// A recorded migrate verdict is sticky across resume: the database was
+// drifted when the first run probed it, so the resumed run must re-run the
+// migration (and its teardown) instead of trusting a fresh probe — the drift
+// may have been healed out of band after the failure, and a re-probe would
+// then excuse the very teardown the first run already started (maintenance
+// left enabled, workers left paused). Found live: a manually completed
+// setup:upgrade flipped the re-probe to exit 0 and stranded the window.
+func TestResumeAdoptsStoredMigrateVerdict(t *testing.T) {
+	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 2, failOn: "db-migrate-marker"}
+	plan := conditionalMigrateTestPlan(t)
+	opts := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	_, secondRan := runConditionalMigrateResume(t, stub, plan, opts, resumeOpts(), func() {
+		// The drift was healed out of band after the failure (the operator
+		// finished the upgrade by hand): a re-probe would now say skip.
+		stub.probeExit = 0
+		stub.failOn = ""
+	})
+	if ranMarker(secondRan, "probe-stub") {
+		t.Errorf("resume must adopt the recorded migrate verdict, not re-probe (commands: %v)", secondRan)
+	}
+	if !ranMarker(secondRan, "db-migrate-marker") {
+		t.Errorf("resume must re-run the failed migration (commands: %v)", secondRan)
+	}
+	if !ranMarker(secondRan, "maintenance-disable-marker") {
+		t.Errorf("resume must run the gated teardown the first run never reached (commands: %v)", secondRan)
+	}
+	if ranMarker(secondRan, "maintenance-enable-marker") {
+		t.Errorf("resume must not repeat the teardown's already-succeeded setup (commands: %v)", secondRan)
+	}
+}
+
+// A recorded skip verdict is NOT sticky: drift may have appeared out of band
+// after the first run, and adopting an old skip would publish code over a
+// drifted database. A resume with no recorded migrate verdict re-probes.
+func TestResumeReprobesAfterStoredSkip(t *testing.T) {
+	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 0, failOn: "cache-flush-marker"}
+	plan := conditionalMigrateTestPlan(t)
+	opts := deploy.Options{Remote: "local", CommandTimeout: time.Minute}
+	_, secondRan := runConditionalMigrateResume(t, stub, plan, opts, resumeOpts(), func() {
+		// Drift appeared out of band after the first run's skip.
+		stub.probeExit = 2
+		stub.failOn = ""
+	})
+	if !ranMarker(secondRan, "probe-stub") {
+		t.Errorf("resume with no recorded migrate verdict must re-probe (commands: %v)", secondRan)
+	}
+	if !ranMarker(secondRan, "db-migrate-marker") {
+		t.Errorf("the fresh probe says migrate, so resume must run the migration (commands: %v)", secondRan)
 	}
 }

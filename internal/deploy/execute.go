@@ -240,6 +240,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	// decide what not to repeat, so recording the carry-over as `skipped`
 	// destroys the very fact that makes resuming safe.
 	carried := map[string]StepRecord{}
+	storedMigrateVerdict := false
 	if e.opts.Resume && release.Release != "" {
 		if previous, err := ReadRelease(ctx, e.host, release.Release); err == nil {
 			for _, task := range previous.Tasks {
@@ -251,6 +252,14 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			}
 			if previous.Revision != "" {
 				release.Revision = previous.Revision
+			}
+			// A recorded migrate verdict is sticky: the database was drifted
+			// when the earlier run probed it, and migrations are idempotent,
+			// so re-running one is always safe. A recorded skip is NOT
+			// adopted — drift may have appeared out of band since, and an
+			// old skip would publish code over a drifted database.
+			if previous.Migration != nil && previous.Migration.Required {
+				storedMigrateVerdict = true
 			}
 		}
 	}
@@ -270,15 +279,17 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	// otherwise run — not upfront. The release directory does not exist until
 	// deploy:release creates it, and the probe starts with
 	// `cd {{release_path}}`: running it earlier makes the cd fail, whose exit
-	// 1 reads as "drifted", so every deploy would migrate. A resumed run still
-	// re-probes rather than trusting an earlier skip — the code may have
-	// changed since, and the probe costs one cheap command — while steps an
-	// earlier run recorded as ok are carried over below, so a resume never
-	// repeats a migration that already succeeded. When every gated step was
-	// already carried over, the probe never runs because there is nothing to
-	// decide.
+	// 1 reads as "drifted", so every deploy would migrate. A resumed run
+	// adopts a recorded migrate verdict instead of re-probing — the drift it
+	// records may have been healed out of band since, and a fresh probe would
+	// then excuse the teardown the first run already started — while a
+	// recorded skip is never adopted, because drift may equally have appeared
+	// since. Steps an earlier run recorded as ok are carried over below, so a
+	// resume never repeats a migration that already succeeded. When every
+	// gated step was already carried over, the probe never runs because there
+	// is nothing to decide.
 	migrationRequired := true
-	probeDone := false
+	probeDone := storedMigrateVerdict
 	window := plan.maintenanceWindow()
 	timeoutFor := func(index int) time.Duration {
 		if window[index] {
@@ -318,7 +329,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		// step failure, with the lock policy of the stage it failed in.
 		if step.NeedsMigration && !probeDone && plan.MigrationProbe != nil {
 			probeDone = true
-			required, err := e.checkMigrationRequired(ctx, plan, vars, release)
+			required, probeExit, err := e.checkMigrationRequired(ctx, plan, vars, release)
 			if err != nil {
 				release.Status = StatusFailed
 				_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
@@ -329,6 +340,16 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 				return e.finish(outcome, started), err
 			}
 			migrationRequired = required
+			// The verdict is stored the moment it resolves, not with the next
+			// step's record: a resume must see it even when the very next
+			// step is the one that fails. Best effort, like every other
+			// mid-run record write — the failure below keeps its own write.
+			release.Migration = &MigrationRecord{
+				Required:   required,
+				ProbeExit:  probeExit,
+				ResolvedAt: time.Now().UTC().Format(time.RFC3339),
+			}
+			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
 			if !migrationRequired {
 				// No window ever opens: the static plan still lists the
 				// maintenance tasks, but the runtime knows they will all be
@@ -418,7 +439,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 // unexpected exit, a timeout, a transport error — fails the run rather than
 // guessing, because a skipped migration on a drifted database breaks the site
 // while a failed probe merely stops the deploy.
-func (e *Executor) checkMigrationRequired(ctx context.Context, plan Plan, vars Vars, release *Release) (bool, error) {
+func (e *Executor) checkMigrationRequired(ctx context.Context, plan Plan, vars Vars, release *Release) (bool, int, error) {
 	probe := plan.MigrationProbe
 	probeVars := vars.Set("release", release.Release)
 	probePath := release.Path
@@ -431,7 +452,7 @@ func (e *Executor) checkMigrationRequired(ctx context.Context, plan Plan, vars V
 	}
 	command, err := probeVars.Expand(probe.Command)
 	if err != nil {
-		return false, fmt.Errorf("expand the migration probe: %w", err)
+		return false, 0, fmt.Errorf("expand the migration probe: %w", err)
 	}
 	timeout := e.opts.CommandTimeout
 	if timeout <= 0 {
@@ -442,20 +463,20 @@ func (e *Executor) checkMigrationRequired(ctx context.Context, plan Plan, vars V
 	if err != nil {
 		var cmdErr *CommandError
 		if !errors.As(err, &cmdErr) {
-			return false, fmt.Errorf("migration probe failed on %s: %w", e.host.Name, err)
+			return false, 0, fmt.Errorf("migration probe failed on %s: %w", e.host.Name, err)
 		}
 		code = cmdErr.ExitCode
 	}
 	switch code {
 	case 0:
 		if err != nil {
-			return false, fmt.Errorf("migration probe reported success with an error on %s: %w", e.host.Name, err)
+			return false, code, fmt.Errorf("migration probe reported success with an error on %s: %w", e.host.Name, err)
 		}
-		return false, nil
+		return false, code, nil
 	case 1, 2:
-		return true, nil
+		return true, code, nil
 	default:
-		return false, fmt.Errorf("migration probe exited %d on %s (want 0 = current, 1/2 = migrate); refusing to guess: %s", code, e.host.Name, command)
+		return false, code, fmt.Errorf("migration probe exited %d on %s (want 0 = current, 1/2 = migrate); refusing to guess: %s", code, e.host.Name, command)
 	}
 }
 
