@@ -829,29 +829,31 @@ changes it (`--recreate`) rather than silently relabelling the container.
 
 ### Provisioning the application inside a fresh sandbox
 
-A brand-new sandbox has no installed application, so a pipeline that reaches
-`build:assets` or `db:migrate` stops on a **prerequisite** rather than on a defect.
-Three things have to exist, in this order:
-
-1. **`shared/app/etc/env.php` on the target**, pointing at a database the container
-   can reach (`127.0.0.1`, the shape a server has) and at the cache backend the
-   `full` profile runs. This is the file the release links for all of it;
-2. **the database behind it**, with the store configuration in it. A clone of a real
-   environment (`govard bootstrap -e staging`, or an existing dump) is the usual
-   source;
-3. **a supported search engine** where the project uses one. `setup:upgrade` refuses
-   Magento's MySQL fallback outright.
+A brand-new sandbox is seeded from the running origin environment at `up` time:
+a logical database dump (the origin keeps running), the media tree, and the env
+file rewritten for the sandbox (base_url becomes the sandbox web URL). No hand
+provisioning: the three manual steps below belonged to the era before seeding
+and only remain relevant for `--no-seed` sandboxes.
 
 ```bash
-govard deploy sandbox ssh
-# inside the container, as the deploy user:
+govard deploy sandbox up --profile full   # seeds DB + media + env.php automatically
+govard deploy sandbox up --profile full --no-seed  # deliberately empty instead
+# inside a --no-seed container, as the deploy user:
 #   write ~/.deployer/shared/app/etc/env.php
 #   import the database dump
 ```
 
-Those prerequisites are the target's, not the engine's: a server that has never run
-the application cannot publish a release to it, and the sandbox refuses to pretend
-otherwise.
+Two prerequisites stay manual because no snapshot can conjure them:
+
+1. **the origin environment must be running** when `up` seeds — otherwise `up`
+   refuses and says so (or pass `--no-seed` for an empty sandbox);
+2. **a supported search engine** where the project uses one. `setup:upgrade`
+   refuses Magento's MySQL fallback outright, and the search cluster usually
+   runs beside the sandbox (a separate `sandbox-opensearch` container), not
+   inside it.
+
+A reseed is `up --recreate`: a reused sandbox keeps its data, and origin changes
+after the seed never propagate on their own.
 
 ### Credentials inside the sandbox
 

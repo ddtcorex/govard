@@ -816,29 +816,30 @@ bằng flag của lệnh vừa gọi tới: `up` báo đúng profile và series 
 
 ### Provision ứng dụng bên trong một sandbox mới
 
-Một sandbox hoàn toàn mới không có ứng dụng đã cài, nên pipeline đi tới
-`build:assets` hay `db:migrate` sẽ dừng vì một **prerequisite** chứ không phải vì
-lỗi. Ba thứ phải tồn tại, theo thứ tự này:
-
-1. **`shared/app/etc/env.php` trên target**, trỏ tới database mà container kết nối
-   được (`127.0.0.1`, đúng hình dạng một server có) và tới cache backend mà profile
-   `full` chạy. Đây là file mà release link tới cho tất cả những thứ đó;
-2. **database phía sau nó**, có cấu hình store trong đó. Một bản clone của môi
-   trường thật (`govard bootstrap -e staging`, hoặc một dump sẵn có) là nguồn
-   thường dùng;
-3. **một search engine được hỗ trợ** nếu dự án dùng. `setup:upgrade` từ chối thẳng
-   fallback MySQL của Magento.
+Một sandbox hoàn toàn mới được seed từ môi trường gốc đang chạy ngay lúc `up`:
+dump database dạng logical (môi trường gốc vẫn chạy), cây media, và file env được
+viết lại cho sandbox (base_url thành URL web của sandbox). Không còn dựng tay:
+ba bước thủ công dưới đây thuộc về thời trước seed và chỉ còn đúng với sandbox
+`--no-seed`.
 
 ```bash
-govard deploy sandbox ssh
-# bên trong container, với user deploy:
+govard deploy sandbox up --profile full   # tự seed DB + media + env.php
+govard deploy sandbox up --profile full --no-seed  # cố tình để trắng
+# bên trong container --no-seed, với user deploy:
 #   viết ~/.deployer/shared/app/etc/env.php
 #   import dump database
 ```
 
-Những prerequisite đó là của target, không phải của engine: một server chưa từng
-chạy ứng dụng thì không publish release lên được, và sandbox từ chối giả vờ ngược
-lại.
+Hai prerequisite vẫn làm tay vì không snapshot nào bịa ra được chúng:
+
+1. **môi trường gốc phải đang chạy** lúc `up` seed — nếu không `up` từ chối và nói
+   rõ (hoặc truyền `--no-seed` cho sandbox trắng);
+2. **một search engine được hỗ trợ** nếu dự án dùng. `setup:upgrade` từ chối thẳng
+   fallback MySQL của Magento, và search cluster thường chạy cạnh sandbox (một
+   container `sandbox-opensearch` riêng), không phải bên trong nó.
+
+Reseed là `up --recreate`: sandbox đã có giữ nguyên data, và thay đổi ở gốc sau
+lúc seed không bao giờ tự lan sang.
 
 ### Credential bên trong sandbox
 
