@@ -71,6 +71,7 @@ application (static content) run on the target after the artifact is unpacked.
 
 - Two-job shape in full, and what an artifact can and cannot carry: [Deployment](/workflows/deployment)
 - Which steps run where for a given project shape: [Deployment case studies](/workflows/deploy-case-studies)
+- A complete hand-written pipeline (integrity, lint, single-job ships, manual rollbacks): [CI pipelines](/workflows/ci-pipeline)
 
 There is no Vietnamese counterpart of this page; the deploy pages themselves are
 bilingual.

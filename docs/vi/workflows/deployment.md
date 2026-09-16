@@ -813,6 +813,10 @@ của stage build.
 Thư mục output không rỗng sẽ bị từ chối để một file còn sót từ lần build trước
 không thể lọt ra production. Dùng `--force` nếu muốn thay nội dung.
 
+Pipeline đầy đủ quanh các lệnh này — integrity, lint, ship một job cho mỗi
+remote chung một workspace, rollback tay — xem
+[Pipeline CI](/vi/workflows/ci-pipeline).
+
 ## Publish
 
 `--publish=auto` đọc target thay vì đoán:
