@@ -68,6 +68,18 @@ services:
     networks:
       - govard-proxy
 
+  sshd:
+    image: ddtcorex/govard-sshd:1
+    container_name: govard-proxy-sshd
+    restart: always
+    ports:
+      - "127.0.0.1:2222:22"
+    volumes:
+      - ../gateway:/govard-gateway:ro
+      - sshd-host-keys:/etc/ssh/keys
+    networks:
+      - govard-proxy
+
 networks:
   govard-proxy:
     external: true
@@ -77,3 +89,4 @@ volumes:
   caddy-config:
   portainer-data:
   mail-data:
+  sshd-host-keys:

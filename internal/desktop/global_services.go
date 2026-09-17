@@ -91,6 +91,12 @@ var globalServiceSpecs = []globalServiceSpec{
 		ComposeService: "dnsmasq",
 		ContainerName:  "govard-proxy-dnsmasq",
 	},
+	{
+		ID:             "sshd",
+		Name:           "SSH Gateway",
+		ComposeService: "sshd",
+		ContainerName:  "govard-proxy-sshd",
+	},
 }
 
 var defaultEnsureGlobalServicesForDesktop = func() error {
@@ -351,6 +357,17 @@ func resolveGlobalServiceSpec(serviceID string) (globalServiceSpec, error) {
 		}
 	}
 	return globalServiceSpec{}, fmt.Errorf("unknown global service: %s", serviceID)
+}
+
+// GlobalServiceSpecForTest exposes one registered global service's wiring so
+// tests can assert an entry exists without exporting the whole spec table.
+func GlobalServiceSpecForTest(id string) (composeService, containerName string, openable, ok bool) {
+	for _, spec := range globalServiceSpecs {
+		if spec.ID == id {
+			return spec.ComposeService, spec.ContainerName, spec.URLHost != "", true
+		}
+	}
+	return "", "", false, false
 }
 
 func deriveGlobalContainerStatus(state string, statusText string) (string, string, bool) {

@@ -57,6 +57,12 @@ type SandboxRuntime interface {
 	// creates). Zero matches is success: an `up` that never created named
 	// volumes has nothing to delete.
 	RemoveVolumesByLabel(ctx context.Context, label, value string) error
+	// EnsureNetworkConnected joins a running container to a Docker network,
+	// idempotently. A missing network is reported as connected=false with a
+	// nil error rather than failing: the caller (sandbox up) treats gateway
+	// connectivity as an optional convenience, never a hard dependency of
+	// the sandbox's own direct SSH path.
+	EnsureNetworkConnected(ctx context.Context, name, network string) (connected bool, err error)
 }
 
 // SandboxBuildRequest is one image build.
@@ -347,4 +353,22 @@ func (d *DockerCLI) Exec(ctx context.Context, name string, stdin []byte, args ..
 		return "", fmt.Errorf("exec %s in %s: %w", strings.Join(args, " "), name, err)
 	}
 	return output, nil
+}
+
+// EnsureNetworkConnected joins the named container to a Docker network.
+func (d *DockerCLI) EnsureNetworkConnected(ctx context.Context, name, network string) (bool, error) {
+	_, err := d.run(ctx, SandboxCommand{Args: []string{"network", "connect", network, name}})
+	if err == nil {
+		return true, nil
+	}
+	var commandErr *CommandError
+	if errors.As(err, &commandErr) {
+		if strings.Contains(commandErr.Stderr, "already exists in network") {
+			return true, nil
+		}
+		if strings.Contains(commandErr.Stderr, "not found") {
+			return false, nil
+		}
+	}
+	return false, fmt.Errorf("connect %s to network %s: %w", name, network, err)
 }

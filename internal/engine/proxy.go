@@ -22,6 +22,24 @@ import (
 	"github.com/pterm/pterm"
 )
 
+// absolutizeGatewayMount rewrites the sshd service's relative ../gateway
+// bind mount to the effective Govard home's gateway directory. The proxy
+// compose file itself lives under $HOME (not the GOVARD_HOME_DIR override),
+// so a relative mount would resolve to the wrong home whenever the two
+// differ -- notably under the integration tests' isolated home, where the
+// gateway registry (keys, targets, second-hop key) is rendered. With the
+// default home both spellings resolve to the same directory. When the marker
+// is absent (a future blueprint without the mount) the content is returned
+// unchanged.
+func absolutizeGatewayMount(content []byte) []byte {
+	const marker = "../gateway:/govard-gateway:ro"
+	if !strings.Contains(string(content), marker) {
+		return content
+	}
+	abs := filepath.Join(GovardHomeDir(), "gateway")
+	return []byte(strings.ReplaceAll(string(content), marker, abs+":/govard-gateway:ro"))
+}
+
 func EnsureGlobalProxy() error {
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -60,6 +78,15 @@ func EnsureGlobalProxy() error {
 	tempDir := filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
 	_ = os.MkdirAll(tempDir, conventions.DefaultDirPerm)
 
+	// The sshd service bind-mounts the gateway registry (see
+	// absolutizeGatewayMount below): make sure its source directory exists
+	// owned by whoever runs the CLI before compose brings the container up.
+	// Otherwise the daemon creates it root-owned and every later gateway
+	// registry Save (chmod + write) fails with EPERM. This package cannot
+	// import the gateway package for the path (the dependency points the
+	// other way), so the conventional location is spelled out here.
+	_ = os.MkdirAll(filepath.Join(GovardHomeDir(), "gateway"), conventions.DefaultDirPerm)
+
 	blueprintsFS, err := findBlueprintsFS(".")
 	if err != nil {
 		return err
@@ -68,6 +95,7 @@ func EnsureGlobalProxy() error {
 	if err != nil {
 		return fmt.Errorf("could not find proxy blueprint")
 	}
+	content = absolutizeGatewayMount(content)
 
 	proxyFile := filepath.Join(tempDir, "docker-compose.yml")
 	// Always write the file to ensure we're using the latest proxy configuration

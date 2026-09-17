@@ -53,6 +53,8 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard doctor` | `none` |
 | `govard doctor trust` | `none` |
 | `govard domain list` | `none` |
+| `govard gateway allow-key` | `none` |
+| `govard gateway revoke-key` | `none` |
 | `govard help` | `none` |
 | `govard init` | `none` |
 | `govard project list` | `none` |

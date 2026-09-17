@@ -1152,6 +1152,34 @@ the usual source. Those prerequisites are the target's, not the engine's: a
 server that has never run the application cannot publish a release to it, and
 an unseeded sandbox refuses to pretend otherwise.
 
+## The shared SSH gateway
+
+`govard svc up` also starts a small bastion, `govard-proxy-sshd`, on
+`127.0.0.1:2222`. Once a sandbox is up and at least one client key is
+allowed, it is reachable at a stable address instead of the ephemeral port
+`sandbox status` prints:
+
+```bash
+govard gateway allow-key "$(cat ~/.ssh/id_ed25519.pub)"
+ssh -p 2222 <project-name>@127.0.0.1
+sftp -P 2222 <project-name>@127.0.0.1
+```
+
+- `govard gateway status` reports whether the bastion container is running
+  and how many targets/keys it knows about.
+- `govard gateway allow-key <public-key-line>` / `revoke-key
+  <fingerprint-or-comment>` manage the allowlist; both work without Docker
+  running (the registry is a local file).
+- `sandbox up` registers the project's username automatically and joins the
+  bastion's network; `sandbox down` removes the registration. Neither
+  operation fails if the gateway itself is not running -- it is an added
+  convenience, not a new dependency of the deploy pipeline's own direct SSH
+  path (`deploy`, `deploy check`, `remote *` never go through it).
+- A username with no registered target, or an allowlisted key with no
+  matching one, gets a standard SSH refusal. A registered target whose
+  container is stopped gets a specific "is not reachable" message instead of
+  a hang.
+
 ## One connection per target
 
 Every command a run issues shares a single SSH connection per target

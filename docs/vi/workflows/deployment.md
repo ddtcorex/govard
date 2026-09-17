@@ -1081,6 +1081,33 @@ publish release lên được, và sandbox chưa seed từ chối giả vờ ng�
 deploy --remote sandbox --yes`; bước hỏng sẽ đi tiếp từ release directory sạch và
 Composer cache được giữ nguyên.
 
+## SSH gateway dùng chung
+
+`govard svc up` còn khởi động một bastion nhỏ, `govard-proxy-sshd`, trên
+`127.0.0.1:2222`. Khi sandbox đã chạy và ít nhất một client key được cho
+phép, có thể kết nối tới nó qua một địa chỉ ổn định thay vì cổng tạm mà
+`sandbox status` in ra:
+
+```bash
+govard gateway allow-key "$(cat ~/.ssh/id_ed25519.pub)"
+ssh -p 2222 <project-name>@127.0.0.1
+sftp -P 2222 <project-name>@127.0.0.1
+```
+
+- `govard gateway status` cho biết container bastion có đang chạy không và
+  nó biết bao nhiêu target/key.
+- `govard gateway allow-key <public-key-line>` / `revoke-key
+  <fingerprint-or-comment>` quản lý allowlist; cả hai đều chạy được khi
+  Docker chưa khởi động (registry là một file cục bộ).
+- `sandbox up` tự đăng ký username của dự án và nối vào network của bastion;
+  `sandbox down` gỡ đăng ký đó. Không thao tác nào hỏng khi gateway chưa
+  chạy -- đây là tiện ích bổ sung, không phải dependency mới của đường SSH
+  trực tiếp của pipeline deploy (`deploy`, `deploy check`, `remote *` không
+  bao giờ đi qua nó).
+- Username không có target đã đăng ký, hay key trong allowlist mà không khớp
+  cái nào, đều nhận từ chối SSH chuẩn. Target đã đăng ký mà container đã
+  dừng thì nhận thông báo "is not reachable" cụ thể thay vì treo.
+
 ## Một kết nối cho mỗi target
 
 Mọi command trong một lần chạy dùng chung một kết nối SSH cho mỗi target
