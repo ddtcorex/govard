@@ -222,9 +222,9 @@ first server is involved, rehearse the whole pipeline against a container on you
 machine:
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy --remote sandbox --yes
-govard deploy sandbox down --purge
+govard sandbox down --purge
 ```
 
 - Engine reference, publish strategies, rollback: [Deployment](/workflows/deployment)

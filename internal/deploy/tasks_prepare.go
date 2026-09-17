@@ -67,7 +67,7 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 		// not running, and "unreachable" would send the operator to look at a
 		// network that was never involved.
 		if sc.Host.Remote.Sandbox {
-			return fmt.Errorf("the sandbox container behind remote %q is not running; run `govard deploy sandbox up` and retry: %w", host.Name, err)
+			return fmt.Errorf("the sandbox container behind remote %q is not running; run `govard sandbox up` and retry: %w", host.Name, err)
 		}
 		return fmt.Errorf("target %s is not reachable: %w", host.Name, err)
 	}
@@ -133,7 +133,7 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 // The sandbox has no credentials for the real repository and must be able to
 // deploy a commit that was never pushed, so the mirror is refreshed from the
 // local checkout on the way in. Doing it here rather than in `sandbox up` means
-// `govard deploy sandbox` sees the commit the operator just made.
+// `govard sandbox` sees the commit the operator just made.
 func checkSandboxMirror(ctx context.Context, sc *StepContext) error {
 	if !sc.Host.Remote.Sandbox {
 		return nil
@@ -149,7 +149,7 @@ func checkSandboxMirror(ctx context.Context, sc *StepContext) error {
 	}
 	mirror := SandboxMirrorPath(root)
 	if _, err := os.Stat(mirror); err != nil {
-		return fmt.Errorf("the sandbox mirror %s is missing; run `govard deploy sandbox up` and retry", mirror)
+		return fmt.Errorf("the sandbox mirror %s is missing; run `govard sandbox up` and retry", mirror)
 	}
 	if err := RefreshSandboxMirror(ctx, LocalRunner{}, root, mirror); err != nil {
 		return err

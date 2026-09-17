@@ -14,13 +14,13 @@ import (
 
 // The sandbox authenticates with a dedicated key pair under `.govard/sandbox/`,
 // which is gitignored. It is generated in Go rather than by shelling out to
-// `ssh-keygen`: `govard deploy sandbox` declares `docker`, and ssh-keygen is not
+// `ssh-keygen`: `govard sandbox` declares `docker`, and ssh-keygen is not
 // part of that contract, so depending on it would make the command fail on a
 // host that meets its own stated requirement.
 const (
 	SandboxKeyName  = "id_ed25519"
 	sandboxKeyType  = "ssh-ed25519"
-	sandboxKeyNote  = "govard-deploy-sandbox"
+	sandboxKeyNote  = "govard-sandbox"
 	opensshKeyBegin = "-----BEGIN OPENSSH PRIVATE KEY-----"
 	opensshKeyEnd   = "-----END OPENSSH PRIVATE KEY-----"
 	opensshKeyMagic = "openssh-key-v1\x00"

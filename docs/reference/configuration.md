@@ -331,10 +331,10 @@ deploy:
 | `settings` | recipe defaults | framework and engine settings, validated against the recipe |
 | `hooks` | — | steps anchored on a task id, a stage alias (`stage:build`) or another hook |
 
-Four engine settings decide what `govard deploy sandbox` has to provide beyond the
+Four engine settings decide what `govard sandbox` has to provide beyond the
 profile. They are read from this project layer (a remote-level override is not
-consulted: the sandbox remote is created by that command), and each one
-**replaces** the recipe's list rather than extending it:
+consulted: the sandbox remote is synthetic and never lives in configuration),
+and each one **replaces** the recipe's list rather than extending it:
 
 | Setting | Default | What it does |
 | :--- | :--- | :--- |

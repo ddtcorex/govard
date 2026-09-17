@@ -51,7 +51,7 @@ type RemoteConfig struct {
 	// unknown keys silently, so the loader rejects them explicitly (see
 	// RejectRemovedRemoteDeployKeys) instead of deploying the wrong ref.
 	Local bool `yaml:"local,omitempty"`
-	// Sandbox marks a remote govard itself created with `deploy sandbox up`:
+	// Sandbox marks a remote govard itself created with `sandbox up`:
 	// a container on this machine that plays the remote. It is a topology fact
 	// about the remote, not a framework name, which is why the deploy pipeline
 	// may act on it (refreshing the local mirror the container mounts, and

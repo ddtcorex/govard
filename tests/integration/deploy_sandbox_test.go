@@ -4,7 +4,6 @@
 package integration
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,24 +29,23 @@ func TestDeploySandboxEndToEnd(t *testing.T) {
 	origin, revisions := seedDeployRevisions(t, 2)
 	seedSandboxCheckout(t, projectDir, origin)
 
-	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "basic", "--no-seed")
+	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "basic", "--no-seed")
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
 	t.Cleanup(func() {
-		env.RunGovard(t, projectDir, "deploy", "sandbox", "down", "--purge")
+		env.RunGovard(t, projectDir, "sandbox", "down", "--purge")
 	})
 
-	// The remote govard wrote is what makes the sandbox a normal deploy target.
-	remote, configured, err := sandboxRemote(t, projectDir)
-	if err != nil {
-		t.Fatalf("read the sandbox remote: %v", err)
-	}
-	if !configured {
-		t.Fatal("up did not write a sandbox remote")
-	}
-	if remote.Port == 0 {
-		t.Fatal("the sandbox remote has no published port")
+	// The sandbox remote is synthetic now: nothing is written into
+	// .govard.local.yml, so `sandbox status` is what reports the live Docker
+	// state the deploy pipeline resolves.
+	sandboxState := env.RunGovard(t, projectDir, "sandbox", "status")
+	sandboxState.AssertSuccess(t)
+	sandboxState.AssertOutputContains(t, "running:    true")
+	sandboxState.AssertOutputContains(t, "sandbox (configured)")
+	if !strings.Contains(sandboxState.Stdout, "ssh -p ") {
+		t.Fatalf("the sandbox status names no published SSH port:\n%s", sandboxState.Stdout)
 	}
 
 	first := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[0], "--yes")
@@ -80,10 +78,47 @@ func TestDeploySandboxEndToEnd(t *testing.T) {
 	rolled.AssertSuccess(t)
 	rolled.AssertOutputContains(t, revisions[0][:8])
 
-	down := env.RunGovard(t, projectDir, "deploy", "sandbox", "down")
+	down := env.RunGovard(t, projectDir, "sandbox", "down")
 	down.AssertSuccess(t)
-	if _, configured, err := sandboxRemote(t, projectDir); err != nil || configured {
-		t.Fatalf("the sandbox remote survived down (configured=%v err=%v)", configured, err)
+	afterDown := env.RunGovard(t, projectDir, "sandbox", "status")
+	afterDown.AssertSuccess(t)
+	afterDown.AssertOutputContains(t, "sandbox (not configured)")
+}
+
+// TestIntegrationRemoteExecAgainstTheSandbox proves a non-deploy consumer
+// reaches the sandbox: `remote exec sandbox` resolves the synthetic remote
+// (nothing is written to .govard.local.yml) and runs the command in the
+// container `sandbox up` created.
+func TestIntegrationRemoteExecAgainstTheSandbox(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "remote-exec-sandbox")
+
+	// `up` mirrors the working checkout into the container, so the project
+	// has to be a checkout holding a revision first.
+	origin, _ := seedDeployRevisions(t, 1)
+	seedSandboxCheckout(t, projectDir, origin)
+
+	// --docroot real: `remote exec` prefixes `cd` to the sandbox's served
+	// path, and a fresh default sandbox holds only a dangling symlink there
+	// until the first deploy. A real docroot is a directory from the start,
+	// so the exec proves the connection rather than the deploy pipeline.
+	// --no-seed: a fixture project has no running origin to derive the
+	// snapshot from, so a seeding run would refuse instead of creating the
+	// container this test needs.
+	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "basic", "--docroot", "real", "--no-seed")
+	if up.ExitCode != 0 {
+		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
+	}
+	t.Cleanup(func() {
+		env.RunGovard(t, projectDir, "sandbox", "down", "--purge")
+	})
+
+	executed := env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--", "echo", "hello-from-sandbox")
+	if executed.ExitCode != 0 {
+		t.Fatalf("remote exec failed (%d)\nstdout: %s\nstderr: %s", executed.ExitCode, executed.Stdout, executed.Stderr)
+	}
+	if !strings.Contains(executed.Stdout, "hello-from-sandbox") {
+		t.Fatalf("remote exec output = %q, want it to reach the sandbox container", executed.Stdout)
 	}
 }
 
@@ -97,12 +132,12 @@ func TestDeploySandboxInPlaceAndDeployerLayout(t *testing.T) {
 	origin, revisions := seedDeployRevisions(t, 1)
 	seedSandboxCheckout(t, projectDir, origin)
 
-	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "basic", "--docroot", "real", "--no-seed")
+	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "basic", "--docroot", "real", "--no-seed")
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up --docroot=real failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
 	t.Cleanup(func() {
-		env.RunGovard(t, projectDir, "deploy", "sandbox", "down", "--purge")
+		env.RunGovard(t, projectDir, "sandbox", "down", "--purge")
 	})
 
 	deployed := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[0], "--yes")
@@ -113,7 +148,7 @@ func TestDeploySandboxInPlaceAndDeployerLayout(t *testing.T) {
 
 	// The seeded target is owned by the other deploy tool, and govard must
 	// refuse rather than race it on the same release directories.
-	reset := env.RunGovard(t, projectDir, "deploy", "sandbox", "reset", "--layout", "deployer", "--docroot", "absent")
+	reset := env.RunGovard(t, projectDir, "sandbox", "reset", "--layout", "deployer", "--docroot", "absent")
 	reset.AssertSuccess(t)
 
 	blocked := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[0], "--yes")
@@ -132,47 +167,6 @@ func seedSandboxCheckout(t *testing.T, projectDir, origin string) {
 	runGitIn(t, projectDir, "init", "-q", "-b", "main")
 	runGitIn(t, projectDir, "fetch", "-q", origin, "main")
 	runGitIn(t, projectDir, "update-ref", "refs/heads/main", "FETCH_HEAD")
-}
-
-// sandboxRemoteInfo is what the test reads back out of the local layer.
-type sandboxRemoteInfo struct {
-	Port       int
-	Repository string
-}
-
-// sandboxRemote reads the remote govard wrote into .govard.local.yml. The file
-// is small and flat, and the test deliberately reads it as text: a test that
-// decoded it with govard's own config loader would pass even if govard wrote a
-// file no other tool could read.
-func sandboxRemote(t *testing.T, projectDir string) (sandboxRemoteInfo, bool, error) {
-	t.Helper()
-	content, err := os.ReadFile(filepath.Join(projectDir, ".govard.local.yml"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return sandboxRemoteInfo{}, false, nil
-		}
-		return sandboxRemoteInfo{}, false, err
-	}
-	text := string(content)
-	if !strings.Contains(text, "\n  sandbox:\n") && !strings.HasPrefix(text, "sandbox:\n") {
-		return sandboxRemoteInfo{}, false, nil
-	}
-
-	result := sandboxRemoteInfo{}
-	for _, line := range strings.Split(text, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "port:") {
-			value := strings.TrimSpace(strings.TrimPrefix(trimmed, "port:"))
-			var port int
-			if err := json.Unmarshal([]byte(value), &port); err == nil {
-				result.Port = port
-			}
-		}
-		if strings.HasPrefix(trimmed, "repository:") {
-			result.Repository = strings.TrimSpace(strings.TrimPrefix(trimmed, "repository:"))
-		}
-	}
-	return result, true, nil
 }
 
 // seedOriginFromProject publishes the project directory itself as the origin, so
@@ -318,7 +312,7 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			// The `php` profile: the recipe runs `{{php_bin}} bin/magento`, and
 			// the stub is a PHP script so the target can execute it the way a
 			// real Magento would be executed.
-			upArgs := []string{"deploy", "sandbox", "up", "--profile", "php", "--no-seed"}
+			upArgs := []string{"sandbox", "up", "--profile", "php", "--no-seed"}
 			if testCase.docroot != "" {
 				upArgs = append(upArgs, "--docroot", testCase.docroot)
 			}
@@ -326,27 +320,25 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			if up.ExitCode != 0 {
 				t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 			}
-			t.Cleanup(func() { env.RunGovard(t, projectDir, "deploy", "sandbox", "down", "--purge") })
+			t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
 
 			// The `php` profile ships the web tier, so `up` advertises the HTTP
 			// half of `deploy:verify`. The verdict below is an exit code, so
 			// without this the run would prove nothing about the check happening at
 			// all — and the fixture serves `pub/index.php` precisely so that it can.
-			// The file is read as text on purpose (see sandboxRemote), so the
-			// expected URL is the one `up` prints rather than a decoded struct.
-			localLayer, readErr := os.ReadFile(filepath.Join(projectDir, ".govard.local.yml"))
-			if readErr != nil {
-				t.Fatalf("read the local layer: %v", readErr)
-			}
-			if !strings.Contains(string(localLayer), "verify:") || !strings.Contains(string(localLayer), "url: http://127.0.0.1:") {
-				t.Fatalf("the sandbox advertises no verify URL, so the HTTP check never runs:\n%s", localLayer)
+			// The sandbox remote is synthetic now, so the advertised URL is read
+			// back from `sandbox status` rather than from .govard.local.yml.
+			sandboxStatus := env.RunGovard(t, projectDir, "sandbox", "status")
+			sandboxStatus.AssertSuccess(t)
+			if !strings.Contains(sandboxStatus.Stdout, "web:        http://127.0.0.1:") {
+				t.Fatalf("the sandbox advertises no web URL, so the HTTP check never runs:\n%s", sandboxStatus.Stdout)
 			}
 
 			if testCase.settings != "" {
-				// Written after `up`, because `up` rewrites .govard.local.yml to
-				// add the sandbox remote.
+				// `up` no longer writes .govard.local.yml, so the settings land in
+				// a local layer the test owns outright.
 				content, err := os.ReadFile(filepath.Join(projectDir, ".govard.local.yml"))
-				if err != nil {
+				if err != nil && !os.IsNotExist(err) {
 					t.Fatalf("read the local layer: %v", err)
 				}
 				withSettings := string(content) + "\ndeploy:\n  settings:\n" + testCase.settings
@@ -392,11 +384,11 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	origin, revisions := seedFixtureRevisions(t, projectDir, 2)
 	seedSandboxCheckout(t, projectDir, origin)
 
-	up := env.RunGovard(t, projectDir, "deploy", "sandbox", "up", "--profile", "php", "--no-seed")
+	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "php", "--no-seed")
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
-	t.Cleanup(func() { env.RunGovard(t, projectDir, "deploy", "sandbox", "down", "--purge") })
+	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
 
 	// The first release records a dump …
 	first := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[0], "--db-backup", "--yes")

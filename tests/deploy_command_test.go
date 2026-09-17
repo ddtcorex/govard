@@ -200,26 +200,26 @@ func TestDeployFlagUsageStringsCarryNoBackquotes(t *testing.T) {
 	}
 }
 
-func TestDeploySandboxIsPartOfTheDeployGroupAndNeedsDocker(t *testing.T) {
-	// The sandbox is the one deploy command that uses the container runtime:
+func TestSandboxIsTopLevelAndNeedsDocker(t *testing.T) {
+	// The sandbox is the top-level command that uses the container runtime:
 	// govard creates the fake server with it and then talks to it over SSH.
-	if got := runtime.Requires(cmd.DeploySandboxCommand()); len(got) != 1 || got[0] != runtime.CapDocker {
-		t.Fatalf("govard deploy sandbox requires %v, want [docker]", got)
+	if got := runtime.Requires(cmd.SandboxCommand()); len(got) != 1 || got[0] != runtime.CapDocker {
+		t.Fatalf("govard sandbox requires %v, want [docker]", got)
 	}
-	parent := cmd.DeploySandboxCommand().Parent()
-	if parent == nil || parent.Name() != "deploy" {
-		t.Fatalf("deploy sandbox is not attached to the deploy group: %v", parent)
+	parent := cmd.SandboxCommand().Parent()
+	if parent == nil || parent != cmd.RootCommandForTest() {
+		t.Fatalf("sandbox is not attached to the root command: %v", parent)
 	}
-	// A subcommand inherits the group's requirement, so the gate covers them all
+	// A subcommand inherits the sandbox requirement, so the gate covers them all
 	// without repeating the annotation.
-	for _, child := range []*cobra.Command{cmd.DeploySandboxUpCommand(), cmd.DeploySandboxStatusCommand(), cmd.DeploySandboxResetCommand(), cmd.DeploySandboxDownCommand()} {
+	for _, child := range []*cobra.Command{cmd.SandboxUpCommand(), cmd.SandboxStatusCommand(), cmd.SandboxResetCommand(), cmd.SandboxDownCommand()} {
 		if got := runtime.Requires(child); len(got) != 1 || got[0] != runtime.CapDocker {
 			t.Errorf("%s requires %v, want the group's [docker]", child.Name(), got)
 		}
 	}
 }
 
-func TestDeploySandboxFlagsAreTheDocumentedSet(t *testing.T) {
+func TestSandboxFlagsAreTheDocumentedSet(t *testing.T) {
 	for name, want := range map[string][]string{
 		"up":     {"profile", "docroot", "recreate"},
 		"reset":  {"docroot", "layout"},
@@ -229,17 +229,17 @@ func TestDeploySandboxFlagsAreTheDocumentedSet(t *testing.T) {
 		var command *cobra.Command
 		switch name {
 		case "up":
-			command = cmd.DeploySandboxUpCommand()
+			command = cmd.SandboxUpCommand()
 		case "reset":
-			command = cmd.DeploySandboxResetCommand()
+			command = cmd.SandboxResetCommand()
 		case "down":
-			command = cmd.DeploySandboxDownCommand()
+			command = cmd.SandboxDownCommand()
 		case "status":
-			command = cmd.DeploySandboxStatusCommand()
+			command = cmd.SandboxStatusCommand()
 		}
 		for _, flag := range want {
 			if command.Flags().Lookup(flag) == nil {
-				t.Errorf("deploy sandbox %s is missing --%s", name, flag)
+				t.Errorf("sandbox %s is missing --%s", name, flag)
 			}
 		}
 	}

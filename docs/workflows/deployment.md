@@ -179,10 +179,10 @@ emits one document instead of the timeline.
 ### 7. Rehearse it on this machine first
 
 ```bash
-govard deploy sandbox up --profile full --php 8.4   # a real target, on loopback
+govard sandbox up --profile full --php 8.4   # a real target, on loopback
 # the seed is automatic (database, media, env.php); provide credentials + a search engine where the project needs one
 govard deploy --remote sandbox --yes
-govard deploy sandbox down --purge
+govard sandbox down --purge
 ```
 
 The sandbox is a production deploy pointed at a container — same SSH, same mirror,
@@ -1017,26 +1017,33 @@ pipeline deployed this" is answered afterwards from `govard deploy status`.
 
 ## The sandbox
 
-`govard deploy sandbox` gives a project a real deployment target on your
+`govard sandbox` gives a project a real deployment target on your
 machine — a container that plays the remote — so a deploy can be rehearsed
 before it touches a server. Nothing in the pipeline knows the difference, which
 is what makes it a rehearsal rather than a simulation.
 
 ```bash
-govard deploy sandbox up                      # create it (php profile by default)
-govard deploy sandbox up --profile basic      # sshd, rsync, git only
-govard deploy sandbox up --profile full --php 8.4   # database, cache, web server, PHP 8.4
-govard deploy sandbox status
-govard deploy sandbox reset --layout deployer # seed a target the other tool owns
-govard deploy sandbox ssh
-govard deploy sandbox down [--purge] [--volumes]
+govard sandbox up                      # create it (php profile by default)
+govard sandbox up --profile basic      # sshd, rsync, git only
+govard sandbox up --profile full --php 8.4   # database, cache, web server, PHP 8.4
+govard sandbox status
+govard sandbox reset --layout deployer # seed a target the other tool owns
+govard sandbox ssh
+govard sandbox down [--purge] [--volumes]
 ```
 
 `up` publishes SSH on a free loopback port, generates a dedicated key under
-`.govard/sandbox/` (gitignored), mounts a mirror of your local repository
-read-only, and writes a `sandbox` remote into `.govard.local.yml`. The mirror is
-refreshed before every deploy, so a commit you have never pushed is deployable.
-Because `sandbox` is also a subcommand, deploy to it with the flag form:
+`.govard/sandbox/` (gitignored), and mounts a mirror of your local repository
+read-only. The mirror is refreshed before every deploy, so a commit you have
+never pushed is deployable. There is no `sandbox` block in any configuration
+file: whenever the sandbox container is running, `sandbox` resolves
+automatically as a remote for every command that takes one — `deploy`, `db`,
+`remote exec`, `sync` — so `govard deploy --remote sandbox --yes`,
+`govard db dump -e sandbox`, `govard remote exec sandbox -- <command>` and
+`govard sync -e sandbox` all work with nothing ever written to configuration.
+`govard remote list` shows that synthetic row (`sandbox | (implicit) |
+running|dormant|absent`) next to the configured remotes. Deploy to it with the
+flag form (the positional form works too):
 
 ```bash
 govard deploy --remote sandbox --yes
@@ -1044,18 +1051,25 @@ govard deploy --remote sandbox --yes
 
 `--docroot` shapes the target so the publish strategy resolves the way you want
 to exercise it: `absent` or `symlink` (the default) selects the atomic swap,
-`real` selects in-place publishing. Shaping happens when the target is created and when you name
+`real` selects in-place publishing. One sharp edge of the default `symlink`
+shape: on a fresh sandbox `govard remote exec sandbox -- <command>` fails,
+because the command starts in the target's current path and that symlink
+dangles until the first deploy populates it. Run the first deploy, or create
+the sandbox with `--docroot real`, to avoid it. Shaping happens when the target is created and when you name
 a shape, because `up` is also how a stopped sandbox is started and how the mirror
 is refreshed before the next revision is deployed — neither may cost the
 application currently being served. `reset` shapes unconditionally: wiping the
 deploy directories and laying them out again is what it is for. `down` stops and
-removes the container and the remote it wrote, and keeps every data volume so a
-rehearsal resumes tomorrow; `down --volumes` deletes the derived volumes too.
-`--purge` also removes the image, the key and the mirror.
+removes the container — the implicit `sandbox` remote exists only while it
+does, so there is nothing left to clean out of any configuration file — and
+keeps every data volume so a rehearsal resumes tomorrow; `down --volumes`
+deletes the derived volumes too. `--purge` also removes the image, the key
+and the mirror.
 
 A sandbox is a derived project, not a generic container: `up` renders the origin
-project's own blueprint — same PHP series, same services — into dedicated
-containers (`govard-<project>-deploy-sandbox-…`), so the rehearsal target
+project's own blueprint — same PHP series, same services — into a dedicated
+container (`govard-<slug>-sandbox-…`) built from its own image
+(`govard-sandbox:<slug>-<profile>-<hash>`), so the rehearsal target
 matches the project by construction instead of by hand-passed `--php` (which
 remains as an override for exceptional cases). The derived project never
 appears in the project list; its state lives under the origin's
@@ -1077,10 +1091,10 @@ default profile. Naming a profile or series that disagrees is refused with the
 flag that actually changes it (`--recreate`), rather than silently relabelling a
 container whose image still ships the old one. `up` also waits for a real login
 before it reports the sandbox ready — a published port that accepts a connection
-is not a target a deploy can start against. The
-`sandbox` remote block itself is rewritten from the container's state on every
-`up` (host, port, paths, branch, mirror, verify URL, and the settings the profile
-implies), so an edit made there by hand does not survive; put what you want to
+is not a target a deploy can start against. The synthetic `sandbox` remote is
+resolved live from the container's state on every use (host, port, paths,
+branch, mirror, verify URL, and the settings the profile implies), so there is
+nothing to hand-edit and nothing that can drift; put what you want to
 keep in the project's own configuration instead.
 
 The `php` and `full` profiles also ship a **web tier**: nginx serving the served
@@ -1158,7 +1172,7 @@ Every deploy command declares what it needs, and a missing requirement is exit
 | `govard deploy` / `rollback` | `ssh,rsync` |
 | `govard deploy check` / `releases` / `status` / `unlock` | `ssh` |
 | `govard deploy plan` / `build` | `none` |
-| `govard deploy sandbox *` | `docker` |
+| `govard sandbox *` | `docker` |
 
 Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
 capability, `4` configuration. The deploy job in CI therefore runs on a host

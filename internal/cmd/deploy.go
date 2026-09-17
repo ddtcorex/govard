@@ -230,9 +230,19 @@ func PrepareResumeForTest(ctx context.Context, host deploy.Host, release *deploy
 // explicit confirmation. With no terminal there is nothing to confirm with, so a
 // missing --yes is a usage error rather than an assumption.
 func confirmProtectedRemote(cmd *cobra.Command, config engine.Config, remote string, options deploy.Options, action string) error {
-	remoteCfg, ok := config.Remotes[remote]
-	if !ok {
-		return nil
+	var remoteCfg engine.RemoteConfig
+	if strings.ToLower(strings.TrimSpace(remote)) == deploy.SandboxRemoteName {
+		resolved, _, err := resolveSandboxRemote(cmd.Context(), config.ProjectName)
+		if err != nil {
+			return err
+		}
+		remoteCfg = resolved
+	} else {
+		found, ok := config.Remotes[remote]
+		if !ok {
+			return nil
+		}
+		remoteCfg = found
 	}
 	blocked, reason := engine.RemoteWriteBlocked(remote, remoteCfg)
 	if !blocked || options.Yes {
@@ -251,6 +261,11 @@ func confirmProtectedRemote(cmd *cobra.Command, config engine.Config, remote str
 		return &cli.UsageError{Err: fmt.Errorf("operation on %s cancelled", remote)}
 	}
 	return nil
+}
+
+// ConfirmProtectedRemoteForTest exposes confirmProtectedRemote to the tests/ package.
+func ConfirmProtectedRemoteForTest(cmd *cobra.Command, config engine.Config, remote string, options deploy.Options, action string) error {
+	return confirmProtectedRemote(cmd, config, remote, options, action)
 }
 
 // resolveLocalRevision defaults the target revision to the local HEAD, which is

@@ -123,8 +123,8 @@ Chọn dòng khớp với dự án bạn đang deploy. "Webroot" là hình dạn
 | [7](#case-7-artifact-mode-in-ci) | bất kỳ ca nào ở trên | hoặc | production | như trên | như trên | artifact |
 | [8](#case-8-the-in-place-target-you-inherited) | bất kỳ | thật | production | như trên | như trên | hoặc |
 
-Lệnh sandbox cho mỗi dòng đều cùng một dạng: dựng target, rồi deploy lên remote mà
-sandbox ghi ra. Các mục theo từng ca đưa ra lệnh chính xác.
+Lệnh sandbox cho mỗi dòng đều cùng một dạng: dựng target, rồi deploy lên remote
+`sandbox` ẩn. Các mục theo từng ca đưa ra lệnh chính xác.
 
 ## Ca 1: Luma, chế độ production, docroot symlink {#case-1-luma-production-mode-symlinked-webroot}
 
@@ -178,8 +178,8 @@ window mở vì plan có import cấu hình và migrate.
 **Diễn tập.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3   # DB + cache + web tier
-govard deploy sandbox status
+govard sandbox up --profile full --php 8.3   # DB + cache + web tier
+govard sandbox status
 govard deploy --remote sandbox --yes
 govard deploy releases sandbox
 ```
@@ -250,7 +250,7 @@ trong lúc đang được phục vụ, nên không có thời điểm nào để
 **Diễn tập.** Sandbox dựng được đúng hình dạng này:
 
 ```bash
-govard deploy sandbox up --profile full --php 8.2 --docroot real
+govard sandbox up --profile full --php 8.2 --docroot real
 govard deploy check sandbox          # mong đợi: publish in_place
 govard deploy plan sandbox           # mong đợi: nhánh in-place của publish
 govard deploy --remote sandbox --yes
@@ -308,7 +308,7 @@ chạy**, không phải trên server production.
 **Diễn tập.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy plan sandbox            # build:frontend phải hiện path theme của bạn
 govard deploy --remote sandbox --yes
 ```
@@ -358,7 +358,7 @@ không bao giờ mở window.
 **Diễn tập.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy --remote sandbox --yes
 govard deploy releases sandbox        # xác nhận cái gì đã lên live
 ```
@@ -421,7 +421,7 @@ thì mất một storefront.
 **Diễn tập.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy plan sandbox            # cả hai thư mục phải xuất hiện trong build:frontend
 govard deploy --remote sandbox --yes
 ```
@@ -489,7 +489,7 @@ deploy có thể xoá cấu hình của storefront đang chạy.
 **Diễn tập.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy --remote sandbox --yes
 ```
 
@@ -623,10 +623,10 @@ vào một thư mục release chính là cách tạo ra một target deploy dở
 target thuộc công cụ kia, nên lần từ chối cũng diễn tập được:
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
-govard deploy sandbox reset --layout deployer --docroot absent
+govard sandbox up --profile full --php 8.3
+govard sandbox reset --layout deployer --docroot absent
 govard deploy --remote sandbox --yes     # mong đợi lời từ chối nêu tên lock
-govard deploy sandbox reset --docroot real
+govard sandbox reset --docroot real
 govard deploy --remote sandbox --yes     # giờ là đường in-place
 ```
 
@@ -752,22 +752,22 @@ không được hỗ trợ.
 
 ## Diễn tập bất kỳ ca nào trong sandbox {#rehearsing-any-case-in-the-sandbox}
 
-`govard deploy sandbox` cho dự án một đích triển khai thật ngay trên máy này: một
+`govard sandbox` cho dự án một đích triển khai thật ngay trên máy này: một
 container đóng vai remote, kết nối qua SSH thật và rsync thật, với đúng pipeline mà
 một lần deploy production chạy. Không phần nào trong pipeline biết sự khác biệt, và
 đó là thứ khiến nó là diễn tập thật chứ không phải mô phỏng.
 
 ```bash
-govard deploy sandbox up [--profile basic|php|full] [--php 8.3] [--docroot absent|symlink|real]
-govard deploy sandbox status
-govard deploy sandbox ssh
-govard deploy sandbox reset [--docroot …] [--layout deployer]
-govard deploy sandbox down [--purge]
+govard sandbox up [--profile basic|php|full] [--php 8.3] [--docroot absent|symlink|real]
+govard sandbox status
+govard sandbox ssh
+govard sandbox reset [--docroot …] [--layout deployer]
+govard sandbox down [--purge]
 govard deploy --remote sandbox --yes
 ```
 
-Vì `sandbox` cũng là một subcommand, lần deploy phải dùng dạng flag:
-`govard deploy --remote sandbox --yes`, không phải `govard deploy sandbox`.
+Vì `sandbox` là lệnh top-level chứ không phải subcommand của deploy, lần deploy
+phải dùng dạng flag: `govard deploy --remote sandbox --yes`.
 
 ### Profile nào chứng minh được điều gì
 
@@ -794,7 +794,7 @@ web tier và không quảng cáo verify URL.
 ::: warning `stack.web_root` là một phần của image sandbox
 `root` của nginx là `<current><web_root>`, và web root được nướng vào image vì tag
 của image là hash của definition đã render. Dự án có `stack.web_root` sai sẽ nhận
-một sandbox phục vụ sai thư mục — và cách sửa là `govard deploy sandbox up
+một sandbox phục vụ sai thư mục — và cách sửa là `govard sandbox up
 --recreate`, không phải sửa container bằng tay.
 :::
 
@@ -823,8 +823,8 @@ ba bước thủ công dưới đây thuộc về thời trước seed và chỉ
 `--no-seed`.
 
 ```bash
-govard deploy sandbox up --profile full   # tự seed DB + media + env.php
-govard deploy sandbox up --profile full --no-seed  # cố tình để trắng
+govard sandbox up --profile full   # tự seed DB + media + env.php
+govard sandbox up --profile full --no-seed  # cố tình để trắng
 # bên trong container --no-seed, với user deploy:
 #   viết ~/.deployer/shared/app/etc/env.php
 #   import dump database
@@ -861,9 +861,9 @@ cache được giữ nguyên.
 
 | Lần diễn tập báo | Đó là gì |
 | --- | --- |
-| `the sandbox container behind remote "sandbox" is not running` | container đã dừng hoặc chưa từng được tạo; `govard deploy sandbox up` |
+| `the sandbox container behind remote "sandbox" is not running` | container đã dừng hoặc chưa từng được tạo; `govard sandbox up` |
 | `the sandbox mirror … is missing` | git mirror ở máy local đã bị xoá; `up` tạo lại nó |
-| `deploy path … is not writable` | `owner`/`writable_mode` của profile bị ghi đè do sửa tay; `up` ghi lại remote từ trạng thái container |
+| `deploy path … is not writable` | `owner`/`writable_mode` của profile bị ghi đè do sửa tay; `up` resolve lại remote từ trạng thái live của container |
 | `verify http: http://127.0.0.1:PORT/ returned HTTP 403` | web tier đã lên nhưng ứng dụng chưa được cài — prerequisite, không phải lỗi |
 | `build:vendors` lỗi với `composer: not found` | profile `basic` không có toolchain PHP; dùng `php` hoặc `full` |
 | `The default website isn't defined` | target không có cấu hình store trong database |
@@ -874,7 +874,7 @@ Toàn bộ vòng lặp cho một ca, theo thứ tự, với những phần quan 
 
 ```bash
 # 1. Dựng target khớp với dự án (case 3/5/6 → full).
-govard deploy sandbox up --profile full --php 8.3 --docroot symlink
+govard sandbox up --profile full --php 8.3 --docroot symlink
 
 # 2. Đọc target ngụ ý gì trước khi chạy bất cứ thứ gì. Đây là chỗ một chiến lược
 #    publish sai hay một series PHP thiếu lộ ra, trong vài giây.
@@ -896,7 +896,7 @@ govard deploy rollback sandbox --yes
 #    interrupted", lock được nhả, và không còn rsync nào chạy ở cả hai phía.
 
 # 8. Dọn dẹp. `--purge` xoá luôn image, khoá và mirror.
-govard deploy sandbox down --purge
+govard sandbox down --purge
 ```
 
 ## Tham chiếu: mọi setting mà recipe framework đọc {#reference-every-setting-the-framework-recipes-read}

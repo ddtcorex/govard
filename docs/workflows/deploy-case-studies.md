@@ -126,7 +126,7 @@ docroot's shape, per decision 2.
 | [8](#case-8-the-in-place-target-you-inherited) | any | real | production | as above | as above | either |
 
 The sandbox command for each row is the same shape: build the target, then deploy
-to the remote the sandbox writes. The per-case sections give the exact commands.
+to the implicit `sandbox` remote. The per-case sections give the exact commands.
 
 ## Case 1: Luma, production mode, symlinked webroot
 
@@ -180,8 +180,8 @@ because the plan imports configuration and migrates.
 **Rehearse it.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3   # DB + cache + web tier
-govard deploy sandbox status
+govard sandbox up --profile full --php 8.3   # DB + cache + web tier
+govard sandbox status
 govard deploy --remote sandbox --yes
 govard deploy releases sandbox
 ```
@@ -253,7 +253,7 @@ is being served, so there is no moment to be clever about.
 **Rehearse it.** The sandbox can build exactly this shape:
 
 ```bash
-govard deploy sandbox up --profile full --php 8.2 --docroot real
+govard sandbox up --profile full --php 8.2 --docroot real
 govard deploy check sandbox          # expect: publish in_place
 govard deploy plan sandbox           # expect: the in-place branch of publish
 govard deploy --remote sandbox --yes
@@ -312,7 +312,7 @@ where the build runs**, not on the production server.
 **Rehearse it.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy plan sandbox            # build:frontend must show your theme path
 govard deploy --remote sandbox --yes
 ```
@@ -362,7 +362,7 @@ tasks without ever opening the window.
 **Rehearse it.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy --remote sandbox --yes
 govard deploy releases sandbox        # confirm what went live
 ```
@@ -427,7 +427,7 @@ one costs a storefront.
 **Rehearse it.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy plan sandbox            # both directories must appear in build:frontend
 govard deploy --remote sandbox --yes
 ```
@@ -496,7 +496,7 @@ rewrote them would be a deploy that can overwrite a live storefront's settings.
 **Rehearse it.**
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy --remote sandbox --yes
 ```
 
@@ -629,10 +629,10 @@ writing the same release directories is how a half-deployed target happens.
 target the other tool owns, so the refusal can be rehearsed too:
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
-govard deploy sandbox reset --layout deployer --docroot absent
+govard sandbox up --profile full --php 8.3
+govard sandbox reset --layout deployer --docroot absent
 govard deploy --remote sandbox --yes     # expect a refusal that names the lock
-govard deploy sandbox reset --docroot real
+govard sandbox reset --docroot real
 govard deploy --remote sandbox --yes     # now the in-place path
 ```
 
@@ -764,22 +764,22 @@ a content-only checkout are not supported.
 
 ## Rehearsing any case in the sandbox
 
-`govard deploy sandbox` gives the project a real deployment target on this machine:
+`govard sandbox` gives the project a real deployment target on this machine:
 a container that plays the remote, reached over real SSH and real rsync, with the
 same pipeline a production deploy runs. Nothing in the pipeline knows the
 difference, which is what makes it a rehearsal rather than a simulation.
 
 ```bash
-govard deploy sandbox up [--profile basic|php|full] [--php 8.3] [--docroot absent|symlink|real]
-govard deploy sandbox status
-govard deploy sandbox ssh
-govard deploy sandbox reset [--docroot …] [--layout deployer]
-govard deploy sandbox down [--purge]
+govard sandbox up [--profile basic|php|full] [--php 8.3] [--docroot absent|symlink|real]
+govard sandbox status
+govard sandbox ssh
+govard sandbox reset [--docroot …] [--layout deployer]
+govard sandbox down [--purge]
 govard deploy --remote sandbox --yes
 ```
 
-Because `sandbox` is also a subcommand, the deploy must use the flag form:
-`govard deploy --remote sandbox --yes`, not `govard deploy sandbox`.
+Because `sandbox` is a top-level command rather than a deploy subcommand, the
+deploy must use the flag form: `govard deploy --remote sandbox --yes`.
 
 ### Which profile can prove what
 
@@ -808,7 +808,7 @@ check included — the one step a target without a web server could never exerci
 The nginx `root` is `<current><web_root>`, and the web root is baked into the image
 because the image tag is the hash of the rendered definition. A project whose
 `stack.web_root` is wrong gets a sandbox that serves the wrong directory — and the
-fix is `govard deploy sandbox up --recreate`, not a hand-edited container.
+fix is `govard sandbox up --recreate`, not a hand-edited container.
 :::
 
 ### Shaping the webroot
@@ -836,8 +836,8 @@ provisioning: the three manual steps below belonged to the era before seeding
 and only remain relevant for `--no-seed` sandboxes.
 
 ```bash
-govard deploy sandbox up --profile full   # seeds DB + media + env.php automatically
-govard deploy sandbox up --profile full --no-seed  # deliberately empty instead
+govard sandbox up --profile full   # seeds DB + media + env.php automatically
+govard sandbox up --profile full --no-seed  # deliberately empty instead
 # inside a --no-seed container, as the deploy user:
 #   write ~/.deployer/shared/app/etc/env.php
 #   import the database dump
@@ -875,9 +875,9 @@ and the Composer cache is kept.
 
 | The rehearsal says | What it is |
 | --- | --- |
-| `the sandbox container behind remote "sandbox" is not running` | the container is stopped or was never created; `govard deploy sandbox up` |
+| `the sandbox container behind remote "sandbox" is not running` | the container is stopped or was never created; `govard sandbox up` |
 | `the sandbox mirror … is missing` | the local git mirror was purged; `up` recreates it |
-| `deploy path … is not writable` | the profile's `owner`/`writable_mode` was overridden in a hand-edit; `up` rewrites the remote from the container's state |
+| `deploy path … is not writable` | the profile's `owner`/`writable_mode` was overridden in a hand-edit; `up` re-resolves the remote from the container's live state |
 | `verify http: http://127.0.0.1:PORT/ returned HTTP 403` | the web tier is up but the application is not installed yet — a prerequisite, not a defect |
 | `build:vendors` fails with `composer: not found` | the `basic` profile has no PHP toolchain; use `php` or `full` |
 | `The default website isn't defined` | the target has no store configuration in its database |
@@ -888,7 +888,7 @@ The whole loop for one case, in order, with the parts that matter called out:
 
 ```bash
 # 1. Build the target that matches the project (case 3/5/6 → full).
-govard deploy sandbox up --profile full --php 8.3 --docroot symlink
+govard sandbox up --profile full --php 8.3 --docroot symlink
 
 # 2. Read what the target implies before anything runs. This is where a wrong
 #    publish strategy or a missing PHP series shows up, in seconds.
@@ -910,7 +910,7 @@ govard deploy rollback sandbox --yes
 #    interrupted", the lock released, and no rsync left running on either side.
 
 # 8. Tear down. `--purge` also removes the image, the key and the mirror.
-govard deploy sandbox down --purge
+govard sandbox down --purge
 ```
 
 ## Reference: every setting the framework recipes read

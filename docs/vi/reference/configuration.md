@@ -331,9 +331,9 @@ deploy:
 | `settings` | mặc định của recipe | setting của framework và engine, được đối chiếu với recipe |
 | `hooks` | — | các bước neo vào task id, alias stage (`stage:build`) hoặc một hook khác |
 
-Bốn setting của engine quyết định `govard deploy sandbox` phải cung cấp gì ngoài
+Bốn setting của engine quyết định `govard sandbox` phải cung cấp gì ngoài
 profile. Chúng được đọc ở **tầng project** (override theo remote không được xét:
-remote sandbox do chính lệnh đó tạo), và mỗi key **thay thế** danh sách của recipe
+remote sandbox là synthetic và không bao giờ nằm trong cấu hình), và mỗi key **thay thế** danh sách của recipe
 chứ không nối thêm:
 
 | Setting | Mặc định | Tác dụng |

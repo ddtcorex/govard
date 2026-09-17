@@ -70,13 +70,10 @@ func LockKeptOnFailure(stage Stage) bool {
 // retried — the retry is refused — while one that released its lock only needs
 // the fault fixed (spec P4, 7.3).
 //
-// The remote is named with `--remote` rather than as a positional argument. The
-// positional form reads better for most remotes, but `govard deploy` also has a
-// `sandbox` subcommand and cobra resolves a subcommand before a positional
-// argument: an operator following `govard deploy sandbox` would print the
-// sandbox status instead of retrying the deploy. One form that is correct for
-// every remote beats a special case that has to be kept in step with the command
-// tree.
+// The remote is named with `--remote` rather than as a positional argument.
+// One form that is correct for every remote beats a per-remote special case:
+// the hint never has to be kept in step with the command tree, and it reads
+// the same whether the remote is configured or synthetic.
 func RecoveryHint(remote string, lockHeld bool) string {
 	if lockHeld {
 		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy --remote %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)
