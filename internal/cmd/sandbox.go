@@ -17,15 +17,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// deploySandboxCmd gives a project a real deployment target on this machine: a
+// sandboxCmd gives a project a real deployment target on this machine: a
 // container that plays the remote, reached over real SSH and real rsync.
 //
 // It is a product command and the deploy feature's regression suite at once.
 // Nothing in the pipeline knows it is talking to a sandbox, which is the point:
 // a sandbox deploy is a production deploy pointed at a container.
-var deploySandboxCmd = &cobra.Command{
+var sandboxCmd = &cobra.Command{
 	Annotations: map[string]string{
-		// The only command in the deploy group that needs a container runtime:
+		// The sandbox needs a container runtime:
 		// govard uses it to create the fake server, then talks to it over SSH.
 		runtime.AnnotationRequires: string(runtime.CapDocker),
 	},
@@ -33,16 +33,16 @@ var deploySandboxCmd = &cobra.Command{
 	Short: "Create a container that plays the deployment target for this project",
 	Long: `Create and manage a local deployment target.
 
-` + "`govard deploy sandbox up`" + ` builds a container, publishes SSH on a free loopback
-port, generates a dedicated key and writes a ` + "`sandbox`" + ` remote into
-.govard.local.yml (local-only, gitignored). A deploy to it uses the same code
-path as a production deploy: SSH, a git mirror, git archive, rsync, publish,
-verify.
+` + "`govard sandbox up`" + ` builds a container, publishes SSH on a free loopback
+port, generates a dedicated key and resolves as a remote automatically
+whenever it is running — no configuration is written anywhere. A deploy to it
+uses the same code path as a production deploy: SSH, a git mirror, git archive,
+rsync, publish, verify.
 
 The container mounts a mirror of your local repository, refreshed before every
 deploy, so a commit you have never pushed is deployable.
 
-Because ` + "`sandbox`" + ` is a subcommand here, deploy to it with the flag form:
+Because ` + "`sandbox`" + ` is a top-level command, deploy to it with the flag form:
 
   govard deploy --remote sandbox --yes
 
@@ -61,56 +61,56 @@ Exit codes: 0 success, 1 execution failure, 2 usage, 3 missing capability,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// With no subcommand, report: creating a container by accident is a
 		// much worse default than printing what is already there.
-		return runDeploySandboxStatus(cmd)
+		return runSandboxStatus(cmd)
 	},
 }
 
 var (
-	deploySandboxUpCmd     = &cobra.Command{Use: "up", Short: "Create or reuse the sandbox", Args: cobra.NoArgs, RunE: runDeploySandboxUp}
-	deploySandboxStatusCmd = &cobra.Command{Use: "status", Short: "Report the sandbox state", Args: cobra.NoArgs, RunE: runDeploySandboxStatusRun}
-	deploySandboxResetCmd  = &cobra.Command{Use: "reset", Short: "Wipe the sandbox's deploy directories", Args: cobra.NoArgs, RunE: runDeploySandboxReset}
-	deploySandboxSSHCmd    = &cobra.Command{Use: "ssh", Short: "Open a shell in the sandbox", Args: cobra.NoArgs, RunE: runDeploySandboxSSH}
-	deploySandboxDownCmd   = &cobra.Command{Use: "down", Short: "Stop and remove the sandbox", Args: cobra.NoArgs, RunE: runDeploySandboxDown}
+	sandboxUpCmd     = &cobra.Command{Use: "up", Short: "Create or reuse the sandbox", Args: cobra.NoArgs, RunE: runSandboxUp}
+	sandboxStatusCmd = &cobra.Command{Use: "status", Short: "Report the sandbox state", Args: cobra.NoArgs, RunE: runSandboxStatusRun}
+	sandboxResetCmd  = &cobra.Command{Use: "reset", Short: "Wipe the sandbox's deploy directories", Args: cobra.NoArgs, RunE: runSandboxReset}
+	sandboxSSHCmd    = &cobra.Command{Use: "ssh", Short: "Open a shell in the sandbox", Args: cobra.NoArgs, RunE: runSandboxSSH}
+	sandboxDownCmd   = &cobra.Command{Use: "down", Short: "Stop and remove the sandbox", Args: cobra.NoArgs, RunE: runSandboxDown}
 )
 
 func init() {
-	deploySandboxUpCmd.Flags().String("profile", deploy.DefaultSandboxProfile, "Container contents: basic, php or full")
-	deploySandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default: the base image's own)")
-	deploySandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
-	deploySandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
-	deploySandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: start with an empty sandbox (no DB, no media, no env file)")
+	sandboxUpCmd.Flags().String("profile", deploy.DefaultSandboxProfile, "Container contents: basic, php or full")
+	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default: the base image's own)")
+	sandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
+	sandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
+	sandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: start with an empty sandbox (no DB, no media, no env file)")
 
-	deploySandboxResetCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
-	deploySandboxResetCmd.Flags().String("layout", "", "Seed a target the other deploy tool owns: deployer")
+	sandboxResetCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
+	sandboxResetCmd.Flags().String("layout", "", "Seed a target the other deploy tool owns: deployer")
 
-	deploySandboxDownCmd.Flags().Bool("purge", false, "Also remove the image, the key and the mirror")
-	deploySandboxDownCmd.Flags().Bool("volumes", false, "Also delete the derived data volumes (plain down keeps them so a rehearsal resumes)")
+	sandboxDownCmd.Flags().Bool("purge", false, "Also remove the image, the key and the mirror")
+	sandboxDownCmd.Flags().Bool("volumes", false, "Also delete the derived data volumes (plain down keeps them so a rehearsal resumes)")
 
-	deploySandboxCmd.AddCommand(deploySandboxUpCmd)
-	deploySandboxCmd.AddCommand(deploySandboxStatusCmd)
-	deploySandboxCmd.AddCommand(deploySandboxResetCmd)
-	deploySandboxCmd.AddCommand(deploySandboxSSHCmd)
-	deploySandboxCmd.AddCommand(deploySandboxDownCmd)
-	deployCmd.AddCommand(deploySandboxCmd)
+	sandboxCmd.AddCommand(sandboxUpCmd)
+	sandboxCmd.AddCommand(sandboxStatusCmd)
+	sandboxCmd.AddCommand(sandboxResetCmd)
+	sandboxCmd.AddCommand(sandboxSSHCmd)
+	sandboxCmd.AddCommand(sandboxDownCmd)
+	rootCmd.AddCommand(sandboxCmd)
 }
 
-// DeploySandboxCommand exposes the sandbox group for tests.
-func DeploySandboxCommand() *cobra.Command { return deploySandboxCmd }
+// SandboxCommand exposes the sandbox group for tests.
+func SandboxCommand() *cobra.Command { return sandboxCmd }
 
-// DeploySandboxStatusCommand exposes the status subcommand for tests.
-func DeploySandboxStatusCommand() *cobra.Command { return deploySandboxStatusCmd }
+// SandboxStatusCommand exposes the status subcommand for tests.
+func SandboxStatusCommand() *cobra.Command { return sandboxStatusCmd }
 
-// DeploySandboxUpCommand exposes the up subcommand for tests.
-func DeploySandboxUpCommand() *cobra.Command { return deploySandboxUpCmd }
+// SandboxUpCommand exposes the up subcommand for tests.
+func SandboxUpCommand() *cobra.Command { return sandboxUpCmd }
 
-// DeploySandboxResetCommand exposes the reset subcommand for tests.
-func DeploySandboxResetCommand() *cobra.Command { return deploySandboxResetCmd }
+// SandboxResetCommand exposes the reset subcommand for tests.
+func SandboxResetCommand() *cobra.Command { return sandboxResetCmd }
 
-// DeploySandboxDownCommand exposes the down subcommand for tests.
-func DeploySandboxDownCommand() *cobra.Command { return deploySandboxDownCmd }
+// SandboxDownCommand exposes the down subcommand for tests.
+func SandboxDownCommand() *cobra.Command { return sandboxDownCmd }
 
-// deploySandboxRequest builds the library request from the project and the flags.
-func deploySandboxRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
+// sandboxCommandRequest builds the library request from the project and the flags.
+func sandboxCommandRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	root, err := os.Getwd()
 	if err != nil {
 		return deploy.SandboxRequest{}, fmt.Errorf("resolve the project directory: %w", err)
@@ -229,8 +229,8 @@ func originEnvRunning(ctx context.Context, project string) bool {
 	return false
 }
 
-func runDeploySandboxUp(cmd *cobra.Command, _ []string) error {
-	request, err := deploySandboxRequest(cmd)
+func runSandboxUp(cmd *cobra.Command, _ []string) error {
+	request, err := sandboxCommandRequest(cmd)
 	if err != nil {
 		return err
 	}
@@ -243,12 +243,12 @@ func runDeploySandboxUp(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runDeploySandboxStatus(cmd *cobra.Command) error {
-	return runDeploySandboxStatusRun(cmd, nil)
+func runSandboxStatus(cmd *cobra.Command) error {
+	return runSandboxStatusRun(cmd, nil)
 }
 
-func runDeploySandboxStatusRun(cmd *cobra.Command, _ []string) error {
-	request, err := deploySandboxRequest(cmd)
+func runSandboxStatusRun(cmd *cobra.Command, _ []string) error {
+	request, err := sandboxCommandRequest(cmd)
 	if err != nil {
 		return err
 	}
@@ -258,13 +258,13 @@ func runDeploySandboxStatusRun(cmd *cobra.Command, _ []string) error {
 	}
 	printSandboxState(cmd, state, "Sandbox")
 	if !state.Exists {
-		pterm.Info.Println("Create it with: govard deploy sandbox up")
+		pterm.Info.Println("Create it with: govard sandbox up")
 	}
 	return nil
 }
 
-func runDeploySandboxReset(cmd *cobra.Command, _ []string) error {
-	request, err := deploySandboxRequest(cmd)
+func runSandboxReset(cmd *cobra.Command, _ []string) error {
+	request, err := sandboxCommandRequest(cmd)
 	if err != nil {
 		return err
 	}
@@ -279,8 +279,8 @@ func runDeploySandboxReset(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runDeploySandboxDown(cmd *cobra.Command, _ []string) error {
-	request, err := deploySandboxRequest(cmd)
+func runSandboxDown(cmd *cobra.Command, _ []string) error {
+	request, err := sandboxCommandRequest(cmd)
 	if err != nil {
 		return err
 	}
@@ -295,8 +295,8 @@ func runDeploySandboxDown(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runDeploySandboxSSH(cmd *cobra.Command, _ []string) error {
-	request, err := deploySandboxRequest(cmd)
+func runSandboxSSH(cmd *cobra.Command, _ []string) error {
+	request, err := sandboxCommandRequest(cmd)
 	if err != nil {
 		return err
 	}
@@ -305,7 +305,7 @@ func runDeploySandboxSSH(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if !state.Exists || !state.Running {
-		return &cli.UsageError{Err: fmt.Errorf("the sandbox is not running; run `govard deploy sandbox up` first")}
+		return &cli.UsageError{Err: fmt.Errorf("the sandbox is not running; run `govard sandbox up` first")}
 	}
 	sshPath, err := exec.LookPath("ssh")
 	if err != nil {

@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/frameworks"
+	"govard/internal/runtime"
 )
 
 // The sandbox ships three profiles; a fourth is a typo, not a new size.
@@ -165,7 +165,7 @@ func TestSandboxImageTagTracksTheDockerfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tag: %v", err)
 	}
-	if !strings.HasPrefix(tag, "govard-deploy-sandbox:sample-project-php-") {
+	if !strings.HasPrefix(tag, "govard-sandbox:sample-project-php-") {
 		t.Fatalf("tag = %q, want a project/profile prefix", tag)
 	}
 	same, err := deploy.SandboxImageTag(spec)
@@ -203,6 +203,9 @@ func TestSandboxImageTagIsADockerLegalName(t *testing.T) {
 	tag, err := deploy.SandboxImageTag(deploy.SandboxSpec{Project: "My Project", Profile: deploy.SandboxProfileBasic})
 	if err != nil {
 		t.Fatalf("tag: %v", err)
+	}
+	if !strings.HasPrefix(tag, "govard-sandbox:") {
+		t.Fatalf("tag = %q, want the govard-sandbox:<slug>-<profile>-<hash> form (no \"deploy\")", tag)
 	}
 	for _, r := range tag {
 		legal := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' || r == ':' || r == '/'
@@ -255,6 +258,17 @@ func (f *fakeSandboxRuntime) containerProfile(profile string) *fakeSandboxRuntim
 		f.labels = map[string]string{}
 	}
 	f.labels["govard.sandbox.profile"] = profile + "\n"
+	return f
+}
+
+// containerPHP makes the fake answer the container's PHP series label, which
+// is what `up` labels the container it creates with. An empty series means a
+// container built without one, so the synthetic resolution declares none.
+func (f *fakeSandboxRuntime) containerPHP(series string) *fakeSandboxRuntime {
+	if f.labels == nil {
+		f.labels = map[string]string{}
+	}
+	f.labels["govard.sandbox.php"] = series + "\n"
 	return f
 }
 
@@ -315,6 +329,17 @@ func (f *fakeSandboxRuntime) has(fragment string) bool {
 	return false
 }
 
+func (f *fakeSandboxRuntime) hasArg(flag, value string) bool {
+	for _, call := range f.calls {
+		for i, arg := range call {
+			if arg == flag && i+1 < len(call) && call[i+1] == value {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (f *fakeSandboxRuntime) call(fragment string) []string {
 	for _, call := range f.calls {
 		if strings.Contains(strings.Join(call, " "), fragment) {
@@ -329,8 +354,8 @@ func TestSandboxRunRequestPublishesADockerChosenPort(t *testing.T) {
 	runtime := deploy.NewDockerCLIForTest(fake.run)
 
 	err := runtime.RunContainer(context.Background(), deploy.SandboxRunRequest{
-		Name:        "govard-sample-project-deploy-sandbox",
-		Image:       "govard-deploy-sandbox:sample-project-basic-abc123",
+		Name:        "govard-sample-project-sandbox",
+		Image:       "govard-sandbox:sample-project-basic-abc123",
 		MirrorPath:  "/tmp/sample/.govard/sandbox/repo.git",
 		ProjectName: "sample-project",
 	})
@@ -350,17 +375,35 @@ func TestSandboxRunRequestPublishesADockerChosenPort(t *testing.T) {
 	if !strings.Contains(joined, "type=bind,source=/tmp/sample/.govard/sandbox/repo.git,target="+deploy.SandboxRepoPath+",readonly") {
 		t.Fatalf("the mirror must be mounted read-only at %s, got %v", deploy.SandboxRepoPath, call)
 	}
-	if !strings.Contains(joined, "--name govard-sample-project-deploy-sandbox") {
+	if !strings.Contains(joined, "--name govard-sample-project-sandbox") {
 		t.Fatalf("the container name is missing: %v", call)
+	}
+}
+
+func TestSandboxRunContainerLabelsThePHPSeries(t *testing.T) {
+	fake := newFakeSandboxRuntime()
+	runtime := deploy.NewDockerCLIForTest(fake.run)
+	if err := runtime.RunContainer(context.Background(), deploy.SandboxRunRequest{
+		Name:        "govard-sample-sandbox-abc123",
+		Image:       "govard-sandbox:sample-full-abc123",
+		MirrorPath:  "/tmp/mirror",
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfileFull,
+		PHP:         "8.4",
+	}); err != nil {
+		t.Fatalf("run container: %v", err)
+	}
+	if !fake.hasArg("--label", "govard.sandbox.php=8.4") {
+		t.Fatal("the container must carry the PHP series as a label, the way profile and project already are")
 	}
 }
 
 func TestSandboxRuntimeReadsBackThePublishedPort(t *testing.T) {
 	fake := newFakeSandboxRuntime()
-	fake.answers["port govard-sample-project-deploy-sandbox 22/tcp"] = "127.0.0.1:49153\n"
+	fake.answers["port govard-sample-project-sandbox 22/tcp"] = "127.0.0.1:49153\n"
 	runtime := deploy.NewDockerCLIForTest(fake.run)
 
-	port, err := runtime.PublishedPort(context.Background(), "govard-sample-project-deploy-sandbox", deploy.SandboxSSHPort)
+	port, err := runtime.PublishedPort(context.Background(), "govard-sample-project-sandbox", deploy.SandboxSSHPort)
 	if err != nil {
 		t.Fatalf("published port: %v", err)
 	}
@@ -381,8 +424,8 @@ func TestSandboxRuntimeReportsAnUnpublishedPort(t *testing.T) {
 
 func TestSandboxRuntimeDistinguishesAMissingImage(t *testing.T) {
 	absent := newFakeSandboxRuntime()
-	absent.fail["image inspect"] = "Error response from daemon: No such image: govard-deploy-sandbox:absent"
-	exists, err := deploy.NewDockerCLIForTest(absent.run).ImageExists(context.Background(), "govard-deploy-sandbox:absent")
+	absent.fail["image inspect"] = "Error response from daemon: No such image: govard-sandbox:absent"
+	exists, err := deploy.NewDockerCLIForTest(absent.run).ImageExists(context.Background(), "govard-sandbox:absent")
 	if err != nil {
 		t.Fatalf("image exists: %v", err)
 	}
@@ -392,7 +435,7 @@ func TestSandboxRuntimeDistinguishesAMissingImage(t *testing.T) {
 
 	present := newFakeSandboxRuntime()
 	present.answers["image inspect"] = "sha256:abc\n"
-	exists, err = deploy.NewDockerCLIForTest(present.run).ImageExists(context.Background(), "govard-deploy-sandbox:present")
+	exists, err = deploy.NewDockerCLIForTest(present.run).ImageExists(context.Background(), "govard-sandbox:present")
 	if err != nil {
 		t.Fatalf("image exists: %v", err)
 	}
@@ -407,7 +450,7 @@ func TestSandboxRuntimeSurfacesStderrFromAFailedCommand(t *testing.T) {
 	runtime := deploy.NewDockerCLIForTest(fake.run)
 
 	err := runtime.BuildImage(context.Background(), deploy.SandboxBuildRequest{
-		Image:      "govard-deploy-sandbox:sample-project-basic",
+		Image:      "govard-sandbox:sample-project-basic",
 		Dockerfile: "/tmp/sample/.govard/sandbox/Dockerfile",
 		Context:    "/tmp/sample/.govard/sandbox",
 	})
@@ -425,7 +468,7 @@ func TestSandboxRuntimeStreamsTheBuildOutput(t *testing.T) {
 
 	var out strings.Builder
 	err := runtime.BuildImage(context.Background(), deploy.SandboxBuildRequest{
-		Image:      "govard-deploy-sandbox:sample-project-basic",
+		Image:      "govard-sandbox:sample-project-basic",
 		Dockerfile: "/tmp/sample/.govard/sandbox/Dockerfile",
 		Context:    "/tmp/sample/.govard/sandbox",
 		Out:        &out,
@@ -443,157 +486,12 @@ func TestSandboxRuntimeReadsTheRecordedPackageVersions(t *testing.T) {
 	fake.answers["--entrypoint cat"] = "rsync=3.2.7-1\n"
 	runtime := deploy.NewDockerCLIForTest(fake.run)
 
-	versions, err := runtime.ImageFile(context.Background(), "govard-deploy-sandbox:sample", deploy.SandboxPackagesTxt)
+	versions, err := runtime.ImageFile(context.Background(), "govard-sandbox:sample", deploy.SandboxPackagesTxt)
 	if err != nil {
 		t.Fatalf("image file: %v", err)
 	}
 	if !strings.Contains(versions, "rsync=3.2.7-1") {
 		t.Fatalf("recorded versions = %q", versions)
-	}
-}
-
-func TestSandboxRemoteRoundTripsThroughTheRealLoader(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, ".govard.yml"), `
-project_name: sample-project
-framework: generic
-domain: sample.test
-`)
-
-	remote := engine.RemoteConfig{
-		Host:    "127.0.0.1",
-		Port:    49153,
-		User:    deploy.SandboxUser,
-		Path:    "/home/deployer/public_html",
-		Sandbox: true,
-		Auth:    engine.RemoteAuth{KeyPath: ".govard/sandbox/id_ed25519"},
-		Deploy: &engine.DeployConfig{
-			Repository: deploy.SandboxRepoPath,
-			DeployPath: "/home/deployer/.deployer",
-		},
-	}
-	if err := deploy.WriteSandboxRemote(root, "sandbox", remote); err != nil {
-		t.Fatalf("write sandbox remote: %v", err)
-	}
-
-	cfg, _, err := engine.LoadConfigFromDir(root, true)
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	loaded, ok := cfg.Remotes["sandbox"]
-	if !ok {
-		t.Fatal("the sandbox remote did not survive the real config loader")
-	}
-	if loaded.Port != 49153 || loaded.Deploy.Repository != deploy.SandboxRepoPath {
-		t.Fatalf("loaded remote = %+v, want the port and repository written", loaded)
-	}
-	if !loaded.Sandbox {
-		t.Fatal("the sandbox marker was lost, so the pipeline cannot refresh the mirror")
-	}
-	if loaded.Auth.KeyPath != ".govard/sandbox/id_ed25519" {
-		t.Fatalf("key path = %q", loaded.Auth.KeyPath)
-	}
-}
-
-func TestSandboxRemoteWriteKeepsTheProjectsOwnContent(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, ".govard.yml"), `
-project_name: sample-project
-framework: generic
-domain: sample.test
-`)
-	// A project may keep its own local remotes and comments here. Writing the
-	// sandbox must not reformat or drop them.
-	writeFile(t, filepath.Join(root, ".govard.local.yml"), `# my own local overrides
-remotes:
-  staging-local:
-    host: 10.0.0.5
-    user: deploy
-    path: /srv/staging
-`)
-
-	if err := deploy.WriteSandboxRemote(root, "sandbox", engine.RemoteConfig{
-		Host: "127.0.0.1", Port: 1234, User: deploy.SandboxUser, Sandbox: true,
-		Path:   "/home/deployer/public_html",
-		Deploy: &engine.DeployConfig{DeployPath: "/home/deployer/.deployer"},
-	}); err != nil {
-		t.Fatalf("write sandbox remote: %v", err)
-	}
-
-	cfg, _, err := engine.LoadConfigFromDir(root, true)
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	if _, ok := cfg.Remotes["staging-local"]; !ok {
-		t.Fatal("the project's own remote was dropped")
-	}
-	if _, ok := cfg.Remotes["sandbox"]; !ok {
-		t.Fatal("the sandbox remote was not added")
-	}
-	content, err := os.ReadFile(filepath.Join(root, ".govard.local.yml"))
-	if err != nil {
-		t.Fatalf("read the local config: %v", err)
-	}
-	if !strings.Contains(string(content), "my own local overrides") {
-		t.Fatalf("the project's comment was lost:\n%s", content)
-	}
-
-	// Rewriting replaces the entry instead of duplicating it.
-	if err := deploy.WriteSandboxRemote(root, "sandbox", engine.RemoteConfig{
-		Host: "127.0.0.1", Port: 2345, User: deploy.SandboxUser, Sandbox: true,
-		Path:   "/home/deployer/public_html",
-		Deploy: &engine.DeployConfig{DeployPath: "/home/deployer/.deployer"},
-	}); err != nil {
-		t.Fatalf("rewrite sandbox remote: %v", err)
-	}
-	cfg, _, err = engine.LoadConfigFromDir(root, true)
-	if err != nil {
-		t.Fatalf("reload config: %v", err)
-	}
-	if cfg.Remotes["sandbox"].Port != 2345 {
-		t.Fatalf("port = %d, want the rewritten 2345", cfg.Remotes["sandbox"].Port)
-	}
-	// The bare `sandbox:` key, not the `sandbox: true` field of the remote.
-	if matches := regexp.MustCompile(`(?m)^\s*sandbox:\s*$`).FindAllString(string(mustReadFile(t, filepath.Join(root, ".govard.local.yml"))), -1); len(matches) != 1 {
-		t.Fatalf("the sandbox remote key appears %d times", len(matches))
-	}
-}
-
-func TestSandboxRemoteRemovalLeavesTheRest(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, ".govard.yml"), `
-project_name: sample-project
-framework: generic
-domain: sample.test
-`)
-	writeFile(t, filepath.Join(root, ".govard.local.yml"), `remotes:
-  staging-local:
-    host: 10.0.0.5
-    user: deploy
-    path: /srv/staging
-  sandbox:
-    host: 127.0.0.1
-    port: 1234
-    user: deployer
-    sandbox: true
-`)
-	if err := deploy.RemoveSandboxRemote(root, "sandbox"); err != nil {
-		t.Fatalf("remove sandbox remote: %v", err)
-	}
-	cfg, _, err := engine.LoadConfigFromDir(root, true)
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	if _, ok := cfg.Remotes["sandbox"]; ok {
-		t.Fatal("the sandbox remote survived its own removal")
-	}
-	if _, ok := cfg.Remotes["staging-local"]; !ok {
-		t.Fatal("removing the sandbox remote removed an unrelated one")
-	}
-
-	// Removing it twice is not an error: `down` must be repeatable.
-	if err := deploy.RemoveSandboxRemote(root, "sandbox"); err != nil {
-		t.Fatalf("second removal: %v", err)
 	}
 }
 
@@ -702,7 +600,7 @@ func sandboxFake() *fakeSandboxRuntime {
 	fake.answers["port "] = "127.0.0.1:49153\n"
 	fake.answers["inspect --format {{.State.Running}}"] = "true\n"
 	fake.answers["inspect --format {{.Id}}"] = "abc123\n"
-	fake.answers["inspect --format {{.Config.Image}}"] = "govard-deploy-sandbox:sample-project-php-deadbeef\n"
+	fake.answers["inspect --format {{.Config.Image}}"] = "govard-sandbox:sample-project-php-deadbeef\n"
 	fake.answers["inspect --format {{index .Config.Labels"] = "php\n"
 	fake.answers["--entrypoint cat"] = "rsync=3.2.7-1\n"
 	return fake
@@ -716,7 +614,7 @@ func absentContainerFake() *fakeSandboxRuntime {
 	return fake
 }
 
-func TestSandboxUpCreatesTheContainerAndWritesTheRemote(t *testing.T) {
+func TestSandboxUpCreatesAResolvableContainer(t *testing.T) {
 	root := sandboxProject(t)
 	fake := absentContainerFake()
 	fake.fail["image inspect"] = "Error: No such image"
@@ -743,12 +641,18 @@ func TestSandboxUpCreatesTheContainerAndWritesTheRemote(t *testing.T) {
 		t.Fatal("the public key must be installed with an interactive exec")
 	}
 
-	remote, set, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	// The container `up` created answers the probes now: drop the absence the
+	// fake was scripted with so the resolution below observes a running
+	// sandbox rather than the missing one `up` started from.
+	delete(fake.fail, "inspect")
+	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restore()
+	remote, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, "sample-project")
 	if err != nil {
-		t.Fatalf("read the sandbox remote: %v", err)
+		t.Fatalf("resolve the sandbox remote: %v", err)
 	}
-	if !set {
-		t.Fatal("up did not write the sandbox remote")
+	if liveness != deploy.SandboxLivenessRunning {
+		t.Fatalf("liveness = %q, want running right after up", liveness)
 	}
 	if remote.Port != 49153 || remote.Deploy.Repository != deploy.SandboxRepoPath {
 		t.Fatalf("remote = %+v, want the published port and the mounted mirror", remote)
@@ -758,6 +662,24 @@ func TestSandboxUpCreatesTheContainerAndWritesTheRemote(t *testing.T) {
 	}
 	if _, err := os.Stat(deploy.SandboxMirrorPath(root)); err != nil {
 		t.Fatalf("the mirror was not created: %v", err)
+	}
+}
+
+func TestSandboxUpNeverTouchesTheLocalConfigFile(t *testing.T) {
+	root := sandboxProject(t)
+	fake := absentContainerFake()
+	fake.fail["image inspect"] = "Error: No such image"
+
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfilePHP,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".govard.local.yml")); !os.IsNotExist(err) {
+		t.Fatalf(".govard.local.yml must never be created by sandbox up, stat err = %v", err)
 	}
 }
 
@@ -792,9 +714,9 @@ func TestSandboxUpReusesAnExistingSandbox(t *testing.T) {
 	if second.Port != first.Port {
 		t.Fatalf("the second up moved the port from %d to %d", first.Port, second.Port)
 	}
-	content := mustReadFile(t, filepath.Join(root, ".govard.local.yml"))
-	if strings.Count(string(content), "port:") != 1 {
-		t.Fatalf("the sandbox remote was duplicated:\n%s", content)
+	// No remote is written anywhere: reusing must not create the file either.
+	if _, err := os.Stat(filepath.Join(root, ".govard.local.yml")); !os.IsNotExist(err) {
+		t.Fatalf(".govard.local.yml must never be created by sandbox up, stat err = %v", err)
 	}
 }
 
@@ -890,7 +812,7 @@ func TestSandboxRecreateRebuilds(t *testing.T) {
 	}
 }
 
-func TestSandboxDownRemovesTheContainerAndTheRemote(t *testing.T) {
+func TestSandboxDownRemovesTheContainer(t *testing.T) {
 	root := sandboxProject(t)
 	fake := sandboxFake()
 	fake.answers["image inspect"] = "sha256:abc\n"
@@ -914,8 +836,18 @@ func TestSandboxDownRemovesTheContainerAndTheRemote(t *testing.T) {
 	if !downFake.has("stop ") || !downFake.has("rm --force --volumes") {
 		t.Fatal("down must stop and remove the container")
 	}
-	if _, set, err := deploy.SandboxRemoteForTest(root, "sandbox"); err != nil || set {
-		t.Fatalf("down left the sandbox remote behind (set=%v err=%v)", set, err)
+	// `down` removed the container, so resolving it afterwards must report an
+	// absent sandbox: script the removal into the fake, which cannot observe
+	// its own `rm` the way Docker does.
+	downFake.fail["inspect"] = "Error: No such container"
+	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restore()
+	_, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(downFake.run), deploy.LocalRunner{}, root, "sample-project")
+	if err == nil {
+		t.Fatal("resolving a removed sandbox must fail")
+	}
+	if liveness != deploy.SandboxLivenessAbsent {
+		t.Fatalf("liveness = %q, want absent after down removed the container", liveness)
 	}
 	if _, err := os.Stat(deploy.SandboxStateDir(root)); err != nil {
 		t.Fatalf("a plain down must keep the key and the mirror: %v", err)
@@ -1017,7 +949,7 @@ func TestSandboxDocRootRealInitialisesAGitCheckout(t *testing.T) {
 		t.Fatal("an in-place target has to be a git checkout")
 	}
 
-	basic := sandboxFake()
+	basic := sandboxFake().containerProfile(deploy.SandboxProfileBasic)
 	basic.answers["image inspect"] = "sha256:abc\n"
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(basic.run), deploy.LocalRunner{}, deploy.SandboxRequest{
 		ProjectRoot: root,
@@ -1034,9 +966,14 @@ func TestSandboxDocRootRealInitialisesAGitCheckout(t *testing.T) {
 	}
 
 	// The basic profile has no PHP, so naming one would fail every deploy.
-	remote, _, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restore()
+	remote, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(basic.run), deploy.LocalRunner{}, root, "sample-project")
 	if err != nil {
-		t.Fatalf("read the sandbox remote: %v", err)
+		t.Fatalf("resolve the sandbox remote: %v", err)
+	}
+	if liveness != deploy.SandboxLivenessRunning {
+		t.Fatalf("liveness = %q, want running", liveness)
 	}
 	if remote.Deploy == nil {
 		t.Fatal("the sandbox remote carries no deploy settings")
@@ -1130,8 +1067,8 @@ func TestSandboxContainerNameIsPerProjectPath(t *testing.T) {
 	if first == second {
 		t.Fatalf("two checkouts of the same project share a container name: %q", first)
 	}
-	if !strings.HasPrefix(first, "govard-sample-project-deploy-sandbox-") {
-		t.Fatalf("container name = %q, want the project slug and a path suffix", first)
+	if !strings.HasPrefix(first, "govard-sample-project-sandbox-") {
+		t.Fatalf("container name = %q, want the govard-<slug>-sandbox-<hash> prefix (no \"deploy\")", first)
 	}
 	// Stable for the same path, so `status` and `down` address the same container.
 	if again := deploy.SandboxContainerName("sample-project", "/home/dev/one/sample-project"); again != first {
@@ -1302,7 +1239,7 @@ func TestSandboxUpDescribesAReusedContainerAsWhatItIs(t *testing.T) {
 	root := sandboxProject(t)
 	fake := sandboxFake().containerProfile(deploy.SandboxProfileBasic)
 	fake.answers["image inspect"] = "sha256:abc\n"
-	const actualImage = "govard-deploy-sandbox:sample-project-basic-deadbeef"
+	const actualImage = "govard-sandbox:sample-project-basic-deadbeef"
 	fake.answers["inspect --format {{.Config.Image}}"] = actualImage + "\n"
 	probe := func(context.Context, string, int, time.Duration) error { return nil }
 
@@ -1323,9 +1260,14 @@ func TestSandboxUpDescribesAReusedContainerAsWhatItIs(t *testing.T) {
 	if fake.has("build --file") {
 		t.Fatalf("a reused sandbox must not build another profile's image:\n%v", fake.calls)
 	}
-	remote, _, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restore()
+	remote, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, "sample-project")
 	if err != nil {
-		t.Fatalf("read the sandbox remote: %v", err)
+		t.Fatalf("resolve the sandbox remote: %v", err)
+	}
+	if liveness != deploy.SandboxLivenessRunning {
+		t.Fatalf("liveness = %q, want running", liveness)
 	}
 	if _, ok := remote.Deploy.Settings["php_bin"]; ok {
 		t.Fatal("a profile with no PHP must not declare a PHP binary")

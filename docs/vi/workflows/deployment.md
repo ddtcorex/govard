@@ -177,10 +177,10 @@ cho timeline.
 ### 7. Diễn tập ngay trên máy này trước
 
 ```bash
-govard deploy sandbox up --profile full --php 8.4   # một target thật, trên loopback
+govard sandbox up --profile full --php 8.4   # một target thật, trên loopback
 # seed là tự động (database, media, env.php); chỉ cần lo credential + search engine nếu dự án dùng
 govard deploy --remote sandbox --yes
-govard deploy sandbox down --purge
+govard sandbox down --purge
 ```
 
 Sandbox là một lần deploy production trỏ vào container — cùng SSH, cùng mirror,
@@ -964,26 +964,32 @@ lần chạy đó là CI, nhờ vậy câu "pipeline nào đã deploy cái này"
 
 ## Sandbox
 
-`govard deploy sandbox` cho dự án một đích triển khai thật ngay trên máy bạn — một
+`govard sandbox` cho dự án một đích triển khai thật ngay trên máy bạn — một
 container đóng vai remote — để diễn tập trước khi chạm vào server. Không phần nào
 trong pipeline biết sự khác biệt, nên đây là diễn tập thật chứ không phải mô
 phỏng.
 
 ```bash
-govard deploy sandbox up                      # tạo (mặc định profile php)
-govard deploy sandbox up --profile basic      # chỉ sshd, rsync, git
-govard deploy sandbox up --profile full --php 8.4   # database, cache, web server, PHP 8.4
-govard deploy sandbox status
-govard deploy sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
-govard deploy sandbox ssh
-govard deploy sandbox down [--purge] [--volumes]
+govard sandbox up                      # tạo (mặc định profile php)
+govard sandbox up --profile basic      # chỉ sshd, rsync, git
+govard sandbox up --profile full --php 8.4   # database, cache, web server, PHP 8.4
+govard sandbox status
+govard sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
+govard sandbox ssh
+govard sandbox down [--purge] [--volumes]
 ```
 
 `up` publish SSH trên một cổng loopback còn trống, sinh khoá riêng dưới
-`.govard/sandbox/` (đã gitignore), mount read-only một mirror của repository local,
-và ghi remote `sandbox` vào `.govard.local.yml`. Mirror được refresh trước mỗi lần
-deploy, nên một commit bạn chưa từng push vẫn triển khai được. Vì `sandbox` cũng
-là một subcommand, hãy deploy bằng dạng flag:
+`.govard/sandbox/` (đã gitignore), và mount read-only một mirror của repository
+local. Mirror được refresh trước mỗi lần deploy, nên một commit bạn chưa từng
+push vẫn triển khai được. Không có block `sandbox` trong bất kỳ file cấu hình
+nào: hễ container sandbox còn chạy, `sandbox` tự resolve thành một remote cho
+mọi lệnh nhận remote — `deploy`, `db`, `remote exec`, `sync` — nên
+`govard deploy --remote sandbox --yes`, `govard db dump -e sandbox`,
+`govard remote exec sandbox -- <command>` và `govard sync -e sandbox` đều chạy
+được mà không ghi gì vào cấu hình. `govard remote list` hiện dòng synthetic đó
+(`sandbox | (implicit) | running|dormant|absent`) cạnh các remote đã cấu hình.
+Hãy deploy bằng dạng flag (dạng positional cũng chạy được):
 
 ```bash
 govard deploy --remote sandbox --yes
@@ -1017,17 +1023,23 @@ chứ không tái dùng image cũ.
 
 `--docroot` định hình target để chiến lược publish resolve theo đúng thứ bạn muốn
 kiểm chứng: `absent` hoặc `symlink` (mặc định) chọn cú swap nguyên tử, `real` chọn in-place.
+Một điểm cần lưu ý của dạng `symlink` mặc định: trên sandbox mới tinh,
+`govard remote exec sandbox -- <command>` sẽ lỗi, vì lệnh bắt đầu chạy trong
+current path của target mà symlink đó còn treo lơ lửng cho tới lần deploy đầu
+tiên. Hãy deploy lần đầu, hoặc tạo sandbox với `--docroot real`, để tránh.
 Việc định hình chỉ xảy ra khi target được tạo và khi bạn nói rõ hình dạng muốn có —
 vì `up` còn là cách khởi động lại sandbox đang dừng và cách refresh mirror trước khi
 deploy revision kế tiếp, và cả hai đều không được phép làm mất ứng dụng đang phục
 vụ. `reset` thì luôn định hình: xoá thư mục deploy rồi dựng lại là việc của nó.
-`down` dừng và xoá container cùng remote mà nó đã ghi, nhưng giữ mọi data volume để
+`down` dừng và xoá container — remote `sandbox` ẩn chỉ tồn tại khi container còn
+đó, nên không còn gì phải dọn trong file cấu hình — nhưng giữ mọi data volume để
 mai diễn tập tiếp; `down --volumes` xoá luôn data. `--purge` xoá thêm image, khoá và
 mirror.
 
 Sandbox là một dự án phái sinh, không phải container generic: `up` render đúng
-blueprint của dự án gốc — cùng series PHP, cùng services — thành các container
-riêng (`govard-<project>-deploy-sandbox-…`), nên target diễn tập khớp dự án
+blueprint của dự án gốc — cùng series PHP, cùng services — thành một container
+riêng (`govard-<slug>-sandbox-…`) build từ chính image của nó
+(`govard-sandbox:<slug>-<profile>-<hash>`), nên target diễn tập khớp dự án
 theo cấu trúc thay vì `--php` truyền tay (flag vẫn còn cho ca đặc biệt). Dự án
 phái sinh không bao giờ vào project list; state của nó nằm dưới
 `.govard/sandbox/` của dự án gốc, ghi rõ nó được seed từ đâu.
@@ -1047,10 +1059,10 @@ sandbox `full` thành profile mặc định. Đòi một profile hoặc series k
 chối kèm đúng flag thay đổi được nó (`--recreate`), thay vì dán nhãn mới cho một
 container mà image vẫn là image cũ. `up` cũng chờ một lần đăng nhập thật trước khi
 báo sandbox sẵn sàng — cổng đã publish và chấp nhận kết nối chưa phải là một target
-deploy được. Riêng block remote `sandbox` được ghi lại từ trạng thái
-container ở mọi lần `up` (host, port, path, branch, mirror, verify URL và các setting
-mà profile hàm ý), nên sửa tay trong đó không giữ được — hãy đặt những gì cần giữ
-vào cấu hình của chính dự án.
+deploy được. Remote `sandbox` synthetic được resolve live từ trạng thái
+container ở mỗi lần dùng (host, port, path, branch, mirror, verify URL và các setting
+mà profile hàm ý), nên không có gì để sửa tay và không có gì drift được — hãy đặt
+những gì cần giữ vào cấu hình của chính dự án.
 
 Một lần diễn tập chỉ đầy đủ bằng credential và ứng dụng mà target có — với một
 ngoại lệ: sandbox đã seed (mặc định) thì tự mang ứng dụng theo. Chỉ sandbox
@@ -1088,7 +1100,7 @@ hành động được, trước khi làm bất cứ việc gì:
 | `govard deploy` / `rollback` | `ssh,rsync` |
 | `govard deploy check` / `releases` / `status` / `unlock` | `ssh` |
 | `govard deploy plan` / `build` | `none` |
-| `govard deploy sandbox *` | `docker` |
+| `govard sandbox *` | `docker` |
 
 Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thiếu
 capability, `4` lỗi cấu hình. Nhờ vậy job deploy trong CI chạy được trên host chỉ

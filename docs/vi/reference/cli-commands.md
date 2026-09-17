@@ -620,6 +620,7 @@ govard remote add staging --host staging.example.com --user deploy --path /var/w
 govard remote copy-id staging
 govard remote test staging
 govard remote exec staging -- ls -la
+govard remote list                        # các remote đã cấu hình, cộng dòng sandbox ẩn
 govard remote audit tail --status failure --lines 50
 ```
 
@@ -634,6 +635,10 @@ Các tính năng chính:
 - Các phương thức đăng nhập: `keychain`, `ssh-agent`, `keyfile`.
 - Tự động bảo vệ chống ghi đè cho môi trường production.
 - Ghi nhật ký lịch sử thao tác: `~/.govard/remote.log`.
+
+`remote list` in bảng NAME/HOST/CAPABILITIES gồm các remote đã cấu hình cộng
+dòng synthetic `sandbox | (implicit) | running|dormant|absent`, luôn được liệt
+kê với trạng thái running|dormant|absent.
 
 → Hướng dẫn đầy đủ: [Remote & Đồng bộ](/vi/workflows/remotes-and-sync)
 
@@ -700,16 +705,13 @@ govard deploy rollback staging --with-db --yes   # ... kèm cả dump database
 govard deploy unlock staging --force     # giải phóng lock do lần deploy lỗi
 ```
 
-Quản lý sandbox ở máy local — một container đóng vai đích triển khai:
+Quản lý sandbox ở máy local — một container đóng vai đích triển khai — là lệnh
+top-level `govard sandbox`, được mô tả bên dưới:
 
 ```bash
-govard deploy sandbox up                      # tạo (mặc định profile php)
-govard deploy sandbox up --profile basic      # chỉ sshd, rsync và git
-govard deploy sandbox up --docroot real       # docroot thật: publish in-place
-govard deploy sandbox status
-govard deploy sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
-govard deploy sandbox ssh
-govard deploy sandbox down [--purge] [--volumes]
+govard sandbox up --profile full --php 8.4   # database, cache, PHP 8.4
+govard sandbox status
+govard sandbox down [--purge] [--volumes]
 ```
 
 → Những cấu hình đã làm sẵn (Luma, Hyvä, nhiều theme và store view, chế độ developer
@@ -818,21 +820,25 @@ CI diff được. Không có kết nối nào: `deploy plan` không cần ssh, r
 ngoài `command_timeout`: cái đầu là ngưỡng để `deploy unlock` nhả lock không cần
 `--force`, cái sau chặn một bước trong maintenance window.
 
-**Sandbox.** `govard deploy sandbox up` build một container, publish SSH trên một
+**Sandbox.** `govard sandbox up` build một container, publish SSH trên một
 cổng loopback còn trống, sinh khoá riêng dưới `.govard/sandbox/` (đã gitignore),
-mount read-only một mirror repository local và ghi remote `sandbox` vào
-`.govard.local.yml`. Mirror được refresh trước mỗi lần deploy nên commit bạn chưa
-từng push vẫn triển khai được, và không phần nào trong pipeline biết nó đang nói
-chuyện với container — deploy sandbox chính là deploy production trỏ vào container.
+và mount read-only một mirror repository local. Mirror được refresh trước mỗi lần
+deploy nên commit bạn chưa từng push vẫn triển khai được, và không phần nào trong
+pipeline biết nó đang nói chuyện với container — triển khai vào sandbox chính là deploy
+production trỏ vào container. Không có block `sandbox` trong bất kỳ file cấu hình
+nào: khi container còn chạy, `sandbox` tự resolve thành remote cho mọi lệnh nhận
+remote.
 
-Vì `sandbox` là subcommand, hãy deploy bằng dạng flag:
+Vì `sandbox` là lệnh top-level chứ không phải subcommand của deploy, hãy deploy
+bằng dạng flag:
 `govard deploy --remote sandbox --yes`.
 
 Profile: `basic` (sshd, rsync, git), `php` (thêm php-cli, composer, node) và
 `full` (thêm database và cache), mặc định `php`. `--docroot` định hình target để
 chiến lược publish resolve đúng thứ bạn muốn kiểm chứng: `absent` hoặc `symlink`
-(mặc định) chọn cú swap nguyên tử, `real` chọn in-place. `down` xoá container và
-remote mà nó đã ghi, nhưng giữ mọi data volume để mai diễn tập tiếp (`--volumes`
+(mặc định) chọn cú swap nguyên tử, `real` chọn in-place. `down` xoá container —
+remote `sandbox` ẩn chỉ tồn tại khi container còn đó — nhưng giữ mọi data volume
+để mai diễn tập tiếp (`--volumes`
 xoá luôn data); `--purge` xoá thêm image, khoá và mirror. `reset` xoá các thư mục deploy
 trên target, và `--layout=deployer` seed một target trông như của công cụ deploy kia.
 
@@ -866,8 +872,35 @@ Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thi�
 capability, `4` lỗi cấu hình. `govard deploy` và `govard deploy rollback` cần
 `ssh` và `rsync`; `deploy check`, `deploy releases`, `deploy status` và
 `deploy unlock` chỉ cần `ssh`; `deploy build` và `deploy plan` không cần gì.
-`govard deploy sandbox *` là ngoại lệ: tạo server giả cần `docker`, sau đó govard
+`govard sandbox *` là ngoại lệ: tạo server giả cần `docker`, sau đó govard
 nói chuyện với nó qua SSH như mọi target khác.
+
+### `govard sandbox`
+
+Một container ngay trên máy bạn đóng vai đích triển khai — vòng đời top-level
+của target diễn tập:
+
+```bash
+govard sandbox up                      # tạo (mặc định profile php)
+govard sandbox up --profile basic      # chỉ sshd, rsync và git
+govard sandbox up --profile full --php 8.4   # database, cache, PHP 8.4
+govard sandbox up --docroot real       # docroot thật: publish in-place
+govard sandbox status
+govard sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
+govard sandbox ssh
+govard sandbox down [--purge] [--volumes]
+```
+
+Khi container còn chạy, `sandbox` tự resolve thành remote cho mọi lệnh nhận
+remote (`deploy`, `db`, `remote exec`, `sync`):
+`govard deploy --remote sandbox --yes`, `govard sync -e sandbox`,
+`govard remote exec sandbox -- <command>`. Không gì được ghi vào file cấu hình,
+và `govard remote list` hiện dòng synthetic `sandbox | (implicit) | …` cạnh các
+remote đã cấu hình. Trên sandbox mới tinh dạng mặc định (`symlink`),
+`remote exec` lỗi cho tới lần deploy đầu tiên điền đầy current path — hãy deploy
+lần đầu hoặc dùng `--docroot real`.
+
+→ Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment#sandbox).
 
 ### `govard snapshot`
 

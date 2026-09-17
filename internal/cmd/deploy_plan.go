@@ -35,6 +35,15 @@ func DeployPlanCommand() *cobra.Command { return deployPlanCmd }
 // DeployCheckCommand exposes the check subcommand for tests.
 func DeployCheckCommand() *cobra.Command { return deployCheckCmd }
 
+// sandboxPlanLabel appends "(implicit)" to the sandbox's name in human-
+// readable output, so the plan is honest about where the remote came from.
+func sandboxPlanLabel(remote string) string {
+	if strings.ToLower(strings.TrimSpace(remote)) == deploy.SandboxRemoteName {
+		return remote + " (implicit)"
+	}
+	return remote
+}
+
 func runDeployPlan(cmd *cobra.Command, args []string) error {
 	remote, err := deployRemoteName(cmd, args)
 	if err != nil {
@@ -58,7 +67,7 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 	}
 
 	out := cmd.OutOrStdout()
-	fmt.Fprintf(out, "Deploy plan for %s (%s @ %s)\n", remote, deploy.BranchLabel(options.Branch), revisionOrSymbolic(options))
+	fmt.Fprintf(out, "Deploy plan for %s (%s @ %s)\n", sandboxPlanLabel(remote), deploy.BranchLabel(options.Branch), revisionOrSymbolic(options))
 	fmt.Fprintf(out, "Build mode: %s\n", options.Build)
 	fmt.Fprintf(out, "Publish strategy: %s\n", options.Publish)
 	if options.Publish == deploy.PublishAuto {
@@ -137,6 +146,7 @@ type planJSONPayload struct {
 	SchemaVersion int    `json:"schema_version"`
 	Kind          string `json:"kind"`
 	Remote        string `json:"remote"`
+	Synthetic     bool   `json:"synthetic,omitempty"`
 	Branch        string `json:"branch"`
 	Revision      string `json:"revision"`
 	Build         struct {
@@ -160,6 +170,7 @@ func writePlanJSON(cmd *cobra.Command, remote string, options deploy.Options, pl
 		SchemaVersion: 1,
 		Kind:          "plan",
 		Remote:        remote,
+		Synthetic:     strings.ToLower(strings.TrimSpace(remote)) == deploy.SandboxRemoteName,
 		Branch:        deploy.BranchLabel(options.Branch),
 		Revision:      revisionOrSymbolic(options),
 		Steps:         make([]planJSONStep, 0, len(plan.Steps)),
@@ -251,7 +262,7 @@ func runDeployCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	out := cmd.OutOrStdout()
-	fmt.Fprintf(out, "Target %s is deployable\n", remote)
+	fmt.Fprintf(out, "Target %s is deployable\n", sandboxPlanLabel(remote))
 	for _, note := range sc.Notes {
 		fmt.Fprintf(out, "  %s\n", note)
 	}

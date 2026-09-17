@@ -24,7 +24,8 @@ const (
 	SandboxDocRootSymlink = "symlink"
 	SandboxDocRootReal    = "real"
 
-	// SandboxRemoteName is the remote `up` writes and `down` removes.
+	// SandboxRemoteName is the synthetic sandbox remote, resolved from live
+	// Docker state rather than written anywhere.
 	SandboxRemoteName = "sandbox"
 	// SandboxDeployerLayout seeds a target that looks like one the other deploy
 	// tool already owns.
@@ -37,7 +38,7 @@ const (
 // without a container: production runs the login, tests do not have to.
 type SandboxPortProbe func(ctx context.Context, host string, port int, timeout time.Duration) error
 
-// SandboxRequest is one `govard deploy sandbox` invocation.
+// SandboxRequest is one `govard sandbox` invocation.
 type SandboxRequest struct {
 	ProjectRoot string
 	ProjectName string
@@ -308,6 +309,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 			MirrorPath:  mirror,
 			ProjectName: request.ProjectName,
 			Profile:     profile,
+			PHP:         php,
 			Web:         servesWeb,
 		}); err != nil {
 			return nil, err
@@ -380,15 +382,6 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	}
 
 	paths := SandboxDefaultPaths()
-	// The remote carries the branch the checkout is on. A branch-less remote is
-	// not deployable with no flags at all — the option resolver refuses a
-	// remote with neither a branch nor an explicit revision — so "defaults to
-	// the local HEAD" is only true once the branch is named here.
-	remote := SandboxRemoteConfig(profile, php, port, webPort, paths, key)
-	remote.Deploy.Branch = localBranch(ctx, git, request.repository())
-	if err := WriteSandboxRemote(request.ProjectRoot, request.remoteName(), remote); err != nil {
-		return nil, err
-	}
 
 	// The image the container was actually built from. A reused sandbox must be
 	// described as what it is rather than as the tag today's flags would build:
@@ -448,9 +441,9 @@ func localBranch(ctx context.Context, git Runner, repository string) string {
 	return branch
 }
 
-// SandboxRemoteConfig is the remote `up` writes. It is exported because it is
-// the contract between the sandbox and the deploy pipeline, and both are worth
-// asserting on independently.
+// SandboxRemoteConfig is the remote a running sandbox resolves to. It is
+// exported because it is the contract between the sandbox and the deploy
+// pipeline, and both are worth asserting on independently.
 func SandboxRemoteConfig(profile, php string, port, webPort int, paths SandboxPaths, key SandboxKeyPair) engine.RemoteConfig {
 	settings := map[string]any{
 		// The image's deployer identity is fixed, so the ownership path is
@@ -743,7 +736,7 @@ func sandboxReusedRuntime(ctx context.Context, runtime SandboxRuntime, request S
 	if declared := containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel); declared != "" {
 		if request.ProfileExplicit && !strings.EqualFold(strings.TrimSpace(request.Profile), declared) {
 			return profile, php, fmt.Errorf(
-				"the sandbox container %s was built for the %s profile; changing it means a new image, so run `govard deploy sandbox up --profile %s --recreate`",
+				"the sandbox container %s was built for the %s profile; changing it means a new image, so run `govard sandbox up --profile %s --recreate`",
 				container, declared, strings.TrimSpace(request.Profile))
 		}
 		profile = declared
@@ -755,7 +748,7 @@ func sandboxReusedRuntime(ctx context.Context, runtime SandboxRuntime, request S
 	declaredPHP := sandboxRemotePHP(config.Remote)
 	if php != "" && declaredPHP != "" && declaredPHP != php {
 		return profile, php, fmt.Errorf(
-			"the sandbox container ships PHP %s; changing it to %s means a new image, so run `govard deploy sandbox up --php %s --recreate`",
+			"the sandbox container ships PHP %s; changing it to %s means a new image, so run `govard sandbox up --php %s --recreate`",
 			declaredPHP, php, php)
 	}
 	if php == "" {
@@ -782,8 +775,9 @@ func sandboxRemoteDeployPath(remote engine.RemoteConfig) string {
 	return remote.Deploy.DeployPath
 }
 
-// SandboxDown removes the container and the remote `up` wrote, so a stale
-// sandbox remote cannot be deployed to by accident.
+// SandboxDown removes the container, so a stale sandbox cannot be deployed
+// to by accident. The remote is synthetic — resolved from live Docker state,
+// never written — so there is nothing to delete from the configuration.
 func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxRequest) (*SandboxState, error) {
 	state, err := SandboxStatus(ctx, runtime, request)
 	if err != nil {
@@ -807,9 +801,6 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 		if err := runtime.RemoveVolumesByLabel(ctx, "com.docker.compose.project", request.ProjectName); err != nil {
 			return nil, err
 		}
-	}
-	if err := RemoveSandboxRemote(request.ProjectRoot, request.remoteName()); err != nil {
-		return nil, err
 	}
 	state.Running = false
 	state.Exists = false
@@ -838,10 +829,10 @@ func SandboxReset(ctx context.Context, runtime SandboxRuntime, request SandboxRe
 		return nil, err
 	}
 	if !state.Exists {
-		return nil, fmt.Errorf("the sandbox container %s does not exist; run `govard deploy sandbox up` first", state.Container)
+		return nil, fmt.Errorf("the sandbox container %s does not exist; run `govard sandbox up` first", state.Container)
 	}
 	if !state.Running {
-		return nil, fmt.Errorf("the sandbox container %s is not running; run `govard deploy sandbox up` first", state.Container)
+		return nil, fmt.Errorf("the sandbox container %s is not running; run `govard sandbox up` first", state.Container)
 	}
 	docRoot, err := request.docRoot()
 	if err != nil {
@@ -901,17 +892,28 @@ type SandboxConfig struct {
 	RemoteSet   bool
 }
 
-// LoadSandboxRemote reads the project configuration to find the sandbox remote.
-// It never writes: `status` and `ssh` must work on a project whose sandbox was
-// created by an earlier session.
+// LoadSandboxRemote resolves the project's sandbox remote from live Docker
+// state. It never writes: `status` and `ssh` must work on a project whose
+// sandbox was created by an earlier session.
 func LoadSandboxRemote(projectRoot, name string) (SandboxConfig, error) {
 	config, _, err := engine.LoadConfigFromDir(projectRoot, false)
 	if err != nil {
 		return SandboxConfig{}, fmt.Errorf("read the project configuration: %w", err)
 	}
 	result := SandboxConfig{ProjectName: config.ProjectName, Remotes: config.Remotes}
-	remote, ok := config.Remotes[name]
-	result.Remote, result.RemoteSet = remote, ok
+	if strings.ToLower(strings.TrimSpace(name)) != SandboxRemoteName {
+		// Only "sandbox" is ever resolved synthetically; anything else keeps
+		// reading .govard.local.yml as it always has (this helper is also
+		// used, in principle, with whatever request.remoteName() returns,
+		// which defaults to "sandbox" but can be overridden).
+		remote, ok := config.Remotes[name]
+		result.Remote, result.RemoteSet = remote, ok
+		return result, nil
+	}
+	remote, liveness, err := resolveSyntheticSandboxRemoteFn(context.Background(), config.ProjectName)
+	if liveness == SandboxLivenessRunning && err == nil {
+		result.Remote, result.RemoteSet = remote, true
+	}
 	return result, nil
 }
 
@@ -920,19 +922,15 @@ func LoadSandboxRemote(projectRoot, name string) (SandboxConfig, error) {
 // report rather than a value recomputed from today's configuration.
 const sandboxProfileLabel = "govard.sandbox.profile"
 
+// sandboxPHPLabel is the container label the PHP series is recorded in, for
+// the same reason sandboxProfileLabel exists: the container's own record,
+// read back by ResolveSyntheticSandboxRemote and sandboxReusedRuntime.
+const sandboxPHPLabel = "govard.sandbox.php"
+
 func containerLabelOrEmpty(ctx context.Context, runtime SandboxRuntime, container, label string) string {
 	value, err := runtime.ContainerLabel(ctx, container, label)
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(value)
-}
-
-// SandboxRemoteForTest exposes the remote lookup to the tests/ package.
-func SandboxRemoteForTest(projectRoot, name string) (engine.RemoteConfig, bool, error) {
-	loaded, err := LoadSandboxRemote(projectRoot, name)
-	if err != nil {
-		return engine.RemoteConfig{}, false, err
-	}
-	return loaded.Remote, loaded.RemoteSet, nil
 }

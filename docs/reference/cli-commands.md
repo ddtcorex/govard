@@ -626,6 +626,7 @@ govard remote add staging --host staging.example.com --user deploy --path /var/w
 govard remote copy-id staging
 govard remote test staging
 govard remote exec staging -- ls -la
+govard remote list                        # configured remotes, plus the implicit sandbox row
 govard remote audit tail --status failure --lines 50
 ```
 
@@ -640,6 +641,10 @@ Key features:
 - Auth methods: `keychain`, `ssh-agent`, `keyfile`
 - Production write protection by default
 - Audit logs: `~/.govard/remote.log`
+
+`remote list` prints a NAME/HOST/CAPABILITIES table over the configured
+remotes plus the synthetic `sandbox | (implicit) | running|dormant|absent`
+row, always listed with state running|dormant|absent.
 
 → Full guide: [Remotes and Sync](/workflows/remotes-and-sync)
 
@@ -706,17 +711,13 @@ govard deploy rollback staging --with-db --yes   # ... and its database dump
 govard deploy unlock staging --force     # release a lock a failed run left behind
 ```
 
-Managing the local sandbox — a container that plays the deployment target:
+Managing the local sandbox — a container that plays the deployment target —
+is the top-level `govard sandbox` command, documented below:
 
 ```bash
-govard deploy sandbox up                      # create it (php profile by default)
-govard deploy sandbox up --profile basic      # sshd, rsync and git only
-govard deploy sandbox up --profile full --php 8.4   # a database, a cache, PHP 8.4
-govard deploy sandbox up --docroot real       # a real docroot: in-place publishing
-govard deploy sandbox status
-govard deploy sandbox reset --layout deployer # seed a target the other tool owns
-govard deploy sandbox ssh
-govard deploy sandbox down [--purge] [--volumes]
+govard sandbox up --profile full --php 8.4   # a database, a cache, PHP 8.4
+govard sandbox status
+govard sandbox down [--purge] [--volumes]
 ```
 
 → Worked configurations (Luma, Hyvä, several themes and store views, developer and
@@ -832,15 +833,17 @@ timeouts beyond `command_timeout`: the first is how old a lock must be for
 `deploy unlock` to release it without `--force`, the second bounds one step inside
 the maintenance window.
 
-**The sandbox.** `govard deploy sandbox up` builds a container, publishes SSH on
+**The sandbox.** `govard sandbox up` builds a container, publishes SSH on
 a free loopback port, generates a dedicated key under `.govard/sandbox/`
-(gitignored), mounts a read-only mirror of your local repository and writes a
-`sandbox` remote into `.govard.local.yml`. The mirror is refreshed before every
-deploy, so a commit you have never pushed is deployable, and nothing in the
-pipeline knows it is talking to a container — a sandbox deploy is a production
-deploy pointed at one.
+(gitignored), and mounts a read-only mirror of your local repository. The
+mirror is refreshed before every deploy, so a commit you have never pushed is
+deployable, and nothing in the pipeline knows it is talking to a container —
+a sandbox deploy is a production deploy pointed at one. There is no `sandbox`
+block in any configuration file: while the container runs, `sandbox` resolves
+automatically as a remote for every command that takes one.
 
-Because `sandbox` is a subcommand, deploy to it with the flag form:
+Because `sandbox` is a top-level command rather than a deploy subcommand,
+deploy to it with the flag form:
 `govard deploy --remote sandbox --yes`.
 
 Profiles: `basic` (sshd, rsync, git), `php` (adds php-cli, composer, node) and
@@ -852,9 +855,9 @@ of the image tag — so a project that needs a newer PHP than the base image
 carries is rehearsed against the right interpreter instead of failing mid-install.
 `--docroot` shapes the target so the publish strategy resolves the way you want to
 exercise it: `absent` or `symlink` (the default) selects the atomic swap, `real`
-selects in-place publishing. `down` removes the container and the remote it wrote,
-keeping every data volume so a rehearsal resumes (`--volumes` deletes the derived
-volumes too);
+selects in-place publishing. `down` removes the container — the implicit
+`sandbox` remote exists only while it does — keeping every data volume so a
+rehearsal resumes (`--volumes` deletes the derived volumes too);
 `--purge` also removes the image, the key and the mirror. `reset` wipes the
 target's deploy directories, and `--layout=deployer` seeds a target that looks
 like one the other deploy tool owns.
@@ -889,8 +892,35 @@ Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
 capability, `4` configuration. `govard deploy` and `govard deploy rollback` need
 `ssh` and `rsync`; `deploy check`, `deploy releases`, `deploy status` and
 `deploy unlock` need only `ssh`; `deploy build` and `deploy plan` need nothing.
-`govard deploy sandbox *` is the exception: creating the fake server needs
+`govard sandbox *` is the exception: creating the fake server needs
 `docker`, and then govard talks to it over SSH like any other target.
+
+### `govard sandbox`
+
+A container on your machine that plays the deployment target — the top-level
+lifecycle for the rehearsal target:
+
+```bash
+govard sandbox up                      # create it (php profile by default)
+govard sandbox up --profile basic      # sshd, rsync and git only
+govard sandbox up --profile full --php 8.4   # a database, a cache, PHP 8.4
+govard sandbox up --docroot real       # a real docroot: in-place publishing
+govard sandbox status
+govard sandbox reset --layout deployer # seed a target the other tool owns
+govard sandbox ssh
+govard sandbox down [--purge] [--volumes]
+```
+
+While the container runs, `sandbox` resolves automatically as a remote for
+every command that takes one (`deploy`, `db`, `remote exec`, `sync`):
+`govard deploy --remote sandbox --yes`, `govard sync -e sandbox`,
+`govard remote exec sandbox -- <command>`. Nothing is written to any
+configuration file, and `govard remote list` shows the synthetic
+`sandbox | (implicit) | …` row next to the configured remotes. On a fresh
+default (`symlink`) sandbox, `remote exec` fails until the first deploy
+populates the current path — run the first deploy or use `--docroot real`.
+
+→ Full guide: [Deployment](/workflows/deployment#the-sandbox).
 
 ### `govard snapshot`
 

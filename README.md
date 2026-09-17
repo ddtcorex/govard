@@ -48,7 +48,7 @@ At a glance, these are the areas where Govard delivers stronger day-to-day value
 - **Smart Templating**: Uses Go `text/template` to render dynamic Docker Compose files from framework-specific blueprints.
 - **Magento 2 Optimized**: Deep integration for Magento 2, including automated `env.php` configuration, table prefix propagation, Varnish 7.x support, and Redis caching.
 - **Remote Management (Flagship)**: Manage named remotes for sync/deploy/db workflows with scope-based capabilities (`files,media,db,deploy`) and flexible auth modes (`keychain`, `ssh-agent`, `keyfile`).
-- **First-Class Deployment**: `govard deploy` publishes a revision over SSH + rsync with a framework recipe (Magento 2), an atomic symlink swap or in-place publish, maintenance windows, database backup, verification, rollback and resume — plus `govard deploy sandbox` for rehearsing the whole pipeline against a container on your machine, and a two-job artifact mode for CI.
+- **First-Class Deployment**: `govard deploy` publishes a revision over SSH + rsync with a framework recipe (Magento 2), an atomic symlink swap or in-place publish, maintenance windows, database backup, verification, rollback and resume — plus `govard sandbox` for rehearsing the whole pipeline against a container on your machine, and a two-job artifact mode for CI.
 - **Remote Safety Guardrails**: Production remotes are write-protected by default, with policy checks to block risky destination writes and explicit capability enforcement per operation.
 - **Safe Cross-Environment Sync**: Bi-directional file/media/database sync with dry-run planning (`--plan`), privacy filters (`--no-noise`, `--no-pii`), auto-selection of the `staging` remote by default, resumable rsync by default (`--partial --append-verify`), include/exclude filters, and risk warnings for destructive flags.
 - **Remote Auditability & Observability**: Remote operations are logged to `~/.govard/remote.log` and also emitted to `~/.govard/operations.log` for command traceability and desktop notifications.
@@ -420,9 +420,9 @@ govard deploy rollback staging # put the previous release back
 Rehearse the same deploy against a container on your machine first — same SSH, same mirror, same recipe, nothing in the pipeline knows the difference:
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy --remote sandbox --yes
-govard deploy sandbox down --purge
+govard sandbox down --purge
 ```
 
 In CI the build moves off the target: `govard deploy build production --output artifacts` runs Composer, the DI compile and the Node builds in the build job, and `govard deploy production --artifact-dir artifacts --yes` runs in a deploy job whose image needs govard, ssh and rsync and nothing else.

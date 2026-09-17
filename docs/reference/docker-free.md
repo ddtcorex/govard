@@ -62,6 +62,7 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard remote audit tail` | `ssh,rsync` |
 | `govard remote copy-id` | `ssh,rsync` |
 | `govard remote exec` | `ssh,rsync` |
+| `govard remote list` | `ssh,rsync` |
 | `govard remote test` | `ssh,rsync` |
 | `govard self-update` | `net` |
 | `govard sync` | `ssh,rsync` |
@@ -124,12 +125,12 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   of the artifact mode, it runs on the runner that owns the project's
   toolchain, and it never connects to the target. That split is what lets a
   deploy job run with govard, SSH and rsync alone — no PHP, no Composer, no
-  container runtime. The one exception in the deploy group is
-  `govard deploy sandbox *`, which creates a container that plays the target:
+  container runtime. The one exception is
+  `govard sandbox *`, now a top-level command, which creates a container that plays the target:
   that is container work by definition, and it is the only way a rehearsal can
   use the same code path as production.
 
-- **Remote and sync.** `govard remote add|test|copy-id|exec`,
+- **Remote and sync.** `govard remote add|test|copy-id|exec|list`,
   `govard remote audit stats|tail`, and `govard sync` need SSH and rsync, not
   Docker.
 - **Tunnels.** `govard tunnel start|stop|status` drive `cloudflared` on the host.

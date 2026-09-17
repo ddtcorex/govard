@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"govard/internal/deploy"
+	"govard/internal/engine"
+	"govard/internal/runtime"
 )
 
 // A sandbox exists to rehearse a deploy against the target a project actually
@@ -242,8 +244,18 @@ func TestSandboxUpDeclaresThePHPItShipped(t *testing.T) {
 	// still said nothing (or 8.2) would fail its very first check — the failure
 	// the flag exists to avoid.
 	root := sandboxProject(t)
-	fake := sandboxFake().containerProfile(deploy.SandboxProfileFull)
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileFull).containerPHP("8.4")
 	fake.answers["image inspect"] = "sha256:abc\n"
+
+	// `status` resolves the sandbox through live Docker state, so the tests
+	// stub both the capability probe and the resolution itself with the fake
+	// describing the container `up` created.
+	restoreCapabilities := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restoreCapabilities()
+	restoreRemote := deploy.StubResolveSyntheticSandboxRemoteForTest(func(ctx context.Context, projectName string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+		return deploy.ResolveSyntheticSandboxRemoteForTest(ctx, deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, projectName)
+	})
+	defer restoreRemote()
 
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
 		ProjectRoot: root,
@@ -255,12 +267,15 @@ func TestSandboxUpDeclaresThePHPItShipped(t *testing.T) {
 		t.Fatalf("sandbox up: %v", err)
 	}
 
-	remote, set, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	remote, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, "sample-project")
 	if err != nil {
-		t.Fatalf("read the sandbox remote: %v", err)
+		t.Fatalf("resolve the sandbox remote: %v", err)
 	}
-	if !set || remote.Deploy == nil {
-		t.Fatal("up did not write a sandbox remote with deploy settings")
+	if liveness != deploy.SandboxLivenessRunning {
+		t.Fatalf("liveness = %q, want running right after up", liveness)
+	}
+	if remote.Deploy == nil {
+		t.Fatal("up did not resolve a sandbox remote with deploy settings")
 	}
 	if got := remote.Deploy.Settings["php_version"]; got != "8.4" {
 		t.Fatalf("php_version = %v, want the series the image was built with", got)
@@ -291,8 +306,11 @@ func TestSandboxUpWithoutPHPDeclaresNoSeries(t *testing.T) {
 	// A project that never asked for a series must not be gated on one: the
 	// image keeps the distribution's PHP and the remote keeps quiet about it.
 	root := sandboxProject(t)
-	fake := sandboxFake()
+	fake := sandboxFake().containerPHP("")
 	fake.answers["image inspect"] = "sha256:abc\n"
+
+	restoreCapabilities := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restoreCapabilities()
 
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
 		ProjectRoot: root,
@@ -303,9 +321,12 @@ func TestSandboxUpWithoutPHPDeclaresNoSeries(t *testing.T) {
 		t.Fatalf("sandbox up: %v", err)
 	}
 
-	remote, _, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	remote, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, "sample-project")
 	if err != nil {
-		t.Fatalf("read the sandbox remote: %v", err)
+		t.Fatalf("resolve the sandbox remote: %v", err)
+	}
+	if liveness != deploy.SandboxLivenessRunning {
+		t.Fatalf("liveness = %q, want running right after up", liveness)
 	}
 	if _, ok := remote.Deploy.Settings["php_version"]; ok {
 		t.Fatal("up declared a PHP series nobody asked for")
@@ -326,9 +347,18 @@ func TestSandboxUpWithoutPHPDeclaresNoSeries(t *testing.T) {
 // `up --php 8.3` on a php-8.4 container declared 8.3 without touching the image.
 func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
 	root := sandboxProject(t)
-	fake := sandboxFake().containerProfile(deploy.SandboxProfileFull)
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileFull).containerPHP("8.4")
 	fake.answers["image inspect"] = "sha256:abc\n"
 	probe := func(context.Context, string, int, time.Duration) error { return nil }
+
+	restoreCapabilities := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restoreCapabilities()
+	// A reusing `up` reads the series back through the same synthetic
+	// resolution, so the stub describes the container the first `up` created.
+	restoreRemote := deploy.StubResolveSyntheticSandboxRemoteForTest(func(ctx context.Context, projectName string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+		return deploy.ResolveSyntheticSandboxRemoteForTest(ctx, deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, projectName)
+	})
+	defer restoreRemote()
 
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
 		ProjectRoot: root,
@@ -340,7 +370,7 @@ func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
 		t.Fatalf("sandbox up: %v", err)
 	}
 
-	reuse := sandboxFake().containerProfile(deploy.SandboxProfileFull)
+	reuse := sandboxFake().containerProfile(deploy.SandboxProfileFull).containerPHP("8.4")
 	reuse.answers["image inspect"] = "sha256:abc\n"
 	state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(reuse.run), deploy.LocalRunner{}, deploy.SandboxRequest{
 		ProjectRoot: root,
@@ -354,9 +384,12 @@ func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
 	if state.PHP != "8.4" {
 		t.Fatalf("reused sandbox reports PHP %q, want the series its image ships", state.PHP)
 	}
-	remote, _, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	remote, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(reuse.run), deploy.LocalRunner{}, root, "sample-project")
 	if err != nil {
-		t.Fatalf("read the sandbox remote: %v", err)
+		t.Fatalf("resolve the sandbox remote: %v", err)
+	}
+	if liveness != deploy.SandboxLivenessRunning {
+		t.Fatalf("liveness = %q, want running", liveness)
 	}
 	if got := remote.Deploy.Settings["php_version"]; got != "8.4" {
 		t.Fatalf("php_version = %v after a reusing up, want 8.4 kept", got)

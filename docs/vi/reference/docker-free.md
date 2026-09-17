@@ -62,6 +62,7 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard remote audit tail` | `ssh,rsync` |
 | `govard remote copy-id` | `ssh,rsync` |
 | `govard remote exec` | `ssh,rsync` |
+| `govard remote list` | `ssh,rsync` |
 | `govard remote test` | `ssh,rsync` |
 | `govard self-update` | `net` |
 | `govard sync` | `ssh,rsync` |
@@ -116,8 +117,8 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
   `govard deploy build` cũng không cần gì: đây là nửa CI của artifact mode, chạy
   trên runner có toolchain của dự án và không hề kết nối tới server. Chính sự
   tách đôi này cho phép job deploy chỉ cần govard, SSH và rsync — không PHP,
-  không Composer, không container runtime. Ngoại lệ duy nhất trong nhóm deploy là
-  `govard deploy sandbox *`: nó tạo một container đóng vai target, tức là việc của
+  không Composer, không container runtime. Ngoại lệ duy nhất là
+  `govard sandbox *`, giờ là lệnh top-level: nó tạo một container đóng vai target, tức là việc của
   container runtime theo đúng định nghĩa, và đó là cách duy nhất để một buổi diễn
   tập dùng chung code path với production. `govard deploy check`,
   `govard deploy releases`, `govard deploy status` và
@@ -126,7 +127,7 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
   trỏ lại symlink hoặc chạy lại phần publish từ thư mục release đã có trên
   server, nên không cần toolchain build ở máy local.
 
-- **Remote và đồng bộ.** `govard remote add|test|copy-id|exec`,
+- **Remote và đồng bộ.** `govard remote add|test|copy-id|exec|list`,
   `govard remote audit stats|tail`, và `govard sync` cần SSH và rsync, không cần
   Docker.
 - **Tunnel.** `govard tunnel start|stop|status` điều khiển `cloudflared` trên

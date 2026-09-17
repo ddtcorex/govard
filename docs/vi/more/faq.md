@@ -221,9 +221,9 @@ govard remote add staging --host host.example.com --user deploy --path '~/public
 đụng tới server thật, hãy diễn tập toàn bộ pipeline trên một container ngay tại máy:
 
 ```bash
-govard deploy sandbox up --profile full --php 8.3
+govard sandbox up --profile full --php 8.3
 govard deploy --remote sandbox --yes
-govard deploy sandbox down --purge
+govard sandbox down --purge
 ```
 
 - Tham chiếu engine, chiến lược publish, rollback: [Triển khai](/vi/workflows/deployment)

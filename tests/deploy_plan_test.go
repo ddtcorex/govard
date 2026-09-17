@@ -14,6 +14,7 @@ import (
 
 	"govard/internal/cmd"
 	"govard/internal/deploy"
+	"govard/internal/engine"
 )
 
 func TestBuildPlanKeepsRecipeOrderWithoutHooks(t *testing.T) {
@@ -459,6 +460,68 @@ remotes:
 		_ = flags.Set("artifact-dir", "")
 		_ = flags.Set("json", "false")
 	})
+}
+
+// Task 12: the plan is honest about where the sandbox remote came from. A
+// real remote keeps its bare name; the synthetic sandbox prints with the
+// "(implicit)" suffix so an operator reviewing the tree knows it was resolved
+// from live Docker state, not from .govard.yml.
+func TestDeployPlanLabelsTheSandboxAsImplicit(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".govard.yml"), `
+project_name: sample-project
+framework: generic
+domain: sample.test
+`)
+	// runDeployPlan resolves "sandbox" through the deploy package's seam
+	// (resolveBaseOptions), not the cmd package's ensureRemoteKnown seam, so
+	// stub here. The stubbed remote carries its own branch: the project has
+	// no remotes section to inherit one from.
+	restore := deploy.StubResolveSyntheticSandboxRemoteForTest(func(ctx context.Context, projectName string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+		return engine.RemoteConfig{
+			Host: "127.0.0.1", User: deploy.SandboxUser, Sandbox: true,
+			Deploy: &engine.DeployConfig{Branch: "main", Repository: deploy.SandboxRepoPath},
+		}, deploy.SandboxLivenessRunning, nil
+	})
+	defer restore()
+
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	// The cobra commands are package-level, so a flag another test sets stays
+	// set for this one. Reset everything the plan command touches.
+	t.Cleanup(func() {
+		flags := cmd.DeployPlanCommand().Flags()
+		_ = flags.Set("build", "auto")
+		_ = flags.Set("artifact-dir", "")
+		_ = flags.Set("json", "false")
+	})
+
+	var out bytes.Buffer
+	command := cmd.RootCommandForTest()
+	command.SetArgs([]string{"deploy", "plan", "sandbox"})
+	command.SetOut(&out)
+	command.SetErr(io.Discard)
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("deploy plan: %v", err)
+	}
+	if !strings.Contains(out.String(), "sandbox (implicit)") {
+		t.Fatalf("plan text missing the implicit label:\n%s", out.String())
+	}
+	// Resolution normalizes the name, so the mixed-case form must keep the label.
+	out.Reset()
+	command.SetArgs([]string{"deploy", "plan", "Sandbox"})
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("deploy plan Sandbox: %v", err)
+	}
+	if !strings.Contains(out.String(), "Sandbox (implicit)") {
+		t.Fatalf("plan text missing the mixed-case implicit label:\n%s", out.String())
+	}
 }
 
 // A gated step cannot be shown as "will run": the plan phase runs no commands,

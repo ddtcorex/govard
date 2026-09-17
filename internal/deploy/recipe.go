@@ -241,7 +241,7 @@ type Recipe struct {
 	// nil for a framework with nothing conditional: a recipe that flags a task
 	// without declaring a probe is refused by ValidateRecipe.
 	MigrationProbe *MigrationProbe
-	// Sandbox is what the framework needs a `govard deploy sandbox` container to
+	// Sandbox is what the framework needs a `govard sandbox` container to
 	// provide beyond its profile: the extensions and services the recipe's own
 	// commands depend on. The core renders them and never interprets them.
 	Sandbox SandboxRequirements

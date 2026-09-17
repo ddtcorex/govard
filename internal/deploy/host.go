@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"context"
 	"path"
 	"strings"
 
@@ -119,9 +120,19 @@ func effectiveDeployPath(cfg engine.Config, remoteCfg engine.RemoteConfig) strin
 // path from configuration and the current path from the remote's `path`.
 func HostForConfig(cfg engine.Config, remoteName string, opts Options) (Host, error) {
 	name := strings.ToLower(strings.TrimSpace(remoteName))
-	remoteCfg, ok := cfg.Remotes[name]
-	if !ok {
-		return Host{}, errUnknownRemote(name, cfg)
+	var remoteCfg engine.RemoteConfig
+	if name == SandboxRemoteName {
+		resolved, _, err := resolveSyntheticSandboxRemoteFn(context.Background(), cfg.ProjectName)
+		if err != nil {
+			return Host{}, err
+		}
+		remoteCfg = resolved
+	} else {
+		found, ok := cfg.Remotes[name]
+		if !ok {
+			return Host{}, errUnknownRemote(name, cfg)
+		}
+		remoteCfg = found
 	}
 	host := Host{
 		Name:        name,

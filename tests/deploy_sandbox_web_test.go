@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"govard/internal/deploy"
+	"govard/internal/runtime"
 )
 
 // A sandbox that cannot serve the release cannot rehearse the last step of a
@@ -168,12 +169,18 @@ func TestSandboxUpPublishesTheWebPortAndPointsVerifyAtIt(t *testing.T) {
 		t.Fatal("the published web port was not read back")
 	}
 
-	remote, set, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	// The container `up` created answers the probes now: drop the absence the
+	// fake was scripted with so the resolution below observes a running
+	// sandbox rather than the missing one `up` started from.
+	delete(fake.fail, "inspect")
+	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restore()
+	remote, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, "sample-project")
 	if err != nil {
-		t.Fatalf("read the sandbox remote: %v", err)
+		t.Fatalf("resolve the sandbox remote: %v", err)
 	}
-	if !set || remote.Deploy == nil {
-		t.Fatal("up did not write a sandbox remote")
+	if liveness != deploy.SandboxLivenessRunning {
+		t.Fatalf("liveness = %q, want running right after up", liveness)
 	}
 	want := "http://127.0.0.1:" + itoa(state.WebPort) + "/"
 	if got := remote.Deploy.Verify.URL; got != want {
@@ -201,7 +208,9 @@ func TestSandboxUpWithoutWebPublishesNoHTTPPort(t *testing.T) {
 	if state.WebPort != 0 {
 		t.Fatalf("web port = %d, want 0", state.WebPort)
 	}
-	remote, _, err := deploy.SandboxRemoteForTest(root, "sandbox")
+	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restore()
+	remote, _, err := deploy.ResolveSyntheticSandboxRemoteForTest(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, "sample-project")
 	if err != nil {
 		t.Fatalf("read the sandbox remote: %v", err)
 	}

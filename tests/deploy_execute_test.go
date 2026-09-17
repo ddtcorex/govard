@@ -184,11 +184,9 @@ func TestRecoveryHintNamesTheCommandThatWorks(t *testing.T) {
 	}
 }
 
-// A remote whose name is also a `govard deploy` subcommand cannot be named
-// positionally: cobra resolves the subcommand first, so `govard deploy sandbox`
-// prints the sandbox status instead of retrying the deploy. The hint therefore
-// names the remote with the flag, and this asserts the sandbox case that makes
-// the difference visible.
+// The hint names the remote with the flag form for every remote, sandbox
+// included: one consistent form rather than a per-remote special case. This
+// asserts the sandbox case stays in step with that convention.
 func TestRecoveryHintNamesTheRemoteUnambiguously(t *testing.T) {
 	for _, hint := range []string{
 		deploy.RecoveryHint(deploy.SandboxRemoteName, true),

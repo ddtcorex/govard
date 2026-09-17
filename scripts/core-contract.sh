@@ -260,9 +260,9 @@ if ! printf '%s' "$deploy_out" | grep -q '"capability": "ssh"'; then
   failures=$((failures + 1))
 fi
 
-# The sandbox is the one deploy command that does use the container runtime, and
-# it must be gated rather than failing with a raw docker error.
-check_gate "deploy sandbox status" docker
+# The sandbox manages containers, so its status must be gated rather than
+# failing with a raw docker error.
+check_gate "sandbox status" docker
 
 if [ "$failures" -ne 0 ]; then
   echo "core-contract: $failures failure(s)" >&2

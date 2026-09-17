@@ -9,6 +9,7 @@
 package deploy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -167,9 +168,19 @@ func ResolveReadOptions(cfg engine.Config, remote string, over Overrides) (Optio
 // same timeouts and lock settings a deploy would use.
 func resolveBaseOptions(cfg engine.Config, remote string, over Overrides) (Options, string, error) {
 	name := strings.ToLower(strings.TrimSpace(remote))
-	remoteCfg, ok := cfg.Remotes[name]
-	if !ok {
-		return Options{}, "", errUnknownRemote(remote, cfg)
+	var remoteCfg engine.RemoteConfig
+	if name == SandboxRemoteName {
+		resolved, _, err := resolveSyntheticSandboxRemoteFn(context.Background(), cfg.ProjectName)
+		if err != nil {
+			return Options{}, "", err
+		}
+		remoteCfg = resolved
+	} else {
+		found, ok := cfg.Remotes[name]
+		if !ok {
+			return Options{}, "", errUnknownRemote(remote, cfg)
+		}
+		remoteCfg = found
 	}
 
 	effective := cfg.Deploy

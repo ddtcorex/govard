@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
 
@@ -68,6 +70,9 @@ var remoteAddCmd = &cobra.Command{
 
 		if name == "" {
 			return fmt.Errorf("remote name is required")
+		}
+		if name == deploy.SandboxRemoteName {
+			return fmt.Errorf("%q is reserved for the implicit sandbox remote; it is never configured, only resolved from `govard sandbox up`", name)
 		}
 
 		host, _ := cmd.Flags().GetString("host")
@@ -511,6 +516,46 @@ var remoteTestCmd = &cobra.Command{
 	},
 }
 
+var remoteListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List every configured remote, plus the implicit sandbox",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config, err := loadFullConfig()
+		if err != nil {
+			return err
+		}
+		out := cmd.OutOrStdout()
+		names := make([]string, 0, len(config.Remotes))
+		for name := range config.Remotes {
+			names = append(names, name)
+		}
+		engine.SortRemoteNames(names)
+		fmt.Fprintf(out, "%-20s %-28s %s\n", "NAME", "HOST", "CAPABILITIES")
+		for _, name := range names {
+			remote := config.Remotes[name]
+			fmt.Fprintf(out, "%-20s %-28s %s\n", name, remote.Host, strings.Join(engine.RemoteCapabilityList(remote), ","))
+		}
+		fmt.Fprintf(out, "%-20s %-28s %s\n", deploy.SandboxRemoteName, "(implicit)", sandboxListState(cmd.Context(), config.ProjectName))
+		return nil
+	},
+}
+
+// sandboxListState reports the sandbox's liveness for `remote list`, in the
+// same three words ResolveSyntheticSandboxRemote itself distinguishes.
+func sandboxListState(ctx context.Context, projectName string) string {
+	_, liveness, err := resolveSandboxRemote(ctx, projectName)
+	switch liveness {
+	case deploy.SandboxLivenessRunning:
+		return "running"
+	case deploy.SandboxLivenessDormant:
+		return "dormant — govard sandbox up to start it"
+	default:
+		_ = err
+		return "absent — govard sandbox up to create it"
+	}
+}
+
 func init() {
 	remoteAddCmd.Flags().String("host", "", "Remote host")
 	remoteAddCmd.Flags().String("user", "", "Remote user")
@@ -529,6 +574,7 @@ func init() {
 	remoteCmd.AddCommand(remoteCopyIdCmd)
 	remoteCmd.AddCommand(remoteTestCmd)
 	remoteCmd.AddCommand(remoteAuditCmd)
+	remoteCmd.AddCommand(remoteListCmd)
 
 	rootCmd.AddCommand(remoteCmd)
 }
@@ -539,6 +585,14 @@ func RootCommandForTest() *cobra.Command {
 }
 
 func ensureRemoteKnown(config engine.Config, name string) (string, engine.RemoteConfig, error) {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if normalized == deploy.SandboxRemoteName {
+		remote, _, err := resolveSandboxRemote(context.Background(), config.ProjectName)
+		if err != nil {
+			return "", engine.RemoteConfig{}, err
+		}
+		return deploy.SandboxRemoteName, remote, nil
+	}
 	resolvedName, ok := findRemoteByNameOrEnvironment(config, name)
 	if !ok {
 		return "", engine.RemoteConfig{}, fmt.Errorf("unknown remote: %s", name)
@@ -549,6 +603,23 @@ func ensureRemoteKnown(config engine.Config, name string) (string, engine.Remote
 		return "", engine.RemoteConfig{}, err
 	}
 	return resolvedName, resolved, nil
+}
+
+// EnsureRemoteKnownForTest exposes ensureRemoteKnown to the tests/ package.
+func EnsureRemoteKnownForTest(config engine.Config, name string) (string, engine.RemoteConfig, error) {
+	return ensureRemoteKnown(config, name)
+}
+
+// resolveSandboxRemote is the seam ensureRemoteKnown calls through, so a
+// hermetic test can replace it without a real Docker daemon.
+var resolveSandboxRemote = deploy.ResolveSyntheticSandboxRemote
+
+// StubSandboxResolverForTest replaces the sandbox resolution seam for the
+// duration of a test and returns a func that restores the real one.
+func StubSandboxResolverForTest(fn func(ctx context.Context, projectName string) (engine.RemoteConfig, deploy.SandboxLiveness, error)) func() {
+	original := resolveSandboxRemote
+	resolveSandboxRemote = fn
+	return func() { resolveSandboxRemote = original }
 }
 
 func findRemoteByNameOrEnvironment(config engine.Config, requested string) (string, bool) {
