@@ -121,6 +121,10 @@ Govard routes these domains through the same proxy and CA flow as the primary pr
 
 When a project's `stack.services.search` is `elasticsearch` or `opensearch`, the shared Caddy proxy also routes `http://<your-domain>:9200` to that project's search container by hostname — the same Host-header routing used for the primary domain on `443`, just on a second, plain-HTTP port. This is automatic; no `linked_projects` or extra domain configuration is required. See [Configuration](/reference/configuration) for details, including the no-auth/no-TLS caveat.
 
+### RabbitMQ Management UI Host Access
+
+When a project's `stack.services.queue` is `rabbitmq`, the shared Caddy proxy also routes `http://<your-domain>:15672` to that project's RabbitMQ management UI by hostname — the same Host-header routing used for the search engine on `:9200`. This is automatic; no `linked_projects` or extra domain configuration is required. Same no-TLS caveat as above.
+
 ### Inter-Project Access From PHP Runtimes
 
 By default, Govard projects are isolated. To allow one local PHP project to call another through the shared Caddy proxy, you must explicitly declare the dependency in your `.govard.yml` using the `linked_projects` field:

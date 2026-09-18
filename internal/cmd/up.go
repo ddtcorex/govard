@@ -439,6 +439,13 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 					}
 				}
 
+				if context.Config.Stack.Services.Queue == conventions.ServiceRabbitMQ && len(allDomains) > 0 {
+					rabbitmqTarget := ResolveUpRabbitMQProxyTarget(context.Config)
+					if rabbitmqErr := proxy.RegisterRabbitMQDomains(allDomains, rabbitmqTarget); rabbitmqErr != nil {
+						pterm.Warning.Printf("Could not register RabbitMQ proxy route: %v\n", rabbitmqErr)
+					}
+				}
+
 				var wg sync.WaitGroup
 				for _, domain := range allDomains {
 					wg.Add(1)
@@ -796,6 +803,11 @@ func ResolveUpProxyTarget(config engine.Config) string {
 // ResolveUpSearchProxyTarget resolves the upstream container for the search-engine proxy route.
 func ResolveUpSearchProxyTarget(config engine.Config) string {
 	return config.ProjectName + conventions.ElasticsearchSuffix
+}
+
+// ResolveUpRabbitMQProxyTarget resolves the upstream container for the RabbitMQ management-UI proxy route.
+func ResolveUpRabbitMQProxyTarget(config engine.Config) string {
+	return config.ProjectName + conventions.RabbitMQSuffix
 }
 
 // ApplyQuickstartProfile trims optional runtime services for faster first startup.

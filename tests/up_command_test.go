@@ -151,6 +151,16 @@ func TestResolveUpSearchProxyTargetUsesElasticsearchSuffix(t *testing.T) {
 	}
 }
 
+func TestResolveUpRabbitMQProxyTargetUsesRabbitMQSuffix(t *testing.T) {
+	config := engine.Config{ProjectName: "demo"}
+
+	got := cmd.ResolveUpRabbitMQProxyTarget(config)
+	want := "demo-rabbitmq-1"
+	if got != want {
+		t.Fatalf("ResolveUpRabbitMQProxyTarget() = %q, want %q", got, want)
+	}
+}
+
 func TestBuildUpReadinessChecksForPHPRuntime(t *testing.T) {
 	checks, err := cmd.BuildUpReadinessChecksForTest(t.TempDir(), engine.Config{
 		ProjectName: "demo",

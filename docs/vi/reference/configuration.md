@@ -217,6 +217,16 @@ curl http://myshop.test:9200/_cluster/health
 
 Cách này hoạt động đồng thời cho mọi dự án — proxy dùng chung của Govard route cổng `9200` theo hostname, giống hệt cách nó đã route cổng `443`. Nếu dự án của bạn được tạo trước khi tính năng này ra đời, hãy chạy `govard env up` một lần để render lại file compose và tạo lại container `elasticsearch`/`opensearch` trên network `govard-proxy` trước khi cổng `:9200` truy cập được. Cổng này không có authentication hay TLS (khớp với cấu hình local-dev của chính engine), nên hãy coi nó chỉ dành cho phát triển cục bộ và không expose ra ngoài máy của bạn.
 
+#### Truy cập RabbitMQ Management UI từ Host
+
+Khi `stack.services.queue` là `rabbitmq`, Govard tự động mở management UI cho host tại:
+
+```
+http://<your-domain>:15672
+```
+
+Ví dụ, nếu domain của dự án là `myshop.test`, mở `http://myshop.test:15672` trên trình duyệt và đăng nhập bằng `guest` / `guest`. Cách route giống hệt truy cập `:9200` của search engine ở trên — proxy dùng chung route cổng `15672` theo hostname, nên mọi dự án đều giữ UI riêng của mình cùng lúc. Cổng này không có TLS; hãy coi nó chỉ dành cho phát triển cục bộ và không expose ra ngoài máy của bạn. Nếu dự án của bạn được tạo trước khi tính năng này ra đời, hãy chạy `govard env up` một lần để render lại file compose và tạo lại container `rabbitmq` trên network `govard-proxy` trước khi cổng `:15672` truy cập được.
+
 Đối với các framework ưu tiên Node, hệ thống tự động nhận diện package manager từ `package.json`, `pnpm-workspace.yaml` hoặc các file lock.
 
 #### Tối ưu hóa phiên bản Composer

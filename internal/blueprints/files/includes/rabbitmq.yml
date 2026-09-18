@@ -10,6 +10,7 @@ services:
       - rabbitmq-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:/var/lib/rabbitmq
     networks:
       - govard-net
+      - govard-proxy
 
 volumes:
   rabbitmq-data{{ if .Config.Profile }}-{{ .Config.Profile }}{{ end }}:

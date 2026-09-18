@@ -217,6 +217,16 @@ curl http://myshop.test:9200/_cluster/health
 
 This works for every project simultaneously — Govard's shared proxy routes port `9200` by hostname, the same way it already routes `443`. If your project was created before this feature shipped, run `govard env up` once to re-render its compose file and recreate the `elasticsearch`/`opensearch` container on the `govard-proxy` network before `:9200` becomes reachable. There is no authentication or TLS on this port (matching the engine's own local-dev configuration), so treat it as local-development-only and do not expose it beyond your machine.
 
+#### Connecting to the RabbitMQ Management UI from the Host
+
+When `stack.services.queue` is `rabbitmq`, Govard automatically exposes the management UI on the host at:
+
+```
+http://<your-domain>:15672
+```
+
+For example, if your project's domain is `myshop.test`, open `http://myshop.test:15672` in a browser and log in with `guest` / `guest`. Routing works exactly like the search engine's `:9200` access above — the shared proxy routes port `15672` by hostname, so every project keeps its own UI simultaneously. There is no TLS on this port; treat it as local-development-only and do not expose it beyond your machine. If your project was created before this feature shipped, run `govard env up` once to re-render its compose file and recreate the `rabbitmq` container on the `govard-proxy` network before `:15672` becomes reachable.
+
 Node-first frameworks auto-detect the package manager from `package.json`, `pnpm-workspace.yaml`, or lockfiles.
 
 #### Composer Versioning Optimization

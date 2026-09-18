@@ -117,6 +117,10 @@ govard domain list
 
 Govard sẽ định tuyến các domain này qua cùng một proxy và luồng CA tương tự như domain chính của dự án.
 
+### Truy cập RabbitMQ Management UI từ Host
+
+Khi `stack.services.queue` của một dự án là `rabbitmq`, Caddy proxy dùng chung cũng route `http://<your-domain>:15672` tới RabbitMQ management UI của dự án đó theo hostname — cùng cách route theo Host-header như search engine trên `:9200`. Việc này tự động; không cần `linked_projects` hay cấu hình domain bổ sung. Caveat không-TLS tương tự như trên.
+
 ### Kết nối liên dự án từ Container PHP (Inter-Project Access)
 
 Mặc định, các dự án Govard được cô lập. Để cho phép một dự án PHP local gọi một dự án khác qua Caddy proxy dùng chung, bạn phải khai báo rõ ràng mối quan hệ phụ thuộc trong file `.govard.yml` bằng trường `linked_projects`:

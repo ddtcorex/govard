@@ -29,6 +29,17 @@ func TestProxyBlueprintPublishesSearchPort(t *testing.T) {
 	}
 }
 
+func TestProxyBlueprintPublishesRabbitMQMgmtPort(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "internal", "blueprints", "files", "proxy.yml"))
+	if err != nil {
+		t.Fatalf("read proxy blueprint: %v", err)
+	}
+
+	if !strings.Contains(string(content), `"15672:15672"`) {
+		t.Fatal("proxy.yml must publish port 15672 so project.test:15672 can reach a project's RabbitMQ management UI")
+	}
+}
+
 func TestProxyBlueprintDnsmasqAnswersTestLocally(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join("..", "internal", "blueprints", "files", "proxy.yml"))
 	if err != nil {
