@@ -25,6 +25,20 @@ var reservedUsers = map[string]bool{
 	"nobody": true,
 }
 
+// allowedKeyTypes is the key-type allowlist AllowKey enforces: a typo'd
+// type would store fine and fail later at sshd, so reject it at allow time
+// with an error that names the type.
+var allowedKeyTypes = map[string]bool{
+	"ssh-rsa":                            true,
+	"ssh-dss":                            true,
+	"ecdsa-sha2-nistp256":                true,
+	"ecdsa-sha2-nistp384":                true,
+	"ecdsa-sha2-nistp521":                true,
+	"ssh-ed25519":                        true,
+	"sk-ssh-ed25519@openssh.com":         true,
+	"sk-ecdsa-sha2-nistp256@openssh.com": true,
+}
+
 // Target is one routed username: which container the second hop lands on,
 // and which user it logs into there.
 type Target struct {
@@ -91,6 +105,9 @@ func Load() (Registry, error) {
 // read (see RenderFlatFiles). It is the only writer, so every mutation lands
 // in both places or neither.
 func (r *Registry) Save() error {
+	if r.Targets == nil {
+		r.Targets = map[string]Target{}
+	}
 	if err := os.MkdirAll(GatewayDir(), 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", GatewayDir(), err)
 	}
@@ -105,13 +122,43 @@ func (r *Registry) Save() error {
 		return fmt.Errorf("marshal registry: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(registryPath(), data, 0o600); err != nil {
-		return fmt.Errorf("write %s: %w", registryPath(), err)
-	}
-	if err := os.Chmod(registryPath(), 0o600); err != nil {
-		return fmt.Errorf("chmod %s: %w", registryPath(), err)
+	if err := writeFileAtomic(GatewayDir(), "registry.json", data, 0o600); err != nil {
+		return err
 	}
 	return r.RenderFlatFiles()
+}
+
+// writeFileAtomic writes data to dir/name via a temp file in the same
+// directory plus rename, so a crash mid-write never leaves a truncated file
+// where the bastion's shell scripts read. The mode is enforced with Chmod
+// after the rename: the temp file's creation mode must not leak through,
+// and a pre-existing file's stale mode must not survive the replace.
+func writeFileAtomic(dir, name string, data []byte, mode os.FileMode) error {
+	path := filepath.Join(dir, name)
+	tmp, err := os.CreateTemp(dir, name+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	tmpName := tmp.Name()
+	// Best-effort cleanup; a successful rename removes tmpName anyway.
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
+		return fmt.Errorf("chmod %s: %w", path, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("chmod %s: %w", path, err)
+	}
+	return nil
 }
 
 // RenderFlatFiles writes the two files the gateway image's shell scripts
@@ -128,6 +175,14 @@ func (r *Registry) Save() error {
 // Both files are 0644: they hold only public routing metadata and public key
 // material, and the container's AuthorizedKeysCommandUser is not root.
 func (r *Registry) RenderFlatFiles() error {
+	// Direct callers must not fail on a missing dir: every other path goes
+	// through Save, but RenderFlatFiles is exported, so ensure it here.
+	if err := os.MkdirAll(GatewayDir(), 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", GatewayDir(), err)
+	}
+	if err := os.Chmod(GatewayDir(), 0o755); err != nil {
+		return fmt.Errorf("chmod %s: %w", GatewayDir(), err)
+	}
 	users := make([]string, 0, len(r.Targets))
 	for user := range r.Targets {
 		users = append(users, user)
@@ -139,25 +194,21 @@ func (r *Registry) RenderFlatFiles() error {
 		t := r.Targets[user]
 		fmt.Fprintf(&targets, "%s %s %s\n", user, t.Container, t.TargetUser)
 	}
-	if err := os.WriteFile(filepath.Join(GatewayDir(), "targets"), []byte(targets.String()), 0o644); err != nil {
+	if err := writeFileAtomic(GatewayDir(), "targets", []byte(targets.String()), 0o644); err != nil {
 		return fmt.Errorf("render targets: %w", err)
 	}
-	// WriteFile only applies the mode at creation (masked by umask), so
-	// enforce it explicitly: a pre-existing wrong mode or restrictive umask
-	// must not leave the file unreadable to the container user.
-	if err := os.Chmod(filepath.Join(GatewayDir(), "targets"), 0o644); err != nil {
-		return fmt.Errorf("chmod targets: %w", err)
-	}
 
+	// Sort the allowlist by fingerprint: insertion order is an accident of
+	// when keys were allowed, and the rendered file should be deterministic.
+	ordered := make([]AllowedKey, len(r.Allowlist))
+	copy(ordered, r.Allowlist)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Fingerprint < ordered[j].Fingerprint })
 	var keys strings.Builder
-	for _, key := range r.Allowlist {
+	for _, key := range ordered {
 		fmt.Fprintf(&keys, "%s %s %s %s\n", key.Fingerprint, key.KeyType, key.KeyData, key.Comment)
 	}
-	if err := os.WriteFile(filepath.Join(GatewayDir(), "keys"), []byte(keys.String()), 0o644); err != nil {
+	if err := writeFileAtomic(GatewayDir(), "keys", []byte(keys.String()), 0o644); err != nil {
 		return fmt.Errorf("render keys: %w", err)
-	}
-	if err := os.Chmod(filepath.Join(GatewayDir(), "keys"), 0o644); err != nil {
-		return fmt.Errorf("chmod keys: %w", err)
 	}
 	return nil
 }
@@ -168,7 +219,7 @@ func (r *Registry) RenderFlatFiles() error {
 // naming collision the operator must resolve, not something to silently
 // overwrite (the previous project would go dark with no diagnostic).
 func (r *Registry) AddTarget(user string, t Target) error {
-	if reservedUsers[user] {
+	if reservedUsers[strings.ToLower(user)] {
 		return fmt.Errorf("%q is a reserved gateway username and cannot be a target", user)
 	}
 	if user == "" {
@@ -212,6 +263,10 @@ func (r *Registry) AllowKey(pubLine string) (string, error) {
 	keyType, keyData := fields[0], fields[1]
 	comment := strings.Join(fields[2:], " ")
 
+	if !allowedKeyTypes[keyType] {
+		return "", fmt.Errorf("unsupported key type %q (want one of ssh-rsa, ssh-dss, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521, ssh-ed25519, sk-ssh-ed25519@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com)", keyType)
+	}
+
 	fingerprint, err := Fingerprint(keyData)
 	if err != nil {
 		return "", err
@@ -234,17 +289,24 @@ func (r *Registry) AllowKey(pubLine string) (string, error) {
 	return fingerprint, nil
 }
 
-// RevokeKey removes an allowlisted key matched by exact fingerprint or exact
-// comment. Matching nothing is an error: a revoke is a deliberate access cut,
-// and a silent no-op would look like it worked.
+// RevokeKey removes every allowlisted key matched by exact fingerprint or
+// exact comment. Matching nothing is an error: a revoke is a deliberate
+// access cut, and a silent no-op would look like it worked.
 func (r *Registry) RevokeKey(fingerprintOrComment string) error {
-	for i, existing := range r.Allowlist {
+	kept := make([]AllowedKey, 0, len(r.Allowlist))
+	removed := 0
+	for _, existing := range r.Allowlist {
 		if existing.Fingerprint == fingerprintOrComment || existing.Comment == fingerprintOrComment {
-			r.Allowlist = append(r.Allowlist[:i], r.Allowlist[i+1:]...)
-			return nil
+			removed++
+			continue
 		}
+		kept = append(kept, existing)
 	}
-	return fmt.Errorf("no allowlisted key matches %q", fingerprintOrComment)
+	if removed == 0 {
+		return fmt.Errorf("no allowlisted key matches %q", fingerprintOrComment)
+	}
+	r.Allowlist = kept
+	return nil
 }
 
 // Fingerprint renders the SHA256:<base64> form ssh-keygen -lf prints for a

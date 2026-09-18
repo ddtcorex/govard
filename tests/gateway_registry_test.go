@@ -1,8 +1,10 @@
 package tests
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -49,7 +51,7 @@ func TestGatewayRegistryRejectsReservedUsername(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	for _, user := range []string{"root", "nobody"} {
+	for _, user := range []string{"root", "nobody", "Root", "NOBODY"} {
 		if err := reg.AddTarget(user, gateway.Target{Container: "ctr", TargetUser: "deployer", Project: "x"}); err == nil {
 			t.Fatalf("expected the reserved username %s to be rejected", user)
 		}
@@ -68,6 +70,148 @@ func TestGatewayRegistryAllowKeyRejectsMultilineComment(t *testing.T) {
 	}
 	if len(reg.Allowlist) != 0 {
 		t.Fatalf("expected empty allowlist after rejected key, got %d entries", len(reg.Allowlist))
+	}
+}
+
+func TestGatewayRegistryRevokeKeyRemovesAllMatches(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	dataFor := func(s string) string {
+		return base64.StdEncoding.EncodeToString([]byte(s))
+	}
+	for _, tc := range []struct{ material, comment string }{
+		{"gateway-revoke-key-alpha", "shared-comment"},
+		{"gateway-revoke-key-beta", "shared-comment"},
+		{"gateway-revoke-key-gamma", "other-comment"},
+	} {
+		if _, err := reg.AllowKey("ssh-ed25519 " + dataFor(tc.material) + " " + tc.comment); err != nil {
+			t.Fatalf("AllowKey: %v", err)
+		}
+	}
+	if err := reg.RevokeKey("shared-comment"); err != nil {
+		t.Fatalf("RevokeKey: %v", err)
+	}
+	if len(reg.Allowlist) != 1 {
+		t.Fatalf("expected exactly one surviving key, got %d", len(reg.Allowlist))
+	}
+	if reg.Allowlist[0].Comment != "other-comment" {
+		t.Fatalf("surviving key comment = %q, want %q", reg.Allowlist[0].Comment, "other-comment")
+	}
+}
+
+func TestGatewayRegistryAllowKeyRejectsUnknownKeyType(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	keyData := base64.StdEncoding.EncodeToString([]byte("gateway-bad-type-key"))
+	if _, err := reg.AllowKey("ssh-future " + keyData + " future@host"); err == nil {
+		t.Fatal("expected an unknown key type to be rejected")
+	} else if !strings.Contains(err.Error(), "ssh-future") {
+		t.Fatalf("the error must name the key type, got: %v", err)
+	}
+	if len(reg.Allowlist) != 0 {
+		t.Fatalf("expected empty allowlist after rejected key, got %d entries", len(reg.Allowlist))
+	}
+}
+
+func TestGatewayRegistryKeysFileIsSortedByFingerprint(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	dataA := base64.StdEncoding.EncodeToString([]byte("gateway-sort-key-alpha"))
+	dataB := base64.StdEncoding.EncodeToString([]byte("gateway-sort-key-beta"))
+	fpA, err := gateway.Fingerprint(dataA)
+	if err != nil {
+		t.Fatalf("Fingerprint A: %v", err)
+	}
+	fpB, err := gateway.Fingerprint(dataB)
+	if err != nil {
+		t.Fatalf("Fingerprint B: %v", err)
+	}
+	if fpA == fpB {
+		t.Fatal("fixture keys collide; pick different material")
+	}
+	// Allow in reverse-sorted order, so insertion order alone is unsorted
+	// and only an explicit sort produces the expected file order.
+	first, second := dataA, dataB
+	if fpA < fpB {
+		first, second = dataB, dataA
+	}
+	if _, err := reg.AllowKey("ssh-ed25519 " + first + " sort-test"); err != nil {
+		t.Fatalf("AllowKey first: %v", err)
+	}
+	if _, err := reg.AllowKey("ssh-ed25519 " + second + " sort-test"); err != nil {
+		t.Fatalf("AllowKey second: %v", err)
+	}
+	if err := reg.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(gateway.GatewayDir(), "keys"))
+	if err != nil {
+		t.Fatalf("read keys file: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 key lines, got %d:\n%s", len(lines), content)
+	}
+	got := []string{
+		strings.SplitN(lines[0], " ", 2)[0],
+		strings.SplitN(lines[1], " ", 2)[0],
+	}
+	if !sort.StringsAreSorted(got) {
+		t.Fatalf("keys file is not sorted by fingerprint:\n%s", content)
+	}
+}
+
+func TestGatewayRenderFlatFilesCreatesMissingDir(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// No Save: RenderFlatFiles alone must create the gateway dir for
+	// direct callers.
+	if err := reg.RenderFlatFiles(); err != nil {
+		t.Fatalf("RenderFlatFiles: %v", err)
+	}
+	for _, name := range []string{"targets", "keys"} {
+		if _, err := os.Stat(filepath.Join(gateway.GatewayDir(), name)); err != nil {
+			t.Fatalf("stat %s: %v", name, err)
+		}
+	}
+}
+
+func TestGatewayRegistryRoundTripWithoutTargetsKey(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	if err := os.MkdirAll(gateway.GatewayDir(), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// A registry file written without the "targets" key (older writer,
+	// hand edit) must round-trip to an explicit empty object, never null.
+	raw := []byte("{\"allowlist\": []}\n")
+	if err := os.WriteFile(filepath.Join(gateway.GatewayDir(), "registry.json"), raw, 0o600); err != nil {
+		t.Fatalf("WriteFile registry: %v", err)
+	}
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := reg.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(gateway.GatewayDir(), "registry.json"))
+	if err != nil {
+		t.Fatalf("read registry: %v", err)
+	}
+	if !strings.Contains(string(content), "\"targets\": {}") {
+		t.Fatalf("registry must round-trip a missing targets key to {}, got:\n%s", content)
 	}
 }
 

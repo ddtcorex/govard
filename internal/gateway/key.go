@@ -45,6 +45,26 @@ func EnsureSecondHopKey() (keyPath string, publicLine string, err error) {
 	publicPath := filepath.Join(dir, secondHopKeyName+".pub")
 
 	if existing, readErr := readPublicKeyLine(publicPath); readErr == nil {
+		// The targets already trust the public half on disk, so reuse it --
+		// but only when the private half is still there too. A missing
+		// private key fails loud: regenerating would publish a new public
+		// half the targets do not trust, and returning the stale path
+		// would hand out a dangling identity.
+		if _, statErr := os.Stat(privatePath); statErr != nil {
+			if os.IsNotExist(statErr) {
+				return "", "", fmt.Errorf("the gateway public key exists at %s but the private key is missing at %s: restore the pair or remove the public half, refusing to regenerate", publicPath, privatePath)
+			}
+			return "", "", fmt.Errorf("stat the gateway second-hop private key: %w", statErr)
+		}
+		// Mode enforcement on the reuse path, same discipline as the write
+		// path: pre-existing files may predate the Chmod or carry a
+		// drifted mode.
+		if err := os.Chmod(privatePath, 0o600); err != nil {
+			return "", "", fmt.Errorf("chmod the gateway second-hop private key: %w", err)
+		}
+		if err := os.Chmod(publicPath, 0o644); err != nil {
+			return "", "", fmt.Errorf("chmod the gateway second-hop public key: %w", err)
+		}
 		return privatePath, existing, nil
 	} else if !os.IsNotExist(readErr) {
 		return "", "", readErr
