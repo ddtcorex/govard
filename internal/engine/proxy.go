@@ -40,6 +40,23 @@ func absolutizeGatewayMount(content []byte) []byte {
 	return []byte(strings.ReplaceAll(string(content), marker, abs+":/govard-gateway:ro"))
 }
 
+// ensureGatewayMountDir pre-creates the gateway registry's source directory
+// owned by whoever runs the CLI before compose brings the container up.
+// Otherwise the daemon creates it root-owned and every later gateway
+// registry Save (chmod + write) fails with EPERM. This package cannot
+// import the gateway package for the path (the dependency points the
+// other way), so the conventional location is spelled out here. A mount
+// that cannot be pre-created will fail compose anyway, so a failure is
+// returned loudly instead of skipped: silent skip only delays the
+// diagnostic to the registry Save.
+func ensureGatewayMountDir() error {
+	gatewayDir := filepath.Join(GovardHomeDir(), "gateway")
+	if err := os.MkdirAll(gatewayDir, conventions.DefaultDirPerm); err != nil {
+		return fmt.Errorf("create the SSH gateway directory %s: %w", gatewayDir, err)
+	}
+	return nil
+}
+
 func EnsureGlobalProxy() error {
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -79,13 +96,11 @@ func EnsureGlobalProxy() error {
 	_ = os.MkdirAll(tempDir, conventions.DefaultDirPerm)
 
 	// The sshd service bind-mounts the gateway registry (see
-	// absolutizeGatewayMount below): make sure its source directory exists
-	// owned by whoever runs the CLI before compose brings the container up.
-	// Otherwise the daemon creates it root-owned and every later gateway
-	// registry Save (chmod + write) fails with EPERM. This package cannot
-	// import the gateway package for the path (the dependency points the
-	// other way), so the conventional location is spelled out here.
-	_ = os.MkdirAll(filepath.Join(GovardHomeDir(), "gateway"), conventions.DefaultDirPerm)
+	// absolutizeGatewayMount below): fail the render loudly when its source
+	// directory cannot be pre-created.
+	if err := ensureGatewayMountDir(); err != nil {
+		return err
+	}
 
 	blueprintsFS, err := findBlueprintsFS(".")
 	if err != nil {
@@ -368,6 +383,18 @@ func phpSingleQuote(s string) string {
 
 func ActiveProjectNamesFromContainersForTest(containers []container.Summary) []string {
 	return activeProjectNamesFromContainers(containers)
+}
+
+// AbsolutizeGatewayMountForTest exposes absolutizeGatewayMount to the tests/
+// package.
+func AbsolutizeGatewayMountForTest(content []byte) []byte {
+	return absolutizeGatewayMount(content)
+}
+
+// EnsureGatewayMountDirForTest exposes ensureGatewayMountDir to the tests/
+// package.
+func EnsureGatewayMountDirForTest() error {
+	return ensureGatewayMountDir()
 }
 
 func BuildPMAConfigContentForTest() string {

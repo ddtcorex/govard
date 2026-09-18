@@ -13,18 +13,28 @@ ln -sf "$HOST_KEY_DIR/ssh_host_ed25519_key.pub" /etc/ssh/ssh_host_ed25519_key.pu
 # session for it -- AuthorizedKeysCommand only decides which key is accepted,
 # not whether the account exists. This loop creates one, sharing UID 0
 # (--non-unique) so the forced command can read the gateway's private key
-# (see this task's header comment). It never removes an account: an entry
-# whose registry route is gone is inert, because gw-router.sh checks
-# /govard-gateway/targets itself on every connection.
+# (see this task's header comment). It never removes an account, and it never
+# modifies one either: a routed name that collides with a pre-existing system
+# account is left alone with a warning, and its route stays inert, because
+# gw-router.sh checks /govard-gateway/targets itself on every connection.
 reconcile_accounts() {
     targets=/govard-gateway/targets
     while true; do
         if [ -f "$targets" ]; then
             while read -r user _container _target_user; do
                 [ -z "$user" ] && continue
-                id "$user" >/dev/null 2>&1 || \
-                    useradd --non-unique --uid 0 --gid 0 --no-create-home \
-                        --home-dir /nonexistent --shell /bin/sh -- "$user" 2>/dev/null || true
+                if id "$user" >/dev/null 2>&1; then
+                    # Already exists: either a previous tick created it
+                    # (uid 0, nothing to do) or it is a pre-existing system
+                    # account the gateway must never touch. Warn loudly for
+                    # the latter so the dead route is visible, not silent.
+                    if [ "$(id -u "$user" 2>/dev/null)" != "0" ]; then
+                        echo "gateway: username '$user' collides with an existing system account; its route stays inert" >&2
+                    fi
+                    continue
+                fi
+                useradd --non-unique --uid 0 --gid 0 --no-create-home \
+                    --home-dir /nonexistent --shell /bin/sh -- "$user" 2>/dev/null || true
             done < "$targets"
         fi
         sleep 5

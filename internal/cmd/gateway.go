@@ -29,6 +29,7 @@ port. It rides the same global proxy stack as Caddy: start it with
 var gatewayStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Report whether the SSH gateway container is running",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		reg, err := gateway.Load()
 		if err != nil {
@@ -74,7 +75,7 @@ var gatewayRevokeKeyCmd = &cobra.Command{
 		runtime.AnnotationRequires: string(runtime.CapNone),
 	},
 	Use:   "revoke-key <fingerprint-or-comment>",
-	Short: "Remove a client public key from the gateway allowlist",
+	Short: "Remove client public keys matching a fingerprint or comment",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		reg, err := gateway.Load()

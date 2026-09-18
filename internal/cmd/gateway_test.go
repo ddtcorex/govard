@@ -3,6 +3,7 @@ package cmd
 import (
 	"testing"
 
+	"github.com/spf13/cobra"
 	"govard/internal/runtime"
 )
 
@@ -32,5 +33,26 @@ func TestGatewaySubcommandsDeclareRequirements(t *testing.T) {
 	}
 	if len(cases) > 0 {
 		t.Errorf("missing gateway subcommands: %v", cases)
+	}
+}
+
+// TestGatewayStatusRejectsArgs pins that `gateway status` takes no
+// positional arguments: a stray trailing arg is a usage error, not
+// something the status report silently ignores.
+func TestGatewayStatusRejectsArgs(t *testing.T) {
+	var status *cobra.Command
+	for _, sub := range gatewayCmd.Commands() {
+		if sub.Name() == "status" {
+			status = sub
+		}
+	}
+	if status == nil {
+		t.Fatal("gateway has no status subcommand")
+	}
+	if err := status.ValidateArgs([]string{"bogus"}); err == nil {
+		t.Fatal("status with a trailing arg: got nil, want a usage error")
+	}
+	if err := status.ValidateArgs(nil); err != nil {
+		t.Fatalf("status with no args: got %v, want nil", err)
 	}
 }

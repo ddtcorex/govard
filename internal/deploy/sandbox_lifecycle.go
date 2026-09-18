@@ -47,8 +47,10 @@ const gatewayContainerName = "govard-proxy-sshd"
 
 // gatewayContainerExec adapts the sandbox runtime to the gateway's narrow
 // container-exec interface. The interface lives in internal/gateway (not
-// here) because this package already imports internal/gateway -- declaring it
-// here would be an import cycle.
+// here) because the dependency points that way: this package already imports
+// internal/gateway, so gateway cannot import a deploy-local type back.
+// Declaring the interface in gateway and adapting to it here keeps the edge
+// one-directional.
 type gatewayContainerExec struct{ runtime SandboxRuntime }
 
 func (a gatewayContainerExec) ExecInContainer(ctx context.Context, name string, args ...string) (string, error) {

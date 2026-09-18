@@ -361,9 +361,11 @@ func resolveGlobalServiceSpec(serviceID string) (globalServiceSpec, error) {
 
 // GlobalServiceSpecForTest exposes one registered global service's wiring so
 // tests can assert an entry exists without exporting the whole spec table.
+// The lookup mirrors resolveGlobalServiceSpec's lower/trim normalization.
 func GlobalServiceSpecForTest(id string) (composeService, containerName string, openable, ok bool) {
+	normalized := strings.ToLower(strings.TrimSpace(id))
 	for _, spec := range globalServiceSpecs {
-		if spec.ID == id {
+		if spec.ID == normalized {
 			return spec.ComposeService, spec.ContainerName, spec.URLHost != "", true
 		}
 	}
