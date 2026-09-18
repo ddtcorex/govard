@@ -851,7 +851,14 @@ func withCommandOutput(base string, commandOutput string) string {
 }
 
 func globalServicesComposeDirPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
+	return filepath.Join(engine.GovardHomeDir(), "proxy")
+}
+
+// GlobalServicesComposeDirPathForTest exposes globalServicesComposeDirPath
+// to the tests/ package so the writer-reader agreement (engine render vs
+// desktop consumer) stays pinned under GOVARD_HOME_DIR isolation.
+func GlobalServicesComposeDirPathForTest() string {
+	return globalServicesComposeDirPath()
 }
 
 func globalServicesComposeFilePath() string {

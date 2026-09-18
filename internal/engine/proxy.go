@@ -23,14 +23,14 @@ import (
 )
 
 // absolutizeGatewayMount rewrites the sshd service's relative ../gateway
-// bind mount to the effective Govard home's gateway directory. The proxy
-// compose file itself lives under $HOME (not the GOVARD_HOME_DIR override),
-// so a relative mount would resolve to the wrong home whenever the two
-// differ -- notably under the integration tests' isolated home, where the
-// gateway registry (keys, targets, second-hop key) is rendered. With the
-// default home both spellings resolve to the same directory. When the marker
-// is absent (a future blueprint without the mount) the content is returned
-// unchanged.
+// bind mount to the effective Govard home's gateway directory (which follows
+// the GOVARD_HOME_DIR override, like the proxy compose file itself), so a
+// relative mount would resolve to the wrong home whenever the override
+// differs from the default -- notably under the integration tests' isolated
+// home, where the gateway registry (keys, targets, second-hop key) is
+// rendered. With the default home both spellings resolve to the same
+// directory. When the marker is absent (a future blueprint without the mount)
+// the content is returned unchanged.
 func absolutizeGatewayMount(content []byte) []byte {
 	const marker = "../gateway:/govard-gateway:ro"
 	if !strings.Contains(string(content), marker) {

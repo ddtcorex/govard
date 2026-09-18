@@ -80,9 +80,9 @@ func TestDesktopStartGlobalServiceRunsComposeForTargetServiceForTest(t *testing.
 func TestDesktopStopGlobalServiceRunsComposeForTargetServiceForTest(t *testing.T) {
 	desktop.ResetStateForTest()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	t.Setenv("GOVARD_HOME_DIR", home)
 
-	composeDir := filepath.Join(home, ".govard", "proxy")
+	composeDir := filepath.Join(home, "proxy")
 	if err := os.MkdirAll(composeDir, 0o755); err != nil {
 		t.Fatalf("mkdir compose dir: %v", err)
 	}

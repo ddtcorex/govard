@@ -37,11 +37,12 @@ var gatewayStatusCmd = &cobra.Command{
 			return err
 		}
 		if engine.IsContainerRunning(cmd.Context(), "govard-proxy-sshd") {
-			pterm.Success.Println("govard-proxy-sshd is running on 127.0.0.1:2222")
 			if w := gatewayStatusPortWarning(true, func() bool {
 				return gatewaySSHPortPublished(cmd.Context())
 			}); w != "" {
 				pterm.Warning.Println(w)
+			} else {
+				pterm.Success.Println("govard-proxy-sshd is running on 127.0.0.1:2222")
 			}
 		} else {
 			pterm.Warning.Println("govard-proxy-sshd is not running -- run `govard svc up` to start it")
