@@ -1167,8 +1167,7 @@ sftp -P 2222 <project-name>@127.0.0.1
 
 - `govard gateway status` reports whether the bastion container is running
   and how many targets/keys it knows about.
-- `govard gateway allow-key <public-key-line>` / `revoke-key
-  <fingerprint-or-comment>` manage the allowlist; both work without Docker
+- `govard gateway allow-key <public-key-line>` / `govard gateway revoke-key <fingerprint-or-comment>` manage the allowlist; both work without Docker
   running (the registry is a local file).
 - `sandbox up` registers the project's username automatically and joins the
   bastion's network; `sandbox down` removes the registration. Neither

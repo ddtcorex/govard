@@ -1096,8 +1096,7 @@ sftp -P 2222 <project-name>@127.0.0.1
 
 - `govard gateway status` cho biết container bastion có đang chạy không và
   nó biết bao nhiêu target/key.
-- `govard gateway allow-key <public-key-line>` / `revoke-key
-  <fingerprint-or-comment>` quản lý allowlist; cả hai đều chạy được khi
+- `govard gateway allow-key <public-key-line>` / `govard gateway revoke-key <fingerprint-or-comment>` quản lý allowlist; cả hai đều chạy được khi
   Docker chưa khởi động (registry là một file cục bộ).
 - `sandbox up` tự đăng ký username của dự án và nối vào network của bastion;
   `sandbox down` gỡ đăng ký đó. Không thao tác nào hỏng khi gateway chưa
