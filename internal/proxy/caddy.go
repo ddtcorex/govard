@@ -198,6 +198,45 @@ func UnregisterSearchDomain(domain string) error {
 	return loadCaddyConfig(proxyContainer, config)
 }
 
+func RegisterRabbitMQDomains(domains []string, targetContainer string) error {
+	proxyContainer := "govard-proxy-caddy"
+	config, err := fetchCaddyConfig(proxyContainer)
+	if err != nil || len(config) == 0 {
+		if err := initCaddy(proxyContainer); err != nil {
+			return err
+		}
+		config, err = fetchCaddyConfig(proxyContainer)
+		if err != nil {
+			return err
+		}
+	}
+
+	changed := ensureRabbitMQServerConfig(config)
+	for _, domain := range domains {
+		if upsertRabbitMQRoute(config, domain, targetContainer) {
+			changed = true
+		}
+	}
+
+	if !changed {
+		return nil
+	}
+	return loadCaddyConfig(proxyContainer, config)
+}
+
+func UnregisterRabbitMQDomain(domain string) error {
+	proxyContainer := "govard-proxy-caddy"
+	config, err := fetchCaddyConfig(proxyContainer)
+	if err != nil {
+		return nil
+	}
+
+	if !removeRabbitMQRoute(config, domain) {
+		return nil
+	}
+	return loadCaddyConfig(proxyContainer, config)
+}
+
 // RegisterFrontend installs the active runtime's path route and optional HTML
 // injection proxy through Caddy's Admin API. Existing application routes are
 // preserved as fallbacks.
@@ -363,6 +402,10 @@ func upsertDomainRoute(config map[string]interface{}, domain string, targetConta
 
 func upsertSearchRoute(config map[string]interface{}, domain string, targetContainer string) bool {
 	return upsertRoute(config, "srv_search", domain, targetContainer, conventions.SearchPort, "govard_search_route_")
+}
+
+func upsertRabbitMQRoute(config map[string]interface{}, domain string, targetContainer string) bool {
+	return upsertRoute(config, "srv_rabbitmq", domain, targetContainer, conventions.RabbitMQMgmtPort, "govard_rabbitmq_route_")
 }
 
 func validateFrontendRegistration(registration FrontendRegistration) error {
@@ -570,6 +613,10 @@ func removeSearchRoute(config map[string]interface{}, domain string) bool {
 	return removeRoute(config, "srv_search", domain, "govard_search_route_")
 }
 
+func removeRabbitMQRoute(config map[string]interface{}, domain string) bool {
+	return removeRoute(config, "srv_rabbitmq", domain, "govard_rabbitmq_route_")
+}
+
 func routeIDForDomain(domain string, idPrefix string) string {
 	safe := strings.NewReplacer(".", "_", "-", "_", ":", "_").Replace(domain)
 	return idPrefix + safe
@@ -731,6 +778,52 @@ func ensureSearchServerConfig(config map[string]interface{}) bool {
 	return changed
 }
 
+func ensureRabbitMQServerConfig(config map[string]interface{}) bool {
+	changed := false
+
+	apps := getOrCreateMap(config, "apps", &changed)
+	http := getOrCreateMap(apps, "http", &changed)
+	servers := getOrCreateMap(http, "servers", &changed)
+	srvRabbitMQ := getOrCreateMap(servers, "srv_rabbitmq", &changed)
+
+	listenAddr := fmt.Sprintf(":%d", conventions.RabbitMQMgmtPort)
+	listenVal, ok := srvRabbitMQ["listen"]
+	var listen []interface{}
+	if ok {
+		if l, ok := listenVal.([]interface{}); ok {
+			for _, v := range l {
+				if s, ok := v.(string); ok && s == listenAddr {
+					listen = append(listen, v)
+				} else if ok {
+					changed = true
+				}
+			}
+		}
+	}
+	if len(listen) == 0 {
+		listen = []interface{}{listenAddr}
+		changed = true
+	}
+	srvRabbitMQ["listen"] = listen
+
+	// srv_rabbitmq matches routes by Host header on project domains that also
+	// qualify for the *.test automatic-TLS policy configured for srv0. Without
+	// explicitly disabling automatic HTTPS here, Caddy would silently wrap this
+	// plain HTTP listener in TLS, breaking host-side access to the management UI.
+	wantAutoHTTPS := map[string]interface{}{"disable": true}
+	if autoHTTPS, ok := srvRabbitMQ["automatic_https"].(map[string]interface{}); !ok || !reflect.DeepEqual(autoHTTPS, wantAutoHTTPS) {
+		srvRabbitMQ["automatic_https"] = wantAutoHTTPS
+		changed = true
+	}
+
+	servers["srv_rabbitmq"] = srvRabbitMQ
+	http["servers"] = servers
+	apps["http"] = http
+	config["apps"] = apps
+
+	return changed
+}
+
 func getOrCreateMap(parent map[string]interface{}, key string, changed *bool) map[string]interface{} {
 	val, ok := parent[key]
 	if ok {
@@ -836,6 +929,21 @@ func UpsertSearchRouteForTest(config map[string]interface{}, domain string, targ
 // RemoveSearchRouteForTest exposes search route removal behavior for tests.
 func RemoveSearchRouteForTest(config map[string]interface{}, domain string) bool {
 	return removeSearchRoute(config, domain)
+}
+
+// EnsureRabbitMQServerConfigForTest exposes rabbitmq server config normalization for tests.
+func EnsureRabbitMQServerConfigForTest(config map[string]interface{}) bool {
+	return ensureRabbitMQServerConfig(config)
+}
+
+// UpsertRabbitMQRouteForTest exposes rabbitmq route upsert behavior for tests.
+func UpsertRabbitMQRouteForTest(config map[string]interface{}, domain string, targetContainer string) bool {
+	return upsertRabbitMQRoute(config, domain, targetContainer)
+}
+
+// RemoveRabbitMQRouteForTest exposes rabbitmq route removal behavior for tests.
+func RemoveRabbitMQRouteForTest(config map[string]interface{}, domain string) bool {
+	return removeRabbitMQRoute(config, domain)
 }
 
 func isDefaultFileServerRoute(route interface{}) bool {

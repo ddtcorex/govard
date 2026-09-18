@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/proxy"
 
@@ -23,6 +24,8 @@ type EnvDependenciesForTest struct {
 	UnregisterDomain          func(string) error
 	RegisterSearchDomains     func([]string, string) error
 	UnregisterSearchDomain    func(string) error
+	RegisterRabbitMQDomains   func([]string, string) error
+	UnregisterRabbitMQDomain  func(string) error
 	AddHostsEntry             func(string) error
 	RemoveHostsEntry          func(string) error
 	IsDomainResolvableLocally func(string) bool
@@ -36,6 +39,8 @@ var envDeps = EnvDependenciesForTest{
 	UnregisterDomain:          proxy.UnregisterDomain,
 	RegisterSearchDomains:     proxy.RegisterSearchDomains,
 	UnregisterSearchDomain:    proxy.UnregisterSearchDomain,
+	RegisterRabbitMQDomains:   proxy.RegisterRabbitMQDomains,
+	UnregisterRabbitMQDomain:  proxy.UnregisterRabbitMQDomain,
 	AddHostsEntry:             engine.AddHostsEntry,
 	RemoveHostsEntry:          engine.RemoveHostsEntry,
 	IsDomainResolvableLocally: engine.IsDomainResolvableLocally,
@@ -174,6 +179,13 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 			// route exists.
 			if err := envDeps.UnregisterSearchDomain(domain); err != nil {
 				pterm.Warning.Printf("Could not remove search proxy route for %s: %v\n", domain, err)
+			}
+			// Unregister unconditionally (not gated on the queue backend): if RabbitMQ
+			// was previously enabled and later disabled, a stale srv_rabbitmq route could
+			// otherwise linger. UnregisterRabbitMQDomain is a safe no-op when no matching
+			// route exists.
+			if err := envDeps.UnregisterRabbitMQDomain(domain); err != nil {
+				pterm.Warning.Printf("Could not remove RabbitMQ proxy route for %s: %v\n", domain, err)
 			}
 			if err := envDeps.RemoveHostsEntry(domain); err != nil {
 				pterm.Warning.Printf("Could not remove hosts entry for %s: %v\n", domain, err)
@@ -345,6 +357,13 @@ func ensureProjectDomainsAvailable(config engine.Config) {
 		}
 	}
 
+	if config.Stack.Services.Queue == conventions.ServiceRabbitMQ && len(allDomains) > 0 {
+		rabbitmqTarget := ResolveUpRabbitMQProxyTarget(config)
+		if rabbitmqErr := envDeps.RegisterRabbitMQDomains(allDomains, rabbitmqTarget); rabbitmqErr != nil {
+			pterm.Warning.Printf("Could not register RabbitMQ proxy route: %v\n", rabbitmqErr)
+		}
+	}
+
 	for _, domain := range allDomains {
 		if envDeps.IsDomainResolvableLocally(domain) {
 			pterm.Success.Printf("Domain %s already resolves locally\n", domain)
@@ -394,6 +413,16 @@ func SetEnvDependenciesForTest(deps EnvDependenciesForTest) func() {
 		envDeps.UnregisterSearchDomain = deps.UnregisterSearchDomain
 	} else {
 		envDeps.UnregisterSearchDomain = proxy.UnregisterSearchDomain
+	}
+	if deps.RegisterRabbitMQDomains != nil {
+		envDeps.RegisterRabbitMQDomains = deps.RegisterRabbitMQDomains
+	} else {
+		envDeps.RegisterRabbitMQDomains = proxy.RegisterRabbitMQDomains
+	}
+	if deps.UnregisterRabbitMQDomain != nil {
+		envDeps.UnregisterRabbitMQDomain = deps.UnregisterRabbitMQDomain
+	} else {
+		envDeps.UnregisterRabbitMQDomain = proxy.UnregisterRabbitMQDomain
 	}
 	if deps.AddHostsEntry != nil {
 		envDeps.AddHostsEntry = deps.AddHostsEntry
