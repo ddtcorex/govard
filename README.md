@@ -58,7 +58,7 @@ Pick one channel and stick to it:
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash
 ```
 
-The installer handles system dependencies, starts global services, and configures SSL trust. Tagged releases also ship `.deb`/`.pkg` installers — see the [releases page](https://github.com/ddtcorex/govard/releases). Do not mix channels on one machine (conflicting binaries across `/usr/bin` and `/usr/local/bin`).
+The installer handles system dependencies, starts global services, and configures SSL trust. By default it also installs `govard-desktop` where `WebKitGTK 4.1` is available (Ubuntu 22.04+); pass `--cli-only` to skip Desktop explicitly, or let the installer fall back to CLI-only automatically where WebKitGTK 4.1 is missing. Tagged releases also ship `.deb`/`.pkg` installers, including a separate `govard-desktop_<version>_linux_<arch>.deb` — see the [releases page](https://github.com/ddtcorex/govard/releases) and the [installation guide](docs/getting-started/installation.md) for the full options. Do not mix channels on one machine (conflicting binaries across `/usr/bin` and `/usr/local/bin`).
 
 Govard runs without Docker for host-side commands (`govard capabilities` lists every command's requirement); container-backed commands exit `3` with `CAPABILITY_MISSING` instead of failing midway. Details: [Runs Without Docker](docs/reference/docker-free.md).
 
