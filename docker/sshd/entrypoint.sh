@@ -15,8 +15,9 @@ ln -sf "$HOST_KEY_DIR/ssh_host_ed25519_key.pub" /etc/ssh/ssh_host_ed25519_key.pu
 # (--non-unique) so the forced command can read the gateway's private key
 # (see this task's header comment). It never removes an account, and it never
 # modifies one either: a routed name that collides with a pre-existing system
-# account is left alone with a warning, and its route stays inert, because
-# gw-router.sh checks /govard-gateway/targets itself on every connection.
+# account is left unmodified with a warning (access still requires an
+# allowlisted key), because the gateway never touches accounts it did not
+# create.
 reconcile_accounts() {
     targets=/govard-gateway/targets
     while true; do
@@ -29,7 +30,7 @@ reconcile_accounts() {
                     # account the gateway must never touch. Warn loudly for
                     # the latter so the dead route is visible, not silent.
                     if [ "$(id -u "$user" 2>/dev/null)" != "0" ]; then
-                        echo "gateway: username '$user' collides with an existing system account; its route stays inert" >&2
+                        echo "gateway: username '$user' collides with an existing system account; leaving it unmodified (access still requires an allowlisted key)" >&2
                     fi
                     continue
                 fi

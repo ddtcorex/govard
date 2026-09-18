@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"govard/internal/engine"
@@ -37,6 +38,11 @@ var gatewayStatusCmd = &cobra.Command{
 		}
 		if engine.IsContainerRunning(cmd.Context(), "govard-proxy-sshd") {
 			pterm.Success.Println("govard-proxy-sshd is running on 127.0.0.1:2222")
+			if w := gatewayStatusPortWarning(true, func() bool {
+				return gatewaySSHPortPublished(cmd.Context())
+			}); w != "" {
+				pterm.Warning.Println(w)
+			}
 		} else {
 			pterm.Warning.Println("govard-proxy-sshd is not running -- run `govard svc up` to start it")
 		}
@@ -44,6 +50,35 @@ var gatewayStatusCmd = &cobra.Command{
 		fmt.Printf("allowlist: %d key(s)\n", len(reg.Allowlist))
 		return nil
 	},
+}
+
+// gatewaySSHPortPublished is the `gateway status` probe for the sshd
+// service's 127.0.0.1:2222 binding (shell-free, via the vendored docker
+// client in internal/engine). A variable so tests can stub the daemon away.
+var gatewaySSHPortPublished = func(ctx context.Context) bool {
+	return engine.IsGatewaySSHPortPublished(ctx)
+}
+
+// formatPortWarning shapes the loud port-health warning `gateway status`
+// prints when govard-proxy-sshd runs without its 127.0.0.1:2222 binding
+// (usually because another process holds the port and compose started the
+// service without it). Pure so the wording stays pinned hermetically.
+func formatPortWarning(published bool) string {
+	if published {
+		return ""
+	}
+	return "WARNING: govard-proxy-sshd is running but port 2222 is not published -- another process is likely holding 127.0.0.1:2222"
+}
+
+// gatewayStatusPortWarning decides the port-health line for a status report:
+// when the container runs but its 2222 binding is missing (probe reports
+// false), it returns the loud warning; otherwise "". The probe is a stub
+// point so tests pin the branch without a Docker daemon.
+func gatewayStatusPortWarning(running bool, probe func() bool) string {
+	if !running {
+		return ""
+	}
+	return formatPortWarning(probe())
 }
 
 var gatewayAllowKeyCmd = &cobra.Command{

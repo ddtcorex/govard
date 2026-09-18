@@ -92,7 +92,7 @@ func EnsureGlobalProxy() error {
 		}
 	}
 
-	tempDir := filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
+	tempDir := filepath.Join(GovardHomeDir(), "proxy")
 	_ = os.MkdirAll(tempDir, conventions.DefaultDirPerm)
 
 	// The sshd service bind-mounts the gateway registry (see
@@ -137,7 +137,7 @@ func EnsureGlobalProxy() error {
 	} else {
 		// If found but stopped, start it
 		pterm.Debug.Println("Global proxy already exists, ensuring it is started...")
-		tempDir := filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
+		tempDir := filepath.Join(GovardHomeDir(), "proxy")
 		cmd := exec.Command("docker", "compose", "-p", "proxy", "up", "-d")
 		cmd.Dir = tempDir
 		if output, err := cmd.CombinedOutput(); err != nil {
@@ -201,7 +201,7 @@ func RefreshPMAActiveProjects() error {
 		return fmt.Errorf("list containers: %w", err)
 	}
 
-	tempDir := filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
+	tempDir := filepath.Join(GovardHomeDir(), "proxy")
 	activeProjectsPath := filepath.Join(tempDir, "..", "active-projects.json")
 	activeProjects := activeProjectNamesFromContainers(containers)
 
