@@ -6,62 +6,39 @@
 [![Release downloads](https://img.shields.io/github/downloads/ddtcorex/govard/total?label=Release%20downloads)](https://github.com/ddtcorex/govard/releases)
 [![CI Pipeline](https://github.com/ddtcorex/govard/actions/workflows/ci-pipeline.yml/badge.svg)](https://github.com/ddtcorex/govard/actions/workflows/ci-pipeline.yml)
 
-**Govard** is a professional-grade local development orchestrator engineered in Go. It is designed to replace legacy bash-based tools with a high-performance, native binary that manages complex containerized environments with a focus on stability, speed, and a premium developer experience.
+**Govard** is a professional-grade local development orchestrator engineered in Go. It replaces legacy bash-based tooling with a fast native binary that manages complex containerized environments with a focus on stability, speed, and developer experience.
 
 ---
 
 ## 🆚 Why Govard Stands Out
 
-At a glance, these are the areas where Govard delivers stronger day-to-day value than typical local-dev wrappers and compose helpers:
-
 | Area | Govard Advantage |
 | :--- | :--- |
-| Core architecture | Native Go binary with direct Docker SDK orchestration (instead of shell-script glue), for more predictable lifecycle behavior. |
-| Framework intelligence | Automatic framework discovery + framework-specific blueprints + custom stack wizard for tailored environments. |
-| Magento depth | First-class Magento/OpenMage workflow (auto `env.php`/`local.xml` wiring, table prefix support, optional Varnish/Redis/queue/search, and dedicated `php-debug` routing). |
-| Local HTTPS/DNS | Built-in Caddy + `dnsmasq` + Root CA auto-trust flow for `*.test` domains, with automatic HTTP to HTTPS 308 redirection for all services. |
-| Remote safety | `remote`/`sync` protections for sensitive targets (`prod` write blocking, scoped capabilities, audit logs, resumable transfers). |
-| Deployment | A framework recipe drives a neutral task pipeline (`deploy`), a container-based sandbox rehearses it locally, and an artifact mode keeps the production job toolchain-free. |
-| Team reproducibility | `govard lock` + `lock.strict` to detect environment drift and enforce consistency across machines. |
-| Recovery workflow | `govard snapshot` for quick local DB/media checkpoints before risky operations or upgrades. |
-| CLI + Desktop parity | Same core engine exposed in both CLI and Wails Desktop app (live logs, operation events, quick actions). |
-| Update integrity | `govard self-update` validates release checksums before replacing installed binaries (`govard` + detected `govard-desktop`). |
+| Core architecture | Native Go binary with direct Docker SDK orchestration instead of shell-script glue. |
+| Framework intelligence | Automatic framework discovery + framework-specific blueprints + custom stack wizard. |
+| Magento depth | First-class Magento/OpenMage workflow (auto `env.php`/`local.xml` wiring, table prefixes, Varnish/Redis/queue/search, dedicated `php-debug` routing). |
+| Local HTTPS/DNS | Built-in Caddy + `dnsmasq` + Root CA auto-trust for `*.test` domains. |
+| Remote safety | `remote`/`sync` protections for sensitive targets (prod write blocking, scoped capabilities, audit logs). |
+| Deployment | A framework recipe drives a neutral task pipeline (`deploy`), a container sandbox rehearses it locally, and an artifact mode keeps CI jobs toolchain-free. |
+| Team reproducibility | `govard lock` + `lock.strict` to detect environment drift across machines. |
+| Recovery workflow | `govard snapshot` for quick local DB/media checkpoints before risky operations. |
 
 ---
 
 ## 🚀 Key Features
 
-- **Snapshot Compression**: Database snapshots are gzipped by default to reduce disk usage.
-- **Automatic Tunnel URL**: One-click public tunnels (`govard tunnel start`) with automatic base URL update/revert for supported frameworks (**requires `cloudflared` binary**).
-- **Integrated Testing**: Run `phpunit`, `phpstan`, and `mftf` directly with `govard test`.
-- **Redis & Valkey Management**: Full support for Redis and Valkey CLI, flushing, and info across local and remote environments.
-- **Database Observability**: Live query monitoring with `govard db top` and real-time progress bars for imports and syncs.
-- **Zero-Config Debugging**: Seamless Xdebug 2 & 3 integration with one-click toggling, project-specific isolation (`<project>-docker`), and structured subcommands.
-- **VSCode Integration**: `govard vscode setup [--global]` wires Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHPUnit, and Xdebug to run inside the project container instead of requiring PHP on the host, prompting to install any missing extension along the way.
-- **Framework Discovery**: Automatically detects Magento 1/OpenMage, Magento 2, Mage-OS, Laravel, Next.js, Emdash, Drupal, Symfony, Shopware, CakePHP, PrestaShop, WordPress, and Django to generate tailored configurations.
-- **Custom Framework**: Interactive prompt to pick web server, database, cache, search, queue, and varnish for bespoke stacks.
-- **Xdebug Routing**: Dedicated `php-debug` container, activated only when `XDEBUG_SESSION` cookie is present.
-- **Inter-Project Connectivity**: Projects can securely communicate with each other (e.g., `curl https://other-project.test`) by explicitly declaring dependencies via `linked_projects`. This ensures network isolation by default and enables targeted container refreshes.
-- **Queue Support**: Optional RabbitMQ service for async workloads.
-- **High Performance**: Built with Go and uses the native Docker SDK for direct container orchestration.
-- **Resilient Image Pull & Local Image Fallback**: Images are pulled one by one, so a single unavailable image (e.g. an elasticsearch tag missing from the registry) no longer stops the remaining pulls. Missing Govard-managed images are automatically built locally from embedded blueprints; disable the retry with `--no-fallback`.
-- **Smart Templating**: Uses Go `text/template` to render dynamic Docker Compose files from framework-specific blueprints.
-- **Magento 2 Optimized**: Deep integration for Magento 2, including automated `env.php` configuration, table prefix propagation, Varnish 7.x support, and Redis caching.
-- **Remote Management (Flagship)**: Manage named remotes for sync/deploy/db workflows with scope-based capabilities (`files,media,db,deploy`) and flexible auth modes (`keychain`, `ssh-agent`, `keyfile`).
-- **First-Class Deployment**: `govard deploy` publishes a revision over SSH + rsync with a framework recipe (Magento 2), an atomic symlink swap or in-place publish, maintenance windows, database backup, verification, rollback and resume — plus `govard sandbox` for rehearsing the whole pipeline against a container on your machine, and a two-job artifact mode for CI.
-- **Remote Safety Guardrails**: Production remotes are write-protected by default, with policy checks to block risky destination writes and explicit capability enforcement per operation.
-- **Safe Cross-Environment Sync**: Bi-directional file/media/database sync with dry-run planning (`--plan`), privacy filters (`--no-noise`, `--no-pii`), auto-selection of the `staging` remote by default, resumable rsync by default (`--partial --append-verify`), include/exclude filters, and risk warnings for destructive flags.
-- **Remote Auditability & Observability**: Remote operations are logged to `~/.govard/remote.log` and also emitted to `~/.govard/operations.log` for command traceability and desktop notifications.
-- **Remote Connectivity Diagnostics**: `govard remote test` validates SSH + `rsync`, reports probe latency, and classifies failures (`network`, `auth`, `permission`, `host_key`, `dependency`) with remediation hints.
-- **Smart Cleanup**: Automatically prunes stale Docker Compose files in the background once a day and provides a `govard env cleanup` command for immediate maintenance. Use `govard project delete` to completely remove a project's orchestration resources (containers, volumes, and proxy rules). This command is resilient and can clean up "ghost" projects even if their `.govard.yml` is missing. Use `govard doctor` to monitor directory saturation.
-- **Secrets-Aware Remote Config**: Remote fields support `op://...` references resolved through 1Password CLI for safer credential handling.
-- **SSL Management**: Professional CA management for "Green Lock" HTTPS on local `.test` domains.
-- **Rich CLI UX**: Powered by `pterm` for terminal output, progress bars, and interactive prompts.
-- **Global Services**: Built-in Proxy (Caddy), Mailpit, PHPMyAdmin, and Portainer (Default login for Portainer is `admin` / `AdminGovard123$`).
-- **Search Engine Host Access**: Elasticsearch/OpenSearch is automatically reachable from the host at `http://<project>.test:9200` — no extra config, reuses the same Caddy proxy that serves your project's HTTPS domain.
-- **Executable QA Harness**: `govard verify --plan --json` runs the 5-phase checklist (56 items, P1 7 · P2 14 · P3 15 · P4 12 · P5 8) with snapshot + `--allow-destructive` gates and machine JSON at `~/.govard/verify-runs/`.
-- **Desktop Dashboard**: Wails-based UI with live logs, quick actions, and settings.
-- **Native Framework Upgrades**: Multi-framework upgrade pipeline (`govard upgrade`) for Magento 2, Mage-OS, Magento 1, Laravel, Symfony, and WordPress that automates environment restarts, dependency updates, and database migrations.
+- **First-Class Deployment**: `govard deploy` publishes a revision over SSH + rsync with a framework recipe, atomic symlink swap or in-place publish, maintenance windows, database backup, verification, rollback and resume — plus `govard sandbox` to rehearse the pipeline against a container on your machine.
+- **Remote Management (Flagship)**: named remotes with scope-based capabilities (`files,media,db,deploy`), flexible auth (`keychain`, `ssh-agent`, `keyfile`), safe sync with dry-run planning, and connectivity diagnostics (`govard remote test`).
+- **Shared SSH Gateway**: `govard-proxy-sshd` gives every sandbox a stable address (`ssh -p 2222 <project>@127.0.0.1`, sftp included) instead of an ephemeral port.
+- **Infra Host Access**: Elasticsearch/OpenSearch at `http://<project>.test:9200` and the RabbitMQ management UI at `http://<project>.test:15672` — per-project Caddy routes, no extra config.
+- **Framework Discovery**: Magento 1/OpenMage, Magento 2, Mage-OS, Laravel, Next.js, Emdash, Drupal, Symfony, Shopware, CakePHP, PrestaShop, WordPress, and Django, plus an interactive custom-framework wizard.
+- **Zero-Config Debugging**: Xdebug 2 & 3 with one-click toggling and project-specific isolation.
+- **Database Observability**: live query monitoring (`govard db top`), progress bars for imports/syncs, Redis/Valkey management.
+- **Static Analysis & Profiling**: `govard audit` (lint, integrity, profiler) with persisted sessions, diffs, and reruns.
+- **VSCode Integration**: `govard vscode setup [--global]` runs Intelephense, PHPStan, PHPCS, PHPUnit, and Xdebug inside the container.
+- **Global Services**: Caddy proxy, Mailpit, PHPMyAdmin, Portainer out of the box.
+- **Team Safety Nets**: snapshots, drift detection, 1Password (`op://`) secret references, resumable transfers.
+- **CLI + Desktop**: the same engine in a terminal binary and a Wails desktop app; `govard self-update` with checksum validation.
 
 ---
 
@@ -75,339 +52,43 @@ Pick one channel and stick to it:
 | Homebrew | `brew install ddtcorex/tap/govard` | macOS + Linuxbrew, CLI only |
 | Docker | `docker run ghcr.io/ddtcorex/govard:<version> version` | No install needed; CI-friendly |
 | CI | `uses: ddtcorex/setup-govard@v1` | GitHub Actions, pinnable version |
-| Script | `curl -fsSL .../install.sh \| bash` | Full installer (see below) |
-| From source | `./install.sh --source -y` | Contributors |
-
-Pin a version for reproducible environments: `npm i -g @ddtcorex/govard@<version>`, `brew` pins via `brew extract`, Docker via exact tag, CI via the `version:` input (replace `<version>` with a tag from the releases page). Installs from npm/brew/Docker report their install source (`govard doctor`) and `govard self-update` defers to the owning package manager instead of overwriting the binary.
-
-### One-Line Install (Linux/macOS)
-
-Install the latest release binary with a single command:
+| Script | `curl -fsSL .../install.sh \| bash` | Full installer (CLI + Desktop where supported) |
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash
 ```
 
-Using `wget`:
+The installer handles system dependencies, starts global services, and configures SSL trust. By default it also installs `govard-desktop` where `WebKitGTK 4.1` is available (Ubuntu 22.04+); pass `--cli-only` to skip Desktop explicitly, or let the installer fall back to CLI-only automatically where WebKitGTK 4.1 is missing. Tagged releases also ship `.deb`/`.pkg` installers, including a separate `govard-desktop_<version>_linux_<arch>.deb` — see the [releases page](https://github.com/ddtcorex/govard/releases) and the [installation guide](docs/getting-started/installation.md) for the full options. Do not mix channels on one machine (conflicting binaries across `/usr/bin` and `/usr/local/bin`).
 
-```bash
-wget -qO- https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash
-```
+Govard runs without Docker for host-side commands (`govard capabilities` lists every command's requirement); container-backed commands exit `3` with `CAPABILITY_MISSING` instead of failing midway. Details: [Runs Without Docker](docs/reference/docker-free.md).
 
-Common options:
-
-```bash
-# Install to ~/.local/bin (no sudo)
-curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --local
-
-# Install building from source (auto-installs Go 1.25 if needed)
-curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --source
-
-# Install CLI only (required on Ubuntu 20.04)
-curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only
-```
-
-By default the installer installs `govard` (CLI) and, where `WebKitGTK 4.1` is available, `govard-desktop` to `/usr/local/bin`. On Ubuntu 20.04 the required WebKitGTK version is unavailable, so the installer automatically installs CLI only. Use `--cli-only` to explicitly skip Desktop on any platform.
-
-The installer automatically handles required system dependencies, starts global services, and configures SSL trust. On Linux, if a standalone `govard-desktop` archive is missing, it falls back to the separate Desktop `.deb` package.
-
-Do not mix install channels on the same machine (for example: `.deb` + `make install` + `self-update` across different paths).  
-Use one channel only, otherwise you can end up with conflicting binaries in `/usr/bin` and `/usr/local/bin`.
-
-### Runs without Docker
-
-Govard installs and runs without Docker. Commands that never touch a container
-declare that requirement in the manifest, and the resulting set is listed by:
-
-```bash
-govard capabilities          # every command, its requirements, and host status
-govard capabilities --json   # same, machine-readable
-```
-
-Docker is required only for container-backed commands: the stack commands and
-`govard audit toolchain`, plus `govard audit run --checks lint|profiler`. When it
-is missing, those commands exit `3` with `CAPABILITY_MISSING` instead of failing
-midway through their workflow, and `--error-json` prints the failure as a
-machine-readable envelope. Container-free analysis (`govard audit run --checks
-integrity`) runs on the host and needs no Docker.
-`govard doctor` reports Docker as an optional capability (exit `0`); use
-`govard doctor --strict` when a script needs the old hard gate.
-
-Note: commands that forward their arguments to a tool (`govard tool php ...`,
-`govard redis cli ...`) cannot parse the `--error-json` flag; their failures
-still carry the documented exit codes.
-
-The full list of commands that run without a container runtime — and what each
-one needs instead (nothing, SSH + rsync, `cloudflared`, network) — is in the
-[Runs Without Docker reference](docs/reference/docker-free.md).
-
-### Release Installers
-
-Every tagged release publishes these Linux packages:
-
-- `govard_<version>_linux_<arch>.deb` — CLI only; supports Ubuntu 20.04.
-- `govard-desktop_<version>_linux_<arch>.deb` — Desktop add-on; requires `WebKitGTK 4.1` (Ubuntu 22.04+).
-
-From the release page:
-
-- macOS: `govard_<version>_Darwin_<arch>.pkg`
-
-Linux CLI-only example:
-
-```bash
-sudo apt install ./govard_<version>_linux_<arch>.deb
-```
-
-Linux CLI + Desktop example:
-
-```bash
-sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_linux_<arch>.deb
-```
-
-macOS (`.pkg`) example:
-
-```bash
-sudo installer -pkg govard_<version>_Darwin_arm64.pkg -target /
-```
-
-### Quick Install from Source
-
-Ensure you have the following prerequisites installed:
-
-- **Go 1.25+**
-- **Node.js 20+**
-- **Yarn (v1.x)**
-- **golangci-lint (v2.11+)**
-- **Docker & Docker Compose** — required for stack commands (`env`, `svc`, `db`, `shell`, `test`, `audit`)
-- **Wails v2.11+** (required for desktop app development)
-
-```bash
-go version
-node --version
-yarn --version
-golangci-lint --version
-git clone https://github.com/ddtcorex/govard.git
-cd govard
-./install.sh --source
-```
-
-### Local Setup (For Developers)
-
-If you are contributing to Govard, follow these steps to set up your environment:
-
-1. **Go 1.25+**: Install from [go.dev](https://go.dev/dl/).
-2. **Yarn**: Enable with `corepack enable` or `npm install -g yarn`.
-3. **golangci-lint**: Install the latest version:
-
-   ```bash
-   curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
-   ```
-
-4. **Wails v2.11+** (for desktop app development):
-
-   ```bash
-   go install github.com/wailsapp/wails/v2/cmd/wails@latest
-   wails version
-   ```
-
-If you don't have `sudo` privileges, you can install everything to a local directory and update your `PATH`.
-
-### Docker Images (Build Args)
-
-Govard uses a single PHP Dockerfile with build args instead of versioned folders.
-
-```bash
-docker build -f docker/php/Dockerfile -t ddtcorex/govard-php:8.4 --build-arg PHP_VERSION=8.4 docker/php
-docker build -f docker/php/magento2/Dockerfile -t ddtcorex/govard-php-magento2:8.4 --build-arg PHP_VERSION=8.4 docker/php
-```
+Contributors build from source (`./install.sh --source -y`, needs Go 1.25+, Node 20+) — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## 💻 Usage
 
-### 1. Initialize a Project
-
-Navigate to your project root and run:
+### 1. Initialize and start
 
 ```bash
-govard init
+govard init          # scan the project, generate .govard.yml
+govard env up        # render compose, start the stack (govard up works too)
+govard shell         # enter the application container
 ```
 
-This scans your project (via `composer.json` or `package.json`) and generates a `.govard.yml` configuration.
-
-Fresh Emdash projects are also supported:
-
-```bash
-govard bootstrap --framework emdash --fresh
-govard env up
-govard open admin
-```
-
-Fresh framework scaffolders that require an empty project root now stage their generated files in a temporary directory before syncing them back into the initialized project. This keeps `.govard.yml` in place after `govard init`.
-
-Fresh WordPress bootstrap downloads core directly from `wordpress.org` and installs via PHP bootstrap scripts, so `wp-cli` is no longer required for the initial setup flow.
-
-### 2. Start the Environment
-
-```bash
-govard env up
-govard up --quickstart
-```
-
-This renders a per-project compose file under `~/.govard/compose/` and starts your specialized stack in detached mode. Use `--fallback-local-build` if you need to build missing images locally.
-
-`govard env up` also re-renders generated web-server assets under `~/.govard/` before container startup, so setup changes in the current Govard build are applied without depending on cached Apache or Nginx image configs.
-
-`govard env start` and `govard env restart` also re-apply local domain routing after containers come back up, so HTTPS and proxy registration stay in sync with the running project.
-
-Each local project must use a unique `project_name` and primary domain. Govard now blocks `init`/`env up` when another tracked project already uses the same identity, instead of silently colliding with an existing environment.
-
-### 3. Audit lint runs
-
-For a framework that declares lint-audit support, Govard persists lint sessions
-locally and runs them in its own Magento static-analysis image:
-
-```bash
-govard audit run
-govard audit diff --base origin/master
-govard audit rerun --session <session-id>
-govard audit status --session <session-id>
-govard audit result --session <session-id> --run <run-id>
-govard audit cleanup --older-than 168h
-
-govard audit toolchain status
-govard audit toolchain pull
-govard audit toolchain build
-```
-
-Session manifests live at
-`~/.govard/audit/<project-id>/sessions/<session-id>/manifest.json`; each result
-lives under its `runs/<run-id>/audit-result.json` directory. Reruns always need
-an explicit session ID, never an implicit latest session. The default output is
-a readable summary (verdict, per-PHP results with cache state and sample
-findings, plus the exact rerun command); a failed or cancelled run exits
-non-zero after printing it. Use `--format json` for clean machine-readable
-stdout. Audit evidence includes the immutable image digest, the toolchain
-digest, phase timings, and cache state with its reason.
-
-`govard audit` analyzes a whole Magento project, a module inside one, or a
-standalone module (`--mode`). Project and module-in-project targets analyze the
-project's active PHP — any of `7.4` and `8.0` through `8.5`; standalone modules
-run `8.1` through `8.5` and reject `7.4` and `8.0` before any image work happens.
-
-The default `--lint-provider govard` needs no registry login: the lint image's
-build context is embedded in the Govard binary, a release pins the published
-image by immutable digest, and Govard builds the embedded context locally
-whenever that pinned image is unreachable or fails label verification.
-Analyzers skip user-content trees (`vendor/`, `generated/`, `var/`,
-`pub/static/`, `pub/media/`); because uploaded webshells land in `pub/media`,
-a fast name-only media guard reports any PHP file found there as an
-`M2-LINT-MEDIA` finding and fails the run.
-`~/.composer/auth.json` is mounted read only when present, and SSH agent
-forwarding is opt-in via `--allow-lint-ssh-agent`. Persistent lint caches survive
-session cleanup for warm repeat runs; a changed `composer.lock` or analyzer
-ruleset invalidates cached analysis by itself, and `--no-lint-result-cache`
-forces it for one run. `diff` currently records its base-ref intent but still
-analyzes the full target (`effective_scope: project`).
-
-Magento 2 and Mage-OS projects can capture the stock Magento CSV profiler
-without installing a module or editing `app/etc/env.php`:
-
-```bash
-govard env up
-govard audit run --checks profiler --url 'https://shop.test/category.html?product_list_limit=48'
-```
-
-Govard clears the runtime CSV, enables `MAGE_PROFILER=csvfile` through a
-temporary web-server include, requests the exact URL with a bounded HTTP
-client, stores `profiler/profile.csv` under the run's artifact directory, then
-removes the include and runtime CSV. Nginx uses its PHP FastCGI location;
-Apache and hybrid use Apache (`hybrid` never mutates nginx). The URL is frozen
-in run evidence and reused by `audit rerun`. Profiler captures require a whole
-Govard project target, and `govard env up` must have rendered the active custom
-config mount after installing this Govard version. Browser Core Web Vitals will
-arrive in a later audit phase.
-
-Common root shortcuts are also available for day-to-day lifecycle work:
-
-- `govard up` → `govard env up`
-- `govard down` → `govard env down`
-- `govard restart` → `govard env restart`
-- `govard ps` → `govard env ps`
-- `govard logs` → `govard env logs`
-
-### 3. Configure the Stack
-
-After switching profiles, restart the environment to apply changes:
-
-```bash
-govard config profile switch upgrade
-govard env up
-```
-
-When starting the environment after a profile change, you'll be prompted:
-
-```
-Profile shift detected: PHP version changed: 8.2 -> 8.3
-Continue with profile switch? [Y/n]
-...
-Run Magento auto-configuration? [Y/n]
-```
-
-**Control tuning behavior:**
-```bash
-govard env up --no-tuning  # Skip auto-configuration prompts
-govard config auto         # Run manually after environment is up
-```
-
-### 4. Enter the Workspace
-
-Access the application container immediately:
-
-```bash
-govard shell
-```
-
-### 5. Remote Management (Flagship)
-
-Set up and validate a remote:
+### 2. Remotes and sync
 
 ```bash
 govard remote add staging --host staging.example.com --user deploy --path /var/www/app
 govard remote copy-id staging
 govard remote test staging
-```
-
-Plan and run a safe sync:
-
-```bash
-govard sync --source staging --destination local --full --plan
+govard sync --source staging --destination local --full --plan   # dry-run first
 govard sync --source staging --destination local --full
-govard sync --source dev --media
-govard sync --source prod --file --path "app/etc/config.php"
 ```
 
-`--media` can be used without an explicit mode and defaults to `optimized`.
+`prod` remotes are write-protected by default; file/media sync is resumable rsync. Full docs: [Remotes and Sync](docs/workflows/remotes-and-sync.md).
 
-Inspect remote audit events:
-
-```bash
-govard remote audit tail --status failure --lines 50
-```
-
-Remote defaults and protections:
-
-- `remote add` is interactive if flags are missing.
-- `remote copy-id` transfers your local public key to the remote `authorized_keys`.
-- Remote paths support `~/` home directory expansion on the remote host. In shell examples, use an absolute remote path or quote the value, for example `--path '~/public_html'`, so the local shell does not expand it first.
-- `prod` remotes are write-protected by default.
-- Capability scopes (`files,media,db,deploy`) are enforced per operation.
-- File/media sync uses resumable rsync mode by default.
-- Full docs: [Remotes and Sync](https://github.com/ddtcorex/govard/wiki/Remotes-and-Sync).
-
-### 6. Deployment
-
-`govard deploy` publishes one git revision to a remote over SSH and rsync — no Docker, no local PHP, no other deploy tool. The pipeline is framework-neutral; a framework recipe (Magento 2, Laravel, Symfony, WordPress) fills the tasks it supports.
+### 3. Deployment
 
 ```bash
 govard deploy plan staging     # the whole task list, connecting nowhere
@@ -417,7 +98,7 @@ govard deploy releases staging # what is on the target
 govard deploy rollback staging # put the previous release back
 ```
 
-Rehearse the same deploy against a container on your machine first — same SSH, same mirror, same recipe, nothing in the pipeline knows the difference:
+Rehearse against a container first, or split the build off to CI:
 
 ```bash
 govard sandbox up --profile full --php 8.3
@@ -425,330 +106,71 @@ govard deploy --remote sandbox --yes
 govard sandbox down --purge
 ```
 
-In CI the build moves off the target: `govard deploy build production --output artifacts` runs Composer, the DI compile and the Node builds in the build job, and `govard deploy production --artifact-dir artifacts --yes` runs in a deploy job whose image needs govard, ssh and rsync and nothing else.
-
 - Full guide: [Deployment](docs/workflows/deployment.md)
-- Worked configurations — Luma, Hyvä, several themes and store views, developer versus production mode, symlinked versus real webroot: [Deployment case studies](docs/workflows/deploy-case-studies.md)
+- Worked configurations (Luma, Hyvä, themes, modes, webroots): [Deployment case studies](docs/workflows/deploy-case-studies.md)
 
-### 7. Common Operational Workflows
+### 4. Everyday operations
 
-- `govard db ...` for dump, import, query, and connection helpers.
-- `govard debug on|off` to toggle Xdebug for the current project.
-- `govard snapshot create` before risky local upgrades or imports.
-- `govard lock generate` / `govard lock check` to detect environment drift.
-- `govard tunnel start` to expose a local project publicly (**requires `cloudflared` binary**).
+```bash
+govard db dump -e staging      # dump / import / query / top
+govard debug on                # toggle Xdebug for the current project
+govard snapshot create         # checkpoint before risky upgrades
+govard audit run               # static analysis with persisted sessions
+govard tunnel start            # expose locally via cloudflare (needs the binary)
+```
+
+Command reference (shortcuts, aliases, every command): [CLI Commands](docs/reference/cli-commands.md).
 
 ---
 
 ## SSL & HTTPS
 
-Govard provides automated local HTTPS for all `.test` domains using a built-in certificate authority (Caddy).
+Govard serves every `.test` domain over HTTPS via Caddy + a local Root CA, with `dnsmasq` resolving `*.test` to loopback. Point your resolver at it once:
 
-### 1. DNS Resolver for `.test` Domains
+| OS | Setup |
+|---|---|
+| Linux (systemd-resolved) | `DNS=127.0.0.1` + `Domains=~test` under `/etc/systemd/resolved.conf.d/` |
+| macOS | `echo "nameserver 127.0.0.1" \| sudo tee /etc/resolver/test` |
 
-Govard now runs a built-in `dnsmasq` service on the local loopback interface (port 53) to automatically resolve `*.test` domains to your local environment.
-
-You need to configure your operating system to forward `.test` queries to this local service.
-
-**Linux (Ubuntu/Debian with systemd-resolved - Recommended):**
-
-```bash
-sudo mkdir -p /etc/systemd/resolved.conf.d
-cat <<'EOF' | sudo tee /etc/systemd/resolved.conf.d/govard-test.conf
-[Resolve]
-DNS=127.0.0.1
-Domains=~test
-EOF
-sudo systemctl restart systemd-resolved
-```
-
-**Ubuntu (resolvconf - Legacy):**
-
-```bash
-sudo apt-get install resolvconf
-echo "nameserver 127.0.0.1" | sudo tee /etc/resolvconf/resolv.conf.d/tail
-sudo resolvconf -u
-```
-
-**Arch Linux (systemd-resolved):**
-
-```bash
-sudo systemctl enable --now systemd-resolved
-sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
-sudo mkdir -p /etc/systemd/resolved.conf.d
-cat <<'EOF' | sudo tee /etc/systemd/resolved.conf.d/govard-test.conf
-[Resolve]
-DNS=127.0.0.1
-Domains=~test
-EOF
-sudo systemctl restart systemd-resolved
-```
-
-**Fedora (systemd-resolved):**
-
-```bash
-sudo systemctl enable --now systemd-resolved
-sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
-sudo mkdir -p /etc/systemd/resolved.conf.d
-cat <<'EOF' | sudo tee /etc/systemd/resolved.conf.d/govard-test.conf
-[Resolve]
-DNS=127.0.0.1
-Domains=~test
-EOF
-sudo systemctl restart systemd-resolved
-```
-
-Verify DNS:
-
-```bash
-resolvectl query laravel.test
-dig +short laravel.test
-```
-
-### 1.1 Inter-Project Requests From PHP Containers
-
-Govard allows PHP runtimes (`php` and `php-debug`) to call other Govard project domains through the shared proxy. To enable this, you must explicitly declare the dependency in your `.govard.yml` using the `linked_projects` field:
-
-```yaml
-linked_projects:
-  - project-b
-```
-
-When a project is linked:
-1.  **Isolation by Default**: Only projects explicitly linked will have their domains injected into the container's `/etc/hosts`.
-2.  **Targeted Restarts**: When `project-b` starts, Govard will refresh only the projects that depend on it (like `project-a`), ensuring minimal downtime for your environment.
-3.  **Automatic Resolution**: Linking a project automatically maps its primary domain and all extra domains.
-
-If project `A` is running and you start project `B` which `A` depends on, Govard will automatically refresh project `A`'s PHP runtimes. If connectivity issues persist, run:
-
-```bash
-govard doctor trust
-govard env restart
-```
-
-macOS (Create a resolver file):
-
-```bash
-sudo mkdir -p /etc/resolver
-echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/test
-```
-
-### 2. Install the Root CA
-
-By default, `govard svc up` and `govard svc restart` now auto-trust the Govard Root CA:
-
-```bash
-govard svc up
-```
-
-You can also run trust manually at any time:
-
-```bash
-govard doctor trust
-```
-
-What happens automatically:
-
-- Exports Root CA from Caddy to `~/.govard/ssl/root.crt`
-- Installs it into system trust store (Linux/macOS)
-- Best-effort import into browser NSS stores (Chromium/Firefox) when `certutil` is available
-- Makes the exported CA available to Govard PHP runtimes on the next `govard env up` / `govard env restart`
-
-Optional flags on `svc up`/`svc restart`:
-
-```bash
-govard svc up --no-trust
-govard svc up --no-fallback
-```
-
-### 3. Browser Configuration
-
-Govard now tries to import browser trust automatically. If your browser still shows trust warnings:
-
-1. **Locate the CA**: `~/.govard/ssl/root.crt` (or `$HOME/.govard/ssl/root.crt`).
-2. **Open Settings**: Go to `chrome://settings/certificates` in your browser.
-3. **Import**: Navigate to the **Authorities** tab and click **Import**.
-4. **Select File**: Select the `root.crt` file from the path above.
-5. Restart your browser.
-
-_Note: Once trusted, all `*.test` domains managed by Govard will show a "Green Lock" without further configuration._
+Then `govard svc up` auto-trusts the Root CA (system store + best-effort browser import). Details and troubleshooting: [SSL and Domains](docs/workflows/ssl-and-domains.md).
 
 ---
 
 ## 🌍 Global Services
 
-Built-in services shared across all projects:
+Shared across all projects (via `govard svc`):
 
 | Service | URL | Credentials |
 | :--- | :--- | :--- |
 | **Mailpit** | `https://mail.govard.test` | No auth; SMTP: `mail:1025` |
 | **PHPMyAdmin** | `https://pma.govard.test` | Project DB credentials |
 | **Portainer** | `https://portainer.govard.test` | `admin` / `AdminGovard123$` |
+| **Search API** | `http://<project>.test:9200` | No auth (Elasticsearch/OpenSearch) |
+| **RabbitMQ UI** | `http://<project>.test:15672` | `guest` / `guest` |
+| **SSH gateway** | `ssh -p 2222 <project>@127.0.0.1` | Your allowlisted key (`govard gateway allow-key`) |
 
-CLI shortcuts: `govard open mail`, `govard open db`, `govard open portainer`
-
----
-
-## Project Structure
-
-```text
-.
-├── cmd/
-│   ├── govard/      # CLI entry point
-│   └── govard-desktop/ # Desktop entry point (Wails)
-├── desktop/         # Desktop app assets (Wails frontend/config)
-├── internal/
-│   ├── cmd/         # CLI Command definitions (Cobra)
-│   ├── blueprints/  # Docker Compose templates for specific frameworks
-│   ├── engine/      # Core logic (Docker SDK, Discovery, Rendering)
-│   │   └── bootstrap/ # Per-framework FrameworkBootstrap implementations
-│   ├── frameworks/  # Framework registry (one FrameworkDefinition per framework)
-│   ├── desktop/     # Desktop app glue (Wails bindings)
-│   ├── proxy/       # Caddy/proxy route and TLS helpers
-│   ├── ui/          # Styled terminal output logic
-│   └── updater/     # Background update checking
-├── Makefile         # Build and installation automation
-└── .govard.yml       # Project-specific configuration (Generated)
-```
-
----
-
-## 🔍 CLI Command Reference
-
-Root lifecycle shortcuts:
-
-- `govard up` → `govard env up`
-- `govard down` → `govard env down`
-- `govard restart` → `govard env restart`
-- `govard ps` → `govard env ps`
-- `govard logs` → `govard env logs`
-
-Common command aliases:
-
-- `govard boot` → `govard bootstrap`
-- `govard cfg` → `govard config`
-- `govard dbg` → `govard debug`
-- `govard gui` → `govard desktop`
-- `govard diag` → `govard doctor`
-- `govard ext` → `govard extensions`
-- `govard prj` → `govard project`
-- `govard rmt` → `govard remote`
-- `govard sh` → `govard shell`
-- `govard snap` → `govard snapshot`
-
-| Command              | Description                                                        |
-| :------------------- | :----------------------------------------------------------------- |
-| `govard init`        | Initialize a new project configuration                             |
-| `govard bootstrap`   | Bootstrap local project setup and clone a remote environment       |
-| `govard env`        | Project-scoped lifecycle; intelligently proxies Docker Compose commands  |
-| `govard frontend`   | Start, stop, and inspect on-demand Magento frontend development services |
-| `govard domain`     | Manage additional domains for the project                          |
-| `govard svc`        | Manage global services (`proxy`, `mail`, `pma`, `portainer`)       |
-| `govard tool`        | Run framework/tooling CLIs inside project containers               |
-| `govard vscode`      | Run PHP tooling for editor integrations; `govard vscode setup [--global]` wires VSCode to use the container instead of the host |
-| `govard shell`       | Enter the application container                                    |
-| `govard db`          | Database operations (`connect`, `dump`, `import`, `query`, `info`) |
-| `govard debug`       | Toggle Xdebug for the current environment                          |
-| `govard open`        | Open service URLs (Admin, DB, Mail, Portainer). `db` opens PMA; use `--client` for protocol URLs. |
-| `govard remote`      | Manage remote environments                                         |
-| `govard sync`        | Synchronize files, media, and databases between environments       |
-| `govard status`      | List running project environments across workspace                 |
-| `govard doctor`      | Run system diagnostics (including compose directory saturation) and remediation helpers |
-| `govard config`      | Manage `.govard.yml` configuration from CLI (`auto`, `profile`)      |
-| `govard deploy`      | Deploy a git revision to a remote (`plan`, `build`, `check`, `releases`, `status`, `rollback`, `unlock`, `sandbox`) |
-| `govard snapshot`    | Manage local snapshots for database and media                      |
-| `govard lock`        | Generate and validate `govard.lock` snapshots                      |
-| `govard tunnel`      | Start a public tunnel to a local project URL                       |
-| `govard custom`      | Run project custom commands from `.govard/commands`                |
-| `govard project`     | Query known projects from local registry (`list`, `open`, `delete`) |
-| <code>govard&nbsp;extensions</code> | Manage project extension contract in `.govard`                     |
-| `govard desktop`     | Launch the Govard Desktop app (`--background` supported)           |
-| <code>govard&nbsp;self&#8209;update</code> | Upgrade installed Govard binaries (`govard` + detected `govard-desktop`) |
-| `govard upgrade`     | Native framework upgrade pipeline (Magento 2, Mage-OS, Laravel, Symfony, WordPress) |
-| `govard version`     | Print the version number of Govard                                 |
-| `govard redis`       | Smart shortcut for project Redis Management                        |
-| `govard varnish`     | Smart shortcut for project Varnish Management                      |
-| `govard rabbitmq`    | Smart shortcut for project RabbitMQ Management                     |
-
----
-
-### Magento Frontend Development
-
-Magento 2 and Mage-OS projects with `stack.features.frontend_sync: true` can run their project-owned Hyva BrowserSync or Luma Grunt/LiveReload setup on demand. Start the application first; `govard env up` does not allocate frontend containers.
-
-```bash
-govard env up
-govard frontend start
-govard frontend logs -f
-govard frontend logs watch-vendor-theme -f
-govard frontend stop
-```
-
-With no service argument, `frontend logs` lists every discovered frontend service and then shows the primary `sync` service. All frontend lifecycle commands require the backend web container to be running.
+CLI shortcuts: `govard open mail|db|portainer`.
 
 ---
 
 ## 📚 Documentation
 
-Full documentation is available on the [**GitHub Wiki**](https://github.com/ddtcorex/govard/wiki):
+Full documentation (auto-synced to the [GitHub Wiki](https://github.com/ddtcorex/govard/wiki)):
 
-- [Getting Started](https://github.com/ddtcorex/govard/wiki/Getting-Started) - Installation and first project workflow
-- [CLI Commands](https://github.com/ddtcorex/govard/wiki/CLI-Commands) - CLI reference, shortcuts, tools, diagnostics, and utilities
-- [Configuration](https://github.com/ddtcorex/govard/wiki/Configuration) - `.govard.yml`, profiles, remotes, and blueprint registry
-- [Remotes and Sync](https://github.com/ddtcorex/govard/wiki/Remotes-and-Sync) - Remote setup, sync flows, audit logs, and remote DB work
-- [Frameworks](https://github.com/ddtcorex/govard/wiki/Frameworks) - Support matrix and framework-specific notes
-- [SSL and Domains](https://github.com/ddtcorex/govard/wiki/SSL-and-Domains) - Local HTTPS, CA trust, and domain routing
-- [Desktop App](https://github.com/ddtcorex/govard/wiki/Desktop-App) - Desktop surface and dev-mode workflow
-- [Architecture](https://github.com/ddtcorex/govard/wiki/Architecture) - System design and module layout
-- [Adding a Framework](https://github.com/ddtcorex/govard/wiki/Adding-a-framework) - Framework registry structure and how to add support for a new framework
-- [Contributing](https://github.com/ddtcorex/govard/wiki/Contributing) - Build, test, and contribution workflow
-- [FAQ & Troubleshooting](https://github.com/ddtcorex/govard/wiki/FAQ) - Common issues and solutions
-
----
-
-## ✅ Quality Gates
-
-Govard CI runs these checks on every push and pull request:
-
-| Pipeline Job | Local Command | Description |
-| :--- | :--- | :--- |
-| **Quality Checks** | `make lint fmt-check vet` | Runs `golangci-lint`, checks `gofmt -s` compliance, and `go vet`. |
-| **Full Tests** | `make test` | Runs lint, format check, `go vet`, frontend tests, and Go unit tests. |
-| **Integration Tests** | `make test-integration` | Builds a test binary and runs end-to-end framework tests in Docker. |
-| **Build Binaries** | `make build` | Verifies that the project compiles for the current platform. |
-
-### Recommended Local Workflow
-
-To ensure your contribution passes the GitHub CI pipeline, run the following sequence before pushing:
-
-#### Validation
-
-Runs the full suite including linting, formatting checks, vet, frontend tests, Go unit tests, and integration tests (requires Docker):
-
-```bash
-make test
-```
-
-If the CI pipeline fails and you want to reproduce the exact check that failed locally, you can use these granular commands:
-
-- `make lint` — Checks code style and static analysis (synchronized with CI version).
-- `make fmt-check` — Checks if any files need `go fmt -s`.
-- `make vet` — Runs `go vet`.
-- `make test-unit` — Runs only Go unit tests.
-- `make test-frontend` — Runs only Node.js frontend tests.
-- `make test-integration-ci` — Runs integration tests in parallel (CI behavior).
+- [Getting Started](docs/getting-started/getting-started.md) - Installation and first project workflow
+- [CLI Commands](docs/reference/cli-commands.md) - Shortcuts, tools, diagnostics, utilities
+- [Configuration](docs/reference/configuration.md) - `.govard.yml`, profiles, remotes, blueprint registry
+- [Deployment](docs/workflows/deployment.md) + [Case studies](docs/workflows/deploy-case-studies.md)
+- [Remotes and Sync](docs/workflows/remotes-and-sync.md) - Setup, flows, audit logs, remote DB work
+- [SSL and Domains](docs/workflows/ssl-and-domains.md) - HTTPS, CA trust, routing
+- [Frameworks](docs/reference/frameworks.md) - Support matrix and framework notes
+- [Desktop App](docs/workflows/desktop-app.md) - Desktop surface and dev-mode workflow
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! Please feel free to submit Pull Requests or open Issues on GitHub.
-
-1. Fork the Repository
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Builds, tests, and the mandatory brainstorming → writing-plans → executing-plans workflow live in [CONTRIBUTING.md](CONTRIBUTING.md) and `AGENTS.md`. Quick gate before pushing: `make test && make build`.
 
 ---
 
