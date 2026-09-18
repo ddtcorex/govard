@@ -44,6 +44,18 @@ func TestBuildRemoteMySQLDumpCommandForTest(t *testing.T) {
 	}
 }
 
+func TestBuildRemoteMySQLDumpCommandPropagatesDumpFailure(t *testing.T) {
+	command := cmd.BuildRemoteMySQLDumpCommandForTest("remote-host", 3306, "remote-user", "remote-pass", "remote-db", true)
+	for _, want := range []string{"mysqldump", "mktemp", "gzip -c", "(exit "} {
+		if !strings.Contains(command, want) {
+			t.Fatalf("expected compressed dump command to contain %q, got: %s", want, command)
+		}
+	}
+	if strings.Contains(command, "| gzip") {
+		t.Fatalf("compressed dump must not pipe mysqldump straight into gzip (masks failures), got: %s", command)
+	}
+}
+
 func TestBuildRemoteMySQLDumpCommandWithoutHostPort(t *testing.T) {
 	command := cmd.BuildRemoteMySQLDumpCommandForTest("", 0, "remote_user", "", "remote_db", false)
 	if strings.Contains(command, "-h") {

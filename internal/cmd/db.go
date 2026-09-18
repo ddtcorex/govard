@@ -646,11 +646,12 @@ func buildDBDumpCommand(config engine.Config, options dbCommandOptions) (*exec.C
 		if remoteFile == "" {
 			remoteFile = filepath.Join("~/backup", defaultFilename)
 		}
-		// We need to wrap the command to create the directory and redirect output
-		// Note: we use base64 or complex quoting if needed, but here simple redirection should work if we quote the filename
+		// The dump string already emits gzipped bytes and carries the dump's
+		// exit status, so redirecting it straight into the file preserves
+		// both (a second gzip stage would double-compress and re-mask failures).
 		// Using sh -c to allow redirects and mkdir -p on the remote
 		quotedFile := remote.QuoteRemotePath(remoteFile)
-		remoteCmd := fmt.Sprintf("mkdir -p $(dirname %s) && { %s; } | gzip > %s", quotedFile, dumpStr, quotedFile)
+		remoteCmd := fmt.Sprintf("mkdir -p $(dirname %s) && { %s; } > %s", quotedFile, dumpStr, quotedFile)
 		return remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, remoteCmd), remoteFile, nil
 	}
 
