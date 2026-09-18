@@ -13,6 +13,7 @@ import (
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
+	"govard/internal/gateway"
 )
 
 // The docroot shapes a sandbox can be created with. They are the test lever for
@@ -31,6 +32,30 @@ const (
 	// tool already owns.
 	SandboxDeployerLayout = "deployer"
 )
+
+// govardProxyNetwork is the global network the SSH gateway and every other
+// proxy-stack service ride (internal/blueprints/files/proxy.yml). Joining it
+// is best-effort: the sandbox's own direct SSH path never depends on it.
+const govardProxyNetwork = "govard-proxy"
+
+// gatewayContainerName is the bastion whose POSIX accounts must exist before
+// sshd will open a session for a routed username (see
+// gateway.EnsureTargetAccount). It is best-effort like the rest of the
+// registration block: when the gateway is absent, its own reconciler covers
+// the account at gateway start.
+const gatewayContainerName = "govard-proxy-sshd"
+
+// gatewayContainerExec adapts the sandbox runtime to the gateway's narrow
+// container-exec interface. The interface lives in internal/gateway (not
+// here) because the dependency points that way: this package already imports
+// internal/gateway, so gateway cannot import a deploy-local type back.
+// Declaring the interface in gateway and adapting to it here keeps the edge
+// one-directional.
+type gatewayContainerExec struct{ runtime SandboxRuntime }
+
+func (a gatewayContainerExec) ExecInContainer(ctx context.Context, name string, args ...string) (string, error) {
+	return a.runtime.Exec(ctx, name, nil, args...)
+}
 
 // SandboxPortProbe waits until the sandbox is *deployable*, which is a login and
 // not merely a listening port: Docker's proxy accepts a TCP connection before sshd
@@ -331,8 +356,41 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 
-	if err := installSandboxAuthorizedKey(ctx, runtime, container, key.PublicKey); err != nil {
+	authorizedKeys := []string{key.PublicKey}
+	_, gatewayPublicLine, gatewayKeyErr := gateway.EnsureSecondHopKey()
+	if gatewayKeyErr != nil {
+		fmt.Fprintf(request.out(), "note: could not prepare the SSH gateway key: %v\n", gatewayKeyErr)
+	} else {
+		authorizedKeys = append(authorizedKeys, gatewayPublicLine)
+	}
+	if err := installSandboxAuthorizedKey(ctx, runtime, container, authorizedKeys...); err != nil {
 		return nil, err
+	}
+
+	if connected, netErr := runtime.EnsureNetworkConnected(ctx, container, govardProxyNetwork); netErr != nil {
+		fmt.Fprintf(request.out(), "note: could not join the %s network for the SSH gateway: %v\n", govardProxyNetwork, netErr)
+	} else if connected && gatewayKeyErr == nil {
+		reg, regErr := gateway.Load()
+		if regErr != nil {
+			fmt.Fprintf(request.out(), "note: could not load the SSH gateway registry: %v\n", regErr)
+		} else if gwUser, ok := gateway.RouteUsername(request.ProjectName); !ok {
+			fmt.Fprintf(request.out(), "note: project name %q cannot be an SSH gateway username (a-z, 0-9, -); skipping gateway registration\n", request.ProjectName)
+		} else {
+			if gwUser != request.ProjectName {
+				fmt.Fprintf(request.out(), "SSH gateway target: %s@ssh.govard.test (project %q)\n", gwUser, request.ProjectName)
+			}
+			if addErr := reg.AddTarget(gwUser, gateway.Target{
+				Container:  container,
+				TargetUser: SandboxUser,
+				Project:    request.ProjectName,
+			}); addErr != nil {
+				fmt.Fprintf(request.out(), "note: could not register the SSH gateway target: %v\n", addErr)
+			} else if saveErr := reg.Save(); saveErr != nil {
+				fmt.Fprintf(request.out(), "note: could not save the SSH gateway registry: %v\n", saveErr)
+			} else if ensureErr := gateway.EnsureTargetAccount(ctx, gatewayContainerExec{runtime: runtime}, gatewayContainerName, gwUser); ensureErr != nil {
+				fmt.Fprintf(request.out(), "note: could not create the SSH gateway account: %v\n", ensureErr)
+			}
+		}
 	}
 	// Shape a target that is being created, and one the operator explicitly asked
 	// to re-shape. An existing target is left as the last deploy left it: `up` is
@@ -496,22 +554,24 @@ func SandboxRemoteConfig(profile, php string, port, webPort int, paths SandboxPa
 	return remote
 }
 
-// installSandboxAuthorizedKey installs the generated public key for the
-// container's deployer user. The image holds no key material, which is what
-// keeps it cacheable across projects.
-func installSandboxAuthorizedKey(ctx context.Context, runtime SandboxRuntime, container, publicKey string) error {
+// installSandboxAuthorizedKey installs the generated public key(s) for the
+// container's deployer user (the sandbox's own key, and -- when available --
+// the gateway's second-hop key). The image holds no key material, which is
+// what keeps it cacheable across projects.
+func installSandboxAuthorizedKey(ctx context.Context, runtime SandboxRuntime, container string, publicKeys ...string) error {
+	joined := strings.Join(publicKeys, "\n")
 	script := "umask 077 && mkdir -p " + SandboxHome + "/.ssh && cat > " + SandboxHome + "/.ssh/authorized_keys" +
 		" && chown -R " + SandboxUser + ":" + SandboxUser + " " + SandboxHome + "/.ssh"
 	// The container may accept exec a moment before it accepts an interactive
 	// one; retry briefly rather than racing the entrypoint.
 	var err error
 	for attempt := 0; attempt < 10; attempt++ {
-		if _, err = runtime.Exec(ctx, container, []byte(publicKey+"\n"), "sh", "-c", script); err == nil {
+		if _, err = runtime.Exec(ctx, container, []byte(joined+"\n"), "sh", "-c", script); err == nil {
 			return nil
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
-	return fmt.Errorf("install the sandbox public key in %s: %w", container, err)
+	return fmt.Errorf("install the sandbox public key(s) in %s: %w", container, err)
 }
 
 // prepareSandboxDocRoot shapes the target's current path so it implies the
@@ -791,6 +851,14 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 		}
 		if err := runtime.RemoveContainer(ctx, state.Container); err != nil {
 			return nil, err
+		}
+	}
+	if request.ProjectName != "" {
+		if reg, regErr := gateway.Load(); regErr == nil {
+			reg.RemoveTarget(request.ProjectName)
+			if err := reg.Save(); err != nil {
+				fmt.Fprintf(request.out(), "note: could not prune the SSH gateway target: %v\n", err)
+			}
 		}
 	}
 	// Volumes are data, not runtime: plain `down` keeps them so a rehearsal

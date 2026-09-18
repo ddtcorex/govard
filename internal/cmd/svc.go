@@ -280,7 +280,14 @@ func registerGlobalServiceRoutes() error {
 }
 
 func globalProxyComposeDirPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
+	return filepath.Join(engine.GovardHomeDir(), "proxy")
+}
+
+// GlobalProxyComposeDirPathForTest exposes globalProxyComposeDirPath to the
+// tests/ package so the writer-reader agreement (engine render vs svc
+// consumer) stays pinned under GOVARD_HOME_DIR isolation.
+func GlobalProxyComposeDirPathForTest() string {
+	return globalProxyComposeDirPath()
 }
 
 func globalProxyComposeFilePath() string {

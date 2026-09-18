@@ -177,6 +177,62 @@ func IsContainerRunning(ctx context.Context, name string) bool {
 	return false
 }
 
+// IsGatewaySSHPortPublished reports whether the running govard-proxy-sshd
+// container publishes TCP port 2222 to the host. It reads the published
+// ports from the vendored docker client (no shell-out): when another process
+// holds 127.0.0.1:2222 the compose stack still starts but the sshd service
+// loses the binding, so `gateway status` uses this to warn loudly instead of
+// claiming the gateway answers on 2222.
+func IsGatewaySSHPortPublished(ctx context.Context) bool {
+	return IsContainerTCPPortPublished(ctx, "govard-proxy-sshd", 2222)
+}
+
+// IsContainerTCPPortPublished reports whether a running container with the
+// given name publishes the given host TCP port.
+func IsContainerTCPPortPublished(ctx context.Context, name string, publicPort int) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	cli, err := GetDockerClient()
+	if err != nil {
+		return false
+	}
+
+	containers, err := cli.ContainerList(ctx, container.ListOptions{})
+	if err != nil {
+		return false
+	}
+
+	return containerPublishesTCPPort(containers, name, publicPort)
+}
+
+// containerPublishesTCPPort is the pure scan behind
+// IsContainerTCPPortPublished: true when a container named name carries a
+// published TCP port equal to publicPort.
+func containerPublishesTCPPort(containers []container.Summary, name string, publicPort int) bool {
+	for _, c := range containers {
+		matched := false
+		for _, cname := range c.Names {
+			if strings.TrimPrefix(cname, "/") == name {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		for _, p := range c.Ports {
+			if p.Type == "tcp" && int(p.PublicPort) == publicPort {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func IsVolumeEmpty(volumeName string) (bool, error) {
 	// We check if the volume exists first
 	cmdInspect := exec.Command("docker", "volume", "inspect", volumeName)

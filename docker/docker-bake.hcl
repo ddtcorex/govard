@@ -21,6 +21,7 @@ group "default" {
     "valkey",
     "varnish",
     "dnsmasq",
+    "sshd",
   ]
 }
 
@@ -341,4 +342,14 @@ target "dnsmasq" {
     ALPINE_VERSION = version == "latest" ? "3.24" : version
   }
   tags = ["${DOCKER_ORG}dnsmasq:${version}"]
+}
+
+# ─── SSHD (Gateway) ────────────────────────────────────────────────────────
+target "sshd" {
+  name    = "sshd-${replace(version, ".", "-")}"
+  context = "docker/sshd"
+  matrix = {
+    version = ["1"]
+  }
+  tags = ["${DOCKER_ORG}sshd:${version}"]
 }

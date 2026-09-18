@@ -91,6 +91,12 @@ var globalServiceSpecs = []globalServiceSpec{
 		ComposeService: "dnsmasq",
 		ContainerName:  "govard-proxy-dnsmasq",
 	},
+	{
+		ID:             "sshd",
+		Name:           "SSH Gateway",
+		ComposeService: "sshd",
+		ContainerName:  "govard-proxy-sshd",
+	},
 }
 
 var defaultEnsureGlobalServicesForDesktop = func() error {
@@ -351,6 +357,19 @@ func resolveGlobalServiceSpec(serviceID string) (globalServiceSpec, error) {
 		}
 	}
 	return globalServiceSpec{}, fmt.Errorf("unknown global service: %s", serviceID)
+}
+
+// GlobalServiceSpecForTest exposes one registered global service's wiring so
+// tests can assert an entry exists without exporting the whole spec table.
+// The lookup mirrors resolveGlobalServiceSpec's lower/trim normalization.
+func GlobalServiceSpecForTest(id string) (composeService, containerName string, openable, ok bool) {
+	normalized := strings.ToLower(strings.TrimSpace(id))
+	for _, spec := range globalServiceSpecs {
+		if spec.ID == normalized {
+			return spec.ComposeService, spec.ContainerName, spec.URLHost != "", true
+		}
+	}
+	return "", "", false, false
 }
 
 func deriveGlobalContainerStatus(state string, statusText string) (string, string, bool) {
@@ -832,7 +851,14 @@ func withCommandOutput(base string, commandOutput string) string {
 }
 
 func globalServicesComposeDirPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".govard", "proxy")
+	return filepath.Join(engine.GovardHomeDir(), "proxy")
+}
+
+// GlobalServicesComposeDirPathForTest exposes globalServicesComposeDirPath
+// to the tests/ package so the writer-reader agreement (engine render vs
+// desktop consumer) stays pinned under GOVARD_HOME_DIR isolation.
+func GlobalServicesComposeDirPathForTest() string {
+	return globalServicesComposeDirPath()
 }
 
 func globalServicesComposeFilePath() string {

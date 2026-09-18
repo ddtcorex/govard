@@ -212,6 +212,7 @@ func init() {
 	rootCmd.AddCommand(blueprintCmd)
 	rootCmd.AddCommand(newAuditCommand(defaultAuditCommandDependencies()))
 	rootCmd.AddCommand(tunnelCmd)
+	rootCmd.AddCommand(gatewayCmd)
 	rootCmd.AddCommand(trustCmd)
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(versionCmd)

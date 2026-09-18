@@ -13,6 +13,7 @@ import (
 	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/frameworks"
+	"govard/internal/gateway"
 	"govard/internal/runtime"
 )
 
@@ -1313,5 +1314,145 @@ func TestSandboxInstallsThePatcherComposerShellsOutTo(t *testing.T) {
 		if !strings.Contains(dockerfile, want) {
 			t.Errorf("the image does not install %s:\n%s", want, firstLineContaining(dockerfile, "apt-get install"))
 		}
+	}
+}
+
+func TestDockerCLIEnsureNetworkConnectedIsIdempotent(t *testing.T) {
+	fake := newFakeSandboxRuntime()
+	// No scripted answer needed: an unconfigured fake command succeeds by
+	// default (see fakeSandboxRuntime.run) -- setting fake.fail[...] to an
+	// empty string here would still trigger the fail branch and make this
+	// assert the opposite of what it says.
+	cli := deploy.NewDockerCLIForTest(fake.run)
+
+	connected, err := cli.EnsureNetworkConnected(context.Background(), "sandbox-ctr", "govard-proxy")
+	if err != nil || !connected {
+		t.Fatalf("first connect: connected=%v err=%v", connected, err)
+	}
+	if !fake.has("network connect govard-proxy sandbox-ctr") {
+		t.Fatal("expected a `docker network connect govard-proxy sandbox-ctr` call")
+	}
+}
+
+func TestDockerCLIEnsureNetworkConnectedTreatsAlreadyConnectedAsSuccess(t *testing.T) {
+	fake := newFakeSandboxRuntime()
+	fake.fail["network connect"] = "Error response from daemon: endpoint with name sandbox-ctr already exists in network govard-proxy"
+	cli := deploy.NewDockerCLIForTest(fake.run)
+
+	connected, err := cli.EnsureNetworkConnected(context.Background(), "sandbox-ctr", "govard-proxy")
+	if err != nil || !connected {
+		t.Fatalf("already-connected case: connected=%v err=%v, want connected=true err=nil", connected, err)
+	}
+}
+
+func TestDockerCLIEnsureNetworkConnectedTreatsMissingNetworkAsSoftFailure(t *testing.T) {
+	fake := newFakeSandboxRuntime()
+	fake.fail["network connect"] = "Error response from daemon: network govard-proxy not found"
+	cli := deploy.NewDockerCLIForTest(fake.run)
+
+	connected, err := cli.EnsureNetworkConnected(context.Background(), "sandbox-ctr", "govard-proxy")
+	if err != nil {
+		t.Fatalf("missing network must not be a hard error (the gateway is optional): %v", err)
+	}
+	if connected {
+		t.Fatal("expected connected=false when the network does not exist")
+	}
+}
+
+func TestSandboxUpJoinsTheGatewayNetworkAndRegistersTheTarget(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	fake := absentContainerFake()
+	fake.fail["image inspect"] = "Error: No such image"
+	request := deploy.SandboxRequest{
+		ProjectRoot: sandboxProject(t),
+		ProjectName: "shop",
+		Profile:     deploy.SandboxProfileBasic,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}
+
+	_, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request)
+	if err != nil {
+		t.Fatalf("SandboxUp: %v", err)
+	}
+	if !fake.has("network connect govard-proxy") {
+		t.Fatal("expected SandboxUp to join the govard-proxy network")
+	}
+
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("gateway.Load: %v", err)
+	}
+	target, ok := reg.Targets["shop"]
+	if !ok {
+		t.Fatal("expected SandboxUp to register a gateway target for the project")
+	}
+	if target.TargetUser != deploy.SandboxUser {
+		t.Fatalf("target user = %q, want %q", target.TargetUser, deploy.SandboxUser)
+	}
+	if !fake.has("exec govard-proxy-sshd useradd") {
+		t.Fatal("expected SandboxUp to create the gateway account synchronously")
+	}
+}
+
+func TestSandboxUpMapsUnderscoredProjectToGatewayUsername(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	fake := absentContainerFake()
+	fake.fail["image inspect"] = "Error: No such image"
+	request := deploy.SandboxRequest{
+		ProjectRoot: sandboxProject(t),
+		ProjectName: "my_shop",
+		Profile:     deploy.SandboxProfileBasic,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}
+
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("SandboxUp: %v", err)
+	}
+
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("gateway.Load: %v", err)
+	}
+	if _, ok := reg.Targets["my-shop"]; !ok {
+		t.Fatal("expected SandboxUp to register gateway target my-shop for project my_shop")
+	}
+	if _, ok := reg.Targets["my_shop"]; ok {
+		t.Fatal("the raw project name my_shop must not be registered as a gateway target")
+	}
+	if !fake.has("exec govard-proxy-sshd useradd") {
+		t.Fatal("expected SandboxUp to create the gateway account synchronously")
+	}
+	if !fake.hasArg("--", "my-shop") {
+		t.Fatal("expected the gateway account to be created for my-shop, not the raw project name")
+	}
+}
+
+func TestSandboxDownPrunesTheGatewayTarget(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	fake := absentContainerFake()
+	fake.fail["image inspect"] = "Error: No such image"
+	request := deploy.SandboxRequest{
+		ProjectRoot: sandboxProject(t),
+		ProjectName: "shop",
+		Profile:     deploy.SandboxProfileBasic,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("SandboxUp: %v", err)
+	}
+
+	// The container `up` created answers the probes now: drop the absence the
+	// fake was scripted with so `down` observes a running sandbox.
+	delete(fake.fail, "inspect")
+	if _, err := deploy.SandboxDown(context.Background(), deploy.NewDockerCLIForTest(fake.run), request); err != nil {
+		t.Fatalf("SandboxDown: %v", err)
+	}
+
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("gateway.Load: %v", err)
+	}
+	if _, ok := reg.Targets["shop"]; ok {
+		t.Fatal("expected SandboxDown to prune the gateway target")
 	}
 }

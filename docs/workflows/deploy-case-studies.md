@@ -781,6 +781,13 @@ govard deploy --remote sandbox --yes
 Because `sandbox` is a top-level command rather than a deploy subcommand, the
 deploy must use the flag form: `govard deploy --remote sandbox --yes`.
 
+Once `govard svc up` has started the shared SSH gateway (see
+[Deployment](/workflows/deployment#the-shared-ssh-gateway)), the same
+sandbox is also reachable at `ssh -p 2222 <project-name>@127.0.0.1` -- handy
+for pointing an IDE's remote interpreter or SFTP deployment target at a
+stable address instead of chasing the ephemeral port a fresh `sandbox up`
+picks.
+
 ### Which profile can prove what
 
 | Profile | Contains | What a rehearsal against it can prove |
