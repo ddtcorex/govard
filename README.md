@@ -157,7 +157,7 @@ CLI shortcuts: `govard open mail|db|portainer`.
 
 Full documentation (auto-synced to the [GitHub Wiki](https://github.com/ddtcorex/govard/wiki)):
 
-- [Getting Started](docs/getting-started/) - Installation and first project workflow
+- [Getting Started](docs/getting-started/getting-started.md) - Installation and first project workflow
 - [CLI Commands](docs/reference/cli-commands.md) - Shortcuts, tools, diagnostics, utilities
 - [Configuration](docs/reference/configuration.md) - `.govard.yml`, profiles, remotes, blueprint registry
 - [Deployment](docs/workflows/deployment.md) + [Case studies](docs/workflows/deploy-case-studies.md)
