@@ -43,6 +43,18 @@ func TestBuildRemoteDBDumpCommandForDjangoUsesPgDump(t *testing.T) {
 	}
 }
 
+func TestBuildRemotePostgresDumpCommandPropagatesDumpFailure(t *testing.T) {
+	command := cmd.BuildRemoteDBDumpCommandForFrameworkForTest("django", "remote-host", 5432, "django", "secret", "django", true)
+	for _, want := range []string{"pg_dump", "mktemp", "gzip -c", "(exit "} {
+		if !strings.Contains(command, want) {
+			t.Fatalf("expected compressed dump command to contain %q, got: %s", want, command)
+		}
+	}
+	if strings.Contains(command, "| gzip") {
+		t.Fatalf("compressed dump must not pipe pg_dump straight into gzip (masks failures), got: %s", command)
+	}
+}
+
 func TestBuildLocalDBConnectCommandForDjangoUsesPsql(t *testing.T) {
 	args := cmd.BuildLocalDBConnectCommandArgsForFrameworkForTest("django", "myproj-db-1", "django", "django")
 	joined := strings.Join(args, " ")

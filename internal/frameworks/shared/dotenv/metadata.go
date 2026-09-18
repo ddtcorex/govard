@@ -53,13 +53,24 @@ type databaseProbePayload struct {
 
 // ProbeEnvironment SSHs to a project and extracts the standard .env database
 // variables. Framework packages choose whether this shared metadata applies.
+// Deploy-layout targets keep the app under a served directory (sandbox
+// `public_html`, deploy `current`) instead of the remote path root, so each
+// candidate is tried in order before giving up.
 func ProbeEnvironment(remoteName string, remoteCfg engine.RemoteConfig) (Environment, error) {
-	remoteCommand := remote.BuildProjectRemoteCommand(remoteCfg.Path, `php -r `+engine.ShellQuote(databaseProbePHP))
-	encoded, err := remote.RunRemoteCapture(remoteName, remoteCfg, remoteCommand)
-	if err != nil {
-		return Environment{}, err
-	}
-	return decodeEnvironmentPayload(encoded)
+	return remote.TryProbeCandidatePaths(remoteCfg.Path, func(path string) (Environment, error) {
+		cfg := remoteCfg
+		cfg.Path = path
+		remoteCommand := remote.BuildProjectRemoteCommand(path, `php -r `+engine.ShellQuote(databaseProbePHP))
+		encoded, err := remote.RunRemoteCapture(remoteName, cfg, remoteCommand)
+		if err != nil {
+			return Environment{}, err
+		}
+		env, decodeErr := decodeEnvironmentPayload(encoded)
+		if decodeErr != nil {
+			return Environment{}, fmt.Errorf("%w at %s: %v", remote.ErrProbeFilesNotFound, path, decodeErr)
+		}
+		return env, nil
+	})
 }
 
 func decodeEnvironmentPayload(encoded string) (Environment, error) {

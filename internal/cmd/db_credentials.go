@@ -127,7 +127,7 @@ func buildRemotePostgresDumpCommandString(credentials dbCredentials, compress bo
 
 	dumpCmd := strings.Join(args, " ")
 	if compress {
-		dumpCmd += " | gzip -c"
+		dumpCmd = stageDumpThroughTempFile(dumpCmd)
 	}
 	return postgresPasswordExportPrefix(credentials.Password) + dumpCmd
 }
@@ -410,10 +410,22 @@ func buildRemoteMySQLDumpCommandString(credentials dbCredentials, noNoise bool, 
 	// Combine passes
 	dumpCmd := fmt.Sprintf("{ %s; %s; }", strings.Join(metadataArgs, " "), strings.Join(dataArgs, " "))
 	if compress {
-		dumpCmd += " | gzip -c"
+		dumpCmd = stageDumpThroughTempFile(dumpCmd)
 	}
 
 	return dbCliDetect + " && " + mysqlPasswordExportPrefix(credentials.Password) + dumpCmd
+}
+
+// stageDumpThroughTempFile compresses a dump core without a pipe, so a dump
+// failure propagates instead of being masked by gzip's exit status (a bare
+// `dump | gzip` reports gzip's success even when the dump fails, which once
+// produced a SUCCESS message for a 30-byte empty file). The emitted bytes are
+// identical to the piped form. The fragment carries the dump's status through
+// a subshell rather than a bare `exit`, so it stays safe when embedded in a
+// larger remote script (snapshot create, file redirect): joined parts after it
+// still observe the failure via `&&` chaining.
+func stageDumpThroughTempFile(core string) string {
+	return `GOVARD_DUMP_TMP=$(mktemp) && { ` + core + `; } > "$GOVARD_DUMP_TMP" && gzip -c "$GOVARD_DUMP_TMP"; rc=$?; rm -f "$GOVARD_DUMP_TMP"; (exit $rc)`
 }
 
 func buildRemoteMySQLConnectCommandString(credentials dbCredentials) string {

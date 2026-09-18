@@ -557,7 +557,37 @@ func buildUpReadinessChecks(projectRoot string, config engine.Config) ([]upReadi
 		})
 	}
 
+	if dbService := strings.TrimSpace(config.Stack.Services.DB); dbService != "" && !strings.EqualFold(dbService, "none") {
+		dbContainer := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
+		checks = append(checks, upReadinessCheck{
+			Service:       "db",
+			ContainerName: dbContainer,
+			ProbeArgs:     dbReadinessProbeArgs(config, dbContainer),
+		})
+	}
+
 	return checks, nil
+}
+
+// dbReadinessProbeArgs pings the database the way the application will reach
+// it, so `env up` (and everything chained after it, like a bootstrap DB
+// stream) only proceeds once a freshly-initialized engine accepts connections.
+// Credentials resolve the same way `db` commands resolve them: the running
+// container's environment first, framework defaults when it is not there yet.
+// The probe runs through the container's `sh` because client binary names
+// differ per image (`mariadb-admin` vs `mysqladmin`); both Ubuntu- and
+// Debian-based database images ship a Bourne shell.
+func dbReadinessProbeArgs(config engine.Config, containerName string) []string {
+	credentials := resolveLocalDBCredentials(config, containerName)
+	if strings.Contains(strings.ToLower(config.Stack.Services.DB), "postgres") {
+		return []string{"pg_isready", "-h127.0.0.1", "-U" + credentials.Username}
+	}
+	admin := `if command -v mariadb-admin >/dev/null 2>&1; then DBADMIN=mariadb-admin; else DBADMIN=mysqladmin; fi`
+	ping := fmt.Sprintf(`"$DBADMIN" ping -h127.0.0.1 -u%s`, engine.ShellQuote(credentials.Username))
+	if credentials.Password != "" {
+		ping += " -p" + engine.ShellQuote(credentials.Password)
+	}
+	return []string{"sh", "-c", admin + "; " + ping}
 }
 
 func readinessProbeAttempts(timeout time.Duration) int {

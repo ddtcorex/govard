@@ -28,14 +28,24 @@ type DatabaseInfo struct {
 }
 
 // ProbeEnvironment SSHs to the remote project and extracts WordPress DB
-// credentials from wp-config.php.
+// credentials from wp-config.php. Deploy-layout targets keep the app under a
+// served directory (sandbox `public_html`, deploy `current`) instead of the
+// remote path root, so each candidate is tried in order before giving up.
 func ProbeEnvironment(remoteName string, remoteCfg engine.RemoteConfig) (Environment, error) {
-	remoteCommand := remote.BuildProjectRemoteCommand(remoteCfg.Path, `php -r `+engine.ShellQuote(dbProbePHP))
-	encoded, err := remote.RunRemoteCapture(remoteName, remoteCfg, remoteCommand)
-	if err != nil {
-		return Environment{}, err
-	}
-	return decodeEnvironmentPayload(encoded)
+	return remote.TryProbeCandidatePaths(remoteCfg.Path, func(path string) (Environment, error) {
+		cfg := remoteCfg
+		cfg.Path = path
+		remoteCommand := remote.BuildProjectRemoteCommand(path, `php -r `+engine.ShellQuote(dbProbePHP))
+		encoded, err := remote.RunRemoteCapture(remoteName, cfg, remoteCommand)
+		if err != nil {
+			return Environment{}, err
+		}
+		env, decodeErr := decodeEnvironmentPayload(encoded)
+		if decodeErr != nil {
+			return Environment{}, fmt.Errorf("%w at %s: %v", remote.ErrProbeFilesNotFound, path, decodeErr)
+		}
+		return env, nil
+	})
 }
 
 // DecodeEnvironmentPayloadForTest makes the remote payload boundary testable

@@ -201,6 +201,73 @@ func TestBuildUpReadinessChecksForNonPHPRuntime(t *testing.T) {
 	}
 }
 
+func TestBuildUpReadinessChecksIncludesDB(t *testing.T) {
+	checks, err := cmd.BuildUpReadinessChecksForTest(t.TempDir(), engine.Config{
+		ProjectName: "demo",
+		Framework:   "wordpress",
+		Stack: engine.Stack{
+			Services: engine.Services{DB: "mariadb", Cache: "none"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build readiness checks: %v", err)
+	}
+	for _, check := range checks {
+		if check.Service == "db" {
+			if check.ContainerName != "demo-db-1" {
+				t.Fatalf("db readiness check targets %q, want %q", check.ContainerName, "demo-db-1")
+			}
+			return
+		}
+	}
+	t.Fatalf("expected a db readiness check when mariadb is configured, got %v", checks)
+}
+
+func TestBuildUpReadinessChecksOmitsDBWhenDisabled(t *testing.T) {
+	for _, db := range []string{"", "none"} {
+		checks, err := cmd.BuildUpReadinessChecksForTest(t.TempDir(), engine.Config{
+			ProjectName: "demo",
+			Framework:   "wordpress",
+			Stack: engine.Stack{
+				Services: engine.Services{DB: db, Cache: "none"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("build readiness checks: %v", err)
+		}
+		for _, check := range checks {
+			if check.Service == "db" {
+				t.Fatalf("expected no db readiness check for db=%q, got %v", db, checks)
+			}
+		}
+	}
+}
+
+func TestDBReadinessProbeUsesMariaDBAdminFallback(t *testing.T) {
+	args := cmd.DBReadinessProbeArgsForTest(engine.Config{
+		ProjectName: "demo",
+		Framework:   "wordpress",
+		Stack:       engine.Stack{Services: engine.Services{DB: "mariadb"}},
+	}, "demo-db-1")
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"sh", "-c", "mariadb-admin", "mysqladmin", "ping"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected db probe to contain %q, got %v", want, args)
+		}
+	}
+}
+
+func TestDBReadinessProbeUsesPgIsReadyForPostgres(t *testing.T) {
+	args := cmd.DBReadinessProbeArgsForTest(engine.Config{
+		ProjectName: "demo",
+		Framework:   "django",
+		Stack:       engine.Stack{Services: engine.Services{DB: "postgres"}},
+	}, "demo-db-1")
+	if len(args) == 0 || args[0] != "pg_isready" {
+		t.Fatalf("expected pg_isready probe for postgres, got %v", args)
+	}
+}
+
 func TestWaitForUpRuntimeReadinessRetriesUntilSuccess(t *testing.T) {
 	attempts := 0
 

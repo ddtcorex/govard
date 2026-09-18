@@ -137,6 +137,17 @@ Database filters are optimized for Magento 2. For other frameworks, safe default
 
 ---
 
+### Remote Database Credentials
+
+For `--db` operations Govard probes the remote's own configuration (e.g.
+`wp-config.php`, `.env`) over SSH instead of asking for credentials. It tries
+the configured remote path first, then deploy-layout served directories
+(`public_html`, `current`), so a remote pointing at a layout root still
+resolves. If nothing is found it warns and falls back to framework defaults —
+a fallback dump that cannot connect fails loudly instead of producing an
+empty file, so treat any credential warning as a signal to check the remote
+path.
+
 ## Sync Behavior
 
 ### Resumable Transfers

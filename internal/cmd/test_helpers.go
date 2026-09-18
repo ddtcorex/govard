@@ -102,6 +102,11 @@ func BuildUpReadinessChecksForTest(projectRoot string, config engine.Config) ([]
 	return result, nil
 }
 
+// DBReadinessProbeArgsForTest exposes the db readiness probe construction.
+func DBReadinessProbeArgsForTest(config engine.Config, containerName string) []string {
+	return dbReadinessProbeArgs(config, containerName)
+}
+
 // WaitForUpRuntimeReadinessForTest exposes readiness waiting for tests.
 func WaitForUpRuntimeReadinessForTest(projectRoot string, config engine.Config, timeout time.Duration) error {
 	return waitForUpRuntimeReadiness(projectRoot, config, timeout)

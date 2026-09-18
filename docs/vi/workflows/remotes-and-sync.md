@@ -137,6 +137,16 @@ Các bộ lọc database được tối ưu hóa sâu nhất cho Magento 2. Đ�
 
 ---
 
+### Thông tin kết nối database của remote
+
+Với các thao tác `--db`, Govard tự đọc cấu hình trên remote qua SSH (ví dụ
+`wp-config.php`, `.env`) thay vì hỏi thông tin kết nối. Nó thử remote path
+trước, rồi tới các thư mục served của deploy-layout (`public_html`,
+`current`), nên remote trỏ vào layout root vẫn resolve được. Nếu không tìm
+thấy gì nó sẽ cảnh báo và dùng defaults của framework — dump fallback mà
+không kết nối được sẽ fail rõ ràng thay vì ra file rỗng, nên hãy coi mọi
+cảnh báo credential là tín hiệu cần kiểm tra lại remote path.
+
 ## Hành vi đồng bộ (Sync Behavior)
 
 ### Tiếp tục truyền tải dở dang (Resumable Transfers)
