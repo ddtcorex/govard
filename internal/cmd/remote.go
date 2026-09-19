@@ -532,8 +532,16 @@ var remoteListCmd = &cobra.Command{
 		}
 		out := cmd.OutOrStdout()
 		names := make([]string, 0, len(config.Remotes))
+		shadowed := false
 		for name := range config.Remotes {
+			if strings.EqualFold(name, deploy.SandboxRemoteName) {
+				shadowed = true
+				continue
+			}
 			names = append(names, name)
+		}
+		if shadowed {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: remotes.sandbox is shadowed by the synthetic sandbox; remove it\n")
 		}
 		engine.SortRemoteNames(names)
 		fmt.Fprintf(out, "%-20s %-28s %s\n", "NAME", "HOST", "CAPABILITIES")

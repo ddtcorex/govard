@@ -766,11 +766,13 @@ govard sandbox down [--purge]
 govard deploy --remote sandbox --yes
 ```
 
-Vì `sandbox` là lệnh top-level chứ không phải subcommand của deploy, lần deploy
-phải dùng dạng flag: `govard deploy --remote sandbox --yes`.
+`sandbox` là lệnh top-level, nên hãy deploy bằng dạng flag:
+`govard deploy --remote sandbox --yes`. Không có block `sandbox` nào để ghi
+vào đâu cả: sandbox synthetic sẽ lấn át mọi block `remotes.sandbox` trong
+`.govard.local.yml` (kèm cảnh báo) và block đó không bao giờ thắng.
 
 Khi `govard svc up` đã khởi động SSH gateway dùng chung (xem
-[Deployment](/workflows/deployment#the-shared-ssh-gateway)), cùng sandbox đó
+[Triển khai](/vi/workflows/deployment#shared-ssh-gateway)), cùng sandbox đó
 cũng truy cập được tại `ssh -p 2222 <project-name>@127.0.0.1` -- tiện để trỏ
 remote interpreter của IDE hay SFTP deployment target vào một địa chỉ ổn
 định thay vì đuổi theo cổng tạm mà mỗi lần `sandbox up` mới chọn.

@@ -35,8 +35,19 @@ func TestProxyBlueprintPublishesRabbitMQMgmtPort(t *testing.T) {
 		t.Fatalf("read proxy blueprint: %v", err)
 	}
 
-	if !strings.Contains(string(content), `"15672:15672"`) {
-		t.Fatal("proxy.yml must publish port 15672 so project.test:15672 can reach a project's RabbitMQ management UI")
+	if !strings.Contains(string(content), `"127.0.0.1:15672:15672"`) {
+		t.Fatal("proxy.yml must publish port 15672 on loopback so project.test:15672 is reachable via 127.0.0.1 only")
+	}
+}
+
+func TestProxyBlueprintRabbitMQMgmtBindsLoopback(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "internal", "blueprints", "files", "proxy.yml"))
+	if err != nil {
+		t.Fatalf("read proxy blueprint: %v", err)
+	}
+	stripped := strings.ReplaceAll(string(content), `"127.0.0.1:15672:15672"`, "")
+	if strings.Contains(stripped, "15672:15672") {
+		t.Fatal("proxy.yml exposes 15672 on 0.0.0.0")
 	}
 }
 

@@ -1,10 +1,12 @@
 package tests
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"govard/internal/cmd"
+	"govard/internal/engine"
 )
 
 func TestParseEnvMapForTest(t *testing.T) {
@@ -205,5 +207,45 @@ func TestBuildLocalMySQLQueryCommandScriptInjection(t *testing.T) {
 				t.Fatalf("vulnerability or bug: script does not contain properly quoted query. Expected to find %q in %s", expectedQuoted, script)
 			}
 		})
+	}
+}
+
+func TestRemoteMySQLDumpFirstPassFailurePropagates(t *testing.T) {
+	got := cmd.BuildRemoteMySQLDumpCommandForTest("remote-host", 3306, "remote-user", "remote-pass", "remote-db", true)
+	start := strings.Index(got, "{ ")
+	end := strings.LastIndex(got, "; }")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("dump must wrap passes in { ...; }, got: %s", got)
+	}
+	if core := got[start:end]; !strings.Contains(core, `&& "$DUMP_BIN"`) {
+		t.Fatalf("dump must chain passes with && inside { ... }, got: %s", got)
+	}
+	if strings.Contains(got, `{ "$DUMP_BIN"`) && strings.Contains(got, `; "$DUMP_BIN"`) {
+		t.Fatalf("dump still joins passes with ';' which masks first-pass failure: %s", got)
+	}
+}
+
+func TestLocalMySQLDumpFirstPassFailurePropagates(t *testing.T) {
+	shimDir := installDockerInspectShim(t)
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	args, err := cmd.BuildDBDumpCommandForTest(
+		engine.Config{ProjectName: "sample-project"},
+		cmd.DBCommandOptions{Environment: "local"},
+	)
+	if err != nil {
+		t.Fatalf("BuildDBDumpCommandForTest() error = %v", err)
+	}
+	got := strings.Join(args, " ")
+	start := strings.Index(got, "{ ")
+	end := strings.LastIndex(got, "; }")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("dump must wrap passes in { ...; }, got: %s", got)
+	}
+	if core := got[start:end]; !strings.Contains(core, `&& "$DUMP_BIN"`) {
+		t.Fatalf("dump must chain passes with && inside { ... }, got: %s", got)
+	}
+	if strings.Contains(got, `{ "$DUMP_BIN"`) && strings.Contains(got, `; "$DUMP_BIN"`) {
+		t.Fatalf("dump still joins passes with ';' which masks first-pass failure: %s", got)
 	}
 }

@@ -102,3 +102,87 @@ domain: sample.test
 		t.Fatalf("output missing the synthetic sandbox row:\n%s", text)
 	}
 }
+
+func TestRemoteListDoesNotDuplicateSandboxRow(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".govard.yml"), `
+project_name: sample-project
+framework: generic
+domain: sample.test
+`)
+	writeFile(t, filepath.Join(root, ".govard.local.yml"), `remotes:
+  staging:
+    host: 10.0.0.5
+    user: deploy
+    path: /srv/staging
+  sandbox:
+    host: legacy.example.com
+    user: deploy
+    path: /srv/legacy
+`)
+	restore := cmd.StubSandboxResolverForTest(func(ctx context.Context, projectName string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+		return engine.RemoteConfig{}, deploy.SandboxLivenessAbsent, fmt.Errorf("no sandbox")
+	})
+	defer restore()
+
+	cwd, _ := os.Getwd()
+	defer func() { _ = os.Chdir(cwd) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	rootCmd := cmd.RootCommandForTest()
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&errOut)
+	rootCmd.SetArgs([]string{"remote", "list"})
+	if err := rootCmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("remote list: %v", err)
+	}
+	rows := 0
+	for _, line := range strings.Split(out.String(), "\n") {
+		if strings.Contains(strings.ToLower(line), "sandbox") {
+			rows++
+		}
+	}
+	if rows != 1 {
+		t.Fatalf("expected exactly one sandbox row, got %d:\n%s", rows, out.String())
+	}
+}
+
+func TestShadowRemotesSandboxWarns(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".govard.yml"), `
+project_name: sample-project
+framework: generic
+domain: sample.test
+`)
+	writeFile(t, filepath.Join(root, ".govard.local.yml"), `remotes:
+  sandbox:
+    host: legacy.example.com
+    user: deploy
+    path: /srv/legacy
+`)
+	restore := cmd.StubSandboxResolverForTest(func(ctx context.Context, projectName string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+		return engine.RemoteConfig{}, deploy.SandboxLivenessAbsent, fmt.Errorf("no sandbox")
+	})
+	defer restore()
+
+	cwd, _ := os.Getwd()
+	defer func() { _ = os.Chdir(cwd) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	rootCmd := cmd.RootCommandForTest()
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&errOut)
+	rootCmd.SetArgs([]string{"remote", "list"})
+	if err := rootCmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("remote list: %v", err)
+	}
+	if !strings.Contains(errOut.String(), "shadow") {
+		t.Fatalf("a user-defined remotes.sandbox must warn that the synthetic sandbox shadows it.\nstdout:\n%s\nstderr:\n%s", out.String(), errOut.String())
+	}
+}

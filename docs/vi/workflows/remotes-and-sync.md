@@ -139,13 +139,20 @@ Các bộ lọc database được tối ưu hóa sâu nhất cho Magento 2. Đ�
 
 ### Thông tin kết nối database của remote
 
-Với các thao tác `--db`, Govard tự đọc cấu hình trên remote qua SSH (ví dụ
-`wp-config.php`, `.env`) thay vì hỏi thông tin kết nối. Nó thử remote path
-trước, rồi tới các thư mục served của deploy-layout (`public_html`,
-`current`), nên remote trỏ vào layout root vẫn resolve được. Nếu không tìm
+Với các thao tác `--db`, Govard tự đọc cấu hình trên remote qua SSH thay vì
+hỏi thông tin kết nối — nhưng chỉ cho ba họ framework: **dotenv** (`.env`),
+**WordPress** (`wp-config.php`) và **Magento 2 / MageOS**
+(`app/etc/env.php`). Mọi stack khác đều không được thăm dò: nếu không tìm
 thấy gì nó sẽ cảnh báo và dùng defaults của framework — dump fallback mà
 không kết nối được sẽ fail rõ ràng thay vì ra file rỗng, nên hãy coi mọi
 cảnh báo credential là tín hiệu cần kiểm tra lại remote path.
+
+Mỗi probe được hỗ trợ thử ba vị trí app root theo thứ tự — remote path đã cấu
+hình trước, rồi `<path>/public_html`, rồi `<path>/current` — nên remote trỏ
+vào layout root vẫn resolve được. **Ứng viên hợp lệ đầu tiên thắng**: file
+`.env` cũ còn sót ở layout root sẽ che mất file `.env` thật của ứng dụng nằm
+sâu hơn một cấp, vì layout root được thử trước. Hãy trỏ `path` của remote
+đúng vào app root thật (hoặc xoá file cũ) khi probe đọc nhầm database.
 
 ## Hành vi đồng bộ (Sync Behavior)
 
@@ -381,6 +388,13 @@ govard db dump -e staging             # Dump DB remote → lưu trên remote (~b
 govard db dump -e staging --local     # Dump DB remote → stream trực tiếp về lưu ở local var/
 govard db dump --no-noise --no-pii    # Dump kèm bộ lọc bảo mật dữ liệu
 ```
+
+Dump trên remote đi qua một file tạm trong `/tmp` của remote: bản dump thô
+chưa nén — toàn bộ database, kể cả PII — nằm ở đó trong lúc chờ nén để
+truyền đi, rồi được xoá bằng `rm -f`. Nếu kết nối SSH đứt giữa chừng, bước
+dọn dẹp không bao giờ chạy và file thô ở lại (phía remote không có trap — đây
+là giới hạn đã biết), nên hãy dump lại và tự xoá file thừa thay vì mặc định
+rằng nó đã mất.
 
 ### Import dữ liệu
 

@@ -710,6 +710,23 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 	}
 	container := SandboxContainerName(project, request.ProjectRoot)
 
+	profile := containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel)
+	// A dormant container has no resolvable remote (LoadSandboxRemote only sets
+	// Remote when running), so read the series back from the container's own
+	// label instead of reporting none.
+	php := sandboxRemotePHP(config.Remote)
+	if php == "" {
+		// The container's own label is the fallback for a dormant sandbox;
+		// a value that is not a series is not one the creation could have
+		// written (the flag is validated first), so it is ignored rather
+		// than reported — the same validation the reuse path applies.
+		if labelPHP := containerLabelOrEmpty(ctx, runtime, container, sandboxPHPLabel); labelPHP != "" {
+			if _, err := ValidateSandboxPHP(labelPHP); err == nil {
+				php = labelPHP
+			}
+		}
+	}
+
 	state := &SandboxState{
 		Container:  container,
 		RemoteName: request.remoteName(),
@@ -717,11 +734,11 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 		Port:       config.Remote.Port,
 		MirrorPath: SandboxMirrorPath(request.ProjectRoot),
 		KeyPath:    filepath.Join(SandboxStateDir(request.ProjectRoot), SandboxKeyName),
-		Profile:    containerLabelOrEmpty(ctx, runtime, container, sandboxProfileLabel),
+		Profile:    profile,
 		// The series the image was built with, read back from the remote the
 		// creation wrote: `status` must report what exists, not what a flag would
 		// now ask for.
-		PHP:         sandboxRemotePHP(config.Remote),
+		PHP:         php,
 		DeployPath:  sandboxRemoteDeployPath(config.Remote),
 		CurrentPath: config.Remote.Path,
 	}
@@ -766,19 +783,6 @@ func SandboxStatus(ctx context.Context, runtime SandboxRuntime, request SandboxR
 // already has, and refuses to relabel it.
 //
 // A reused container is what it is: its image was built for one profile and one
-// PHP series, and that is what the sandbox's remote has to declare. Without this,
-// `up` with no flags rewrote the remote without `php_version` — after which
-// `sandbox status` reported no series for a php-8.4 image, and an artifact deploy
-// lost the check that catches a series mismatch — while `up --php 8.3` on a
-// php-8.4 container relabelled the target without touching it.
-//
-// The profile is read from the container's own label and the series from the
-// sandbox remote the creation wrote, both of which describe what exists.
-// `--recreate` is the way to get a different one, and the refusal says so.
-// sandboxReusedRuntime reports the profile and PHP series a sandbox container
-// already has, and refuses to relabel it.
-//
-// A reused container is what it is: its image was built for one profile and one
 // PHP series, and that is what the sandbox remote has to describe — the profile
 // decides which settings the remote carries (a PHP binary, the web tier's verify
 // URL) and the series is what an artifact deploy is checked against. Reading them
@@ -803,6 +807,24 @@ func sandboxReusedRuntime(ctx context.Context, runtime SandboxRuntime, request S
 	}
 	config, err := LoadSandboxRemote(request.ProjectRoot, request.remoteName())
 	if err != nil || !config.RemoteSet {
+		// A dormant container has no resolvable remote (LoadSandboxRemote only
+		// sets Remote when running), so read the series back from the
+		// container's own label — the same fallback `status` uses. A value
+		// that is not a series is not one the creation could have written
+		// (the flag is validated first), so it is ignored rather than
+		// adopted.
+		declaredPHP := containerLabelOrEmpty(ctx, runtime, container, sandboxPHPLabel)
+		if _, labelErr := ValidateSandboxPHP(declaredPHP); labelErr != nil {
+			declaredPHP = ""
+		}
+		if php != "" && declaredPHP != "" && declaredPHP != php {
+			return profile, php, fmt.Errorf(
+				"the sandbox container ships PHP %s; changing it to %s means a new image, so run `govard sandbox up --php %s --recreate`",
+				declaredPHP, php, php)
+		}
+		if php == "" {
+			php = declaredPHP
+		}
 		return profile, php, nil
 	}
 	declaredPHP := sandboxRemotePHP(config.Remote)
@@ -853,9 +875,29 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 			return nil, err
 		}
 	}
-	if request.ProjectName != "" {
+	project := request.ProjectName
+	if project == "" {
+		if cfg, cfgErr := LoadSandboxRemote(request.ProjectRoot, request.remoteName()); cfgErr == nil {
+			project = cfg.ProjectName
+		}
+	}
+	if project != "" {
 		if reg, regErr := gateway.Load(); regErr == nil {
-			reg.RemoveTarget(request.ProjectName)
+			// `up` registers under the normalized slug (RouteUsername), so
+			// prune that; also try the raw name for entries written before
+			// normalization. Pre-normalization entries may sit under any raw
+			// spelling of the same slug (My_Project, MY-PROJECT, ...), so
+			// sweep those too. RemoveTarget is a no-op for absent keys and
+			// deleting during range is safe in Go.
+			if slug, ok := gateway.RouteUsername(project); ok {
+				reg.RemoveTarget(slug)
+				for user := range reg.Targets {
+					if s, ok := gateway.RouteUsername(user); ok && s == slug {
+						reg.RemoveTarget(user)
+					}
+				}
+			}
+			reg.RemoveTarget(project)
 			if err := reg.Save(); err != nil {
 				fmt.Fprintf(request.out(), "note: could not prune the SSH gateway target: %v\n", err)
 			}
@@ -865,8 +907,8 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 	// resumes tomorrow. Only an explicit --volumes deletes the derived
 	// project's named volumes (matched by compose project label, so no caller
 	// has to know their names).
-	if request.Volumes && request.ProjectName != "" {
-		if err := runtime.RemoveVolumesByLabel(ctx, "com.docker.compose.project", request.ProjectName); err != nil {
+	if request.Volumes && project != "" {
+		if err := runtime.RemoveVolumesByLabel(ctx, "com.docker.compose.project", project); err != nil {
 			return nil, err
 		}
 	}

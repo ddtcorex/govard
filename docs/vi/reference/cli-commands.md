@@ -409,6 +409,11 @@ govard env cleanup
 
 `--profile` là cách inline thay cho `govard config profile switch`; vẫn cần `govard env up` để áp dụng.
 
+`env up` chờ readiness của runtime cho từng service — tối đa ~90 giây mỗi
+service. Với thông tin database sai, service không bao giờ healthy nên lỗi tới
+muộn: tệ nhất là một lần chờ đủ cho mỗi service. Khi `up` treo, hãy kiểm tra
+credential trước, đừng nghi ngờ orchestration.
+
 **Hành vi của `govard env pull`:**
 
 Image được pull từng cái một. Nếu một image không thể pull (bị xóa khỏi
@@ -829,9 +834,12 @@ production trỏ vào container. Không có block `sandbox` trong bất kỳ fil
 nào: khi container còn chạy, `sandbox` tự resolve thành remote cho mọi lệnh nhận
 remote.
 
-Vì `sandbox` là lệnh top-level chứ không phải subcommand của deploy, hãy deploy
-bằng dạng flag:
+`sandbox` là lệnh top-level — hãy deploy bằng dạng flag:
 `govard deploy --remote sandbox --yes`.
+
+Không có block `sandbox` nào để ghi vào đâu cả: sandbox synthetic lấn át mọi
+block `remotes.sandbox` trong `.govard.local.yml` (kèm cảnh báo) và block đó
+không bao giờ thắng.
 
 Profile: `basic` (sshd, rsync, git), `php` (thêm php-cli, composer, node) và
 `full` (thêm database và cache), mặc định `php`. `--docroot` định hình target để
@@ -901,6 +909,29 @@ remote đã cấu hình. Trên sandbox mới tinh dạng mặc định (`symlink
 lần đầu hoặc dùng `--docroot real`.
 
 → Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment#sandbox).
+
+### `govard gateway`
+
+Bastion SSH dùng chung (`govard-proxy-sshd`) do `govard svc up` khởi động,
+lắng nghe trên `127.0.0.1:2222` — một địa chỉ ổn định cho mọi sandbox thay vì
+cổng tạm mà mỗi lần `sandbox up` chọn:
+
+```bash
+govard gateway allow-key "$(cat ~/.ssh/id_ed25519.pub)"
+ssh -p 2222 <project-name>@127.0.0.1
+sftp -P 2222 <project-name>@127.0.0.1
+```
+
+- `govard gateway status` cho biết container bastion có đang chạy không và nó
+  biết bao nhiêu target/key.
+- `govard gateway allow-key <public-key-line>` /
+  `govard gateway revoke-key <fingerprint-or-comment>` quản lý allowlist; cả
+  hai đều chạy được khi Docker chưa khởi động (registry là một file cục bộ).
+- `sandbox up` tự đăng ký username của dự án và nối vào network của bastion;
+  `sandbox down` gỡ đăng ký đó. Không thao tác nào hỏng khi gateway chưa chạy
+  — `deploy`, `deploy check` và `remote *` không bao giờ đi qua nó.
+
+→ Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment#shared-ssh-gateway).
 
 ### `govard snapshot`
 

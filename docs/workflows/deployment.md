@@ -1032,11 +1032,17 @@ govard sandbox ssh
 govard sandbox down [--purge] [--volumes]
 ```
 
+`sandbox` is a top-level command. Its containers are named
+`govard-<slug>-sandbox-…` and its images
+`govard-sandbox:<slug>-<profile>-<hash>`.
+
 `up` publishes SSH on a free loopback port, generates a dedicated key under
 `.govard/sandbox/` (gitignored), and mounts a mirror of your local repository
 read-only. The mirror is refreshed before every deploy, so a commit you have
 never pushed is deployable. There is no `sandbox` block in any configuration
-file: whenever the sandbox container is running, `sandbox` resolves
+file — and a `remotes.sandbox` block left over from before must be deleted:
+the synthetic sandbox shadows it (with a warning) and the block never wins.
+Whenever the sandbox container is running, `sandbox` resolves
 automatically as a remote for every command that takes one — `deploy`, `db`,
 `remote exec`, `sync` — so `govard deploy --remote sandbox --yes`,
 `govard db dump -e sandbox`, `govard remote exec sandbox -- <command>` and
@@ -1087,7 +1093,11 @@ A sandbox you already have is described by what it is, not by the flags of the
 command that reached it: `up` reports the profile and the PHP series the container
 was built for, and the image it actually came from, so a later `up` without
 `--php` does not erase the series and does not describe a `full` sandbox as the
-default profile. Naming a profile or series that disagrees is refused with the
+default profile. A stopped (dormant) sandbox keeps that description: `status`
+still reports the profile and the PHP series, read back from the container's own
+labels, and the mirror and key paths, which come from the project root. The
+deploy and current paths and the published ports stay empty until the container
+runs again, because a dormant remote resolves to nothing by contract. Naming a profile or series that disagrees is refused with the
 flag that actually changes it (`--recreate`), rather than silently relabelling a
 container whose image still ships the old one. `up` also waits for a real login
 before it reports the sandbox ready — a published port that accepts a connection
@@ -1117,6 +1127,13 @@ The `full` profile starts a database and a cache, and the Magento recipe names
 both, so a target's `env.php` can point at `127.0.0.1` for MariaDB and Redis/Valkey
 — the shape a server has — instead of being hand-edited to use files. The `basic`
 profile ships neither and advertises no verify URL.
+
+When the project enables the RabbitMQ queue service, its management UI is
+reachable at `project.test:15672` through the shared proxy. That port is
+published on `127.0.0.1` only, so the UI is loopback-only by construction —
+never reachable from the LAN. The default `guest`/`guest` login travels over
+plain HTTP, so treat it as a local-development convenience and never expose
+it beyond the machine.
 
 `--php` picks the PHP series the image provides, for example `--php 8.4`; without
 it the image keeps the base distribution's own version. The series comes from the

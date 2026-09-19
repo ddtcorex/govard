@@ -408,6 +408,52 @@ func TestSandboxUpKeepsTheSeriesAReusedContainerShips(t *testing.T) {
 	}
 }
 
+// A dormant sandbox (its container exists but is stopped) has no resolvable
+// remote: LoadSandboxRemote only sets Remote when the container is running.
+// Re-running `up` to start it must still keep the series from the container's
+// own PHP label, and a disagreeing --php must be refused with --recreate —
+// the same contract the running path keeps through the remote.
+func TestSandboxUpKeepsTheSeriesOfADormantContainer(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileFull).containerPHP("8.4")
+	fake.answers["inspect --format {{.State.Running}}"] = "false\n"
+	fake.answers["image inspect"] = "sha256:abc\n"
+	probe := func(context.Context, string, int, time.Duration) error { return nil }
+
+	restoreCapabilities := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restoreCapabilities()
+	restoreRemote := deploy.StubResolveSyntheticSandboxRemoteForTest(func(ctx context.Context, projectName string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+		return deploy.ResolveSyntheticSandboxRemoteForTest(ctx, deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, projectName)
+	})
+	defer restoreRemote()
+
+	state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfileFull,
+		Probe:       probe,
+	})
+	if err != nil {
+		t.Fatalf("reusing up on a dormant sandbox: %v", err)
+	}
+	if state.PHP != "8.4" {
+		t.Fatalf("reused dormant sandbox reports PHP %q, want the series its label ships", state.PHP)
+	}
+
+	mismatch := sandboxFake().containerProfile(deploy.SandboxProfileFull).containerPHP("8.4")
+	mismatch.answers["inspect --format {{.State.Running}}"] = "false\n"
+	mismatch.answers["image inspect"] = "sha256:abc\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(mismatch.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfileFull,
+		PHP:         "8.3",
+		Probe:       probe,
+	}); err == nil || !strings.Contains(err.Error(), "--recreate") {
+		t.Fatalf("err = %v, want a refusal naming --recreate", err)
+	}
+}
+
 // Debian's nodejs (18) predates the Node 20+ current frontend toolchains need:
 // Tailwind v4's native oxide binding never lands under npm 9 (found live:
 // MODULE_NOT_FOUND tailwindcss-oxide.linux-x64-gnu.node after a green npm ci).

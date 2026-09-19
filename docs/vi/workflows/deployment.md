@@ -979,11 +979,17 @@ govard sandbox ssh
 govard sandbox down [--purge] [--volumes]
 ```
 
+`sandbox` là lệnh top-level. Container của nó tên
+`govard-<slug>-sandbox-…` và image
+`govard-sandbox:<slug>-<profile>-<hash>`.
+
 `up` publish SSH trên một cổng loopback còn trống, sinh khoá riêng dưới
 `.govard/sandbox/` (đã gitignore), và mount read-only một mirror của repository
 local. Mirror được refresh trước mỗi lần deploy, nên một commit bạn chưa từng
 push vẫn triển khai được. Không có block `sandbox` trong bất kỳ file cấu hình
-nào: hễ container sandbox còn chạy, `sandbox` tự resolve thành một remote cho
+nào — và block `remotes.sandbox` còn sót từ trước phải xoá đi: sandbox
+synthetic sẽ lấn át nó (kèm cảnh báo) và block đó không bao giờ thắng.
+Hễ container sandbox còn chạy, `sandbox` tự resolve thành một remote cho
 mọi lệnh nhận remote — `deploy`, `db`, `remote exec`, `sync` — nên
 `govard deploy --remote sandbox --yes`, `govard db dump -e sandbox`,
 `govard remote exec sandbox -- <command>` và `govard sync -e sandbox` đều chạy
@@ -1013,6 +1019,12 @@ Profile `full` start sẵn database và cache, và recipe Magento khai cả hai,
 `env.php` của target có thể trỏ `127.0.0.1` cho MariaDB và Redis/Valkey — đúng hình
 dạng server thật — thay vì phải sửa tay sang file cache. Profile `basic` không có
 gì trong số đó và không quảng cáo verify URL.
+
+Khi dự án bật queue service RabbitMQ, management UI của nó truy cập được tại
+`project.test:15672` qua proxy dùng chung. Cổng đó chỉ publish trên
+`127.0.0.1`, nên UI mặc nhiên chỉ loopback — không bao giờ tới được từ LAN.
+Tài khoản mặc định `guest`/`guest` đi qua HTTP thường, nên hãy coi đó là tiện
+ích phát triển local và không bao giờ expose ra ngoài máy.
 
 `--php` chọn series PHP mà image cung cấp, ví dụ `--php 8.4`; không có thì image
 giữ version của distribution gốc. Series lấy từ repository sury và kéo theo `php`
@@ -1055,7 +1067,11 @@ không `up` từ chối và nói rõ — sandbox câm mà im lặng thì không 
 Một sandbox đã tồn tại được mô tả bằng chính nó, không bằng flag của lệnh vừa gọi
 tới: `up` báo đúng profile và series PHP mà container được build, cùng image thật
 của nó — nên lần `up` sau không có `--php` không xoá mất series, và không mô tả một
-sandbox `full` thành profile mặc định. Đòi một profile hoặc series khác sẽ bị từ
+sandbox `full` thành profile mặc định. Sandbox đã dừng (dormant) vẫn giữ mô tả
+đó: `status` vẫn báo profile và series PHP, đọc lại từ label của chính container,
+cùng đường dẫn mirror và key, vốn suy từ gốc dự án. Deploy path, current path và
+các cổng publish để trống cho tới khi container chạy lại, vì remote dormant không
+resolve ra gì theo đúng hợp đồng. Đòi một profile hoặc series khác sẽ bị từ
 chối kèm đúng flag thay đổi được nó (`--recreate`), thay vì dán nhãn mới cho một
 container mà image vẫn là image cũ. `up` cũng chờ một lần đăng nhập thật trước khi
 báo sandbox sẵn sàng — cổng đã publish và chấp nhận kết nối chưa phải là một target
@@ -1081,7 +1097,7 @@ publish release lên được, và sandbox chưa seed từ chối giả vờ ng�
 deploy --remote sandbox --yes`; bước hỏng sẽ đi tiếp từ release directory sạch và
 Composer cache được giữ nguyên.
 
-## SSH gateway dùng chung
+## SSH gateway dùng chung {#shared-ssh-gateway}
 
 `govard svc up` còn khởi động một bastion nhỏ, `govard-proxy-sshd`, trên
 `127.0.0.1:2222`. Khi sandbox đã chạy và ít nhất một client key được cho

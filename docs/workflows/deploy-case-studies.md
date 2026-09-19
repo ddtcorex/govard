@@ -778,8 +778,10 @@ govard sandbox down [--purge]
 govard deploy --remote sandbox --yes
 ```
 
-Because `sandbox` is a top-level command rather than a deploy subcommand, the
-deploy must use the flag form: `govard deploy --remote sandbox --yes`.
+`sandbox` is a top-level command, so deploy to it with the flag form:
+`govard deploy --remote sandbox --yes`. There is no `sandbox` block
+to write anywhere: the synthetic sandbox shadows any `remotes.sandbox` block
+in `.govard.local.yml` (with a warning) and the block never wins.
 
 Once `govard svc up` has started the shared SSH gateway (see
 [Deployment](/workflows/deployment#the-shared-ssh-gateway)), the same

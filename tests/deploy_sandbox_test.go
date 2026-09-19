@@ -1003,7 +1003,7 @@ func TestSandboxUpRejectsAnUnknownProfileOrDocRoot(t *testing.T) {
 
 func TestSandboxStatusReportsAStoppedSandbox(t *testing.T) {
 	root := sandboxProject(t)
-	fake := sandboxFake()
+	fake := sandboxFake().containerProfile("full").containerPHP("8.4")
 	fake.answers["inspect --format {{.State.Running}}"] = "false\n"
 
 	state, err := deploy.SandboxStatus(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.SandboxRequest{
@@ -1018,6 +1018,9 @@ func TestSandboxStatusReportsAStoppedSandbox(t *testing.T) {
 	}
 	if state.Image == "" {
 		t.Fatal("status must report the image the container was built from")
+	}
+	if state.Profile != "full" || state.PHP != "8.4" {
+		t.Fatalf("a stopped sandbox must keep profile+PHP from its labels, got profile=%q php=%q", state.Profile, state.PHP)
 	}
 }
 
@@ -1454,5 +1457,141 @@ func TestSandboxDownPrunesTheGatewayTarget(t *testing.T) {
 	}
 	if _, ok := reg.Targets["shop"]; ok {
 		t.Fatal("expected SandboxDown to prune the gateway target")
+	}
+}
+
+func TestSandboxDownPrunesGatewayTargetWhenProjectNameEmpty(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	root := sandboxProject(t)
+	// The empty-name fallback resolves through the project configuration,
+	// so the fixture must claim the name `up` registers under.
+	writeFile(t, filepath.Join(root, ".govard.yml"), `
+project_name: prune-empty-name
+framework: generic
+domain: prune-empty-name.test
+`)
+	fake := absentContainerFake()
+	fake.fail["image inspect"] = "Error: No such image"
+	upReq := deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "prune-empty-name",
+		Profile:     deploy.SandboxProfileBasic,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, upReq); err != nil {
+		t.Fatalf("SandboxUp: %v", err)
+	}
+
+	// The container `up` created answers the probes now: drop the absence the
+	// fake was scripted with so `down` observes a running sandbox.
+	delete(fake.fail, "inspect")
+	// CLI invoked without explicit name; must still prune via resolved name.
+	downReq := upReq
+	downReq.ProjectName = ""
+	if _, err := deploy.SandboxDown(context.Background(), deploy.NewDockerCLIForTest(fake.run), downReq); err != nil {
+		t.Fatalf("SandboxDown: %v", err)
+	}
+
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("gateway.Load: %v", err)
+	}
+	if _, ok := reg.Targets["prune-empty-name"]; ok {
+		t.Fatal("expected SandboxDown to prune the gateway target even when ProjectName is empty")
+	}
+}
+
+func TestSandboxDownPrunesNormalizedGatewayTarget(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	fake := absentContainerFake()
+	fake.fail["image inspect"] = "Error: No such image"
+	upReq := deploy.SandboxRequest{
+		ProjectRoot: sandboxProject(t),
+		ProjectName: "My_Project",
+		Profile:     deploy.SandboxProfileBasic,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, upReq); err != nil {
+		t.Fatalf("SandboxUp: %v", err)
+	}
+
+	// A pre-normalization entry under the raw name must not survive either.
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("gateway.Load: %v", err)
+	}
+	if _, ok := reg.Targets["my-project"]; !ok {
+		t.Fatal("expected SandboxUp to register gateway target my-project for project My_Project")
+	}
+	reg.Targets["My_Project"] = reg.Targets["my-project"]
+	if err := reg.Save(); err != nil {
+		t.Fatalf("reg.Save: %v", err)
+	}
+
+	// The container `up` created answers the probes now: drop the absence the
+	// fake was scripted with so `down` observes a running sandbox.
+	delete(fake.fail, "inspect")
+	downReq := upReq
+	downReq.ProjectName = "my_project"
+	if _, err := deploy.SandboxDown(context.Background(), deploy.NewDockerCLIForTest(fake.run), downReq); err != nil {
+		t.Fatalf("SandboxDown: %v", err)
+	}
+
+	reg, err = gateway.Load()
+	if err != nil {
+		t.Fatalf("gateway.Load: %v", err)
+	}
+	if _, ok := reg.Targets["my-project"]; ok {
+		t.Fatal("expected SandboxDown to prune the normalized gateway target my-project")
+	}
+	if _, ok := reg.Targets["My_Project"]; ok {
+		t.Fatal("expected SandboxDown to prune the legacy raw gateway target My_Project")
+	}
+}
+
+func TestSandboxDownRemovesRawGatewayTargetForUnroutableProjectName(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	if _, ok := gateway.RouteUsername("my.project"); ok {
+		t.Fatal("RouteUsername(my.project) = ok, want false: the dot keeps it off the gateway")
+	}
+	fake := absentContainerFake()
+	fake.fail["image inspect"] = "Error: No such image"
+	upReq := deploy.SandboxRequest{
+		ProjectRoot: sandboxProject(t),
+		ProjectName: "my.project",
+		Profile:     deploy.SandboxProfileBasic,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, upReq); err != nil {
+		t.Fatalf("SandboxUp: %v", err)
+	}
+
+	// An unroutable name registers nothing: seed the raw entry a
+	// pre-normalization `up` may have left behind.
+	reg, err := gateway.Load()
+	if err != nil {
+		t.Fatalf("gateway.Load: %v", err)
+	}
+	if _, ok := reg.Targets["my.project"]; ok {
+		t.Fatal("expected SandboxUp to skip gateway registration for my.project")
+	}
+	reg.Targets["my.project"] = gateway.Target{Container: "govard-my.project-sandbox-basic", TargetUser: deploy.SandboxUser, Project: "my.project"}
+	if err := reg.Save(); err != nil {
+		t.Fatalf("reg.Save: %v", err)
+	}
+
+	// The container `up` created answers the probes now: drop the absence the
+	// fake was scripted with so `down` observes a running sandbox.
+	delete(fake.fail, "inspect")
+	if _, err := deploy.SandboxDown(context.Background(), deploy.NewDockerCLIForTest(fake.run), upReq); err != nil {
+		t.Fatalf("SandboxDown: %v", err)
+	}
+
+	reg, err = gateway.Load()
+	if err != nil {
+		t.Fatalf("gateway.Load: %v", err)
+	}
+	if _, ok := reg.Targets["my.project"]; ok {
+		t.Fatal("expected SandboxDown to remove the raw gateway target my.project")
 	}
 }
