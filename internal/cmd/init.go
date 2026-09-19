@@ -31,15 +31,17 @@ It automatically detects the framework (Magento, Laravel, Symfony, etc.) and gen
 If detection fails, it prompts you to select a framework (defaulting to 'custom').
 
 Common Framework Versions:
-- Magento: 2.4.4, 2.4.5, 2.4.6, 2.4.7
+- Magento: 2.4.4, 2.4.5, 2.4.6, 2.4.7, 2.4.8, 2.4.9
 - Laravel: 10, 11
 - Symfony: 6.4, 7.0
 - Shopware: 6.5, 6.6
+- Drupal and other supported frameworks: detected automatically
 
 Case Studies:
 - New Project: Run 'govard init' in an empty folder to start a new app from scratch.
 - Existing Project: Run 'govard init' to containerize an existing codebase.
-- Migrate from DDEV: Use --migrate-from ddev to import settings from an existing DDEV setup.`,
+- Migrate from DDEV: Use --migrate-from ddev to import settings from an existing DDEV setup.
+- Migrate from Warden: Use --migrate-from warden to import settings from an existing Warden setup.`,
 	Example: `  # Auto-detect framework and initialize
   govard init
 

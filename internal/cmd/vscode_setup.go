@@ -48,7 +48,7 @@ Without --global, run this from inside a project (or any subdirectory of one)
 to write .vscode/settings.json (Intelephense PHP version, PHPStan path mapping,
 a PHPUnit path mapping if vendor/bin/phpunit is present, and — if
 vendor/bin/phpcs is present — a PHPCS coding standard) and .vscode/launch.json
-(a "Listen for Xdebug" configuration). If vendor/bin/phpstan is present but the
+(a "Listen for Xdebug (Govard)" configuration). If vendor/bin/phpstan is present but the
 project has no phpstan.neon/.dist config of its own, phpstan.options is set to
 a --level=0 default instead — kept in .vscode/settings.json rather than
 writing a phpstan.neon at the project root, which is normally git-tracked.

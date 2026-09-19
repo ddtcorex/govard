@@ -35,10 +35,12 @@ var dbCmd = &cobra.Command{
 	Short: "Interact with the database container",
 	Long: `Manage your project's database. Supports connecting to the container shell,
 importing SQL dumps, and creating backups. Works for both local and remote environments.
+Sub-actions: connect, import, dump, query (takes a SQL query argument),
+info, top (live SHOW FULL PROCESSLIST), clone-volume (takes a source volume name).
 
 Storage Behavior for Dumps:
-- Local Environment: Dumps are saved to the project's local 'var/' directory.
-- Remote Environment (default): Dumps are stored on the remote server (usually ~/backup/).
+- Local Environment (default): Dumps are saved to the project's local 'var/' directory.
+- Remote Environment: Dumps are stored on the remote server (usually ~/backup/).
 - Remote Environment (+ --local): Dumps are streamed directly to the project's local 'var/' directory.
 
 Dumps are comprehensive (including routines and triggers) by default to ensure full portability.`,
@@ -69,7 +71,14 @@ Dumps are comprehensive (including routines and triggers) by default to ensure f
   # Execute a SQL query
   govard db query "SELECT * FROM core_config_data LIMIT 5"
 
-  govard db info`,
+  # Show database info
+  govard db info
+
+  # Watch live database activity
+  govard db top
+
+  # Clone a source volume into the local database volume (local only)
+  govard db clone-volume staging_db-data`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errors.New("requires at least one argument (subcommand)")
@@ -97,8 +106,8 @@ func init() {
 	dbCmd.Flags().StringP("file", "f", "", "Database dump file (import or dump output)")
 	dbCmd.Flags().String("profile", "", "Environment scope (profile) to use")
 	dbCmd.Flags().Bool("stream-db", false, "For import: stream dump from remote environment into local database")
-	dbCmd.Flags().BoolP("no-noise", "N", false, "For dump: exclude ephemeral tables (cron, cache, session, logs...)")
-	dbCmd.Flags().BoolP("no-pii", "P", false, "For dump: exclude PII/sensitive tables (customers, orders...)")
+	dbCmd.Flags().BoolP("no-noise", "N", false, "For dump or --stream-db import: exclude ephemeral tables (cron, cache, session, logs...)")
+	dbCmd.Flags().BoolP("no-pii", "P", false, "For dump or --stream-db import: exclude PII/sensitive tables (customers, orders...)")
 	dbCmd.Flags().BoolP("sanitize", "S", false, "Alias for --no-pii")
 	dbCmd.Flags().Bool("drop", false, "For import: drop and recreate the database before importing")
 	dbCmd.Flags().Bool("local", false, "For dump/import: force local file operations for remote environments")

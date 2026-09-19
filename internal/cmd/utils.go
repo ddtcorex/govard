@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"text/template"
+	"unicode"
 
 	"syscall"
 
@@ -132,15 +134,51 @@ func runGovardSubcommandSilent(cmd *cobra.Command, args ...string) error {
 	return command.Run()
 }
 
+// standardHelpFunc renders stock cobra help for a Govard-owned command nested
+// under a rebranded (compose-proxy) parent, so --help never shells out to
+// 'docker compose <sub> --help' for a subcommand compose does not have.
+//
+// It re-executes the help template directly: calling cmd.Help() here would
+// recurse, because cobra's Help() dispatches back through the help func.
+func standardHelpFunc() func(*cobra.Command, []string) {
+	return func(cmd *cobra.Command, args []string) {
+		// LocalFlags triggers cobra's persistent-flag merge; the template
+		// itself resolves .LocalFlags/.InheritedFlags the same way.
+		_ = cmd.LocalFlags()
+		tpl, err := template.New("help").Funcs(template.FuncMap{
+			"trimTrailingWhitespaces": func(s string) string {
+				return strings.TrimRightFunc(s, unicode.IsSpace)
+			},
+		}).Parse(cmd.HelpTemplate())
+		if err != nil {
+			_ = cmd.Usage()
+			return
+		}
+		_ = tpl.Execute(cmd.OutOrStdout(), cmd)
+	}
+}
+
 // rebrandComposeHelp runs `docker compose --help`, rebrands the output to use govard command names,
 // and prints it to the command's stdout.
-func rebrandComposeHelp(cmd *cobra.Command, govardCmdName string) {
+func rebrandComposeHelp(cmd *cobra.Command, govardCmdName string, helpArgs []string) {
 	// First, print our own Govard-specific help header if available
 	printGovardHelpHeader(cmd)
 
-	// Determine the subcommand by looking at os.Args
+	// Determine the subcommand, preferring the args cobra hands the help
+	// func (deterministic, independent of the binary name) with the os.Args
+	// scan as fallback for callers that arrive another way.
 	dockerArgs := []string{"compose"}
 	detectedSubcommand := ""
+	for _, token := range helpArgs {
+		// On the --help path cobra hands the full command line (including
+		// the parent name and --help itself): skip both to reach the
+		// subcommand, mirroring the os.Args scan below.
+		if token == govardCmdName || token == "--help" || token == "-h" || token == "help" || strings.HasPrefix(token, "-") {
+			continue
+		}
+		detectedSubcommand = token
+		break
+	}
 	for i, arg := range os.Args {
 		if arg == govardCmdName {
 			// Append subsequent args to get subcommand-specific help
@@ -171,8 +209,79 @@ func rebrandComposeHelp(cmd *cobra.Command, govardCmdName string) {
 	helpText = strings.ReplaceAll(helpText, "docker compose", "govard "+govardCmdName)
 	suppressedFlags := suppressedComposeFlags(cmd, govardCmdName, detectedSubcommand)
 	helpText = filterComposeHelpText(helpText, suppressedFlags)
+	helpText = polishRebrandedHelp(helpText, govardCmdName, detectedSubcommand)
 	fmt.Fprintln(cmd.OutOrStdout(), helpText)
 	appendGovardSpecificOptions(cmd, govardCmdName, detectedSubcommand, cmd.OutOrStdout())
+	appendGovardHelpNote(govardCmdName, detectedSubcommand, cmd.OutOrStdout())
+	appendGovardOwnedCommands(cmd, govardCmdName, detectedSubcommand, cmd.OutOrStdout())
+}
+
+// govardOwnedHelpRows lists Govard-native subcommands that 'docker compose
+// --help' cannot know about, so the rebranded top-level page stays
+// discoverable. 'up' is omitted: compose lists it already.
+var govardOwnedHelpRows = map[string][]string{
+	"env": {"cleanup", "redis", "valkey", "elasticsearch", "opensearch", "varnish", "rabbitmq"},
+	"svc": {"sleep", "wake"},
+}
+
+func appendGovardOwnedCommands(cmd *cobra.Command, govardCmdName, detectedSubcommand string, out interface{ Write([]byte) (int, error) }) {
+	if detectedSubcommand != "" {
+		return
+	}
+	rows, ok := govardOwnedHelpRows[govardCmdName]
+	if !ok {
+		return
+	}
+	byName := map[string]*cobra.Command{}
+	if cmd != nil {
+		for _, sub := range cmd.Commands() {
+			byName[sub.Name()] = sub
+		}
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Govard Commands:")
+	for _, name := range rows {
+		short := ""
+		if sub, ok := byName[name]; ok {
+			short = sub.Short
+		}
+		fmt.Fprintf(out, "  %-14s %s\n", name, short)
+	}
+}
+
+// appendGovardHelpNote documents Govard behavior that the rebranded compose
+// text cannot express: same subcommand name, different semantics.
+func appendGovardHelpNote(govardCmdName, detectedSubcommand string, out interface{ Write([]byte) (int, error) }) {
+	var note string
+	if govardCmdName == "env" {
+		switch detectedSubcommand {
+		case "start":
+			note = "Note: Govard runs 'up -d' plus proxy-domain and hosts registration, creating containers where plain 'compose start' only starts existing ones."
+		case "stop", "down":
+			note = "Note: Govard also runs pre-stop/post-stop hooks and unregisters proxy, search and RabbitMQ routes plus hosts entries."
+		case "pull":
+			note = "Note: images that can be built are always skipped on this path (--ignore-buildable is forced)."
+		case "exec":
+			note = "Note: a TTY is allocated unless -T/--no-tty is given."
+		}
+	}
+	if govardCmdName == "svc" {
+		switch detectedSubcommand {
+		case "up":
+			note = "Note: 'up' always runs detached (-d); attach-mode compose flags do not apply. The Govard toggles above are consumed by Govard and never reach compose."
+		case "restart":
+			note = "Note: restart runs 'down' followed by 'up'; flags apply to the up phase."
+		case "exec":
+			note = "Note: a TTY is allocated unless -T/--no-tty is given."
+		case "version":
+			note = "Note: this reports the Compose plugin version; for the Govard CLI see `govard version`."
+		}
+	}
+	if note == "" {
+		return
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, note)
 }
 
 func printGovardHelpHeader(cmd *cobra.Command) {
@@ -213,6 +322,18 @@ func suppressedComposeFlags(cmd *cobra.Command, govardCmdName, detectedSubcomman
 			flags["pull"] = struct{}{}
 			flags["no-trust"] = struct{}{}
 			flags["no-fallback"] = struct{}{}
+			// 'svc up' always prepends -d: attach-mode compose flags can
+			// never apply, so advertising them only misleads.
+			for _, incompatible := range []string{
+				"abort-on-container-exit",
+				"abort-on-container-failure",
+				"attach",
+				"attach-dependencies",
+				"exit-code-from",
+				"menu",
+			} {
+				flags[incompatible] = struct{}{}
+			}
 		}
 	}
 
@@ -321,6 +442,36 @@ func shouldSkipComposeOption(line string, suppressedFlags map[string]struct{}) b
 	return false
 }
 
+// polishRebrandedHelp cleans up upstream compose wording that the verbatim
+// rebrand would otherwise repeat: the compose tagline on top-level pages and
+// self-contradictory TTY defaults on exec/run pages. Each rewrite targets one
+// exact upstream string and degrades to a no-op when compose rewords it, so a
+// newer compose can only restore the old text, never break the page.
+func polishRebrandedHelp(helpText, govardCmdName, detectedSubcommand string) string {
+	if detectedSubcommand == "" {
+		lines := strings.Split(helpText, "\n")
+		kept := lines[:0]
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "Define and run multi-container applications with Docker" {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		helpText = strings.Join(kept, "\n")
+	}
+	if detectedSubcommand == "exec" {
+		helpText = strings.ReplaceAll(helpText,
+			"allocates a TTY. (default true)",
+			"allocates a TTY unless -T/--no-tty is given.")
+	}
+	if detectedSubcommand == "run" {
+		helpText = strings.ReplaceAll(helpText,
+			"(default: auto-detected) (default true)",
+			"(default: auto-detected)")
+	}
+	return helpText
+}
+
 type helpFlagSpec struct {
 	Display string
 	Usage   string
@@ -378,6 +529,13 @@ func collectGovardSpecificOptions(cmd *cobra.Command, govardCmdName, detectedSub
 		specs = append(specs, helpFlagSpec{
 			Display: "--no-fallback",
 			Usage:   "Disable the automatic local image build retry if pulls fail.",
+		})
+	}
+
+	if govardCmdName == "env" && detectedSubcommand == "logs" {
+		specs = append(specs, helpFlagSpec{
+			Display: "--errors",
+			Usage:   "Show only error lines (implies -f --tail=100).",
 		})
 	}
 

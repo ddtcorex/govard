@@ -253,7 +253,10 @@ var remoteCopyIdCmd = &cobra.Command{
 var remoteExecCmd = &cobra.Command{
 	Use:   "exec [name] -- <command>",
 	Short: "Execute a command on a remote environment",
-	Args:  cobra.MinimumNArgs(2),
+	Long:  "Execute a command on a remote environment over SSH. The command runs from the remote's configured path (cd into it first) when the remote defines one.",
+	Example: `  govard remote exec staging -- uptime
+  govard remote exec prod -- "cd /var/www && git pull"`,
+	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		startedAt := time.Now()
 		remoteName := args[0]
@@ -353,9 +356,11 @@ var remoteExecCmd = &cobra.Command{
 }
 
 var remoteTestCmd = &cobra.Command{
-	Use:   "test [name]",
-	Short: "Test SSH connectivity to a remote",
-	Args:  cobra.ExactArgs(1),
+	Use:     "test [name]",
+	Short:   "Test SSH connectivity to a remote",
+	Long:    "Test SSH connectivity to a remote, plus a non-fatal rsync-availability probe on the target.",
+	Example: `  govard remote test staging`,
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		remoteName := args[0]
 		startedAt := time.Now()
@@ -561,13 +566,13 @@ func init() {
 	remoteAddCmd.Flags().String("user", "", "Remote user")
 	remoteAddCmd.Flags().String("path", "", "Remote path on target host (quote '~/...' in shell usage to preserve remote home expansion)")
 	remoteAddCmd.Flags().Int("port", 22, "Remote port")
-	remoteAddCmd.Flags().String("capabilities", "none", "Remote capabilities to block (comma-separated: files,media,db or none)")
+	remoteAddCmd.Flags().String("capabilities", "none", "Remote capabilities to block (comma-separated: files,media,db,all or none)")
 	remoteAddCmd.Flags().String("auth-method", remote.AuthMethodKeychain, "Remote auth method (keychain, ssh-agent, keyfile)")
 	remoteAddCmd.Flags().String("key-path", "", "SSH private key path (stored in auth store when --auth-method=keychain)")
 	remoteAddCmd.Flags().Bool("strict-host-key", false, "Enable strict SSH host key checking")
 	remoteAddCmd.Flags().String("known-hosts-file", "", "Custom SSH known_hosts file (implies --strict-host-key)")
-	remoteAddCmd.Flags().Bool("protected", false, "Mark remote as protected")
-	remoteCopyIdCmd.Flags().StringP("identity", "i", "", "Path to the SSH public key to copy")
+	remoteAddCmd.Flags().Bool("protected", false, "Mark remote as protected (production-named remotes are protected automatically)")
+	remoteCopyIdCmd.Flags().StringP("identity", "i", "", "Path to the SSH public key to copy (default: the remote key-path, then ~/.ssh/id_ed25519.pub, id_ecdsa.pub, id_rsa.pub)")
 
 	remoteCmd.AddCommand(remoteAddCmd)
 	remoteCmd.AddCommand(remoteExecCmd)

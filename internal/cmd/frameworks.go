@@ -44,6 +44,10 @@ run inside the application container for Node-runtime frameworks (Next.js,
 Emdash); for other frameworks they run in a one-shot Node container matching
 stack.node_version, since those application images no longer bundle Node.
 
+A '<subcommand> --help' request is forwarded to the wrapped tool inside the
+container, so it shows the tool's own help (this needs a matching project
+with running containers) rather than Govard help.
+
 Case Studies:
 - Clean Workspace: Run 'govard tool magento setup:upgrade' without needing PHP/MySQL on your laptop.
 - Unified Workflow: Use the same command regardless of which PHP version the project requires.

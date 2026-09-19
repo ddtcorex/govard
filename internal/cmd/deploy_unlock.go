@@ -20,8 +20,9 @@ var deployUnlockCmd = &cobra.Command{
 
 A deploy keeps its lock when it fails after publish, because the target may be
 mid-change and a second deploy must not start against it silently. That makes
-clearing the lock an explicit act: this command refuses a recent lock unless
---force is given, and names the run holding it.`,
+clearing the lock an explicit act: this command refuses a lock newer than
+lock_stale_after (default 2h) unless --force is given, and names the run
+holding it.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDeployUnlock,
 }

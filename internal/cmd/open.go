@@ -28,10 +28,11 @@ Supported targets: admin, db (PMA/DB Client), mail (Mailpit), mftf, portainer, s
 Targets:
 - admin: The web application's admin panel.
 - db: PHPMyAdmin (local) or local DB client (remote).
-- mail: Mailpit web UI for inspecting outgoing emails.
-- mftf: Magento Functional Testing Framework web endpoint.
+- mail: Mailpit web UI for inspecting outgoing emails (local only).
+- mftf: Magento Functional Testing Framework web endpoint (local only).
+- portainer: Container management UI (local only).
 - shell: Open or print shell access details for the target environment.
-- sftp: SFTP connection details (remote).
+- sftp: SFTP connection details (remote only).
 - elasticsearch/opensearch: Search engine endpoint info.
 
 Case Studies:

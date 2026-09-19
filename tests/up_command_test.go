@@ -1,8 +1,10 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -297,7 +299,7 @@ func TestWaitForUpRuntimeReadinessRetriesUntilSuccess(t *testing.T) {
 				Cache: "none",
 			},
 		},
-	}, 3*time.Millisecond)
+	}, nil, 3*time.Millisecond)
 	if err != nil {
 		t.Fatalf("expected readiness wait to succeed, got %v", err)
 	}
@@ -331,7 +333,7 @@ func TestWaitForUpRuntimeReadinessReturnsErrorAfterTimeout(t *testing.T) {
 				Cache: "none",
 			},
 		},
-	}, 2*time.Millisecond)
+	}, nil, 2*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected readiness wait to fail")
 	}
@@ -363,7 +365,7 @@ func TestWaitForUpRuntimeReadinessFailsFastWhenContainerExited(t *testing.T) {
 				Cache: "none",
 			},
 		},
-	}, 30*time.Second)
+	}, nil, 30*time.Second)
 	if err == nil {
 		t.Fatal("expected readiness wait to fail fast")
 	}
@@ -507,5 +509,109 @@ func TestFrameworkLifecycleHooksAreOwnedByDefinitions(t *testing.T) {
 	mageOS, ok := frameworks.Get("mageos")
 	if !ok || mageOS.ConfigureAfterProfileShift == nil {
 		t.Fatal("expected Mage-OS to inherit the Magento profile-shift configuration hook")
+	}
+}
+
+func renderEnvUpHelp(t *testing.T, args []string) string {
+	t.Helper()
+	root := cmd.RootCommandForTest()
+	output := &bytes.Buffer{}
+	root.SetOut(output)
+	root.SetErr(io.Discard)
+	root.SetArgs(args)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute %v: %v", args, err)
+	}
+	return output.String()
+}
+
+// The up page must list only the flags runUpCommand accepts: it documents a
+// real Govard pipeline, not a docker compose passthrough.
+func TestEnvUpHelpListsOnlyAcceptedFlags(t *testing.T) {
+	help := renderEnvUpHelp(t, []string{"env", "up", "--help"})
+	for _, accepted := range []string{"--quickstart", "--remove-orphans", "--force-recreate", "--fallback-local-build", "--no-tuning", "--update-lock"} {
+		if !strings.Contains(help, accepted) {
+			t.Fatalf("env up help does not document accepted flag %s:\n%s", accepted, help)
+		}
+	}
+	for _, rejected := range []string{"--no-deps", "abort-on-container-exit", "--attach", "--exit-code-from", "--menu"} {
+		if strings.Contains(help, rejected) {
+			t.Fatalf("env up help advertises rejected compose option %s:\n%s", rejected, help)
+		}
+	}
+}
+
+func TestUpBuildFlagRemoved(t *testing.T) {
+	root := cmd.RootCommandForTest()
+	command, _, err := root.Find([]string{"env", "up"})
+	if err != nil {
+		t.Fatalf("find env up: %v", err)
+	}
+	if flag := command.Flags().Lookup("build"); flag != nil {
+		t.Fatalf("expected no --build flag on env up, help still shows: %s", flag.Usage)
+	}
+	if help := renderEnvUpHelp(t, []string{"env", "up", "--help"}); strings.Contains(help, "--build") {
+		t.Fatalf("env up help still documents the removed --build flag:\n%s", help)
+	}
+}
+
+func TestBuildUpStartArgsHonorsServiceFilter(t *testing.T) {
+	got := cmd.BuildUpStartArgsForTest(false, false, []string{"php"})
+	want := []string{"up", "-d", "php"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("start args = %v, want %v", got, want)
+	}
+	got = cmd.BuildUpStartArgsForTest(true, true, nil)
+	want = []string{"up", "-d", "--remove-orphans", "--force-recreate"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("start args = %v, want %v", got, want)
+	}
+}
+
+func TestFilterUpReadinessChecksByServices(t *testing.T) {
+	checks, err := cmd.BuildUpReadinessChecksForTest(t.TempDir(), engine.Config{
+		ProjectName: "demo",
+		Framework:   "wordpress",
+		Stack: engine.Stack{
+			Services: engine.Services{DB: "mariadb", Cache: "none"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build readiness checks: %v", err)
+	}
+	if len(checks) < 2 {
+		t.Fatalf("need at least two readiness checks to test filtering, got %v", checks)
+	}
+	filtered := cmd.FilterUpReadinessChecksForTest(checks, []string{"php"})
+	if len(filtered) == 0 || len(filtered) >= len(checks) {
+		t.Fatalf("filtered checks = %v, want a strict subset of %v", filtered, checks)
+	}
+	for _, check := range filtered {
+		if check.Service != "php" {
+			t.Fatalf("filtered check service = %q, want only php: %v", check.Service, filtered)
+		}
+	}
+	if got := cmd.FilterUpReadinessChecksForTest(checks, nil); !reflect.DeepEqual(got, checks) {
+		t.Fatalf("nil services must keep every check, got %v", got)
+	}
+}
+
+func TestEnvLongHasNoProjectAlias(t *testing.T) {
+	root := cmd.RootCommandForTest()
+	command, _, err := root.Find([]string{"env"})
+	if err != nil {
+		t.Fatalf("find env: %v", err)
+	}
+	if strings.Contains(command.Long, "Aliases: project") {
+		t.Fatalf("env Long still claims a project alias:\n%s", command.Long)
+	}
+}
+
+func TestEnvUpLongDocumentsAllStages(t *testing.T) {
+	help := renderEnvUpHelp(t, []string{"env", "up", "--help"})
+	for _, stage := range []string{"ProfileGuard", "SyncResources", "LocalImages", "prompt"} {
+		if !strings.Contains(help, stage) {
+			t.Fatalf("env up help does not document %q:\n%s", stage, help)
+		}
 	}
 }

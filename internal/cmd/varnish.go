@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"govard/internal/cli"
 	"govard/internal/conventions"
 	"os"
 	"os/exec"
@@ -17,16 +18,17 @@ var varnishCmd = &cobra.Command{
 	},
 	Use:   "varnish [command]",
 	Short: "Control the varnish service",
-	Long: `Interact with the Varnish service. 
-Supports custom utility commands (log, ban, stats) and standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
+	Long: `Interact with the Varnish service.
+Supports custom utility commands (log, ban <pattern>, stats) and standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).
+Note: 'log' streams the Varnish request log; 'logs' shows the container logs via compose. 'ban' requires a pattern argument.`,
 	Example: `  # View varnish logs
-  govard env varnish log
+  govard varnish log
 
   # Ban a pattern
-  govard env varnish ban /.*
+  govard varnish ban /.*
 
   # Check varnish status
-  govard env varnish ps`,
+  govard varnish ps`,
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
@@ -54,9 +56,7 @@ Supports custom utility commands (log, ban, stats) and standard Docker Compose m
 			return runVarnishCmd(containerName, []string{"varnishstat"})
 		case "ban":
 			if len(args) < 2 {
-				pterm.Error.Println("Usage: govard varnish ban <pattern>")
-				pterm.Description.Println("Example: govard varnish ban /.*")
-				return nil
+				return &cli.UsageError{Err: fmt.Errorf("usage: govard varnish ban <pattern> (example: govard varnish ban /.*)")}
 			}
 			pattern := args[1]
 			pterm.Info.Printf("Banning pattern: %s\n", pattern)
@@ -91,4 +91,10 @@ func runVarnishCmd(containerName string, args []string) error {
 		return fmt.Errorf("varnish command failed: %w", err)
 	}
 	return nil
+}
+
+func init() {
+	// Dual-registered under root and env: pin standard help so --help never
+	// depends on init order resolving the parent to the rebranded env command.
+	varnishCmd.SetHelpFunc(standardHelpFunc())
 }

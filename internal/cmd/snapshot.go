@@ -22,7 +22,7 @@ var snapshotCmd = &cobra.Command{
 	},
 	Use:     "snapshot",
 	Aliases: []string{"snap"},
-	Short:   "Manage local snapshots for database and media",
+	Short:   "Manage snapshots for database and media (local, or remote via -e/--environment)",
 }
 
 var snapshotCreateCmd = &cobra.Command{
@@ -441,9 +441,11 @@ var snapshotExportCmd = &cobra.Command{
 }
 
 var snapshotPullCmd = &cobra.Command{
-	Use:   "pull <name>",
-	Short: "Pull a snapshot from a remote environment to local",
-	Args:  cobra.ExactArgs(1),
+	Use:     "pull <name> -e <remote>",
+	Short:   "Pull a snapshot from a remote environment to local",
+	Long:    "Pull a snapshot from a remote environment to local. Requires a remote -e/--environment.",
+	Example: `  govard snapshot pull nightly -e staging`,
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		environment, _ := cmd.Flags().GetString("environment")
 		environment = strings.ToLower(strings.TrimSpace(environment))
@@ -512,9 +514,11 @@ var snapshotPullCmd = &cobra.Command{
 }
 
 var snapshotPushCmd = &cobra.Command{
-	Use:   "push <name>",
-	Short: "Push a local snapshot to a remote environment",
-	Args:  cobra.ExactArgs(1),
+	Use:     "push <name> -e <remote>",
+	Short:   "Push a local snapshot to a remote environment",
+	Long:    "Push a local snapshot to a remote environment. Requires a remote -e/--environment; push is blocked on write-protected remotes.",
+	Example: `  govard snapshot push nightly -e staging`,
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		environment, _ := cmd.Flags().GetString("environment")
 		environment = strings.ToLower(strings.TrimSpace(environment))
@@ -598,7 +602,7 @@ var snapshotPushCmd = &cobra.Command{
 func init() {
 	snapshotCmd.PersistentFlags().StringP("environment", "e", "", "Target environment (local, staging, prod, etc.)")
 
-	snapshotCreateCmd.Flags().Bool("local", false, "Stream the remote snapshot directly to the local machine")
+	snapshotCreateCmd.Flags().Bool("local", false, "Stream the remote snapshot directly to the local machine (not yet implemented for remote snapshots)")
 
 	snapshotRestoreCmd.Flags().Bool("db-only", false, "Restore database only")
 	snapshotRestoreCmd.Flags().Bool("media-only", false, "Restore media only")

@@ -107,9 +107,51 @@ func DBReadinessProbeArgsForTest(config engine.Config, containerName string) []s
 	return dbReadinessProbeArgs(config, containerName)
 }
 
+// DoctorFixEnabledForTest exposes the --commit-implies---fix resolution.
+func DoctorFixEnabledForTest(fixFlag, commitFlag bool) bool {
+	return doctorFixEnabled(fixFlag, commitFlag)
+}
+
+// StripSvcUpArgsForTest exposes Govard-toggle stripping for 'svc up'.
+func StripSvcUpArgsForTest(args []string) []string {
+	return stripSvcUpArgs(args)
+}
+
+// PolishRebrandedHelpForTest exposes compose-help post-processing for tests.
+func PolishRebrandedHelpForTest(helpText, govardCmdName, detectedSubcommand string) string {
+	return polishRebrandedHelp(helpText, govardCmdName, detectedSubcommand)
+}
+
+// BuildUpStartArgsForTest exposes Start-stage compose argument construction.
+func BuildUpStartArgsForTest(removeOrphans, forceRecreate bool, services []string) []string {
+	return buildUpStartArgs(removeOrphans, forceRecreate, services)
+}
+
+// FilterUpReadinessChecksForTest exposes readiness-check service scoping.
+func FilterUpReadinessChecksForTest(checks []UpReadinessCheckForTest, services []string) []UpReadinessCheckForTest {
+	internal := make([]upReadinessCheck, 0, len(checks))
+	for _, check := range checks {
+		internal = append(internal, upReadinessCheck{
+			Service:        check.Service,
+			ContainerName:  check.ContainerName,
+			RequireHealthy: check.RequireHealthy,
+		})
+	}
+	filtered := filterUpReadinessChecks(internal, services)
+	result := make([]UpReadinessCheckForTest, 0, len(filtered))
+	for _, check := range filtered {
+		result = append(result, UpReadinessCheckForTest{
+			Service:        check.Service,
+			ContainerName:  check.ContainerName,
+			RequireHealthy: check.RequireHealthy,
+		})
+	}
+	return result
+}
+
 // WaitForUpRuntimeReadinessForTest exposes readiness waiting for tests.
-func WaitForUpRuntimeReadinessForTest(projectRoot string, config engine.Config, timeout time.Duration) error {
-	return waitForUpRuntimeReadiness(projectRoot, config, timeout)
+func WaitForUpRuntimeReadinessForTest(projectRoot string, config engine.Config, services []string, timeout time.Duration) error {
+	return waitForUpRuntimeReadiness(projectRoot, config, services, timeout)
 }
 
 // SetUpReadinessProbeRunnerForTest overrides the probe runner used by readiness checks.

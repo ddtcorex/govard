@@ -21,7 +21,8 @@ var shellCmd = &cobra.Command{
 	Short:   "Enter the application container",
 	Long: `Enter the application container interactively, or execute a command inside it.
 
-Without arguments, starts an interactive bash session.
+Without arguments, starts an interactive bash session. When the container
+has no bash (exit 126/127), the session falls back to sh.
 
 With -c/--command, executes the given command string via bash -c:
 

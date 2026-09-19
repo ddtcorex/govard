@@ -197,8 +197,8 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 		Short: "Run and inspect persistent project audits",
 	}
 	command.PersistentFlags().StringVar(&options.Scope, "scope", string(audit.ScopeProject), "Audit scope (project or diff)")
-	command.PersistentFlags().StringVar(&options.BaseRef, "base", "", "Base ref required for diff scope")
-	command.PersistentFlags().StringSliceVar(&options.Checks, "checks", []string{"lint"}, "Checks to run (lint or profiler)")
+	command.PersistentFlags().StringVar(&options.BaseRef, "base", "", "Base ref for diff scope (or auto to detect from git)")
+	command.PersistentFlags().StringSliceVar(&options.Checks, "checks", []string{"lint"}, "Checks to run (lint, profiler, or integrity; integrity needs no container)")
 	command.PersistentFlags().StringVar(&options.Format, "format", "text", "Output format (text or json)")
 	command.PersistentFlags().StringVar(&options.SessionID, "session", "", "Explicit audit session ID")
 	command.PersistentFlags().StringVar(&options.RunID, "run", "", "Explicit audit run ID")
@@ -338,145 +338,157 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 }
 
 func newAuditRerunCommand(options *auditCommandOptions, dependencies auditCommandDependencies) *cobra.Command {
-	return &cobra.Command{Use: "rerun", Short: "Rerun an explicit audit session", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := validateAuditCommandOptions(options); err != nil {
-			return err
-		}
-		if strings.TrimSpace(options.SessionID) == "" {
-			return errors.New("audit rerun requires --session")
-		}
-		// Without an explicit --checks the rerun repeats the latest run's
-		// selection; peek it straight from the persisted session store so no
-		// lint backend or profiler runtime is constructed for the lookup.
-		effectiveChecks := options.Checks
-		if !auditFlagChanged(cmd, "checks") {
-			mode := types.AuditTargetMode(strings.TrimSpace(options.TargetMode))
-			if mode == "" {
-				mode = types.AuditTargetAuto
+	return &cobra.Command{Use: "rerun --session <id>", Short: "Rerun an explicit audit session",
+		Long:    "Rerun an explicit audit session. Requires --session; without an explicit --checks the rerun repeats the latest run's selection.",
+		Example: "  govard audit rerun --session abc123",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateAuditCommandOptions(options); err != nil {
+				return err
 			}
-			resolvedDeps := currentAuditDependencies(dependencies)
-			peekTarget, err := resolveAuditTarget(cmd.Context(), commandStartDirectory(), mode, options.PHPVersions, resolvedDeps.runtimePHPProbe, false)
+			if strings.TrimSpace(options.SessionID) == "" {
+				return errors.New("audit rerun requires --session")
+			}
+			// Without an explicit --checks the rerun repeats the latest run's
+			// selection; peek it straight from the persisted session store so no
+			// lint backend or profiler runtime is constructed for the lookup.
+			effectiveChecks := options.Checks
+			if !auditFlagChanged(cmd, "checks") {
+				mode := types.AuditTargetMode(strings.TrimSpace(options.TargetMode))
+				if mode == "" {
+					mode = types.AuditTargetAuto
+				}
+				resolvedDeps := currentAuditDependencies(dependencies)
+				peekTarget, err := resolveAuditTarget(cmd.Context(), commandStartDirectory(), mode, options.PHPVersions, resolvedDeps.runtimePHPProbe, false)
+				if err != nil {
+					return err
+				}
+				peekRunner := audit.NewRunner(audit.RunnerOptions{Store: audit.NewStore(audit.DefaultStoreRoot(engine.GovardHomeDir()))})
+				effectiveChecks, err = peekRunner.LatestRunChecks(cmd.Context(), peekTarget.ProjectID, options.SessionID)
+				if err != nil {
+					return err
+				}
+			}
+			lintRequested := auditChecksInclude(effectiveChecks, "lint")
+			profilerRequested := auditChecksInclude(effectiveChecks, "profiler")
+			runner, resolvedTarget, err := prepareAudit(cmd, options, dependencies, auditPreparation{
+				LintBackendRequired:      lintRequested,
+				ProfilerRuntimeRequired:  profilerRequested,
+				ContainerRuntimeRequired: lintRequested || profilerRequested,
+			})
 			if err != nil {
 				return err
 			}
-			peekRunner := audit.NewRunner(audit.RunnerOptions{Store: audit.NewStore(audit.DefaultStoreRoot(engine.GovardHomeDir()))})
-			effectiveChecks, err = peekRunner.LatestRunChecks(cmd.Context(), peekTarget.ProjectID, options.SessionID)
-			if err != nil {
+			if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 				return err
 			}
-		}
-		lintRequested := auditChecksInclude(effectiveChecks, "lint")
-		profilerRequested := auditChecksInclude(effectiveChecks, "profiler")
-		runner, resolvedTarget, err := prepareAudit(cmd, options, dependencies, auditPreparation{
-			LintBackendRequired:      lintRequested,
-			ProfilerRuntimeRequired:  profilerRequested,
-			ContainerRuntimeRequired: lintRequested || profilerRequested,
-		})
-		if err != nil {
-			return err
-		}
-		if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
-			return err
-		}
-		if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
-			return err
-		}
-		releaseLock, lockErr := AcquireAuditLock(resolvedTarget.ProjectID)
-		if lockErr != nil {
-			return lockErr
-		}
-		defer func() { _ = releaseLock() }()
-		auditCtx := cmd.Context()
-		if timeout := resolveAuditTimeout(options.Timeout, resolvedTarget); timeout > 0 {
-			var cancel context.CancelFunc
-			auditCtx, cancel = context.WithTimeout(auditCtx, timeout)
-			defer cancel()
-			if options.Format != "json" && strings.TrimSpace(options.Timeout) == "auto" {
-				pterm.Info.Printf("audit timeout %s (auto-estimated for %s)\n", timeout, resolvedTarget.Definition.Name)
+			if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
+				return err
 			}
-		}
-		result, err := runner.Rerun(auditCtx, options.SessionID, resolvedTarget.ProjectID, effectiveChecks)
-		var renderErr error
-		if result.RunID != "" {
-			renderErr = writeAuditValue(cmd, options.Format, result)
-		}
-		if err != nil {
-			return auditRunExitError{cause: err}
-		}
-		if renderErr != nil {
-			return renderErr
-		}
-		return auditRunOutcome(result)
-	}}
+			releaseLock, lockErr := AcquireAuditLock(resolvedTarget.ProjectID)
+			if lockErr != nil {
+				return lockErr
+			}
+			defer func() { _ = releaseLock() }()
+			auditCtx := cmd.Context()
+			if timeout := resolveAuditTimeout(options.Timeout, resolvedTarget); timeout > 0 {
+				var cancel context.CancelFunc
+				auditCtx, cancel = context.WithTimeout(auditCtx, timeout)
+				defer cancel()
+				if options.Format != "json" && strings.TrimSpace(options.Timeout) == "auto" {
+					pterm.Info.Printf("audit timeout %s (auto-estimated for %s)\n", timeout, resolvedTarget.Definition.Name)
+				}
+			}
+			result, err := runner.Rerun(auditCtx, options.SessionID, resolvedTarget.ProjectID, effectiveChecks)
+			var renderErr error
+			if result.RunID != "" {
+				renderErr = writeAuditValue(cmd, options.Format, result)
+			}
+			if err != nil {
+				return auditRunExitError{cause: err}
+			}
+			if renderErr != nil {
+				return renderErr
+			}
+			return auditRunOutcome(result)
+		}}
 }
 
 func newAuditStatusCommand(options *auditCommandOptions, dependencies auditCommandDependencies) *cobra.Command {
-	return &cobra.Command{Use: "status", Short: "Show an explicit audit session", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := validateAuditCommandOptions(options); err != nil {
-			return err
-		}
-		if strings.TrimSpace(options.SessionID) == "" {
-			return errors.New("audit status requires --session")
-		}
-		runner, target, err := prepareAudit(cmd, options, dependencies, auditPreparation{})
-		if err != nil {
-			return err
-		}
-		if target.Definition.AuditLint == nil {
-			return fmt.Errorf("framework %q does not support lint audit", target.Definition.Name)
-		}
-		manifest, err := runner.Status(target.ProjectID, options.SessionID)
-		if err != nil {
-			return err
-		}
-		return writeAuditValue(cmd, options.Format, manifest)
-	}}
+	return &cobra.Command{Use: "status --session <id>", Short: "Show an explicit audit session",
+		Long:    "Show an explicit audit session. Requires --session.",
+		Example: "  govard audit status --session abc123",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateAuditCommandOptions(options); err != nil {
+				return err
+			}
+			if strings.TrimSpace(options.SessionID) == "" {
+				return errors.New("audit status requires --session")
+			}
+			runner, target, err := prepareAudit(cmd, options, dependencies, auditPreparation{})
+			if err != nil {
+				return err
+			}
+			if target.Definition.AuditLint == nil {
+				return fmt.Errorf("framework %q does not support lint audit", target.Definition.Name)
+			}
+			manifest, err := runner.Status(target.ProjectID, options.SessionID)
+			if err != nil {
+				return err
+			}
+			return writeAuditValue(cmd, options.Format, manifest)
+		}}
 }
 
 func newAuditResultCommand(options *auditCommandOptions, dependencies auditCommandDependencies) *cobra.Command {
-	return &cobra.Command{Use: "result", Short: "Show an explicit audit run result", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := validateAuditCommandOptions(options); err != nil {
-			return err
-		}
-		if strings.TrimSpace(options.SessionID) == "" || strings.TrimSpace(options.RunID) == "" {
-			return errors.New("audit result requires --session and --run")
-		}
-		runner, target, err := prepareAudit(cmd, options, dependencies, auditPreparation{})
-		if err != nil {
-			return err
-		}
-		if target.Definition.AuditLint == nil {
-			return fmt.Errorf("framework %q does not support lint audit", target.Definition.Name)
-		}
-		result, err := runner.Result(target.ProjectID, options.SessionID, options.RunID)
-		if err != nil {
-			return err
-		}
-		return writeAuditValue(cmd, options.Format, result)
-	}}
+	return &cobra.Command{Use: "result --session <id> --run <id>", Short: "Show an explicit audit run result",
+		Long:    "Show an explicit audit run result. Requires --session and --run.",
+		Example: "  govard audit result --session abc123 --run 1",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateAuditCommandOptions(options); err != nil {
+				return err
+			}
+			if strings.TrimSpace(options.SessionID) == "" || strings.TrimSpace(options.RunID) == "" {
+				return errors.New("audit result requires --session and --run")
+			}
+			runner, target, err := prepareAudit(cmd, options, dependencies, auditPreparation{})
+			if err != nil {
+				return err
+			}
+			if target.Definition.AuditLint == nil {
+				return fmt.Errorf("framework %q does not support lint audit", target.Definition.Name)
+			}
+			result, err := runner.Result(target.ProjectID, options.SessionID, options.RunID)
+			if err != nil {
+				return err
+			}
+			return writeAuditValue(cmd, options.Format, result)
+		}}
 }
 
 func newAuditCleanupCommand(options *auditCommandOptions, dependencies auditCommandDependencies) *cobra.Command {
-	return &cobra.Command{Use: "cleanup", Short: "Remove old persisted audit sessions", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := validateAuditCommandOptions(options); err != nil {
-			return err
-		}
-		if !cmd.Flags().Changed("older-than") || options.OlderThan <= 0 {
-			return errors.New("audit cleanup requires a positive --older-than duration")
-		}
-		runner, target, err := prepareAudit(cmd, options, dependencies, auditPreparation{})
-		if err != nil {
-			return err
-		}
-		if target.Definition.AuditLint == nil {
-			return fmt.Errorf("framework %q does not support lint audit", target.Definition.Name)
-		}
-		removed, err := runner.CleanupOlderThan(target.ProjectID, time.Now().Add(-options.OlderThan))
-		if err != nil {
-			return err
-		}
-		return writeAuditValue(cmd, options.Format, map[string]any{"removed_sessions": removed})
-	}}
+	return &cobra.Command{Use: "cleanup --older-than <duration>", Short: "Remove old persisted audit sessions",
+		Long:    "Remove persisted audit sessions older than the required --older-than duration.",
+		Example: "  govard audit cleanup --older-than 720h",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateAuditCommandOptions(options); err != nil {
+				return err
+			}
+			if !cmd.Flags().Changed("older-than") || options.OlderThan <= 0 {
+				return errors.New("audit cleanup requires a positive --older-than duration")
+			}
+			runner, target, err := prepareAudit(cmd, options, dependencies, auditPreparation{})
+			if err != nil {
+				return err
+			}
+			if target.Definition.AuditLint == nil {
+				return fmt.Errorf("framework %q does not support lint audit", target.Definition.Name)
+			}
+			removed, err := runner.CleanupOlderThan(target.ProjectID, time.Now().Add(-options.OlderThan))
+			if err != nil {
+				return err
+			}
+			return writeAuditValue(cmd, options.Format, map[string]any{"removed_sessions": removed})
+		}}
 }
 
 func prepareAudit(cmd *cobra.Command, options *auditCommandOptions, dependencies auditCommandDependencies, preparation auditPreparation) (*audit.Runner, resolvedAuditTarget, error) {

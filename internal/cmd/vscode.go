@@ -39,9 +39,11 @@ container instead of requiring PHP, Composer, or vendor binaries on the host.`,
 
   # Settings that require a single executable path (VSCode spawns them
   # without a shell, so a multi-word string won't parse) still need a
-  # one-line wrapper script that execs "govard vscode php", e.g. for:
-  "php.validate.executablePath": "/path/to/govard-php-wrapper"
-  "php-cs-fixer.executablePath": "/path/to/govard-php-cs-fixer-wrapper"`,
+  # one-line wrapper script that execs "govard vscode php". Create them with
+  # "govard vscode setup --global" (~/.govard/bin/govard-php,
+  # ~/.govard/bin/govard-php-cs-fixer, ~/.govard/bin/govard-phpcs), e.g. for:
+  "php.validate.executablePath": "~/.govard/bin/govard-php"
+  "php-cs-fixer.executablePath": "~/.govard/bin/govard-php-cs-fixer"`,
 }
 
 type vscodeToolCommand struct {
@@ -68,6 +70,11 @@ func initVSCodeCommands() {
 			Short:              vc.Short,
 			DisableFlagParsing: true,
 			RunE: func(c *cobra.Command, args []string) error {
+				// Answer -h/--help locally: forwarding it would run project
+				// resolution first and fail outside a project.
+				if len(args) > 0 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
+					return c.Help()
+				}
 				root, err := findProjectRootUpward()
 				if err != nil {
 					return err

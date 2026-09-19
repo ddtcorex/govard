@@ -25,30 +25,43 @@ var upCmd = &cobra.Command{
 	Annotations: map[string]string{
 		runtime.AnnotationRequires: string(runtime.CapDocker),
 	},
-	Use:   "up [flags]",
+	Use:   "up [flags] [SERVICE...]",
 	Short: "Start the development environment",
-	Long: `Starts all Docker containers required for the current project.
+	Long: `Starts the Docker containers required for the current project.
 It automatically handles framework detection, configuration validation,
 Docker Compose blueprint rendering, host mapping, and proxy registration.
+
+Naming services (e.g. 'govard env up php') starts only those services;
+readiness checks are scoped to the requested services the same way.
 
 The startup process follows these stages:
 1. Detect: Identifies framework context from project files.
 2. Validate: Checks Docker status, port conflicts, and layered config.
-3. Render: Generates the specialized Docker Compose file.
-4. Start: Runs 'docker compose up' in detached mode.
-5. Ready: Waits for the local runtime to accept requests.
-6. Verify: Maps the .test domain to 127.0.0.1 and registers it with the Govard Proxy.
+3. ProfileGuard: Confirms a profile switch when the active profile changes.
+4. Render: Generates the specialized Docker Compose file.
+5. SyncResources: Offers to clone the database volume for a new profile.
+6. Pull: Pulls images unless disabled.
+7. LocalImages: Rebuilds incompatible local Govard images when needed.
+8. Start: Runs 'docker compose up' in detached mode.
+9. Ready: Waits for the local runtime to accept requests.
+10. Verify: Maps all configured domains to 127.0.0.1 and registers them with the Govard Proxy.
+
+ProfileGuard and SyncResources are interactive prompts: confirm a profile
+switch, or accept the database volume clone, before the pipeline continues.
 
 Case Studies:
 - Standard Startup: Simply run 'govard env up' to get your full stack running.
-- Low Resource Mode: Use --quickstart if you have limited RAM or only need PHP/Web server.
+- Low Resource Mode: Use --quickstart to disable Elasticsearch, Varnish, Redis, Xdebug, and queue services.
 - Fresh Install Recovery: If containers are broken, 'govard env up' re-renders and restarts them.
 - Skip Auto-Configuration: Use --no-tuning to skip framework auto-configuration (Magento, etc.)`,
 	Example: `  # Start the environment normally
   govard env up
 
-  # Fast startup: skip heavy services like Elasticsearch, Varnish, Redis
+  # Fast startup: skip heavy services (search, cache, queue, Xdebug)
   govard env up --quickstart
+
+  # Start only the PHP service
+  govard env up php
 
   # Start without framework auto-configuration
   govard env up --no-tuning`,
@@ -133,6 +146,7 @@ type upRuntimeContext struct {
 	ForceRecreate bool
 	UpdateLock    bool
 	SkipTuning    bool
+	Services      []string
 	ShiftInfo     *engine.ProfileShiftInfo
 	Out           io.Writer
 	Err           io.Writer
@@ -351,13 +365,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 			Name:         "Start",
 			OnFailureTip: "govard doctor",
 			Run: func() error {
-				upArgs := []string{"up", "-d"}
-				if context.RemoveOrphans {
-					upArgs = append(upArgs, "--remove-orphans")
-				}
-				if context.ForceRecreate {
-					upArgs = append(upArgs, "--force-recreate")
-				}
+				upArgs := buildUpStartArgs(context.RemoveOrphans, context.ForceRecreate, context.Services)
 
 				err := engine.RunCompose(cmd.Context(), engine.ComposeOptions{
 					ProjectDir:  context.Cwd,
@@ -405,7 +413,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 			Name:         "Ready",
 			OnFailureTip: "govard env logs php -f",
 			Run: func() error {
-				return waitForUpRuntimeReadiness(context.Cwd, context.Config, defaultUpReadinessTimeout)
+				return waitForUpRuntimeReadiness(context.Cwd, context.Config, context.Services, defaultUpReadinessTimeout)
 			},
 		},
 		{
@@ -511,6 +519,39 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 	}
 }
 
+// buildUpStartArgs assembles the 'docker compose up' invocation for the Start
+// stage. Named services narrow the start (and the Ready checks) to that
+// subset; an empty list starts the whole stack.
+func buildUpStartArgs(removeOrphans, forceRecreate bool, services []string) []string {
+	upArgs := []string{"up", "-d"}
+	if removeOrphans {
+		upArgs = append(upArgs, "--remove-orphans")
+	}
+	if forceRecreate {
+		upArgs = append(upArgs, "--force-recreate")
+	}
+	return append(upArgs, services...)
+}
+
+// filterUpReadinessChecks scopes readiness waiting to the services the
+// operator named. An empty list keeps every check (full-stack start).
+func filterUpReadinessChecks(checks []upReadinessCheck, services []string) []upReadinessCheck {
+	if len(services) == 0 {
+		return checks
+	}
+	wanted := make(map[string]struct{}, len(services))
+	for _, service := range services {
+		wanted[service] = struct{}{}
+	}
+	filtered := make([]upReadinessCheck, 0, len(checks))
+	for _, check := range checks {
+		if _, ok := wanted[check.Service]; ok {
+			filtered = append(filtered, check)
+		}
+	}
+	return filtered
+}
+
 func buildUpReadinessChecks(projectRoot string, config engine.Config) ([]upReadinessCheck, error) {
 	if strings.TrimSpace(config.ProjectName) == "" {
 		return nil, nil
@@ -608,11 +649,12 @@ func readinessProbeAttempts(timeout time.Duration) int {
 	return attempts
 }
 
-func waitForUpRuntimeReadiness(projectRoot string, config engine.Config, timeout time.Duration) error {
+func waitForUpRuntimeReadiness(projectRoot string, config engine.Config, services []string, timeout time.Duration) error {
 	checks, err := buildUpReadinessChecks(projectRoot, config)
 	if err != nil {
 		return err
 	}
+	checks = filterUpReadinessChecks(checks, services)
 	if len(checks) == 0 {
 		return nil
 	}
@@ -890,6 +932,7 @@ func runUpCommand(cmd *cobra.Command, args []string) (err error) {
 		ForceRecreate: forceRecreate,
 		UpdateLock:    updateLock,
 		SkipTuning:    skipTuning,
+		Services:      args,
 		Out:           cmd.OutOrStdout(),
 		Err:           cmd.ErrOrStderr(),
 	}
@@ -991,9 +1034,15 @@ func addUpFlags(command *cobra.Command) {
 	command.Flags().Bool("force-recreate", false, "Recreate containers even if their configuration and image haven't changed")
 	command.Flags().Bool("update-lock", false, "Automatically update govard.lock if mismatches are found")
 	command.Flags().Bool("no-tuning", false, "Skip framework auto-configuration after environment starts")
-	command.Flags().Bool("build", false, "Build images before starting (compat: govard manages local fallback automatically)")
 }
 
 func init() {
 	addUpFlags(upCmd)
+	// up runs a real Govard pipeline, not a compose passthrough: render the
+	// standard command help (Long, Example, the 9 accepted flags) instead of
+	// inheriting env's rebranded 'docker compose up --help' page, whose
+	// options this command rejects.
+	upCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		standardHelpFunc()(cmd, args)
+	})
 }

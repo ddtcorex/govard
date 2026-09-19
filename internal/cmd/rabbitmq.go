@@ -19,16 +19,16 @@ var rabbitmqCmd = &cobra.Command{
 	Long: `Interact with the RabbitMQ queue service.
 Supports custom utility commands (status, queues, cli) and standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
 	Example: `  # Check RabbitMQ node status
-  govard env rabbitmq status
+  govard rabbitmq status
 
   # List queues with message/consumer counts
-  govard env rabbitmq queues
+  govard rabbitmq queues
 
   # Run an arbitrary rabbitmqctl command
-  govard env rabbitmq cli list_exchanges
+  govard rabbitmq cli list_exchanges
 
   # Check RabbitMQ container status
-  govard env rabbitmq ps`,
+  govard rabbitmq ps`,
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
@@ -78,4 +78,10 @@ func runRabbitMQCtl(containerName string, args []string) error {
 		return fmt.Errorf("rabbitmq command failed: %w", err)
 	}
 	return nil
+}
+
+func init() {
+	// Dual-registered under root and env: pin standard help so --help never
+	// depends on init order resolving the parent to the rebranded env command.
+	rabbitmqCmd.SetHelpFunc(standardHelpFunc())
 }

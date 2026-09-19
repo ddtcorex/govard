@@ -19,7 +19,7 @@ var testCmd = &cobra.Command{
 	Annotations: map[string]string{
 		runtime.AnnotationRequires: string(runtime.CapDocker),
 	},
-	Use:   "test [phpunit|phpstan|mftf|unit|integration]",
+	Use:   "test [phpunit|phpstan|static|mftf|unit|integration]",
 	Short: "Run project tests (PHPUnit, PHPStan, etc.)",
 	Long: `Run various test suites directly inside the project containers.
 Supports PHPUnit, PHPStan, MFTF, and more depending on the framework.

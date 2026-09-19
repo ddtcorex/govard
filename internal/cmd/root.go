@@ -79,6 +79,7 @@ var versionCmd = &cobra.Command{
 	},
 	Use:   "version",
 	Short: "Print the version number of Govard",
+	Long:  "Print the version number of Govard. Non-stable update channels print an extra 'Update channel' line.",
 	Run: func(cmd *cobra.Command, args []string) {
 		ui.PrintBrand(Version)
 		if notice := versionChannelNotice(updater.GetChannel()); notice != "" {

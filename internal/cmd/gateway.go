@@ -18,10 +18,10 @@ var gatewayCmd = &cobra.Command{
 	},
 	Use:   "gateway",
 	Short: "Manage the shared SSH gateway (govard-proxy-sshd)",
-	Long: `The shared SSH gateway is a global bastion that lets "ssh <project>@ssh.govard.test -p 2222"
-reach any running sandbox, without ever chasing an ephemeral per-container
-port. It rides the same global proxy stack as Caddy: start it with
-"govard svc up".`,
+	Long: `The shared SSH gateway is a global bastion that lets "ssh -p 2222
+<project-name>@127.0.0.1" (or <project>@ssh.govard.test) reach any running
+sandbox, without ever chasing an ephemeral per-container port. It rides the
+same global proxy stack as Caddy: start it with "govard svc up".`,
 	Run: func(cmd *cobra.Command, args []string) {
 		_ = cmd.Help()
 	},
@@ -86,9 +86,11 @@ var gatewayAllowKeyCmd = &cobra.Command{
 	Annotations: map[string]string{
 		runtime.AnnotationRequires: string(runtime.CapNone),
 	},
-	Use:   "allow-key <public-key-line>",
-	Short: "Add a client public key to the gateway allowlist",
-	Args:  cobra.ExactArgs(1),
+	Use:     "allow-key <public-key-line>",
+	Short:   "Add a client public key to the gateway allowlist",
+	Long:    "Add one client public key to the gateway allowlist. The key line must arrive as a single shell argument, so quote multi-word lines. Re-allowing a known fingerprint updates it in place.",
+	Example: `  govard gateway allow-key "ssh-ed25519 AAAA... kai@laptop"`,
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		reg, err := gateway.Load()
 		if err != nil {
@@ -112,7 +114,10 @@ var gatewayRevokeKeyCmd = &cobra.Command{
 	},
 	Use:   "revoke-key <fingerprint-or-comment>",
 	Short: "Remove client public keys matching a fingerprint or comment",
-	Args:  cobra.ExactArgs(1),
+	Long:  "Remove allowlisted keys by exact fingerprint or comment. Substring matching does not apply, and a pattern with no match is an error.",
+	Example: `  govard gateway revoke-key SHA256:abc123
+  govard gateway revoke-key "kai@laptop"`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		reg, err := gateway.Load()
 		if err != nil {

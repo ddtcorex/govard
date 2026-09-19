@@ -59,8 +59,14 @@ When --fix is used, --dry-run shows yq-style diff without writing, and --commit 
 		doctorCommit, _ = cmd.Flags().GetBool("commit")
 		doctorDryRun, _ = cmd.Flags().GetBool("dry-run")
 
-		return ExecuteDoctor(cmd, outputJSON, fixEnabled, packEnabled, packDir, nil)
+		return ExecuteDoctor(cmd, outputJSON, doctorFixEnabled(fixEnabled, doctorCommit), packEnabled, packDir, nil)
 	},
+}
+
+// doctorFixEnabled resolves the documented implication: --commit turns the
+// fix pass on, so drift fixes exist for it to commit.
+func doctorFixEnabled(fixFlag, commitFlag bool) bool {
+	return fixFlag || commitFlag
 }
 
 // ExecuteDoctor runs the doctor logic. It can be invoked programmatically from other commands.

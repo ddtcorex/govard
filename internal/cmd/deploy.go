@@ -32,6 +32,9 @@ The pipeline is a fixed sequence of neutral tasks (see docs/reference/cli-comman
 A project customises it by anchoring hooks on a task id, on a stage alias
 (stage:build) or on another hook, in .govard.yml.
 
+--resume continues the newest unfinished release; when the remote holds no
+unfinished release, the command starts a new one and says so.
+
 This command needs only ssh and rsync: it runs on a host without Docker, which is
 what lets the same command work in CI and on a development machine.
 
@@ -60,6 +63,13 @@ func init() {
 
 	deployReleasesCmd.Flags().Bool("json", false, "Emit machine-readable output")
 	deployStatusCmd.Flags().Bool("json", false, "Emit machine-readable output")
+
+	// The read commands resolve the remote through deployRemoteName, which
+	// already accepts the flag: bind it so --remote works uniformly across
+	// the whole deploy group instead of positional-only on these three.
+	for _, readCmd := range []*cobra.Command{deployReleasesCmd, deployStatusCmd, deployUnlockCmd} {
+		readCmd.Flags().String("remote", "", "Remote environment (alternative to the positional argument)")
+	}
 
 	deployCmd.AddCommand(deployPlanCmd)
 	deployCmd.AddCommand(deployCheckCmd)
