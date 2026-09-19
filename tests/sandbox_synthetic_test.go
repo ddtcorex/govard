@@ -64,6 +64,57 @@ func TestResolveSyntheticSandboxRemoteBuildsARemoteWhenRunning(t *testing.T) {
 	}
 }
 
+func TestSyntheticSandboxDormantPreservesProfileAndPHP(t *testing.T) {
+	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restore()
+	root := sandboxProject(t)
+	fake := sandboxFake().containerProfile("full").containerPHP("8.4")
+	fake.answers["inspect --format {{.State.Running}}"] = "false\n" // container exists, ContainerRunning reports false
+	_, liveness, err := deploy.ResolveSyntheticSandboxRemoteForTest(
+		context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{},
+		root, "sample-project")
+	if liveness != deploy.SandboxLivenessDormant {
+		t.Fatalf("liveness = %q, want dormant (err=%v)", liveness, err)
+	}
+	state, statusErr := deploy.SandboxStatus(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+	})
+	if statusErr != nil {
+		t.Fatalf("SandboxStatus: %v", statusErr)
+	}
+	if state.Profile == "" || state.PHP == "" {
+		t.Fatalf("dormant status must keep profile+PHP, got profile=%q php=%q", state.Profile, state.PHP)
+	}
+	if state.Profile != "full" || state.PHP != "8.4" {
+		t.Fatalf("dormant status must read profile+PHP from the container labels, got profile=%q php=%q", state.Profile, state.PHP)
+	}
+}
+
+// A dormant container's PHP label is only a fallback when it names a real
+// series: a value the creation could never have written (the --php flag is
+// validated first) is ignored rather than reported, mirroring the reuse path.
+func TestSyntheticSandboxDormantIgnoresGarbagePHPLabel(t *testing.T) {
+	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+	defer restore()
+	root := sandboxProject(t)
+	fake := sandboxFake().containerProfile("full").containerPHP("not-a-series")
+	fake.answers["inspect --format {{.State.Running}}"] = "false\n" // container exists, ContainerRunning reports false
+	state, err := deploy.SandboxStatus(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+	})
+	if err != nil {
+		t.Fatalf("SandboxStatus: %v", err)
+	}
+	if state.PHP != "" {
+		t.Fatalf("dormant status must ignore a garbage PHP label, got php=%q", state.PHP)
+	}
+	if state.Profile != "full" {
+		t.Fatalf("dormant status must still keep the profile, got profile=%q", state.Profile)
+	}
+}
+
 func TestResolveSyntheticSandboxRemoteRequiresDockerExplicitly(t *testing.T) {
 	restore := runtime.StubProbesForTest(func(context.Context) error {
 		return errors.New("Cannot connect to the Docker daemon")

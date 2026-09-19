@@ -411,6 +411,11 @@ govard env cleanup
 
 `--profile` is an inline alternative to `govard config profile switch`; the selected profile still requires `govard env up` to apply.
 
+`env up` waits for every service's runtime readiness — up to ~90s per
+service. With wrong database credentials a service never turns healthy, so
+the failure arrives late: worst case one full wait per service. When `up`
+hangs, check the credentials first, not the orchestration.
+
 **`govard env pull` behavior:**
 
 Images are pulled one by one. If an image cannot be pulled (removed from the
@@ -842,9 +847,12 @@ a sandbox deploy is a production deploy pointed at one. There is no `sandbox`
 block in any configuration file: while the container runs, `sandbox` resolves
 automatically as a remote for every command that takes one.
 
-Because `sandbox` is a top-level command rather than a deploy subcommand,
-deploy to it with the flag form:
+`sandbox` is a top-level command — deploy to it with the flag form:
 `govard deploy --remote sandbox --yes`.
+
+There is no `sandbox` block to write anywhere: the synthetic
+sandbox shadows any `remotes.sandbox` block in `.govard.local.yml`
+(with a warning) and the block never wins.
 
 Profiles: `basic` (sshd, rsync, git), `php` (adds php-cli, composer, node) and
 `full` (adds a database and a cache), defaulting to `php`. `--php <series>` picks
@@ -921,6 +929,30 @@ default (`symlink`) sandbox, `remote exec` fails until the first deploy
 populates the current path — run the first deploy or use `--docroot real`.
 
 → Full guide: [Deployment](/workflows/deployment#the-sandbox).
+
+### `govard gateway`
+
+The shared SSH bastion (`govard-proxy-sshd`) started by `govard svc up`,
+listening on `127.0.0.1:2222` — one stable address for every sandbox instead
+of the ephemeral port each `sandbox up` picks:
+
+```bash
+govard gateway allow-key "$(cat ~/.ssh/id_ed25519.pub)"
+ssh -p 2222 <project-name>@127.0.0.1
+sftp -P 2222 <project-name>@127.0.0.1
+```
+
+- `govard gateway status` reports whether the bastion container is running
+  and how many targets/keys it knows about.
+- `govard gateway allow-key <public-key-line>` /
+  `govard gateway revoke-key <fingerprint-or-comment>` manage the allowlist;
+  both work without Docker running (the registry is a local file).
+- `sandbox up` registers the project's username automatically and joins the
+  bastion's network; `sandbox down` removes the registration. Neither
+  operation fails if the gateway itself is not running — `deploy`,
+  `deploy check` and `remote *` never go through it.
+
+→ Full guide: [Deployment](/workflows/deployment#the-shared-ssh-gateway).
 
 ### `govard snapshot`
 

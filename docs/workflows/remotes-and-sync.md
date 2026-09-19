@@ -139,14 +139,21 @@ Database filters are optimized for Magento 2. For other frameworks, safe default
 
 ### Remote Database Credentials
 
-For `--db` operations Govard probes the remote's own configuration (e.g.
-`wp-config.php`, `.env`) over SSH instead of asking for credentials. It tries
-the configured remote path first, then deploy-layout served directories
-(`public_html`, `current`), so a remote pointing at a layout root still
-resolves. If nothing is found it warns and falls back to framework defaults —
-a fallback dump that cannot connect fails loudly instead of producing an
-empty file, so treat any credential warning as a signal to check the remote
-path.
+For `--db` operations Govard probes the remote's own configuration over SSH
+instead of asking for credentials — but only for three framework families:
+**dotenv** (`.env`), **WordPress** (`wp-config.php`) and **Magento 2 / MageOS**
+(`app/etc/env.php`). Any other stack gets no probing: if nothing is found it
+warns and falls back to framework defaults — a fallback dump that cannot
+connect fails loudly instead of producing an empty file, so treat any
+credential warning as a signal to check the remote path.
+
+Each covered probe tries three candidate app roots in order — the configured
+remote path first, then `<path>/public_html`, then `<path>/current` — so a
+remote pointing at a layout root still resolves. The **first valid candidate
+wins**: a stale `.env` sitting at the layout root shadows the real
+application one level down, because the layout root is tried first. Point the
+remote `path` at the real app root (or remove the stale file) when the probe
+picks up the wrong database.
 
 ## Sync Behavior
 
@@ -384,6 +391,14 @@ govard db dump -e staging             # Remote DB → saved on remote (~backup/)
 govard db dump -e staging --local     # Remote DB → streamed to local var/
 govard db dump --no-noise --no-pii    # With privacy filters
 ```
+
+A remote dump stages through a temporary file in the remote's `/tmp`: the raw
+uncompressed dump — the full database, PII included — sits there while it is
+being compressed for transfer, and is removed with `rm -f` afterwards. If the
+SSH connection is interrupted mid-dump, that cleanup never runs and the raw
+file stays behind (there is no trap on the remote side — a known limitation),
+so re-run the dump and delete the leftover yourself rather than assuming it
+is gone.
 
 ### Import
 

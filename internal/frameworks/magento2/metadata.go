@@ -19,12 +19,20 @@ type Magento2Environment struct {
 }
 
 func ProbeMagento2Environment(remoteName string, remoteCfg engine.RemoteConfig) (Magento2Environment, error) {
-	remoteCommand := remote.BuildProjectRemoteCommand(remoteCfg.Path, `php -r `+engine.ShellQuote(magentoDBProbePHP))
-	encoded, err := remote.RunRemoteCapture(remoteName, remoteCfg, remoteCommand)
-	if err != nil {
-		return Magento2Environment{}, err
-	}
-	return decodeMagento2EnvironmentPayload(encoded)
+	return remote.TryProbeCandidatePaths(remoteCfg.Path, func(path string) (Magento2Environment, error) {
+		cfg := remoteCfg
+		cfg.Path = path
+		remoteCommand := remote.BuildProjectRemoteCommand(path, `php -r `+engine.ShellQuote(magentoDBProbePHP))
+		encoded, err := remote.RunRemoteCapture(remoteName, cfg, remoteCommand)
+		if err != nil {
+			return Magento2Environment{}, err
+		}
+		env, decodeErr := decodeMagento2EnvironmentPayload(encoded)
+		if decodeErr != nil {
+			return Magento2Environment{}, fmt.Errorf("%w at %s: %v", remote.ErrProbeFilesNotFound, path, decodeErr)
+		}
+		return env, nil
+	})
 }
 
 func NormalizeMagentoVersion(raw string) string {

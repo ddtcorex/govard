@@ -408,7 +408,7 @@ func buildRemoteMySQLDumpCommandString(credentials dbCredentials, noNoise bool, 
 	dataArgs = append(dataArgs, engine.ShellQuote(credentials.Database))
 
 	// Combine passes
-	dumpCmd := fmt.Sprintf("{ %s; %s; }", strings.Join(metadataArgs, " "), strings.Join(dataArgs, " "))
+	dumpCmd := fmt.Sprintf("{ %s && %s; }", strings.Join(metadataArgs, " "), strings.Join(dataArgs, " "))
 	if compress {
 		dumpCmd = stageDumpThroughTempFile(dumpCmd)
 	}
@@ -522,7 +522,7 @@ func buildLocalMySQLDumpCommandScript(credentials dbCredentials, noNoise bool, n
 	ignoreArgs := buildIgnoredTableArgs(credentials.Database, credentials.TablePrefix, noNoise, noPII, framework)
 	dataArgs = append(dataArgs, ignoreArgs...)
 	dataArgs = append(dataArgs, engine.ShellQuote(credentials.Database))
-	dumpCmd := fmt.Sprintf("{ %s; %s; }", strings.Join(metadataArgs, " "), strings.Join(dataArgs, " "))
+	dumpCmd := fmt.Sprintf("{ %s && %s; }", strings.Join(metadataArgs, " "), strings.Join(dataArgs, " "))
 	return dbCliDetect + " && " + dumpCmd
 }
 
