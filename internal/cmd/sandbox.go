@@ -56,7 +56,8 @@ way you want to exercise it: absent or symlink selects the atomic swap, real
 selects in-place publishing.
 
 Exit codes: 0 success, 1 execution failure, 2 usage, 3 missing capability,
-4 configuration.`,
+4 configuration. The sandbox needs Docker: without a container runtime the
+command exits 3 with CAPABILITY_MISSING before creating anything.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// With no subcommand, report: creating a container by accident is a
@@ -66,22 +67,22 @@ Exit codes: 0 success, 1 execution failure, 2 usage, 3 missing capability,
 }
 
 var (
-	sandboxUpCmd     = &cobra.Command{Use: "up", Short: "Create or reuse the sandbox", Args: cobra.NoArgs, RunE: runSandboxUp}
+	sandboxUpCmd     = &cobra.Command{Use: "up", Short: "Create or reuse the sandbox", Long: "Create the sandbox, or reuse the running one as-is. Flags that disagree with a running sandbox: --docroot reshapes only when passed, while an explicit conflicting --profile is refused — pass --recreate to rebuild it.", Args: cobra.NoArgs, RunE: runSandboxUp}
 	sandboxStatusCmd = &cobra.Command{Use: "status", Short: "Report the sandbox state", Args: cobra.NoArgs, RunE: runSandboxStatusRun}
 	sandboxResetCmd  = &cobra.Command{Use: "reset", Short: "Wipe the sandbox's deploy directories", Args: cobra.NoArgs, RunE: runSandboxReset}
-	sandboxSSHCmd    = &cobra.Command{Use: "ssh", Short: "Open a shell in the sandbox", Args: cobra.NoArgs, RunE: runSandboxSSH}
+	sandboxSSHCmd    = &cobra.Command{Use: "ssh", Short: "Open a shell in the sandbox", Long: "Open an interactive shell in the sandbox. Takes no command: it always drops into the shell.", Args: cobra.NoArgs, RunE: runSandboxSSH}
 	sandboxDownCmd   = &cobra.Command{Use: "down", Short: "Stop and remove the sandbox", Args: cobra.NoArgs, RunE: runSandboxDown}
 )
 
 func init() {
 	sandboxUpCmd.Flags().String("profile", deploy.DefaultSandboxProfile, "Container contents: basic, php or full")
-	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default: the base image's own)")
+	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default: the base image's own; no effect with --profile basic)")
 	sandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	sandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
 	sandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: start with an empty sandbox (no DB, no media, no env file)")
 
 	sandboxResetCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
-	sandboxResetCmd.Flags().String("layout", "", "Seed a target the other deploy tool owns: deployer")
+	sandboxResetCmd.Flags().String("layout", "", "Seed a target the other deploy tool owns (deployer; any other value is ignored)")
 
 	sandboxDownCmd.Flags().Bool("purge", false, "Also remove the image, the key and the mirror")
 	sandboxDownCmd.Flags().Bool("volumes", false, "Also delete the derived data volumes (plain down keeps them so a rehearsal resumes)")

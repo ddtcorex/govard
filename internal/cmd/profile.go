@@ -56,7 +56,8 @@ var profileCmd = &cobra.Command{
 		runtime.AnnotationRequires: string(runtime.CapNone),
 	},
 	Use:   "profile",
-	Short: "Manage environment profiles (show, switch, apply, clear)",
+	Short: "Manage environment profiles (switch, apply, clear; bare invocation shows status)",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
 		out := cmd.OutOrStdout()

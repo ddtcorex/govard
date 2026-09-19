@@ -24,7 +24,9 @@ var deployPlanCmd = &cobra.Command{
 hooks the project and the recipe contributed, and which layer each came from.
 
 Nothing is executed and no connection is made, so this is safe to run anywhere
-and useful for reviewing a hook's placement before a deploy.`,
+and useful for reviewing a hook's placement before a deploy. The plan reflects
+the configuration, not deploy-flag overrides: --publish, --keep and --verify
+only take effect on the real run.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDeployPlan,
 }
@@ -233,7 +235,8 @@ var deployCheckCmd = &cobra.Command{
 path, the existing release layout, and which publish strategy that layout implies.
 
 Running this before a first deploy to an environment turns "it failed halfway
-through" into "it cannot work, and here is why".`,
+through" into "it cannot work, and here is why". For machine-readable output,
+use govard deploy plan --json (check itself prints human text only).`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDeployCheck,
 }

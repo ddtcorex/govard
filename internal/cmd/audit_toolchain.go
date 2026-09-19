@@ -65,7 +65,7 @@ func newAuditToolchainCommand(options *auditCommandOptions, dependencies auditCo
 		},
 		Use:   "toolchain",
 		Short: "Inspect, pull, or build the Govard lint toolchain image",
-		Long: "Manage the Govard-owned Magento lint image.\n\n" +
+		Long: "Manage the Govard-owned lint toolchain image.\n\n" +
 			"These commands act on a machine-wide image and do not need to run inside a\n" +
 			"Govard project. They never run an externally configured lint provider.\n\n" +
 			"They do require a container runtime: without one they exit 3 with\n" +

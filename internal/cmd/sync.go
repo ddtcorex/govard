@@ -26,7 +26,8 @@ var syncCmd = &cobra.Command{
 	Long: `Synchronize your local development environment with a remote server (e.g., staging, production).
 This command uses rsync for file/media transfers and mysqldump/mysql for database synchronization.
 It supports bi-directional sync (local to remote, remote to local), but prevents accidental
-overwrites on protected remotes.
+overwrites on protected remotes (only prod-named remotes are protected by default;
+set protected: true on any other remote to protect it).
 It will generate a detailed synchronization plan and prompt for confirmation before starting.
 While syncing, it provides a live 10-line rolling progress of transferred files.
 
@@ -40,6 +41,7 @@ Framework Notes:
 
 Media Sync Modes (--media):
 - optimized: Default for remote. Skips heavy assets like products (Magento) or caches (WordPress).
+- catalog: Includes product images but skips product caches (Magento only).
 - minimal: Syncs only non-binary assets (CSS, JS, Fonts). Ideal for frontend tasks.
 - all: Truly all files (excluding common junk like .tmp or .bak).
 - none: Explicitly skip media.

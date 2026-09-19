@@ -14,7 +14,7 @@ var blueprintCmd = &cobra.Command{
 		runtime.AnnotationRequires: string(runtime.CapNone),
 	},
 	Use:   "blueprint",
-	Short: "Manage blueprint components and registry",
+	Short: "Manage the remote blueprint registry cache",
 	Run: func(cmd *cobra.Command, args []string) {
 		_ = cmd.Help()
 	},

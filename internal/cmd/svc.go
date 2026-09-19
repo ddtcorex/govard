@@ -28,8 +28,8 @@ var svcCmd = &cobra.Command{
 	Use:   "svc",
 	Short: "Manage global services and workspace sleep state",
 	Long: strings.TrimSpace(`
-Manage global shared services (Proxy, Mailpit, PHPMyAdmin, Portainer) and control the workspace state.
-Global services are shared across all projects.
+Manage global shared services (Proxy, DNS, Mailpit, PHPMyAdmin, Portainer, SSH gateway) and control the workspace state.
+Global services are shared across all projects. Requires a running Docker daemon.
 
 Govard intelligently proxies global Docker Compose commands to the shared service stack.
 Govard-specific toggles on 'up'/'restart' include:
@@ -40,9 +40,9 @@ Govard-specific toggles on 'up'/'restart' include:
 Case Studies:
 - Setup: Use 'govard svc up' to start the global proxy and shared utilities.
 - Troubleshooting: Use 'govard svc logs' or 'govard svc ps' to check global service health.
-- Optimization: Use 'govard svc sleep' to pause all running project containers at once.
+- Optimization: Stop all running project containers at once with 'govard svc sleep'; resume them with 'govard svc wake'.
 `),
-	Example: `  # Start global services (Proxy, Mail, etc.)
+	Example: `  # Start global services (Proxy, Mailpit, etc.)
   govard svc up
 
   # Start global services without CA trust installation
@@ -54,11 +54,11 @@ Case Studies:
   # Stop all global services
   govard svc down
 
-  # Pause all active project environments
+  # Stop all running projects, keeping wake state
   govard svc sleep
 
-  # View help for all supported global compose commands
-  govard svc --help`,
+  # Resume projects stopped by sleep
+  govard svc wake`,
 	Args: cobra.ArbitraryArgs,
 	FParseErrWhitelist: cobra.FParseErrWhitelist{
 		UnknownFlags: true,
@@ -172,13 +172,10 @@ func handleSvcUp(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	// Prepare standard 'up' args
-	upArgs := []string{"up", "-d"}
-	for _, arg := range args[1:] {
-		if arg != "-d" && arg != "--detach" {
-			upArgs = append(upArgs, arg)
-		}
-	}
+	// Prepare standard 'up' args. Govard-only toggles (--pull, --no-trust,
+	// --no-fallback) are honored above via hasFlag and must never reach
+	// 'docker compose up', which rejects them as unknown flags.
+	upArgs := stripSvcUpArgs(args)
 
 	err := engine.RunCompose(ctx, engine.ComposeOptions{
 		ProjectDir: composeDir, ProjectName: globalProxyProjectName, ComposeFile: composeFile,
@@ -303,11 +300,38 @@ func hasFlag(name string) bool {
 	return false
 }
 
+// stripSvcUpArgs builds the 'docker compose up' invocation for handleSvcUp:
+// forced detached mode plus the operator's args minus everything Govard
+// consumes itself (-d/--detach to avoid duplication, and the Govard-only
+// toggles compose would reject).
+func stripSvcUpArgs(args []string) []string {
+	upArgs := []string{"up", "-d"}
+	for _, arg := range args[1:] {
+		if arg == "-d" || arg == "--detach" || isSvcUpToggle(arg) {
+			continue
+		}
+		upArgs = append(upArgs, arg)
+	}
+	return upArgs
+}
+
+func isSvcUpToggle(arg string) bool {
+	for _, toggle := range []string{"--pull", "--no-trust", "--no-fallback"} {
+		if arg == toggle || strings.HasPrefix(arg, toggle+"=") {
+			return true
+		}
+	}
+	return false
+}
+
 func init() {
 	svcCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		rebrandComposeHelp(cmd, "svc")
+		rebrandComposeHelp(cmd, "svc", args)
 	})
 
+	// sleep/wake are Govard-native: 'docker compose sleep --help' does not exist.
+	svcSleepCmd.SetHelpFunc(standardHelpFunc())
+	svcWakeCmd.SetHelpFunc(standardHelpFunc())
 	svcCmd.AddCommand(svcSleepCmd)
 	svcCmd.AddCommand(svcWakeCmd)
 }

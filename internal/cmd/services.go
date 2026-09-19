@@ -18,9 +18,14 @@ var valkeyCmd = &cobra.Command{
 	Annotations: map[string]string{
 		runtime.AnnotationRequires: string(runtime.CapDocker),
 	},
-	Use:                "valkey [command]",
-	Short:              "Control the valkey cache service",
-	Long:               `Interact with the Valkey cache service. Supports standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
+	Use:   "valkey [command]",
+	Short: "Control the valkey cache service",
+	Long:  `Interact with the Valkey cache service. Supports standard Docker Compose maintenance commands (ps, logs, stop, start, etc.). Requires stack.services.cache=valkey in .govard.yml; otherwise the command warns and does nothing.`,
+	Example: `  # Ping the Valkey server
+  govard valkey cli ping
+
+  # View Valkey logs
+  govard valkey logs -f`,
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
@@ -49,7 +54,7 @@ var elasticsearchCmd = &cobra.Command{
 	},
 	Use:                "elasticsearch [command|path]",
 	Short:              "Control the elasticsearch service",
-	Long:               `Interact with the Elasticsearch service. Supports custom queries (via path) and standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
+	Long:               `Interact with the Elasticsearch service. Custom queries take a single path and always run as GET; extra arguments are ignored. Also supports standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
@@ -68,7 +73,7 @@ var opensearchCmd = &cobra.Command{
 	},
 	Use:                "opensearch [command|path]",
 	Short:              "Control the opensearch service",
-	Long:               `Interact with the Opensearch service. Supports custom queries (via path) and standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
+	Long:               `Interact with the OpenSearch service. Custom queries take a single path and always run as GET; extra arguments are ignored. Also supports standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
@@ -138,4 +143,12 @@ func runSearchQuery(serviceName string, port int, args []string) error {
 	}
 	fmt.Println() // Add newline at the end
 	return nil
+}
+
+func init() {
+	// Dual-registered under root and env: pin standard help so --help never
+	// depends on init order resolving the parent to the rebranded env command.
+	valkeyCmd.SetHelpFunc(standardHelpFunc())
+	elasticsearchCmd.SetHelpFunc(standardHelpFunc())
+	opensearchCmd.SetHelpFunc(standardHelpFunc())
 }

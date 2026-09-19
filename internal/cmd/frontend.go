@@ -56,6 +56,7 @@ var frontendCmd = &cobra.Command{
 var frontendStartCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start the frontend development runtime",
+	Long:  "Start the frontend development runtime. Requires a running backend (govard env up first), stack.features.frontend_sync enabled, and a supported framework (Magento family).",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		config, err := loadFullConfig()
@@ -73,6 +74,7 @@ var frontendStartCmd = &cobra.Command{
 var frontendStopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Remove only frontend development services",
+	Long:  "Stop and remove frontend services only. Dependency volumes are kept and Caddy routes are unregistered; application services are never touched.",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		config, err := loadFullConfig()
@@ -90,6 +92,7 @@ var frontendStopCmd = &cobra.Command{
 var frontendLogsCmd = &cobra.Command{
 	Use:   "logs [service]",
 	Short: "Stream logs from a frontend development service",
+	Long:  "Stream logs from a frontend development service. Defaults to the sync service when no name is given; the name must be a discovered frontend service.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadFullConfig()

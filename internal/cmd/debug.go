@@ -18,8 +18,9 @@ var debugCmd = &cobra.Command{
 	Use:     "debug [on|off|status|shell] [args...]",
 	Aliases: []string{"dbg"},
 	Short:   "Manage Xdebug for the current environment",
-	Long: `Toggle Xdebug on or off, check its status, or open a debug shell. 
-When run without subcommands, it opens a debug shell.
+	Long: `Toggle Xdebug on or off, check its status, or open a debug shell.
+When run without subcommands, it opens a debug shell, which requires Xdebug
+to be enabled first ('govard debug on') or the shell refuses to start.
 Changes to on/off will trigger an environment update.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDebugShell(cmd, args)

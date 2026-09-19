@@ -24,6 +24,9 @@ var upgradeCmd = &cobra.Command{
 	},
 	Use:   "upgrade",
 	Short: "Upgrade the framework version",
+	Long:  "Upgrade the framework version of the current project. The target comes from the required --version flag.",
+	Example: `  govard upgrade --version 2.4.8-p4
+  govard upgrade --version 11 --dry-run`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadFullConfig()
 		if err != nil {
@@ -51,9 +54,9 @@ var upgradeCmd = &cobra.Command{
 }
 
 func init() {
-	upgradeCmd.Flags().StringVar(&upgradeCmdVersion, "version", "", "Target version (e.g. 2.4.8-p4)")
+	upgradeCmd.Flags().StringVar(&upgradeCmdVersion, "version", "", "Target version, required (e.g. 2.4.8-p4)")
 	upgradeCmd.Flags().BoolVar(&upgradeCmdDryRun, "dry-run", false, "Print steps without executing them")
-	upgradeCmd.Flags().BoolVar(&upgradeCmdNoDB, "no-db-upgrade", false, "Skip database setup:upgrade step")
+	upgradeCmd.Flags().BoolVar(&upgradeCmdNoDB, "no-db-upgrade", false, "Skip database setup:upgrade step (Magento 2 only)")
 	upgradeCmd.Flags().BoolVar(&upgradeCmdNoEnv, "no-env-update", false, "Skip profile application and container restart")
 	upgradeCmd.Flags().BoolVarP(&upgradeCmdNoInteraction, "yes", "y", false, "Do not ask for confirmation")
 	rootCmd.AddCommand(upgradeCmd)

@@ -20,7 +20,7 @@ var projectCmd = &cobra.Command{
 	},
 	Use:     "project",
 	Aliases: []string{"prj", "projects", "registry"},
-	Short:   "Browse known projects from registry",
+	Short:   "Manage known projects from the registry (list, open, orphans, delete)",
 }
 
 var projectOpenCmd = &cobra.Command{

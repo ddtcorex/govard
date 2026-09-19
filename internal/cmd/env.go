@@ -59,10 +59,8 @@ All commands are scoped to the project in the current working directory.
 It provides smart wrappers around Docker Compose operations and specialized service interactions.
 
 Govard intelligently proxies almost all Docker Compose commands. If a command is not
-explicitly handled by Govard, it is passed through to 'docker compose' with the 
+explicitly handled by Govard, it is passed through to 'docker compose' with the
 correct project context.
-
-Aliases: project
 
 Case Studies:
 - Maintenance: Use 'govard env stop' to pause work and 'govard env start' to resume later.
@@ -72,14 +70,14 @@ Case Studies:
 	Example: `  # Start the project environment
   govard env up
 
-  # View help for all supported compose commands
-  govard env --help
-
   # List running containers for this project
   govard env ps
 
   # View real-time logs for all services
   govard env logs -f
+
+  # Stream only error lines from the logs
+  govard env logs --errors
 
   # Enter a Redis shell for the current project
   govard redis cli`,
@@ -461,7 +459,7 @@ func ProxyEnvToComposeForTest(cmd *cobra.Command, args []string) error {
 
 func init() {
 	envCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		rebrandComposeHelp(cmd, "env")
+		rebrandComposeHelp(cmd, "env", args)
 	})
 
 	// Non-standard shortcuts
@@ -474,6 +472,8 @@ func init() {
 	envCmd.AddCommand(rabbitmqCmd)
 
 	envCmd.AddCommand(envCleanupCmd)
+	// cleanup is Govard-native: 'docker compose cleanup --help' does not exist.
+	envCleanupCmd.SetHelpFunc(standardHelpFunc())
 }
 
 var envCleanupCmd = &cobra.Command{

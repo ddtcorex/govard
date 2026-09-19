@@ -93,6 +93,7 @@ Case Studies:
 - Specify Framework: 'govard bootstrap --framework magento2' — Ensures Magento 2 environment if initialization is required.
 - Minimal Frontend Sync: 'govard bootstrap -e staging --media minimal' — Syncs DB and only light assets (CSS/JS).
 
+Flag rules: --fresh cannot be used with --clone, and --code-only requires --clone.
 Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote named 'development').`,
 	Example: `  # Refresh DB + media from dev (default — does NOT overwrite source files)
   govard bootstrap -e dev
@@ -101,7 +102,7 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
   govard bootstrap --clone -e staging
 
   # Clone DB excluding noise and PII tables
-  govard bootstrap -e staging --no-pii
+  govard bootstrap -e staging --no-noise --no-pii
 
   # Fresh Magento 2.4.8 install with sample data
   govard bootstrap --framework magento2 --fresh --framework-version 2.4.8 --include-sample
@@ -579,10 +580,10 @@ func init() {
 
 	// 1. Clone Mode
 	bootstrapCmd.Flags().BoolVarP(&bootstrapClone, "clone", "c", false, "Rsync source files from remote before composer/DB/media steps (use when you have no local git checkout)")
-	bootstrapCmd.Flags().BoolVar(&bootstrapCodeOnly, "code-only", false, "Clone code only (skip DB/media)")
+	bootstrapCmd.Flags().BoolVar(&bootstrapCodeOnly, "code-only", false, "Clone code only (skip DB/media; requires --clone)")
 
 	// 2. Fresh Mode
-	bootstrapCmd.Flags().BoolVar(&bootstrapFresh, "fresh", false, "Create a fresh project install")
+	bootstrapCmd.Flags().BoolVar(&bootstrapFresh, "fresh", false, "Create a fresh project install (cannot be used with --clone)")
 	bootstrapCmd.Flags().StringVar(&bootstrapFramework, "framework", "", "Framework to use when init is required")
 	bootstrapCmd.Flags().StringVar(&bootstrapFrameworkVersion, "framework-version", "", "Framework version (e.g. 2.4.7 for Magento, 11 for Laravel)")
 	bootstrapCmd.Flags().StringVarP(&bootstrapMetaPackage, "meta-package", "p", defaultBootstrapMetaPackage, "Composer meta-package for fresh install (Magento only)")
@@ -590,7 +591,7 @@ func init() {
 	bootstrapCmd.Flags().StringVar(&bootstrapMagePassword, "mage-password", "", "Magento repo password for auth.json bootstrap (Magento only)")
 	bootstrapCmd.Flags().BoolVar(&bootstrapIncludeSample, "include-sample", false, "Install sample data (fresh install, Magento only)")
 	bootstrapCmd.Flags().BoolVar(&bootstrapHyvaInstall, "hyva-install", false, "Install Hyva default theme (Magento only)")
-	bootstrapCmd.Flags().StringVar(&bootstrapHyvaToken, "hyva-token", defaultBootstrapHyvaToken, "Hyva repository token (Magento only)")
+	bootstrapCmd.Flags().StringVar(&bootstrapHyvaToken, "hyva-token", "", "Hyva repository token (Magento only; defaults to the built-in fallback)")
 
 	// 3. Source Selection
 	bootstrapCmd.Flags().StringVarP(&bootstrapEnv, "environment", "e", "", "Source environment (default: auto-select staging or dev)")
@@ -610,7 +611,7 @@ func init() {
 
 	// 5. Privacy & Data Filtering
 	bootstrapCmd.Flags().BoolVarP(&bootstrapNoNoise, "no-noise", "N", false, "Exclude ephemeral/noise tables and directories from sync (logs, caches, etc)")
-	bootstrapCmd.Flags().BoolVarP(&bootstrapNoPII, "no-pii", "S", false, "Exclude PII/sensitive tables from database sync (users, orders, passwords, etc)")
+	bootstrapCmd.Flags().BoolVarP(&bootstrapNoPII, "no-pii", "P", false, "Exclude PII/sensitive tables from database sync (users, orders, passwords, etc)")
 
 	// 6. Transfer & Sync Options
 	bootstrapCmd.Flags().BoolVar(&bootstrapDelete, "delete", false, "Delete files on destination that are missing on source (media/files sync)")

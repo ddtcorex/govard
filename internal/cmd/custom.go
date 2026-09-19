@@ -18,6 +18,9 @@ var customCmd = &cobra.Command{
 	},
 	Use:   "custom",
 	Short: "Run custom commands from project and global plugin directories",
+	Long:  `Run custom commands from the project directory (.govard/commands) and the global directory (~/.govard/commands). Command names must match ^[a-z0-9][a-z0-9_-]*$; a project command shadows a global one with the same name.`,
+	Example: `  govard custom list
+  govard custom my-command`,
 	Run: func(cmd *cobra.Command, args []string) {
 		_ = cmd.Help()
 	},

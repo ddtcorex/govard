@@ -15,19 +15,19 @@ var redisCmd = &cobra.Command{
 	},
 	Use:   "redis [command]",
 	Short: "Control the redis cache service",
-	Long: `Interact with the Redis or Valkey cache service. 
+	Long: `Interact with the Redis or Valkey cache service.
 Supports both custom utility commands (flush, info, cli) and standard Docker Compose maintenance commands (ps, logs, stop, start, etc.).`,
 	Example: `  # Open a redis CLI
-  govard env redis cli
+  govard redis cli
 
   # Flush all keys
-  govard env redis flush
+  govard redis flush
 
   # View redis logs
-  govard env redis logs -f
+  govard redis logs -f
 
   # Check redis status
-  govard env redis ps`,
+  govard redis ps`,
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
@@ -65,6 +65,12 @@ var redisCliCmd = &cobra.Command{
 	Short:              "Open an interactive CLI or run a command",
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Like the parent, answer -h/--help locally: forwarding it would
+		// execute the container probe and fail without a running container.
+		// (A bare "help" still reaches redis-cli, whose HELP command it is.)
+		if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+			return cmd.Help()
+		}
 		return runRedisCommand(cmd, args)
 	},
 }
@@ -73,6 +79,9 @@ func init() {
 	redisCmd.AddCommand(redisFlushCmd)
 	redisCmd.AddCommand(redisInfoCmd)
 	redisCmd.AddCommand(redisCliCmd)
+	// Dual-registered under root and env: pin standard help so --help never
+	// depends on init order resolving the parent to the rebranded env command.
+	redisCmd.SetHelpFunc(standardHelpFunc())
 }
 
 func runRedisCommand(cmd *cobra.Command, args []string) error {

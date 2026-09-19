@@ -349,7 +349,7 @@ govard bootstrap -e staging --no-pii --no-noise
 | Cờ (Flag) | Tác dụng |
 | :--- | :--- |
 | `-N, --no-noise` | Loại bỏ các dữ liệu rác/tạm thời (logs, sessions, cache tags, lịch sử cron) |
-| `-S, --no-pii` | Loại bỏ các dữ liệu cá nhân nhạy cảm (thông tin khách hàng, đơn hàng, tài khoản admin, password) |
+| `-P, --no-pii` | Loại bỏ các dữ liệu cá nhân nhạy cảm (thông tin khách hàng, đơn hàng, tài khoản admin, password) |
 | `--delete` | Xóa các file ở đích nếu không tồn tại ở nguồn |
 | `--no-compress` | Tắt nén khi chạy rsync |
 | `-X, --exclude` | Các pattern loại trừ rsync tùy chỉnh (có thể lặp lại nhiều lần) |
@@ -1216,8 +1216,9 @@ govard redis info
 Tiện ích thao tác nhanh với Varnish.
 
 ```bash
-govard varnish purge
-govard varnish status
+govard varnish log
+govard varnish ban /.*
+govard varnish stats
 ```
 
 ### `govard rabbitmq`
@@ -1236,10 +1237,10 @@ Shortcut trực tiếp tới service compose cùng tên. `govard env` proxy thô
 
 ```bash
 govard valkey cli
-govard elasticsearch info          # hoặc: govard elasticsearch _cluster/health
-govard opensearch info
-# Mọi tham số sau tên service đều được forward:
-govard elasticsearch curl -s http://elasticsearch:9200/_cat/indices
+govard elasticsearch _cluster/health
+govard opensearch _cluster/health
+# Truy vấn search nhận một path duy nhất và luôn chạy GET; tham số thừa bị bỏ qua.
+# Muốn dùng curl với cờ tùy ý, hãy curl từ host tới http://<domain>:9200.
 ```
 
 Host truy cập search cũng được route tự động qua `http://<domain>:9200` (xem [Cấu hình](/vi/reference/configuration#truy-cap-elasticsearch-opensearch-tu-host)) — shortcut trên exec trong container, còn route `:9200` dành cho `curl`/browser trên host.

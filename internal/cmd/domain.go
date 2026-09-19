@@ -24,6 +24,7 @@ var domainCmd = &cobra.Command{
 var domainAddCmd = &cobra.Command{
 	Use:   "add [domain]",
 	Short: "Add an extra domain to the project",
+	Long:  "Add an extra domain to the project configuration. Run 'govard env up' to apply the change.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadWritableConfig()
@@ -57,6 +58,7 @@ var domainAddCmd = &cobra.Command{
 var domainRemoveCmd = &cobra.Command{
 	Use:   "remove [domain]",
 	Short: "Remove an extra domain from the project",
+	Long:  "Remove an extra domain from the project configuration. Run 'govard env up' to apply the change.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadWritableConfig()

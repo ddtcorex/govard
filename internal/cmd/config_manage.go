@@ -29,7 +29,14 @@ var configCmd = &cobra.Command{
 var configGetCmd = &cobra.Command{
 	Use:   "get [key]",
 	Short: "Read a config value from .govard.yml",
-	Args:  cobra.ExactArgs(1),
+	Long: `Read a config value from .govard.yml. Accepted keys: project_name,
+framework, domain, framework_version, table_prefix, php_version
+(stack.php_version), python_version, node_version, db (stack.services.db),
+stack.db_version, stack.services.web_server/search/cache/queue, and deploy.*
+settings (e.g. deploy.keep_releases). Unknown keys are an error.`,
+	Example: `  govard config get stack.php_version
+  govard config get deploy.keep_releases`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadFullConfig()
 		if err != nil {
@@ -48,7 +55,14 @@ var configGetCmd = &cobra.Command{
 var configSetCmd = &cobra.Command{
 	Use:   "set [key] [value]",
 	Short: "Write a config value into .govard.yml",
-	Args:  cobra.ExactArgs(2),
+	Long: `Write a config value into .govard.yml. Accepted keys: project_name,
+framework, domain, framework_version, table_prefix, php_version
+(stack.php_version), python_version, node_version, db (stack.services.db),
+stack.db_version, stack.services.web_server/search/cache/queue, and deploy.*
+settings (e.g. deploy.keep_releases). Unknown keys are an error.`,
+	Example: `  govard config set stack.php_version 8.3
+  govard config set deploy.keep_releases 5`,
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadWritableConfig()
 		if err != nil {

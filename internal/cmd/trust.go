@@ -15,6 +15,7 @@ var trustCmd = &cobra.Command{
 	},
 	Use:   "trust",
 	Short: "Trust the local CA for SSL certificates",
+	Long:  "Trust the Govard local CA for SSL certificates. Requires sudo/administrator privileges to install into the system store.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Govard SSL Trust Store ")

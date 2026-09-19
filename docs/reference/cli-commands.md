@@ -351,7 +351,7 @@ govard bootstrap -e staging --no-pii --no-noise
 | Flag | Effect |
 | :--- | :--- |
 | `-N, --no-noise` | Exclude ephemeral data (logs, sessions, cache tags, cron history) |
-| `-S, --no-pii` | Exclude sensitive data (customers, orders, admin users, passwords) |
+| `-P, --no-pii` | Exclude sensitive data (customers, orders, admin users, passwords) |
 | `--delete` | Delete destination files not present on source |
 | `--no-compress` | Disable rsync compression |
 | `-X, --exclude` | Custom rsync exclude patterns (repeatable) |
@@ -1240,8 +1240,9 @@ govard redis info
 Smart shortcut for Varnish management.
 
 ```bash
-govard varnish purge
-govard varnish status
+govard varnish log
+govard varnish ban /.*
+govard varnish stats
 ```
 
 ### `govard rabbitmq`
@@ -1260,10 +1261,10 @@ Direct service shortcuts — proxies to the compose service of the same name. `g
 
 ```bash
 govard valkey cli
-govard elasticsearch info          # or: govard elasticsearch _cluster/health
-govard opensearch info
-# Any extra args after the service name are forwarded:
-govard elasticsearch curl -s http://elasticsearch:9200/_cat/indices
+govard elasticsearch _cluster/health
+govard opensearch _cluster/health
+# Search queries take a single path and always run as GET; extra args are ignored.
+# For arbitrary curl flags, use host-side curl against http://<your-domain>:9200 instead.
 ```
 
 Host access for search is also routed automatically via `http://<your-domain>:9200` (see [Configuration](/reference/configuration#connecting-to-elasticsearch-opensearch-from-the-host)) — the shortcuts above exec inside the container, while the `:9200` route is for host-side `curl`/browser.

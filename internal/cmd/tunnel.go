@@ -44,7 +44,7 @@ var tunnelCmd = &cobra.Command{
 	},
 	Use:   "tunnel",
 	Short: "Manage local project tunnels",
-	Long: `Manage public tunnels to your local project. Tunnels allow you to securely
+	Long: `Manage local project tunnels. Tunnels allow you to securely
 expose your local environment to the internet via Cloudflare Tunnels.
 
 Note: This command requires the 'cloudflared' binary to be installed on your host.
@@ -62,6 +62,7 @@ var tunnelStartCmd = &cobra.Command{
 and automatically update your project's base URL (e.g. for Magento or Laravel)
 to match the temporary tunnel URL. When you stop the tunnel (Ctrl+C), the
 original base URL will be restored.
+Give the target either as the positional url or as --url, not both.
 
 Prerequisite: You must have 'cloudflared' installed and available in your PATH.`,
 	Args: cobra.MaximumNArgs(1),
@@ -225,6 +226,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 var tunnelStopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Stop the running tunnel provider",
+	Long:  "Stop the running tunnel provider and restore the project's base URL. This kills every cloudflared process on the host, not just the tunnel Govard started.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// cloudflared doesn't usually run in background unless told,
 		// but we can try to find and kill it.
@@ -262,7 +264,7 @@ var tunnelStatusCmd = &cobra.Command{
 func init() {
 	tunnelStartCmd.Flags().String("provider", "cloudflare", "Tunnel provider (cloudflare)")
 	tunnelStartCmd.Flags().String("url", "", "Target URL to expose (defaults to https://<domain> from config)")
-	tunnelStartCmd.Flags().Bool("no-tls-verify", true, "Disable TLS verification against target URL")
+	tunnelStartCmd.Flags().Bool("no-tls-verify", true, "Disable TLS verification against the target URL (verification stays on with --no-tls-verify=false)")
 	tunnelStartCmd.Flags().Bool("plan", false, "Print tunnel execution plan and exit")
 	tunnelCmd.AddCommand(tunnelStartCmd)
 	tunnelCmd.AddCommand(tunnelStopCmd)
