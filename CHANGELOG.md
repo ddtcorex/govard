@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.76.0] - 2026-09-19
+
+### ✨ New Features
+
+- **Sandbox as a synthetic remote:** `sandbox` is a top-level `govard sandbox` command resolved live from Docker state — no `remotes.sandbox` block is ever written, and `sandbox` works wherever a remote is accepted (`deploy --remote`, `db -e`, `remote exec`, `sync -e`). (#337)
+- **Shared SSH gateway (Phase 1):** a persistent second-hop keypair and an sshd bastion on `127.0.0.1:2222` wired into the global proxy stack, with `gateway status/allow-key/revoke-key` and sandbox up/down registration at a stable address. (#339)
+- **RabbitMQ management UI:** exposed on `project.test:15672` (loopback-only) for every project stack. (#341)
+
+### 🐛 Bug Fixes
+
+- **Remote DB hardening:** `env up` waits for database readiness, remote dumps propagate `mysqldump` failures instead of reporting SUCCESS on empty files, and credential probes try deploy-layout served paths (`public_html`, `current`). (#351)
+- **Truthful help:** every command help page reviewed against source, docs and the live binary (212 pages) — real flag sets, required flags, remote semantics and prerequisites. (#349)
+- **Pre-release review batch:** management UI bound to loopback, two-pass dumps chained with `&&` (remote and local), gateway-target pruning on `down` (including normalized usernames), dormant PHP/profile kept from container labels, duplicate sandbox row removed from `remote list` with a shadow warning, and Magento2/MageOS probes covering served candidates. (#351)
+
+### 📚 Documentation
+
+- **README slimmed** to pitch plus install plus usage with links to the docs site. (#345)
+- **Sandbox presented as brand-new:** no deploy-subcommand history in the user docs; migration notes (naming, gateway, loopback, probe scope) in EN+VI twins. (#351)
+
 ## [1.75.0] - 2026-09-17
 
 ### ✨ New Features
