@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"govard/internal/engine"
+	_ "govard/internal/frameworks" // register framework capabilities (AuditLint)
 
 	"gopkg.in/yaml.v3"
 )
@@ -133,5 +134,113 @@ audit:
 	err := engine.ValidateConfig(config)
 	if err == nil || !strings.Contains(err.Error(), "collide") {
 		t.Fatalf("error = %v, want normalized key collision", err)
+	}
+}
+
+func TestPrepareConfigForWriteOmitsDefaultAuditLintProvider(t *testing.T) {
+	config := engine.Config{
+		ProjectName: "audit-shop",
+		Domain:      "audit-shop.test",
+		Framework:   "magento2",
+	}
+	engine.NormalizeConfig(&config, "")
+	if config.Audit.Lint.Provider != "govard" {
+		t.Fatalf("normalized provider = %q, want govard", config.Audit.Lint.Provider)
+	}
+	writable := engine.PrepareConfigForWrite(config)
+	if writable.Audit.Lint.Provider != "" || writable.Audit.Lint.ExternalProviders != nil {
+		t.Fatalf("writable audit = %#v, want empty", writable.Audit)
+	}
+	data, err := yaml.Marshal(&writable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "audit:") {
+		t.Fatalf("marshalled config still contains audit block:\n%s", data)
+	}
+}
+
+func TestPrepareConfigForWriteKeepsExternalProvidersWithoutDefaultProvider(t *testing.T) {
+	config := engine.Config{
+		ProjectName: "audit-shop",
+		Domain:      "audit-shop.test",
+		Framework:   "magento2",
+		Audit: engine.AuditConfig{Lint: engine.AuditLintConfig{
+			Provider: "govard",
+			ExternalProviders: map[string]engine.ExternalLintProviderConfig{
+				"team-ci": {Type: "docker", Image: "registry.example.com/team/glint:v3", Command: []string{"/tool", "--report-json", "/output/report.json"}},
+			},
+		}},
+	}
+	writable := engine.PrepareConfigForWrite(config)
+	if writable.Audit.Lint.Provider != "" {
+		t.Fatalf("writable provider = %q, want empty (default implied)", writable.Audit.Lint.Provider)
+	}
+	if _, ok := writable.Audit.Lint.ExternalProviders["team-ci"]; !ok {
+		t.Fatalf("external providers lost: %#v", writable.Audit.Lint.ExternalProviders)
+	}
+	data, err := yaml.Marshal(&writable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	lint, ok := raw["audit"].(map[string]any)["lint"].(map[string]any)
+	if !ok {
+		t.Fatalf("marshalled config lost audit.lint block:\n%s", data)
+	}
+	if _, ok := lint["provider"]; ok {
+		t.Fatalf("marshalled config still contains default provider:\n%s", data)
+	}
+	if _, ok := lint["external_providers"]; !ok {
+		t.Fatalf("marshalled config lost external_providers:\n%s", data)
+	}
+	// Round trip: the written YAML must reload with the govard default.
+	var reloaded engine.Config
+	if err := yaml.Unmarshal(data, &reloaded); err != nil {
+		t.Fatal(err)
+	}
+	engine.NormalizeConfig(&reloaded, "")
+	if reloaded.Audit.Lint.Provider != "govard" {
+		t.Fatalf("reloaded provider = %q, want govard", reloaded.Audit.Lint.Provider)
+	}
+	if err := engine.ValidateConfig(reloaded); err != nil {
+		t.Fatalf("reloaded config failed validation: %v", err)
+	}
+}
+
+func TestPrepareConfigForWriteCollapsesEmptyExternalProvidersMap(t *testing.T) {
+	config := engine.Config{
+		ProjectName: "audit-shop",
+		Domain:      "audit-shop.test",
+		Framework:   "magento2",
+		Audit: engine.AuditConfig{Lint: engine.AuditLintConfig{
+			Provider:          "govard",
+			ExternalProviders: map[string]engine.ExternalLintProviderConfig{},
+		}},
+	}
+	writable := engine.PrepareConfigForWrite(config)
+	if writable.Audit.Lint.Provider != "" || writable.Audit.Lint.ExternalProviders != nil {
+		t.Fatalf("writable audit = %#v, want empty", writable.Audit)
+	}
+}
+
+func TestPrepareConfigForWriteKeepsCustomAuditLintProvider(t *testing.T) {
+	config := engine.Config{
+		ProjectName: "audit-shop",
+		Domain:      "audit-shop.test",
+		Framework:   "magento2",
+		Audit: engine.AuditConfig{Lint: engine.AuditLintConfig{
+			Provider: "team-ci",
+			ExternalProviders: map[string]engine.ExternalLintProviderConfig{
+				"team-ci": {Type: "docker", Image: "registry.example.com/team/glint:v3", Command: []string{"/tool", "--report-json", "/output/report.json"}},
+			},
+		}},
+	}
+	writable := engine.PrepareConfigForWrite(config)
+	if writable.Audit.Lint.Provider != "team-ci" {
+		t.Fatalf("writable provider = %q, want team-ci", writable.Audit.Lint.Provider)
 	}
 }

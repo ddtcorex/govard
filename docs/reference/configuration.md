@@ -425,9 +425,10 @@ Govard-owned native backend.
 ```yaml
 audit:
   lint:
-    # Default provider for this project. "govard" (the native backend) is the
-    # default when omitted. Any other value must name a key below.
-    provider: govard
+    # Optional. "govard" (the native backend) is the default when omitted and
+    # is never written to .govard.yml by init — only set this to select one
+    # of the external providers below.
+    # provider: house-standard
 
     # Explicitly configured third-party lint containers. Nothing is discovered
     # automatically and none of these is ever a fallback for the native backend.
