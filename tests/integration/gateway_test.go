@@ -42,6 +42,9 @@ func TestGatewayEndToEnd(t *testing.T) {
 
 	up := env.RunGovard(t, projectDir, "svc", "up", "-d")
 	if up.ExitCode != 0 {
+		if isRegistryUnavailable(up.Stdout + "\n" + up.Stderr) {
+			t.Skipf("svc up cannot pull registry images here; skipping environment-dependent test\nstdout: %s\nstderr: %s", up.Stdout, up.Stderr)
+		}
 		t.Fatalf("svc up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
 
@@ -159,4 +162,29 @@ func TestGatewayEndToEnd(t *testing.T) {
 	if !strings.Contains(string(downOut), "unknown target") {
 		t.Fatalf("expected the gateway's unknown-target message, got:\n%s", downOut)
 	}
+}
+
+// isRegistryUnavailable reports whether command output shows the failure was
+// pulling an image (registry auth, rate limit, or network) rather than a
+// product defect. Callers skip environment-dependent tests on true and keep
+// failing hard otherwise, so real regressions still break the build.
+func isRegistryUnavailable(output string) bool {
+	lower := strings.ToLower(output)
+	for _, marker := range []string{
+		"unauthorized: authentication required",
+		"pull access denied",
+		"toomanyrequests",
+		"too many requests",
+		"rate limit exceeded",
+		"no such host",
+		"connection refused",
+		"tls handshake timeout",
+		"timeout awaiting response headers",
+		"network is unreachable",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
