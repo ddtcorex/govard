@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.76.2] - 2026-09-21
+
+### ✨ New Features
+
+- **Clean persisted config:** `init`/`bootstrap` no longer writes the default `audit.lint.provider: govard` into `.govard.yml`, and old default-only blocks are collapsed on the next write. (#357)
+
+### 🐛 Bug Fixes
+
+- **Remote DB ignores stale `~/.my.cnf`:** every remote `mysql`/`mariadb` invocation passes `--no-defaults` first, so probed app-config credentials are the only ones in effect — a stale option-file password can no longer silently override `MYSQL_PWD` (1045 despite correct credentials). (#361)
+- **Gateway e2e skips when the registry is unpullable:** the integration test skips instead of failing when `svc up` cannot pull images. (#359)
+
 ## [1.76.1] - 2026-09-21
 
 ### 🐛 Bug Fixes
