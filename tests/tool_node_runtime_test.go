@@ -34,7 +34,7 @@ stack:
 
 	logs := readRuntimeLog(t, logPath)
 	want := fmt.Sprintf(
-		"docker|run --rm -i --user %d:%d -v %s:/var/www/html -w /var/www/html node:24-alpine npm --prefix app/design/frontend/Acme/Store/web/tailwind run build",
+		"docker|run --rm -i --user %d:%d -e HOME=/tmp -e NPM_CONFIG_CACHE=/tmp/.npm -v %s:/var/www/html -w /var/www/html node:24-alpine npm --prefix app/design/frontend/Acme/Store/web/tailwind run build",
 		os.Getuid(), os.Getgid(), projectRoot,
 	)
 	if !strings.Contains(logs, want) {

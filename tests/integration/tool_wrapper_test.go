@@ -98,7 +98,7 @@ func TestGlobalWrapperCommandsUseConfiguredNodeRuntime(t *testing.T) {
 
 			logs := shim.ReadLog(t)
 			want := fmt.Sprintf(
-				"docker|run --rm -i --user %d:%d -v %s:/var/www/html -w /var/www/html node:%s-alpine %s",
+				"docker|run --rm -i --user %d:%d -e HOME=/tmp -e NPM_CONFIG_CACHE=/tmp/.npm -v %s:/var/www/html -w /var/www/html node:%s-alpine %s",
 				config.Stack.UserID, config.Stack.GroupID, projectDir, config.Stack.NodeVersion, tt.dockerCommand,
 			)
 			assertContains(t, logs, want)

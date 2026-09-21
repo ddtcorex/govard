@@ -258,6 +258,8 @@ func RunNodeTool(config engine.Config, binary string, args []string) error {
 	}
 	dockerArgs = append(dockerArgs,
 		"--user", fmt.Sprintf("%d:%d", config.Stack.UserID, config.Stack.GroupID),
+		"-e", "HOME=/tmp",
+		"-e", "NPM_CONFIG_CACHE=/tmp/.npm",
 		"-v", projectRoot+":"+conventions.DefaultWorkDir,
 		"-w", conventions.DefaultWorkDir,
 		"node:"+config.Stack.NodeVersion+"-alpine",
