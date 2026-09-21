@@ -425,9 +425,10 @@ chạy backend native do Govard sở hữu.
 ```yaml
 audit:
   lint:
-    # Provider mặc định cho dự án này. Khi bỏ trống, mặc định là "govard"
-    # (backend native). Mọi giá trị khác phải trùng tên một key bên dưới.
-    provider: govard
+    # Không bắt buộc. Khi bỏ trống, mặc định là "govard" (backend native) và
+    # init không bao giờ ghi giá trị mặc định này vào .govard.yml — chỉ set
+    # khi muốn chọn một trong các external provider bên dưới.
+    # provider: house-standard
 
     # Các lint container bên thứ ba được khai báo tường minh. Không có gì được
     # tự phát hiện, và không cái nào là fallback cho backend native.

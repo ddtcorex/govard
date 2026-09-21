@@ -22,10 +22,10 @@ func NormalizeConfig(config *Config, root string) {
 	config.Framework = NormalizeFrameworkAlias(config.Framework)
 	normalizeAuditConfig(&config.Audit)
 	NormalizeDeployConfig(config)
-	// Frameworks without a lint profile (e.g. symfony, laravel) must not
-	// carry a default audit.lint.provider that promises a non-existent gate.
-	// Clearing it here prevents govard init/bootstrap from writing
-	// audit.lint.provider: govard for those frameworks.
+	// Frameworks without a lint profile must not carry a default
+	// audit.lint.provider that promises a non-existent gate. Clearing it here
+	// prevents govard init/bootstrap from writing audit.lint.provider: govard
+	// for those frameworks.
 	if !FrameworkSupportsAuditLint(config.Framework) {
 		config.Audit.Lint.Provider = ""
 	}

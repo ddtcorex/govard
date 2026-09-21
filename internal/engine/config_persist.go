@@ -113,19 +113,22 @@ func PrepareConfigForWrite(config Config) Config {
 		}
 	}
 
-	// Do not persist a default audit.lint.provider for frameworks that do
-	// not implement audit lint. This prevents bootstrap/init from writing
-	// audit.lint.provider: govard for Symfony/Laravel where audit run would
-	// otherwise promise a gate that immediately fails with "no framework can
-	// resolve audit target".
-	if !FrameworkSupportsAuditLint(writable.Framework) {
+	// Do not persist the default audit.lint.provider: an empty provider
+	// normalizes to "govard" on load, so writing the default only adds config
+	// noise. Frameworks that do not implement audit lint additionally lose the
+	// whole block when nothing non-default remains, so bootstrap/init never
+	// writes audit.lint.provider: govard where audit run would otherwise
+	// promise a gate that immediately fails with "no framework can resolve
+	// audit target". Collapsing the default-only block also cleans old files
+	// on the next config write (init/config set/doctor --fix).
+	if !FrameworkSupportsAuditLint(writable.Framework) || NormalizeProviderName(writable.Audit.Lint.Provider) == "govard" {
 		writable.Audit.Lint.Provider = ""
-		if len(writable.Audit.Lint.ExternalProviders) == 0 {
-			writable.Audit.Lint.ExternalProviders = nil
-		}
-		if writable.Audit.Lint.Provider == "" && writable.Audit.Lint.ExternalProviders == nil {
-			writable.Audit = AuditConfig{}
-		}
+	}
+	if len(writable.Audit.Lint.ExternalProviders) == 0 {
+		writable.Audit.Lint.ExternalProviders = nil
+	}
+	if writable.Audit.Lint.Provider == "" && writable.Audit.Lint.ExternalProviders == nil {
+		writable.Audit = AuditConfig{}
 	}
 
 	return writable
