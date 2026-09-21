@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.76.1] - 2026-09-21
+
+### 🐛 Bug Fixes
+
+- **One-shot Node runtime works for any host UID:** `govard tool npm/npx/yarn/pnpm/grunt` now sets `HOME=/tmp` and `NPM_CONFIG_CACHE=/tmp/.npm` inside the `node:xx-alpine` container, so hosts whose UID is not 1000 no longer fail with `EACCES mkdir /.npm`. (#354)
+
 ## [1.76.0] - 2026-09-19
 
 ### ✨ New Features
