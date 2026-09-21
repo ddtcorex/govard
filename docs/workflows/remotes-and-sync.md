@@ -155,6 +155,11 @@ application one level down, because the layout root is tried first. Point the
 remote `path` at the real app root (or remove the stale file) when the probe
 picks up the wrong database.
 
+Every remote `mysql`/`mariadb` invocation passes `--no-defaults`, so the
+probed credentials are the only ones in effect: a stale `~/.my.cnf` password
+on the remote can never silently override them (client precedence is
+command-line > option file > `MYSQL_PWD`).
+
 ## Sync Behavior
 
 ### Resumable Transfers

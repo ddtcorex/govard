@@ -23,6 +23,15 @@ type dbCredentials struct {
 	TablePrefix string
 }
 
+// remoteMySQLNoDefaults forces every remote mysql/mariadb client invocation
+// to ignore option files (~/.my.cnf, /etc/mysql/*). Client password
+// precedence is command-line > option file > MYSQL_PWD, so a stale ~/.my.cnf
+// password on a shared-hosting remote would otherwise silently override the
+// probed app-config password govard exports via MYSQL_PWD — a 1045
+// "Access denied ... (using password: YES)" despite correct credentials.
+// It must be the first argument after the client binary.
+const remoteMySQLNoDefaults = "--no-defaults"
+
 func defaultDBCredentialsForFramework(framework string) dbCredentials {
 	credentials := defaultDBCredentialsForFrameworkFields(framework)
 	credentials.Engine = dbEngineForFramework(framework)
@@ -386,7 +395,7 @@ func buildRemoteMySQLDumpCommandString(credentials dbCredentials, noNoise bool, 
 	dbCliDetect := conventions.MySQLDumpBinDetect
 
 	// Common options
-	commonArgs := []string{"\"$DUMP_BIN\"", "--max-allowed-packet=" + conventions.MySQLMaxAllowedPacket, "--force", "--single-transaction", "--no-tablespaces"}
+	commonArgs := []string{"\"$DUMP_BIN\"", remoteMySQLNoDefaults, "--max-allowed-packet=" + conventions.MySQLMaxAllowedPacket, "--force", "--single-transaction", "--no-tablespaces"}
 	if host := strings.TrimSpace(credentials.Host); host != "" {
 		commonArgs = append(commonArgs, "-h"+engine.ShellQuote(host))
 	}
@@ -434,7 +443,7 @@ func buildRemoteMySQLConnectCommandString(credentials dbCredentials) string {
 	}
 	credentials = credentials.withDefaults()
 
-	args := []string{"mysql"}
+	args := []string{"mysql", remoteMySQLNoDefaults}
 	if host := strings.TrimSpace(credentials.Host); host != "" {
 		args = append(args, "-h"+engine.ShellQuote(host))
 	}
@@ -452,7 +461,7 @@ func buildRemoteMySQLImportCommandString(credentials dbCredentials) string {
 	}
 	credentials = credentials.withDefaults()
 
-	args := []string{"mysql", "--max-allowed-packet=" + conventions.MySQLMaxAllowedPacket}
+	args := []string{"mysql", remoteMySQLNoDefaults, "--max-allowed-packet=" + conventions.MySQLMaxAllowedPacket}
 	if host := strings.TrimSpace(credentials.Host); host != "" {
 		args = append(args, "-h"+engine.ShellQuote(host))
 	}
@@ -593,6 +602,46 @@ func BuildRemoteMySQLDumpCommandWithPrefixForTest(database string, tablePrefix s
 	}, noNoise, noPII, framework, false)
 }
 
+func BuildRemoteMySQLConnectCommandForTest(host string, port int, username string, password string, database string) string {
+	return buildRemoteMySQLConnectCommandString(dbCredentials{
+		Host:     host,
+		Port:     port,
+		Username: username,
+		Password: password,
+		Database: database,
+	})
+}
+
+func BuildRemoteMySQLImportCommandForTest(host string, port int, username string, password string, database string) string {
+	return buildRemoteMySQLImportCommandString(dbCredentials{
+		Host:     host,
+		Port:     port,
+		Username: username,
+		Password: password,
+		Database: database,
+	})
+}
+
+func BuildRemoteMySQLQueryCommandForTest(host string, port int, username string, password string, database string, query string) string {
+	return buildRemoteMySQLQueryCommandString(dbCredentials{
+		Host:     host,
+		Port:     port,
+		Username: username,
+		Password: password,
+		Database: database,
+	}, query)
+}
+
+func BuildRemoteMySQLSizeCommandForTest(host string, port int, username string, password string, database string) string {
+	return buildRemoteMySQLSizeCommandString(dbCredentials{
+		Host:     host,
+		Port:     port,
+		Username: username,
+		Password: password,
+		Database: database,
+	}, "SELECT 1")
+}
+
 func BuildLocalDBImportCommandForTest(containerName string, username string, password string, database string) []string {
 	command := buildLocalDBImportCommand(containerName, dbCredentials{
 		Username: username,
@@ -641,7 +690,7 @@ func buildRemoteMySQLQueryCommandString(credentials dbCredentials, query string)
 	}
 	credentials = credentials.withDefaults()
 
-	args := []string{"mysql"}
+	args := []string{"mysql", remoteMySQLNoDefaults}
 	if host := strings.TrimSpace(credentials.Host); host != "" {
 		args = append(args, "-h"+engine.ShellQuote(host))
 	}
@@ -651,6 +700,26 @@ func buildRemoteMySQLQueryCommandString(credentials dbCredentials, query string)
 	args = append(args, "-u"+engine.ShellQuote(credentials.Username), "-e", engine.ShellQuote(query))
 
 	return mysqlPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+}
+
+func buildRemoteMySQLSizeCommandString(credentials dbCredentials, query string) string {
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		return buildRemotePostgresQueryCommandString(credentials, query)
+	}
+	credentials = credentials.withDefaults()
+
+	mysqlArgs := []string{"\"$DB_CLI\"", remoteMySQLNoDefaults, "-BN"}
+	if host := strings.TrimSpace(credentials.Host); host != "" {
+		mysqlArgs = append(mysqlArgs, "-h"+engine.ShellQuote(host))
+	}
+	if credentials.Port > 0 {
+		mysqlArgs = append(mysqlArgs, "-P"+strconv.Itoa(credentials.Port))
+	}
+	mysqlArgs = append(mysqlArgs, "-u"+engine.ShellQuote(credentials.Username), "-e", engine.ShellQuote(query))
+
+	dbCliDetect := conventions.MySQLClientBinDetect
+	mysqlCmd := mysqlPasswordExportPrefix(credentials.Password) + strings.Join(mysqlArgs, " ")
+	return fmt.Sprintf("%s && %s", dbCliDetect, mysqlCmd)
 }
 
 func GetDatabaseSize(config engine.Config, remoteName string, remoteCfg engine.RemoteConfig, credentials dbCredentials, noNoise bool, noPII bool) (int64, error) {
@@ -672,18 +741,9 @@ func GetDatabaseSize(config engine.Config, remoteName string, remoteCfg engine.R
 	// query the total logical size (data_length is better for estimating dump size than avg_row_length)
 	query := fmt.Sprintf("SELECT SUM(data_length) FROM information_schema.tables %s", whereClause)
 
-	mysqlArgs := []string{"\"$DB_CLI\"", "-BN"}
-	if host := strings.TrimSpace(credentials.Host); host != "" {
-		mysqlArgs = append(mysqlArgs, "-h"+engine.ShellQuote(host))
-	}
-	if credentials.Port > 0 {
-		mysqlArgs = append(mysqlArgs, "-P"+strconv.Itoa(credentials.Port))
-	}
-	mysqlArgs = append(mysqlArgs, "-u"+engine.ShellQuote(credentials.Username), "-e", engine.ShellQuote(query))
-
-	dbCliDetect := conventions.MySQLClientBinDetect
-	mysqlCmd := mysqlPasswordExportPrefix(credentials.Password) + strings.Join(mysqlArgs, " ")
-	cmdStr := fmt.Sprintf("%s && %s", dbCliDetect, mysqlCmd)
+	// The same cmdStr serves local docker-exec and remote SSH: --no-defaults
+	// is harmless locally (govard-owned containers ship no option files).
+	cmdStr := buildRemoteMySQLSizeCommandString(credentials, query)
 
 	var output []byte
 	var err error

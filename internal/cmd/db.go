@@ -1258,12 +1258,13 @@ func runDBTop(cmd *cobra.Command, config engine.Config, options dbCommandOptions
 			var out []byte
 			var cmdErr error
 
-			// Build command string
+			// Build command string (--no-defaults: ignore ~/.my.cnf so the
+			// credentials above are the only ones in effect, remote or not)
 			var cmdStr string
 			if credentials.Password != "" {
-				cmdStr = fmt.Sprintf("mysql -u%s -p%s -BN -e %s", engine.ShellQuote(credentials.Username), engine.ShellQuote(credentials.Password), engine.ShellQuote(query))
+				cmdStr = fmt.Sprintf("mysql --no-defaults -u%s -p%s -BN -e %s", engine.ShellQuote(credentials.Username), engine.ShellQuote(credentials.Password), engine.ShellQuote(query))
 			} else {
-				cmdStr = fmt.Sprintf("mysql -u%s -BN -e %s", engine.ShellQuote(credentials.Username), engine.ShellQuote(query))
+				cmdStr = fmt.Sprintf("mysql --no-defaults -u%s -BN -e %s", engine.ShellQuote(credentials.Username), engine.ShellQuote(query))
 			}
 
 			if options.Environment == "local" {

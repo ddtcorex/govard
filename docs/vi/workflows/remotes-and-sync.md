@@ -154,6 +154,11 @@ vào layout root vẫn resolve được. **Ứng viên hợp lệ đầu tiên t
 sâu hơn một cấp, vì layout root được thử trước. Hãy trỏ `path` của remote
 đúng vào app root thật (hoặc xoá file cũ) khi probe đọc nhầm database.
 
+Mọi lệnh `mysql`/`mariadb` chạy trên remote đều kèm `--no-defaults`, nên
+credential probe được là nguồn duy nhất có hiệu lực: password cũ trong
+`~/.my.cnf` trên remote không bao giờ lặng lẽ đè lên chúng (thứ tự ưu tiên
+của client là command-line > option file > `MYSQL_PWD`).
+
 ## Hành vi đồng bộ (Sync Behavior)
 
 ### Tiếp tục truyền tải dở dang (Resumable Transfers)
