@@ -34,7 +34,7 @@ stack:
 
 	logs := readRuntimeLog(t, logPath)
 	want := fmt.Sprintf(
-		"docker|run --rm -i --user %d:%d -e HOME=/tmp -e NPM_CONFIG_CACHE=/tmp/.npm -v %s:/var/www/html -w /var/www/html node:24-alpine npm --prefix app/design/frontend/Acme/Store/web/tailwind run build",
+		"docker|run --rm --user %d:%d -e HOME=/tmp -e NPM_CONFIG_CACHE=/tmp/.npm -v %s:/var/www/html -w /var/www/html node:24-alpine npm --prefix app/design/frontend/Acme/Store/web/tailwind run build",
 		os.Getuid(), os.Getgid(), projectRoot,
 	)
 	if !strings.Contains(logs, want) {
@@ -104,7 +104,7 @@ framework: %s
 			}
 
 			logs := readRuntimeLog(t, logPath)
-			want := "docker|exec -i -w /app sample-project-web-1 npm --version"
+			want := "docker|exec -w /app sample-project-web-1 npm --version"
 			if !strings.Contains(logs, want) {
 				t.Fatalf("npm must exec into the %s application container, not a one-shot Node image:\nwant: %s\nlogs:\n%s", framework, want, logs)
 			}

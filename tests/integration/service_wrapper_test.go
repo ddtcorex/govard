@@ -21,7 +21,18 @@ func TestServiceWrapperCommandsWithShims(t *testing.T) {
 
 		logs := shim.ReadLog(t)
 		assertContains(t, logs, "docker|inspect -f {{.State.Running}} m2-clone-basic-redis-1")
-		assertContains(t, logs, "docker|exec -i m2-clone-basic-redis-1 redis-cli PING")
+		assertContains(t, logs, "docker|exec m2-clone-basic-redis-1 redis-cli PING")
+	})
+
+	t.Run("RedisBareCliStaysInteractive", func(t *testing.T) {
+		projectDir := env.CreateProjectFromFixture(t, "magento2/options-local", "service-redis-cli-m2")
+		shim := env.SetupRuntimeShims(t, map[string]int{"docker": 0, "ssh": 0, "rsync": 0})
+
+		result := env.RunGovardWithEnv(t, projectDir, shim.Env(), "env", "redis", "cli")
+		result.AssertSuccess(t)
+
+		logs := shim.ReadLog(t)
+		assertContains(t, logs, "docker|exec -i m2-clone-basic-redis-1 redis-cli")
 	})
 
 	t.Run("RedisSwitchesToValkeyCLI", func(t *testing.T) {
@@ -36,7 +47,7 @@ func TestServiceWrapperCommandsWithShims(t *testing.T) {
 		result.AssertSuccess(t)
 
 		logs := shim.ReadLog(t)
-		assertContains(t, logs, "docker|exec -i m2-clone-basic-redis-1 valkey-cli PING")
+		assertContains(t, logs, "docker|exec m2-clone-basic-redis-1 valkey-cli PING")
 	})
 
 	t.Run("ValkeyGuardAndRuntime", func(t *testing.T) {
@@ -59,7 +70,7 @@ func TestServiceWrapperCommandsWithShims(t *testing.T) {
 		result.AssertSuccess(t)
 
 		logs := shim.ReadLog(t)
-		assertContains(t, logs, "docker|exec -i m2-clone-basic-redis-1 valkey-cli PING")
+		assertContains(t, logs, "docker|exec m2-clone-basic-redis-1 valkey-cli PING")
 	})
 
 	t.Run("SearchServiceCommandsUseCurl", func(t *testing.T) {
@@ -85,6 +96,6 @@ func TestServiceWrapperCommandsWithShims(t *testing.T) {
 		result.AssertSuccess(t)
 
 		logs := shim.ReadLog(t)
-		assertContains(t, logs, "docker|exec -i m2-clone-basic-varnish-1 varnishadm ban req.url ~ /.*")
+		assertContains(t, logs, "docker|exec m2-clone-basic-varnish-1 varnishadm ban req.url ~ /.*")
 	})
 }

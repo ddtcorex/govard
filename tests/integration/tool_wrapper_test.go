@@ -31,7 +31,7 @@ func TestGlobalWrapperCommandsExecIntoOwnContainerForNodeRuntimeFrameworks(t *te
 			result.AssertSuccess(t)
 
 			logs := shim.ReadLog(t)
-			want := fmt.Sprintf("docker|exec -i -w /app sample-%s-web-1 npm --version", framework)
+			want := fmt.Sprintf("docker|exec -w /app sample-%s-web-1 npm --version", framework)
 			assertContains(t, logs, want)
 			if strings.Contains(logs, "node:") {
 				t.Fatalf("%s must exec into its own application container, not a one-shot Node image:\n%s", framework, logs)
@@ -98,7 +98,7 @@ func TestGlobalWrapperCommandsUseConfiguredNodeRuntime(t *testing.T) {
 
 			logs := shim.ReadLog(t)
 			want := fmt.Sprintf(
-				"docker|run --rm -i --user %d:%d -e HOME=/tmp -e NPM_CONFIG_CACHE=/tmp/.npm -v %s:/var/www/html -w /var/www/html node:%s-alpine %s",
+				"docker|run --rm --user %d:%d -e HOME=/tmp -e NPM_CONFIG_CACHE=/tmp/.npm -v %s:/var/www/html -w /var/www/html node:%s-alpine %s",
 				config.Stack.UserID, config.Stack.GroupID, projectDir, config.Stack.NodeVersion, tt.dockerCommand,
 			)
 			assertContains(t, logs, want)

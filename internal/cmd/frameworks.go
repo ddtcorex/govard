@@ -204,7 +204,7 @@ func initFrameworkCommands() {
 				}
 
 				targetExec := resolveToolExecution(config, target.Binary, target.DefaultUser)
-				return RunInContainerAt(targetExec.ContainerName, targetExec.User, targetExec.Workdir, target.Binary, commandArgs)
+				return RunInContainerAt(targetExec.ContainerName, targetExec.User, targetExec.Workdir, target.Binary, commandArgs, false)
 			},
 		}
 		toolCmd.AddCommand(cmd)
@@ -213,15 +213,18 @@ func initFrameworkCommands() {
 }
 
 func RunInContainer(containerName string, user string, binary string, args []string) error {
-	return RunInContainerAt(containerName, user, conventions.DefaultWorkDir, binary, args)
+	return RunInContainerAt(containerName, user, conventions.DefaultWorkDir, binary, args, false)
 }
 
-func RunInContainerAt(containerName string, user string, workdir string, binary string, args []string) error {
+// RunInContainerAt execs into a container. One-shot commands (interactive=false)
+// run detached — no -i/-t, no stdin — so a wrapper inside a `while read` loop
+// cannot drain the loop's piped input via `docker exec -i` (same rule as
+// dockerExecArgs). Interactive sessions (bare `govard sh`) pass
+// interactive=true to keep the historical -i/-it behavior with stdin attached.
+func RunInContainerAt(containerName string, user string, workdir string, binary string, args []string, interactive bool) error {
 	dockerArgs := []string{"exec"}
-	if stdinIsTerminal() {
-		dockerArgs = append(dockerArgs, "-it")
-	} else {
-		dockerArgs = append(dockerArgs, "-i")
+	if interactive {
+		dockerArgs = dockerExecBaseArgs()
 	}
 	if user != "" {
 		dockerArgs = append(dockerArgs, "-u", user)
@@ -233,7 +236,7 @@ func RunInContainerAt(containerName string, user string, workdir string, binary 
 	dockerArgs = append(dockerArgs, args...)
 
 	c := exec.Command("docker", dockerArgs...)
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	attachExecStdin(c, interactive)
 	return c.Run()
 }
 
@@ -251,11 +254,6 @@ func RunNodeTool(config engine.Config, binary string, args []string) error {
 	}
 
 	dockerArgs := []string{"run", "--rm"}
-	if stdinIsTerminal() {
-		dockerArgs = append(dockerArgs, "-it")
-	} else {
-		dockerArgs = append(dockerArgs, "-i")
-	}
 	dockerArgs = append(dockerArgs,
 		"--user", fmt.Sprintf("%d:%d", config.Stack.UserID, config.Stack.GroupID),
 		"-e", "HOME=/tmp",
@@ -275,8 +273,11 @@ func RunNodeTool(config engine.Config, binary string, args []string) error {
 	}
 	dockerArgs = append(dockerArgs, args...)
 
+	// One-shot standalone run: detached stdin (same pipe-safety rule as
+	// dockerExecArgs) so a `govard tool npm ...` inside a `while read` loop
+	// cannot drain the loop's input.
 	c := exec.Command("docker", dockerArgs...)
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	attachExecStdin(c, false)
 	return c.Run()
 }
 

@@ -61,11 +61,11 @@ Pass -- to disambiguate flags:
 			// Interactive session with colored PS1 trick (Cyan user@host to match Warden)
 			coloredPS1 := "\\[\\033[01;36m\\]\\u@\\h\\[\\033[00m\\]:\\w\\$ "
 			bashCmd := fmt.Sprintf("export PS1='%s'; exec bash", coloredPS1)
-			err = RunInContainerAt(containerName, user, workdir, "bash", []string{"-c", bashCmd})
+			err = RunInContainerAt(containerName, user, workdir, "bash", []string{"-c", bashCmd}, true)
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				code := exitErr.ExitCode()
 				if code == 126 || code == 127 {
-					err = RunInContainerAt(containerName, user, workdir, "sh", []string{"-c", bashCmd})
+					err = RunInContainerAt(containerName, user, workdir, "sh", []string{"-c", bashCmd}, true)
 				}
 			}
 		} else if args[0] == "-c" || args[0] == "--command" || strings.HasPrefix(args[0], "--command=") || strings.HasPrefix(args[0], "-c=") {
@@ -93,20 +93,20 @@ Pass -- to disambiguate flags:
 			if strings.TrimSpace(commandStr) == "" {
 				return fmt.Errorf("flag -c requires an argument")
 			}
-			err = RunInContainerAt(containerName, user, workdir, "bash", []string{"-c", commandStr})
+			err = RunInContainerAt(containerName, user, workdir, "bash", []string{"-c", commandStr}, false)
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				code := exitErr.ExitCode()
 				if code == 126 || code == 127 {
-					err = RunInContainerAt(containerName, user, workdir, "sh", []string{"-c", commandStr})
+					err = RunInContainerAt(containerName, user, workdir, "sh", []string{"-c", commandStr}, false)
 				}
 			}
 		} else {
 			commandStr := strings.Join(args, " ")
-			err = RunInContainerAt(containerName, user, workdir, "bash", []string{"-c", commandStr})
+			err = RunInContainerAt(containerName, user, workdir, "bash", []string{"-c", commandStr}, false)
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				code := exitErr.ExitCode()
 				if code == 126 || code == 127 {
-					err = RunInContainerAt(containerName, user, workdir, "sh", []string{"-c", commandStr})
+					err = RunInContainerAt(containerName, user, workdir, "sh", []string{"-c", commandStr}, false)
 				}
 			}
 		}

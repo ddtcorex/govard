@@ -172,10 +172,10 @@ func detectLocalAdminURL(config engine.Config) string {
 func runOpenLocalShell(config engine.Config) error {
 	containerName, workdir, user := resolveShellExecution(config)
 
-	if err := RunInContainerAt(containerName, user, workdir, "bash", []string{}); err == nil {
+	if err := RunInContainerAt(containerName, user, workdir, "bash", []string{}, true); err == nil {
 		return nil
 	}
-	return RunInContainerAt(containerName, user, workdir, "sh", []string{})
+	return RunInContainerAt(containerName, user, workdir, "sh", []string{}, true)
 }
 
 func buildRemoteShellCommand(projectPath string) string {

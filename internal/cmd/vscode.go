@@ -85,7 +85,7 @@ func initVSCodeCommands() {
 
 				config := loadConfig()
 				target := resolveToolExecution(config, vc.Binary, "")
-				runErr := RunInContainerAt(target.ContainerName, target.User, target.Workdir, vc.Binary, append(vc.PrependArgs, args...))
+				runErr := RunInContainerAt(target.ContainerName, target.User, target.Workdir, vc.Binary, append(vc.PrependArgs, args...), false)
 				if runErr == nil {
 					return nil
 				}

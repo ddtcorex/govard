@@ -20,6 +20,35 @@ func dockerExecBaseArgs() []string {
 	return []string{"exec", "-i"}
 }
 
+// dockerExecArgs builds the `docker exec` flag prefix for CLI wrappers.
+//
+// Interactive sessions (a bare `redis cli`, `varnish log`/`stats`) keep the
+// historical -i/-it behavior with stdin attached, so piped input such as
+// `echo PING | govard redis cli` keeps working.
+//
+// One-shot commands (PING, HGET, --scan, ban, ...) run detached: no -i/-t and
+// no stdin. Attaching stdin lets `docker exec -i` drain a pipe that feeds the
+// caller's own `while read` loop, silently dropping loop input (e.g. `govard
+// redis --scan | while read ... govard redis HGET ...` returns nothing while
+// the same loop over a direct client returns full results). Dropping -t also
+// keeps the inner CLI on raw output formatting instead of human-readable TTY
+// formatting, matching a direct client call.
+func dockerExecArgs(interactive bool) []string {
+	if !interactive {
+		return []string{"exec"}
+	}
+	return dockerExecBaseArgs()
+}
+
+// attachExecStdin wires stdio for a `docker exec` child: stdout/stderr always,
+// stdin only for interactive sessions (see dockerExecArgs).
+func attachExecStdin(c *exec.Cmd, interactive bool) {
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	if interactive {
+		c.Stdin = os.Stdin
+	}
+}
+
 func isTerminal(f *os.File) bool {
 	stat, err := f.Stat()
 	if err != nil {

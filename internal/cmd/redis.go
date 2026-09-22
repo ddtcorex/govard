@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 
 	"github.com/spf13/cobra"
@@ -98,11 +97,16 @@ func runRedisCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	dockerArgs := dockerExecBaseArgs()
+	// A bare `redis cli` is an interactive session (stdin stays attached, so
+	// `echo PING | govard redis cli` keeps working). Any explicit remote
+	// command runs detached so a wrapper inside a `while read` loop cannot
+	// drain the loop's own piped input via `docker exec -i`.
+	interactive := len(args) == 0
+	dockerArgs := dockerExecArgs(interactive)
 	dockerArgs = append(dockerArgs, containerName, cliBinary)
 	dockerArgs = append(dockerArgs, args...)
 
 	c := exec.Command("docker", dockerArgs...)
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	attachExecStdin(c, interactive)
 	return c.Run()
 }
