@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"govard/internal/runtime"
 )
@@ -50,22 +49,24 @@ Note: 'log' streams the Varnish request log; 'logs' shows the container logs via
 		subcommand := args[0]
 		switch subcommand {
 		case "log":
-			pterm.Info.Println("Streaming Varnish logs...")
-			return runVarnishCmd(containerName, []string{"varnishlog"})
+			// stderr: stdout carries the streamed log for pipes.
+			fmt.Fprintln(os.Stderr, "Streaming Varnish logs...")
+			return runVarnishCmd(containerName, []string{"varnishlog"}, true)
 		case "stats":
-			return runVarnishCmd(containerName, []string{"varnishstat"})
+			return runVarnishCmd(containerName, []string{"varnishstat"}, true)
 		case "ban":
 			if len(args) < 2 {
 				return &cli.UsageError{Err: fmt.Errorf("usage: govard varnish ban <pattern> (example: govard varnish ban /.*)")}
 			}
 			pattern := args[1]
-			pterm.Info.Printf("Banning pattern: %s\n", pattern)
+			// stderr: stdout stays clean for scripting.
+			fmt.Fprintf(os.Stderr, "Banning pattern: %s\n", pattern)
 			// varnishadm ban "req.url ~ /.*"
 			banCmd := fmt.Sprintf("req.url ~ %s", pattern)
-			if err := runVarnishCmd(containerName, []string{"varnishadm", "ban", banCmd}); err != nil {
+			if err := runVarnishCmd(containerName, []string{"varnishadm", "ban", banCmd}, false); err != nil {
 				return err
 			}
-			pterm.Success.Println("Ban command sent to Varnish")
+			fmt.Fprintln(os.Stderr, "Ban command sent to Varnish")
 			return nil
 		default:
 			return fmt.Errorf("unknown varnish subcommand: %s", subcommand)
@@ -73,17 +74,17 @@ Note: 'log' streams the Varnish request log; 'logs' shows the container logs via
 	},
 }
 
-func runVarnishCmd(containerName string, args []string) error {
+func runVarnishCmd(containerName string, args []string, interactive bool) error {
 	if err := ensureContainerReadyForExec(containerName, "Varnish"); err != nil {
 		return err
 	}
 
-	dockerArgs := dockerExecBaseArgs()
+	dockerArgs := dockerExecArgs(interactive)
 	dockerArgs = append(dockerArgs, containerName)
 	dockerArgs = append(dockerArgs, args...)
 
 	c := exec.Command("docker", dockerArgs...)
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	attachExecStdin(c, interactive)
 	if err := c.Run(); err != nil {
 		if stateErr := ensureContainerReadyForExec(containerName, "Varnish"); stateErr != nil {
 			return fmt.Errorf("varnish command failed: %w", stateErr)

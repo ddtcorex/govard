@@ -95,14 +95,19 @@ func runServiceCLI(serviceName string, binary string, args []string) error {
 		return err
 	}
 
-	pterm.Info.Printf("Connecting to %s on %s...\n", serviceLabel, containerName)
+	// stderr, not stdout: a notice on stdout would be ingested as data by
+	// `govard valkey --scan | while read` loops.
+	fmt.Fprintf(os.Stderr, "Connecting to %s on %s...\n", serviceLabel, containerName)
 
-	dockerArgs := dockerExecBaseArgs()
+	// Same interactive rule as the redis wrapper (see runRedisCommand): a bare
+	// `valkey cli` keeps stdin attached, one-shot commands run detached.
+	interactive := len(args) == 0
+	dockerArgs := dockerExecArgs(interactive)
 	dockerArgs = append(dockerArgs, containerName, binary)
 	dockerArgs = append(dockerArgs, args...)
 
 	c := exec.Command("docker", dockerArgs...)
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	attachExecStdin(c, interactive)
 	if err := c.Run(); err != nil {
 		if stateErr := ensureContainerReadyForExec(containerName, serviceLabel); stateErr != nil {
 			return fmt.Errorf("%s CLI failed: %w", serviceLabel, stateErr)
@@ -130,7 +135,8 @@ func runSearchQuery(serviceName string, port int, args []string) error {
 	}
 
 	url := fmt.Sprintf("http://localhost:%d%s", port, path)
-	pterm.Info.Printf("Querying %s: %s\n", serviceLabel, url)
+	// stderr, not stdout: stdout carries the query result for pipes.
+	fmt.Fprintf(os.Stderr, "Querying %s: %s\n", serviceLabel, url)
 
 	dockerArgs := []string{"exec", "-i", containerName, "curl", "-s", "-X", "GET", url}
 	c := exec.Command("docker", dockerArgs...)

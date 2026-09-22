@@ -150,7 +150,7 @@ func TestFrameworkCommandRuntimeForMagentoProject(t *testing.T) {
 		}
 
 		logs := shim.ReadLog(t)
-		assertContains(t, logs, "docker|exec -i -u "+expectedUser+" -w /var/www/html m2-clone-basic-php-1 php bin/magento cache:flush")
+		assertContains(t, logs, "docker|exec -u "+expectedUser+" -w /var/www/html m2-clone-basic-php-1 php bin/magento cache:flush")
 	})
 
 	t.Run("ComposerUsesConfiguredUserAndGroup", func(t *testing.T) {
@@ -170,7 +170,7 @@ func TestFrameworkCommandRuntimeForMagentoProject(t *testing.T) {
 		result.AssertSuccess(t)
 
 		logs := shim.ReadLog(t)
-		assertContains(t, logs, "docker|exec -i -u 2000:2001 -w /var/www/html m2-clone-basic-php-1 composer install --no-dev")
+		assertContains(t, logs, "docker|exec -u 2000:2001 -w /var/www/html m2-clone-basic-php-1 composer install --no-dev")
 	})
 }
 

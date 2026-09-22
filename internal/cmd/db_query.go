@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"govard/internal/engine"
@@ -28,7 +29,9 @@ func runDBQuery(cmd *cobra.Command, config engine.Config, options dbCommandOptio
 			}
 
 			credentials := resolveLocalDBCredentials(config, containerName)
-			pterm.Info.Printf("Executing query on %s...\n", containerName)
+			// stderr, not stdout: a notice on stdout would be ingested as data by
+			// `govard db query ... | while read` loops.
+			fmt.Fprintf(os.Stderr, "Executing query on %s...\n", containerName)
 
 			queryCmd := buildLocalDBQueryCommand(containerName, credentials, query)
 			queryCmd.Stdout = cmd.OutOrStdout()

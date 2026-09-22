@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"govard/internal/conventions"
-	"os"
 	"os/exec"
+
+	"govard/internal/conventions"
 
 	"github.com/spf13/cobra"
 	"govard/internal/runtime"
@@ -65,12 +65,15 @@ func runRabbitMQCtl(containerName string, args []string) error {
 		return err
 	}
 
-	dockerArgs := dockerExecBaseArgs()
+	// Same interactive rule as the redis wrapper (see runRedisCommand): a bare
+	// `rabbitmq cli` keeps stdin attached, one-shot commands run detached.
+	interactive := len(args) == 0
+	dockerArgs := dockerExecArgs(interactive)
 	dockerArgs = append(dockerArgs, containerName, "rabbitmqctl")
 	dockerArgs = append(dockerArgs, args...)
 
 	c := exec.Command("docker", dockerArgs...)
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	attachExecStdin(c, interactive)
 	if err := c.Run(); err != nil {
 		if stateErr := ensureContainerReadyForExec(containerName, "RabbitMQ"); stateErr != nil {
 			return fmt.Errorf("rabbitmq command failed: %w", stateErr)
