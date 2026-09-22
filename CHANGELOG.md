@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.76.3] - 2026-09-22
+
+### 🐛 Bug Fixes
+
+- **Pipe-safe CLI wrappers:** one-shot commands (`redis`/`valkey`, `varnish ban`, `rabbitmqctl`, `govard tool`, `govard sh -c`) no longer attach `docker exec -i` or the caller's stdin, so a wrapper inside a `while read` loop can no longer drain the loop's piped input — scan loops silently returned nothing (or partial rows) while the same loop over a direct client returned full results. Human notices move from stdout to stderr, keeping data streams clean for pipes. (#365)
+
 ## [1.76.2] - 2026-09-21
 
 ### ✨ New Features
