@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"govard/internal/cmd"
 	"govard/internal/deploy"
@@ -391,7 +392,7 @@ func TestMagento2RecipeCommandsAllExpand(t *testing.T) {
 
 	// The restore command additionally references {{backup_path}}, which the
 	// engine supplies from the release record at restore time.
-	restoreVars := vars.SetRaw("backup_path", "/srv/app/shared/backups/deploy/1/dump.sql")
+	restoreVars := vars.SetPath("backup_path", "/srv/app/shared/backups/deploy/1/dump.sql")
 	if _, err := restoreVars.Expand(recipe.Restore); err != nil {
 		t.Errorf("the restore command does not expand: %v\n%s", err, recipe.Restore)
 	}
@@ -1194,5 +1195,158 @@ func TestMagento2SandboxSSHSeesGitSSHCommand(t *testing.T) {
 		if !strings.Contains(dockerfile, want) {
 			t.Errorf("the image must carry GIT_SSH_COMMAND into SSH sessions (%q missing)", want)
 		}
+	}
+}
+
+// `setup:backup` writes into the release's shared `var/backups`, and govard used
+// to *copy* the file it wanted out of there: the original stayed behind, in a
+// directory nothing prunes, holding the customer data the dump exists for. It now
+// moves only the file this run produced — identified by a marker taken before the
+// command, not by "newest mtime", so an operator's own dump taken moments earlier
+// stays where it is.
+func TestMagento2DumpCommandMovesOnlyTheDumpItProduced(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := deploy.NewReleaseForTest("1", "abcdef", "main")
+	release.Path = host.ReleasePath("1")
+
+	backups := filepath.Join(release.Path, "var", "backups")
+	for _, dir := range []string{filepath.Join(release.Path, "bin"), backups} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	// The stub writes what `setup:backup` writes: a Magento-shaped file inside
+	// var/backups, named with its own timestamp.
+	stub := "#!/bin/sh\nprintf 'fresh dump' > var/backups/$(date +%s%N)_db.sql\n"
+	if err := os.WriteFile(filepath.Join(release.Path, "bin", "magento"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("write the stub: %v", err)
+	}
+	// The operator's own dump, taken an hour ago.
+	operator := filepath.Join(backups, "1_db.sql")
+	if err := os.WriteFile(operator, []byte("operator dump"), 0o600); err != nil {
+		t.Fatalf("write the operator's dump: %v", err)
+	}
+	older := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(operator, older, older); err != nil {
+		t.Fatalf("age the operator's dump: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{DBBackup: true, CommandTimeout: time.Minute})
+	sc.Release = release
+	// The recipe runs `{{php_bin}} bin/magento`, and the stub is a shell script:
+	// `sh` stands in for the PHP binary so the test needs no PHP.
+	sc.Vars = sc.Vars.Set("php_bin", "sh").SetPath("release_path", release.Path)
+
+	task := magento2.DeployRecipe().Task(deploy.TaskDBBackup)
+	if task.Core == nil {
+		t.Fatal("the Magento recipe declares no db:backup implementation")
+	}
+	if err := task.Core(context.Background(), sc); err != nil {
+		t.Fatalf("db:backup: %v", err)
+	}
+
+	if release.Database.Backup == "" {
+		t.Fatal("db:backup recorded no file")
+	}
+	raw, err := os.ReadFile(release.Database.Backup)
+	if err != nil {
+		t.Fatalf("read the recorded backup: %v", err)
+	}
+	if string(raw) != "fresh dump" {
+		t.Fatalf("the recorded backup holds %q, want the dump this run produced", raw)
+	}
+	left, err := os.ReadDir(backups)
+	if err != nil {
+		t.Fatalf("read var/backups: %v", err)
+	}
+	var names []string
+	for _, entry := range left {
+		names = append(names, entry.Name())
+	}
+	if len(names) != 1 || names[0] != "1_db.sql" {
+		t.Fatalf("var/backups holds %v, want only the operator's 1_db.sql", names)
+	}
+	if kept, err := os.ReadFile(operator); err != nil || string(kept) != "operator dump" {
+		t.Fatalf("the operator's dump was touched: %q, %v", kept, err)
+	}
+}
+
+// Magento's `setup:rollback --db-file` only accepts a name inside the release's
+// own `var/backups`, so the restore has to copy the recorded dump back in. That
+// copy used to stay there for good — one full dump per rollback, in the directory
+// nothing prunes. It is removed again whether the tool succeeds or fails.
+func TestMagento2RestoreLeavesNoCopyInVarBackups(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		stub    string
+		wantErr bool
+	}{
+		{
+			name: "the restore succeeds",
+			stub: `#!/bin/sh
+file=""
+for arg in "$@"; do
+  case "$arg" in --db-file=*) file="${arg#--db-file=}" ;; esac
+done
+if [ -z "$file" ]; then echo "setup:rollback needs --db-file" >&2; exit 1; fi
+if [ ! -f "var/backups/$file" ]; then echo "The rollback file is invalid." >&2; exit 1; fi
+printf 'restored' > restored.txt
+exit 0
+`,
+		},
+		{
+			name: "the restore fails",
+			stub: `#!/bin/sh
+echo "The rollback file is invalid." >&2
+exit 1
+`,
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+			release := deploy.NewReleaseForTest("1", "abcdef", "main")
+			release.Path = host.ReleasePath("1")
+			backups := filepath.Join(release.Path, "var", "backups")
+			for _, dir := range []string{filepath.Join(release.Path, "bin"), backups} {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatalf("mkdir %s: %v", dir, err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(release.Path, "bin", "magento"), []byte(tc.stub), 0o755); err != nil {
+				t.Fatalf("write the stub: %v", err)
+			}
+			dump := filepath.Join(host.BackupRootPath(), "1", "dump.sql")
+			if err := os.MkdirAll(filepath.Dir(dump), 0o700); err != nil {
+				t.Fatalf("mkdir the backup dir: %v", err)
+			}
+			if err := os.WriteFile(dump, []byte("dump"), 0o600); err != nil {
+				t.Fatalf("write the recorded dump: %v", err)
+			}
+			release.Database.Backup = dump
+
+			sc := deploy.StepContextForTest(host, deploy.Options{CommandTimeout: time.Minute})
+			sc.Release = release
+			sc.Vars = sc.Vars.Set("php_bin", "sh").SetPath("release_path", release.Path)
+
+			err := deploy.CoreDBRestore(magento2.DeployRecipe().Restore)(context.Background(), sc)
+			if tc.wantErr && err == nil {
+				t.Fatal("a failing setup:rollback must fail the step")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("db:restore: %v", err)
+			}
+			left, readErr := os.ReadDir(backups)
+			if readErr != nil {
+				t.Fatalf("read var/backups: %v", readErr)
+			}
+			if len(left) != 0 {
+				var names []string
+				for _, entry := range left {
+					names = append(names, entry.Name())
+				}
+				t.Fatalf("var/backups still holds %v after the restore", names)
+			}
+		})
 	}
 }

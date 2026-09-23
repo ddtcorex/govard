@@ -360,20 +360,35 @@ const magentoServedAppGuard = "if [ -f {{current_path}}/bin/magento ] && [ -f {{
 // `*.gz` alone: on a real project the dump succeeded, the glob matched nothing,
 // `test -n` failed, and `>/dev/null` had thrown away the tool's own output, so
 // the deploy said nothing but "exit 1". It now takes whichever of the two the
-// tool wrote, newest first, and lets its output through — the engine bounds what
-// it keeps, so a failure carries its own explanation.
+// tool wrote and lets its output through — the engine bounds what it keeps, so a
+// failure carries its own explanation.
+//
+// It *moves* that file rather than copying it. `var/backups` is a shared
+// directory, and nothing ever pruned it: every `--db-backup` deploy and every
+// `rollback --with-db` left a full dump — customer data, admin hashes — behind
+// forever, next to the copy govard kept. The file this run produced is
+// identified by a marker taken before the command, never by "newest mtime": an
+// operator who runs a manual `setup:backup` moments earlier would otherwise lose
+// their own dump to the engine's retention.
 //
 // `setup:backup` toggles maintenance mode around the dump, which is safe inside
 // the deploy's window: Magento's own MaintenanceModeEnabler records that the flag
 // was already on and skips disabling it (verified in the vendored
 // framework/App/Console/MaintenanceModeEnabler.php of a real release).
-const magentoDumpCommand = "cd {{release_path}} && {{php_bin}} bin/magento setup:backup --db --no-interaction && " +
-	"latest=\"$(find var/backups -maxdepth 1 -type f \\( -name '*_db.sql' -o -name '*_db.sql.gz' \\) -printf '%T@ %p\\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2-)\" && " +
-	"test -n \"$latest\" && cp \"$latest\" {{backup_path}}"
+const magentoDumpCommand = "cd {{release_path}} && marker=\"$(mktemp)\" || exit 1; rc=0; " +
+	"{{php_bin}} bin/magento setup:backup --db --no-interaction || rc=$?; " +
+	"if [ \"$rc\" -eq 0 ]; then latest=\"$(find var/backups -maxdepth 1 -type f -newer \"$marker\" \\( -name '*_db.sql' -o -name '*_db.sql.gz' \\) -printf '%T@ %p\\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2-)\"; fi; " +
+	"rm -f \"$marker\"; " +
+	"[ \"$rc\" -eq 0 ] && test -n \"$latest\" && mv \"$latest\" {{backup_path}}"
 
 // magentoRestoreCommand loads a dump back over the live database. It is only
 // reached through `govard deploy rollback --with-db`, which is why the
 // destructive path is behind an explicit confirmation.
+//
+// The copy has to go back: leaving it is a full dump per rollback in the shared,
+// never-pruned `var/backups`, which is the other half of why the dump command
+// moves its file out. It is removed whether the tool succeeded or failed, and the
+// tool's own exit code is what the step reports.
 //
 // `setup:rollback --db-file` is not "import this file". Magento validates the
 // name against `/[0-9]_db.*\.sql$/` and looks it up inside the release's
@@ -392,4 +407,4 @@ const magentoDumpCommand = "cd {{release_path}} && {{php_bin}} bin/magento setup
 // the release already links that directory from `shared/`.
 const magentoRestoreCommand = "cd {{release_path}} && restore=\"$(date +%s)_db.sql\" && " +
 	"cp {{backup_path}} \"var/backups/$restore\" && " +
-	"{{php_bin}} bin/magento setup:rollback --db-file=\"$restore\" --no-interaction"
+	"{ {{php_bin}} bin/magento setup:rollback --db-file=\"$restore\" --no-interaction; rc=$?; rm -f \"var/backups/$restore\"; exit $rc; }"

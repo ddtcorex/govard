@@ -985,10 +985,25 @@ no verify URL says so before its first step, rather than leaving the operator to
 assume the opposite.
 
 `--db-backup` dumps the database into `shared/backups/deploy/<n>/` immediately
-before the first database-mutating task and records the path in the release.
-`deploy:cleanup` prunes those dumps on the same `keep_releases` window as the
-releases they belong to, so backups cannot accumulate forever on a production
-box.
+before the first database-mutating task and records the path in the release. The
+directory is `0700` and the file `0600` — a dump holds customer data, and the
+deploy account's umask on a shared host would otherwise leave both readable by
+every local user. `deploy:cleanup` prunes those dumps on the same
+`keep_releases` window as the releases they belong to, so backups cannot
+accumulate forever on a production box.
+
+Magento's own `setup:backup` writes into `var/backups`, a shared directory that
+nothing prunes, and govard used to leave that file there while copying it out: a
+full dump per deploy and per rollback, kept forever. The recipe now **moves** the
+file this run produced — identified by a marker taken before the command, so a
+manual `setup:backup` run moments earlier is left alone — and a rollback removes
+the Magento-shaped copy it has to place inside `var/backups` for
+`setup:rollback` to accept it. Dumps left there by earlier versions are **not**
+deleted: they may be the operator's own. An upgrade is the moment to look:
+
+```bash
+ssh <target> 'ls -la <deploy_path>/shared/var/backups'
+```
 
 ```bash
 govard deploy releases staging                  # what is on the target
