@@ -167,6 +167,27 @@ func (p Plan) Only(ids ...string) Plan {
 	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
+// Excluding returns the plan without the named steps.
+//
+// A rollback runs the publish tail of a release that already exists: it holds
+// the lock it took itself, so that tail must not carry deploy:unlock (which
+// removes whatever sits at the lock path), and pruning old releases is not part
+// of returning to one.
+func (p Plan) Excluding(ids ...string) Plan {
+	drop := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		drop[id] = true
+	}
+	steps := make([]Step, 0, len(p.Steps))
+	for _, step := range p.Steps {
+		if drop[step.ID] {
+			continue
+		}
+		steps = append(steps, step)
+	}
+	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
+}
+
 // MissingVerifyWarning returns the warning a deploy must print when it migrates
 // the database without any HTTP check configured, or "" when the rule does not
 // apply (spec 11).

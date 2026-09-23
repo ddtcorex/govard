@@ -108,3 +108,73 @@ func (r captureRunner) Run(ctx context.Context, command string, opts deploy.RunO
 	*r.seen = append(*r.seen, command)
 	return r.base.Run(ctx, command, opts)
 }
+
+// A dump is taken before its own release migrates, so the dump a rollback needs
+// is the one belonging to the release that ran *after* the target: rolling back
+// to 5 undoes release 6's migrations, and release 6's dump is the database as it
+// was before them. Release 5's own dump is the state before *its* migrations —
+// an older schema than the code being restored.
+func TestRollbackRestoresTheDumpOfTheReleaseAfterTheTarget(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	for _, seed := range []struct{ number, dump string }{
+		{"5", "/shared/backups/deploy/5/dump.sql"},
+		{"6", "/shared/backups/deploy/6/dump.sql"},
+	} {
+		record := deploy.NewReleaseForTest(seed.number, "rev-"+seed.number, "main")
+		record.Status = deploy.StatusOK
+		record.Database.Backup = seed.dump
+		if err := os.MkdirAll(host.ReleasePath(seed.number)+"/.dep", 0o755); err != nil {
+			t.Fatalf("mkdir release %s: %v", seed.number, err)
+		}
+		if err := deploy.WriteRelease(context.Background(), host, record); err != nil {
+			t.Fatalf("seed release %s: %v", seed.number, err)
+		}
+	}
+
+	target, err := deploy.ReadRelease(context.Background(), host, "5")
+	if err != nil {
+		t.Fatalf("read the target: %v", err)
+	}
+	dump, err := deploy.RollbackBackup(context.Background(), host, target)
+	if err != nil {
+		t.Fatalf("rollback backup: %v", err)
+	}
+	if dump.Release != "6" {
+		t.Fatalf("the dump must come from release 6, the release that ran after the target, got %s", dump.Release)
+	}
+	if !strings.HasSuffix(dump.Database.Backup, "/6/dump.sql") {
+		t.Fatalf("wrong dump path: %s", dump.Database.Backup)
+	}
+}
+
+// Guessing is worse than refusing: when the release that ran after the target
+// recorded no dump there is no state to return to, and restoring an older
+// release's dump would put the wrong schema under the restored code.
+func TestRollbackRefusesWhenTheReleaseAfterTheTargetHasNoDump(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	five := deploy.NewReleaseForTest("5", "rev-5", "main")
+	five.Status = deploy.StatusOK
+	five.Database.Backup = "/shared/backups/deploy/5/dump.sql"
+	six := deploy.NewReleaseForTest("6", "rev-6", "main")
+	six.Status = deploy.StatusOK
+	for _, record := range []*deploy.Release{five, six} {
+		if err := os.MkdirAll(host.ReleasePath(record.Release)+"/.dep", 0o755); err != nil {
+			t.Fatalf("mkdir release %s: %v", record.Release, err)
+		}
+		if err := deploy.WriteRelease(context.Background(), host, record); err != nil {
+			t.Fatalf("seed release %s: %v", record.Release, err)
+		}
+	}
+
+	target, err := deploy.ReadRelease(context.Background(), host, "5")
+	if err != nil {
+		t.Fatalf("read the target: %v", err)
+	}
+	_, err = deploy.RollbackBackup(context.Background(), host, target)
+	if !errors.Is(err, deploy.ErrNoRollbackBackup) {
+		t.Fatalf("want ErrNoRollbackBackup, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "6") {
+		t.Fatalf("the refusal must name release 6: %v", err)
+	}
+}

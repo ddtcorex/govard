@@ -1001,6 +1001,23 @@ govard deploy rollback staging --with-db --yes  # ... and its database dump
 Rollback never rebuilds: a symlink layout is re-pointed, and an in-place layout
 re-runs the publish tail from the release directory already on the server.
 
+`--with-db` restores the dump recorded by the release that ran **after** the one
+being restored, not the target's own. A dump is taken before its release
+migrates, so release 6's dump is the database exactly as it was before the
+migrations this rollback undoes; the target's own dump is the state before *its*
+migrations, one schema older than the code being put back, and every write since
+would be lost. When that release recorded no dump the command refuses and names
+the release to re-deploy with `--db-backup` — it never substitutes another
+release's dump.
+
+A rollback takes the deploy lock for the whole operation: it is refused while
+another run holds the lock, and it releases the lock when it ends. A **symlink**
+rollback also flushes the caches through the recipe's `app:cache:flush` step
+(including `runtime_reload_command`), because the swap changes which code runs
+while the state the target serves — compiled configuration, caches, Redis keys —
+still belongs to the release that was live a moment ago. An in-place rollback
+does that as part of its publish tail.
+
 `deploy.lock_stale_after` (default 2h) is how old a lock must be for
 `govard deploy unlock` to release it without `--force`; the refusal a held lock
 produces names the holder, its revision and how long it has been held.
@@ -1031,6 +1048,17 @@ half-changed, and the way forward is `govard deploy <remote> --resume`, which
 continues the newest unfinished release instead of starting a new one.
 `--from <task>` starts at a named task or hook, and `govard deploy unlock`
 releases a lock a failed run left behind.
+
+Two rules keep those entry points honest. `--from` is only accepted together with
+`--resume`: a run that starts after `deploy:release` has no release number, and
+`{{release_path}}` would then be the directory that holds every release rather
+than one of them. And `--resume` refuses a release that is still `running` under
+a lock younger than `deploy.lock_stale_after` (that lock belongs to a deploy that
+may be alive — release it with `govard deploy unlock` once it is gone), and
+refuses a release that is not newer than the live one, which is what a CI retry
+that always passes `--resume` would otherwise activate over a serving release.
+A run started with `--from`/`--resume` takes the deploy lock itself, so the step
+it skipped does not leave the target unprotected.
 
 A resume can be repeated as often as it takes, and it continues the same release
 every time. A step an earlier attempt already succeeded at is not run again, and

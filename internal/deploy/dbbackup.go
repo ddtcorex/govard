@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"strconv"
+	"strings"
 )
 
 // ErrNoDatabaseBackup means a rollback asked to restore a dump the target
@@ -106,4 +108,60 @@ func runDBCommand(ctx context.Context, sc *StepContext, command, backupPath, lab
 		return fmt.Errorf("%s: %w", label, err)
 	}
 	return nil
+}
+
+// ErrNoRollbackBackup means the release that ran after the rollback target
+// recorded no dump. The database cannot be returned to the state the target
+// expects, and guessing — the target's own dump, or a newer release's — would
+// restore a schema that does not match the code being put back.
+var ErrNoRollbackBackup = errors.New("the release after the rollback target recorded no database backup")
+
+// RollbackBackup returns the release whose dump a `rollback --with-db` restores.
+//
+// A dump is taken before its own release migrates, so the dump of the release
+// that ran *after* the target is the state the target expects: rolling back to
+// T undoes the migrations of T+1…live, and T+1's dump is the database exactly as
+// it was before the first of them. The target's own dump is the state before
+// *its* migrations — an older schema than the code being restored — which is why
+// reading the target's record, as this command used to, restored the wrong data.
+//
+// Refusing beats guessing: when that release recorded no dump (it deployed
+// without --db-backup) the honest answer is that this rollback cannot restore a
+// database, not a dump from some other release.
+func RollbackBackup(ctx context.Context, host Host, target *Release) (*Release, error) {
+	if target == nil {
+		return nil, fmt.Errorf("rollback: no target release")
+	}
+	targetNumber, err := strconv.Atoi(strings.TrimSpace(target.Release))
+	if err != nil {
+		return nil, fmt.Errorf("rollback: the target release %q is not a release number", target.Release)
+	}
+
+	entries, err := ListReleases(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	next := 0
+	for _, entry := range entries {
+		if entry.Foreign || entry.Number <= targetNumber {
+			continue
+		}
+		if next == 0 || entry.Number < next {
+			next = entry.Number
+		}
+	}
+	if next == 0 {
+		return nil, fmt.Errorf("%w: release %s is the newest release on %s, so no later release has a dump to restore",
+			ErrNoRollbackBackup, target.Release, host.Name)
+	}
+
+	record, err := ReadRelease(ctx, host, strconv.Itoa(next))
+	if err != nil {
+		return nil, fmt.Errorf("read release %d: %w", next, err)
+	}
+	if strings.TrimSpace(record.Database.Backup) == "" {
+		return nil, fmt.Errorf("%w: release %d ran after release %s and recorded none; deploy it again with --db-backup, or roll back without --with-db",
+			ErrNoRollbackBackup, next, target.Release)
+	}
+	return record, nil
 }

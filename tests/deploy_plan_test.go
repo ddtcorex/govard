@@ -551,3 +551,32 @@ func TestConditionalMigratePlanRendersConditional(t *testing.T) {
 		t.Errorf("the plan must name the probe and its exit contract, got:\n%s", printed)
 	}
 }
+
+// A rollback runs the publish tail of a release that already exists. It takes
+// its own lock, so the tail must not carry deploy:unlock (it would remove that
+// lock) and pruning releases is not part of returning to one.
+func TestPlanExcludingDropsTheNamedSteps(t *testing.T) {
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "true"},
+		{ID: deploy.TaskAppCacheFlush, Stage: deploy.StagePublish, Command: "true"},
+		{ID: deploy.TaskCleanup, Stage: deploy.StageCleanup, Command: "true"},
+		{ID: deploy.TaskUnlock, Stage: deploy.StageCleanup, Command: "true"},
+	}), nil)
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+
+	got := plan.Excluding(deploy.TaskUnlock, deploy.TaskCleanup).StepIDs()
+	want := []string{deploy.TaskActivate, deploy.TaskAppCacheFlush}
+	if len(got) != len(want) {
+		t.Fatalf("Excluding returned %v, want %v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("Excluding returned %v, want %v", got, want)
+		}
+	}
+	if len(plan.Steps) != 4 {
+		t.Fatalf("Excluding mutated the receiver: %d steps left", len(plan.Steps))
+	}
+}

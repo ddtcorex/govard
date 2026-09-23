@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
+	"time"
 
 	"govard/internal/cli"
 	"govard/internal/deploy"
@@ -136,6 +138,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if options.From != "" && plan.IndexOf(options.From) < 0 {
 		return &cli.UsageError{Err: fmt.Errorf("--from %q does not name a task or hook in this deploy plan (see `govard deploy plan %s`)", options.From, remote)}
 	}
+	// A --from past deploy:release continues a release, and the only release a
+	// run may continue is the one an earlier attempt recorded. Without --resume
+	// the run has no release number at all: `{{release_path}}` would be the
+	// directory holding every release, and an activation would publish all of
+	// them. Refused here, where the message can name the fix.
+	if err := validateFromNeedsResume(options.From, options.Resume); err != nil {
+		return &cli.UsageError{Err: err}
+	}
 
 	// The local lifecycle hooks keep working: pre_deploy wraps the pipeline,
 	// post_deploy follows it, exactly as before this command did anything real.
@@ -207,6 +217,38 @@ func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Releas
 		return nil, nil
 	}
 
+	// A record that is still `running` belongs to a deploy that may be running
+	// right now. Resuming it would release that run's lock and put two deploys on
+	// the same release directory, migrations included — exactly what the lock
+	// exists to prevent. The run is only ours to continue when its lock is gone
+	// or old enough that no live process can be holding it, which is the same
+	// judgement `deploy unlock` makes.
+	if incomplete.Status == deploy.StatusRunning {
+		if _, statErr := host.Runner().Run(ctx, "test -d "+deploy.Shell(host.LockPath()), deploy.RunOptions{Timeout: time.Minute}); statErr == nil {
+			holder, heldFor := deploy.DescribeLockOwner(ctx, host)
+			staleAfter := options.LockStaleAfter
+			if staleAfter <= 0 {
+				staleAfter = deploy.DefaultLockStaleAfter
+			}
+			if heldFor < 0 || heldFor < staleAfter {
+				return nil, fmt.Errorf("release %s is still running: %s holds its lock (held %s); wait for that run, or release the lock with `govard deploy unlock` once it is gone",
+					incomplete.Release, holder, heldFor.Round(time.Second))
+			}
+		}
+	}
+
+	// Never resume backwards. A failed release below the live one is history: a
+	// CI retry that always passes --resume would otherwise activate an older
+	// revision over a newer release that is serving traffic.
+	if live, err := deploy.LiveRelease(ctx, host); err == nil && live != nil {
+		if target, convErr := strconv.Atoi(strings.TrimSpace(incomplete.Release)); convErr == nil {
+			if liveNumber, convErr := strconv.Atoi(strings.TrimSpace(live.Release)); convErr == nil && target <= liveNumber {
+				return nil, fmt.Errorf("release %s is not newer than the live release %s, so there is nothing to resume; deploy normally, or return to it with `govard deploy rollback`",
+					incomplete.Release, live.Release)
+			}
+		}
+	}
+
 	*release = *incomplete
 
 	// The stale lock belongs to the run being resumed; releasing it is part of
@@ -233,6 +275,13 @@ func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Releas
 // restated in the caller.
 func PrepareResumeForTest(ctx context.Context, host deploy.Host, release *deploy.Release) error {
 	_, err := prepareResume(ctx, host, release, deploy.Options{}, io.Discard)
+	return err
+}
+
+// PrepareResumeWithOptionsForTest exposes prepareResume with the run's options,
+// which carry the staleness window the live-lock guard reads.
+func PrepareResumeWithOptionsForTest(ctx context.Context, host deploy.Host, release *deploy.Release, options deploy.Options) error {
+	_, err := prepareResume(ctx, host, release, options, io.Discard)
 	return err
 }
 
@@ -313,4 +362,25 @@ func printDeploySummary(cmd *cobra.Command, remote string, host deploy.Host, opt
 	if !options.Verify {
 		pterm.Warning.Println("Verification was skipped (--no-verify)")
 	}
+}
+
+// validateFromNeedsResume refuses `--from` on its own.
+//
+// `--from` starts the pipeline part-way through, which only makes sense for a
+// release that already exists: everything that would have created it —
+// deploy:release, and with it the release number every later command expands
+// into `{{release_path}}` — was skipped. Without --resume there is no record to
+// read the number from, and the engine then works from an empty one. The engine
+// refuses that too, but the CLI can name the fix.
+func validateFromNeedsResume(from string, resume bool) error {
+	if strings.TrimSpace(from) == "" || resume {
+		return nil
+	}
+	return fmt.Errorf("--from %q starts mid-pipeline and needs a release to continue: add --resume, or drop --from", from)
+}
+
+// ValidateFromNeedsResumeForTest exposes validateFromNeedsResume to the tests/
+// package.
+func ValidateFromNeedsResumeForTest(from string, resume bool) error {
+	return validateFromNeedsResume(from, resume)
 }

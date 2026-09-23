@@ -947,6 +947,21 @@ govard deploy rollback staging --with-db --yes  # ... kèm cả dump database
 Rollback không bao giờ build lại: layout symlink được trỏ lại, còn layout
 in-place chạy lại phần publish từ thư mục release đã có trên server.
 
+`--with-db` restore dump của release chạy **sau** release được khôi phục, không
+phải dump của chính release đích. Dump được chụp trước khi release của nó migrate,
+nên dump của release 6 là database đúng như trước các migration mà lần rollback
+này hoàn tác; dump của release đích là trạng thái trước khi *nó* migrate — schema
+cũ hơn code đang được đưa trở lại một release, và mọi ghi từ đó tới nay sẽ mất.
+Khi release đó không ghi dump nào, lệnh từ chối và nêu tên release cần deploy lại
+với `--db-backup` — nó không bao giờ lấy dump của release khác thay thế.
+
+Rollback lấy deploy lock cho suốt thao tác: nó bị từ chối khi run khác đang giữ
+lock, và nhả lock khi xong. Rollback **symlink** còn flush cache qua bước
+`app:cache:flush` của recipe (kèm `runtime_reload_command`), vì cú swap đổi code
+đang chạy trong khi state target phục vụ — cấu hình đã compile, cache, key trong
+Redis — vẫn thuộc về release vừa mới live cách đó một nhịp. Rollback in-place làm
+việc đó trong phần publish tail của nó.
+
 `deploy.lock_stale_after` (mặc định 2h) là ngưỡng để `govard deploy unlock` nhả
 lock mà không cần `--force`; thông báo từ chối khi lock đang bị giữ có nêu người
 giữ, revision và đã giữ bao lâu.
@@ -976,6 +991,16 @@ lock, vì target có thể đang dở dang, và đường đi tiếp là `govard
 --resume` để tiếp tục release mới nhất chưa xong thay vì tạo release mới.
 `--from <task>` bắt đầu từ một task hoặc hook chỉ định, và `govard deploy unlock`
 giải phóng lock do lần lỗi để lại.
+
+Hai luật giữ cho các đường recovery này trung thực. `--from` chỉ được chấp nhận
+cùng với `--resume`: run bắt đầu sau `deploy:release` không có số release, và
+`{{release_path}}` khi đó là thư mục chứa mọi release chứ không phải một release.
+Và `--resume` từ chối release vẫn đang `running` dưới một lock non hơn
+`deploy.lock_stale_after` (lock đó thuộc về một deploy có thể còn sống — chỉ nhả
+nó bằng `govard deploy unlock` khi tiến trình đã chết), đồng thời từ chối release
+không mới hơn release đang live — đúng thứ mà một CI retry luôn truyền `--resume`
+sẽ kích hoạt đè lên release đang phục vụ. Run khởi động bằng `--from`/`--resume`
+tự lấy deploy lock, nên bước bị bỏ qua không để target chạy không được bảo vệ.
 
 Có thể `--resume` bao nhiêu lần cũng được, và lần nào cũng tiếp tục đúng release
 đó. Bước mà lần chạy trước đã thành công sẽ không chạy lại, và record giữ nguyên
