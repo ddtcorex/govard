@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -160,11 +162,52 @@ func TestSandboxUpNoSeedSkipsSnapshot(t *testing.T) {
 	}
 }
 
+// A real Magento database does not fit in a Go string, and buffering it twice
+// (once as the dump, once as the rewritten copy) is what made `sandbox up` a
+// memory event on a multi-gigabyte origin. The seed streams the dump from the
+// origin container into the sandbox container; the only dump bytes resident are
+// one line at a time.
+func TestSandboxSeedStreamsTheDumpWithoutBufferingIt(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	// ~64 MiB of dump, in 4 KiB lines: far more than the whole seed is allowed
+	// to allocate, and small enough to run quickly. Every line is an extended
+	// INSERT the stripper must pass through untouched.
+	line := "INSERT INTO `catalog_product_entity` VALUES (" + strings.Repeat("1,", 2000) + "1);\n"
+	const total = 64 << 20
+	fake.bodies["mariadb-dump -u magento"] = []byte(strings.Repeat(line, total/len(line)))
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	request := seedSandboxUpRequest(t, root, origin)
+	request.SeedDBPassword = "s3cret-pw"
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	if _, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	runtime.ReadMemStats(&after)
+
+	// TotalAlloc counts every byte ever allocated, so GC timing cannot hide a
+	// buffer. A whole-dump copy is at least `total`; a stream is buffers.
+	growth := after.TotalAlloc - before.TotalAlloc
+	t.Logf("seeding a %d MiB dump allocated %d MiB", total>>20, growth>>20)
+	if growth > 16<<20 {
+		t.Fatalf("seeding a %d MiB dump allocated %d MiB: the dump is held whole instead of streamed",
+			total>>20, growth>>20)
+	}
+}
+
 func TestSandboxUpCopiesMediaThroughTar(t *testing.T) {
 	origin, _ := seedGitRepo(t)
 	root := t.TempDir()
 	fake := freshSandboxFake()
-	runtime := deploy.NewDockerCLIForTest(fake.run)
+	// The archive the origin tar produces; the sandbox tar must read exactly it.
+	archive := []byte("fake-tar-archive-bytes")
+	fake.bodies["tar -C /var/www/html/pub/media -cf - ."] = archive
+	containers := deploy.NewDockerCLIForTest(fake.run)
 
 	request := seedSandboxUpRequest(t, root, origin)
 	request.SeedAppContainer = "seed-shop-php-1"
@@ -172,7 +215,7 @@ func TestSandboxUpCopiesMediaThroughTar(t *testing.T) {
 	request.SeedMediaTarget = "/home/deployer/media-seed"
 	// Derive the sandbox container name the way Down will: fresh Up writes it
 	// into state; the media pipe targets that same container.
-	state, err := deploy.SandboxUp(context.Background(), runtime, deploy.LocalRunner{}, request)
+	state, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, request)
 	if err != nil {
 		t.Fatalf("sandbox up: %v", err)
 	}
@@ -181,6 +224,142 @@ func TestSandboxUpCopiesMediaThroughTar(t *testing.T) {
 	}
 	if !fake.has("tar -C /home/deployer/media-seed") {
 		t.Errorf("the seed must stream media into the sandbox %s, got: %v", state.Container, fake.calls)
+	}
+	// `mkdir` used to be handed the archive as stdin: it ignored it, and the
+	// only way to provide it was to hold the whole archive in memory.
+	if record, ok := fake.stdinOf("mkdir -p /home/deployer/media-seed"); ok {
+		t.Errorf("mkdir must not be fed the media archive, got %d bytes", record.Bytes)
+	}
+	reader, ok := fake.stdinOf("tar -C /home/deployer/media-seed -xf -")
+	if !ok {
+		t.Fatalf("the sandbox tar must read the archive from its stdin, got: %v", fake.calls)
+	}
+	if reader.Bytes != int64(len(archive)) {
+		t.Errorf("the sandbox tar read %d bytes, want the %d the origin wrote", reader.Bytes, len(archive))
+	}
+}
+
+// The password must reach both mysql clients without ever becoming an argument:
+// `ps` on a shared host reads argv, and an argv entry is what the seed used to
+// hand over. It is passed by name (`-e MYSQL_PWD`), with the value in the
+// runtime process's own environment.
+func TestSandboxSeedNeverPutsThePasswordInArgv(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	request := seedSandboxUpRequest(t, root, origin)
+	request.SeedDBPassword = "s3cret-pw"
+	if _, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+
+	for _, call := range fake.calls {
+		for _, argument := range call {
+			if strings.Contains(argument, "s3cret-pw") {
+				t.Fatalf("the password travelled in argv: %v", call)
+			}
+			if strings.HasPrefix(argument, "MYSQL_PWD=") {
+				t.Fatalf("the password travelled as an argv environment entry: %v", call)
+			}
+		}
+	}
+	if !fake.hasArg("-e", "MYSQL_PWD") {
+		t.Errorf("the runtime was never asked to pass MYSQL_PWD through by name: %v", fake.calls)
+	}
+	if !fake.hasEnvValue("MYSQL_PWD=s3cret-pw") {
+		t.Errorf("the password must travel in the runtime's environment, got: %v", fake.envs)
+	}
+	// Both clients need it: the dump (no stdin) and the import (stdin).
+	for _, client := range []string{"mariadb-dump -u magento", "mysql -u magento magento"} {
+		carried := false
+		for _, entry := range fake.envOf(client) {
+			if entry == "MYSQL_PWD=s3cret-pw" {
+				carried = true
+			}
+		}
+		if !carried {
+			t.Errorf("the %s invocation did not carry the password in its environment: %v", client, fake.envOf(client))
+		}
+	}
+}
+
+// A dump that dies midway leaves the sandbox database partially imported. The
+// import may still exit 0 after reading a truncated stream, so the seed has to
+// report the dump's own failure and say the database is partial.
+func TestSandboxSeedFailsLoudlyOnAPartialDump(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	fake.bodies["mariadb-dump -u magento"] = []byte("INSERT INTO `x` VALUES (1);\n")
+	fake.partial["mariadb-dump -u magento"] = "mysqldump: Got error: 2013: Lost connection to MySQL server during query"
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	_, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, seedSandboxUpRequest(t, root, origin))
+	if err == nil {
+		t.Fatal("a dump that failed midway must fail the seed, not leave a half-imported database silently")
+	}
+	if !strings.Contains(err.Error(), "partial") {
+		t.Errorf("the error must say the database is partial: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Lost connection") {
+		t.Errorf("the dump's own failure must survive: %v", err)
+	}
+}
+
+// The refusal is the point: an error that quotes an environment value would put
+// the secret in a log, which is the other half of keeping it out of argv.
+func TestSandboxExecErrorOmitsEnvironmentValues(t *testing.T) {
+	containers := deploy.NewDockerCLIForTest(func(ctx context.Context, command deploy.SandboxCommand) (string, error) {
+		return "", &deploy.CommandError{
+			Command:  "docker " + strings.Join(command.Args, " "),
+			ExitCode: 1,
+			Stderr:   "Access denied for user",
+		}
+	})
+
+	err := containers.ExecStream(context.Background(), "sandbox", []string{"MYSQL_PWD=s3cret-pw"}, nil, nil, "mysql", "-u", "magento")
+	if err == nil {
+		t.Fatal("a failing exec must fail")
+	}
+	if strings.Contains(err.Error(), "s3cret-pw") {
+		t.Fatalf("the error printed an environment value: %v", err)
+	}
+	if !strings.Contains(err.Error(), "MYSQL_PWD") {
+		t.Errorf("the error should still name the variable it passed: %v", err)
+	}
+}
+
+// The streaming stripper is the whole-dump stripper applied one line at a time;
+// anything else would change what reaches the sandbox.
+func TestStripDefinerStreamMatchesTheStringVersion(t *testing.T) {
+	const dump = "CREATE TABLE `a` (id int);\n" +
+		"/*!50013 DEFINER=`dev8_staging`@`%` SQL SECURITY DEFINER */\n" +
+		"CREATE VIEW `v` AS SELECT 1;\n" +
+		"INSERT INTO `a` VALUES (1);\n"
+	var out bytes.Buffer
+	if err := deploy.StripDefinerStream(strings.NewReader(dump), &out); err != nil {
+		t.Fatalf("strip: %v", err)
+	}
+	if got, want := out.String(), deploy.StripDefiner(dump); got != want {
+		t.Fatalf("streamed strip =\n%q\nwant\n%q", got, want)
+	}
+	if strings.Contains(out.String(), "DEFINER") {
+		t.Fatalf("a foreign definer survived the stream: %q", out.String())
+	}
+}
+
+// A line past the cap is a refusal, not a buffer: an unbounded line is how a
+// bounded stream turns back into an out-of-memory event.
+func TestStripDefinerStreamRefusesAnEndlessLine(t *testing.T) {
+	var out bytes.Buffer
+	err := deploy.StripDefinerStreamForTest(strings.NewReader(strings.Repeat("x", 4096)+"\n"), &out, 1024)
+	if err == nil {
+		t.Fatal("a line past the cap must be refused")
+	}
+	if !strings.Contains(err.Error(), "1024") {
+		t.Errorf("the refusal must name the limit it exceeded: %v", err)
 	}
 }
 

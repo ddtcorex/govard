@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -15,8 +16,20 @@ import (
 type SandboxCommand struct {
 	// Args are the arguments after the runtime binary. No shell is involved.
 	Args []string
-	// Stdin is fed to the process, for `exec -i` writes.
+	// Env is extra environment for the runtime process itself. A name-only
+	// `-e NAME` in Args makes the runtime pass that variable's value in from
+	// here, which keeps a secret out of argv: `ps` on a shared host can read
+	// another user's argv, not the environment of the process it does not own.
+	Env []string
+	// Stdin is fed to the process, for `exec -i` writes that fit in memory.
 	Stdin []byte
+	// StdinReader feeds the process from a stream instead, so a multi-gigabyte
+	// dump can be piped without ever being held. It wins over Stdin.
+	StdinReader io.Reader
+	// Stdout, when set, receives the process's standard output directly instead
+	// of being buffered and returned: it is the writing half of a pipe between
+	// two runtime invocations.
+	Stdout io.Writer
 	// Out receives the process's combined output when the caller wants to see
 	// progress (an image build) rather than only the result.
 	Out io.Writer
@@ -52,6 +65,11 @@ type SandboxRuntime interface {
 	ContainerLabel(ctx context.Context, name, label string) (string, error)
 	PublishedPort(ctx context.Context, name string, containerPort int) (int, error)
 	Exec(ctx context.Context, name string, stdin []byte, args ...string) (string, error)
+	// ExecStream is Exec with the standard streams connected to the caller's
+	// readers and writers instead of a result string, and with named
+	// environment passed through by value. It is how a dump moves between two
+	// containers through this process without being held in it.
+	ExecStream(ctx context.Context, name string, env []string, stdin io.Reader, stdout io.Writer, args ...string) error
 	// RemoveVolumesByLabel deletes the named volumes carrying one label value
 	// (docker compose stamps com.docker.compose.project on every volume it
 	// creates). Zero matches is success: an `up` that never created named
@@ -119,16 +137,35 @@ func execSandboxCommand(binary string) SandboxCommandRunner {
 	return func(ctx context.Context, command SandboxCommand) (string, error) {
 		cmd := exec.CommandContext(ctx, binary, command.Args...)
 		cmd.WaitDelay = waitDelayAfterKill
+		if len(command.Env) > 0 {
+			cmd.Env = append(os.Environ(), command.Env...)
+		}
 
 		var stdout, stderr bytes.Buffer
-		if command.Out != nil {
+		switch {
+		case command.Stdout != nil:
+			// A streamed invocation owns its stdout: capturing it in a buffer
+			// would defeat the pipe the caller built around it.
+			cmd.Stdout = command.Stdout
+			if command.Out != nil {
+				cmd.Stdout = io.MultiWriter(command.Stdout, command.Out)
+			}
+		case command.Out != nil:
 			cmd.Stdout = io.MultiWriter(&stdout, command.Out)
+		default:
+			cmd.Stdout = &stdout
+		}
+		// Stderr stays a buffer even for a streamed invocation: it is small
+		// (a client's complaint, not its data), and the caller needs it to
+		// explain a failure.
+		if command.Out != nil {
 			cmd.Stderr = io.MultiWriter(&stderr, command.Out)
 		} else {
-			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 		}
-		if len(command.Stdin) > 0 {
+		if command.StdinReader != nil {
+			cmd.Stdin = command.StdinReader
+		} else if len(command.Stdin) > 0 {
 			cmd.Stdin = bytes.NewReader(command.Stdin)
 		}
 
@@ -136,6 +173,8 @@ func execSandboxCommand(binary string) SandboxCommandRunner {
 		if err == nil {
 			return stdout.String(), nil
 		}
+		// The command line names no secret: environment values are not part of
+		// it (see SandboxCommand.Env), so this error is safe to print.
 		full := strings.TrimSpace(binary + " " + strings.Join(command.Args, " "))
 		return stdout.String(), commandError(ctx, full, stderr.String(), err)
 	}
@@ -353,6 +392,31 @@ func (d *DockerCLI) Exec(ctx context.Context, name string, stdin []byte, args ..
 		return "", fmt.Errorf("exec %s in %s: %w", strings.Join(args, " "), name, err)
 	}
 	return output, nil
+}
+
+// ExecStream runs one command inside the container with its standard streams
+// connected to the caller's reader and writer (`docker exec --interactive
+// <name> ...`). Env is passed through by name only: docker reads each value from
+// its own environment, so a password never appears in an argv that `ps` on the
+// host can read.
+func (d *DockerCLI) ExecStream(ctx context.Context, name string, env []string, stdin io.Reader, stdout io.Writer, args ...string) error {
+	execArgs := make([]string, 0, len(args)+3+2*len(env))
+	execArgs = append(execArgs, "exec")
+	if stdin != nil {
+		execArgs = append(execArgs, "--interactive")
+	}
+	for _, entry := range env {
+		variable, _, _ := strings.Cut(entry, "=")
+		execArgs = append(execArgs, "-e", variable)
+	}
+	execArgs = append(execArgs, name)
+	execArgs = append(execArgs, args...)
+
+	if _, err := d.run(ctx, SandboxCommand{Args: execArgs, Env: env, StdinReader: stdin, Stdout: stdout}); err != nil {
+		// The joined args name no secret: a variable's value is not one of them.
+		return fmt.Errorf("exec %s in %s: %w", strings.Join(args, " "), name, err)
+	}
+	return nil
 }
 
 // EnsureNetworkConnected joins the named container to a Docker network.

@@ -1204,10 +1204,19 @@ appears in the project list; its state lives under the origin's
 `up` also seeds the application once, from the running origin environment: a
 logical database dump (the origin keeps running — nothing is stopped or
 mutated), the media tree, and the env file rewritten for the sandbox (base_url
-becomes the sandbox web URL; container-local hosts stay as they are). The seed
-runs only on a fresh container; a reused sandbox keeps its data and `--recreate`
-is the refresh. The origin environment must be running, or `up` refuses and says
-so — a silent empty sandbox helps nobody. `--no-seed` starts deliberately empty.
+becomes the sandbox web URL; container-local hosts stay as they are). The dump
+and the media tree are **streamed** from the origin container into the sandbox
+container through the govard process, one line of SQL (and one tar block) at a
+time, so seeding a multi-gigabyte database costs buffers rather than a copy of
+the whole thing. The database password travels in the runtime's environment —
+passed through by name, never as an argument and never as a `NAME=value` argv
+entry — so a local `ps` cannot read it; inside the container it is still visible
+to that container's own process list while the client runs. A dump that fails
+midway leaves the sandbox database **partial**, which the seed reports rather
+than hiding: re-run `govard sandbox up`. The seed runs only on a fresh
+container; a reused sandbox keeps its data and `--recreate` is the refresh. The
+origin environment must be running, or `up` refuses and says so — a silent empty
+sandbox helps nobody. `--no-seed` starts deliberately empty.
 
 A sandbox you already have is described by what it is, not by the flags of the
 command that reached it: `up` reports the profile and the PHP series the container
