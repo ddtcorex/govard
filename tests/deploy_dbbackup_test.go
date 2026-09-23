@@ -178,3 +178,24 @@ func TestRollbackRefusesWhenTheReleaseAfterTheTargetHasNoDump(t *testing.T) {
 		t.Fatalf("the refusal must name release 6: %v", err)
 	}
 }
+
+// The recorded path is a path, so it has to reach the shell quoted. `SetRaw` got
+// away with it while every deploy path happened to be made of shell-safe
+// characters: with a space the redirect is ambiguous and the dump is never
+// written — the failure the operator sees is `db:backup` "failing", with the
+// database untouched and nothing recorded.
+func TestDBBackupQuotesADeployPathWithASpace(t *testing.T) {
+	host := deploy.HostForTest(filepath.Join(t.TempDir(), "deploy root"), deploy.LocalRunner{})
+	release := deploy.NewReleaseForTest("1", "abcdef", "main")
+	release.Path = host.ReleasePath("1")
+
+	sc := deploy.StepContextForTest(host, deploy.Options{DBBackup: true})
+	sc.Release = release
+
+	if err := deploy.CoreDBBackup(`printf dump > {{backup_path}}`)(context.Background(), sc); err != nil {
+		t.Fatalf("db:backup under a deploy path with a space: %v", err)
+	}
+	if _, err := os.Stat(release.Database.Backup); err != nil {
+		t.Fatalf("the recorded backup %q was never written: %v", release.Database.Backup, err)
+	}
+}

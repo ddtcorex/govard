@@ -931,9 +931,24 @@ Không cấu hình URL thì kiểm chứng chỉ bằng SSH: nó chứng minh đ
 để người vận hành tưởng ngược lại.
 
 `--db-backup` dump database vào `shared/backups/deploy/<n>/` ngay trước task đầu
-tiên thay đổi database và ghi lại đường dẫn trong release. `deploy:cleanup` dọn
-các dump đó theo đúng window `keep_releases` như các release mà chúng thuộc về,
-nên backup không thể phình mãi trên máy production.
+tiên thay đổi database và ghi lại đường dẫn trong release. Thư mục là `0700` và
+file là `0600` — dump chứa dữ liệu khách hàng, và umask của tài khoản deploy trên
+máy dùng chung sẽ để mọi user local đọc được. `deploy:cleanup` dọn các dump đó
+theo đúng window `keep_releases` như các release mà chúng thuộc về, nên backup
+không thể phình mãi trên máy production.
+
+`setup:backup` của Magento ghi vào `var/backups`, một shared dir không có gì dọn,
+và trước đây govard để nguyên file đó rồi copy ra: mỗi lần deploy và mỗi lần
+rollback để lại một dump đầy đủ, giữ mãi mãi. Recipe giờ **move** đúng file của
+lần chạy này — nhận diện bằng marker tạo trước khi chạy lệnh, nên một lần
+`setup:backup` thủ công chạy ngay trước đó vẫn được giữ nguyên — và rollback xoá
+bản copy tên dạng Magento mà nó buộc phải đặt vào `var/backups` để
+`setup:rollback` chấp nhận. Các dump còn lại từ phiên bản cũ **không** bị xoá: nó
+có thể là file của người vận hành. Lúc nâng cấp là lúc nên xem:
+
+```bash
+ssh <target> 'ls -la <deploy_path>/shared/var/backups'
+```
 
 ```bash
 govard deploy releases staging                  # target đang có gì

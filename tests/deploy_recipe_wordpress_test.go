@@ -178,7 +178,7 @@ func TestWordPressRecipeCommandsAllExpand(t *testing.T) {
 			t.Errorf("check %q does not expand: %v\n%s", check.ID, err, check.Command)
 		}
 	}
-	restoreVars := vars.SetRaw("backup_path", "/srv/app/shared/backups/deploy/1/dump.sql")
+	restoreVars := vars.SetPath("backup_path", "/srv/app/shared/backups/deploy/1/dump.sql")
 	if _, err := restoreVars.Expand(recipe.Restore); err != nil {
 		t.Errorf("the restore command does not expand: %v\n%s", err, recipe.Restore)
 	}

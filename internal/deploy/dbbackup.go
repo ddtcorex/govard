@@ -64,11 +64,20 @@ func CoreDBBackup(command string) TaskFunc {
 
 		directory := sc.Host.SharedBackupPath(sc.Release.Release)
 		target := path.Join(directory, backupFileName)
-		if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(directory), RunOptions{Timeout: shortCommandTimeout}); err != nil {
+		// The dump holds customer data, and the process umask of a deploy account
+		// is whatever the host set: the directory and the file are made private
+		// explicitly instead of inheriting 0755/0644 on a shared machine.
+		mkdir := "umask 077 && mkdir -p " + Shell(directory) + " && chmod 700 " + Shell(sc.Host.BackupRootPath()) + " " + Shell(directory)
+		if _, err := sc.Runner.Run(ctx, mkdir, RunOptions{Timeout: shortCommandTimeout}); err != nil {
 			return fmt.Errorf("create the backup directory %s: %w", directory, err)
 		}
 		if err := runDBCommand(ctx, sc, command, target, "db:backup"); err != nil {
 			return err
+		}
+		// A recipe that moves its dump and one that copies it both keep whatever
+		// mode the writer gave the file, so the mode is set here, not assumed.
+		if _, err := sc.Runner.Run(ctx, "chmod 600 "+Shell(target), RunOptions{Timeout: shortCommandTimeout}); err != nil {
+			return fmt.Errorf("make the backup %s private: %w", target, err)
 		}
 
 		sc.Release.Database.Backup = target
@@ -99,7 +108,10 @@ func runDBCommand(ctx context.Context, sc *StepContext, command, backupPath, lab
 	if command == "" {
 		return fmt.Errorf("%s: this framework's recipe provides no dump command", label)
 	}
-	vars := sc.Vars.SetRaw("backup_path", backupPath)
+	// A path, not raw text: a deploy path with a space (or any shell
+	// metacharacter) would otherwise reach the command unquoted and the dump
+	// would be written somewhere else, or nowhere.
+	vars := sc.Vars.SetPath("backup_path", backupPath)
 	expanded, err := vars.Expand(command)
 	if err != nil {
 		return fmt.Errorf("expand %s: %w", label, err)

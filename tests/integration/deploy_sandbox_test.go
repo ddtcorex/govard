@@ -413,6 +413,30 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	rollback.AssertOutputContains(t, revisions[0][:8])
 	// The dump came from release 2, not from the release being restored.
 	rollback.AssertOutputContains(t, "recorded by release 2")
+
+	// The recorded dump is private, and Magento's own shared `var/backups` — the
+	// directory nothing prunes — holds nothing: neither the file `setup:backup`
+	// wrote (moved out) nor the Magento-shaped copy `setup:rollback` demands
+	// (removed again after the restore).
+	deployPath := deploy.SandboxDefaultPaths().DeployPath
+	recorded := deployPath + "/shared/backups/deploy/2/dump.sql"
+	mode := env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--", "stat", "-c", "%a", recorded)
+	mode.AssertSuccess(t)
+	if got := strings.TrimSpace(mode.Stdout); got != "600" {
+		t.Fatalf("the recorded dump %s has mode %s, want 600", recorded, got)
+	}
+	// Nothing the tool wrote survives anywhere under the deploy path except the
+	// pruned namespace govard owns: `setup:backup`'s file is moved out of
+	// `var/backups` (a shared dir in the recipe) and the Magento-shaped copy the
+	// restore has to place there is removed again. The search is layout
+	// independent on purpose — whether `var/backups` is shared or, as in this
+	// fixture, a directory the tool creates per release, a leftover shows up.
+	leftovers := env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--",
+		"find", deployPath, "-name", "*_db.sql*", "-not", "-path", "*/shared/backups/deploy/*")
+	leftovers.AssertSuccess(t)
+	if got := strings.TrimSpace(leftovers.Stdout); got != "" {
+		t.Fatalf("a dump was left behind after two deploys and a rollback:\n%s", got)
+	}
 }
 
 // seedFixtureRevisions seeds an origin whose revisions carry the project's own
