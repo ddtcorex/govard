@@ -298,7 +298,7 @@ govard deploy production --yes
 | `maintenance:enable` / `disable` | `artisan down` / `artisan up`, chạy trong release **đang được phục vụ** |
 | `app:workers:pause` | khi bật `worker_control`: `artisan queue:restart`, thêm `horizon:terminate` nếu dự án có Horizon |
 | `app:cache:flush` | `artisan optimize:clear` rồi `artisan optimize` |
-| `deploy:verify` (`app`) | `artisan db:show`; Laravel 10 trở xuống dùng `migrate:status` |
+| `deploy:verify` (`app`) | `artisan db:show`; Laravel 10 trở xuống dùng `migrate:status` — chạy trong **served path**, nên target in-place kiểm tra docroot |
 | `db:backup` | — (không có lệnh dump: bật `--db-backup` sẽ fail kèm lý do) |
 
 `.env` là **file** shared và `storage` là **thư mục** shared, vì cờ maintenance nằm
@@ -367,7 +367,7 @@ govard deploy production --yes
 | `app:cache:flush` | `cache:clear --env=… --no-warmup` rồi `cache:warmup --env=…` |
 | `app:workers:pause` | khi bật `worker_control`: `messenger:stop-workers --env=…` |
 | `maintenance:enable` / `disable` | **rỗng** — Symfony không có cơ chế lõi, nên cả hai bước được báo là skipped |
-| `deploy:verify` (`app`) | `dbal:run-sql "SELECT 1"`; DoctrineBundle cũ dùng `doctrine:query:sql` |
+| `deploy:verify` (`app`) | `dbal:run-sql "SELECT 1"`; DoctrineBundle cũ dùng `doctrine:query:sql` — chạy trong **served path**, nên target in-place kiểm tra docroot |
 | `db:backup` | — (không có lệnh dump: bật `--db-backup` sẽ fail kèm lý do) |
 
 Mọi lệnh `bin/console` ở trên lấy `--env` từ setting `symfony_env`:
@@ -471,7 +471,7 @@ govard deploy production --yes
 | `app:cache:flush` | `wp cache flush` + `wp rewrite flush --hard`, hoặc `wp_cache_flush()` + `flush_rewrite_rules(true)` |
 | `maintenance:enable` / `disable` | ghi/xoá `.maintenance` và file `wp-content/maintenance.php` có marker, trong path **đang phục vụ** |
 | `db:backup` / restore | `wp db export` / `wp db import` — ngoài Magento, đây là recipe duy nhất có lệnh dump |
-| `deploy:verify` (`app`) | `wp core is-installed`, hoặc `is_blog_installed()` khi không có wp-cli |
+| `deploy:verify` (`app`) | `wp core is-installed`, hoặc `is_blog_installed()` khi không có wp-cli — chạy trong **served path**, nên target in-place kiểm tra docroot |
 
 Ba bước là **hybrid**: chạy `wp` khi target có wp-cli, và bootstrap PHP qua
 `wp-load.php` khi không. wp-cli là thứ server thật có, nhưng govard không thể cài

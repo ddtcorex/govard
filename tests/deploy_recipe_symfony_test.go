@@ -133,6 +133,16 @@ func TestSymfonyVerifyCheckProvesTheDatabaseConnection(t *testing.T) {
 	if !strings.Contains(command, "SELECT 1") {
 		t.Errorf("the check must run a query, or it proves only that the kernel boots:\n%s", command)
 	}
+	// The application that answers is the one the web server serves: on an
+	// in-place target the docroot is a different directory from the release the
+	// build ran in, so the check has to run there — `bin/console` and the warm
+	// cache under `var/` resolve through the current working directory.
+	if !strings.Contains(command, "{{current_path}}") {
+		t.Errorf("the check must run in the served path:\n%s", command)
+	}
+	if strings.Contains(command, "{{release_path}}") {
+		t.Errorf("the served application is not the release on an in-place target:\n%s", command)
+	}
 }
 
 // Symfony has no core maintenance mechanism. An empty task is skipped by the

@@ -422,8 +422,15 @@ func TestMagento2RecipeDeclaresItsVerificationChecks(t *testing.T) {
 	if strings.Contains(app.Command, "--version") {
 		t.Fatalf("`--version` proves nothing about the application: %q", app.Command)
 	}
-	if !strings.Contains(app.Command, "{{release_path}}") || !strings.Contains(app.Command, "{{php_bin}}") {
-		t.Fatalf("the check must run the deployed code with the configured interpreter: %q", app.Command)
+	// The check answers for the application the web server serves. On an
+	// in-place target the docroot is a different directory from the release the
+	// build ran in, so a check run against the release proves nothing about the
+	// site — the same reason the cache flush and the maintenance flag moved.
+	if !strings.Contains(app.Command, "{{current_path}}") || !strings.Contains(app.Command, "{{php_bin}}") {
+		t.Fatalf("the check must run the served code with the configured interpreter: %q", app.Command)
+	}
+	if strings.Contains(app.Command, "{{release_path}}") {
+		t.Fatalf("the served application is not the release on an in-place target: %q", app.Command)
 	}
 
 	// The in-place artifact comparison is gone: it compared a version file with

@@ -111,7 +111,10 @@ func DeployRecipe() deploy.Recipe {
 		{
 			ID:    "app",
 			Title: "the application answers against its real dependencies",
-			Command: "cd {{release_path}} && if {{php_bin}} bin/console list --raw 2>/dev/null | grep -q '^dbal:run-sql'; " +
+			// It runs in the served path: on an in-place target the docroot is
+			// not the release, and `bin/console` — with the cache it warms under
+			// `var/` — resolves through the working directory.
+			Command: "cd {{current_path}} && if {{php_bin}} bin/console list --raw 2>/dev/null | grep -q '^dbal:run-sql'; " +
 				`then {{php_bin}} bin/console dbal:run-sql "SELECT 1" --env={{settings.symfony_env}}; ` +
 				`else {{php_bin}} bin/console doctrine:query:sql "SELECT 1" --env={{settings.symfony_env}}; fi`,
 		},

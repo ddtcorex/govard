@@ -298,7 +298,7 @@ govard deploy production --yes
 | `maintenance:enable` / `disable` | `artisan down` / `artisan up`, run in the **served** release |
 | `app:workers:pause` | with `worker_control` on: `artisan queue:restart`, plus `horizon:terminate` when Horizon is installed |
 | `app:cache:flush` | `artisan optimize:clear` then `artisan optimize` |
-| `deploy:verify` (`app`) | `artisan db:show`; `migrate:status` on Laravel 10 and older |
+| `deploy:verify` (`app`) | `artisan db:show`; `migrate:status` on Laravel 10 and older — run in the **served** path, so an in-place target checks the docroot |
 | `db:backup` | — (no dump command: `--db-backup` fails and names the reason) |
 
 `.env` is a shared **file** and `storage` a shared **directory**, because the
@@ -368,7 +368,7 @@ govard deploy production --yes
 | `app:cache:flush` | `cache:clear --env=… --no-warmup` then `cache:warmup --env=…` |
 | `app:workers:pause` | with `worker_control` on: `messenger:stop-workers --env=…` |
 | `maintenance:enable` / `disable` | **empty** — Symfony has no core mechanism, so both steps are reported as skipped |
-| `deploy:verify` (`app`) | `dbal:run-sql "SELECT 1"`; `doctrine:query:sql` on an older DoctrineBundle |
+| `deploy:verify` (`app`) | `dbal:run-sql "SELECT 1"`; `doctrine:query:sql` on an older DoctrineBundle — run in the **served** path, so an in-place target checks the docroot |
 | `db:backup` | — (no dump command: `--db-backup` fails and names the reason) |
 
 Every `bin/console` command above takes `--env` from the `symfony_env` setting:
@@ -473,7 +473,7 @@ govard deploy production --yes
 | `app:cache:flush` | `wp cache flush` + `wp rewrite flush --hard`, or `wp_cache_flush()` + `flush_rewrite_rules(true)` |
 | `maintenance:enable` / `disable` | writes/removes `.maintenance` and a marked `wp-content/maintenance.php` in the **served** path |
 | `db:backup` / restore | `wp db export` / `wp db import` — the only recipe besides Magento's with a dump command |
-| `deploy:verify` (`app`) | `wp core is-installed`, or `is_blog_installed()` without wp-cli |
+| `deploy:verify` (`app`) | `wp core is-installed`, or `is_blog_installed()` without wp-cli — run in the **served** path, so an in-place target checks the docroot |
 
 Three tasks are **hybrids**, each running `wp` when the target has wp-cli and a
 `wp-load.php` PHP bootstrap when it does not: wp-cli is what a real server has, but

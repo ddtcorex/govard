@@ -292,6 +292,15 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
 				t.Fatalf("write the served path: %v", err)
 			}
+			// Where the stub keeps the records this test asserts on (the calls it
+			// saw, the frontend builds it ran). They cannot live inside either
+			// tree: the build runs in the release and the verification runs in
+			// the served path, which on an in-place target is a different
+			// directory. One absolute path both can reach, named once and
+			// committed before `up` builds the mirror.
+			if err := os.WriteFile(filepath.Join(projectDir, "stub-state-dir.txt"), []byte(stubStateDir(expectation)+"\n"), 0o644); err != nil {
+				t.Fatalf("write the stub state directory: %v", err)
+			}
 			if testCase.backup != "" {
 				// Read by the stub when the recipe asks for a dump.
 				if err := os.WriteFile(filepath.Join(projectDir, "backup-expectation.txt"), []byte(testCase.backup+"\n"), 0o644); err != nil {
@@ -381,6 +390,10 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
 		t.Fatalf("write the served path: %v", err)
 	}
+	stateDir := stubStateDir("deploy-sandbox-db-restore")
+	if err := os.WriteFile(filepath.Join(projectDir, "stub-state-dir.txt"), []byte(stateDir+"\n"), 0o644); err != nil {
+		t.Fatalf("write the stub state directory: %v", err)
+	}
 	// Two revisions of the *fixture* project — the stub needs its own files, so
 	// this seeds from the checkout rather than from a minimal repository.
 	origin, revisions := seedFixtureRevisions(t, projectDir, 2)
@@ -392,6 +405,16 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	}
 	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
 
+	// The stub's records are per deploy, not per sandbox: the state directory is
+	// one absolute path both trees can reach, so the second deploy would
+	// otherwise count the first one's static-content passes. It can only be
+	// cleared after the first deploy has created the served path the remote
+	// command starts in.
+	resetStubState := func() {
+		t.Helper()
+		env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--", "rm", "-rf", stateDir).AssertSuccess(t)
+	}
+
 	// The first release records a dump …
 	first := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[0], "--db-backup", "--yes")
 	if first.ExitCode != 0 {
@@ -400,6 +423,7 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	// … and the second records one too, because *its* dump is the one a rollback
 	// to the first release restores: it was taken before the migrations the
 	// rollback undoes.
+	resetStubState()
 	second := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[1], "--db-backup", "--yes")
 	if second.ExitCode != 0 {
 		t.Fatalf("the second deploy failed (%d)\nstdout: %s\nstderr: %s", second.ExitCode, second.Stdout, second.Stderr)
@@ -437,6 +461,16 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	if got := strings.TrimSpace(leftovers.Stdout); got != "" {
 		t.Fatalf("a dump was left behind after two deploys and a rollback:\n%s", got)
 	}
+}
+
+// stubStateDir is the absolute path the deploy fixture's stub keeps its records
+// in: the deploy calls it saw and the frontend builds it ran. It lives inside
+// the sandbox container, outside both the release and the docroot, because the
+// verification that reads it runs in the served path while the build that wrote
+// it ran in the release. Naming it per case keeps two sandboxes — or two deploys
+// in one sandbox — from counting each other's work.
+func stubStateDir(name string) string {
+	return "/tmp/govard-deploy-stub-" + name
 }
 
 // seedFixtureRevisions seeds an origin whose revisions carry the project's own

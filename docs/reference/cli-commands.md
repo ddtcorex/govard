@@ -741,10 +741,12 @@ one it used. No layout, or several, is a configuration error (exit 4) naming wha
 was probed. A configured `deploy_path` is never probed.
 
 `deploy:verify` runs the live-revision check, the recipe's required shared files,
-the recipe's own checks — for Magento, `setup:db:status` and, in place, the
-docroot's static content version — and an HTTP request when `deploy.verify.url`
-is set. A deploy that runs `db:migrate` with no verify URL prints a warning
-before its first step. `maintenance:enable`/`disable` are skipped for a symlink
+the recipe's own checks — for Magento, `setup:db:status`, run in the **served**
+path so an in-place target checks the docroot rather than the release — and an
+HTTP request when `deploy.verify.url` is set. On an in-place target it also
+dry-runs the activation's own copy for every `sync_paths` entry, which is what
+proves the docroot holds what the build produced. A deploy that runs
+`db:migrate` with no verify URL prints a warning before its first step. `maintenance:enable`/`disable` are skipped for a symlink
 activation unless the plan also migrates or imports configuration, which is when
 a maintenance window is genuinely needed.
 
