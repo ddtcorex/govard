@@ -365,10 +365,12 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 	}
 }
 
-// `govard deploy rollback --with-db` restores the dump a release recorded. The
-// restore only works when the file reaches Magento under the name and in the
-// directory `setup:rollback` demands, which the stub enforces — so a regression
-// to "pass the absolute path" ends this deploy with Magento's own error.
+// `govard deploy rollback --with-db` restores the dump recorded by the release
+// that ran *after* the one being restored: that deploy dumped the database
+// before its own migrations, which is the state the target expects. The restore
+// only works when the file reaches Magento under the name and in the directory
+// `setup:rollback` demands, which the stub enforces — so a regression to "pass
+// the absolute path" ends this deploy with Magento's own error.
 func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	env := NewTestEnvironment(t)
 	projectDir := env.CreateProjectFromFixture(t, "deploy/magento-stub", "deploy-sandbox-db-restore")
@@ -395,8 +397,10 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	if first.ExitCode != 0 {
 		t.Fatalf("the first deploy failed (%d)\nstdout: %s\nstderr: %s", first.ExitCode, first.Stdout, first.Stderr)
 	}
-	// … the second becomes what is live, so the rollback has somewhere to go back to.
-	second := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[1], "--yes")
+	// … and the second records one too, because *its* dump is the one a rollback
+	// to the first release restores: it was taken before the migrations the
+	// rollback undoes.
+	second := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[1], "--db-backup", "--yes")
 	if second.ExitCode != 0 {
 		t.Fatalf("the second deploy failed (%d)\nstdout: %s\nstderr: %s", second.ExitCode, second.Stdout, second.Stderr)
 	}
@@ -407,6 +411,8 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 			rollback.ExitCode, rollback.Stdout, rollback.Stderr)
 	}
 	rollback.AssertOutputContains(t, revisions[0][:8])
+	// The dump came from release 2, not from the release being restored.
+	rollback.AssertOutputContains(t, "recorded by release 2")
 }
 
 // seedFixtureRevisions seeds an origin whose revisions carry the project's own

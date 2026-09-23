@@ -577,8 +577,12 @@ func TestNoOpFastPathRequiresACompleteRecord(t *testing.T) {
 	run := func(host deploy.Host, plan deploy.Plan) deploy.Outcome {
 		t.Helper()
 		options := deploy.Options{Publish: deploy.PublishSymlink, CommandTimeout: time.Minute}
+		// The record the seed wrote belongs to release 1, and the run continues
+		// it: a run with no release number cannot execute a publish step at all
+		// (the engine refuses, because `{{release_path}}` would be the directory
+		// holding every release).
 		outcome, err := deploy.NewExecutor(host, options, io.Discard).Run(
-			context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("", "abc", "main"))
+			context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "main"))
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}

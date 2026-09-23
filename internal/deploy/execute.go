@@ -88,7 +88,7 @@ func RecoveryHint(remote string, lockHeld bool) string {
 // and removing a lock another deploy holds would be worse than leaving this
 // one behind.
 func (e *Executor) releaseLockAfterFailure(ctx context.Context, release *Release) {
-	if !e.lockWasAcquired() {
+	if !e.lockHeld {
 		return
 	}
 	sc := StepContext{
@@ -108,16 +108,6 @@ func (e *Executor) releaseLockAfterFailure(ctx context.Context, release *Release
 	fmt.Fprintf(e.out, "  lock released (failure before publish; nothing live changed)\n")
 }
 
-// lockWasAcquired reports whether the lock step of this run succeeded.
-func (e *Executor) lockWasAcquired() bool {
-	for _, result := range e.results {
-		if result.ID == TaskLock {
-			return result.Status == StepOK
-		}
-	}
-	return false
-}
-
 // ComposerAuthEnv is the environment variable a CI job or a server sets to give
 // Composer credentials for private repositories. Govard passes it through and
 // never stores it: it is not written to the release record, not put in a command
@@ -133,6 +123,12 @@ type Executor struct {
 	results      []StepResult
 	// workDir is the checkout a step inspects (the .gitmodules probe).
 	workDir string
+	// lockHeld is whether this run holds the deploy lock right now. It is set
+	// by the deploy:lock step when it runs, and by Run itself when `--from` or a
+	// resume skipped that step: a run that is about to touch the target has to
+	// hold the lock, and the tail's deploy:unlock may only remove a lock this
+	// run took.
+	lockHeld bool
 }
 
 // NewExecutor builds an executor. out receives the stage timeline; pass
@@ -264,6 +260,28 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 	}
 
+	// A run that does not execute deploy:lock — `--from` past it, or a resume
+	// whose earlier run recorded it ok — still has to hold the lock for its whole
+	// duration. The run is about to touch the target, and the tail's
+	// deploy:unlock removes whatever sits at the lock path: without taking the
+	// lock here, that `rm -rf` deletes the lock of a deploy that is still
+	// running. Taking it also means a partial run is refused while somebody else
+	// holds the lock, the same guarantee a full run gets.
+	if completed[TaskLock] && !e.opts.SkipLock {
+		lockCtx := &StepContext{
+			Host:    e.host,
+			Runner:  e.host.Runner(),
+			Vars:    vars,
+			Release: release,
+			Opts:    e.opts,
+			Out:     e.out,
+		}
+		if err := CoreLock(ctx, lockCtx); err != nil {
+			return e.finish(outcome, started), fmt.Errorf("acquire the deploy lock: %w", err)
+		}
+		e.lockHeld = true
+	}
+
 	// The migration probe resolves lazily, at the first gated step that would
 	// otherwise run — not upfront. The release directory does not exist until
 	// deploy:release creates it, and the probe starts with
@@ -364,6 +382,31 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
 		}
+		// The same rule from the other side: a run that holds no lock must not
+		// remove one. Reachable when a plan carries deploy:unlock without
+		// deploy:lock, or after a lock acquisition that never happened.
+		if step.ID == TaskUnlock && !e.lockHeld {
+			step.SkipReason = "this run did not hold the deploy lock"
+			e.record(ctx, release, step, StepSkipped, 0, nil)
+			continue
+		}
+
+		// A release number is what `{{release_path}}` is built from. Without one
+		// that variable is the directory holding every release, so an activation
+		// would publish all of them at once, and the record would be written
+		// beside them. deploy:release sets it; a run that skipped that step has
+		// nothing to continue and must stop before it touches the target.
+		if release.Release == "" && step.Stage != StagePrepare {
+			stepErr := fmt.Errorf("step %s needs a release number and deploy:release did not run in this run; pass --resume to continue a release that already exists", step.ID)
+			e.record(ctx, release, step, StepFailed, 0, stepErr)
+			release.Status = StatusFailed
+			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
+			outcome.LockHeld = LockKeptOnFailure(step.Stage)
+			if !outcome.LockHeld {
+				e.releaseLockAfterFailure(ctx, release)
+			}
+			return e.finish(outcome, started), fmt.Errorf("step %s failed on %s: %w", step.ID, e.host.Name, stepErr)
+		}
 
 		// Release-derived variables must reflect what earlier steps produced,
 		// so `{{release_path}}` is correct in every command after deploy:release.
@@ -413,6 +456,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 
 		e.record(ctx, release, step, StepOK, elapsed, nil)
+		if step.ID == TaskLock {
+			e.lockHeld = true
+		}
 	}
 
 	release.Status = StatusOK
