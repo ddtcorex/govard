@@ -80,17 +80,28 @@ func DeployRecipe() deploy.Recipe {
 			"--env={{settings.symfony_env}} --no-interaction --allow-no-migration")
 
 	// The two-step cache build: clear writes the container, warmup fills it, and
-	// `--no-warmup` keeps the first command from doing the work twice.
+	// `--no-warmup` keeps the first command from doing the work twice. The
+	// container belongs to the served application — with an in-place docroot the
+	// release's own `var/cache` is a directory no web server reads.
 	fill(deploy.TaskAppCacheFlush, "rebuild the container cache",
-		"cd {{release_path}} && {{php_bin}} bin/console cache:clear --env={{settings.symfony_env}} --no-warmup && "+
+		"cd {{current_path}} && {{php_bin}} bin/console cache:clear --env={{settings.symfony_env}} --no-warmup && "+
 			"{{php_bin}} bin/console cache:warmup --env={{settings.symfony_env}} && {{settings.runtime_reload_command}}")
 
 	// Symfony's own graceful stop for Messenger consumers: each one finishes the
 	// message it holds and exits. Restarting them is the process manager's job,
 	// which is why there is no resume step.
+	//
+	// The signal belongs to the served application. `messenger:stop-workers`
+	// writes it into a cache pool (`cache.app`), which by default is a filesystem
+	// adapter under `var/cache/<env>/pools` — a directory this recipe
+	// deliberately does not share between releases. Written from the release, the
+	// signal sits where no running consumer polls, and the release's own
+	// `cache:clear` then wipes it, leaving the consumers running through the
+	// migration the pause exists to protect. Guarded for the first deploy, where
+	// there is no served application to signal yet.
 	fill(deploy.TaskWorkersPause, "pause the Messenger consumers",
-		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then `+
-			`{{php_bin}} bin/console messenger:stop-workers --env={{settings.symfony_env}}; fi`)
+		symfonyServedAppGuard+` && if [ {{settings.worker_control}} = true ]; then `+
+			`{{php_bin}} bin/console messenger:stop-workers --env={{settings.symfony_env}}; fi; fi`)
 
 	// The one check the core cannot supply: the application has to answer against
 	// its real dependencies. DoctrineBundle renamed `doctrine:query:sql` to
@@ -124,3 +135,15 @@ func DeployRecipe() deploy.Recipe {
 	}
 	return recipe
 }
+
+// symfonyServedAppGuard opens a command that must act on the application the web
+// server serves. It asks whether the *application* is being served, not whether
+// a directory exists: the console and its autoloader are what running a
+// `bin/console` command requires, and a docroot that cannot run has no served
+// application to signal — the same question Magento's
+// `magentoServedAppGuard` asks.
+//
+// The marker is the autoloader, not the directory: a checkout of a Symfony
+// revision carries the committed `vendor/` placeholders its packages ship, so
+// `[ -d vendor ]` passes on a docroot where `bin/console` cannot actually run.
+const symfonyServedAppGuard = "if [ -f {{current_path}}/bin/console ] && [ -f {{current_path}}/vendor/autoload.php ]; then cd {{current_path}}"

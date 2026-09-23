@@ -84,8 +84,13 @@ func DeployRecipe() deploy.Recipe {
 	// release at a dead database port and watching it still connect. A release
 	// that shipped such a file would carry another machine's configuration to
 	// production.
+	//
+	// On the target it runs against the *served* application: a symlink layout
+	// makes `current` the release that just went live, while an in-place docroot
+	// is a separate directory whose own `bootstrap/cache` is what the web server
+	// reads.
 	fill(deploy.TaskAppCacheFlush, "rebuild the framework caches",
-		`cd {{release_path}} && {{php_bin}} artisan optimize:clear && {{php_bin}} artisan optimize && {{settings.runtime_reload_command}}`)
+		`cd {{current_path}} && {{php_bin}} artisan optimize:clear && {{php_bin}} artisan optimize && {{settings.runtime_reload_command}}`)
 
 	// The one check the core cannot supply: the application has to answer against
 	// its real dependencies. `db:show` reports the live connection and exits 0 on

@@ -250,6 +250,13 @@ restores the shared links and writes `pub/static/deployed_version.txt` **last**.
 maintenance window opens for the whole activation — the docroot is rewritten while it
 is being served, so there is no moment to be clever about.
 
+Because the docroot is a real directory rather than a symlink, the steps that act
+on the served application run **there**: `app:cache:flush` clears the docroot's
+`var/cache` and `var/page_cache` after the activation, and Magento's worker steps
+follow the same rule (`cron:install` would otherwise schedule a release
+directory). A release directory is not a served application, and a cache cleared
+there is a cache nothing reads.
+
 **Rehearse it.** The sandbox can build exactly this shape:
 
 ```bash
@@ -469,7 +476,7 @@ deploy:
     magento_themes_backend: [Magento/backend]
     static_content_locales_backend: [en_US]
 
-    worker_control: true          # cron:remove / queue:consumers:stop around the migration
+    worker_control: true          # cron:remove / queue:consumers:restart around the migration
 ```
 
 The admin pass uses `magento_themes_backend` (the admin theme by default) and
@@ -954,7 +961,7 @@ Magento settings (declared by the Magento recipe):
 | `magento_themes_backend` | `Magento/backend` | `-t` for the adminhtml pass |
 | `static_content_locales_backend` | the frontend locales | `--language` for the adminhtml pass |
 | `static_deploy_options` | (empty) | extra flags for **every** pass (`--no-parent`, `-s standard`, …) |
-| `worker_control` | `false` | `cron:remove` / `queue:consumers:stop` around the migration, restored after |
+| `worker_control` | `false` | `cron:remove` / `queue:consumers:restart` around the migration, restored after |
 | `runtime_reload_command` | (empty) | run as the last part of the cache flush (an opcache reset, an FPM reload) |
 
 `deploy.settings` is validated against the recipe before anything runs: an unknown

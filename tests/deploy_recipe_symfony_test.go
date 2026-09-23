@@ -1,6 +1,9 @@
 package tests
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -211,4 +214,111 @@ func TestSymfonySandboxRequirementsCoverTheFramework(t *testing.T) {
 	if !strings.Contains(strings.Join(sandbox.Services, " "), "mariadb") {
 		t.Errorf("the default sandbox does not start a database:\n%v", sandbox.Services)
 	}
+}
+
+// The restart signal `messenger:stop-workers` writes lives in a cache pool
+// (`cache.app`), which by default is a filesystem adapter under
+// `var/cache/<env>/pools` — and `var/cache` is deliberately *not* shared between
+// releases. Written from the release, the signal sits in a directory no running
+// consumer polls, and that release's own `cache:clear` then wipes it, so with
+// `worker_control: true` the consumers keep working through
+// `doctrine:migrations:migrate`. The pause has to run where the application is
+// served.
+func TestSymfonyWorkerPauseActsOnTheServedApplication(t *testing.T) {
+	calls := symfonyWorkerCalls(t, map[string]any{"worker_control": true})
+	if len(calls) == 0 {
+		t.Fatal("app:workers:pause recorded no call")
+	}
+	for _, call := range calls {
+		if strings.Contains(call, "/releases/") {
+			t.Errorf("app:workers:pause ran in the release, not the served application: %s", call)
+		}
+		if !strings.Contains(call, "/current ") {
+			t.Errorf("app:workers:pause did not run in the served root: %s", call)
+		}
+		if !strings.Contains(call, "messenger:stop-workers") {
+			t.Errorf("app:workers:pause did not stop the consumers: %s", call)
+		}
+	}
+}
+
+// A docroot that cannot run the console has no consumers to signal: the step is
+// skipped rather than failed, the same rule the Magento recipe applies. The stub
+// is there so a weakened guard is caught — `console` exists and is runnable, only
+// the autoloader is missing, and a guard that asked for the `vendor/` directory
+// would run it and leave the marker behind.
+func TestSymfonyWorkerPauseToleratesAnUnrunnableDocroot(t *testing.T) {
+	recipe := symfony.DeployRecipe()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	marker := filepath.Join(t.TempDir(), "ran")
+	writeFile(t, filepath.Join(host.CurrentPath, "bin", "console"), "#!/bin/sh\ntouch "+marker+"\n")
+	if err := os.Chmod(filepath.Join(host.CurrentPath, "bin", "console"), 0o755); err != nil {
+		t.Fatalf("chmod the stub: %v", err)
+	}
+	writeFile(t, filepath.Join(host.CurrentPath, "vendor", ".gitignore"), "!/autoload.php\n")
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: map[string]any{"worker_control": true, "php_bin": "sh"},
+	})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", t.TempDir()).
+		Expand(recipe.Task(deploy.TaskWorkersPause).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("a docroot with no console must be skipped, not failed: %v\n%s", err, command)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatalf("the guard accepted a docroot with no autoloader, so the pause ran:\n%s", command)
+	}
+}
+
+// symfonyWorkerCalls runs app:workers:pause against a recording stub and returns
+// one "<working directory> <arguments>" line per call.
+func symfonyWorkerCalls(t *testing.T, settings map[string]any) []string {
+	t.Helper()
+	recipe := symfony.DeployRecipe()
+	log := filepath.Join(t.TempDir(), "calls.log")
+
+	settings["php_bin"] = "sh"
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{Revision: "abcdef123456", Settings: settings})
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := host.ReleasePath("1")
+	vars := cmd.DeployVarsForTest(host, options).SetPath("release_path", release)
+
+	stub := "#!/bin/sh\nprintf '%s\\n' \"$PWD $*\" >> " + log + "\n"
+	// The stub exists in both directories; the recorded working directory is what
+	// the test asserts.
+	for _, root := range []string{release, host.CurrentPath} {
+		writeFile(t, filepath.Join(root, "bin", "console"), stub)
+		if err := os.Chmod(filepath.Join(root, "bin", "console"), 0o755); err != nil {
+			t.Fatalf("chmod %s: %v", root, err)
+		}
+	}
+	// The served-application guard asks for the autoloader, not the directory: a
+	// checkout carries `vendor/.htaccess`, so `[ -d vendor ]` is not the test.
+	writeFile(t, filepath.Join(host.CurrentPath, "vendor", "autoload.php"), "<?php\n")
+
+	command, err := vars.Expand(recipe.Task(deploy.TaskWorkersPause).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("run app:workers:pause: %v\n%s", err, command)
+	}
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatalf("read the stub log: %v", err)
+	}
+	var calls []string
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if strings.TrimSpace(line) != "" {
+			calls = append(calls, line)
+		}
+	}
+	return calls
 }

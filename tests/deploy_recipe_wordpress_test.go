@@ -66,7 +66,13 @@ func TestWordPressDependencyInstallIsGuarded(t *testing.T) {
 // wp-cli itself does.
 func TestWordPressHybridCommandsPreferWpCliAndFallBackToPHP(t *testing.T) {
 	recipe := wordpress.DeployRecipe()
-	for _, id := range []string{"db:migrate", "app:cache:flush"} {
+	// `db:migrate` changes the database and can run from either directory;
+	// `app:cache:flush` rewrites the docroot's `.htaccess`, so it has to run in
+	// the directory the web server serves.
+	for id, dir := range map[string]string{
+		"db:migrate":      "{{release_path}}",
+		"app:cache:flush": "{{current_path}}",
+	} {
 		command := recipe.Task(id).Command
 		if !strings.Contains(command, "command -v wp") {
 			t.Errorf("%s does not prefer wp-cli when it is available:\n%s", id, command)
@@ -77,8 +83,15 @@ func TestWordPressHybridCommandsPreferWpCliAndFallBackToPHP(t *testing.T) {
 		if !strings.Contains(command, "wp-load.php") {
 			t.Errorf("%s does not boot WordPress through wp-load.php, which is what wp-cli does:\n%s", id, command)
 		}
-		if !strings.Contains(command, "{{release_path}}") {
-			t.Errorf("%s does not run in the release:\n%s", id, command)
+		if !strings.Contains(command, dir) {
+			t.Errorf("%s must run in %s:\n%s", id, dir, command)
+		}
+		other := "{{release_path}}"
+		if dir == other {
+			other = "{{current_path}}"
+		}
+		if strings.Contains(command, other) {
+			t.Errorf("%s must not run in %s:\n%s", id, other, command)
 		}
 	}
 }
