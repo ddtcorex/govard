@@ -368,21 +368,65 @@ func TestADroppedConnectionStopsTheRemoteWork(t *testing.T) {
 	}
 }
 
-// A step that exits 255 by itself is indistinguishable from a dead transport, so
-// it gets the same teardown (which finds nothing to kill, because the wrapper
-// removed its record when the step ended) and the same ambiguous error. What it
-// must not do is hang: the teardown is bounded.
-func TestAGenuineExit255IsReportedWithoutHanging(t *testing.T) {
+// The report exists only for the one ambiguous status. A step that succeeds, or
+// that fails with anything else, carries nothing extra: a report on every remote
+// command would be noise in the operator's live output, and noise is what gets
+// ignored.
+func TestOnlyExit255CarriesTheWrappersReport(t *testing.T) {
 	runner, _, _ := sandboxedSSHRunner(t, "")
 
-	started := time.Now()
-	_, err := runner.Run(context.Background(), "exit 255", deploy.RunOptions{})
-	elapsed := time.Since(started)
-
-	if !errors.Is(err, deploy.ErrConnectionMayHaveDropped) {
-		t.Fatalf("a 255 exit must be reported as a dropped connection, got %v", err)
+	failed, err := runner.Run(context.Background(), "echo out; echo err >&2; exit 7", deploy.RunOptions{})
+	if err == nil {
+		t.Fatal("a step that exits 7 must fail the run")
 	}
-	if elapsed > 6*time.Second {
-		t.Fatalf("the teardown of a step that had already ended took %s", elapsed)
+	if strings.Contains(failed.Stderr, "govard-exit-255") {
+		t.Fatalf("only a 255 exit is reported, got stderr %q", failed.Stderr)
+	}
+	if failed.Stderr != "err\n" {
+		t.Fatalf("a failing step's stderr must be its own, got %q", failed.Stderr)
+	}
+
+	passed, err := runner.Run(context.Background(), "echo out; echo note >&2", deploy.RunOptions{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if passed.Stderr != "note\n" {
+		t.Fatalf("a successful step's stderr must be its own, got %q", passed.Stderr)
+	}
+	if passed.Stdout != "out\n" {
+		t.Fatalf("a successful step's stdout must be its own, got %q", passed.Stdout)
+	}
+}
+
+// A step is free to exit 255 for its own reasons, and PHP does it for every fatal
+// error — "Allowed memory size exhausted" during `setup:di:compile` is the most
+// common Magento build failure there is. The number alone cannot tell that from a
+// dead transport, so the wrapper reports the step's own status once the step has
+// ended; only a 255 *without* that report is a drop. This step ends by itself, so
+// it is a plain failure: the exit code is in the message, nothing is torn down,
+// and the operator is not sent chasing a connection that never broke.
+func TestAGenuineExit255IsNotADroppedConnection(t *testing.T) {
+	runner, logFile, _ := sandboxedSSHRunner(t, "")
+
+	result, err := runner.Run(context.Background(), "exit 255", deploy.RunOptions{})
+	if err == nil {
+		t.Fatal("a step that exits 255 must fail the run")
+	}
+	if errors.Is(err, deploy.ErrConnectionMayHaveDropped) {
+		t.Fatalf("a step that reported its own end must not be reported as a dropped connection, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "255") {
+		t.Fatalf("the failure must still name the exit code, got %v", err)
+	}
+	if leaked := err.Error() + result.Stderr; strings.Contains(leaked, "govard-exit-255") {
+		t.Fatalf("the wrapper's end marker must not reach the operator, got %q", leaked)
+	}
+
+	logged, readErr := os.ReadFile(logFile)
+	if readErr != nil {
+		t.Fatalf("read the ssh log: %v", readErr)
+	}
+	if strings.Contains(string(logged), "kill -TERM -$p") {
+		t.Fatalf("a step that had already ended must not be torn down:\n%s", logged)
 	}
 }

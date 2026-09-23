@@ -90,6 +90,12 @@ exactly the words the recipe runs, and shell syntax in the value is inert. A
 *binary path* containing a space is not supported — split words cannot tell it
 from a wrapper with an argument.
 
+A leading `~/` is the one piece of shell syntax that is kept, because it names a
+real configuration: `composer_bin: "php ~/composer.phar"` is common on shared
+hosting. It is rendered so the shell expands it, not govard. Anything else has to
+be written absolutely: `$HOME/...` is literal, and an assignment prefix needs
+`env` — `php_bin: "env PHP_INI_SCAN_DIR=/x php"`.
+
 `php_version` is a gate: `deploy:check` runs `<php_bin> -r 'echo PHP_VERSION;'` on
 the target and refuses the deploy when the series does not match, because a release
 built by the wrong interpreter fails later and says less about why. `deploy:check`
@@ -994,6 +1000,12 @@ engine also dry-runs the activation's own copy for every `sync_paths` entry
 rewrote a file in the docroot after the copy fails the deploy by name. It reads
 both trees, which is the cost of comparing content rather than a marker file.
 
+The comparison is one-directional: a release file the docroot has changed or lost
+is a failure, while a path the docroot has and the release does not is **reported**
+instead. The running application creates those — a generated class, a compiled
+template, a log — and the next activation's `--delete` removes them, so failing on
+one would fail a release that is healthy and already serving.
+
 The HTTP check stops at the first response and requires 2xx. A redirect is not a
 pass: an install page or a store-code bounce that answers 200 after a hop used to
 satisfy the check while the site was not serving the release, so the failure now
@@ -1009,9 +1021,28 @@ ERROR  step deploy:verify failed: verify http: https://shop.example/ answered
 `deploy.verify.follow_redirects: true` follows redirects that stay on the verify
 URL's host (http → https is a real layout) and then rejects a landing path the
 recipe declares never-healthy — Magento's `/setup/` — which still fails while
-following. `deploy:check` probes the URL with the same policy and prints what it
-found **before** the deploy touches anything: verification runs after activation,
-where a failure leaves a live site, a failed deploy and a held lock.
+following. `deploy:check` probes the URL with the same policy **before** the
+deploy touches anything, and refuses a redirecting URL outright:
+
+```
+ERROR  refusing to deploy to production: the verify URL redirects: https://shop.example/
+       answered HTTP 302 to /en/: the verify URL must name the page that serves the site, or
+       set deploy.verify.follow_redirects: true to follow same-host redirects
+```
+
+The refusal is deliberate and narrow. A redirect with following off answers the
+same way on every request, so it is a configuration fault, and the preflight is
+the last place where fixing it costs nothing — verification runs after activation,
+where a failure leaves a live site, a failed deploy and a held lock. A timeout, a
+connection refusal or a 5xx stays a **warning**: that may be the outage the deploy
+is about to repair, and blocking a deploy that would fix the site is worse than
+letting it try.
+
+**Behaviour change.** A project whose `verify.url` answers 3xx and which never set
+`follow_redirects` used to pass verification and now fails it — at
+`deploy:check`, before anything is published. Set
+`deploy.verify.follow_redirects: true`, or point `verify.url` at the page that
+actually serves the site.
 
 Without a configured URL verification is SSH-only: it proves the right files are
 in place, not that the application serves. A deploy that runs `db:migrate` with
@@ -1059,6 +1090,15 @@ would be lost. When that release recorded no dump the command refuses and names
 the release to re-deploy with `--db-backup` — it never substitutes another
 release's dump.
 
+The restore is bracketed by the maintenance window on its own, and it runs
+**before** the cache flush and the verification — for either publish strategy. The
+order matters because each of the three consumes the previous one's output: the
+caches the application rebuilds are built from the database, and the framework
+checks `deploy:verify` runs (`setup:db:status`, `migrate:status`) query it. A
+flush first would repopulate the caches from the data the restore is about to
+replace, and an in-place rollback's tail holds its own verification back for the
+same reason.
+
 A rollback takes the deploy lock for the whole operation: it is refused while
 another run holds the lock, and it releases the lock when it ends. A **symlink**
 rollback also flushes the caches through the recipe's `app:cache:flush` step
@@ -1066,6 +1106,13 @@ rollback also flushes the caches through the recipe's `app:cache:flush` step
 while the state the target serves — compiled configuration, caches, Redis keys —
 still belongs to the release that was live a moment ago. An in-place rollback
 does that as part of its publish tail.
+
+If that tail fails, the maintenance window stays open and the error says so — a
+site left in maintenance looks like an outage to whoever finds it. The lock is
+already released by then, and the release being rolled back to is untouched: the
+tail writes to its record as it runs, so a failure would otherwise store `failed`
+against a release that is perfectly good and take it out of every future
+`rollback --to`. Re-run the same rollback once the cause is fixed.
 
 `deploy.lock_stale_after` (default 2h) is how old a lock must be for
 `govard deploy unlock` to release it without `--force`; the refusal a held lock
@@ -1098,25 +1145,37 @@ continues the newest unfinished release instead of starting a new one.
 `--from <task>` starts at a named task or hook, and `govard deploy unlock`
 releases a lock a failed run left behind.
 
-One failure carries no evidence in its exit code. **Exit 255 from the SSH
-transport** is what govard sees when the connection drops mid-step, and a remote
-command that itself exits 255 — an `ssh` or a `git` over ssh inside a step — is
-indistinguishable from it. govard then spends up to 20 seconds trying to stop the
-step's remote process group, and finds nothing to stop when the step had already
-ended on its own. The hint therefore names the ambiguity instead of claiming a
-clean failure: the step may still be running, or it may have died midway. **Check
-the target before resuming** — `govard deploy status <remote>` — because
-`--resume` re-runs the failed step, and resuming into an unknown half-run is how
-a migration that died mid-way becomes a broken one.
+One failure looks like another in the exit code alone. **Exit 255 from the SSH
+transport** is what govard sees when the connection drops mid-step, and a step is
+free to exit 255 for its own reasons — PHP does it for every fatal error, so a
+`setup:di:compile` that runs out of memory ends exactly that way. The number
+cannot tell the two apart, so the wrapper govard runs around every remote step
+reports the step's own status when it exits 255, and only a 255 *without* that
+report is a dropped connection. That distinction decides what happens next:
+
+- **A dropped connection** means nothing signalled the step's remote process
+  group (with `BatchMode` and no pty, sshd sends no SIGHUP), so the step may still
+  be running. govard spends up to 20 seconds trying to stop it, and the hint names
+  the ambiguity instead of claiming a clean failure. **Check the target first** —
+  `govard deploy status <remote>` — before `--resume` (a publish-stage failure
+  kept the lock) or a plain retry (a build-stage failure released it), because
+  resuming into an unknown half-run is how a migration that died mid-way becomes a
+  broken one.
+- **A step that exited 255 itself** is an ordinary failed step: the exit code is
+  in the message, nothing is torn down, and the hint is the same one every other
+  failure gets.
 
 Two rules keep those entry points honest. `--from` is only accepted together with
 `--resume`: a run that starts after `deploy:release` has no release number, and
 `{{release_path}}` would then be the directory that holds every release rather
 than one of them. And `--resume` refuses a release that is still `running` under
 a lock younger than `deploy.lock_stale_after` (that lock belongs to a deploy that
-may be alive — release it with `govard deploy unlock` once it is gone), and
-refuses a release that is not newer than the live one, which is what a CI retry
-that always passes `--resume` would otherwise activate over a serving release.
+may be alive — release it with `govard deploy unlock`, or with `--force` when it
+is younger than that), and refuses a release strictly older than the live one,
+which is what a CI retry that always passes `--resume` would otherwise activate
+over a serving release. The release a run failed on *after* activation is not
+older than the live one — it is the live one — so resuming it is the recovery, not
+the hazard.
 A run started with `--from`/`--resume` takes the deploy lock itself, so the step
 it skipped does not leave the target unprotected.
 

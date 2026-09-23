@@ -132,14 +132,21 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 
 	// Probe the verify URL now, so a redirect or an error page is reported before
 	// the deploy replaces anything: `deploy:verify` runs *after* activation, and a
-	// failure there leaves a live site with a failed deploy and a held lock. This
-	// warns rather than fails — the site may legitimately be down right now, and a
-	// deploy that repairs it must not be blocked — but the operator learns about
-	// it while the old release is still serving.
+	// failure there leaves a live site with a failed deploy and a held lock.
+	//
+	// A redirect with following turned off is refused here, and only that: it
+	// answers the same way on every request, so it is a configuration fault the
+	// operator can fix while nothing has changed. A timeout, a connection refusal
+	// or a 5xx stays a warning — that may be the outage the deploy is about to
+	// repair, and blocking a deploy that would fix the site is worse than letting
+	// it try.
 	if sc.Opts.Verify {
 		if url := strings.TrimSpace(sc.Opts.VerifyURL); url != "" {
 			policy := VerifyPolicy{FollowRedirects: sc.Opts.VerifyFollowRedirects, RejectPaths: sc.Opts.VerifyRejectPaths}
 			if err := VerifyURL(ctx, url, sc.Opts.VerifyTimeout, policy); err != nil {
+				if errors.Is(err, ErrVerifyRedirect) {
+					return fmt.Errorf("refusing to deploy to %s: %w", host.Name, err)
+				}
 				sc.Notes = append(sc.Notes, fmt.Sprintf(
 					"the verify URL does not answer 2xx yet (%v); deploy:verify runs after activation, so the deploy will report this once the release is live", err))
 			}

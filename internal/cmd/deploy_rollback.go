@@ -156,35 +156,80 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 		// built for the release that was live a moment ago: its compiled
 		// configuration, its caches and any Redis state belong to the code that
 		// just went away. An in-place rollback flushes through its tail; a symlink
-		// rollback runs nothing else, so the flush has to be explicit here.
-		if flush := firstStep(plan, deploy.TaskAppCacheFlush); flush.ID != "" {
-			if err := deploy.RunStep(ctx, host, options, vars, flush, target, out); err != nil {
-				return fmt.Errorf("flush the caches of release %s after re-pointing %s: %w", target.Release, host.CurrentPath, err)
-			}
-		}
+		// rollback runs nothing else, so the flush is explicit — below, after a
+		// possible restore, because a cache rebuilt from a database that is about to
+		// be replaced is the state the restore exists to undo.
 	} else {
-		if err := runInPlaceRollbackTail(ctx, host, options, vars, plan, target, out); err != nil {
+		// The tail is handed the fact that a restore follows: `deploy:verify` runs
+		// inside it, and the framework's own checks query the database
+		// (`setup:db:status`, `migrate:status`), so verifying before the restore
+		// compares the release being restored against the schema it is about to
+		// replace.
+		if err := runInPlaceRollbackTail(ctx, host, options, vars, plan, target, out, withDB); err != nil {
 			return err
 		}
 	}
 
-	if withDB {
-		if err := restoreReleaseDatabase(cmd, host, options, vars, plan, recipe, target, dumpRecord); err != nil {
-			return err
+	// The order is the whole point: restore, then flush, then verify. Each step's
+	// input is the previous step's output — the caches are rebuilt from the
+	// database, and the verification queries it — so any other order verifies or
+	// warms state that is about to be replaced. On a symlink the flush is the only
+	// one of the three the rollback runs itself; in place the tail already ran one,
+	// and a restore is what makes a second one necessary.
+	restore := func() error {
+		if !withDB {
+			return nil
 		}
+		return restoreReleaseDatabase(cmd, host, options, vars, plan, recipe, target, dumpRecord)
 	}
-
-	if options.Verify {
-		if verify := firstStep(plan, deploy.TaskVerify); verify.ID != "" {
-			if err := deploy.RunStep(ctx, host, options, vars, verify, target, out); err != nil {
-				return err
-			}
+	flush := func() error {
+		if strategy != deploy.PublishSymlink && !withDB {
+			return nil
 		}
+		step := firstStep(plan, deploy.TaskAppCacheFlush)
+		if step.ID == "" {
+			return nil
+		}
+		if err := deploy.RunStep(ctx, host, options, vars, step, target, out); err != nil {
+			return fmt.Errorf("flush the caches of release %s after the rollback: %w", target.Release, err)
+		}
+		return nil
+	}
+	verify := func() error {
+		if !options.Verify {
+			return nil
+		}
+		step := firstStep(plan, deploy.TaskVerify)
+		if step.ID == "" {
+			return nil
+		}
+		return deploy.RunStep(ctx, host, options, vars, step, target, out)
+	}
+	if err := afterRestore(restore, flush, verify); err != nil {
+		return err
 	}
 
 	pterm.Success.Printf("%s now serves release %s (%s)\n", remote, target.Release, deploy.ShortRevision(target.Revision))
 	if previous != nil && previous.Release != target.Release {
 		pterm.Info.Printf("it replaced release %s; `govard deploy releases %s` shows every release on the target\n", previous.Release, remote)
+	}
+	return nil
+}
+
+// afterRestore runs a rollback's post-activation work in the one order that is
+// correct once a database is involved, skipping the steps that do not apply and
+// stopping at the first failure. It is a named function rather than three
+// consecutive statements because the order *is* the fix: a flush before a restore
+// repopulates the caches from the data being replaced, and a verification before
+// it compares the restored release against a schema it is about to replace.
+func afterRestore(restore, flush, verify func() error) error {
+	for _, step := range []func() error{restore, flush, verify} {
+		if step == nil {
+			continue
+		}
+		if err := step(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -272,27 +317,60 @@ func firstStep(plan deploy.Plan, id string) deploy.Step {
 // The lock belongs to the caller, and pruning releases is not part of returning
 // to one: deploy:unlock would remove the lock this run took, and deploy:cleanup
 // could prune the release it is rolling back from.
-func runInPlaceRollbackTail(ctx context.Context, host deploy.Host, options deploy.Options, vars deploy.Vars, plan deploy.Plan, target *deploy.Release, out io.Writer) error {
+//
+// restoreAfterTail says a database restore follows this tail. `deploy:verify` runs
+// inside the tail and its framework checks query the database, so with a restore
+// pending it is held back: verifying the release against a schema that is about to
+// be replaced fails the rollback for the very state the restore is fixing.
+func runInPlaceRollbackTail(ctx context.Context, host deploy.Host, options deploy.Options, vars deploy.Vars, plan deploy.Plan, target *deploy.Release, out io.Writer, restoreAfterTail bool) error {
 	tail, ok := plan.From(deploy.TaskActivate)
 	if !ok {
 		return fmt.Errorf("the recipe declares no %s task, so an in-place rollback cannot run", deploy.TaskActivate)
 	}
 	tail = tail.Excluding(deploy.TaskUnlock, deploy.TaskCleanup)
+	if restoreAfterTail {
+		tail = tail.Excluding(deploy.TaskVerify)
+	}
 
 	if enable := firstStep(plan, deploy.TaskMaintenanceEnable); enable.ID != "" && !enable.Skipped {
 		if err := deploy.RunStep(ctx, host, options, vars, enable, target, out); err != nil {
 			return fmt.Errorf("enable maintenance mode before rewriting %s: %w", host.CurrentPath, err)
 		}
 	}
+	// The tail runs the executor over the target's own record, and the executor
+	// rewrites that record as it goes — storing `failed` when a step fails. That
+	// record is what `deploy rollback --to <T>` reads to decide which releases are
+	// usable, so a failed attempt would take a healthy release out of every future
+	// rollback: the operator's way back, destroyed by the attempt to use it. The
+	// record is restored on failure, and the rollback then simply did not happen.
+	original := *target
 	if _, err := deploy.NewExecutor(host, options, out).Run(ctx, tail, vars, target); err != nil {
-		return fmt.Errorf("%w (the maintenance window is still open on %s: `govard deploy --resume` finishes the run, or `govard deploy unlock` releases the lock after closing it)", err, host.Name)
+		// Best effort, like every other record write on a failure path: the step's
+		// error is the one that matters, and a record that cannot be written is
+		// reported rather than allowed to hide it.
+		if restoreErr := deploy.WriteRelease(context.WithoutCancel(ctx), host, &original); restoreErr != nil {
+			fmt.Fprintf(out, "  ! the record of release %s could not be restored: %v\n", original.Release, restoreErr)
+		}
+		// The lock belongs to the caller, which releases it as this returns, and
+		// `--resume` is the wrong command here: the release being rolled back to is
+		// not the unfinished one. The command that finishes the job is the one that
+		// started it.
+		return fmt.Errorf("%w (the maintenance window is still open on %s: release %s and its record are as they were, and the deploy lock is released, so re-run `govard deploy --remote %s rollback --to %s` once the cause is fixed)",
+			err, host.Name, original.Release, host.Name, original.Release)
 	}
 	return nil
 }
 
 // RunInPlaceRollbackTailForTest exposes runInPlaceRollbackTail to the tests/
-// package: the ordering it owns — window, then the rewrite — is the behaviour the
-// test pins, rather than the plan shape it is handed.
-func RunInPlaceRollbackTailForTest(ctx context.Context, host deploy.Host, options deploy.Options, vars deploy.Vars, plan deploy.Plan, target *deploy.Release, out io.Writer) error {
-	return runInPlaceRollbackTail(ctx, host, options, vars, plan, target, out)
+// package: the ordering it owns — window, then the rewrite — and the verify step
+// it holds back when a restore follows are the behaviour the tests pin, rather
+// than the plan shape they hand it.
+func RunInPlaceRollbackTailForTest(ctx context.Context, host deploy.Host, options deploy.Options, vars deploy.Vars, plan deploy.Plan, target *deploy.Release, out io.Writer, restoreAfterTail bool) error {
+	return runInPlaceRollbackTail(ctx, host, options, vars, plan, target, out, restoreAfterTail)
+}
+
+// AfterRestoreForTest exposes afterRestore to the tests/ package, so the order it
+// fixes is pinned by a test rather than by reading the caller.
+func AfterRestoreForTest(restore, flush, verify func() error) error {
+	return afterRestore(restore, flush, verify)
 }

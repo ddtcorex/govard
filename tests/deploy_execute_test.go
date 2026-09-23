@@ -763,6 +763,23 @@ func TestRecoveryHintWarnsBeforeResumingAfterADroppedConnection(t *testing.T) {
 	}
 }
 
+// The drop itself does not say whether the run kept its lock, and the two cases
+// need different commands: a publish-stage failure kept the lock and is resumed,
+// while a build-stage failure released it and is retried. Both still send the
+// operator to `deploy status` first — the remote step was never signalled and may
+// be running, which is the whole reason the sentinel exists.
+func TestRecoveryHintOffersARetryWhenTheDroppedRunKeptNoLock(t *testing.T) {
+	hint := deploy.RecoveryHint("production", deploy.Outcome{ConnectionMayHaveDropped: true})
+	for _, want := range []string{"255", "may still be running", "deploy status production", "`govard deploy --remote production`"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("the hint must mention %q, got %q", want, hint)
+		}
+	}
+	if strings.Contains(hint, "--resume") {
+		t.Errorf("a run whose lock was released has nothing to resume, got %q", hint)
+	}
+}
+
 // droppedRunner is the transport dying under a step: ssh exits 255 and nothing
 // has told the remote group to stop.
 type droppedRunner struct{}
@@ -799,5 +816,29 @@ func TestExecutorRecordsADroppedConnectionInTheOutcome(t *testing.T) {
 	}
 	if !strings.Contains(hint, "deploy unlock") {
 		t.Errorf("the hint must offer the lock release, got %q", hint)
+	}
+}
+
+// The engine's own verification is a step like any other, and a transport that
+// dies while it reads the target is the same ambiguity: the command may still be
+// running. Verification builds its failure sentence from the runner's error, so
+// the sentinel has to survive that wrapping — stringifying it there loses the one
+// fact the hint is built on, and the operator gets the generic "the lock was
+// kept" text for a connection that may have dropped.
+func TestAVerifyFailureKeepsTheDroppedConnectionSentinel(t *testing.T) {
+	host, plan := executorForTest(t, []deploy.Task{
+		{ID: deploy.TaskVerify, Stage: deploy.StageVerify, Core: deploy.CoreVerify},
+	})
+
+	release := deploy.NewReleaseForTest("1", "abc", "local")
+	release.Publish.Strategy = deploy.PublishSymlink
+
+	outcome, err := deploy.NewExecutor(host.WithRunner(droppedRunner{}), deploy.Options{CommandTimeout: time.Minute, Verify: true}, io.Discard).Run(
+		context.Background(), plan, deploy.NewVars(), release)
+	if err == nil {
+		t.Fatal("a verify step whose transport died must fail the run")
+	}
+	if !outcome.ConnectionMayHaveDropped {
+		t.Fatalf("a dropped connection during verification must keep the sentinel, or the hint cannot name it: %v", err)
 	}
 }

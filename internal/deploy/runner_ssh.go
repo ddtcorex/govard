@@ -51,7 +51,8 @@ func (r SSHRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	// path signal the group over a second connection — the only way to reach work
 	// whose connection is gone.
 	pidFile := remoteInterruptPIDFile()
-	started := recordRemoteProcessGroup(command, pidFile)
+	report := remoteExitReport()
+	started := recordRemoteProcessGroup(command, pidFile, report)
 
 	cmd := exec.CommandContext(ctx, "ssh", r.Args(started)...)
 	if opts.Dir != "" {
@@ -77,17 +78,25 @@ func (r SSHRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 
 	err := cmd.Run()
 	result := Result{Stdout: stdout.String(), Stderr: stderr.String()}
+	// The report belongs to the wrapper, not to the step, and is removed before
+	// anything reads the buffer so it cannot reach the operator's message.
+	stripped, reported := stripExitReport(result.Stderr, report)
+	result.Stderr = stripped
 	if err == nil {
 		return result, nil
 	}
-	// ssh's own exit code for a failed transport. Nothing signalled the remote
-	// group when the link died — with BatchMode and no pty, sshd sends no SIGHUP —
-	// so the step may still be running, or may have died partway through. The
-	// teardown is harmless for a step that exits 255 by itself: the wrapper
-	// removes its pid file when the step ends, and terminateRemote then finds
-	// nothing. Only a run that was not cancelled has this ambiguity: a cancelled
+	// ssh's own exit code for a failed transport, and the one case where the
+	// step's own status is unknown. A step is free to exit 255 itself — PHP does
+	// it for every fatal error, so a compile or static-content step that runs out
+	// of memory ends exactly that way — so the number alone cannot tell the two
+	// apart. The wrapper prints its report only when the step itself
+	// exited 255, so a report is the step saying it ended and a missing one is the
+	// connection dying first. Nothing signalled the remote group when the link
+	// died (with BatchMode and no pty, sshd sends no SIGHUP), so a 255 with no
+	// report means the step may still be running, or may have died partway
+	// through. Only a run that was not cancelled has this ambiguity: a cancelled
 	// run already ran the teardown through the process-group hook.
-	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 255 && ctx.Err() == nil {
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 255 && !reported && ctx.Err() == nil {
 		r.terminateRemote(pidFile)
 		return result, fmt.Errorf("%w: %v", ErrConnectionMayHaveDropped, commandError(ctx, command, result.Stderr, err))
 	}
@@ -147,12 +156,18 @@ rm -f %s`, conventions.ShellQuote(pidFile), conventions.ShellQuote(pidFile), pid
 // either, so the file is removed by the step's own end rather than by a promise
 // about how it ends. The exit status is carried out by hand for the same reason:
 // the last statement is now the cleanup, not the step.
-func recordRemoteProcessGroup(command, pidFile string) string {
+//
+// The exit report is what makes the exit code honest: only the wrapper's own
+// word distinguishes a step that exited 255 from a connection that died before
+// the step could. It is printed only for that one status, so an ordinary step —
+// and a successful one above all — carries nothing extra, and its absence on a
+// 255 is the signal that the remote side never finished.
+func recordRemoteProcessGroup(command, pidFile, report string) string {
 	// The newline before the closing parenthesis is load-bearing: a step whose
 	// last line is a comment would otherwise comment it out.
 	return fmt.Sprintf(
-		"printf '%%s\\n' $$ > %s; ( %s\n); rc=$?; rm -f %s; exit $rc",
-		conventions.ShellQuote(pidFile), command, pidFile)
+		"printf '%%s\\n' $$ > %s; ( %s\n); rc=$?; rm -f %s; if [ \"$rc\" = 255 ]; then printf '%%s\\n' %s >&2; fi; exit $rc",
+		conventions.ShellQuote(pidFile), command, pidFile, conventions.ShellQuote(report))
 }
 
 // remoteInterruptPIDFile names the per-run record. The path is built here from a
@@ -160,4 +175,24 @@ func recordRemoteProcessGroup(command, pidFile string) string {
 // chose — which is why the trap can name it without quoting.
 func remoteInterruptPIDFile() string {
 	return fmt.Sprintf("/tmp/.govard-deploy-interrupt-%d-%d.pid", os.Getpid(), time.Now().UnixNano())
+}
+
+// remoteExitReport is the token the wrapper prints on stderr when the step itself
+// exited 255. Like the pid file, every character comes from this package plus a
+// pid and a nanosecond clock, so no step can print it by accident and be taken
+// for the wrapper's word.
+func remoteExitReport() string {
+	return fmt.Sprintf("__govard-exit-255-%d-%d", os.Getpid(), time.Now().UnixNano())
+}
+
+// stripExitReport reports whether the wrapper said the step exited 255, and
+// returns the captured stderr without its report. The report is the last thing
+// the wrapper writes, so everything from it onwards is the wrapper's and not the
+// step's.
+func stripExitReport(stderr, report string) (string, bool) {
+	index := strings.Index(stderr, report)
+	if index < 0 {
+		return stderr, false
+	}
+	return stderr[:index], true
 }

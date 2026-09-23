@@ -891,12 +891,18 @@ The sandbox is the only deploy command that needs `docker`.
 
 `--resume` continues the newest release whose record is not `ok`; `--from <task>`
 starts at a named task or hook and reports everything before it as skipped. Both
-are recovery paths an operator asks for explicitly — neither is automatic.
+are recovery paths an operator asks for explicitly — neither is automatic. A
+`--from` past `deploy:release` also needs `--resume`: the run would never create a
+release number, so `{{release_path}}` would name the directory holding every
+release.
 
 `govard deploy rollback` never rebuilds: a symlink layout is re-pointed, and an
 in-place layout re-runs the publish tail from the release directory already on
-the server. `--with-db` restores the dump recorded by that release and destroys
-current data, so it needs `--yes` (or an interactive confirmation).
+the server. `--with-db` restores the dump recorded by the release that ran **after**
+the one being restored — that deploy dumped the database before its migrations,
+which is the state the target expects — and destroys current data, so it needs
+`--yes` (or an interactive confirmation). The restore runs before the cache flush
+and the verification, which both read the database.
 
 Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
 capability, `4` configuration. `govard deploy` and `govard deploy rollback` need

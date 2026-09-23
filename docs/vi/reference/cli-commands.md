@@ -871,12 +871,17 @@ Sandbox là lệnh deploy duy nhất cần `docker`.
 
 `--resume` tiếp tục release mới nhất có record chưa `ok`; `--from <task>` bắt đầu
 từ một task hoặc hook được chỉ định và báo mọi bước trước đó là skipped. Cả hai
-đều là đường phục hồi do người vận hành chủ động yêu cầu, không tự động.
+đều là đường phục hồi do người vận hành chủ động yêu cầu, không tự động. Một
+`--from` vượt qua `deploy:release` còn cần `--resume`: run sẽ không bao giờ tạo số
+release, nên `{{release_path}}` sẽ trỏ vào thư mục chứa mọi release.
 
 `govard deploy rollback` không bao giờ build lại: layout symlink được trỏ lại,
 còn layout in-place chạy lại phần publish từ thư mục release đã có trên server.
-`--with-db` phục hồi dump mà release đó đã ghi lại và sẽ phá huỷ dữ liệu hiện tại,
-nên cần `--yes` (hoặc xác nhận tương tác).
+`--with-db` phục hồi dump mà release chạy **sau** release được khôi phục đã ghi lại
+— lần deploy đó dump database trước các migration của nó, đúng trạng thái mà release
+đích cần — và sẽ phá huỷ dữ liệu hiện tại, nên cần `--yes` (hoặc xác nhận tương
+tác). Việc restore chạy trước bước flush cache và bước verify, vì cả hai đều đọc
+database.
 
 Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thiếu
 capability, `4` lỗi cấu hình. `govard deploy` và `govard deploy rollback` cần

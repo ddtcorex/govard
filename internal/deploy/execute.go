@@ -98,7 +98,16 @@ func LockKeptOnFailure(stage Stage) bool {
 // the same whether the remote is configured or synthetic.
 func RecoveryHint(remote string, outcome Outcome) string {
 	if outcome.ConnectionMayHaveDropped {
-		return fmt.Sprintf("exit 255: the SSH connection may have dropped, so the failed step may still be running or may have died midway; check the target with `govard deploy status %s` before `govard deploy --remote %s --resume`, which re-runs the step, or release the lock with `govard deploy unlock %s`", remote, remote, remote)
+		// The drop says nothing about the lock, and the lock decides the command:
+		// a publish-stage failure kept it, so the run is resumed, while a
+		// prepare/build failure released it and the failed release is not live —
+		// there the run to make is a plain retry, and offering `--resume` would
+		// send the operator to a command with nothing to continue. Both have to
+		// look at the target first: the step was never signalled.
+		if outcome.LockHeld {
+			return fmt.Sprintf("exit 255: the SSH connection may have dropped, so the failed step may still be running or may have died midway; check the target with `govard deploy status %s` before `govard deploy --remote %s --resume`, which re-runs the step, or release the lock with `govard deploy unlock %s`", remote, remote, remote)
+		}
+		return fmt.Sprintf("exit 255: the SSH connection may have dropped, so the failed step may still be running or may have died midway; check the target with `govard deploy status %s` before retrying `govard deploy --remote %s`, because nothing signalled the remote process group", remote, remote)
 	}
 	if outcome.LockHeld {
 		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy --remote %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)

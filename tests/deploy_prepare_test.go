@@ -963,13 +963,13 @@ func TestDiscoverDeployPathReadsTheLayoutsARealTargetHas(t *testing.T) {
 	}
 }
 
-// A verify URL that redirects or errors must be reported while the old release is
-// still serving: the check itself runs after activation, where a failure leaves a
-// live site, a failed deploy and a held lock. It is a warning, never a failure —
+// A verify URL that errors must be reported while the old release is still
+// serving: the check itself runs after activation, where a failure leaves a live
+// site, a failed deploy and a held lock. An error is a warning, never a failure —
 // the site may be down right now and a deploy that repairs it must not be blocked.
 func TestCheckWarnsWhenTheVerifyURLDoesNotAnswer2xx(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/setup/", http.StatusFound)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
@@ -983,10 +983,62 @@ func TestCheckWarnsWhenTheVerifyURLDoesNotAnswer2xx(t *testing.T) {
 		t.Fatalf("the preflight must warn, never fail: %v", err)
 	}
 	joined := strings.Join(sc.Notes, " | ")
-	for _, want := range []string{"302", "verify URL"} {
+	for _, want := range []string{"500", "verify URL"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("notes %q missing %q", joined, want)
 		}
+	}
+}
+
+// A redirecting verify URL is a configuration fault, not an outage: it answers
+// the same way every time, so the preflight refuses it before the deploy touches
+// anything rather than discovering it after activation — where the site is live,
+// the deploy has failed and the lock is held. The refusal names the opt-in.
+func TestCheckFailsOnARedirectingVerifyURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/en/", http.StatusFound)
+	}))
+	defer server.Close()
+
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:        true,
+		VerifyURL:     server.URL,
+		VerifyTimeout: 5 * time.Second,
+	})
+	err := deploy.CoreCheck(context.Background(), sc)
+	if err == nil {
+		t.Fatal("a redirecting verify URL must be refused before the deploy starts")
+	}
+	for _, want := range []string{"302", "follow_redirects"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must mention %q, got %v", want, err)
+		}
+	}
+}
+
+// Following same-host redirects is the opt-in, and the preflight must not turn it
+// into a failure: the operator asked for that policy, and the site answering 200
+// after the redirect is exactly what the opt-in is for.
+func TestCheckAcceptsARedirectingVerifyURLWhenFollowingIsOptedIn(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/en/", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:                true,
+		VerifyURL:             server.URL,
+		VerifyFollowRedirects: true,
+		VerifyTimeout:         5 * time.Second,
+	})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("a followed redirect that ends 2xx must not fail the preflight: %v", err)
 	}
 }
 

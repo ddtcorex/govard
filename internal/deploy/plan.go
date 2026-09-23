@@ -312,6 +312,13 @@ func (p Plan) ForPublishStrategy(strategy string) Plan {
 		// about the schema, not about the rewrite. Ungating the two maintenance
 		// steps here is what keeps the plan an operator reviews — `govard deploy
 		// plan` — the plan that actually runs.
+		//
+		// That is exact for an explicit `in_place`. With `auto` the caller has not
+		// read the target yet, so this is the conservative shape rather than the
+		// final one: a symlink target narrows it — the window closes before the
+		// swap, or both steps are skipped when the probe answers that there is
+		// nothing to migrate — and the printed plan says so instead of implying
+		// otherwise.
 		return p.withUngatedMaintenanceWindow()
 	}
 	if !p.needsMaintenanceWindow() {

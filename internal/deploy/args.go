@@ -147,6 +147,13 @@ func shellQuotedWords(words []string) string {
 // *and* by the probes that check the same binary, so `deploy:check` answers for
 // exactly the command the recipe runs.
 //
+// A leading `~/` is the one piece of shell syntax that is kept: `composer_bin:
+// "php ~/composer.phar"` is a real configuration on shared hosting, and quoting
+// the tilde away turns it into a directory literally named `~`. It is rendered the
+// way `remote.QuoteRemotePath` renders a remote path, so the shell expands it and
+// the value still never becomes code. Anything else — `$HOME` written out, an
+// assignment prefix — has to be written absolutely, or as `env VAR=value command`.
+//
 // A path containing a space is not supported: split words cannot tell it from a
 // wrapper with an argument.
 func CommandWords(settings map[string]any, key, fallback string) string {
@@ -154,7 +161,16 @@ func CommandWords(settings map[string]any, key, fallback string) string {
 	if entry, ok := settings[key].(string); ok && strings.TrimSpace(entry) != "" {
 		raw = entry
 	}
-	return shellQuotedWords(strings.Fields(raw))
+	words := strings.Fields(raw)
+	rendered := make([]string, 0, len(words))
+	for _, word := range words {
+		if rest, ok := strings.CutPrefix(word, "~/"); ok {
+			rendered = append(rendered, `"$HOME"/`+conventions.ShellQuote(rest))
+			continue
+		}
+		rendered = append(rendered, conventions.ShellQuote(word))
+	}
+	return strings.Join(rendered, " ")
 }
 
 // quoteIfNeeded quotes an argument only when it holds a character the shell would

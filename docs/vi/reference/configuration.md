@@ -338,6 +338,7 @@ deploy:
 | `artifact_dir` | — | thư mục artifact; chỉ cần nó tồn tại là `--build=auto` resolve thành `artifact` |
 | `verify.url` | — | request HTTP mà `deploy:verify` chạy sau publish |
 | `verify.timeout` | `30s` | request đó được phép mất bao lâu |
+| `verify.follow_redirects` | `false` | đi theo redirect cùng host trước khi kiểm tra status; tắt nghĩa là 3xx làm fail check, và `deploy:check` từ chối nó trước khi deploy bắt đầu |
 | `settings` | mặc định của recipe | setting của framework và engine, được đối chiếu với recipe |
 | `hooks` | — | các bước neo vào task id, alias stage (`stage:build`) hoặc một hook khác |
 

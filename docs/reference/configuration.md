@@ -338,6 +338,7 @@ deploy:
 | `artifact_dir` | — | an artifact directory; its presence resolves `--build=auto` to `artifact` |
 | `verify.url` | — | the HTTP check `deploy:verify` runs after publish |
 | `verify.timeout` | `30s` | how long that request may take |
+| `verify.follow_redirects` | `false` | follow same-host redirects before checking the status; off means a 3xx fails the check, and `deploy:check` refuses it before the deploy starts |
 | `settings` | recipe defaults | framework and engine settings, validated against the recipe |
 | `hooks` | — | steps anchored on a task id, a stage alias (`stage:build`) or another hook |
 

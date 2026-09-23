@@ -285,6 +285,57 @@ func TestSandboxSeedNeverPutsThePasswordInArgv(t *testing.T) {
 	}
 }
 
+// The dump and the import are wired through two pipes, so one failure makes the
+// other fail too — a dead import closes the pipe under the dump, and a dead dump
+// truncates the stream under the import. Reporting only the first error checked
+// names the symptom and hides the cause: the classic seeding failure
+// (`Unknown collation` on a MariaDB sandbox) reached the operator as "broken pipe"
+// from the dump, which says nothing about what to fix. Both sides are now
+// reported with the side they came from, and "partial" still says the database is
+// not usable.
+func TestSandboxSeedReportsBothSidesWhenThePipesBreak(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	fake.bodies["mariadb-dump -u magento"] = []byte("INSERT INTO `x` VALUES (1);\nINSERT INTO `x` VALUES (2);\n")
+	fake.partial["mariadb-dump -u magento"] = "mysqldump: Got error: 2013: Lost connection to MySQL server during query"
+	fake.partial["mysql -u magento magento"] = "ERROR 1273 (HY000) at line 1: Unknown collation: 'utf8mb4_0900_ai_ci'"
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	_, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, seedSandboxUpRequest(t, root, origin))
+	if err == nil {
+		t.Fatal("a seed whose pipes broke must fail")
+	}
+	for _, want := range []string{"Unknown collation", "Lost connection", "partial"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the failure must report %q, got: %v", want, err)
+		}
+	}
+}
+
+// The cap on one line is a refusal, and it has to survive the same wiring: the
+// stripper's own error used to reach the operator as the dump's broken pipe, so
+// the one sentence that names the real problem — a line over the cap — never
+// appeared. The limit is injectable so the refusal is exercised through the path
+// that runs, not only through the stripper helper.
+func TestSandboxSeedReportsAnOverlongLineThroughTheRealPath(t *testing.T) {
+	fake := freshSandboxFake()
+	fake.bodies["mariadb-dump -u magento"] = []byte(strings.Repeat("x", 4096) + "\nINSERT INTO `x` VALUES (1);\n")
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	err := deploy.StreamDatabaseDumpForTest(context.Background(), containers, "origin", "sandbox", nil,
+		[]string{"mariadb-dump", "-u", "magento"}, []string{"mysql", "-u", "magento", "magento"}, 1024)
+	if err == nil {
+		t.Fatal("a dump line over the cap must fail the seed")
+	}
+	if !strings.Contains(err.Error(), "line longer than") {
+		t.Fatalf("the cap's own refusal must survive the pipes, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "partial") {
+		t.Fatalf("the failure must still say the database is partial, got: %v", err)
+	}
+}
+
 // A dump that dies midway leaves the sandbox database partially imported. The
 // import may still exit 0 after reading a truncated stream, so the seed has to
 // report the dump's own failure and say the database is partial.
