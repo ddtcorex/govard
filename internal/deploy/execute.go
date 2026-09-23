@@ -357,12 +357,15 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 				ResolvedAt: time.Now().UTC().Format(time.RFC3339),
 			}
 			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
-			if !migrationRequired {
+			if !migrationRequired && plan.windowIsGated() {
 				// No window ever opens: the static plan still lists the
 				// maintenance tasks, but the runtime knows they will all be
 				// skipped, and the in-window timeout must not apply to
 				// anything from here on. timeoutFor reads this per step, so
-				// reassigning mid-loop is safe.
+				// reassigning mid-loop is safe. In place the window opens
+				// whatever the probe answered, so the smaller bound stays: the
+				// activation that rewrites the docroot is bounded by how long
+				// the site may stay down, not by the command timeout.
 				window = nil
 			}
 		}

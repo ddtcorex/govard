@@ -196,3 +196,46 @@ func TestResumeRefusesAReleaseOlderThanTheLiveOne(t *testing.T) {
 		t.Fatalf("the refusal must name the live release, got: %v", err)
 	}
 }
+
+// An in-place rollback rewrites the docroot while it serves, exactly as a deploy
+// does, so it has to open the window first — the rollback tail starts *after*
+// maintenance:enable, which is why shaping the plan alone was not enough. If the
+// tail fails the window stays open, the same policy the deploy lock follows.
+func TestInPlaceRollbackOpensTheWindowBeforeItsTail(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	log := filepath.Join(t.TempDir(), "window.log")
+	echo := func(line string) string { return "echo " + line + " >> " + log }
+
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskMaintenanceEnable, Stage: deploy.StagePublish, Command: echo("enable")},
+		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: echo("activate")},
+		{ID: deploy.TaskAppCacheFlush, Stage: deploy.StagePublish, Command: echo("flush")},
+		{ID: deploy.TaskMaintenanceDisable, Stage: deploy.StagePublish, Command: echo("disable")},
+		{ID: deploy.TaskCleanup, Stage: deploy.StageCleanup, Command: echo("cleanup")},
+		{ID: deploy.TaskUnlock, Stage: deploy.StageCleanup, Command: echo("unlock")},
+	}), nil)
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+	shaped := plan.ForPublishStrategy(deploy.PublishInPlace)
+	options := deploy.Options{CommandTimeout: time.Minute}
+	if err := cmd.RunInPlaceRollbackTailForTest(context.Background(), host, options, deploy.NewVars(),
+		shaped, deploy.NewReleaseForTest("1", "abc", "local"), io.Discard); err != nil {
+		t.Fatalf("in-place rollback tail: %v", err)
+	}
+
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("read the window log: %v", err)
+	}
+	order := strings.Fields(strings.TrimSpace(string(raw)))
+	want := []string{"enable", "activate", "flush", "disable"}
+	if len(order) != len(want) {
+		t.Fatalf("window log = %v, want %v (the tail must not carry cleanup or unlock)", order, want)
+	}
+	for index := range want {
+		if order[index] != want[index] {
+			t.Fatalf("window log = %v, want %v", order, want)
+		}
+	}
+}

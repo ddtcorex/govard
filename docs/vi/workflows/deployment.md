@@ -435,12 +435,11 @@ cú rename nguyên tử nên không có gì đang phục vụ bị ghi đè, và
 hiện nếu cùng plan đó còn migrate hoặc import cấu hình. Kích hoạt in-place luôn mở
 window, vì chính docroot bị ghi đè trong lúc đang phục vụ.
 
-Với dự án Magento, deploy symlink cũng mở window: recipe import cấu hình và chạy
-schema upgrade ở mọi lần deploy, nên plan luôn có migrate. Cách còn lại là hỏi
-target xem có gì đang chờ không rồi tin câu trả lời — một phép dò mà chính recipe
-của công cụ deploy tham chiếu ghi nhận là bỏ sót trường hợp — và một window không
-cần thiết chỉ tốn thời gian downtime bằng một lần migration, còn việc đổi schema
-mà release đang phục vụ vẫn chạy thì tốn cả site. Thứ giới hạn chi phí là
+Với dự án Magento, deploy **symlink** chỉ mở window khi plan thật sự migrate hoặc
+import cấu hình: probe bên dưới trả lời schema có lệch không, và deploy chỉ đổi code
+sẽ bỏ qua toàn bộ khối downtime. Với in-place, window mở bất kể probe trả lời gì, vì
+chính docroot bị ghi đè — `git reset --hard` cùng các sync path — trong lúc đang phục
+vụ; probe trả lời câu hỏi về schema, không phải về việc ghi đè đó. Thứ giới hạn chi phí là
 `deploy.maintenance_timeout` (mặc định 15m) và việc dump database trong window là
 tuỳ chọn (`--no-db-backup`).
 

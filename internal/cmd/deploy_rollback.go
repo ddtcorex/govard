@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"govard/internal/cli"
 	"govard/internal/deploy"
@@ -110,6 +111,11 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return configOrUsageError(err)
 	}
+	// A rollback publishes with the same strategy a deploy would, so the plan has
+	// to be shaped the same way: in place that is what takes the maintenance
+	// window out of the migration probe's hands, and on a symlink it is what
+	// closes the window before the swap.
+	plan = plan.ForPublishStrategy(strategy)
 	vars := deployVars(host, options)
 	out := cmd.OutOrStdout()
 
@@ -157,16 +163,7 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 			}
 		}
 	} else {
-		tail, ok := plan.From(deploy.TaskActivate)
-		if !ok {
-			return fmt.Errorf("the recipe declares no %s task, so an in-place rollback cannot run", deploy.TaskActivate)
-		}
-		// The lock is this command's, and pruning releases is not part of
-		// returning to one: the tail's deploy:unlock would remove the lock this
-		// run just took, and deploy:cleanup could prune the release it is rolling
-		// back from.
-		tail = tail.Excluding(deploy.TaskUnlock, deploy.TaskCleanup)
-		if _, err := deploy.NewExecutor(host, options, out).Run(ctx, tail, vars, target); err != nil {
+		if err := runInPlaceRollbackTail(ctx, host, options, vars, plan, target, out); err != nil {
 			return err
 		}
 	}
@@ -261,4 +258,41 @@ func firstStep(plan deploy.Plan, id string) deploy.Step {
 		return deploy.Step{}
 	}
 	return steps[0]
+}
+
+// runInPlaceRollbackTail rewrites an in-place docroot back to an earlier release.
+//
+// The docroot is rewritten while it serves, exactly as a deploy rewrites it, so
+// the window opens first: the tail starts at deploy:activate, which is *after*
+// maintenance:enable, so shaping the plan is not enough on its own. If the tail
+// fails the window stays open — the same policy the deploy lock follows — and the
+// error says so, because a site left in maintenance looks like an outage to
+// whoever finds it.
+//
+// The lock belongs to the caller, and pruning releases is not part of returning
+// to one: deploy:unlock would remove the lock this run took, and deploy:cleanup
+// could prune the release it is rolling back from.
+func runInPlaceRollbackTail(ctx context.Context, host deploy.Host, options deploy.Options, vars deploy.Vars, plan deploy.Plan, target *deploy.Release, out io.Writer) error {
+	tail, ok := plan.From(deploy.TaskActivate)
+	if !ok {
+		return fmt.Errorf("the recipe declares no %s task, so an in-place rollback cannot run", deploy.TaskActivate)
+	}
+	tail = tail.Excluding(deploy.TaskUnlock, deploy.TaskCleanup)
+
+	if enable := firstStep(plan, deploy.TaskMaintenanceEnable); enable.ID != "" && !enable.Skipped {
+		if err := deploy.RunStep(ctx, host, options, vars, enable, target, out); err != nil {
+			return fmt.Errorf("enable maintenance mode before rewriting %s: %w", host.CurrentPath, err)
+		}
+	}
+	if _, err := deploy.NewExecutor(host, options, out).Run(ctx, tail, vars, target); err != nil {
+		return fmt.Errorf("%w (the maintenance window is still open on %s: `govard deploy --resume` finishes the run, or `govard deploy unlock` releases the lock after closing it)", err, host.Name)
+	}
+	return nil
+}
+
+// RunInPlaceRollbackTailForTest exposes runInPlaceRollbackTail to the tests/
+// package: the ordering it owns — window, then the rewrite — is the behaviour the
+// test pins, rather than the plan shape it is handed.
+func RunInPlaceRollbackTailForTest(ctx context.Context, host deploy.Host, options deploy.Options, vars deploy.Vars, plan deploy.Plan, target *deploy.Release, out io.Writer) error {
+	return runInPlaceRollbackTail(ctx, host, options, vars, plan, target, out)
 }

@@ -297,12 +297,32 @@ func moveArtifactBeforeTheBuildTasks(steps []Step) []Step {
 // and the resume bookkeeping keep addressing the same ids.
 func (p Plan) ForPublishStrategy(strategy string) Plan {
 	if strategy != PublishSymlink {
-		return p
+		// In place the docroot itself is rewritten while it serves, so the window
+		// cannot depend on the migration probe: the probe answers a question
+		// about the schema, not about the rewrite. Ungating the two maintenance
+		// steps here is what keeps the plan an operator reviews — `govard deploy
+		// plan` — the plan that actually runs.
+		return p.withUngatedMaintenanceWindow()
 	}
 	if !p.needsMaintenanceWindow() {
 		return p.withoutMaintenanceWindow()
 	}
 	return p.closeWindowBefore(TaskActivate)
+}
+
+// withUngatedMaintenanceWindow clears NeedsMigration on the two maintenance
+// steps. In place they always run, whatever the probe answered, because the
+// activation resets the docroot and rsyncs the built paths into it while traffic
+// is still arriving.
+func (p Plan) withUngatedMaintenanceWindow() Plan {
+	steps := make([]Step, len(p.Steps))
+	copy(steps, p.Steps)
+	for idx := range steps {
+		if steps[idx].ID == TaskMaintenanceEnable || steps[idx].ID == TaskMaintenanceDisable {
+			steps[idx].NeedsMigration = false
+		}
+	}
+	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
 }
 
 // withoutMaintenanceWindow marks both maintenance steps skipped. They are
@@ -397,6 +417,19 @@ func (p Plan) maintenanceWindow() map[int]bool {
 // release being served still depends on. The list is the engine's, not a
 // recipe's: both ids are neutral, and a recipe that leaves them empty is not a
 // migration.
+// windowIsGated reports whether the maintenance window still depends on the
+// migration probe. In place `ForPublishStrategy` clears NeedsMigration on the two
+// maintenance steps, so the window opens whatever the probe answered and the
+// in-window timeout must keep applying.
+func (p Plan) windowIsGated() bool {
+	for _, step := range p.Steps {
+		if step.ID == TaskMaintenanceEnable {
+			return step.NeedsMigration
+		}
+	}
+	return false
+}
+
 func (p Plan) needsMaintenanceWindow() bool {
 	for _, id := range []string{TaskDBMigrate, TaskAppConfigure} {
 		if p.Runs(id) {

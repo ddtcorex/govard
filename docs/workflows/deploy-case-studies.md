@@ -364,7 +364,9 @@ static files on demand as the application is browsed. Everything else — Compos
 DI compile, the frontend Node build, `cache:flush`, verify — still runs.
 `setup:upgrade`, `app:config:import` and the maintenance window are conditional now:
 the probe runs `setup:db:status` first, and a code-only deploy skips all six downtime
-tasks without ever opening the window.
+tasks without ever opening the window. That is the symlink case; an in-place
+activation rewrites the served docroot, so it opens the window even for a code-only
+deploy.
 
 **Rehearse it.**
 
