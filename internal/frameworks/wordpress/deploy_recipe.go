@@ -92,7 +92,10 @@ func DeployRecipe() deploy.Recipe {
 		{
 			ID:    "app",
 			Title: "WordPress is installed and answers against its database",
-			Command: `cd {{release_path}} && ` + wordpressWpGuard + ` wp core is-installed; else ` + wordpressPHPLoad +
+			// It runs in the served path: on an in-place target the docroot is
+			// not the release, and the fallback `require "wp-load.php"` is
+			// relative to the working directory.
+			Command: `cd {{current_path}} && ` + wordpressWpGuard + ` wp core is-installed; else ` + wordpressPHPLoad +
 				`exit(is_blog_installed() ? 0 : 1);'; fi`,
 		},
 	}

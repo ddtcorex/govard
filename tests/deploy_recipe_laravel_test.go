@@ -187,6 +187,16 @@ func TestLaravelVerifyCheckProvesTheDatabaseConnection(t *testing.T) {
 	if checks[0].ID != "app" || checks[0].Title == "" {
 		t.Errorf("the check needs an id and a description: %+v", checks[0])
 	}
+	// The application that answers is the one the web server serves: on an
+	// in-place target the docroot is a different directory from the release the
+	// build ran in, so the check has to run there — `artisan` resolves through
+	// the current working directory.
+	if !strings.Contains(command, "{{current_path}}") {
+		t.Errorf("the check must run in the served path:\n%s", command)
+	}
+	if strings.Contains(command, "{{release_path}}") {
+		t.Errorf("the served application is not the release on an in-place target:\n%s", command)
+	}
 }
 
 // The cache build belongs to the target: `artisan optimize` writes

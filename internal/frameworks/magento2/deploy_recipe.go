@@ -294,7 +294,11 @@ func DeployRecipe() deploy.Recipe {
 			// reports a schema that is out of date. `--version` succeeds with
 			// neither a working env.php nor a reachable database, which is
 			// exactly the failure this check exists to catch.
-			Command: "cd {{release_path}} && {{php_bin}} bin/magento setup:db:status",
+			//
+			// It runs in the served path, not the release: on an in-place target
+			// the two are different directories, and a schema check against the
+			// release would report on an application nothing is serving yet.
+			Command: "cd {{current_path}} && {{php_bin}} bin/magento setup:db:status",
 		},
 	}
 

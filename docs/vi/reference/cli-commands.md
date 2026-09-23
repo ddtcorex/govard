@@ -735,10 +735,12 @@ Không có layout nào, hoặc nhiều cái, là lỗi cấu hình (exit 4) kèm
 `deploy_path` đã cấu hình thì không bao giờ bị dò.
 
 `deploy:verify` chạy check revision đang live, các shared file recipe yêu cầu, các
-check do recipe khai báo — với Magento là `setup:db:status` và, khi in-place, so
-sánh static content version của docroot — và request HTTP khi đã đặt
-`deploy.verify.url`. Deploy có chạy `db:migrate` mà thiếu verify URL sẽ in cảnh
-báo trước bước đầu tiên. `maintenance:enable`/`disable` bị bỏ qua với kích hoạt
+check do recipe khai báo — với Magento là `setup:db:status`, chạy trong **served
+path** nên target in-place kiểm tra docroot chứ không phải release — và request
+HTTP khi đã đặt `deploy.verify.url`. Với target in-place nó còn dry-run chính lệnh
+copy của activation cho từng entry trong `sync_paths`, đó là thứ chứng minh docroot
+giữ đúng những gì build tạo ra. Deploy có chạy `db:migrate` mà thiếu verify URL
+sẽ in cảnh báo trước bước đầu tiên. `maintenance:enable`/`disable` bị bỏ qua với kích hoạt
 symlink, trừ khi plan đó còn migrate hoặc import cấu hình.
 
 Pipeline là một chuỗi task trung tính cố định. Dự án tuỳ biến bằng cách neo hook

@@ -157,6 +157,15 @@ func TestWordPressVerifyCheckProvesTheInstall(t *testing.T) {
 			t.Errorf("the check is missing %q:\n%s", want, command)
 		}
 	}
+	// The install that answers is the one the web server serves: on an in-place
+	// target the docroot is a different directory from the release the build ran
+	// in, and `wp-load.php` is required *relative* to the working directory.
+	if !strings.Contains(command, "{{current_path}}") {
+		t.Errorf("the check must run in the served path:\n%s", command)
+	}
+	if strings.Contains(command, "{{release_path}}") {
+		t.Errorf("the served application is not the release on an in-place target:\n%s", command)
+	}
 }
 
 func TestWordPressRecipeCommandsAllExpand(t *testing.T) {

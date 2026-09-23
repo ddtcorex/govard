@@ -103,8 +103,10 @@ func DeployRecipe() deploy.Recipe {
 			ID:    "app",
 			Title: "the application answers against its real dependencies",
 			// The branch is chosen by asking artisan rather than by guessing a
-			// version: `db:show` arrived in Laravel 11.
-			Command: "cd {{release_path}} && if {{php_bin}} artisan list --raw 2>/dev/null | grep -q '^db:show'; " +
+			// version: `db:show` arrived in Laravel 11. It runs in the served
+			// path: on an in-place target the docroot is not the release, and
+			// `artisan` resolves through the working directory.
+			Command: "cd {{current_path}} && if {{php_bin}} artisan list --raw 2>/dev/null | grep -q '^db:show'; " +
 				"then {{php_bin}} artisan db:show; else {{php_bin}} artisan migrate:status; fi",
 		},
 	}
