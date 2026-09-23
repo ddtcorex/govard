@@ -922,8 +922,32 @@ phải là quyết định có chủ ý chứ không phải thiếu sót.
 file recipe yêu cầu, các check do recipe khai báo, và kiểm tra HTTP khi đã đặt
 `deploy.verify.url`. Check của recipe là những thứ engine không thể tự biết — với
 Magento là `bin/magento setup:db:status`, cần `app/etc/env.php` hoạt động *và*
-database kết nối được, cộng thêm so sánh static content version của docroot với
-release khi publish in-place.
+database kết nối được — và chúng chạy trong **served path**, nên deploy in-place
+kiểm tra đúng docroot mà site đang phục vụ chứ không phải release được copy từ đó.
+Với target in-place, engine còn dry-run chính lệnh copy của activation cho từng
+entry trong `sync_paths` (`rsync -a --delete --checksum --itemize-changes`), nên
+một hook hay tiến trình ghi đè file trong docroot sau khi copy sẽ làm deploy fail
+và nêu đúng tên. Nó đọc cả hai cây thư mục — đó là cái giá của việc so nội dung
+thay vì so một file marker.
+
+Kiểm tra HTTP dừng ở response đầu tiên và yêu cầu 2xx. Redirect không phải là pass:
+một trang installer hay một cú bounce theo store code trả 200 sau một hop trước đây
+vẫn qua được trong khi site không phục vụ release, nên lỗi giờ nêu status,
+`Location` và setting cần đặt:
+
+```
+ERROR  step deploy:verify failed: verify http: https://shop.example/ answered
+       HTTP 302 to /setup/: the verify URL must name the page that serves the
+       site, or set deploy.verify.follow_redirects: true to follow same-host
+       redirects
+```
+
+`deploy.verify.follow_redirects: true` cho phép đi theo redirect cùng host
+(http → https là layout thật) rồi từ chối landing path mà recipe khai báo là không
+bao giờ khỏe — `/setup/` của Magento — nên vẫn fail dù có đi theo. `deploy:check`
+probe URL bằng đúng policy đó và in ra **trước** khi deploy động vào bất cứ thứ gì:
+verify chạy sau activation, nơi một thất bại để lại site đang live, deploy failed và
+lock bị giữ.
 
 Không cấu hình URL thì kiểm chứng chỉ bằng SSH: nó chứng minh đúng file đã nằm
 đúng chỗ, không chứng minh ứng dụng phục vụ được. Một lần deploy có chạy

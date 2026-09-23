@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -12,14 +13,46 @@ import (
 	"govard/internal/engine"
 )
 
+// VerifyPolicy is how the HTTP check treats a redirect, and which landing paths a
+// recipe declares never-healthy.
+type VerifyPolicy struct {
+	// FollowRedirects follows redirects that stay on the verify URL's host. The
+	// default is off: a verify URL should name the page that serves the site, and
+	// a redirect followed to a 200 is how an install page or a store-code bounce
+	// passes verification while the site is not serving the release.
+	FollowRedirects bool
+	// RejectPaths are path prefixes a recipe says never mean "the site is
+	// serving" — a framework's installer landing page, for instance. They are
+	// checked on the final URL, so they still apply when redirects are followed.
+	RejectPaths []string
+}
+
 // VerifyURL performs the post-publish HTTP check from the machine running
 // govard, using net/http rather than curl on the target: a missing curl must not
 // be able to break a deploy, and the operator's vantage point is the useful one.
-func VerifyURL(ctx context.Context, url string, timeout time.Duration) error {
+func VerifyURL(ctx context.Context, url string, timeout time.Duration, policy VerifyPolicy) error {
 	if timeout <= 0 {
 		timeout = DefaultVerifyTimeout
 	}
 	client := &http.Client{Timeout: timeout}
+	if !policy.FollowRedirects {
+		// Stop at the first response, whatever it is: the status is the answer.
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	} else {
+		parsed, err := neturl.Parse(url)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", url, err)
+		}
+		client.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+			if request.URL.Host != parsed.Host {
+				return fmt.Errorf("refusing to follow a redirect off %s to %s", parsed.Host, request.URL.String())
+			}
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			return nil
+		}
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("build request for %s: %w", url, err)
@@ -29,8 +62,80 @@ func VerifyURL(ctx context.Context, url string, timeout time.Duration) error {
 		return fmt.Errorf("request %s: %w", url, err)
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode < 200 || response.StatusCode >= 400 {
+
+	if response.StatusCode >= 300 && response.StatusCode < 400 {
+		location := response.Header.Get("Location")
+		if location != "" {
+			return fmt.Errorf("%s answered HTTP %d to %s: the verify URL must name the page that serves the site, or set deploy.verify.follow_redirects: true to follow same-host redirects",
+				url, response.StatusCode, location)
+		}
+		return fmt.Errorf("%s answered HTTP %d: the verify URL must name the page that serves the site, or set deploy.verify.follow_redirects: true to follow same-host redirects",
+			url, response.StatusCode)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("%s returned HTTP %d", url, response.StatusCode)
+	}
+	for _, reject := range policy.RejectPaths {
+		if reject == "" || response.Request == nil || response.Request.URL == nil {
+			continue
+		}
+		if strings.HasPrefix(response.Request.URL.Path, reject) {
+			return fmt.Errorf("%s landed on %s, which never means the site is serving the release", url, response.Request.URL.Path)
+		}
+	}
+	return nil
+}
+
+// verifyInPlaceSync compares each sync path in the served docroot with the
+// release it was copied from, using the same `--delete` and the same shared-path
+// excludes the activation used, in dry-run mode. It walks the whole tree instead
+// of comparing a marker: a hook or a process that rewrote a file after the copy
+// is caught, and the check names the path and the first differences.
+//
+// A path the release did not build, or one the release links from `shared/`, is
+// skipped for the same reason the activation skipped it: the docroot keeps its
+// own copy and there is nothing to compare.
+func verifyInPlaceSync(ctx context.Context, sc *StepContext, pass func(string, string), fail func(string, string) error) error {
+	shared := settingsStringList(sc.Opts.Settings, "shared_files", "shared_dirs")
+	for _, entry := range settingsStringList(sc.Opts.Settings, "sync_paths") {
+		source := path.Join(sc.Release.Path, entry)
+		if _, err := sc.Runner.Run(ctx, "test -e "+Shell(source), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
+			continue
+		}
+		if _, isShared := sharedCovering(entry, shared); isShared {
+			continue
+		}
+		command := "rsync -a --delete --dry-run --itemize-changes --checksum"
+		for _, inside := range sharedInside(entry, shared) {
+			command += " --exclude=" + Shell("/"+inside)
+		}
+		command += " " + Shell(source+"/") + " " + Shell(path.Join(sc.Host.CurrentPath, entry)+"/")
+		result, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: sc.Opts.CommandTimeout, Out: sc.Live})
+		if err != nil {
+			return fail("sync:"+entry, "the docroot cannot be compared with the release: "+err.Error())
+		}
+		// `--checksum` is what makes this a check of the *content*: without it
+		// rsync calls any mtime difference a transfer, and a hook that merely
+		// touched a served file would fail the deploy. Attribute-only lines start
+		// with `.`; a transfer (`>`) or a deletion (`*deleting`) is a real
+		// difference. The cost is reading both trees: a large release makes this the
+		// slowest part of verification, which the PR measures on a real target.
+		var differences []string
+		for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, ".") {
+				continue
+			}
+			differences = append(differences, line)
+		}
+		if len(differences) == 0 {
+			pass("sync:"+entry, "the docroot matches the release")
+			continue
+		}
+		if len(differences) > 5 {
+			differences = append(differences[:5], "...")
+		}
+		return fail("sync:"+entry, fmt.Sprintf("the docroot's %s differs from the release:\n%s", entry, strings.Join(differences, "\n")))
 	}
 	return nil
 }
@@ -57,12 +162,23 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 
 	switch sc.Release.Publish.Strategy {
 	case PublishSymlink:
-		result, err := sc.Runner.Run(ctx, "readlink -f "+Shell(sc.Host.CurrentPath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
+		// Both sides are canonicalised on the target: a deploy path that reaches
+		// the release through a symlinked parent (`~` is a built-in discovered
+		// deploy path) makes `readlink -f current` and the recorded path two
+		// spellings of one directory, and comparing them as strings failed every
+		// deploy after the site had already switched.
+		command := fmt.Sprintf("printf '%%s\n%%s\n' \"$(readlink -f %s)\" \"$(readlink -f %s)\"",
+			Shell(sc.Host.CurrentPath), Shell(sc.Release.Path))
+		result, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 		if err != nil {
 			return fail("revision", "current symlink is unreadable: "+err.Error())
 		}
-		if strings.TrimSpace(result.Stdout) != sc.Release.Path {
-			return fail("revision", fmt.Sprintf("current resolves to %q, want %q", strings.TrimSpace(result.Stdout), sc.Release.Path))
+		lines := strings.Split(strings.TrimRight(result.Stdout, "\n"), "\n")
+		if len(lines) != 2 || strings.TrimSpace(lines[1]) == "" {
+			return fail("revision", "the release path cannot be resolved on the target: "+strings.TrimSpace(result.Stdout))
+		}
+		if strings.TrimSpace(lines[0]) != strings.TrimSpace(lines[1]) {
+			return fail("revision", fmt.Sprintf("current resolves to %q, want %q", strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1])))
 		}
 		pass("revision", "current resolves to the release")
 	case PublishInPlace:
@@ -74,6 +190,15 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 			return fail("revision", fmt.Sprintf("docroot HEAD is %q, want %q", strings.TrimSpace(result.Stdout), sc.Release.Revision))
 		}
 		pass("revision", "docroot HEAD matches the deployed revision")
+		// The activation copies the built paths into the docroot; a dry run of
+		// that same copy is what proves the site is still serving them. The one
+		// comparison this replaces compared a version file with the copy the
+		// activation had just made from it, which could only fail if the copy
+		// failed — a tautology, and blind to everything the release actually
+		// contains.
+		if err := verifyInPlaceSync(ctx, sc, pass, fail); err != nil {
+			return err
+		}
 	default:
 		// No default would mean "the record does not say how the release went
 		// live, so check nothing and pass" — the one answer the verify stage
@@ -87,12 +212,15 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 		// that is what `deploy:shared` does: the first deploy of a project
 		// legitimately has no shared state yet, and treating that as a broken
 		// link failed the deploy after it had already activated. A shared file
-		// that *does* exist must be readable in the release, which is what
-		// catches the broken symlink this check is here for.
+		// that *does* exist must be readable where the site reads it, which is the
+		// served path and not the release directory: in place the two are different
+		// trees, and a shared file linked into the release while missing from the
+		// docroot is exactly the broken state this check exists for. For a symlink
+		// the swap has already happened, so `current` resolves to the release.
 		command := fmt.Sprintf("if [ -e %s ]; then test -r %s; fi",
-			Shell(path.Join(sc.Host.SharedPath(), entry)), Shell(path.Join(sc.Release.Path, entry)))
+			Shell(path.Join(sc.Host.SharedPath(), entry)), Shell(path.Join(sc.Host.CurrentPath, entry)))
 		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
-			return fail("shared:"+entry, "the shared file exists on the target but is missing or unreadable in the release")
+			return fail("shared:"+entry, "the shared file exists on the target but is missing or unreadable where the site reads it")
 		}
 		pass("shared:"+entry, "linked and readable")
 	}
@@ -119,7 +247,10 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 	}
 
 	if url := strings.TrimSpace(sc.Opts.VerifyURL); url != "" {
-		if err := VerifyURL(ctx, url, sc.Opts.VerifyTimeout); err != nil {
+		if err := VerifyURL(ctx, url, sc.Opts.VerifyTimeout, VerifyPolicy{
+			FollowRedirects: sc.Opts.VerifyFollowRedirects,
+			RejectPaths:     sc.Opts.VerifyRejectPaths,
+		}); err != nil {
 			return fail("http", err.Error())
 		}
 		pass("http", url+" is serving")

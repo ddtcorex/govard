@@ -97,6 +97,10 @@ type Options struct {
 	Verify        bool
 	VerifyURL     string
 	VerifyTimeout time.Duration
+	// VerifyFollowRedirects and VerifyRejectPaths shape the HTTP check: the
+	// engine reads them, never a framework name.
+	VerifyFollowRedirects bool
+	VerifyRejectPaths     []string
 	// LockStaleAfter is how old a deploy lock must be for `deploy unlock` to
 	// release it without --force.
 	LockStaleAfter time.Duration
@@ -189,19 +193,20 @@ func resolveBaseOptions(cfg engine.Config, remote string, over Overrides) (Optio
 	}
 
 	opts := Options{
-		Branch:             effective.Branch,
-		Repository:         effective.Repository,
-		Publish:            effective.Publish,
-		KeepReleases:       effective.KeepReleasesOr(),
-		Verify:             true,
-		DBBackup:           effective.DBBackup,
-		VerifyURL:          effective.Verify.URL,
-		VerifyTimeout:      DefaultVerifyTimeout,
-		CommandTimeout:     DefaultCommandTimeout,
-		LockStaleAfter:     DefaultLockStaleAfter,
-		MaintenanceTimeout: DefaultMaintenanceTimeout,
-		Settings:           mergedSettings(effective.Settings),
-		Hooks:              effective.Hooks,
+		Branch:                effective.Branch,
+		Repository:            effective.Repository,
+		Publish:               effective.Publish,
+		KeepReleases:          effective.KeepReleasesOr(),
+		Verify:                true,
+		DBBackup:              effective.DBBackup,
+		VerifyURL:             effective.Verify.URL,
+		VerifyTimeout:         DefaultVerifyTimeout,
+		VerifyFollowRedirects: effective.Verify.FollowRedirects,
+		CommandTimeout:        DefaultCommandTimeout,
+		LockStaleAfter:        DefaultLockStaleAfter,
+		MaintenanceTimeout:    DefaultMaintenanceTimeout,
+		Settings:              mergedSettings(effective.Settings),
+		Hooks:                 effective.Hooks,
 	}
 
 	if raw := strings.TrimSpace(effective.Verify.Timeout); raw != "" {

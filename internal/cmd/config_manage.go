@@ -204,6 +204,8 @@ func getDeployValue(deploy engine.DeployConfig, key string) (string, bool) {
 		return deploy.Verify.URL, true
 	case "verify.timeout":
 		return deploy.Verify.Timeout, true
+	case "verify.follow_redirects":
+		return strconv.FormatBool(deploy.Verify.FollowRedirects), true
 	}
 	return "", false
 }
@@ -297,6 +299,12 @@ func setDeployValue(deploy *engine.DeployConfig, key string, value string) (bool
 		deploy.Verify.URL = value
 	case "verify.timeout":
 		deploy.Verify.Timeout = value
+	case "verify.follow_redirects":
+		follow, err := strconv.ParseBool(value)
+		if err != nil {
+			return false, fmt.Errorf("deploy.verify.follow_redirects must be true or false, got %q", value)
+		}
+		deploy.Verify.FollowRedirects = follow
 	default:
 		return false, nil
 	}

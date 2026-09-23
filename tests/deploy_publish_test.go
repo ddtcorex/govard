@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -479,7 +480,7 @@ func TestVerifyURLChecksTheStatusCode(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	defer server.Close()
-	if err := deploy.VerifyURL(context.Background(), server.URL, 5*time.Second); err == nil {
+	if err := deploy.VerifyURL(context.Background(), server.URL, 5*time.Second, deploy.VerifyPolicy{}); err == nil {
 		t.Fatal("want an error for a 418 response")
 	}
 
@@ -487,7 +488,7 @@ func TestVerifyURLChecksTheStatusCode(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ok.Close()
-	if err := deploy.VerifyURL(context.Background(), ok.URL, 5*time.Second); err != nil {
+	if err := deploy.VerifyURL(context.Background(), ok.URL, 5*time.Second, deploy.VerifyPolicy{}); err != nil {
 		t.Fatalf("200 must pass: %v", err)
 	}
 }
@@ -1042,5 +1043,228 @@ func TestInPlacePreflightNamesTheSharedPathsInSyncPaths(t *testing.T) {
 	}
 	if strings.Contains(joined, "vendor") {
 		t.Fatalf("notes = %q, want no warning for a plain built path", joined)
+	}
+}
+
+// A redirect followed to a 200 is not proof that the release is serving: the
+// engine's own notes record a deploy where every request was redirected to
+// Magento's installer while the check passed. By default the first response is
+// the answer.
+func TestVerifyURLRefusesARedirect(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/setup/" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Redirect(w, r, "/setup/", http.StatusFound)
+	}))
+	defer server.Close()
+
+	err := deploy.VerifyURL(context.Background(), server.URL, 5*time.Second, deploy.VerifyPolicy{})
+	if err == nil {
+		t.Fatal("a 302 must fail the check")
+	}
+	for _, want := range []string{"302", "/setup/", "follow_redirects"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error must name %q, got: %v", want, err)
+		}
+	}
+}
+
+// Redirects are followable on request — http to https is a real layout — but only
+// within the host that serves the site, and a recipe's never-healthy landing path
+// still fails.
+func TestVerifyURLFollowsSameHostRedirectsWhenAllowed(t *testing.T) {
+	sameHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/home" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Redirect(w, r, "/home", http.StatusMovedPermanently)
+	}))
+	defer sameHost.Close()
+
+	if err := deploy.VerifyURL(context.Background(), sameHost.URL, 5*time.Second, deploy.VerifyPolicy{FollowRedirects: true}); err != nil {
+		t.Fatalf("a same-host redirect must be followable with follow_redirects: %v", err)
+	}
+
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer other.Close()
+	offHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL, http.StatusFound)
+	}))
+	defer offHost.Close()
+
+	if err := deploy.VerifyURL(context.Background(), offHost.URL, 5*time.Second, deploy.VerifyPolicy{FollowRedirects: true}); err == nil {
+		t.Fatal("a redirect off the verify URL's host must fail")
+	}
+}
+
+func TestVerifyURLRejectsARecipeDeclaredLandingPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/setup/" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Redirect(w, r, "/setup/", http.StatusFound)
+	}))
+	defer server.Close()
+
+	policy := deploy.VerifyPolicy{FollowRedirects: true, RejectPaths: []string{"/setup/"}}
+	if err := deploy.VerifyURL(context.Background(), server.URL, 5*time.Second, policy); err == nil {
+		t.Fatal("landing on a recipe's never-healthy path must fail even when following")
+	}
+}
+
+// In place the release directory and the served docroot are different trees, so a
+// shared file linked into the release while missing from the docroot is a broken
+// site — and the check has to look where the site reads.
+func TestVerifySharedFileIsCheckedInTheDocrootInPlace(t *testing.T) {
+	root := t.TempDir()
+	host := deploy.HostForTest(root, deploy.LocalRunner{})
+
+	release := inPlaceReleaseAtTheDocrootRevision(t, host)
+	if err := os.MkdirAll(filepath.Join(release.Path, "app", "etc"), 0o755); err != nil {
+		t.Fatalf("mkdir release tree: %v", err)
+	}
+	shared := filepath.Join(host.SharedPath(), "app", "etc", "env.php")
+	if err := os.MkdirAll(filepath.Dir(shared), 0o755); err != nil {
+		t.Fatalf("mkdir shared tree: %v", err)
+	}
+	if err := os.WriteFile(shared, []byte("config"), 0o600); err != nil {
+		t.Fatalf("write the shared file: %v", err)
+	}
+	// Linked and readable in the release …
+	if err := os.Symlink(shared, filepath.Join(release.Path, "app", "etc", "env.php")); err != nil {
+		t.Fatalf("link the shared file into the release: %v", err)
+	}
+	// … and absent from the docroot, which is the state a broken activation leaves.
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:   true,
+		Settings: map[string]any{"shared_files": []string{"app/etc/env.php"}},
+	})
+	sc.Release = release
+
+	err := deploy.CoreVerify(context.Background(), sc)
+	if err == nil {
+		t.Fatal("a shared file missing from the docroot must fail verification")
+	}
+	if !strings.Contains(err.Error(), "shared:app/etc/env.php") {
+		t.Fatalf("the failure must name the shared file, got: %v", err)
+	}
+}
+
+// A deploy path that is itself a symlink (`~` is a built-in discovered layout)
+// makes `readlink -f current` and the recorded release path two spellings of one
+// directory. Comparing them as strings failed verification *after* the site had
+// switched, and the verify stage keeps the lock, so the deploy stayed failed with
+// the release live.
+func TestVerifySymlinkAcceptsASymlinkedDeployPath(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatalf("symlink the deploy path: %v", err)
+	}
+	host := deploy.HostForTest(link, deploy.LocalRunner{})
+	release := verifiedRelease(t, host)
+
+	sc := deploy.StepContextForTest(host, deploy.Options{Verify: true})
+	sc.Release = release
+	if err := deploy.CoreVerify(context.Background(), sc); err != nil {
+		t.Fatalf("a symlinked deploy path must verify: %v", err)
+	}
+}
+
+// inPlaceReleaseAtTheDocrootRevision builds an in-place target whose docroot is a
+// git checkout at the revision the release records, so verification reaches the
+// content checks instead of stopping at the revision comparison.
+func inPlaceReleaseAtTheDocrootRevision(t *testing.T, host deploy.Host) *deploy.Release {
+	t.Helper()
+	docroot := host.CurrentPath
+	if err := os.MkdirAll(docroot, 0o755); err != nil {
+		t.Fatalf("mkdir docroot: %v", err)
+	}
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "--allow-empty", "-m", "init"},
+	} {
+		command := exec.Command("git", append([]string{"-C", docroot}, args...)...)
+		if out, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	head, err := exec.Command("git", "-C", docroot, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("read the docroot revision: %v", err)
+	}
+	release := deploy.NewReleaseForTest("1", strings.TrimSpace(string(head)), "main")
+	release.Path = host.ReleasePath("1")
+	release.Publish.Strategy = deploy.PublishInPlace
+	if err := os.MkdirAll(release.Path, 0o755); err != nil {
+		t.Fatalf("mkdir release: %v", err)
+	}
+	return release
+}
+
+// The in-place activation copies each sync path into the docroot. Comparing one
+// marker file with the copy the activation just made from it proves nothing about
+// the tree; a dry run of the same copy proves the whole thing, and catches a hook
+// or a process that rewrote the docroot after the activation — including a stale
+// static-content version file, which is the scenario the recipe's removed
+// artifact check used to cover as a tautology.
+func TestVerifyInPlaceCatchesADocrootThatDiffersFromTheRelease(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := inPlaceReleaseAtTheDocrootRevision(t, host)
+	settings := map[string]any{"sync_paths": []string{"generated", "pub/static"}}
+
+	write := func(root, relative, content string) {
+		t.Helper()
+		target := filepath.Join(root, relative)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(target), err)
+		}
+		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", target, err)
+		}
+	}
+	// What the activation leaves behind: both paths built in the release and
+	// copied into the docroot.
+	write(release.Path, "generated/code.php", "built\n")
+	write(release.Path, "pub/static/deployed_version.txt", "abc123\n")
+	write(host.CurrentPath, "generated/code.php", "built\n")
+	write(host.CurrentPath, "pub/static/deployed_version.txt", "abc123\n")
+
+	verify := func() error {
+		sc := deploy.StepContextForTest(host, deploy.Options{Verify: true, Settings: settings})
+		sc.Release = release
+		return deploy.CoreVerify(context.Background(), sc)
+	}
+	if err := verify(); err != nil {
+		t.Fatalf("a docroot that matches the release must verify: %v", err)
+	}
+
+	// A hook, or a process the release started, rewrote a file afterwards.
+	write(host.CurrentPath, "generated/code.php", "rewritten\n")
+	err := verify()
+	if err == nil {
+		t.Fatal("a docroot that differs from the release must fail verification")
+	}
+	if !strings.Contains(err.Error(), "sync:generated") || !strings.Contains(err.Error(), "code.php") {
+		t.Fatalf("the failure must name the path and the file, got: %v", err)
+	}
+
+	// Restore it and leave only a stale static content version behind, which is
+	// the state the removed artifact check existed for.
+	write(host.CurrentPath, "generated/code.php", "built\n")
+	write(host.CurrentPath, "pub/static/deployed_version.txt", "stale\n")
+	err = verify()
+	if err == nil {
+		t.Fatal("a stale static content version in the docroot must fail verification")
+	}
+	if !strings.Contains(err.Error(), "deployed_version.txt") {
+		t.Fatalf("the failure must name the version file, got: %v", err)
 	}
 }

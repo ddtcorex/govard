@@ -3,6 +3,8 @@ package tests
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -958,5 +960,32 @@ func TestDiscoverDeployPathReadsTheLayoutsARealTargetHas(t *testing.T) {
 	}
 	if _, err := deploy.DiscoverDeployPath(ctx, host); !errors.Is(err, deploy.ErrDeployPathMissing) {
 		t.Fatalf("err = %v, want a refusal naming both layouts", err)
+	}
+}
+
+// A verify URL that redirects or errors must be reported while the old release is
+// still serving: the check itself runs after activation, where a failure leaves a
+// live site, a failed deploy and a held lock. It is a warning, never a failure —
+// the site may be down right now and a deploy that repairs it must not be blocked.
+func TestCheckWarnsWhenTheVerifyURLDoesNotAnswer2xx(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/setup/", http.StatusFound)
+	}))
+	defer server.Close()
+
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:        true,
+		VerifyURL:     server.URL,
+		VerifyTimeout: 5 * time.Second,
+	})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("the preflight must warn, never fail: %v", err)
+	}
+	joined := strings.Join(sc.Notes, " | ")
+	for _, want := range []string{"302", "verify URL"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("notes %q missing %q", joined, want)
+		}
 	}
 }
