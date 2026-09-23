@@ -1,7 +1,9 @@
 package deploy
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -13,9 +15,10 @@ import (
 )
 
 // SeedDB names the origin database to snapshot. The password travels in a
-// MYSQL_PWD env entry prepended to the client argv, never as --password= or
-// -p (both are visible in argv) — same rule as COMPOSER_AUTH, one notch down
-// (documented at mysqlPasswordEnv): mysqldump accepts no password on stdin.
+// MYSQL_PWD environment entry the runtime passes through by name, never as
+// --password= or -p (both are visible in argv) and never as a NAME=value argv
+// entry either — same rule as COMPOSER_AUTH, one notch down (documented at
+// mysqlPasswordEnv): mysqldump accepts no password on stdin.
 type SeedDB struct {
 	Container string
 	User      string
@@ -109,6 +112,64 @@ func StripDefiner(sql string) string {
 	return definerRe.ReplaceAllString(sql, "")
 }
 
+// seedStripLineLimit bounds one line of a dump before the stripper refuses it.
+// mysqldump's extended INSERT is bounded by net_buffer_length (about 1 MiB per
+// the MySQL manual), so 64 MiB is far past anything a real dump produces: it is
+// a refusal, not a working size. A cap rather than an unbounded buffer is the
+// difference between a loud error and the allocator dying.
+const seedStripLineLimit = 64 << 20
+
+// StripDefinerStream rewrites a dump as it flows, so a multi-gigabyte database
+// never has to be resident. One line is held at a time — a DEFINER clause never
+// spans a line, so per-line rewriting is what the whole-string version does,
+// with bounded memory.
+func StripDefinerStream(source io.Reader, target io.Writer) error {
+	return stripDefinerStream(source, target, seedStripLineLimit)
+}
+
+// StripDefinerStreamForTest runs the streaming stripper with a small line limit,
+// so the refusal is exercised without a 64 MiB fixture.
+func StripDefinerStreamForTest(source io.Reader, target io.Writer, lineLimit int) error {
+	return stripDefinerStream(source, target, lineLimit)
+}
+
+func stripDefinerStream(source io.Reader, target io.Writer, lineLimit int) error {
+	// The initial buffer must not be larger than the limit, or a line between
+	// the two sizes would be accepted without the cap ever being consulted.
+	initial := 64 << 10
+	if lineLimit < initial {
+		initial = lineLimit
+	}
+	scanner := bufio.NewScanner(source)
+	scanner.Buffer(make([]byte, 0, initial), lineLimit)
+	writer := bufio.NewWriterSize(target, 64<<10)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		// ReplaceAll copies the unmatched remainder even when nothing matches,
+		// which for a line-oriented dump means allocating every line again.
+		// Asking first keeps the pass-through free: a dump is millions of lines
+		// and a handful of DEFINER clauses.
+		if definerRe.Match(line) {
+			line = definerRe.ReplaceAll(line, nil)
+		}
+		if _, err := writer.Write(line); err != nil {
+			return err
+		}
+		// Scanner drops the delimiter; the dump is line-oriented, so putting it
+		// back keeps the stream byte-for-byte equivalent to the string version.
+		if err := writer.WriteByte('\n'); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return fmt.Errorf("the dump has a line longer than %d bytes: %w", lineLimit, err)
+		}
+		return err
+	}
+	return writer.Flush()
+}
+
 // seedDBPolls bounds how long the seed waits for the sandbox database to
 // answer: a fresh MariaDB needs seconds after the container reports SSH.
 const seedDBPolls = 30
@@ -133,16 +194,98 @@ func waitSandboxDB(ctx context.Context, runtime SandboxRuntime, container string
 	return fmt.Errorf("the sandbox database in %s never answered: %v", container, err)
 }
 
-// mysqlPasswordEnv smuggles a password to a mysql client that accepts no
-// password on stdin. It is visible in the container's process list while the
-// command runs — acknowledged and bounded: the alternative (.my.cnf) leaves a
-// secret file behind, and argv squirrels (--password=) are refused outright.
-// Every client that accepts its input on stdin (the SQL itself) uses stdin.
+// mysqlPasswordEnv carries a password to a mysql client that accepts no password
+// on stdin. It returns an *environment* entry, never an argv one: the runtime is
+// asked to pass the name through (`docker exec -e MYSQL_PWD`), so the value
+// lives in the runtime process's environment — readable by its owner and root,
+// not by every local user running `ps`. Inside the container the variable is
+// still visible in the process list while the command runs, which is
+// acknowledged and bounded: the alternative (.my.cnf) leaves a secret file
+// behind, and argv squirrels (--password=) are refused outright. Every client
+// that accepts its input on stdin (the SQL itself) uses stdin instead.
 func mysqlPasswordEnv(password string) []string {
 	if password == "" {
 		return nil
 	}
-	return []string{"env", "MYSQL_PWD=" + password}
+	return []string{"MYSQL_PWD=" + password}
+}
+
+// streamDatabaseDump moves the origin's dump into the sandbox without ever
+// holding it. The dump writes into a pipe, the stripper rewrites one line at a
+// time into a second pipe, and the import reads that: the only dump bytes
+// resident are one line. A dump and an import that both run to completion keep
+// each other honest through the pipes' back-pressure — a stalled import blocks
+// the dump instead of filling a buffer.
+//
+// A dump that dies midway leaves a partially imported database, and that is
+// reported rather than swallowed: the import can still exit 0 after receiving a
+// truncated stream.
+func streamDatabaseDump(ctx context.Context, runtime SandboxRuntime, from, to string, env []string, dumpArgs, importArgs []string) error {
+	stripStdin, dumpStdout := io.Pipe()
+	importStdin, stripStdout := io.Pipe()
+
+	dumpDone := make(chan error, 1)
+	go func() {
+		err := runtime.ExecStream(ctx, from, env, nil, dumpStdout, dumpArgs...)
+		// Closing with the dump's error is what tells the stripper, and through
+		// it the import, that the stream is incomplete.
+		_ = dumpStdout.CloseWithError(err)
+		dumpDone <- err
+	}()
+
+	stripDone := make(chan error, 1)
+	go func() {
+		err := StripDefinerStream(stripStdin, stripStdout)
+		// Stop a dump that is still writing: the stripper is its only reader.
+		_ = stripStdin.CloseWithError(err)
+		_ = stripStdout.CloseWithError(err)
+		stripDone <- err
+	}()
+
+	importErr := runtime.ExecStream(ctx, to, env, importStdin, nil, importArgs...)
+	// The import stops reading when its client exits; release the reader so the
+	// stripper cannot wait forever for a consumer that is gone.
+	_ = importStdin.CloseWithError(importErr)
+
+	dumpErr := <-dumpDone
+	stripErr := <-stripDone
+
+	if dumpErr != nil {
+		return fmt.Errorf("dump the origin database (the sandbox database is partial, so re-run `govard sandbox up`): %w", dumpErr)
+	}
+	if importErr != nil {
+		return fmt.Errorf("import the snapshot (the sandbox database is partial, so re-run `govard sandbox up`): %w", importErr)
+	}
+	if stripErr != nil {
+		return fmt.Errorf("rewrite the snapshot for the sandbox: %w", stripErr)
+	}
+	return nil
+}
+
+// streamContainerTar moves one directory from the origin container into the
+// sandbox through this process without holding the archive: a media tree of
+// tens of gigabytes streams the same way the dump does.
+func streamContainerTar(ctx context.Context, runtime SandboxRuntime, from, to, source, target string) error {
+	importStdin, tarStdout := io.Pipe()
+
+	writeDone := make(chan error, 1)
+	go func() {
+		err := runtime.ExecStream(ctx, from, nil, nil, tarStdout, "tar", "-C", source, "-cf", "-", ".")
+		_ = tarStdout.CloseWithError(err)
+		writeDone <- err
+	}()
+
+	readErr := runtime.ExecStream(ctx, to, nil, importStdin, nil, "tar", "-C", target, "-xf", "-")
+	_ = importStdin.CloseWithError(readErr)
+
+	writeErr := <-writeDone
+	if writeErr != nil {
+		return fmt.Errorf("read the origin media: %w", writeErr)
+	}
+	if readErr != nil {
+		return fmt.Errorf("write the sandbox media: %w", readErr)
+	}
+	return nil
 }
 
 // runSandboxSeed snapshots the origin into a running sandbox container:
@@ -183,32 +326,23 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 	if err != nil {
 		return err
 	}
-	dumpArgs := append(mysqlPasswordEnv(request.SeedDBPassword), append([]string{dumpBin}, spec.DBDumpFlags...)...)
-	dump, err := runtime.Exec(ctx, spec.DBDumpContainer, nil, dumpArgs...)
-	if err != nil {
-		return fmt.Errorf("dump the origin database: %w", err)
-	}
+	dumpArgs := append([]string{dumpBin}, spec.DBDumpFlags...)
+	passwordEnv := mysqlPasswordEnv(spec.DBPassword)
 
 	fmt.Fprintln(out, "importing the snapshot into the sandbox")
-	importArgs := append(mysqlPasswordEnv(request.SeedDBPassword), spec.DBImportArgs...)
-	if _, err := runtime.Exec(ctx, sandbox, []byte(StripDefiner(dump)), importArgs...); err != nil {
-		return fmt.Errorf("import the snapshot: %w", err)
+	if err := streamDatabaseDump(ctx, runtime, spec.DBDumpContainer, sandbox, passwordEnv, dumpArgs, spec.DBImportArgs); err != nil {
+		return err
 	}
 
 	if request.SeedMediaSource != "" && request.SeedMediaTarget != "" {
 		fmt.Fprintf(out, "copying media %s\n", request.SeedMediaSource)
-		// The tar stream passes through this process: no new interface method,
-		// no shell on either side. Very large media trees buffer in memory;
-		// streaming across two Exec calls is the follow-up when one hurts.
-		media, err := runtime.Exec(ctx, request.SeedAppContainer, nil, "tar", "-C", request.SeedMediaSource, "-cf", "-", ".")
-		if err != nil {
-			return fmt.Errorf("read the origin media: %w", err)
-		}
-		if _, err := runtime.Exec(ctx, sandbox, []byte(media), "mkdir", "-p", request.SeedMediaTarget); err != nil {
+		// The tar stream passes through this process between two Exec calls, so
+		// neither side needs a shell and no archive is held.
+		if _, err := runtime.Exec(ctx, sandbox, nil, "mkdir", "-p", request.SeedMediaTarget); err != nil {
 			return fmt.Errorf("prepare the sandbox media target: %w", err)
 		}
-		if _, err := runtime.Exec(ctx, sandbox, []byte(media), "tar", "-C", request.SeedMediaTarget, "-xf", "-"); err != nil {
-			return fmt.Errorf("write the sandbox media: %w", err)
+		if err := streamContainerTar(ctx, runtime, request.SeedAppContainer, sandbox, request.SeedMediaSource, request.SeedMediaTarget); err != nil {
+			return err
 		}
 	}
 

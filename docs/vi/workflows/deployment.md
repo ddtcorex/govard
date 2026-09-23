@@ -1170,10 +1170,17 @@ phái sinh không bao giờ vào project list; state của nó nằm dưới
 `up` còn seed ứng dụng một lần, từ môi trường gốc đang chạy: dump database dạng
 logical (môi trường gốc vẫn chạy — không dừng, không sửa gì), cây media, và file
 env được viết lại cho sandbox (base_url thành URL web của sandbox; host
-container-local giữ nguyên). Seed chỉ chạy trên container mới; sandbox đã có giữ
-nguyên data và `--recreate` là cách làm mới. Môi trường gốc phải đang chạy, nếu
-không `up` từ chối và nói rõ — sandbox câm mà im lặng thì không giúp được ai.
-`--no-seed` để khởi đầu trắng một cách chủ đích.
+container-local giữ nguyên). Dump và cây media được **stream** từ container gốc
+sang container sandbox qua tiến trình govard, từng dòng SQL (và từng block tar)
+một, nên seed một database nhiều GB chỉ tốn buffer chứ không tốn một bản copy
+toàn bộ. Mật khẩu database đi qua environment của runtime — truyền qua tên, không
+bao giờ là một argument và cũng không phải entry argv `NAME=value` — nên `ps` cục
+bộ không đọc được; bên trong container nó vẫn hiện trong process list của chính
+container đó khi client đang chạy. Dump hỏng giữa đường để lại database sandbox
+**partial**, và seed báo rõ thay vì im lặng: chạy lại `govard sandbox up`. Seed chỉ
+chạy trên container mới; sandbox đã có giữ nguyên data và `--recreate` là cách làm
+mới. Môi trường gốc phải đang chạy, nếu không `up` từ chối và nói rõ — sandbox câm
+mà im lặng thì không giúp được ai. `--no-seed` để khởi đầu trắng một cách chủ đích.
 
 Một sandbox đã tồn tại được mô tả bằng chính nó, không bằng flag của lệnh vừa gọi
 tới: `up` báo đúng profile và series PHP mà container được build, cùng image thật

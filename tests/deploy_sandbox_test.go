@@ -1,12 +1,16 @@
 package tests
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -236,17 +240,50 @@ func TestMagento2RecipeAsksForTheSandboxItNeeds(t *testing.T) {
 
 // fakeSandboxRuntime records what the sandbox asked the container runtime to do
 // and answers from a script, so the whole command is exercised without Docker.
+//
+// A streamed invocation is a different shape from a buffered one: `run` feeds
+// the command's Stdout from a byte slice in one Write and consumes its
+// StdinReader without holding it. Neither path allocates the payload again,
+// which is what lets the seeding tests speak about memory at all. That is also
+// why the lock covers only the bookkeeping: holding it across the pipe I/O would
+// serialize the two halves of one pipe and deadlock.
 type fakeSandboxRuntime struct {
+	mu      sync.Mutex
 	calls   [][]string
+	envs    [][]string
 	answers map[string]string
 	fail    map[string]string
 	streams []string
 	// labels answers container label queries by label name.
 	labels map[string]string
+	// bodies answer a matching command with bytes the fake writes without
+	// copying them, for a payload too large to be a test literal.
+	bodies map[string][]byte
+	// partial delivers a matching command's body and then fails, which is what a
+	// dump that dies midway looks like to the importer.
+	partial map[string]string
+	// stdin records, per command line, what a streamed command read.
+	stdin map[string]fakeStdin
+	// marker is what a recorded stdin stream is scanned for.
+	marker string
+}
+
+// fakeStdin is what a streamed command read, summarised rather than kept: a test
+// about memory must not have the fake hold the stream either.
+type fakeStdin struct {
+	Bytes int64
+	Found bool
 }
 
 func newFakeSandboxRuntime() *fakeSandboxRuntime {
-	return &fakeSandboxRuntime{answers: map[string]string{}, fail: map[string]string{}}
+	return &fakeSandboxRuntime{
+		answers: map[string]string{},
+		fail:    map[string]string{},
+		bodies:  map[string][]byte{},
+		partial: map[string]string{},
+		stdin:   map[string]fakeStdin{},
+		marker:  "DEFINER",
+	}
 }
 
 // containerProfile makes the fake describe a container built for one profile,
@@ -290,35 +327,183 @@ func labelQuery(key string) string {
 }
 
 func (f *fakeSandboxRuntime) run(ctx context.Context, request deploy.SandboxCommand) (string, error) {
-	f.calls = append(f.calls, request.Args)
 	key := strings.Join(request.Args, " ")
-	for marker, message := range f.fail {
+
+	f.mu.Lock()
+	f.calls = append(f.calls, request.Args)
+	f.envs = append(f.envs, request.Env)
+
+	var (
+		body       []byte
+		streamed   bool
+		answer     string
+		answered   bool
+		label      string
+		labelled   bool
+		failure    string
+		incomplete string
+	)
+	for marker, candidate := range f.bodies {
 		if strings.Contains(key, marker) {
-			return "", &deploy.CommandError{Command: "docker " + key, ExitCode: 1, Stderr: message}
+			body, streamed = candidate, true
+			break
 		}
 	}
-	if name := labelQuery(key); name != "" {
-		if answer, ok := f.labels[name]; ok {
-			if request.Out != nil {
-				fmt.Fprint(request.Out, answer)
-			}
-			return answer, nil
-		}
-	}
-	for marker, answer := range f.answers {
+	for marker, message := range f.partial {
 		if strings.Contains(key, marker) {
-			if request.Out != nil {
-				fmt.Fprint(request.Out, answer)
-			}
-			return answer, nil
+			incomplete = message
+			break
 		}
 	}
-	if request.Out != nil {
-		fmt.Fprint(request.Out, key+"\n")
+	if incomplete == "" {
+		for marker, message := range f.fail {
+			if strings.Contains(key, marker) {
+				failure = message
+				break
+			}
+		}
+	}
+	if incomplete == "" && failure == "" {
+		if name := labelQuery(key); name != "" {
+			label, labelled = f.labels[name]
+		}
+		if !labelled {
+			for marker, candidate := range f.answers {
+				if strings.Contains(key, marker) {
+					answer, answered = candidate, true
+					break
+				}
+			}
+		}
+	}
+	out := request.Out
+	marker := f.marker
+	f.mu.Unlock()
+
+	if streamed {
+		if request.Stdout == nil {
+			return "", fmt.Errorf("the fake streams %q but the call has no Stdout writer", key)
+		}
+		// One Write of an existing slice: the fake must not allocate the payload
+		// again, or a memory assertion would measure the fake, not the seed.
+		if _, err := request.Stdout.Write(body); err != nil {
+			return "", err
+		}
+		if incomplete != "" {
+			return "", &deploy.CommandError{Command: "docker " + key, ExitCode: 1, Stderr: incomplete}
+		}
+		return "", nil
+	}
+
+	if incomplete != "" {
+		return "", &deploy.CommandError{Command: "docker " + key, ExitCode: 1, Stderr: incomplete}
+	}
+	if failure != "" {
+		return "", &deploy.CommandError{Command: "docker " + key, ExitCode: 1, Stderr: failure}
+	}
+	if request.StdinReader != nil {
+		read, found, err := scanStream(request.StdinReader, marker)
+		f.mu.Lock()
+		f.stdin[key] = fakeStdin{Bytes: read, Found: found}
+		f.mu.Unlock()
+		return "", err
+	}
+	if labelled {
+		if out != nil {
+			fmt.Fprint(out, label)
+		}
+		return label, nil
+	}
+	if answered {
+		if request.Stdout != nil {
+			if _, err := io.WriteString(request.Stdout, answer); err != nil {
+				return "", err
+			}
+		}
+		if out != nil {
+			fmt.Fprint(out, answer)
+		}
+		return answer, nil
+	}
+	if out != nil {
+		fmt.Fprint(out, key+"\n")
+		f.mu.Lock()
 		f.streams = append(f.streams, key)
+		f.mu.Unlock()
 	}
 	_ = ctx
 	return "", nil
+}
+
+// scanStream reads a stream without holding it: it counts the bytes and reports
+// whether marker appeared, carrying a window so a marker split across two reads
+// is still seen. It allocates one buffer for the whole stream.
+func scanStream(source io.Reader, marker string) (int64, bool, error) {
+	needle := []byte(marker)
+	window := len(needle) - 1
+	if window < 0 {
+		window = 0
+	}
+	buffer := make([]byte, 32<<10+window)
+	var total int64
+	found := false
+	carry := 0
+	for {
+		read, err := source.Read(buffer[carry:])
+		if read > 0 {
+			total += int64(read)
+			end := carry + read
+			if !found && bytes.Contains(buffer[:end], needle) {
+				found = true
+			}
+			if window > 0 && end > window {
+				copy(buffer, buffer[end-window:end])
+				carry = window
+			} else {
+				carry = end
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return total, found, nil
+			}
+			return total, found, err
+		}
+	}
+}
+
+// envOf returns the environment of the first call whose line contains fragment.
+func (f *fakeSandboxRuntime) envOf(fragment string) []string {
+	for index, call := range f.calls {
+		if strings.Contains(strings.Join(call, " "), fragment) {
+			if index < len(f.envs) {
+				return f.envs[index]
+			}
+		}
+	}
+	return nil
+}
+
+// hasEnvValue reports whether any call carried one exact environment entry.
+func (f *fakeSandboxRuntime) hasEnvValue(entry string) bool {
+	for _, env := range f.envs {
+		for _, candidate := range env {
+			if candidate == entry {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// stdinOf reports what a streamed command read, by substring.
+func (f *fakeSandboxRuntime) stdinOf(fragment string) (fakeStdin, bool) {
+	for key, record := range f.stdin {
+		if strings.Contains(key, fragment) {
+			return record, true
+		}
+	}
+	return fakeStdin{}, false
 }
 
 func (f *fakeSandboxRuntime) has(fragment string) bool {
