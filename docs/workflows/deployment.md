@@ -455,14 +455,14 @@ window appears only if the same plan also migrates or imports configuration. An
 in-place activation always opens it, because the docroot itself is rewritten
 while serving.
 
-For a Magento project that means a symlink deploy opens the window too: the recipe
-imports configuration and runs the schema upgrade on every deploy, so its plan
-always migrates. The alternative is asking the target whether anything is pending
-and trusting the answer — a probe the reference deploy tool's own recipe documents
-as missing cases — and a window that is not needed costs a migration's worth of
-downtime, while a schema change seen by the release still serving traffic costs
-the site. What bounds the cost is `deploy.maintenance_timeout` (15m by default) and
-the fact that the database dump inside the window is opt-in (`--no-db-backup`).
+For a Magento project a **symlink** deploy opens the window only when the plan
+really migrates or imports configuration: the probe below answers whether the
+schema drifted, and a deploy that changes only code skips the whole downtime block.
+In place the window opens whatever the probe says, because the docroot itself is
+rewritten — `git reset --hard` plus the sync paths — while it serves; the probe
+answers a question about the schema, not about the rewrite. What bounds the cost is
+`deploy.maintenance_timeout` (15m by default) and the fact that the database dump
+inside the window is opt-in (`--no-db-backup`).
 
 The window is opened and closed **on the release being served** (`current`), not
 on the release being built. Maintenance mode is read from the docroot a request

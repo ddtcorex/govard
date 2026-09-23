@@ -55,10 +55,15 @@ type probeStubRunner struct {
 	probeExit int
 	failOn    string
 	ran       []string
+	// timeouts is aligned with ran: the bound the executor chose for each
+	// command, which is how a test can see whether the maintenance window was
+	// open for a step.
+	timeouts []time.Duration
 }
 
 func (r *probeStubRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
 	r.ran = append(r.ran, command)
+	r.timeouts = append(r.timeouts, opts.Timeout)
 	if r.failOn != "" && strings.Contains(command, r.failOn) {
 		return deploy.Result{ExitCode: 1}, &deploy.CommandError{Command: command, ExitCode: 1, Err: errors.New("stubbed step failure")}
 	}
@@ -82,6 +87,7 @@ func conditionalMigrateTestPlan(t *testing.T) deploy.Plan {
 		{ID: deploy.TaskRelease, Command: "mkdir -p {{release_path}} && echo release-marker"},
 		{ID: deploy.TaskMaintenanceEnable, Command: "echo maintenance-enable-marker"},
 		{ID: deploy.TaskDBMigrate, Command: "echo db-migrate-marker"},
+		{ID: deploy.TaskActivate, Command: "echo activate-marker"},
 		{ID: deploy.TaskMaintenanceDisable, Command: "echo maintenance-disable-marker"},
 		{ID: deploy.TaskAppCacheFlush, Command: "echo cache-flush-marker"},
 	})
@@ -252,5 +258,84 @@ func TestResumeReprobesAfterStoredSkip(t *testing.T) {
 	}
 	if !ranMarker(secondRan, "db-migrate-marker") {
 		t.Errorf("the fresh probe says migrate, so resume must run the migration (commands: %v)", secondRan)
+	}
+}
+
+// The probe answers a question about the schema, and in place the docroot is
+// rewritten while it serves: the window cannot depend on the answer. Without it
+// `publish:activate` runs `git reset --hard` and the sync paths' `rsync --delete`
+// against the live docroot.
+func TestInPlaceProbeExitZeroStillOpensTheWindow(t *testing.T) {
+	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 0}
+	plan := conditionalMigrateTestPlan(t).ForPublishStrategy(deploy.PublishInPlace)
+	if _, err := runConditionalMigratePlan(t, stub, plan, deploy.Options{CommandTimeout: time.Minute}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	enable := markerIndex(stub.ran, "maintenance-enable-marker")
+	activate := markerIndex(stub.ran, "activate-marker")
+	disable := markerIndex(stub.ran, "maintenance-disable-marker")
+	if enable < 0 || activate < 0 || disable < 0 || enable >= activate || activate >= disable {
+		t.Fatalf("in place the window must wrap the activation (enable %d, activate %d, disable %d): %v",
+			enable, activate, disable, stub.ran)
+	}
+	if ranMarker(stub.ran, "db-migrate-marker") {
+		t.Errorf("probe exit 0 still skips the migration (commands: %v)", stub.ran)
+	}
+}
+
+// The symlink counterpart, as a regression pin: nothing serving the site is
+// rewritten by an atomic swap, so a current schema needs no window there.
+func TestSymlinkProbeExitZeroStillSkipsTheWindow(t *testing.T) {
+	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 0}
+	plan := conditionalMigrateTestPlan(t).ForPublishStrategy(deploy.PublishSymlink)
+	if _, err := runConditionalMigratePlan(t, stub, plan, deploy.Options{CommandTimeout: time.Minute}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if ranMarker(stub.ran, "maintenance-enable-marker") {
+		t.Errorf("a symlink swap with a current schema needs no window (commands: %v)", stub.ran)
+	}
+}
+
+// timeoutForMarker returns the bound the executor chose for the first command
+// containing marker, or -1 when that command never ran.
+func timeoutForMarker(r *probeStubRunner, marker string) time.Duration {
+	for index, command := range r.ran {
+		if strings.Contains(command, marker) && index < len(r.timeouts) {
+			return r.timeouts[index]
+		}
+	}
+	return -1
+}
+
+// In place the window opens even when the probe says the schema is current, so
+// the smaller in-window bound has to keep applying to the rewrite: `window = nil`
+// used to lift it, which is exactly backwards — the activation that resets the
+// docroot is the step that must be bounded by how long the site may stay down.
+func TestInPlaceWindowKeepsTheMaintenanceTimeoutAfterAProbeSkip(t *testing.T) {
+	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 0}
+	plan := conditionalMigrateTestPlan(t).ForPublishStrategy(deploy.PublishInPlace)
+	opts := deploy.Options{MaintenanceTimeout: 2 * time.Minute, CommandTimeout: time.Hour}
+	if _, err := runConditionalMigratePlan(t, stub, plan, opts); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := timeoutForMarker(stub, "activate-marker"); got != 2*time.Minute {
+		t.Fatalf("the activation must run under the maintenance bound, got %s (commands: %v)", got, stub.ran)
+	}
+	if got := timeoutForMarker(stub, "cache-flush-marker"); got != 2*time.Minute {
+		t.Fatalf("a step inside the window must keep the maintenance bound, got %s", got)
+	}
+}
+
+// The symlink counterpart: with a current schema no window opens, so the command
+// bound applies again.
+func TestSymlinkProbeExitZeroUsesTheCommandTimeout(t *testing.T) {
+	stub := &probeStubRunner{inner: deploy.LocalRunner{}, probeExit: 0}
+	plan := conditionalMigrateTestPlan(t).ForPublishStrategy(deploy.PublishSymlink)
+	opts := deploy.Options{MaintenanceTimeout: 2 * time.Minute, CommandTimeout: time.Hour}
+	if _, err := runConditionalMigratePlan(t, stub, plan, opts); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := timeoutForMarker(stub, "activate-marker"); got != time.Hour {
+		t.Fatalf("without a window the command timeout applies, got %s (commands: %v)", got, stub.ran)
 	}
 }

@@ -360,7 +360,8 @@ file theo nhu cầu khi ứng dụng được duyệt. Mọi thứ còn lại �
 build frontend bằng Node, `cache:flush`, verify — vẫn chạy. `setup:upgrade`,
 `app:config:import` và maintenance window giờ có điều kiện: probe chạy
 `setup:db:status` trước, và deploy chỉ đổi code sẽ bỏ qua cả sáu task downtime mà
-không bao giờ mở window.
+không bao giờ mở window. Đó là trường hợp symlink; kích hoạt in-place ghi đè chính
+docroot đang phục vụ, nên nó mở window kể cả với deploy chỉ đổi code.
 
 **Diễn tập.**
 
