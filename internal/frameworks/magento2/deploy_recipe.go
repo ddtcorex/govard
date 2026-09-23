@@ -274,21 +274,18 @@ func DeployRecipe() deploy.Recipe {
 		{Key: "runtime_reload_command", Kind: deploy.SettingCommand, Title: "run after the cache flush, for example an FPM reload"},
 	}...)
 
-	// The two verifications the core cannot supply, because both need the
-	// deployed application rather than only its files. Declaration order is the
-	// order the verify stage runs them in.
+	// Magento's installer lands on /setup/ whenever the application believes it
+	// is not installed — and the deploy engine's own docs record the case where
+	// every request was redirected there while the deploy reported success. A
+	// followed redirect must never be able to turn that into a passing check.
+	recipe.VerifyRejectPaths = []string{"/setup/"}
+
+	// The verification the core cannot supply, because it needs the deployed
+	// application rather than only its files. The in-place artifact comparison
+	// this recipe used to declare is gone: the engine now dry-runs the activation
+	// copy for every sync path, which covers the whole tree instead of one marker
+	// file the activation had just written from the release itself.
 	recipe.Checks = []deploy.Check{
-		{
-			ID:    "artifact",
-			Title: "the docroot serves the release's static content version",
-			// In place only: a symlink target publishes the whole release, so
-			// `current` *is* the release directory and the file trivially
-			// matches. The guard also covers a recipe that produced no version
-			// file (mage_mode developer skips static content deployment).
-			OnlyForPublishStrategy: deploy.PublishInPlace,
-			Command: "if [ -e {{release_path}}/pub/static/deployed_version.txt ]; then " +
-				"test \"$(cat {{release_path}}/pub/static/deployed_version.txt)\" = \"$(cat {{current_path}}/pub/static/deployed_version.txt)\"; fi",
-		},
 		{
 			ID:    "app",
 			Title: "the application answers against its real dependencies",

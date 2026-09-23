@@ -426,12 +426,16 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		// line. It only becomes the command's Out when the operator asked to watch,
 		// which is what keeps the default run's output identical.
 		live := newLiveWriter(e.out, linePrefix)
+		// The recipe's never-healthy landing paths ride the plan and reach the
+		// verify step through Options, so the engine never names a framework.
+		stepOpts := e.opts
+		stepOpts.VerifyRejectPaths = plan.VerifyRejectPaths
 		stepCtx := StepContext{
 			Host:     e.host,
 			Runner:   e.host.Runner(),
 			Vars:     stepVars,
 			Release:  release,
-			Opts:     e.opts,
+			Opts:     stepOpts,
 			Out:      e.out,
 			WorkDir:  e.workDir,
 			Checks:   step.Checks,

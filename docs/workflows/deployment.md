@@ -976,8 +976,32 @@ has to be a deliberate decision rather than an omission.
 the shared files the recipe requires, the recipe's own checks, and an HTTP check
 when `deploy.verify.url` is set. The recipe's checks are the ones the engine
 cannot supply — for Magento that is `bin/magento setup:db:status`, which needs a
-working `app/etc/env.php` *and* a reachable database, plus a comparison of the
-docroot's static content version against the release when publishing in place.
+working `app/etc/env.php` *and* a reachable database — and they run in the
+**served** path, so an in-place deploy tests the docroot the site is actually
+serving rather than the release it was copied from. For an in-place target the
+engine also dry-runs the activation's own copy for every `sync_paths` entry
+(`rsync -a --delete --checksum --itemize-changes`), so a hook or a process that
+rewrote a file in the docroot after the copy fails the deploy by name. It reads
+both trees, which is the cost of comparing content rather than a marker file.
+
+The HTTP check stops at the first response and requires 2xx. A redirect is not a
+pass: an install page or a store-code bounce that answers 200 after a hop used to
+satisfy the check while the site was not serving the release, so the failure now
+names the status, the `Location` and the setting:
+
+```
+ERROR  step deploy:verify failed: verify http: https://shop.example/ answered
+       HTTP 302 to /setup/: the verify URL must name the page that serves the
+       site, or set deploy.verify.follow_redirects: true to follow same-host
+       redirects
+```
+
+`deploy.verify.follow_redirects: true` follows redirects that stay on the verify
+URL's host (http → https is a real layout) and then rejects a landing path the
+recipe declares never-healthy — Magento's `/setup/` — which still fails while
+following. `deploy:check` probes the URL with the same policy and prints what it
+found **before** the deploy touches anything: verification runs after activation,
+where a failure leaves a live site, a failed deploy and a held lock.
 
 Without a configured URL verification is SSH-only: it proves the right files are
 in place, not that the application serves. A deploy that runs `db:migrate` with

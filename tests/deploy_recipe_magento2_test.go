@@ -426,70 +426,23 @@ func TestMagento2RecipeDeclaresItsVerificationChecks(t *testing.T) {
 		t.Fatalf("the check must run the deployed code with the configured interpreter: %q", app.Command)
 	}
 
-	artifact, ok := byID["artifact"]
-	if !ok {
-		t.Fatal("the recipe must declare the in-place artifact check")
+	// The in-place artifact comparison is gone: it compared a version file with
+	// the copy the activation had just made from that same file, so it could only
+	// fail if the copy failed. The engine now dry-runs the activation copy for
+	// every sync path, which covers the whole tree
+	// (TestVerifyInPlaceCatchesADocrootThatDiffersFromTheRelease).
+	if _, exists := byID["artifact"]; exists {
+		t.Fatal("the engine owns the in-place sync comparison; the recipe must not declare an artifact check")
 	}
-	if artifact.OnlyForPublishStrategy != deploy.PublishInPlace {
-		t.Fatalf("the artifact check only means something in place, got %q", artifact.OnlyForPublishStrategy)
-	}
-	if !strings.Contains(artifact.Command, "deployed_version.txt") {
-		t.Fatalf("the artifact check must compare the version file, got %q", artifact.Command)
-	}
-}
-
-// The artifact check's command has to mean what its title claims, so it is run
-// for real against a matching, a stale and an absent version file.
-func TestMagento2ArtifactCheckComparesTheDocrootWithTheRelease(t *testing.T) {
-	var artifact deploy.Check
-	for _, check := range magento2.DeployRecipe().Checks {
-		if check.ID == "artifact" {
-			artifact = check
-		}
-	}
-	if artifact.Command == "" {
-		t.Fatal("no artifact check to exercise")
-	}
-
-	root := t.TempDir()
-	releaseDir := filepath.Join(root, "releases", "1")
-	docroot := filepath.Join(root, "current")
-	version := filepath.Join("pub", "static", "deployed_version.txt")
-	for _, dir := range []string{releaseDir, docroot} {
-		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(version)), 0o755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-	}
-	writeFile(t, filepath.Join(releaseDir, version), "abc123\n")
-	writeFile(t, filepath.Join(docroot, version), "abc123\n")
-
-	run := func() error {
-		command, err := deploy.NewVars().
-			SetPath("release_path", releaseDir).
-			SetPath("current_path", docroot).
-			Expand(artifact.Command)
-		if err != nil {
-			t.Fatalf("expand: %v", err)
-		}
-		_, err = (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{})
-		return err
-	}
-
-	if err := run(); err != nil {
-		t.Fatalf("matching version files must pass, got: %v", err)
-	}
-	writeFile(t, filepath.Join(docroot, version), "stale\n")
-	if err := run(); err == nil {
-		t.Fatal("a docroot serving a stale static content version must fail the check")
-	}
-	if err := os.Remove(filepath.Join(releaseDir, version)); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-	if err := run(); err != nil {
-		t.Fatalf("a release with no version file has nothing to compare: %v", err)
+	if len(byID) != 1 {
+		t.Fatalf("the recipe declares one framework check, got %d: %v", len(byID), byID)
 	}
 }
 
+// The stale-version-file scenario the recipe's artifact check used to cover now
+// lives in the engine's sync comparison, where the version file is compared as
+// part of the tree it sits in
+// (TestVerifyInPlaceCatchesADocrootThatDiffersFromTheRelease in deploy_publish_test.go).
 // assetCalls runs the recipe's real static-content command and returns the argv
 // of every `bin/magento` invocation it made, one per line.
 //

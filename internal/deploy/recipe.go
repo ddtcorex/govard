@@ -237,6 +237,11 @@ type Recipe struct {
 	// database dump back. It is empty for a framework with no dump support, and
 	// `rollback --with-db` refuses rather than guessing.
 	Restore string
+	// VerifyRejectPaths are path prefixes that never mean "the site is serving
+	// the release" — a framework's installer landing page, for instance. The
+	// engine checks them on the final URL after any allowed redirect.
+	VerifyRejectPaths []string
+
 	// MigrationProbe answers whether the NeedsMigration tasks must run. It is
 	// nil for a framework with nothing conditional: a recipe that flags a task
 	// without declaring a probe is refused by ValidateRecipe.

@@ -112,6 +112,16 @@ type Plan struct {
 	// MigrationProbe is copied from the recipe: see Recipe.MigrationProbe.
 	// The executor runs it; `govard deploy plan` only displays it.
 	MigrationProbe *MigrationProbe
+	// VerifyRejectPaths is copied from the recipe; the verify step reads it
+	// through Options so the engine never names a framework.
+	VerifyRejectPaths []string
+}
+
+// withSteps returns a copy of the plan with different steps and the same
+// recipe-derived metadata. Every plan transformation goes through it, so a new
+// field cannot be silently dropped by a rewrite.
+func (p Plan) withSteps(steps []Step) Plan {
+	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe, VerifyRejectPaths: p.VerifyRejectPaths}
 }
 
 // StepIDs returns the step ids in execution order, which is what tests and
@@ -147,7 +157,7 @@ func (p Plan) From(id string) (Plan, bool) {
 	}
 	steps := make([]Step, len(p.Steps)-index)
 	copy(steps, p.Steps[index:])
-	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}, true
+	return p.withSteps(steps), true
 }
 
 // Only returns the sub-plan holding just the named steps, in plan order. A name
@@ -164,7 +174,7 @@ func (p Plan) Only(ids ...string) Plan {
 			steps = append(steps, step)
 		}
 	}
-	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
+	return p.withSteps(steps)
 }
 
 // Excluding returns the plan without the named steps.
@@ -185,7 +195,7 @@ func (p Plan) Excluding(ids ...string) Plan {
 		}
 		steps = append(steps, step)
 	}
-	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
+	return p.withSteps(steps)
 }
 
 // MissingVerifyWarning returns the warning a deploy must print when it migrates
@@ -245,7 +255,7 @@ func (p Plan) ForBuildMode(mode string) Plan {
 	if artifact {
 		steps = moveArtifactBeforeTheBuildTasks(steps)
 	}
-	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
+	return p.withSteps(steps)
 }
 
 // moveArtifactBeforeTheBuildTasks puts `deploy:artifact` where the mode needs it:
@@ -322,7 +332,7 @@ func (p Plan) withUngatedMaintenanceWindow() Plan {
 			steps[idx].NeedsMigration = false
 		}
 	}
-	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
+	return p.withSteps(steps)
 }
 
 // withoutMaintenanceWindow marks both maintenance steps skipped. They are
@@ -339,7 +349,7 @@ func (p Plan) withoutMaintenanceWindow() Plan {
 			steps[idx].SkipReason = "a symlink activation is atomic and nothing in this plan changes state the live release depends on"
 		}
 	}
-	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
+	return p.withSteps(steps)
 }
 
 // closeWindowBefore moves the `maintenance:disable` step to immediately before
@@ -383,7 +393,7 @@ func (p Plan) closeWindowBefore(id string) Plan {
 		}
 		steps = append(steps, step)
 	}
-	return Plan{Steps: steps, MigrationProbe: p.MigrationProbe}
+	return p.withSteps(steps)
 }
 
 // maintenanceWindow returns the plan indexes that run with the site in
@@ -517,7 +527,9 @@ func BuildPlan(recipe Recipe, hooks []Hook) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Steps: ordered, MigrationProbe: recipe.MigrationProbe}, nil
+	// Every recipe-derived field rides on the plan, so a transformation cannot
+	// drop one: withSteps copies the metadata, and this is where it is first set.
+	return Plan{Steps: ordered, MigrationProbe: recipe.MigrationProbe, VerifyRejectPaths: recipe.VerifyRejectPaths}, nil
 }
 
 // RecipeStepForTest builds one step the way a plan does, so a test can run a single

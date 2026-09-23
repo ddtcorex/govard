@@ -39,6 +39,10 @@ type DeployConfig struct {
 type DeployVerifyConfig struct {
 	URL     string `yaml:"url,omitempty"`
 	Timeout string `yaml:"timeout,omitempty"`
+	// FollowRedirects follows redirects that stay on the verify URL's host and
+	// then rejects a landing path the recipe declares never-healthy. Off by
+	// default: a followed redirect to an installer page used to pass.
+	FollowRedirects bool `yaml:"follow_redirects,omitempty"`
 }
 
 // DeployHookConfig is one project hook. It is deliberately not HookStep: a
