@@ -506,7 +506,6 @@ func assetCalls(t *testing.T, settings map[string]any) []string {
 func recipeCalls(t *testing.T, taskID string, settings map[string]any) []string {
 	t.Helper()
 	recipe := magento2.DeployRecipe()
-	release := t.TempDir()
 	log := filepath.Join(t.TempDir(), "calls.log")
 
 	settings["php_bin"] = "sh"
@@ -515,13 +514,25 @@ func recipeCalls(t *testing.T, taskID string, settings map[string]any) []string 
 		Settings: settings,
 	})
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	// The release lives under the deploy path here, as it does on a target
+	// (`<deploy path>/releases/<n>`), so a test asserting which directory a step
+	// entered can tell the release and the served root apart.
+	release := host.ReleasePath("1")
 	vars := cmd.DeployVarsForTest(host, options).SetPath("release_path", release)
 
-	stub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + log + "\n"
-	writeFile(t, filepath.Join(release, "bin", "magento"), stub)
-	if err := os.Chmod(filepath.Join(release, "bin", "magento"), 0o755); err != nil {
-		t.Fatalf("chmod stub: %v", err)
+	stub := "#!/bin/sh\nprintf '%s\\n' \"$PWD $*\" >> " + log + "\n"
+	// The step is supposed to act on the served application, so the stub exists
+	// in both directories and the recorded working directory is what the tests
+	// assert.
+	for _, root := range []string{release, host.CurrentPath} {
+		writeFile(t, filepath.Join(root, "bin", "magento"), stub)
+		if err := os.Chmod(filepath.Join(root, "bin", "magento"), 0o755); err != nil {
+			t.Fatalf("chmod %s: %v", root, err)
+		}
 	}
+	// The served-application guard asks for the autoloader, not the directory:
+	// a checkout carries `vendor/.htaccess`, so `[ -d vendor ]` is not the test.
+	writeFile(t, filepath.Join(host.CurrentPath, "vendor", "autoload.php"), "<?php\n")
 
 	command, err := vars.Expand(recipe.Task(taskID).Command)
 	if err != nil {
@@ -545,6 +556,15 @@ func recipeCalls(t *testing.T, taskID string, settings map[string]any) []string 
 		}
 	}
 	return calls
+}
+
+// recipeCallArgs returns the arguments of a recorded call, dropping the working
+// directory the stub logs in front of them.
+func recipeCallArgs(call string) string {
+	if index := strings.Index(call, " "); index >= 0 {
+		return call[index+1:]
+	}
+	return ""
 }
 
 // Spec 10.4: `split_static_deployment` deploys adminhtml and frontend
@@ -611,8 +631,8 @@ func TestMagento2ThemeMapLocalesReachMagentoAsLanguageFlags(t *testing.T) {
 	}
 	want := "setup:static-content:deploy -f --content-version=abcdef12 -j 4" +
 		" --language fr_FR -t Acme/other -t Acme/theme --language de_DE --language en_US"
-	if calls[0] != want {
-		t.Fatalf("the map form rendered\n  %q\nwant\n  %q", calls[0], want)
+	if got := recipeCallArgs(calls[0]); got != want {
+		t.Fatalf("the map form rendered\n  %q\nwant\n  %q", got, want)
 	}
 }
 
@@ -626,8 +646,8 @@ func TestMagento2StaticDeployOptionsArePassedThroughEveryPass(t *testing.T) {
 		t.Fatalf("one pass without the split, got %v", calls)
 	}
 	want := "setup:static-content:deploy -f --content-version=abcdef12 -j 4 --no-parent -s standard"
-	if calls[0] != want {
-		t.Fatalf("the passthrough rendered\n  %q\nwant\n  %q", calls[0], want)
+	if got := recipeCallArgs(calls[0]); got != want {
+		t.Fatalf("the passthrough rendered\n  %q\nwant\n  %q", got, want)
 	}
 
 	// A list is the same thing written the other way, and the split pass carries
@@ -711,6 +731,87 @@ func TestMagento2WorkerControlActuallyRuns(t *testing.T) {
 	}
 	if calls := recipeCalls(t, deploy.TaskWorkersResume, map[string]any{}); len(calls) != 0 {
 		t.Fatalf("worker_control unset must leave cron and consumers alone, got %v", calls)
+	}
+}
+
+// The served application owns the stop flag and the crontab entry, so both
+// worker steps have to act there. `queue:consumers:stop`/`:restart` write a flag
+// the running consumers read from the application they were started from, and
+// `cron:install` writes the *absolute* path of the application into the
+// crontab — run from the release, that schedules
+// `.deployer/releases/<n>/bin/magento`, a directory no web server serves.
+func TestMagento2WorkerControlActsOnTheServedApplication(t *testing.T) {
+	for id, want := range map[string]string{
+		deploy.TaskWorkersPause:  "queue:consumers:stop",
+		deploy.TaskWorkersResume: "cron:install",
+	} {
+		calls := recipeCalls(t, id, map[string]any{"worker_control": true})
+		if len(calls) == 0 {
+			t.Fatalf("%s recorded no call", id)
+		}
+		for _, call := range calls {
+			if strings.Contains(call, "/releases/") {
+				t.Errorf("%s ran in the release, not the served application: %s", id, call)
+			}
+			if !strings.Contains(call, "/current ") {
+				t.Errorf("%s did not run in the served root: %s", id, call)
+			}
+		}
+		if !strings.Contains(strings.Join(calls, "\n"), want) {
+			t.Errorf("%s did not run %s: %v", id, want, calls)
+		}
+	}
+}
+
+// A first in-place deploy has no served application yet: the docroot is a fresh
+// checkout with no autoloader behind it. Pausing workers has nothing to pause
+// there, and the step must not fail the run — the same tolerance
+// `maintenance:enable` already has.
+func TestMagento2WorkerPauseToleratesAnUnrunnableDocroot(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	release := t.TempDir()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	marker := filepath.Join(t.TempDir(), "ran")
+	// `bin/magento` exists and is runnable; only the autoloader is missing — the
+	// state a checkout of a Magento project is in before its first build. The
+	// marker is what a weakened guard would produce: a guard that asks for the
+	// `vendor/` *directory* passes here (Magento projects commit
+	// `vendor/.htaccess`) and then fails on the first `bin/magento` call.
+	writeFile(t, filepath.Join(host.CurrentPath, "bin", "magento"), "#!/bin/sh\ntouch "+marker+"\n")
+	if err := os.Chmod(filepath.Join(host.CurrentPath, "bin", "magento"), 0o755); err != nil {
+		t.Fatalf("chmod the stub: %v", err)
+	}
+	writeFile(t, filepath.Join(host.CurrentPath, "vendor", ".htaccess"), "Deny from all\n")
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: map[string]any{"worker_control": true, "php_bin": "sh"},
+	})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", release).
+		Expand(recipe.Task(deploy.TaskWorkersPause).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("a docroot with no autoloader must be skipped, not failed: %v\n%s", err, command)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatalf("the guard accepted a docroot with no autoloader, so the pause ran:\n%s", command)
+	}
+}
+
+// The flush is the step that was measurably wrong on a real in-place target: the
+// cache the served application reads is the docroot's.
+func TestMagento2CacheFlushRunsInTheServedRoot(t *testing.T) {
+	calls := recipeCalls(t, deploy.TaskAppCacheFlush, map[string]any{})
+	if len(calls) != 1 {
+		t.Fatalf("one cache:flush call expected, got %v", calls)
+	}
+	if !strings.Contains(calls[0], "cache:flush") {
+		t.Fatalf("the flush did not run: %v", calls)
+	}
+	if strings.Contains(calls[0], "/releases/") || !strings.Contains(calls[0], "/current ") {
+		t.Fatalf("the flush must run in the served root: %v", calls)
 	}
 }
 
@@ -884,6 +985,12 @@ func TestMagento2RuntimeReloadCommandActuallyRuns(t *testing.T) {
 		Settings: map[string]any{"runtime_reload_command": "printf reloaded > " + marker},
 	})
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	// The cache step enters the served application, which this host spells
+	// `<deploy path>/current`; without it the step fails at its own `cd` before
+	// reaching the reload fragment this test is about.
+	if err := os.MkdirAll(host.CurrentPath, 0o755); err != nil {
+		t.Fatalf("mkdir the served root: %v", err)
+	}
 	stub, _ := cmd.DeployVarsForTest(host, options).SetPath("release_path", release).
 		Expand(recipe.Task(deploy.TaskAppCacheFlush).Command)
 	// The stub `php` stands in for bin/magento here: this test is about the
@@ -905,6 +1012,10 @@ func TestMagento2UnsetRuntimeReloadIsANoOp(t *testing.T) {
 	release := t.TempDir()
 	recipe := magento2.DeployRecipe()
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	// Same reason as the reload test above: the step enters the served root.
+	if err := os.MkdirAll(host.CurrentPath, 0o755); err != nil {
+		t.Fatalf("mkdir the served root: %v", err)
+	}
 
 	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{Revision: "abcdef123456", Settings: map[string]any{}})
 	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", release).

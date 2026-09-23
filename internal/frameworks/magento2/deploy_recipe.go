@@ -177,10 +177,15 @@ func DeployRecipe() deploy.Recipe {
 	// a git checkout that may not have been deployed to yet. Neither has anything
 	// to protect, and neither may fall back to the release being built.
 	fill(deploy.TaskMaintenanceEnable, "enable maintenance mode",
-		magentoMaintenanceGuard+" && {{php_bin}} bin/magento maintenance:enable; fi")
+		magentoServedAppGuard+" && {{php_bin}} bin/magento maintenance:enable; fi")
 
+	// Same question as maintenance mode, and the same guard: there is nothing to
+	// pause until an application is being served, and the stop flag the running
+	// consumers read belongs to that application. Run from the release it would
+	// write a flag into a cache no consumer reads. `cron:remove` is
+	// path-independent, so it simply rides along.
 	fill(deploy.TaskWorkersPause, "pause cron and message consumers",
-		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:remove && {{php_bin}} bin/magento queue:consumers:stop; fi`)
+		magentoServedAppGuard+" && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:remove && {{php_bin}} bin/magento queue:consumers:stop; fi; fi")
 
 	fill(deploy.TaskAppConfigure, "import application configuration",
 		"cd {{release_path}} && {{php_bin}} bin/magento app:config:import --no-interaction")
@@ -188,17 +193,31 @@ func DeployRecipe() deploy.Recipe {
 	fill(deploy.TaskDBMigrate, "run setup:upgrade",
 		"cd {{release_path}} && {{php_bin}} bin/magento setup:upgrade --keep-generated")
 
+	// The flush belongs to the application the web server is serving, not to the
+	// release being built. With a symlink layout `current` is the release that
+	// just went live, so both spellings coincide; an in-place docroot is a
+	// *different* directory the release copies into, and a flush in the release
+	// clears a cache nothing reads while the live application keeps the old one.
+	// Measured on a real in-place target (app/magento2-test-instance, release 16):
+	// the release's 27 MB var/cache was emptied and the docroot kept its own
+	// 34 MB plus a 9.1 MB var/page_cache, with no cache backend but Magento's
+	// file default — so the site kept serving the old configuration.
 	fill(deploy.TaskAppCacheFlush, "flush caches",
 		// The reload is a fragment, so it is run directly: with nothing
 		// configured it renders as `true` (see deployVars), which is why there is
 		// no `[ -n ... ]` guard to get wrong here.
-		`cd {{release_path}} && {{php_bin}} bin/magento cache:flush && {{settings.runtime_reload_command}}`)
+		`cd {{current_path}} && {{php_bin}} bin/magento cache:flush && {{settings.runtime_reload_command}}`)
 
 	fill(deploy.TaskWorkersResume, "resume cron and message consumers",
-		`cd {{release_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:install && {{php_bin}} bin/magento queue:consumers:restart; fi`)
+		// `cron:install` writes the application's absolute path into the crontab
+		// and `queue:consumers:restart` writes a flag the served consumers read,
+		// so both belong to the docroot — from the release, cron would run a
+		// directory no web server serves. Runs after activation, so the served
+		// root always exists here and needs no guard.
+		`cd {{current_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:install && {{php_bin}} bin/magento queue:consumers:restart; fi`)
 
 	fill(deploy.TaskMaintenanceDisable, "disable maintenance mode",
-		magentoMaintenanceGuard+" && {{php_bin}} bin/magento maintenance:disable; fi")
+		magentoServedAppGuard+" && {{php_bin}} bin/magento maintenance:disable; fi")
 
 	// The downtime block runs only when the database drifted. Adobe's contract
 	// for setup:db:status is the probe: exit 0 means every module is up to
@@ -297,11 +316,12 @@ func DeployRecipe() deploy.Recipe {
 	return recipe
 }
 
-// magentoMaintenanceGuard is the opening of both maintenance commands. It asks
-// whether the *application* is being served, not whether a directory exists: the
-// flag is written into the docroot the web server reads, and a docroot that cannot
-// run — no `bin/magento`, or no installed dependencies behind it — has no window
-// to open and nothing to protect.
+// magentoServedAppGuard is the opening of every command that must act on the
+// application the web server serves: both maintenance commands and the worker
+// pause. It asks whether the *application* is being served, not whether a
+// directory exists: the flags those steps write are read from the docroot the web
+// server reads, and a docroot that cannot run — no `bin/magento`, or no installed
+// dependencies behind it — has no window to open and nothing to protect.
 //
 // The dependency half is what a first in-place deploy onto a fresh docroot needs.
 // `sandbox reset --docroot real` seeds the docroot as a checkout of the revision,
@@ -309,7 +329,8 @@ func DeployRecipe() deploy.Recipe {
 // never been deployed to; running Magento there fails with `Autoload error: Vendor
 // autoload is not found`, and the deploy died at `maintenance:enable` — before the
 // activation that would have copied `vendor/` in and repaired it. Found by running
-// the in-place path against a real project.
+// the in-place path against a real project. The same first deploy has no running
+// consumers to stop, which is why `app:workers:pause` shares the guard.
 //
 // The marker is the autoloader, not the directory. This project commits
 // `vendor/.htaccess`, as Magento projects do, so a checkout that has never been
@@ -318,7 +339,7 @@ func DeployRecipe() deploy.Recipe {
 // requires, so that is what is asked for.
 //
 // A docroot with a working application is unaffected: it has both.
-const magentoMaintenanceGuard = "if [ -f {{current_path}}/bin/magento ] && [ -f {{current_path}}/vendor/autoload.php ]; then cd {{current_path}}"
+const magentoServedAppGuard = "if [ -f {{current_path}}/bin/magento ] && [ -f {{current_path}}/vendor/autoload.php ]; then cd {{current_path}}"
 
 // magentoDumpCommand writes a plain SQL dump to {{backup_path}}. It reads the
 // connection settings from app/etc/env.php through bin/magento, so credentials

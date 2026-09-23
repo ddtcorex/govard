@@ -250,6 +250,13 @@ restores the shared links and writes `pub/static/deployed_version.txt` **last**.
 maintenance window opens for the whole activation — the docroot is rewritten while it
 is being served, so there is no moment to be clever about.
 
+Because the docroot is a real directory rather than a symlink, the steps that act
+on the served application run **there**: `app:cache:flush` clears the docroot's
+`var/cache` and `var/page_cache` after the activation, and Magento's worker steps
+follow the same rule (`cron:install` would otherwise schedule a release
+directory). A release directory is not a served application, and a cache cleared
+there is a cache nothing reads.
+
 **Rehearse it.** The sandbox can build exactly this shape:
 
 ```bash

@@ -238,7 +238,13 @@ read the installed application's own configuration:
 
 No framework cache belongs in the artifact, and none of these recipes can put one
 there: `app:cache:flush` is a publish-stage step in all four, so it always runs on
-the target, where the environment the cache bakes in actually holds.
+the target, where the environment the cache bakes in actually holds. It runs
+against the **served application** — <span v-pre>`{{current_path}}`</span> — not
+against the release being built: a symlink activation makes the two the same
+directory, while an in-place docroot is a separate real directory, and a flush in
+the release would clear a cache nothing reads. Magento's worker steps follow the
+same rule, because `cron:install` writes the application's absolute path into the
+crontab.
 
 ### The steps these recipes leave empty
 
@@ -339,6 +345,27 @@ deploy:
 
 ### Framework-specific notes
 
+**Magento.** The cache flush and the worker steps act on the served application:
+`cron:remove`/`cron:install` and `queue:consumers:stop`/`:restart` write state the
+running application reads, and `cron:install` records an absolute path. That move
+has one consequence worth checking on a target that already deployed with
+`worker_control: true`. Magento keys its crontab block by the install root
+(`#~ MAGENTO START <sha256(install root)>`), and `cron:remove` deletes only the
+block whose hash matches the directory it runs in. Earlier releases ran both steps
+in the release directory, so such a target gained **one block per release** —
+each one runs `cron:run` every minute and points at a directory `deploy:cleanup`
+will prune. From this release both steps run against the docroot, so the block is
+stable and stops accumulating, but the historical blocks remain. Check once:
+
+```bash
+crontab -l | grep -A1 '#~ MAGENTO'   # one block per historical install root
+```
+
+Keep the block whose command line names the docroot and delete the others
+(`crontab -e`); the next deploy writes the docroot-keyed block. A block that
+already names the docroot — including one another tool installed — needs nothing:
+it is the block `cron:remove` runs in, so it is removed and rewritten as before.
+
 **Laravel.** `storage` is shared rather than merely writable because the
 maintenance flag lives at `storage/framework/down`: a shared directory is what
 carries it across the release swap. The framework caches are built in
@@ -361,7 +388,11 @@ it writes then resolve from wherever the docroot ends up, which an in-place
 deploy needs). `doctrine:migrations:migrate` takes `--allow-no-migration`,
 because a project with an empty migrations directory is a healthy project.
 `var/cache` is deliberately **not** shared: the compiled container belongs to one
-release and one environment. `symfony_env` (default `prod`) decides the
+release and one environment. The Messenger pause runs against the served
+application for the same reason: `messenger:stop-workers` writes its signal into a
+cache pool (`cache.app`, a filesystem adapter under `var/cache/<env>` by default),
+which no release shares — from the release, the signal would sit where the running
+consumers never look. `symfony_env` (default `prod`) decides the
 environment the deploy runs under, because a committed `.env` saying
 `APP_ENV=dev` is a development default rather than an instruction to production;
 the value is not validated, so a typo builds the wrong cache directory. The
@@ -765,9 +796,10 @@ when it is missing.
 
 ### Caches, opcache and the symlink swap
 
-The release flushes the application cache as part of the pipeline, so the new
-release never serves a cache built by the old code. What a cache flush does not
-touch is PHP's own state: after a swap, a worker that already resolved `current`
+The served application's cache is flushed as part of the pipeline — the docroot
+for an in-place target, the release that just became `current` for a symlink — so
+the new release never serves a cache built by the old code. What a cache flush
+does not touch is PHP's own state: after a swap, a worker that already resolved `current`
 can keep the old release in its `realpath_cache` and its compiled files in
 opcache for up to `realpath_cache_ttl`. That is how a deploy looks successful and
 still serves the previous release's code.

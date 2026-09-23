@@ -247,6 +247,13 @@ in-place, để một thay đổi layout sau này không âm thầm đổi chi�
 **cuối cùng**. Maintenance window mở suốt cả bước kích hoạt — docroot bị ghi đè
 trong lúc đang được phục vụ, nên không có thời điểm nào để mà khéo léo.
 
+Vì docroot là thư mục thật chứ không phải symlink, những bước tác động lên ứng dụng
+đang được phục vụ chạy **ngay tại đó**: `app:cache:flush` xoá `var/cache` và
+`var/page_cache` của docroot sau bước kích hoạt, và các bước worker của Magento cũng
+theo quy tắc đó (`cron:install` nếu không sẽ lên lịch cho thư mục release). Thư mục
+release không phải là ứng dụng đang được phục vụ, và cache bị xoá ở đó là cache không
+ai đọc.
+
 **Diễn tập.** Sandbox dựng được đúng hình dạng này:
 
 ```bash

@@ -61,8 +61,12 @@ func DeployRecipe() deploy.Recipe {
 		`cd {{release_path}} && `+wordpressWpGuard+` wp core update-db; else `+wordpressPHPLoad+
 			`require ABSPATH . "wp-admin/includes/upgrade.php"; wp_upgrade();'; fi`)
 
+	// `wp rewrite flush --hard` rewrites `.htaccess` in the directory it runs
+	// from, and that file belongs to the docroot the web server serves: with an
+	// in-place target the release is a different directory, so a flush there
+	// leaves the served rules stale.
 	fill(deploy.TaskAppCacheFlush, "flush the object cache and the rewrite rules",
-		`cd {{release_path}} && `+wordpressWpGuard+` wp cache flush && wp rewrite flush --hard; else `+wordpressPHPLoad+
+		`cd {{current_path}} && `+wordpressWpGuard+` wp cache flush && wp rewrite flush --hard; else `+wordpressPHPLoad+
 			`wp_cache_flush(); flush_rewrite_rules(true);'; fi`)
 
 	// Maintenance is written to the application the web server is serving. See

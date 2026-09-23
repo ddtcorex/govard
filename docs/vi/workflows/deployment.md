@@ -236,7 +236,13 @@ hình của ứng dụng đã cài:
 
 Không cache của framework nào thuộc về artifact, và không recipe nào ở đây đặt được
 nó vào đó: `app:cache:flush` là bước thuộc giai đoạn publish ở cả bốn recipe, nên nó
-luôn chạy trên target — nơi môi trường mà cache "nướng" vào thực sự tồn tại.
+luôn chạy trên target — nơi môi trường mà cache "nướng" vào thực sự tồn tại. Nó chạy
+trên **ứng dụng đang được phục vụ** — <span v-pre>`{{current_path}}`</span> — chứ
+không phải release đang được build: với symlink thì sau khi activate hai đường dẫn là
+một, còn docroot in-place là một thư mục thật riêng biệt, và flush trong release sẽ
+xoá đúng cái cache không ai đọc. Các bước worker của Magento cũng theo quy tắc đó, vì
+`cron:install` ghi đường dẫn
+tuyệt đối của ứng dụng vào crontab.
 
 ### Những bước các recipe này để trống
 
@@ -330,6 +336,26 @@ deploy:
 
 ### Ghi chú riêng của từng framework
 
+**Magento.** Cache flush và các bước worker tác động lên ứng dụng đang được phục vụ:
+`cron:remove`/`cron:install` và `queue:consumers:stop`/`:restart` ghi state mà ứng
+dụng đang chạy đọc, còn `cron:install` ghi một đường dẫn tuyệt đối. Việc chuyển đó có
+một hệ quả cần kiểm tra ở target đã từng deploy với `worker_control: true`. Magento
+khoá block crontab theo install root (`#~ MAGENTO START <sha256(install root)>`), và
+`cron:remove` chỉ xoá block có hash khớp với thư mục nó chạy trong đó. Các release
+trước chạy cả hai bước trong thư mục release, nên target đó tích **một block cho mỗi
+release** — mỗi block chạy `cron:run` mỗi phút và trỏ vào thư mục mà `deploy:cleanup`
+sẽ dọn. Từ release này cả hai bước chạy trên docroot, nên block ổn định và không tích
+thêm nữa, nhưng các block cũ vẫn còn. Kiểm tra một lần:
+
+```bash
+crontab -l | grep -A1 '#~ MAGENTO'   # một block cho mỗi install root trong lịch sử
+```
+
+Giữ block có dòng lệnh nêu docroot và xoá các block còn lại (`crontab -e`); lần deploy
+kế tiếp sẽ ghi block khoá theo docroot. Block đã nêu docroot từ trước — kể cả do tool
+khác cài — không cần làm gì: đó chính là block mà `cron:remove` chạy trong đó, nên nó
+được xoá và ghi lại như cũ.
+
 **Laravel.** `storage` được share chứ không chỉ ghi được, vì cờ maintenance nằm ở
 `storage/framework/down`: thư mục share là thứ mang nó qua cú swap release. Cache
 của framework được dựng trong `app:cache:flush`, ở target, không bao giờ lúc build —
@@ -348,7 +374,10 @@ target với `--relative` (link nó ghi sau đó resolve được từ bất k�
 docroot, đúng thứ deploy in-place cần). `doctrine:migrations:migrate` nhận
 `--allow-no-migration`, vì dự án có thư mục migrations rỗng là dự án khoẻ mạnh.
 `var/cache` **không** được share: container đã compile thuộc về một release và một
-environment. `symfony_env` (mặc định `prod`) quyết định environment mà deploy chạy
+environment. Bước pause Messenger chạy trên ứng dụng đang được phục vụ vì cùng lý do:
+`messenger:stop-workers` ghi tín hiệu vào một cache pool (`cache.app`, mặc định là
+filesystem adapter dưới `var/cache/<env>`), thứ không release nào share — chạy từ
+release thì tín hiệu nằm ở nơi các consumer đang chạy không bao giờ đọc. `symfony_env` (mặc định `prod`) quyết định environment mà deploy chạy
 dưới, vì `.env` được commit ghi `APP_ENV=dev` là mặc định phát triển chứ không phải
 chỉ thị cho production; giá trị này không được validate, nên gõ sai sẽ dựng sai thư
 mục cache. Check `app` ưu tiên `dbal:run-sql` và lùi về `doctrine:query:sql`, chọn
@@ -723,8 +752,9 @@ deploy ngay trước khi thư mục release tồn tại nếu thiếu nó.
 
 ### Cache, opcache và cú swap symlink
 
-Release flush cache của ứng dụng ngay trong pipeline, nên release mới không bao giờ
-phục vụ cache do code cũ dựng. Thứ mà flush cache không chạm tới là trạng thái của
+Cache của ứng dụng đang được phục vụ mới là thứ bị flush trong pipeline — docroot với
+target in-place, còn với symlink là release vừa trở thành `current` — nên release mới
+không bao giờ phục vụ cache do code cũ dựng. Thứ mà flush cache không chạm tới là trạng thái của
 chính PHP: sau cú swap, một worker đã resolve `current` có thể vẫn giữ release cũ
 trong `realpath_cache` và file đã compile trong opcache tới `realpath_cache_ttl`.
 Đó là cách một deploy trông thành công mà vẫn phục vụ code của release trước.
