@@ -1098,6 +1098,17 @@ continues the newest unfinished release instead of starting a new one.
 `--from <task>` starts at a named task or hook, and `govard deploy unlock`
 releases a lock a failed run left behind.
 
+One failure carries no evidence in its exit code. **Exit 255 from the SSH
+transport** is what govard sees when the connection drops mid-step, and a remote
+command that itself exits 255 — an `ssh` or a `git` over ssh inside a step — is
+indistinguishable from it. govard then spends up to 20 seconds trying to stop the
+step's remote process group, and finds nothing to stop when the step had already
+ended on its own. The hint therefore names the ambiguity instead of claiming a
+clean failure: the step may still be running, or it may have died midway. **Check
+the target before resuming** — `govard deploy status <remote>` — because
+`--resume` re-runs the failed step, and resuming into an unknown half-run is how
+a migration that died mid-way becomes a broken one.
+
 Two rules keep those entry points honest. `--from` is only accepted together with
 `--resume`: a run that starts after `deploy:release` has no release number, and
 `{{release_path}}` would then be the directory that holds every release rather

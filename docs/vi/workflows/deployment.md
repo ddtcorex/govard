@@ -1039,6 +1039,16 @@ lock, vì target có thể đang dở dang, và đường đi tiếp là `govard
 `--from <task>` bắt đầu từ một task hoặc hook chỉ định, và `govard deploy unlock`
 giải phóng lock do lần lỗi để lại.
 
+Có một kiểu lỗi mà exit code không hề chứng minh được gì. **Exit 255 từ transport
+SSH** là thứ govard thấy khi kết nối đứt giữa bước, và một lệnh remote tự exit 255
+— một `ssh` hay `git` qua ssh bên trong bước — không thể phân biệt với nó. Khi đó
+govard dành tối đa 20 giây để cố dừng process group của bước trên target, và không
+tìm thấy gì để dừng nếu bước đã tự kết thúc. Vì vậy hint nói rõ sự mơ hồ thay vì
+tuyên bố một lần lỗi sạch sẽ: bước đó có thể vẫn đang chạy, hoặc đã chết giữa
+đường. Hãy **kiểm tra target trước khi resume** — `govard deploy status <remote>` —
+vì `--resume` chạy lại đúng bước đã lỗi, và resume vào một trạng thái nửa vời chưa
+biết chính là cách một migration chết giữa đường trở thành một migration hỏng.
+
 Hai luật giữ cho các đường recovery này trung thực. `--from` chỉ được chấp nhận
 cùng với `--resume`: run bắt đầu sau `deploy:release` không có số release, và
 `{{release_path}}` khi đó là thư mục chứa mọi release chứ không phải một release.

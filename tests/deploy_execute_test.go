@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -759,5 +760,44 @@ func TestRecoveryHintWarnsBeforeResumingAfterADroppedConnection(t *testing.T) {
 	}
 	if !strings.Contains(hint, "--resume") {
 		t.Errorf("the hint must still name the recovery command, got %q", hint)
+	}
+}
+
+// droppedRunner is the transport dying under a step: ssh exits 255 and nothing
+// has told the remote group to stop.
+type droppedRunner struct{}
+
+func (droppedRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
+	return deploy.Result{ExitCode: 255}, fmt.Errorf("%w: command failed (exit 255): %s",
+		deploy.ErrConnectionMayHaveDropped, command)
+}
+
+// The hint above is only worth its words if the executor actually reads the
+// sentinel: it has to survive the step's error wrapping into the outcome, or the
+// operator gets the generic "the lock was kept, continue with --resume" text and
+// resumes into a step that may still be running. Found live: killing sshd
+// mid-step produced exactly that.
+func TestExecutorRecordsADroppedConnectionInTheOutcome(t *testing.T) {
+	host, plan := executorForTest(t, []deploy.Task{
+		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "sleep 300 # dropped-connection"},
+	})
+
+	outcome, err := deploy.NewExecutor(host.WithRunner(droppedRunner{}), deploy.Options{CommandTimeout: time.Minute}, io.Discard).Run(
+		context.Background(), plan, deploy.NewVars(), deploy.NewReleaseForTest("1", "abc", "local"))
+	if err == nil {
+		t.Fatal("a step whose transport died must fail the run")
+	}
+	if !outcome.ConnectionMayHaveDropped {
+		t.Fatal("the outcome must record that the connection may have dropped, or the hint cannot")
+	}
+	if !outcome.LockHeld {
+		t.Fatal("a publish-stage failure keeps the lock, which the hint is then wrong about")
+	}
+	hint := deploy.RecoveryHint("staging", outcome)
+	if !strings.Contains(hint, "may have dropped") {
+		t.Fatalf("the printed hint must be the dropped-connection one, got %q", hint)
+	}
+	if !strings.Contains(hint, "deploy unlock") {
+		t.Errorf("the hint must offer the lock release, got %q", hint)
 	}
 }
