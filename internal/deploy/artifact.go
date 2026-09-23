@@ -474,11 +474,7 @@ func buildStepTimeout(opts Options) time.Duration {
 // probeLocalPHP records the PHP the artifact was built for. It is what the
 // deploy job compares the target against without needing PHP of its own.
 func probeLocalPHP(ctx context.Context, runner Runner, opts Options, workDir string) string {
-	phpBin := settingsString(opts.Settings, "php_bin")
-	if phpBin == "" {
-		phpBin = "php"
-	}
-	result, err := runner.Run(ctx, phpBin+" -r 'echo PHP_VERSION;'", RunOptions{Dir: workDir, Timeout: shortCommandTimeout})
+	result, err := runner.Run(ctx, CommandWords(opts.Settings, "php_bin", "php")+" -r 'echo PHP_VERSION;'", RunOptions{Dir: workDir, Timeout: shortCommandTimeout})
 	if err != nil {
 		return ""
 	}

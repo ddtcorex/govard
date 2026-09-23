@@ -207,6 +207,11 @@ func validateSettingValue(key string, setting Setting, value any) error {
 		if _, ok := settingStringListValue(value); !ok {
 			return describe("a list of strings")
 		}
+		if key == "sandbox_packages" {
+			if entry, bad := sandboxPackageProblem(value); bad {
+				return fmt.Errorf("%w: deploy.settings.sandbox_packages has %q, which is not a package name; the value lands in a Dockerfile RUN line, where a newline cannot be quoted away", ErrInvalidConfiguration, entry)
+			}
+		}
 		return nil
 	case SettingStringListMap:
 		mapped, ok := value.(map[string]any)
@@ -225,6 +230,17 @@ func validateSettingValue(key string, setting Setting, value any) error {
 		}
 		return describe("a command line")
 	case SettingArgs:
+		// A list contributes one *argument* per entry, so an entry holding two
+		// words cannot be what the author meant: it worked by accident while the
+		// elements were joined raw, and it now renders as one quoted word. Refuse
+		// it at resolve time (exit 4) with the fix, rather than letting the
+		// application receive one quoted word where it expects two arguments. The string form
+		// stays verbatim, as documented, for a value that really is several
+		// words.
+		if entry, found := argsElementWithWhitespace(value); found {
+			return fmt.Errorf("%w: deploy.settings.%s has the list entry %q with a space in it; a list contributes one argument per entry — write it as separate entries, or use the string form to pass a multi-word value verbatim",
+				ErrInvalidConfiguration, key, entry)
+		}
 		if settingArgsValue(value) {
 			return nil
 		}
@@ -261,6 +277,78 @@ func settingStringListValue(value any) ([]string, bool) {
 
 // settingArgsValue reports whether a value is one RenderSettingArgs can turn into
 // an argument list: a raw string, a list of strings, or a map of lists.
+// sandboxPackageProblem reports the first sandbox package that cannot be a
+// Debian package name. The value is rendered into a Dockerfile RUN line, where a
+// newline cannot be quoted away, so it is refused as a configuration error rather
+// than escaped and hoped for.
+func sandboxPackageProblem(value any) (string, bool) {
+	words, ok := settingStringListValue(value)
+	if !ok {
+		return "", false
+	}
+	for _, word := range words {
+		if strings.ContainsAny(word, "\n\r") {
+			return word, true
+		}
+	}
+	return "", false
+}
+
+// argsElementWithWhitespace reports the first list or map element that holds
+// whitespace, which is never one argument. The string form is not inspected: it
+// is the documented way to pass a multi-word value verbatim.
+func argsElementWithWhitespace(value any) (string, bool) {
+	inspect := func(word string) (string, bool) {
+		if strings.ContainsAny(word, " \t\n") {
+			return word, true
+		}
+		return "", false
+	}
+	switch typed := value.(type) {
+	case []string:
+		for _, word := range typed {
+			if entry, found := inspect(word); found {
+				return entry, true
+			}
+		}
+	case []any:
+		for _, raw := range typed {
+			if word, ok := raw.(string); ok {
+				if entry, found := inspect(word); found {
+					return entry, true
+				}
+			}
+		}
+	case map[string][]string:
+		for key, words := range typed {
+			if entry, found := inspect(key); found {
+				return entry, true
+			}
+			for _, word := range words {
+				if entry, found := inspect(word); found {
+					return entry, true
+				}
+			}
+		}
+	case map[string]any:
+		for key, raw := range typed {
+			if entry, found := inspect(key); found {
+				return entry, true
+			}
+			words, ok := settingStringListValue(raw)
+			if !ok {
+				continue
+			}
+			for _, word := range words {
+				if entry, found := inspect(word); found {
+					return entry, true
+				}
+			}
+		}
+	}
+	return "", false
+}
+
 func settingArgsValue(value any) bool {
 	if _, ok := value.(string); ok {
 		return true

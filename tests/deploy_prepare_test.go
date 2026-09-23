@@ -989,3 +989,38 @@ func TestCheckWarnsWhenTheVerifyURLDoesNotAnswer2xx(t *testing.T) {
 		}
 	}
 }
+
+// A lock whose owner cannot be recorded must not stay behind: mkdir is the atomic
+// acquisition, so that directory is ours, and a caller that returns an error
+// without releasing it leaves the next deploy refused for a run that never began.
+func TestLockIsReleasedWhenTheOwnerCannotBeRecorded(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	failing := ownerWriteFailsRunner{base: host.Runner()}
+	host = host.WithRunner(failing)
+
+	sc := deploy.StepContextForTest(host, deploy.Options{})
+	err := deploy.CoreLock(context.Background(), sc)
+	if err == nil {
+		t.Fatal("a lock whose owner cannot be recorded must fail the step")
+	}
+	if !strings.Contains(err.Error(), "released") {
+		t.Errorf("the error must say the lock was released, got: %v", err)
+	}
+	if _, statErr := os.Stat(host.LockPath()); !os.IsNotExist(statErr) {
+		t.Fatalf("the lock directory survived a failed acquisition: %v", statErr)
+	}
+}
+
+// ownerWriteFailsRunner fails the command that records the lock owner and runs
+// everything else for real.
+type ownerWriteFailsRunner struct {
+	base deploy.Runner
+}
+
+func (r ownerWriteFailsRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
+	if strings.HasPrefix(command, "cat > ") && strings.Contains(command, "owner.json") {
+		return deploy.Result{ExitCode: 1, Stderr: "scripted owner write failure"},
+			&deploy.CommandError{Command: command, ExitCode: 1, Stderr: "scripted owner write failure"}
+	}
+	return r.base.Run(ctx, command, opts)
+}

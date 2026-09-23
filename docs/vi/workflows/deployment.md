@@ -83,6 +83,12 @@ remotes:
         url: https://staging.example.com/
 ```
 
+`php_bin` và `composer_bin` là các command word, không phải một từ: `php -d
+memory_limit=-1` và `docker exec app php` chạy được, các probe trong `deploy:check`
+chạy đúng những từ mà recipe chạy, và cú pháp shell trong giá trị trở nên vô hại.
+*Đường dẫn binary* chứa dấu cách không được hỗ trợ — tách theo khoảng trắng không
+phân biệt được nó với một wrapper có argument.
+
 `php_version` là một cổng chặn: `deploy:check` chạy `<php_bin> -r 'echo
 PHP_VERSION;'` trên target và từ chối deploy khi series không khớp, vì release
 build bằng interpreter sai sẽ hỏng muộn hơn và nói ít hơn về lý do. `deploy:check`
@@ -626,7 +632,10 @@ khớp nhau trừ khi dự án nói khác. Lượt frontend dùng `magento_theme
 
 `static_deploy_options` truyền thêm cờ cho mọi lượt — `--no-parent` cho theme có
 theme cha được deploy riêng, `-s standard`, hay `--exclude-theme`. Chuỗi được truyền
-nguyên văn, list thì mỗi entry thành một từ:
+nguyên văn, list thì mỗi entry thành một từ — nên entry chứa dấu cách bị từ chối
+ngay lúc đọc project (hãy viết thành hai entry, hoặc dùng dạng chuỗi). Entry cần
+quote sẽ được quote — `["en_US", "fr_FR; id"]` đến ứng dụng dưới dạng hai argument,
+argument thứ hai vô hại — còn entry bình thường render y như trước:
 
 ```yaml
 deploy:

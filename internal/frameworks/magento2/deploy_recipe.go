@@ -11,9 +11,10 @@ import (
 //
 // Every command enters {{release_path}} first: the pipeline runs each step as a
 // fresh remote command, and only the release directory has the code. The PHP
-// binary comes from {{php_bin}} so a project with a non-default interpreter
-// (a version-specific path, a container wrapper) is honoured without govard
-// knowing about it.
+// binary comes from {{php_bin}} so a project with a non-default interpreter (a
+// version-specific path, a wrapper of several words such as `docker exec app
+// php`) is honoured without govard knowing about it. Shell syntax in the value is
+// quoted, not executed, and a path with a space is not supported.
 func DeployRecipe() deploy.Recipe {
 	recipe := deploy.DefaultRecipe()
 	recipe.ID = "magento2"

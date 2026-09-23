@@ -80,6 +80,17 @@ func (r SSHRunner) Run(ctx context.Context, command string, opts RunOptions) (Re
 	if err == nil {
 		return result, nil
 	}
+	// ssh's own exit code for a failed transport. Nothing signalled the remote
+	// group when the link died — with BatchMode and no pty, sshd sends no SIGHUP —
+	// so the step may still be running, or may have died partway through. The
+	// teardown is harmless for a step that exits 255 by itself: the wrapper
+	// removes its pid file when the step ends, and terminateRemote then finds
+	// nothing. Only a run that was not cancelled has this ambiguity: a cancelled
+	// run already ran the teardown through the process-group hook.
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 255 && ctx.Err() == nil {
+		r.terminateRemote(pidFile)
+		return result, fmt.Errorf("%w: %v", ErrConnectionMayHaveDropped, commandError(ctx, command, result.Stderr, err))
+	}
 	// The operator is told about the step they wrote, not about the two
 	// statements govard wrapped around it to make it interruptible.
 	return result, commandError(ctx, command, result.Stderr, err)

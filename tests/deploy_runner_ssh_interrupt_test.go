@@ -4,6 +4,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -270,4 +271,118 @@ func readSSHLog(t *testing.T) string {
 		t.Fatalf("read the ssh log: %v", err)
 	}
 	return string(raw)
+}
+
+// droppedConnectionSSHRunner is sandboxedSSHRunner for the failure the engine
+// cannot see coming: the stand-in sshd starts the step detached — nothing will
+// signal it — and then exits 255, which is what ssh reports when the transport
+// dies. The teardown is a second connection, so the stand-in runs it normally.
+func droppedConnectionSSHRunner(t *testing.T) (deploy.SSHRunner, string, string) {
+	t.Helper()
+
+	setsid, err := exec.LookPath("setsid")
+	if err != nil {
+		t.Skip("setsid stands in for sshd's session leader and is not available on this host")
+	}
+
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "ssh.log")
+	shimDir := filepath.Join(dir, "bin")
+	shim := filepath.Join(shimDir, "ssh")
+
+	writeFile(t, shim, `#!/bin/sh
+printf '%s\n' "$*" >> "$GOVARD_FAKE_SSH_LOG"
+for last do :; done
+case "$last" in
+  *"$GOVARD_FAKE_SSH_STEP_MARKER"*)
+    # The step's own invocation (the teardown never carries the step's command):
+    # the session leader vanishes with the connection, so the work keeps running
+    # and nothing signals it.
+    `+setsid+` sh -c "$last" &
+    n=0
+    while [ ! -f "$GOVARD_FAKE_SSH_PIDFILE" ] && [ $n -lt 100 ]; do
+      for candidate in /tmp/.govard-deploy-interrupt-*; do
+        [ -f "$candidate" ] && cp "$candidate" "$GOVARD_FAKE_SSH_PIDFILE" && break
+      done
+      sleep 0.05
+      n=$((n+1))
+    done
+    exit 255
+    ;;
+esac
+exec `+setsid+` -w sh -c "$last"
+`)
+	if err := os.Chmod(shim, 0o755); err != nil {
+		t.Fatalf("make the ssh stand-in executable: %v", err)
+	}
+	pidFile := filepath.Join(dir, "work.pid")
+	t.Setenv("GOVARD_FAKE_SSH_LOG", logFile)
+	t.Setenv("GOVARD_FAKE_SSH_PIDFILE", pidFile)
+	t.Setenv("GOVARD_FAKE_SSH_STEP_MARKER", droppedConnectionStep)
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	return deploy.SSHRunner{
+		RemoteName: "sandbox",
+		Config: engine.RemoteConfig{
+			Host: "sandbox.example.com",
+			User: "deploy",
+			Port: 2222,
+		},
+	}, logFile, pidFile
+}
+
+// droppedConnectionStep is the step the dropped-connection stand-in watches for.
+// The teardown's own connection never carries it, which is how the stand-in tells
+// the two apart.
+const droppedConnectionStep = "sleep 60 # dropped-connection-step"
+
+// A step that fails with the transport's exit code may still be running on the
+// target: sshd sent no SIGHUP and nothing signalled the remote group, so the
+// engine tears it down itself and reports the ambiguity instead of a clean
+// failure that invites `--resume` over a half-finished migration.
+func TestADroppedConnectionStopsTheRemoteWork(t *testing.T) {
+	runner, logFile, pidFile := droppedConnectionSSHRunner(t)
+
+	result, err := runner.Run(context.Background(), droppedConnectionStep, deploy.RunOptions{})
+	if !errors.Is(err, deploy.ErrConnectionMayHaveDropped) {
+		t.Fatalf("a 255 exit must be reported as a dropped connection, got %v (stderr %q)", err, result.Stderr)
+	}
+	logged, readErr := os.ReadFile(logFile)
+	if readErr != nil {
+		t.Fatalf("read the ssh log: %v", readErr)
+	}
+	if !strings.Contains(string(logged), "kill -TERM -$p") {
+		t.Fatalf("the teardown must have run before Run returned:\n%s", logged)
+	}
+
+	raw, readErr := os.ReadFile(pidFile)
+	if readErr != nil {
+		t.Fatalf("the stand-in never recorded the remote pid: %v", readErr)
+	}
+	group := strings.TrimSpace(string(raw))
+	if group == "" {
+		t.Fatal("the stand-in recorded an empty pid")
+	}
+	if err := exec.Command("sh", "-c", "kill -0 -"+group+" 2>/dev/null").Run(); err == nil {
+		t.Fatalf("the remote process group %s is still running after the dropped connection", group)
+	}
+}
+
+// A step that exits 255 by itself is indistinguishable from a dead transport, so
+// it gets the same teardown (which finds nothing to kill, because the wrapper
+// removed its record when the step ended) and the same ambiguous error. What it
+// must not do is hang: the teardown is bounded.
+func TestAGenuineExit255IsReportedWithoutHanging(t *testing.T) {
+	runner, _, _ := sandboxedSSHRunner(t, "")
+
+	started := time.Now()
+	_, err := runner.Run(context.Background(), "exit 255", deploy.RunOptions{})
+	elapsed := time.Since(started)
+
+	if !errors.Is(err, deploy.ErrConnectionMayHaveDropped) {
+		t.Fatalf("a 255 exit must be reported as a dropped connection, got %v", err)
+	}
+	if elapsed > 6*time.Second {
+		t.Fatalf("the teardown of a step that had already ended took %s", elapsed)
+	}
 }

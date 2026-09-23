@@ -84,6 +84,12 @@ remotes:
         url: https://staging.example.com/
 ```
 
+`php_bin` and `composer_bin` are command words, not one word: `php -d
+memory_limit=-1` and `docker exec app php` work, the probes in `deploy:check` run
+exactly the words the recipe runs, and shell syntax in the value is inert. A
+*binary path* containing a space is not supported — split words cannot tell it
+from a wrapper with an argument.
+
 `php_version` is a gate: `deploy:check` runs `<php_bin> -r 'echo PHP_VERSION;'` on
 the target and refuses the deploy when the series does not match, because a release
 built by the wrong interpreter fails later and says less about why. `deploy:check`
@@ -668,7 +674,11 @@ two passes agree unless the project says otherwise. The frontend pass uses
 
 `static_deploy_options` passes extra flags to every pass — `--no-parent` for a
 theme whose parent is deployed on its own, `-s standard`, or `--exclude-theme`.
-A string is passed through verbatim and a list contributes one word per entry:
+A string is passed through verbatim and a list contributes one word per entry, so
+an entry holding a space is refused while the project is being read (write two
+entries instead, or use the string form). An entry that needs quoting is quoted —
+`["en_US", "fr_FR; id"]` reaches the application as two arguments, the second one
+inert — and an ordinary entry renders exactly as it always did.
 
 ```yaml
 deploy:

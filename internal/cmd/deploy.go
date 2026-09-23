@@ -193,7 +193,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if options.JSON {
 			writeDeployJSON(cmd, remote, options, release, outcome, runErr)
 		}
-		return fmt.Errorf("%w\n%s", runErr, deploy.RecoveryHint(remote, outcome.LockHeld))
+		return fmt.Errorf("%w\n%s", runErr, deploy.RecoveryHint(remote, outcome))
 	}
 
 	printDeploySummary(cmd, remote, host, options, release, outcome)
