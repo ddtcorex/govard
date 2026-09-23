@@ -45,6 +45,9 @@ type Outcome struct {
 	// onwards it survives, so recovery has to be explicit.
 	LockHeld        bool
 	AlreadyDeployed bool
+	// ConnectionMayHaveDropped reports that a step failed with the SSH
+	// transport's own exit code, so the remote work may still be running.
+	ConnectionMayHaveDropped bool
 }
 
 // LockKeptOnFailure reports whether a failure in this stage must keep the deploy
@@ -74,8 +77,11 @@ func LockKeptOnFailure(stage Stage) bool {
 // One form that is correct for every remote beats a per-remote special case:
 // the hint never has to be kept in step with the command tree, and it reads
 // the same whether the remote is configured or synthetic.
-func RecoveryHint(remote string, lockHeld bool) string {
-	if lockHeld {
+func RecoveryHint(remote string, outcome Outcome) string {
+	if outcome.ConnectionMayHaveDropped {
+		return fmt.Sprintf("exit 255: the SSH connection may have dropped, so the failed step may still be running or may have died midway; check the target with `govard deploy status %s` before `govard deploy --remote %s --resume`, which re-runs the step, or release the lock with `govard deploy unlock %s`", remote, remote, remote)
+	}
+	if outcome.LockHeld {
 		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy --remote %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)
 	}
 	return fmt.Sprintf("nothing live changed and the deploy lock was released; fix the reported error and retry `govard deploy --remote %s`", remote)
@@ -404,6 +410,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			e.record(ctx, release, step, StepFailed, 0, stepErr)
 			release.Status = StatusFailed
 			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
+			outcome.ConnectionMayHaveDropped = errors.Is(stepErr, ErrConnectionMayHaveDropped)
 			outcome.LockHeld = LockKeptOnFailure(step.Stage)
 			if !outcome.LockHeld {
 				e.releaseLockAfterFailure(ctx, release)

@@ -218,3 +218,32 @@ func TestSettingsBecomeVariablesWhateverTheirShape(t *testing.T) {
 		t.Fatalf("a rendered argument list was quoted: %q", expanded)
 	}
 }
+
+// A list or map element reaches the shell as one word. A value that carries a
+// metacharacter used to be joined raw — `["en_US", "fr_FR; id"]` ran `id` — while
+// a normal value must render byte for byte as before, which is what the rows
+// above this test pin.
+func TestRecipeArgumentSpecsQuoteAnUnsafeListElement(t *testing.T) {
+	list := deploy.ArgsSpec{Flag: "--language"}
+	got := deploy.RenderSettingArgsForTest(list, []string{"en_US", "fr_FR; id"})
+	if got != "--language en_US --language 'fr_FR; id'" {
+		t.Fatalf("list rendering = %q", got)
+	}
+
+	groups := deploy.ArgsSpec{Flag: "-t"}
+	got = deploy.RenderSettingArgsForTest(groups, map[string][]string{"Vendor/x;id": {"en_US"}})
+	if !strings.Contains(got, `'Vendor/x;id'`) {
+		t.Fatalf("a map key with a metacharacter must be quoted, got %q", got)
+	}
+
+	values := deploy.ArgsSpec{Flag: "-t", ValueFlag: "--language"}
+	got = deploy.RenderSettingArgsForTest(values, map[string][]string{"Vendor/x": {"$(id)"}})
+	if !strings.Contains(got, `'$(id)'`) {
+		t.Fatalf("a map value with a command substitution must be quoted, got %q", got)
+	}
+
+	// The safe set stays unquoted, so a theme path keeps rendering as it did.
+	if got := deploy.RenderSettingArgsForTest(groups, map[string][]string{"Magento/luma": {"en_US"}}); strings.Contains(got, "'") {
+		t.Fatalf("a safe value must not be quoted, got %q", got)
+	}
+}

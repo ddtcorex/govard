@@ -171,11 +171,11 @@ func TestLockPolicyFollowsTheFailureStage(t *testing.T) {
 // The printed recovery hint has to name the command that actually works: a run
 // holding the lock cannot simply be retried, because the retry is refused.
 func TestRecoveryHintNamesTheCommandThatWorks(t *testing.T) {
-	resumed := deploy.RecoveryHint("production", true)
+	resumed := deploy.RecoveryHint("production", deploy.Outcome{LockHeld: true})
 	if !strings.Contains(resumed, "--resume") {
 		t.Errorf("a kept lock must be recovered with --resume, got %q", resumed)
 	}
-	retried := deploy.RecoveryHint("production", false)
+	retried := deploy.RecoveryHint("production", deploy.Outcome{})
 	if strings.Contains(retried, "--resume") {
 		t.Errorf("a released lock needs a plain retry, not a resume, got %q", retried)
 	}
@@ -189,9 +189,9 @@ func TestRecoveryHintNamesTheCommandThatWorks(t *testing.T) {
 // asserts the sandbox case stays in step with that convention.
 func TestRecoveryHintNamesTheRemoteUnambiguously(t *testing.T) {
 	for _, hint := range []string{
-		deploy.RecoveryHint(deploy.SandboxRemoteName, true),
-		deploy.RecoveryHint(deploy.SandboxRemoteName, false),
-		deploy.RecoveryHint("production", false),
+		deploy.RecoveryHint(deploy.SandboxRemoteName, deploy.Outcome{LockHeld: true}),
+		deploy.RecoveryHint(deploy.SandboxRemoteName, deploy.Outcome{}),
+		deploy.RecoveryHint("production", deploy.Outcome{}),
 	} {
 		for _, command := range []string{
 			"`govard deploy " + deploy.SandboxRemoteName + " ",
@@ -203,7 +203,7 @@ func TestRecoveryHintNamesTheRemoteUnambiguously(t *testing.T) {
 			}
 		}
 	}
-	retried := deploy.RecoveryHint("production", false)
+	retried := deploy.RecoveryHint("production", deploy.Outcome{})
 	if !strings.Contains(retried, "`govard deploy --remote production`") {
 		t.Errorf("the hint must name the retry with the flag form, got %q", retried)
 	}
@@ -742,5 +742,22 @@ func TestNoComposerAuthLeavesTheCommandAlone(t *testing.T) {
 	}
 	if runner.options[index].Stdin != "" {
 		t.Fatalf("without credentials nothing may be piped, got %q", runner.options[index].Stdin)
+	}
+}
+
+// A step that failed with the SSH transport's own exit code may still be running
+// on the target: sshd sent no SIGHUP, nothing signalled the remote group, and the
+// exit code cannot be told apart from a command that exits 255 by itself. The
+// hint has to name that ambiguity before suggesting --resume, which re-runs the
+// step.
+func TestRecoveryHintWarnsBeforeResumingAfterADroppedConnection(t *testing.T) {
+	hint := deploy.RecoveryHint("production", deploy.Outcome{LockHeld: true, ConnectionMayHaveDropped: true})
+	for _, want := range []string{"255", "may have dropped", "may still be running", "deploy status production"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("the hint must mention %q, got %q", want, hint)
+		}
+	}
+	if !strings.Contains(hint, "--resume") {
+		t.Errorf("the hint must still name the recovery command, got %q", hint)
 	}
 }

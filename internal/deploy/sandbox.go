@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"govard/internal/conventions"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -619,10 +620,12 @@ func mapKeys(files map[string]string) []string {
 }
 
 // quoteWords single-quotes every word for the shell line inside the Dockerfile.
+// The quoting escapes, rather than merely wrapping: a word holding an apostrophe
+// closed the quote and put the rest of the value into the RUN line.
 func quoteWords(words []string) []string {
 	quoted := make([]string, 0, len(words))
 	for _, word := range words {
-		quoted = append(quoted, "'"+word+"'")
+		quoted = append(quoted, conventions.ShellQuote(word))
 	}
 	return quoted
 }

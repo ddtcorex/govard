@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -67,5 +68,36 @@ func TestSandboxSettingsAreDeclaredByTheEngine(t *testing.T) {
 	}
 	if err := deploy.ValidateSettings(recipe, map[string]any{"sandbox_servcies": []string{"postgresql"}}); err == nil {
 		t.Fatal("a misspelled sandbox setting must be refused")
+	}
+}
+
+// A package word lands in a Dockerfile RUN line, so it has to be escaped rather
+// than merely wrapped: a word with an apostrophe used to close the quote and put
+// the rest of the value into the line.
+func TestSandboxDockerfileEscapesAQuoteInAPackageWord(t *testing.T) {
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{
+		Profile:      deploy.SandboxProfilePHP,
+		PHP:          "8.4",
+		Requirements: deploy.SandboxRequirements{Packages: []string{"it's"}},
+	})
+	if err != nil {
+		t.Fatalf("render the Dockerfile: %v", err)
+	}
+	if strings.Contains(dockerfile, "'it's'") {
+		t.Fatalf("the package word was wrapped without escaping:\n%s", dockerfile)
+	}
+}
+
+// A newline cannot be quoted away inside a Dockerfile RUN line, so it is refused
+// as a configuration error while the project is still being read.
+func TestSandboxPackagesRefuseANewline(t *testing.T) {
+	err := deploy.ValidateSettings(deploy.DefaultRecipe(), map[string]any{
+		"sandbox_packages": []string{"a\nRUN id"},
+	})
+	if !errors.Is(err, deploy.ErrInvalidConfiguration) {
+		t.Fatalf("err = %v, want ErrInvalidConfiguration", err)
+	}
+	if !strings.Contains(err.Error(), "sandbox_packages") {
+		t.Fatalf("the refusal must name the setting, got %q", err.Error())
 	}
 }

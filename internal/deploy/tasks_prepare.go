@@ -20,6 +20,11 @@ import (
 var (
 	// ErrLockHeld means another govard deploy holds the lock.
 	ErrLockHeld = errors.New("deploy lock is held")
+	// ErrConnectionMayHaveDropped means the SSH transport failed with its own exit
+	// code (255): the remote work may still be running, or may have died midway.
+	// It cannot be told apart from a command that exits 255 by itself, so the
+	// recovery hint names the ambiguity instead of promising a clean failure.
+	ErrConnectionMayHaveDropped = errors.New("the SSH connection may have dropped")
 	// ErrDeployerLockHeld means the other deploy tool is mid-deploy. Govard
 	// refuses to run rather than race it on the same release directories.
 	ErrDeployerLockHeld = errors.New("another deploy tool holds its lock")
@@ -287,7 +292,7 @@ func checkPHPVersion(ctx context.Context, sc *StepContext) error {
 	if phpBin == "" {
 		return nil
 	}
-	result, err := sc.Runner.Run(ctx, phpBin+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
+	result, err := sc.Runner.Run(ctx, CommandWords(sc.Opts.Settings, "php_bin", "php")+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 	if err != nil {
 		return fmt.Errorf("php is not available as %q on the target: %w", phpBin, err)
 	}
@@ -359,11 +364,7 @@ func checkArtifactParity(ctx context.Context, sc *StepContext) error {
 // probeTargetPHP asks the target which PHP it runs. The binary is the project's
 // configured one, or `php` — the same default the recipe commands expand.
 func probeTargetPHP(ctx context.Context, sc *StepContext) (string, error) {
-	phpBin := settingsString(sc.Opts.Settings, "php_bin")
-	if phpBin == "" {
-		phpBin = "php"
-	}
-	result, err := sc.Runner.Run(ctx, phpBin+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
+	result, err := sc.Runner.Run(ctx, CommandWords(sc.Opts.Settings, "php_bin", "php")+" -r 'echo PHP_VERSION;'", RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 	if err != nil {
 		return "", err
 	}
@@ -421,7 +422,16 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 	)
 	ownerCommand := fmt.Sprintf("cat > %s", Shell(host.LockOwnerPath()))
 	if _, err := sc.Runner.Run(ctx, ownerCommand, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live, Stdin: owner}); err != nil {
-		return fmt.Errorf("record lock owner: %w", err)
+		// The mkdir above is atomic, so a lock with no owner yet is *ours*: a
+		// caller that returns without releasing it leaves the next deploy
+		// refused for a run that never started. The cleanup runs on a context
+		// that cannot be cancelled, because the reason the write failed may be
+		// the very cancellation that would skip it.
+		cleanup := context.WithoutCancel(ctx)
+		if _, cleanupErr := sc.Runner.Run(cleanup, "rm -rf "+Shell(host.LockPath()), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); cleanupErr != nil {
+			return fmt.Errorf("record lock owner: %w (the lock at %s could not be released either, run `govard deploy unlock`: %v)", err, host.LockPath(), cleanupErr)
+		}
+		return fmt.Errorf("record lock owner (the lock was released): %w", err)
 	}
 	return nil
 }

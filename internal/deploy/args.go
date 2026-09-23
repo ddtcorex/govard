@@ -73,7 +73,7 @@ func RenderSettingArgs(spec ArgsSpec, value any) string {
 	words := argWords(value)
 	parts := make([]string, 0, len(words))
 	for _, word := range words {
-		parts = append(parts, flagWords(spec.Flag, []string{word}))
+		parts = append(parts, flagWords(spec.Flag, []string{quoteIfNeeded(word)}))
 	}
 	return strings.Join(parts, " ")
 }
@@ -90,17 +90,23 @@ func renderArgGroups(spec ArgsSpec, groups map[string][]string) string {
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if spec.ValueFlag == "" {
-			parts = append(parts, flagWords(spec.Flag, append([]string{key}, groups[key]...)))
+			// No capacity arithmetic: `len(...) + 1` is a size computation
+			// CodeQL flags as overflow-prone, and the slice is tiny.
+			group := []string{quoteIfNeeded(key)}
+			for _, value := range groups[key] {
+				group = append(group, quoteIfNeeded(value))
+			}
+			parts = append(parts, flagWords(spec.Flag, group))
 			continue
 		}
-		parts = append(parts, flagWords(spec.Flag, []string{key}))
+		parts = append(parts, flagWords(spec.Flag, []string{quoteIfNeeded(key)}))
 	}
 	if spec.ValueFlag == "" {
 		return strings.Join(parts, " ")
 	}
 
 	for _, value := range distinctGroupValues(groups) {
-		parts = append(parts, flagWords(spec.ValueFlag, []string{value}))
+		parts = append(parts, flagWords(spec.ValueFlag, []string{quoteIfNeeded(value)}))
 	}
 	return strings.Join(parts, " ")
 }
@@ -132,6 +138,48 @@ func shellQuotedWords(words []string) string {
 		quoted = append(quoted, conventions.ShellQuote(word))
 	}
 	return strings.Join(quoted, " ")
+}
+
+// CommandWords renders a configured command setting — `php_bin`, `composer_bin` —
+// as shell-quoted words: a wrapper of several words (`php -d memory_limit=-1`,
+// `docker exec app php`) is honoured, and shell syntax in the value is inert
+// rather than executable. One helper is used by the variables a recipe expands
+// *and* by the probes that check the same binary, so `deploy:check` answers for
+// exactly the command the recipe runs.
+//
+// A path containing a space is not supported: split words cannot tell it from a
+// wrapper with an argument.
+func CommandWords(settings map[string]any, key, fallback string) string {
+	raw := fallback
+	if entry, ok := settings[key].(string); ok && strings.TrimSpace(entry) != "" {
+		raw = entry
+	}
+	return shellQuotedWords(strings.Fields(raw))
+}
+
+// quoteIfNeeded quotes an argument only when it holds a character the shell would
+// interpret. A locale, a theme path or a flag renders byte for byte as it always
+// did, so no plan output churns; a value that came from the project and carries a
+// metacharacter becomes inert instead of becoming a second command.
+func quoteIfNeeded(word string) string {
+	if word == "" || isSafeArgument(word) {
+		return word
+	}
+	return conventions.ShellQuote(word)
+}
+
+// isSafeArgument reports whether every byte is one the shell passes through
+// unchanged. The set is the conservative one: anything else is quoted.
+func isSafeArgument(word string) bool {
+	for _, char := range word {
+		switch {
+		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z', char >= '0' && char <= '9':
+		case strings.ContainsRune("_@%+=:,./-", char):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func flagWords(flag string, words []string) string {

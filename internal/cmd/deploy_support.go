@@ -397,16 +397,12 @@ func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
 		Set("tag", options.Tag).
 		Set("verify_url", options.VerifyURL)
 
-	if entry, ok := options.Settings["php_bin"].(string); ok {
-		vars = vars.Set("php_bin", entry)
-	} else {
-		vars = vars.Set("php_bin", "php")
-	}
-	if entry, ok := options.Settings["composer_bin"].(string); ok {
-		vars = vars.Set("composer_bin", entry)
-	} else {
-		vars = vars.Set("composer_bin", "composer")
-	}
+	// SetRaw with the words already quoted: a configured wrapper of several
+	// words has to reach the command as several words, and a value carrying shell
+	// syntax must stay inert. The probes render the same value through the same
+	// helper, so `deploy:check` tests the binary the recipe runs.
+	vars = vars.SetRaw("php_bin", deploy.CommandWords(options.Settings, "php_bin", "php"))
+	vars = vars.SetRaw("composer_bin", deploy.CommandWords(options.Settings, "composer_bin", "composer"))
 	for key, value := range options.Settings {
 		if text, ok := deploy.SettingText(value); ok {
 			vars = vars.Set("settings."+key, text)

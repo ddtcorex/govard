@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"govard/internal/frameworks/magento2"
@@ -941,5 +942,91 @@ remotes:
 				t.Fatalf("error = %q, want it to name the nested replacement %q", err, want)
 			}
 		})
+	}
+}
+
+// A list contributes one argument per entry, so an entry with a space in it
+// cannot mean what its author meant. It was joined raw before, which is how
+// `["--exclude-theme Magento/luma"]` became two words on the command line; now it
+// renders as one quoted word, and the configuration is refused with the fix. The
+// string form is the documented way to pass a multi-word value verbatim.
+func TestValidateSettingsRefusesATwoWordListEntry(t *testing.T) {
+	err := deploy.ValidateSettings(magento2.DeployRecipe(), map[string]any{
+		"static_deploy_options": []string{"--exclude-theme Magento/luma"},
+	})
+	if !errors.Is(err, deploy.ErrInvalidConfiguration) {
+		t.Fatalf("err = %v, want ErrInvalidConfiguration", err)
+	}
+	for _, want := range []string{"separate entries", "static_deploy_options"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must mention %q, got %q", want, err.Error())
+		}
+	}
+
+	if err := deploy.ValidateSettings(magento2.DeployRecipe(), map[string]any{
+		"static_deploy_options": "--exclude-theme Magento/luma",
+	}); err != nil {
+		t.Fatalf("the string form passes a multi-word value verbatim: %v", err)
+	}
+
+	// The normal shape keeps working, including a map key with a slash.
+	if err := deploy.ValidateSettings(magento2.DeployRecipe(), map[string]any{
+		"magento_themes": map[string][]string{"Magento/luma": {"en_US"}},
+	}); err != nil {
+		t.Fatalf("a theme map must validate: %v", err)
+	}
+}
+
+// `php_bin` and `composer_bin` are command words, not one word: a documented
+// wrapper (`php -d memory_limit=-1`, `docker exec app php`) has to reach the
+// command as several words, and shell syntax in the value must stay inert rather
+// than executable. One helper renders it for the recipe *and* for the probes, so
+// `deploy:check` answers for the command the recipe will actually run.
+func TestDeployVarsHonourAPHPWrapper(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	options := deploy.Options{Settings: map[string]any{"php_bin": "php -d memory_limit=-1"}}
+	vars := cmd.DeployVarsForTest(host, options)
+
+	expanded, err := vars.Expand("{{php_bin}} -v")
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if expanded != "'php' '-d' 'memory_limit=-1' -v" {
+		t.Fatalf("php_bin expanded to %q, want the words quoted one by one", expanded)
+	}
+
+	// The rendered words have to reach a real program as words. The wrapper here
+	// is one whose contract a test can check without PHP installed: `/bin/sh -c`
+	// followed by the words of the command.
+	marker := filepath.Join(t.TempDir(), "wrapper-ran")
+	shell := cmd.DeployVarsForTest(host, deploy.Options{Settings: map[string]any{"php_bin": "/bin/sh -c"}})
+	command, err := shell.Expand("{{php_bin}} 'touch " + marker + "'")
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
+		t.Fatalf("the rendered wrapper must execute: %v\n%s", err, command)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the wrapper did not run: %v", err)
+	}
+}
+
+// A value that tries to add a command of its own is inert in the probes too: this
+// is the check that used to interpolate `php_bin` raw.
+func TestPHPProbeQuotesTheConfiguredBinary(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "probe-injected")
+	origin, _ := seedGitRepo(t)
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Repository: origin,
+		Branch:     "main",
+		Publish:    deploy.PublishSymlink,
+		Settings:   map[string]any{"php_bin": "php; touch " + marker},
+	})
+	_ = deploy.CoreCheck(context.Background(), sc)
+
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a php_bin value must not be able to run a command of its own")
 	}
 }
