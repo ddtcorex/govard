@@ -50,6 +50,25 @@ type Outcome struct {
 	ConnectionMayHaveDropped bool
 }
 
+// noteTransportFailure records a failure whose error may be the SSH transport's
+// own exit code (255) rather than the command's.
+//
+// It is the only evidence that the work may still be running on the target: sshd
+// sends no SIGHUP with BatchMode and no pty, so nothing has signalled the remote
+// process group, and the exit code cannot be told apart from a command that exits
+// 255 by itself. Every failure that can carry a runner error goes through here,
+// including the ones that are not a step's — a lock that cannot be acquired over
+// a dead connection is just as ambiguous about whether the lock exists.
+//
+// Found live: killing sshd mid-step printed the generic "the lock was kept,
+// continue with --resume" hint, because nothing read the sentinel on the path
+// that actually fails.
+func (o *Outcome) noteTransportFailure(err error) {
+	if errors.Is(err, ErrConnectionMayHaveDropped) {
+		o.ConnectionMayHaveDropped = true
+	}
+}
+
 // LockKeptOnFailure reports whether a failure in this stage must keep the deploy
 // lock (spec 7.3).
 //
@@ -283,6 +302,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			Out:     e.out,
 		}
 		if err := CoreLock(ctx, lockCtx); err != nil {
+			// A lock that could not be taken over a dead connection may or may
+			// not exist on the target, which is exactly what the hint says.
+			outcome.noteTransportFailure(err)
 			return e.finish(outcome, started), fmt.Errorf("acquire the deploy lock: %w", err)
 		}
 		e.lockHeld = true
@@ -346,6 +368,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			if err != nil {
 				release.Status = StatusFailed
 				_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
+				outcome.noteTransportFailure(err)
 				outcome.LockHeld = LockKeptOnFailure(step.Stage)
 				if !outcome.LockHeld {
 					e.releaseLockAfterFailure(ctx, release)
@@ -410,7 +433,6 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			e.record(ctx, release, step, StepFailed, 0, stepErr)
 			release.Status = StatusFailed
 			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
-			outcome.ConnectionMayHaveDropped = errors.Is(stepErr, ErrConnectionMayHaveDropped)
 			outcome.LockHeld = LockKeptOnFailure(step.Stage)
 			if !outcome.LockHeld {
 				e.releaseLockAfterFailure(ctx, release)
@@ -462,6 +484,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			// Best effort: the failure that matters is the step's, not the
 			// record write.
 			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
+			outcome.noteTransportFailure(stepErr)
 			outcome.LockHeld = LockKeptOnFailure(step.Stage)
 			if !outcome.LockHeld {
 				e.releaseLockAfterFailure(ctx, release)
@@ -477,6 +500,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 
 	release.Status = StatusOK
 	if err := WriteRelease(context.WithoutCancel(ctx), e.host, release); err != nil {
+		outcome.noteTransportFailure(err)
 		return e.finish(outcome, started), err
 	}
 	return e.finish(outcome, started), nil
