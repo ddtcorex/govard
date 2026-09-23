@@ -714,11 +714,19 @@ func TestMagento2RecipeDeclaresEachSettingOnce(t *testing.T) {
 // The same quoting bug made worker control inert, which is the one that touches
 // production: with `worker_control: true` the window is supposed to stop cron and
 // consumers *before* the schema changes, and it never did.
+//
+// The pause used `queue:consumers:stop`, which no Magento ships (2.4 ships
+// `list`, `start` and `restart`), so the step failed before the migration.
+// `queue:consumers:restart` is the poison pill running consumers check between
+// messages — the only stop signal there is.
 func TestMagento2WorkerControlActuallyRuns(t *testing.T) {
 	pause := recipeCalls(t, deploy.TaskWorkersPause, map[string]any{"worker_control": true})
 	if !strings.Contains(strings.Join(pause, "\n"), "cron:remove") ||
-		!strings.Contains(strings.Join(pause, "\n"), "queue:consumers:stop") {
+		!strings.Contains(strings.Join(pause, "\n"), "queue:consumers:restart") {
 		t.Fatalf("worker_control must stop cron and consumers before the migration, got %v", pause)
+	}
+	if strings.Contains(strings.Join(pause, "\n"), "queue:consumers:stop") {
+		t.Fatalf("app:workers:pause must not call queue:consumers:stop, which Magento does not have: %v", pause)
 	}
 	if calls := recipeCalls(t, deploy.TaskWorkersPause, map[string]any{"worker_control": false}); len(calls) != 0 {
 		t.Fatalf("worker_control off must leave cron and consumers alone, got %v", calls)
@@ -734,15 +742,14 @@ func TestMagento2WorkerControlActuallyRuns(t *testing.T) {
 	}
 }
 
-// The served application owns the stop flag and the crontab entry, so both
-// worker steps have to act there. `queue:consumers:stop`/`:restart` write a flag
-// the running consumers read from the application they were started from, and
-// `cron:install` writes the *absolute* path of the application into the
-// crontab — run from the release, that schedules
-// `.deployer/releases/<n>/bin/magento`, a directory no web server serves.
+// The served application owns the crontab entry: `cron:remove` deletes only the
+// block keyed by the install root it runs in, and `cron:install` writes the
+// application's *absolute* path — run from the release, the pause matches
+// nothing while the resume schedules `.deployer/releases/<n>/bin/magento`, a
+// directory no web server serves.
 func TestMagento2WorkerControlActsOnTheServedApplication(t *testing.T) {
 	for id, want := range map[string]string{
-		deploy.TaskWorkersPause:  "queue:consumers:stop",
+		deploy.TaskWorkersPause:  "queue:consumers:restart",
 		deploy.TaskWorkersResume: "cron:install",
 	} {
 		calls := recipeCalls(t, id, map[string]any{"worker_control": true})

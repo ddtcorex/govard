@@ -111,7 +111,7 @@ Chỉ ghi đè những gì dự án của bạn khác:
   xem *Tách static content* và *Nhiều store, website và theme*;
 - **mode**: `mage_mode` (`developer` bỏ qua việc deploy static content) — xem
   *Chế độ developer và production*;
-- **workers**: `worker_control: true` chạy `cron:remove`/`queue:consumers:stop`
+- **workers**: `worker_control: true` chạy `cron:remove`/`queue:consumers:restart`
   quanh lúc deploy rồi khôi phục lại;
 - **opcache**: `runtime_reload_command` sau bước flush cache, cho target mà opcache
   truy cập được từ user deploy — xem *Cache, opcache và cú swap symlink*;
@@ -241,8 +241,7 @@ trên **ứng dụng đang được phục vụ** — <span v-pre>`{{current_pat
 không phải release đang được build: với symlink thì sau khi activate hai đường dẫn là
 một, còn docroot in-place là một thư mục thật riêng biệt, và flush trong release sẽ
 xoá đúng cái cache không ai đọc. Các bước worker của Magento cũng theo quy tắc đó, vì
-`cron:install` ghi đường dẫn
-tuyệt đối của ứng dụng vào crontab.
+`cron:install` ghi đường dẫn tuyệt đối của ứng dụng vào crontab.
 
 ### Những bước các recipe này để trống
 
@@ -336,25 +335,33 @@ deploy:
 
 ### Ghi chú riêng của từng framework
 
-**Magento.** Cache flush và các bước worker tác động lên ứng dụng đang được phục vụ:
-`cron:remove`/`cron:install` và `queue:consumers:stop`/`:restart` ghi state mà ứng
-dụng đang chạy đọc, còn `cron:install` ghi một đường dẫn tuyệt đối. Việc chuyển đó có
-một hệ quả cần kiểm tra ở target đã từng deploy với `worker_control: true`. Magento
-khoá block crontab theo install root (`#~ MAGENTO START <sha256(install root)>`), và
-`cron:remove` chỉ xoá block có hash khớp với thư mục nó chạy trong đó. Các release
-trước chạy cả hai bước trong thư mục release, nên target đó tích **một block cho mỗi
-release** — mỗi block chạy `cron:run` mỗi phút và trỏ vào thư mục mà `deploy:cleanup`
-sẽ dọn. Từ release này cả hai bước chạy trên docroot, nên block ổn định và không tích
-thêm nữa, nhưng các block cũ vẫn còn. Kiểm tra một lần:
+**Magento.** Cache flush và các bước worker tác động lên ứng dụng đang được phục vụ.
+`cron:install` ghi đường dẫn tuyệt đối của ứng dụng, và `cron:remove` chỉ xoá block
+khoá theo install root mà nó chạy trong đó — `BP`, tức `dirname(__DIR__)` đã resolve
+của `bin/magento` đang chạy, hash vào `#~ MAGENTO START <sha256(install root)>`. Vì
+vậy `app:workers:pause` phải chạy đúng nơi `cron:install` đã chạy lần trước, và
+`worker_control: true` dùng `queue:consumers:restart` (poison pill mà consumer kiểm
+tra giữa các message) vì Magento 2.4 không có `queue:consumers:stop`.
+
+Việc khoá theo install root có một hệ quả cần kiểm tra ở target đã từng deploy với
+`worker_control: true`: các release trước chạy cả hai bước trong thư mục *release*,
+nên mỗi lần deploy cài thêm một block. Bước này giờ chạy trên ứng dụng đang được
+phục vụ, nên block được xoá rồi ghi lại thay vì cộng dồn — nhưng các block cũ vẫn
+còn, mỗi release một block, mỗi block chạy `cron:run` mỗi phút và trỏ vào thư mục mà
+`deploy:cleanup` sẽ dọn. Kiểm tra một lần:
 
 ```bash
-crontab -l | grep -A1 '#~ MAGENTO'   # một block cho mỗi install root trong lịch sử
+crontab -l | grep -A1 '#~ MAGENTO'
+readlink -f ~/public_html            # `current` resolve tới đâu, với target symlink
 ```
 
-Giữ block có dòng lệnh nêu docroot và xoá các block còn lại (`crontab -e`); lần deploy
-kế tiếp sẽ ghi block khoá theo docroot. Block đã nêu docroot từ trước — kể cả do tool
-khác cài — không cần làm gì: đó chính là block mà `cron:remove` chạy trong đó, nên nó
-được xoá và ghi lại như cũ.
+Giữ đúng một block có dòng lệnh nêu ứng dụng mà web server thật sự chạy — với target
+in-place là chính docroot, với target symlink là release mà `readlink -f current`
+in ra (ở đó `BP` resolve xuyên qua symlink, nên block nêu đường dẫn `releases/<n>`,
+không bao giờ là `current`). Xoá các block còn lại bằng `crontab -e`; lần deploy kế
+tiếp sẽ ghi block mới cho ứng dụng nó cài. Đừng xoá hết mọi block: với target
+symlink, block đang sống chính là một đường dẫn release, xoá nó là cron dừng cho tới
+lần deploy sau.
 
 **Laravel.** `storage` được share chứ không chỉ ghi được, vì cờ maintenance nằm ở
 `storage/framework/down`: thư mục share là thứ mang nó qua cú swap release. Cache
@@ -363,7 +370,9 @@ của framework được dựng trong `app:cache:flush`, ở target, không bao 
 môi trường không còn override `.env` nữa, nên cache dựng ở máy khác sẽ mang cấu
 hình của máy đó lên production. `worker_control` gửi `queue:restart`, command này
 exit 0 với mọi cache store, nên dự án có cache không mang được tín hiệu cần một
-cache store bền thì bước này mới có nghĩa. Check `app` ưu tiên `artisan db:show` và
+cache store bền thì bước này mới có nghĩa. Đây là restart chứ không phải pause:
+supervisor quản worker sẽ đưa nó trở lại ngay, trên code mới, nên bước này rút ngắn
+chứ không xoá bỏ khoảng chồng lấn với `db:migrate`. Check `app` ưu tiên `artisan db:show` và
 lùi về `migrate:status` trên Laravel 10 trở xuống, nơi `db:show` chưa có; nhánh lùi
 exit 1 với dự án chưa có bảng migrations, mà đó là dự án khoẻ mạnh không migration.
 

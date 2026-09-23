@@ -112,7 +112,7 @@ Override what your project differs on, and nothing else:
   *The static content split* and *Multiple stores, websites and themes*;
 - **mode**: `mage_mode` (`developer` skips static content deployment) — see
   *Developer and production mode*;
-- **workers**: `worker_control: true` runs `cron:remove`/`queue:consumers:stop`
+- **workers**: `worker_control: true` runs `cron:remove`/`queue:consumers:restart`
   around the deploy and restores them after — see the pipeline table;
 - **opcache**: `runtime_reload_command` after the cache flush, for a target whose
   opcache is reachable from the deploying user — see *Caches, opcache and the
@@ -345,26 +345,34 @@ deploy:
 
 ### Framework-specific notes
 
-**Magento.** The cache flush and the worker steps act on the served application:
-`cron:remove`/`cron:install` and `queue:consumers:stop`/`:restart` write state the
-running application reads, and `cron:install` records an absolute path. That move
-has one consequence worth checking on a target that already deployed with
-`worker_control: true`. Magento keys its crontab block by the install root
-(`#~ MAGENTO START <sha256(install root)>`), and `cron:remove` deletes only the
-block whose hash matches the directory it runs in. Earlier releases ran both steps
-in the release directory, so such a target gained **one block per release** —
-each one runs `cron:run` every minute and points at a directory `deploy:cleanup`
-will prune. From this release both steps run against the docroot, so the block is
-stable and stops accumulating, but the historical blocks remain. Check once:
+**Magento.** The cache flush and the worker steps act on the served application.
+`cron:install` records the application's absolute path, and `cron:remove` deletes
+only the block keyed by the install root it runs in — `BP`, the resolved
+`dirname(__DIR__)` of the running `bin/magento`, hashed into
+`#~ MAGENTO START <sha256(install root)>`. `app:workers:pause` therefore has to
+run where `cron:install` last ran, and `worker_control: true` uses
+`queue:consumers:restart` (the poison pill consumers check between messages)
+because Magento 2.4 has no `queue:consumers:stop`.
+
+That keying has one consequence worth checking on a target that already deployed
+with `worker_control: true`: earlier releases ran both steps in the *release*
+directory, so each deploy installed its own block. The step is now run against
+the served application, so a block is removed and rewritten rather than added —
+but the historical blocks remain, one per release, each running `cron:run` every
+minute and pointing at a directory `deploy:cleanup` will prune. Check once:
 
 ```bash
-crontab -l | grep -A1 '#~ MAGENTO'   # one block per historical install root
+crontab -l | grep -A1 '#~ MAGENTO'
+readlink -f ~/public_html            # what `current` resolves to, on a symlink target
 ```
 
-Keep the block whose command line names the docroot and delete the others
-(`crontab -e`); the next deploy writes the docroot-keyed block. A block that
-already names the docroot — including one another tool installed — needs nothing:
-it is the block `cron:remove` runs in, so it is removed and rewritten as before.
+Keep the single block whose command line names the application the web server
+actually runs — the docroot itself on an in-place target, or the release
+`readlink -f current` prints on a symlink target (there, `BP` resolves through
+the symlink, so the block names a `releases/<n>` path, never `current`). Delete
+the others with `crontab -e`; the next deploy writes a fresh block for the
+application it installs. Do not delete every block: on a symlink target the live
+one is a release path, and removing it stops cron until the next deploy.
 
 **Laravel.** `storage` is shared rather than merely writable because the
 maintenance flag lives at `storage/framework/down`: a shared directory is what
@@ -374,7 +382,10 @@ writes `bootstrap/cache/config.php`, and once that file exists the process
 environment no longer overrides `.env`, so a cache built elsewhere would carry
 another machine's configuration to production. `worker_control` sends
 `queue:restart`, which exits 0 with any cache store, so a project whose cache
-cannot carry the signal needs a persistent one for the step to mean anything.
+cannot carry the signal needs a persistent one for the step to mean anything. It
+is a restart rather than a pause: the supervisor that owns the worker brings it
+straight back, on the new code, so the step shortens the overlap with
+`db:migrate` rather than removing it.
 The `app` check prefers `artisan db:show` and falls back to `migrate:status` on
 Laravel 10 and older, where `db:show` does not exist; the fallback exits 1 on a
 project that has no migrations table yet, which is a healthy zero-migration

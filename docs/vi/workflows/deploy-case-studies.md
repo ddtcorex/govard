@@ -470,7 +470,7 @@ deploy:
     magento_themes_backend: [Magento/backend]
     static_content_locales_backend: [en_US]
 
-    worker_control: true          # cron:remove / queue:consumers:stop quanh bước migration
+    worker_control: true          # cron:remove / queue:consumers:restart quanh bước migration
 ```
 
 Lượt admin dùng `magento_themes_backend` (mặc định là theme admin) và
@@ -946,7 +946,7 @@ Setting của Magento (do recipe Magento khai):
 | `magento_themes_backend` | `Magento/backend` | `-t` cho lượt adminhtml |
 | `static_content_locales_backend` | locale của frontend | `--language` cho lượt adminhtml |
 | `static_deploy_options` | (rỗng) | cờ thêm cho **mọi** lượt (`--no-parent`, `-s standard`, …) |
-| `worker_control` | `false` | `cron:remove` / `queue:consumers:stop` quanh bước migration, khôi phục lại sau đó |
+| `worker_control` | `false` | `cron:remove` / `queue:consumers:restart` quanh bước migration, khôi phục lại sau đó |
 | `runtime_reload_command` | (rỗng) | chạy như phần cuối của bước flush cache (reset opcache, reload FPM) |
 
 `deploy.settings` được đối chiếu với recipe trước khi chạy bất cứ thứ gì: key mà

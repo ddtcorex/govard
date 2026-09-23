@@ -476,7 +476,7 @@ deploy:
     magento_themes_backend: [Magento/backend]
     static_content_locales_backend: [en_US]
 
-    worker_control: true          # cron:remove / queue:consumers:stop around the migration
+    worker_control: true          # cron:remove / queue:consumers:restart around the migration
 ```
 
 The admin pass uses `magento_themes_backend` (the admin theme by default) and
@@ -961,7 +961,7 @@ Magento settings (declared by the Magento recipe):
 | `magento_themes_backend` | `Magento/backend` | `-t` for the adminhtml pass |
 | `static_content_locales_backend` | the frontend locales | `--language` for the adminhtml pass |
 | `static_deploy_options` | (empty) | extra flags for **every** pass (`--no-parent`, `-s standard`, …) |
-| `worker_control` | `false` | `cron:remove` / `queue:consumers:stop` around the migration, restored after |
+| `worker_control` | `false` | `cron:remove` / `queue:consumers:restart` around the migration, restored after |
 | `runtime_reload_command` | (empty) | run as the last part of the cache flush (an opcache reset, an FPM reload) |
 
 `deploy.settings` is validated against the recipe before anything runs: an unknown

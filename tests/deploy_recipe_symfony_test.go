@@ -243,10 +243,20 @@ func TestSymfonyWorkerPauseActsOnTheServedApplication(t *testing.T) {
 }
 
 // A docroot that cannot run the console has no consumers to signal: the step is
-// skipped rather than failed, the same rule the Magento recipe applies.
+// skipped rather than failed, the same rule the Magento recipe applies. The stub
+// is there so a weakened guard is caught — `console` exists and is runnable, only
+// the autoloader is missing, and a guard that asked for the `vendor/` directory
+// would run it and leave the marker behind.
 func TestSymfonyWorkerPauseToleratesAnUnrunnableDocroot(t *testing.T) {
 	recipe := symfony.DeployRecipe()
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	marker := filepath.Join(t.TempDir(), "ran")
+	writeFile(t, filepath.Join(host.CurrentPath, "bin", "console"), "#!/bin/sh\ntouch "+marker+"\n")
+	if err := os.Chmod(filepath.Join(host.CurrentPath, "bin", "console"), 0o755); err != nil {
+		t.Fatalf("chmod the stub: %v", err)
+	}
+	writeFile(t, filepath.Join(host.CurrentPath, "vendor", ".gitignore"), "!/autoload.php\n")
+
 	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
 		Revision: "abcdef123456",
 		Settings: map[string]any{"worker_control": true, "php_bin": "sh"},
@@ -258,6 +268,9 @@ func TestSymfonyWorkerPauseToleratesAnUnrunnableDocroot(t *testing.T) {
 	}
 	if _, err := (deploy.LocalRunner{}).Run(context.Background(), command, deploy.RunOptions{}); err != nil {
 		t.Fatalf("a docroot with no console must be skipped, not failed: %v\n%s", err, command)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatalf("the guard accepted a docroot with no autoloader, so the pause ran:\n%s", command)
 	}
 }
 

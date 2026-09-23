@@ -143,7 +143,7 @@ func DeployRecipe() deploy.Recipe {
 // application to signal — the same question Magento's
 // `magentoServedAppGuard` asks.
 //
-// The marker is the autoloader, not the directory: Magento projects commit
-// `vendor/.htaccess`, and a Symfony checkout of a revision can carry a `vendor/`
-// directory without a usable autoloader.
+// The marker is the autoloader, not the directory: a checkout of a Symfony
+// revision carries the committed `vendor/` placeholders its packages ship, so
+// `[ -d vendor ]` passes on a docroot where `bin/console` cannot actually run.
 const symfonyServedAppGuard = "if [ -f {{current_path}}/bin/console ] && [ -f {{current_path}}/vendor/autoload.php ]; then cd {{current_path}}"

@@ -180,12 +180,21 @@ func DeployRecipe() deploy.Recipe {
 		magentoServedAppGuard+" && {{php_bin}} bin/magento maintenance:enable; fi")
 
 	// Same question as maintenance mode, and the same guard: there is nothing to
-	// pause until an application is being served, and the stop flag the running
-	// consumers read belongs to that application. Run from the release it would
-	// write a flag into a cache no consumer reads. `cron:remove` is
-	// path-independent, so it simply rides along.
+	// pause until an application is being served, and the crontab block
+	// `cron:remove` deletes is keyed by the install root it runs in
+	// (`#~ MAGENTO START <sha256(install root)>`), so it has to run where
+	// `cron:install` last ran. It is not path-independent: run from the release
+	// it matches nothing and the previously installed block survives.
+	//
+	// `queue:consumers:stop` does not exist — Magento 2.4 ships
+	// `queue:consumers:list`, `:start` and `:restart` only (checked in the 2.4.6,
+	// 2.4.8, 2.4.9 and Commerce vendor trees), so a `worker_control: true` deploy
+	// died here with "Command ... is not defined", before the migration it was
+	// meant to protect. `queue:consumers:restart` is the only stop signal
+	// Magento has: it puts the poison pill that running consumers check between
+	// messages, so they exit instead of working through the migration.
 	fill(deploy.TaskWorkersPause, "pause cron and message consumers",
-		magentoServedAppGuard+" && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:remove && {{php_bin}} bin/magento queue:consumers:stop; fi; fi")
+		magentoServedAppGuard+" && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:remove && {{php_bin}} bin/magento queue:consumers:restart; fi; fi")
 
 	fill(deploy.TaskAppConfigure, "import application configuration",
 		"cd {{release_path}} && {{php_bin}} bin/magento app:config:import --no-interaction")
@@ -209,11 +218,12 @@ func DeployRecipe() deploy.Recipe {
 		`cd {{current_path}} && {{php_bin}} bin/magento cache:flush && {{settings.runtime_reload_command}}`)
 
 	fill(deploy.TaskWorkersResume, "resume cron and message consumers",
-		// `cron:install` writes the application's absolute path into the crontab
-		// and `queue:consumers:restart` writes a flag the served consumers read,
-		// so both belong to the docroot — from the release, cron would run a
-		// directory no web server serves. Runs after activation, so the served
-		// root always exists here and needs no guard.
+		// `cron:install` writes the application's absolute path into the crontab,
+		// so it belongs to the docroot — from the release, cron would run a
+		// directory no web server serves. `queue:consumers:restart` puts the
+		// poison pill again (a database row, so path-independent, and it catches a
+		// consumer started between the pause and now). Runs after activation, so
+		// the served root always exists here and needs no guard.
 		`cd {{current_path}} && if [ {{settings.worker_control}} = true ]; then {{php_bin}} bin/magento cron:install && {{php_bin}} bin/magento queue:consumers:restart; fi`)
 
 	fill(deploy.TaskMaintenanceDisable, "disable maintenance mode",
