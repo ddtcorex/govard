@@ -8,18 +8,22 @@ import (
 	"testing"
 )
 
-// Only the bridge and event modules may touch the Wails globals.
-// Plan B empties this allowlist once generated bindings replace window.go.
+// The frontend must reach the Go side through services/bridge.js and subscribe
+// through services/events.js; no other module may touch the runtime or the
+// generated bindings. Both modules wrap the runtime, so this allowlist is
+// empty now that window.go is gone.
 //
-// This is a substring scan, not an AST check: it catches the literal dotted
-// form (window.go, window.runtime, desktopBridge.runtime) and would miss an
-// equivalent spelled another way, such as window["go"], globalThis.go or an
-// alias. It is deliberately a stopgap until Plan B generates the bindings and
-// the allowlist shrinks to the adapter alone.
-var frontendGlobalAllowlist = map[string]bool{
-	"services/bridge.js":  true,
-	"services/events.js":  true,
-	"types/wails-v2.d.ts": true,
+// This is a substring scan, not an AST check: it catches the literal forms
+// below and would miss an equivalent spelled another way.
+var frontendRuntimeAllowlist = map[string]bool{
+	"services/bridge.js": true,
+	"services/events.js": true,
+}
+
+// Files that legitimately mention the bindings path or the runtime package.
+var frontendImportAllowlist = map[string]bool{
+	"services/bridge.js": true,
+	"services/events.js": true,
 }
 
 func TestDesktopFrontendUsesBridgeOnly(t *testing.T) {
@@ -32,7 +36,7 @@ func TestDesktopFrontendUsesBridgeOnly(t *testing.T) {
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			switch rel {
-			case "node_modules", "dist", "wailsjs":
+			case "node_modules", "dist", "wailsjs", "bindings":
 				return filepath.SkipDir
 			}
 			return nil
@@ -41,7 +45,7 @@ func TestDesktopFrontendUsesBridgeOnly(t *testing.T) {
 		if ext != ".js" && ext != ".ts" && ext != ".html" {
 			return nil
 		}
-		if frontendGlobalAllowlist[rel] || strings.HasSuffix(rel, ".config.js") {
+		if frontendRuntimeAllowlist[rel] || strings.HasSuffix(rel, ".config.js") {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -52,6 +56,14 @@ func TestDesktopFrontendUsesBridgeOnly(t *testing.T) {
 		for _, banned := range []string{"window.go", "window.runtime", "desktopBridge.runtime"} {
 			if strings.Contains(src, banned) {
 				t.Errorf("%s uses %s; go through services/bridge.js or services/events.js", rel, banned)
+			}
+		}
+		if frontendImportAllowlist[rel] {
+			return nil
+		}
+		for _, banned := range []string{"@wailsio/runtime", "bindings/"} {
+			if strings.Contains(src, banned) {
+				t.Errorf("%s imports %s; go through services/bridge.js or services/events.js", rel, banned)
 			}
 		}
 		return nil

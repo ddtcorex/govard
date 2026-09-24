@@ -663,6 +663,44 @@ func AppPlatformsForTest(app *App) []Platform {
 	}
 }
 
+// DecideCloseForTest exposes the close decision for tests.
+func DecideCloseForTest(runInBackground, trayAvailable bool) CloseAction {
+	return decideClose(runInBackground, trayAvailable)
+}
+
+// NewCloseGateForTest builds a close gate for tests.
+func NewCloseGateForTest() *closeGate { return &closeGate{} }
+
+// BuildTrayProjectsForTest exposes the tray menu model for tests.
+func BuildTrayProjectsForTest(d Dashboard) []trayProject { return buildTrayProjects(d) }
+
+// ServiceContextsForTest returns each bound service's lifecycle context.
+func ServiceContextsForTest(app *App) map[string]context.Context {
+	return map[string]context.Context{
+		"Settings": app.Settings.lifecycleContext(), "Onboarding": app.Onboarding.lifecycleContext(),
+		"Environment": app.Environment.lifecycleContext(), "Remote": app.Remote.lifecycleContext(),
+		"System": app.System.lifecycleContext(), "Logs": app.Logs.lifecycleContext(),
+		"Global": app.Global.lifecycleContext(), "Update": app.Update.lifecycleContext(),
+	}
+}
+
+// StartOperationWatcherForTest starts the operation notification watcher the
+// way Wails startup would, for tests that need it running.
+func StartOperationWatcherForTest(app *App, ctx context.Context) {
+	app.watcher.start(ctx)
+}
+
+// StopOperationWatcherForTest stops it again.
+func StopOperationWatcherForTest(app *App) {
+	app.watcher.stop()
+}
+
+// SetOperationWatcherRefreshForTest installs the hook the tray uses to rebuild
+// its menu, so a test can count refreshes without a tray.
+func SetOperationWatcherRefreshForTest(app *App, refresh func()) {
+	app.watcher.onEvent = refresh
+}
+
 // DefaultPlatformForTest returns the build-tag-selected default platform.
 func DefaultPlatformForTest() Platform {
 	return newDefaultPlatform()

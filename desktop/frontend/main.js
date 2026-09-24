@@ -101,6 +101,7 @@ const getLiveRefs = () => ({
   codeEditor: byId("codeEditor"),
   dbClientPreference: byId("dbClientPreference"),
   runInBackgroundToggle: byId("runInBackgroundToggle"),
+  trayUnavailableHint: byId("trayUnavailableHint"),
   settingsUpdateStatus: byId("settingsUpdateStatus"),
   settingsUpdateBadge: byId("settingsUpdateBadge"),
   settingsUpdateChangelog: byId("settingsUpdateChangelog"),

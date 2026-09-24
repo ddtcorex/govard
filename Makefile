@@ -20,7 +20,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.3
 GOLANGCI_LINT_BIN ?= $(shell go env GOPATH)/bin/golangci-lint
 LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 
-.PHONY: help install install-release build-test-binary build frontend build-frontend clean test test-unit test-coverage test-integration test-integration-ci test-frontend lint lint-install fmt fmt-check vet generate generate-check images push
+.PHONY: help install install-release build-test-binary build frontend build-frontend bindings bindings-check clean test test-unit test-coverage test-integration test-integration-ci test-frontend lint lint-install fmt fmt-check vet generate generate-check images push
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -42,6 +42,24 @@ frontend:
 	@touch desktop/frontend/dist/.gitkeep
 
 build-frontend: frontend
+
+BINDINGS_DIR := desktop/frontend/bindings
+
+# bindings regenerates the committed JS bindings from the Go services. The
+# -f "-tags desktop" flag is mandatory: without it the generator finds no
+# services, prints "0 Services" and still exits 0.
+bindings:
+	@rm -rf $(BINDINGS_DIR)
+	go tool wails3 generate bindings -f "-tags desktop" -d $(BINDINGS_DIR) ./cmd/govard-desktop
+
+# bindings-check fails when the committed bindings do not match the Go
+# services, which is what happens when a service method is renamed and the
+# regeneration is forgotten. The untracked check uses ls-files rather than
+# git status, because status also reports staged additions and would fail on
+# the commit that first adds the bindings.
+bindings-check: bindings
+	@git diff --exit-code -- $(BINDINGS_DIR) || (echo "Bindings are stale: run 'make bindings' and commit." && exit 1)
+	@test -z "$$(git ls-files --others -- $(BINDINGS_DIR))" || (echo "Untracked bindings: run 'make bindings' and commit." && exit 1)
 
 build: generate ## Build Govard binary for the current platform
 	@echo "Building Govard..."

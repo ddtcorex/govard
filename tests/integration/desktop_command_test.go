@@ -34,16 +34,25 @@ func TestDesktopCommandRuntimePaths(t *testing.T) {
 		assertContains(t, logs, "govard-desktop|--background")
 	})
 
-	t.Run("DesktopDevUsesWailsWhenAvailable", func(t *testing.T) {
+	// The dev loop is Vite plus a plain `go run`: no Wails CLI is involved, and
+	// the app finds the dev server through FRONTEND_DEVSERVER_URL.
+	t.Run("DesktopDevRunsViteAndGoRun", func(t *testing.T) {
 		shim := env.SetupRuntimeShims(t, map[string]int{"docker": 0, "ssh": 0, "rsync": 0})
-		installRuntimeCommandShim(t, shim, "wails", 0)
+		installRuntimeCommandShim(t, shim, "pnpm", 0)
+		installRuntimeCommandShim(t, shim, "go", 0)
 
 		result := env.RunGovardWithEnv(t, projectDir, shim.Env(), "desktop", "--dev")
 		result.AssertSuccess(t)
 
 		logs := shim.ReadLog(t)
-		if !strings.Contains(logs, "wails|dev -tags desktop") {
-			t.Fatalf("expected 'wails|dev -tags desktop' in logs, got: %s\n\nstdout: %s\nstderr: %s", logs, result.Stdout, result.Stderr)
+		if !strings.Contains(logs, "pnpm|dev") {
+			t.Fatalf("expected 'pnpm|dev' in logs, got: %s\n\nstdout: %s\nstderr: %s", logs, result.Stdout, result.Stderr)
+		}
+		if !strings.Contains(logs, "go|run -tags desktop ./cmd/govard-desktop") {
+			t.Fatalf("expected the go run invocation in logs, got: %s\n\nstdout: %s\nstderr: %s", logs, result.Stdout, result.Stderr)
+		}
+		if !strings.Contains(result.Stdout, "FRONTEND_DEVSERVER_URL=http://localhost:5173") {
+			t.Fatalf("expected FRONTEND_DEVSERVER_URL in stdout, got: %s", result.Stdout)
 		}
 	})
 }

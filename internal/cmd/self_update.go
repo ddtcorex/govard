@@ -135,11 +135,14 @@ var selfUpdateCmd = &cobra.Command{
 			selfUpdateBinaryName: {execPath},
 		}
 		desktopTargets := resolveDesktopUpdateTargets(execPath)
-		if len(desktopTargets) > 0 {
+		switch decideDesktopUpdate(runtime.GOOS, desktopTargets) {
+		case desktopUpdateAdded:
 			targetsByBinary[selfUpdateDesktopBinaryName] = desktopTargets
 			pterm.Info.Printf("Detected %d Govard Desktop target(s) to update.\n", len(desktopTargets))
-		} else {
+		case desktopUpdateNoBinary:
 			pterm.Info.Println("No installed Govard Desktop binary detected; skipping desktop update.")
+		default:
+			pterm.Warning.Printf("Skipping %s: releases do not ship a desktop build for %s yet; the installed desktop binary is left unchanged.\n", selfUpdateDesktopBinaryName, runtime.GOOS)
 		}
 
 		tmpDir, err := os.MkdirTemp("", "govard-self-update-*")
@@ -706,6 +709,57 @@ func extractBinaryFromDebPackage(debPath, workDir, binaryName string) (string, e
 	}
 
 	return "", fmt.Errorf("binary %s not found in package %s", binaryName, debPath)
+}
+
+// desktopReleaseShipsFor reports whether releases publish a govard-desktop
+// archive for goos. Only Linux does until the macOS and Windows desktop builds
+// return (Spec 3): on a Mac that still has a v2 desktop binary installed,
+// self-update would otherwise fail on a 404 for an archive that is not there.
+func desktopReleaseShipsFor(goos string) bool {
+	return goos == "linux"
+}
+
+// desktopUpdateDecision is what self-update does about an installed desktop
+// binary.
+type desktopUpdateDecision int
+
+const (
+	// desktopUpdateAdded means the desktop binary is updated alongside the CLI.
+	desktopUpdateAdded desktopUpdateDecision = iota
+	// desktopUpdateNoBinary means none is installed.
+	desktopUpdateNoBinary
+	// desktopUpdateUnsupported means one is installed but this release ships
+	// no desktop build for the host.
+	desktopUpdateUnsupported
+)
+
+// decideDesktopUpdate keeps the platform policy in one place: the command only
+// has runtime.GOOS to offer, so the call site cannot be exercised for another
+// platform from a test.
+func decideDesktopUpdate(goos string, desktopTargets []string) desktopUpdateDecision {
+	if len(desktopTargets) == 0 {
+		return desktopUpdateNoBinary
+	}
+	if !desktopReleaseShipsFor(goos) {
+		return desktopUpdateUnsupported
+	}
+	return desktopUpdateAdded
+}
+
+// DesktopReleaseShipsForTest exposes desktopReleaseShipsFor for tests in /tests.
+func DesktopReleaseShipsForTest(goos string) bool { return desktopReleaseShipsFor(goos) }
+
+// DecideDesktopUpdateForTest exposes decideDesktopUpdate as a stable string for
+// tests in /tests.
+func DecideDesktopUpdateForTest(goos string, desktopTargets []string) string {
+	switch decideDesktopUpdate(goos, desktopTargets) {
+	case desktopUpdateAdded:
+		return "added"
+	case desktopUpdateNoBinary:
+		return "no-desktop-binary"
+	default:
+		return "unsupported"
+	}
 }
 
 func resolveDesktopUpdateTargets(cliExecutablePath string) []string {

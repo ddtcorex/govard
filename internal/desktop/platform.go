@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"context"
 	"fmt"
 )
 
@@ -29,10 +28,4 @@ type SaveFileOptions struct {
 // variable so callers cannot accidentally compare the errors by value.
 var errDesktopNotAvailableFn = func() error {
 	return fmt.Errorf("desktop runtime not available")
-}
-
-// contextAttacher is implemented by platforms that need the runtime context
-// handed over at startup (the Wails v2 adapter).
-type contextAttacher interface {
-	attachContext(ctx context.Context)
 }

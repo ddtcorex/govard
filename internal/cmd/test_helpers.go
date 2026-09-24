@@ -47,11 +47,6 @@ type UpCrossProjectRefreshDependenciesForTest struct {
 	RunCompose                 func(context.Context, engine.ComposeOptions) error
 }
 
-// FindWailsCLIForTest exposes Wails binary discovery for external tests.
-func FindWailsCLIForTest() (string, error) {
-	return findWailsCLI()
-}
-
 // DesktopBinaryArgsForTest exposes govard-desktop argument construction for tests.
 func DesktopBinaryArgsForTest(background bool) []string {
 	return buildDesktopBinaryArgs(background)
@@ -80,9 +75,9 @@ func SetDesktopLookPathForTest(fn func(file string) (string, error)) func() {
 	}
 }
 
-// DesktopProductionBuildTagsForTest exposes desktop production build tags.
-func DesktopProductionBuildTagsForTest() string {
-	return desktopBuildTags(true)
+// DesktopBuildTagsForTest exposes the desktop build tags for tests.
+func DesktopBuildTagsForTest(isProd bool) string {
+	return desktopBuildTags(isProd)
 }
 
 // BuildUpReadinessChecksForTest exposes startup readiness planning for tests.

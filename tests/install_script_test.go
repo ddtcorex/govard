@@ -32,9 +32,13 @@ func TestInstallScriptDesktopEligibility(t *testing.T) {
 			command: `OS=linux; CLI_ONLY=false; configure_desktop_install; test "$CLI_ONLY" = true`,
 		},
 		{
-			name:    "available on macOS without APT",
+			// Releases ship a desktop archive for Linux only until the macOS and
+			// Windows desktop builds return (Spec 3), so the installer must fall
+			// back to CLI-only there instead of downloading an archive that is
+			// not on the release.
+			name:    "macOS installs the CLI only",
 			pathDir: t.TempDir(),
-			command: `OS=darwin; CLI_ONLY=false; desktop_install_enabled`,
+			command: `OS=darwin; CLI_ONLY=false; configure_desktop_install; test "$CLI_ONLY" = true`,
 		},
 		{
 			name:    "available on Linux without APT when runtime is installed",
@@ -126,7 +130,7 @@ func installScriptWebKitRuntime(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ldconfig")
-	contents := "#!/bin/sh\nprintf '%s\\n' 'libwebkit2gtk-4.1.so.0 (libc6,x86-64) => /usr/lib/libwebkit2gtk-4.1.so.0'\n"
+	contents := "#!/bin/sh\nprintf '%s\\n' 'libwebkitgtk-6.0.so.4 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libwebkitgtk-6.0.so.4'\n"
 	if err := os.WriteFile(path, []byte(contents), 0o755); err != nil {
 		t.Fatalf("write ldconfig shim: %v", err)
 	}

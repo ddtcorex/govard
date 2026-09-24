@@ -1,27 +1,18 @@
 package tests
 
 import (
-	"runtime"
-	"strings"
 	"testing"
 
 	cmdpkg "govard/internal/cmd"
 )
 
-func TestDesktopProductionBuildTagsForTest(t *testing.T) {
-	tags := cmdpkg.DesktopProductionBuildTagsForTest()
-	if !strings.Contains(tags, "desktop") {
-		t.Fatalf("expected desktop tag in %q", tags)
+// Wails v3 gates dev behaviour behind !production, so the release build keeps
+// the production tag on every OS and no WebKit version tag is needed.
+func TestDesktopBuildTagsAreDesktopProductionOrDesktop(t *testing.T) {
+	if got := cmdpkg.DesktopBuildTagsForTest(true); got != "desktop,production" {
+		t.Fatalf("production build tags = %q, want %q", got, "desktop,production")
 	}
-	if !strings.Contains(tags, "production") {
-		t.Fatalf("expected production tag in %q", tags)
-	}
-
-	hasWebkitTag := strings.Contains(tags, "webkit2_41")
-	if runtime.GOOS == "linux" && !hasWebkitTag {
-		t.Fatalf("expected webkit2_41 tag on linux in %q", tags)
-	}
-	if runtime.GOOS != "linux" && hasWebkitTag {
-		t.Fatalf("did not expect webkit2_41 tag on %s in %q", runtime.GOOS, tags)
+	if got := cmdpkg.DesktopBuildTagsForTest(false); got != "desktop" {
+		t.Fatalf("dev build tags = %q, want %q", got, "desktop")
 	}
 }

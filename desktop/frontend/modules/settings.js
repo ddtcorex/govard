@@ -206,9 +206,24 @@ export const createSettingsController = ({
       }
       applyTheme(settings.theme);
 
+      if (refs.trayUnavailableHint) {
+        try {
+          const trayStatus = await bridge.getTrayStatus();
+          refs.trayUnavailableHint.classList.toggle(
+            "hidden",
+            trayStatus?.available !== false,
+          );
+        } catch (_trayErr) {
+          refs.trayUnavailableHint.classList.add("hidden");
+        }
+      }
+
       renderUpdateSection();
     } catch (_err) {
       applyTheme();
+      if (refs.trayUnavailableHint) {
+        refs.trayUnavailableHint.classList.add("hidden");
+      }
       renderUpdateSection();
     }
   };
@@ -560,6 +575,13 @@ export const renderSettingsDrawer = (container) => {
                   <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                 </label>
               </div>
+              <p
+                id="trayUnavailableHint"
+                data-testid="tray-unavailable-hint"
+                class="hidden px-1 text-[11px] font-medium leading-relaxed text-amber-600 dark:text-amber-300"
+              >
+                No system tray detected. Closing the window will quit Govard. On GNOME, enable the AppIndicator extension.
+              </p>
             </section>
 
             <!-- Section: Maintenance -->
