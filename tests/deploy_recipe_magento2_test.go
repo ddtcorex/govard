@@ -1481,3 +1481,38 @@ func TestMagento2CacheFlushPurgeWarnsWhenItCannotRemove(t *testing.T) {
 		t.Errorf("the chain must continue to the runtime reload: %v", err)
 	}
 }
+
+// A cache directory the deploy user cannot read is the one environment where a
+// silent no-op looks exactly like a clean cache: `find` gets EACCES, its stderr
+// was discarded, the count was 0, and the step said nothing at all — the same
+// "green step, stale cache" shape this step exists to remove. The deploy user and
+// the web-server user are different accounts on many targets (php-fpm writing
+// `var/cache` with a 0077 umask is enough), so it is not hypothetical.
+func TestMagento2CacheFlushPurgeNamesAnUnreadableCacheDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions, so there is nothing to fail here")
+	}
+	recipe := magento2.DeployRecipe()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	locked := filepath.Join(host.CurrentPath, "var/cache")
+	writeFile(t, filepath.Join(locked, "f9e_/L/K/orphan"), "x")
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatalf("chmod the cache directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{Revision: "abcdef123456", Settings: map[string]any{}})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", t.TempDir()).
+		Expand(recipe.Task(deploy.TaskAppCacheFlush).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	stub := strings.Replace(command, "'php' bin/magento cache:flush", "true", 1)
+	result, err := (deploy.LocalRunner{}).Run(context.Background(), stub, deploy.RunOptions{})
+	if err != nil {
+		t.Fatalf("an unreadable cache directory must not fail the deploy: %v\n%s", err, stub)
+	}
+	if !strings.Contains(result.Stdout, "could not read var/cache") {
+		t.Errorf("an unreadable cache directory must be named, not passed over in silence, got:\n%s", result.Stdout)
+	}
+}

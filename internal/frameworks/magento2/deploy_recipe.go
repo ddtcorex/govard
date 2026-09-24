@@ -232,14 +232,26 @@ func DeployRecipe() deploy.Recipe {
 	// symlinked cache, and skipping it silently is the defect this removes. A
 	// purge that cannot remove entries warns instead of failing: the release is
 	// already published and `maintenance:disable` still has to run.
+	//
+	// The count is files, not paths: a cache *entry* is the file, and the
+	// directories around it are hash structure, so counting `find` lines reported
+	// 1288 for a pool whose index held 980 entries. A directory that cannot even be
+	// read is its own case, and the one that looks most like success: `find` fails
+	// with EACCES, an empty count reads as "nothing to purge", and the orphans stay
+	// behind a green step. The listing is therefore checked before it is counted,
+	// and both branches name what happened — the failure path carries `find`'s own
+	// reason, because "could not purge" without it is not actionable.
 	fill(deploy.TaskAppCacheFlush, "flush caches and purge file-cache leftovers",
 		// The reload is a fragment, so it is run directly: with nothing
 		// configured it renders as `true` (see deployVars), which is why there is
 		// no `[ -n ... ]` guard to get wrong here.
-		`purge_cache() { d="$1"; [ -d "$d" ] || return 0; n=$(find "$d/" -mindepth 1 2>/dev/null | wc -l); [ "$n" -gt 0 ] || return 0; `+
-			`if find "$d/" -mindepth 1 -delete 2>/dev/null; then `+
+		`purge_cache() { d="$1"; [ -d "$d" ] || return 0; `+
+			`listing=$(find "$d/" -mindepth 1 2>&1) || { echo "warning: could not read $d, cache entries may be left behind: $listing"; return 0; }; `+
+			`[ -n "$listing" ] || return 0; `+
+			`n=$(find "$d/" -mindepth 1 -type f 2>/dev/null | wc -l); `+
+			`if err=$(find "$d/" -mindepth 1 -delete 2>&1); then `+
 			`echo "purged $n file-cache entries under $d that the framework flush could not reach"; `+
-			`else echo "warning: could not purge $n file-cache entries under $d"; fi; }; `+
+			`else echo "warning: could not purge every entry under $d: $err"; fi; }; `+
 			`cd {{current_path}} && {{php_bin}} bin/magento cache:flush && `+
 			`purge_cache var/cache && purge_cache var/page_cache && {{settings.runtime_reload_command}}`)
 

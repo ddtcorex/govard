@@ -374,7 +374,8 @@ drops whatever is left under the served `var/cache` and `var/page_cache` after t
 framework's flush and reports how many entries it removed. Entries are removed,
 never the directories (a recreated `var/cache` may not be writable by the
 web-server user), `var/session` and the build output are untouched, and a purge
-that cannot remove entries prints a warning instead of failing the deploy. Measured
+that cannot remove entries prints a warning instead of failing the deploy, and a cache
+directory it cannot even read is named rather than passing silently. Measured
 on `app/magento2-test-instance`: a 473ms flush that removed nothing left a merged
 layout naming a class the release had removed, and the site answered HTTP 500 after
 every deploy until the file cache was deleted by hand.

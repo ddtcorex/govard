@@ -363,7 +363,8 @@ này dọn nốt những gì còn lại dưới `var/cache` và `var/page_cache`
 được phục vụ, sau cú flush của framework, và báo ra số entry đã dọn. Chỉ entry bị
 xoá, không bao giờ xoá chính thư mục (một `var/cache` được tạo lại có thể không cho
 user web server ghi vào), `var/session` và build output không bị chạm, và một lần
-dọn thất bại chỉ in cảnh báo chứ không làm fail deploy. Đo trên
+dọn thất bại chỉ in cảnh báo chứ không làm fail deploy, và một thư mục cache mà nó không
+đọc được cũng được nêu tên chứ không im lặng bỏ qua. Đo trên
 `app/magento2-test-instance`: một cú flush 473ms không xoá gì để lại một layout đã
 merge có nhắc tới class mà release đã bỏ, và site trả HTTP 500 sau mọi lần deploy
 cho tới khi file cache được xoá bằng tay.
