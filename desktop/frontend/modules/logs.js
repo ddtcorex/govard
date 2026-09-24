@@ -1,4 +1,5 @@
 import { projectKey, serviceTargets } from "./dashboard.js";
+import { hasEventRuntime, onEvent } from "../services/events.js";
 
 const errorPattern = /\b(error|critical|fail|failed|exception|fatal|panic)\b/i;
 const warnPattern = /\b(warn|warning|deprecated)\b/i;
@@ -191,7 +192,6 @@ export const syncSeveritySelector = (container, selectedSeverity = "all") => {
 
 export const createLogsController = ({
   bridge,
-  runtime,
   refs,
   readSelection,
   onStatus,
@@ -293,7 +293,7 @@ export const createLogsController = ({
         "h-8 px-3 rounded-md text-xs font-semibold bg-primary text-slate-900 hover:bg-primary/90 transition-colors";
     }
 
-    if (bridge.startLogStreamForService && runtime?.EventsOn) {
+    if (bridge.startLogStreamForService && hasEventRuntime()) {
       try {
         await bridge.startLogStreamForService(project, service);
         return;
@@ -366,9 +366,9 @@ export const createLogsController = ({
     onToast("Logs downloaded successfully.", "success");
   };
 
-  if (runtime?.EventsOn) {
-    runtime.EventsOn("logs:line", appendLogLine);
-    runtime.EventsOn("logs:status", (message) => {
+  if (hasEventRuntime()) {
+    onEvent("logs:line", appendLogLine);
+    onEvent("logs:status", (message) => {
       const text = String(message || "").trim();
       if (!text) {
         return;
@@ -376,7 +376,7 @@ export const createLogsController = ({
       onStatus(text);
       onToast(text, "success");
     });
-    runtime.EventsOn("logs:error", (message) => {
+    onEvent("logs:error", (message) => {
       const text =
         message && typeof message === "object"
           ? String(message.message || "")

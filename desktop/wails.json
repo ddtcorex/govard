@@ -2,9 +2,8 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "govard-desktop",
   "outputfilename": "govard-desktop",
-  "frontend:install": "yarn install",
-  "frontend:build": "yarn run build:css",
-  "frontend:dev": "",
+  "frontend:install": "pnpm install --frozen-lockfile",
+  "frontend:build": "pnpm build",
   "frontend:dir": "frontend",
   "author": {
     "name": "DDTCoreX",
@@ -15,5 +14,7 @@
     "companyName": "DDTCoreX",
     "productName": "Govard Desktop",
     "productVersion": "0.0.0-dev"
-  }
+  },
+  "frontend:dev:watcher": "pnpm dev",
+  "frontend:dev:serverUrl": "auto"
 }

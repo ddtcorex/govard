@@ -53,6 +53,9 @@ mkdir -p "$BIN_DIR" "$OUT_DIR"
 LDFLAGS="-s -w -X govard/internal/cmd.Version=${VERSION} -X govard/internal/desktop.Version=${VERSION}"
 
 pushd "$ROOT_DIR" >/dev/null
+# govard-desktop embeds desktop/frontend/dist, so the Vite build must run before
+# the desktop build or the packaged app shows a blank window.
+make frontend
 CGO_ENABLED=0 GOOS=darwin GOARCH="$ARCH" go build -ldflags "$LDFLAGS" -o "$BIN_DIR/govard" ./cmd/govard/main.go
 CGO_ENABLED=0 GOOS=darwin GOARCH="$ARCH" go build -tags desktop -ldflags "$LDFLAGS" -o "$BIN_DIR/govard-desktop" ./cmd/govard-desktop
 popd >/dev/null

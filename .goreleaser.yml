@@ -2,6 +2,12 @@ version: 2
 
 project_name: govard
 
+# govard-desktop embeds desktop/frontend/dist, so the Vite build must run before
+# any desktop binary is built. Without this hook a release ships a blank window.
+before:
+  hooks:
+    - make frontend
+
 builds:
   # GovardGlintDigest pins the official lint image published by
   # .github/workflows/audit-glint-image.yml. It is read with `index .Env`

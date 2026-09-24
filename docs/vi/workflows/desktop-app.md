@@ -89,19 +89,31 @@ Các cấu hình ưu tiên hiện được ghi nhớ:
 
 ## Chế độ phát triển (Dev Mode)
 
-Khi phát triển ứng dụng Desktop từ source code, bạn cần cấu hình display server để tránh Wails bị crash trong môi trường headless:
+Yêu cầu: Go, Node.js 24+, pnpm và Wails v2 CLI. Giao diện desktop được Vite
+đóng gói vào `desktop/frontend/dist` và được nhúng thẳng vào binary Go.
 
 ```bash
-DISPLAY=:1 govard desktop --dev
+make frontend                      # Vite build vào desktop/frontend/dist
+DISPLAY=:1 govard desktop --dev    # wails dev: Vite HMR + build lại backend Go
 ```
 
-Chế độ Wails dev biên dịch mã nguồn backend và khởi chạy server frontend tại địa chỉ:
+`make frontend` là bắt buộc: bản build desktop mà bỏ qua bước này sẽ nhúng
+`dist/` rỗng và chỉ hiện cửa sổ trắng. Mọi đường build desktop tự động (CI,
+goreleaser, `scripts/build-macos-pkg.sh`, `install.sh --source`) đều chạy bước
+này trước.
+
+Vite dev server lắng nghe tại `http://localhost:5173`; chế độ Wails dev proxy
+server đó và đồng thời mở backend đã biên dịch tại:
 
 ```
 http://localhost:34115
 ```
 
-Đây là cách kiểm thử trên trình duyệt được khuyên dùng vì cầu nối Go backend (Go backend bridge) hoạt động trực tiếp để tải dữ liệu dự án thực tế.
+`http://localhost:34115` là cách kiểm thử trên trình duyệt được khuyên dùng vì
+cầu nối Go backend (Go backend bridge) hoạt động trực tiếp để tải dữ liệu dự án
+thực tế. Mở trực tiếp Vite server hoặc thư mục `dist/` sẽ hiển thị đúng khung
+giao diện đó với dữ liệu mock kèm cảnh báo "Desktop bridge not available", đủ để
+kiểm tra style và layout.
 
 ---
 
@@ -111,7 +123,9 @@ http://localhost:34115
 | :--- | :--- |
 | `desktop/frontend/index.html` | Điểm vào HTML chính |
 | `desktop/frontend/main.js` | Khởi tạo, lắng nghe sự kiện, quản lý tab và state |
-| `desktop/frontend/services/bridge.js` | Cầu nối gọi RPC tới Go backend của Wails |
+| `desktop/frontend/services/bridge.js` | Cầu nối gọi RPC tới Go backend của Wails; là module duy nhất được phép gọi Go |
+| `desktop/frontend/services/events.js` | Đăng ký sự kiện từ backend; là module duy nhất được phép dùng `window.runtime` |
+| `desktop/frontend/types/wails-v2.d.ts` | Khai báo shape của các global do Wails v2 inject |
 | `desktop/frontend/state/store.js` | State UI dùng chung (dự án đang chọn, bộ lọc) |
 | `desktop/frontend/modules/` | Các module tính năng (dashboard, logs, remotes, v.v.) |
 | `desktop/frontend/ui/toast.js` | Hệ thống hiển thị thông báo toast |
@@ -122,7 +136,13 @@ http://localhost:34115
 | Cách thức truy cập | Trạng thái Backend | Dữ liệu hiển thị |
 | :--- | :--- | :--- |
 | Wails dev (`localhost:34115`) | Hoạt động đầy đủ cầu nối backend | Dữ liệu dự án thực tế |
-| Mở trực tiếp file HTML (không backend) | Cầu nối không khả dụng | Dữ liệu mock fallback + toast cảnh báo |
+| Vite dev (`localhost:5173`) hoặc thư mục `dist/` | Cầu nối không khả dụng | Dữ liệu mock fallback + toast cảnh báo |
+
+Một test Go (`tests/desktop_frontend_bridge_guard_test.go`) sẽ fail nếu bất kỳ
+file frontend nào ngoài `services/bridge.js`, `services/events.js` và
+`types/wails-v2.d.ts` chạm vào `window.go`, `window.runtime` hoặc
+`desktopBridge.runtime`. Hai module này được type bằng JSDoc kèm `// @ts-check`,
+nên `pnpm typecheck` phát hiện lệch hợp đồng Go/JS ngay ở bước build.
 
 ---
 

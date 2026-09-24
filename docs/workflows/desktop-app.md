@@ -89,19 +89,29 @@ Current persisted preferences:
 
 ## Dev Mode
 
-When developing the desktop app from source, provide a display server to prevent Wails from crashing in headless environments:
+Prerequisites: Go, Node.js 24+, pnpm and the Wails v2 CLI. The desktop UI is
+bundled by Vite into `desktop/frontend/dist`, which the Go binary embeds.
 
 ```bash
-DISPLAY=:1 govard desktop --dev
+make frontend                      # Vite build into desktop/frontend/dist
+DISPLAY=:1 govard desktop --dev    # wails dev: Vite HMR + Go backend rebuild
 ```
 
-Wails dev mode compiles the backend and exposes the frontend at:
+`make frontend` is not optional: a desktop build that skips it embeds an empty
+`dist/` and shows a blank window. Every automated desktop build path (CI,
+goreleaser, `scripts/build-macos-pkg.sh`, `install.sh --source`) runs it first.
+
+The Vite dev server listens on `http://localhost:5173`; Wails dev mode proxies it
+and also exposes the compiled backend at:
 
 ```
 http://localhost:34115
 ```
 
-This is the preferred browser-testing path because the Go backend bridge stays live and loads real project data.
+`http://localhost:34115` is the preferred browser-testing path because the Go
+backend bridge stays live and loads real project data. Opening the Vite server or
+`dist/` directly renders the same shell with mock data and a "Desktop bridge not
+available" notice, which is enough for styling and layout work.
 
 ---
 
@@ -111,7 +121,9 @@ This is the preferred browser-testing path because the Go backend bridge stays l
 | :--- | :--- |
 | `desktop/frontend/index.html` | Main HTML entry |
 | `desktop/frontend/main.js` | Bootstrap, event wiring, tab/state management |
-| `desktop/frontend/services/bridge.js` | Wails Go backend RPC bridge |
+| `desktop/frontend/services/bridge.js` | Wails Go backend RPC bridge; the only module allowed to call Go |
+| `desktop/frontend/services/events.js` | Backend event subscriptions; the only module allowed to use `window.runtime` |
+| `desktop/frontend/types/wails-v2.d.ts` | Declared shape of the Wails v2 globals |
 | `desktop/frontend/state/store.js` | Shared UI state (selected project, filters) |
 | `desktop/frontend/modules/` | Feature modules (dashboard, logs, remotes, etc.) |
 | `desktop/frontend/ui/toast.js` | Toast notification system |
@@ -122,7 +134,13 @@ This is the preferred browser-testing path because the Go backend bridge stays l
 | Access Method | Backend | Data |
 | :--- | :--- | :--- |
 | Wails dev (`localhost:34115`) | Full backend bridge active | Real project data |
-| Direct file (no backend) | Bridge unavailable | Mock fallback data + warning toast |
+| Vite dev (`localhost:5173`) or `dist/` | Bridge unavailable | Mock fallback data + warning toast |
+
+A Go test (`tests/desktop_frontend_bridge_guard_test.go`) fails if any frontend
+file other than `services/bridge.js`, `services/events.js` and
+`types/wails-v2.d.ts` touches `window.go`, `window.runtime` or
+`desktopBridge.runtime`. Both modules are JSDoc-typed with `// @ts-check`, so
+`pnpm typecheck` catches a Go/JS contract mismatch at build time.
 
 ---
 

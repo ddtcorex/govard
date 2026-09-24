@@ -1,5 +1,12 @@
+// @ts-check
+
+/** @returns {Record<string, (...args: any[]) => Promise<any>> | undefined} */
 const getBridge = () => window.go?.desktop?.App;
 
+/**
+ * @param {((...args: any[]) => Promise<any>) | undefined} fn
+ * @param {any[]} args
+ */
 const call = async (fn, ...args) => {
   if (!fn) {
     throw new Error("Desktop bridge not available");
@@ -8,9 +15,9 @@ const call = async (fn, ...args) => {
 };
 
 export const desktopBridge = {
-  get runtime() {
-    return window.runtime;
-  },
+/**
+ * @param {any[]} args
+ */
   async getDashboard(...args) {
     if (args && args.length > 0) {
       console.warn("ROGUE ARGS SENT TO GETDASHBOARD:", args);
@@ -38,22 +45,38 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.PullGlobalServices?.bind(bridge));
   },
+/**
+ * @param {string} serviceID
+ */
   async startGlobalService(serviceID) {
     const bridge = getBridge();
     return call(bridge?.StartGlobalService?.bind(bridge), serviceID);
   },
+/**
+ * @param {string} serviceID
+ */
   async stopGlobalService(serviceID) {
     const bridge = getBridge();
     return call(bridge?.StopGlobalService?.bind(bridge), serviceID);
   },
+/**
+ * @param {string} serviceID
+ */
   async restartGlobalService(serviceID) {
     const bridge = getBridge();
     return call(bridge?.RestartGlobalService?.bind(bridge), serviceID);
   },
+/**
+ * @param {string} serviceID
+ */
   async openGlobalService(serviceID) {
     const bridge = getBridge();
     return call(bridge?.OpenGlobalService?.bind(bridge), serviceID);
   },
+/**
+ * @param {string} serviceID
+ * @param {number} [lines=200]
+ */
   async getGlobalServiceLogs(serviceID, lines = 200) {
     const bridge = getBridge();
     return call(
@@ -62,6 +85,9 @@ export const desktopBridge = {
       Number(lines) || 200,
     );
   },
+/**
+ * @param {string} serviceID
+ */
   async startGlobalServiceLogStream(serviceID) {
     const bridge = getBridge();
     return call(bridge?.StartGlobalServiceLogStream?.bind(bridge), serviceID);
@@ -94,6 +120,12 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.ListFrameworks?.bind(bridge));
   },
+/**
+ * @param {any} inputOrPath
+ * @param {string} framework
+ * @param {string} [domain=""]
+ * @param {Record<string, any>} [serviceOptions={}]
+ */
   async onboardProject(
     inputOrPath,
     framework,
@@ -148,34 +180,66 @@ export const desktopBridge = {
       skipIDE: false,
     });
   },
+/**
+ * @param {string} projectPath
+ */
   async detectMigrationSource(projectPath) {
     const bridge = getBridge();
     return call(bridge?.DetectMigrationSource?.bind(bridge), projectPath);
   },
+/**
+ * @param {string} project
+ */
   async getRemotes(project) {
     const bridge = getBridge();
     return call(bridge?.GetRemotes?.bind(bridge), project);
   },
+/**
+ * @param {string} project
+ * @param {string} remoteName
+ */
   async testRemote(project, remoteName) {
     const bridge = getBridge();
     return call(bridge?.TestRemote?.bind(bridge), project, remoteName);
   },
+/**
+ * @param {string} project
+ * @param {string} remoteName
+ */
   async openRemoteURL(project, remoteName) {
     const bridge = getBridge();
     return call(bridge?.OpenRemoteURL?.bind(bridge), project, remoteName);
   },
+/**
+ * @param {string} project
+ * @param {string} remoteName
+ */
   async openRemoteShell(project, remoteName) {
     const bridge = getBridge();
     return call(bridge?.OpenRemoteShell?.bind(bridge), project, remoteName);
   },
+/**
+ * @param {string} project
+ * @param {string} remoteName
+ */
   async openRemoteDB(project, remoteName) {
     const bridge = getBridge();
     return call(bridge?.OpenRemoteDB?.bind(bridge), project, remoteName);
   },
+/**
+ * @param {string} project
+ * @param {string} remoteName
+ */
   async openRemoteSFTP(project, remoteName) {
     const bridge = getBridge();
     return call(bridge?.OpenRemoteSFTP?.bind(bridge), project, remoteName);
   },
+/**
+ * @param {string} project
+ * @param {string} remoteName
+ * @param {string} preset
+ * @param {Record<string, any>} [syncConfig={}]
+ */
   async runRemoteSyncPreset(project, remoteName, preset, syncConfig = {}) {
     const bridge = getBridge();
     return call(
@@ -186,6 +250,12 @@ export const desktopBridge = {
       syncConfig || {},
     );
   },
+/**
+ * @param {string} project
+ * @param {string} remoteName
+ * @param {string} preset
+ * @param {Record<string, any>} [syncConfig={}]
+ */
   async runRemoteSyncBackground(project, remoteName, preset, syncConfig = {}) {
     const bridge = getBridge();
     return call(
@@ -196,6 +266,12 @@ export const desktopBridge = {
       syncConfig || {},
     );
   },
+/**
+ * @param {string} project
+ * @param {string} remoteName
+ * @param {string} preset
+ * @param {Record<string, any>} [syncConfig={}]
+ */
   async runRemoteSyncInTerminal(project, remoteName, preset, syncConfig = {}) {
     const bridge = getBridge();
     return call(
@@ -206,46 +282,83 @@ export const desktopBridge = {
       syncConfig || {},
     );
   },
+/**
+ * @param {string} project
+ * @param {string} preset
+ */
   async getSyncPresetOptions(project, preset) {
     const bridge = getBridge();
     return call(bridge?.GetSyncPresetOptions?.bind(bridge), project, preset);
   },
+/**
+ * @param {string} project
+ */
   async startEnvironment(project) {
     const bridge = getBridge();
     return call(bridge?.StartEnvironment?.bind(bridge), project);
   },
+/**
+ * @param {string} project
+ */
   async stopEnvironment(project) {
     const bridge = getBridge();
     return call(bridge?.StopEnvironment?.bind(bridge), project);
   },
+/**
+ * @param {string} project
+ */
   async restartEnvironment(project) {
     const bridge = getBridge();
     return call(bridge?.RestartEnvironment?.bind(bridge), project);
   },
+/**
+ * @param {string} project
+ */
   async pullEnvironment(project) {
     const bridge = getBridge();
     return call(bridge?.PullEnvironment?.bind(bridge), project);
   },
+/**
+ * @param {string} project
+ */
   async toggleEnvironment(project) {
     const bridge = getBridge();
     return call(bridge?.ToggleEnvironment?.bind(bridge), project);
   },
+/**
+ * @param {string} project
+ */
   async openEnvironment(project) {
     const bridge = getBridge();
     return call(bridge?.OpenEnvironment?.bind(bridge), project);
   },
+/**
+ * @param {string} project
+ */
   async deleteProject(project) {
     const bridge = getBridge();
     return call(bridge?.DeleteProject?.bind(bridge), project);
   },
+/**
+ * @param {string} action
+ * @param {string} project
+ */
   async quickActionForProject(action, project) {
     const bridge = getBridge();
     return call(bridge?.QuickActionForProject?.bind(bridge), action, project);
   },
+/**
+ * @param {string} project
+ * @param {string} service
+ */
   async getLogsForService(project, service) {
     const bridge = getBridge();
     return call(bridge?.GetLogsForService?.bind(bridge), project, service);
   },
+/**
+ * @param {string} project
+ * @param {string} service
+ */
   async startLogStreamForService(project, service) {
     const bridge = getBridge();
     return call(
@@ -258,6 +371,10 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.StopLogStream?.bind(bridge));
   },
+/**
+ * @param {string} content
+ * @param {string} suggestedName
+ */
   async saveLogsToFile(content, suggestedName) {
     const bridge = getBridge();
     return call(
@@ -266,6 +383,12 @@ export const desktopBridge = {
       String(suggestedName || ""),
     );
   },
+/**
+ * @param {string} project
+ * @param {string} service
+ * @param {string} user
+ * @param {string} shell
+ */
   async startServiceTerminalInOS(project, service, user, shell) {
     const bridge = getBridge();
     return call(
@@ -284,6 +407,9 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.GetMailpitURL?.bind(bridge));
   },
+/**
+ * @param {Record<string, any>} [settings={}]
+ */
   async updateSettings(settings = {}) {
     const bridge = getBridge();
     const payload = {
@@ -312,6 +438,9 @@ export const desktopBridge = {
     const bridge = getBridge();
     return call(bridge?.GetUpdateChannel?.bind(bridge));
   },
+/**
+ * @param {string} channel
+ */
   async setUpdateChannel(channel) {
     const bridge = getBridge();
     return call(bridge?.SetUpdateChannel?.bind(bridge), channel);
@@ -319,5 +448,9 @@ export const desktopBridge = {
   async restartDesktopApp() {
     const bridge = getBridge();
     return call(bridge?.RestartDesktopApp?.bind(bridge));
+  },
+  async quit() {
+    const bridge = getBridge();
+    return call(bridge?.Quit?.bind(bridge));
   },
 };

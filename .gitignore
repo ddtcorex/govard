@@ -57,7 +57,9 @@
 
 # Desktop (Wails)
 /desktop/frontend/node_modules/
-/desktop/frontend/dist/
+/desktop/frontend/dist/*
+!/desktop/frontend/dist/.gitkeep
+/desktop/frontend/assets/styles.css
 /desktop/frontend/.vite/
 /desktop/frontend/wailsjs/
 /desktop/build/
