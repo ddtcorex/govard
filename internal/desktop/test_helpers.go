@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -457,7 +458,7 @@ func SetEnsureGlobalServicesForDesktopForTest(fn func() error) func() {
 
 // SetChooseSaveFileForDesktopForTest overrides the desktop save file picker for tests.
 func SetChooseSaveFileForDesktopForTest(
-	fn func(ctx context.Context, title string, defaultDir string, defaultFilename string) (string, error),
+	fn func(p Platform, opts SaveFileOptions) (string, error),
 ) func() {
 	previous := chooseSaveFileForDesktop
 	if fn == nil {
@@ -643,4 +644,31 @@ func desktopBoolPtr(v bool) *bool {
 		return nil
 	}
 	return engine.BoolPtr(false)
+}
+
+// AppPlatformsForTest returns the platform held by the App and each service,
+// in the order App, Settings, Onboarding, Environment, Remote, System, Logs, Global.
+func AppPlatformsForTest(app *App) []Platform {
+	return []Platform{
+		app.platform,
+		app.Settings.platform,
+		app.Onboarding.platform,
+		app.Environment.platform,
+		app.Remote.platform,
+		app.System.platform,
+		app.Logs.platform,
+		app.Global.platform,
+	}
+}
+
+// DefaultPlatformForTest returns the build-tag-selected default platform.
+func DefaultPlatformForTest() Platform {
+	return newDefaultPlatform()
+}
+
+// ScanLogPipeForTest runs scanLogPipe to completion against r.
+func ScanLogPipeForTest(p Platform, r io.Reader, event string) {
+	done := make(chan struct{}, 1)
+	scanLogPipe(context.Background(), p, r, event, done)
+	<-done
 }

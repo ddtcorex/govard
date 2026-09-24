@@ -11,8 +11,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
@@ -122,7 +120,7 @@ func (s *LogService) GetGlobalServiceLogs(serviceID string, lines int) (string, 
 func (s *LogService) streamLogs(ctx context.Context, project string, service string) {
 	info, err := loadProjectInfo(project)
 	if err != nil {
-		runtime.EventsEmit(s.ctx, "logs:error", map[string]interface{}{
+		s.platform.Emit("logs:error", map[string]interface{}{
 			"message": fmt.Sprintf("Failed to load project info for %s: %s", project, err.Error()),
 		})
 		return
@@ -132,25 +130,25 @@ func (s *LogService) streamLogs(ctx context.Context, project string, service str
 	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "100", "-f", containerName)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		runtime.EventsEmit(s.ctx, "logs:error", "Failed to stream logs: "+err.Error())
+		s.platform.Emit("logs:error", "Failed to stream logs: "+err.Error())
 		return
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		runtime.EventsEmit(s.ctx, "logs:error", "Failed to stream logs: "+err.Error())
+		s.platform.Emit("logs:error", "Failed to stream logs: "+err.Error())
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		runtime.EventsEmit(s.ctx, "logs:error", "Failed to start log stream: "+err.Error())
+		s.platform.Emit("logs:error", "Failed to start log stream: "+err.Error())
 		return
 	}
 
-	runtime.EventsEmit(s.ctx, "logs:status", fmt.Sprintf("Streaming logs from %s", containerName))
+	s.platform.Emit("logs:status", fmt.Sprintf("Streaming logs from %s", containerName))
 
 	done := make(chan struct{}, 2)
-	go scanLogPipe(s.ctx, stdout, "logs:line", done)
-	go scanLogPipe(s.ctx, stderr, "logs:line", done)
+	go scanLogPipe(s.ctx, s.platform, stdout, "logs:line", done)
+	go scanLogPipe(s.ctx, s.platform, stderr, "logs:line", done)
 
 	select {
 	case <-ctx.Done():
@@ -165,29 +163,27 @@ func (s *LogService) streamGlobalServiceLogs(ctx context.Context, spec globalSer
 	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "100", "-f", spec.ContainerName)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		runtime.EventsEmit(s.ctx, "global-logs:error", "Failed to stream logs: "+err.Error())
+		s.platform.Emit("global-logs:error", "Failed to stream logs: "+err.Error())
 		return
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		runtime.EventsEmit(s.ctx, "global-logs:error", "Failed to stream logs: "+err.Error())
+		s.platform.Emit("global-logs:error", "Failed to stream logs: "+err.Error())
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		runtime.EventsEmit(s.ctx, "global-logs:error", "Failed to start log stream: "+err.Error())
+		s.platform.Emit("global-logs:error", "Failed to start log stream: "+err.Error())
 		return
 	}
 
-	runtime.EventsEmit(
-		s.ctx,
-		"global-logs:status",
+	s.platform.Emit("global-logs:status",
 		fmt.Sprintf("Streaming logs from %s", spec.ContainerName),
 	)
 
 	done := make(chan struct{}, 2)
-	go scanLogPipe(s.ctx, stdout, "global-logs:line", done)
-	go scanLogPipe(s.ctx, stderr, "global-logs:line", done)
+	go scanLogPipe(s.ctx, s.platform, stdout, "global-logs:line", done)
+	go scanLogPipe(s.ctx, s.platform, stderr, "global-logs:line", done)
 
 	select {
 	case <-ctx.Done():
@@ -198,12 +194,12 @@ func (s *LogService) streamGlobalServiceLogs(ctx context.Context, spec globalSer
 	}
 }
 
-func scanLogPipe(ctx context.Context, pipe interface{}, event string, done chan<- struct{}) {
+func scanLogPipe(ctx context.Context, p Platform, pipe interface{}, event string, done chan<- struct{}) {
 	reader, ok := pipe.(interface {
 		Read(p []byte) (n int, err error)
 	})
 	if !ok {
-		runtime.EventsEmit(ctx, "logs:error", "Failed to read log stream")
+		p.Emit("logs:error", "Failed to read log stream")
 		done <- struct{}{}
 		return
 	}
@@ -246,7 +242,7 @@ func scanLogPipe(ctx context.Context, pipe interface{}, event string, done chan<
 		if len(batch) == 0 {
 			return
 		}
-		runtime.EventsEmit(ctx, event, strings.Join(batch, "\n"))
+		p.Emit(event, strings.Join(batch, "\n"))
 		batch = batch[:0]
 	}
 
@@ -260,7 +256,7 @@ func scanLogPipe(ctx context.Context, pipe interface{}, event string, done chan<
 			linesCh <- line
 		}
 		if err := scanner.Err(); err != nil {
-			runtime.EventsEmit(ctx, "logs:error", "Log scanner error: "+err.Error())
+			p.Emit("logs:error", "Log scanner error: "+err.Error())
 		}
 		close(linesCh)
 	}()

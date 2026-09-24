@@ -179,7 +179,7 @@ func testRemote(project string, remoteName string) (string, error) {
 	return output, nil
 }
 
-func openRemoteURL(project string, remoteName string, ctx context.Context) (string, error) {
+func openRemoteURL(project string, remoteName string, p Platform) (string, error) {
 	startedAt := time.Now()
 	status := engine.OperationStatusFailure
 	category := "runtime"
@@ -205,7 +205,7 @@ func openRemoteURL(project string, remoteName string, ctx context.Context) (stri
 	}
 
 	result, err := openDestination(
-		ctx,
+		p,
 		targetURL,
 		fmt.Sprintf("Opening %s...", targetURL),
 	)
@@ -248,7 +248,7 @@ func openRemoteDB(project string, remoteName string) (string, error) {
 	return fmt.Sprintf("Opening remote database client for %s...", resolvedRemoteName), nil
 }
 
-func openRemoteSFTP(project string, remoteName string, ctx context.Context) (string, error) {
+func openRemoteSFTP(project string, remoteName string, ctx context.Context, p Platform) (string, error) {
 	trimmedRemoteName := strings.TrimSpace(remoteName)
 	if trimmedRemoteName == "" {
 		return "", fmt.Errorf("remote name is required")
@@ -275,7 +275,7 @@ func openRemoteSFTP(project string, remoteName string, ctx context.Context) (str
 			return fmt.Sprintf("Opening SFTP for %s in FileZilla...", resolvedRemoteName), nil
 		} else if err != nil {
 			message := fmt.Sprintf("FileZilla launch failed: %v. ", err)
-			fallbackMessage, fallbackErr := openDestination(ctx, target, fmt.Sprintf("Opening %s...", target))
+			fallbackMessage, fallbackErr := openDestination(p, target, fmt.Sprintf("Opening %s...", target))
 			if fallbackErr != nil {
 				return "", fallbackErr
 			}
@@ -283,7 +283,7 @@ func openRemoteSFTP(project string, remoteName string, ctx context.Context) (str
 		}
 	}
 
-	message, err := openDestination(ctx, target, fmt.Sprintf("Opening %s...", target))
+	message, err := openDestination(p, target, fmt.Sprintf("Opening %s...", target))
 	if err != nil {
 		return "", err
 	}
@@ -293,7 +293,7 @@ func openRemoteSFTP(project string, remoteName string, ctx context.Context) (str
 	return message, nil
 }
 
-func openRemoteShell(project string, remoteName string, ctx context.Context) (string, error) {
+func openRemoteShell(project string, remoteName string, ctx context.Context, p Platform) (string, error) {
 	trimmedRemoteName := strings.TrimSpace(remoteName)
 	if trimmedRemoteName == "" {
 		return "", fmt.Errorf("remote name is required")
@@ -320,7 +320,7 @@ func openRemoteShell(project string, remoteName string, ctx context.Context) (st
 		} else if err != nil {
 			target := buildRemoteSSHURLForDesktop(remoteCfg)
 			message := fmt.Sprintf("Terminal SSH launch failed: %v. ", err)
-			fallbackMessage, fallbackErr := openDestination(ctx, target, fmt.Sprintf("Opening %s...", target))
+			fallbackMessage, fallbackErr := openDestination(p, target, fmt.Sprintf("Opening %s...", target))
 			if fallbackErr != nil {
 				return "", fallbackErr
 			}
@@ -329,7 +329,7 @@ func openRemoteShell(project string, remoteName string, ctx context.Context) (st
 	}
 
 	target := buildRemoteSSHURLForDesktop(remoteCfg)
-	message, err := openDestination(ctx, target, fmt.Sprintf("Opening %s...", target))
+	message, err := openDestination(p, target, fmt.Sprintf("Opening %s...", target))
 	if err != nil {
 		return "", err
 	}
@@ -712,6 +712,7 @@ func runRemoteSyncPresetWithOptions(
 
 func runRemoteSyncBackgroundWithOptions(
 	ctx context.Context,
+	p Platform,
 	project string,
 	remoteName string,
 	preset string,
@@ -770,7 +771,7 @@ func runRemoteSyncBackgroundWithOptions(
 	}
 
 	RegisterSyncingProject(project, remoteName)
-	emitEvent(ctx, "sync:started", map[string]string{
+	p.Emit("sync:started", map[string]string{
 		"project": project,
 		"remote":  remoteName,
 		"preset":  preset,
@@ -778,8 +779,8 @@ func runRemoteSyncBackgroundWithOptions(
 
 	// We use two scanners to emit events to the frontend
 	done := make(chan struct{}, 2)
-	go scanLogPipe(ctx, stdout, "sync:output", done)
-	go scanLogPipe(ctx, stderr, "sync:output", done)
+	go scanLogPipe(ctx, p, stdout, "sync:output", done)
+	go scanLogPipe(ctx, p, stderr, "sync:output", done)
 
 	go func() {
 		<-done
@@ -787,9 +788,9 @@ func runRemoteSyncBackgroundWithOptions(
 		err := cmd.Wait()
 		UnregisterSyncingProject(project)
 		if err != nil {
-			emitEvent(ctx, "sync:failed", fmt.Sprintf("Sync failed: %v", err))
+			p.Emit("sync:failed", fmt.Sprintf("Sync failed: %v", err))
 		} else {
-			emitEvent(ctx, "sync:completed", "Sync completed successfully")
+			p.Emit("sync:completed", "Sync completed successfully")
 		}
 	}()
 
@@ -1384,7 +1385,7 @@ func (s *RemoteService) TestRemote(project string, remoteName string) (string, e
 }
 
 func (s *RemoteService) OpenRemoteURL(project string, remoteName string) (string, error) {
-	message, err := openRemoteURL(project, remoteName, s.ctx)
+	message, err := openRemoteURL(project, remoteName, s.platform)
 	if err != nil {
 		return "", err
 	}
@@ -1400,7 +1401,7 @@ func (s *RemoteService) OpenRemoteDB(project string, remoteName string) (string,
 }
 
 func (s *RemoteService) OpenRemoteSFTP(project string, remoteName string) (string, error) {
-	message, err := openRemoteSFTP(project, remoteName, s.ctx)
+	message, err := openRemoteSFTP(project, remoteName, s.ctx, s.platform)
 	if err != nil {
 		return "", err
 	}
@@ -1408,7 +1409,7 @@ func (s *RemoteService) OpenRemoteSFTP(project string, remoteName string) (strin
 }
 
 func (s *RemoteService) OpenRemoteShell(project string, remoteName string) (string, error) {
-	message, err := openRemoteShell(project, remoteName, s.ctx)
+	message, err := openRemoteShell(project, remoteName, s.ctx, s.platform)
 	if err != nil {
 		return "", err
 	}
@@ -1467,7 +1468,7 @@ func (s *RemoteService) RunRemoteSync(project string, remoteName string, preset 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	err := runRemoteSyncBackgroundWithOptions(ctx, project, remoteName, preset, options)
+	err := runRemoteSyncBackgroundWithOptions(ctx, s.platform, project, remoteName, preset, options)
 	if err != nil {
 		return "", err
 	}

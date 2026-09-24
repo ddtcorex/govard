@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,14 +19,9 @@ func TestDesktopSaveLogsToFileWritesSelectedPathForTest(t *testing.T) {
 	var capturedDefaultFilename string
 
 	restoreChooser := desktop.SetChooseSaveFileForDesktopForTest(
-		func(
-			_ context.Context,
-			title string,
-			_ string,
-			defaultFilename string,
-		) (string, error) {
-			capturedTitle = title
-			capturedDefaultFilename = defaultFilename
+		func(_ desktop.Platform, opts desktop.SaveFileOptions) (string, error) {
+			capturedTitle = opts.Title
+			capturedDefaultFilename = opts.DefaultFilename
 			return outputPath, nil
 		},
 	)
@@ -70,7 +64,7 @@ func TestDesktopSaveLogsToFileCancelReturnsFriendlyMessageForTest(t *testing.T) 
 	desktop.ResetStateForTest()
 
 	restoreChooser := desktop.SetChooseSaveFileForDesktopForTest(
-		func(_ context.Context, _ string, _ string, _ string) (string, error) {
+		func(_ desktop.Platform, _ desktop.SaveFileOptions) (string, error) {
 			return "", nil
 		},
 	)
@@ -107,7 +101,7 @@ func TestDesktopSaveLogsToFilePropagatesWriteFailureForTest(t *testing.T) {
 	outputPath := filepath.Join(tempDir, "captured.log")
 
 	restoreChooser := desktop.SetChooseSaveFileForDesktopForTest(
-		func(_ context.Context, _ string, _ string, _ string) (string, error) {
+		func(_ desktop.Platform, _ desktop.SaveFileOptions) (string, error) {
 			return outputPath, nil
 		},
 	)

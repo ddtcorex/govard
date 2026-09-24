@@ -435,12 +435,12 @@ func (app *App) RestartDesktopApp() (string, error) {
 		return "", fmt.Errorf("restart desktop app: %w", err)
 	}
 
-	if app != nil && app.ctx != nil {
+	if app != nil {
 		// Give the child process time to initialize and the RPC layer
 		// a moment to flush the response before quitting the parent.
 		go func() {
 			time.Sleep(800 * time.Millisecond)
-			quitApplication(app.ctx)
+			app.platform.Quit()
 		}()
 	}
 

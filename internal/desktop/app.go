@@ -34,7 +34,8 @@ func (app *App) GetUserInfo() (res UserInfo, err error) {
 var Version = "dev"
 
 type App struct {
-	ctx context.Context
+	ctx      context.Context
+	platform Platform
 
 	Settings    *SettingsService
 	Onboarding  *OnboardingService
@@ -48,8 +49,17 @@ type App struct {
 	notifyCancel context.CancelFunc
 }
 
-func NewApp() *App {
-	return &App{
+// AppOption configures NewApp.
+type AppOption func(*App)
+
+// WithPlatform injects the GUI runtime seam (tests pass a FakePlatform).
+func WithPlatform(p Platform) AppOption {
+	return func(app *App) { app.platform = p }
+}
+
+func NewApp(opts ...AppOption) *App {
+	app := &App{
+		platform:    newDefaultPlatform(),
 		Settings:    NewSettingsService(),
 		Onboarding:  NewOnboardingService(),
 		Environment: NewEnvironmentService(),
@@ -58,6 +68,17 @@ func NewApp() *App {
 		Logs:        NewLogService(),
 		Global:      NewGlobalServiceService(),
 	}
+	for _, opt := range opts {
+		opt(app)
+	}
+	app.Settings.platform = app.platform
+	app.Onboarding.platform = app.platform
+	app.Environment.platform = app.platform
+	app.Remote.platform = app.platform
+	app.System.platform = app.platform
+	app.Logs.platform = app.platform
+	app.Global.platform = app.platform
+	return app
 }
 
 func (app *App) GetVersion() (v string, err error) {
@@ -67,6 +88,9 @@ func (app *App) GetVersion() (v string, err error) {
 
 func (app *App) Startup(ctx context.Context) {
 	app.ctx = ctx
+	if attacher, ok := app.platform.(contextAttacher); ok {
+		attacher.attachContext(ctx)
+	}
 	app.Settings.Setup(ctx)
 	app.Onboarding.Setup(ctx)
 	app.Environment.Setup(ctx)
@@ -79,24 +103,19 @@ func (app *App) Startup(ctx context.Context) {
 }
 
 func (app *App) showWindow() {
-	if app == nil || app.ctx == nil {
-		return
-	}
-	showApplication(app.ctx)
-}
-
-func (app *App) hideWindow(ctx context.Context) {
 	if app == nil {
 		return
 	}
-	targetCtx := ctx
-	if targetCtx == nil {
-		targetCtx = app.ctx
-	}
-	if targetCtx == nil {
+	app.platform.ShowWindow()
+}
+
+// hideWindow keeps its context parameter because Wails v2 passes the close
+// event's context to App.BeforeClose; the platform does not need it.
+func (app *App) hideWindow(_ context.Context) {
+	if app == nil {
 		return
 	}
-	hideApplication(targetCtx)
+	app.platform.HideWindow()
 }
 
 func (app *App) BeforeClose(ctx context.Context) bool {
@@ -125,7 +144,7 @@ func (app *App) OpenDocs(path string) (res string, err error) {
 	if path == "" {
 		return "", fmt.Errorf("no docs path provided")
 	}
-	if errOpen := openDocs(app.ctx, path); errOpen != nil {
+	if errOpen := openDocs(app.platform, path); errOpen != nil {
 		return "", fmt.Errorf("failed to open docs: %w", errOpen)
 	}
 	return "Opening docs...", nil
@@ -133,12 +152,12 @@ func (app *App) OpenDocs(path string) (res string, err error) {
 
 func (app *App) QuickAction(action string) (res string, err error) {
 	defer RecoverPanic(&err, "QuickAction")
-	return quickAction(app.ctx, action, "")
+	return quickAction(app.platform, action, "")
 }
 
 func (app *App) QuickActionForProject(action string, project string) (res string, err error) {
 	defer RecoverPanic(&err, "QuickActionForProject")
-	return quickAction(app.ctx, action, project)
+	return quickAction(app.platform, action, project)
 }
 
 func (app *App) DeleteProject(projectQuery string) (res string, err error) {

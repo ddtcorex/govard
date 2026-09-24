@@ -33,13 +33,13 @@ type onboardingContextKey struct{}
 
 var suppressOnboardingProgressKey onboardingContextKey
 
-func pickProjectDirectoryInternal(ctx context.Context) (string, error) {
+func pickProjectDirectoryInternal(p Platform) (string, error) {
 	defaultDir := ""
 	if home, err := os.UserHomeDir(); err == nil {
 		defaultDir = home
 	}
 
-	path, err := chooseDirectory(ctx, "Select Project Directory", defaultDir)
+	path, err := p.ChooseDirectory("Select Project Directory", defaultDir)
 	if err != nil {
 		return "", err
 	}
@@ -69,11 +69,12 @@ func onboardProjectWithOptionsInternal(
 	input OnboardInput,
 ) (string, error) {
 	internalCtx := context.WithValue(context.Background(), suppressOnboardingProgressKey, true)
-	return onboardProjectWithOptionsInternalWithContext(internalCtx, input)
+	return onboardProjectWithOptionsInternalWithContext(internalCtx, newDefaultPlatform(), input)
 }
 
 func onboardProjectWithOptionsInternalWithContext(
 	ctx context.Context,
+	p Platform,
 	input OnboardInput,
 ) (string, error) {
 	projectPath := input.ProjectPath
@@ -117,7 +118,7 @@ func onboardProjectWithOptionsInternalWithContext(
 		if suppressed, _ := ctx.Value(suppressOnboardingProgressKey).(bool); suppressed {
 			return
 		}
-		emitEvent(ctx, "onboarding:progress", map[string]string{
+		p.Emit("onboarding:progress", map[string]string{
 			"step":    strings.TrimSpace(step),
 			"message": strings.TrimSpace(progressMessage),
 		})
@@ -218,15 +219,11 @@ func onboardProjectWithOptionsInternalWithContext(
 // OnboardingService methods
 
 func (s *OnboardingService) PickProjectDirectory() (string, error) {
-	ctx := s.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return pickProjectDirectoryInternal(ctx)
+	return pickProjectDirectoryInternal(s.platform)
 }
 
 func (s *OnboardingService) OnboardProject(input OnboardInput) (string, error) {
-	return onboardProjectWithOptionsInternalWithContext(s.ctx, input)
+	return onboardProjectWithOptionsInternalWithContext(s.ctx, s.platform, input)
 }
 
 func (s *OnboardingService) DetectMigrationSource(projectPath string) (string, error) {
