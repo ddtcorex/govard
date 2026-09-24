@@ -366,6 +366,19 @@ run where `cron:install` last ran, and `worker_control: true` uses
 `queue:consumers:restart` (the poison pill consumers check between messages)
 because Magento 2.4 has no `queue:consumers:stop`.
 
+`bin/magento cache:flush` is not a sweep: the 2.4.9 file cache is a Symfony pool
+whose entries are cleaned through a tag index, so an entry whose index row is gone
+is unreachable while its file stays valid — the command exits `0`, removes
+nothing, and the served application keeps answering from it. The step therefore
+drops whatever is left under the served `var/cache` and `var/page_cache` after the
+framework's flush and reports how many entries it removed. Entries are removed,
+never the directories (a recreated `var/cache` may not be writable by the
+web-server user), `var/session` and the build output are untouched, and a purge
+that cannot remove entries prints a warning instead of failing the deploy. Measured
+on `app/magento2-test-instance`: a 473ms flush that removed nothing left a merged
+layout naming a class the release had removed, and the site answered HTTP 500 after
+every deploy until the file cache was deleted by hand.
+
 That keying has one consequence worth checking on a target that already deployed
 with `worker_control: true`: earlier releases ran both steps in the *release*
 directory, so each deploy installed its own block. The step is now run against

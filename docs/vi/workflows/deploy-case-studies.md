@@ -254,6 +254,13 @@ theo quy tắc đó (`cron:install` nếu không sẽ lên lịch cho thư mục
 release không phải là ứng dụng đang được phục vụ, và cache bị xoá ở đó là cache không
 ai đọc.
 
+Dừng ở việc hỏi framework là chưa đủ trên Magento 2.4.9: `bin/magento cache:flush`
+dọn file cache đó qua tag index, nên entry nào mất dòng index thì vẫn sống sót dù
+lệnh vẫn trả về `0`. Bước này vì vậy dọn nốt những gì còn lại dưới `var/cache` và
+`var/page_cache` của docroot sau cú flush của framework và báo ra số lượng. Với
+hình dạng này, một cú flush chỉ hỏi framework chính là cách một lần deploy để
+production phục vụ mãi một layout do release không còn tồn tại dựng nên.
+
 **Diễn tập.** Sandbox dựng được đúng hình dạng này:
 
 ```bash
