@@ -123,7 +123,6 @@ var Manifest = engine.FrameworkManifestConfig{
 		"sales_refunded_aggregated_order",
 		"sales_shipping_aggregated",
 		"sales_shipping_aggregated_order",
-		"sales_shipping_aggregated_order",
 		"search_query",
 		"session",
 		"sutunam_activity",
