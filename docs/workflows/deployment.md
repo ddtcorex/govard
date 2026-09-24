@@ -826,10 +826,14 @@ when it is missing.
 The served application's cache is flushed as part of the pipeline — the docroot
 for an in-place target, the release that just became `current` for a symlink — so
 the new release never serves a cache built by the old code. What a cache flush
-does not touch is PHP's own state: after a swap, a worker that already resolved `current`
-can keep the old release in its `realpath_cache` and its compiled files in
-opcache for up to `realpath_cache_ttl`. That is how a deploy looks successful and
-still serves the previous release's code.
+does not touch is PHP's own state. After a swap the pool keeps the release it
+resolved the served path to, and the scripts it compiled from it: measured on a
+sandbox target (PHP 8.3, opcache on, 2026-09-24) the previous release was still
+answering 153 seconds after the swap, through killing every `php-fpm: pool www`
+worker, and a file that existed only in the new release answered "No input file
+specified" at the same URL until the pool was reset. `deploy:verify` is an HTTP
+check, so in that state a deploy looks successful and still serves the previous
+release's code.
 
 `settings.runtime_reload_command` is the supported way to clear that state. It
 runs as the last part of the `app:cache:flush` step — inside the window in place,
@@ -840,6 +844,12 @@ deploy:
   settings:
     runtime_reload_command: cachetool opcache:reset && cachetool stat:clear
 ```
+
+`govard deploy check` warns about the gap rather than assuming it: when the target
+serves a symlink, its PHP loads opcache and the project configures no
+`runtime_reload_command`, the preflight says which release `deploy:verify` may
+actually be checking. It is a warning, not a failure — a pool reloaded outside
+govard (a post-deploy hook, an orchestrator) is a valid configuration.
 
 Resetting opcache and the realpath cache is preferred to reloading PHP-FPM: a
 reload can drop requests that are already in flight, which is why the reference

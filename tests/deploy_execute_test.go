@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -777,6 +778,52 @@ func TestRecoveryHintOffersARetryWhenTheDroppedRunKeptNoLock(t *testing.T) {
 	}
 	if strings.Contains(hint, "--resume") {
 		t.Errorf("a run whose lock was released has nothing to resume, got %q", hint)
+	}
+}
+
+// A run refused at `deploy:lock` never took a lock of its own, so the generic
+// "nothing live changed and the deploy lock was released" hint describes an
+// operation that never happened — and the plain retry it suggests is refused by
+// the same lock. The hint has to name the run that holds it and the two commands
+// that actually recover: continue it, or release it deliberately.
+func TestRecoveryHintNamesTheOtherRunWhenTheLockIsHeld(t *testing.T) {
+	hint := deploy.RecoveryHint("production", deploy.Outcome{LockHeldByAnother: true})
+	for _, want := range []string{"another deploy holds", "deploy status production", "--resume", "unlock", "--force"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("the hint must mention %q, got %q", want, hint)
+		}
+	}
+	if strings.Contains(hint, "was released") {
+		t.Errorf("this run never held a lock, so nothing of its was released, got %q", hint)
+	}
+}
+
+// The hint is only worth its words if the executor reads the sentinel: a refused
+// `deploy:lock` is a prepare-stage failure, which by the lock policy means "the
+// lock was released", and the outcome has to carry the different truth.
+func TestExecutorRecordsALockAnotherRunHolds(t *testing.T) {
+	// RecipeForTest does not wire the core implementations, so the lock is named
+	// explicitly: the point of the test is what the executor does with the
+	// refusal `CoreLock` produces, not that a task id happened to have a core.
+	host, plan := executorForTest(t, []deploy.Task{
+		{ID: deploy.TaskLock, Stage: deploy.StagePrepare, Core: deploy.CoreLock},
+	})
+	options := deploy.Options{CommandTimeout: time.Minute}
+	release := func() *deploy.Release { return deploy.NewReleaseForTest("1", "abc", "local") }
+
+	if _, err := deploy.NewExecutor(host, options, io.Discard).Run(context.Background(), plan, deploy.NewVars(), release()); err != nil {
+		t.Fatalf("the first run must take the lock: %v", err)
+	}
+
+	outcome, err := deploy.NewExecutor(host, options, io.Discard).Run(context.Background(), plan, deploy.NewVars(), release())
+	if !errors.Is(err, deploy.ErrLockHeld) {
+		t.Fatalf("err = %v, want ErrLockHeld", err)
+	}
+	if !outcome.LockHeldByAnother {
+		t.Error("the outcome must record that another run holds the lock")
+	}
+	if outcome.LockHeld {
+		t.Error("this run took no lock, so LockHeld must stay false")
 	}
 }
 

@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -1039,6 +1040,101 @@ func TestCheckAcceptsARedirectingVerifyURLWhenFollowingIsOptedIn(t *testing.T) {
 	})
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("a followed redirect that ends 2xx must not fail the preflight: %v", err)
+	}
+}
+
+// A symlink swap is atomic on disk and invisible to the application the target
+// serves: measured on a real sandbox target, the previous release kept answering
+// for at least 153 seconds after the swap, through killing every `php-fpm: pool
+// www` worker, because PHP caches both the resolved served path and the compiled
+// scripts. `deploy:verify` is an HTTP check, so in that state it can pass against
+// the release *before* the one the run published — a green deploy that published
+// nothing an operator can see. The preflight must say so, because the fix
+// (`settings.runtime_reload_command`, an FPM reload or an opcache reset) is the
+// project's to make.
+func TestCheckWarnsWhenASymlinkTargetCachesCompiledScripts(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
+	sc.Runner = scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "Zend OPcache", answerStdout: "1"}
+	var out bytes.Buffer
+	sc.Out = &out
+
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("the warning must never fail the preflight: %v", err)
+	}
+	warning := out.String()
+	for _, want := range []string{"bytecode cache", "runtime_reload_command", "deploy:verify"} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("the warning must mention %q, got %q", want, warning)
+		}
+	}
+}
+
+// The warning is about a gap the project can close, so a project that closed it
+// must not be told about it — and the target must not be probed at all, which is
+// what keeps the check cheap for every project that configures a reload.
+func TestCheckDoesNotWarnWhenTheProjectReloadsTheRuntime(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	runner := &recordingRunner{inner: scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "Zend OPcache", answerStdout: "1"}}
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Publish:  deploy.PublishSymlink,
+		Settings: map[string]any{"runtime_reload_command": "cachetool opcache:reset"},
+	})
+	sc.Runner = runner
+	var out bytes.Buffer
+	sc.Out = &out
+
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if strings.Contains(out.String(), "bytecode cache") {
+		t.Errorf("a project that reloads the runtime must not be warned, got %q", out.String())
+	}
+	for _, command := range runner.commands {
+		if strings.Contains(command, "Zend OPcache") {
+			t.Errorf("the opcache probe must not run when a reload is configured: %q", command)
+		}
+	}
+}
+
+// A target whose PHP loads no bytecode cache serves the swap the moment the
+// symlink moves, so there is nothing to warn about.
+func TestCheckDoesNotWarnWhenTheTargetHasNoBytecodeCache(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
+	sc.Runner = scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "Zend OPcache", answerStdout: "0"}
+	var out bytes.Buffer
+	sc.Out = &out
+
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if strings.Contains(out.String(), "bytecode cache") {
+		t.Errorf("a target with no bytecode cache must not be warned, got %q", out.String())
+	}
+}
+
+// The hazard belongs to the symlink swap. An in-place target rewrites the docroot
+// the application already serves, so there is no stale path to warn about — and
+// the probe must not run for it either.
+func TestCheckDoesNotProbeBytecodeCachingForAnInPlaceTarget(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	runner := &recordingRunner{inner: scriptedRunner{base: deploy.LocalRunner{}, answerSubstring: "Zend OPcache", answerStdout: "1"}}
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishInPlace})
+	sc.Runner = runner
+	var out bytes.Buffer
+	sc.Out = &out
+
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if strings.Contains(out.String(), "bytecode cache") {
+		t.Errorf("an in-place target swaps nothing, so it must not be warned, got %q", out.String())
+	}
+	for _, command := range runner.commands {
+		if strings.Contains(command, "Zend OPcache") {
+			t.Errorf("the opcache probe belongs to the symlink shape only: %q", command)
+		}
 	}
 }
 

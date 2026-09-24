@@ -778,9 +778,13 @@ deploy ngay trước khi thư mục release tồn tại nếu thiếu nó.
 Cache của ứng dụng đang được phục vụ mới là thứ bị flush trong pipeline — docroot với
 target in-place, còn với symlink là release vừa trở thành `current` — nên release mới
 không bao giờ phục vụ cache do code cũ dựng. Thứ mà flush cache không chạm tới là trạng thái của
-chính PHP: sau cú swap, một worker đã resolve `current` có thể vẫn giữ release cũ
-trong `realpath_cache` và file đã compile trong opcache tới `realpath_cache_ttl`.
-Đó là cách một deploy trông thành công mà vẫn phục vụ code của release trước.
+chính PHP. Sau cú swap, pool vẫn giữ release mà nó đã resolve cho đường dẫn được phục vụ,
+cùng những script đã compile từ release đó: đo trên một sandbox (PHP 8.3, bật opcache,
+2026-09-24) thì release trước vẫn trả lời 153 giây sau cú swap, kể cả khi đã kill sạch
+mọi worker `php-fpm: pool www`, và một file chỉ có ở release mới trả về "No input file
+specified" ngay tại cùng URL đó cho tới khi pool được reset. `deploy:verify` là một
+kiểm tra HTTP, nên ở trạng thái đó deploy trông thành công mà vẫn phục vụ code của
+release trước.
 
 `settings.runtime_reload_command` là cách được hỗ trợ để xoá trạng thái đó. Nó chạy
 như phần cuối của bước `app:cache:flush` — trong window với in-place, sau cú swap với
@@ -791,6 +795,12 @@ deploy:
   settings:
     runtime_reload_command: cachetool opcache:reset && cachetool stat:clear
 ```
+
+`govard deploy check` cảnh báo về khoảng trống này thay vì mặc định nó không tồn tại:
+khi target phục vụ qua symlink, PHP của nó nạp opcache và project không cấu hình
+`runtime_reload_command`, bước preflight sẽ nói rõ `deploy:verify` có thể đang kiểm tra
+release nào. Đây là cảnh báo, không phải lỗi — pool được reload từ ngoài govard (hook
+sau deploy, orchestrator) là một cấu hình hợp lệ.
 
 Reset opcache và realpath cache được ưu tiên hơn reload PHP-FPM: reload có thể làm
 rớt những request đang bay, đó là lý do recipe PHP-FPM của công cụ deploy tham chiếu

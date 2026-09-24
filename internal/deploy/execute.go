@@ -45,6 +45,11 @@ type Outcome struct {
 	// onwards it survives, so recovery has to be explicit.
 	LockHeld        bool
 	AlreadyDeployed bool
+	// LockHeldByAnother reports that this run was refused because another deploy
+	// holds the lock. It is not the same as LockHeld: this run never acquired
+	// one, so nothing of its was released and a plain retry is refused again by
+	// the same lock.
+	LockHeldByAnother bool
 	// ConnectionMayHaveDropped reports that a step failed with the SSH
 	// transport's own exit code, so the remote work may still be running.
 	ConnectionMayHaveDropped bool
@@ -66,6 +71,19 @@ type Outcome struct {
 func (o *Outcome) noteTransportFailure(err error) {
 	if errors.Is(err, ErrConnectionMayHaveDropped) {
 		o.ConnectionMayHaveDropped = true
+	}
+}
+
+// noteLockUnavailable records a failure that is another run's lock rather than
+// this run's fault.
+//
+// Only a step error can carry it — `deploy:lock` is the one step that reports
+// ErrLockHeld — and the distinction decides the hint: a run refused at the lock
+// never held anything, so telling the operator its lock "was released" points at
+// an operation that never happened and at a retry the same lock refuses again.
+func (o *Outcome) noteLockUnavailable(err error) {
+	if errors.Is(err, ErrLockHeld) {
+		o.LockHeldByAnother = true
 	}
 }
 
@@ -108,6 +126,9 @@ func RecoveryHint(remote string, outcome Outcome) string {
 			return fmt.Sprintf("exit 255: the SSH connection may have dropped, so the failed step may still be running or may have died midway; check the target with `govard deploy status %s` before `govard deploy --remote %s --resume`, which re-runs the step, or release the lock with `govard deploy unlock %s`", remote, remote, remote)
 		}
 		return fmt.Sprintf("exit 255: the SSH connection may have dropped, so the failed step may still be running or may have died midway; check the target with `govard deploy status %s` before retrying `govard deploy --remote %s`, because nothing signalled the remote process group", remote, remote)
+	}
+	if outcome.LockHeldByAnother {
+		return fmt.Sprintf("another deploy holds the deploy lock on %s; check it with `govard deploy status %s`, then continue it with `govard deploy --remote %s --resume` once it finishes, or release the lock deliberately with `govard deploy unlock %s --force`", remote, remote, remote, remote)
 	}
 	if outcome.LockHeld {
 		return fmt.Sprintf("the release directory, its record and the deploy lock were kept on %s; continue with `govard deploy --remote %s --resume`, or inspect the target with `govard deploy status %s`", remote, remote, remote)
@@ -494,6 +515,7 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			// record write.
 			_ = WriteRelease(context.WithoutCancel(ctx), e.host, release)
 			outcome.noteTransportFailure(stepErr)
+			outcome.noteLockUnavailable(stepErr)
 			outcome.LockHeld = LockKeptOnFailure(step.Stage)
 			if !outcome.LockHeld {
 				e.releaseLockAfterFailure(ctx, release)

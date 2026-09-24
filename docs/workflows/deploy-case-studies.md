@@ -964,7 +964,7 @@ Magento settings (declared by the Magento recipe):
 | `static_content_locales_backend` | the frontend locales | `--language` for the adminhtml pass |
 | `static_deploy_options` | (empty) | extra flags for **every** pass (`--no-parent`, `-s standard`, …) |
 | `worker_control` | `false` | `cron:remove` / `queue:consumers:restart` around the migration, restored after |
-| `runtime_reload_command` | (empty) | run as the last part of the cache flush (an opcache reset, an FPM reload) |
+| `runtime_reload_command` | (empty) | run as the last part of the cache flush (an opcache reset, an FPM reload); a symlink target needs it unless the pool is reloaded another way — `govard deploy check` warns when it is missing |
 
 `deploy.settings` is validated against the recipe before anything runs: an unknown
 key, or a value with the wrong shape, is a configuration error (exit 4) naming the
