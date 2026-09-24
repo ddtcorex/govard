@@ -364,10 +364,10 @@ này dọn nốt những gì còn lại dưới `var/cache` và `var/page_cache`
 xoá, không bao giờ xoá chính thư mục (một `var/cache` được tạo lại có thể không cho
 user web server ghi vào), `var/session` và build output không bị chạm, và một lần
 dọn thất bại chỉ in cảnh báo chứ không làm fail deploy, và một thư mục cache mà nó không
-đọc được cũng được nêu tên chứ không im lặng bỏ qua. Đo trên
-`app/magento2-test-instance`: một cú flush 473ms không xoá gì để lại một layout đã
-merge có nhắc tới class mà release đã bỏ, và site trả HTTP 500 sau mọi lần deploy
-cho tới khi file cache được xoá bằng tay.
+đọc được cũng được nêu tên chứ không im lặng bỏ qua. Đo trên một target Magento 2
+production: một cú flush 473ms không xoá gì để lại một layout đã merge có nhắc tới
+class mà release đã bỏ, và site trả HTTP 500 sau mọi lần deploy cho tới khi file
+cache được xoá bằng tay.
 
 Việc khoá theo install root có một hệ quả cần kiểm tra ở target đã từng deploy với
 `worker_control: true`: các release trước chạy cả hai bước trong thư mục *release*,

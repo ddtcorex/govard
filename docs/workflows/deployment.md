@@ -375,10 +375,10 @@ framework's flush and reports how many entries it removed. Entries are removed,
 never the directories (a recreated `var/cache` may not be writable by the
 web-server user), `var/session` and the build output are untouched, and a purge
 that cannot remove entries prints a warning instead of failing the deploy, and a cache
-directory it cannot even read is named rather than passing silently. Measured
-on `app/magento2-test-instance`: a 473ms flush that removed nothing left a merged
-layout naming a class the release had removed, and the site answered HTTP 500 after
-every deploy until the file cache was deleted by hand.
+directory it cannot even read is named rather than passing silently. Measured on a
+production Magento 2 target: a 473ms flush that removed nothing left a merged layout
+naming a class the release had removed, and the site answered HTTP 500 after every
+deploy until the file cache was deleted by hand.
 
 That keying has one consequence worth checking on a target that already deployed
 with `worker_control: true`: earlier releases ran both steps in the *release*

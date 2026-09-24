@@ -18,7 +18,7 @@ import (
 // release copies into, and a flush in the release deletes a cache nothing reads
 // while the served application keeps the old one.
 //
-// Measured on a real in-place target (app/magento2-test-instance, release 16):
+// Measured on a real in-place target (release 16):
 // `.deployer/releases/16/var/cache` (27 MB) was flushed while
 // `public_html/var/cache` (34 MB) and `public_html/var/page_cache` (9.1 MB)
 // survived, and `app/etc/env.php` declared no cache backend other than the file

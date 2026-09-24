@@ -1129,7 +1129,7 @@ func TestMagento2ConditionalMigrateProbeAndFlags(t *testing.T) {
 
 // Composer on the sandbox clones private git repos the image cannot know at
 // build time, so host-key checking would fail every private VCS package
-// (found live: "Host key verification failed" for a git.sutunam.com repo on a
+// (found live: "Host key verification failed" for a private VCS host on a
 // fresh sandbox). The dev environments already disable it in base.yml for the
 // same reason; the rehearsal box follows suit while production targets keep
 // real known_hosts.
@@ -1314,11 +1314,10 @@ exit 1
 // The framework flush is not a sweep on Magento 2.4.9: the file cache is a
 // Symfony pool and `TagScope::clean()` rewrites CLEANING_MODE_ALL into a *tag*
 // clean, so `cache:flush` removes only the entries its own index still knows
-// about and exits 0 either way. Measured on app/magento2-test-instance
-// (production, in-place, deploy job 316192): the step reported success in 473ms
-// and removed nothing, while the docroot kept a merged layout built on
-// 2026-08-28 naming a class the release had removed — HTTP 500 after every
-// deploy until the file cache was deleted by hand.
+// about and exits 0 either way. Measured on a production in-place target: the
+// step reported success in 473ms and removed nothing, while the docroot kept a
+// merged layout built weeks earlier naming a class the release had removed —
+// HTTP 500 after every deploy until the file cache was deleted by hand.
 func TestMagento2CacheFlushPurgesTheFileCacheLeftovers(t *testing.T) {
 	command := magento2.DeployRecipe().Task(deploy.TaskAppCacheFlush).Command
 
@@ -1359,7 +1358,7 @@ func TestMagento2CacheFlushPurgeRemovesOrphansAndKeepsSessions(t *testing.T) {
 	if err := os.MkdirAll(host.CurrentPath, 0o755); err != nil {
 		t.Fatalf("mkdir the served root: %v", err)
 	}
-	orphan := filepath.Join(host.CurrentPath, "var/cache/f9e_/L/K/Z1ovlaCC1Y3RDBJmq9DQ")
+	orphan := filepath.Join(host.CurrentPath, "var/cache/f9e_/L/K/orphan-entry")
 	spaced := filepath.Join(host.CurrentPath, "var/cache/f9e_/L/K/two words")
 	pageCache := filepath.Join(host.CurrentPath, "var/page_cache/f9e_/L/K/entry")
 	session := filepath.Join(host.CurrentPath, "var/session/sess_1")

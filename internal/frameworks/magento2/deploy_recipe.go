@@ -208,7 +208,7 @@ func DeployRecipe() deploy.Recipe {
 	// just went live, so both spellings coincide; an in-place docroot is a
 	// *different* directory the release copies into, and a flush in the release
 	// clears a cache nothing reads while the live application keeps the old one.
-	// Measured on a real in-place target (app/magento2-test-instance, release 16):
+	// Measured on a real in-place target (release 16):
 	// the release's 27 MB var/cache was emptied and the docroot kept its own
 	// 34 MB plus a 9.1 MB var/page_cache, with no cache backend but Magento's
 	// file default — so the site kept serving the old configuration.
@@ -217,11 +217,11 @@ func DeployRecipe() deploy.Recipe {
 	// `TagScope::clean()` rewrites `CLEANING_MODE_ALL` into a *tag* clean, so
 	// `cache:flush` removes only the entries its own index still knows about,
 	// exits 0 either way, and leaves an orphan — an entry whose index row is gone,
-	// still valid for its own TTL — served forever. Measured on the same target
-	// (production, job 316192): the step reported success in 473ms, removed
-	// nothing, and the docroot kept a merged layout built on 2026-08-28 naming a
-	// class the release had removed, so the site answered HTTP 500 after every
-	// deploy until the file cache was deleted by hand.
+	// still valid for its own TTL — served forever. Measured on a production
+	// in-place target: the step reported success in 473ms, removed nothing, and
+	// the docroot kept a merged layout built weeks earlier naming a class the
+	// release had removed, so the site answered HTTP 500 after every deploy until
+	// the file cache was deleted by hand.
 	//
 	// The step therefore owns the end state of the directories the served
 	// application reads: after the framework's own flush it drops whatever is
