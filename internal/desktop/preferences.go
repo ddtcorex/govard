@@ -44,7 +44,8 @@ func resetSettingsInternal() error {
 
 // SettingsService methods
 
-func (s *SettingsService) GetSettings() (DesktopSettings, error) {
+func (s *SettingsService) GetSettings() (settings DesktopSettings, err error) {
+	defer RecoverPanic(&err, "GetSettings")
 	return getSettingsInternal()
 }
 
@@ -52,14 +53,16 @@ func (s *SettingsService) GetMailpitURL() string {
 	return buildProxyURL("mail")
 }
 
-func (s *SettingsService) UpdateSettings(settings DesktopSettings) (string, error) {
+func (s *SettingsService) UpdateSettings(settings DesktopSettings) (res string, err error) {
+	defer RecoverPanic(&err, "UpdateSettings")
 	if err := setSettingsInternal(settings); err != nil {
 		return "", err
 	}
 	return "Settings updated", nil
 }
 
-func (s *SettingsService) ResetSettings() (string, error) {
+func (s *SettingsService) ResetSettings() (res string, err error) {
+	defer RecoverPanic(&err, "ResetSettings")
 	if err := resetSettingsInternal(); err != nil {
 		return "", err
 	}

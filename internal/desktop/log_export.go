@@ -25,6 +25,14 @@ var defaultWriteLogFileForDesktop = func(path string, data []byte, perm os.FileM
 
 var writeLogFileForDesktop = defaultWriteLogFileForDesktop
 
+// LogService.SaveLogsToFile writes the frontend's log buffer through the
+// platform save dialog. The free function below keeps its own signature so the
+// contract stays testable without a service.
+func (s *LogService) SaveLogsToFile(content string, suggestedName string) (res string, err error) {
+	defer RecoverPanic(&err, "SaveLogsToFile")
+	return saveLogsToFile(s.platform, content, suggestedName)
+}
+
 func saveLogsToFile(p Platform, content string, suggestedName string) (string, error) {
 	trimmedContent := strings.TrimSpace(content)
 	if trimmedContent == "" {

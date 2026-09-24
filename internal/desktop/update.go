@@ -196,10 +196,11 @@ var defaultRestartDesktopBinary = func(binaryPath string) error {
 
 var restartDesktopBinary = defaultRestartDesktopBinary
 
-func (app *App) CheckForUpdates() (UpdateCheckResult, error) {
+func (s *UpdateService) CheckForUpdates() (result UpdateCheckResult, err error) {
+	defer RecoverPanic(&err, "CheckForUpdates")
 	current := normalizeDesktopVersionTag(Version)
 	channel := updater.GetChannel()
-	result := UpdateCheckResult{
+	result = UpdateCheckResult{
 		CurrentVersion: current,
 		Channel:        channel,
 	}
@@ -222,18 +223,21 @@ func (app *App) CheckForUpdates() (UpdateCheckResult, error) {
 	return result, nil
 }
 
-func (app *App) GetUpdateChannel() (string, error) {
+func (s *UpdateService) GetUpdateChannel() (channel string, err error) {
+	defer RecoverPanic(&err, "GetUpdateChannel")
 	return updater.GetChannel(), nil
 }
 
-func (app *App) SetUpdateChannel(channel string) (string, error) {
+func (s *UpdateService) SetUpdateChannel(channel string) (res string, err error) {
+	defer RecoverPanic(&err, "SetUpdateChannel")
 	if err := updater.SetChannel(channel); err != nil {
 		return "", err
 	}
 	return updater.GetChannel(), nil
 }
 
-func (app *App) InstallLatestUpdate() (string, error) {
+func (s *UpdateService) InstallLatestUpdate() (res string, err error) {
+	defer RecoverPanic(&err, "InstallLatestUpdate")
 	if runtime.GOOS == "windows" {
 		return "", errors.New("automatic update is not supported on Windows yet; install a fresh release instead")
 	}
@@ -425,7 +429,8 @@ func isDesktopSelfUpdateNoiseLine(lowerTrimmedLine string) bool {
 	return false
 }
 
-func (app *App) RestartDesktopApp() (string, error) {
+func (s *UpdateService) RestartDesktopApp() (res string, err error) {
+	defer RecoverPanic(&err, "RestartDesktopApp")
 	binaryPath, err := resolveDesktopBinaryForRestart()
 	if err != nil {
 		return "", fmt.Errorf("resolve desktop binary for restart: %w", err)
@@ -435,14 +440,15 @@ func (app *App) RestartDesktopApp() (string, error) {
 		return "", fmt.Errorf("restart desktop app: %w", err)
 	}
 
-	// app.ctx is set by Startup, so this guard keeps the pre-refactor behaviour
-	// of not arming the delayed quit before the app has started.
-	if app != nil && app.ctx != nil {
+	// s.ctx is set by Setup (Wails Startup), so this guard keeps the
+	// pre-refactor behaviour of not arming the delayed quit before the app has
+	// started.
+	if s.ctx != nil {
 		// Give the child process time to initialize and the RPC layer
 		// a moment to flush the response before quitting the parent.
 		go func() {
 			time.Sleep(800 * time.Millisecond)
-			app.platform.Quit()
+			s.platform.Quit()
 		}()
 	}
 

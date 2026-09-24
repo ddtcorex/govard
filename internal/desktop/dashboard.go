@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"govard/internal/engine"
+	"govard/internal/frameworks"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -268,11 +269,13 @@ func buildDashboardInternal() (Dashboard, error) {
 
 // EnvironmentService methods
 
-func (s *EnvironmentService) GetDashboard() (Dashboard, error) {
+func (s *EnvironmentService) GetDashboard() (dashboard Dashboard, err error) {
+	defer RecoverPanic(&err, "GetDashboard")
 	return buildDashboardInternal()
 }
 
-func (s *EnvironmentService) StartEnvironment(project string) (string, error) {
+func (s *EnvironmentService) StartEnvironment(project string) (res string, err error) {
+	defer RecoverPanic(&err, "StartEnvironment")
 	root, _, err := resolveProjectRootForRemotes(project)
 	if err != nil {
 		return "", err
@@ -287,7 +290,8 @@ func (s *EnvironmentService) StartEnvironment(project string) (string, error) {
 	return withCommandOutput("Environment started.", output), nil
 }
 
-func (s *EnvironmentService) StopEnvironment(project string) (string, error) {
+func (s *EnvironmentService) StopEnvironment(project string) (res string, err error) {
+	defer RecoverPanic(&err, "StopEnvironment")
 	root, _, err := resolveProjectRootForRemotes(project)
 	if err != nil {
 		return "", err
@@ -299,7 +303,8 @@ func (s *EnvironmentService) StopEnvironment(project string) (string, error) {
 	return withCommandOutput("Environment stopped.", output), nil
 }
 
-func (s *EnvironmentService) RestartEnvironment(project string) (string, error) {
+func (s *EnvironmentService) RestartEnvironment(project string) (res string, err error) {
+	defer RecoverPanic(&err, "RestartEnvironment")
 	root, _, err := resolveProjectRootForRemotes(project)
 	if err != nil {
 		return "", err
@@ -316,7 +321,8 @@ func (s *EnvironmentService) RestartEnvironment(project string) (string, error) 
 	return withCommandOutput("Environment restarted.", output), nil
 }
 
-func (s *EnvironmentService) PullEnvironment(project string) (string, error) {
+func (s *EnvironmentService) PullEnvironment(project string) (res string, err error) {
+	defer RecoverPanic(&err, "PullEnvironment")
 	root, _, err := resolveProjectRootForRemotes(project)
 	if err != nil {
 		return "", err
@@ -328,7 +334,8 @@ func (s *EnvironmentService) PullEnvironment(project string) (string, error) {
 	return withCommandOutput("Environment images pulled.", output), nil
 }
 
-func (s *EnvironmentService) ToggleEnvironment(project string) (string, error) {
+func (s *EnvironmentService) ToggleEnvironment(project string) (res string, err error) {
+	defer RecoverPanic(&err, "ToggleEnvironment")
 	info, err := loadProjectInfo(project)
 	if err == nil && info.runningCount > 0 {
 		return s.StopEnvironment(project)
@@ -336,8 +343,94 @@ func (s *EnvironmentService) ToggleEnvironment(project string) (string, error) {
 	return s.StartEnvironment(project)
 }
 
-func (s *EnvironmentService) GetEnvironmentURL(project string) (string, error) {
+func (s *EnvironmentService) GetEnvironmentURL(project string) (res string, err error) {
+	defer RecoverPanic(&err, "GetEnvironmentURL")
 	return environmentURL(project)
+}
+
+// OpenEnvironment resolves the project URL and hands it to the OS browser.
+// The frontend shows its own success toast, so the returned string is only a
+// fallback message.
+func (s *EnvironmentService) OpenEnvironment(project string) (res string, err error) {
+	defer RecoverPanic(&err, "OpenEnvironment")
+	url, errEnv := s.GetEnvironmentURL(project)
+	if errEnv != nil {
+		return "", errEnv
+	}
+	if errOpen := openURLWithPreferences(s.platform, url); errOpen != nil {
+		return "Open " + url + " manually", nil
+	}
+	return "Opening " + url + "...", nil
+}
+
+func (s *EnvironmentService) OpenDocs(path string) (res string, err error) {
+	defer RecoverPanic(&err, "OpenDocs")
+	if path == "" {
+		return "", fmt.Errorf("no docs path provided")
+	}
+	if errOpen := openDocs(s.platform, path); errOpen != nil {
+		return "", fmt.Errorf("failed to open docs: %w", errOpen)
+	}
+	return "Opening docs...", nil
+}
+
+func (s *EnvironmentService) QuickAction(action string) (res string, err error) {
+	defer RecoverPanic(&err, "QuickAction")
+	return quickAction(s.platform, action, "")
+}
+
+func (s *EnvironmentService) QuickActionForProject(action string, project string) (res string, err error) {
+	defer RecoverPanic(&err, "QuickActionForProject")
+	return quickAction(s.platform, action, project)
+}
+
+func (s *EnvironmentService) DeleteProject(projectQuery string) (res string, err error) {
+	defer RecoverPanic(&err, "DeleteProject")
+	if projectQuery == "" {
+		return "", fmt.Errorf("project name or path is required")
+	}
+
+	root, score, err := resolveProjectRootForRemotes(projectQuery)
+	if err != nil {
+		return "", err
+	}
+
+	// Safety check for weak matches in the desktop app
+	if score >= engine.ScoreAmbiguousThreshold {
+		return "", fmt.Errorf("match for %q is too weak for deletion (confidence score: %d): use the full name or path", projectQuery, score)
+	}
+
+	// Check if it's an orphan (root is the name, not an absolute path)
+	if !filepath.IsAbs(root) && !strings.Contains(root, string(filepath.Separator)) {
+		if err := engine.DeleteOrphanProject(s.ctx, root, os.Stdout, os.Stderr); err != nil {
+			return "", err
+		}
+		return "Orphaned project resources removed", nil
+	}
+
+	// We use the application context for the deletion process
+	if err := engine.DeleteProject(s.ctx, root, os.Stdout, os.Stderr); err != nil {
+		return "", err
+	}
+	return "Project deleted successfully", nil
+}
+
+// ListFrameworks returns every framework registered in internal/frameworks,
+// for the onboarding UI's framework picker. This keeps the frontend's
+// dropdown, alias resolution, and display-name formatting in sync with the
+// Go-side registry instead of duplicating framework metadata in JS.
+func (s *EnvironmentService) ListFrameworks() (res []FrameworkOption, err error) {
+	defer RecoverPanic(&err, "ListFrameworks")
+	defs := frameworks.All()
+	res = make([]FrameworkOption, 0, len(defs))
+	for _, def := range defs {
+		res = append(res, FrameworkOption{
+			Name:        def.Name,
+			DisplayName: def.DisplayName,
+			Aliases:     append([]string(nil), def.Aliases...), // defensive copy - registry.go's All()/Get() warn callers not to mutate shared slice fields
+		})
+	}
+	return res, nil
 }
 
 func extractProjectAndService(c container.Summary) (string, string) {

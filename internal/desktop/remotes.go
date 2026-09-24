@@ -1364,7 +1364,8 @@ func hasRemoteName(remotes []RemoteEntry, name string) bool {
 
 // RemoteService methods
 
-func (s *RemoteService) GetRemotes(project string) (RemoteSnapshot, error) {
+func (s *RemoteService) GetRemotes(project string) (res RemoteSnapshot, err error) {
+	defer RecoverPanic(&err, "GetRemotes")
 	snapshot, err := listProjectRemotes(project)
 	if err != nil {
 		return RemoteSnapshot{
@@ -1382,7 +1383,8 @@ func ResolveProjectRootForRemotesForTest(project string) (string, error) {
 	return root, err
 }
 
-func (s *RemoteService) TestRemote(project string, remoteName string) (string, error) {
+func (s *RemoteService) TestRemote(project string, remoteName string) (res string, err error) {
+	defer RecoverPanic(&err, "TestRemote")
 	message, err := testRemote(project, remoteName)
 	if err != nil {
 		return "", err
@@ -1390,7 +1392,8 @@ func (s *RemoteService) TestRemote(project string, remoteName string) (string, e
 	return message, nil
 }
 
-func (s *RemoteService) OpenRemoteURL(project string, remoteName string) (string, error) {
+func (s *RemoteService) OpenRemoteURL(project string, remoteName string) (res string, err error) {
+	defer RecoverPanic(&err, "OpenRemoteURL")
 	message, err := openRemoteURL(project, remoteName, s.platform)
 	if err != nil {
 		return "", err
@@ -1398,7 +1401,8 @@ func (s *RemoteService) OpenRemoteURL(project string, remoteName string) (string
 	return message, nil
 }
 
-func (s *RemoteService) OpenRemoteDB(project string, remoteName string) (string, error) {
+func (s *RemoteService) OpenRemoteDB(project string, remoteName string) (res string, err error) {
+	defer RecoverPanic(&err, "OpenRemoteDB")
 	message, err := openRemoteDB(project, remoteName)
 	if err != nil {
 		return "", err
@@ -1406,7 +1410,8 @@ func (s *RemoteService) OpenRemoteDB(project string, remoteName string) (string,
 	return message, nil
 }
 
-func (s *RemoteService) OpenRemoteSFTP(project string, remoteName string) (string, error) {
+func (s *RemoteService) OpenRemoteSFTP(project string, remoteName string) (res string, err error) {
+	defer RecoverPanic(&err, "OpenRemoteSFTP")
 	message, err := openRemoteSFTP(project, remoteName, s.ctx, s.platform)
 	if err != nil {
 		return "", err
@@ -1414,7 +1419,8 @@ func (s *RemoteService) OpenRemoteSFTP(project string, remoteName string) (strin
 	return message, nil
 }
 
-func (s *RemoteService) OpenRemoteShell(project string, remoteName string) (string, error) {
+func (s *RemoteService) OpenRemoteShell(project string, remoteName string) (res string, err error) {
+	defer RecoverPanic(&err, "OpenRemoteShell")
 	message, err := openRemoteShell(project, remoteName, s.ctx, s.platform)
 	if err != nil {
 		return "", err
@@ -1426,7 +1432,8 @@ func (s *RemoteService) GetSyncOptions(project, preset string) presetSyncOptions
 	return buildPresetSyncOptionDefs(project, preset)
 }
 
-func (s *RemoteService) RunRemoteSyncPreset(project string, remoteName string, preset string, options map[string]bool) (string, error) {
+func (s *RemoteService) RunRemoteSyncPreset(project string, remoteName string, preset string, options map[string]bool) (res string, err error) {
+	defer RecoverPanic(&err, "RunRemoteSyncPreset")
 	message, err := runRemoteSyncPresetWithOptions(project, remoteName, preset, options)
 	if err != nil {
 		return "", err
@@ -1434,7 +1441,8 @@ func (s *RemoteService) RunRemoteSyncPreset(project string, remoteName string, p
 	return message, nil
 }
 
-func (s *RemoteService) RunRemoteSyncInTerminal(project string, remoteName string, preset string, options map[string]bool) (string, error) {
+func (s *RemoteService) RunRemoteSyncInTerminal(project string, remoteName string, preset string, options map[string]bool) (res string, err error) {
+	defer RecoverPanic(&err, "RunRemoteSyncInTerminal")
 	remoteName = strings.TrimSpace(remoteName)
 	if remoteName == "" {
 		return "", fmt.Errorf("remote name is required")
@@ -1469,13 +1477,13 @@ func (s *RemoteService) RunRemoteSyncInTerminal(project string, remoteName strin
 	return "Sync started in terminal", nil
 }
 
-func (s *RemoteService) RunRemoteSync(project string, remoteName string, preset string, options map[string]bool) (string, error) {
+func (s *RemoteService) RunRemoteSync(project string, remoteName string, preset string, options map[string]bool) (res string, err error) {
+	defer RecoverPanic(&err, "RunRemoteSync")
 	ctx := s.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	err := runRemoteSyncBackgroundWithOptions(ctx, s.platform, project, remoteName, preset, options)
-	if err != nil {
+	if err := runRemoteSyncBackgroundWithOptions(ctx, s.platform, project, remoteName, preset, options); err != nil {
 		return "", err
 	}
 	return "Sync started", nil

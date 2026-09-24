@@ -1,17 +1,104 @@
 // @ts-check
 
-/** @returns {Record<string, (...args: any[]) => Promise<any>> | undefined} */
-const getBridge = () => window.go?.desktop?.App;
+/**
+ * Frontend name -> [bound Go service, method]. The only map from UI calls to
+ * Go. Plan B Task 3 points `backend` at the generated bindings; nothing else
+ * in this file changes then.
+ * @type {Record<string, [string, string]>}
+ */
+export const ROUTES = {
+  GetSettings: ["SettingsService", "GetSettings"],
+  GetMailpitURL: ["SettingsService", "GetMailpitURL"],
+  UpdateSettings: ["SettingsService", "UpdateSettings"],
+  ResetSettings: ["SettingsService", "ResetSettings"],
+  GetDashboard: ["EnvironmentService", "GetDashboard"],
+  StartEnvironment: ["EnvironmentService", "StartEnvironment"],
+  StopEnvironment: ["EnvironmentService", "StopEnvironment"],
+  RestartEnvironment: ["EnvironmentService", "RestartEnvironment"],
+  PullEnvironment: ["EnvironmentService", "PullEnvironment"],
+  ToggleEnvironment: ["EnvironmentService", "ToggleEnvironment"],
+  OpenEnvironment: ["EnvironmentService", "OpenEnvironment"],
+  QuickActionForProject: ["EnvironmentService", "QuickActionForProject"],
+  DeleteProject: ["EnvironmentService", "DeleteProject"],
+  ListFrameworks: ["EnvironmentService", "ListFrameworks"],
+  GetGlobalServices: ["GlobalServiceService", "GetGlobalServices"],
+  StartGlobalServices: ["GlobalServiceService", "StartGlobalServices"],
+  StopGlobalServices: ["GlobalServiceService", "StopGlobalServices"],
+  RestartGlobalServices: ["GlobalServiceService", "RestartGlobalServices"],
+  PullGlobalServices: ["GlobalServiceService", "PullGlobalServices"],
+  StartGlobalService: ["GlobalServiceService", "StartGlobalService"],
+  StopGlobalService: ["GlobalServiceService", "StopGlobalService"],
+  RestartGlobalService: ["GlobalServiceService", "RestartGlobalService"],
+  OpenGlobalService: ["GlobalServiceService", "OpenGlobalService"],
+  GetSystemMetrics: ["SystemService", "GetSystemMetrics"],
+  GetResourceMetrics: ["SystemService", "GetResourceMetrics"],
+  GetUserInfo: ["SystemService", "GetUserInfo"],
+  GetVersion: ["SystemService", "GetVersion"],
+  Quit: ["SystemService", "Quit"],
+  StartServiceTerminalInOS: ["LogService", "StartServiceTerminalInOS"],
+  GetLogsForService: ["LogService", "GetLogsForService"],
+  StartLogStreamForService: ["LogService", "StartLogStreamForService"],
+  StopLogStream: ["LogService", "StopLogStream"],
+  GetGlobalServiceLogs: ["LogService", "GetGlobalServiceLogs"],
+  StartGlobalServiceLogStream: ["LogService", "StartGlobalServiceLogStream"],
+  StopGlobalServiceLogStream: ["LogService", "StopGlobalServiceLogStream"],
+  SaveLogsToFile: ["LogService", "SaveLogsToFile"],
+  GetRemotes: ["RemoteService", "GetRemotes"],
+  TestRemote: ["RemoteService", "TestRemote"],
+  OpenRemoteURL: ["RemoteService", "OpenRemoteURL"],
+  OpenRemoteShell: ["RemoteService", "OpenRemoteShell"],
+  OpenRemoteDB: ["RemoteService", "OpenRemoteDB"],
+  OpenRemoteSFTP: ["RemoteService", "OpenRemoteSFTP"],
+  RunRemoteSyncPreset: ["RemoteService", "RunRemoteSyncPreset"],
+  RunRemoteSyncBackground: ["RemoteService", "RunRemoteSync"],
+  RunRemoteSyncInTerminal: ["RemoteService", "RunRemoteSyncInTerminal"],
+  GetSyncPresetOptions: ["RemoteService", "GetSyncOptions"],
+  PickProjectDirectory: ["OnboardingService", "PickProjectDirectory"],
+  OnboardProject: ["OnboardingService", "OnboardProject"],
+  DetectMigrationSource: ["OnboardingService", "DetectMigrationSource"],
+  CheckForUpdates: ["UpdateService", "CheckForUpdates"],
+  GetUpdateChannel: ["UpdateService", "GetUpdateChannel"],
+  SetUpdateChannel: ["UpdateService", "SetUpdateChannel"],
+  InstallLatestUpdate: ["UpdateService", "InstallLatestUpdate"],
+  RestartDesktopApp: ["UpdateService", "RestartDesktopApp"],
+};
 
 /**
- * @param {((...args: any[]) => Promise<any>) | undefined} fn
+ * Wails v2 backend: the bound service structs under window.go.desktop.
+ * @param {string} service
+ * @param {string} method
  * @param {any[]} args
  */
-const call = async (fn, ...args) => {
-  if (!fn) {
-    throw new Error("Desktop bridge not available");
+const wailsV2Backend = async (service, method, args) => {
+  const fn = window.go?.desktop?.[service]?.[method];
+  if (typeof fn !== "function") {
+    throw new Error(`Desktop bridge not available: ${service}.${method}`);
   }
   return fn(...args);
+};
+
+/** @type {(service: string, method: string, args: any[]) => Promise<any>} */
+let backend = wailsV2Backend;
+
+/**
+ * Test seam: replace the backend, returns a restore function.
+ * @param {(service: string, method: string, args: any[]) => Promise<any>} fn
+ */
+export function __setBackendForTest(fn) {
+  const previous = backend;
+  backend = fn;
+  return () => {
+    backend = previous;
+  };
+}
+
+/**
+ * @param {keyof typeof ROUTES} name
+ * @param {...any} args
+ */
+const invoke = (name, ...args) => {
+  const [service, method] = ROUTES[name];
+  return backend(service, method, args);
 };
 
 export const desktopBridge = {
@@ -22,103 +109,80 @@ export const desktopBridge = {
     if (args && args.length > 0) {
       console.warn("ROGUE ARGS SENT TO GETDASHBOARD:", args);
     }
-    const bridge = getBridge();
-    return call(bridge?.GetDashboard?.bind(bridge)); // explicitly drop args
+    return invoke("GetDashboard"); // explicitly drop args
   },
   async getGlobalServices() {
-    const bridge = getBridge();
-    return call(bridge?.GetGlobalServices?.bind(bridge));
+    return invoke("GetGlobalServices");
   },
   async startGlobalServices() {
-    const bridge = getBridge();
-    return call(bridge?.StartGlobalServices?.bind(bridge));
+    return invoke("StartGlobalServices");
   },
   async stopGlobalServices() {
-    const bridge = getBridge();
-    return call(bridge?.StopGlobalServices?.bind(bridge));
+    return invoke("StopGlobalServices");
   },
   async restartGlobalServices() {
-    const bridge = getBridge();
-    return call(bridge?.RestartGlobalServices?.bind(bridge));
+    return invoke("RestartGlobalServices");
   },
   async pullGlobalServices() {
-    const bridge = getBridge();
-    return call(bridge?.PullGlobalServices?.bind(bridge));
+    return invoke("PullGlobalServices");
   },
   /**
    * @param {string} serviceID
    */
   async startGlobalService(serviceID) {
-    const bridge = getBridge();
-    return call(bridge?.StartGlobalService?.bind(bridge), serviceID);
+    return invoke("StartGlobalService", serviceID);
   },
   /**
    * @param {string} serviceID
    */
   async stopGlobalService(serviceID) {
-    const bridge = getBridge();
-    return call(bridge?.StopGlobalService?.bind(bridge), serviceID);
+    return invoke("StopGlobalService", serviceID);
   },
   /**
    * @param {string} serviceID
    */
   async restartGlobalService(serviceID) {
-    const bridge = getBridge();
-    return call(bridge?.RestartGlobalService?.bind(bridge), serviceID);
+    return invoke("RestartGlobalService", serviceID);
   },
   /**
    * @param {string} serviceID
    */
   async openGlobalService(serviceID) {
-    const bridge = getBridge();
-    return call(bridge?.OpenGlobalService?.bind(bridge), serviceID);
+    return invoke("OpenGlobalService", serviceID);
   },
   /**
    * @param {string} serviceID
    * @param {number} [lines=200]
    */
   async getGlobalServiceLogs(serviceID, lines = 200) {
-    const bridge = getBridge();
-    return call(
-      bridge?.GetGlobalServiceLogs?.bind(bridge),
-      serviceID,
-      Number(lines) || 200,
-    );
+    return invoke("GetGlobalServiceLogs", serviceID, Number(lines) || 200);
   },
   /**
    * @param {string} serviceID
    */
   async startGlobalServiceLogStream(serviceID) {
-    const bridge = getBridge();
-    return call(bridge?.StartGlobalServiceLogStream?.bind(bridge), serviceID);
+    return invoke("StartGlobalServiceLogStream", serviceID);
   },
   async stopGlobalServiceLogStream() {
-    const bridge = getBridge();
-    return call(bridge?.StopGlobalServiceLogStream?.bind(bridge));
+    return invoke("StopGlobalServiceLogStream");
   },
   async getCurrentUser() {
-    const bridge = getBridge();
-    return call(bridge?.GetUserInfo?.bind(bridge));
+    return invoke("GetUserInfo");
   },
   async getVersion() {
-    const bridge = getBridge();
-    return call(bridge?.GetVersion?.bind(bridge));
+    return invoke("GetVersion");
   },
   async getSystemMetrics() {
-    const bridge = getBridge();
-    return call(bridge?.GetSystemMetrics?.bind(bridge));
+    return invoke("GetSystemMetrics");
   },
   async getResourceMetrics() {
-    const bridge = getBridge();
-    return call(bridge?.GetResourceMetrics?.bind(bridge));
+    return invoke("GetResourceMetrics");
   },
   async pickProjectDirectory() {
-    const bridge = getBridge();
-    return call(bridge?.PickProjectDirectory?.bind(bridge));
+    return invoke("PickProjectDirectory");
   },
   async listFrameworks() {
-    const bridge = getBridge();
-    return call(bridge?.ListFrameworks?.bind(bridge));
+    return invoke("ListFrameworks");
   },
   /**
    * @param {any} inputOrPath
@@ -132,8 +196,6 @@ export const desktopBridge = {
     domain = "",
     serviceOptions = {},
   ) {
-    const bridge = getBridge();
-
     // Support both object payload (current onboarding flow) and legacy positional args.
     if (
       inputOrPath &&
@@ -141,7 +203,7 @@ export const desktopBridge = {
       !Array.isArray(inputOrPath)
     ) {
       const input = inputOrPath;
-      return call(bridge?.OnboardProject?.bind(bridge), {
+      return invoke("OnboardProject", {
         projectPath: String(input.projectPath || "").trim(),
         framework: String(input.framework || "").trim(),
         frameworkVersion: String(input.frameworkVersion || "").trim(),
@@ -163,7 +225,7 @@ export const desktopBridge = {
     }
 
     const opts = serviceOptions || {};
-    return call(bridge?.OnboardProject?.bind(bridge), {
+    return invoke("OnboardProject", {
       projectPath: String(inputOrPath || "").trim(),
       framework: String(framework || "").trim(),
       frameworkVersion: "",
@@ -184,55 +246,48 @@ export const desktopBridge = {
    * @param {string} projectPath
    */
   async detectMigrationSource(projectPath) {
-    const bridge = getBridge();
-    return call(bridge?.DetectMigrationSource?.bind(bridge), projectPath);
+    return invoke("DetectMigrationSource", projectPath);
   },
   /**
    * @param {string} project
    */
   async getRemotes(project) {
-    const bridge = getBridge();
-    return call(bridge?.GetRemotes?.bind(bridge), project);
+    return invoke("GetRemotes", project);
   },
   /**
    * @param {string} project
    * @param {string} remoteName
    */
   async testRemote(project, remoteName) {
-    const bridge = getBridge();
-    return call(bridge?.TestRemote?.bind(bridge), project, remoteName);
+    return invoke("TestRemote", project, remoteName);
   },
   /**
    * @param {string} project
    * @param {string} remoteName
    */
   async openRemoteURL(project, remoteName) {
-    const bridge = getBridge();
-    return call(bridge?.OpenRemoteURL?.bind(bridge), project, remoteName);
+    return invoke("OpenRemoteURL", project, remoteName);
   },
   /**
    * @param {string} project
    * @param {string} remoteName
    */
   async openRemoteShell(project, remoteName) {
-    const bridge = getBridge();
-    return call(bridge?.OpenRemoteShell?.bind(bridge), project, remoteName);
+    return invoke("OpenRemoteShell", project, remoteName);
   },
   /**
    * @param {string} project
    * @param {string} remoteName
    */
   async openRemoteDB(project, remoteName) {
-    const bridge = getBridge();
-    return call(bridge?.OpenRemoteDB?.bind(bridge), project, remoteName);
+    return invoke("OpenRemoteDB", project, remoteName);
   },
   /**
    * @param {string} project
    * @param {string} remoteName
    */
   async openRemoteSFTP(project, remoteName) {
-    const bridge = getBridge();
-    return call(bridge?.OpenRemoteSFTP?.bind(bridge), project, remoteName);
+    return invoke("OpenRemoteSFTP", project, remoteName);
   },
   /**
    * @param {string} project
@@ -241,9 +296,8 @@ export const desktopBridge = {
    * @param {Record<string, any>} [syncConfig={}]
    */
   async runRemoteSyncPreset(project, remoteName, preset, syncConfig = {}) {
-    const bridge = getBridge();
-    return call(
-      bridge?.RunRemoteSyncPreset?.bind(bridge),
+    return invoke(
+      "RunRemoteSyncPreset",
       project,
       remoteName,
       preset,
@@ -257,9 +311,8 @@ export const desktopBridge = {
    * @param {Record<string, any>} [syncConfig={}]
    */
   async runRemoteSyncBackground(project, remoteName, preset, syncConfig = {}) {
-    const bridge = getBridge();
-    return call(
-      bridge?.RunRemoteSyncBackground?.bind(bridge),
+    return invoke(
+      "RunRemoteSyncBackground",
       project,
       remoteName,
       preset,
@@ -273,9 +326,8 @@ export const desktopBridge = {
    * @param {Record<string, any>} [syncConfig={}]
    */
   async runRemoteSyncInTerminal(project, remoteName, preset, syncConfig = {}) {
-    const bridge = getBridge();
-    return call(
-      bridge?.RunRemoteSyncInTerminal?.bind(bridge),
+    return invoke(
+      "RunRemoteSyncInTerminal",
       project,
       remoteName,
       preset,
@@ -287,98 +339,84 @@ export const desktopBridge = {
    * @param {string} preset
    */
   async getSyncPresetOptions(project, preset) {
-    const bridge = getBridge();
-    return call(bridge?.GetSyncPresetOptions?.bind(bridge), project, preset);
+    return invoke("GetSyncPresetOptions", project, preset);
   },
   /**
    * @param {string} project
    */
   async startEnvironment(project) {
-    const bridge = getBridge();
-    return call(bridge?.StartEnvironment?.bind(bridge), project);
+    return invoke("StartEnvironment", project);
   },
   /**
    * @param {string} project
    */
   async stopEnvironment(project) {
-    const bridge = getBridge();
-    return call(bridge?.StopEnvironment?.bind(bridge), project);
+    return invoke("StopEnvironment", project);
   },
   /**
    * @param {string} project
    */
   async restartEnvironment(project) {
-    const bridge = getBridge();
-    return call(bridge?.RestartEnvironment?.bind(bridge), project);
+    return invoke("RestartEnvironment", project);
   },
   /**
    * @param {string} project
    */
   async pullEnvironment(project) {
-    const bridge = getBridge();
-    return call(bridge?.PullEnvironment?.bind(bridge), project);
+    return invoke("PullEnvironment", project);
   },
   /**
    * @param {string} project
    */
   async toggleEnvironment(project) {
-    const bridge = getBridge();
-    return call(bridge?.ToggleEnvironment?.bind(bridge), project);
+    return invoke("ToggleEnvironment", project);
   },
   /**
    * @param {string} project
    */
   async openEnvironment(project) {
-    const bridge = getBridge();
-    return call(bridge?.OpenEnvironment?.bind(bridge), project);
+    return invoke("OpenEnvironment", project);
   },
   /**
    * @param {string} project
    */
   async deleteProject(project) {
-    const bridge = getBridge();
-    return call(bridge?.DeleteProject?.bind(bridge), project);
+    return invoke("DeleteProject", project);
   },
   /**
    * @param {string} action
    * @param {string} project
    */
   async quickActionForProject(action, project) {
-    const bridge = getBridge();
-    return call(bridge?.QuickActionForProject?.bind(bridge), action, project);
+    return invoke("QuickActionForProject", action, project);
   },
   /**
+   * The Go method takes a line count; the UI never passes one, so the bridge
+   * keeps the 1000-line default the old App proxy applied.
    * @param {string} project
    * @param {string} service
+   * @param {number} [lines=1000]
    */
-  async getLogsForService(project, service) {
-    const bridge = getBridge();
-    return call(bridge?.GetLogsForService?.bind(bridge), project, service);
+  async getLogsForService(project, service, lines = 1000) {
+    return invoke("GetLogsForService", project, service, Number(lines) || 1000);
   },
   /**
    * @param {string} project
    * @param {string} service
    */
   async startLogStreamForService(project, service) {
-    const bridge = getBridge();
-    return call(
-      bridge?.StartLogStreamForService?.bind(bridge),
-      project,
-      service,
-    );
+    return invoke("StartLogStreamForService", project, service);
   },
   async stopLogStream() {
-    const bridge = getBridge();
-    return call(bridge?.StopLogStream?.bind(bridge));
+    return invoke("StopLogStream");
   },
   /**
    * @param {string} content
    * @param {string} suggestedName
    */
   async saveLogsToFile(content, suggestedName) {
-    const bridge = getBridge();
-    return call(
-      bridge?.SaveLogsToFile?.bind(bridge),
+    return invoke(
+      "SaveLogsToFile",
       String(content || ""),
       String(suggestedName || ""),
     );
@@ -390,28 +428,18 @@ export const desktopBridge = {
    * @param {string} shell
    */
   async startServiceTerminalInOS(project, service, user, shell) {
-    const bridge = getBridge();
-    return call(
-      bridge?.StartServiceTerminalInOS?.bind(bridge),
-      project,
-      service,
-      user,
-      shell,
-    );
+    return invoke("StartServiceTerminalInOS", project, service, user, shell);
   },
   async getSettings() {
-    const bridge = getBridge();
-    return call(bridge?.GetSettings?.bind(bridge));
+    return invoke("GetSettings");
   },
   async getMailpitURL() {
-    const bridge = getBridge();
-    return call(bridge?.GetMailpitURL?.bind(bridge));
+    return invoke("GetMailpitURL");
   },
   /**
    * @param {Record<string, any>} [settings={}]
    */
   async updateSettings(settings = {}) {
-    const bridge = getBridge();
     const payload = {
       theme: String(settings.theme || "system"),
       proxyTarget: String(settings.proxyTarget || ""),
@@ -420,37 +448,30 @@ export const desktopBridge = {
       dbClientPreference: String(settings.dbClientPreference || "pma"),
       runInBackground: Boolean(settings.runInBackground),
     };
-    return call(bridge?.UpdateSettings?.bind(bridge), payload);
+    return invoke("UpdateSettings", payload);
   },
   async resetSettings() {
-    const bridge = getBridge();
-    return call(bridge?.ResetSettings?.bind(bridge));
+    return invoke("ResetSettings");
   },
   async checkForUpdates() {
-    const bridge = getBridge();
-    return call(bridge?.CheckForUpdates?.bind(bridge));
+    return invoke("CheckForUpdates");
   },
   async installLatestUpdate() {
-    const bridge = getBridge();
-    return call(bridge?.InstallLatestUpdate?.bind(bridge));
+    return invoke("InstallLatestUpdate");
   },
   async getUpdateChannel() {
-    const bridge = getBridge();
-    return call(bridge?.GetUpdateChannel?.bind(bridge));
+    return invoke("GetUpdateChannel");
   },
   /**
    * @param {string} channel
    */
   async setUpdateChannel(channel) {
-    const bridge = getBridge();
-    return call(bridge?.SetUpdateChannel?.bind(bridge), channel);
+    return invoke("SetUpdateChannel", channel);
   },
   async restartDesktopApp() {
-    const bridge = getBridge();
-    return call(bridge?.RestartDesktopApp?.bind(bridge));
+    return invoke("RestartDesktopApp");
   },
   async quit() {
-    const bridge = getBridge();
-    return call(bridge?.Quit?.bind(bridge));
+    return invoke("Quit");
   },
 };

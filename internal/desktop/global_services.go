@@ -163,7 +163,8 @@ var defaultRunHostPortProbeForDesktop = func(binary string, args ...string) (str
 
 var runHostPortProbeForDesktop = defaultRunHostPortProbeForDesktop
 
-func (s *GlobalServiceService) GetGlobalServices() (GlobalServicesSnapshot, error) {
+func (s *GlobalServiceService) GetGlobalServices() (res GlobalServicesSnapshot, err error) {
+	defer RecoverPanic(&err, "GetGlobalServices")
 	snapshot := GlobalServicesSnapshot{
 		Total:    len(globalServiceSpecs),
 		Services: make([]GlobalService, 0, len(globalServiceSpecs)),
@@ -240,7 +241,8 @@ func (s *GlobalServiceService) GetGlobalServices() (GlobalServicesSnapshot, erro
 	return snapshot, nil
 }
 
-func (s *GlobalServiceService) StartGlobalServices() (string, error) {
+func (s *GlobalServiceService) StartGlobalServices() (res string, err error) {
+	defer RecoverPanic(&err, "StartGlobalServices")
 	root, err := resolveDesktopGovardCommandDir()
 	if err != nil {
 		return "", err
@@ -252,7 +254,8 @@ func (s *GlobalServiceService) StartGlobalServices() (string, error) {
 	return withCommandOutput("Global services started.", output), nil
 }
 
-func (s *GlobalServiceService) StopGlobalServices() (string, error) {
+func (s *GlobalServiceService) StopGlobalServices() (res string, err error) {
+	defer RecoverPanic(&err, "StopGlobalServices")
 	root, err := resolveDesktopGovardCommandDir()
 	if err != nil {
 		return "", err
@@ -264,7 +267,8 @@ func (s *GlobalServiceService) StopGlobalServices() (string, error) {
 	return withCommandOutput("Global services stopped.", output), nil
 }
 
-func (s *GlobalServiceService) RestartGlobalServices() (string, error) {
+func (s *GlobalServiceService) RestartGlobalServices() (res string, err error) {
+	defer RecoverPanic(&err, "RestartGlobalServices")
 	root, err := resolveDesktopGovardCommandDir()
 	if err != nil {
 		return "", err
@@ -276,7 +280,8 @@ func (s *GlobalServiceService) RestartGlobalServices() (string, error) {
 	return withCommandOutput("Global services restarted.", output), nil
 }
 
-func (s *GlobalServiceService) PullGlobalServices() (string, error) {
+func (s *GlobalServiceService) PullGlobalServices() (res string, err error) {
+	defer RecoverPanic(&err, "PullGlobalServices")
 	root, err := resolveDesktopGovardCommandDir()
 	if err != nil {
 		return "", err
@@ -288,7 +293,8 @@ func (s *GlobalServiceService) PullGlobalServices() (string, error) {
 	return withCommandOutput("Global services images pulled.", output), nil
 }
 
-func (s *GlobalServiceService) StartGlobalService(serviceID string) (string, error) {
+func (s *GlobalServiceService) StartGlobalService(serviceID string) (res string, err error) {
+	defer RecoverPanic(&err, "StartGlobalService")
 	spec, err := resolveGlobalServiceSpec(serviceID)
 	if err != nil {
 		return "", err
@@ -303,7 +309,8 @@ func (s *GlobalServiceService) StartGlobalService(serviceID string) (string, err
 	return withCommandOutput(fmt.Sprintf("%s started.", spec.Name), out), nil
 }
 
-func (s *GlobalServiceService) StopGlobalService(serviceID string) (string, error) {
+func (s *GlobalServiceService) StopGlobalService(serviceID string) (res string, err error) {
+	defer RecoverPanic(&err, "StopGlobalService")
 	spec, err := resolveGlobalServiceSpec(serviceID)
 	if err != nil {
 		return "", err
@@ -318,7 +325,8 @@ func (s *GlobalServiceService) StopGlobalService(serviceID string) (string, erro
 	return withCommandOutput(fmt.Sprintf("%s stopped.", spec.Name), out), nil
 }
 
-func (s *GlobalServiceService) RestartGlobalService(serviceID string) (string, error) {
+func (s *GlobalServiceService) RestartGlobalService(serviceID string) (res string, err error) {
+	defer RecoverPanic(&err, "RestartGlobalService")
 	spec, err := resolveGlobalServiceSpec(serviceID)
 	if err != nil {
 		return "", err
@@ -333,7 +341,8 @@ func (s *GlobalServiceService) RestartGlobalService(serviceID string) (string, e
 	return withCommandOutput(fmt.Sprintf("%s restarted.", spec.Name), out), nil
 }
 
-func (s *GlobalServiceService) OpenGlobalService(serviceID string) (string, error) {
+func (s *GlobalServiceService) OpenGlobalService(serviceID string) (res string, err error) {
+	defer RecoverPanic(&err, "OpenGlobalService")
 	spec, err := resolveGlobalServiceSpec(serviceID)
 	if err != nil {
 		return "", err

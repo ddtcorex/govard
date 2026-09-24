@@ -31,7 +31,7 @@ func TestDesktopCheckForUpdatesOutdated(t *testing.T) {
 	})
 
 	app := desktop.NewApp()
-	result, err := app.CheckForUpdates()
+	result, err := app.Update.CheckForUpdates()
 	if err != nil {
 		t.Fatalf("CheckForUpdates failed: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestDesktopCheckForUpdatesUpToDate(t *testing.T) {
 	})
 
 	app := desktop.NewApp()
-	result, err := app.CheckForUpdates()
+	result, err := app.Update.CheckForUpdates()
 	if err != nil {
 		t.Fatalf("CheckForUpdates failed: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestDesktopInstallLatestUpdateRunsSelfUpdate(t *testing.T) {
 	defer restore()
 
 	app := desktop.NewApp()
-	message, err := app.InstallLatestUpdate()
+	message, err := app.Update.InstallLatestUpdate()
 	if err != nil {
 		t.Fatalf("InstallLatestUpdate failed: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestDesktopInstallLatestUpdateReturnsError(t *testing.T) {
 	defer restore()
 
 	app := desktop.NewApp()
-	_, err := app.InstallLatestUpdate()
+	_, err := app.Update.InstallLatestUpdate()
 	if err == nil {
 		t.Fatal("expected InstallLatestUpdate to return an error")
 	}
@@ -189,7 +189,7 @@ func TestDesktopGetUpdateChannelDefaultsToStable(t *testing.T) {
 	desktop.ResetStateForTest()
 
 	app := desktop.NewApp()
-	channel, err := app.GetUpdateChannel()
+	channel, err := app.Update.GetUpdateChannel()
 	if err != nil {
 		t.Fatalf("GetUpdateChannel failed: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestDesktopSetUpdateChannelPersists(t *testing.T) {
 	desktop.ResetStateForTest()
 
 	app := desktop.NewApp()
-	applied, err := app.SetUpdateChannel("beta")
+	applied, err := app.Update.SetUpdateChannel("beta")
 	if err != nil {
 		t.Fatalf("SetUpdateChannel failed: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestDesktopSetUpdateChannelPersists(t *testing.T) {
 		t.Fatalf("expected applied channel beta, got %q", applied)
 	}
 
-	channel, err := app.GetUpdateChannel()
+	channel, err := app.Update.GetUpdateChannel()
 	if err != nil {
 		t.Fatalf("GetUpdateChannel failed: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestDesktopSetUpdateChannelRejectsInvalidValue(t *testing.T) {
 	desktop.ResetStateForTest()
 
 	app := desktop.NewApp()
-	if _, err := app.SetUpdateChannel("nightly"); err == nil {
+	if _, err := app.Update.SetUpdateChannel("nightly"); err == nil {
 		t.Fatal("expected SetUpdateChannel to reject an invalid channel")
 	}
 }
@@ -236,7 +236,7 @@ func TestDesktopCheckForUpdatesUsesBetaChannelFeed(t *testing.T) {
 	desktop.ResetStateForTest()
 
 	app := desktop.NewApp()
-	if _, err := app.SetUpdateChannel("beta"); err != nil {
+	if _, err := app.Update.SetUpdateChannel("beta"); err != nil {
 		t.Fatalf("SetUpdateChannel failed: %v", err)
 	}
 
@@ -253,7 +253,7 @@ func TestDesktopCheckForUpdatesUsesBetaChannelFeed(t *testing.T) {
 		desktop.Version = previousVersion
 	})
 
-	result, err := app.CheckForUpdates()
+	result, err := app.Update.CheckForUpdates()
 	if err != nil {
 		t.Fatalf("CheckForUpdates failed: %v", err)
 	}
@@ -420,7 +420,7 @@ func TestDesktopRestartDesktopAppStartsBinary(t *testing.T) {
 	defer restoreRestart()
 
 	app := desktop.NewApp()
-	message, err := app.RestartDesktopApp()
+	message, err := app.Update.RestartDesktopApp()
 	if err != nil {
 		t.Fatalf("RestartDesktopApp failed: %v", err)
 	}
@@ -453,7 +453,7 @@ func TestDesktopRestartDesktopAppReturnsError(t *testing.T) {
 	defer restoreRestart()
 
 	app := desktop.NewApp()
-	_, err := app.RestartDesktopApp()
+	_, err := app.Update.RestartDesktopApp()
 	if err == nil {
 		t.Fatal("expected RestartDesktopApp to return an error")
 	}

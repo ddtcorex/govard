@@ -8,7 +8,7 @@ import (
 
 func TestListFrameworksReturnsAllRegisteredFrameworks(t *testing.T) {
 	app := &desktop.App{}
-	options, err := app.ListFrameworks()
+	options, err := app.Environment.ListFrameworks()
 	if err != nil {
 		t.Fatalf("ListFrameworks() error: %v", err)
 	}

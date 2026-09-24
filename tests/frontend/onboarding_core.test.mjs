@@ -155,7 +155,7 @@ test("desktopBridge onboarding forwards framework version", async () => {
   global.window = {
     go: {
       desktop: {
-        App: {
+        OnboardingService: {
           OnboardProject: async (payload) => {
             capturedPayload = payload;
             return "ok";

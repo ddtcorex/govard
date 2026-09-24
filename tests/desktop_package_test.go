@@ -139,7 +139,7 @@ func TestDesktopPkgResetSettings(t *testing.T) {
 
 func TestDesktopPkgGetUserInfo(t *testing.T) {
 	app := desktop.NewApp()
-	user, err := app.GetUserInfo()
+	user, err := app.System.GetUserInfo()
 	if err != nil {
 		t.Fatalf("GetUserInfo failed: %v", err)
 	}

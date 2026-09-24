@@ -647,7 +647,8 @@ func desktopBoolPtr(v bool) *bool {
 }
 
 // AppPlatformsForTest returns the platform held by the App and each service,
-// in the order App, Settings, Onboarding, Environment, Remote, System, Logs, Global.
+// in the order App, Settings, Onboarding, Environment, Remote, System, Logs,
+// Global, Update.
 func AppPlatformsForTest(app *App) []Platform {
 	return []Platform{
 		app.platform,
@@ -658,6 +659,7 @@ func AppPlatformsForTest(app *App) []Platform {
 		app.System.platform,
 		app.Logs.platform,
 		app.Global.platform,
+		app.Update.platform,
 	}
 }
 

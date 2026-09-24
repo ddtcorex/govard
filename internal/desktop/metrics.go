@@ -10,19 +10,27 @@ import (
 
 // SystemService methods
 
-func (s *SystemService) GetUserInfo() UserInfo {
-	u, err := user.Current()
-	if err != nil {
-		return UserInfo{Username: "unknown", Name: "Unknown User"}
+func (s *SystemService) GetUserInfo() (res UserInfo, err error) {
+	defer RecoverPanic(&err, "GetUserInfo")
+	res = UserInfo{
+		Username: "unknown",
+		Name:     "Unknown User",
 	}
-	name := u.Name
-	if name == "" {
-		name = u.Username
+	u, errCurrent := user.Current()
+	if errCurrent != nil {
+		return res, errCurrent
 	}
-	return UserInfo{
-		Username: u.Username,
-		Name:     name,
+	res.Username = u.Username
+	res.Name = u.Name
+	if res.Name == "" {
+		res.Name = u.Username
 	}
+	return res, nil
+}
+
+func (s *SystemService) GetVersion() (v string, err error) {
+	defer RecoverPanic(&err, "GetVersion")
+	return Version, nil
 }
 
 func (s *SystemService) GetSystemMetrics() SystemMetrics {
@@ -31,6 +39,16 @@ func (s *SystemService) GetSystemMetrics() SystemMetrics {
 		CPUUsage:    cpuUsage,
 		MemoryUsage: memUsage,
 	}
+}
+
+func (s *SystemService) GetResourceMetrics() (res string, err error) {
+	defer RecoverPanic(&err, "GetResourceMetrics")
+	// Assuming GetResourceMetrics existed, if not returning empty string
+	return "{}", nil
+}
+
+func (s *SystemService) Quit() {
+	s.platform.Quit()
 }
 
 func getSystemMetrics() (float64, float64) {

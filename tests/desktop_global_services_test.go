@@ -63,7 +63,7 @@ func TestDesktopStartGlobalServiceRunsComposeForTargetServiceForTest(t *testing.
 	defer restoreRun()
 
 	app := desktop.NewApp()
-	message, err := app.StartGlobalService("dnsmasq")
+	message, err := app.Global.StartGlobalService("dnsmasq")
 	if err != nil {
 		t.Fatalf("StartGlobalService failed: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestDesktopStopGlobalServiceRunsComposeForTargetServiceForTest(t *testing.T
 	defer restoreRun()
 
 	app := desktop.NewApp()
-	message, err := app.StopGlobalService("mail")
+	message, err := app.Global.StopGlobalService("mail")
 	if err != nil {
 		t.Fatalf("StopGlobalService failed: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestDesktopRestartGlobalServicesUsesGovardSvcRestartForTest(t *testing.T) {
 	defer restoreRun()
 
 	app := desktop.NewApp()
-	message, err := app.RestartGlobalServices()
+	message, err := app.Global.RestartGlobalServices()
 	if err != nil {
 		t.Fatalf("RestartGlobalServices failed: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestDesktopStartGlobalServicesUsesGovardSvcUpForTest(t *testing.T) {
 	defer restoreRun()
 
 	app := desktop.NewApp()
-	message, err := app.StartGlobalServices()
+	message, err := app.Global.StartGlobalServices()
 	if err != nil {
 		t.Fatalf("StartGlobalServices failed: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestDesktopGlobalServiceLogsRejectUnknownServiceForTest(t *testing.T) {
 	desktop.ResetStateForTest()
 
 	app := desktop.NewApp()
-	_, err := app.GetGlobalServiceLogs("unknown", 100)
+	_, err := app.Logs.GetGlobalServiceLogs("unknown", 100)
 	if err == nil {
 		t.Fatalf("expected unknown global service error")
 	}

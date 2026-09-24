@@ -18,7 +18,8 @@ var orphanAnsiStylePattern = regexp.MustCompile(`\[(?:\d{1,3}(?:;\d{1,3})*)m`)
 
 // Internal log streaming logic
 
-func (s *LogService) StartLogStream(project string) (string, error) {
+func (s *LogService) StartLogStream(project string) (res string, err error) {
+	defer RecoverPanic(&err, "StartLogStream")
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
 
@@ -34,7 +35,8 @@ func (s *LogService) StartLogStream(project string) (string, error) {
 	return "Live logs started", nil
 }
 
-func (s *LogService) StartLogStreamForService(project string, service string) (string, error) {
+func (s *LogService) StartLogStreamForService(project string, service string) (res string, err error) {
+	defer RecoverPanic(&err, "StartLogStreamForService")
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
 
@@ -50,7 +52,8 @@ func (s *LogService) StartLogStreamForService(project string, service string) (s
 	return "Live logs started", nil
 }
 
-func (s *LogService) StopLogStream() (string, error) {
+func (s *LogService) StopLogStream() (res string, err error) {
+	defer RecoverPanic(&err, "StopLogStream")
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
 
@@ -62,7 +65,8 @@ func (s *LogService) StopLogStream() (string, error) {
 	return "Live logs already stopped", nil
 }
 
-func (s *LogService) StartGlobalServiceLogStream(serviceID string) (string, error) {
+func (s *LogService) StartGlobalServiceLogStream(serviceID string) (res string, err error) {
+	defer RecoverPanic(&err, "StartGlobalServiceLogStream")
 	spec, err := resolveGlobalServiceSpec(serviceID)
 	if err != nil {
 		return "", err
@@ -83,7 +87,8 @@ func (s *LogService) StartGlobalServiceLogStream(serviceID string) (string, erro
 	return "Global service live logs started", nil
 }
 
-func (s *LogService) StopGlobalServiceLogStream() (string, error) {
+func (s *LogService) StopGlobalServiceLogStream() (res string, err error) {
+	defer RecoverPanic(&err, "StopGlobalServiceLogStream")
 	s.globalStreamMu.Lock()
 	defer s.globalStreamMu.Unlock()
 
@@ -95,7 +100,8 @@ func (s *LogService) StopGlobalServiceLogStream() (string, error) {
 	return "Global service live logs already stopped", nil
 }
 
-func (s *LogService) GetGlobalServiceLogs(serviceID string, lines int) (string, error) {
+func (s *LogService) GetGlobalServiceLogs(serviceID string, lines int) (res string, err error) {
+	defer RecoverPanic(&err, "GetGlobalServiceLogs")
 	spec, err := resolveGlobalServiceSpec(serviceID)
 	if err != nil {
 		return "", err

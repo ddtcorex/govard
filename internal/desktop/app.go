@@ -2,37 +2,14 @@ package desktop
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"os/user"
-	"path/filepath"
-	"strings"
 	"sync"
-
-	"govard/internal/engine"
-	"govard/internal/frameworks"
 )
-
-func (app *App) GetUserInfo() (res UserInfo, err error) {
-	defer RecoverPanic(&err, "GetUserInfo")
-	res = UserInfo{
-		Username: "unknown",
-		Name:     "Unknown User",
-	}
-	u, errCurrent := user.Current()
-	if errCurrent != nil {
-		return res, errCurrent
-	}
-	res.Username = u.Username
-	res.Name = u.Name
-	if res.Name == "" {
-		res.Name = u.Username
-	}
-	return res, nil
-}
 
 var Version = "dev"
 
+// App is the Go-side composition root: it owns the services and the platform
+// seam. It is deliberately no longer bound to the frontend, which reaches the
+// services directly.
 type App struct {
 	ctx      context.Context
 	platform Platform
@@ -44,6 +21,7 @@ type App struct {
 	System      *SystemService
 	Logs        *LogService
 	Global      *GlobalServiceService
+	Update      *UpdateService
 
 	notifyMu     sync.Mutex
 	notifyCancel context.CancelFunc
@@ -67,6 +45,7 @@ func NewApp(opts ...AppOption) *App {
 		System:      NewSystemService(),
 		Logs:        NewLogService(),
 		Global:      NewGlobalServiceService(),
+		Update:      NewUpdateService(),
 	}
 	for _, opt := range opts {
 		opt(app)
@@ -78,12 +57,8 @@ func NewApp(opts ...AppOption) *App {
 	app.System.platform = app.platform
 	app.Logs.platform = app.platform
 	app.Global.platform = app.platform
+	app.Update.platform = app.platform
 	return app
-}
-
-func (app *App) GetVersion() (v string, err error) {
-	defer RecoverPanic(&err, "GetVersion")
-	return Version, nil
 }
 
 func (app *App) Startup(ctx context.Context) {
@@ -98,6 +73,7 @@ func (app *App) Startup(ctx context.Context) {
 	app.System.Setup(ctx)
 	app.Logs.Setup(ctx)
 	app.Global.Setup(ctx)
+	app.Update.Setup(ctx)
 
 	app.startOperationNotificationWatcher()
 }
@@ -133,78 +109,4 @@ func (app *App) BeforeClose(ctx context.Context) bool {
 func (app *App) Shutdown(ctx context.Context) {
 	_ = ctx
 	app.stopOperationNotificationWatcher()
-}
-
-func (app *App) Status() string {
-	return "Govard Desktop ready."
-}
-
-func (app *App) OpenDocs(path string) (res string, err error) {
-	defer RecoverPanic(&err, "OpenDocs")
-	if path == "" {
-		return "", fmt.Errorf("no docs path provided")
-	}
-	if errOpen := openDocs(app.platform, path); errOpen != nil {
-		return "", fmt.Errorf("failed to open docs: %w", errOpen)
-	}
-	return "Opening docs...", nil
-}
-
-func (app *App) QuickAction(action string) (res string, err error) {
-	defer RecoverPanic(&err, "QuickAction")
-	return quickAction(app.platform, action, "")
-}
-
-func (app *App) QuickActionForProject(action string, project string) (res string, err error) {
-	defer RecoverPanic(&err, "QuickActionForProject")
-	return quickAction(app.platform, action, project)
-}
-
-func (app *App) DeleteProject(projectQuery string) (res string, err error) {
-	defer RecoverPanic(&err, "DeleteProject")
-	if projectQuery == "" {
-		return "", fmt.Errorf("project name or path is required")
-	}
-
-	root, score, err := resolveProjectRootForRemotes(projectQuery)
-	if err != nil {
-		return "", err
-	}
-
-	// Safety check for weak matches in the desktop app
-	if score >= engine.ScoreAmbiguousThreshold {
-		return "", fmt.Errorf("match for %q is too weak for deletion (confidence score: %d): use the full name or path", projectQuery, score)
-	}
-
-	// Check if it's an orphan (root is the name, not an absolute path)
-	if !filepath.IsAbs(root) && !strings.Contains(root, string(filepath.Separator)) {
-		if err := engine.DeleteOrphanProject(app.ctx, root, os.Stdout, os.Stderr); err != nil {
-			return "", err
-		}
-		return "Orphaned project resources removed", nil
-	}
-
-	// We use the application context for the deletion process
-	if err := engine.DeleteProject(app.ctx, root, os.Stdout, os.Stderr); err != nil {
-		return "", err
-	}
-	return "Project deleted successfully", nil
-}
-
-// ListFrameworks returns every framework registered in internal/frameworks,
-// for the onboarding UI's framework picker. This keeps the frontend's
-// dropdown, alias resolution, and display-name formatting in sync with the
-// Go-side registry instead of duplicating framework metadata in JS.
-func (app *App) ListFrameworks() (res []FrameworkOption, err error) {
-	defer RecoverPanic(&err, "ListFrameworks")
-	defs := frameworks.All()
-	res = make([]FrameworkOption, 0, len(defs))
-	for _, def := range defs {
-		res = append(res, FrameworkOption{
-			Name:        def.Name,
-			DisplayName: def.DisplayName,
-			Aliases:     append([]string(nil), def.Aliases...), // defensive copy - registry.go's All()/Get() warn callers not to mutate shared slice fields
-		})
-	}
-	return res, nil
 }
