@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,6 +100,25 @@ func UpgradeHint(source string) string {
 	default:
 		return ""
 	}
+}
+
+// UpdateCommandHint names the command that upgrades this install: the owning
+// channel's own command for a managed source, `govard self-update` otherwise.
+func UpdateCommandHint(source string) string {
+	if hint := UpgradeHint(source); hint != "" {
+		return hint
+	}
+	return "govard self-update"
+}
+
+// ForceRefusal reports why `self-update --force` cannot override source, or nil
+// when it can. The snap is a read-only squashfs, so a forced replace would only
+// fail with EROFS after the release was downloaded.
+func ForceRefusal(source string) error {
+	if source == InstallSourceSnap {
+		return fmt.Errorf("govard runs from its snap, which is read-only; --force cannot replace it. Upgrade with: %s", UpgradeHint(source))
+	}
+	return nil
 }
 
 // InstallSourceForTest exposes detection with an explicit marker value for tests in /tests.

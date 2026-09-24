@@ -22,7 +22,7 @@ var (
 	updateCheckHTTPClient = &http.Client{Timeout: 2 * time.Second}
 	updateCheckNotifier   = func(latestTag, currentVersion string) {
 		pterm.Warning.Printf("A new version of Govard is available: %s (current: %s)\n", latestTag, currentVersion)
-		pterm.Info.Println("Run 'govard self-update' to upgrade.")
+		pterm.Info.Printf("Run '%s' to upgrade.\n", UpdateCommandHint(InstallSource()))
 	}
 )
 
