@@ -40,8 +40,19 @@ func TestDesktopBuildPathsBuildFrontendFirst(t *testing.T) {
 	}
 }
 
+// The desktop toolchain is pnpm. These are the pages a contributor reads to set
+// one up; docs/reference/cli-commands.md is deliberately absent because it
+// documents `govard tool yarn`, which is unrelated to the frontend toolchain.
 func TestDesktopDocsNoLongerMentionYarn(t *testing.T) {
-	for _, rel := range []string{"desktop/README.md", "desktop/frontend/README.md", "docs/workflows/desktop-app.md", "docs/vi/workflows/desktop-app.md"} {
+	for _, rel := range []string{
+		"README.md",
+		"desktop/README.md",
+		"desktop/frontend/README.md",
+		"docs/getting-started/installation.md",
+		"docs/vi/getting-started/installation.md",
+		"docs/workflows/desktop-app.md",
+		"docs/vi/workflows/desktop-app.md",
+	} {
 		if strings.Contains(strings.ToLower(readRepoFile(t, rel)), "yarn") {
 			t.Errorf("%s still mentions yarn", rel)
 		}

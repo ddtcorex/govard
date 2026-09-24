@@ -94,8 +94,16 @@ func TestInstallationDocsDescribeCLIOnly(t *testing.T) {
 					t.Errorf("documentation is missing %q", required)
 				}
 			}
-			if !strings.Contains(text, "WebKitGTK 4.1") && !strings.Contains(text, "Ubuntu 22.04+") {
+			if !strings.Contains(text, "WebKitGTK 6.0") && !strings.Contains(text, "Ubuntu 24.04+") {
 				t.Error("documentation does not state the Desktop platform requirement")
+			}
+			// The floor is WebKitGTK 6.0 / Ubuntu 24.04+: Ubuntu 22.04 and
+			// Debian 12 install the CLI only. Saying 4.1 or 22.04+ tells a user
+			// the opposite of what the installer does.
+			for _, wrong := range []string{"WebKitGTK 4.1", "Ubuntu 22.04+", "webkit2gtk-4.1"} {
+				if strings.Contains(text, wrong) {
+					t.Errorf("documentation still states the v2 platform requirement %q", wrong)
+				}
 			}
 		})
 	}

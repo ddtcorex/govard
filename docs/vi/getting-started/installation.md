@@ -40,13 +40,13 @@ curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh |
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only
 ```
 
-Mặc định, script sẽ cài `govard` (CLI) và, khi có `WebKitGTK 4.1`, cả `govard-desktop` (Desktop app) vào `/usr/local/bin` rồi:
+Mặc định, script sẽ cài `govard` (CLI) và, trên Linux khi có `WebKitGTK 6.0`, cả `govard-desktop` (Desktop app) vào `/usr/local/bin` rồi:
 - Tự động phát hiện và cài đặt system dependencies cần thiết.
 - Khởi chạy các global services.
 - Cấu hình SSL trust.
 - Trên Linux, tự động fallback sang package `.deb` riêng của `govard-desktop` nếu archive độc lập không có sẵn trong bản release.
 
-Ubuntu 20.04 không có WebKitGTK 4.1. Script sẽ tự nhận diện và chỉ cài CLI; dùng `--cli-only` để chủ động bỏ qua Desktop trên mọi nền tảng. Govard Desktop yêu cầu Ubuntu 22.04+ hoặc một bản Linux khác có WebKitGTK 4.1.
+Govard Desktop cần WebKitGTK 6.0 và GTK 4, có sẵn từ Ubuntu 24.04+ và Debian 13+. Ubuntu 22.04, Debian 12 và các bản cũ hơn, cùng mọi nền tảng không phải Linux, chỉ cài được CLI: script tự nhận diện và bỏ qua Desktop, còn `--cli-only` để chủ động bỏ qua ở bất kỳ đâu.
 
 ---
 
@@ -64,7 +64,7 @@ Chỉ CLI (bao gồm Ubuntu 20.04):
 sudo apt install ./govard_<version>_linux_<arch>.deb
 ```
 
-CLI + Desktop (WebKitGTK 4.1 / Ubuntu 22.04+):
+CLI + Desktop (WebKitGTK 6.0 / Ubuntu 24.04+, Debian 13+):
 
 ```bash
 sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_linux_<arch>.deb
@@ -108,10 +108,10 @@ sudo installer -pkg govard_<version>_Darwin_arm64.pkg -target /
 | :--- | :--- |
 | Go | `1.25+` |
 | Node.js | `20+` |
-| Yarn | v1.x |
+| pnpm | 11.x (chỉ cho frontend desktop) |
 | golangci-lint | v2.11+ |
 | Docker + Docker Compose | Bản mới nhất (chỉ cho lệnh stack — bản thân CLI không phụ thuộc Docker) |
-| Wails | `v2.11+` (chỉ khi phát triển desktop app) |
+| Wails | `v3` dưới dạng Go module tool (chỉ khi phát triển desktop, không cần cài global) |
 
 ### Cài đặt từ Source
 
@@ -125,9 +125,10 @@ cd govard
 
 1. **Cài đặt Go 1.25+** từ [go.dev](https://go.dev/dl/)
 
-2. **Kích hoạt Yarn** qua Corepack:
+2. **Kích hoạt pnpm** qua Corepack:
    ```bash
-   corepack enable
+   corepack enable pnpm
+   pnpm --version
    ```
 
 3. **Cài đặt golangci-lint**:
@@ -135,10 +136,9 @@ cd govard
    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
    ```
 
-4. **Cài đặt Wails** (để phát triển desktop):
+4. **Phát triển desktop** không cần cài Wails: runtime và CLI của nó là Go module tool trong `go.mod`, nên `go tool wails3 generate bindings` chạy được ngay từ bản clone. Trên Linux cần cài header build:
    ```bash
-   go install github.com/wailsapp/wails/v2/cmd/wails@latest
-   wails version
+   sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev
    ```
 
 Không cần quyền `sudo` — bạn có thể cài đặt mọi thứ ở local và cập nhật biến `PATH`.

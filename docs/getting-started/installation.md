@@ -40,13 +40,13 @@ curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh |
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --cli-only
 ```
 
-By default, this installs `govard` (CLI) and, where `WebKitGTK 4.1` is available, `govard-desktop` to `/usr/local/bin` and:
+By default, this installs `govard` (CLI) and, on Linux where `WebKitGTK 6.0` is available, `govard-desktop` to `/usr/local/bin` and:
 - Auto-detects/installs missing system dependencies
 - Starts global services
 - Configures SSL trust
 - On Linux, falls back to the separate `govard-desktop` `.deb` package if a standalone archive is not in the release
 
-Ubuntu 20.04 does not provide WebKitGTK 4.1. The installer detects this and installs CLI only automatically; use `--cli-only` to explicitly skip Desktop on any platform. Govard Desktop requires Ubuntu 22.04+ or another Linux distribution with WebKitGTK 4.1.
+Govard Desktop requires WebKitGTK 6.0 and GTK 4, which ship with Ubuntu 24.04+ and Debian 13+. Ubuntu 22.04, Debian 12 and older, and every non-Linux platform install the CLI only: the installer detects this and skips Desktop automatically, and `--cli-only` skips it explicitly anywhere.
 
 ---
 
@@ -64,7 +64,7 @@ CLI only (including Ubuntu 20.04):
 sudo apt install ./govard_<version>_linux_<arch>.deb
 ```
 
-CLI + Desktop (WebKitGTK 4.1 / Ubuntu 22.04+):
+CLI + Desktop (WebKitGTK 6.0 / Ubuntu 24.04+, Debian 13+):
 
 ```bash
 sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_linux_<arch>.deb
@@ -88,10 +88,10 @@ Ensure you have the following installed:
 | :--- | :--- |
 | Go | `1.25+` |
 | Node.js | `20+` |
-| Yarn | v1.x |
+| pnpm | 11.x (desktop frontend only) |
 | golangci-lint | v2.11+ |
 | Docker + Docker Compose | latest (stack commands only — the CLI itself has no Docker dependency) |
-| Wails | `v2.11+` (desktop development only) |
+| Wails | `v3` as a Go module tool (desktop development only, no global install) |
 
 ### Source Install
 
@@ -105,9 +105,10 @@ cd govard
 
 1. **Install Go 1.25+** from [go.dev](https://go.dev/dl/)
 
-2. **Enable Yarn** via Corepack:
+2. **Enable pnpm** via Corepack:
    ```bash
-   corepack enable
+   corepack enable pnpm
+   pnpm --version
    ```
 
 3. **Install golangci-lint**:
@@ -115,10 +116,9 @@ cd govard
    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
    ```
 
-4. **Install Wails** (for desktop development):
+4. **Desktop development** needs no Wails install: the runtime and its CLI are Go module tools in `go.mod`, so `go tool wails3 generate bindings` works from a clone. On Linux, install the build headers:
    ```bash
-   go install github.com/wailsapp/wails/v2/cmd/wails@latest
-   wails version
+   sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev
    ```
 
 No `sudo` required — install everything locally and update your `PATH`.

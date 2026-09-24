@@ -35,3 +35,53 @@ func TestDesktopPackagingTargetsGTK4(t *testing.T) {
 		t.Error("the macOS pkg is CLI-only until Spec 3")
 	}
 }
+
+// The macOS package is CLI-only, so its release job must not download or
+// checksum a desktop archive that build-macos-pkg.sh no longer produces, and it
+// no longer needs Node or pnpm. A tag-only workflow never runs in PR CI, so a
+// stale glob there only fails on a real release.
+func TestDesktopMacOSReleaseJobIsCLIOnly(t *testing.T) {
+	release := readRepoFile(t, ".github/workflows/release.yml")
+	for _, gone := range []string{"dist/*.tar.gz", "*.tar.gz >> checksums.txt"} {
+		if strings.Contains(release, gone) {
+			t.Errorf(".github/workflows/release.yml still references %q; the macOS package is CLI-only", gone)
+		}
+	}
+	if !strings.Contains(release, "dist/*.pkg") {
+		t.Error(".github/workflows/release.yml must upload the macOS .pkg")
+	}
+	if !strings.Contains(release, "*.pkg >> checksums.txt") {
+		t.Error("the macOS checksum step must cover the .pkg it actually ships")
+	}
+	// scripts/build-macos-pkg.sh builds the CLI only, so the job that runs it
+	// needs neither Node nor pnpm.
+	macosJob := release[strings.Index(release, "macos-pkg:"):]
+	if end := strings.Index(macosJob, "npm-publish:"); end > 0 {
+		macosJob = macosJob[:end]
+	}
+	for _, gone := range []string{"actions/setup-node", "name: Install pnpm"} {
+		if strings.Contains(macosJob, gone) {
+			t.Errorf("the macOS package job still sets up %q although the CLI build does not need it", gone)
+		}
+	}
+}
+
+// The desktop toolchain is Go modules, pnpm and Vite. Instructions to install
+// the v2 Wails CLI, or to bump wails.json, send a contributor somewhere that no
+// longer exists.
+func TestDesktopDocsDoNotReferenceWailsV2(t *testing.T) {
+	for _, rel := range []string{
+		"README.md",
+		"docs/getting-started/installation.md",
+		"docs/vi/getting-started/installation.md",
+		"docs/developer/contributing.md",
+		"docs/vi/developer/contributing.md",
+	} {
+		src := readRepoFile(t, rel)
+		for _, gone := range []string{"wails/v2", "wails.json"} {
+			if strings.Contains(src, gone) {
+				t.Errorf("%s still references %s; the desktop app is a Go module tool on Wails v3", rel, gone)
+			}
+		}
+	}
+}
