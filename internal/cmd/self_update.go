@@ -61,11 +61,19 @@ var selfUpdateCmd = &cobra.Command{
 			return errors.New("self-update is not supported on Windows yet; use a fresh release install")
 		}
 
-		if source := updater.InstallSource(); source != updater.InstallSourceUnmanaged && !selfUpdateForce {
+		source := updater.InstallSource()
+		if selfUpdateForce {
+			if err := updater.ForceRefusal(source); err != nil {
+				return err
+			}
+		}
+		if source != updater.InstallSourceUnmanaged && !selfUpdateForce {
 			if hint := updater.UpgradeHint(source); hint != "" {
 				pterm.Warning.Printf("Govard was installed via %s, which owns this installation.\n", source)
 				pterm.Info.Printf("Upgrade with: %s\n", hint)
-				pterm.Info.Println("Or re-run with --force to override (not recommended).")
+				if updater.ForceRefusal(source) == nil {
+					pterm.Info.Println("Or re-run with --force to override (not recommended).")
+				}
 				return nil
 			}
 		}
