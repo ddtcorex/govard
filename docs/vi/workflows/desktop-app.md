@@ -142,7 +142,10 @@ Một test Go (`tests/desktop_frontend_bridge_guard_test.go`) sẽ fail nếu b�
 file frontend nào ngoài `services/bridge.js`, `services/events.js` và
 `types/wails-v2.d.ts` chạm vào `window.go`, `window.runtime` hoặc
 `desktopBridge.runtime`. Hai module này được type bằng JSDoc kèm `// @ts-check`,
-nên `pnpm typecheck` phát hiện lệch hợp đồng Go/JS ngay ở bước build.
+nên `pnpm typecheck` kiểm tra đúng những shape mà hai module đó khai báo. Nó chưa
+xác minh được tên method phía Go: `window.go.desktop.App` đang khai báo bằng
+index signature nên tên thuộc tính nào cũng hợp lệ. Bindings sinh tự động - thứ
+đưa phía Go trở thành nguồn sự thật - sẽ đến cùng đợt chuyển sang Wails 3.
 
 ---
 

@@ -140,7 +140,10 @@ A Go test (`tests/desktop_frontend_bridge_guard_test.go`) fails if any frontend
 file other than `services/bridge.js`, `services/events.js` and
 `types/wails-v2.d.ts` touches `window.go`, `window.runtime` or
 `desktopBridge.runtime`. Both modules are JSDoc-typed with `// @ts-check`, so
-`pnpm typecheck` catches a Go/JS contract mismatch at build time.
+`pnpm typecheck` checks the shapes those two modules declare. It does not yet
+verify the Go method names themselves: `window.go.desktop.App` is declared as an
+index signature, so any property name type-checks. The generated bindings that
+make the Go side authoritative arrive with the Wails 3 migration.
 
 ---
 

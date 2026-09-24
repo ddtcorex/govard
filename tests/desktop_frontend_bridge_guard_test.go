@@ -10,6 +10,12 @@ import (
 
 // Only the bridge and event modules may touch the Wails globals.
 // Plan B empties this allowlist once generated bindings replace window.go.
+//
+// This is a substring scan, not an AST check: it catches the literal dotted
+// form (window.go, window.runtime, desktopBridge.runtime) and would miss an
+// equivalent spelled another way, such as window["go"], globalThis.go or an
+// alias. It is deliberately a stopgap until Plan B generates the bindings and
+// the allowlist shrinks to the adapter alone.
 var frontendGlobalAllowlist = map[string]bool{
 	"services/bridge.js":  true,
 	"services/events.js":  true,
