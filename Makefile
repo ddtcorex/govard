@@ -20,7 +20,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.3
 GOLANGCI_LINT_BIN ?= $(shell go env GOPATH)/bin/golangci-lint
 LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 
-.PHONY: help install install-release build-test-binary build clean test test-unit test-coverage test-integration test-integration-ci test-frontend lint lint-install fmt fmt-check vet generate generate-check images push
+.PHONY: help install install-release build-test-binary build frontend build-frontend clean test test-unit test-coverage test-integration test-integration-ci test-frontend lint lint-install fmt fmt-check vet generate generate-check images push
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -31,14 +31,17 @@ install: ## Build and install Govard CLI + Desktop binaries from current source 
 install-release: ## Install latest release Govard CLI + Desktop binaries to system
 	./install.sh -y
 
-# build-frontend regenerates the desktop app's embedded CSS from its Tailwind
-# source. Only run it deliberately after editing desktop/frontend/assets/styles-src.css
-# and commit the result - cmd/govard/main.go (built below) does not import
-# desktop/frontend's embed.FS at all, and cmd/govard-desktop (built by install.sh)
-# embeds whatever is already committed, so neither needs this as a prerequisite.
-build-frontend:
-	@echo "Building frontend assets..."
-	@cd desktop/frontend && yarn install && yarn run build:css
+# frontend builds the desktop UI with Vite into desktop/frontend/dist, which
+# desktop/frontend/embed.go embeds. Every desktop binary build needs it first.
+frontend:
+	@echo "Building desktop frontend..."
+	@cd desktop/frontend && pnpm install --frozen-lockfile && pnpm build
+	@# Vite's emptyOutDir also removes dist/.gitkeep, which //go:embed all:dist
+	@# needs on a checkout that has never been built. Restore it so the working
+	@# tree stays clean after every build.
+	@touch desktop/frontend/dist/.gitkeep
+
+build-frontend: frontend
 
 build: generate ## Build Govard binary for the current platform
 	@echo "Building Govard..."
@@ -93,6 +96,8 @@ test-integration-ci: build-test-binary
 test-frontend:
 	@echo "Running frontend unit tests..."
 	node --test tests/frontend/*.test.mjs
+	pnpm --dir desktop/frontend install --frozen-lockfile
+	pnpm --dir desktop/frontend typecheck
 
 lint-install: ## Install golangci-lint if missing
 	@if ! command -v $(GOLANGCI_LINT_BIN) >/dev/null 2>&1 || ! $(GOLANGCI_LINT_BIN) version | grep -q $(GOLANGCI_LINT_VERSION); then \

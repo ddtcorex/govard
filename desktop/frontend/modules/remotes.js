@@ -1,4 +1,5 @@
 import { clearChildren, escapeHTML } from "../utils/dom.js";
+import { hasEventRuntime } from "../services/events.js";
 
 const asNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -574,7 +575,7 @@ export const createRemotesController = ({
     } catch (err) {
       console.error("[Remotes] Failed to load remotes:", err);
       
-      if (typeof window.go !== "undefined") {
+      if (hasEventRuntime()) {
         renderRemotes(refs.remotesList, []);
         renderWarnings(refs.remotesWarnings, ["Failed to load remotes from backend."]);
         if (!silent) {

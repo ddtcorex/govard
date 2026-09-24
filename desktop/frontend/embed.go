@@ -1,11 +1,25 @@
 package frontend
 
-import "embed"
+import (
+	"embed"
+	"io/fs"
+)
 
-// Assets contains the embedded frontend files served by the Wails asset server.
-// Each pattern below is listed explicitly so that node_modules and build
-// tooling (tailwind.config.js, assets/styles-src.css, …) are excluded from the binary.
+// dist holds the Vite build output (`make frontend`). dist/.gitkeep is
+// committed so this package compiles on machines without Node; such a
+// build serves an empty UI, which is why every desktop build target runs
+// `make frontend` first.
 //
-//go:embed index.html main.js assets
-//go:embed modules services state ui utils
-var Assets embed.FS
+//go:embed all:dist
+var dist embed.FS
+
+// Assets is the Vite build output rooted at dist/, served by the Wails asset server.
+var Assets = mustSub(dist, "dist")
+
+func mustSub(fsys fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(fsys, dir)
+	if err != nil {
+		panic(err)
+	}
+	return sub
+}

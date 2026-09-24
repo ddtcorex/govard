@@ -3,23 +3,41 @@
 This folder hosts the Wails desktop app and lightweight frontend dashboard.
 
 Contents:
-- `frontend/` desktop UI served by Wails
+- `frontend/` desktop UI built with Vite and served by Wails
 - `wails.json` build configuration
 
-Quick start (dev):
-1. Install Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
-2. Run `govard desktop --dev` from repo root
+## Development
+
+Prerequisites: Go, Node.js 24+, pnpm, and the Wails v2 CLI.
+
+```bash
+make frontend                      # Vite build into desktop/frontend/dist
+go run ./cmd/govard desktop --dev  # wails dev: Vite HMR + Go rebuild
+```
 
 If Wails is not installed, the command falls back to `go run -tags desktop ./cmd/govard-desktop`.
 
-Quick start (build):
-1. `wails build -tags desktop` (from `desktop/`)
-2. `govard desktop`
+The frontend talks to Go only through `frontend/services/bridge.js` and
+`frontend/services/events.js`; a Go test fails if any other file touches
+`window.go` or `window.runtime`.
 
-`wails.json` currently wires:
-- `frontend:install`: `yarn install`
-- `frontend:build`: `yarn run build:css`
-- `frontend:dev`: empty (frontend is served through Wails dev runtime)
+`govard-desktop` embeds `desktop/frontend/dist`, so every desktop build has to
+run `make frontend` first. `dist/` is not committed; only `dist/.gitkeep` is, so
+the package still compiles on a machine without Node.
+
+## Build
+
+```bash
+make frontend                 # from the repo root
+wails build -tags desktop     # from desktop/
+govard desktop
+```
+
+`wails.json` wires:
+- `frontend:install`: `pnpm install --frozen-lockfile`
+- `frontend:build`: `pnpm build`
+- `frontend:dev:watcher`: `pnpm dev`
+- `frontend:dev:serverUrl`: `auto`
 
 Lightweight dashboard highlights:
 - Environment list with start/stop/open
@@ -32,6 +50,7 @@ Lightweight dashboard highlights:
 Frontend file management:
 - `frontend/main.js` bootstrap + wiring
 - `frontend/services/bridge.js` Wails bridge wrappers
+- `frontend/services/events.js` backend event subscriptions
 - `frontend/state/store.js` local state
 - `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`)
 - `frontend/ui/toast.js` notifications

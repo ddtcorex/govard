@@ -780,6 +780,21 @@ install_source() {
     install_binary_file "${TMP_BUILD_DIR}/${CLI_BINARY_NAME}" "$CLI_BINARY_NAME"
 
     if [[ "$CLI_ONLY" == false ]]; then
+        if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
+            warn "Desktop source build needs Node.js and pnpm; installing the CLI only."
+            CLI_ONLY=true
+        else
+            # Vite's emptyOutDir also removes dist/.gitkeep, which
+            # //go:embed all:dist needs on a checkout that has never been
+            # built; restore it so the source tree stays clean.
+            if ! (cd desktop/frontend && pnpm install --frozen-lockfile && pnpm build && touch dist/.gitkeep); then
+                warn "Desktop frontend build failed; installing the CLI only."
+                CLI_ONLY=true
+            fi
+        fi
+    fi
+
+    if [[ "$CLI_ONLY" == false ]]; then
         DESKTOP_BUILD_TAGS="$(desktop_build_tags)"
         if desktop_env="$(desktop_build_env)" && [[ -n "$desktop_env" ]]; then
             env "$desktop_env" go build -tags "$DESKTOP_BUILD_TAGS" -ldflags "$LDFLAGS" -o "${TMP_BUILD_DIR}/${DESKTOP_BINARY_NAME}" cmd/govard-desktop/main.go

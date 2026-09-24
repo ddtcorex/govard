@@ -40,6 +40,21 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      # .goreleaser.yml runs `make frontend` before any build, and that needs
+      # Node and pnpm on this runner.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      # pnpm is installed with npm rather than pnpm/action-setup: this repo
+      # allows selected actions only, and that action is not on the allowlist,
+      # which fails the whole run at startup with zero jobs.
+      - name: Install pnpm
+        run: |
+          PNPM_VERSION="$(node -p "require('./desktop/frontend/package.json').packageManager.replace(/^pnpm@/, '')")"
+          npm install -g "pnpm@${PNPM_VERSION}"
+          pnpm --version
+
       # NOTE: docker/login-action is deliberately NOT used here — its v3
       # ref is currently unresolvable by GitHub's action fetcher (proven by
       # probe runs: any workflow containing it dies at startup with zero
@@ -217,6 +232,20 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
+
+      # scripts/build-macos-pkg.sh runs `make frontend` before the desktop build.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      # pnpm is installed with npm rather than pnpm/action-setup: this repo
+      # allows selected actions only, and that action is not on the allowlist,
+      # which fails the whole run at startup with zero jobs.
+      - name: Install pnpm
+        run: |
+          PNPM_VERSION="$(node -p "require('./desktop/frontend/package.json').packageManager.replace(/^pnpm@/, '')")"
+          npm install -g "pnpm@${PNPM_VERSION}"
+          pnpm --version
 
       - name: Build macOS pkg and desktop archive
         run: ./scripts/build-macos-pkg.sh "${GITHUB_REF_NAME}" "${{ matrix.arch }}" dist

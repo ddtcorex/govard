@@ -6,6 +6,7 @@ import {
   syncSeveritySelector,
 } from "./logs.js";
 import { escapeHTML, setText } from "../utils/dom.js";
+import { hasEventRuntime, onEvent } from "../services/events.js";
 
 const globalServiceIcons = {
   caddy: "shield",
@@ -617,7 +618,6 @@ const withButtonLoading = async (buttonLike, fallbackLabel, operation) => {
 
 export const createGlobalServicesController = ({
   bridge,
-  runtime,
   refs,
   getState,
   setState,
@@ -996,7 +996,7 @@ export const createGlobalServicesController = ({
       serviceID;
     setActionFeedback(`Streaming live logs for ${serviceName}.`, "info");
 
-    if (bridge.startGlobalServiceLogStream && runtime?.EventsOn) {
+    if (bridge.startGlobalServiceLogStream && hasEventRuntime()) {
       try {
         await bridge.startGlobalServiceLogStream(serviceID);
         return;
@@ -1294,12 +1294,12 @@ export const createGlobalServicesController = ({
     renderLogOutput();
   };
 
-  if (runtime?.EventsOn) {
-    runtime.EventsOn("global-logs:line", appendLogLine);
-    runtime.EventsOn("global-logs:status", (message) => {
+  if (hasEventRuntime()) {
+    onEvent("global-logs:line", appendLogLine);
+    onEvent("global-logs:status", (message) => {
       onStatus(String(message || "").trim());
     });
-    runtime.EventsOn("global-logs:error", (message) => {
+    onEvent("global-logs:error", (message) => {
       const text = String(message || "").trim();
       if (!text) {
         return;

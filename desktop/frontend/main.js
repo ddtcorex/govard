@@ -37,6 +37,7 @@ import {
 } from "./modules/settings.js";
 import { createUpdateNotifierController } from "./modules/update-notifier.js";
 import { desktopBridge } from "./services/bridge.js";
+import { hasEventRuntime, onEvent } from "./services/events.js";
 import { getState, setState } from "./state/store.js";
 import { createToast } from "./ui/toast.js?v=20260301";
 import { byId, setText } from "./utils/dom.js";
@@ -227,11 +228,7 @@ const loadFooterVersion = async () => {
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      const getVersion = window.go?.desktop?.App?.GetVersion;
-      if (!getVersion) {
-        throw new Error("version bridge not ready");
-      }
-      const version = String(await getVersion()).trim();
+      const version = String(await desktopBridge.getVersion()).trim();
       if (version) {
         const normalized = version.startsWith("v") ? version : `v${version}`;
         setText(footerVersionEl, normalized);
@@ -571,8 +568,8 @@ const runRemoteSyncWithProgressToast = async ({
     }
   };
 
-  if (desktopBridge.runtime?.EventsOn) {
-    offStream = desktopBridge.runtime.EventsOn("sync:output", (payload) => {
+  if (hasEventRuntime()) {
+    offStream = onEvent("sync:output", (payload) => {
       // Go backend now sends batched lines joined by \n to throttle IPC events
       const rawBatch = String(payload ?? "");
       const batchLines = rawBatch.split("\n");
@@ -599,7 +596,7 @@ const runRemoteSyncWithProgressToast = async ({
       flushProgressLines();
     });
 
-    offCompleted = desktopBridge.runtime.EventsOn("sync:completed", (msg) => {
+    offCompleted = onEvent("sync:completed", (msg) => {
       const finalMessage = sanitizeSyncToastLine(msg) || "Sync completed ✔";
       progressLines.push("\n[SUCCESS] " + finalMessage + "\n");
       flushProgressLines();
@@ -608,7 +605,7 @@ const runRemoteSyncWithProgressToast = async ({
       cleanup();
     });
 
-    offFailed = desktopBridge.runtime.EventsOn("sync:failed", (msg) => {
+    offFailed = onEvent("sync:failed", (msg) => {
       const finalMessage = sanitizeSyncToastLine(msg) || "Sync failed";
       const vLine = byId("visual-sync-progress-line");
       if (vLine) {
@@ -831,8 +828,8 @@ const showSystemNotification = (title, body) => {
   }
 };
 
-if (desktopBridge.runtime?.EventsOn) {
-  desktopBridge.runtime.EventsOn("operations:notification", (payload = {}) => {
+if (hasEventRuntime()) {
+  onEvent("operations:notification", (payload = {}) => {
     const title = String(payload.title || "Govard operation update");
     const body = String(payload.body || "").trim();
     let level = payload.level || "success";
@@ -987,7 +984,6 @@ const openServiceContext = async (project, service) => {
 
 const logsController = createLogsController({
   bridge: desktopBridge,
-  runtime: desktopBridge.runtime,
   refs,
   readSelection,
   onStatus: setStatus,
@@ -1237,7 +1233,6 @@ const setSettingsDrawerOpen = (open) => {
 
 const globalServicesController = createGlobalServicesController({
   bridge: desktopBridge,
-  runtime: desktopBridge.runtime,
   refs,
   getState,
   setState,
@@ -1733,9 +1728,7 @@ document.addEventListener("click", async (event) => {
   }
 
   if (action === "quit-app") {
-    if (window.go?.desktop?.App?.Quit) {
-      window.go.desktop.App.Quit();
-    }
+    desktopBridge.quit().catch(() => {});
     return;
   }
 
@@ -1772,8 +1765,8 @@ document.addEventListener("click", async (event) => {
 });
 
 const bindRuntimeListeners = () => {
-  if (desktopBridge.runtime?.EventsOn) {
-    desktopBridge.runtime.EventsOn("onboarding:progress", (payload = {}) => {
+  if (hasEventRuntime()) {
+    onEvent("onboarding:progress", (payload = {}) => {
       onboardingController.handleProgress(payload);
     });
   }
