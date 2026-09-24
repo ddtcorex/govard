@@ -23,11 +23,17 @@ func TestUpgradeHintCoversEveryManagedSource(t *testing.T) {
 	managed := []string{
 		updater.InstallSourceNpm, updater.InstallSourceBrew, updater.InstallSourceApt,
 		updater.InstallSourceYum, updater.InstallSourceChoco, updater.InstallSourceScoop,
-		updater.InstallSourceWinget, updater.InstallSourceDocker,
+		updater.InstallSourceWinget, updater.InstallSourceDocker, updater.InstallSourceSnap,
 	}
 	for _, source := range managed {
 		if hint := updater.UpgradeHint(source); hint == "" {
 			t.Errorf("UpgradeHint(%q) is empty, want a channel upgrade command", source)
 		}
+	}
+}
+
+func TestUpgradeHintForSnapUsesSnapRefresh(t *testing.T) {
+	if hint := updater.UpgradeHint(updater.InstallSourceSnap); hint != "sudo snap refresh govard" {
+		t.Fatalf("UpgradeHint(snap) = %q, want %q", hint, "sudo snap refresh govard")
 	}
 }
