@@ -1310,3 +1310,174 @@ exit 1
 		})
 	}
 }
+
+// The framework flush is not a sweep on Magento 2.4.9: the file cache is a
+// Symfony pool and `TagScope::clean()` rewrites CLEANING_MODE_ALL into a *tag*
+// clean, so `cache:flush` removes only the entries its own index still knows
+// about and exits 0 either way. Measured on app/magento2-test-instance
+// (production, in-place, deploy job 316192): the step reported success in 473ms
+// and removed nothing, while the docroot kept a merged layout built on
+// 2026-08-28 naming a class the release had removed — HTTP 500 after every
+// deploy until the file cache was deleted by hand.
+func TestMagento2CacheFlushPurgesTheFileCacheLeftovers(t *testing.T) {
+	command := magento2.DeployRecipe().Task(deploy.TaskAppCacheFlush).Command
+
+	for _, want := range []string{
+		"purge_cache var/cache",
+		"purge_cache var/page_cache",
+		// The trailing slash is load-bearing: `find var/cache …` does not descend
+		// into a symlinked cache directory, and a silent skip is the defect.
+		`find "$d/" -mindepth 1 -delete`,
+	} {
+		if !strings.Contains(command, want) {
+			t.Errorf("the flush step must contain %q, got:\n%s", want, command)
+		}
+	}
+	// The reload belongs to the application the flush just emptied, so it stays last.
+	if !strings.HasSuffix(strings.TrimSpace(command), "{{settings.runtime_reload_command}}") {
+		t.Errorf("the runtime reload must remain the last fragment:\n%s", command)
+	}
+	// Sessions, logs and build output are not caches.
+	for _, forbidden := range []string{"var/session", "var/log", "var/report", "generated/", "pub/static"} {
+		if strings.Contains(command, forbidden) {
+			t.Errorf("the purge must not name %s:\n%s", forbidden, command)
+		}
+	}
+	// The step still flushes through the framework first: its own index and any
+	// non-file backend have to be cleaned too.
+	if !strings.Contains(command, "bin/magento cache:flush") {
+		t.Errorf("the framework flush must still run first:\n%s", command)
+	}
+}
+
+// Executed rather than read: the step is a shell function, and reading it proves
+// neither that the entries are gone nor that the directories a deploy does not
+// own (sessions, build output) survive.
+func TestMagento2CacheFlushPurgeRemovesOrphansAndKeepsSessions(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	if err := os.MkdirAll(host.CurrentPath, 0o755); err != nil {
+		t.Fatalf("mkdir the served root: %v", err)
+	}
+	orphan := filepath.Join(host.CurrentPath, "var/cache/f9e_/L/K/Z1ovlaCC1Y3RDBJmq9DQ")
+	spaced := filepath.Join(host.CurrentPath, "var/cache/f9e_/L/K/two words")
+	pageCache := filepath.Join(host.CurrentPath, "var/page_cache/f9e_/L/K/entry")
+	session := filepath.Join(host.CurrentPath, "var/session/sess_1")
+	generated := filepath.Join(host.CurrentPath, "generated/code/Acme/Thing.php")
+	for _, file := range []string{orphan, spaced, pageCache, session, generated} {
+		writeFile(t, file, "x")
+	}
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{Revision: "abcdef123456", Settings: map[string]any{}})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", t.TempDir()).
+		Expand(recipe.Task(deploy.TaskAppCacheFlush).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	// This test is about the purge, not about bin/magento: the flush itself is the
+	// target's own CLI, and this docroot has no application behind it.
+	stub := strings.Replace(command, "'php' bin/magento cache:flush", "true", 1)
+	result, err := (deploy.LocalRunner{}).Run(context.Background(), stub, deploy.RunOptions{})
+	if err != nil {
+		t.Fatalf("the cache step must run: %v\n%s", err, stub)
+	}
+	for _, gone := range []string{orphan, spaced, pageCache} {
+		if _, err := os.Stat(gone); err == nil {
+			t.Errorf("the purge left %s behind:\n%s", gone, result.Stdout)
+		}
+	}
+	for _, kept := range []string{session, generated} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Errorf("the purge removed %s, which is not a cache: %v", kept, err)
+		}
+	}
+	if !strings.Contains(result.Stdout, "purged") {
+		t.Errorf("a purge that removed entries must say so, got:\n%s", result.Stdout)
+	}
+}
+
+// A project may share var/cache, and `find var/cache …` does not descend into a
+// symlink: the purge would print nothing, remove nothing, and leave the very
+// directory it exists to clean — silently. The same run covers a project without
+// var/page_cache at all, which must not fail the step.
+func TestMagento2CacheFlushPurgeFollowsASymlinkedCacheDirectory(t *testing.T) {
+	shared := filepath.Join(t.TempDir(), "shared-cache")
+	orphan := filepath.Join(shared, "f9e_/L/K/entry")
+	writeFile(t, orphan, "x")
+
+	recipe := magento2.DeployRecipe()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	if err := os.MkdirAll(filepath.Join(host.CurrentPath, "var"), 0o755); err != nil {
+		t.Fatalf("mkdir var: %v", err)
+	}
+	link := filepath.Join(host.CurrentPath, "var/cache")
+	if err := os.Symlink(shared, link); err != nil {
+		t.Fatalf("symlink var/cache: %v", err)
+	}
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{Revision: "abcdef123456", Settings: map[string]any{}})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", t.TempDir()).
+		Expand(recipe.Task(deploy.TaskAppCacheFlush).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	stub := strings.Replace(command, "'php' bin/magento cache:flush", "true", 1)
+	result, err := (deploy.LocalRunner{}).Run(context.Background(), stub, deploy.RunOptions{})
+	if err != nil {
+		t.Fatalf("a missing var/page_cache must not fail the step: %v\n%s", err, stub)
+	}
+	if _, err := os.Stat(orphan); err == nil {
+		t.Errorf("the purge skipped a symlinked cache directory:\n%s", stub)
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Errorf("the purge removed the symlink instead of its entries: %v", err)
+	}
+	if !strings.Contains(result.Stdout, "purged") {
+		t.Errorf("a purge that removed entries must say so, got:\n%s", result.Stdout)
+	}
+}
+
+// The release is published before this step runs and `maintenance:disable` comes
+// after it, so a purge that cannot remove entries must warn and let the chain
+// finish: a hard failure here leaves the site in maintenance mode.
+func TestMagento2CacheFlushPurgeWarnsWhenItCannotRemove(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions, so there is nothing to fail here")
+	}
+	recipe := magento2.DeployRecipe()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	locked := filepath.Join(host.CurrentPath, "var/cache/f9e_/L/K")
+	entry := filepath.Join(locked, "entry")
+	writeFile(t, entry, "x")
+	if err := os.Chmod(locked, 0o500); err != nil {
+		t.Fatalf("chmod the cache subdirectory: %v", err)
+	}
+	// TempDir's own cleanup needs to remove this tree afterwards, and cleanups run
+	// LIFO, so this one restores the write bit first.
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	marker := filepath.Join(t.TempDir(), "reloaded")
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{
+		Revision: "abcdef123456",
+		Settings: map[string]any{"runtime_reload_command": "printf reloaded > " + marker},
+	})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", t.TempDir()).
+		Expand(recipe.Task(deploy.TaskAppCacheFlush).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	stub := strings.Replace(command, "'php' bin/magento cache:flush", "true", 1)
+	result, err := (deploy.LocalRunner{}).Run(context.Background(), stub, deploy.RunOptions{})
+	if err != nil {
+		t.Fatalf("an unremovable entry must warn, not fail the deploy: %v\n%s", err, stub)
+	}
+	if !strings.Contains(result.Stdout, "warning: could not purge") {
+		t.Errorf("the failure must be named in the step output, got:\n%s", result.Stdout)
+	}
+	if _, err := os.Stat(entry); err != nil {
+		t.Errorf("the fixture should still be there: %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("the chain must continue to the runtime reload: %v", err)
+	}
+}

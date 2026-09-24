@@ -212,11 +212,36 @@ func DeployRecipe() deploy.Recipe {
 	// the release's 27 MB var/cache was emptied and the docroot kept its own
 	// 34 MB plus a 9.1 MB var/page_cache, with no cache backend but Magento's
 	// file default — so the site kept serving the old configuration.
-	fill(deploy.TaskAppCacheFlush, "flush caches",
+	// Reaching the served directory is not enough: the flush is not a sweep. On
+	// 2.4.9 the file cache is a Symfony pool under `var/cache/<id_prefix>/`, and
+	// `TagScope::clean()` rewrites `CLEANING_MODE_ALL` into a *tag* clean, so
+	// `cache:flush` removes only the entries its own index still knows about,
+	// exits 0 either way, and leaves an orphan — an entry whose index row is gone,
+	// still valid for its own TTL — served forever. Measured on the same target
+	// (production, job 316192): the step reported success in 473ms, removed
+	// nothing, and the docroot kept a merged layout built on 2026-08-28 naming a
+	// class the release had removed, so the site answered HTTP 500 after every
+	// deploy until the file cache was deleted by hand.
+	//
+	// The step therefore owns the end state of the directories the served
+	// application reads: after the framework's own flush it drops whatever is
+	// left under `var/cache` and `var/page_cache`. Entries are removed, never the
+	// directories — a recreated `var/cache` carries the deploy user's default
+	// mode, which the web-server user may not be able to write. The trailing
+	// slash on `"$d/"` is load-bearing: `find var/cache …` does not descend into a
+	// symlinked cache, and skipping it silently is the defect this removes. A
+	// purge that cannot remove entries warns instead of failing: the release is
+	// already published and `maintenance:disable` still has to run.
+	fill(deploy.TaskAppCacheFlush, "flush caches and purge file-cache leftovers",
 		// The reload is a fragment, so it is run directly: with nothing
 		// configured it renders as `true` (see deployVars), which is why there is
 		// no `[ -n ... ]` guard to get wrong here.
-		`cd {{current_path}} && {{php_bin}} bin/magento cache:flush && {{settings.runtime_reload_command}}`)
+		`purge_cache() { d="$1"; [ -d "$d" ] || return 0; n=$(find "$d/" -mindepth 1 2>/dev/null | wc -l); [ "$n" -gt 0 ] || return 0; `+
+			`if find "$d/" -mindepth 1 -delete 2>/dev/null; then `+
+			`echo "purged $n file-cache entries under $d that the framework flush could not reach"; `+
+			`else echo "warning: could not purge $n file-cache entries under $d"; fi; }; `+
+			`cd {{current_path}} && {{php_bin}} bin/magento cache:flush && `+
+			`purge_cache var/cache && purge_cache var/page_cache && {{settings.runtime_reload_command}}`)
 
 	fill(deploy.TaskWorkersResume, "resume cron and message consumers",
 		// `cron:install` writes the application's absolute path into the crontab,
