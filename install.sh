@@ -59,14 +59,11 @@ FORCE_YES=false
 SPECIFIC_VERSION=""
 SOURCE_DIR=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${0}}")" && pwd)"
-WEBKITGTK_PACKAGE="libwebkit2gtk-4.1-0"
+WEBKITGTK_PACKAGE="libwebkitgtk-6.0-4"
 
 desktop_build_tags() {
-    local tags="desktop production"
-    if [[ "$OS" == "linux" ]]; then
-        tags="${tags} webkit2_41"
-    fi
-    echo "$tags"
+    # Wails v3 needs no WebKit version tag: linking is decided by pkg-config.
+    echo "desktop production"
 }
 
 desktop_build_env() {
@@ -204,11 +201,11 @@ detect_env() {
 }
 
 desktop_runtime_available() {
-    if command -v ldconfig >/dev/null 2>&1 && [[ "$(ldconfig -p 2>/dev/null)" == *"libwebkit2gtk-4.1"* ]]; then
+    if command -v ldconfig >/dev/null 2>&1 && [[ "$(ldconfig -p 2>/dev/null)" == *"libwebkitgtk-6.0"* ]]; then
         return 0
     fi
 
-    [[ -f "/usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0" ]] || [[ -f "/usr/lib/libwebkit2gtk-4.1.so.0" ]]
+    [[ -f "/usr/lib/x86_64-linux-gnu/libwebkitgtk-6.0.so.4" ]] || [[ -f "/usr/lib/libwebkitgtk-6.0.so.4" ]]
 }
 
 apt_lists_populated() {
@@ -218,7 +215,10 @@ apt_lists_populated() {
 
 desktop_install_enabled() {
     [[ "$CLI_ONLY" != true ]] || return 1
-    [[ "$OS" != linux ]] && return 0
+
+    # Releases ship govard-desktop for Linux only until the macOS and Windows
+    # desktop builds return (Spec 3); the CLI installs on every platform.
+    [[ "$OS" != linux ]] && return 1
 
     if command -v apt-cache >/dev/null 2>&1; then
         if apt-cache show "$WEBKITGTK_PACKAGE" >/dev/null 2>&1; then
@@ -247,7 +247,11 @@ configure_desktop_install() {
     fi
 
     if [[ "$CLI_ONLY" != true ]]; then
-        warn "WebKitGTK 4.1 is unavailable; installing Govard CLI only. Govard Desktop requires a newer Linux distribution."
+        if [[ "$OS" == linux ]]; then
+            warn "WebKitGTK 6.0 is unavailable; installing Govard CLI only. Govard Desktop requires a newer Linux distribution."
+        else
+            warn "Govard Desktop is not packaged for ${OS} yet; installing the CLI only."
+        fi
     fi
     CLI_ONLY=true
 }
@@ -782,6 +786,9 @@ install_source() {
     if [[ "$CLI_ONLY" == false ]]; then
         if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
             warn "Desktop source build needs Node.js and pnpm; installing the CLI only."
+            CLI_ONLY=true
+        elif [[ "$OS" == "linux" ]] && ! pkg-config --exists gtk4 webkitgtk-6.0 2>/dev/null; then
+            warn "Desktop source build needs libgtk-4-dev and libwebkitgtk-6.0-dev; installing the CLI only."
             CLI_ONLY=true
         else
             # Vite's emptyOutDir also removes dist/.gitkeep, which

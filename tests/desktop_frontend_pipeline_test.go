@@ -22,9 +22,12 @@ func TestDesktopBuildPathsBuildFrontendFirst(t *testing.T) {
 	if !strings.Contains(readRepoFile(t, ".goreleaser.yml"), "make frontend") {
 		t.Error(".goreleaser.yml must run `make frontend` in before.hooks")
 	}
+	// The macOS package is CLI-only until the cgo .app build returns (Spec 3):
+	// it has no desktop binary to feed, so it needs no frontend build, and it
+	// must not grow one back without the build step.
 	macos := readRepoFile(t, "scripts/build-macos-pkg.sh")
-	if !strings.Contains(macos, "make frontend") {
-		t.Error("scripts/build-macos-pkg.sh must run `make frontend` before building govard-desktop")
+	if strings.Contains(macos, "govard-desktop") {
+		t.Error("scripts/build-macos-pkg.sh must stay CLI-only until Spec 3")
 	}
 	install := readRepoFile(t, "install.sh")
 	frontendIdx := strings.Index(install, "pnpm build")

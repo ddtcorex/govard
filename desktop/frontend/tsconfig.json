@@ -10,5 +10,6 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["types/**/*.d.ts", "services/**/*.js", "main.js", "modules/**/*.js", "state/**/*.js", "ui/**/*.js", "utils/**/*.js"]
+  "exclude": ["bindings", "node_modules", "dist"],
+  "include": ["services/**/*.js", "main.js", "modules/**/*.js", "state/**/*.js", "ui/**/*.js", "utils/**/*.js"]
 }

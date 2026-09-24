@@ -1,11 +1,11 @@
 ---
 title: Govard Desktop App
-description: Govard Desktop is a Wails-based GUI sharing the same core engine as the CLI, with live logs, quick actions, and a project dashboard.
+description: Govard Desktop is a Wails 3 GUI sharing the same core engine as the CLI, with live logs, quick actions, a system tray, and a project dashboard.
 ---
 
 # Desktop App
 
-Govard Desktop is the Wails-based GUI that reuses the same core engine as the CLI.
+Govard Desktop is the Wails 3 GUI that reuses the same core engine as the CLI. It runs on GTK 4 and WebKitGTK 6.0, which Ubuntu 24.04+ and Debian 13+ ship; Ubuntu 22.04 and Debian 12 install the CLI only.
 
 ---
 
@@ -13,15 +13,15 @@ Govard Desktop is the Wails-based GUI that reuses the same core engine as the CL
 
 ```bash
 govard desktop              # Launch the built desktop binary
-govard desktop --dev        # Run Wails dev mode (live backend)
+govard desktop --dev        # Vite dev server plus a Go rebuild against it
 govard desktop --background # Start hidden, reuse running instance on relaunch
 ```
 
 | Mode | Description |
 | :--- | :--- |
 | `govard desktop` | Standard launch — uses built binary |
-| `govard desktop --dev` | Dev mode — live Go backend, hot reload frontend |
-| `govard desktop --background` | Background process — keeps alive when window closes |
+| `govard desktop --dev` | Dev mode — Vite HMR on `http://localhost:5173`, live Go backend |
+| `govard desktop --background` | Start hidden, keep running with a tray icon. With no tray host it starts visible instead |
 
 ---
 
@@ -38,6 +38,7 @@ The desktop focuses on operational essentials:
 | **Resource Monitor** | CPU, RAM, network, OOM hints |
 | **Logs** | Multi-service selection, severity filtering, text search, live streaming |
 | **Shell Launcher** | Service, user, and shell selection |
+| **System Tray** | Show/hide the window, start/stop/open projects, quit |
 | **Native Notifications** | Operation success/failure alerts |
 | **Settings Drawer** | Theme, proxy target, preferred browser, database client |
 
@@ -89,29 +90,27 @@ Current persisted preferences:
 
 ## Dev Mode
 
-Prerequisites: Go, Node.js 24+, pnpm and the Wails v2 CLI. The desktop UI is
-bundled by Vite into `desktop/frontend/dist`, which the Go binary embeds.
+Prerequisites: Go, Node.js 24+, pnpm, and on Linux `libgtk-4-dev` plus
+`libwebkitgtk-6.0-dev`. The desktop UI is bundled by Vite into
+`desktop/frontend/dist`, which the Go binary embeds.
 
 ```bash
 make frontend                      # Vite build into desktop/frontend/dist
-DISPLAY=:1 govard desktop --dev    # wails dev: Vite HMR + Go backend rebuild
+DISPLAY=:1 govard desktop --dev    # Vite HMR + Go backend rebuild
+make bindings                      # regenerate the JS bindings from the Go services
 ```
+
+`govard desktop --dev` starts Vite on `http://localhost:5173` and runs the app
+with `FRONTEND_DEVSERVER_URL` pointing at it, which Wails proxies in a build
+without the `production` tag. There is no Wails CLI step and no `wails.json`.
 
 `make frontend` is not optional: a desktop build that skips it embeds an empty
 `dist/` and shows a blank window. Every automated desktop build path (CI,
 goreleaser, `scripts/build-macos-pkg.sh`, `install.sh --source`) runs it first.
 
-The Vite dev server listens on `http://localhost:5173`; Wails dev mode proxies it
-and also exposes the compiled backend at:
-
-```
-http://localhost:34115
-```
-
-`http://localhost:34115` is the preferred browser-testing path because the Go
-backend bridge stays live and loads real project data. Opening the Vite server or
-`dist/` directly renders the same shell with mock data and a "Desktop bridge not
-available" notice, which is enough for styling and layout work.
+Opening the Vite server on `http://localhost:5173` or `dist/` directly renders
+the same shell with mock data and a "Desktop bridge not available" notice, which
+is enough for styling and layout work; real project data needs the app window.
 
 ---
 
@@ -122,8 +121,8 @@ available" notice, which is enough for styling and layout work.
 | `desktop/frontend/index.html` | Main HTML entry |
 | `desktop/frontend/main.js` | Bootstrap, event wiring, tab/state management |
 | `desktop/frontend/services/bridge.js` | Wails Go backend RPC bridge; the only module allowed to call Go |
-| `desktop/frontend/services/events.js` | Backend event subscriptions; the only module allowed to use `window.runtime` |
-| `desktop/frontend/types/wails-v2.d.ts` | Declared shape of the Wails v2 globals |
+| `desktop/frontend/services/events.js` | Backend event subscriptions; the only module allowed to use `@wailsio/runtime` |
+| `desktop/frontend/bindings/` | Generated from the Go services by `make bindings`; committed, never edited by hand |
 | `desktop/frontend/state/store.js` | Shared UI state (selected project, filters) |
 | `desktop/frontend/modules/` | Feature modules (dashboard, logs, remotes, etc.) |
 | `desktop/frontend/ui/toast.js` | Toast notification system |
@@ -133,17 +132,35 @@ available" notice, which is enough for styling and layout work.
 
 | Access Method | Backend | Data |
 | :--- | :--- | :--- |
-| Wails dev (`localhost:34115`) | Full backend bridge active | Real project data |
-| Vite dev (`localhost:5173`) or `dist/` | Bridge unavailable | Mock fallback data + warning toast |
+| The app window | Bindings active | Real project data |
+| Vite dev (`localhost:5173`) or `dist/` | Bindings unavailable | Mock fallback data + warning toast |
 
 A Go test (`tests/desktop_frontend_bridge_guard_test.go`) fails if any frontend
-file other than `services/bridge.js`, `services/events.js` and
-`types/wails-v2.d.ts` touches `window.go`, `window.runtime` or
-`desktopBridge.runtime`. Both modules are JSDoc-typed with `// @ts-check`, so
-`pnpm typecheck` checks the shapes those two modules declare. It does not yet
-verify the Go method names themselves: `window.go.desktop.App` is declared as an
-index signature, so any property name type-checks. The generated bindings that
-make the Go side authoritative arrive with the Wails 3 migration.
+file other than `services/bridge.js` and `services/events.js` touches
+`window.go`, `window.runtime`, `desktopBridge.runtime`, `@wailsio/runtime` or
+`bindings/`. Both modules are JSDoc-typed with `// @ts-check`, so `pnpm typecheck`
+checks the shapes they declare, and a second Go test
+(`tests/desktop_bindings_contract_test.go`) fails when a route in `bridge.js` no
+longer matches the generated bindings, so a renamed Go method is caught in CI
+rather than by a user.
+
+### Closing the window
+
+Closing the window keeps Govard running in the tray when **Run in background** is
+on (the default) and a tray host is available; otherwise it quits, so a window can
+never be hidden with no way back to it. Vanilla GNOME has no tray host: install
+the AppIndicator extension, or closing quits. `govard desktop doctor` reports
+which case the machine is in, and the Settings drawer says so when no tray is
+available. The tray menu shows or hides the window, lists projects with running
+ones first, starts and stops them, opens them in the browser, and quits.
+
+### Platform support
+
+| Platform | Desktop app | Notes |
+| :--- | :--- | :--- |
+| Linux, Ubuntu 24.04+ / Debian 13+ | Yes | GTK 4 and WebKitGTK 6.0 |
+| Linux, Ubuntu 22.04 / Debian 12 | No | The CLI installs; no WebKitGTK 6.0 |
+| macOS | Not yet | The package ships the CLI only; `govard self-update` leaves an installed desktop binary unchanged |
 
 ---
 

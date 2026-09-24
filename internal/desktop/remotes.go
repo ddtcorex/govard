@@ -777,16 +777,16 @@ func runRemoteSyncBackgroundWithOptions(
 	}
 
 	RegisterSyncingProject(project, remoteName)
-	p.Emit("sync:started", map[string]string{
-		"project": project,
-		"remote":  remoteName,
-		"preset":  preset,
+	p.Emit(EventSyncStarted, SyncStartedPayload{
+		Project: project,
+		Remote:  remoteName,
+		Preset:  preset,
 	})
 
 	// We use two scanners to emit events to the frontend
 	done := make(chan struct{}, 2)
-	go scanLogPipe(ctx, p, stdout, "sync:output", done)
-	go scanLogPipe(ctx, p, stderr, "sync:output", done)
+	go scanLogPipe(ctx, p, stdout, EventSyncOutput, done)
+	go scanLogPipe(ctx, p, stderr, EventSyncOutput, done)
 
 	go func() {
 		<-done
@@ -794,9 +794,9 @@ func runRemoteSyncBackgroundWithOptions(
 		err := cmd.Wait()
 		UnregisterSyncingProject(project)
 		if err != nil {
-			p.Emit("sync:failed", fmt.Sprintf("Sync failed: %v", err))
+			p.Emit(EventSyncFailed, fmt.Sprintf("Sync failed: %v", err))
 		} else {
-			p.Emit("sync:completed", "Sync completed successfully")
+			p.Emit(EventSyncCompleted, "Sync completed successfully")
 		}
 	}()
 
@@ -1410,6 +1410,11 @@ func (s *RemoteService) OpenRemoteDB(project string, remoteName string) (res str
 	return message, nil
 }
 
+// OpenRemoteSFTP and OpenRemoteShell pass s.ctx, not lifecycleContext(): for
+// these two the context is the "GUI runtime attached" signal that gates
+// launching a real terminal, so it must stay nil outside a running app. Tests
+// (and any pre-startup call) then take the URL fallback instead of opening a
+// terminal on the developer's desktop.
 func (s *RemoteService) OpenRemoteSFTP(project string, remoteName string) (res string, err error) {
 	defer RecoverPanic(&err, "OpenRemoteSFTP")
 	message, err := openRemoteSFTP(project, remoteName, s.ctx, s.platform)
@@ -1479,11 +1484,7 @@ func (s *RemoteService) RunRemoteSyncInTerminal(project string, remoteName strin
 
 func (s *RemoteService) RunRemoteSync(project string, remoteName string, preset string, options map[string]bool) (res string, err error) {
 	defer RecoverPanic(&err, "RunRemoteSync")
-	ctx := s.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := runRemoteSyncBackgroundWithOptions(ctx, s.platform, project, remoteName, preset, options); err != nil {
+	if err := runRemoteSyncBackgroundWithOptions(s.lifecycleContext(), s.platform, project, remoteName, preset, options); err != nil {
 		return "", err
 	}
 	return "Sync started", nil

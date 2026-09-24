@@ -20,14 +20,14 @@ This guide covers the expected workflow for contributors working on Govard.
 | Go | `1.25+` | `go version` |
 | Node.js | `20+` | `node --version` |
 | Docker Engine + Compose | latest | `docker --version` |
-| Wails | `v2.11+` (desktop only) | `wails version` |
+| Wails | `v3.0.0-beta.25`, a Go module: `go tool wails3 version` (desktop only) |
 | golangci-lint | `v2.11+` | `golangci-lint --version` |
 
 ```bash
 # Verify all tools
 go version
 node --version
-wails version
+go tool wails3 version
 docker --version
 golangci-lint --version
 ```

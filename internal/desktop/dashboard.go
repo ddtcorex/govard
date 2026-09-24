@@ -402,14 +402,14 @@ func (s *EnvironmentService) DeleteProject(projectQuery string) (res string, err
 
 	// Check if it's an orphan (root is the name, not an absolute path)
 	if !filepath.IsAbs(root) && !strings.Contains(root, string(filepath.Separator)) {
-		if err := engine.DeleteOrphanProject(s.ctx, root, os.Stdout, os.Stderr); err != nil {
+		if err := engine.DeleteOrphanProject(s.lifecycleContext(), root, os.Stdout, os.Stderr); err != nil {
 			return "", err
 		}
 		return "Orphaned project resources removed", nil
 	}
 
 	// We use the application context for the deletion process
-	if err := engine.DeleteProject(s.ctx, root, os.Stdout, os.Stderr); err != nil {
+	if err := engine.DeleteProject(s.lifecycleContext(), root, os.Stdout, os.Stderr); err != nil {
 		return "", err
 	}
 	return "Project deleted successfully", nil

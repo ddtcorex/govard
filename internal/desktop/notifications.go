@@ -26,34 +26,7 @@ type OperationNotification struct {
 	Timestamp string `json:"timestamp"`
 }
 
-func (app *App) startOperationNotificationWatcher() {
-	app.notifyMu.Lock()
-	defer app.notifyMu.Unlock()
-
-	if app.notifyCancel != nil {
-		app.notifyCancel()
-		app.notifyCancel = nil
-	}
-
-	baseCtx := app.ctx
-	if baseCtx == nil {
-		baseCtx = context.Background()
-	}
-	watchCtx, cancel := context.WithCancel(baseCtx)
-	app.notifyCancel = cancel
-	go watchOperationNotifications(watchCtx, app.platform)
-}
-
-func (app *App) stopOperationNotificationWatcher() {
-	app.notifyMu.Lock()
-	defer app.notifyMu.Unlock()
-	if app.notifyCancel != nil {
-		app.notifyCancel()
-		app.notifyCancel = nil
-	}
-}
-
-func watchOperationNotifications(ctx context.Context, p Platform) {
+func watchOperationNotifications(ctx context.Context, p Platform, onEvent func()) {
 	cursor := ""
 	if events, err := engine.ReadOperationEvents(operationNotificationsReadLimit); err == nil {
 		_, cursor = selectOperationEventsSince(events, cursor)
@@ -73,12 +46,21 @@ func watchOperationNotifications(ctx context.Context, p Platform) {
 			}
 			newEvents, nextCursor := selectOperationEventsSince(events, cursor)
 			cursor = nextCursor
+			emitted := false
 			for _, event := range newEvents {
 				notification, ok := buildOperationNotification(event)
 				if !ok {
 					continue
 				}
-				p.Emit("operations:notification", notification)
+				p.Emit(EventOperationsNotification, notification)
+				emitted = true
+			}
+			// The tray refresh rebuilds the whole menu and reads every project's
+			// container state, so it runs once per poll rather than once per
+			// event: a burst would otherwise serialise that work inside this
+			// goroutine and delay the notifications behind it.
+			if emitted && onEvent != nil {
+				onEvent()
 			}
 		}
 	}

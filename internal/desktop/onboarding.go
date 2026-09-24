@@ -118,9 +118,9 @@ func onboardProjectWithOptionsInternalWithContext(
 		if suppressed, _ := ctx.Value(suppressOnboardingProgressKey).(bool); suppressed {
 			return
 		}
-		p.Emit("onboarding:progress", map[string]string{
-			"step":    strings.TrimSpace(step),
-			"message": strings.TrimSpace(progressMessage),
+		p.Emit(EventOnboardingProgress, OnboardingProgressPayload{
+			Step:    strings.TrimSpace(step),
+			Message: strings.TrimSpace(progressMessage),
 		})
 	}
 
@@ -225,7 +225,7 @@ func (s *OnboardingService) PickProjectDirectory() (res string, err error) {
 
 func (s *OnboardingService) OnboardProject(input OnboardInput) (res string, err error) {
 	defer RecoverPanic(&err, "OnboardProject")
-	return onboardProjectWithOptionsInternalWithContext(s.ctx, s.platform, input)
+	return onboardProjectWithOptionsInternalWithContext(s.lifecycleContext(), s.platform, input)
 }
 
 func (s *OnboardingService) DetectMigrationSource(projectPath string) (res string, err error) {

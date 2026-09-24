@@ -1,14 +1,10 @@
 package desktop
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
 	"os"
 	"strings"
-
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
 const (
@@ -39,44 +35,15 @@ func ResolveLaunchOptions(args []string, envBackground string) LaunchOptions {
 	return options
 }
 
-func BuildWailsOptions(app *App, assets fs.FS, launch LaunchOptions) *options.App {
-	wailsOptions := &options.App{
-		Title:       "Govard Desktop",
-		Width:       1200,
-		Height:      800,
-		AssetServer: &assetserver.Options{Assets: assets},
-		OnStartup:   app.Startup,
-		OnShutdown:  app.Shutdown,
-		Bind: []interface{}{
-			app.Settings,
-			app.Onboarding,
-			app.Environment,
-			app.Remote,
-			app.System,
-			app.Logs,
-			app.Global,
-			app.Update,
-		},
+// CheckAssetRoot fails when index.html is not at the root of assets. The Wails
+// v3 window loads /index.html and the asset server re-roots the FS at the
+// directory holding index.html, so a nested index is a silent blank window.
+// Report it in the log instead.
+func CheckAssetRoot(assets fs.FS) error {
+	if _, err := fs.Stat(assets, "index.html"); err != nil {
+		return fmt.Errorf("frontend assets have no index.html at their root (run `make frontend`): %w", err)
 	}
-
-	wailsOptions.SingleInstanceLock = &options.SingleInstanceLock{
-		UniqueId: desktopSingleInstanceLockID,
-		OnSecondInstanceLaunch: func(options.SecondInstanceData) {
-			app.showWindow()
-		},
-	}
-
-	if !launch.Background {
-		return wailsOptions
-	}
-
-	wailsOptions.StartHidden = true
-	wailsOptions.HideWindowOnClose = true
-	wailsOptions.OnBeforeClose = func(ctx context.Context) bool {
-		app.hideWindow(ctx)
-		return true // prevent close; hide to tray instead
-	}
-	return wailsOptions
+	return nil
 }
 
 func parseTruthyBool(raw string) bool {

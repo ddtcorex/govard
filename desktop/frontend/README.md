@@ -1,7 +1,7 @@
 # Desktop Frontend
 
-The desktop UI served by Wails. Plain ES modules bundled by Vite, styled with
-Tailwind 3 through PostCSS.
+The desktop UI embedded by the Govard Desktop binary. Plain ES modules bundled
+by Vite, styled with Tailwind 3 through PostCSS.
 
 ## Commands
 
@@ -23,7 +23,7 @@ build depends on it, because `embed.go` embeds `dist/`.
 | `main.js` | Bootstrap, event wiring, tab and state management |
 | `services/bridge.js` | The only module allowed to call the Go backend |
 | `services/events.js` | The only module allowed to subscribe to backend events |
-| `types/wails-v2.d.ts` | Shape of the globals Wails v2 injects |
+| `bindings/` | Generated from the Go services by `make bindings`; committed, never edited by hand |
 | `modules/` | Feature modules (dashboard, logs, remotes, settings, ...) |
 | `state/store.js` | Shared UI state |
 | `ui/`, `utils/` | Toasts and DOM helpers |
@@ -31,10 +31,15 @@ build depends on it, because `embed.go` embeds `dist/`.
 | `dist/` | Vite build output, not committed (`dist/.gitkeep` keeps the embed valid) |
 
 A Go test (`tests/desktop_frontend_bridge_guard_test.go`) fails if any file other
-than the two `services/` modules and the type declaration touches `window.go`,
-`window.runtime` or `desktopBridge.runtime`.
+than the two `services/` modules touches `window.go`, `window.runtime`,
+`desktopBridge.runtime`, `@wailsio/runtime` or `bindings/`.
 
-## Opening the UI without Wails
+`services/bridge.js` maps a frontend call to a generated service function, and a
+Go test (`tests/desktop_bindings_contract_test.go`) fails when a route no longer
+matches the generated bindings, so a renamed Go method is caught in CI rather
+than by a user. `bindings/` is excluded from `tsc`; it is generated code.
+
+## Opening the UI without the app
 
 `pnpm dev` (or any static server over `dist/`) renders the shell from the
 committed HTML with mock data and a "Desktop bridge not available" notice. That

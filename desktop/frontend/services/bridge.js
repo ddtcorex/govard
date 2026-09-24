@@ -11,6 +11,7 @@ export const ROUTES = {
   GetMailpitURL: ["SettingsService", "GetMailpitURL"],
   UpdateSettings: ["SettingsService", "UpdateSettings"],
   ResetSettings: ["SettingsService", "ResetSettings"],
+  GetTrayStatus: ["SettingsService", "GetTrayStatus"],
   GetDashboard: ["EnvironmentService", "GetDashboard"],
   StartEnvironment: ["EnvironmentService", "StartEnvironment"],
   StopEnvironment: ["EnvironmentService", "StopEnvironment"],
@@ -64,13 +65,43 @@ export const ROUTES = {
 };
 
 /**
- * Wails v2 backend: the bound service structs under window.go.desktop.
+ * Wails v3 backend: the generated bindings, loaded lazily so node tests that
+ * import this module never load the browser runtime. The module also exports
+ * the generated model classes, so only the lookup below is typed.
+ * @type {() => Promise<any>}
+ */
+let loadBindings = () => import("../bindings/govard/internal/desktop/index.js");
+
+/**
+ * Test seam: replace the bindings loader, returns a restore function.
+ * @param {() => Promise<any>} fn
+ */
+export function __setBindingsLoaderForTest(fn) {
+  const previous = loadBindings;
+  loadBindings = fn;
+  return () => {
+    loadBindings = previous;
+  };
+}
+
+/**
  * @param {string} service
  * @param {string} method
  * @param {any[]} args
  */
-const wailsV2Backend = async (service, method, args) => {
-  const fn = window.go?.desktop?.[service]?.[method];
+const bindingsBackend = async (service, method, args) => {
+  /** @type {Record<string, Record<string, (...args: any[]) => Promise<any>>> | undefined} */
+  let bindings;
+  /** @type {((...args: any[]) => Promise<any>) | undefined} */
+  let fn;
+  try {
+    bindings = await loadBindings();
+    fn = bindings?.[service]?.[method];
+  } catch (err) {
+    throw new Error(
+      `Desktop bridge not available: ${service}.${method} (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
   if (typeof fn !== "function") {
     throw new Error(`Desktop bridge not available: ${service}.${method}`);
   }
@@ -78,7 +109,7 @@ const wailsV2Backend = async (service, method, args) => {
 };
 
 /** @type {(service: string, method: string, args: any[]) => Promise<any>} */
-let backend = wailsV2Backend;
+let backend = bindingsBackend;
 
 /**
  * Test seam: replace the backend, returns a restore function.
@@ -452,6 +483,9 @@ export const desktopBridge = {
   },
   async resetSettings() {
     return invoke("ResetSettings");
+  },
+  async getTrayStatus() {
+    return invoke("GetTrayStatus");
   },
   async checkForUpdates() {
     return invoke("CheckForUpdates");

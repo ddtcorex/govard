@@ -302,3 +302,13 @@ test("setUpdateChannel resyncs select to last-known-good channel on failure", as
     "select should snap back to the last persisted channel after a rejected update",
   );
 });
+
+test("settings shows a hint when no tray host is available", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const settingsJS = await readFile(
+    new URL("../../desktop/frontend/modules/settings.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(settingsJS.includes("getTrayStatus"), true, "settings must query the tray status");
+  assert.equal(settingsJS.includes('data-testid="tray-unavailable-hint"'), true, "settings must render the tray hint");
+});

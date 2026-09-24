@@ -28,7 +28,7 @@ func (s *LogService) StartLogStream(project string) (res string, err error) {
 		s.streamCancel = nil
 	}
 
-	streamCtx, cancel := context.WithCancel(s.ctx)
+	streamCtx, cancel := context.WithCancel(s.lifecycleContext())
 	s.streamCancel = cancel
 
 	go s.streamLogs(streamCtx, project, "")
@@ -45,7 +45,7 @@ func (s *LogService) StartLogStreamForService(project string, service string) (r
 		s.streamCancel = nil
 	}
 
-	streamCtx, cancel := context.WithCancel(s.ctx)
+	streamCtx, cancel := context.WithCancel(s.lifecycleContext())
 	s.streamCancel = cancel
 
 	go s.streamLogs(streamCtx, project, service)
@@ -80,7 +80,7 @@ func (s *LogService) StartGlobalServiceLogStream(serviceID string) (res string, 
 		s.globalStreamCancel = nil
 	}
 
-	streamCtx, cancel := context.WithCancel(s.ctx)
+	streamCtx, cancel := context.WithCancel(s.lifecycleContext())
 	s.globalStreamCancel = cancel
 	go s.streamGlobalServiceLogs(streamCtx, spec)
 
@@ -126,9 +126,7 @@ func (s *LogService) GetGlobalServiceLogs(serviceID string, lines int) (res stri
 func (s *LogService) streamLogs(ctx context.Context, project string, service string) {
 	info, err := loadProjectInfo(project)
 	if err != nil {
-		s.platform.Emit("logs:error", map[string]interface{}{
-			"message": fmt.Sprintf("Failed to load project info for %s: %s", project, err.Error()),
-		})
+		s.platform.Emit(EventLogsError, fmt.Sprintf("Failed to load project info for %s: %s", project, err.Error()))
 		return
 	}
 
@@ -136,25 +134,25 @@ func (s *LogService) streamLogs(ctx context.Context, project string, service str
 	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "100", "-f", containerName)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		s.platform.Emit("logs:error", "Failed to stream logs: "+err.Error())
+		s.platform.Emit(EventLogsError, "Failed to stream logs: "+err.Error())
 		return
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		s.platform.Emit("logs:error", "Failed to stream logs: "+err.Error())
+		s.platform.Emit(EventLogsError, "Failed to stream logs: "+err.Error())
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		s.platform.Emit("logs:error", "Failed to start log stream: "+err.Error())
+		s.platform.Emit(EventLogsError, "Failed to start log stream: "+err.Error())
 		return
 	}
 
-	s.platform.Emit("logs:status", fmt.Sprintf("Streaming logs from %s", containerName))
+	s.platform.Emit(EventLogsStatus, fmt.Sprintf("Streaming logs from %s", containerName))
 
 	done := make(chan struct{}, 2)
-	go scanLogPipe(s.ctx, s.platform, stdout, "logs:line", done)
-	go scanLogPipe(s.ctx, s.platform, stderr, "logs:line", done)
+	go scanLogPipe(s.lifecycleContext(), s.platform, stdout, EventLogsLine, done)
+	go scanLogPipe(s.lifecycleContext(), s.platform, stderr, EventLogsLine, done)
 
 	select {
 	case <-ctx.Done():
@@ -169,27 +167,27 @@ func (s *LogService) streamGlobalServiceLogs(ctx context.Context, spec globalSer
 	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "100", "-f", spec.ContainerName)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		s.platform.Emit("global-logs:error", "Failed to stream logs: "+err.Error())
+		s.platform.Emit(EventGlobalLogsError, "Failed to stream logs: "+err.Error())
 		return
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		s.platform.Emit("global-logs:error", "Failed to stream logs: "+err.Error())
+		s.platform.Emit(EventGlobalLogsError, "Failed to stream logs: "+err.Error())
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		s.platform.Emit("global-logs:error", "Failed to start log stream: "+err.Error())
+		s.platform.Emit(EventGlobalLogsError, "Failed to start log stream: "+err.Error())
 		return
 	}
 
-	s.platform.Emit("global-logs:status",
+	s.platform.Emit(EventGlobalLogsStatus,
 		fmt.Sprintf("Streaming logs from %s", spec.ContainerName),
 	)
 
 	done := make(chan struct{}, 2)
-	go scanLogPipe(s.ctx, s.platform, stdout, "global-logs:line", done)
-	go scanLogPipe(s.ctx, s.platform, stderr, "global-logs:line", done)
+	go scanLogPipe(s.lifecycleContext(), s.platform, stdout, EventGlobalLogsLine, done)
+	go scanLogPipe(s.lifecycleContext(), s.platform, stderr, EventGlobalLogsLine, done)
 
 	select {
 	case <-ctx.Done():
@@ -208,7 +206,7 @@ func scanLogPipe(ctx context.Context, p Platform, pipe interface{}, event string
 		Read(p []byte) (n int, err error)
 	})
 	if !ok {
-		p.Emit("logs:error", "Failed to read log stream")
+		p.Emit(EventLogsError, "Failed to read log stream")
 		done <- struct{}{}
 		return
 	}
@@ -265,7 +263,7 @@ func scanLogPipe(ctx context.Context, p Platform, pipe interface{}, event string
 			linesCh <- line
 		}
 		if err := scanner.Err(); err != nil {
-			p.Emit("logs:error", "Log scanner error: "+err.Error())
+			p.Emit(EventLogsError, "Log scanner error: "+err.Error())
 		}
 		close(linesCh)
 	}()

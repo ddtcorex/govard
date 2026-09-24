@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ROUTES, desktopBridge, __setBackendForTest } from "../../desktop/frontend/services/bridge.js";
+import {
+  ROUTES,
+  desktopBridge,
+  __setBackendForTest,
+  __setBindingsLoaderForTest,
+} from "../../desktop/frontend/services/bridge.js";
 
 test("every route targets a known service", () => {
   const services = new Set([
@@ -11,7 +16,7 @@ test("every route targets a known service", () => {
     assert.ok(services.has(service), `${name} routes to unknown service ${service}`);
     assert.match(method, /^[A-Z][A-Za-z]+$/, `${name} has a bad method name`);
   }
-  assert.equal(Object.keys(ROUTES).length, 54);
+  assert.equal(Object.keys(ROUTES).length, 55);
 });
 
 test("renamed routes keep their frontend names", () => {
@@ -37,6 +42,28 @@ test("bridge methods call the routed service method with their arguments", async
 test("a missing backend rejects with a readable error", async () => {
   const restore = __setBackendForTest(async () => {
     throw new Error("Desktop bridge not available: EnvironmentService.GetDashboard");
+  });
+  try {
+    await assert.rejects(desktopBridge.getDashboard(), /Desktop bridge not available/);
+  } finally {
+    restore();
+  }
+});
+
+test("bindings backend calls the generated service function", async () => {
+  const restore = __setBindingsLoaderForTest(async () => ({
+    EnvironmentService: { StartEnvironment: async (p) => `started ${p}` },
+  }));
+  try {
+    assert.equal(await desktopBridge.startEnvironment("sample-project"), "started sample-project");
+  } finally {
+    restore();
+  }
+});
+
+test("bindings that fail to load reject with a readable error", async () => {
+  const restore = __setBindingsLoaderForTest(async () => {
+    throw new Error("Failed to fetch dynamically imported module");
   });
   try {
     await assert.rejects(desktopBridge.getDashboard(), /Desktop bridge not available/);

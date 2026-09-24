@@ -7,7 +7,7 @@ import {
   normalizeOnboardingFramework,
   renderOnboardingModal,
 } from "../../desktop/frontend/modules/onboarding.js";
-import { desktopBridge } from "../../desktop/frontend/services/bridge.js";
+import { desktopBridge, __setBindingsLoaderForTest } from "../../desktop/frontend/services/bridge.js";
 
 test("normalizeOnboardingFramework canonicalizes empty and aliases", () => {
   assert.equal(normalizeOnboardingFramework(""), "");
@@ -150,20 +150,15 @@ test("renderOnboardingModal exposes streamlined onboarding UI contract", () => {
 });
 
 test("desktopBridge onboarding forwards framework version", async () => {
-  const previousWindow = global.window;
   let capturedPayload = null;
-  global.window = {
-    go: {
-      desktop: {
-        OnboardingService: {
-          OnboardProject: async (payload) => {
-            capturedPayload = payload;
-            return "ok";
-          },
-        },
+  const restore = __setBindingsLoaderForTest(async () => ({
+    OnboardingService: {
+      OnboardProject: async (payload) => {
+        capturedPayload = payload;
+        return "ok";
       },
     },
-  };
+  }));
 
   try {
     await desktopBridge.onboardProject({
@@ -173,7 +168,7 @@ test("desktopBridge onboarding forwards framework version", async () => {
       domain: "sample-project.test",
     });
   } finally {
-    global.window = previousWindow;
+    restore();
   }
 
   assert.equal(capturedPayload?.frameworkVersion, "11");

@@ -3,96 +3,100 @@
 package desktop
 
 import (
-	"context"
 	"sync"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// wailsPlatform adapts the Wails v2 runtime. Wails v2 only hands out its
-// runtime context in OnStartup, so every call made before attachContext is a
-// silent no-op (Emit) or a "desktop runtime not available" error (everything
-// that returns an error).
+// wailsPlatform adapts Wails v3. The app and window exist only after
+// application.New, which needs the services first, so they are attached late;
+// calls before attach are no-ops (Emit, window control) or errors (dialogs).
 type wailsPlatform struct {
-	mu  sync.RWMutex
-	ctx context.Context
+	mu     sync.RWMutex
+	app    *application.App
+	window *application.WebviewWindow
+
+	// gate records an explicit quit so the window close hook stops cancelling
+	// closes: app.Quit() closes the window, and a cancelled close would make
+	// Quit a no-op.
+	gate closeGate
 }
 
 func newDefaultPlatform() Platform { return &wailsPlatform{} }
 
-func (p *wailsPlatform) attachContext(ctx context.Context) {
+func (p *wailsPlatform) attach(app *application.App, window *application.WebviewWindow) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.ctx = ctx
+	p.app, p.window = app, window
 }
 
-func (p *wailsPlatform) runtimeCtx() context.Context {
+func (p *wailsPlatform) handles() (*application.App, *application.WebviewWindow) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return p.ctx
+	return p.app, p.window
 }
 
 func (p *wailsPlatform) Emit(event string, data any) {
-	if ctx := p.runtimeCtx(); ctx != nil {
-		runtime.EventsEmit(ctx, event, data)
+	if app, _ := p.handles(); app != nil {
+		app.Event.Emit(event, data)
 	}
 }
 
 func (p *wailsPlatform) OpenURL(url string) error {
-	ctx := p.runtimeCtx()
-	if ctx == nil {
+	app, _ := p.handles()
+	if app == nil {
 		return errDesktopNotAvailableFn()
 	}
-	runtime.BrowserOpenURL(ctx, url)
-	return nil
+	return app.Browser.OpenURL(url)
 }
 
 func (p *wailsPlatform) ChooseDirectory(title, defaultDir string) (string, error) {
-	ctx := p.runtimeCtx()
-	if ctx == nil {
+	app, _ := p.handles()
+	if app == nil {
 		return "", errDesktopNotAvailableFn()
 	}
-	return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{
-		Title:            title,
-		DefaultDirectory: defaultDir,
-	})
+	return app.Dialog.OpenFile().
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		CanCreateDirectories(true).
+		SetTitle(title).
+		SetDirectory(defaultDir).
+		PromptForSingleSelection()
 }
 
 func (p *wailsPlatform) ChooseSaveFile(opts SaveFileOptions) (string, error) {
-	ctx := p.runtimeCtx()
-	if ctx == nil {
+	app, _ := p.handles()
+	if app == nil {
 		return "", errDesktopNotAvailableFn()
 	}
-	return runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
-		Title:                opts.Title,
-		DefaultDirectory:     opts.DefaultDir,
-		DefaultFilename:      opts.DefaultFilename,
-		CanCreateDirectories: true,
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Log Files (*.log)", Pattern: "*.log"},
-			{DisplayName: "Text Files (*.txt)", Pattern: "*.txt"},
-			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
-		},
-	})
+	return app.Dialog.SaveFile().
+		SetMessage(opts.Title).
+		SetDirectory(opts.DefaultDir).
+		SetFilename(opts.DefaultFilename).
+		CanCreateDirectories(true).
+		AddFilter("Log Files (*.log)", "*.log").
+		AddFilter("Text Files (*.txt)", "*.txt").
+		AddFilter("All Files (*.*)", "*.*").
+		PromptForSingleSelection()
 }
 
 func (p *wailsPlatform) ShowWindow() {
-	if ctx := p.runtimeCtx(); ctx != nil {
-		runtime.Show(ctx)
-		runtime.WindowShow(ctx)
-		runtime.WindowUnminimise(ctx)
+	if _, w := p.handles(); w != nil {
+		w.Show()
+		w.UnMinimise()
+		w.Focus()
 	}
 }
 
 func (p *wailsPlatform) HideWindow() {
-	if ctx := p.runtimeCtx(); ctx != nil {
-		runtime.WindowHide(ctx)
-		runtime.Hide(ctx)
+	if _, w := p.handles(); w != nil {
+		w.Hide()
 	}
 }
 
 func (p *wailsPlatform) Quit() {
-	if ctx := p.runtimeCtx(); ctx != nil {
-		runtime.Quit(ctx)
+	p.gate.MarkQuitting()
+	if app, _ := p.handles(); app != nil {
+		app.Quit()
 	}
 }

@@ -20,14 +20,14 @@ Tài liệu này hướng dẫn quy trình đóng góp mã nguồn cho dự án 
 | Go | `1.25+` | `go version` |
 | Node.js | `20+` | `node --version` |
 | Docker Engine + Compose | Mới nhất | `docker --version` |
-| Wails | `v2.11+` (chỉ cho desktop) | `wails version` |
+| Wails | `v3.0.0-beta.25`, là Go module: `go tool wails3 version` (chỉ cho desktop) |
 | golangci-lint | `v2.11+` | `golangci-lint --version` |
 
 ```bash
 # Kiểm tra nhanh tất cả công cụ
 go version
 node --version
-wails version
+go tool wails3 version
 docker --version
 golangci-lint --version
 ```
@@ -75,7 +75,7 @@ go build -o govard cmd/govard/main.go
 
 Bản beta dùng tag dạng `vX.Y.Z-beta.N` (ví dụ `v1.60.0-beta.1`), tag thẳng
 từ commit hiện tại — không cần bump version ở `root.go`, `app.go`,
-`package.json`, `wails.json`, hay thêm entry vào `CHANGELOG.md`. Push tag sẽ
+`package.json`, hay thêm entry vào `CHANGELOG.md`. Push tag sẽ
 kích hoạt cùng pipeline `.github/workflows/release.yml` như bản stable;
 `prerelease: auto` trong `.goreleaser.yml` sẽ đánh dấu GitHub Release đó là
 prerelease, nên nó sẽ không xuất hiện qua `GET /releases/latest` và không

@@ -178,7 +178,13 @@ jobs:
       - name: Install desktop build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      # The committed JS bindings must match the Go services: a renamed or added
+      # method with no `make bindings` fails at runtime in the webview, so it is
+      # caught here instead of by a user.
+      - name: Bindings are up to date
+        run: make bindings-check
 
       - name: Generate shell completions
         run: |

@@ -44,6 +44,17 @@ func resetSettingsInternal() error {
 
 // SettingsService methods
 
+// TrayStatus tells the Settings page whether "run in background" can actually
+// hide the window, which needs a tray to bring it back.
+type TrayStatus struct {
+	Available bool `json:"available"`
+}
+
+func (s *SettingsService) GetTrayStatus() (status TrayStatus, err error) {
+	defer RecoverPanic(&err, "GetTrayStatus")
+	return TrayStatus{Available: TrayHostAvailable()}, nil
+}
+
 func (s *SettingsService) GetSettings() (settings DesktopSettings, err error) {
 	defer RecoverPanic(&err, "GetSettings")
 	return getSettingsInternal()

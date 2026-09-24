@@ -36,9 +36,9 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-# Stamp release version into desktop metadata (committed files carry
-# 0.0.0-dev so no bump is ever needed; the tag is the truth).
-node -e "const fs=require('fs');for (const p of ['$ROOT_DIR/desktop/frontend/package.json', '$ROOT_DIR/desktop/wails.json']) { const j=JSON.parse(fs.readFileSync(p)); if ('version' in j) j.version='$VERSION'; if (j.info && 'productVersion' in j.info) j.info.productVersion='$VERSION'; fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n'); }"
+# Desktop for macOS returns with Spec 3 (cgo .app build); the pkg is CLI-only
+# until then, so only the frontend manifest is stamped.
+node -e "const fs=require('fs');const p='$ROOT_DIR/desktop/frontend/package.json';const j=JSON.parse(fs.readFileSync(p));if ('version' in j) j.version='$VERSION';fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -53,11 +53,9 @@ mkdir -p "$BIN_DIR" "$OUT_DIR"
 LDFLAGS="-s -w -X govard/internal/cmd.Version=${VERSION} -X govard/internal/desktop.Version=${VERSION}"
 
 pushd "$ROOT_DIR" >/dev/null
-# govard-desktop embeds desktop/frontend/dist, so the Vite build must run before
-# the desktop build or the packaged app shows a blank window.
-make frontend
+# Desktop for macOS returns with Spec 3 (cgo .app build); the pkg is CLI-only
+# until then.
 CGO_ENABLED=0 GOOS=darwin GOARCH="$ARCH" go build -ldflags "$LDFLAGS" -o "$BIN_DIR/govard" ./cmd/govard/main.go
-CGO_ENABLED=0 GOOS=darwin GOARCH="$ARCH" go build -tags desktop -ldflags "$LDFLAGS" -o "$BIN_DIR/govard-desktop" ./cmd/govard-desktop
 popd >/dev/null
 
 pkgbuild \
@@ -68,13 +66,3 @@ pkgbuild \
   "$PKG_PATH"
 
 echo "Created: $PKG_PATH"
-
-# `govard self-update` refreshes govard-desktop by downloading
-# govard-desktop_<version>_Darwin_<arch>.tar.gz (same naming as the Linux
-# archive GoReleaser produces) — ship it here since GoReleaser only
-# cross-builds govard-desktop for linux.
-DESKTOP_ARCHIVE_NAME="govard-desktop_${VERSION}_Darwin_${ARCH}.tar.gz"
-DESKTOP_ARCHIVE_PATH="$OUT_DIR/$DESKTOP_ARCHIVE_NAME"
-tar -czf "$DESKTOP_ARCHIVE_PATH" -C "$BIN_DIR" govard-desktop
-
-echo "Created: $DESKTOP_ARCHIVE_PATH"

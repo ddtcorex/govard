@@ -46,7 +46,7 @@ func TestLinuxPackageLayout(t *testing.T) {
 	if !strings.HasPrefix(cli.FileNameTemplate, "{{ .ProjectName }}_") {
 		t.Errorf("CLI file name template = %q, want govard artifact prefix", cli.FileNameTemplate)
 	}
-	if slices.Contains(cli.Dependencies, "libwebkit2gtk-4.1-0") {
+	if slices.Contains(cli.Dependencies, "libwebkitgtk-6.0-4") {
 		t.Errorf("CLI dependencies unexpectedly include WebKitGTK: %v", cli.Dependencies)
 	}
 	// The CLI package carries shell completions only — no Desktop assets.
@@ -79,7 +79,7 @@ func TestLinuxPackageLayout(t *testing.T) {
 	if !strings.HasPrefix(desktop.FileNameTemplate, "govard-desktop_") {
 		t.Errorf("Desktop file name template = %q, want govard-desktop artifact prefix", desktop.FileNameTemplate)
 	}
-	for _, dependency := range []string{"govard", "libwebkit2gtk-4.1-0", "libgtk-3-0", "libnss3-tools"} {
+	for _, dependency := range []string{"govard", "libwebkitgtk-6.0-4", "libgtk-4-1", "libnss3-tools"} {
 		if !slices.Contains(desktop.Dependencies, dependency) {
 			t.Errorf("Desktop dependencies = %v, want %q", desktop.Dependencies, dependency)
 		}
