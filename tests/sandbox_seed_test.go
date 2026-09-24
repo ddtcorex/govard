@@ -26,7 +26,7 @@ func TestResolveSeedSpecRefusesStoppedOrigin(t *testing.T) {
 }
 
 func TestStripDefinerRemovesForeignDefiners(t *testing.T) {
-	in := "/*!50013 DEFINER=`hyva-compat-modules-develop_dev8_sutunam_info`@`%` SQL SECURITY DEFINER */\nCREATE VIEW `inventory_stock_1` AS SELECT 1"
+	in := "/*!50013 DEFINER=`shop_develop_dbuser`@`%` SQL SECURITY DEFINER */\nCREATE VIEW `inventory_stock_1` AS SELECT 1"
 	got := deploy.StripDefiner(in)
 	if strings.Contains(got, "DEFINER") {
 		t.Fatalf("foreign definer survived: %q", got)
@@ -386,7 +386,7 @@ func TestSandboxExecErrorOmitsEnvironmentValues(t *testing.T) {
 // anything else would change what reaches the sandbox.
 func TestStripDefinerStreamMatchesTheStringVersion(t *testing.T) {
 	const dump = "CREATE TABLE `a` (id int);\n" +
-		"/*!50013 DEFINER=`dev8_staging`@`%` SQL SECURITY DEFINER */\n" +
+		"/*!50013 DEFINER=`staging_dbuser`@`%` SQL SECURITY DEFINER */\n" +
 		"CREATE VIEW `v` AS SELECT 1;\n" +
 		"INSERT INTO `a` VALUES (1);\n"
 	var out bytes.Buffer

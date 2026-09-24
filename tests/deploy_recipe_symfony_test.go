@@ -63,7 +63,7 @@ func TestSymfonyComposerInstallDoesNotRunTheApplicationScripts(t *testing.T) {
 // assets:install, so the step belongs where the application is. `--relative`
 // makes the links resolve from wherever the docroot ends up, which an in-place
 // deploy needs: measured on the real project, the link is written as
-// `etl -> ../../vendor/sutunam/etl-bundle/src/Resources/public/`.
+// `blog -> ../../vendor/acme/blog-bundle/src/Resources/public/`.
 func TestSymfonyAssetInstallRunsOnTheTargetWithRelativeLinks(t *testing.T) {
 	task := symfony.DeployRecipe().Task("build:assets")
 	if !task.NeedsApplication {

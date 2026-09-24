@@ -852,7 +852,7 @@ func estimateAuditTimeout(target resolvedAuditTarget) time.Duration {
 	if estimated > 30*time.Minute {
 		estimated = 30 * time.Minute
 	}
-	// For known heavy frameworks, ensure at least 15m for magento/wordpress to avoid the 120-300s retry loop and 15m deadline on 8m34s lint+cleanup (sutunam).
+	// For known heavy frameworks, ensure at least 15m for magento/wordpress to avoid the 120-300s retry loop and the 15m deadline on a lint+cleanup pass measured at 8m34s on a large Magento project.
 	if (framework == "magento2" || framework == "wordpress") && estimated < 15*time.Minute {
 		estimated = 15 * time.Minute
 	}
