@@ -98,6 +98,7 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 			if err := probeAtomicRename(ctx, sc); err != nil {
 				return err
 			}
+			noteSymlinkRuntimeCache(ctx, sc)
 		}
 	}
 
@@ -261,6 +262,44 @@ func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 	}
 	sc.Notes = append(sc.Notes, "atomic symlink rename: supported")
 	return nil
+}
+
+// noteSymlinkRuntimeCache warns when nothing will make the target's application
+// see the release the swap just published.
+//
+// Measured on a sandbox target (PHP 8.3, OPcache enabled, 2026-09-24): after
+// `publish:activate` repointed the served path at a new release, the target kept
+// answering with the previous release's compiled script, and a file that existed
+// only in the new release answered "No input file specified" at the same URL —
+// the *lookup* was stale too, while nginx and the kernel read the new release
+// correctly. It was still stale 153 seconds later, through killing every
+// `php-fpm: pool www` worker, because the pool master's OPcache shared memory
+// outlives its workers. `deploy:verify` is an HTTP check, so in that state it
+// passes against the release before the one the run published: a green deploy
+// that published nothing an operator can see.
+//
+// The lever belongs to the project — `settings.runtime_reload_command` runs at the
+// end of the cache step, which is what it is for — so the preflight says the
+// hazard out loud rather than assuming the target reloads on its own. It is a
+// warning, never a failure: a target whose pool is reloaded another way (a
+// post-deploy hook, an orchestrator) is correct.
+//
+// The probe is skipped wherever there is nothing to warn about, and a target that
+// cannot answer it says nothing: the check is made of cheap, independent probes
+// and must not fail because a PHP series is unknown.
+func noteSymlinkRuntimeCache(ctx context.Context, sc *StepContext) {
+	if settingsString(sc.Opts.Settings, "runtime_reload_command") != "" {
+		return
+	}
+	result, err := sc.Runner.Run(ctx,
+		CommandWords(sc.Opts.Settings, "php_bin", "php")+` -r 'echo extension_loaded("Zend OPcache") ? 1 : 0;'`,
+		RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
+	if err != nil || strings.TrimSpace(result.Stdout) != "1" {
+		return
+	}
+	noteStep(sc, "  ! the target serves a symlink and its PHP keeps a bytecode cache, and this project sets no `runtime_reload_command`: "+
+		"the pool may keep serving the release that was live when it last resolved the served path, so `deploy:verify` can pass against the release before the one this run published. "+
+		"Set `deploy.settings.runtime_reload_command` (an FPM reload, an opcache reset) unless something outside govard reloads the pool.\n")
 }
 
 // checkDiskSpace reports free space and refuses an actually full filesystem. A
