@@ -248,6 +248,10 @@ func openRemoteDB(project string, remoteName string) (string, error) {
 	return fmt.Sprintf("Opening remote database client for %s...", resolvedRemoteName), nil
 }
 
+// openRemoteSFTP keeps ctx next to p on purpose: ctx is the "a GUI runtime is
+// attached" guard that decides whether to try FileZilla before falling back to
+// the platform. Dropping it would make unit tests running with a live DISPLAY
+// launch a real FileZilla window.
 func openRemoteSFTP(project string, remoteName string, ctx context.Context, p Platform) (string, error) {
 	trimmedRemoteName := strings.TrimSpace(remoteName)
 	if trimmedRemoteName == "" {
@@ -293,6 +297,8 @@ func openRemoteSFTP(project string, remoteName string, ctx context.Context, p Pl
 	return message, nil
 }
 
+// openRemoteShell keeps ctx for the same reason as openRemoteSFTP: it decides
+// whether to try launching an SSH terminal before falling back to the platform.
 func openRemoteShell(project string, remoteName string, ctx context.Context, p Platform) (string, error) {
 	trimmedRemoteName := strings.TrimSpace(remoteName)
 	if trimmedRemoteName == "" {

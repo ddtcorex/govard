@@ -194,6 +194,9 @@ func (s *LogService) streamGlobalServiceLogs(ctx context.Context, spec globalSer
 	}
 }
 
+// scanLogPipe streams one pipe into the UI. The context is not read here: it
+// is kept so every pipe started by a service carries the same cancellation
+// parent as the exec.CommandContext that produced it. Emission goes through p.
 func scanLogPipe(ctx context.Context, p Platform, pipe interface{}, event string, done chan<- struct{}) {
 	reader, ok := pipe.(interface {
 		Read(p []byte) (n int, err error)

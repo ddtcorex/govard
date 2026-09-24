@@ -8,6 +8,13 @@ type EmittedEvent struct {
 	Data any
 }
 
+// DirectoryRequest is one native directory dialog request recorded by
+// FakePlatform.
+type DirectoryRequest struct {
+	Title      string
+	DefaultDir string
+}
+
 // FakePlatform records every call. It is exported for tests in ./tests.
 // Configure DirectoryResult/DirectoryErr and SaveFileResult/SaveFileErr
 // before use.
@@ -21,6 +28,7 @@ type FakePlatform struct {
 	mu        sync.Mutex
 	events    []EmittedEvent
 	urls      []string
+	dirReqs   []DirectoryRequest
 	saveReqs  []SaveFileOptions
 	showCount int
 	hideCount int
@@ -40,7 +48,10 @@ func (f *FakePlatform) OpenURL(url string) error {
 	return f.OpenURLErr
 }
 
-func (f *FakePlatform) ChooseDirectory(string, string) (string, error) {
+func (f *FakePlatform) ChooseDirectory(title string, defaultDir string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dirReqs = append(f.dirReqs, DirectoryRequest{Title: title, DefaultDir: defaultDir})
 	return f.DirectoryResult, f.DirectoryErr
 }
 
@@ -77,6 +88,13 @@ func (f *FakePlatform) OpenedURLs() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.urls...)
+}
+
+// DirectoryRequests returns a copy of every recorded directory dialog request.
+func (f *FakePlatform) DirectoryRequests() []DirectoryRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]DirectoryRequest(nil), f.dirReqs...)
 }
 
 func (f *FakePlatform) SaveFileRequests() []SaveFileOptions {

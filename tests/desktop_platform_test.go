@@ -114,3 +114,23 @@ func TestDesktopQuitDesktopAppUsesPlatform(t *testing.T) {
 		t.Fatalf("QuitCount = %d, want 1", fake.QuitCount())
 	}
 }
+
+func TestDesktopPickProjectDirectoryRecordsTheRequestedDialog(t *testing.T) {
+	fake := &desktop.FakePlatform{DirectoryResult: "/tmp/sample-project"}
+	app := desktop.NewApp(desktop.WithPlatform(fake))
+
+	if _, err := app.Onboarding.PickProjectDirectory(); err != nil {
+		t.Fatalf("PickProjectDirectory: %v", err)
+	}
+
+	reqs := fake.DirectoryRequests()
+	if len(reqs) != 1 {
+		t.Fatalf("DirectoryRequests = %#v, want one request", reqs)
+	}
+	if reqs[0].Title != "Select Project Directory" {
+		t.Fatalf("dialog title = %q, want %q", reqs[0].Title, "Select Project Directory")
+	}
+	if reqs[0].DefaultDir == "" {
+		t.Fatal("dialog got no default directory; the picker should start in the user's home")
+	}
+}

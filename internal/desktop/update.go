@@ -435,7 +435,9 @@ func (app *App) RestartDesktopApp() (string, error) {
 		return "", fmt.Errorf("restart desktop app: %w", err)
 	}
 
-	if app != nil {
+	// app.ctx is set by Startup, so this guard keeps the pre-refactor behaviour
+	// of not arming the delayed quit before the app has started.
+	if app != nil && app.ctx != nil {
 		// Give the child process time to initialize and the RPC layer
 		// a moment to flush the response before quitting the parent.
 		go func() {
