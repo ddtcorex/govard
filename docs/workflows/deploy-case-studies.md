@@ -257,6 +257,14 @@ follow the same rule (`cron:install` would otherwise schedule a release
 directory). A release directory is not a served application, and a cache cleared
 there is a cache nothing reads.
 
+Clearing is not enough on Magento 2.4.9 either: `bin/magento cache:flush` cleans
+that file cache through a tag index, so an entry whose index row is gone survives
+it while the command still exits `0`. The step therefore drops whatever is left
+under the docroot's `var/cache` and `var/page_cache` after the framework's flush
+and reports the count (a directory it cannot read is named, not skipped). On this shape, a
+flush that only asks the framework is how a
+deploy leaves production serving a layout built by a release that no longer exists.
+
 **Rehearse it.** The sandbox can build exactly this shape:
 
 ```bash

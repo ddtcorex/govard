@@ -355,6 +355,20 @@ vậy `app:workers:pause` phải chạy đúng nơi `cron:install` đã chạy l
 `worker_control: true` dùng `queue:consumers:restart` (poison pill mà consumer kiểm
 tra giữa các message) vì Magento 2.4 không có `queue:consumers:stop`.
 
+`bin/magento cache:flush` không phải là một cú quét sạch: trên 2.4.9 file cache là
+một Symfony pool và các entry được dọn qua tag index, nên entry nào đã mất dòng
+index thì không còn đường tới trong khi file của nó vẫn còn hạn — lệnh trả về `0`,
+không xoá gì, và ứng dụng đang được phục vụ vẫn trả lời từ entry đó. Vì vậy bước
+này dọn nốt những gì còn lại dưới `var/cache` và `var/page_cache` của ứng dụng đang
+được phục vụ, sau cú flush của framework, và báo ra số entry đã dọn. Chỉ entry bị
+xoá, không bao giờ xoá chính thư mục (một `var/cache` được tạo lại có thể không cho
+user web server ghi vào), `var/session` và build output không bị chạm, và một lần
+dọn thất bại chỉ in cảnh báo chứ không làm fail deploy, và một thư mục cache mà nó không
+đọc được cũng được nêu tên chứ không im lặng bỏ qua. Đo trên một target Magento 2
+production: một cú flush 473ms không xoá gì để lại một layout đã merge có nhắc tới
+class mà release đã bỏ, và site trả HTTP 500 sau mọi lần deploy cho tới khi file
+cache được xoá bằng tay.
+
 Việc khoá theo install root có một hệ quả cần kiểm tra ở target đã từng deploy với
 `worker_control: true`: các release trước chạy cả hai bước trong thư mục *release*,
 nên mỗi lần deploy cài thêm một block. Bước này giờ chạy trên ứng dụng đang được
