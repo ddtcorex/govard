@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"context"
 	"fmt"
 	"net"
 	neturl "net/url"
@@ -22,14 +21,14 @@ import (
 var defaultOpenExternalURLForDesktop = browser.OpenURL
 var openExternalURLForDesktop = defaultOpenExternalURLForDesktop
 
-func quickAction(ctx context.Context, action string, project string) (string, error) {
+func quickAction(p Platform, action string, project string) (string, error) {
 	switch action {
 	case "open-mail", "open-mail-client":
-		return openDestination(ctx, buildProxyURL(conventions.TargetMail), "Opening Mailpit...")
+		return openDestination(p, buildProxyURL(conventions.TargetMail), "Opening Mailpit...")
 	case "open-pma":
-		return openDestination(ctx, buildProxyURL(conventions.TargetPMA), "Opening PHPMyAdmin...")
+		return openDestination(p, buildProxyURL(conventions.TargetPMA), "Opening PHPMyAdmin...")
 	case "open-db-client":
-		return openDBClient(ctx, project)
+		return openDBClient(p, project)
 	case "toggle-xdebug":
 		return toggleXdebug(project)
 	case "check-health":
@@ -43,7 +42,7 @@ func quickAction(ctx context.Context, action string, project string) (string, er
 	}
 }
 
-func openDBClient(ctx context.Context, project string) (string, error) {
+func openDBClient(p Platform, project string) (string, error) {
 	normalizedProject := strings.TrimSpace(project)
 	if normalizedProject == "" {
 		info, err := selectProject("")
@@ -97,7 +96,7 @@ func openDBClient(ctx context.Context, project string) (string, error) {
 
 	if preferPMA {
 		target := buildPMAOpenURL(containerProjectName, db)
-		return openDestination(ctx, target, "Opening PHPMyAdmin...")
+		return openDestination(p, target, "Opening PHPMyAdmin...")
 	}
 
 	scheme := "mysql"
@@ -140,7 +139,7 @@ func openDBClient(ctx context.Context, project string) (string, error) {
 	if err := openExternalURLForDesktop(urlStr); err != nil {
 		fallbackTarget := buildPMAOpenURL(containerProjectName, db)
 		if _, fallbackErr := openDestination(
-			ctx,
+			p,
 			fallbackTarget,
 			"Desktop DB client is unavailable. Opening PHPMyAdmin...",
 		); fallbackErr != nil {
@@ -427,14 +426,14 @@ func selectProject(project string) (*projectInfo, error) {
 	return loadProjectInfo(selected)
 }
 
-func openDestination(ctx context.Context, url string, message string) (string, error) {
-	if err := openURLWithPreferences(ctx, url); err != nil {
+func openDestination(p Platform, url string, message string) (string, error) {
+	if err := openURLWithPreferences(p, url); err != nil {
 		return message + " Open manually: " + url, nil
 	}
 	return message, nil
 }
 
-func openURLWithPreferences(ctx context.Context, url string) error {
+func openURLWithPreferences(p Platform, url string) error {
 	settings, err := getSettingsInternal()
 	if err == nil && settings.PreferredBrowser != "" {
 		cmd := exec.Command(settings.PreferredBrowser, url)
@@ -442,7 +441,7 @@ func openURLWithPreferences(ctx context.Context, url string) error {
 			return nil
 		}
 	}
-	return openURL(ctx, url)
+	return p.OpenURL(url)
 }
 
 func buildProxyURL(host string) string {
@@ -465,7 +464,7 @@ func resolveProxyDomain() string {
 	return target + ".test"
 }
 
-func openDocs(ctx context.Context, docPath string) error {
+func openDocs(p Platform, docPath string) error {
 	root, err := FindRepoRoot()
 	if err != nil {
 		return err
@@ -475,7 +474,7 @@ func openDocs(ctx context.Context, docPath string) error {
 	if err != nil {
 		return err
 	}
-	return openURLWithPreferences(ctx, "file://"+fullPath)
+	return openURLWithPreferences(p, "file://"+fullPath)
 }
 
 // Log helpers moved to stream.go

@@ -41,7 +41,7 @@ func (app *App) startOperationNotificationWatcher() {
 	}
 	watchCtx, cancel := context.WithCancel(baseCtx)
 	app.notifyCancel = cancel
-	go watchOperationNotifications(watchCtx, baseCtx)
+	go watchOperationNotifications(watchCtx, app.platform)
 }
 
 func (app *App) stopOperationNotificationWatcher() {
@@ -53,7 +53,7 @@ func (app *App) stopOperationNotificationWatcher() {
 	}
 }
 
-func watchOperationNotifications(ctx context.Context, appCtx context.Context) {
+func watchOperationNotifications(ctx context.Context, p Platform) {
 	cursor := ""
 	if events, err := engine.ReadOperationEvents(operationNotificationsReadLimit); err == nil {
 		_, cursor = selectOperationEventsSince(events, cursor)
@@ -78,7 +78,7 @@ func watchOperationNotifications(ctx context.Context, appCtx context.Context) {
 				if !ok {
 					continue
 				}
-				emitEvent(appCtx, "operations:notification", notification)
+				p.Emit("operations:notification", notification)
 			}
 		}
 	}

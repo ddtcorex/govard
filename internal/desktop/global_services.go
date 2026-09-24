@@ -343,7 +343,7 @@ func (s *GlobalServiceService) OpenGlobalService(serviceID string) (string, erro
 	}
 
 	url := buildProxyURL(spec.URLHost)
-	if err := openURLWithPreferences(s.ctx, url); err != nil {
+	if err := openURLWithPreferences(s.platform, url); err != nil {
 		return "Open manually: " + url, nil
 	}
 	return "Opening " + url + "...", nil

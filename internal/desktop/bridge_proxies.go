@@ -114,7 +114,7 @@ func (app *App) OpenEnvironment(project string) (res string, err error) {
 	if errEnv != nil {
 		return "", errEnv
 	}
-	if errOpen := openURLWithPreferences(app.ctx, url); errOpen != nil {
+	if errOpen := openURLWithPreferences(app.platform, url); errOpen != nil {
 		return "Open " + url + " manually", nil
 	}
 	return "Opening " + url + "...", nil
@@ -242,9 +242,9 @@ func (app *App) StopGlobalServiceLogStream() (res string, err error) {
 
 func (app *App) SaveLogsToFile(content string, suggestedName string) (res string, err error) {
 	defer RecoverPanic(&err, "SaveLogsToFile")
-	return saveLogsToFile(app.ctx, content, suggestedName)
+	return saveLogsToFile(app.platform, content, suggestedName)
 }
 
 func (app *App) Quit() {
-	quitApplication(app.ctx)
+	app.platform.Quit()
 }

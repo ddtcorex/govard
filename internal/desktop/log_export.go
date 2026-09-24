@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"context"
 	"fmt"
 	"govard/internal/conventions"
 	"os"
@@ -14,13 +13,8 @@ const defaultLogExportFilename = "govard-logs.log"
 
 var logFilenameSanitizePattern = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
-var defaultChooseSaveFileForDesktop = func(
-	ctx context.Context,
-	title string,
-	defaultDir string,
-	defaultFilename string,
-) (string, error) {
-	return chooseSaveFile(ctx, title, defaultDir, defaultFilename)
+var defaultChooseSaveFileForDesktop = func(p Platform, opts SaveFileOptions) (string, error) {
+	return p.ChooseSaveFile(opts)
 }
 
 var chooseSaveFileForDesktop = defaultChooseSaveFileForDesktop
@@ -31,18 +25,17 @@ var defaultWriteLogFileForDesktop = func(path string, data []byte, perm os.FileM
 
 var writeLogFileForDesktop = defaultWriteLogFileForDesktop
 
-func saveLogsToFile(ctx context.Context, content string, suggestedName string) (string, error) {
+func saveLogsToFile(p Platform, content string, suggestedName string) (string, error) {
 	trimmedContent := strings.TrimSpace(content)
 	if trimmedContent == "" {
 		return "", fmt.Errorf("no logs content to save")
 	}
 
-	savePath, err := chooseSaveFileForDesktop(
-		ctx,
-		"Save Logs",
-		resolveLogExportDefaultDirectory(),
-		sanitizeLogExportFilename(suggestedName),
-	)
+	savePath, err := chooseSaveFileForDesktop(p, SaveFileOptions{
+		Title:           "Save Logs",
+		DefaultDir:      resolveLogExportDefaultDirectory(),
+		DefaultFilename: sanitizeLogExportFilename(suggestedName),
+	})
 	if err != nil {
 		return "", fmt.Errorf("open save dialog: %w", err)
 	}

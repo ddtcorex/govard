@@ -42,3 +42,43 @@ func TestDesktopPkgSanitizeStreamLineForTestDropsInvalidUTF8(t *testing.T) {
 		t.Fatalf("expected invalid bytes removed, got %q", got)
 	}
 }
+
+func joinedPayloads(t *testing.T, fake *desktop.FakePlatform, event string) string {
+	t.Helper()
+	var parts []string
+	for _, p := range fake.EventsNamed(event) {
+		s, ok := p.(string)
+		if !ok {
+			t.Fatalf("payload for %s is %T, want string", event, p)
+		}
+		parts = append(parts, s)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func TestDesktopScanLogPipeEmitsThroughPlatform(t *testing.T) {
+	fake := &desktop.FakePlatform{}
+	desktop.ScanLogPipeForTest(fake, strings.NewReader("one\ntwo\n"), "sync:output")
+
+	if got := joinedPayloads(t, fake, "sync:output"); got != "one\ntwo" {
+		t.Fatalf("sync:output payloads = %q", got)
+	}
+}
+
+func TestDesktopScanLogPipeFlushesTrailingPartialLine(t *testing.T) {
+	fake := &desktop.FakePlatform{}
+	desktop.ScanLogPipeForTest(fake, strings.NewReader("first\nlast-without-newline"), "logs:line")
+
+	if got := joinedPayloads(t, fake, "logs:line"); got != "first\nlast-without-newline" {
+		t.Fatalf("logs:line payloads = %q", got)
+	}
+}
+
+func TestDesktopScanLogPipeSplitsCarriageReturns(t *testing.T) {
+	fake := &desktop.FakePlatform{}
+	desktop.ScanLogPipeForTest(fake, strings.NewReader("10%\r50%\r100%\r\ndone\n"), "sync:output")
+
+	if got := joinedPayloads(t, fake, "sync:output"); got != "10%\n50%\n100%\ndone" {
+		t.Fatalf("sync:output payloads = %q", got)
+	}
+}
