@@ -226,8 +226,10 @@ func DeployRecipe() deploy.Recipe {
 	// The step therefore owns the end state of the directories the served
 	// application reads: after the framework's own flush it drops whatever is
 	// left under `var/cache` and `var/page_cache`. Entries are removed, never the
-	// directories — a recreated `var/cache` carries the deploy user's default
-	// mode, which the web-server user may not be able to write. The trailing
+	// directories, the pool's hash directories included (`! -type d`): whichever
+	// process writes the cache next recreates a missing directory with its own
+	// owner and umask, and when that is the deploy user running `bin/magento`,
+	// the web-server user may no longer be able to write into it. The trailing
 	// slash on `"$d/"` is load-bearing: `find var/cache …` does not descend into a
 	// symlinked cache, and skipping it silently is the defect this removes. A
 	// purge that cannot remove entries warns instead of failing: the release is
@@ -238,18 +240,22 @@ func DeployRecipe() deploy.Recipe {
 	// 1288 for a pool whose index held 980 entries. A directory that cannot even be
 	// read is its own case, and the one that looks most like success: `find` fails
 	// with EACCES, an empty count reads as "nothing to purge", and the orphans stay
-	// behind a green step. The listing is therefore checked before it is counted,
-	// and both branches name what happened — the failure path carries `find`'s own
-	// reason, because "could not purge" without it is not actionable.
+	// behind a green step. The directory is therefore probed before it is counted,
+	// and both branches name what happened; the failure path carries `find`'s own
+	// reason, because "could not purge" without it is not actionable. The probe
+	// stops at the first entry (`-print -quit`): a large catalog's pool holds
+	// hundreds of thousands of entries, and the listing is not worth holding in a
+	// shell variable while the site is in maintenance. A tree left with nothing
+	// but empty hash directories has no entry to find, so it is not reported.
 	fill(deploy.TaskAppCacheFlush, "flush caches and purge file-cache leftovers",
 		// The reload is a fragment, so it is run directly: with nothing
 		// configured it renders as `true` (see deployVars), which is why there is
 		// no `[ -n ... ]` guard to get wrong here.
 		`purge_cache() { d="$1"; [ -d "$d" ] || return 0; `+
-			`listing=$(find "$d/" -mindepth 1 2>&1) || { echo "warning: could not read $d, cache entries may be left behind: $listing"; return 0; }; `+
-			`[ -n "$listing" ] || return 0; `+
+			`first=$(find "$d/" -mindepth 1 ! -type d -print -quit 2>&1) || { echo "warning: could not read $d, cache entries may be left behind: $first"; return 0; }; `+
+			`[ -n "$first" ] || return 0; `+
 			`n=$(find "$d/" -mindepth 1 -type f 2>/dev/null | wc -l); `+
-			`if err=$(find "$d/" -mindepth 1 -delete 2>&1); then `+
+			`if err=$(find "$d/" -mindepth 1 ! -type d -delete 2>&1); then `+
 			`echo "purged $n file-cache entries under $d that the framework flush could not reach"; `+
 			`else echo "warning: could not purge every entry under $d: $err"; fi; }; `+
 			`cd {{current_path}} && {{php_bin}} bin/magento cache:flush && `+

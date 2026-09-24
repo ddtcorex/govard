@@ -1326,11 +1326,20 @@ func TestMagento2CacheFlushPurgesTheFileCacheLeftovers(t *testing.T) {
 		"purge_cache var/page_cache",
 		// The trailing slash is load-bearing: `find var/cache …` does not descend
 		// into a symlinked cache directory, and a silent skip is the defect.
-		`find "$d/" -mindepth 1 -delete`,
+		`find "$d/" -mindepth 1 ! -type d -delete`,
 	} {
 		if !strings.Contains(command, want) {
 			t.Errorf("the flush step must contain %q, got:\n%s", want, command)
 		}
+	}
+	// A pool holds hundreds of thousands of entries on a large catalog: the
+	// emptiness probe stops at the first one instead of holding the whole
+	// listing in a shell variable while the site is in maintenance.
+	if !strings.Contains(command, "-print -quit") {
+		t.Errorf("the emptiness probe must stop at the first entry:\n%s", command)
+	}
+	if strings.Contains(command, "listing=$(find") {
+		t.Errorf("the purge must not capture the full listing:\n%s", command)
 	}
 	// The reload belongs to the application the flush just emptied, so it stays last.
 	if !strings.HasSuffix(strings.TrimSpace(command), "{{settings.runtime_reload_command}}") {
@@ -1392,6 +1401,49 @@ func TestMagento2CacheFlushPurgeRemovesOrphansAndKeepsSessions(t *testing.T) {
 	}
 	if !strings.Contains(result.Stdout, "purged") {
 		t.Errorf("a purge that removed entries must say so, got:\n%s", result.Stdout)
+	}
+}
+
+// The pool's hash directories are kept: whichever process writes the cache next
+// would recreate them with its own owner and umask, and when that is the deploy
+// user running `bin/magento`, the web-server user may no longer be able to write
+// into them. A tree of empty directories is not a cache to purge, so it is not
+// reported as one.
+func TestMagento2CacheFlushPurgeKeepsTheCacheDirectories(t *testing.T) {
+	recipe := magento2.DeployRecipe()
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	hashDir := filepath.Join(host.CurrentPath, "var/cache/f9e_/L/K")
+	orphan := filepath.Join(hashDir, "orphan-entry")
+	emptyHashDir := filepath.Join(host.CurrentPath, "var/page_cache/f9e_/M/N")
+	writeFile(t, orphan, "x")
+	if err := os.MkdirAll(emptyHashDir, 0o755); err != nil {
+		t.Fatalf("mkdir the empty page cache tree: %v", err)
+	}
+
+	options := deploy.WithRecipeDefaultsForTest(recipe, deploy.Options{Revision: "abcdef123456", Settings: map[string]any{}})
+	command, err := cmd.DeployVarsForTest(host, options).SetPath("release_path", t.TempDir()).
+		Expand(recipe.Task(deploy.TaskAppCacheFlush).Command)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	stub := strings.Replace(command, "'php' bin/magento cache:flush", "true", 1)
+	result, err := (deploy.LocalRunner{}).Run(context.Background(), stub, deploy.RunOptions{})
+	if err != nil {
+		t.Fatalf("the cache step must run: %v\n%s", err, stub)
+	}
+	if _, err := os.Stat(orphan); err == nil {
+		t.Errorf("the purge left %s behind:\n%s", orphan, result.Stdout)
+	}
+	for _, dir := range []string{hashDir, emptyHashDir} {
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			t.Errorf("the purge removed the cache directory %s: %v", dir, err)
+		}
+	}
+	if !strings.Contains(result.Stdout, "purged 1 file-cache entries under var/cache") {
+		t.Errorf("the purge must count the one entry it removed, got:\n%s", result.Stdout)
+	}
+	if strings.Contains(result.Stdout, "under var/page_cache") {
+		t.Errorf("a tree of empty directories must not be reported as purged, got:\n%s", result.Stdout)
 	}
 }
 
