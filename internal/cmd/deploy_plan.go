@@ -74,9 +74,10 @@ func runDeployPlan(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(out, "Publish strategy: %s\n", options.Publish)
 	if options.Publish == deploy.PublishAuto {
 		// Printing a plan does not read the target, so the shape shown is the
-		// conservative one. The window is what differs, and it is what an
-		// operator reviewing the tree needs to know about.
-		fmt.Fprintln(out, "  the target decides: a symlink activation closes the maintenance window before the swap, an in-place one keeps it open across the rewrite")
+		// conservative one — the in-place shape, with both maintenance steps shown
+		// unskipped — and saying so is the point: a tree an operator reviews has to
+		// admit where it may differ from the run.
+		fmt.Fprintln(out, "  the target decides: the shape below is the in-place one, so maintenance:enable and maintenance:disable are shown unskipped and an in-place target runs both. A symlink target closes the window before the swap, and skips both when the deploy needs no migration.")
 	}
 	if plan.MigrationProbe != nil {
 		// The plan phase runs no commands, so the probe has no answer yet: name

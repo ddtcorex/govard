@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"govard/internal/cmd"
@@ -291,6 +292,42 @@ func TestDeployPlanWithoutTheFlagStillPrintsTheTree(t *testing.T) {
 	}
 	if json.Valid([]byte(printed)) {
 		t.Error("without --json the output must not be a JSON document")
+	}
+}
+
+// `deploy plan` reads nothing, so with `auto` it cannot know the strategy the
+// target will resolve to. It prints the in-place shape, which is the conservative
+// one, and it has to say so: the maintenance steps appear unskipped, and a symlink
+// target closes the window before the swap and skips both when no migration is
+// needed. A reviewed plan that silently differs from the run is the thing the
+// plan printing exists to prevent.
+func TestDeployPlanSaysTheAutoShapeIsTheConservativeOne(t *testing.T) {
+	planProject(t)
+
+	out := &bytes.Buffer{}
+	command := cmd.RootCommandForTest()
+	// No strategy flag: `deploy.publish` defaults to `auto`, which is exactly the
+	// case this covers — the plan cannot read the target, so it cannot know.
+	command.SetArgs([]string{"deploy", "plan", "local", "--build", "server"})
+	command.SetOut(out)
+	command.SetErr(io.Discard)
+	if err := command.Execute(); err != nil {
+		t.Fatalf("deploy plan: %v\n%s", err, out.String())
+	}
+
+	printed := out.String()
+	for _, want := range []string{
+		"the target decides",
+		// The shape is in-place, so both maintenance steps are printed as running.
+		"maintenance:enable",
+		"maintenance:disable",
+		// And the caveat has to name what differs rather than leaving the operator
+		// to assume the tree is the run.
+		"shown unskipped",
+	} {
+		if !strings.Contains(printed, want) {
+			t.Errorf("the auto plan must say %q:\n%s", want, printed)
+		}
 	}
 }
 

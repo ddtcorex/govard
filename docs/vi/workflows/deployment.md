@@ -89,6 +89,12 @@ chạy đúng những từ mà recipe chạy, và cú pháp shell trong giá tr�
 *Đường dẫn binary* chứa dấu cách không được hỗ trợ — tách theo khoảng trắng không
 phân biệt được nó với một wrapper có argument.
 
+`~/` ở đầu từ là mảnh cú pháp shell duy nhất được giữ lại, vì nó là cấu hình có
+thật: `composer_bin: "php ~/composer.phar"` rất phổ biến trên shared hosting. Nó được
+render để **shell** expand, không phải govard. Mọi thứ khác phải viết tuyệt đối:
+`$HOME/...` là chuỗi literal, và tiền tố gán biến cần `env` —
+`php_bin: "env PHP_INI_SCAN_DIR=/x php"`.
+
 `php_version` là một cổng chặn: `deploy:check` chạy `<php_bin> -r 'echo
 PHP_VERSION;'` trên target và từ chối deploy khi series không khớp, vì release
 build bằng interpreter sai sẽ hỏng muộn hơn và nói ít hơn về lý do. `deploy:check`
@@ -939,6 +945,12 @@ một hook hay tiến trình ghi đè file trong docroot sau khi copy sẽ làm 
 và nêu đúng tên. Nó đọc cả hai cây thư mục — đó là cái giá của việc so nội dung
 thay vì so một file marker.
 
+Phép so là một chiều: file của release bị docroot sửa mất hoặc thiếu là **fail**, còn
+đường dẫn docroot có mà release không có thì chỉ được **báo cáo**. Ứng dụng đang chạy
+sinh ra những file đó — class được generate, template đã compile, file log — và
+`--delete` của lần activation kế tiếp sẽ dọn chúng, nên fail vì chúng là fail một
+release đang khỏe mạnh và đã phục vụ.
+
 Kiểm tra HTTP dừng ở response đầu tiên và yêu cầu 2xx. Redirect không phải là pass:
 một trang installer hay một cú bounce theo store code trả 200 sau một hop trước đây
 vẫn qua được trong khi site không phục vụ release, nên lỗi giờ nêu status,
@@ -954,9 +966,26 @@ ERROR  step deploy:verify failed: verify http: https://shop.example/ answered
 `deploy.verify.follow_redirects: true` cho phép đi theo redirect cùng host
 (http → https là layout thật) rồi từ chối landing path mà recipe khai báo là không
 bao giờ khỏe — `/setup/` của Magento — nên vẫn fail dù có đi theo. `deploy:check`
-probe URL bằng đúng policy đó và in ra **trước** khi deploy động vào bất cứ thứ gì:
-verify chạy sau activation, nơi một thất bại để lại site đang live, deploy failed và
-lock bị giữ.
+probe URL bằng đúng policy đó **trước** khi deploy động vào bất cứ thứ gì, và từ chối
+thẳng một URL redirect:
+
+```
+ERROR  refusing to deploy to production: the verify URL redirects: https://shop.example/
+       answered HTTP 302 to /en/: the verify URL must name the page that serves the site, or
+       set deploy.verify.follow_redirects: true to follow same-host redirects
+```
+
+Sự từ chối này là cố ý và hẹp. Một redirect khi không bật follow trả về đúng một kết
+quả ở mọi lần gọi, nên nó là lỗi cấu hình, và preflight là chỗ cuối cùng mà việc sửa
+nó không tốn gì — verify chạy sau activation, nơi một thất bại để lại site đang live,
+deploy failed và lock bị giữ. Timeout, connection refused hay 5xx vẫn chỉ là **cảnh
+báo**: đó có thể chính là sự cố mà lần deploy này sửa, và chặn một lần deploy có thể
+sửa được site thì tệ hơn là để nó thử.
+
+**Thay đổi hành vi.** Project có `verify.url` trả 3xx mà chưa từng bật
+`follow_redirects` trước đây pass verification, nay fail — ngay ở `deploy:check`,
+trước khi publish bất cứ thứ gì. Hãy bật `deploy.verify.follow_redirects: true`, hoặc
+trỏ `verify.url` vào đúng trang đang phục vụ site.
 
 Không cấu hình URL thì kiểm chứng chỉ bằng SSH: nó chứng minh đúng file đã nằm
 đúng chỗ, không chứng minh ứng dụng phục vụ được. Một lần deploy có chạy
@@ -1002,12 +1031,26 @@ cũ hơn code đang được đưa trở lại một release, và mọi ghi từ
 Khi release đó không ghi dump nào, lệnh từ chối và nêu tên release cần deploy lại
 với `--db-backup` — nó không bao giờ lấy dump của release khác thay thế.
 
+Việc restore tự mở maintenance window quanh nó, và chạy **trước** bước flush cache
+và bước verify — ở cả hai chiến lược publish. Thứ tự này quan trọng vì mỗi bước dùng
+kết quả của bước trước: cache mà ứng dụng dựng lại được dựng từ database, và các check
+mà `deploy:verify` chạy (`setup:db:status`, `migrate:status`) truy vấn chính database
+đó. Flush trước sẽ nạp lại cache bằng đúng dữ liệu mà restore sắp thay, và tail của
+rollback in-place cũng giữ lại bước verify của nó vì lý do tương tự.
+
 Rollback lấy deploy lock cho suốt thao tác: nó bị từ chối khi run khác đang giữ
 lock, và nhả lock khi xong. Rollback **symlink** còn flush cache qua bước
 `app:cache:flush` của recipe (kèm `runtime_reload_command`), vì cú swap đổi code
 đang chạy trong khi state target phục vụ — cấu hình đã compile, cache, key trong
 Redis — vẫn thuộc về release vừa mới live cách đó một nhịp. Rollback in-place làm
 việc đó trong phần publish tail của nó.
+
+Nếu tail đó fail, maintenance window vẫn mở và lỗi nói rõ điều đó — một site bị bỏ
+lại trong maintenance trông giống hệt một sự cố với người phát hiện ra. Lúc đó lock
+đã được nhả, và release đích vẫn nguyên vẹn: tail ghi vào record của nó trong khi
+chạy, nên nếu không khôi phục thì một lần fail sẽ lưu `failed` lên một release hoàn
+toàn tốt và loại nó khỏi mọi `rollback --to` về sau. Hãy chạy lại đúng lệnh rollback
+đó sau khi sửa nguyên nhân.
 
 `deploy.lock_stale_after` (mặc định 2h) là ngưỡng để `govard deploy unlock` nhả
 lock mà không cần `--force`; thông báo từ chối khi lock đang bị giữ có nêu người
@@ -1039,25 +1082,37 @@ lock, vì target có thể đang dở dang, và đường đi tiếp là `govard
 `--from <task>` bắt đầu từ một task hoặc hook chỉ định, và `govard deploy unlock`
 giải phóng lock do lần lỗi để lại.
 
-Có một kiểu lỗi mà exit code không hề chứng minh được gì. **Exit 255 từ transport
-SSH** là thứ govard thấy khi kết nối đứt giữa bước, và một lệnh remote tự exit 255
-— một `ssh` hay `git` qua ssh bên trong bước — không thể phân biệt với nó. Khi đó
-govard dành tối đa 20 giây để cố dừng process group của bước trên target, và không
-tìm thấy gì để dừng nếu bước đã tự kết thúc. Vì vậy hint nói rõ sự mơ hồ thay vì
-tuyên bố một lần lỗi sạch sẽ: bước đó có thể vẫn đang chạy, hoặc đã chết giữa
-đường. Hãy **kiểm tra target trước khi resume** — `govard deploy status <remote>` —
-vì `--resume` chạy lại đúng bước đã lỗi, và resume vào một trạng thái nửa vời chưa
-biết chính là cách một migration chết giữa đường trở thành một migration hỏng.
+Có một kiểu lỗi mà chỉ nhìn exit code thì không phân biệt được. **Exit 255 từ
+transport SSH** là thứ govard thấy khi kết nối đứt giữa bước, còn bước thì hoàn toàn
+có quyền tự exit 255 — PHP làm vậy với mọi fatal error, nên một `setup:di:compile`
+hết memory kết thúc đúng bằng con số đó. Không thể phân biệt hai thứ bằng con số, nên
+wrapper mà govard bọc quanh mỗi bước remote sẽ tự báo trạng thái của bước khi bước
+exit 255, và chỉ một exit 255 **không** kèm báo cáo đó mới là kết nối đứt. Chính sự
+phân biệt này quyết định bước tiếp theo:
+
+- **Kết nối đứt** nghĩa là không có gì signal process group của bước trên target
+  (với `BatchMode` và không có pty, sshd không gửi SIGHUP), nên bước đó có thể vẫn
+  đang chạy. govard dành tối đa 20 giây để cố dừng nó, và hint nói rõ sự mơ hồ thay
+  vì tuyên bố một lần lỗi sạch sẽ. Hãy **kiểm tra target trước** —
+  `govard deploy status <remote>` — rồi mới `--resume` (lỗi ở stage publish còn giữ
+  lock) hay retry thẳng (lỗi ở stage build đã nhả lock), vì resume vào một trạng thái
+  nửa vời chưa biết chính là cách một migration chết giữa đường trở thành một
+  migration hỏng.
+- **Bước tự exit 255** chỉ là một bước lỗi bình thường: exit code nằm trong message,
+  không có gì bị teardown, và hint giống mọi lỗi khác.
 
 Hai luật giữ cho các đường recovery này trung thực. `--from` chỉ được chấp nhận
 cùng với `--resume`: run bắt đầu sau `deploy:release` không có số release, và
 `{{release_path}}` khi đó là thư mục chứa mọi release chứ không phải một release.
 Và `--resume` từ chối release vẫn đang `running` dưới một lock non hơn
 `deploy.lock_stale_after` (lock đó thuộc về một deploy có thể còn sống — chỉ nhả
-nó bằng `govard deploy unlock` khi tiến trình đã chết), đồng thời từ chối release
-không mới hơn release đang live — đúng thứ mà một CI retry luôn truyền `--resume`
-sẽ kích hoạt đè lên release đang phục vụ. Run khởi động bằng `--from`/`--resume`
-tự lấy deploy lock, nên bước bị bỏ qua không để target chạy không được bảo vệ.
+nó bằng `govard deploy unlock`, hoặc `--force` khi nó còn non hơn mốc đó), đồng thời
+từ chối release **cũ hơn** release đang live — đúng thứ mà một CI retry luôn truyền
+`--resume` sẽ kích hoạt đè lên release đang phục vụ. Release mà run lỗi **sau**
+activation không hề cũ hơn release đang live — nó *chính là* release đang live — nên
+resume nó là đường recovery, không phải mối nguy. Run khởi động bằng
+`--from`/`--resume` tự lấy deploy lock, nên bước bị bỏ qua không để target chạy không
+được bảo vệ.
 
 Có thể `--resume` bao nhiêu lần cũng được, và lần nào cũng tiếp tục đúng release
 đó. Bước mà lần chạy trước đã thành công sẽ không chạy lại, và record giữ nguyên

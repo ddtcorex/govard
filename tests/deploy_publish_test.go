@@ -1268,3 +1268,44 @@ func TestVerifyInPlaceCatchesADocrootThatDiffersFromTheRelease(t *testing.T) {
 		t.Fatalf("the failure must name the version file, got: %v", err)
 	}
 }
+
+// A path the running application wrote into the served tree is not a failed
+// deploy. The activation's own `--delete` removes it — exactly what the dry run
+// reports — and the steps that run in the docroot while the window is open
+// (cache flush, cron, a framework that generates classes on demand) create them
+// as a matter of course, which is why `generated` is a sync path in the first
+// place. Failing on one fails a release that is healthy and already serving, with
+// the lock held; it is reported instead, so an operator sees it without losing the
+// deploy.
+func TestVerifyInPlaceToleratesAFileTheApplicationCreated(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := inPlaceReleaseAtTheDocrootRevision(t, host)
+	settings := map[string]any{"sync_paths": []string{"generated"}}
+
+	writeFile(t, filepath.Join(release.Path, "generated", "code.php"), "built\n")
+	writeFile(t, filepath.Join(host.CurrentPath, "generated", "code.php"), "built\n")
+	// Runtime state: what the application produced after the activation copied
+	// the tree, and what the next activation would clean up.
+	writeFile(t, filepath.Join(host.CurrentPath, "generated", "Extra.php"), "generated at runtime\n")
+
+	sc := deploy.StepContextForTest(host, deploy.Options{Verify: true, Settings: settings})
+	sc.Release = release
+	if err := deploy.CoreVerify(context.Background(), sc); err != nil {
+		t.Fatalf("a file the running application created must not fail verification: %v", err)
+	}
+
+	reported := ""
+	for _, check := range sc.Release.Verify.Checks {
+		reported += check.ID + ": " + check.Detail + " | "
+	}
+	if !strings.Contains(reported, "Extra.php") {
+		t.Fatalf("the report must name the path the next activation would remove, got %q", reported)
+	}
+
+	// The tolerance is only for files the release does not have. A release file the
+	// docroot has changed is still the failure the comparison exists for.
+	writeFile(t, filepath.Join(host.CurrentPath, "generated", "code.php"), "rewritten\n")
+	if err := deploy.CoreVerify(context.Background(), sc); err == nil {
+		t.Fatal("a changed release file must still fail verification")
+	}
+}

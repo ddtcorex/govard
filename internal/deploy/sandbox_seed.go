@@ -221,6 +221,17 @@ func mysqlPasswordEnv(password string) []string {
 // reported rather than swallowed: the import can still exit 0 after receiving a
 // truncated stream.
 func streamDatabaseDump(ctx context.Context, runtime SandboxRuntime, from, to string, env []string, dumpArgs, importArgs []string) error {
+	return streamDatabaseDumpWithLimit(ctx, runtime, from, to, env, dumpArgs, importArgs, seedStripLineLimit)
+}
+
+// StreamDatabaseDumpForTest runs the streaming seed with a small line cap, so the
+// cap's refusal is exercised through the wiring that runs rather than only
+// through the stripper helper it is easy to test in isolation.
+func StreamDatabaseDumpForTest(ctx context.Context, runtime SandboxRuntime, from, to string, env, dumpArgs, importArgs []string, lineLimit int) error {
+	return streamDatabaseDumpWithLimit(ctx, runtime, from, to, env, dumpArgs, importArgs, lineLimit)
+}
+
+func streamDatabaseDumpWithLimit(ctx context.Context, runtime SandboxRuntime, from, to string, env []string, dumpArgs, importArgs []string, lineLimit int) error {
 	stripStdin, dumpStdout := io.Pipe()
 	importStdin, stripStdout := io.Pipe()
 
@@ -235,7 +246,7 @@ func streamDatabaseDump(ctx context.Context, runtime SandboxRuntime, from, to st
 
 	stripDone := make(chan error, 1)
 	go func() {
-		err := StripDefinerStream(stripStdin, stripStdout)
+		err := stripDefinerStream(stripStdin, stripStdout, lineLimit)
 		// Stop a dump that is still writing: the stripper is its only reader.
 		_ = stripStdin.CloseWithError(err)
 		_ = stripStdout.CloseWithError(err)
@@ -250,14 +261,26 @@ func streamDatabaseDump(ctx context.Context, runtime SandboxRuntime, from, to st
 	dumpErr := <-dumpDone
 	stripErr := <-stripDone
 
+	// Every failure is reported, not the first one checked. One failure in this
+	// chain causes the next: an import that dies closes the pipe under the
+	// stripper and the dump, and a dump that dies truncates the stream the import
+	// is reading. Reporting only the dump — the order this used to check in — named
+	// a broken pipe for a failure that was really `Unknown collation` in the
+	// import, which is the one sentence the operator needed. The labels say which
+	// side each error came from; the "partial" sentence says the sandbox database
+	// is not usable, which stays true whenever any of them failed.
+	var failures []error
 	if dumpErr != nil {
-		return fmt.Errorf("dump the origin database (the sandbox database is partial, so re-run `govard sandbox up`): %w", dumpErr)
-	}
-	if importErr != nil {
-		return fmt.Errorf("import the snapshot (the sandbox database is partial, so re-run `govard sandbox up`): %w", importErr)
+		failures = append(failures, fmt.Errorf("dump the origin database: %w", dumpErr))
 	}
 	if stripErr != nil {
-		return fmt.Errorf("rewrite the snapshot for the sandbox: %w", stripErr)
+		failures = append(failures, fmt.Errorf("rewrite the snapshot for the sandbox: %w", stripErr))
+	}
+	if importErr != nil {
+		failures = append(failures, fmt.Errorf("import the snapshot: %w", importErr))
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("%w (the sandbox database is partial, so re-run `govard sandbox up`)", errors.Join(failures...))
 	}
 	return nil
 }

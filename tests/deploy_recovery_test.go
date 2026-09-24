@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -119,19 +121,37 @@ func TestResumedRunHoldsAndReleasesItsOwnLock(t *testing.T) {
 	}
 }
 
-// `--from` on its own starts after deploy:release, so the run has no release
-// number: `{{release_path}}` becomes the directory that holds every release and
-// an activation publishes all of them. The CLI refuses it and names the fix.
-func TestDeployFromRequiresResume(t *testing.T) {
-	if err := cmd.ValidateFromNeedsResumeForTest("publish:activate", false); err == nil {
-		t.Fatal("--from without --resume must be refused")
+// `--from` on its own starts mid-pipeline, so the run has no release number:
+// `{{release_path}}` becomes the directory that holds every release and an
+// activation publishes all of them. The refusal is precise about where the line
+// is: a `--from` that still *runs* `deploy:release` creates the number, so it
+// needs no resume — which is the rule the docs state and the code used to be
+// broader than.
+func TestDeployFromRequiresResumeOnlyPastTheReleaseTask(t *testing.T) {
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskCheck, Stage: deploy.StagePrepare, Command: "true"},
+		{ID: deploy.TaskRelease, Stage: deploy.StagePrepare, Command: "true"},
+		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "true"},
+	}), nil)
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+
+	if err := cmd.ValidateFromNeedsResumeForTest(plan, deploy.TaskActivate, false); err == nil {
+		t.Fatal("--from past deploy:release without --resume must be refused")
 	} else if !strings.Contains(err.Error(), "--resume") {
 		t.Fatalf("the refusal must name --resume, got: %v", err)
 	}
-	if err := cmd.ValidateFromNeedsResumeForTest("publish:activate", true); err != nil {
+	if err := cmd.ValidateFromNeedsResumeForTest(plan, deploy.TaskActivate, true); err != nil {
 		t.Fatalf("--from with --resume is the recovery path and must be allowed: %v", err)
 	}
-	if err := cmd.ValidateFromNeedsResumeForTest("", false); err != nil {
+	if err := cmd.ValidateFromNeedsResumeForTest(plan, deploy.TaskRelease, false); err != nil {
+		t.Fatalf("--from deploy:release runs it, so the run has a release number and must be allowed: %v", err)
+	}
+	if err := cmd.ValidateFromNeedsResumeForTest(plan, deploy.TaskCheck, false); err != nil {
+		t.Fatalf("--from before deploy:release must be allowed: %v", err)
+	}
+	if err := cmd.ValidateFromNeedsResumeForTest(plan, "", false); err != nil {
 		t.Fatalf("a run without --from must not be refused: %v", err)
 	}
 }
@@ -166,6 +186,60 @@ func TestResumeRefusesARunningReleaseUnderAFreshLock(t *testing.T) {
 	if _, statErr := os.Stat(host.LockPath()); statErr != nil {
 		t.Fatal("the refusal must leave the live lock alone")
 	}
+	// A lock younger than the staleness window needs --force, and the refusal is
+	// the only place that says so: `govard deploy unlock` alone is refused for the
+	// same reason this is.
+	if !strings.Contains(err.Error(), "--force") {
+		t.Errorf("the refusal must name --force for a lock that is not stale yet, got: %v", err)
+	}
+}
+
+// lockProbeTransportRunner fails the lock probe the way a dead connection does:
+// not with `test`'s "no", which is exit 1, but with no answer at all.
+type lockProbeTransportRunner struct {
+	deploy.Runner
+	lockPath string
+}
+
+func (r lockProbeTransportRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
+	if strings.Contains(command, "test -d") && strings.Contains(command, r.lockPath) {
+		return deploy.Result{}, fmt.Errorf("%w: the connection died mid-probe", deploy.ErrConnectionMayHaveDropped)
+	}
+	return r.Runner.Run(ctx, command, opts)
+}
+
+// "The lock is not there" and "I could not ask" are different answers, and only
+// the first one means the run is ours. A transport error on the probe used to be
+// read as "no lock", so a resume released the lock of a deploy that might be
+// running right now and put two runs on the same release directory, migrations
+// included — the exact outcome the lock exists to prevent.
+func TestResumeRefusesWhenTheLockCannotBeChecked(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	if err := os.MkdirAll(host.ReleasePath("2")+"/.dep", 0o755); err != nil {
+		t.Fatalf("mkdir the release: %v", err)
+	}
+	running := deploy.NewReleaseForTest("2", "abc", "main")
+	running.Status = deploy.StatusRunning
+	if err := deploy.WriteRelease(ctx, host, running); err != nil {
+		t.Fatalf("seed the record: %v", err)
+	}
+	if err := os.MkdirAll(host.LockPath(), 0o755); err != nil {
+		t.Fatalf("seed the lock: %v", err)
+	}
+	blind := host.WithRunner(lockProbeTransportRunner{Runner: host.Runner(), lockPath: host.LockPath()})
+
+	release := deploy.NewRelease("", "abc", "main")
+	err := cmd.PrepareResumeWithOptionsForTest(ctx, blind, release, deploy.Options{LockStaleAfter: time.Hour})
+	if err == nil {
+		t.Fatal("a lock that cannot be checked must not be treated as absent")
+	}
+	if !strings.Contains(err.Error(), "lock") {
+		t.Fatalf("the refusal must name the lock, got: %v", err)
+	}
+	if _, statErr := os.Stat(host.LockPath()); statErr != nil {
+		t.Fatal("a lock that may belong to a live run must survive the refusal")
+	}
 }
 
 // A failed release below a newer live one is history, not work in progress:
@@ -197,6 +271,99 @@ func TestResumeRefusesAReleaseOlderThanTheLiveOne(t *testing.T) {
 	}
 }
 
+// A failure at or after deploy:activate leaves the failed release as the one the
+// target is serving: `current` points at it (and in place the docroot's HEAD is
+// its revision). `--resume` exists for exactly that state — a hook, the cache
+// flush or the verification failing after the site went live, which is the state
+// the executor's own "already deployed" escape hatch was written to stop
+// mis-reporting. The guard that refuses to resume *backwards* must refuse an
+// older release, never this one: refusing it leaves `deploy unlock --force` and a
+// fresh full deploy as the only way to close a maintenance window.
+func TestResumeContinuesTheLiveReleaseWhenItIsUnfinished(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	if err := os.MkdirAll(host.ReleasePath("3")+"/.dep", 0o755); err != nil {
+		t.Fatalf("mkdir the release: %v", err)
+	}
+	record := deploy.NewReleaseForTest("3", "rev-3", "main")
+	record.Status = deploy.StatusFailed
+	if err := deploy.WriteRelease(ctx, host, record); err != nil {
+		t.Fatalf("seed the failed record: %v", err)
+	}
+	if _, err := host.Runner().Run(ctx, "ln -s "+host.ReleasePath("3")+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed the live symlink: %v", err)
+	}
+
+	release := deploy.NewRelease("", "rev-3", "main")
+	if err := cmd.PrepareResumeWithOptionsForTest(ctx, host, release, deploy.Options{LockStaleAfter: time.Hour}); err != nil {
+		t.Fatalf("the live release is the unfinished one, so resuming it is the recovery: %v", err)
+	}
+	if release.Release != "3" {
+		t.Fatalf("the resume must continue release 3, got %q", release.Release)
+	}
+}
+
+// An in-place rollback runs the executor over the record of the release it is
+// rolling back *to*, and the executor rewrites that record as it goes: a failure
+// stored `failed` on a release that is perfectly good. That record is what
+// `deploy rollback --to <T>` reads to decide which releases are usable, so one
+// failed attempt took the healthy release out of every future rollback — the
+// operator's way back was destroyed by the attempt to use it. The record is
+// restored, and the error names a command that works: the lock belongs to the
+// caller and is already released, so telling the operator to unlock is wrong.
+func TestAFailedInPlaceRollbackLeavesTheTargetUsable(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+	target := deploy.NewReleaseForTest("5", "rev-5", "main")
+	target.Status = deploy.StatusOK
+	target.Publish.Strategy = deploy.PublishInPlace
+	target.Path = host.ReleasePath("5")
+	if err := os.MkdirAll(filepath.Join(target.Path, ".dep"), 0o755); err != nil {
+		t.Fatalf("mkdir the release: %v", err)
+	}
+	if err := deploy.WriteRelease(ctx, host, target); err != nil {
+		t.Fatalf("seed the target record: %v", err)
+	}
+
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskMaintenanceEnable, Stage: deploy.StagePublish, Command: "true"},
+		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "exit 1"},
+	}), nil)
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+
+	err = cmd.RunInPlaceRollbackTailForTest(ctx, host, deploy.Options{CommandTimeout: time.Minute}, deploy.NewVars(),
+		plan.ForPublishStrategy(deploy.PublishInPlace), target, io.Discard, false)
+	if err == nil {
+		t.Fatal("a failing rollback tail must fail")
+	}
+	if !strings.Contains(err.Error(), "maintenance") {
+		t.Errorf("the failure must say the window is still open, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "deploy unlock") {
+		t.Errorf("the caller releases the lock itself, so the hint must not send the operator to unlock: %v", err)
+	}
+	if !strings.Contains(err.Error(), "rollback") {
+		t.Errorf("the hint must name the command that finishes the rollback, got: %v", err)
+	}
+
+	stored, readErr := deploy.ReadRelease(ctx, host, "5")
+	if readErr != nil {
+		t.Fatalf("read the target record: %v", readErr)
+	}
+	if stored.Status != deploy.StatusOK {
+		t.Fatalf("a failed rollback must leave the target's record alone, got status %q", stored.Status)
+	}
+	selected, selErr := deploy.SelectRollbackTargetForTest(ctx, host, "5")
+	if selErr != nil {
+		t.Fatalf("the healthy release must still be selectable as a rollback target: %v", selErr)
+	}
+	if selected.Release != "5" {
+		t.Fatalf("selected release %q, want 5", selected.Release)
+	}
+}
+
 // An in-place rollback rewrites the docroot while it serves, exactly as a deploy
 // does, so it has to open the window first — the rollback tail starts *after*
 // maintenance:enable, which is why shaping the plan alone was not enough. If the
@@ -220,7 +387,7 @@ func TestInPlaceRollbackOpensTheWindowBeforeItsTail(t *testing.T) {
 	shaped := plan.ForPublishStrategy(deploy.PublishInPlace)
 	options := deploy.Options{CommandTimeout: time.Minute}
 	if err := cmd.RunInPlaceRollbackTailForTest(context.Background(), host, options, deploy.NewVars(),
-		shaped, deploy.NewReleaseForTest("1", "abc", "local"), io.Discard); err != nil {
+		shaped, deploy.NewReleaseForTest("1", "abc", "local"), io.Discard, false); err != nil {
 		t.Fatalf("in-place rollback tail: %v", err)
 	}
 
@@ -237,5 +404,97 @@ func TestInPlaceRollbackOpensTheWindowBeforeItsTail(t *testing.T) {
 		if order[index] != want[index] {
 			t.Fatalf("window log = %v, want %v", order, want)
 		}
+	}
+}
+
+// With `--with-db` the database is restored after the tail, and the tail's own
+// `deploy:verify` queries that database: the framework's checks run
+// `setup:db:status` / `migrate:status`, so verifying before the restore compares
+// the release being returned to against the schema it is about to replace — and
+// fails the rollback for the very state the restore was asked to fix. The tail
+// therefore does not verify when a restore follows; the rollback verifies once,
+// afterwards.
+func TestInPlaceRollbackHoldsBackVerifyWhenARestoreFollows(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "tail.log")
+	echo := func(line string) string { return "echo " + line + " >> " + log }
+	tasks := []deploy.Task{
+		{ID: deploy.TaskMaintenanceEnable, Stage: deploy.StagePublish, Command: echo("enable")},
+		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: echo("activate")},
+		{ID: deploy.TaskVerify, Stage: deploy.StageVerify, Command: echo("verify")},
+		{ID: deploy.TaskMaintenanceDisable, Stage: deploy.StagePublish, Command: echo("disable")},
+	}
+
+	for _, testCase := range []struct {
+		name             string
+		restoreFollows   bool
+		wantVerifyInTail bool
+	}{
+		{name: "without a restore the tail verifies", restoreFollows: false, wantVerifyInTail: true},
+		{name: "with a restore the tail holds it back", restoreFollows: true, wantVerifyInTail: false},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			if err := os.Remove(log); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("clear the log: %v", err)
+			}
+			host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+			plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", tasks), nil)
+			if err != nil {
+				t.Fatalf("build plan: %v", err)
+			}
+			if err := cmd.RunInPlaceRollbackTailForTest(context.Background(), host,
+				deploy.Options{CommandTimeout: time.Minute}, deploy.NewVars(),
+				plan.ForPublishStrategy(deploy.PublishInPlace),
+				deploy.NewReleaseForTest("1", "abc", "local"), io.Discard, testCase.restoreFollows); err != nil {
+				t.Fatalf("in-place rollback tail: %v", err)
+			}
+
+			raw, err := os.ReadFile(log)
+			if err != nil {
+				t.Fatalf("read the tail log: %v", err)
+			}
+			ran := strings.Contains(string(raw), "verify")
+			if ran != testCase.wantVerifyInTail {
+				t.Fatalf("the tail ran verify = %v, want %v (log: %q)", ran, testCase.wantVerifyInTail, raw)
+			}
+		})
+	}
+}
+
+// The order restore → flush → verify is the fix, not an accident of layout: the
+// caches are rebuilt from the restored database, and the verification queries it.
+// A step that does not apply is nil, and a failure stops the chain — the two
+// properties the caller relies on when it folds `--with-db` and `--no-verify`
+// into the same three closures.
+func TestAfterRestoreRunsRestoreThenFlushThenVerify(t *testing.T) {
+	var order []string
+	step := func(name string) func() error {
+		return func() error {
+			order = append(order, name)
+			return nil
+		}
+	}
+	if err := cmd.AfterRestoreForTest(step("restore"), step("flush"), step("verify")); err != nil {
+		t.Fatalf("afterRestore: %v", err)
+	}
+	if strings.Join(order, ",") != "restore,flush,verify" {
+		t.Fatalf("order = %v, want restore, flush, verify", order)
+	}
+
+	order = nil
+	if err := cmd.AfterRestoreForTest(nil, step("flush"), nil); err != nil {
+		t.Fatalf("afterRestore with skipped steps: %v", err)
+	}
+	if strings.Join(order, ",") != "flush" {
+		t.Fatalf("skipped steps must not run: %v", order)
+	}
+
+	sentinel := errors.New("restore failed")
+	order = nil
+	err := cmd.AfterRestoreForTest(func() error { order = append(order, "restore"); return sentinel }, step("flush"), step("verify"))
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("the failure must surface, got %v", err)
+	}
+	if strings.Join(order, ",") != "restore" {
+		t.Fatalf("a failed restore must stop the chain, ran %v", order)
 	}
 }

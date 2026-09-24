@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -139,11 +140,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return &cli.UsageError{Err: fmt.Errorf("--from %q does not name a task or hook in this deploy plan (see `govard deploy plan %s`)", options.From, remote)}
 	}
 	// A --from past deploy:release continues a release, and the only release a
-	// run may continue is the one an earlier attempt recorded. Without --resume
-	// the run has no release number at all: `{{release_path}}` would be the
-	// directory holding every release, and an activation would publish all of
-	// them. Refused here, where the message can name the fix.
-	if err := validateFromNeedsResume(options.From, options.Resume); err != nil {
+	// run may continue is the one an earlier attempt recorded. Past that task the
+	// run has no release number at all: `{{release_path}}` would be the directory
+	// holding every release, and an activation would publish all of them. Refused
+	// here, where the message can name the fix.
+	if err := validateFromNeedsResume(plan, options.From, options.Resume); err != nil {
 		return &cli.UsageError{Err: err}
 	}
 
@@ -200,6 +201,24 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// lockIsHeld answers whether the deploy lock is on the target, and refuses to
+// guess. `test -d` says "no" with exit 1, while a transport error says nothing at
+// all about the lock — and reading the second as the first is how a resume
+// released the lock of a deploy that was still running and put two runs on one
+// release directory, migrations included. A lock that cannot be checked is
+// reported as its own failure, and the caller treats it as held.
+func lockIsHeld(ctx context.Context, host deploy.Host, release string) (bool, error) {
+	_, err := host.Runner().Run(ctx, "test -d "+deploy.Shell(host.LockPath()), deploy.RunOptions{Timeout: time.Minute})
+	if err == nil {
+		return true, nil
+	}
+	var commandErr *deploy.CommandError
+	if errors.As(err, &commandErr) && commandErr.ExitCode == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("release %s cannot be resumed: the deploy lock could not be checked on %s, so it is treated as held rather than released: %w", release, host.Name, err)
+}
+
 // prepareResume points the run at the newest unfinished release and clears the
 // lock its failed run left behind. Recovery has to be explicit, so the operator
 // asks for it with --resume rather than a retry silently taking over.
@@ -224,26 +243,38 @@ func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Releas
 	// or old enough that no live process can be holding it, which is the same
 	// judgement `deploy unlock` makes.
 	if incomplete.Status == deploy.StatusRunning {
-		if _, statErr := host.Runner().Run(ctx, "test -d "+deploy.Shell(host.LockPath()), deploy.RunOptions{Timeout: time.Minute}); statErr == nil {
+		lockHeld, err := lockIsHeld(ctx, host, incomplete.Release)
+		if err != nil {
+			return nil, err
+		}
+		if lockHeld {
 			holder, heldFor := deploy.DescribeLockOwner(ctx, host)
 			staleAfter := options.LockStaleAfter
 			if staleAfter <= 0 {
 				staleAfter = deploy.DefaultLockStaleAfter
 			}
 			if heldFor < 0 || heldFor < staleAfter {
-				return nil, fmt.Errorf("release %s is still running: %s holds its lock (held %s); wait for that run, or release the lock with `govard deploy unlock` once it is gone",
-					incomplete.Release, holder, heldFor.Round(time.Second))
+				return nil, fmt.Errorf("release %s is still running: %s holds its lock (held %s); wait for that run, or release the lock with `govard deploy unlock %s` once it is gone — for a lock younger than `deploy.lock_stale_after` that needs `--force`, because age is the only evidence govard has that the holder is dead",
+					incomplete.Release, holder, heldFor.Round(time.Second), host.Name)
 			}
 		}
 	}
 
-	// Never resume backwards. A failed release below the live one is history: a
-	// CI retry that always passes --resume would otherwise activate an older
-	// revision over a newer release that is serving traffic.
+	// Never resume backwards. A failed release *older* than the live one is
+	// history: a CI retry that always passes --resume would otherwise activate an
+	// older revision over a newer release that is serving traffic.
+	//
+	// Equality is not backwards, it is the normal case. A run that failed at or
+	// after `publish:activate` — a hook, the cache flush, the verification — has
+	// already made its own release the one the target serves: `current` points at
+	// it, and in place the docroot's HEAD is its revision. That failed record is
+	// therefore both the newest unfinished release and the live one, and refusing
+	// it would leave the maintenance window it opened with no resume to close it.
+	// Only a strictly older record is refused.
 	if live, err := deploy.LiveRelease(ctx, host); err == nil && live != nil {
 		if target, convErr := strconv.Atoi(strings.TrimSpace(incomplete.Release)); convErr == nil {
-			if liveNumber, convErr := strconv.Atoi(strings.TrimSpace(live.Release)); convErr == nil && target <= liveNumber {
-				return nil, fmt.Errorf("release %s is not newer than the live release %s, so there is nothing to resume; deploy normally, or return to it with `govard deploy rollback`",
+			if liveNumber, convErr := strconv.Atoi(strings.TrimSpace(live.Release)); convErr == nil && target < liveNumber {
+				return nil, fmt.Errorf("release %s is older than the live release %s, so resuming it would activate an older revision over the one serving traffic; deploy normally, or return to it with `govard deploy rollback`",
 					incomplete.Release, live.Release)
 			}
 		}
@@ -364,7 +395,7 @@ func printDeploySummary(cmd *cobra.Command, remote string, host deploy.Host, opt
 	}
 }
 
-// validateFromNeedsResume refuses `--from` on its own.
+// validateFromNeedsResume refuses a `--from` that starts *after* deploy:release.
 //
 // `--from` starts the pipeline part-way through, which only makes sense for a
 // release that already exists: everything that would have created it —
@@ -372,15 +403,27 @@ func printDeploySummary(cmd *cobra.Command, remote string, host deploy.Host, opt
 // into `{{release_path}}` — was skipped. Without --resume there is no record to
 // read the number from, and the engine then works from an empty one. The engine
 // refuses that too, but the CLI can name the fix.
-func validateFromNeedsResume(from string, resume bool) error {
-	if strings.TrimSpace(from) == "" || resume {
+//
+// The line is the release task, not "any --from": a `--from` at or before
+// deploy:release still *runs* it, so the run creates its own number and needs no
+// resume. Refusing those too was broader than the rule the docs state, and it
+// blocked a legitimate partial run.
+func validateFromNeedsResume(plan deploy.Plan, from string, resume bool) error {
+	from = strings.TrimSpace(from)
+	if from == "" || resume {
 		return nil
 	}
-	return fmt.Errorf("--from %q starts mid-pipeline and needs a release to continue: add --resume, or drop --from", from)
+	releaseIndex := plan.IndexOf(deploy.TaskRelease)
+	if releaseIndex >= 0 {
+		if fromIndex := plan.IndexOf(from); fromIndex >= 0 && fromIndex <= releaseIndex {
+			return nil
+		}
+	}
+	return fmt.Errorf("--from %q starts after deploy:release, so the run has no release number to expand `{{release_path}}` into: add --resume, or drop --from", from)
 }
 
 // ValidateFromNeedsResumeForTest exposes validateFromNeedsResume to the tests/
 // package.
-func ValidateFromNeedsResumeForTest(from string, resume bool) error {
-	return validateFromNeedsResume(from, resume)
+func ValidateFromNeedsResumeForTest(plan deploy.Plan, from string, resume bool) error {
+	return validateFromNeedsResume(plan, from, resume)
 }
