@@ -5,9 +5,7 @@ export {};
 declare global {
   interface Window {
     go?: {
-      desktop?: {
-        App?: Record<string, (...args: any[]) => Promise<any>>;
-      };
+      desktop?: Record<string, Record<string, (...args: any[]) => Promise<any>>>;
     };
     runtime?: {
       EventsOn(name: string, handler: (data: any) => void): (() => void) | void;

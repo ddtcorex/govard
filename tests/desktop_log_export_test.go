@@ -28,7 +28,7 @@ func TestDesktopSaveLogsToFileWritesSelectedPathForTest(t *testing.T) {
 	defer restoreChooser()
 
 	app := desktop.NewApp()
-	message, err := app.SaveLogsToFile("line one", "../My logs?.log")
+	message, err := app.Logs.SaveLogsToFile("line one", "../My logs?.log")
 	if err != nil {
 		t.Fatalf("SaveLogsToFile failed: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestDesktopSaveLogsToFileCancelReturnsFriendlyMessageForTest(t *testing.T) 
 	defer restoreChooser()
 
 	app := desktop.NewApp()
-	message, err := app.SaveLogsToFile("line one", "env.log")
+	message, err := app.Logs.SaveLogsToFile("line one", "env.log")
 	if err != nil {
 		t.Fatalf("expected cancel to be non-error, got %v", err)
 	}
@@ -85,7 +85,7 @@ func TestDesktopSaveLogsToFileRejectsEmptyContentForTest(t *testing.T) {
 	desktop.ResetStateForTest()
 
 	app := desktop.NewApp()
-	_, err := app.SaveLogsToFile(" \n\t", "empty.log")
+	_, err := app.Logs.SaveLogsToFile(" \n\t", "empty.log")
 	if err == nil {
 		t.Fatalf("expected empty content to fail")
 	}
@@ -115,7 +115,7 @@ func TestDesktopSaveLogsToFilePropagatesWriteFailureForTest(t *testing.T) {
 	defer restoreWrite()
 
 	app := desktop.NewApp()
-	_, err := app.SaveLogsToFile("line one", "env.log")
+	_, err := app.Logs.SaveLogsToFile("line one", "env.log")
 	if err == nil {
 		t.Fatalf("expected write error")
 	}

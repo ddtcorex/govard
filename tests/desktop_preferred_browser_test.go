@@ -37,7 +37,7 @@ func TestDesktopPreferredBrowserUsesConfiguredCommandForQuickAction(t *testing.T
 		t.Fatalf("update settings: %v", err)
 	}
 
-	message, err := app.QuickAction("open-mail-client")
+	message, err := app.Environment.QuickAction("open-mail-client")
 	if err != nil {
 		t.Fatalf("open mail quick action: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestDesktopPreferredBrowserFallsBackWhenCommandUnavailable(t *testing.T) {
 		t.Fatalf("update settings: %v", err)
 	}
 
-	message, err := app.QuickAction("open-mail-client")
+	message, err := app.Environment.QuickAction("open-mail-client")
 	if err != nil {
 		t.Fatalf("open mail quick action: %v", err)
 	}

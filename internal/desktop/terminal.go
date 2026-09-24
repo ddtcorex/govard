@@ -9,7 +9,8 @@ import (
 
 // LogService methods
 
-func (s *LogService) GetLogs(project string, lines int) (string, error) {
+func (s *LogService) GetLogs(project string, lines int) (res string, err error) {
+	defer RecoverPanic(&err, "GetLogs")
 	output, err := getLogs(project, lines)
 	if err != nil {
 		return "", err
@@ -17,7 +18,8 @@ func (s *LogService) GetLogs(project string, lines int) (string, error) {
 	return output, nil
 }
 
-func (s *LogService) GetLogsForService(project string, service string, lines int) (string, error) {
+func (s *LogService) GetLogsForService(project string, service string, lines int) (res string, err error) {
+	defer RecoverPanic(&err, "GetLogsForService")
 	output, err := getLogsForService(project, service, lines)
 	if err != nil {
 		return "", err
@@ -25,7 +27,8 @@ func (s *LogService) GetLogsForService(project string, service string, lines int
 	return output, nil
 }
 
-func (s *LogService) StartServiceTerminalInOS(project, service, user, shell string) (string, error) {
+func (s *LogService) StartServiceTerminalInOS(project, service, user, shell string) (res string, err error) {
+	defer RecoverPanic(&err, "StartServiceTerminalInOS")
 	info, err := loadProjectInfo(project)
 	if err != nil {
 		return "", err

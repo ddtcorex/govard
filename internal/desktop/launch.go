@@ -48,7 +48,6 @@ func BuildWailsOptions(app *App, assets fs.FS, launch LaunchOptions) *options.Ap
 		OnStartup:   app.Startup,
 		OnShutdown:  app.Shutdown,
 		Bind: []interface{}{
-			app,
 			app.Settings,
 			app.Onboarding,
 			app.Environment,
@@ -56,6 +55,7 @@ func BuildWailsOptions(app *App, assets fs.FS, launch LaunchOptions) *options.Ap
 			app.System,
 			app.Logs,
 			app.Global,
+			app.Update,
 		},
 	}
 

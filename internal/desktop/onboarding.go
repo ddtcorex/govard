@@ -218,15 +218,18 @@ func onboardProjectWithOptionsInternalWithContext(
 
 // OnboardingService methods
 
-func (s *OnboardingService) PickProjectDirectory() (string, error) {
+func (s *OnboardingService) PickProjectDirectory() (res string, err error) {
+	defer RecoverPanic(&err, "PickProjectDirectory")
 	return pickProjectDirectoryInternal(s.platform)
 }
 
-func (s *OnboardingService) OnboardProject(input OnboardInput) (string, error) {
+func (s *OnboardingService) OnboardProject(input OnboardInput) (res string, err error) {
+	defer RecoverPanic(&err, "OnboardProject")
 	return onboardProjectWithOptionsInternalWithContext(s.ctx, s.platform, input)
 }
 
-func (s *OnboardingService) DetectMigrationSource(projectPath string) (string, error) {
+func (s *OnboardingService) DetectMigrationSource(projectPath string) (res string, err error) {
+	defer RecoverPanic(&err, "DetectMigrationSource")
 	root, err := normalizeProjectPath(projectPath)
 	if err != nil {
 		return "", err

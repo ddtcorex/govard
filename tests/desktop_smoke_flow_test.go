@@ -121,14 +121,14 @@ remotes:
 		t.Fatalf("expected normalized proxy target smoke.test, got %q", settings.ProxyTarget)
 	}
 
-	mailAction, err := app.QuickAction("open-mail-client")
+	mailAction, err := app.Environment.QuickAction("open-mail-client")
 	if err != nil {
 		t.Fatalf("quick action mail: %v", err)
 	}
 	if !strings.Contains(strings.ToLower(mailAction), "mailpit") {
 		t.Fatalf("expected mail quick action message, got %q", mailAction)
 	}
-	dbAction, err := app.QuickActionForProject("open-db-client", "smoke")
+	dbAction, err := app.Environment.QuickActionForProject("open-db-client", "smoke")
 	if err != nil {
 		t.Fatalf("quick action db: %v", err)
 	}
@@ -137,7 +137,7 @@ remotes:
 		!strings.Contains(normalizedDBAction, "phpmyadmin") {
 		t.Fatalf("expected db quick action message, got %q", dbAction)
 	}
-	unsupportedAction, err := app.QuickActionForProject("other", "smoke")
+	unsupportedAction, err := app.Environment.QuickActionForProject("other", "smoke")
 	if err == nil {
 		t.Fatalf("expected error for unsupported action, got message: %q", unsupportedAction)
 	}

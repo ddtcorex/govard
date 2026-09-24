@@ -57,7 +57,7 @@ func TestDesktopStartEnvironmentUsesGovardUpForProjectForTest(t *testing.T) {
 	defer restore()
 
 	app := desktop.NewApp()
-	message, err := app.StartEnvironment("sample-project")
+	message, err := app.Environment.StartEnvironment("sample-project")
 	if err != nil {
 		t.Fatalf("StartEnvironment failed: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestDesktopStopEnvironmentUsesGovardEnvStopForProjectForTest(t *testing.T) 
 	defer restore()
 
 	app := desktop.NewApp()
-	message, err := app.StopEnvironment("sample-project")
+	message, err := app.Environment.StopEnvironment("sample-project")
 	if err != nil {
 		t.Fatalf("StopEnvironment failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestDesktopPullEnvironmentUsesGovardEnvPullForProjectForTest(t *testing.T) 
 	defer restore()
 
 	app := desktop.NewApp()
-	message, err := app.PullEnvironment("sample-project")
+	message, err := app.Environment.PullEnvironment("sample-project")
 	if err != nil {
 		t.Fatalf("PullEnvironment failed: %v", err)
 	}
