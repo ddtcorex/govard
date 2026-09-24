@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.76.4] - 2026-09-24
+
+### 🐛 Bug Fixes
+
+- **Verification proves the served release:** the HTTP check no longer follows redirects or accepts any status below 400 — a site that bounced every request to an installer page used to pass — and a redirecting `verify.url` is refused by `deploy:check` before the deploy starts, with `deploy.verify.follow_redirects: true` as the opt-in for a target that legitimately redirects (`verify.follow_redirects` is documented in the configuration reference). The recipe's own application checks (`setup:db:status`, `artisan`, `bin/console`, WordPress's `wp-load.php`) run in the served path, so an in-place target is checked against the application the web server actually serves. (#376, #382, #386)
+- **Cache flushes and maintenance act on the served application:** `app:cache:flush` runs in the docroot rather than the release directory, and an in-place deploy always opens the maintenance window — a code-only deploy used to skip it and then reset the docroot while it served traffic. (#368, #372, #386)
+- **Recovery is safe and complete:** `--from` past `deploy:release` without `--resume` is refused with the fix in the message instead of running with no release number; `--resume` continues a release that is live but unfinished instead of refusing it; a failed in-place rollback rewrites the previous release back rather than leaving the docroot half-written; and `rollback --with-db` verifies after the restore, not before it. (#370, #386)
+- **A dropped connection is reported honestly:** exit 255 is the SSH transport's own code and cannot be told apart from a command that exits 255 by itself, so the recovery hint now says the step may still be running and names the command that fits the lock's actual state — the hint fired on the wrong path and printed the generic lock-held text. (#378, #384, #386)
+- **Command words and quoting:** `php_bin`/`composer_bin` accept a multi-word wrapper (`php -d memory_limit=-1`, `docker exec app php`) and shell syntax in such a setting stays inert, and a leading `~/` is expanded again instead of being quoted into a literal filename. (#378, #386)
+- **Database dumps stay private:** a `--db-backup` deploy writes its dump under `shared/backups/deploy/<n>/` with owner-only permissions (`0700` directories, `0600` file) and prunes it with the release, instead of leaving a full dump of customer data and admin hashes in `shared/var/backups` forever; the copy Magento needs in `var/backups` is removed on both the success and the failure path. Dumps left there by earlier versions are deliberately not deleted. (#374)
+- **The sandbox seed streams:** seeding no longer reads the whole origin dump into memory (a 64 MiB dump allocated 193 MiB), the database password never reaches `argv`, and a failure names the step that broke rather than blaming the dump for the import. (#380, #386)
+- **A symlink target says when it cannot see the release it published:** `deploy:check` warns when the target serves a symlink, its PHP keeps a bytecode cache and the project configures no `runtime_reload_command` — measured, the pool kept serving the previous release 153 seconds after the swap, through killing every FPM worker, so `deploy:verify` could pass against the release before the one it published. The hint for a lock another run holds now names that run and the two commands that recover it. (#388)
+
 ## [1.76.3] - 2026-09-22
 
 ### 🐛 Bug Fixes
