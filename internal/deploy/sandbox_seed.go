@@ -106,8 +106,8 @@ var definerRe = regexp.MustCompile(`(?i)/\*!50013 DEFINER=` + "`[^`]+`@`[^`]+`" 
 
 // StripDefiner removes foreign DEFINER clauses from a dump: they name users
 // that do not exist in the sandbox, and creating views with them needs SUPER.
-// Found live: a dev8-staging definer broke a restore with "Access denied; you
-// need SUPER".
+// Found live: a definer naming an account that exists only on the origin host
+// broke a restore with "Access denied; you need SUPER".
 func StripDefiner(sql string) string {
 	return definerRe.ReplaceAllString(sql, "")
 }

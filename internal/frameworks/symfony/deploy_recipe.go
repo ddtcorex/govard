@@ -61,7 +61,7 @@ func DeployRecipe() deploy.Recipe {
 	// vendor tree that is actually present, so the step runs where the
 	// application does — the same rule that keeps Magento's static content off
 	// the build machine. `--relative` was measured on the real project: the link
-	// it writes is `etl -> ../../vendor/sutunam/etl-bundle/src/Resources/public/`,
+	// it writes is `blog -> ../../vendor/acme/blog-bundle/src/Resources/public/`,
 	// which resolves from wherever the docroot ends up.
 	assets := recipe.Task(deploy.TaskAssets)
 	assets.Title = "install the bundle assets"
