@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.76.5] - 2026-09-24
+
+### 🐛 Bug Fixes
+
+- **The Magento 2 cache flush reaches the entries the framework cannot:** `bin/magento cache:flush` cleans the 2.4.9 file cache through a tag index, so an entry whose index row is gone survived it while the command still exited `0`. The step now drops whatever is left under the served `var/cache` and `var/page_cache` after the framework's flush and reports the count. Entries are removed but the cache directories are kept, so their owner and mode survive the deploy: on a target where the deploy user and the web-server user share a group, a recreated directory would have been left unwritable by the web server. A directory the step cannot read or purge is named in a warning instead of failing the deploy. (#391, #395)
+- **Self-update defers to snapd inside the govard snap:** a binary running from its snap reports the `snap` install source, `self-update` points at `sudo snap refresh govard`, and `--force` is refused up front because the snap is read-only. The update notice on `govard up` names the command that owns the install instead of always suggesting `govard self-update`. (#392, #395)
+
+### 🔧 Maintenance
+
+- Environment and company names left in comments and fixtures were replaced with neutral ones, and a duplicated entry in the Magento 2 ignored-tables list was dropped. (#394, #395)
+
 ## [1.76.4] - 2026-09-24
 
 ### 🐛 Bug Fixes
