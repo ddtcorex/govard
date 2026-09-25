@@ -898,37 +898,29 @@ func checkAndFixSystemDependencies(assumeYes bool) {
 	}
 
 	pterm.Info.Println("Checking system dependencies...")
-	var missingDeps []string
 
-	// Check certutil
-	if _, err := exec.LookPath("certutil"); err != nil {
-		pterm.Warning.Println("  certutil: Not found (Required for automatic browser SSL trust)")
-		missingDeps = append(missingDeps, "libnss3-tools")
-	} else {
+	_, certutilErr := exec.LookPath("certutil")
+	hasCertutil := certutilErr == nil
+	if hasCertutil {
 		pterm.Success.Println("  certutil: Found")
-	}
-
-	// Check WebKitGTK
-	hasWebKit := false
-	if out, err := exec.Command("ldconfig", "-p").Output(); err == nil {
-		if strings.Contains(string(out), "libwebkit2gtk-4.1") {
-			hasWebKit = true
-		}
-	}
-	if !hasWebKit {
-		for _, path := range []string{"/usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0", "/usr/lib/libwebkit2gtk-4.1.so.0"} {
-			if _, err := os.Stat(path); err == nil {
-				hasWebKit = true
-				break
-			}
-		}
-	}
-
-	if hasWebKit {
-		pterm.Success.Println("  WebKitGTK: Found")
 	} else {
-		pterm.Warning.Println("  WebKitGTK: Not found (Required for Desktop App)")
-		missingDeps = append(missingDeps, "libwebkit2gtk-4.1-0")
+		pterm.Warning.Println("  certutil: Not found (Required for automatic browser SSL trust)")
+	}
+
+	ldconfigOut := ""
+	if out, err := exec.Command("ldconfig", "-p").Output(); err == nil {
+		ldconfigOut = string(out)
+	}
+	exe, _ := os.Executable()
+	desktopInstalled := len(resolveDesktopUpdateTargets(exe)) > 0
+
+	missingDeps := missingSystemDependencies(hasCertutil, ldconfigOut, selfUpdateFileExists, desktopInstalled)
+	if desktopInstalled {
+		if hasWebKitGTK6(ldconfigOut, selfUpdateFileExists) {
+			pterm.Success.Println("  WebKitGTK 6.0: Found")
+		} else {
+			pterm.Warning.Println("  WebKitGTK 6.0: Not found (Required for Desktop App)")
+		}
 	}
 
 	if len(missingDeps) > 0 {
@@ -959,6 +951,42 @@ func checkAndFixSystemDependencies(assumeYes bool) {
 			}
 		}
 	}
+}
+
+// webKitGTK6Package is the runtime package the Wails 3 desktop app links
+// (GTK 4 comes with it as a dependency).
+const webKitGTK6Package = "libwebkitgtk-6.0-4"
+
+func hasWebKitGTK6(ldconfigOut string, fileExists func(string) bool) bool {
+	if strings.Contains(ldconfigOut, "libwebkitgtk-6.0") {
+		return true
+	}
+	for _, path := range []string{"/usr/lib/x86_64-linux-gnu/libwebkitgtk-6.0.so.4", "/usr/lib/libwebkitgtk-6.0.so.4"} {
+		if fileExists(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// missingSystemDependencies lists the apt packages self-update should offer to
+// install. WebKitGTK is only asked for when a desktop binary is installed: a
+// CLI-only host (Ubuntu 22.04, Debian 12) has no WebKitGTK 6.0 package at all,
+// so asking for it there would make apt fail.
+func missingSystemDependencies(hasCertutil bool, ldconfigOut string, fileExists func(string) bool, desktopInstalled bool) []string {
+	var missing []string
+	if !hasCertutil {
+		missing = append(missing, "libnss3-tools")
+	}
+	if desktopInstalled && !hasWebKitGTK6(ldconfigOut, fileExists) {
+		missing = append(missing, webKitGTK6Package)
+	}
+	return missing
+}
+
+// MissingSystemDependenciesForTest exposes missingSystemDependencies for tests in /tests.
+func MissingSystemDependenciesForTest(hasCertutil bool, ldconfigOut string, fileExists func(string) bool, desktopInstalled bool) []string {
+	return missingSystemDependencies(hasCertutil, ldconfigOut, fileExists, desktopInstalled)
 }
 
 func runPostUpdateHooks(govardBin string, assumeYes bool) {
