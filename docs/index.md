@@ -30,4 +30,6 @@ features:
     details: Dump, import, query, live monitoring (db top), and privacy filters (--no-pii, --no-noise) for complete DB workflows.
   - title: CLI + Desktop Parity
     details: Same core engine in both CLI and Wails Desktop app — live logs, quick actions, and shell launcher in a polished GUI.
+  - title: Code Audit & Profiler
+    details: phpcs + phpstan lint with a pub/media webshell guard, diff-scoped runs for PR review, and a one-shot Magento profiler capture. Every run is kept as an immutable session.
 ---

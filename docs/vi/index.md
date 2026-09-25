@@ -30,4 +30,6 @@ features:
     details: Hỗ trợ dump, import, query, giám sát real-time (db top) và bộ lọc bảo mật (--no-pii, --no-noise) cho toàn bộ quy trình làm việc với DB.
   - title: CLI + Desktop Parity
     details: Sử dụng chung một core engine cho cả CLI và ứng dụng Wails Desktop — live logs, quick actions và trình chạy shell trong một giao diện GUI đẹp mắt.
+  - title: Code Audit & Profiler
+    details: Lint bằng phpcs + phpstan kèm media guard chặn webshell trong pub/media, chạy theo diff khi review PR, và chụp Magento profiler chỉ bằng một lệnh. Mỗi lần chạy được lưu thành một session bất biến.
 ---
