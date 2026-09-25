@@ -75,7 +75,7 @@ go build -o govard cmd/govard/main.go
 
 Beta releases use the tag format `vX.Y.Z-beta.N` (e.g. `v1.60.0-beta.1`),
 tagged directly from the current commit — no version bump in `root.go`,
-`app.go`, `package.json`, `wails.json`, or `CHANGELOG.md` is needed for a
+`app.go`, `package.json`, or `CHANGELOG.md` is needed for a
 beta. Pushing the tag triggers the same `.github/workflows/release.yml`
 pipeline as a stable release; `.goreleaser.yml`'s `prerelease: auto` marks
 the resulting GitHub Release as a prerelease, so it won't appear via

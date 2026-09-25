@@ -260,22 +260,36 @@ scripts) — never commit a version literal for the release itself.
 
 ## Desktop App Development
 
-**Dev mode (live backend):**
+The desktop app runs on Wails v3, and the authoritative page is
+`docs/workflows/desktop-app.md` (Vietnamese: `docs/vi/workflows/desktop-app.md`).
+Read that before touching `desktop/` or `internal/desktop/`; it owns the dev
+loop, the bindings workflow, and the platform floor.
+
+The three things that bite most often:
+
+- **The frontend is generated partly.** `desktop/frontend/bindings/**` comes from
+  `make bindings` (Go services are the source of truth) and is committed;
+  `make bindings-check` fails when it is stale, and CI runs it. The generator
+  needs `-f "-tags desktop"`; without the tag it reports zero services and still
+  exits 0.
+- **The frontend must be built before any desktop binary.** `make frontend`
+  writes `desktop/frontend/dist`, which the binary embeds. A build that skips it
+  ships the previous UI, silently.
+- **Linux needs GTK 4 and WebKitGTK 6.0** (`libgtk-4-dev`, `libwebkitgtk-6.0-dev`
+  to build; `libgtk-4-1`, `libwebkitgtk-6.0-4` at runtime): Ubuntu 24.04+,
+  Debian 13+. Ubuntu 22.04, Debian 12 and every non-Linux platform install the
+  CLI only, and macOS ships no desktop app until the cgo build returns.
+
 ```bash
-DISPLAY=:1 govard desktop --dev
+make frontend                      # Vite build into desktop/frontend/dist
+go run ./cmd/govard desktop --dev  # Vite HMR on :5173 plus a Go rebuild
 ```
-Compiles backend and serves frontend at `http://localhost:34115`
 
-**Testing UI:** Navigate to `http://localhost:34115` to see real projects from Docker
-
-| Path | Purpose |
-|------|---------|
-| `desktop/frontend/index.html` | Main HTML entry |
-| `desktop/frontend/main.js` | Bootstrap, event wiring |
-| `desktop/frontend/services/bridge.js` | Wails Go backend RPC |
-
-- Via Wails dev: full backend, real project data
-- Direct file open: mock data, bridge unavailable
+Everything the frontend calls goes through `desktop/frontend/services/bridge.js`
+(a route table onto the generated bindings) and every event subscription through
+`desktop/frontend/services/events.js`; two Go tests fail if another module
+touches the runtime or the bindings, and a third fails if a route no longer
+matches the generated bindings.
 
 ## Project-Specific Notes
 

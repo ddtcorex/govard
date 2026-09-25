@@ -233,34 +233,23 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      # scripts/build-macos-pkg.sh runs `make frontend` before the desktop build.
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-
-      # pnpm is installed with npm rather than pnpm/action-setup: this repo
-      # allows selected actions only, and that action is not on the allowlist,
-      # which fails the whole run at startup with zero jobs.
-      - name: Install pnpm
-        run: |
-          PNPM_VERSION="$(node -p "require('./desktop/frontend/package.json').packageManager.replace(/^pnpm@/, '')")"
-          npm install -g "pnpm@${PNPM_VERSION}"
-          pnpm --version
-
-      - name: Build macOS pkg and desktop archive
+      # scripts/build-macos-pkg.sh builds the CLI only: the macOS desktop app
+      # returns with the cgo .app build (Spec 3). This job therefore needs no
+      # Node, no pnpm, and produces no desktop archive.
+      - name: Build macOS pkg
         run: ./scripts/build-macos-pkg.sh "${GITHUB_REF_NAME}" "${{ matrix.arch }}" dist
 
       - name: Upload macOS assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/*.pkg dist/*.tar.gz --clobber
+        run: gh release upload "${GITHUB_REF_NAME}" dist/*.pkg --clobber
 
       - name: Append checksums for macOS assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release download "${GITHUB_REF_NAME}" -p checksums.txt -O dist/checksums.txt --clobber
-          (cd dist && shasum -a 256 *.tar.gz >> checksums.txt)
+          (cd dist && shasum -a 256 *.pkg >> checksums.txt)
           gh release upload "${GITHUB_REF_NAME}" dist/checksums.txt --clobber
 
   # Publishes the thin installer wrapper (npm/) as @ddtcorex/govard.
