@@ -15,7 +15,6 @@
 // import: preview files must stay clear of the runtime and the bindings path,
 // which tests/desktop_frontend_bridge_guard_test.go enforces.
 import { __setBindingsLoaderForTest, loadGeneratedModules } from "../services/bridge.js";
-import { getState } from "../state/store.js";
 import { createRecordingLoader } from "./record.js";
 
 // Vite's HMR channel, not an HTTP POST: the app window's origin is the Wails
@@ -32,10 +31,13 @@ const post = (entry) => {
   return Promise.resolve();
 };
 
+// No module/file name is sent: the Vite plugin owns the fixture file and names it
+// from GOVARD_PREVIEW_RECORD_NAME, or after the service. Naming it after the
+// sidebar mode (what this used to do) mixed unrelated routes into one dump and
+// never matched the name a behaviour scenario installs.
 __setBindingsLoaderForTest(
   createRecordingLoader({
     loadReal: loadGeneratedModules,
     post,
-    getModule: () => getState().sidebarMode,
   }),
 );
