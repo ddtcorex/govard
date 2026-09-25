@@ -151,6 +151,25 @@ func ValidateSandboxPHP(php string) (string, error) {
 	return trimmed, nil
 }
 
+// SandboxPHPDefault resolves the PHP series a sandbox image provides when the
+// operator did not name one: the project's own normalized stack version, so a
+// rehearsal builds the interpreter the application actually runs instead of
+// the base image's older series. Empty (and "none", which means the project
+// needs no PHP at all) keeps the previous behavior — the base image's own
+// version. A stack value that is not a sandbox series keeps it too: refusing
+// there would break projects whose stack names a version the sandbox cannot
+// render, and the base image is the safe fallback either way.
+func SandboxPHPDefault(stackPHP string) string {
+	trimmed := strings.TrimSpace(stackPHP)
+	if trimmed == "" || strings.EqualFold(trimmed, "none") {
+		return ""
+	}
+	if series, err := ValidateSandboxPHP(trimmed); err == nil {
+		return series
+	}
+	return ""
+}
+
 // sandboxPHPVersion is `major.minor`, which is what every PHP packaging convention
 // (Debian's `php<series>-*` and sury's repository) keys on.
 var sandboxPHPVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)

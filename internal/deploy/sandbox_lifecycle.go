@@ -94,6 +94,12 @@ type SandboxRequest struct {
 	// PHP is the series the image must provide, for example "8.4". Empty keeps
 	// the base image's own version.
 	PHP string
+	// PHPDefault is the series a *new* container is built for when PHP is empty,
+	// from the project's own `stack.php_version`. It is a default, not a
+	// request: a reused container keeps the series it ships and is never
+	// refused for disagreeing with it. A value that is not a sandbox series is
+	// ignored, which keeps the base image's own version.
+	PHPDefault string
 	// WebRoot is where inside the served path the web server serves from, from the
 	// project's `stack.web_root` (`/pub` for a storefront served from a subdirectory). Empty serves the served path
 	// itself, which is what a project with no web root has.
@@ -144,8 +150,13 @@ type SandboxRequest struct {
 	SeedEnvMapping map[string]string
 	// EnvRewriter rewrites the env file for the sandbox. Nil skips the file.
 	EnvRewriter SeedEnvRewriter
-	Out         io.Writer
-	Probe       SandboxPortProbe
+	// DBRewrite points the seeded database at the sandbox after the import
+	// (a base_url that still names the origin, for example). Nil skips it,
+	// and so does a sandbox with no web tier: without a web URL a rewrite
+	// would point the database at nothing.
+	DBRewrite engine.SandboxSeedDBRewrite
+	Out       io.Writer
+	Probe     SandboxPortProbe
 }
 
 // SandboxState is what the sandbox commands report and what `down` needs to undo.
@@ -269,6 +280,10 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		if err != nil {
 			return nil, err
 		}
+	} else if php == "" {
+		// Only a container about to be built takes the default: a reused one is
+		// described by what it ships, above.
+		php = SandboxPHPDefault(request.PHPDefault)
 	}
 
 	spec := SandboxSpec{

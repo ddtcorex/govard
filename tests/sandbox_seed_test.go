@@ -531,6 +531,9 @@ func TestSandboxSeedRegistryServesMagento2(t *testing.T) {
 	if definition.Rewrite == nil {
 		t.Fatal("magento2 registered no env rewriter")
 	}
+	if definition.DBRewrite == nil {
+		t.Fatal("magento2 registered no database rewrite for the seeded base_url")
+	}
 }
 
 func TestSandboxSeedRegistryIgnoresUnknownFrameworks(t *testing.T) {
@@ -555,5 +558,111 @@ func TestSandboxSeedHandsOwnershipToDeployer(t *testing.T) {
 	want := fmt.Sprintf("chown -R %d:%d", deploy.SandboxUserUID, deploy.SandboxUserGID)
 	if !fake.has(want) {
 		t.Errorf("the seed must hand the tree to the deploy user (%q), got: %v", want, fake.calls)
+	}
+}
+
+// The seed rewrites one env file, but a framework's live configuration does not
+// always live in a file: Magento's base_url lives in the database the seed just
+// imported. A seeded sandbox that keeps the origin's base_url answers the
+// verify check with a redirect to the origin domain — found on a real Magento 2
+// rehearsal — so the seed has to point the framework's database at itself.
+func TestSandboxSeedRunsTheDBRewrite(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	fake.answers["80/tcp"] = "127.0.0.1:32768\n"
+	fake.answers["cat app/etc/env.php"] = "<?php return array('db' => array('table_prefix' => 'mg_'));\n"
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	var gotContent []byte
+	var gotBaseURL string
+	calls := 0
+	rewrite := func(envContent []byte, baseURL string) []string {
+		calls++
+		gotContent = envContent
+		gotBaseURL = baseURL
+		return []string{"UPDATE mg_core_config_data SET value='http://127.0.0.1:32768/' WHERE path='web/unsecure/base_url'"}
+	}
+
+	request := seedSandboxUpRequest(t, root, origin)
+	request.Profile = deploy.SandboxProfilePHP
+	request.SeedDBPassword = "s3cret-pw"
+	request.SeedEnvSource = "app/etc/env.php"
+	request.SeedAppContainer = "seed-shop-php-1"
+	request.DBRewrite = rewrite
+	if _, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("the db rewrite ran %d times, want once", calls)
+	}
+	if gotBaseURL != "http://127.0.0.1:32768/" {
+		t.Errorf("base url = %q, want the sandbox web url", gotBaseURL)
+	}
+	if !strings.Contains(string(gotContent), "table_prefix") {
+		t.Errorf("the rewrite must see the origin env content, got %q", gotContent)
+	}
+	// The import plus the one statement travel the same mysql shape.
+	imports := 0
+	for _, call := range fake.calls {
+		if strings.Contains(strings.Join(call, " "), "mysql -u magento magento") {
+			imports++
+		}
+	}
+	if imports != 2 {
+		t.Errorf("mysql ran %d times, want the import plus the one statement", imports)
+	}
+	for _, call := range fake.calls {
+		for _, argument := range call {
+			if strings.Contains(argument, "s3cret-pw") {
+				t.Fatalf("the password travelled in argv: %v", call)
+			}
+		}
+	}
+}
+
+// Without a web tier the sandbox has no URL of its own: a rewrite would point
+// the database at nothing, so `basic` must skip it even when one is registered.
+func TestSandboxSeedSkipsTheDBRewriteWithoutAWebPort(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	calls := 0
+	request := seedSandboxUpRequest(t, root, origin)
+	request.DBRewrite = func(envContent []byte, baseURL string) []string {
+		calls++
+		return []string{"UPDATE x SET y='z'"}
+	}
+	if _, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("the db rewrite ran %d times without a web port, want none", calls)
+	}
+}
+
+// A rewrite that produces nothing (a table prefix the framework refuses to put
+// in SQL, for example) leaves the origin's URLs in place. That must be said,
+// not skipped in silence: the symptom arrives much later, as a redirect in the
+// verify check.
+func TestSandboxSeedNamesAnEmptyDBRewrite(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	fake.answers["80/tcp"] = "127.0.0.1:32768\n"
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	var out bytes.Buffer
+	request := seedSandboxUpRequest(t, root, origin)
+	request.Profile = deploy.SandboxProfilePHP
+	request.Out = &out
+	request.DBRewrite = func([]byte, string) []string { return nil }
+	if _, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	if !strings.Contains(out.String(), "nothing to rewrite in the seeded database") {
+		t.Fatalf("an empty rewrite must be reported, got:\n%s", out.String())
 	}
 }

@@ -1330,6 +1330,9 @@ appears in the project list; its state lives under the origin's
 logical database dump (the origin keeps running — nothing is stopped or
 mutated), the media tree, and the env file rewritten for the sandbox (base_url
 becomes the sandbox web URL; container-local hosts stay as they are). The dump
+is followed by the framework-owned database rewrite where one is registered
+(Magento's base_url across every scope), so the seeded site answers at the
+sandbox URL instead of redirecting to the origin. The dump
 and the media tree are **streamed** from the origin container into the sandbox
 container through the govard process, one line of SQL (and one tar block) at a
 time, so seeding a multi-gigabyte database costs buffers rather than a copy of
@@ -1390,7 +1393,10 @@ plain HTTP, so treat it as a local-development convenience and never expose
 it beyond the machine.
 
 `--php` picks the PHP series the image provides, for example `--php 8.4`; without
-it the image keeps the base distribution's own version. The series comes from the
+it a new sandbox is built for the project's `stack.php_version` when it names a
+series, and for the base distribution's own version otherwise, while an existing
+sandbox keeps the series it ships (only a named `--php` can disagree with it, and
+that is refused with `--recreate`). The series comes from the
 sury repository and the image's `php` binary, its extensions, `php_bin` and the
 `php_version` the remote declares all follow it — so a project whose
 `composer.lock` requires a newer PHP than the base image carries can be rehearsed

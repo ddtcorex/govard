@@ -48,7 +48,9 @@ Because ` + "`sandbox`" + ` is a top-level command, deploy to it with the flag f
 
 Profiles: basic (sshd, rsync, git), php (adds php-cli, composer, node) and full
 (adds a database and a cache). --php picks the PHP series the image provides
-(e.g. --php 8.4); without it the image keeps the base distribution's version.
+(e.g. --php 8.4); without it a new sandbox is built for the project's
+stack.php_version when it names a series, and the base distribution's version
+otherwise, while an existing sandbox keeps the series it ships.
 The sandbox then declares that series to the pipeline, so a project whose
 composer.lock needs a newer PHP can be rehearsed against the PHP its target
 actually runs. --docroot shapes the target so the publish strategy resolves the
@@ -76,7 +78,7 @@ var (
 
 func init() {
 	sandboxUpCmd.Flags().String("profile", deploy.DefaultSandboxProfile, "Container contents: basic, php or full")
-	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default: the base image's own; no effect with --profile basic)")
+	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default for a new sandbox: stack.php_version when it names a series, else the base image's own; an existing sandbox keeps its series; no effect with --profile basic)")
 	sandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	sandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
 	sandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: start with an empty sandbox (no DB, no media, no env file)")
@@ -122,6 +124,10 @@ func sandboxCommandRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	}
 
 	profile, _ := cmd.Flags().GetString("profile")
+	// `--php` is the request; the project's normalized stack version is only the
+	// default a new image is built for. Sending the default as the request made
+	// a bare `up` refuse an existing sandbox built for another series, and
+	// describe a base-image sandbox as a series its image does not ship.
 	php, _ := cmd.Flags().GetString("php")
 	docRoot, _ := cmd.Flags().GetString("docroot")
 	layout, _ := cmd.Flags().GetString("layout")
@@ -157,6 +163,7 @@ func sandboxCommandRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		ProjectName: config.ProjectName,
 		Profile:     profile,
 		PHP:         php,
+		PHPDefault:  config.Stack.PHPVersion,
 		// Where the web server serves from comes from the project, not from a flag:
 		// `stack.web_root` is already the answer for the local environment, and two
 		// answers would be one too many.
@@ -187,9 +194,10 @@ func sandboxCommandRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 }
 
 // seedSandboxFramework fills the framework-owned half of the snapshot: the app
-// container, the media/env paths and the rewriter, all from the framework's
-// registered seed definition — never from a per-framework switch here. A
-// framework with no definition seeds the database only.
+// container, the media/env paths, the rewriter and the post-import database
+// rewrite, all from the framework's registered seed definition — never from a
+// per-framework switch here. A framework with no definition seeds the database
+// only.
 func seedSandboxFramework(config engine.Config, request *deploy.SandboxRequest) {
 	definition, ok := engine.SandboxSeedFor(config.Framework)
 	if !ok {
@@ -199,6 +207,7 @@ func seedSandboxFramework(config engine.Config, request *deploy.SandboxRequest) 
 	shared := deploy.SandboxDefaultPaths().DeployPath + "/shared"
 	request.SeedAppContainer = appContainer
 	request.EnvRewriter = definition.Rewrite
+	request.DBRewrite = definition.DBRewrite
 	if definition.MediaPath != "" {
 		request.SeedMediaSource = conventions.DefaultWorkDir + "/" + definition.MediaPath
 		request.SeedMediaTarget = shared + "/" + definition.MediaPath
