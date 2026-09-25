@@ -1,0 +1,48 @@
+[
+  {
+    "service": "EnvironmentService",
+    "method": "GetDashboard",
+    "args": [],
+    "result": {
+      "activeEnvironments": 1,
+      "runningServices": 2,
+      "queuedTasks": 0,
+      "activeSummary": "",
+      "servicesSummary": "",
+      "queueSummary": "",
+      "environments": [
+        {
+          "project": "sample-project",
+          "domain": "sample-project.test",
+          "name": "sample-project",
+          "framework": "laravel",
+          "technologies": [],
+          "php": "",
+          "database": "",
+          "services": [{ "name": "nginx" }, { "name": "php" }],
+          "serviceTargets": [],
+          "status": "running"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "service": "LogService",
+    "method": "GetLogsForService",
+    "args": [],
+    "result": "fixture line one\nfixture line two\n"
+  },
+  {
+    "service": "LogService",
+    "method": "StartLogStreamForService",
+    "args": [],
+    "result": ""
+  },
+  {
+    "service": "LogService",
+    "method": "StopLogStream",
+    "args": [],
+    "result": ""
+  }
+]
