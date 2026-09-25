@@ -6,6 +6,7 @@ import {
   filterLogsText,
   resolveLogTarget,
   resolveServiceTargets,
+  severityChipClass,
 } from "../modules/logs.js";
 import { getState, setState } from "../state/store.js";
 import { useStore } from "../state/useStore.js";
@@ -51,13 +52,6 @@ const serviceChipClass = (active: boolean) =>
     active
       ? "bg-primary/20 text-primary dark:text-white border-primary/30 shadow-[0_0_12px_rgba(13,242,89,0.1)]"
       : "text-text-tertiary dark:text-slate-400 border-transparent hover:text-text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-surface-secondary transition-all"
-  }`;
-
-const severityChipClass = (active: boolean) =>
-  `h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors ${
-    active
-      ? "bg-primary/20 text-primary dark:text-white border-primary/30"
-      : "bg-surface-secondary dark:bg-surface-secondary text-text-tertiary dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-surface-primary hover:text-text-primary dark:hover:text-white transition-all"
   }`;
 
 const SEVERITIES: Array<{ value: string; label: string }> = [

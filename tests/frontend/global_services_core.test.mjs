@@ -239,12 +239,35 @@ test("the deck island owns the health, strip and feedback elements", async () =>
   }
 });
 
-test("the logs panel is still delegate markup until 5b migrates it", async () => {
+test("the log pane's controls live in its island, not in the entry points", async () => {
+  const island = await readIsland("GlobalLogsPanel.tsx");
+  for (const id of [
+    "globalLogSearch",
+    "globalLogSeverity",
+    "globalLogServiceName",
+    "globalLogViewport",
+    "globalLogOutput",
+    "globalToggleLive",
+  ]) {
+    assert.equal(island.includes(`id="${id}"`), true, `missing ${id} in the log pane island`);
+  }
+  for (const testid of [
+    "refresh-global-logs",
+    "clear-global-logs",
+    "download-global-logs",
+    "global-toggle-live",
+  ]) {
+    assert.equal(island.includes(`data-testid="${testid}"`), true, `missing ${testid}`);
+  }
+
+  // ... and the entry points hand the whole panel to one container instead.
   for (const name of ["index.html", "preview.html"]) {
     const html = await readEntryPoint(name);
-    for (const id of ["globalLogSearch", "globalLogSeverity"]) {
-      assert.equal(html.includes(`id="${id}"`), true, `${name} is missing ${id}`);
-    }
+    assert.equal(
+      html.includes('id="globalLogsIsland"'),
+      true,
+      `${name} is missing the log pane container`,
+    );
     for (const action of [
       "toggle-global-live",
       "refresh-global-logs",
@@ -254,8 +277,8 @@ test("the logs panel is still delegate markup until 5b migrates it", async () =>
     ]) {
       assert.equal(
         html.includes(`data-action="${action}"`),
-        true,
-        `${name} is missing ${action}`,
+        false,
+        `${name} still routes ${action} through the delegate`,
       );
     }
   }

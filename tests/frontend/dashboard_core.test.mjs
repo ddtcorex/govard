@@ -141,11 +141,20 @@ test("sidebar mode switch drives global services panel on the right", async () =
   for (const id of [
     "tab-global-services",
     "globalServicesList",
-    "globalLogOutput",
     "sidebarPanel-environments",
   ]) {
     assert.equal(html.includes(`id="${id}"`), true, `missing ${id}`);
   }
+  // The log pane's own ids live in its island now, alongside the card list's.
+  const logPane = await readFile(
+    new URL("../../desktop/frontend/islands/GlobalLogsPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    logPane.includes('id="globalLogOutput"'),
+    true,
+    "missing globalLogOutput in the log pane island",
+  );
   assert.equal(
     html.includes('id="sidebarPanel-global-services"'),
     false,

@@ -45,8 +45,7 @@ test("the ops deck and the card list render the fixture through the islands", as
   await session.waitFor(`document.getElementById("globalServiceHealthPercent").textContent`, "67%");
 
   // Both migrated containers are React's now, so nothing in either may carry the
-  // attribute main.js's document-wide delegate resolves (D5). The Logs panel
-  // beside them is still vanilla markup and keeps its own data-action.
+  // attribute main.js's document-wide delegate resolves (D5).
   for (const container of [DECK, LIST]) {
     assert.equal(
       await session.evaluate(`document.querySelectorAll('${container} [data-action]').length`),
@@ -192,6 +191,125 @@ test("a bulk action and a card action each reach the bridge exactly once", async
     ),
     true,
     "the selected card keeps its selected ring",
+  );
+
+  assert.deepEqual(session.consoleErrors, []);
+});
+
+test("the log pane renders, filters and opens one stream, and stops on unmount", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await loadGlobalServices(session);
+
+  // The whole tab is React's after this change, not just the two deck containers.
+  assert.equal(
+    await session.evaluate(`document.querySelectorAll('#tab-global-services [data-action]').length`),
+    0,
+    "the migrated tab must carry no data-action for main.js's delegate",
+  );
+
+  // The pane's own Refresh loads the selected service's logs.
+  await session.evaluate(`document.querySelector("[data-testid='refresh-global-logs']").click()`);
+  await session.waitFor(
+    `document.getElementById("globalLogOutput").textContent.includes("serving sample-project.test")`,
+    true,
+  );
+
+  // The severity strip is derived from the store, so Error hides the one line
+  // the fixture returns and All brings it back.
+  await session.evaluate(`document.querySelector("[data-testid='global-severity-error']").click()`);
+  await session.waitFor(
+    `document.getElementById("globalLogOutput").textContent`,
+    "No logs match the current filters.",
+  );
+  await session.evaluate(`document.querySelector("[data-testid='global-severity-all']").click()`);
+  await session.waitFor(
+    `document.getElementById("globalLogOutput").textContent.includes("serving sample-project.test")`,
+    true,
+  );
+
+  // Live: the pane prefers the backend stream, so one click opens exactly one.
+  const before = (await calls(session)).length;
+  await session.evaluate(`document.querySelector("[data-testid='global-toggle-live']").click()`);
+  await session.waitFor(`document.getElementById("globalToggleLive").textContent`, "Live: On");
+  await session.waitFor(
+    `window.__govardPreview.getCalls().some((c) => c.method === "StartGlobalServiceLogStream")`,
+    true,
+  );
+  const after = await calls(session);
+  assert.equal(
+    after.slice(before).filter((c) => c.method === "StartGlobalServiceLogStream").length,
+    1,
+    "one click must open exactly one stream",
+  );
+
+  const shot = await session.screenshot({ x: 0, y: 0, ...VIEWPORT });
+  assert.ok(shot.length > 0, "the scenario captures the rendered log pane");
+  writeFileSync(join(tmpdir(), "global-logs-island.png"), shot);
+
+  // Unmounting the island is what stops the pane: neither live path outlives it,
+  // where the vanilla controller's interval and subscriptions had no owner.
+  const logCalls = async () =>
+    (await calls(session)).filter(
+      (c) => c.method === "GetGlobalServiceLogs" || c.method.includes("LogStream"),
+    ).length;
+  await session.evaluate(`window.__govardGlobalLogsIsland.unmount()`);
+  const settled = await logCalls();
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  assert.equal(await logCalls(), settled, "the log pane kept calling after unmount");
+
+  assert.deepEqual(session.consoleErrors, []);
+});
+
+test("a live pane whose stream is unavailable falls back to the poll, and unmounting stops it", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  // This bundle answers the stream route with an error, which is the one way a
+  // scenario can reach the polling fallback: the preview runs with an event
+  // runtime, so the stream path is otherwise always available.
+  await session.evaluate(`window.__govardPreview.reset()`);
+  await session.evaluate(`window.__govardPreview.installFixtures("global-logs-poll")`);
+  await session.evaluate(`document.getElementById("refresh").click()`);
+  await session.waitFor(`document.querySelector("${CARD}") !== null`, true, {
+    timeoutMs: 10000,
+  });
+
+  await session.evaluate(`document.querySelector("[data-testid='global-toggle-live']").click()`);
+  await session.waitFor(`document.getElementById("globalToggleLive").textContent`, "Live: On");
+  const beforePoll = (await calls(session)).filter(
+    (c) => c.method === "GetGlobalServiceLogs",
+  ).length;
+  // Two polls after the immediate load prove the interval is really running.
+  await session.waitFor(
+    `window.__govardPreview.getCalls().filter((c) => c.method === "GetGlobalServiceLogs").length >= ${beforePoll + 3}`,
+    true,
+    { timeoutMs: 8000 },
+  );
+
+  // Let an in-flight poll land before the count is taken. Only the log route is
+  // counted: the footer's version and metrics loops run whatever this pane does.
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await session.evaluate(`window.__govardGlobalLogsIsland.unmount()`);
+  const settled = (await calls(session)).filter(
+    (c) => c.method === "GetGlobalServiceLogs",
+  ).length;
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  assert.equal(
+    (await calls(session)).filter((c) => c.method === "GetGlobalServiceLogs").length,
+    settled,
+    "the global logs poll survived unmount",
   );
 
   assert.deepEqual(session.consoleErrors, []);

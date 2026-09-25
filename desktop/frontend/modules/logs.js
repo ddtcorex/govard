@@ -154,28 +154,12 @@ export const resolveServiceTargets = (
 };
 
 /**
- * Marks the active chip of a severity strip. The logs island computes its own
- * class names from state; the global-services tab still drives its strip
- * through this helper until it migrates too, which is why it stays here.
+ * The severity chip classes, shared by the two log panes now that both render
+ * their strip from state instead of syncing a container's buttons by hand.
  */
-export const syncSeveritySelector = (container, selectedSeverity = "all") => {
-  if (!container) {
-    return "all";
-  }
-  const severities = ["all", "error", "warn"];
-  const buttons = container.querySelectorAll("button[data-severity]");
-
-  buttons.forEach((btn) => {
-    const sev = btn.dataset.severity;
-    const isActive = sev === selectedSeverity;
-    const baseClass =
-      "h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors";
-    const activeClass = "bg-primary/20 text-primary dark:text-white border-primary/30";
-    const inactiveClass =
-      "bg-surface-secondary dark:bg-surface-secondary text-text-tertiary dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-surface-primary hover:text-text-primary dark:hover:text-white transition-all";
-
-    btn.className = `${baseClass} ${isActive ? activeClass : inactiveClass}`;
-  });
-
-  return selectedSeverity;
-};
+export const severityChipClass = (active = false) =>
+  `h-7 px-3 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors ${
+    active
+      ? "bg-primary/20 text-primary dark:text-white border-primary/30"
+      : "bg-surface-secondary dark:bg-surface-secondary text-text-tertiary dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-surface-primary hover:text-text-primary dark:hover:text-white transition-all"
+  }`;

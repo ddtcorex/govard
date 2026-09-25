@@ -32,6 +32,8 @@ window.__govardPreviewMetricsIntervalMs = 1000;
 // production 2 s, and exposes the island handle as window.__govardLogsIsland, so
 // a behaviour test can watch the poll run and then prove unmounting stops it.
 window.__govardPreviewLogsPollMs = 1000;
+// The global-services log pane polls on the same terms.
+window.__govardPreviewGlobalLogsPollMs = 1000;
 // main.js then exposes the update prompt model as window.__govardUpdatePromptModel,
 // so a behaviour test can stop the 12 s startup schedule and run each background
 // check itself instead of waiting on (and racing) the production timer.
