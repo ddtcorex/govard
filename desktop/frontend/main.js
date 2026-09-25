@@ -21,7 +21,6 @@ import {
   syncSeveritySelector,
   renderLogsTab,
 } from "./modules/logs.js";
-import { createMetricsController } from "./modules/metrics.js";
 import {
   createOnboardingController,
   renderOnboardingModal,
@@ -36,6 +35,9 @@ import {
   renderSettingsDrawer,
 } from "./modules/settings.js";
 import { createUpdateNotifierController } from "./modules/update-notifier.js";
+import { createElement } from "react";
+import { mountIsland } from "./islands/mount.js";
+import { MetricsFooter } from "./islands/MetricsFooter.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
 import { getState, setState } from "./state/store.js";
@@ -166,8 +168,6 @@ const getLiveRefs = () => ({
   heroStopBtn: byId("heroStopBtn"),
   heroPullBtn: byId("heroPullBtn"),
   footerVersion: byId("footerVersion"),
-  footerCPU: byId("footerCPU"),
-  footerMemory: byId("footerMemory"),
   envVarsList: byId("envVarsList"),
   remotesList: byId("remotesList"),
   remotesWarnings: byId("remotesWarnings"),
@@ -189,7 +189,6 @@ const refreshRefs = () => {
   // Propagate updated refs to controllers if they don't hold the object by reference
   // (Most do, but we keep this for safety and explicit update triggers)
   if (logsController?.updateRefs) logsController.updateRefs(refs);
-  if (metricsController?.updateRefs) metricsController.updateRefs(refs);
   if (remotesController?.updateRefs) remotesController.updateRefs(refs);
   if (settingsController?.updateRefs) settingsController.updateRefs(refs);
   if (updateNotifierController?.updateRefs)
@@ -991,12 +990,23 @@ const logsController = createLogsController({
   onToast: showToast,
 });
 
-const metricsController = createMetricsController({
-  bridge: desktopBridge,
-  refs,
-  onStatus: setStatus,
-  getProject: () => getState().selectedProject,
-});
+// The footer readout is a React island that owns its own polling interval;
+// refreshDashboard reaches it through the function it registers. The preview
+// (preview/bootstrap.js) sets a short interval so a behaviour test can observe
+// the polling stop on unmount; production never defines that global.
+let refreshMetrics = async () => null;
+const metricsIsland = mountIsland(
+  "metricsIsland",
+  createElement(MetricsFooter, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    registerRefresh: (fn) => {
+      refreshMetrics = fn;
+    },
+    intervalMs: window.__govardPreviewMetricsIntervalMs ?? 15000,
+  }),
+);
+if (window.__govardPreviewMetricsIntervalMs) window.__govardMetricsIsland = metricsIsland;
 
 const remotesController = createRemotesController({
   bridge: desktopBridge,
@@ -1131,7 +1141,7 @@ const refreshDashboard = async (options = {}) => {
     } catch (e) {
       console.error("[refreshDashboard] renderProjectHero error:", e);
     }
-    await metricsController.refresh({ silent: true });
+    await refreshMetrics({ silent: true });
     await remotesController.refresh({ silent: true });
     await globalServicesController.refresh({ silent: true });
     await logsController.refresh();
@@ -1369,10 +1379,6 @@ document.addEventListener("click", async (event) => {
 
   if (action === "refresh-logs") {
     await logsController.refresh();
-    return;
-  }
-  if (action === "refresh-metrics") {
-    await metricsController.refresh();
     return;
   }
   if (action === "browse-project") {
@@ -2032,7 +2038,6 @@ const bootstrap = async () => {
       loadFooterVersion();
     }, 1500);
 
-    metricsController.startAutoRefresh();
     updateNotifierController.scheduleBackgroundChecks();
     setStatus("Status: Ready");
   } catch (err) {
@@ -2068,6 +2073,6 @@ if (document.readyState === "loading") {
 
 window.addEventListener("beforeunload", () => {
   updateNotifierController.clearTimers();
-  metricsController.stopAutoRefresh();
+  metricsIsland?.unmount();
   globalServicesController.stopLive({ skipBridge: true });
 });

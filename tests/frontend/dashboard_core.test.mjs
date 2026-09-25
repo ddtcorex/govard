@@ -290,18 +290,27 @@ test("footer exposes system metrics refresh control", async () => {
     new URL("../../desktop/frontend/index.html", import.meta.url),
     "utf8",
   );
-  assert.equal(
-    html.includes('data-action="refresh-metrics"'),
-    true,
-    "missing refresh-metrics action in footer",
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/MetricsFooter.tsx", import.meta.url),
+    "utf8",
   );
   assert.equal(
-    html.includes('id="footerCPU"'),
+    html.includes('id="metricsIsland"'),
+    true,
+    "missing metrics island container in footer",
+  );
+  assert.equal(
+    island.includes('data-testid="refresh-metrics"'),
+    true,
+    "missing refresh-metrics control in the metrics island",
+  );
+  assert.equal(
+    island.includes('id="footerCPU"'),
     true,
     "missing footer CPU metric field",
   );
   assert.equal(
-    html.includes('id="footerMemory"'),
+    island.includes('id="footerMemory"'),
     true,
     "missing footer memory metric field",
   );

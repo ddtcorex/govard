@@ -620,19 +620,7 @@ Select a global service to view logs.</pre>
           Govard Engine <span id="footerVersion">v--</span>
         </div>
         <div class="h-3 w-px bg-border-primary shrink-0"></div>
-        <div class="flex items-center gap-1 text-[10px] text-text-tertiary font-mono">
-          <span class="material-symbols-outlined text-[14px]">memory</span>
-          <span id="footerCPU">0%</span>
-        </div>
-        <div class="flex items-center gap-1 text-[10px] text-text-tertiary font-mono">
-          <span class="material-symbols-outlined text-[14px]">hard_drive</span>
-          <span id="footerMemory">0 MB</span>
-        </div>
-        <div class="h-8 w-px bg-border-primary"></div>
-        <button data-action="refresh-metrics"
-          class="h-6 w-6 inline-flex items-center justify-center text-primary hover:text-primary-hover dark:hover:text-white transition-colors shrink-0">
-          <span class="material-symbols-outlined text-[16px]">sync</span>
-        </button>
+        <div id="metricsIsland" class="contents"></div>
       </div>
     </footer>
   </div>
