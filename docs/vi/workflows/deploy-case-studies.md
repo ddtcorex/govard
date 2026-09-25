@@ -817,6 +817,11 @@ Recipe cũng đóng góp những gì framework cần ngoài profile: với Magen
 zip`, và hai service. Danh sách đó là của ứng dụng, không phải của govard: dự án cần
 thêm một extension thì thêm vào recipe, không phải vào flag.
 
+Series PHP của image lấy từ `--php`, hoặc từ `stack.php_version` của dự án khi flag
+không được truyền và là một series — để lần diễn tập build đúng interpreter mà ứng
+dụng chạy mà không phải gõ tay mỗi lần. Series khác với container đang có sẽ bị từ
+chối kèm `--recreate`, giống như đổi profile.
+
 Profile `php` và `full` còn ship **web tier**: nginx phục vụ served path cộng
 `stack.web_root` của dự án (`/pub` với Magento) và PHP-FPM chạy bằng chính user
 deploy, nên ứng dụng ghi được những thư mục mà `deploy:writable` giao cho. `up`
@@ -852,7 +857,9 @@ bằng flag của lệnh vừa gọi tới: `up` báo đúng profile và series 
 
 Một sandbox hoàn toàn mới được seed từ môi trường gốc đang chạy ngay lúc `up`:
 dump database dạng logical (môi trường gốc vẫn chạy), cây media, và file env được
-viết lại cho sandbox (base_url thành URL web của sandbox). Không còn dựng tay:
+viết lại cho sandbox (base_url thành URL web của sandbox). Sau dump là bước rewrite
+database của framework ở những nơi đã đăng ký (base_url của Magento trên mọi scope),
+để site được seed trả lời đúng URL sandbox thay vì redirect về origin. Không còn dựng tay:
 ba bước thủ công dưới đây thuộc về thời trước seed và chỉ còn đúng với sandbox
 `--no-seed`.
 

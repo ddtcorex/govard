@@ -1256,8 +1256,9 @@ Khi dự án bật queue service RabbitMQ, management UI của nó truy cập đ
 Tài khoản mặc định `guest`/`guest` đi qua HTTP thường, nên hãy coi đó là tiện
 ích phát triển local và không bao giờ expose ra ngoài máy.
 
-`--php` chọn series PHP mà image cung cấp, ví dụ `--php 8.4`; không có thì image
-giữ version của distribution gốc. Series lấy từ repository sury và kéo theo `php`
+`--php` chọn series PHP mà image cung cấp, ví dụ `--php 8.4`; không có thì sandbox
+dùng `stack.php_version` của dự án khi nó là một series, còn không thì giữ version
+của distribution gốc. Series lấy từ repository sury và kéo theo `php`
 binary, các extension, `php_bin` và `php_version` mà remote khai — nên dự án có
 `composer.lock` đòi PHP mới hơn image gốc vẫn diễn tập được đúng interpreter mà
 target thật chạy. Series nằm trong image tag, nên đổi series là build image khác
@@ -1289,7 +1290,9 @@ phái sinh không bao giờ vào project list; state của nó nằm dưới
 `up` còn seed ứng dụng một lần, từ môi trường gốc đang chạy: dump database dạng
 logical (môi trường gốc vẫn chạy — không dừng, không sửa gì), cây media, và file
 env được viết lại cho sandbox (base_url thành URL web của sandbox; host
-container-local giữ nguyên). Dump và cây media được **stream** từ container gốc
+container-local giữ nguyên). Sau dump là bước rewrite database của framework ở
+những nơi đã đăng ký (base_url của Magento trên mọi scope), để site được seed trả
+lời đúng URL sandbox thay vì redirect về origin. Dump và cây media được **stream** từ container gốc
 sang container sandbox qua tiến trình govard, từng dòng SQL (và từng block tar)
 một, nên seed một database nhiều GB chỉ tốn buffer chứ không tốn một bản copy
 toàn bộ. Mật khẩu database đi qua environment của runtime — truyền qua tên, không

@@ -57,13 +57,23 @@ func FrameworkSupportsAuditLint(name string) bool {
 // the function the framework registered.
 type SandboxSeedRewriter func(content []byte, mapping map[string]string) (rewritten []byte, skipped []string, err error)
 
+// SandboxSeedDBRewrite builds the SQL statements that point a seeded database
+// at the sandbox, from the origin env file's content and the sandbox web URL.
+// It returns nil (or nothing) when the framework has nothing to rewrite there;
+// the deploy core runs what comes back through the sandbox mysql client, so a
+// statement must never carry a secret. Frameworks own their schema's grammar;
+// the core only dispatches the function the framework registered.
+type SandboxSeedDBRewrite func(envContent []byte, baseURL string) []string
+
 // SandboxSeedDefinition is what a framework contributes to sandbox seeding:
-// the env/media paths relative to the app workdir, and the rewriter. Absent
-// means the framework has nothing to seed beyond the database.
+// the env/media paths relative to the app workdir, the rewriter, and the
+// optional post-import database rewrite. Absent means the framework has
+// nothing to seed beyond the database.
 type SandboxSeedDefinition struct {
 	EnvPath   string
 	MediaPath string
 	Rewrite   SandboxSeedRewriter
+	DBRewrite SandboxSeedDBRewrite
 }
 
 var registeredSandboxSeeds = map[string]SandboxSeedDefinition{}

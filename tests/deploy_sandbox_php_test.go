@@ -454,6 +454,31 @@ func TestSandboxUpKeepsTheSeriesOfADormantContainer(t *testing.T) {
 	}
 }
 
+// A sandbox exists to rehearse the deploy against the interpreter the
+// application actually runs, and the project's own normalized
+// `stack.php_version` already names it — so `sandbox up` without `--php` must
+// not silently build the base image's older series for a project that needs a
+// newer one (found live: a PHP 8.5 origin rehearsed on PHP 8.2).
+func TestSandboxPHPDefaultsToTheStackVersion(t *testing.T) {
+	for _, tc := range []struct{ stack, want string }{
+		{"", ""},
+		{"  ", ""},
+		{"none", ""},
+		{"NONE", ""},
+		{"8.5", "8.5"},
+		{"  8.4\t", "8.4"},
+		// Not a sandbox series: refusing here would break projects whose stack
+		// names a version the sandbox cannot render, so the previous behavior
+		// (the base image's own version) is what an unrecognized value keeps.
+		{"8.5.1", ""},
+		{"latest", ""},
+	} {
+		if got := deploy.SandboxPHPDefault(tc.stack); got != tc.want {
+			t.Errorf("SandboxPHPDefault(%q) = %q, want %q", tc.stack, got, tc.want)
+		}
+	}
+}
+
 // Debian's nodejs (18) predates the Node 20+ current frontend toolchains need:
 // Tailwind v4's native oxide binding never lands under npm 9 (found live:
 // MODULE_NOT_FOUND tailwindcss-oxide.linux-x64-gnu.node after a green npm ci).

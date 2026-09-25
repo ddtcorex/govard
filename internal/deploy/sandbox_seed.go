@@ -357,6 +357,32 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 		return err
 	}
 
+	// The import restores the origin's rows verbatim, including any URL that
+	// names the origin: the application the sandbox serves would then answer
+	// with redirects to a host the rehearsal never meant to touch. The
+	// framework-owned rewrite points those rows at the sandbox instead. It
+	// runs only for a sandbox that serves web — without a web URL there is
+	// nothing to point at — and each statement travels the same shape as the
+	// import (password in the environment, SQL on stdin), so no secret ever
+	// reaches argv.
+	if request.DBRewrite != nil && webPort > 0 {
+		fmt.Fprintln(out, "rewriting the seeded database for the sandbox")
+		var envContent []byte
+		if request.SeedEnvSource != "" {
+			raw, err := runtime.Exec(ctx, request.SeedAppContainer, nil, "cat", request.SeedEnvSource)
+			if err != nil {
+				return fmt.Errorf("read the origin env file: %w", err)
+			}
+			envContent = []byte(raw)
+		}
+		baseURL := fmt.Sprintf("http://127.0.0.1:%d/", webPort)
+		for _, statement := range request.DBRewrite(envContent, baseURL) {
+			if err := runtime.ExecStream(ctx, sandbox, passwordEnv, strings.NewReader(statement), nil, spec.DBImportArgs...); err != nil {
+				return fmt.Errorf("rewrite the sandbox database: %w", err)
+			}
+		}
+	}
+
 	if request.SeedMediaSource != "" && request.SeedMediaTarget != "" {
 		fmt.Fprintf(out, "copying media %s\n", request.SeedMediaSource)
 		// The tar stream passes through this process between two Exec calls, so

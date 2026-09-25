@@ -83,12 +83,14 @@ func Definition() types.FrameworkDefinition {
 		PHPImageVariant:         "magento2",
 		DBDriverCategory:        "magento",
 		// Sandbox seeding: the env/media paths relative to the app workdir,
-		// plus the env.php rewriter. Other frameworks add their own entry;
-		// nothing here names a project, a host or a credential.
+		// plus the env.php rewriter and the post-import base_url rewrite.
+		// Other frameworks add their own entry; nothing here names a project,
+		// a host or a credential.
 		SandboxSeed: &engine.SandboxSeedDefinition{
 			EnvPath:   "app/etc/env.php",
 			MediaPath: "pub/media",
 			Rewrite:   RewriteMagentoEnvForSandbox,
+			DBRewrite: SandboxBaseURLStatements,
 		},
 		Upgrade:                     Upgrade,
 		RunMappingAssetPreparer:     PrepareRunMappingAssets,

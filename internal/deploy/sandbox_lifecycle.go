@@ -144,8 +144,13 @@ type SandboxRequest struct {
 	SeedEnvMapping map[string]string
 	// EnvRewriter rewrites the env file for the sandbox. Nil skips the file.
 	EnvRewriter SeedEnvRewriter
-	Out         io.Writer
-	Probe       SandboxPortProbe
+	// DBRewrite points the seeded database at the sandbox after the import
+	// (a base_url that still names the origin, for example). Nil skips it,
+	// and so does a sandbox with no web tier: without a web URL a rewrite
+	// would point the database at nothing.
+	DBRewrite engine.SandboxSeedDBRewrite
+	Out       io.Writer
+	Probe     SandboxPortProbe
 }
 
 // SandboxState is what the sandbox commands report and what `down` needs to undo.

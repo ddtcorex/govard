@@ -833,6 +833,12 @@ Magento, `libxslt1-dev`, `libzip-dev`, `libpng-dev`, `libjpeg-dev`,
 is the application's, not govard's: a project that needs one more extension adds it
 to the recipe, not to a flag.
 
+The image's PHP series comes from `--php`, or from the project's
+`stack.php_version` when the flag is unnamed and names a series — so a rehearsal
+builds the interpreter the application runs without spelling it out every time.
+A series that disagrees with an existing container is refused with `--recreate`,
+the same as a profile change.
+
 The `php` and `full` profiles also ship the **web tier**: nginx serving the served
 path plus the project's `stack.web_root` (`/pub` for Magento) and PHP-FPM running as
 the deploy user, so the application can write the directories `deploy:writable`
@@ -868,7 +874,10 @@ changes it (`--recreate`) rather than silently relabelling the container.
 
 A brand-new sandbox is seeded from the running origin environment at `up` time:
 a logical database dump (the origin keeps running), the media tree, and the env
-file rewritten for the sandbox (base_url becomes the sandbox web URL). No hand
+file rewritten for the sandbox (base_url becomes the sandbox web URL). The dump
+is followed by the framework-owned database rewrite where one is registered
+(Magento's base_url across every scope), so the rehearsed site answers at the
+sandbox instead of redirecting to the origin. No hand
 provisioning: the three manual steps below belonged to the era before seeding
 and only remain relevant for `--no-seed` sandboxes.
 
