@@ -4,10 +4,16 @@ const DEFAULT_STARTUP_DELAY_MS = 12000;
 const DEFAULT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_INTERVAL_JITTER_RATIO = 0.15;
 
-export const createUpdateNotifierController = ({
-  refs,
+/**
+ * Headless update-prompt model. The React island (islands/UpdatePrompt.tsx)
+ * reads it through useSyncExternalStore: every change publishes a new frozen
+ * snapshot and notifies subscribers. Timers and the dismiss and settings-drawer
+ * rules live here so they stay testable without a DOM.
+ */
+export const createUpdateNotifierModel = ({
   settingsController,
   onStatus,
+  isSettingsDrawerOpen,
 }) => {
   const state = {
     checking: false,
@@ -22,14 +28,6 @@ export const createUpdateNotifierController = ({
     intervalTimerID: null,
   };
 
-  const isSettingsDrawerOpen = () => {
-    const drawer = refs.settingsDrawer;
-    if (!drawer || !drawer.classList || typeof drawer.classList.contains !== "function") {
-      return false;
-    }
-    return !drawer.classList.contains("hidden");
-  };
-
   const hasUndismissedUpdate = () => {
     const latestVersion = String(state.latestVersion || "").trim();
     if (!latestVersion) {
@@ -38,39 +36,26 @@ export const createUpdateNotifierController = ({
     return latestVersion !== state.dismissedVersion;
   };
 
+  const listeners = new Set();
+  let snapshot = Object.freeze({
+    visible: false,
+    installing: false,
+    currentVersion: "",
+    latestVersion: "",
+    message: "",
+    changelog: "",
+  });
+
   const render = () => {
-    if (refs.updatePrompt) {
-      refs.updatePrompt.classList.toggle("hidden", !state.visible);
-      refs.updatePrompt.setAttribute("aria-hidden", state.visible ? "false" : "true");
-    }
-
-    if (refs.updatePromptCurrent) {
-      refs.updatePromptCurrent.textContent = state.currentVersion || "-";
-    }
-
-    if (refs.updatePromptLatest) {
-      refs.updatePromptLatest.textContent = state.latestVersion || "-";
-    }
-
-    if (refs.updatePromptMessage) {
-      refs.updatePromptMessage.textContent =
-        state.message || "A new Govard Desktop version is available.";
-    }
-
-    if (refs.updatePromptChangelog) {
-      const hasChangelog = String(state.changelog || "").trim() !== "";
-      refs.updatePromptChangelog.classList.toggle("hidden", !hasChangelog);
-      if (hasChangelog) {
-        refs.updatePromptChangelog.textContent = state.changelog;
-      }
-    }
-
-    if (refs.installUpdatePromptButton) {
-      refs.installUpdatePromptButton.disabled = state.installing;
-      refs.installUpdatePromptButton.innerHTML = state.installing
-        ? '<span class="material-symbols-outlined text-[18px]">install_desktop</span><span>Installing...</span>'
-        : '<span class="material-symbols-outlined text-[18px]">download</span><span>Download & Install</span>';
-    }
+    snapshot = Object.freeze({
+      visible: state.visible,
+      installing: state.installing,
+      currentVersion: state.currentVersion,
+      latestVersion: state.latestVersion,
+      message: state.message,
+      changelog: state.changelog,
+    });
+    for (const listener of listeners) listener();
   };
 
   const setPromptVisibility = (visible) => {
@@ -82,11 +67,6 @@ export const createUpdateNotifierController = ({
     const shouldShowPrompt = hasUndismissedUpdate() && !isSettingsDrawerOpen();
     setPromptVisibility(shouldShowPrompt);
     return shouldShowPrompt;
-  };
-
-  const updateRefs = (nextRefs) => {
-    refs = nextRefs;
-    syncWithSettingsDrawer();
   };
 
   const clearTimers = () => {
@@ -204,7 +184,11 @@ export const createUpdateNotifierController = ({
   };
 
   return {
-    updateRefs,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot: () => snapshot,
     dismissPrompt,
     syncWithSettingsDrawer,
     checkForUpdatesInBackground,

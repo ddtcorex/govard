@@ -1,0 +1,14 @@
+[
+  {
+    "service": "UpdateService",
+    "method": "CheckForUpdates",
+    "args": [],
+    "result": {
+      "currentVersion": "1.0.0",
+      "latestVersion": "1.1.0",
+      "outdated": true,
+      "message": "",
+      "changelog": "- Faster project switching in the sidebar."
+    }
+  }
+]
