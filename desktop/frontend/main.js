@@ -7,11 +7,6 @@ import {
   createOnboardingController,
   renderOnboardingModal,
 } from "./modules/onboarding.js?v=20260302";
-import {
-  createRemotesController,
-  renderRemotes,
-  renderSyncModal,
-} from "./modules/remotes.js";
 import { createSettingsController } from "./modules/settings.js";
 import { createUpdateNotifierModel } from "./modules/update-notifier.js";
 import { createElement } from "react";
@@ -23,6 +18,8 @@ import { ActiveServices } from "./islands/ActiveServices.tsx";
 import { EnvVars } from "./islands/EnvVars.tsx";
 import { EnvironmentList } from "./islands/EnvironmentList.tsx";
 import { ProjectHero } from "./islands/ProjectHero.tsx";
+import { RemotesList } from "./islands/RemotesList.tsx";
+import { SyncModal } from "./islands/SyncModal.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
@@ -33,9 +30,6 @@ console.log("==> Finished imports <==");
 
 const initUI = () => {
   renderOnboardingModal(byId("onboardingModalMount"));
-  // NOTE: do NOT call renderRemotes(tab-remotes) here — it wipes the remotesList/remotesWarnings
-  // containers. The remotesController.refresh() handles rendering when the tab is opened.
-  renderSyncModal(byId("syncOptionsModalMount"));
   refreshRefs();
 };
 
@@ -121,16 +115,6 @@ const getLiveRefs = () => ({
   heroPullBtn: byId("heroPullBtn"),
   footerVersion: byId("footerVersion"),
   envVarsList: byId("envVarsList"),
-  remotesList: byId("remotesList"),
-  remotesWarnings: byId("remotesWarnings"),
-  syncOptionsModal: byId("syncOptionsModal"),
-  syncModalStep1: byId("syncModalStep1"),
-  syncModalStep2: byId("syncModalStep2"),
-  syncModalTitle: byId("syncModalTitle"),
-  syncModalIcon: byId("syncModalIcon"),
-  syncModalRemoteName: byId("syncModalRemoteName"),
-  syncPlanOutput: byId("syncPlanOutput"),
-  syncPlanLoading: byId("syncPlanLoading"),
 });
 
 let refs = getLiveRefs();
@@ -140,7 +124,6 @@ const refreshRefs = () => {
   Object.assign(refs, newRefs);
   // Propagate updated refs to controllers if they don't hold the object by reference
   // (Most do, but we keep this for safety and explicit update triggers)
-  if (remotesController?.updateRefs) remotesController.updateRefs(refs);
   if (settingsController?.updateRefs) settingsController.updateRefs(refs);
   if (globalServicesController?.updateRefs)
     globalServicesController.updateRefs(refs);
@@ -351,262 +334,6 @@ const showLoadingToast = (
   };
 };
 
-const ansiSequencePattern = /\u001b\[[0-?]*[ -/]*[@-~]/g;
-const orphanAnsiStylePattern = /\[(?:\d{1,3}(?:;\d{1,3})*)m/g;
-
-const sanitizeSyncToastLine = (value) => {
-  const raw = String(value ?? "");
-  if (!raw) {
-    return "";
-  }
-  return raw
-    .replace(ansiSequencePattern, "")
-    .replace(orphanAnsiStylePattern, "")
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
-    .trim();
-};
-
-const sanitizeSyncPlanText = (value) => {
-  const raw = String(value ?? "");
-  if (!raw) {
-    return "";
-  }
-
-  const lines = raw.split(/\r?\n/).map((line) => sanitizeSyncToastLine(line));
-  const compact = [];
-  let previousWasBlank = false;
-
-  lines.forEach((line) => {
-    const blank = line === "";
-    if (blank) {
-      if (!previousWasBlank) {
-        compact.push("");
-      }
-      previousWasBlank = true;
-      return;
-    }
-    compact.push(line);
-    previousWasBlank = false;
-  });
-
-  return compact.join("\n").trim();
-};
-
-const getSyncPresetName = (preset) => {
-  const normalized = String(preset || "")
-    .trim()
-    .toLowerCase();
-  if (normalized === "full" || normalized === "bootstrap") {
-    return "Pull Everything";
-  }
-  if (normalized === "db") {
-    return "Pull Database";
-  }
-  if (normalized === "media") {
-    return "Pull Media";
-  }
-  if (normalized === "files") {
-    return "Pull Files";
-  }
-  return normalized || "Sync";
-};
-
-const formatSyncPlanDetails = ({
-  remoteName,
-  preset,
-  config = {},
-  optionDefs = [],
-}) => {
-  const selectedOptions = (optionDefs || [])
-    .filter((option) => option && option.key && Boolean(config[option.key]))
-    .map((option) => String(option.label || option.key));
-
-  const selectedBlock = selectedOptions.length
-    ? selectedOptions.map((option) => `- ${option}`).join("\n")
-    : "- None";
-
-  return [
-    "Selected Pull Configuration",
-    `Preset: ${getSyncPresetName(preset)}`,
-    `Remote: ${String(remoteName || "").trim() || "-"}`,
-    "Enabled options:",
-    selectedBlock,
-  ].join("\n");
-};
-
-const getSyncPresetLabel = (preset, remoteName) => {
-  if (preset === "full" || preset === "bootstrap") {
-    return `Setting up from ${remoteName}...`;
-  }
-  if (preset === "db") {
-    return `Pulling database from ${remoteName}...`;
-  }
-  if (preset === "media") {
-    return `Pulling media from ${remoteName}...`;
-  }
-  return `Syncing from ${remoteName}...`;
-};
-
-const runRemoteSyncWithProgressToast = async ({
-  project,
-  remoteName,
-  preset,
-  config = {},
-}) => {
-  const visualContainer = byId("visual-sync-progress-container");
-  const visualTitle = visualContainer?.querySelector(".visual-sync-title");
-
-  const title = getSyncPresetLabel(preset, remoteName);
-
-  setState({
-    syncingProject: project,
-    syncingRemote: remoteName,
-    syncingPreset: preset
-  });
-
-  if (visualContainer) {
-    visualContainer.classList.remove("hidden");
-    if (visualTitle) {
-      visualTitle.textContent = title;
-    }
-    // Trigger reflow to ensure CSS transition works
-    void visualContainer.offsetWidth;
-    visualContainer.classList.remove("opacity-0", "translate-y-4");
-
-    const vLine = byId("visual-sync-progress-line");
-    if (vLine) {
-      vLine.textContent = `   ${title}\n   ${"-".repeat(title.length)}\n`;
-      vLine.className = "m-0 font-mono text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-400/90 whitespace-pre-wrap break-all";
-    }
-
-    const vIndicator = visualContainer.querySelector(".visual-sync-indicator");
-    if (vIndicator) {
-      vIndicator.classList.add("bg-primary");
-      vIndicator.classList.remove("bg-rose-500");
-    }
-  }
-
-  let offStream;
-  let offCompleted;
-  let offFailed;
-  const cleanup = () => {
-    if (offStream) offStream();
-    if (offCompleted) offCompleted();
-    if (offFailed) offFailed();
-    const vInd = byId("visual-sync-progress-container")?.querySelector(".visual-sync-indicator");
-    if (vInd) {
-      vInd.classList.remove("animate-pulse");
-    }
-  };
-
-  const MAX_PROGRESS_LINES = 300;
-  let progressLines = [];
-
-  const flushProgressLines = () => {
-    const vContainer = byId("visual-sync-progress-container");
-    if (vContainer && vContainer.classList.contains("hidden")) {
-      vContainer.classList.remove("hidden", "opacity-0", "translate-y-4");
-    }
-    const vLine = byId("visual-sync-progress-line");
-    const vViewport = byId("visual-sync-scroll-viewport");
-    if (vLine) {
-      vLine.textContent = progressLines.join("\n");
-      if (vViewport) {
-        vViewport.scrollTop = vViewport.scrollHeight;
-      }
-    }
-  };
-
-  if (hasEventRuntime()) {
-    offStream = onEvent("sync:output", (payload) => {
-      // Go backend now sends batched lines joined by \n to throttle IPC events
-      const rawBatch = String(payload ?? "");
-      const batchLines = rawBatch.split("\n");
-
-      for (const raw of batchLines) {
-        // Handle carriage-return overwrite: keep only what's after the last \r
-        const crParts = raw.split("\r");
-        const lastPart = crParts[crParts.length - 1];
-        const normalized = sanitizeSyncToastLine(lastPart);
-        if (!normalized) continue;
-
-        const usesCarriageReturn = crParts.length > 1;
-        if (usesCarriageReturn && progressLines.length > 0) {
-          // Overwrite the last line (terminal-style \r behavior)
-          progressLines[progressLines.length - 1] = normalized;
-        } else {
-          progressLines.push(normalized);
-          // Cap the buffer to avoid OOM on very large syncs
-          if (progressLines.length > MAX_PROGRESS_LINES) {
-            progressLines = progressLines.slice(-MAX_PROGRESS_LINES);
-          }
-        }
-      }
-      flushProgressLines();
-    });
-
-    offCompleted = onEvent("sync:completed", (msg) => {
-      const finalMessage = sanitizeSyncToastLine(msg) || "Sync completed ✔";
-      progressLines.push("\n[SUCCESS] " + finalMessage + "\n");
-      flushProgressLines();
-      setState({ syncingRemote: null, syncingProject: null, syncingPreset: null });
-      refreshDashboard({ silent: true });
-      cleanup();
-    });
-
-    offFailed = onEvent("sync:failed", (msg) => {
-      const finalMessage = sanitizeSyncToastLine(msg) || "Sync failed";
-      const vLine = byId("visual-sync-progress-line");
-      if (vLine) {
-        vLine.classList.add("text-rose-500");
-        vLine.classList.remove("text-emerald-500/90");
-      }
-      progressLines.push("\n[FAILED] " + finalMessage + "\n");
-      flushProgressLines();
-      if (visualIndicator) {
-        visualIndicator.classList.remove("bg-primary");
-        visualIndicator.classList.add("bg-rose-500");
-      }
-      setState({ syncingRemote: null, syncingProject: null, syncingPreset: null });
-      refreshDashboard({ silent: true });
-      cleanup();
-    });
-  }
-
-  try {
-    const result = await desktopBridge.runRemoteSyncBackground(
-      project,
-      remoteName,
-      preset,
-      config,
-    );
-
-    if (result && result.startsWith("Remote sync background process failed:")) {
-      const normalized = sanitizeSyncToastLine(result) || "Sync failed";
-
-      const vLine = byId("visual-sync-progress-line");
-      const vInd = byId("visual-sync-progress-container")?.querySelector(".visual-sync-indicator");
-
-      if (vLine) {
-        vLine.classList.add("text-rose-500");
-        vLine.classList.remove("text-emerald-500/90");
-      }
-      progressLines.push("\n[FAILED] " + normalized + "\n");
-      flushProgressLines();
-
-      if (vInd) {
-        vInd.classList.remove("bg-primary");
-        vInd.classList.add("bg-rose-500");
-      }
-      cleanup();
-    }
-  } catch (err) {
-    console.error("Sync failed to start:", err);
-    setState({ syncingRemote: null, syncingProject: null, syncingPreset: null });
-    cleanup();
-  }
-};
-
 const resolveSyncConfigForPreset = async (preset) => {
   const state = getState();
   const project = state.selectedProject;
@@ -657,7 +384,7 @@ const selectProject = async (project) => {
   if (activeTabId === "logs") {
     void logsApi.refresh();
   } else if (activeTabId === "remotes") {
-    remotesController.refresh();
+    remotesApi.refresh();
   }
 };
 
@@ -701,7 +428,7 @@ const switchTab = (tabId) => {
     } else if (tabId === "remotes") {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
-      remotesController.refresh();
+      remotesApi.refresh();
     } else if (tabId === "logs") {
       scrollContainer.classList.remove("overflow-y-auto");
       scrollContainer.classList.add("overflow-hidden");
@@ -944,14 +671,56 @@ const logsIsland = mountIsland(
 );
 if (window.__govardPreviewLogsPollMs) window.__govardLogsIsland = logsIsland;
 
-const remotesController = createRemotesController({
-  bridge: desktopBridge,
-  refs,
-  getProject: () => getState().selectedProject,
-  getState,
-  onStatus: setStatus,
-  onToast: showToast,
-});
+// The remotes tab and its sync dialog are islands over the same seam the logs
+// tab uses: each registers the imperative API main.js still calls, and every
+// control they own calls back into main.js. The card buttons that open the
+// dialog live inside the list island and the dialog lives in its own mount
+// point, so the list hands the open request up and main.js routes it down.
+let remotesApi = {
+  refresh: async () => {},
+  runSync: async () => {},
+};
+let syncModalApi = {
+  open: async () => {},
+  close: () => {},
+};
+
+const remotesIsland = mountIsland(
+  "remotesIsland",
+  createElement(RemotesList, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    onOpenSyncModal: (remote, preset) => void syncModalApi.open(remote, preset),
+    // A finished or failed sync refreshes the dashboard, which is what reloads
+    // the remotes list itself - the island is the reader of the same store.
+    onSyncSettled: () => refreshDashboard({ silent: true }),
+    registerApi: (api) => {
+      remotesApi = api;
+    },
+  }),
+);
+
+const syncModalIsland = mountIsland(
+  "syncOptionsModalMount",
+  createElement(SyncModal, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    onModalBlur: toggleModalBlur,
+    onConfirmSync: ({ remote, preset, config }) => {
+      void remotesApi.runSync({
+        project: getState().selectedProject,
+        remoteName: remote,
+        preset,
+        config,
+      });
+    },
+    registerApi: (api) => {
+      syncModalApi = api;
+    },
+  }),
+);
 
 
 
@@ -997,7 +766,7 @@ const refreshDashboard = async (options = {}) => {
       console.error("[refreshDashboard] refreshServiceSelector error:", e);
     }
     await refreshMetrics({ silent: true });
-    await remotesController.refresh({ silent: true });
+    await remotesApi.refresh({ silent: true });
     await globalServicesController.refresh({ silent: true });
     await logsApi.refresh();
     await loadFooterVersion();
@@ -1033,11 +802,11 @@ const onboardingController = createOnboardingController({
     // 2. Clear onboarding modal if still open
     onboardingController.toggleModal(false);
 
-    // 3. Switch to Remotes tab (this also calls remotesController.refresh() internally)
+    // 3. Switch to Remotes tab (this also calls remotesApi.refresh() internally)
     switchTab("remotes");
 
     // 4. Force refresh to finish before exposing progress UI
-    await remotesController.refresh();
+    await remotesApi.refresh();
 
     const resolvedConfig =
       config && Object.keys(config).length > 0
@@ -1045,7 +814,7 @@ const onboardingController = createOnboardingController({
         : await resolveSyncConfigForPreset(normalizedPreset);
 
     // 5. Run sync which will unhide the progress container in Remotes tab
-    await runRemoteSyncWithProgressToast({
+    await remotesApi.runSync({
       project: projectName || normalizedProjectPath,
       remoteName: normalizedRemote,
       preset: normalizedPreset,
@@ -1328,10 +1097,6 @@ document.addEventListener("click", async (event) => {
     );
     return;
   }
-  if (action === "refresh-remotes") {
-    await remotesController.refresh();
-    return;
-  }
   if (action === "open-service-shell") {
     // Redirect to OS Terminal
     const project = targetElement.dataset.project || "";
@@ -1353,33 +1118,6 @@ document.addEventListener("click", async (event) => {
     onboardingController.toggleModal(false);
     return;
   }
-  if (action === "remote-test") {
-    await remotesController.testRemote(
-      String(targetElement.dataset.remote || ""),
-    );
-    return;
-  }
-  if (action === "open-remote-shell") {
-    await remotesController.openRemoteShell(
-      String(targetElement.dataset.remote || ""),
-      targetElement,
-    );
-    return;
-  }
-  if (action === "open-remote-db") {
-    await remotesController.openRemoteDB(
-      String(targetElement.dataset.remote || ""),
-      targetElement,
-    );
-    return;
-  }
-  if (action === "open-remote-sftp") {
-    await remotesController.openRemoteSFTP(
-      String(targetElement.dataset.remote || ""),
-      targetElement,
-    );
-    return;
-  }
   if (action === "open-settings") {
     setSettingsDrawerOpen(true);
     return;
@@ -1392,171 +1130,6 @@ document.addEventListener("click", async (event) => {
     const tab = targetElement.dataset.tab;
     if (tab) {
       switchTab(tab);
-    }
-    return;
-  }
-  if (action === "open-sync-modal") {
-    const remote = String(targetElement.dataset.remote || "");
-    const preset = String(targetElement.dataset.preset || "");
-    if (!remote || !preset) return;
-
-    setState({ currentSyncRemote: remote, currentSyncPreset: preset });
-
-    if (refs.syncModalRemoteName) {
-      refs.syncModalRemoteName.textContent = remote;
-    }
-
-    try {
-      const state = getState();
-      const project = state.selectedProject;
-      const payload = await desktopBridge.getSyncPresetOptions(project || "", preset);
-      const optionsDef = payload.options || [];
-
-      const presetConfigs = state.syncConfigs || {};
-      let config = presetConfigs[preset] || {};
-      let changed = false;
-
-      optionsDef.forEach((opt) => {
-        if (config[opt.key] === undefined) {
-          config[opt.key] = opt.defaultValue;
-          changed = true;
-        }
-      });
-
-      if (changed) {
-        setState({
-          syncConfigs: { ...presetConfigs, [preset]: config },
-          currentSyncPresetDefs: optionsDef,
-        });
-      } else {
-        setState({ currentSyncPresetDefs: optionsDef });
-      }
-
-      const container = document.getElementById("syncModalOptionsContainer");
-      if (container) {
-        remotesController.renderSyncOptions(
-          container,
-          preset,
-          optionsDef,
-          getState().syncConfigs[preset],
-        );
-      }
-    } catch (err) {
-      console.error("Failed to load sync options", err);
-    }
-
-    if (refs.syncOptionsModal) {
-      toggleModalBlur(true);
-      refs.syncOptionsModal.classList.remove("hidden");
-      // Always reset back to step 1 when opening
-      if (refs.syncModalStep1) refs.syncModalStep1.classList.remove("hidden");
-      if (refs.syncModalStep2) refs.syncModalStep2.classList.add("hidden");
-      if (refs.syncModalTitle) refs.syncModalTitle.textContent = "Sync Options";
-      if (refs.syncModalIcon) refs.syncModalIcon.textContent = "sync";
-      setTimeout(() => {
-        refs.syncOptionsModal.classList.remove("opacity-0");
-        refs.syncOptionsModal.firstElementChild.classList.remove("scale-95");
-      }, 10);
-    }
-    return;
-  }
-  if (action === "close-sync-modal") {
-    if (refs.syncOptionsModal) {
-      toggleModalBlur(false);
-      refs.syncOptionsModal.classList.add("opacity-0");
-      refs.syncOptionsModal.firstElementChild.classList.add("scale-95");
-      setTimeout(() => {
-        refs.syncOptionsModal.classList.add("hidden");
-        // Reset to step 1 after close animation
-        if (refs.syncModalStep1) refs.syncModalStep1.classList.remove("hidden");
-        if (refs.syncModalStep2) refs.syncModalStep2.classList.add("hidden");
-        if (refs.syncModalTitle)
-          refs.syncModalTitle.textContent = "Sync Options";
-        if (refs.syncModalIcon) refs.syncModalIcon.textContent = "sync";
-      }, 300);
-    }
-    return;
-  }
-  if (action === "back-to-sync-options") {
-    if (refs.syncModalStep1) refs.syncModalStep1.classList.remove("hidden");
-    if (refs.syncModalStep2) refs.syncModalStep2.classList.add("hidden");
-    if (refs.syncModalTitle) refs.syncModalTitle.textContent = "Sync Options";
-    if (refs.syncModalIcon) refs.syncModalIcon.textContent = "sync";
-    return;
-  }
-  if (action === "preview-sync-plan") {
-    const { currentSyncRemote, currentSyncPreset } = getState();
-    if (!currentSyncRemote || !currentSyncPreset) return;
-
-    const config = (getState().syncConfigs || {})[currentSyncPreset] || {};
-    const optionDefs = getState().currentSyncPresetDefs || [];
-    const planDetails = formatSyncPlanDetails({
-      remoteName: currentSyncRemote,
-      preset: currentSyncPreset,
-      config,
-      optionDefs,
-    });
-
-    // Show step 2 with loading state
-    if (refs.syncModalStep1) refs.syncModalStep1.classList.add("hidden");
-    if (refs.syncModalStep2) refs.syncModalStep2.classList.remove("hidden");
-    if (refs.syncModalTitle) refs.syncModalTitle.textContent = "Sync Preview";
-    if (refs.syncModalIcon) refs.syncModalIcon.textContent = "fact_check";
-    if (refs.syncPlanOutput) refs.syncPlanOutput.textContent = "";
-    if (refs.syncPlanLoading) refs.syncPlanLoading.classList.remove("hidden");
-    if (refs.syncPlanOutput) refs.syncPlanOutput.classList.add("hidden");
-
-    const currentProject = getState().selectedProject;
-    if (!currentProject) return;
-
-    try {
-      const plan = await desktopBridge.runRemoteSyncPreset(
-        currentProject,
-        currentSyncRemote,
-        currentSyncPreset,
-        config,
-      );
-      if (refs.syncPlanOutput) {
-        const normalizedPlan =
-          sanitizeSyncPlanText(plan) || "No plan details returned.";
-        refs.syncPlanOutput.textContent = `${planDetails}\n\n${normalizedPlan}`;
-        refs.syncPlanOutput.classList.remove("hidden");
-      }
-    } catch (err) {
-      if (refs.syncPlanOutput) {
-        const failure = sanitizeSyncPlanText(err) || "Unknown error";
-        refs.syncPlanOutput.textContent = `${planDetails}\n\nFailed to generate plan: ${failure}`;
-        refs.syncPlanOutput.classList.remove("hidden");
-      }
-    } finally {
-      if (refs.syncPlanLoading) refs.syncPlanLoading.classList.add("hidden");
-    }
-    return;
-  }
-  if (action === "toggle-sync-config") {
-    const configKey = targetElement.dataset.config;
-    const preset = targetElement.dataset.preset;
-    if (configKey && preset) {
-      const currentConfigs = getState().syncConfigs || {};
-      const currentConfig = currentConfigs[preset] || {};
-
-      const nextConfig = remotesController.toggleSyncConfig(
-        preset,
-        configKey,
-        currentConfig,
-        (cfg) =>
-          setState({ syncConfigs: { ...currentConfigs, [preset]: cfg } }),
-      );
-
-      const container = document.getElementById("syncModalOptionsContainer");
-      if (container) {
-        remotesController.renderSyncOptions(
-          container,
-          preset,
-          getState().currentSyncPresetDefs,
-          nextConfig,
-        );
-      }
     }
     return;
   }
@@ -1573,34 +1146,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (action === "confirm-sync") {
-    const { currentSyncRemote, currentSyncPreset } = getState();
-    if (!currentSyncRemote || !currentSyncPreset) return;
-
-    const config = (getState().syncConfigs || {})[currentSyncPreset] || {};
-
-    // Close the modal
-    if (refs.syncOptionsModal) {
-      toggleModalBlur(false);
-      refs.syncOptionsModal.classList.add("opacity-0");
-      refs.syncOptionsModal.firstElementChild.classList.add("scale-95");
-      setTimeout(() => {
-        refs.syncOptionsModal.classList.add("hidden");
-      }, 300);
-    }
-
-    const currentProject = getState().selectedProject;
-    if (!currentProject) return;
-
-    await runRemoteSyncWithProgressToast({
-      project: currentProject,
-      remoteName: currentSyncRemote,
-      preset: currentSyncPreset,
-      config,
-    });
-
-    return;
-  }
 
   await actionsController.handle(action, targetElement.dataset.env || "");
 });
@@ -1646,17 +1191,6 @@ const bindRuntimeListeners = () => {
       }
     });
   }
-
-  if (refs.syncOptionsModal) {
-    refs.syncOptionsModal.addEventListener("click", (event) => {
-      if (event.target === refs.syncOptionsModal) {
-        const closeBtn = refs.syncOptionsModal.querySelector(
-          '[data-action="close-sync-modal"]',
-        );
-        if (closeBtn) closeBtn.click();
-      }
-    });
-  }
 };
 
 document.addEventListener("keydown", (event) => {
@@ -1677,16 +1211,6 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape") {
     setSettingsDrawerOpen(false);
-    if (refs.syncOptionsModal && !refs.syncOptionsModal.classList.contains("hidden")) {
-      // Simulate close button click for consistent logic
-      const closeBtn = refs.syncOptionsModal.querySelector('[data-action="close-sync-modal"]');
-      if (closeBtn) {
-        closeBtn.click();
-      } else {
-        toggleModalBlur(false);
-        refs.syncOptionsModal.classList.add("hidden");
-      }
-    }
   }
   if ((event.ctrlKey || event.metaKey) && event.key === ",") {
     event.preventDefault();
@@ -1703,7 +1227,7 @@ const syncProjectSelectorsFrom = async (source) => {
   // The island decides whether a changed selection means "restart the stream"
   // or "reload the buffer" - the live mode lives there now.
   await logsApi.selectionChanged();
-  await remotesController.refresh({ silent: true });
+  await remotesApi.refresh({ silent: true });
 };
 
 const bindDynamicControlListeners = () => {
@@ -1844,5 +1368,7 @@ window.addEventListener("beforeunload", () => {
   projectHeroIsland?.unmount();
   activeServicesIsland?.unmount();
   envVarsIsland?.unmount();
+  remotesIsland?.unmount();
+  syncModalIsland?.unmount();
   globalServicesController.stopLive({ skipBridge: true });
 });

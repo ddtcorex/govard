@@ -1,0 +1,134 @@
+[
+  {
+    "service": "EnvironmentService",
+    "method": "GetDashboard",
+    "args": [],
+    "result": {
+      "activeEnvironments": 1,
+      "runningServices": 1,
+      "queuedTasks": 0,
+      "activeSummary": "1 environment running",
+      "servicesSummary": "1 service healthy",
+      "queueSummary": "Queue idle",
+      "environments": [
+        {
+          "project": "sample-project",
+          "domain": "sample-project.test",
+          "name": "sample-project",
+          "framework": "magento2",
+          "technologies": ["nginx", "mysql"],
+          "php": "8.3",
+          "database": "mysql",
+          "gitBranch": "main",
+          "services": [{ "name": "nginx", "status": "running", "port": "80" }],
+          "serviceTargets": [],
+          "envVars": {},
+          "status": "running"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "service": "RemoteService",
+    "method": "GetRemotes",
+    "args": [],
+    "result": {
+      "project": "sample-project",
+      "remotes": [
+        {
+          "name": "staging",
+          "host": "staging.example.com",
+          "user": "deploy",
+          "path": "/var/www/staging",
+          "port": 22,
+          "lastSync": "2m ago",
+          "protected": false,
+          "authMethod": "keychain",
+          "capabilities": ["db", "media"]
+        },
+        {
+          "name": "production",
+          "host": "203.0.113.15",
+          "user": "deploy",
+          "path": "/var/www/production",
+          "port": 22,
+          "lastSync": "never",
+          "protected": true,
+          "authMethod": "ssh-agent",
+          "capabilities": ["db", "media"]
+        },
+        {
+          "name": "legacy",
+          "host": "legacy.example.com",
+          "user": "deploy",
+          "path": "/srv/legacy",
+          "port": 2222,
+          "protected": false,
+          "authMethod": "keyfile",
+          "capabilities": ["files"]
+        }
+      ],
+      "warnings": ["The legacy remote declares no database capability."]
+    }
+  },
+  {
+    "service": "RemoteService",
+    "method": "GetSyncOptions",
+    "args": [],
+    "result": {
+      "preset": "db",
+      "command": "sync",
+      "options": [
+        {
+          "key": "noNoise",
+          "label": "Exclude Noise",
+          "description": "Exclude ephemeral/noise tables (logs, caches, etc)",
+          "defaultValue": false
+        },
+        {
+          "key": "noPii",
+          "label": "Exclude PII",
+          "description": "Exclude PII/sensitive tables (users, orders, etc)",
+          "defaultValue": false
+        }
+      ]
+    }
+  },
+  {
+    "service": "RemoteService",
+    "method": "TestRemote",
+    "args": [],
+    "result": "Connection to staging successful!"
+  },
+  {
+    "service": "RemoteService",
+    "method": "RunRemoteSyncPreset",
+    "args": [],
+    "result": "db: full snapshot of 42 tables"
+  },
+  {
+    "service": "RemoteService",
+    "method": "RunRemoteSync",
+    "args": [],
+    "result": ""
+  },
+  {
+    "service": "RemoteService",
+    "method": "OpenRemoteShell",
+    "args": [],
+    "result": ""
+  },
+  {
+    "service": "RemoteService",
+    "method": "OpenRemoteDB",
+    "args": [],
+    "result": ""
+  },
+  {
+    "service": "RemoteService",
+    "method": "OpenRemoteSFTP",
+    "args": [],
+    "result": ""
+  }
+]
