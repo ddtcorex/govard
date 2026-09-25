@@ -39,6 +39,17 @@ export function installFakeTransport() {
       }
       const callArgs = args.args ?? [];
       recordCall({ service: route.service, method: route.method, args: callArgs });
+      // A scenario can make a route slow on purpose: some defects only exist while
+      // a call is in flight (the sync dialog reopening after a close that landed
+      // during its option fetch), and an instant fixture cannot show them. The call
+      // is recorded above, so call counting is unaffected by the delay.
+      const routeDelayMs =
+        typeof window === "undefined"
+          ? 0
+          : Number(window.__govardPreviewRouteDelayMs || 0);
+      if (routeDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, routeDelayMs));
+      }
       const resolved = resolveFixtureResponse(getFixtures(), route.service, route.method, callArgs);
       if (resolved.found && "error" in resolved) {
         throw new Error(String(resolved.error));

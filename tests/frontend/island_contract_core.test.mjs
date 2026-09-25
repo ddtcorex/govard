@@ -48,10 +48,11 @@ test("every refs entry in main.js names an element some file creates", () => {
   const end = mainSource.indexOf("\n});", start);
   assert.ok(end > start, "could not find the end of the getLiveRefs table");
   const ids = [...mainSource.slice(start, end).matchAll(/byId\("([^"]+)"\)/g)].map((m) => m[1]);
-  // A floor, not a target: it only proves the table was parsed at all. It was 50
-  // while four modules still injected their markup at runtime; the last of them
-  // (onboarding) moved into an island, so the table is now the shell's own ids.
-  assert.ok(ids.length > 20, `expected the refs table to be readable, found ${ids.length} ids`);
+  // Not a size target: this only proves the table was parsed at all (a renamed
+  // byId helper would silently yield zero ids and make every check below vacuous).
+  // The count fell from 50 to the shell's own ids as the modules migrated, and it
+  // keeps falling - the contract lives in the two assertions below, not here.
+  assert.ok(ids.length > 0, `expected the refs table to be readable, found ${ids.length} ids`);
 
   const frontend = new URL("../../desktop/frontend/", import.meta.url);
   const sources = ["index.html", "preview.html", "main.js"];

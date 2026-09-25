@@ -314,3 +314,34 @@ test("a live pane whose stream is unavailable falls back to the poll, and unmoun
 
   assert.deepEqual(session.consoleErrors, []);
 });
+
+test("an unmounted island's registered API cannot still reach the bridge", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await loadGlobalServices(session);
+
+  // The log pane registers an API that main.js keeps calling - two refreshes and
+  // the stop-on-leave. Its own timers die with the island, but the closures stay
+  // reachable through main.js unless registering can be undone.
+  await session.evaluate(`window.__govardGlobalLogsIsland.unmount()`);
+  const before = (await calls(session)).filter(
+    (c) => c.method === "GetGlobalServiceLogs",
+  ).length;
+
+  // The sidebar's own row takes the path that calls that API.
+  await session.evaluate(`document.querySelector("[data-testid='global-services-row']").click()`);
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  assert.equal(
+    (await calls(session)).filter((c) => c.method === "GetGlobalServiceLogs").length,
+    before,
+    "an unmounted pane's API must not still call the bridge",
+  );
+  assert.deepEqual(session.consoleErrors, []);
+});

@@ -37,7 +37,7 @@ type Props = {
     preset: string;
     config: Record<string, unknown>;
   }): void;
-  registerApi(api: SyncModalApi): void;
+  registerApi(api: SyncModalApi | null): void;
 };
 
 /**
@@ -80,6 +80,14 @@ export function SyncModal({
   const [planLoading, setPlanLoading] = useState(false);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Bumped by every open and every close: only the newest open may reveal itself. */
+  const openRequest = useRef(0);
+  /** The phase as of the last commit, so close() can read it outside an updater. */
+  const phaseRef = useRef<Phase>("closed");
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   const clearTimers = useCallback(() => {
     if (openTimer.current !== null) {
@@ -94,13 +102,15 @@ export function SyncModal({
 
   const close = useCallback(() => {
     clearTimers();
-    setPhase((current) => {
-      if (current === "closed") {
-        return current;
-      }
+    // Closing supersedes an open that is still awaiting its option list, so that
+    // continuation cannot reveal a dialog the user already dismissed.
+    openRequest.current += 1;
+    if (phaseRef.current !== "closed") {
+      // Outside the updater on purpose: an updater must be pure, and this writes
+      // to the DOM (main.js's modal blur).
       onModalBlur(false);
-      return "closing";
-    });
+      setPhase("closing");
+    }
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
       setPhase("closed");
@@ -117,6 +127,8 @@ export function SyncModal({
         return;
       }
       clearTimers();
+      const request = openRequest.current + 1;
+      openRequest.current = request;
       setRemote(remoteName);
       setPreset(presetName);
       setStep("options");
@@ -148,6 +160,10 @@ export function SyncModal({
         console.error("Failed to load sync options", err);
       }
 
+      if (openRequest.current !== request) {
+        return;
+      }
+
       onModalBlur(true);
       setPhase("opening");
       openTimer.current = setTimeout(() => {
@@ -160,6 +176,10 @@ export function SyncModal({
 
   useEffect(() => {
     registerApi({ open, close });
+    // Handing the API back on unmount is what stops main.js's own call
+    // sites from reaching an island that no longer exists: the island's timers
+    // die with it, but the closures main.js kept would not.
+    return () => registerApi(null);
   }, [registerApi, open, close]);
 
   useEffect(() => () => clearTimers(), [clearTimers]);
