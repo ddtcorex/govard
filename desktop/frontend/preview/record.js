@@ -2,12 +2,16 @@
 
 /**
  * Wraps a real bindings module so every call still reaches the real backend
- * unchanged, while additionally posting {module, service, method, args,
- * result|error} to the dev-only record middleware. Spec D2: record mode is the
- * same seam, wrapping the real implementation instead of faking it.
- * @param {{loadReal: () => Promise<any>, post: (entry: any) => Promise<void>, getModule: () => string}} opts
+ * unchanged, while additionally posting {service, method, args, result|error} to
+ * the dev-only recorder. That entry is exactly the fixture format playback reads,
+ * and it carries no file name: the Vite plugin owns the file and decides what to
+ * call it (GOVARD_PREVIEW_RECORD_NAME, else the service). Naming it after
+ * whatever view the app happened to be showing mixed unrelated routes into one
+ * dump. Spec D2: record mode is the same seam, wrapping the real implementation
+ * instead of faking it.
+ * @param {{loadReal: () => Promise<any>, post: (entry: any) => Promise<void>}} opts
  */
-export function createRecordingLoader({ loadReal, post, getModule }) {
+export function createRecordingLoader({ loadReal, post }) {
   return async () => {
     const real = await loadReal();
     return new Proxy(real, {
@@ -21,11 +25,10 @@ export function createRecordingLoader({ loadReal, post, getModule }) {
             return async (...args) => {
               try {
                 const result = await fn(...args);
-                await post({ module: getModule(), service: serviceName, method: methodName, args, result });
+                await post({ service: serviceName, method: methodName, args, result });
                 return result;
               } catch (err) {
                 await post({
-                  module: getModule(),
                   service: serviceName,
                   method: methodName,
                   args,

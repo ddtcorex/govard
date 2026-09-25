@@ -70,7 +70,7 @@ var desktopCmd = &cobra.Command{
 	Short:   "Launch the Govard Desktop app",
 	Run: func(cmd *cobra.Command, args []string) {
 		if desktopDev {
-			runDesktopDev()
+			runDesktopDev(cmd.Context())
 			return
 		}
 		if err := runDesktopBinary(desktopBackground); err != nil {
@@ -171,7 +171,13 @@ var desktopDoctorCmd = &cobra.Command{
 // The dev loop is Vite plus a plain `go run -tags desktop`. Wails v3 gates the
 // dev behaviour (devtools, FRONTEND_DEVSERVER_URL proxying) behind
 // !production, so the dev tags must not include production.
-func runDesktopDev() {
+// runDesktopDev runs the dev loop: Vite in one process group, the app in another.
+// Both observe ctx, so a SIGINT/SIGTERM delivered to govard alone (an IDE Stop
+// button, `kill -INT <pid>`, a supervisor) tears the whole loop down; without
+// that, `go run` keeps waiting, the window stays open and Vite keeps port 5173
+// (issue #423). A terminal Ctrl-C is unaffected: it signals the whole foreground
+// process group directly.
+func runDesktopDev(ctx context.Context) {
 	root, err := desktop.FindRepoRoot()
 	if err != nil {
 		pterm.Error.Printf("Failed to locate repo root: %v\n", err)
@@ -199,7 +205,16 @@ func runDesktopDev() {
 	app.Env = append(os.Environ(), "FRONTEND_DEVSERVER_URL=http://localhost:5173")
 	app.Stdout, app.Stderr, app.Stdin = os.Stdout, os.Stderr, os.Stdin
 	pterm.Info.Printf("Running FRONTEND_DEVSERVER_URL=http://localhost:5173 go %s\n", strings.Join(args, " "))
-	if err := app.Run(); err != nil {
+	release, err := startDevGrouped(ctx, app)
+	if err != nil {
+		pterm.Error.Printf("Failed to run desktop app: %v\n", err)
+		return
+	}
+	err = app.Wait()
+	release()
+	// A cancelled context is the signal-to-govard path working as intended, not
+	// a failure: reporting "signal: terminated" there would be noise.
+	if err != nil && ctx.Err() == nil {
 		pterm.Error.Printf("Failed to run desktop app: %v\n", err)
 	}
 }

@@ -7,7 +7,8 @@ import { join } from "node:path";
  * never reaches `dist/`:
  *
  * 1. A `govard:record` handler on Vite's own HMR channel appends every captured
- *    call to `preview/fixtures/<module>.json`.
+ *    call to `preview/fixtures/<GOVARD_PREVIEW_RECORD_NAME>.json`, or to
+ *    `preview/fixtures/<Service>.json` when no name is set (see fixtureNameFor).
  * 2. With `GOVARD_PREVIEW_RECORD=1` it injects a script tag that installs the
  *    recording loader before main.js runs, so neither the committed index.html
  *    nor main.js changes (spec D2; the loaders stay the only seam).
@@ -25,6 +26,23 @@ import { join } from "node:path";
  * `process.cwd()` (which depends on where the dev server was started) and not
  * from `import.meta.url` (the config is loaded through Vite's config loader).
  */
+/**
+ * The fixture file an entry belongs in. GOVARD_PREVIEW_RECORD_NAME wins, so a
+ * recording session can be aimed at the module a migration task is about
+ * ("GOVARD_PREVIEW_RECORD_NAME=metrics" lands in fixtures/metrics.json, the name
+ * installFixtures("metrics") reads). Otherwise one file per service: a single
+ * dump mixing every route is not usable as a fixture, and the app has no idea
+ * which file a call belongs to.
+ * @param {{service?: string}} entry
+ * @param {string | undefined} recordName
+ * @returns {string} empty when there is nothing to name the file after
+ */
+export function fixtureNameFor(entry, recordName) {
+  const requested = String(recordName ?? "").trim();
+  if (requested) return requested;
+  return String(entry?.service ?? "").trim();
+}
+
 export function previewRecordPlugin() {
   return {
     name: "govard-preview-record",
@@ -33,18 +51,21 @@ export function previewRecordPlugin() {
       const fixturesDir = join(server.config.root, "preview", "fixtures");
       const hot = server.hot ?? server.ws;
       hot.on("govard:record", (entry) => {
-        const { module, ...rest } = entry || {};
-        if (!module) {
-          server.config.logger.warn("[preview] record entry without a module name was dropped");
+        if (!entry || typeof entry !== "object") return;
+        const name = fixtureNameFor(entry, process.env.GOVARD_PREVIEW_RECORD_NAME);
+        if (!name) {
+          server.config.logger.warn(
+            "[preview] record entry without a service was dropped; set GOVARD_PREVIEW_RECORD_NAME to name the file",
+          );
           return;
         }
         if (!existsSync(fixturesDir)) mkdirSync(fixturesDir, { recursive: true });
-        const file = join(fixturesDir, `${module}.json`);
+        const file = join(fixturesDir, `${name}.json`);
         const existing = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
-        existing.push(rest);
+        existing.push(entry);
         writeFileSync(file, JSON.stringify(existing, null, 2) + "\n");
         server.config.logger.info(
-          `[preview] recorded ${rest.service}.${rest.method} -> preview/fixtures/${module}.json (${existing.length} entries)`,
+          `[preview] recorded ${entry.service}.${entry.method} -> preview/fixtures/${name}.json (${existing.length} entries)`,
         );
       });
     },
