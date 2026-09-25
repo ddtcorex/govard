@@ -39,7 +39,7 @@ golangci-lint --version
 ```
 cmd/govard/main.go           Điểm vào của CLI
 cmd/govard-desktop/          Điểm vào của Desktop (được build bởi Wails)
-desktop/                     Mã nguồn Desktop (Go backend + vanilla JS frontend)
+desktop/                     Mã nguồn Desktop Wails 3 (Go backend + frontend Vite, island React)
 internal/cmd/                Triển khai các lệnh CLI bằng thư viện Cobra
 internal/engine/             Logic điều phối container, cấu hình và blueprint
 internal/engine/bootstrap/   Các quy trình bootstrap framework

@@ -12,7 +12,7 @@ Go-based local development orchestrator for PHP and web projects (Magento, Larav
 | `make build` | Build CLI for current platform |
 | `make test-integration` | Integration tests (requires Docker) |
 
-**Runtime:** Go 1.25+, Node.js 20, Docker (for integration tests)
+**Runtime:** Go 1.25+, Node.js 24 and pnpm (desktop frontend), Docker (for integration tests)
 
 ## Workflow: Superpowers skills are mandatory
 
@@ -28,8 +28,8 @@ commit before considering the work done.
 
 ```
 cmd/govard/main.go              # CLI entrypoint
-cmd/govard-desktop/             # Desktop app (Wails)
-desktop/frontend/               # Desktop frontend (vanilla JS)
+cmd/govard-desktop/             # Desktop app (Wails v3)
+desktop/frontend/               # Desktop frontend (Vite; legacy ES modules migrating to React + TypeScript islands)
 internal/cmd/                   # Cobra commands
   bootstrap*.go                  # Bootstrap workflows
   config_*.go                    # Config management

@@ -162,7 +162,9 @@ var selfUpdateCmd = &cobra.Command{
 		if runtime.GOOS == "linux" {
 			if _, err := exec.LookPath("dpkg"); err == nil {
 				pterm.Info.Println("Debian-based system detected — using .deb package for update.")
-				if err := installViaDeb(client, checksumsBody, baseURL, releaseTag, tmpDir); err != nil {
+				// Set only on desktopUpdateAdded, so the darwin/windows skip holds here too.
+				desktopInstalled := len(targetsByBinary[selfUpdateDesktopBinaryName]) > 0
+				if err := installViaDeb(client, checksumsBody, baseURL, releaseTag, tmpDir, desktopInstalled); err != nil {
 					pterm.Warning.Printf("Debian package update failed: %v. Falling back to archive update.\n", err)
 				} else {
 					pterm.Success.Println("Update complete via Debian package.")
@@ -1015,41 +1017,103 @@ func runPostUpdateHooks(govardBin string, assumeYes bool) {
 	}
 }
 
-func installViaDeb(client *http.Client, checksumsBody, baseURL, releaseTag, workDir string) error {
-	versionNoPrefix := strings.TrimPrefix(normalizeReleaseTag(releaseTag), "v")
-	if versionNoPrefix == "" {
-		return errors.New("release tag is empty")
+// debPackage is one .deb asset self-update installs.
+type debPackage struct {
+	binaryName string
+	assetName  string
+}
+
+// debSkip is a release .deb self-update deliberately leaves out.
+type debSkip struct {
+	assetName string
+	reason    string
+}
+
+// debPackagesToInstall lists the release .deb assets to install, CLI first.
+// The desktop package is included only when a desktop binary is installed and
+// WebKitGTK 6.0 is present: on a host without it (Ubuntu 22.04, Debian 12) the
+// new desktop package cannot be configured, and the apt-get -f fallback would
+// then remove govard-desktop, taking a working older desktop with it. A desktop
+// package the release does not list is skipped too, so the CLI still updates.
+func debPackagesToInstall(releaseTag, goarch string, desktopInstalled, desktopRuntimeReady bool, checksumsBody string) ([]debPackage, []debSkip, error) {
+	version := strings.TrimPrefix(normalizeReleaseTag(releaseTag), "v")
+	if version == "" {
+		return nil, nil, errors.New("release tag is empty")
 	}
-
-	debAssetName := fmt.Sprintf("%s_%s_linux_%s.deb", selfUpdateBinaryName, versionNoPrefix, runtime.GOARCH)
-	debPath := filepath.Join(workDir, debAssetName)
-	debURL := fmt.Sprintf("%s/%s", baseURL, debAssetName)
-
-	pterm.Info.Printf("Downloading %s...\n", debAssetName)
-	if err := downloadFile(client, debURL, debPath); err != nil {
-		return fmt.Errorf("download deb asset: %w", err)
+	asset := func(binary string) string {
+		return fmt.Sprintf("%s_%s_linux_%s.deb", binary, version, goarch)
 	}
+	packages := []debPackage{{binaryName: selfUpdateBinaryName, assetName: asset(selfUpdateBinaryName)}}
+	var skipped []debSkip
+	if desktopInstalled {
+		desktopAsset := asset(selfUpdateDesktopBinaryName)
+		if !desktopRuntimeReady {
+			skipped = append(skipped, debSkip{assetName: desktopAsset, reason: "WebKitGTK 6.0 (" + webKitGTK6Package + ") is not installed"})
+		} else if _, err := checksumForAsset(checksumsBody, desktopAsset); err != nil {
+			skipped = append(skipped, debSkip{assetName: desktopAsset, reason: "the release does not list it"})
+		} else {
+			packages = append(packages, debPackage{binaryName: selfUpdateDesktopBinaryName, assetName: desktopAsset})
+		}
+	}
+	return packages, skipped, nil
+}
 
-	expectedChecksum, err := checksumForAsset(checksumsBody, debAssetName)
+// DebPackagesToInstallForTest exposes debPackagesToInstall for tests in /tests.
+func DebPackagesToInstallForTest(releaseTag, goarch string, desktopInstalled, desktopRuntimeReady bool, checksumsBody string) ([]string, []string, error) {
+	packages, skipped, err := debPackagesToInstall(releaseTag, goarch, desktopInstalled, desktopRuntimeReady, checksumsBody)
+	assets := make([]string, 0, len(packages))
+	for _, p := range packages {
+		assets = append(assets, p.assetName)
+	}
+	var skippedAssets []string
+	for _, s := range skipped {
+		skippedAssets = append(skippedAssets, s.assetName)
+	}
+	return assets, skippedAssets, err
+}
+
+func installViaDeb(client *http.Client, checksumsBody, baseURL, releaseTag, workDir string, desktopInstalled bool) error {
+	ldconfigOut := ""
+	if out, err := exec.Command("ldconfig", "-p").Output(); err == nil {
+		ldconfigOut = string(out)
+	}
+	desktopRuntimeReady := hasWebKitGTK6(ldconfigOut, selfUpdateFileExists)
+
+	packages, skipped, err := debPackagesToInstall(releaseTag, runtime.GOARCH, desktopInstalled, desktopRuntimeReady, checksumsBody)
 	if err != nil {
 		return err
 	}
-	if err := verifySHA256(debPath, expectedChecksum); err != nil {
-		return err
+	for _, s := range skipped {
+		pterm.Warning.Printf("Skipping %s: %s; the installed desktop package is left unchanged.\n", s.assetName, s.reason)
 	}
-	pterm.Success.Printf("Checksum verified for %s.\n", debAssetName)
 
-	pterm.Info.Println("Installing Debian package (requires sudo)...")
+	debPaths := make([]string, 0, len(packages))
+	for _, p := range packages {
+		debPath := filepath.Join(workDir, p.assetName)
+		pterm.Info.Printf("Downloading %s...\n", p.assetName)
+		if err := downloadFile(client, fmt.Sprintf("%s/%s", baseURL, p.assetName), debPath); err != nil {
+			return fmt.Errorf("download deb asset %s: %w", p.assetName, err)
+		}
+		expectedChecksum, err := checksumForAsset(checksumsBody, p.assetName)
+		if err != nil {
+			return err
+		}
+		if err := verifySHA256(debPath, expectedChecksum); err != nil {
+			return err
+		}
+		pterm.Success.Printf("Checksum verified for %s.\n", p.assetName)
+		debPaths = append(debPaths, debPath)
+	}
 
-	// Run dpkg -i
-	cmd := exec.Command("sudo", "dpkg", "-i", debPath)
+	pterm.Info.Println("Installing Debian package(s) (requires sudo)...")
+	// One dpkg invocation so dpkg orders govard-desktop's dependency on govard.
+	cmd := exec.Command("sudo", append([]string{"dpkg", "-i"}, debPaths...)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
 		pterm.Warning.Printf("dpkg -i failed: %v. Attempting to fix missing dependencies...\n", err)
 
-		// Run apt-get install -f
 		cmdFix := exec.Command("sudo", "apt-get", "install", "-f", "-y")
 		cmdFix.Stdout = os.Stdout
 		cmdFix.Stderr = os.Stderr

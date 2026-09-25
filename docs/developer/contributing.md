@@ -39,7 +39,7 @@ golangci-lint --version
 ```
 cmd/govard/main.go           CLI entrypoint
 cmd/govard-desktop/          Desktop entry (built by Wails)
-desktop/                     Wails desktop app (Go backend + vanilla JS frontend)
+desktop/                     Wails 3 desktop app (Go backend + Vite frontend, React islands)
 internal/cmd/                Cobra command implementations
 internal/engine/             Orchestration, config, blueprint logic
 internal/engine/bootstrap/   Framework bootstrap workflows

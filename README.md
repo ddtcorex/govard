@@ -62,7 +62,7 @@ The installer handles system dependencies, starts global services, and configure
 
 Govard runs without Docker for host-side commands (`govard capabilities` lists every command's requirement); container-backed commands exit `3` with `CAPABILITY_MISSING` instead of failing midway. Details: [Runs Without Docker](docs/reference/docker-free.md).
 
-Contributors build from source (`./install.sh --source -y`, needs Go 1.25+, Node 20+) — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributors build from source (`./install.sh --source -y`, needs Go 1.25+, Node 24+ and pnpm for the desktop); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
