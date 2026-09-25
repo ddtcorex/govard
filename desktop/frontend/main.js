@@ -1,8 +1,11 @@
 console.log("==> main.js top level loaded! <==");
 import { createActionsController } from "./modules/actions.js?v=20260301";
 import { normalizeDashboardPayload, projectKey } from "./modules/dashboard.js";
-import { createGlobalServicesController } from "./modules/global-services.js";
-import { normalizeLogSeverity, resolveServiceTargets } from "./modules/logs.js";
+import {
+  createGlobalServicesController,
+  raiseActionFeedback,
+} from "./modules/global-services.js";
+import { resolveServiceTargets } from "./modules/logs.js";
 import {
   createOnboardingController,
   renderOnboardingModal,
@@ -19,6 +22,7 @@ import { EnvVars } from "./islands/EnvVars.tsx";
 import { EnvironmentList } from "./islands/EnvironmentList.tsx";
 import { ProjectHero } from "./islands/ProjectHero.tsx";
 import { GlobalHealthHeader } from "./islands/GlobalHealthHeader.tsx";
+import { GlobalLogsPanel } from "./islands/GlobalLogsPanel.tsx";
 import { GlobalServicesList } from "./islands/GlobalServicesList.tsx";
 import { RemotesList } from "./islands/RemotesList.tsx";
 import { SyncModal } from "./islands/SyncModal.tsx";
@@ -41,12 +45,6 @@ const getLiveRefs = () => ({
   envList: byId("envList"),
   sidebarPanelEnvironments: byId("sidebarPanel-environments"),
   sidebarEnvActions: byId("sidebarEnvActions"),
-  globalToggleLive: byId("globalToggleLive"),
-  globalLogOutput: byId("globalLogOutput"),
-  globalLogViewport: byId("globalLogViewport"),
-  globalLogServiceName: byId("globalLogServiceName"),
-  globalLogSeverity: byId("globalLogSeverity"),
-  globalLogSearch: byId("globalLogSearch"),
   openSettings: byId("openSettings"),
   hardReset: byId("hardReset"),
   userAvatar: byId("userAvatar"),
@@ -112,8 +110,6 @@ const refreshRefs = () => {
   // Propagate updated refs to controllers if they don't hold the object by reference
   // (Most do, but we keep this for safety and explicit update triggers)
   if (settingsController?.updateRefs) settingsController.updateRefs(refs);
-  if (globalServicesController?.updateRefs)
-    globalServicesController.updateRefs(refs);
 };
 
 const toast = createToast(refs.toastContainer);
@@ -450,12 +446,12 @@ const switchSidebarMode = async (mode, options = {}) => {
     switchTab("global-services");
     await globalServicesController.refresh({ silent: Boolean(options.silent) });
     if (!options.skipLogs) {
-      await globalServicesController.refreshLogs();
+      await globalLogsApi.refreshLogs();
     }
     return;
   }
 
-  await globalServicesController.stopLive();
+  await globalLogsApi.stopLive();
   const activeTabId = document
     .querySelector(".tab-content.active")
     ?.id?.replace("tab-", "");
@@ -947,7 +943,6 @@ const envVarsIsland = mountIsland(
 
 const globalServicesController = createGlobalServicesController({
   bridge: desktopBridge,
-  refs,
   getState,
   setState,
   onStatus: setStatus,
@@ -977,6 +972,31 @@ const globalServicesListIsland = mountIsland(
   }),
 );
 
+// The log pane registers the two things main.js still drives in it: the two
+// refreshes and the stop-on-leave. Its poll and its three event subscriptions
+// belong to the island, so unmounting is what stops them.
+let globalLogsApi = {
+  refreshLogs: async () => {},
+  stopLive: async () => {},
+};
+
+const globalLogsIsland = mountIsland(
+  "globalLogsIsland",
+  createElement(GlobalLogsPanel, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    onFeedback: (message, tone) => raiseActionFeedback(setState, message, tone),
+    registerApi: (api) => {
+      globalLogsApi = api;
+    },
+    pollMs: window.__govardPreviewGlobalLogsPollMs ?? 2000,
+  }),
+);
+if (window.__govardPreviewGlobalLogsPollMs) {
+  window.__govardGlobalLogsIsland = globalLogsIsland;
+}
+
 document.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
@@ -993,29 +1013,6 @@ document.addEventListener("click", async (event) => {
   if (action === "switch-sidebar-mode") {
     const mode = String(targetElement.dataset.mode || "").trim();
     await switchSidebarMode(mode);
-    return;
-  }
-
-  if (action === "toggle-global-live") {
-    await globalServicesController.toggleLive();
-    return;
-  }
-  if (action === "refresh-global-logs") {
-    await globalServicesController.refreshLogs();
-    return;
-  }
-  if (action === "clear-global-logs") {
-    await globalServicesController.clearLogs();
-    return;
-  }
-  if (action === "download-global-logs") {
-    await globalServicesController.downloadLogs();
-    return;
-  }
-  if (action === "filter-global-severity") {
-    const sev = normalizeLogSeverity(targetElement.dataset.severity);
-    setState({ globalLogSeverity: sev });
-    globalServicesController.applyFilters();
     return;
   }
 
@@ -1181,12 +1178,6 @@ const bindDynamicControlListeners = () => {
     });
   }
 
-  if (refs.globalLogSearch) {
-    refs.globalLogSearch.addEventListener("input", () => {
-      setState({ globalLogQuery: refs.globalLogSearch.value || "" });
-      globalServicesController.applyFilters();
-    });
-  }
 
 
   if (refs.projectDomain) {
@@ -1262,7 +1253,7 @@ const bootstrap = async () => {
       onboardingController.loadFrameworkOptions(),
     ]).catch((e) => console.error("Parallel bootstrap error:", e));
     if (getState().sidebarMode === "global-services") {
-      await globalServicesController.refreshLogs();
+      await globalLogsApi.refreshLogs();
     }
     await loadFooterVersion();
     setTimeout(() => {
@@ -1316,5 +1307,5 @@ window.addEventListener("beforeunload", () => {
   syncModalIsland?.unmount();
   globalHealthIsland?.unmount();
   globalServicesListIsland?.unmount();
-  globalServicesController.stopLive({ skipBridge: true });
+  globalLogsIsland?.unmount();
 });

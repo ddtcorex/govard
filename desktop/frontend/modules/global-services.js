@@ -1,12 +1,3 @@
-import {
-  buildLogFilename,
-  downloadTextAsFile,
-  filterLogsText,
-  normalizeLogSeverity,
-  syncSeveritySelector,
-} from "./logs.js";
-import { setText } from "../utils/dom.js";
-import { hasEventRuntime, onEvent } from "../services/events.js";
 
 const globalServiceIcons = {
   caddy: "shield",
@@ -586,133 +577,48 @@ export const feedbackTone = (tone = "info") => {
   return tones[tone] || tones.info;
 };
 
+/**
+ * Raises the deck's feedback line. Two React roots write it (the deck island's
+ * bulk actions and the logs island's log actions), so the writer and its `seq`
+ * counter live here rather than in either of them.
+ */
+let feedbackSeq = 0;
+export const raiseActionFeedback = (setState, message, tone = "info") => {
+  feedbackSeq += 1;
+  setState({
+    globalActionFeedback: {
+      message: String(message || "") || "Ready for global operations.",
+      tone: tone || "info",
+      seq: feedbackSeq,
+    },
+  });
+};
+
+/**
+ * What the log pane shows when the buffer is empty: it depends on WHICH service
+ * the last load asked for, not on the current selection, which is why the id is
+ * an argument rather than read from the store here.
+ */
+export const buildEmptyGlobalLogMessage = (selectedId = "", services = []) => {
+  const normalized = String(selectedId || "").trim().toLowerCase();
+  if (!normalized) {
+    return "Select a global service to view logs.";
+  }
+  if (normalized === "dnsmasq") {
+    return "DNSMasq is running but does not emit stdout logs by default.";
+  }
+  const selectedService = (services || []).find((item) => item.id === normalized);
+  const serviceName = selectedService?.name || normalized;
+  return `No logs available for ${serviceName}.`;
+};
+
 export const createGlobalServicesController = ({
   bridge,
-  refs,
   getState,
   setState,
   onStatus,
   onToast,
 }) => {
-  const updateRefs = (nextRefs) => {
-    refs = nextRefs;
-  };
-
-  let liveEnabled = false;
-  let pollTimer = null;
-  let rawLogOutput = "";
-
-  const resolveLogViewport = () =>
-    refs.globalLogViewport || refs.globalLogOutput?.parentElement || null;
-
-  const scrollToLatest = (force = false) => {
-    if (!force && !liveEnabled) {
-      return;
-    }
-    const viewport = resolveLogViewport();
-    if (!viewport) {
-      return;
-    }
-    viewport.scrollTop = viewport.scrollHeight;
-  };
-
-  const readLogFilters = () => {
-    const state = getState();
-    return {
-      severity: normalizeLogSeverity(state.globalLogSeverity || "all"),
-      query: String(state.globalLogQuery || "").trim(),
-    };
-  };
-
-  const syncLogFilterControls = () => {
-    const { severity, query } = readLogFilters();
-    if (refs.globalLogSearch && refs.globalLogSearch.value !== query) {
-      refs.globalLogSearch.value = query;
-    }
-    syncSeveritySelector(refs.globalLogSeverity, severity);
-  };
-
-  const buildEmptyLogMessage = () => {
-    const state = getState();
-    const selectedID = String(state.selectedGlobalService || "")
-      .trim()
-      .toLowerCase();
-    if (!selectedID) {
-      return "Select a global service to view logs.";
-    }
-    if (selectedID === "dnsmasq") {
-      return "DNSMasq is running but does not emit stdout logs by default.";
-    }
-    const selectedService = (state.globalServices || []).find(
-      (item) => item.id === selectedID,
-    );
-    const serviceName = selectedService?.name || selectedID;
-    return `No logs available for ${serviceName}.`;
-  };
-
-  const clearPoll = () => {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-  };
-
-  const renderLogOutput = ({ forceScroll = false } = {}) => {
-    if (!refs.globalLogOutput) {
-      return;
-    }
-    const rawTrimmed = String(rawLogOutput || "").trim();
-    const { severity, query } = readLogFilters();
-    const filtered = filterLogsText(rawLogOutput, severity, query);
-    const filteredTrimmed = String(filtered || "").trim();
-
-    if (!rawTrimmed) {
-      refs.globalLogOutput.textContent = buildEmptyLogMessage();
-    } else {
-      refs.globalLogOutput.textContent =
-        filteredTrimmed || "No logs match the current filters.";
-    }
-    scrollToLatest(forceScroll);
-  };
-
-  /**
-   * The feedback line is store state now: the deck island renders it, and the
-   * logs half (5b) can raise the same line without one React root reaching into
-   * the other. `seq` is what re-triggers the ping animation, replacing the
-   * vanilla classList.remove + requestAnimationFrame pair.
-   */
-  let feedbackSeq = 0;
-  const setActionFeedback = (message, tone = "info") => {
-    feedbackSeq += 1;
-    setState({
-      globalActionFeedback: {
-        message: String(message || "") || "Ready for global operations.",
-        tone: tone || "info",
-        seq: feedbackSeq,
-      },
-    });
-  };
-
-  const publishSummary = (snapshot) => {
-    setState({ globalServicesSnapshot: snapshot });
-    setActionFeedback(
-      deriveHealthSummary(snapshot).feedback.message,
-      deriveHealthSummary(snapshot).feedback.tone,
-    );
-  };
-
-  const renderSnapshot = () => {
-    const state = getState();
-    const services = state.globalServices || [];
-    const selected = state.selectedGlobalService || "";
-    const selectedService = services.find((item) => item.id === selected);
-    setText(
-      refs.globalLogServiceName,
-      selectedService ? selectedService.name : "Select service",
-    );
-    syncLogFilterControls();
-  };
-
   const ensureSelectedService = () => {
     const state = getState();
     const services = state.globalServices || [];
@@ -730,11 +636,20 @@ export const createGlobalServicesController = ({
     return preferred.id;
   };
 
+  const publishSummary = (snapshot) => {
+    setState({ globalServicesSnapshot: snapshot });
+    const { feedback } = deriveHealthSummary(snapshot);
+    raiseActionFeedback(setState, feedback.message, feedback.tone);
+  };
+
   const refresh = async ({ silent = false } = {}) => {
     if (!silent) {
-      setActionFeedback("Refreshing global services snapshot...", "info");
-      // The list island renders its own loading frame from this (the vanilla
-      // code wrote the placeholder markup into the container itself).
+      raiseActionFeedback(
+        setState,
+        "Refreshing global services snapshot...",
+        "info",
+      );
+      // The list island renders its own loading frame from this.
       setState({ globalServicesLoading: true, globalServicesError: "" });
     }
     try {
@@ -748,14 +663,13 @@ export const createGlobalServicesController = ({
       });
       ensureSelectedService();
       publishSummary(snapshot);
-      renderSnapshot();
       if (snapshot.warnings?.length) {
         onStatus(`Global services warnings: ${snapshot.warnings.join(" | ")}`);
       }
       return snapshot;
     } catch (err) {
       onStatus(`Failed to load global services: ${err}`);
-      setActionFeedback(`Failed to load global services: ${err}`, "error");
+      raiseActionFeedback(setState, `Failed to load global services: ${err}`, "error");
       setState({
         globalServicesSnapshot: null,
         globalServicesLoading: false,
@@ -765,90 +679,12 @@ export const createGlobalServicesController = ({
     }
   };
 
-  const appendLogLine = (line) => {
-    const value = String(line || "").trim();
-    if (!value) {
-      return;
-    }
-    rawLogOutput = rawLogOutput ? `${rawLogOutput}\n${value}` : value;
-    renderLogOutput();
-  };
-
-  const refreshLogs = async () => {
-    const serviceID = String(getState().selectedGlobalService || "").trim();
-    if (!serviceID) {
-      rawLogOutput = "";
-      renderLogOutput({ forceScroll: true });
-      return;
-    }
-    if (refs.globalLogOutput) {
-      refs.globalLogOutput.textContent = "Loading logs...";
-    }
-    try {
-      rawLogOutput = String(
-        (await bridge.getGlobalServiceLogs(serviceID, 300)) || "",
-      );
-      renderLogOutput({ forceScroll: true });
-    } catch (err) {
-      rawLogOutput = `Failed to load logs: ${err}`;
-      renderLogOutput({ forceScroll: true });
-    }
-  };
-
-  const stopLive = async ({ skipBridge = false } = {}) => {
-    liveEnabled = false;
-    setState({ globalLiveLogsEnabled: false });
-    clearPoll();
-    setText(refs.globalToggleLive, "Live: Off");
-    setActionFeedback("Live log stream paused.", "info");
-    if (skipBridge) {
-      return;
-    }
-    try {
-      await bridge.stopGlobalServiceLogStream();
-    } catch (_err) {
-      // Ignore: polling fallback mode may not hold stream state.
-    }
-  };
-
-  const startLive = async () => {
-    const serviceID = String(getState().selectedGlobalService || "").trim();
-    if (!serviceID) {
-      onStatus("Select a global service to stream logs.");
-      setActionFeedback("Select a service first to stream logs.", "warning");
-      return;
-    }
-    liveEnabled = true;
-    setState({ globalLiveLogsEnabled: true });
-    setText(refs.globalToggleLive, "Live: On");
-    const serviceName =
-      getState().globalServices.find((item) => item.id === serviceID)?.name ||
-      serviceID;
-    setActionFeedback(`Streaming live logs for ${serviceName}.`, "info");
-
-    if (bridge.startGlobalServiceLogStream && hasEventRuntime()) {
-      try {
-        await bridge.startGlobalServiceLogStream(serviceID);
-        return;
-      } catch (_err) {
-        // Fall through to polling fallback.
-      }
-    }
-
-    await refreshLogs();
-    clearPoll();
-    pollTimer = setInterval(refreshLogs, 2000);
-  };
-
-  const toggleLive = async () => {
-    if (liveEnabled) {
-      await stopLive();
-      return;
-    }
-    await startLive();
-  };
-
-  const selectService = async (serviceID) => {
+  /**
+   * The selection is the only thing this does now: the logs island watches
+   * `selectedGlobalService` in the store and reloads itself, which is what keeps
+   * the two halves in step without a callback chain between them.
+   */
+  const selectService = (serviceID) => {
     const normalized = String(serviceID || "")
       .trim()
       .toLowerCase();
@@ -856,17 +692,10 @@ export const createGlobalServicesController = ({
       return;
     }
     const state = getState();
-    if (!state.globalServices.some((item) => item.id === normalized)) {
+    if (!(state.globalServices || []).some((item) => item.id === normalized)) {
       return;
     }
     setState({ selectedGlobalService: normalized });
-    renderSnapshot();
-    if (liveEnabled) {
-      await stopLive();
-      await startLive();
-      return;
-    }
-    await refreshLogs();
   };
 
   const runServiceAction = async (action, serviceID) => {
@@ -895,8 +724,8 @@ export const createGlobalServicesController = ({
       open: "Opening",
     };
     const serviceName =
-      getState().globalServices.find((item) => item.id === normalized)?.name ||
-      normalized;
+      (getState().globalServices || []).find((item) => item.id === normalized)
+        ?.name || normalized;
 
     const settleRoutingIfNeeded = async (snapshot) => {
       if (action !== "start" && action !== "restart") {
@@ -915,7 +744,8 @@ export const createGlobalServicesController = ({
         if (!nextSnapshot || !hasRoutingWarningInSnapshot(nextSnapshot)) {
           return nextSnapshot;
         }
-        setActionFeedback(
+        raiseActionFeedback(
+          setState,
           `Waiting for routing bindings to stabilize (${attempt + 1}/${maxAttempts})...`,
           "info",
         );
@@ -925,7 +755,8 @@ export const createGlobalServicesController = ({
       return nextSnapshot;
     };
 
-    setActionFeedback(
+    raiseActionFeedback(
+      setState,
       `${actionVerbByAction[action] || "Processing"} ${serviceName}...`,
       "info",
     );
@@ -941,17 +772,19 @@ export const createGlobalServicesController = ({
         await refresh({ silent: true }),
       );
       if (snapshot && hasRoutingWarningInSnapshot(snapshot)) {
-        setActionFeedback(
+        raiseActionFeedback(
+          setState,
           buildRoutingWarningMessage(snapshot.services, snapshot.warnings),
           "warning",
         );
       } else {
-        setActionFeedback(compactMessage, "success");
+        raiseActionFeedback(setState, compactMessage, "success");
       }
     } catch (err) {
       onStatus(`${action} ${normalized} failed: ${err}`);
       onToast(`${action} ${normalized} failed: ${err}`, "error");
-      setActionFeedback(
+      raiseActionFeedback(
+        setState,
         `${actionVerbByAction[action] || "Action"} ${serviceName} failed: ${err}`,
         "error",
       );
@@ -988,7 +821,8 @@ export const createGlobalServicesController = ({
         if (!nextSnapshot || !hasRoutingWarningInSnapshot(nextSnapshot)) {
           return nextSnapshot;
         }
-        setActionFeedback(
+        raiseActionFeedback(
+          setState,
           `Waiting for routing bindings to stabilize (${attempt + 1}/${maxAttempts})...`,
           "info",
         );
@@ -998,7 +832,8 @@ export const createGlobalServicesController = ({
       return nextSnapshot;
     };
 
-    setActionFeedback(
+    raiseActionFeedback(
+      setState,
       `${actionVerbByAction[action] || "Processing"} all global services...`,
       "info",
     );
@@ -1014,118 +849,26 @@ export const createGlobalServicesController = ({
         await refresh({ silent: true }),
       );
       if (snapshot && hasRoutingWarningInSnapshot(snapshot)) {
-        setActionFeedback(
+        raiseActionFeedback(
+          setState,
           buildRoutingWarningMessage(snapshot.services, snapshot.warnings),
           "warning",
         );
       } else {
-        setActionFeedback(compactMessage, "success");
+        raiseActionFeedback(setState, compactMessage, "success");
       }
     } catch (err) {
       const compactError = formatBulkGlobalActionError(action, err);
       onStatus(`Global ${action} failed: ${err}`);
       onToast(compactError, "error");
-      setActionFeedback(compactError, "error");
+      raiseActionFeedback(setState, compactError, "error");
     }
   };
-
-  const clearLogs = async () => {
-    await stopLive();
-    rawLogOutput = "";
-    renderLogOutput({ forceScroll: true });
-    onStatus("Global service logs cleared.");
-    setActionFeedback("Global service logs cleared.", "info");
-  };
-
-  const downloadLogs = async () => {
-    const output = String(rawLogOutput || "").trim();
-    if (!output) {
-      onStatus("No global logs available to download.");
-      onToast("No global logs available to download.", "warning");
-      return;
-    }
-
-    const state = getState();
-    const selectedID = String(state.selectedGlobalService || "").trim();
-    const selectedService = (state.globalServices || []).find(
-      (item) => item.id === selectedID,
-    );
-    const filename = buildLogFilename({
-      scope: "global",
-      project: "services",
-      service: selectedService?.name || selectedID || "all",
-    });
-
-    let nativeExportError = null;
-    if (bridge?.saveLogsToFile) {
-      try {
-        const response = await bridge.saveLogsToFile(output, filename);
-        const message = String(response || "").trim();
-        if (message.toLowerCase().includes("cancelled")) {
-          onStatus(message || "Global log export cancelled.");
-          setActionFeedback(message || "Global log export cancelled.", "info");
-          return;
-        }
-        onStatus(message || "Global logs downloaded successfully.");
-        onToast("Global logs downloaded successfully.", "success");
-        setActionFeedback(
-          message || "Global logs downloaded successfully.",
-          "success",
-        );
-        return;
-      } catch (err) {
-        nativeExportError = err;
-      }
-    }
-
-    const downloaded = downloadTextAsFile(output, filename);
-    if (!downloaded) {
-      const details =
-        nativeExportError !== null
-          ? `Failed to download global logs: ${nativeExportError}`
-          : "Failed to download global logs.";
-      onStatus(details);
-      onToast("Failed to download global logs.", "error");
-      setActionFeedback("Failed to download global logs.", "error");
-      return;
-    }
-
-    onStatus("Global logs downloaded successfully.");
-    onToast("Global logs downloaded successfully.", "success");
-    setActionFeedback("Global logs downloaded successfully.", "success");
-  };
-
-  const applyFilters = () => {
-    syncLogFilterControls();
-    renderLogOutput();
-  };
-
-  if (hasEventRuntime()) {
-    onEvent("global-logs:line", appendLogLine);
-    onEvent("global-logs:status", (message) => {
-      onStatus(String(message || "").trim());
-    });
-    onEvent("global-logs:error", (message) => {
-      const text = String(message || "").trim();
-      if (!text) {
-        return;
-      }
-      onStatus(text);
-      onToast(text, "error");
-    });
-  }
 
   return {
     refresh,
-    refreshLogs,
-    applyFilters,
-    stopLive,
-    toggleLive,
-    clearLogs,
-    downloadLogs,
     selectService,
     runServiceAction,
     runBulkAction,
-    updateRefs,
   };
 };
