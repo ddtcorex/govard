@@ -48,8 +48,9 @@ Because ` + "`sandbox`" + ` is a top-level command, deploy to it with the flag f
 
 Profiles: basic (sshd, rsync, git), php (adds php-cli, composer, node) and full
 (adds a database and a cache). --php picks the PHP series the image provides
-(e.g. --php 8.4); without it the sandbox uses the project's stack.php_version
-when it names a series, and the base distribution's version otherwise.
+(e.g. --php 8.4); without it a new sandbox is built for the project's
+stack.php_version when it names a series, and the base distribution's version
+otherwise, while an existing sandbox keeps the series it ships.
 The sandbox then declares that series to the pipeline, so a project whose
 composer.lock needs a newer PHP can be rehearsed against the PHP its target
 actually runs. --docroot shapes the target so the publish strategy resolves the
@@ -77,7 +78,7 @@ var (
 
 func init() {
 	sandboxUpCmd.Flags().String("profile", deploy.DefaultSandboxProfile, "Container contents: basic, php or full")
-	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default: stack.php_version when it names a series, else the base image's own; no effect with --profile basic)")
+	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default for a new sandbox: stack.php_version when it names a series, else the base image's own; an existing sandbox keeps its series; no effect with --profile basic)")
 	sandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	sandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
 	sandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: start with an empty sandbox (no DB, no media, no env file)")
@@ -123,14 +124,11 @@ func sandboxCommandRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	}
 
 	profile, _ := cmd.Flags().GetString("profile")
+	// `--php` is the request; the project's normalized stack version is only the
+	// default a new image is built for. Sending the default as the request made
+	// a bare `up` refuse an existing sandbox built for another series, and
+	// describe a base-image sandbox as a series its image does not ship.
 	php, _ := cmd.Flags().GetString("php")
-	// `--php` has no default, so an unchanged flag is "no preference": the
-	// sandbox then builds what the project itself runs, from its normalized
-	// stack version. An explicitly named series always wins — including over a
-	// reused container's label, through the existing `--recreate` refusal.
-	if !cmd.Flags().Changed("php") {
-		php = deploy.SandboxPHPDefault(config.Stack.PHPVersion)
-	}
 	docRoot, _ := cmd.Flags().GetString("docroot")
 	layout, _ := cmd.Flags().GetString("layout")
 	recreate, _ := cmd.Flags().GetBool("recreate")
@@ -165,6 +163,7 @@ func sandboxCommandRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		ProjectName: config.ProjectName,
 		Profile:     profile,
 		PHP:         php,
+		PHPDefault:  config.Stack.PHPVersion,
 		// Where the web server serves from comes from the project, not from a flag:
 		// `stack.web_root` is already the answer for the local environment, and two
 		// answers would be one too many.

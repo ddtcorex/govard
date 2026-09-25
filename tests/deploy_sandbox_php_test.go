@@ -454,6 +454,75 @@ func TestSandboxUpKeepsTheSeriesOfADormantContainer(t *testing.T) {
 	}
 }
 
+// The stack's series is a default for the image a new sandbox is built from,
+// and only that: a fresh container built without `--php` installs it.
+func TestSandboxUpBuildsTheDefaultSeriesForANewContainer(t *testing.T) {
+	root := sandboxProject(t)
+	fake := absentContainerFake()
+	fake.fail["image inspect"] = "Error: No such image"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfilePHP,
+		PHPDefault:  "8.5",
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	}); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	content := mustReadFile(t, deploy.SandboxDockerfilePath(root))
+	if !strings.Contains(string(content), "'php8.5-cli'") {
+		t.Fatalf("a new sandbox must install the stack's series:\n%s", content)
+	}
+	if !fake.has("govard.sandbox.php=8.5") {
+		t.Fatal("the new container must be labelled with the series it ships")
+	}
+}
+
+// A default is not a request: a bare `sandbox up` that restarts an existing
+// container must neither refuse it for disagreeing with the stack nor describe
+// it as a series its image does not ship. Found in review: an 8.4 sandbox was
+// refused with a `--php 8.5 --recreate` hint nobody asked for, and a sandbox
+// built on the base image (no series label) was reported as PHP 8.5.
+func TestSandboxUpKeepsAReusedContainerAgainstTheDefaultSeries(t *testing.T) {
+	probe := func(context.Context, string, int, time.Duration) error { return nil }
+	for _, tc := range []struct {
+		name, label, want string
+	}{
+		{"an explicit series", "8.4", "8.4"},
+		{"the base image's own", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := sandboxProject(t)
+			fake := sandboxFake().containerProfile(deploy.SandboxProfileFull)
+			if tc.label != "" {
+				fake = fake.containerPHP(tc.label)
+			}
+			fake.answers["inspect --format {{.State.Running}}"] = "false\n"
+			fake.answers["image inspect"] = "sha256:abc\n"
+			restoreCapabilities := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
+			defer restoreCapabilities()
+			restoreRemote := deploy.StubResolveSyntheticSandboxRemoteForTest(func(ctx context.Context, projectName string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+				return deploy.ResolveSyntheticSandboxRemoteForTest(ctx, deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, root, projectName)
+			})
+			defer restoreRemote()
+
+			state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+				ProjectRoot: root,
+				ProjectName: "sample-project",
+				Profile:     deploy.SandboxProfileFull,
+				PHPDefault:  "8.5",
+				Probe:       probe,
+			})
+			if err != nil {
+				t.Fatalf("a bare up on an existing sandbox must reuse it: %v", err)
+			}
+			if state.PHP != tc.want {
+				t.Fatalf("reused sandbox reports PHP %q, want %q (what its image ships)", state.PHP, tc.want)
+			}
+		})
+	}
+}
+
 // A sandbox exists to rehearse the deploy against the interpreter the
 // application actually runs, and the project's own normalized
 // `stack.php_version` already names it — so `sandbox up` without `--php` must

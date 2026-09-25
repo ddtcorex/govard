@@ -642,3 +642,27 @@ func TestSandboxSeedSkipsTheDBRewriteWithoutAWebPort(t *testing.T) {
 		t.Fatalf("the db rewrite ran %d times without a web port, want none", calls)
 	}
 }
+
+// A rewrite that produces nothing (a table prefix the framework refuses to put
+// in SQL, for example) leaves the origin's URLs in place. That must be said,
+// not skipped in silence: the symptom arrives much later, as a redirect in the
+// verify check.
+func TestSandboxSeedNamesAnEmptyDBRewrite(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	fake.answers["80/tcp"] = "127.0.0.1:32768\n"
+	containers := deploy.NewDockerCLIForTest(fake.run)
+
+	var out bytes.Buffer
+	request := seedSandboxUpRequest(t, root, origin)
+	request.Profile = deploy.SandboxProfilePHP
+	request.Out = &out
+	request.DBRewrite = func([]byte, string) []string { return nil }
+	if _, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("sandbox up: %v", err)
+	}
+	if !strings.Contains(out.String(), "nothing to rewrite in the seeded database") {
+		t.Fatalf("an empty rewrite must be reported, got:\n%s", out.String())
+	}
+}

@@ -836,8 +836,9 @@ to the recipe, not to a flag.
 The image's PHP series comes from `--php`, or from the project's
 `stack.php_version` when the flag is unnamed and names a series — so a rehearsal
 builds the interpreter the application runs without spelling it out every time.
-A series that disagrees with an existing container is refused with `--recreate`,
-the same as a profile change.
+That default applies to a new container only: an existing one keeps the series
+it ships, and a *named* `--php` that disagrees with it is refused with
+`--recreate`, the same as a profile change.
 
 The `php` and `full` profiles also ship the **web tier**: nginx serving the served
 path plus the project's `stack.web_root` (`/pub` for Magento) and PHP-FPM running as

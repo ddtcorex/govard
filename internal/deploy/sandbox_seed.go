@@ -376,7 +376,14 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 			envContent = []byte(raw)
 		}
 		baseURL := fmt.Sprintf("http://127.0.0.1:%d/", webPort)
-		for _, statement := range request.DBRewrite(envContent, baseURL) {
+		statements := request.DBRewrite(envContent, baseURL)
+		if len(statements) == 0 {
+			// The framework refused (an unusable table prefix) or had nothing to
+			// say. Either way the origin's URLs stay, and the verify check will
+			// answer with a redirect much later; say it now.
+			fmt.Fprintf(out, "note: nothing to rewrite in the seeded database; URLs that name the origin stay as they are, point them at %s by hand\n", baseURL)
+		}
+		for _, statement := range statements {
 			if err := runtime.ExecStream(ctx, sandbox, passwordEnv, strings.NewReader(statement), nil, spec.DBImportArgs...); err != nil {
 				return fmt.Errorf("rewrite the sandbox database: %w", err)
 			}

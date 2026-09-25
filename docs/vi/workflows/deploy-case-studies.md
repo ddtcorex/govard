@@ -819,8 +819,9 @@ thêm một extension thì thêm vào recipe, không phải vào flag.
 
 Series PHP của image lấy từ `--php`, hoặc từ `stack.php_version` của dự án khi flag
 không được truyền và là một series — để lần diễn tập build đúng interpreter mà ứng
-dụng chạy mà không phải gõ tay mỗi lần. Series khác với container đang có sẽ bị từ
-chối kèm `--recreate`, giống như đổi profile.
+dụng chạy mà không phải gõ tay mỗi lần. Giá trị mặc định đó chỉ áp dụng cho container
+mới: container đã có giữ series nó đang ship, còn `--php` gõ tay mà khác với nó thì
+bị từ chối kèm `--recreate`, giống như đổi profile.
 
 Profile `php` và `full` còn ship **web tier**: nginx phục vụ served path cộng
 `stack.web_root` của dự án (`/pub` với Magento) và PHP-FPM chạy bằng chính user

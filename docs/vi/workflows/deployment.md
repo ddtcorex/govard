@@ -1257,8 +1257,9 @@ Tài khoản mặc định `guest`/`guest` đi qua HTTP thường, nên hãy coi
 ích phát triển local và không bao giờ expose ra ngoài máy.
 
 `--php` chọn series PHP mà image cung cấp, ví dụ `--php 8.4`; không có thì sandbox
-dùng `stack.php_version` của dự án khi nó là một series, còn không thì giữ version
-của distribution gốc. Series lấy từ repository sury và kéo theo `php`
+mới được build theo `stack.php_version` của dự án khi nó là một series, còn không
+thì theo version của distribution gốc; sandbox đã có thì giữ series nó đang ship
+(chỉ `--php` gõ tay mới có thể khác, và khi đó bị từ chối kèm `--recreate`). Series lấy từ repository sury và kéo theo `php`
 binary, các extension, `php_bin` và `php_version` mà remote khai — nên dự án có
 `composer.lock` đòi PHP mới hơn image gốc vẫn diễn tập được đúng interpreter mà
 target thật chạy. Series nằm trong image tag, nên đổi series là build image khác

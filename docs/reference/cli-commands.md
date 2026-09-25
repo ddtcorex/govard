@@ -858,9 +858,10 @@ sandbox shadows any `remotes.sandbox` block in `.govard.local.yml`
 
 Profiles: `basic` (sshd, rsync, git), `php` (adds php-cli, composer, node) and
 `full` (adds a database and a cache), defaulting to `php`. `--php <series>` picks
-the PHP series the image provides (`--php 8.4`); without it the sandbox uses the
-project's `stack.php_version` when it names a series, and the base
-distribution's version otherwise. The series moves the `php` binary, its extensions,
+the PHP series the image provides (`--php 8.4`); without it a new sandbox is
+built for the project's `stack.php_version` when it names a series, and for the
+base distribution's version otherwise, while an existing sandbox keeps the series
+it ships. The series moves the `php` binary, its extensions,
 the remote's `php_bin` and the `php_version` the remote declares, and it is part
 of the image tag — so a project that needs a newer PHP than the base image
 carries is rehearsed against the right interpreter instead of failing mid-install.

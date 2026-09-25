@@ -1393,8 +1393,10 @@ plain HTTP, so treat it as a local-development convenience and never expose
 it beyond the machine.
 
 `--php` picks the PHP series the image provides, for example `--php 8.4`; without
-it the sandbox uses the project's `stack.php_version` when it names a series,
-and the base distribution's own version otherwise. The series comes from the
+it a new sandbox is built for the project's `stack.php_version` when it names a
+series, and for the base distribution's own version otherwise, while an existing
+sandbox keeps the series it ships (only a named `--php` can disagree with it, and
+that is refused with `--recreate`). The series comes from the
 sury repository and the image's `php` binary, its extensions, `php_bin` and the
 `php_version` the remote declares all follow it — so a project whose
 `composer.lock` requires a newer PHP than the base image carries can be rehearsed
