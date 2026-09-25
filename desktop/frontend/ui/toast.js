@@ -1,3 +1,5 @@
+import { escapeHTML } from "../utils/dom.js";
+
 export const createToast = (container) => {
   const activeMessages = new Set();
 
@@ -32,7 +34,7 @@ export const createToast = (container) => {
         <span class="material-symbols-outlined toast-icon">${getIcon(type)}</span>
       </div>
       <div class="toast-content">
-        <p class="toast-message">${msg}</p>
+        <p class="toast-message">${escapeHTML(msg)}</p>
       </div>
       <button class="toast-close" aria-label="Close">
         <span class="material-symbols-outlined">close</span>
@@ -83,7 +85,7 @@ export const createToast = (container) => {
       </div>
       <div class="toast-content" style="max-height: 200px; overflow-y: auto; overflow-x: hidden;">
         <div style="display:flex;align-items:center;gap:6px;">
-          <p class="toast-message font-bold" style="margin:0;">${msg}</p>
+          <p class="toast-message font-bold" style="margin:0;">${escapeHTML(msg)}</p>
           <span class="toast-spinner" style="
             display: inline-block;
             width: 12px;

@@ -1,0 +1,36 @@
+[
+  {
+    "service": "EnvironmentService",
+    "method": "GetDashboard",
+    "args": [],
+    "result": {
+      "activeEnvironments": 1,
+      "runningServices": 0,
+      "queuedTasks": 0,
+      "activeSummary": "",
+      "servicesSummary": "",
+      "queueSummary": "",
+      "environments": [
+        {
+          "project": "sample-project",
+          "domain": "sample-project.test",
+          "name": "sample-project",
+          "framework": "laravel",
+          "technologies": [],
+          "php": "",
+          "database": "",
+          "services": [],
+          "serviceTargets": [],
+          "status": "running"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "service": "EnvironmentService",
+    "method": "StopEnvironment",
+    "args": ["sample-project"],
+    "result": "Stopped sample-project"
+  }
+]

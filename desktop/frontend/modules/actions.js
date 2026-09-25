@@ -1,4 +1,11 @@
 import { confirm } from "../ui/modal.js";
+import { escapeHTML } from "../utils/dom.js";
+
+export const buildDeleteConfirmMessage = (project) =>
+  `Are you sure you want to PERMANENTLY delete project <span class="text-primary font-bold">"${escapeHTML(project)}"</span>?<br><br>
+                  This will remove all Docker containers and <span class="text-red-500 font-bold uppercase underline">VOLUMES</span> (database data).<br><br>
+                  The project source code directory will <span class="font-bold">NOT</span> be deleted.<br><br>
+                  <span class="text-red-500 font-bold">THIS ACTION CANNOT BE UNDONE.</span>`;
 
 export const createActionsController = ({
   bridge,
@@ -107,10 +114,7 @@ export const createActionsController = ({
     if (action === "env-delete") {
       const confirmed = await confirm({
         title: "Delete Project",
-        message: `Are you sure you want to PERMANENTLY delete project <span class="text-primary font-bold">"${project}"</span>?<br><br>
-                  This will remove all Docker containers and <span class="text-red-500 font-bold uppercase underline">VOLUMES</span> (database data).<br><br>
-                  The project source code directory will <span class="font-bold">NOT</span> be deleted.<br><br>
-                  <span class="text-red-500 font-bold">THIS ACTION CANNOT BE UNDONE.</span>`,
+        message: buildDeleteConfirmMessage(project),
         icon: "delete_forever",
         confirmLabel: "Delete Project",
         cancelLabel: "Cancel",
