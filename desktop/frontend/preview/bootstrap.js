@@ -28,6 +28,10 @@ installPreviewControl();
 // second is far longer than a click plus its render, which keeps a per-click
 // call count exact.
 window.__govardPreviewMetricsIntervalMs = 1000;
+// main.js mounts the logs island with this live-poll interval instead of the
+// production 2 s, and exposes the island handle as window.__govardLogsIsland, so
+// a behaviour test can watch the poll run and then prove unmounting stops it.
+window.__govardPreviewLogsPollMs = 1000;
 // main.js then exposes the update prompt model as window.__govardUpdatePromptModel,
 // so a behaviour test can stop the 12 s startup schedule and run each background
 // check itself instead of waiting on (and racing) the production timer.

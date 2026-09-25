@@ -321,32 +321,44 @@ test("logs section exposes filtering and streaming controls", async () => {
     new URL("../../desktop/frontend/index.html", import.meta.url),
     "utf8",
   );
-  const logsJS = await readFile(
-    new URL("../../desktop/frontend/modules/logs.js", import.meta.url),
+  // The tab's markup moved into a React island, so its controls are asserted on
+  // the island and by data-testid: the [data-action] routing the global
+  // delegate used is gone (spec D5).
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/LogsTab.tsx", import.meta.url),
     "utf8",
   );
-  const combined = html + logsJS;
 
-  assert.equal(combined.includes('id="tab-logs"'), true, "missing logs tab");
+  assert.equal(html.includes('id="tab-logs"'), true, "missing logs tab");
   assert.equal(
-    combined.includes('id="logServiceSelector"'),
+    html.includes('id="logsIsland"'),
+    true,
+    "missing logs island container",
+  );
+  assert.equal(
+    island.includes("logServiceSelector"),
     true,
     "missing log service selector",
   );
   assert.equal(
-    combined.includes('data-action="refresh-logs"'),
+    island.includes('data-testid="refresh-logs"'),
     true,
-    "missing refresh logs action",
+    "missing refresh logs control",
   );
   assert.equal(
-    combined.includes('data-action="download-logs"'),
+    island.includes('data-testid="download-logs"'),
     true,
-    "missing download logs action",
+    "missing download logs control",
   );
   assert.equal(
-    combined.includes('data-action="toggle-live"'),
+    island.includes('data-testid="toggle-live"'),
     true,
-    "missing toggle live action",
+    "missing toggle live control",
+  );
+  assert.equal(
+    /data-action\s*=/.test(island),
+    false,
+    "the migrated subtree must carry no data-action for main.js's delegate",
   );
 });
 

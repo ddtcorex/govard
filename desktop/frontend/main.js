@@ -13,14 +13,7 @@ import {
   renderEnvironmentSkeletons,
 } from "./modules/dashboard.js";
 import { createGlobalServicesController } from "./modules/global-services.js";
-import {
-  createLogsController,
-  normalizeLogSeverity,
-  resolveLogTarget,
-  syncServiceSelector,
-  syncSeveritySelector,
-  renderLogsTab,
-} from "./modules/logs.js";
+import { normalizeLogSeverity, resolveServiceTargets } from "./modules/logs.js";
 import {
   createOnboardingController,
   renderOnboardingModal,
@@ -37,6 +30,7 @@ import {
 import { createUpdateNotifierModel } from "./modules/update-notifier.js";
 import { createElement } from "react";
 import { mountIsland } from "./islands/mount.js";
+import { LogsTab } from "./islands/LogsTab.tsx";
 import { MetricsFooter } from "./islands/MetricsFooter.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
@@ -47,7 +41,6 @@ import { byId, setText } from "./utils/dom.js";
 console.log("==> Finished imports <==");
 
 const initUI = () => {
-  renderLogsTab(byId("tab-logs"));
   renderOnboardingModal(byId("onboardingModalMount"));
   // NOTE: do NOT call renderRemotes(tab-remotes) here — it wipes the remotesList/remotesWarnings
   // containers. The remotesController.refresh() handles rendering when the tab is opened.
@@ -83,12 +76,6 @@ const getLiveRefs = () => ({
   globalLogServiceName: byId("globalLogServiceName"),
   globalLogSeverity: byId("globalLogSeverity"),
   globalLogSearch: byId("globalLogSearch"),
-  logServiceSelector: byId("logServiceSelector"),
-  logSeverity: byId("logSeverity"),
-  logSearch: byId("logSearch"),
-  logOutputViewport: byId("logOutputViewport"),
-  logOutput: byId("logOutput"),
-  toggleLive: byId("toggleLive"),
   openSettings: byId("openSettings"),
   closeSettings: byId("closeSettings"),
   hardReset: byId("hardReset"),
@@ -178,7 +165,6 @@ const refreshRefs = () => {
   Object.assign(refs, newRefs);
   // Propagate updated refs to controllers if they don't hold the object by reference
   // (Most do, but we keep this for safety and explicit update triggers)
-  if (logsController?.updateRefs) logsController.updateRefs(refs);
   if (remotesController?.updateRefs) remotesController.updateRefs(refs);
   if (settingsController?.updateRefs) settingsController.updateRefs(refs);
   if (globalServicesController?.updateRefs)
@@ -694,7 +680,7 @@ const selectProject = async (project) => {
     ?.id?.replace("tab-", "");
 
   if (activeTabId === "logs") {
-    logsController.refresh();
+    void logsApi.refresh();
   } else if (activeTabId === "remotes") {
     remotesController.refresh();
   }
@@ -746,7 +732,7 @@ const switchTab = (tabId) => {
       scrollContainer.classList.add("overflow-hidden");
       setState({ selectedService: "all" });
       refreshServiceSelector();
-      logsController.refresh();
+      void logsApi.refresh();
     } else if (tabId === "global-services") {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
@@ -837,14 +823,6 @@ if (hasEventRuntime()) {
   });
 }
 
-const readSelection = () =>
-  resolveLogTarget({
-    project: getState().selectedProject,
-    service: getState().selectedService,
-    severity: getState().selectedSeverity,
-    query: getState().logQuery,
-  });
-
 const safeDashboard = {
   ActiveEnvironments: 2,
   RunningServices: 5,
@@ -905,35 +883,19 @@ const syncProjectState = () => {
   setState({ selectedProject });
 };
 
-const syncServiceState = () => {
-  const container = refs.logServiceSelector;
-  const activeBtn = container?.querySelector("button.bg-\\[\\#2e573a\\]");
-  const selectedService = activeBtn?.dataset.service || "all";
-  setState({ selectedService });
-};
-
-const syncLogFiltersState = () => {
-  const container = refs.logSeverity;
-  const activeBtn = container?.querySelector("button.bg-\\[\\#2e573a\\]");
-  const selectedSeverity = activeBtn?.dataset.severity || "all";
-  const logQuery = refs.logSearch?.value || "";
-  setState({ selectedSeverity, logQuery });
-};
-
-const refreshSeveritySelector = () => {
-  const state = getState();
-  syncSeveritySelector(refs.logSeverity, state.selectedSeverity);
-};
-
+// The service strip lives inside the logs island now, so this resolves the
+// selection against whatever the refreshed environment list still offers and
+// writes it to the store, where the island reads it (spec D6). main.js keeps
+// calling it because the selection is shared state: switching to the logs tab,
+// opening a service's logs, and a dashboard refresh all go through here.
 const refreshServiceSelector = () => {
   const state = getState();
-  const selectedService = syncServiceSelector(
-    refs.logServiceSelector,
+  const { service } = resolveServiceTargets(
     state.environments,
     state.selectedProject,
     state.selectedService,
   );
-  setState({ selectedService });
+  setState({ selectedService: service });
 };
 
 const setSelectedProject = (project) => {
@@ -967,16 +929,8 @@ const openServiceContext = async (project, service) => {
   setState({ selectedService });
   refreshServiceSelector();
 
-  await logsController.refresh();
+  await logsApi.refresh();
 };
-
-const logsController = createLogsController({
-  bridge: desktopBridge,
-  refs,
-  readSelection,
-  onStatus: setStatus,
-  onToast: showToast,
-});
 
 // The footer readout is a React island that owns its own polling interval;
 // refreshDashboard reaches it through the function it registers. The preview
@@ -995,6 +949,32 @@ const metricsIsland = mountIsland(
   }),
 );
 if (window.__govardPreviewMetricsIntervalMs) window.__govardMetricsIsland = metricsIsland;
+
+// The logs tab is an island too: it owns the markup the vanilla tab used to
+// inject, plus the live interval and the logs:* subscriptions the controller
+// could never clean up after. main.js keeps its own triggers (tab switch,
+// dashboard refresh, project change) through the controller the island
+// registers, so no path fetches the same buffer twice. The preview
+// (preview/bootstrap.js) shortens the poll and exposes the island so a
+// behaviour test can watch it stop on unmount; production defines no such
+// global.
+let logsApi = {
+  refresh: async () => null,
+  selectionChanged: async () => {},
+};
+const logsIsland = mountIsland(
+  "logsIsland",
+  createElement(LogsTab, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    registerController: (api) => {
+      logsApi = api;
+    },
+    livePollMs: window.__govardPreviewLogsPollMs ?? 2000,
+  }),
+);
+if (window.__govardPreviewLogsPollMs) window.__govardLogsIsland = logsIsland;
 
 const remotesController = createRemotesController({
   bridge: desktopBridge,
@@ -1091,16 +1071,6 @@ const refreshDashboard = async (options = {}) => {
       console.error("[refreshDashboard] refreshServiceSelector error:", e);
     }
     try {
-      refreshSeveritySelector();
-    } catch (e) {
-      console.error("[refreshDashboard] refreshSeveritySelector error:", e);
-    }
-    try {
-      syncLogFiltersState();
-    } catch (e) {
-      console.error("[refreshDashboard] syncLogFiltersState error:", e);
-    }
-    try {
       renderEnvironmentList(
         refs.envList,
         dashboard.environments,
@@ -1132,7 +1102,7 @@ const refreshDashboard = async (options = {}) => {
     await refreshMetrics({ silent: true });
     await remotesController.refresh({ silent: true });
     await globalServicesController.refresh({ silent: true });
-    await logsController.refresh();
+    await logsApi.refresh();
     await loadFooterVersion();
 
     setStatus(`Status: Ready`);
@@ -1373,10 +1343,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (action === "refresh-logs") {
-    await logsController.refresh();
-    return;
-  }
   if (action === "browse-project") {
     await onboardingController.browseProject();
     return;
@@ -1401,29 +1367,6 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "refresh-remotes") {
     await remotesController.refresh();
-    return;
-  }
-  if (action === "filter-severity") {
-    const sev = targetElement.dataset.severity;
-    if (sev) {
-      setState({ selectedSeverity: sev });
-      logsController.applyFilters();
-      refreshSeveritySelector();
-    }
-    return;
-  }
-  if (action === "filter-service") {
-    const svc = targetElement.dataset.service;
-    if (svc) {
-      setState({ selectedService: svc });
-      refreshServiceSelector();
-      if (logsController.isLiveEnabled()) {
-        await logsController.stopLive();
-        await logsController.toggleLive();
-      } else {
-        await logsController.refresh();
-      }
-    }
     return;
   }
   if (action === "open-service-logs") {
@@ -1697,18 +1640,6 @@ document.addEventListener("click", async (event) => {
     }
     return;
   }
-  if (action === "toggle-live") {
-    await logsController.toggleLive();
-    return;
-  }
-  if (action === "clear-logs") {
-    await logsController.clearLogs();
-    return;
-  }
-  if (action === "download-logs") {
-    await logsController.downloadLogs();
-    return;
-  }
   if (action === "open-shell") {
     // Redirect to OS Terminal for the whole project
     const project = getState().selectedProject;
@@ -1868,12 +1799,9 @@ const syncProjectSelectorsFrom = async (source) => {
   }
   syncProjectState();
   refreshServiceSelector();
-  if (logsController.isLiveEnabled()) {
-    await logsController.stopLive();
-    await logsController.toggleLive();
-  } else {
-    await logsController.refresh();
-  }
+  // The island decides whether a changed selection means "restart the stream"
+  // or "reload the buffer" - the live mode lives there now.
+  await logsApi.selectionChanged();
   await remotesController.refresh({ silent: true });
 };
 
@@ -1881,20 +1809,6 @@ const bindDynamicControlListeners = () => {
   if (refs.envSelector) {
     refs.envSelector.addEventListener("change", async () => {
       await syncProjectSelectorsFrom("env");
-    });
-  }
-
-  if (refs.logSeverity) {
-    refs.logSeverity.addEventListener("change", () => {
-      syncLogFiltersState();
-      logsController.applyFilters();
-    });
-  }
-
-  if (refs.logSearch) {
-    refs.logSearch.addEventListener("input", () => {
-      syncLogFiltersState();
-      logsController.applyFilters();
     });
   }
 
@@ -2063,5 +1977,6 @@ window.addEventListener("beforeunload", () => {
   updateNotifierModel.clearTimers();
   updatePromptIsland?.unmount();
   metricsIsland?.unmount();
+  logsIsland?.unmount();
   globalServicesController.stopLive({ skipBridge: true });
 });

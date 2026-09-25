@@ -6,6 +6,7 @@ import {
   classifyLogSeverity,
   filterLogsText,
   resolveLogTarget,
+  resolveServiceTargets,
 } from "../../desktop/frontend/modules/logs.js";
 
 test("resolveLogTarget returns selected project and service", () => {
@@ -54,5 +55,36 @@ test("filterLogsText filters by severity and search query", () => {
   assert.equal(filterLogsText(logs, "all", "retry"), "Info retry success");
   assert.equal(filterLogsText(logs, "info", "worker"), "Info worker ready");
   assert.equal(filterLogsText(logs, "error", "worker"), "");
+});
+
+test("resolveServiceTargets lists all plus the environment's targets", () => {
+  const environments = [
+    {
+      project: "sample-project",
+      services: [{ name: "nginx" }, { name: "php" }],
+    },
+  ];
+  const { targets, service } = resolveServiceTargets(environments, "sample-project", "all");
+  assert.deepEqual(targets, ["all", "web", "php"]);
+  assert.equal(service, "all");
+});
+
+test("resolveServiceTargets keeps a selection the environment still offers", () => {
+  const environments = [{ project: "sample-project", serviceTargets: ["php", "db"] }];
+  const { targets, service } = resolveServiceTargets(environments, "sample-project", "db");
+  assert.deepEqual(targets, ["all", "php", "db"]);
+  assert.equal(service, "db");
+});
+
+test("resolveServiceTargets falls back to all for an unknown project", () => {
+  const { targets, service } = resolveServiceTargets([], "missing-project", "php");
+  assert.deepEqual(targets, ["all", "web"]);
+  assert.equal(service, "all");
+});
+
+test("resolveServiceTargets drops a selection the environment no longer offers", () => {
+  const environments = [{ project: "sample-project", serviceTargets: ["php"] }];
+  const { service } = resolveServiceTargets(environments, "sample-project", "redis");
+  assert.equal(service, "all");
 });
 
