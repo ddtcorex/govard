@@ -14,13 +14,22 @@ func configureDevProcess(c *exec.Cmd) {
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
-// stopDevProcess terminates the child's whole process group, then reaps it.
-func stopDevProcess(c *exec.Cmd) {
+// terminateDevProcess signals the child's whole process group, without reaping
+// it: the caller may own Wait.
+func terminateDevProcess(c *exec.Cmd) {
 	if c.Process == nil {
 		return
 	}
 	if err := syscall.Kill(-c.Process.Pid, syscall.SIGTERM); err != nil {
 		_ = c.Process.Kill()
 	}
+}
+
+// stopDevProcess terminates the child's whole process group, then reaps it.
+func stopDevProcess(c *exec.Cmd) {
+	if c.Process == nil {
+		return
+	}
+	terminateDevProcess(c)
 	_ = c.Wait()
 }
