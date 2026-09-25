@@ -67,3 +67,11 @@ func TestMakeTestFrontendRunsPreviewTests(t *testing.T) {
 		t.Error("make test-frontend must glob tests/frontend/preview/*.test.mjs too")
 	}
 }
+
+// The raw-CDP behaviour tier only protects the islands if CI runs it.
+func TestCIRunsFrontendBehaviourTests(t *testing.T) {
+	ci := readRepoFile(t, ".github/workflows/ci-pipeline.yml")
+	if !strings.Contains(ci, "make test-frontend-behaviour") {
+		t.Fatal("CI must run make test-frontend-behaviour (spec: the behaviour tier runs after test-frontend)")
+	}
+}
