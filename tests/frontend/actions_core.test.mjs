@@ -39,3 +39,27 @@ test("environment actions wire loading toast lifecycle", async () => {
     "actions controller should call desktop pullEnvironment bridge",
   );
 });
+
+// actions.js imports ui/modal.js, which looks up its DOM nodes at module load
+// (null-safe), so the module is imported with a minimal document stub.
+const loadActionsModule = async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { getElementById: () => null };
+  try {
+    return await import("../../desktop/frontend/modules/actions.js");
+  } finally {
+    globalThis.document = previousDocument;
+  }
+};
+
+test("delete confirm escapes the project name", async () => {
+  const { buildDeleteConfirmMessage } = await loadActionsModule();
+  const html = buildDeleteConfirmMessage('<img src=x onerror="alert(1)">');
+  assert.equal(
+    html.includes("<img"),
+    false,
+    "raw markup from a project name must not reach the dialog",
+  );
+  assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
+  assert.match(html, /PERMANENTLY delete project/);
+});
