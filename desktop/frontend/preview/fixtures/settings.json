@@ -1,0 +1,52 @@
+[
+  {
+    "service": "SettingsService",
+    "method": "GetSettings",
+    "args": [],
+    "result": {
+      "theme": "dark",
+      "proxyTarget": "govard.test",
+      "codeEditor": "code",
+      "preferredBrowser": "firefox",
+      "dbClientPreference": "desktop",
+      "runInBackground": false
+    }
+  },
+  {
+    "service": "SettingsService",
+    "method": "GetTrayStatus",
+    "args": [],
+    "result": { "available": true }
+  },
+  {
+    "service": "SettingsService",
+    "method": "UpdateSettings",
+    "args": [],
+    "result": "Settings saved"
+  },
+  {
+    "service": "UpdateService",
+    "method": "GetUpdateChannel",
+    "args": [],
+    "result": "beta"
+  },
+  {
+    "service": "UpdateService",
+    "method": "SetUpdateChannel",
+    "args": [],
+    "result": "stable"
+  },
+  {
+    "service": "UpdateService",
+    "method": "CheckForUpdates",
+    "args": [],
+    "result": {
+      "outdated": false,
+      "currentVersion": "1.0.0",
+      "latestVersion": "1.0.0",
+      "changelog": "",
+      "channel": "stable",
+      "message": ""
+    }
+  }
+]
