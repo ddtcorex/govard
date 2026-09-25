@@ -45,7 +45,7 @@ export async function withPreview(t) {
     chrome.kill("SIGKILL");
     await vite.stop();
   });
-  const session = await openTab({ port: chromePort, url: `${vite.baseUrl}/preview.html` });
+  const session = await openTab({ port: chromePort, url: `${vite.baseUrl}/preview.html`, chrome });
   t.after(async () => {
     await session.close();
   });
