@@ -700,7 +700,11 @@ export const createOnboardingController = ({
       const input = document.createElement("input");
       input.type = "checkbox";
       input.className = "size-4 accent-primary";
-      input.setAttribute("data-action", "toggle-onboarding-bootstrap-option");
+      // No data-action here: the options land inside a subtree React owns, and
+      // main.js's document-wide delegate would resolve the attribute, preventDefault
+      // the click and cancel the checkbox. The island reads `data-option` from the
+      // click instead. (This is also the one emitter a source grep for the attribute
+      // form cannot see, which is how it survived the modal's migration.)
       input.setAttribute("data-option", String(option.key || ""));
       input.checked = Boolean(pendingBootstrapContext.config?.[option.key]);
 

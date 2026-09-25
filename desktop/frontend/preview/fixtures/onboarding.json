@@ -4,26 +4,9 @@
     "method": "ListFrameworks",
     "args": [],
     "result": [
-      {
-        "name": "magento2",
-        "displayName": "Magento 2",
-        "aliases": [
-          "m2",
-          "mage"
-        ]
-      },
-      {
-        "name": "laravel",
-        "displayName": "Laravel",
-        "aliases": [
-          "lv"
-        ]
-      },
-      {
-        "name": "symfony",
-        "displayName": "Symfony",
-        "aliases": []
-      }
+      { "name": "magento2", "displayName": "Magento 2", "aliases": ["m2", "mage"] },
+      { "name": "laravel", "displayName": "Laravel", "aliases": ["lv"] },
+      { "name": "symfony", "displayName": "Symfony", "aliases": [] }
     ]
   },
   {
@@ -44,7 +27,19 @@
     "args": [],
     "result": {
       "project": "sample-project",
-      "remotes": [],
+      "remotes": [
+        {
+          "name": "staging",
+          "host": "staging.example.com",
+          "user": "deploy",
+          "path": "/var/www/staging",
+          "port": 22,
+          "lastSync": "2m ago",
+          "protected": false,
+          "authMethod": "keychain",
+          "capabilities": ["db", "media"]
+        }
+      ],
       "warnings": []
     }
   },
@@ -55,7 +50,26 @@
     "result": {
       "preset": "full",
       "command": "sync",
-      "options": []
+      "options": [
+        {
+          "key": "noNoise",
+          "label": "Exclude Noise",
+          "description": "Exclude ephemeral tables",
+          "defaultValue": false
+        }
+      ]
     }
+  },
+  {
+    "service": "RemoteService",
+    "method": "RunRemoteSyncPreset",
+    "args": [],
+    "result": "full: 42 files checked"
+  },
+  {
+    "service": "RemoteService",
+    "method": "RunRemoteSync",
+    "args": [],
+    "result": ""
   }
 ]
