@@ -5,7 +5,6 @@ import { readFile } from "node:fs/promises";
 import {
   normalizeOnboardingDomain,
   normalizeOnboardingFramework,
-  renderOnboardingModal,
 } from "../../desktop/frontend/modules/onboarding.js";
 import { desktopBridge, __setBindingsLoaderForTest } from "../../desktop/frontend/services/bridge.js";
 
@@ -44,76 +43,31 @@ test("desktop layout exposes onboarding mount point", async () => {
   );
 });
 
-test("renderOnboardingModal exposes streamlined onboarding UI contract", () => {
-  const container = { innerHTML: "" };
-  renderOnboardingModal(container);
-  const markup = String(container.innerHTML || "");
+test("the onboarding island renders the wizard's UI contract", async () => {
+  const markup = await readFile(
+    new URL("../../desktop/frontend/islands/OnboardingModal.tsx", import.meta.url),
+    "utf8",
+  );
 
-  assert.equal(
-    markup.includes('id="projectDomainHint"'),
-    true,
-    "missing domain hint",
-  );
-  assert.equal(
-    markup.includes('id="onboardingSummaryDomain"'),
-    true,
-    "missing summary domain field",
-  );
-  assert.equal(
-    markup.includes('id="projectFrameworkVersion"'),
-    true,
-    "missing framework version field",
-  );
-  assert.equal(
-    markup.includes('id="projectFrameworkVersionHint"'),
-    true,
-    "missing framework version hint",
-  );
-  assert.equal(
-    markup.includes('id="onboardingSubmitHint"'),
-    true,
-    "missing submit readiness hint",
-  );
-  assert.equal(
-    markup.includes('id="onboardingSubmitSpinner"'),
-    true,
-    "missing onboarding submit spinner",
-  );
-  assert.equal(
-    markup.includes('id="onboardingBootstrapOptions"'),
-    true,
-    "missing onboarding bootstrap options container",
-  );
-  assert.equal(
-    markup.includes('id="onboardFromGit"'),
-    true,
-    "missing git onboarding toggle",
-  );
-  assert.equal(
-    markup.includes('id="gitProtocol"'),
-    true,
-    "missing git protocol selector",
-  );
-  assert.equal(
-    markup.includes('id="gitUrl"'),
-    true,
-    "missing git URL input",
-  );
-  assert.equal(
-    markup.includes('id="gitUrlHint"'),
-    true,
-    "missing git URL hint",
-  );
-  assert.equal(
-    markup.includes('id="gitConfirmOverride"'),
-    true,
-    "missing git folder override confirmation",
-  );
-  assert.equal(
-    markup.includes('id="gitConfirmHint"'),
-    true,
-    "missing git confirmation hint",
-  );
+  for (const id of [
+    "projectDomainHint",
+    "onboardingSummaryDomain",
+    "projectFrameworkVersion",
+    "projectFrameworkVersionHint",
+    "onboardingSubmitHint",
+    "onboardingSubmitSpinner",
+    "onboardingBootstrapOptions",
+    "onboardFromGit",
+    "gitProtocol",
+    "gitUrl",
+    "gitUrlHint",
+    "gitConfirmOverride",
+    "gitConfirmHint",
+    "projectPathCard",
+  ]) {
+    assert.equal(markup.includes(`id="${id}"`), true, `missing ${id}`);
+  }
+
   assert.equal(
     markup.includes('id="detectionState"'),
     false,
@@ -125,27 +79,18 @@ test("renderOnboardingModal exposes streamlined onboarding UI contract", () => {
     "legacy timeline block should be removed",
   );
   assert.equal(
-    markup.includes('id="projectPathCard"'),
-    true,
-    "missing project path card container",
-  );
-  assert.equal(
-    markup.includes('data-action="browse-project"'),
-    true,
-    "project path card should trigger browse action",
-  );
-  assert.equal(
     markup.includes('role="button"'),
     true,
     "project path card should be keyboard focusable",
   );
-  const browseActionCount = (
-    markup.match(/data-action="browse-project"/g) || []
-  ).length;
+  // The card was a delegate target; the island owns the click and the keyboard
+  // path main.js's document-wide keydown handler used to provide for it.
+  const browseCount = (markup.match(/data-testid="browse-project"/g) || []).length;
+  assert.equal(browseCount, 1, "expected exactly one browse action target");
   assert.equal(
-    browseActionCount === 1,
+    markup.includes("onKeyDown"),
     true,
-    "expected exactly one browse action target",
+    "the path card must keep its keyboard activation",
   );
 });
 
