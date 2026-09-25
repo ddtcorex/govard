@@ -22,6 +22,12 @@ window.webkit.messageHandlers.external.postMessage = () => {};
 
 await installPreviewSeam();
 installPreviewControl();
+// main.js mounts the metrics island with this polling interval instead of the
+// production 15 s, and exposes the island handle as window.__govardMetricsIsland,
+// so a behaviour test can watch the polling run and then stop on unmount. One
+// second is far longer than a click plus its render, which keeps a per-click
+// call count exact.
+window.__govardPreviewMetricsIntervalMs = 1000;
 await import("../main.js");
 
 // After the app has booted, so the island's store reads see the same state

@@ -15,7 +15,7 @@ test("a fixture drives the rendered footer, and the app makes the call once per 
   // Installing fixtures only changes what the next call answers; it does not
   // trigger one. The footer's own refresh control is the user's path, so the
   // scenario drives that instead of poking the controller directly.
-  await session.evaluate(`document.querySelector('[data-action="refresh-metrics"]').click()`);
+  await session.evaluate(`document.querySelector('[data-testid="refresh-metrics"]').click()`);
   await session.waitFor(`document.getElementById("footerCPU").textContent`, "12.5%");
   assert.equal(await session.evaluate(`document.getElementById("footerMemory").textContent`), "2048.3 MB");
 
