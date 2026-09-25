@@ -182,12 +182,13 @@ func runDesktopDev() {
 	vite := exec.Command("pnpm", "dev")
 	vite.Dir = frontendDir
 	vite.Stdout, vite.Stderr = os.Stdout, os.Stderr
+	configureDevProcess(vite)
 	pterm.Info.Println("Starting Vite dev server: pnpm dev (http://localhost:5173)")
 	if err := vite.Start(); err != nil {
 		pterm.Error.Printf("Failed to start Vite (is pnpm installed?): %v\n", err)
 		return
 	}
-	defer func() { _ = vite.Process.Kill() }()
+	defer stopDevProcess(vite)
 
 	args := []string{"run", "-tags", desktopBuildTags(false), "./cmd/govard-desktop"}
 	if desktopBackground {
