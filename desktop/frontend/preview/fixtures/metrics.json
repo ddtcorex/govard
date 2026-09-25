@@ -1,0 +1,8 @@
+[
+  {
+    "service": "SystemService",
+    "method": "GetSystemMetrics",
+    "args": [],
+    "result": { "cpuUsage": 12.5, "memoryUsage": 2048.3 }
+  }
+]

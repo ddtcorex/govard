@@ -9,7 +9,7 @@
 let loadRuntime = () => import("@wailsio/runtime");
 
 /**
- * Test seam: replace the runtime loader, returns a restore function.
+ * Test and preview/record seam: replace the runtime loader, returns a restore function.
  * @param {typeof loadRuntime} fn
  */
 export function __setRuntimeLoaderForTest(fn) {

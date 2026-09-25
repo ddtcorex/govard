@@ -20,7 +20,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.3
 GOLANGCI_LINT_BIN ?= $(shell go env GOPATH)/bin/golangci-lint
 LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 
-.PHONY: help install install-release build-test-binary build frontend build-frontend bindings bindings-check clean test test-unit test-coverage test-integration test-integration-ci test-frontend lint lint-install fmt fmt-check vet generate generate-check images push
+.PHONY: help install install-release build-test-binary build frontend build-frontend bindings bindings-check clean test test-unit test-coverage test-integration test-integration-ci test-frontend test-frontend-behaviour lint lint-install fmt fmt-check vet generate generate-check images push
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -56,10 +56,14 @@ bindings:
 # services, which is what happens when a service method is renamed and the
 # regeneration is forgotten. The untracked check uses ls-files rather than
 # git status, because status also reports staged additions and would fail on
-# the commit that first adds the bindings.
+# the commit that first adds the bindings. It also regenerates the preview's
+# route defaults and id map (derived from those same bindings) and fails on
+# drift, so a renamed Go method trips both checks in one command.
 bindings-check: bindings
 	@git diff --exit-code -- $(BINDINGS_DIR) || (echo "Bindings are stale: run 'make bindings' and commit." && exit 1)
 	@test -z "$$(git ls-files --others -- $(BINDINGS_DIR))" || (echo "Untracked bindings: run 'make bindings' and commit." && exit 1)
+	@node desktop/frontend/scripts/generate-preview-route-defaults.mjs
+	@git diff --exit-code -- desktop/frontend/preview/route-defaults.generated.js desktop/frontend/preview/id-map.generated.js || (echo "Preview route defaults are stale: run 'node desktop/frontend/scripts/generate-preview-route-defaults.mjs' and commit." && exit 1)
 
 build: generate ## Build Govard binary for the current platform
 	@echo "Building Govard..."
@@ -113,9 +117,17 @@ test-integration-ci: build-test-binary
 
 test-frontend:
 	@echo "Running frontend unit tests..."
-	node --test tests/frontend/*.test.mjs
+	node --test tests/frontend/*.test.mjs tests/frontend/preview/*.test.mjs
 	pnpm --dir desktop/frontend install --frozen-lockfile
 	pnpm --dir desktop/frontend typecheck
+
+# Behaviour scenarios drive the real UI over raw CDP, so they need a Chrome
+# binary; CHROME_BIN overrides the search.
+CHROME_BIN ?= $(shell command -v google-chrome || command -v chromium || command -v chromium-browser || echo /opt/google/chrome/chrome)
+
+test-frontend-behaviour:
+	@test -x "$(CHROME_BIN)" || (echo "behaviour tests need Chrome; set CHROME_BIN (tried $$(command -v google-chrome), chromium, /opt/google/chrome/chrome)" && exit 1)
+	CHROME_BIN="$(CHROME_BIN)" node --test tests/frontend/behaviour/*.behaviour.test.mjs
 
 lint-install: ## Install golangci-lint if missing
 	@if ! command -v $(GOLANGCI_LINT_BIN) >/dev/null 2>&1 || ! $(GOLANGCI_LINT_BIN) version | grep -q $(GOLANGCI_LINT_VERSION); then \

@@ -58,3 +58,12 @@ func TestDesktopDocsNoLongerMentionYarn(t *testing.T) {
 		}
 	}
 }
+
+// The preview unit tests live one directory down, and a shell glob does not
+// recurse: without the second glob they never run in CI and rot silently.
+func TestMakeTestFrontendRunsPreviewTests(t *testing.T) {
+	target := readRepoFile(t, "Makefile")
+	if !strings.Contains(target, "node --test tests/frontend/*.test.mjs tests/frontend/preview/*.test.mjs") {
+		t.Error("make test-frontend must glob tests/frontend/preview/*.test.mjs too")
+	}
+}
