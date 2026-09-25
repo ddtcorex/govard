@@ -186,6 +186,9 @@ jobs:
       - name: Bindings are up to date
         run: make bindings-check
 
+      - name: Vet and lint desktop-tagged code
+        run: make lint-desktop
+
       - name: Generate shell completions
         run: |
           mkdir -p completion dist

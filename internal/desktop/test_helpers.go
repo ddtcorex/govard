@@ -712,3 +712,11 @@ func ScanLogPipeForTest(p Platform, r io.Reader, event string) {
 	scanLogPipe(context.Background(), p, r, event, done)
 	<-done
 }
+
+// BrandTrayForTest exposes brandTray for tests in /tests.
+func BrandTrayForTest(t interface {
+	SetLabel(label string)
+	SetTooltip(tooltip string)
+}) {
+	brandTray(t)
+}
