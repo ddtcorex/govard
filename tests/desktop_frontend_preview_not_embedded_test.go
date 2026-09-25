@@ -32,4 +32,39 @@ func TestDesktopFrontendPreviewNotEmbedded(t *testing.T) {
 			t.Errorf("dist/index.html references %q; dev-only preview code must never ship", banned)
 		}
 	}
+	// Dev-only artifacts must be unreachable from index.html's module graph. Only
+	// genuinely dev-only strings belong here. A migrated island is production code
+	// and ships in this bundle, and so do the preview-only hatches main.js reads
+	// (`__govardPreviewMetricsIntervalMs`, `__govardPreviewExposeUpdatePrompt`):
+	// that is the shipped design from the metrics and update-prompt migrations, not
+	// a leak, so neither is a marker. The demo island, its container id and its
+	// global are the things nothing in index.html's graph may mention. The bundle is
+	// content-hashed, so this checks markers rather than file names.
+	assets, err := filepath.Glob(filepath.Join(distDir, "assets", "*.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, asset := range assets {
+		data, err := os.ReadFile(asset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, marker := range []string{"react-demo-island-root", "__govardDemoIsland"} {
+			if strings.Contains(string(data), marker) {
+				t.Errorf("%s carries dev-only marker %q; it must not be reachable from index.html", filepath.Base(asset), marker)
+			}
+		}
+	}
+}
+
+// The same rule without needing a build, so it also runs where dist/ is absent
+// (CI's fast-tests job builds nothing). This is the check that would have caught
+// a dev-only island being imported from main.js in the first place.
+func TestDesktopMainJSReachesNoDevOnlyCode(t *testing.T) {
+	src := readRepoFile(t, "desktop/frontend/main.js")
+	for _, banned := range []string{"DemoIsland", "react-demo-island-root", "__govardDemoIsland"} {
+		if strings.Contains(src, banned) {
+			t.Errorf("main.js references %q; dev-only preview code must not be reachable from main.js", banned)
+		}
+	}
 }
