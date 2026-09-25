@@ -18,11 +18,11 @@
       <!-- Sidebar -->
 
       <aside
-        class="w-80 bg-background-secondary border-r border-border-primary flex flex-col justify-between shrink-0 transition-all duration-300 relative overflow-hidden shadow-sm">
+        class="w-80 bg-background-secondary border-r border-border-primary flex flex-col justify-between shrink-0 transition-all duration-300 relative overflow-hidden shadow-xs">
         <div class="flex flex-col h-full relative">
           <div class="p-4">
             <div
-              class="p-3 rounded-xl border border-border-primary bg-background-primary shadow-sm neon-glow flex items-center gap-3">
+              class="p-3 rounded-xl border border-border-primary bg-background-primary shadow-xs neon-glow flex items-center gap-3">
               <img src="assets/govard-logo.svg" alt="Govard logo"
                 class="w-11 h-11 rounded-lg shadow-[0_0_20px_rgba(var(--primary-rgb),0.25)] shrink-0" />
               <div class="flex flex-col min-w-0">
@@ -42,7 +42,7 @@
           </div>
           <div id="sidebarEnvActions" class="px-4 pb-4">
             <button data-action="open-onboarding"
-              class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 text-primary transition-all text-sm font-bold shadow-sm">
+              class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 text-primary transition-all text-sm font-bold shadow-xs">
               <span class="material-symbols-outlined text-lg">add</span>
               New Environment
             </button>
@@ -69,7 +69,7 @@
             <button
               class="flex items-center gap-2 pl-2 pr-1 py-1 rounded-full hover:bg-primary/10 transition-colors group">
               <div id="userAvatar"
-                class="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-[#059669] flex items-center justify-center text-slate-900 font-bold text-xs shadow-lg shadow-primary/20">
+                class="h-8 w-8 rounded-full bg-linear-to-br from-primary to-[#059669] flex items-center justify-center text-slate-900 font-bold text-xs shadow-lg shadow-primary/20">
                 ??
               </div>
               <span id="userName"
@@ -86,7 +86,7 @@
               class="relative rounded-2xl overflow-hidden group border border-slate-200 dark:border-border-primary w-full">
               <div class="absolute inset-0 z-0">
                 <div
-                  class="absolute inset-0 bg-gradient-to-t from-surface-secondary via-surface-secondary/80 to-surface-secondary/30 z-10">
+                  class="absolute inset-0 bg-linear-to-t from-surface-secondary via-surface-secondary/80 to-surface-secondary/30 z-10">
                 </div>
                 <!-- CSS-based decorative background for offline compatibility -->
                 <div class="absolute inset-0 opacity-30 overflow-hidden">
@@ -94,10 +94,10 @@
                     class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(var(--primary-rgb),0.07)_0%,transparent_70%)]">
                   </div>
                   <div
-                    class="absolute inset-0 bg-[linear-gradient(45deg,var(--bg-primary)_25%,transparent_25%,transparent_50%,var(--bg-primary)_50%,var(--bg-primary)_75%,transparent_75%,transparent)] bg-[length:48px_48px]">
+                    class="absolute inset-0 bg-[linear-gradient(45deg,var(--bg-primary)_25%,transparent_25%,transparent_50%,var(--bg-primary)_50%,var(--bg-primary)_75%,transparent_75%,transparent)] bg-size-[48px_48px]">
                   </div>
                   <div
-                    class="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#0df25905_1px,#0df25905_2px)] bg-[length:100%_4px]">
+                    class="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#0df25905_1px,#0df25905_2px)] bg-size-[100%_4px]">
                   </div>
                 </div>
               </div>
@@ -169,7 +169,7 @@
           </section>
 
           <div id="tabsHeader"
-            class="border-b border-slate-200 dark:border-border-primary shrink-0 bg-white/95 dark:bg-background-dark/95 backdrop-blur-sm sticky top-0 z-[45]">
+            class="border-b border-slate-200 dark:border-border-primary shrink-0 bg-white/95 dark:bg-background-dark/95 backdrop-blur-xs sticky top-0 z-45">
             <div id="tabsHeaderInner">
               <nav class="-mb-px flex px-2 lg:px-6">
                 <a class="border-primary text-primary dark:text-white whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all active"
@@ -196,14 +196,14 @@
                 <div class="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-border-primary">
                   <div class="absolute inset-0 z-0">
                     <div
-                      class="absolute inset-0 bg-gradient-to-t from-surface-secondary via-surface-secondary/80 to-surface-secondary/30 z-10">
+                      class="absolute inset-0 bg-linear-to-t from-surface-secondary via-surface-secondary/80 to-surface-secondary/30 z-10">
                     </div>
                     <div class="absolute inset-0 opacity-25 overflow-hidden">
                       <div
                         class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(var(--primary-rgb),0.07)_0%,transparent_70%)]">
                       </div>
                       <div
-                        class="absolute inset-0 bg-[linear-gradient(45deg,var(--bg-primary)_25%,transparent_25%,transparent_50%,var(--bg-primary)_50%,var(--bg-primary)_75%,transparent_75%,transparent)] bg-[length:48px_48px]">
+                        class="absolute inset-0 bg-[linear-gradient(45deg,var(--bg-primary)_25%,transparent_25%,transparent_50%,var(--bg-primary)_50%,var(--bg-primary)_75%,transparent_75%,transparent)] bg-size-[48px_48px]">
                       </div>
                     </div>
                   </div>
@@ -232,7 +232,7 @@
                         </div>
                         <div class="mt-3 h-2 rounded-full bg-slate-200 dark:bg-white/5 relative">
                           <div id="globalServiceHealthBar"
-                            class="h-full w-0 rounded-full bg-gradient-to-r from-primary/70 via-primary to-primary-hover transition-all duration-500">
+                            class="h-full w-0 rounded-full bg-linear-to-r from-primary/70 via-primary to-primary-hover transition-all duration-500">
                           </div>
                         </div>
                         <div id="globalServiceHealthLabel"
@@ -341,7 +341,7 @@
                                   <span class="material-symbols-outlined text-text-tertiary text-base">search</span>
                                 </span>
                                 <input id="globalLogSearch"
-                                  class="bg-surface-secondary text-xs text-text-primary dark:text-white pl-8 pr-3 py-2 rounded-md border border-border-primary focus:border-primary/50 focus:outline-none placeholder-text-tertiary w-40 md:w-52"
+                                  class="bg-surface-secondary text-xs text-text-primary dark:text-white pl-8 pr-3 py-2 rounded-md border border-border-primary focus:border-primary/50 focus:outline-hidden placeholder-text-tertiary w-40 md:w-52"
                                   placeholder="Filter logs..." type="text" />
                               </div>
                               <button data-action="clear-global-logs"
@@ -391,7 +391,7 @@
                         <div id="globalLogViewport"
                           class="flex-1 min-h-0 overflow-y-auto p-3 custom-scrollbar log-pane-scroll">
                           <pre id="globalLogOutput"
-                            class="m-0 font-mono whitespace-pre-wrap break-words text-[11px] text-text-secondary">
+                            class="m-0 font-mono whitespace-pre-wrap wrap-break-word text-[11px] text-text-secondary">
 Select a global service to view logs.</pre>
                         </div>
                       </div>
@@ -508,7 +508,7 @@ Select a global service to view logs.</pre>
 
     <div class="toast-container" id="toastContainer" aria-live="polite"></div>
     <div id="updatePrompt"
-      class="hidden fixed z-[140] right-4 bottom-[56px] w-[min(420px,calc(100%-32px))] md:right-8 md:bottom-[64px]"
+      class="hidden fixed z-140 right-4 bottom-[56px] w-[min(420px,calc(100%-32px))] md:right-8 md:bottom-[64px]"
       aria-hidden="true">
       <div class="update-prompt-panel p-6 rounded-[32px] shadow-[0_24px_60px_rgba(0,0,0,0.4)] border border-white/10 backdrop-blur-2xl">
         <div class="flex items-center gap-4 mb-5">
@@ -576,7 +576,7 @@ Select a global service to view logs.</pre>
 
     <!-- Custom Confirmation Modal -->
     <div id="confirmModal"
-      class="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300">
+      class="fixed inset-0 z-10001 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300">
       <div
         class="bg-background-secondary border border-border-primary rounded-2xl shadow-2xl w-full max-w-md transform scale-95 transition-all duration-300 overflow-hidden">
         <div class="p-6">
@@ -606,7 +606,7 @@ Select a global service to view logs.</pre>
     </div>
 
     <footer
-      class="h-8 bg-background-primary border-t border-border-primary flex items-center justify-between px-4 shrink-0 z-[60]">
+      class="h-8 bg-background-primary border-t border-border-primary flex items-center justify-between px-4 shrink-0 z-60">
       <div class="flex items-center min-w-0 flex-1">
         <div class="flex items-center gap-1.5 min-w-0 flex-1">
           <span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_5px_rgba(var(--primary-rgb),0.5)]"></span>
@@ -637,6 +637,10 @@ Select a global service to view logs.</pre>
     </footer>
   </div>
   <!-- End #app Root Container -->
+
+  <!-- Preview-only island mount point. The React demo island mounts here and
+       owns this subtree; index.html has no counterpart. -->
+  <div id="react-demo-island-root"></div>
 
   <script type="module" src="./preview/bootstrap.js"></script>
 </body>

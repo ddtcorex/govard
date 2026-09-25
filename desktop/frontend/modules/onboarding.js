@@ -1025,7 +1025,7 @@ export const renderOnboardingModal = (container) => {
   container.innerHTML = `
       <div
         id="onboardingModal"
-        class="hidden fixed inset-0 z-[100] bg-slate-900/60 dark:bg-background-primary/95 backdrop-blur-md flex items-center justify-center p-4 md:p-8 transition-all duration-500"
+        class="hidden fixed inset-0 z-100 bg-slate-900/60 dark:bg-background-primary/95 backdrop-blur-md flex items-center justify-center p-4 md:p-8 transition-all duration-500"
       >
         <div
           class="dark:bg-surface-secondary w-full max-w-6xl h-[85vh] rounded-3xl flex flex-col overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] relative border border-slate-200 dark:border-white/10 bg-white"
@@ -1065,7 +1065,7 @@ export const renderOnboardingModal = (container) => {
                     <h3 class="text-xs font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-300/60">Project Source</h3>
                   </div>
 
-                  <div class="rounded-2xl bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 p-5 shadow-sm">
+                  <div class="rounded-2xl bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 p-5 shadow-xs">
                     <label class="flex items-start justify-between gap-4 cursor-pointer group">
                       <div class="flex-1">
                         <div class="text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-primary transition-colors">Clone from Git</div>
@@ -1082,7 +1082,7 @@ export const renderOnboardingModal = (container) => {
                         <div class="relative">
                           <select
                             id="gitProtocol"
-                            class="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100 px-4 py-2.5 appearance-none cursor-pointer focus:ring-2 focus:ring-primary/20 outline-none"
+                            class="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100 px-4 py-2.5 appearance-none cursor-pointer focus:ring-2 focus:ring-primary/20 outline-hidden"
                           >
                             <option value="ssh">SSH</option>
                             <option value="https">HTTPS</option>
@@ -1097,13 +1097,13 @@ export const renderOnboardingModal = (container) => {
                           id="gitUrl"
                           type="text"
                           placeholder="git@github.com:org/repo.git"
-                          class="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-slate-100 px-4 py-2.5 focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-slate-400/50"
+                          class="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-slate-100 px-4 py-2.5 focus:ring-2 focus:ring-primary/20 outline-hidden transition-all placeholder:text-slate-400/50"
                         />
                       </div>
                       
                       <div id="gitConfirmContainer" class="hidden pt-2">
                         <label class="flex items-center gap-3 cursor-pointer group">
-                          <input id="gitConfirmOverride" type="checkbox" class="size-4 accent-red-500 rounded border-slate-300 dark:border-white/20 bg-white dark:bg-transparent transition-all" />
+                          <input id="gitConfirmOverride" type="checkbox" class="size-4 accent-red-500 rounded-sm border-slate-300 dark:border-white/20 bg-white dark:bg-transparent transition-all" />
                           <span class="text-[10px] text-slate-500 dark:text-slate-400/80 font-bold leading-tight group-hover:text-red-400 transition-colors">
                             Wipe folder contents before cloning
                           </span>
@@ -1120,7 +1120,7 @@ export const renderOnboardingModal = (container) => {
                     role="button"
                     tabindex="0"
                     aria-label="Select project root folder"
-                    class="group relative rounded-2xl bg-white dark:bg-black/30 border border-slate-200 dark:border-white/10 p-6 cursor-pointer hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 focus:outline-none focus:ring-4 focus:ring-primary/10 transition-all duration-300"
+                    class="group relative rounded-2xl bg-white dark:bg-black/30 border border-slate-200 dark:border-white/10 p-6 cursor-pointer hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 focus:outline-hidden focus:ring-4 focus:ring-primary/10 transition-all duration-300"
                   >
                     <div class="flex items-center justify-between mb-4">
                       <div class="flex items-center gap-3">
@@ -1144,7 +1144,7 @@ export const renderOnboardingModal = (container) => {
                     <h3 class="text-xs font-black uppercase tracking-[0.2em] text-text-tertiary dark:text-slate-300/60">Environment Summary</h3>
                   </div>
                   
-                  <div class="rounded-2xl bg-primary/5 border border-primary/10 p-6 flex flex-col gap-4 shadow-sm relative overflow-hidden">
+                  <div class="rounded-2xl bg-primary/5 border border-primary/10 p-6 flex flex-col gap-4 shadow-xs relative overflow-hidden">
                     <div class="absolute -right-4 -bottom-4 size-24 bg-primary/5 rounded-full blur-2xl pointer-events-none"></div>
                     <div class="grid grid-cols-[100px_1fr] gap-x-4 gap-y-3 relative z-10">
                       <div class="text-[10px] font-black uppercase tracking-widest text-text-tertiary dark:text-slate-400/60">Project</div>
@@ -1185,7 +1185,7 @@ export const renderOnboardingModal = (container) => {
                     <div class="relative">
                       <input
                         id="projectDomain"
-                        class="w-full bg-surface-secondary dark:bg-black/40 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-bold focus:ring-4 focus:ring-primary/15 transition-all text-sm outline-none placeholder:text-text-tertiary"
+                        class="w-full bg-surface-secondary dark:bg-black/40 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-bold focus:ring-4 focus:ring-primary/15 transition-all text-sm outline-hidden placeholder:text-text-tertiary"
                         placeholder="e.g. project-name"
                         type="text"
                       />
@@ -1199,7 +1199,7 @@ export const renderOnboardingModal = (container) => {
                     <div class="relative">
                       <select
                         id="projectFramework"
-                        class="w-full bg-surface-secondary dark:bg-black/40 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-bold focus:ring-4 focus:ring-primary/15 transition-all text-sm outline-none appearance-none cursor-pointer"
+                        class="w-full bg-surface-secondary dark:bg-black/40 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-bold focus:ring-4 focus:ring-primary/15 transition-all text-sm outline-hidden appearance-none cursor-pointer"
                       >
                         <option value="auto">🔍 Auto-detect</option>
                         <option value="custom">Custom System</option>
@@ -1214,7 +1214,7 @@ export const renderOnboardingModal = (container) => {
                     <div class="relative">
                       <input
                         id="projectFrameworkVersion"
-                        class="w-full bg-surface-secondary dark:bg-black/40 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-bold focus:ring-4 focus:ring-primary/15 transition-all text-sm outline-none placeholder:text-text-tertiary"
+                        class="w-full bg-surface-secondary dark:bg-black/40 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-bold focus:ring-4 focus:ring-primary/15 transition-all text-sm outline-hidden placeholder:text-text-tertiary"
                         placeholder="Optional"
                         type="text"
                       />
@@ -1230,7 +1230,7 @@ export const renderOnboardingModal = (container) => {
                       <div class="size-2 h-2 bg-primary rounded-full animate-pulse"></div>
                       <h4 class="text-[11px] font-black uppercase tracking-[0.2em] text-text-tertiary dark:text-slate-500">Optional Stack Components</h4>
                     </div>
-                    <span class="text-[10px] font-black text-text-tertiary dark:text-slate-400 uppercase tracking-widest bg-surface-secondary dark:bg-white/5 px-2 py-1 rounded">Scale as needed</span>
+                    <span class="text-[10px] font-black text-text-tertiary dark:text-slate-400 uppercase tracking-widest bg-surface-secondary dark:bg-white/5 px-2 py-1 rounded-sm">Scale as needed</span>
                   </div>
                   
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1286,7 +1286,7 @@ export const renderOnboardingModal = (container) => {
               <div id="onboardingSubmitSpinner" class="hidden relative">
                 <div class="size-5 rounded-full border-2 border-primary/20 border-t-primary animate-spin"></div>
               </div>
-              <p id="onboardingSubmitHint" class="text-xs font-bold text-text-tertiary dark:text-slate-500 uppercase tracking-[0.05em]">Select a project path to continue.</p>
+              <p id="onboardingSubmitHint" class="text-xs font-bold text-text-tertiary dark:text-slate-500 uppercase tracking-wider">Select a project path to continue.</p>
             </div>
             <div class="flex items-center gap-4">
               <button
@@ -1309,7 +1309,7 @@ export const renderOnboardingModal = (container) => {
           <!-- Floating Bootstrap Prompt (Modal-in-Modal) -->
           <div
             id="onboardingBootstrapPrompt"
-            class="hidden absolute inset-0 z-[120] bg-black/60 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in"
+            class="hidden absolute inset-0 z-120 bg-black/60 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in"
           >
             <div class="w-full max-w-xl rounded-[2.5rem] border border-white/10 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden shadow-black/80">
               <div class="px-10 py-8 border-b border-border-primary dark:border-white/5 relative bg-primary/5">
@@ -1326,7 +1326,7 @@ export const renderOnboardingModal = (container) => {
                   <div class="relative">
                     <select
                       id="onboardingBootstrapRemote"
-                      class="w-full bg-surface-secondary dark:bg-slate-800 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-black text-sm outline-none focus:ring-4 focus:ring-primary/15 transition-all appearance-none cursor-pointer"
+                      class="w-full bg-surface-secondary dark:bg-slate-800 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-black text-sm outline-hidden focus:ring-4 focus:ring-primary/15 transition-all appearance-none cursor-pointer"
                     ></select>
                     <span class="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-500 pointer-events-none text-xl font-light">database</span>
                   </div>

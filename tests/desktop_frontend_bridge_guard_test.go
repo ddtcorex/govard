@@ -41,8 +41,12 @@ func TestDesktopFrontendUsesBridgeOnly(t *testing.T) {
 			}
 			return nil
 		}
-		ext := filepath.Ext(rel)
-		if ext != ".js" && ext != ".ts" && ext != ".html" {
+		// .tsx/.jsx are scanned too: islands and shadcn components are the files
+		// most likely to reach for the runtime directly, and an extension the
+		// guard skips is an extension the drift hides in.
+		switch filepath.Ext(rel) {
+		case ".js", ".ts", ".jsx", ".tsx", ".html":
+		default:
 			return nil
 		}
 		if frontendRuntimeAllowlist[rel] || strings.HasSuffix(rel, ".config.js") {

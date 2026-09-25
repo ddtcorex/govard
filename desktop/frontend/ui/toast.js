@@ -95,7 +95,7 @@ export const createToast = (container) => {
             flex-shrink: 0;
           "></span>
         </div>
-        <p class="toast-stream-line text-xs font-mono opacity-80 mt-1 break-words">Starting...</p>
+        <p class="toast-stream-line text-xs font-mono opacity-80 mt-1 wrap-break-word">Starting...</p>
       </div>
       <button class="toast-close" aria-label="Close">
         <span class="material-symbols-outlined">close</span>
