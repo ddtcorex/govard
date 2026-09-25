@@ -25,11 +25,22 @@ async function findFreePort() {
  */
 export async function startVite({ cwd }) {
   const port = await findFreePort();
+  // Bind the exact address the harness fetches: with the default "localhost",
+  // a host whose /etc/hosts maps localhost to ::1 too (GitHub's Ubuntu runners)
+  // gets vite on IPv6 only and every 127.0.0.1 request is refused.
   const proc = spawn(join(cwd, "node_modules", ".bin", "vite"), [
+    "--host",
+    "127.0.0.1",
     "--port",
     String(port),
     "--strictPort",
   ], { cwd });
+  let output = "";
+  const keep = (chunk) => {
+    output = (output + chunk).slice(-4000);
+  };
+  proc.stdout?.on("data", keep);
+  proc.stderr?.on("data", keep);
   const baseUrl = `http://127.0.0.1:${port}`;
   const deadline = Date.now() + 15000;
   let up = false;
@@ -47,7 +58,7 @@ export async function startVite({ cwd }) {
   }
   if (!up) {
     proc.kill();
-    throw new Error(`vite did not serve ${baseUrl}/preview.html within 15s`);
+    throw new Error(`vite did not serve ${baseUrl}/preview.html within 15s; vite output:\n${output}`);
   }
   return {
     baseUrl,
