@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import {
   applyTheme,
   createSettingsController,
   normalizeSettingsPayload,
-  renderSettingsDrawer,
 } from "../../desktop/frontend/modules/settings.js";
 
 test("normalizeSettingsPayload maps settings payload", () => {
@@ -36,29 +36,39 @@ test("normalizeSettingsPayload falls back to defaults", () => {
   });
 });
 
-test("renderSettingsDrawer includes update controls", () => {
-  const container = { innerHTML: "" };
-  renderSettingsDrawer(container);
+test("the settings island draws the update controls the controller writes into", async () => {
+  // The drawer's markup moved into a React island, so these assertions read the
+  // island source: the [data-action] routing the global delegate used is gone
+  // (spec D5) and the controls are matched by data-testid instead.
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/SettingsDrawer.tsx", import.meta.url),
+    "utf8",
+  );
 
   assert.equal(
-    container.innerHTML.includes('data-action="check-updates"'),
+    island.includes('data-testid="check-updates"'),
     true,
-    "expected check-updates action in settings drawer",
+    "expected check-updates control in settings drawer",
   );
   assert.equal(
-    container.innerHTML.includes('data-action="install-update"'),
+    island.includes('data-testid="install-update"'),
     true,
-    "expected install-update action in settings drawer",
+    "expected install-update control in settings drawer",
   );
   assert.equal(
-    container.innerHTML.includes('id="settingsUpdateStatus"'),
+    island.includes('id="settingsUpdateStatus"'),
     true,
     "expected settingsUpdateStatus element in settings drawer",
   );
   assert.equal(
-    container.innerHTML.includes("update-message-text"),
+    island.includes("update-message-text"),
     true,
     "expected shared update message style class in settings drawer",
+  );
+  assert.equal(
+    /data-action\s*=/.test(island),
+    false,
+    "the migrated subtree must carry no data-action for main.js's delegate",
   );
 });
 
@@ -166,12 +176,14 @@ test("applyTheme respects prefers-color-scheme for theme=system", () => {
   delete globalThis.window;
 });
 
-test("renderSettingsDrawer includes update channel select", () => {
-  const container = { innerHTML: "" };
-  renderSettingsDrawer(container);
+test("the settings island draws the update channel select", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/SettingsDrawer.tsx", import.meta.url),
+    "utf8",
+  );
 
   assert.equal(
-    container.innerHTML.includes('id="updateChannelSelect"'),
+    island.includes('id="updateChannelSelect"'),
     true,
     "expected update channel select in settings drawer",
   );
@@ -309,6 +321,15 @@ test("settings shows a hint when no tray host is available", async () => {
     new URL("../../desktop/frontend/modules/settings.js", import.meta.url),
     "utf8",
   );
+  // The query stays in the controller; the hint's markup moved into the island.
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/SettingsDrawer.tsx", import.meta.url),
+    "utf8",
+  );
   assert.equal(settingsJS.includes("getTrayStatus"), true, "settings must query the tray status");
-  assert.equal(settingsJS.includes('data-testid="tray-unavailable-hint"'), true, "settings must render the tray hint");
+  assert.equal(
+    island.includes('data-testid="tray-unavailable-hint"'),
+    true,
+    "settings must render the tray hint",
+  );
 });

@@ -23,15 +23,13 @@ import {
   renderRemotes,
   renderSyncModal,
 } from "./modules/remotes.js";
-import {
-  createSettingsController,
-  renderSettingsDrawer,
-} from "./modules/settings.js";
+import { createSettingsController } from "./modules/settings.js";
 import { createUpdateNotifierModel } from "./modules/update-notifier.js";
 import { createElement } from "react";
 import { mountIsland } from "./islands/mount.js";
 import { LogsTab } from "./islands/LogsTab.tsx";
 import { MetricsFooter } from "./islands/MetricsFooter.tsx";
+import { SettingsDrawer } from "./islands/SettingsDrawer.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
@@ -45,7 +43,6 @@ const initUI = () => {
   // NOTE: do NOT call renderRemotes(tab-remotes) here — it wipes the remotesList/remotesWarnings
   // containers. The remotesController.refresh() handles rendering when the tab is opened.
   renderSyncModal(byId("syncOptionsModalMount"));
-  renderSettingsDrawer(byId("settingsDrawerMount"));
   refreshRefs();
 };
 
@@ -77,22 +74,7 @@ const getLiveRefs = () => ({
   globalLogSeverity: byId("globalLogSeverity"),
   globalLogSearch: byId("globalLogSearch"),
   openSettings: byId("openSettings"),
-  closeSettings: byId("closeSettings"),
   hardReset: byId("hardReset"),
-  settingsDrawer: byId("settingsDrawer"),
-  themeSelect: byId("themeSelect"),
-  proxyTarget: byId("proxyTarget"),
-  preferredBrowser: byId("preferredBrowser"),
-  codeEditor: byId("codeEditor"),
-  dbClientPreference: byId("dbClientPreference"),
-  runInBackgroundToggle: byId("runInBackgroundToggle"),
-  trayUnavailableHint: byId("trayUnavailableHint"),
-  settingsUpdateStatus: byId("settingsUpdateStatus"),
-  settingsUpdateBadge: byId("settingsUpdateBadge"),
-  settingsUpdateChangelog: byId("settingsUpdateChangelog"),
-  checkUpdatesButton: byId("checkUpdatesButton"),
-  installUpdateButton: byId("installUpdateButton"),
-  updateChannelSelect: byId("updateChannelSelect"),
   userAvatar: byId("userAvatar"),
   userName: byId("userName"),
   toastContainer: byId("toastContainer"),
@@ -1208,6 +1190,42 @@ const setSettingsDrawerOpen = (open) => {
   updateNotifierModel.syncWithSettingsDrawer();
 };
 
+// The settings drawer is an island that keeps its controller rather than porting
+// it (spec, island contract): the controller's update state machine is covered by
+// unit tests against fake refs, so the island renders the structure once and
+// hands the controller the real elements through the seam it already had
+// (updateRefs). main.js still creates the controller because the update-notifier
+// model holds that exact object, and it keeps the open/close contract below,
+// which isSettingsDrawerOpen and the update prompt both read.
+const resetSettings = async () => {
+  const confirmed = await showConfirm({
+    title: "Reset Settings",
+    message:
+      "Are you sure you want to reset all settings to defaults?<br><small class='text-text-tertiary opacity-70'>This will overwrite your proxy, IDE, and UI preferences.</small>",
+    icon: "restart_alt",
+    confirmText: "Reset Defaults",
+    cancelText: "Cancel",
+  });
+
+  if (confirmed) {
+    await settingsController.reset();
+  }
+};
+
+const settingsIsland = mountIsland(
+  "settingsDrawerMount",
+  createElement(SettingsDrawer, {
+    bridge: desktopBridge,
+    controller: settingsController,
+    onOpenChange: setSettingsDrawerOpen,
+    onResetSettings: resetSettings,
+    registerRefs: (islandRefs) => {
+      Object.assign(refs, islandRefs);
+      settingsController.updateRefs(refs);
+    },
+  }),
+);
+
 const globalServicesController = createGlobalServicesController({
   bridge: desktopBridge,
   refs,
@@ -1445,29 +1463,6 @@ document.addEventListener("click", async (event) => {
     setSettingsDrawerOpen(false);
     return;
   }
-  if (action === "reset-settings") {
-    const confirmed = await showConfirm({
-      title: "Reset Settings",
-      message:
-        "Are you sure you want to reset all settings to defaults?<br><small class='text-text-tertiary opacity-70'>This will overwrite your proxy, IDE, and UI preferences.</small>",
-      icon: "restart_alt",
-      confirmText: "Reset Defaults",
-      cancelText: "Cancel",
-    });
-
-    if (confirmed) {
-      await settingsController.reset();
-    }
-    return;
-  }
-  if (action === "check-updates") {
-    await settingsController.checkForUpdates();
-    return;
-  }
-  if (action === "install-update") {
-    await settingsController.installLatestUpdate();
-    return;
-  }
   if (action === "switch-tab") {
     const tab = targetElement.dataset.tab;
     if (tab) {
@@ -1653,11 +1648,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (action === "quit-app") {
-    desktopBridge.quit().catch(() => {});
-    return;
-  }
-
   if (action === "confirm-sync") {
     const { currentSyncRemote, currentSyncPreset } = getState();
     if (!currentSyncRemote || !currentSyncPreset) return;
@@ -1728,20 +1718,6 @@ const bindRuntimeListeners = () => {
         await desktopBridge.restartDesktopApp();
       } catch (err) {
         showToast(`Restart failed: ${err}`, "error");
-      }
-    });
-  }
-
-  if (refs.closeSettings) {
-    refs.closeSettings.addEventListener("click", () =>
-      setSettingsDrawerOpen(false),
-    );
-  }
-
-  if (refs.settingsDrawer) {
-    refs.settingsDrawer.addEventListener("click", (event) => {
-      if (event.target === refs.settingsDrawer) {
-        setSettingsDrawerOpen(false);
       }
     });
   }
@@ -1819,46 +1795,6 @@ const bindDynamicControlListeners = () => {
     });
   }
 
-
-  if (refs.themeSelect) {
-    refs.themeSelect.addEventListener("change", () => {
-      settingsController.save();
-    });
-  }
-
-  if (refs.codeEditor) {
-    refs.codeEditor.addEventListener("change", () => {
-      settingsController.save();
-    });
-  }
-
-  if (refs.proxyTarget) {
-    refs.proxyTarget.addEventListener("change", async () => {
-      await settingsController.save();
-    });
-  }
-
-  if (refs.preferredBrowser) {
-    refs.preferredBrowser.addEventListener("change", () => {
-      settingsController.save();
-    });
-  }
-
-  if (refs.dbClientPreference) {
-    refs.dbClientPreference.addEventListener("change", () => {
-      settingsController.save();
-    });
-  }
-  if (refs.runInBackgroundToggle) {
-    refs.runInBackgroundToggle.addEventListener("change", () => {
-      settingsController.save();
-    });
-  }
-  if (refs.updateChannelSelect) {
-    refs.updateChannelSelect.addEventListener("change", () => {
-      settingsController.setUpdateChannel(refs.updateChannelSelect.value);
-    });
-  }
 
   if (refs.projectDomain) {
     refs.projectDomain.addEventListener("input", () => {
@@ -1978,5 +1914,6 @@ window.addEventListener("beforeunload", () => {
   updatePromptIsland?.unmount();
   metricsIsland?.unmount();
   logsIsland?.unmount();
+  settingsIsland?.unmount();
   globalServicesController.stopLive({ skipBridge: true });
 });
