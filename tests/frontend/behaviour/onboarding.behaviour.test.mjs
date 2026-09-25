@@ -165,3 +165,70 @@ test("initializing reaches the bridge exactly once", async (t) => {
 
   assert.deepEqual(session.consoleErrors, []);
 });
+
+test("the bootstrap prompt's options toggle, and the choice travels with the sync", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openWizard(session);
+
+  // The fixture's project has one remote, so initializing opens the wizard's own
+  // bootstrap prompt.
+  await session.evaluate(`document.querySelector("[data-testid='browse-project']").click()`);
+  await session.waitFor(`document.getElementById("projectPath").value`, "/tmp/sample-project");
+  await session.waitFor(`document.getElementById("onboardingSubmit").disabled`, false);
+  await session.evaluate(`document.querySelector("[data-testid='add-project']").click()`);
+  await session.waitFor(
+    `document.getElementById("onboardingBootstrapPrompt") !== null && !document.getElementById("onboardingBootstrapPrompt").classList.contains("hidden")`,
+    true,
+    { timeoutMs: 8000 },
+  );
+  await session.waitFor(
+    `document.querySelectorAll("#onboardingBootstrapOptions input[type='checkbox']").length > 0`,
+    true,
+  );
+
+  // The option list is built by the surviving controller inside a container this
+  // island owns, so the click path belongs to the island: nothing in a migrated
+  // subtree may carry a data-action the document delegate resolves (D5), and that
+  // delegate's preventDefault would otherwise cancel the checkbox outright.
+  assert.equal(
+    await session.evaluate(`document.querySelectorAll('#onboardingModal [data-action]').length`),
+    0,
+    "an open bootstrap prompt must not reintroduce a data-action into the migrated modal",
+  );
+
+  const box = "#onboardingBootstrapOptions input[type='checkbox']";
+  assert.equal(await session.evaluate(`document.querySelector("${box}").checked`), false);
+  await session.evaluate(`document.querySelector("${box}").click()`);
+  assert.equal(
+    await session.evaluate(`document.querySelector("${box}").checked`),
+    true,
+    "clicking a bootstrap option must toggle it",
+  );
+
+  // And the toggle is what the sync is asked to run with.
+  await session.evaluate(`document.querySelector("[data-testid='confirm-onboarding-bootstrap']").click()`);
+  await session.waitFor(
+    `window.__govardPreview.getCalls().some((c) => c.method === "RunRemoteSync")`,
+    true,
+    { timeoutMs: 8000 },
+  );
+  const syncCalls = JSON.parse(
+    await session.evaluate(`JSON.stringify(window.__govardPreview.getCalls().filter(
+      (c) => c.method === "RunRemoteSync",
+    ))`),
+  );
+  assert.equal(
+    syncCalls.at(-1).args[3].noNoise,
+    true,
+    "the toggled bootstrap option must reach the backend",
+  );
+
+  assert.deepEqual(session.consoleErrors, []);
+});

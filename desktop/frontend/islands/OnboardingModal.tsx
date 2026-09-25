@@ -610,7 +610,24 @@ export function OnboardingModal({
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-text-tertiary dark:text-slate-500 ml-1">
                   Bootstrap Options
                 </div>
-                <div id="onboardingBootstrapOptions" className="grid grid-cols-1 gap-3"></div>
+                <div
+                  id="onboardingBootstrapOptions"
+                  className="grid grid-cols-1 gap-3"
+                  // The rows are the controller's (it builds them with
+                  // createElement into this container), so a click is resolved here
+                  // from the input's own `data-option`. Handling only clicks whose
+                  // target IS the input keeps a label-text click from counting twice:
+                  // the browser forwards that click to the input, and the forwarded
+                  // event is the one this handler sees.
+                  onClick={(event) => {
+                    const field = (event.target as HTMLElement).closest?.(
+                      "input[data-option]",
+                    ) as HTMLInputElement | null;
+                    if (field?.dataset.option) {
+                      controller.toggleBootstrapOption(field.dataset.option);
+                    }
+                  }}
+                ></div>
               </div>
             </div>
 
