@@ -70,10 +70,24 @@ export const ROUTES = {
  * the generated model classes, so only the lookup below is typed.
  * @type {() => Promise<any>}
  */
-let loadBindings = () => import("../bindings/govard/internal/desktop/index.js");
+const realLoadBindings = () =>
+  import("../bindings/govard/internal/desktop/index.js");
+
+/** @type {() => Promise<any>} */
+let loadBindings = realLoadBindings;
 
 /**
- * Test seam: replace the bindings loader, returns a restore function.
+ * The real generated bindings module, never the swapped-in test/preview loader.
+ * The preview's response materializer needs it so a fixture replays through the
+ * same model constructors production uses (spec D4): under the loader seam the
+ * swappable `loadBindings` above would hand it the fake module, which has no
+ * model classes at all.
+ * @type {() => Promise<any>}
+ */
+export const loadGeneratedModules = realLoadBindings;
+
+/**
+ * Test and preview/record seam: replace the bindings loader, returns a restore function.
  * @param {() => Promise<any>} fn
  */
 export function __setBindingsLoaderForTest(fn) {
@@ -82,6 +96,39 @@ export function __setBindingsLoaderForTest(fn) {
   return () => {
     loadBindings = previous;
   };
+}
+
+/**
+ * `objectNames.Call` in @wailsio/runtime: the object id every generated binding
+ * call arrives on.
+ * @type {number}
+ */
+export const CALL_OBJECT_ID = 0;
+
+/**
+ * `objectNames.CancelCall` in @wailsio/runtime. A transport that answers binding
+ * calls must answer this too, at minimum as a no-op success, because
+ * CancellablePromise's oncancelled path sends the cancellation through that same
+ * transport.
+ * @type {number}
+ */
+export const CANCEL_CALL_OBJECT_ID = 10;
+
+/**
+ * Test and preview/record seam: replace the Wails runtime transport, returns a
+ * restore function. It lives here rather than in a preview module because the
+ * frontend runtime guard (tests/desktop_frontend_bridge_guard_test.go) allows
+ * exactly two modules to touch the runtime or the generated bindings, and
+ * bridge.js is one of them. The runtime import is dynamic so node tests that
+ * import this module still never load the browser runtime.
+ * @param {{call: (objectID: number, method: number, windowName: string, args: any) => Promise<any>}} transport
+ * @returns {Promise<() => void>}
+ */
+export async function __setTransportForTest(transport) {
+  const rt = await import("@wailsio/runtime");
+  const previous = rt.getTransport();
+  rt.setTransport(transport);
+  return () => rt.setTransport(previous);
 }
 
 /**
@@ -112,7 +159,7 @@ const bindingsBackend = async (service, method, args) => {
 let backend = bindingsBackend;
 
 /**
- * Test seam: replace the backend, returns a restore function.
+ * Test and preview/record seam: replace the backend, returns a restore function.
  * @param {(service: string, method: string, args: any[]) => Promise<any>} fn
  */
 export function __setBackendForTest(fn) {
