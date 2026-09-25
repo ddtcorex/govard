@@ -172,6 +172,18 @@ that list has to name what the release *built*; see *In-place publishing needs
 `sync_paths`*. In both strategies the maintenance window opens on the release that
 is being **served**, and for a symlink it closes before the swap.
 
+Either way, `deploy:shared` runs before anything is built, and it is what makes a
+release read the state that outlives it: every `shared_files`/`shared_dirs` entry
+that exists under `<deploy_path>/shared/` is linked into the release. A directory
+the release already carries is **replaced** by that link rather than left in place —
+a checkout that tracks a placeholder inside a shared directory materialises the
+directory, and a release directory is disposable by construction: this step runs
+before any build step writes there, and an artifact carries no shared path at all.
+The live application is the case that must not lose data, and it is treated the
+other way: an in-place docroot adopts a shared directory it owns into `shared/` on
+the first deploy and then reads it through a link, while a directory that exists in
+both places is left where it is.
+
 ### 6. The first deploy
 
 ```bash
@@ -998,11 +1010,12 @@ Three rules the engine applies to whatever the project configures:
 - **a path the release did not build is skipped, not fatal** — `generated/` only
   exists after `setup:di:compile` and `pub/static/adminhtml` only when the admin area
   was deployed; the activation prints the skip;
-- **a path the release links from `shared/` is not copied** — `deploy:shared` links it
-  with a symlink relative to the release, which resolves elsewhere from a docroot at a
-  different depth, so the docroot keeps its own copy and the step says so. This is why
-  `pub/static` is named by its two built children instead of as a whole:
-  `pub/static/_cache` is shared;
+- **a path the release links from `shared/` is not copied** — that path belongs to the
+  shared tree, and the docroot already has its own arrangement for it (a link
+  `ensureInPlaceShared` maintains, or the directory the docroot owns), so copying the
+  release's copy in would replace live state with a release's placeholder. The step
+  names every path it skipped. This is why `pub/static` is named by its two built
+  children instead of as a whole: `pub/static/_cache` is shared;
 - **a shared path inside a synced entry is excluded from the copy** rather than
   deleted, so a project that lists `pub/static` still keeps the docroot's `_cache`.
 
@@ -1013,7 +1026,7 @@ has to be a deliberate decision rather than an omission.
 
 `deploy:verify` runs after publish and is on by default: the live revision
 (the resolved `current` symlink, or the docroot's `HEAD` for an in-place target),
-the shared files the recipe requires, the recipe's own checks, and an HTTP check
+the shared state the recipe requires, the recipe's own checks, and an HTTP check
 when `deploy.verify.url` is set. The recipe's checks are the ones the engine
 cannot supply — for Magento that is `bin/magento setup:db:status`, which needs a
 working `app/etc/env.php` *and* a reachable database — and they run in the
@@ -1023,6 +1036,17 @@ engine also dry-runs the activation's own copy for every `sync_paths` entry
 (`rsync -a --delete --checksum --itemize-changes`), so a hook or a process that
 rewrote a file in the docroot after the copy fails the deploy by name. It reads
 both trees, which is the cost of comparing content rather than a marker file.
+
+The shared state is checked in two places, and the difference is deliberate. A
+shared **file** is checked where the site reads it — `current` for a symlink, the
+docroot in place — because a file linked into the release and missing from the
+served tree is a site with no configuration. A shared **directory** is checked in
+the *release*, which is where `deploy:shared` puts the link, because an in-place
+docroot legitimately keeps a copy of its own. Both requirements are conditional on
+the shared entry existing on the target, since the first deploy of a project has
+none yet. A release that reads its own copy of a shared directory is the silent
+failure this check exists for: the build ran against a media tree the site never
+serves, and every other check passes.
 
 The comparison is one-directional: a release file the docroot has changed or lost
 is a failure, while a path the docroot has and the release does not is **reported**

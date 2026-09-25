@@ -766,10 +766,28 @@ func CoreShared(ctx context.Context, sc *StepContext) error {
 		// The link is created only when the shared entry exists: the first
 		// deploy of a project legitimately has no shared state yet. There is no
 		// `|| true` here — a genuine link failure must fail the deploy.
+		//
+		// `ln -sfn` answers a target that is already a *directory* by creating the
+		// link inside it — `pub/media/media -> shared/pub/media` — and exiting 0, so
+		// the entry kept its own tree while this step reported success. A project
+		// whose checkout keeps a placeholder *inside* a shared directory reaches
+		// that state on every release, because `deploy:code` materialises the
+		// directory the placeholder lives in. Measured on three live targets
+		// (2026-09-25): a real `releases/<n>/pub/media` holding a stray nested
+		// `media` link, while every shared entry the checkout does not carry —
+		// `var/log`, `pub/sitemap`, the rest — linked correctly. A directory in a
+		// *release* is a placeholder by construction, which is why it is replaced
+		// rather than kept: this step runs in `prepare`, before any build step
+		// writes into the release, and an artifact carries no shared path at all.
+		// The docroot of an in-place target is the other case, and
+		// `ensureInPlaceShared` keeps its own directory there.
 		command := fmt.Sprintf(
-			"mkdir -p %s && if [ -e %s ]; then mkdir -p %s && ln -sfn %s %s; fi",
+			"mkdir -p %s && if [ -e %s ]; then "+
+				"if [ -d %s ] && [ ! -L %s ]; then rm -rf %s; fi && "+
+				"mkdir -p %s && ln -sfn %s %s; fi",
 			Shell(host.SharedPath()),
 			Shell(source),
+			Shell(target), Shell(target), Shell(target),
 			Shell(path.Dir(target)),
 			Shell(source),
 			Shell(target),

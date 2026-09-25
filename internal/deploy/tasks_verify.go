@@ -273,6 +273,35 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 		pass("shared:"+entry, "linked and readable")
 	}
 
+	for _, entry := range settingsStringList(sc.Opts.Settings, "shared_dirs") {
+		// A shared *directory* is checked in the release, not in the served path,
+		// and that is the one place where the two differ from the rule above. An
+		// in-place docroot that owns its own copy of a directory keeps it —
+		// `ensureInPlaceShared` refuses to delete the operator's data — so a real
+		// directory there is a correct target, and demanding a link would fail one.
+		// Everywhere else the release and the served tree are the same directory
+		// (a symlink target) or the release is what the activation copies from.
+		//
+		// The condition mirrors `deploy:shared` exactly: a shared directory that
+		// does not exist yet is not a promise, so nothing is required of the
+		// release. What is required, once the target holds the directory, is that
+		// the release reads it through a link — which is the assertion that catches
+		// a link that silently landed somewhere else.
+		//
+		// Both halves are needed. `test -L` alone accepts a *dangling* link, and a
+		// release whose shared directory resolves to nothing reads an empty tree:
+		// `-e` follows the link and rejects exactly that. `-e` alone is the failure
+		// this check was added for — the release's own real directory passes it —
+		// which is why neither predicate is enough on its own.
+		command := fmt.Sprintf("if [ -e %s ]; then test -L %s && test -e %s; fi",
+			Shell(path.Join(sc.Host.SharedPath(), entry)),
+			Shell(path.Join(sc.Release.Path, entry)), Shell(path.Join(sc.Release.Path, entry)))
+		if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
+			return fail("shared:"+entry, "the shared directory exists on the target but the release does not read it through a link", nil)
+		}
+		pass("shared:"+entry, "linked from shared/")
+	}
+
 	for _, check := range sc.Checks {
 		if strings.TrimSpace(check.Command) == "" {
 			continue

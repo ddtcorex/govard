@@ -170,6 +170,17 @@ danh sách đó phải nêu đúng những gì release *build ra*; xem *Publish 
 `sync_paths`*. Ở cả hai chiến lược, maintenance window mở trên release đang **được
 phục vụ**, và với symlink nó đóng trước cú swap.
 
+Dù theo chiến lược nào, `deploy:shared` chạy trước mọi bước build và là thứ khiến
+release đọc đúng state sống lâu hơn nó: mọi entry trong `shared_files`/`shared_dirs`
+tồn tại dưới `<deploy_path>/shared/` đều được link vào release. Một thư mục mà release
+đã mang sẵn sẽ bị **thay** bằng link đó chứ không được giữ nguyên — checkout có track
+một file placeholder nằm trong thư mục shared sẽ tạo ra chính thư mục đó, mà thư mục
+trong release là thứ bỏ đi được theo thiết kế: bước này chạy trước khi bất kỳ bước
+build nào ghi vào đó, và artifact không hề mang theo path shared nào. Ứng dụng đang
+chạy mới là trường hợp không được mất dữ liệu, và nó được xử lý ngược lại: docroot
+in-place nhận thư mục shared mà nó đang sở hữu vào `shared/` ở lần deploy đầu rồi đọc
+qua link, còn thư mục tồn tại ở cả hai nơi thì được để nguyên.
+
 ### 6. Lần deploy đầu tiên
 
 ```bash
@@ -944,10 +955,12 @@ Ba quy tắc engine áp dụng cho bất cứ danh sách nào dự án cấu hì
 - **path mà release không build ra thì bị bỏ qua, không làm fail** — `generated/` chỉ
   có sau `setup:di:compile`, `pub/static/adminhtml` chỉ có khi area admin được deploy;
   bước kích hoạt in ra việc bỏ qua đó;
-- **path mà release link từ `shared/` thì không được copy** — `deploy:shared` link nó
-  bằng symlink tương đối theo release, sang docroot ở độ sâu khác là trỏ sai chỗ, nên
-  docroot giữ bản của chính nó và bước đó nói rõ. Đây là lý do `pub/static` được ghi
-  bằng hai con đã build thay vì ghi cả thư mục: `pub/static/_cache` là shared;
+- **path mà release link từ `shared/` thì không được copy** — path đó thuộc về cây
+  shared, và docroot đã có cách xử lý riêng cho nó (link do `ensureInPlaceShared` duy
+  trì, hoặc chính thư mục mà docroot sở hữu), nên copy bản của release vào là thay state
+  đang sống bằng placeholder của release. Bước này nêu rõ từng path bị bỏ qua. Đây là lý
+  do `pub/static` được ghi bằng hai con đã build thay vì ghi cả thư mục:
+  `pub/static/_cache` là shared;
 - **path shared nằm trong một entry được sync thì bị loại khỏi bản copy** thay vì bị
   xoá, nên dự án ghi `pub/static` vẫn giữ `_cache` của docroot.
 
@@ -957,8 +970,8 @@ phải là quyết định có chủ ý chứ không phải thiếu sót.
 ## Kiểm chứng, backup và rollback
 
 `deploy:verify` chạy sau publish và bật mặc định: revision đang live (symlink
-`current` được resolve, hoặc `HEAD` của docroot với target in-place), các shared
-file recipe yêu cầu, các check do recipe khai báo, và kiểm tra HTTP khi đã đặt
+`current` được resolve, hoặc `HEAD` của docroot với target in-place), shared state mà
+recipe yêu cầu, các check do recipe khai báo, và kiểm tra HTTP khi đã đặt
 `deploy.verify.url`. Check của recipe là những thứ engine không thể tự biết — với
 Magento là `bin/magento setup:db:status`, cần `app/etc/env.php` hoạt động *và*
 database kết nối được — và chúng chạy trong **served path**, nên deploy in-place
@@ -968,6 +981,16 @@ entry trong `sync_paths` (`rsync -a --delete --checksum --itemize-changes`), nê
 một hook hay tiến trình ghi đè file trong docroot sau khi copy sẽ làm deploy fail
 và nêu đúng tên. Nó đọc cả hai cây thư mục — đó là cái giá của việc so nội dung
 thay vì so một file marker.
+
+Shared state được kiểm ở hai nơi, và sự khác biệt là có chủ ý. Shared **file** được
+kiểm ngay nơi site đọc — `current` với symlink, docroot với in-place — vì một file
+được link vào release mà thiếu ở cây đang phục vụ nghĩa là site không có cấu hình.
+Shared **thư mục** được kiểm trong *release*, nơi `deploy:shared` đặt link, vì docroot
+in-place được phép giữ bản sao của chính nó. Cả hai điều kiện chỉ áp dụng khi entry
+shared đã tồn tại trên target, bởi lần deploy đầu tiên của dự án thì chưa có. Một
+release đọc bản sao của chính nó thay vì link chính là kiểu hỏng âm thầm mà check này
+sinh ra để bắt: build chạy trên cây media mà site không hề phục vụ, còn mọi check khác
+vẫn xanh.
 
 Phép so là một chiều: file của release bị docroot sửa mất hoặc thiếu là **fail**, còn
 đường dẫn docroot có mà release không có thì chỉ được **báo cáo**. Ứng dụng đang chạy

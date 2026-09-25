@@ -646,6 +646,16 @@ govard sandbox reset --docroot real
 govard deploy --remote sandbox --yes     # giờ là đường in-place
 ```
 
+**Bước 4 — đọc xem shared state đã đi đâu.** Việc tiếp quản target không đẩy bất cứ
+thứ gì operator đang có ra khỏi docroot: `app/etc/env.php` và một thư mục như
+`pub/media` được nhận (adopt) vào `<deploy_path>/shared/` ở lần deploy đầu, rồi docroot
+đọc chúng qua link — còn thư mục tồn tại ở cả hai nơi thì được để nguyên, vì xoá dữ
+liệu của operator còn tệ hơn việc không share. *Release* thì luôn đọc bản shared:
+`deploy:shared` thay thư mục mà checkout đã tạo ra bằng chính link đó, nên thứ mà build
+compile dựa vào và thứ site phục vụ là cùng một cây media. `deploy:verify` làm deploy
+fail và nêu đúng tên (`shared:pub/media`) khi link đó thiếu — trước đây một release
+âm thầm đọc bản sao của chính nó vẫn vượt qua kiểm chứng.
+
 ## Ca 9: Laravel, frontend Vite, webroot symlink {#case-9-laravel}
 
 **Ba quyết định:** build trên server (`--build=server`) — Laravel không có bước
@@ -930,7 +940,7 @@ Setting ở tầng engine (do recipe mặc định khai, core áp dụng):
 | Setting | Mặc định | Việc nó làm |
 | --- | --- | --- |
 | `shared_files` | `app/etc/env.php`, `var/.maintenance.ip` | file được link từ `shared/` vào mọi release |
-| `shared_dirs` | `var/log`, `var/report`, `var/session`, `var/backups`, `var/tmp`, `pub/media`, `pub/sitemap`, `pub/static/_cache` | thư mục được link từ `shared/` |
+| `shared_dirs` | `var/log`, `var/report`, `var/session`, `var/backups`, `var/tmp`, `pub/media`, `pub/sitemap`, `pub/static/_cache` | thư mục được link từ `shared/`; thư mục release đã mang sẵn sẽ bị thay bằng link |
 | `writable_dirs` | `var`, `pub/static`, `pub/media`, `generated`, `app/etc` | path được cấp quyền ghi trong release |
 | `writable_mode` | `chmod` | `chmod`, `chown`, `chmod+chown`, `acl`, `skip` |
 | `writable_permissions` | `0775` | mode mà `chmod` dùng |

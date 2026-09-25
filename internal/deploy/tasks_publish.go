@@ -203,9 +203,12 @@ func activateInPlace(ctx context.Context, sc *StepContext, releasePath string) e
 			continue
 		}
 
-		// A path the release links from `shared/` is a *relative* symlink: copied
-		// into a docroot at a different depth it resolves somewhere else, so the
-		// docroot keeps its own copy instead.
+		// A path the release links from `shared/` belongs to the shared tree, and the
+		// docroot has its own arrangement for it: a link this activation maintains
+		// (ensureInPlaceShared, below), or the directory the docroot owns and that
+		// step refuses to delete. Copying the release's copy in would replace live
+		// state — the site's media — with a release's placeholder, so the docroot
+		// keeps its own.
 		if covering, isShared := sharedCovering(entry, shared); isShared {
 			noteStep(sc, "  ! "+entry+" is linked from shared/ ("+covering+"); not copied into the docroot\n")
 			continue
