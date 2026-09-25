@@ -113,17 +113,22 @@ See [Adding a New Framework](/developer/adding-a-framework) for the full interna
 
 ## Desktop Architecture
 
-The desktop app focuses on operational workflows via a modular vanilla JS frontend.
+The desktop app focuses on operational workflows. Its frontend is built with Vite; legacy ES modules are being migrated one by one to React + TypeScript islands (Tailwind v4, shadcn/ui), and every call to Go goes through the generated Wails 3 bindings via services/bridge.js.
 
 ```
 cmd/govard-desktop/          Desktop entrypoint
-internal/desktop/            Wails bindings
-desktop/frontend/            Frontend assets (embedded in binary)
+internal/desktop/            Wails 3 services (Go side of the bindings)
+desktop/frontend/            Frontend source (Vite builds dist/, embedded in binary)
   ├── index.html             Main HTML
   ├── main.js                Bootstrap + event wiring
-  ├── services/bridge.js     Backend RPC bridge
+  ├── bindings/              Generated Wails bindings (make bindings)
+  ├── services/bridge.js     Route table onto the bindings
+  ├── services/events.js     Event subscriptions
   ├── state/store.js         Shared UI state
-  ├── modules/               Feature modules
+  ├── modules/               Legacy feature modules
+  ├── islands/               React + TypeScript islands
+  ├── components/ui/         shadcn/ui components
+  ├── preview/               Browser preview mode (fake transport, fixtures)
   ├── ui/                    Toast, notifications
   └── utils/                 DOM helpers
 ```

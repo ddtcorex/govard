@@ -113,17 +113,22 @@ Xem [Thêm Framework](/vi/developer/adding-a-framework) để biết cấu trúc
 
 ## Kiến trúc Desktop (Desktop Architecture)
 
-Ứng dụng Desktop tập trung vào các thao tác quản lý thông qua frontend dạng vanilla JS dạng module:
+Ứng dụng Desktop tập trung vào các thao tác vận hành. Frontend được build bằng Vite; các ES module cũ đang được chuyển dần sang island React + TypeScript (Tailwind v4, shadcn/ui), và mọi lời gọi xuống Go đều đi qua binding Wails 3 được sinh tự động, thông qua services/bridge.js.
 
 ```
 cmd/govard-desktop/          Điểm vào desktop app
-internal/desktop/            Các binding Wails Go
-desktop/frontend/            Mã nguồn frontend (nhúng trực tiếp vào binary)
+internal/desktop/            Các service Wails 3 (phía Go của binding)
+desktop/frontend/            Mã nguồn frontend (Vite build ra dist/, nhúng vào binary)
   ├── index.html             File HTML chính
   ├── main.js                Khởi tạo & Lắng nghe sự kiện
-  ├── services/bridge.js     Cầu nối RPC gọi backend
+  ├── bindings/              Binding Wails sinh tự động (make bindings)
+  ├── services/bridge.js     Bảng route gọi xuống binding
+  ├── services/events.js     Đăng ký lắng nghe sự kiện
   ├── state/store.js         State UI dùng chung
-  ├── modules/               Các module tính năng
+  ├── modules/               Các module tính năng cũ
+  ├── islands/               Các island React + TypeScript
+  ├── components/ui/         Component shadcn/ui
+  ├── preview/               Chế độ preview trên trình duyệt (transport giả, fixture)
   ├── ui/                    Toast, thông báo hệ thống
   └── utils/                 Các helper DOM dùng chung
 ```
