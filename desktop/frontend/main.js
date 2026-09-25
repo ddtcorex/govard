@@ -34,10 +34,11 @@ import {
   createSettingsController,
   renderSettingsDrawer,
 } from "./modules/settings.js";
-import { createUpdateNotifierController } from "./modules/update-notifier.js";
+import { createUpdateNotifierModel } from "./modules/update-notifier.js";
 import { createElement } from "react";
 import { mountIsland } from "./islands/mount.js";
 import { MetricsFooter } from "./islands/MetricsFooter.tsx";
+import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
 import { getState, setState } from "./state/store.js";
@@ -110,12 +111,6 @@ const getLiveRefs = () => ({
   checkUpdatesButton: byId("checkUpdatesButton"),
   installUpdateButton: byId("installUpdateButton"),
   updateChannelSelect: byId("updateChannelSelect"),
-  updatePrompt: byId("updatePrompt"),
-  updatePromptCurrent: byId("updatePromptCurrent"),
-  updatePromptLatest: byId("updatePromptLatest"),
-  updatePromptMessage: byId("updatePromptMessage"),
-  updatePromptChangelog: byId("updatePromptChangelog"),
-  installUpdatePromptButton: byId("installUpdatePromptButton"),
   userAvatar: byId("userAvatar"),
   userName: byId("userName"),
   toastContainer: byId("toastContainer"),
@@ -191,8 +186,6 @@ const refreshRefs = () => {
   if (logsController?.updateRefs) logsController.updateRefs(refs);
   if (remotesController?.updateRefs) remotesController.updateRefs(refs);
   if (settingsController?.updateRefs) settingsController.updateRefs(refs);
-  if (updateNotifierController?.updateRefs)
-    updateNotifierController.updateRefs(refs);
   if (globalServicesController?.updateRefs)
     globalServicesController.updateRefs(refs);
 };
@@ -1229,17 +1222,25 @@ const settingsController = createSettingsController({
   onToast: showToast,
 });
 
-const updateNotifierController = createUpdateNotifierController({
-  refs,
+// The update prompt is a React island over a headless model; the model owns the
+// background check timers and the dismissed-version and settings-drawer rules.
+// The preview (preview/bootstrap.js) asks for the model on window so a
+// behaviour test can drive checks itself; production never defines that global.
+const updateNotifierModel = createUpdateNotifierModel({
   settingsController,
   onStatus: setStatus,
+  isSettingsDrawerOpen: () =>
+    Boolean(refs.settingsDrawer) && !refs.settingsDrawer.classList.contains("hidden"),
 });
+const updatePromptIsland = mountIsland(
+  "updatePromptIsland",
+  createElement(UpdatePrompt, { model: updateNotifierModel }),
+);
+if (window.__govardPreviewExposeUpdatePrompt) window.__govardUpdatePromptModel = updateNotifierModel;
 
 const setSettingsDrawerOpen = (open) => {
   settingsController.toggleDrawer(open);
-  if (updateNotifierController?.syncWithSettingsDrawer) {
-    updateNotifierController.syncWithSettingsDrawer();
-  }
+  updateNotifierModel.syncWithSettingsDrawer();
 };
 
 const globalServicesController = createGlobalServicesController({
@@ -1527,14 +1528,6 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "install-update") {
     await settingsController.installLatestUpdate();
-    return;
-  }
-  if (action === "dismiss-update-prompt") {
-    updateNotifierController.dismissPrompt();
-    return;
-  }
-  if (action === "install-update-from-prompt") {
-    await updateNotifierController.installLatestUpdateFromPrompt();
     return;
   }
   if (action === "switch-tab") {
@@ -2038,7 +2031,7 @@ const bootstrap = async () => {
       loadFooterVersion();
     }, 1500);
 
-    updateNotifierController.scheduleBackgroundChecks();
+    updateNotifierModel.scheduleBackgroundChecks();
     setStatus("Status: Ready");
   } catch (err) {
     console.error("Bootstrap fatal error:", err);
@@ -2072,7 +2065,8 @@ if (document.readyState === "loading") {
 }
 
 window.addEventListener("beforeunload", () => {
-  updateNotifierController.clearTimers();
+  updateNotifierModel.clearTimers();
+  updatePromptIsland?.unmount();
   metricsIsland?.unmount();
   globalServicesController.stopLive({ skipBridge: true });
 });

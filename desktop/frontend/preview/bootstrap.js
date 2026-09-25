@@ -28,6 +28,10 @@ installPreviewControl();
 // second is far longer than a click plus its render, which keeps a per-click
 // call count exact.
 window.__govardPreviewMetricsIntervalMs = 1000;
+// main.js then exposes the update prompt model as window.__govardUpdatePromptModel,
+// so a behaviour test can stop the 12 s startup schedule and run each background
+// check itself instead of waiting on (and racing) the production timer.
+window.__govardPreviewExposeUpdatePrompt = true;
 await import("../main.js");
 
 // After the app has booted, so the island's store reads see the same state

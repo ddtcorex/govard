@@ -507,62 +507,7 @@ Select a global service to view logs.</pre>
     </div>
 
     <div class="toast-container" id="toastContainer" aria-live="polite"></div>
-    <div id="updatePrompt"
-      class="hidden fixed z-140 right-4 bottom-[56px] w-[min(420px,calc(100%-32px))] md:right-8 md:bottom-[64px]"
-      aria-hidden="true">
-      <div class="update-prompt-panel p-6 rounded-[32px] shadow-[0_24px_60px_rgba(0,0,0,0.4)] border border-white/10 backdrop-blur-2xl">
-        <div class="flex items-center gap-4 mb-5">
-          <div
-            class="h-12 w-12 rounded-2xl bg-primary/10 border border-primary/20 text-primary inline-flex items-center justify-center shrink-0 shadow-lg shadow-primary/10">
-            <span class="material-symbols-outlined text-[22px]">system_update_alt</span>
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-slate-900 dark:text-white text-lg font-bold tracking-tight">
-              Update available
-            </p>
-          </div>
-          <button data-action="dismiss-update-prompt"
-            class="h-10 w-10 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 inline-flex items-center justify-center transition-all active:scale-95"
-            type="button" aria-label="Dismiss update prompt">
-            <span class="material-symbols-outlined text-[22px]">close</span>
-          </button>
-        </div>
-
-        <div class="bg-slate-50 dark:bg-black/30 rounded-2xl border border-slate-200 dark:border-white/5 p-5 flex flex-col gap-4">
-          <p id="updatePromptMessage" class="update-message-text text-[14px] font-medium text-slate-700 dark:text-slate-200 leading-snug">
-            A newer Govard Desktop version is available.
-          </p>
-          <div id="updatePromptChangelog"
-            class="hidden text-[13px] leading-relaxed text-slate-600 dark:text-slate-400 max-h-[320px] overflow-y-auto font-sans whitespace-pre-wrap select-text custom-scrollbar pr-3">
-            <!-- Changelog content injected here -->
-          </div>
-          <div class="pt-4 border-t border-slate-200 dark:border-white/5 text-[12px] font-mono text-slate-500 dark:text-slate-400 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="opacity-60 text-[10px] uppercase font-black tracking-widest">Current</span>
-              <span id="updatePromptCurrent" class="text-slate-700 dark:text-slate-200 font-bold">-</span>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="text-primary font-black">→</span>
-              <span id="updatePromptLatest" class="text-primary font-black text-sm">-</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="mt-5 flex items-center justify-end gap-3">
-          <button data-action="dismiss-update-prompt"
-            class="px-4 py-2.5 text-xs font-bold rounded-xl border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all active:scale-95"
-            type="button">
-            Later
-          </button>
-          <button data-action="install-update-from-prompt" id="installUpdatePromptButton"
-            class="px-5 py-2.5 text-xs font-black rounded-xl bg-primary text-slate-900 hover:scale-[1.02] active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-50 transition-all shadow-[0_12px_24px_rgba(var(--primary-rgb),0.2)]"
-            type="button">
-            <span class="material-symbols-outlined text-[18px]">download_for_offline</span>
-            <span>Update Now</span>
-          </button>
-        </div>
-      </div>
-    </div>
+    <div id="updatePromptIsland"></div>
 
     <!-- Modals & Drawers -->
     <!-- Mount point for Onboarding Modal -->
