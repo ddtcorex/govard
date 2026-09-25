@@ -124,102 +124,7 @@
                       </div>
                     </div>
                   </div>
-                  <div class="relative z-10 p-4 space-y-4 global-control-deck">
-                    <div class="flex items-center justify-between gap-2">
-                      <p
-                        class="text-[11px] uppercase tracking-[0.18em] text-primary font-bold flex items-center gap-1.5 dark:drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-                        <span class="material-symbols-outlined text-[14px]">space_dashboard</span>
-                        Ops Control Deck
-                      </p>
-                      <span class="text-[11px] uppercase tracking-[0.12em] text-text-tertiary font-bold">Global
-                        Services</span>
-                    </div>
-                    <div class="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)]">
-                      <section
-                        class="rounded-xl border border-border-primary bg-surface-primary/80 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.25)] global-control-card">
-                        <p
-                          class="text-[11px] uppercase tracking-[0.16em] text-slate-600 dark:text-white/80 font-bold flex items-center gap-1.5">
-                          <span class="material-symbols-outlined text-[13px]">monitoring</span>
-                          Global Health
-                        </p>
-                        <div class="mt-2 flex items-end gap-2">
-                          <span id="globalServiceHealthPercent"
-                            class="text-4xl font-black text-text-primary dark:text-white leading-none ops-kpi-value">--%</span>
-                          <span id="globalServiceCount" class="text-xs font-semibold text-primary">0/0 running</span>
-                        </div>
-                        <div class="mt-3 h-2 rounded-full bg-slate-200 dark:bg-white/5 relative">
-                          <div id="globalServiceHealthBar"
-                            class="h-full w-0 rounded-full bg-linear-to-r from-primary/70 via-primary to-primary-hover transition-all duration-500">
-                          </div>
-                        </div>
-                        <div id="globalServiceHealthLabel"
-                          class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">
-                          <span id="globalServiceHealthLabelIcon"
-                            class="material-symbols-outlined text-[12px]">monitor_heart</span>
-                          <span id="globalServiceHealthLabelText">Health check pending</span>
-                        </div>
-                      </section>
-                      <section
-                        class="rounded-xl border border-border-primary bg-surface-secondary/75 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.2)] global-control-card">
-                        <div class="flex items-center justify-between gap-2 mb-2">
-                          <p
-                            class="text-[11px] uppercase tracking-[0.16em] text-primary font-semibold flex items-center gap-1.5">
-                            <span class="material-symbols-outlined text-[13px]">tune</span>
-                            All Actions
-                          </p>
-                          <span class="text-[10px] text-text-tertiary">Applies to every global service</span>
-                        </div>
-                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                          <button id="globalBulkStart" data-action="global-bulk-start"
-                            data-loading-label="Starting All..."
-                            class="h-10 min-w-[118px] px-3 bg-primary text-slate-900 rounded-lg text-xs font-bold hover:bg-primary/90 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-primary/10 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100">
-                            <span class="material-symbols-outlined text-[16px]">play_arrow</span>
-                            Start All
-                          </button>
-                          <button id="globalBulkRestart" data-action="global-bulk-restart"
-                            data-loading-label="Restarting All..."
-                            class="h-10 min-w-[118px] px-3 bg-slate-600 text-white border border-slate-500 rounded-lg text-xs font-bold hover:bg-slate-500 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-black/20 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">
-                            <span class="material-symbols-outlined text-[16px]">restart_alt</span>
-                            Restart All
-                          </button>
-                          <button id="globalBulkStop" data-action="global-bulk-stop"
-                            data-loading-label="Stopping All..."
-                            class="h-10 min-w-[118px] px-3 bg-red-600 text-white border border-red-400 rounded-lg text-xs font-bold hover:bg-red-500 transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-red-700/40 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">
-                            <span class="material-symbols-outlined text-[16px] fill-1" style="
-                                  font-variation-settings: &quot;FILL&quot; 1;
-                                ">stop</span>
-                            Stop All
-                          </button>
-                          <button id="globalBulkPull" data-action="global-bulk-pull" data-loading-label="Pulling All..."
-                            class="h-10 min-w-[118px] px-3 bg-primary text-background-secondary border border-primary/20 rounded-lg text-xs font-bold hover:bg-primary-hover transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-lg shadow-primary/10 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100">
-                            <span class="material-symbols-outlined text-[16px]">download</span>
-                            Pull All
-                          </button>
-                        </div>
-                      </section>
-                    </div>
-                    <section
-                      class="rounded-xl border border-border-primary bg-background-secondary/75 p-2.5 global-control-card">
-                      <div class="flex items-center gap-1.5 mb-2">
-                        <span class="material-symbols-outlined text-[14px] text-primary">lan</span>
-                        <p class="text-[11px] uppercase tracking-[0.12em] text-primary font-bold">
-                          Service Mesh Snapshot
-                        </p>
-                      </div>
-                      <div id="globalServiceStatusStrip" class="flex flex-wrap gap-1.5">
-                        class="inline-flex items-center gap-1 rounded-md border border-border-primary
-                        bg-background-primary px-2 py-1 text-[10px] text-slate-600 dark:text-slate-400 font-medium"
-                        >Loading services...</span>
-                      </div>
-                    </section>
-                    <section id="globalActionFeedback"
-                      class="rounded-xl border border-slate-200 dark:border-border-primary bg-slate-50 dark:bg-background-dark/80 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-slate-700 dark:text-slate-300 global-feedback-ping">
-                      <span id="globalActionFeedbackIcon"
-                        class="material-symbols-outlined text-[15px] leading-none self-start mt-px text-primary">info</span>
-                      <span id="globalActionFeedbackText" class="min-w-0 whitespace-pre-line leading-relaxed">Ready for
-                        global operations.</span>
-                    </section>
-                  </div>
+                  <div id="globalHealthIsland" class="relative z-10 p-4 space-y-4 global-control-deck"></div>
                 </div>
                 <div
                   class="grid grid-cols-1 md:grid-cols-[minmax(0,3fr)_minmax(0,7fr)] md:grid-rows-1 gap-6 flex-1 min-h-0">
@@ -230,12 +135,7 @@
                         Services
                       </h3>
                       <div id="globalServicesList"
-                        class="space-y-2 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
-                        <div
-                          class="rounded-xl border border-dashed border-border-primary bg-surface-secondary p-3 text-sm text-slate-400">
-                          Loading global services...
-                        </div>
-                      </div>
+                        class="space-y-2 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1"></div>
                     </div>
                   </div>
                   <div

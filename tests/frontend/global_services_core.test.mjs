@@ -1,13 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import {
   buildRoutingWarningMessage,
   formatBulkGlobalActionErrorForTest,
+  hasRoutingImpact,
+  hasRoutingWarningInSnapshot,
+  isServiceActive,
   normalizeGlobalServicesSnapshot,
-  renderGlobalServices,
   summarizeActionMessage,
 } from "../../desktop/frontend/modules/global-services.js";
+
+const readIsland = (name) =>
+  readFile(
+    new URL(`../../desktop/frontend/islands/${name}`, import.meta.url),
+    "utf8",
+  );
+
+const readEntryPoint = (name) =>
+  readFile(new URL(`../../desktop/frontend/${name}`, import.meta.url), "utf8");
 
 test("normalizeGlobalServicesSnapshot keeps DNSMasq directly below Caddy", () => {
   const snapshot = normalizeGlobalServicesSnapshot({
@@ -27,37 +39,66 @@ test("normalizeGlobalServicesSnapshot keeps DNSMasq directly below Caddy", () =>
   assert.equal(dnsmasqIndex, caddyIndex + 1);
 });
 
-test("renderGlobalServices shows routing warning when caddy or dnsmasq is stopped", () => {
-  const container = { innerHTML: "" };
-  renderGlobalServices(container, [
-    {
-      id: "caddy",
-      name: "Caddy Proxy",
-      containerName: "caddy",
-      status: "stopped",
-      state: "stopped",
-      running: false,
-      openable: true,
-    },
-    {
-      id: "dnsmasq",
-      name: "DNSMasq",
-      containerName: "dnsmasq",
-      status: "exited",
-      state: "exited",
-      running: false,
-      openable: false,
-    },
-  ]);
+// The warning used to be asserted through renderGlobalServices' innerHTML; the
+// island renders it now, so the gate is asserted on the helper that decides and
+// the copy on the island that prints it. The distinction matters: with the
+// warning copy in the island there is nothing left to test in the module, and
+// with the gate in the module there is nothing to infer from the markup.
+test("hasRoutingImpact flags a stopped routing service and nothing else", () => {
+  assert.equal(
+    hasRoutingImpact({ id: "caddy", status: "stopped", state: "stopped", running: false }),
+    true,
+  );
+  assert.equal(
+    hasRoutingImpact({ id: "dnsmasq", status: "exited", state: "exited", running: false }),
+    true,
+  );
+  assert.equal(
+    hasRoutingImpact({ id: "mail", status: "stopped", state: "stopped", running: false }),
+    false,
+    "a non-routing service never raises the routing warning",
+  );
+  assert.equal(
+    hasRoutingImpact({ id: "caddy", status: "running", state: "running", running: true }),
+    false,
+  );
+});
 
+test("hasRoutingWarningInSnapshot also catches a port-conflict warning", () => {
+  const running = [
+    { id: "caddy", status: "running", state: "running", running: true },
+    { id: "dnsmasq", status: "running", state: "running", running: true },
+  ];
+  assert.equal(hasRoutingWarningInSnapshot({ services: running, warnings: [] }), false);
   assert.equal(
-    container.innerHTML.includes("Routing warning: Caddy Proxy is stopped."),
+    hasRoutingWarningInSnapshot({
+      services: running,
+      warnings: ["Port conflict 80/tcp: docker container warden-nginx-1"],
+    }),
     true,
   );
+});
+
+test("the service list island renders the routing warning the module decides", async () => {
+  const island = await readIsland("GlobalServicesList.tsx");
   assert.equal(
-    container.innerHTML.includes("Routing warning: DNSMasq is stopped."),
+    island.includes("hasRoutingImpact"),
     true,
+    "the warning must be gated by the module's helper",
   );
+  assert.equal(island.includes("Routing warning: "), true, "missing the warning copy");
+  assert.equal(
+    island.includes("is stopped. Proxy/domain routing"),
+    true,
+    "missing the second half of the warning copy",
+  );
+  assert.equal(island.includes("may fail."), true);
+});
+
+test("isServiceActive reads either the status or the running flag", () => {
+  assert.equal(isServiceActive({ status: "running" }), true);
+  assert.equal(isServiceActive({ status: "exited", running: true }), true);
+  assert.equal(isServiceActive({ status: "exited", running: false }), false);
 });
 
 test("buildRoutingWarningMessage includes detected port conflict list without hardcoded stacks", () => {
@@ -169,4 +210,67 @@ test("formatBulkGlobalActionErrorForTest returns default text when error is empt
     formatBulkGlobalActionErrorForTest("start", ""),
     "Global start failed.",
   );
+});
+
+test("the deck island owns the health, strip and feedback elements", async () => {
+  const deck = await readIsland("GlobalHealthHeader.tsx");
+  for (const id of [
+    "globalServiceHealthPercent",
+    "globalServiceHealthBar",
+    "globalServiceStatusStrip",
+    "globalActionFeedback",
+  ]) {
+    assert.equal(deck.includes(`id="${id}"`), true, `missing deck element ${id}`);
+  }
+  for (const action of ["start", "restart", "stop", "pull"]) {
+    assert.equal(
+      deck.includes(`testid: "global-bulk-${action}"`),
+      true,
+      `missing bulk action ${action}`,
+    );
+  }
+  for (const label of [
+    "Starting All...",
+    "Restarting All...",
+    "Stopping All...",
+    "Pulling All...",
+  ]) {
+    assert.equal(deck.includes(`"${label}"`), true, `missing bulk loading label ${label}`);
+  }
+});
+
+test("the logs panel is still delegate markup until 5b migrates it", async () => {
+  for (const name of ["index.html", "preview.html"]) {
+    const html = await readEntryPoint(name);
+    for (const id of ["globalLogSearch", "globalLogSeverity"]) {
+      assert.equal(html.includes(`id="${id}"`), true, `${name} is missing ${id}`);
+    }
+    for (const action of [
+      "toggle-global-live",
+      "refresh-global-logs",
+      "clear-global-logs",
+      "download-global-logs",
+      "filter-global-severity",
+    ]) {
+      assert.equal(
+        html.includes(`data-action="${action}"`),
+        true,
+        `${name} is missing ${action}`,
+      );
+    }
+  }
+});
+
+test("the card island keeps the per-service loading contracts", async () => {
+  const island = await readIsland("GlobalServicesList.tsx");
+  assert.equal(island.includes('"Restarting..."'), true);
+  assert.equal(island.includes('"Starting..."'), true);
+  assert.equal(island.includes('data-loading-label="Stopping..."'), true);
+  assert.equal(island.includes('data-loading-label="Opening..."'), true);
+  assert.equal(
+    island.includes("progress_activity"),
+    true,
+    "missing the loading spinner glyph for global service actions",
+  );
+  assert.equal(island.includes("aria-busy"), true, "missing the aria-busy state");
 });

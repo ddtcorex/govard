@@ -11,6 +11,16 @@ const state = {
   globalLogQuery: "",
   liveLogsEnabled: false,
   globalLiveLogsEnabled: false,
+  // The ops deck's derived inputs plus the feedback line: the controller
+  // publishes both and the two deck/list islands render from them (D6).
+  globalServicesSnapshot: null,
+  globalServicesLoading: false,
+  globalServicesError: "",
+  globalActionFeedback: {
+    message: "Ready for global operations.",
+    tone: "info",
+    seq: 0,
+  },
   terminalModalOpen: false,
   /**
    * The per-preset sync options the user has toggled, keyed by preset. Two

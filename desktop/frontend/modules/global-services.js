@@ -5,7 +5,7 @@ import {
   normalizeLogSeverity,
   syncSeveritySelector,
 } from "./logs.js";
-import { escapeHTML, setText } from "../utils/dom.js";
+import { setText } from "../utils/dom.js";
 import { hasEventRuntime, onEvent } from "../services/events.js";
 
 const globalServiceIcons = {
@@ -99,7 +99,7 @@ const formatBulkGlobalActionError = (action, err) => {
 export const formatBulkGlobalActionErrorForTest = (action, err) =>
   formatBulkGlobalActionError(action, err);
 
-const isServiceActive = (service = {}) =>
+export const isServiceActive = (service = {}) =>
   ACTIVE_STATUSES.has(
     String(service.status || "")
       .trim()
@@ -125,12 +125,12 @@ const isStopLikeState = (service = {}) => {
   );
 };
 
-const hasRoutingImpact = (service = {}) =>
+export const hasRoutingImpact = (service = {}) =>
   (service.id === "caddy" || service.id === "dnsmasq") &&
   !isServiceActive(service) &&
   isStopLikeState(service);
 
-const hasRoutingWarningInSnapshot = (snapshot = {}) => {
+export const hasRoutingWarningInSnapshot = (snapshot = {}) => {
   const services = Array.isArray(snapshot.services) ? snapshot.services : [];
   const warnings = Array.isArray(snapshot.warnings) ? snapshot.warnings : [];
   return (
@@ -378,7 +378,7 @@ export const normalizeGlobalServicesSnapshot = (payload = {}) => {
   };
 };
 
-const statusChipClass = (status = "missing") => {
+export const statusChipClass = (status = "missing") => {
   if (status === "running") {
     return "bg-primary/20 border-primary/30 text-primary";
   }
@@ -394,117 +394,19 @@ const statusChipClass = (status = "missing") => {
   return "bg-red-500/20 border-red-500/30 text-red-600 dark:text-red-400";
 };
 
-const formatStatusLabel = (status = "missing") => {
+export const formatStatusLabel = (status = "missing") => {
   const normalized = String(status || "missing")
     .trim()
     .toLowerCase();
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
-const renderServiceCard = (service, selectedService) => {
-  const selected = service.id === selectedService;
-  const icon = globalServiceIcons[service.id] || "widgets";
-  const statusClass = statusChipClass(service.status);
-  const isActive = isServiceActive(service);
-  const primaryAction = isActive ? "restart" : "start";
-  const primaryLabel = isActive ? "Restart" : "Start";
-  const primaryIcon = isActive ? "restart_alt" : "play_arrow";
-  const showRoutingWarning = hasRoutingImpact(service);
-  const routingWarning = showRoutingWarning
-    ? `<div class="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 font-medium flex items-start gap-1.5">
-          <span class="material-symbols-outlined text-[13px] leading-none mt-px">warning</span>
-          <span>Routing warning: ${escapeHTML(service.name)} is stopped. Proxy/domain routing may fail.</span>
-        </div>`
-    : "";
-  const rowClass = selected
-    ? "bg-primary/5 dark:bg-primary/10 border border-primary/40 shadow-[0_0_0_1px_rgba(13,242,89,0.25)]"
-    : "bg-white dark:bg-transparent border border-slate-200 dark:border-border-primary hover:border-primary/30 hover:bg-slate-50 dark:hover:bg-background-secondary/20";
-  const serviceName = escapeHTML(service.name);
-  const containerName = escapeHTML(service.containerName);
-  const statusLabel = escapeHTML(formatStatusLabel(service.status));
+/** The Material Symbol a known global service uses. */
+export const globalServiceIcon = (id) =>
+  globalServiceIcons[String(id || "").trim().toLowerCase()] || "widgets";
 
-  return `
-    <article
-      data-action="global-service-select-log"
-      data-service="${service.id}"
-      class="rounded-xl border ${rowClass} p-3 transition-all cursor-pointer"
-      title="Select ${serviceName} logs"
-    >
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary text-[18px]">${icon}</span>
-            <h4 class="text-sm font-semibold text-slate-900 dark:text-white truncate">${serviceName}</h4>
-          </div>
-          <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-1 truncate font-medium">${containerName}</p>
-        </div>
-        <span class="px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide shrink-0 ${statusClass}">
-          ${statusLabel}
-        </span>
-      </div>
-      ${routingWarning}
-      <div class="mt-3 flex items-center gap-2">
-        <button
-          data-action="global-service-primary"
-          data-service="${service.id}"
-          data-operation="${primaryAction}"
-          data-loading-label="${primaryAction === "restart" ? "Restarting..." : "Starting..."}"
-          data-loading-icon-only="true"
-          class="h-8 w-8 rounded-lg bg-primary text-background-secondary hover:bg-primary-hover transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-xs"
-          title="${primaryLabel}"
-        >
-          <span class="material-symbols-outlined text-[18px]">${primaryIcon}</span>
-        </button>
-        <button
-          data-action="global-service-stop"
-          data-service="${service.id}"
-          data-loading-label="Stopping..."
-          data-loading-icon-only="true"
-          class="${isActive ? "h-8 w-8 rounded-lg bg-red-600 text-white border border-red-500 hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-xs" : "h-8 w-8 rounded-lg bg-background-secondary text-slate-500 dark:text-text-tertiary border border-border-primary opacity-90 dark:opacity-60 flex items-center justify-center"}"
-          title="Stop"
-          ${isActive ? "" : "disabled"}
-        >
-          <span class="material-symbols-outlined text-[18px] fill-1" style="font-variation-settings: &quot;FILL&quot; 1">stop</span>
-        </button>
-        <button
-          data-action="global-service-open"
-          data-service="${service.id}"
-          data-loading-label="Opening..."
-          data-loading-icon-only="true"
-          class="${service.openable ? "h-8 w-8 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/20 hover:bg-slate-200 dark:hover:bg-white/20 hover:text-primary dark:hover:text-white transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-xs" : "h-8 w-8 rounded-lg border border-border-primary text-slate-500 dark:text-text-tertiary bg-background-secondary opacity-90 dark:opacity-60 flex items-center justify-center"}"
-          title="Open"
-          ${service.openable ? "" : "disabled"}
-        >
-          <span class="material-symbols-outlined text-[20px]">open_in_new</span>
-        </button>
-      </div>
-    </article>
-  `;
-};
-
-export const renderGlobalServices = (
-  container,
-  services = [],
-  selectedService = "",
-) => {
-  if (!container) {
-    return;
-  }
-  if (!Array.isArray(services) || services.length === 0) {
-    container.innerHTML = `
-      <div class="rounded-xl border border-dashed border-border-primary bg-background-secondary p-4 text-sm text-text-tertiary">
-        Global services data unavailable.
-      </div>
-    `;
-    return;
-  }
-
-  container.innerHTML = services
-    .map((service) => renderServiceCard(service, selectedService))
-    .join("");
-};
-
-const statusStripClass = (service = {}) => {
+/** The chip tone the service-mesh status strip gives one service. */
+export const statusStripTone = (service = {}) => {
   const status = String(service.status || "")
     .trim()
     .toLowerCase();
@@ -532,88 +434,156 @@ const statusStripClass = (service = {}) => {
   };
 };
 
-const renderStatusStrip = (container, services = []) => {
-  if (!container) {
-    return;
+const HEALTH_LABEL_BASE =
+  "mt-2 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-bold";
+const HEALTH_LABEL_AMBER = `${HEALTH_LABEL_BASE} border-amber-500/35 bg-amber-500/10 text-amber-600 dark:text-amber-200`;
+
+/**
+ * Everything the ops deck shows for one snapshot: the KPI, the bar and label
+ * tones, and the feedback line the snapshot implies. Pure, because the island
+ * renders it and the controller only publishes the snapshot into the store.
+ */
+export const deriveHealthSummary = (snapshot = {}) => {
+  const services = Array.isArray(snapshot.services) ? snapshot.services : [];
+  const total = Number(snapshot.total || services.length);
+  const active = Number(
+    snapshot.active ||
+      services.filter((service) => isServiceActive(service)).length,
+  );
+  const runningSafe = Math.max(0, Math.min(active, total || active));
+  const percent = total > 0 ? Math.round((runningSafe / total) * 100) : 0;
+  const hasRoutingWarning = hasRoutingWarningInSnapshot(snapshot);
+  const offlineServices = Math.max(total - runningSafe, 0);
+
+  const barClass =
+    hasRoutingWarning || percent < 35
+      ? "h-full rounded-full bg-linear-to-r from-red-500 via-red-400 to-amber-300 transition-all duration-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+      : percent < 100
+        ? "h-full rounded-full bg-linear-to-r from-amber-500 via-amber-300 to-primary transition-all duration-500"
+        : "h-full rounded-full bg-linear-to-r from-primary via-[#9cffc4] to-primary shadow-[0_0_20px_rgba(13,242,89,0.7)] brightness-110 transition-all duration-500";
+
+  let labelClass = HEALTH_LABEL_AMBER;
+  let labelIcon = "monitor_heart";
+  let labelText = `${offlineServices} service${offlineServices === 1 ? "" : "s"} need attention`;
+
+  if (hasRoutingWarning) {
+    labelClass = HEALTH_LABEL_AMBER;
+    labelIcon = "warning";
+    labelText = "Routing degraded";
+  } else if (percent >= 100 && total > 0) {
+    labelClass = `${HEALTH_LABEL_BASE} border-primary/25 bg-primary/10 text-emerald-600 dark:text-primary`;
+    labelIcon = "task_alt";
+    labelText = "All systems nominal";
+  } else if (runningSafe === 0 && total > 0) {
+    labelClass = `${HEALTH_LABEL_BASE} border-red-500/35 bg-red-500/10 text-red-600 dark:text-red-200`;
+    labelIcon = "error";
+    labelText = "Service mesh offline";
   }
-  if (!Array.isArray(services) || services.length === 0) {
-    container.innerHTML =
-      '<span class="inline-flex items-center gap-1 rounded-md border border-border-primary bg-background-secondary px-2 py-1 text-[10px] text-text-tertiary">Loading services...</span>';
-    return;
+
+  let feedback;
+  if (hasRoutingWarning) {
+    feedback = {
+      message: buildRoutingWarningMessage(services, snapshot.warnings),
+      tone: "warning",
+    };
+  } else if (percent >= 100 && total > 0) {
+    feedback = {
+      message:
+        "All global services are healthy. Use Restart All for safe rolling refresh.",
+      tone: "success",
+    };
+  } else if (total > 0) {
+    feedback = {
+      message: `${offlineServices} service${offlineServices === 1 ? "" : "s"} are offline. Start All can recover quickly.`,
+      tone: "warning",
+    };
+  } else {
+    feedback = {
+      message: "Global services are not available yet.",
+      tone: "info",
+    };
   }
-  container.innerHTML = services
-    .map((service, index) => {
-      const tone = statusStripClass(service);
-      const name = escapeHTML(service.name);
-      const label = escapeHTML(formatStatusLabel(service.status));
-      const icon = globalServiceIcons[service.id] || "widgets";
-      return `<span class="global-status-chip inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium shadow-xs ${tone.chip}" style="--chip-order:${index}">
-          <span class="w-1.5 h-1.5 rounded-full ${tone.dot}"></span>
-          <span class="material-symbols-outlined text-[11px] leading-none opacity-90">${icon}</span>
-          <span class="text-text-primary/95">${name}</span>
-          <span class="opacity-80">${label}</span>
-        </span>`;
-    })
-    .join("");
+
+  return {
+    total,
+    runningSafe,
+    offlineServices,
+    percent,
+    hasRoutingWarning,
+    percentLabel: `${percent}%`,
+    countLabel: `${runningSafe}/${total} running`,
+    barClass,
+    labelClass,
+    labelIcon,
+    labelText,
+    feedback,
+  };
 };
 
-const applyButtonState = (button, className, enabled) => {
-  if (!(button instanceof HTMLElement)) {
-    return;
-  }
-  button.className = className;
-  button.disabled = !enabled;
+/** Which bulk button is enabled, and with which of the two class strings. */
+export const bulkActionButtonStates = (snapshot = {}) => {
+  const total = Number(snapshot.total || 0);
+  const active = Number(snapshot.active || 0);
+  const allRunning = total > 0 && active >= total;
+  const anyRunning = active > 0;
+  const hasRoutingWarning = hasRoutingWarningInSnapshot(snapshot);
+  const canStart = !allRunning || hasRoutingWarning;
+
+  return {
+    start: {
+      enabled: canStart,
+      className: canStart ? BULK_START_ENABLED_CLASS : BULK_START_DISABLED_CLASS,
+    },
+    restart: {
+      enabled: anyRunning,
+      className: anyRunning
+        ? BULK_RESTART_ENABLED_CLASS
+        : BULK_RESTART_DISABLED_CLASS,
+    },
+    stop: {
+      enabled: anyRunning,
+      className: anyRunning ? BULK_STOP_ENABLED_CLASS : BULK_STOP_DISABLED_CLASS,
+    },
+    pull: { enabled: true, className: BULK_PULL_CLASS },
+  };
 };
 
-const withButtonLoading = async (buttonLike, fallbackLabel, operation) => {
-  const hasHTMLElement = typeof HTMLElement !== "undefined";
-  const hasHTMLButtonElement = typeof HTMLButtonElement !== "undefined";
-  const isButtonElement =
-    hasHTMLButtonElement && buttonLike instanceof HTMLButtonElement;
-  const isHTMLElement = hasHTMLElement && buttonLike instanceof HTMLElement;
-  const button = isButtonElement
-    ? buttonLike
-    : isHTMLElement
-      ? buttonLike.closest("button")
-      : null;
-
-  if (!(hasHTMLButtonElement && button instanceof HTMLButtonElement)) {
-    return operation();
-  }
-
-  if (button.dataset.busy === "true") {
-    return null;
-  }
-
-  const previousHTML = button.innerHTML;
-  const previousDisabled = button.disabled;
-  const previousAriaBusy = button.getAttribute("aria-busy");
-  const loadingLabel =
-    String(
-      button.dataset.loadingLabel || fallbackLabel || "Processing...",
-    ).trim() || "Processing...";
-
-  button.dataset.busy = "true";
-  button.disabled = true;
-  button.setAttribute("aria-busy", "true");
-  const iconOnly = button.dataset.loadingIconOnly === "true";
-  button.innerHTML = `<span class="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>${iconOnly ? "" : loadingLabel}`;
-
-  try {
-    return await operation();
-  } finally {
-    delete button.dataset.busy;
-    if (!button.isConnected) {
-      return;
-    }
-    button.disabled = previousDisabled;
-    if (previousAriaBusy === null) {
-      button.removeAttribute("aria-busy");
-    } else {
-      button.setAttribute("aria-busy", previousAriaBusy);
-    }
-    button.innerHTML = previousHTML;
-  }
+/**
+ * The feedback strip's tone -> {icon, iconClass, textClass}. The deck island
+ * renders it; the controller only publishes {message, tone, seq}.
+ */
+export const feedbackTone = (tone = "info") => {
+  const tones = {
+    success: {
+      icon: "check_circle",
+      iconClass:
+        "material-symbols-outlined text-[15px] leading-none self-start mt-px text-primary shadow-xs",
+      textClass:
+        "rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-primary dark:text-primary/95",
+    },
+    warning: {
+      icon: "warning",
+      iconClass:
+        "material-symbols-outlined text-[15px] leading-none self-start mt-px text-amber-600 dark:text-amber-300",
+      textClass:
+        "rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-amber-700 dark:text-amber-200",
+    },
+    error: {
+      icon: "error",
+      iconClass:
+        "material-symbols-outlined text-[15px] leading-none self-start mt-px text-red-600 dark:text-red-300",
+      textClass:
+        "rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-red-700 dark:text-red-200",
+    },
+    info: {
+      icon: "info",
+      iconClass:
+        "material-symbols-outlined text-[15px] leading-none self-start mt-px text-slate-600 dark:text-primary",
+      textClass:
+        "rounded-xl border border-border-primary bg-surface-secondary dark:bg-[#0f2015]/80 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-text-secondary dark:text-slate-300",
+    },
+  };
+  return tones[tone] || tones.info;
 };
 
 export const createGlobalServicesController = ({
@@ -705,176 +675,36 @@ export const createGlobalServicesController = ({
     scrollToLatest(forceScroll);
   };
 
+  /**
+   * The feedback line is store state now: the deck island renders it, and the
+   * logs half (5b) can raise the same line without one React root reaching into
+   * the other. `seq` is what re-triggers the ping animation, replacing the
+   * vanilla classList.remove + requestAnimationFrame pair.
+   */
+  let feedbackSeq = 0;
   const setActionFeedback = (message, tone = "info") => {
-    const toneMap = {
-      success: {
-        icon: "check_circle",
-        iconClass:
-          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-primary shadow-xs",
-        textClass:
-          "rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-primary dark:text-primary/95",
+    feedbackSeq += 1;
+    setState({
+      globalActionFeedback: {
+        message: String(message || "") || "Ready for global operations.",
+        tone: tone || "info",
+        seq: feedbackSeq,
       },
-      warning: {
-        icon: "warning",
-        iconClass:
-          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-amber-600 dark:text-amber-300",
-        textClass:
-          "rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-amber-700 dark:text-amber-200",
-      },
-      error: {
-        icon: "error",
-        iconClass:
-          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-red-600 dark:text-red-300",
-        textClass:
-          "rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-red-700 dark:text-red-200",
-      },
-      info: {
-        icon: "info",
-        iconClass:
-          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-slate-600 dark:text-primary",
-        textClass:
-          "rounded-xl border border-border-primary bg-surface-secondary dark:bg-[#0f2015]/80 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-text-secondary dark:text-slate-300",
-      },
-    };
-    const toneConfig = toneMap[tone] || toneMap.info;
-
-    if (refs.globalActionFeedback) {
-      refs.globalActionFeedback.className = toneConfig.textClass;
-      refs.globalActionFeedback.classList.remove("global-feedback-ping");
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => {
-          if (refs.globalActionFeedback) {
-            refs.globalActionFeedback.classList.add("global-feedback-ping");
-          }
-        });
-      } else {
-        refs.globalActionFeedback.classList.add("global-feedback-ping");
-      }
-    }
-    if (refs.globalActionFeedbackIcon) {
-      refs.globalActionFeedbackIcon.className = toneConfig.iconClass;
-      refs.globalActionFeedbackIcon.textContent = toneConfig.icon;
-    }
-    setText(
-      refs.globalActionFeedbackText,
-      message || "Ready for global operations.",
-    );
+    });
   };
 
-  const syncBulkActionButtons = (snapshot) => {
-    const total = Number(snapshot.total || 0);
-    const active = Number(snapshot.active || 0);
-    const allRunning = total > 0 && active >= total;
-    const hasRoutingWarning = hasRoutingWarningInSnapshot(snapshot);
-    const anyRunning = active > 0;
-    const canStart = !allRunning || hasRoutingWarning;
-
-    applyButtonState(
-      refs.globalBulkStart,
-      canStart ? BULK_START_ENABLED_CLASS : BULK_START_DISABLED_CLASS,
-      canStart,
+  const publishSummary = (snapshot) => {
+    setState({ globalServicesSnapshot: snapshot });
+    setActionFeedback(
+      deriveHealthSummary(snapshot).feedback.message,
+      deriveHealthSummary(snapshot).feedback.tone,
     );
-    applyButtonState(
-      refs.globalBulkRestart,
-      anyRunning ? BULK_RESTART_ENABLED_CLASS : BULK_RESTART_DISABLED_CLASS,
-      anyRunning,
-    );
-    applyButtonState(
-      refs.globalBulkStop,
-      anyRunning ? BULK_STOP_ENABLED_CLASS : BULK_STOP_DISABLED_CLASS,
-      anyRunning,
-    );
-    applyButtonState(refs.globalBulkPull, BULK_PULL_CLASS, true);
-  };
-
-  const renderSummary = (snapshot) => {
-    const services = Array.isArray(snapshot.services) ? snapshot.services : [];
-    const warningList = Array.isArray(snapshot.warnings)
-      ? snapshot.warnings
-      : [];
-    const total = Number(snapshot.total || services.length);
-    const active = Number(
-      snapshot.active ||
-        services.filter((service) => isServiceActive(service)).length,
-    );
-    const runningSafe = Math.max(0, Math.min(active, total || active));
-    const percent = total > 0 ? Math.round((runningSafe / total) * 100) : 0;
-    const hasRoutingWarning = hasRoutingWarningInSnapshot(snapshot);
-    const offlineServices = Math.max(total - runningSafe, 0);
-    const defaultSummary =
-      total > 0
-        ? `${runningSafe}/${total} global services running`
-        : "No global services detected";
-
-    setText(refs.globalServicesSummary, snapshot.summary || defaultSummary);
-    setText(refs.globalServiceCount, `${runningSafe}/${total} running`);
-    setText(refs.globalServiceHealthPercent, `${percent}%`);
-
-    if (refs.globalServiceHealthBar instanceof HTMLElement) {
-      refs.globalServiceHealthBar.style.width = `${percent}%`;
-      refs.globalServiceHealthBar.className =
-        hasRoutingWarning || percent < 35
-          ? "h-full rounded-full bg-linear-to-r from-red-500 via-red-400 to-amber-300 transition-all duration-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]"
-          : percent < 100
-            ? "h-full rounded-full bg-linear-to-r from-amber-500 via-amber-300 to-primary transition-all duration-500"
-            : "h-full rounded-full bg-linear-to-r from-primary via-[#9cffc4] to-primary shadow-[0_0_20px_rgba(13,242,89,0.7)] brightness-110 transition-all duration-500";
-    }
-
-    if (refs.globalServiceHealthLabel instanceof HTMLElement) {
-      if (hasRoutingWarning) {
-        refs.globalServiceHealthLabel.className =
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-600 dark:text-amber-200";
-        setText(refs.globalServiceHealthLabelIcon, "warning");
-        setText(refs.globalServiceHealthLabelText, "Routing degraded");
-      } else if (percent >= 100 && total > 0) {
-        refs.globalServiceHealthLabel.className =
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] font-bold text-emerald-600 dark:text-primary";
-        setText(refs.globalServiceHealthLabelIcon, "task_alt");
-        setText(refs.globalServiceHealthLabelText, "All systems nominal");
-      } else if (runningSafe === 0 && total > 0) {
-        refs.globalServiceHealthLabel.className =
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-red-500/35 bg-red-500/10 px-2 py-1 text-[10px] font-bold text-red-600 dark:text-red-200";
-        setText(refs.globalServiceHealthLabelIcon, "error");
-        setText(refs.globalServiceHealthLabelText, "Service mesh offline");
-      } else {
-        refs.globalServiceHealthLabel.className =
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-600 dark:text-amber-200";
-        setText(refs.globalServiceHealthLabelIcon, "monitor_heart");
-        setText(
-          refs.globalServiceHealthLabelText,
-          `${offlineServices} service${offlineServices === 1 ? "" : "s"} need attention`,
-        );
-      }
-    }
-
-    renderStatusStrip(refs.globalServiceStatusStrip, services);
-    syncBulkActionButtons({ active: runningSafe, total });
-
-    if (hasRoutingWarning) {
-      setActionFeedback(
-        buildRoutingWarningMessage(services, snapshot.warnings),
-        "warning",
-      );
-    } else if (percent >= 100 && total > 0) {
-      setActionFeedback(
-        "All global services are healthy. Use Restart All for safe rolling refresh.",
-        "success",
-      );
-    } else if (total > 0) {
-      setActionFeedback(
-        `${offlineServices} service${offlineServices === 1 ? "" : "s"} are offline. Start All can recover quickly.`,
-        "warning",
-      );
-    } else {
-      setActionFeedback("Global services are not available yet.", "info");
-    }
   };
 
   const renderSnapshot = () => {
     const state = getState();
     const services = state.globalServices || [];
     const selected = state.selectedGlobalService || "";
-    renderGlobalServices(refs.globalServicesList, services, selected);
     const selectedService = services.find((item) => item.id === selected);
     setText(
       refs.globalLogServiceName,
@@ -901,21 +731,23 @@ export const createGlobalServicesController = ({
   };
 
   const refresh = async ({ silent = false } = {}) => {
-    if (!silent && refs.globalServicesList) {
-      refs.globalServicesList.innerHTML = `
-        <div class="rounded-xl border border-dashed border-border-primary bg-surface-secondary p-4 text-sm text-slate-400">Loading global services...</div>
-      `;
-    }
     if (!silent) {
       setActionFeedback("Refreshing global services snapshot...", "info");
+      // The list island renders its own loading frame from this (the vanilla
+      // code wrote the placeholder markup into the container itself).
+      setState({ globalServicesLoading: true, globalServicesError: "" });
     }
     try {
       const snapshot = normalizeGlobalServicesSnapshot(
         await bridge.getGlobalServices(),
       );
-      setState({ globalServices: snapshot.services });
+      setState({
+        globalServices: snapshot.services,
+        globalServicesLoading: false,
+        globalServicesError: "",
+      });
       ensureSelectedService();
-      renderSummary(snapshot);
+      publishSummary(snapshot);
       renderSnapshot();
       if (snapshot.warnings?.length) {
         onStatus(`Global services warnings: ${snapshot.warnings.join(" | ")}`);
@@ -924,13 +756,11 @@ export const createGlobalServicesController = ({
     } catch (err) {
       onStatus(`Failed to load global services: ${err}`);
       setActionFeedback(`Failed to load global services: ${err}`, "error");
-      if (refs.globalServicesList) {
-        refs.globalServicesList.innerHTML = `
-          <div class="rounded-xl border border-dashed border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
-            Failed to load global services.
-          </div>
-        `;
-      }
+      setState({
+        globalServicesSnapshot: null,
+        globalServicesLoading: false,
+        globalServicesError: "Failed to load global services.",
+      });
       return null;
     }
   };
@@ -1039,7 +869,7 @@ export const createGlobalServicesController = ({
     await refreshLogs();
   };
 
-  const runServiceAction = async (action, serviceID, triggerButton = null) => {
+  const runServiceAction = async (action, serviceID) => {
     const normalized = String(serviceID || "")
       .trim()
       .toLowerCase();
@@ -1058,12 +888,6 @@ export const createGlobalServicesController = ({
       return;
     }
 
-    const loadingLabelByAction = {
-      start: "Starting...",
-      stop: "Stopping...",
-      restart: "Restarting...",
-      open: "Opening...",
-    };
     const actionVerbByAction = {
       start: "Starting",
       stop: "Stopping",
@@ -1101,46 +925,40 @@ export const createGlobalServicesController = ({
       return nextSnapshot;
     };
 
-    await withButtonLoading(
-      triggerButton,
-      loadingLabelByAction[action],
-      async () => {
-        setActionFeedback(
-          `${actionVerbByAction[action] || "Processing"} ${serviceName}...`,
-          "info",
-        );
-        try {
-          const message = await fn(normalized);
-          const compactMessage = summarizeActionMessage(
-            message,
-            `${serviceName} ${action} completed.`,
-          );
-          onStatus(compactMessage);
-          onToast(compactMessage, "success");
-          const snapshot = await settleRoutingIfNeeded(
-            await refresh({ silent: true }),
-          );
-          if (snapshot && hasRoutingWarningInSnapshot(snapshot)) {
-            setActionFeedback(
-              buildRoutingWarningMessage(snapshot.services, snapshot.warnings),
-              "warning",
-            );
-          } else {
-            setActionFeedback(compactMessage, "success");
-          }
-        } catch (err) {
-          onStatus(`${action} ${normalized} failed: ${err}`);
-          onToast(`${action} ${normalized} failed: ${err}`, "error");
-          setActionFeedback(
-            `${actionVerbByAction[action] || "Action"} ${serviceName} failed: ${err}`,
-            "error",
-          );
-        }
-      },
+    setActionFeedback(
+      `${actionVerbByAction[action] || "Processing"} ${serviceName}...`,
+      "info",
     );
+    try {
+      const message = await fn(normalized);
+      const compactMessage = summarizeActionMessage(
+        message,
+        `${serviceName} ${action} completed.`,
+      );
+      onStatus(compactMessage);
+      onToast(compactMessage, "success");
+      const snapshot = await settleRoutingIfNeeded(
+        await refresh({ silent: true }),
+      );
+      if (snapshot && hasRoutingWarningInSnapshot(snapshot)) {
+        setActionFeedback(
+          buildRoutingWarningMessage(snapshot.services, snapshot.warnings),
+          "warning",
+        );
+      } else {
+        setActionFeedback(compactMessage, "success");
+      }
+    } catch (err) {
+      onStatus(`${action} ${normalized} failed: ${err}`);
+      onToast(`${action} ${normalized} failed: ${err}`, "error");
+      setActionFeedback(
+        `${actionVerbByAction[action] || "Action"} ${serviceName} failed: ${err}`,
+        "error",
+      );
+    }
   };
 
-  const runBulkAction = async (action, triggerButton = null) => {
+  const runBulkAction = async (action) => {
     const actions = {
       start: bridge.startGlobalServices,
       stop: bridge.stopGlobalServices,
@@ -1152,12 +970,6 @@ export const createGlobalServicesController = ({
       return;
     }
 
-    const loadingLabelByAction = {
-      start: "Starting All...",
-      stop: "Stopping All...",
-      restart: "Restarting All...",
-      pull: "Pulling All...",
-    };
     const actionVerbByAction = {
       start: "Starting",
       stop: "Stopping",
@@ -1186,41 +998,35 @@ export const createGlobalServicesController = ({
       return nextSnapshot;
     };
 
-    await withButtonLoading(
-      triggerButton,
-      loadingLabelByAction[action],
-      async () => {
-        setActionFeedback(
-          `${actionVerbByAction[action] || "Processing"} all global services...`,
-          "info",
-        );
-        try {
-          const message = await fn();
-          const compactMessage = summarizeActionMessage(
-            message,
-            `Global ${action} completed successfully.`,
-          );
-          onStatus(compactMessage);
-          onToast(compactMessage, "success");
-          const snapshot = await settleRoutingIfNeeded(
-            await refresh({ silent: true }),
-          );
-          if (snapshot && hasRoutingWarningInSnapshot(snapshot)) {
-            setActionFeedback(
-              buildRoutingWarningMessage(snapshot.services, snapshot.warnings),
-              "warning",
-            );
-          } else {
-            setActionFeedback(compactMessage, "success");
-          }
-        } catch (err) {
-          const compactError = formatBulkGlobalActionError(action, err);
-          onStatus(`Global ${action} failed: ${err}`);
-          onToast(compactError, "error");
-          setActionFeedback(compactError, "error");
-        }
-      },
+    setActionFeedback(
+      `${actionVerbByAction[action] || "Processing"} all global services...`,
+      "info",
     );
+    try {
+      const message = await fn();
+      const compactMessage = summarizeActionMessage(
+        message,
+        `Global ${action} completed successfully.`,
+      );
+      onStatus(compactMessage);
+      onToast(compactMessage, "success");
+      const snapshot = await settleRoutingIfNeeded(
+        await refresh({ silent: true }),
+      );
+      if (snapshot && hasRoutingWarningInSnapshot(snapshot)) {
+        setActionFeedback(
+          buildRoutingWarningMessage(snapshot.services, snapshot.warnings),
+          "warning",
+        );
+      } else {
+        setActionFeedback(compactMessage, "success");
+      }
+    } catch (err) {
+      const compactError = formatBulkGlobalActionError(action, err);
+      onStatus(`Global ${action} failed: ${err}`);
+      onToast(compactError, "error");
+      setActionFeedback(compactError, "error");
+    }
   };
 
   const clearLogs = async () => {
