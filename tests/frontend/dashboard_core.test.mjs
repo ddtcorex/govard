@@ -5,8 +5,6 @@ import { readFile } from "node:fs/promises";
 import {
   localEnvironmentURL,
   normalizeDashboardPayload,
-  renderEnvironmentList,
-  renderProjectHero,
   serviceTargets,
 } from "../../desktop/frontend/modules/dashboard.js";
 
@@ -134,8 +132,10 @@ test("sidebar mode switch drives global services panel on the right", async () =
     new URL("../../desktop/frontend/index.html", import.meta.url),
     "utf8",
   );
-  const dashboardJS = await readFile(
-    new URL("../../desktop/frontend/modules/dashboard.js", import.meta.url),
+  // The sidebar list moved into an island, so its rows are asserted there; the
+  // shell containers it switches between stay in the static markup.
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/EnvironmentList.tsx", import.meta.url),
     "utf8",
   );
   for (const id of [
@@ -152,59 +152,51 @@ test("sidebar mode switch drives global services panel on the right", async () =
     "legacy sidebar global services panel should be removed",
   );
   assert.equal(
-    dashboardJS.includes('data-mode="global-services"'),
+    island.includes('data-testid="global-services-row"'),
     true,
-    "missing global services sidebar row action",
+    "missing global services sidebar row",
   );
   assert.equal(
-    dashboardJS.includes('"Active Environments",'),
+    island.includes('"Active Environments"'),
     true,
     "missing active environments section",
   );
   assert.equal(
-    dashboardJS.includes('"Inactive Environments",'),
+    island.includes('"Inactive Environments"'),
     true,
     "missing inactive environments section",
   );
   assert.equal(
-    dashboardJS.includes('data-action="switch-sidebar-mode"'),
+    island.includes("onSwitchSidebarMode"),
     true,
     "missing sidebar mode switch action",
   );
 });
-
-test("inactive environments label uses the same primary styling as active environments", () => {
-  const container = { innerHTML: "" };
-
-  renderEnvironmentList(
-    container,
-    [
-      {
-        Project: "m2govard",
-        Domain: "m2govard.test",
-        Status: "running",
-        Services: [{ Name: "Nginx" }],
-      },
-      {
-        Project: "govard",
-        Domain: "govard",
-        Status: "stopped",
-        Services: [],
-      },
-    ],
-    "m2govard",
-    { sidebarMode: "environments" },
+test("inactive environments label uses the same primary styling as active environments", async () => {
+  // The list is an island now, so the label contract is asserted on its source:
+  // both group headers share one tone class, and the inactive group keeps its
+  // extra top margin.
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/EnvironmentList.tsx", import.meta.url),
+    "utf8",
   );
-
   assert.equal(
-    container.innerHTML.includes(
-      '<div class="px-1 mt-8 pb-2 text-[10px] font-bold text-primary/70 uppercase tracking-[0.12em]">Inactive Environments</div>',
-    ),
+    island.includes("text-primary/70 uppercase tracking-[0.12em]"),
     true,
-    "inactive environments label should reuse the primary header styling",
+    "group labels should reuse the primary header styling",
+  );
+  assert.equal(
+    island.includes('mt="mt-8"'),
+    true,
+    "the inactive group should keep its top margin",
+  );
+  assert.equal(
+    island.includes('title="Active Environments"') &&
+      island.includes('title="Inactive Environments"'),
+    true,
+    "both groups should render through the same component",
   );
 });
-
 test("global services right panel includes per-service and log actions", async () => {
   const html = await readFile(
     new URL("../../desktop/frontend/index.html", import.meta.url),
@@ -363,79 +355,68 @@ test("logs section exposes filtering and streaming controls", async () => {
 });
 
 test("active services cards expose service actions and always-visible controls", async () => {
-  const dashboardJS = await readFile(
-    new URL("../../desktop/frontend/modules/dashboard.js", import.meta.url),
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/ActiveServices.tsx", import.meta.url),
     "utf8",
   );
 
   assert.equal(
-    dashboardJS.includes('data-action="open-service-logs"'),
+    island.includes('data-testid="service-logs"'),
     true,
-    "missing service logs action",
+    "missing service logs control",
   );
   assert.equal(
-    dashboardJS.includes('data-action="start-service-terminal-os"'),
+    island.includes('data-testid="service-terminal"'),
     true,
-    "missing service shell action",
+    "missing service terminal control",
   );
   assert.equal(
-    dashboardJS.includes("group-hover:opacity-100"),
+    island.includes("group-hover:opacity-100"),
     false,
     "service controls should not depend on hover visibility",
   );
 });
-
 test("project hero uses Start action when environment is not running", async () => {
-  const dashboardJS = await readFile(
-    new URL("../../desktop/frontend/modules/dashboard.js", import.meta.url),
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/ProjectHero.tsx", import.meta.url),
     "utf8",
   );
   assert.equal(
-    dashboardJS.includes('const action = isStopped ? "env-start" : "env-restart";'),
+    island.includes('isStopped ? "env-start" : "env-restart"'),
     true,
     "project hero should switch restart action to env-start when stopped",
   );
   assert.equal(
-    dashboardJS.includes('const icon = isStopped ? "play_arrow" : "restart_alt";'),
+    island.includes('isStopped ? "play_arrow" : "restart_alt"'),
     true,
     "project hero should use play icon for stopped environments",
   );
   assert.equal(
-    dashboardJS.includes("refs.heroPullBtn.dataset.env = selectedProject;"),
+    island.includes('data-testid="hero-pull"') && island.includes("data-env={project}"),
     true,
-    "project hero should bind pull action to selected environment",
+    "project hero should bind the pull action to the selected environment",
   );
 });
-
 test("project hero exposes pull button contract", async () => {
-  const html = await readFile(
-    new URL("../../desktop/frontend/index.html", import.meta.url),
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/ProjectHero.tsx", import.meta.url),
     "utf8",
   );
+  assert.equal(island.includes('id="heroPullBtn"'), true, "missing hero pull button");
   assert.equal(
-    html.includes('id="heroPullBtn"'),
-    true,
-    "missing hero pull button",
-  );
-  assert.equal(
-    html.includes('data-action="env-pull"'),
+    island.includes('onAction("env-pull", project)'),
     true,
     "hero pull button should trigger env-pull action",
   );
+  assert.equal(island.includes('id="projectUrl"'), true, "missing project URL link");
   assert.equal(
-    html.includes('id="projectUrl"'),
-    true,
-    "missing project URL link",
-  );
-  assert.equal(
-    html.includes(
-      'class="mb-2 text-emerald-700 dark:text-primary hover:text-emerald-800 dark:hover:text-primary/80 transition-colors text-sm font-bold flex items-center gap-1 leading-none"',
+    island.includes(
+      "mb-2 text-emerald-700 dark:text-primary hover:text-emerald-800 dark:hover:text-primary/80 transition-colors text-sm font-bold flex items-center gap-1 leading-none",
     ),
     true,
     "project URL link should keep bottom spacing before technology badges",
   );
 });
-
 test("localEnvironmentURL resolves local domain to HTTPS URL", () => {
   const url = localEnvironmentURL({
     Domain: "sample-project.test",
@@ -443,69 +424,25 @@ test("localEnvironmentURL resolves local domain to HTTPS URL", () => {
   assert.equal(url, "https://sample-project.test");
 });
 
-test("renderProjectHero unhides and sets local URL under environment title", () => {
-  const classValues = new Set(["hidden"]);
-  const classList = {
-    add: (...tokens) => tokens.forEach((token) => classValues.add(token)),
-    remove: (...tokens) => tokens.forEach((token) => classValues.delete(token)),
-    contains: (token) => classValues.has(token),
-  };
-
-  const refs = {
-    projectUrl: {
-      href: "#",
-      dataset: {},
-      classList,
-    },
-    projectUrlText: {
-      textContent: "",
-    },
-  };
-
-  const previousDocument = globalThis.document;
-  globalThis.document = {
-    getElementById: () => null,
-  };
-
-  try {
-    renderProjectHero(
-      refs,
-      [
-        {
-          Project: "sample-project",
-          Domain: "sample-project.test",
-          Status: "running",
-        },
-      ],
-      "sample-project",
-    );
-  } finally {
-    globalThis.document = previousDocument;
-  }
-
-  assert.equal(
-    refs.projectUrl.href,
-    "https://sample-project.test",
-    "expected hero URL to use local environment domain",
+test("the hero hides the project URL link when the environment has no URL", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/ProjectHero.tsx", import.meta.url),
+    "utf8",
   );
   assert.equal(
-    refs.projectUrlText.textContent,
-    "https://sample-project.test",
-    "expected hero URL text to match local URL",
+    island.includes("localEnvironmentURL(env)"),
+    true,
+    "the hero should resolve the local URL from the environment",
   );
   assert.equal(
-    refs.projectUrl.classList.contains("hidden"),
-    false,
-    "expected project URL link to be visible",
+    island.includes('href={url || "#"}'),
+    true,
+    "the URL link should fall back to a dead href when the environment has none",
   );
   assert.equal(
-    refs.projectUrl.dataset.action,
-    "env-open",
-    "expected project URL to trigger env-open action",
-  );
-  assert.equal(
-    refs.projectUrl.dataset.env,
-    "sample-project",
-    "expected project URL action to target selected environment",
+    island.includes('${url ? "" : " hidden"}'),
+    true,
+    "the URL link should only be hidden when there is no URL",
   );
 });
+

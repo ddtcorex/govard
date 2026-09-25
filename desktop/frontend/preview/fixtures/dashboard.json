@@ -1,0 +1,66 @@
+[
+  {
+    "service": "EnvironmentService",
+    "method": "GetDashboard",
+    "args": [],
+    "result": {
+      "activeEnvironments": 1,
+      "runningServices": 2,
+      "queuedTasks": 0,
+      "activeSummary": "1 environment running",
+      "servicesSummary": "2 services healthy",
+      "queueSummary": "Queue idle",
+      "environments": [
+        {
+          "project": "sample-project",
+          "domain": "sample-project.test",
+          "name": "sample-project",
+          "framework": "magento2",
+          "technologies": ["nginx", "mysql", "redis"],
+          "php": "8.3",
+          "database": "mysql",
+          "gitBranch": "main",
+          "services": [
+            { "name": "nginx", "status": "running", "port": "80" },
+            { "name": "php", "status": "running", "port": "9000" }
+          ],
+          "serviceTargets": [],
+          "envVars": { "APP_ENV": "local", "DB_HOST": "db" },
+          "status": "running"
+        },
+        {
+          "project": "second-project",
+          "domain": "second-project.test",
+          "name": "second-project",
+          "framework": "laravel",
+          "technologies": [],
+          "php": "8.2",
+          "database": "mariadb",
+          "services": [],
+          "serviceTargets": [],
+          "envVars": {},
+          "status": "stopped"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "service": "LogService",
+    "method": "GetLogsForService",
+    "args": [],
+    "result": "dashboard fixture log line\n"
+  },
+  {
+    "service": "LogService",
+    "method": "StartLogStreamForService",
+    "args": [],
+    "result": ""
+  },
+  {
+    "service": "LogService",
+    "method": "StopLogStream",
+    "args": [],
+    "result": ""
+  }
+]
