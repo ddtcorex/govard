@@ -1157,6 +1157,139 @@ func TestVerifySharedFileIsCheckedInTheDocrootInPlace(t *testing.T) {
 	}
 }
 
+// `deploy:shared` is what makes a release read the state that outlives it, and a
+// shared *directory* it failed to link is invisible to every other check: the
+// files check looks at the served path, and the release keeps a real directory
+// that looks healthy from the outside. Measured on three live targets
+// (2026-09-25), where `ln -sfn` had answered a real `pub/media` by creating the
+// link inside it (`pub/media/media`) and exiting 0, so the deploy verified green
+// while the release read its own media tree.
+func TestVerifySharedDirectoryMustBeLinkedInTheRelease(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := verifiedRelease(t, host)
+
+	shared := filepath.Join(host.SharedPath(), "pub", "media")
+	if err := os.MkdirAll(filepath.Join(shared, "catalog"), 0o755); err != nil {
+		t.Fatalf("mkdir the shared directory: %v", err)
+	}
+	// The release's own copy, which is what the broken link left behind.
+	if err := os.MkdirAll(filepath.Join(release.Path, "pub", "media"), 0o755); err != nil {
+		t.Fatalf("mkdir the release's directory: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:   true,
+		Settings: map[string]any{"shared_dirs": []string{"pub/media"}},
+	})
+	sc.Release = release
+
+	err := deploy.CoreVerify(context.Background(), sc)
+	if err == nil {
+		t.Fatal("a shared directory the release does not link must fail verification")
+	}
+	if !strings.Contains(err.Error(), "shared:pub/media") {
+		t.Fatalf("the failure must name the shared directory, got: %v", err)
+	}
+}
+
+// A link that resolves to nothing is not the shared directory either: the release
+// reads an empty path, so the check has to prove both halves — that the entry is a
+// link, and that it resolves. `test -L` alone passes a dangling link.
+func TestVerifyRejectsASharedDirectoryLinkedToNothing(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := verifiedRelease(t, host)
+
+	shared := filepath.Join(host.SharedPath(), "pub", "media")
+	if err := os.MkdirAll(shared, 0o755); err != nil {
+		t.Fatalf("mkdir the shared directory: %v", err)
+	}
+	// What a moved deploy path, a hand-made link or a partial cleanup leaves: the
+	// link exists, and it points at nothing.
+	if err := os.MkdirAll(filepath.Join(release.Path, "pub"), 0o755); err != nil {
+		t.Fatalf("mkdir the release's pub: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(host.SharedPath(), "pub", "gone"), filepath.Join(release.Path, "pub", "media")); err != nil {
+		t.Fatalf("link the shared directory somewhere that does not exist: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:   true,
+		Settings: map[string]any{"shared_dirs": []string{"pub/media"}},
+	})
+	sc.Release = release
+
+	err := deploy.CoreVerify(context.Background(), sc)
+	if err == nil {
+		t.Fatal("a shared directory linked to nothing must fail verification")
+	}
+	if !strings.Contains(err.Error(), "shared:pub/media") {
+		t.Fatalf("the failure must name the shared directory, got: %v", err)
+	}
+}
+
+// The other half of the same rule, and the reason the check reads the release
+// rather than the served path: an in-place docroot that owns its own copy of a
+// shared directory keeps it, and that is a correct target, not a broken one.
+func TestVerifyAcceptsASharedDirectoryLinkedInTheRelease(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := inPlaceReleaseAtTheDocrootRevision(t, host)
+
+	shared := filepath.Join(host.SharedPath(), "pub", "media")
+	if err := os.MkdirAll(shared, 0o755); err != nil {
+		t.Fatalf("mkdir the shared directory: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(release.Path, "pub"), 0o755); err != nil {
+		t.Fatalf("mkdir the release's pub: %v", err)
+	}
+	if err := os.Symlink(shared, filepath.Join(release.Path, "pub", "media")); err != nil {
+		t.Fatalf("link the shared directory into the release: %v", err)
+	}
+	// The docroot keeps the directory it owns: `ensureInPlaceShared` leaves a real
+	// directory alone rather than deleting data, and verification must not read
+	// that as a missing link.
+	if err := os.MkdirAll(filepath.Join(host.CurrentPath, "pub", "media"), 0o755); err != nil {
+		t.Fatalf("mkdir the docroot's directory: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:   true,
+		Settings: map[string]any{"shared_dirs": []string{"pub/media"}},
+	})
+	sc.Release = release
+
+	if err := deploy.CoreVerify(context.Background(), sc); err != nil {
+		t.Fatalf("a linked shared directory must verify: %v", err)
+	}
+}
+
+// A nested shared directory is read through its parent's link, so it is not a
+// link of its own in the release, and that is correct rather than broken.
+func TestVerifyAcceptsANestedSharedDirectoryReachedThroughItsParent(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := verifiedRelease(t, host)
+
+	shared := filepath.Join(host.SharedPath(), "pub", "media")
+	if err := os.MkdirAll(filepath.Join(shared, "catalog"), 0o755); err != nil {
+		t.Fatalf("mkdir the shared directory: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(release.Path, "pub"), 0o755); err != nil {
+		t.Fatalf("mkdir the release's pub: %v", err)
+	}
+	if err := os.Symlink(shared, filepath.Join(release.Path, "pub", "media")); err != nil {
+		t.Fatalf("link the shared directory into the release: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:   true,
+		Settings: map[string]any{"shared_dirs": []string{"pub/media", "pub/media/catalog"}},
+	})
+	sc.Release = release
+
+	if err := deploy.CoreVerify(context.Background(), sc); err != nil {
+		t.Fatalf("a nested shared directory reached through its parent must verify: %v", err)
+	}
+}
+
 // A deploy path that is itself a symlink (`~` is a built-in discovered layout)
 // makes `readlink -f current` and the recorded release path two spellings of one
 // directory. Comparing them as strings failed verification *after* the site had

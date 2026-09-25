@@ -653,6 +653,17 @@ govard sandbox reset --docroot real
 govard deploy --remote sandbox --yes     # now the in-place path
 ```
 
+**Step 4 — read where the shared state went.** Taking the target over moves nothing
+the operator already had out of the docroot: `app/etc/env.php` and a directory such
+as `pub/media` are adopted into `<deploy_path>/shared/` on the first deploy, and the
+docroot then reads them through a link — while a directory that exists in both
+places is left where it is, because deleting the operator's data is worse than not
+sharing it. The *release* always reads the shared copy: `deploy:shared` replaces a
+directory the checkout materialised with that link, so what the build compiled
+against and what the site serves are the same media. `deploy:verify` fails the
+deploy by name (`shared:pub/media`) when that link is missing, which is how a
+release that quietly read its own copy used to pass verification.
+
 ## Case 9: Laravel, Vite frontend, symlinked webroot {#case-9-laravel}
 
 **The three decisions:** build on the server (`--build=server`) — Laravel has no
@@ -946,7 +957,7 @@ Engine-level settings (declared by the default recipe, applied by the core):
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `shared_files` | `app/etc/env.php`, `var/.maintenance.ip` | files linked from `shared/` into every release |
-| `shared_dirs` | `var/log`, `var/report`, `var/session`, `var/backups`, `var/tmp`, `pub/media`, `pub/sitemap`, `pub/static/_cache` | directories linked from `shared/` |
+| `shared_dirs` | `var/log`, `var/report`, `var/session`, `var/backups`, `var/tmp`, `pub/media`, `pub/sitemap`, `pub/static/_cache` | directories linked from `shared/`; one the release already carries is replaced by the link |
 | `writable_dirs` | `var`, `pub/static`, `pub/media`, `generated`, `app/etc` | paths made writable in the release |
 | `writable_mode` | `chmod` | `chmod`, `chown`, `chmod+chown`, `acl`, `skip` |
 | `writable_permissions` | `0775` | the mode used by `chmod` |
