@@ -1,0 +1,61 @@
+[
+  {
+    "service": "EnvironmentService",
+    "method": "ListFrameworks",
+    "args": [],
+    "result": [
+      {
+        "name": "magento2",
+        "displayName": "Magento 2",
+        "aliases": [
+          "m2",
+          "mage"
+        ]
+      },
+      {
+        "name": "laravel",
+        "displayName": "Laravel",
+        "aliases": [
+          "lv"
+        ]
+      },
+      {
+        "name": "symfony",
+        "displayName": "Symfony",
+        "aliases": []
+      }
+    ]
+  },
+  {
+    "service": "OnboardingService",
+    "method": "PickProjectDirectory",
+    "args": [],
+    "result": "/tmp/sample-project"
+  },
+  {
+    "service": "OnboardingService",
+    "method": "OnboardProject",
+    "args": [],
+    "result": "ok"
+  },
+  {
+    "service": "RemoteService",
+    "method": "GetRemotes",
+    "args": [],
+    "result": {
+      "project": "sample-project",
+      "remotes": [],
+      "warnings": []
+    }
+  },
+  {
+    "service": "RemoteService",
+    "method": "GetSyncOptions",
+    "args": [],
+    "result": {
+      "preset": "full",
+      "command": "sync",
+      "options": []
+    }
+  }
+]

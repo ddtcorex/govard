@@ -6,10 +6,7 @@ import {
   raiseActionFeedback,
 } from "./modules/global-services.js";
 import { resolveServiceTargets } from "./modules/logs.js";
-import {
-  createOnboardingController,
-  renderOnboardingModal,
-} from "./modules/onboarding.js?v=20260302";
+import { createOnboardingController } from "./modules/onboarding.js?v=20260302";
 import { createSettingsController } from "./modules/settings.js";
 import { createUpdateNotifierModel } from "./modules/update-notifier.js";
 import { createElement } from "react";
@@ -22,6 +19,7 @@ import { EnvVars } from "./islands/EnvVars.tsx";
 import { EnvironmentList } from "./islands/EnvironmentList.tsx";
 import { ProjectHero } from "./islands/ProjectHero.tsx";
 import { GlobalHealthHeader } from "./islands/GlobalHealthHeader.tsx";
+import { OnboardingModal } from "./islands/OnboardingModal.tsx";
 import { GlobalLogsPanel } from "./islands/GlobalLogsPanel.tsx";
 import { GlobalServicesList } from "./islands/GlobalServicesList.tsx";
 import { RemotesList } from "./islands/RemotesList.tsx";
@@ -35,7 +33,6 @@ import { byId, setText } from "./utils/dom.js";
 console.log("==> Finished imports <==");
 
 const initUI = () => {
-  renderOnboardingModal(byId("onboardingModalMount"));
   refreshRefs();
 };
 
@@ -56,48 +53,12 @@ const getLiveRefs = () => ({
   confirmMessage: byId("confirmMessage"),
   confirmCancelBtn: byId("confirmCancelBtn"),
   confirmConfirmBtn: byId("confirmConfirmBtn"),
-  onboardingModal: byId("onboardingModal"),
-  projectPath: byId("projectPath"),
-  displayProjectPath: byId("displayProjectPath"),
-  projectPathHint: byId("projectPathHint"),
-  projectDomain: byId("projectDomain"),
-  projectDomainHint: byId("projectDomainHint"),
-  projectFramework: byId("projectFramework"),
-  projectFrameworkVersion: byId("projectFrameworkVersion"),
-  projectFrameworkVersionHint: byId("projectFrameworkVersionHint"),
-  onboardFromGit: byId("onboardFromGit"),
-  gitCloneFields: byId("gitCloneFields"),
-  gitProtocol: byId("gitProtocol"),
-  gitUrl: byId("gitUrl"),
-  gitUrlHint: byId("gitUrlHint"),
-  gitConfirmContainer: byId("gitConfirmContainer"),
-  gitConfirmOverride: byId("gitConfirmOverride"),
-  gitConfirmHint: byId("gitConfirmHint"),
-  onboardingSummaryProject: byId("onboardingSummaryProject"),
-  onboardingSummaryFramework: byId("onboardingSummaryFramework"),
-  onboardingSummaryDomain: byId("onboardingSummaryDomain"),
-  onboardingSubmitSpinner: byId("onboardingSubmitSpinner"),
-  onboardingSubmitHint: byId("onboardingSubmitHint"),
-  onboardingSubmit: byId("onboardingSubmit"),
-  onboardVarnish: byId("onboardVarnish"),
-  onboardRedis: byId("onboardRedis"),
-  onboardRabbitMQ: byId("onboardRabbitMQ"),
-  onboardElasticsearch: byId("onboardElasticsearch"),
   confirmModal: byId("confirmModal"),
   confirmIcon: byId("confirmIcon"),
   confirmTitle: byId("confirmTitle"),
   confirmMessage: byId("confirmMessage"),
   confirmCancelBtn: byId("confirmCancelBtn"),
   confirmConfirmBtn: byId("confirmConfirmBtn"),
-  projectTitle: byId("projectTitle"),
-  projectStatusBadge: byId("projectStatusBadge"),
-  projectStatusText: byId("projectStatusText"),
-  projectUrl: byId("projectUrl"),
-  projectUrlText: byId("projectUrlText"),
-  projectTechnologies: byId("projectTechnologies"),
-  heroRestartBtn: byId("heroRestartBtn"),
-  heroStopBtn: byId("heroStopBtn"),
-  heroPullBtn: byId("heroPullBtn"),
   footerVersion: byId("footerVersion"),
   envVarsList: byId("envVarsList"),
 });
@@ -819,6 +780,27 @@ const onboardingController = createOnboardingController({
       .filter((entry) => entry.domain),
 });
 
+// The onboarding modal is the settings drawer's shape, for the same reason: the
+// controller is a 700-line wizard that writes into 33 elements and is covered by
+// DOM-coupled unit tests, so the island renders the structure once and hands it
+// the elements it needs. The controller captured `refs` by reference, so this
+// assign is all it takes for its lookups to see them; `open-onboarding` keeps
+// calling the controller, which still owns the modal's visibility.
+let onboardingApi = { open: () => {} };
+
+const onboardingIsland = mountIsland(
+  "onboardingModalMount",
+  createElement(OnboardingModal, {
+    controller: onboardingController,
+    registerRefs: (islandRefs) => {
+      Object.assign(refs, islandRefs);
+    },
+    registerApi: (api) => {
+      onboardingApi = api;
+    },
+  }),
+);
+
 const actionsController = createActionsController({
   bridge: desktopBridge,
   getProject: () => getState().selectedProject,
@@ -1016,28 +998,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (action === "browse-project") {
-    await onboardingController.browseProject();
-    return;
-  }
-  if (action === "add-project") {
-    await onboardingController.addProject();
-    return;
-  }
-  if (action === "confirm-onboarding-bootstrap") {
-    await onboardingController.confirmBootstrapPrompt();
-    return;
-  }
-  if (action === "skip-onboarding-bootstrap") {
-    onboardingController.skipBootstrapPrompt();
-    return;
-  }
-  if (action === "toggle-onboarding-bootstrap-option") {
-    onboardingController.toggleBootstrapOption(
-      String(targetElement.dataset.option || ""),
-    );
-    return;
-  }
   if (action === "open-service-shell") {
     // Redirect to OS Terminal
     const project = targetElement.dataset.project || "";
@@ -1052,11 +1012,9 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (action === "open-onboarding") {
-    onboardingController.toggleModal(true);
-    return;
-  }
-  if (action === "close-onboarding") {
-    onboardingController.toggleModal(false);
+    // The island owns opening now: it toggles the modal the controller renders
+    // into and re-asks for the framework list, which is fetched data.
+    onboardingApi.open();
     return;
   }
   if (action === "open-settings") {
@@ -1180,47 +1138,6 @@ const bindDynamicControlListeners = () => {
 
 
 
-  if (refs.projectDomain) {
-    refs.projectDomain.addEventListener("input", () => {
-      onboardingController.handleInputChange();
-    });
-  }
-
-  if (refs.projectFramework) {
-    refs.projectFramework.addEventListener("change", () => {
-      onboardingController.handleInputChange();
-    });
-  }
-
-  if (refs.projectFrameworkVersion) {
-    refs.projectFrameworkVersion.addEventListener("input", () => {
-      onboardingController.handleInputChange();
-    });
-  }
-
-  if (refs.onboardFromGit) {
-    refs.onboardFromGit.addEventListener("change", () => {
-      onboardingController.handleInputChange();
-    });
-  }
-
-  if (refs.gitProtocol) {
-    refs.gitProtocol.addEventListener("change", () => {
-      onboardingController.handleInputChange();
-    });
-  }
-
-  if (refs.gitUrl) {
-    refs.gitUrl.addEventListener("input", () => {
-      onboardingController.handleInputChange();
-    });
-  }
-
-  if (refs.gitConfirmOverride) {
-    refs.gitConfirmOverride.addEventListener("change", () => {
-      onboardingController.handleInputChange();
-    });
-  }
 };
 
 if (window.matchMedia) {
@@ -1308,4 +1225,5 @@ window.addEventListener("beforeunload", () => {
   globalHealthIsland?.unmount();
   globalServicesListIsland?.unmount();
   globalLogsIsland?.unmount();
+  onboardingIsland?.unmount();
 });

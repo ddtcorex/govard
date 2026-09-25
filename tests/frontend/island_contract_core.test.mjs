@@ -48,7 +48,10 @@ test("every refs entry in main.js names an element some file creates", () => {
   const end = mainSource.indexOf("\n});", start);
   assert.ok(end > start, "could not find the end of the getLiveRefs table");
   const ids = [...mainSource.slice(start, end).matchAll(/byId\("([^"]+)"\)/g)].map((m) => m[1]);
-  assert.ok(ids.length > 50, `expected the refs table to be readable, found ${ids.length} ids`);
+  // A floor, not a target: it only proves the table was parsed at all. It was 50
+  // while four modules still injected their markup at runtime; the last of them
+  // (onboarding) moved into an island, so the table is now the shell's own ids.
+  assert.ok(ids.length > 20, `expected the refs table to be readable, found ${ids.length} ids`);
 
   const frontend = new URL("../../desktop/frontend/", import.meta.url);
   const sources = ["index.html", "preview.html", "main.js"];
@@ -67,4 +70,20 @@ test("every refs entry in main.js names an element some file creates", () => {
   }
   const missing = ids.filter((id) => !created.has(id));
   assert.deepEqual(missing, [], "refs entries whose element nothing creates");
+});
+
+// End of the batch: every module's markup is either static in index.html or
+// rendered by an island, so a refs entry naming an id no HTML file declares is
+// now a migration that moved the element and forgot the entry. That is exactly
+// what the nine hero refs were until this task: the ProjectHero island has
+// rendered them since the dashboard migration.
+test("every refs entry names an element in index.html", () => {
+  const mainSource = readFileSync(new URL("../../desktop/frontend/main.js", import.meta.url), "utf8");
+  const html = readFileSync(new URL("../../desktop/frontend/index.html", import.meta.url), "utf8");
+  const start = mainSource.indexOf("const getLiveRefs");
+  assert.ok(start > 0, "main.js no longer has a getLiveRefs table; update this test");
+  const end = mainSource.indexOf("\n});", start);
+  const ids = [...mainSource.slice(start, end).matchAll(/byId\("([^"]+)"\)/g)].map((m) => m[1]);
+  const missing = ids.filter((id) => !html.includes(`id="${id}"`));
+  assert.deepEqual(missing, [], "refs entries whose element is not in index.html");
 });
