@@ -1262,6 +1262,34 @@ func TestVerifyAcceptsASharedDirectoryLinkedInTheRelease(t *testing.T) {
 	}
 }
 
+// A nested shared directory is read through its parent's link, so it is not a
+// link of its own in the release, and that is correct rather than broken.
+func TestVerifyAcceptsANestedSharedDirectoryReachedThroughItsParent(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := verifiedRelease(t, host)
+
+	shared := filepath.Join(host.SharedPath(), "pub", "media")
+	if err := os.MkdirAll(filepath.Join(shared, "catalog"), 0o755); err != nil {
+		t.Fatalf("mkdir the shared directory: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(release.Path, "pub"), 0o755); err != nil {
+		t.Fatalf("mkdir the release's pub: %v", err)
+	}
+	if err := os.Symlink(shared, filepath.Join(release.Path, "pub", "media")); err != nil {
+		t.Fatalf("link the shared directory into the release: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Verify:   true,
+		Settings: map[string]any{"shared_dirs": []string{"pub/media", "pub/media/catalog"}},
+	})
+	sc.Release = release
+
+	if err := deploy.CoreVerify(context.Background(), sc); err != nil {
+		t.Fatalf("a nested shared directory reached through its parent must verify: %v", err)
+	}
+}
+
 // A deploy path that is itself a symlink (`~` is a built-in discovered layout)
 // makes `readlink -f current` and the recorded release path two spellings of one
 // directory. Comparing them as strings failed verification *after* the site had

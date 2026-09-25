@@ -284,6 +284,71 @@ func TestCoreSharedReplacesARealDirectoryWithTheSharedLink(t *testing.T) {
 	}
 }
 
+// A shared directory nested inside another one is reachable through the outer
+// link, and linking it again reaches *into the shared tree*: once `pub/media` is
+// the link, `<release>/pub/media/catalog` is `shared/pub/media/catalog` itself, a
+// real directory that is not a symlink. Replacing it would delete the shared data
+// the whole step exists to preserve, so the nested entry is left to the outer one.
+func TestCoreSharedLeavesANestedSharedDirectoryToItsParent(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+
+	image := filepath.Join(host.SharedPath(), "pub/media/catalog/product.png")
+	writeFile(t, image, "shared image\n")
+	writeFile(t, filepath.Join(host.ReleasePath("1"), "pub/media/.htaccess"), "# placeholder\n")
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Settings: map[string]any{"shared_dirs": []string{"pub/media", "pub/media/catalog"}},
+	})
+	sc.Release = deploy.NewReleaseForTest("1", "abc", "local")
+	sc.Release.Path = host.ReleasePath("1")
+	if err := deploy.CoreShared(ctx, sc); err != nil {
+		t.Fatalf("shared: %v", err)
+	}
+
+	if got, err := os.ReadFile(image); err != nil || string(got) != "shared image\n" {
+		t.Fatalf("the shared data under the nested entry must survive, got %q, %v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Join(host.SharedPath(), "pub/media/catalog/catalog")); !os.IsNotExist(err) {
+		t.Fatalf("a link landed inside the shared tree: %v", err)
+	}
+	info, err := os.Lstat(filepath.Join(host.ReleasePath("1"), "pub", "media"))
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the outer entry must still be linked: %v", err)
+	}
+}
+
+// A release directory that resolves outside the release (a checkout tracking a
+// symlinked parent, a hand-made link) is not a placeholder, and deleting it would
+// delete whatever it points at. The step refuses instead of guessing.
+func TestCoreSharedRefusesToReplaceADirectoryOutsideTheRelease(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+
+	writeFile(t, filepath.Join(host.SharedPath(), "pub/media/logo.png"), "shared\n")
+	outside := filepath.Join(t.TempDir(), "elsewhere")
+	precious := filepath.Join(outside, "media/keep.txt")
+	writeFile(t, precious, "keep\n")
+	if err := os.MkdirAll(host.ReleasePath("1"), 0o755); err != nil {
+		t.Fatalf("mkdir release: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(host.ReleasePath("1"), "pub")); err != nil {
+		t.Fatalf("link the release's pub outside it: %v", err)
+	}
+
+	sc := deploy.StepContextForTest(host, deploy.Options{
+		Settings: map[string]any{"shared_dirs": []string{"pub/media"}},
+	})
+	sc.Release = deploy.NewReleaseForTest("1", "abc", "local")
+	sc.Release.Path = host.ReleasePath("1")
+	if err := deploy.CoreShared(ctx, sc); err == nil {
+		t.Fatal("a shared directory that resolves outside the release must fail the step")
+	}
+	if _, err := os.Stat(precious); err != nil {
+		t.Fatalf("data outside the release was deleted: %v", err)
+	}
+}
+
 func TestCoreWritableAppliesTheMode(t *testing.T) {
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	ctx := context.Background()

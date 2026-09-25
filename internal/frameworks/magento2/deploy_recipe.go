@@ -32,8 +32,9 @@ func DeployRecipe() deploy.Recipe {
 		// revision and everything the build produced under a gitignored path has to
 		// be copied in — otherwise the new code runs on the previous deployment's
 		// `vendor/`, `generated/` and `pub/static/`. The list is what the release
-		// *builds*, and never a path `deploy:shared` links from `shared/`: those
-		// symlinks are relative to the release and resolve elsewhere from a docroot.
+		// *builds*, and never a path `deploy:shared` links from `shared/`: the
+		// docroot keeps its own arrangement for shared state, and a copy would
+		// replace it.
 		// `pub/static/_cache` is shared, which is why `pub/static` is named by its
 		// two built children rather than as a whole.
 		"sync_paths": []string{"vendor", "generated", "pub/static/adminhtml", "pub/static/frontend"},

@@ -181,6 +181,13 @@ chạy mới là trường hợp không được mất dữ liệu, và nó đư
 in-place nhận thư mục shared mà nó đang sở hữu vào `shared/` ở lần deploy đầu rồi đọc
 qua link, còn thư mục tồn tại ở cả hai nơi thì được để nguyên.
 
+Có hai chốt chặn để việc thay thế đó chỉ đụng tới placeholder. Entry nằm trong một thư
+mục shared khác (`pub/media/catalog` nằm dưới `pub/media`) không được link riêng: nó đã
+được truy cập qua link của thư mục ngoài, và bên trong link đó thư mục chính là dữ liệu
+shared. Còn thư mục trong release có đường dẫn vật lý nằm ngoài release (thư mục cha là
+symlink được track hoặc tạo tay) thì không bao giờ bị xoá; bước này fail và nêu rõ path
+đó.
+
 ### 6. Lần deploy đầu tiên
 
 ```bash

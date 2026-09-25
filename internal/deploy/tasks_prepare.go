@@ -760,7 +760,15 @@ func CoreShared(ctx context.Context, sc *StepContext) error {
 	}
 	host := sc.Host
 
+	dirs := settingsStringList(sc.Opts.Settings, "shared_dirs")
 	for _, entry := range settingsStringList(sc.Opts.Settings, "shared_files", "shared_dirs") {
+		// An entry inside another shared directory is already reachable through
+		// that directory's link. Linking it again reaches into the shared tree
+		// itself, where the directory below is real data, not a placeholder.
+		if parent, nested := nestedInSharedDir(entry, dirs); nested {
+			noteStep(sc, "  ! "+entry+" is inside shared "+parent+"; reached through its link\n")
+			continue
+		}
 		source := path.Join(host.SharedPath(), entry)
 		target := path.Join(releasePath, entry)
 		// The link is created only when the shared entry exists: the first
@@ -781,13 +789,23 @@ func CoreShared(ctx context.Context, sc *StepContext) error {
 		// writes into the release, and an artifact carries no shared path at all.
 		// The docroot of an in-place target is the other case, and
 		// `ensureInPlaceShared` keeps its own directory there.
+		//
+		// "A directory in a release" is checked, not assumed: a parent that is a
+		// symlink (a tracked link in the checkout, a hand-made one) makes the
+		// target resolve somewhere else, and deleting it would delete whatever it
+		// points at. Only a directory whose physical path is still under the
+		// release's is replaced; anything else fails the step.
 		command := fmt.Sprintf(
 			"mkdir -p %s && if [ -e %s ]; then "+
-				"if [ -d %s ] && [ ! -L %s ]; then rm -rf %s; fi && "+
+				"if [ -d %s ] && [ ! -L %s ]; then "+
+				"case \"$(cd %s && pwd -P)/\" in \"$(cd %s && pwd -P)\"/*) rm -rf %s ;; "+
+				"*) echo %s >&2; exit 1 ;; esac; fi && "+
 				"mkdir -p %s && ln -sfn %s %s; fi",
 			Shell(host.SharedPath()),
 			Shell(source),
-			Shell(target), Shell(target), Shell(target),
+			Shell(target), Shell(target),
+			Shell(target), Shell(releasePath), Shell(target),
+			Shell(target+" resolves outside the release; refusing to replace it"),
 			Shell(path.Dir(target)),
 			Shell(source),
 			Shell(target),
@@ -797,6 +815,23 @@ func CoreShared(ctx context.Context, sc *StepContext) error {
 		}
 	}
 	return nil
+}
+
+// nestedInSharedDir reports the shared directory that strictly contains entry.
+// Such an entry is served through that directory's link, so it has no link of
+// its own in the release.
+func nestedInSharedDir(entry string, dirs []string) (string, bool) {
+	cleaned := cleanRelPath(entry)
+	if cleaned == "" {
+		return "", false
+	}
+	for _, dir := range dirs {
+		parent := cleanRelPath(dir)
+		if parent != "" && strings.HasPrefix(cleaned, parent+"/") {
+			return dir, true
+		}
+	}
+	return "", false
 }
 
 // CoreWritable applies write permissions, and ownership when configured. The
@@ -1020,15 +1055,16 @@ func noteInPlaceSyncPaths(ctx context.Context, sc *StepContext) error {
 		return nil
 	}
 
-	// A path the release links from `shared/` cannot travel into the docroot: the
-	// link is relative to the release. Say which entries are affected before the
-	// deploy runs, rather than only while it is copying.
+	// A path the release links from `shared/` does not travel into the docroot:
+	// the docroot keeps its own arrangement for shared state, and copying the
+	// release's copy in would replace it. Say which entries are affected before
+	// the deploy runs, rather than only while it is copying.
 	shared := settingsStringList(sc.Opts.Settings, "shared_files", "shared_dirs")
 	for _, entry := range paths {
 		if covering, isShared := sharedCovering(entry, shared); isShared {
 			sc.Notes = append(sc.Notes, "warning: deploy.settings.sync_paths lists "+entry+
 				", which the release links from shared/ ("+covering+"): it is not copied into the docroot, "+
-				"where a relative link would resolve elsewhere")
+				"which keeps its own copy of shared state")
 		}
 		for _, inside := range sharedInside(entry, shared) {
 			sc.Notes = append(sc.Notes, "warning: deploy.settings.sync_paths lists "+entry+", which contains the shared path "+

@@ -273,7 +273,15 @@ func CoreVerify(ctx context.Context, sc *StepContext) error {
 		pass("shared:"+entry, "linked and readable")
 	}
 
-	for _, entry := range settingsStringList(sc.Opts.Settings, "shared_dirs") {
+	sharedDirs := settingsStringList(sc.Opts.Settings, "shared_dirs")
+	for _, entry := range sharedDirs {
+		// A directory nested in another shared directory is read through the
+		// outer link, which `deploy:shared` leaves it to; that outer entry is the
+		// one checked.
+		if parent, nested := nestedInSharedDir(entry, sharedDirs); nested {
+			pass("shared:"+entry, "reached through shared "+parent)
+			continue
+		}
 		// A shared *directory* is checked in the release, not in the served path,
 		// and that is the one place where the two differ from the rule above. An
 		// in-place docroot that owns its own copy of a directory keeps it —

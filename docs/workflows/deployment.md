@@ -184,6 +184,13 @@ other way: an in-place docroot adopts a shared directory it owns into `shared/` 
 the first deploy and then reads it through a link, while a directory that exists in
 both places is left where it is.
 
+Two guards keep that replacement to placeholders. An entry nested in another shared
+directory (`pub/media/catalog` under `pub/media`) is not linked on its own: it is
+already reached through the outer link, and inside that link the directory is the
+shared data itself. And a release directory whose physical path lies outside the
+release (a tracked or hand-made symlinked parent) is never deleted; the step fails
+and names it instead.
+
 ### 6. The first deploy
 
 ```bash
