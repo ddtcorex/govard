@@ -1,6 +1,130 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/container-queries';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-glow: var(--primary-glow);
+
+  --color-background-primary: var(--bg-primary);
+  --color-background-secondary: var(--bg-secondary);
+  --color-background-tertiary: var(--bg-tertiary);
+  --color-background-accent: var(--bg-accent);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+
+  --color-border-primary: var(--border-primary);
+  --color-border-secondary: var(--border-secondary);
+  --color-border-accent: var(--border-accent);
+
+  --color-surface-primary: var(--surface-primary);
+  --color-surface-secondary: var(--surface-secondary);
+
+  --color-glass-bg: var(--glass-bg);
+  --color-glass-border: var(--glass-border);
+
+  --color-card-bg: var(--card-bg);
+
+  --font-sans: Inter, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  --shadow-glow: 0 0 20px rgba(13, 242, 89, 0.2);
+  --shadow-glow-lg: 0 0 30px rgba(13, 242, 89, 0.3);
+}
+
+/*
+  shadcn/ui adapter (spec D8): maps the variable names shadcn's components expect
+  onto Govard's existing tokens. The existing tokens are never renamed.
+
+  `--primary` is deliberately absent: the app already defines it in :root and
+  .dark, and Tailwind's own `--color-primary` reads it, so the shadcn utility
+  `bg-primary` resolves to the app's primary already. Writing
+  `--primary: var(--primary)` here would be a self-reference, which CSS treats as
+  invalid at computed-value time and which would blank every primary color.
+
+  `--primary-foreground` is #0f172a (slate-900) because that is what the app's
+  own solid primary buttons use (`bg-primary text-slate-900`, index.html and the
+  module toolbars), in both themes: the dark theme's primary is a bright green
+  that needs dark text, so this is a fixed color rather than var(--text-primary),
+  which flips to near-white under .dark.
+*/
+:root {
+  --background: var(--bg-primary);
+  --foreground: var(--text-primary);
+  --primary-foreground: #0f172a;
+  --secondary: var(--bg-secondary);
+  --secondary-foreground: var(--text-primary);
+  --border: var(--border-primary);
+  --input: var(--border-primary);
+  --ring: var(--primary);
+  --card: var(--card-bg);
+  --card-foreground: var(--text-primary);
+  --muted: var(--bg-tertiary);
+  --muted-foreground: var(--text-tertiary);
+  --accent: var(--bg-accent);
+  --accent-foreground: var(--text-primary);
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --radius: 0.5rem;
+}
+
+/*
+  The other half of D8: the :root variables above are plain CSS, and Tailwind v4
+  only generates a utility for a name in its own theme namespace. Without this
+  mapping, shadcn's classes - bg-background, text-primary-foreground, bg-accent,
+  border-input, ring-ring and the rest - compile to nothing and the component
+  renders silently unstyled. `inline` keeps the utilities pointing at the :root
+  variables rather than at a copy, so the theme switch still works.
+
+  --color-primary is deliberately absent: the codemod's own @theme already maps
+  it to the app's --primary, so bg-primary is already correct.
+*/
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+}
+
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 @font-face {
   font-family: "Material Symbols Outlined";

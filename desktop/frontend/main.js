@@ -258,9 +258,9 @@ export const toggleModalBlur = (isVisible) => {
   const mainContent = byId("mainContent");
   if (!mainContent) return;
   if (isVisible) {
-    mainContent.classList.add("blur-sm", "pointer-events-none", "select-none", "opacity-50");
+    mainContent.classList.add("blur-xs", "pointer-events-none", "select-none", "opacity-50");
   } else {
-    mainContent.classList.remove("blur-sm", "pointer-events-none", "select-none", "opacity-50");
+    mainContent.classList.remove("blur-xs", "pointer-events-none", "select-none", "opacity-50");
   }
 };
 

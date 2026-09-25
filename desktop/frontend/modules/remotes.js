@@ -134,7 +134,7 @@ const renderSyncPresetButton = ({
   isSyncing,
 }) => {
   const buttonClasses = enabled
-    ? "flex-1 px-4 py-2.5 bg-background-secondary hover:bg-[var(--border-primary)] border border-border-primary dark:border-[#366b47] rounded-lg text-sm text-text-primary dark:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn"
+    ? "flex-1 px-4 py-2.5 bg-background-secondary hover:bg-(--border-primary) border border-border-primary dark:border-[#366b47] rounded-lg text-sm text-text-primary dark:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn"
     : "flex-1 px-4 py-2.5 bg-background-secondary dark:bg-[#13231a] border border-border-primary dark:border-[#2b3d31] rounded-lg text-sm text-slate-500 font-medium transition-all flex items-center justify-center gap-2 opacity-70 cursor-not-allowed";
   const iconClasses = enabled
     ? `material-symbols-outlined text-[18px] ${iconHoverClass} transition-colors ${isSyncing ? "animate-spin" : ""}`
@@ -159,7 +159,7 @@ export const renderRemotes = (container, remotes = [], syncingRemote = null, syn
 
   if (!remotes.length) {
     container.innerHTML = `
-      <div class="p-8 text-center text-slate-500 border border-dashed border-[var(--bg-secondary)] rounded-xl">
+      <div class="p-8 text-center text-slate-500 border border-dashed border-(--bg-secondary) rounded-xl">
         No remotes configured for this project.
       </div>`;
     return;
@@ -174,7 +174,7 @@ export const renderRemotes = (container, remotes = [], syncingRemote = null, syn
       const themeIcon = isSyncing ? "sync" : (isProtected ? "rocket_launch" : "science");
       const borderColor = isSyncing 
         ? "border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
-        : (isProtected ? "border-amber-500/20" : "border-[var(--bg-secondary)]");
+        : (isProtected ? "border-amber-500/20" : "border-(--bg-secondary)");
       const lastSyncText = String(remote.lastSync || "never")
         .trim()
         .toLowerCase();
@@ -193,7 +193,7 @@ export const renderRemotes = (container, remotes = [], syncingRemote = null, syn
 
       return `
       <div class="remote-card-hover glass-card rounded-xl p-0 overflow-hidden group mb-6 border ${borderColor} dark:bg-card-bg cursor-pointer transition-all hover:scale-[1.01] hover:border-primary/50" data-remote-name="${escapeHTML(remote.name)}" data-remote-host="${escapeHTML(remote.host)}" data-remote-protected="${isProtected ? 'true' : 'false'}">
-        <div class="p-6 pb-4 border-b border-border-primary dark:border-[var(--bg-secondary)] bg-gradient-to-r from-surface-primary to-surface-primary/50 dark:from-[var(--surface-primary)] dark:to-[var(--surface-primary)]/50 relative overflow-hidden">
+        <div class="p-6 pb-4 border-b border-border-primary dark:border-(--bg-secondary) bg-linear-to-r from-surface-primary to-surface-primary/50 dark:from-(--surface-primary) dark:to-(--surface-primary)/50 relative overflow-hidden">
           <div class="relative z-10 flex flex-col gap-4">
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0 flex items-center gap-4">
@@ -205,13 +205,13 @@ export const renderRemotes = (container, remotes = [], syncingRemote = null, syn
                     <h3 class="text-text-primary dark:text-white text-[1.4rem] leading-none font-semibold">
                       ${escapeHTML(remote.name)}
                     </h3>
-                    ${isProtected ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide">Protected</span>` : ""}
-                    ${isSyncing ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wide animate-pulse">Syncing...</span>` : ""}
+                    ${isProtected ? `<span class="px-2 py-0.5 rounded-sm text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide">Protected</span>` : ""}
+                    ${isSyncing ? `<span class="px-2 py-0.5 rounded-sm text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wide animate-pulse">Syncing...</span>` : ""}
                   </div>
                   <p class="mt-1 text-[11px] uppercase tracking-[0.08em] text-primary/70">Auth: ${escapeHTML(authMethodLabel)}</p>
                 </div>
               </div>
-              <div class="flex items-center gap-1.5 p-1 rounded-lg border border-border-primary bg-surface-secondary/60 backdrop-blur-sm shadow-[0_0_15px_rgba(13,242,89,0.1)]">
+              <div class="flex items-center gap-1.5 p-1 rounded-lg border border-border-primary bg-surface-secondary/60 backdrop-blur-xs shadow-[0_0_15px_rgba(13,242,89,0.1)]">
                 <button data-action="open-remote-url" data-remote="${escapeHTML(remote.name)}" class="h-8 w-8 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary rounded-md transition-all" title="Open Remote URL">
                   <span class="material-symbols-outlined text-[20px]">open_in_new</span>
                 </button>
@@ -285,7 +285,7 @@ export const renderRemotes = (container, remotes = [], syncingRemote = null, syn
             </div>
             <!-- Inline sync config removed in favor of modal -->
           </div>
-          ${remote.protected ? `<div class="mt-4 flex items-center gap-2 p-2 bg-amber-900/10 border border-amber-900/30 rounded text-amber-500/80 text-xs"><span class="material-symbols-outlined text-[16px]">info</span>Syncing from a protected remote can overwrite local data. Consider creating a snapshot before syncing.</div>` : ""}
+          ${remote.protected ? `<div class="mt-4 flex items-center gap-2 p-2 bg-amber-900/10 border border-amber-900/30 rounded-sm text-amber-500/80 text-xs"><span class="material-symbols-outlined text-[16px]">info</span>Syncing from a protected remote can overwrite local data. Consider creating a snapshot before syncing.</div>` : ""}
         </div>
       </div>
     `;
@@ -318,7 +318,7 @@ export const renderRemotes = (container, remotes = [], syncingRemote = null, syn
             <div class="absolute inset-0 z-0 opacity-10" style="background-image: radial-gradient(var(--primary) 1px, transparent 1px); background-size: 20px 20px;"></div>
             <div class="relative z-10 w-full max-w-[200px]">
               <div id="visual-source-box" class="bg-surface-primary border ${sourceBorderColor} rounded-lg p-4 shadow-lg shadow-blue-500/5 relative transition-colors duration-300">
-                <div id="visual-source-badge" class="absolute -top-3 left-1/2 -translate-x-1/2 ${sourceBadgeBg} px-3 py-0.5 text-[10px] text-white border ${sourceBadgeBorder} rounded-full uppercase font-black tracking-wider shadow-sm transition-colors duration-300">Source</div>
+                <div id="visual-source-badge" class="absolute -top-3 left-1/2 -translate-x-1/2 ${sourceBadgeBg} px-3 py-0.5 text-[10px] text-white border ${sourceBadgeBorder} rounded-full uppercase font-black tracking-wider shadow-xs transition-colors duration-300">Source</div>
                 <div class="flex items-center justify-center gap-3">
                   <span class="material-symbols-outlined text-blue-400 text-3xl shrink-0">cloud</span>
                   <div class="text-left min-w-0 flex-1">
@@ -328,21 +328,21 @@ export const renderRemotes = (container, remotes = [], syncingRemote = null, syn
                 </div>
               </div>
             </div>
-            <div class="h-8 w-px relative my-1 dashed-line bg-gradient-to-b from-transparent via-border-primary to-transparent">
-              <div class="absolute top-0 left-1/2 -translate-x-1/2 -ml-[2px] w-[5px] h-6 bg-primary rounded-full animate-[bounce_1.5s_infinite]"></div>
+            <div class="h-8 w-px relative my-1 dashed-line bg-linear-to-b from-transparent via-border-primary to-transparent">
+              <div class="absolute top-0 left-1/2 -translate-x-1/2 ml-[-2px] w-[5px] h-6 bg-primary rounded-full animate-[bounce_1.5s_infinite]"></div>
             </div>
             <div class="relative z-10">
               <div id="visual-center-ring" class="bg-surface-secondary border rounded-full h-12 w-12 flex items-center justify-center transition-all duration-300 ${centerRingColor}">
                 <span id="visual-center-icon" class="material-symbols-outlined text-2xl transition-colors duration-300 ${centerIconColor}">${centerIcon}</span>
               </div>
             </div>
-            <div class="h-8 w-px relative my-1 dashed-line bg-gradient-to-b from-transparent via-border-primary to-transparent">
-              <div class="absolute top-0 left-1/2 -translate-x-1/2 -ml-[2px] w-[5px] h-6 bg-primary rounded-full animate-[bounce_1.5s_infinite] delay-300"></div>
+            <div class="h-8 w-px relative my-1 dashed-line bg-linear-to-b from-transparent via-border-primary to-transparent">
+              <div class="absolute top-0 left-1/2 -translate-x-1/2 ml-[-2px] w-[5px] h-6 bg-primary rounded-full animate-[bounce_1.5s_infinite] delay-300"></div>
             </div>
             <div class="relative z-10 w-full max-w-[200px] group/dest">
               <div class="bg-background-secondary border border-primary/40 rounded-lg p-4 shadow-lg shadow-primary/10 relative">
                 <div class="absolute inset-0 bg-primary/5 opacity-0 group-hover/dest:opacity-100 animate-pulse transition-opacity rounded-lg"></div>
-                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 dark:bg-primary px-3 py-0.5 text-[10px] text-slate-900 border border-emerald-400 dark:border-transparent rounded-full uppercase font-black tracking-wider shadow-sm">Destination</div>
+                <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 dark:bg-primary px-3 py-0.5 text-[10px] text-slate-900 border border-emerald-400 dark:border-transparent rounded-full uppercase font-black tracking-wider shadow-xs">Destination</div>
                 <div class="flex items-center justify-center gap-3">
                   <span class="material-symbols-outlined text-primary text-3xl px-1 relative z-10 shrink-0">laptop_mac</span>
                   <div class="text-left relative z-10 min-w-0 flex-1">
@@ -360,7 +360,7 @@ export const renderRemotes = (container, remotes = [], syncingRemote = null, syn
             class="hidden mt-8 w-full h-[500px] bg-slate-50 dark:bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col opacity-0 transform-gpu translate-y-4 transition-all duration-500"
           >
             <!-- Fixed Terminal Header (MacOS style) -->
-            <div class="h-8 flex items-center px-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/5 shrink-0 z-10 shadow-sm">
+            <div class="h-8 flex items-center px-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/5 shrink-0 z-10 shadow-xs">
               <div class="flex gap-1.5 shrink-0">
                 <div class="w-2.5 h-2.5 rounded-full bg-[#ff5f56] shadow-[0_0_8px_rgba(255,95,86,0.15)]"></div>
                 <div class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] shadow-[0_0_8px_rgba(255,189,46,0.1)]"></div>
@@ -751,7 +751,7 @@ export const renderSyncModal = (container) => {
   container.innerHTML = `
         <div
           id="syncOptionsModal"
-          class="hidden fixed inset-0 z-[150] bg-background-primary/60 backdrop-blur-md flex items-center justify-center p-4 opacity-0 transition-opacity duration-300"
+          class="hidden fixed inset-0 z-150 bg-background-primary/60 backdrop-blur-md flex items-center justify-center p-4 opacity-0 transition-opacity duration-300"
         >
         <div
           class="bg-surface-primary border border-border-primary rounded-xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden scale-95 transition-transform duration-300"
@@ -832,7 +832,7 @@ export const renderSyncModal = (container) => {
               class="hidden flex items-center gap-3 text-sm text-slate-400 py-2"
             >
               <span
-                class="inline-block w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin flex-shrink-0"
+                class="inline-block w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin shrink-0"
               ></span>
               Generating plan...
             </div>

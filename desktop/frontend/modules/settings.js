@@ -439,7 +439,7 @@ export const renderSettingsDrawer = (container) => {
   if (!container) return;
   container.innerHTML = `
         <div
-          class="drawer hidden fixed inset-0 z-[100] bg-slate-900/40 dark:bg-background-primary/80 backdrop-blur-md transition-all duration-500"
+          class="drawer hidden fixed inset-0 z-100 bg-slate-900/40 dark:bg-background-primary/80 backdrop-blur-md transition-all duration-500"
           id="settingsDrawer"
           aria-hidden="true"
         >
@@ -451,7 +451,7 @@ export const renderSettingsDrawer = (container) => {
           <div class="absolute bottom-20 -left-20 w-64 h-64 bg-primary/5 blur-[100px] pointer-events-none rounded-full"></div>
           
           <header
-            class="flex items-center justify-between p-8 border-b border-slate-200 dark:border-white/5 relative z-10 bg-slate-50/80 dark:bg-black/10 backdrop-blur-sm"
+            class="flex items-center justify-between p-8 border-b border-slate-200 dark:border-white/5 relative z-10 bg-slate-50/80 dark:bg-black/10 backdrop-blur-xs"
           >
             <div class="flex items-center gap-4">
               <div class="size-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-lg shadow-primary/5">
@@ -485,7 +485,7 @@ export const renderSettingsDrawer = (container) => {
                   <div class="relative">
                     <select
                       id="themeSelect"
-                      class="w-full bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 appearance-none cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
+                      class="w-full bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 appearance-none cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
                     >
                       <option value="system">System Default</option>
                       <option value="light">Light Mode</option>
@@ -501,7 +501,7 @@ export const renderSettingsDrawer = (container) => {
                       id="proxyTarget"
                       type="text"
                       placeholder="govard.test"
-                      class="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
+                      class="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
                      />
                      <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl">dns</span>
                   </div>
@@ -514,7 +514,7 @@ export const renderSettingsDrawer = (container) => {
                       id="codeEditor"
                       type="text"
                       placeholder="code"
-                      class="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
+                      class="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
                      />
                      <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl">code</span>
                   </div>
@@ -527,7 +527,7 @@ export const renderSettingsDrawer = (container) => {
                       id="preferredBrowser"
                       type="text"
                       placeholder="firefox"
-                      class="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
+                      class="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
                      />
                      <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl">open_in_new</span>
                   </div>
@@ -538,7 +538,7 @@ export const renderSettingsDrawer = (container) => {
                   <div class="relative">
                     <select
                       id="dbClientPreference"
-                      class="w-full bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 appearance-none cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
+                      class="w-full bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 appearance-none cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
                     >
                       <option value="pma">Built-in PHPMyAdmin</option>
                       <option value="desktop">Local App (TablePlus/BeeKeeper)</option>
@@ -572,7 +572,7 @@ export const renderSettingsDrawer = (container) => {
                     type="checkbox"
                     class="sr-only peer"
                   />
-                  <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  <div class="w-11 h-6 bg-slate-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:rtl:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:inset-s-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                 </label>
               </div>
               <p
@@ -606,7 +606,7 @@ export const renderSettingsDrawer = (container) => {
                     </div>
                     <span
                       id="settingsUpdateBadge"
-                      class="px-2.5 py-1 rounded-full border border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-black/40 text-[10px] font-black uppercase tracking-wider text-primary shadow-sm"
+                      class="px-2.5 py-1 rounded-full border border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-black/40 text-[10px] font-black uppercase tracking-wider text-primary shadow-xs"
                     >
                       Idle
                     </span>
@@ -616,7 +616,7 @@ export const renderSettingsDrawer = (container) => {
                     <label for="updateChannelSelect" class="text-[11px] font-bold text-text-tertiary uppercase tracking-wider">Update channel</label>
                     <select
                       id="updateChannelSelect"
-                      class="bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:border-primary/50 cursor-pointer"
+                      class="bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white outline-hidden focus:border-primary/50 cursor-pointer"
                     >
                       <option value="stable">Stable</option>
                       <option value="beta">Beta</option>

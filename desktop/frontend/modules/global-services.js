@@ -38,7 +38,7 @@ const BULK_STOP_ENABLED_CLASS =
 const BULK_STOP_DISABLED_CLASS =
   "h-10 min-w-[118px] px-3 bg-red-500/10 text-red-700 dark:text-red-500/60 border border-red-500/20 rounded-xl text-xs font-bold uppercase tracking-[0.08em] transition-all inline-flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed";
 const BULK_PULL_CLASS =
-  "h-10 min-w-[118px] px-3 bg-background-secondary text-text-primary border border-border-primary rounded-xl text-xs font-bold uppercase tracking-[0.08em] hover:bg-background-primary transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100";
+  "h-10 min-w-[118px] px-3 bg-background-secondary text-text-primary border border-border-primary rounded-xl text-xs font-bold uppercase tracking-[0.08em] hover:bg-background-primary transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100";
 const BULK_ERROR_MESSAGE_MAX_LENGTH = 180;
 
 const collapseWhitespace = (value = "") =>
@@ -412,7 +412,7 @@ const renderServiceCard = (service, selectedService) => {
   const showRoutingWarning = hasRoutingImpact(service);
   const routingWarning = showRoutingWarning
     ? `<div class="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 font-medium flex items-start gap-1.5">
-          <span class="material-symbols-outlined text-[13px] leading-none mt-[1px]">warning</span>
+          <span class="material-symbols-outlined text-[13px] leading-none mt-px">warning</span>
           <span>Routing warning: ${escapeHTML(service.name)} is stopped. Proxy/domain routing may fail.</span>
         </div>`
     : "";
@@ -450,7 +450,7 @@ const renderServiceCard = (service, selectedService) => {
           data-operation="${primaryAction}"
           data-loading-label="${primaryAction === "restart" ? "Restarting..." : "Starting..."}"
           data-loading-icon-only="true"
-          class="h-8 w-8 rounded-lg bg-primary text-background-secondary hover:bg-primary-hover transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
+          class="h-8 w-8 rounded-lg bg-primary text-background-secondary hover:bg-primary-hover transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-xs"
           title="${primaryLabel}"
         >
           <span class="material-symbols-outlined text-[18px]">${primaryIcon}</span>
@@ -460,7 +460,7 @@ const renderServiceCard = (service, selectedService) => {
           data-service="${service.id}"
           data-loading-label="Stopping..."
           data-loading-icon-only="true"
-          class="${isActive ? "h-8 w-8 rounded-lg bg-red-600 text-white border border-red-500 hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm" : "h-8 w-8 rounded-lg bg-background-secondary text-slate-500 dark:text-text-tertiary border border-border-primary opacity-90 dark:opacity-60 flex items-center justify-center"}"
+          class="${isActive ? "h-8 w-8 rounded-lg bg-red-600 text-white border border-red-500 hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-xs" : "h-8 w-8 rounded-lg bg-background-secondary text-slate-500 dark:text-text-tertiary border border-border-primary opacity-90 dark:opacity-60 flex items-center justify-center"}"
           title="Stop"
           ${isActive ? "" : "disabled"}
         >
@@ -471,7 +471,7 @@ const renderServiceCard = (service, selectedService) => {
           data-service="${service.id}"
           data-loading-label="Opening..."
           data-loading-icon-only="true"
-          class="${service.openable ? "h-8 w-8 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/20 hover:bg-slate-200 dark:hover:bg-white/20 hover:text-primary dark:hover:text-white transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm" : "h-8 w-8 rounded-lg border border-border-primary text-slate-500 dark:text-text-tertiary bg-background-secondary opacity-90 dark:opacity-60 flex items-center justify-center"}"
+          class="${service.openable ? "h-8 w-8 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/20 hover:bg-slate-200 dark:hover:bg-white/20 hover:text-primary dark:hover:text-white transition-all active:scale-95 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100 shadow-xs" : "h-8 w-8 rounded-lg border border-border-primary text-slate-500 dark:text-text-tertiary bg-background-secondary opacity-90 dark:opacity-60 flex items-center justify-center"}"
           title="Open"
           ${service.openable ? "" : "disabled"}
         >
@@ -547,7 +547,7 @@ const renderStatusStrip = (container, services = []) => {
       const name = escapeHTML(service.name);
       const label = escapeHTML(formatStatusLabel(service.status));
       const icon = globalServiceIcons[service.id] || "widgets";
-      return `<span class="global-status-chip inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium shadow-sm ${tone.chip}" style="--chip-order:${index}">
+      return `<span class="global-status-chip inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium shadow-xs ${tone.chip}" style="--chip-order:${index}">
           <span class="w-1.5 h-1.5 rounded-full ${tone.dot}"></span>
           <span class="material-symbols-outlined text-[11px] leading-none opacity-90">${icon}</span>
           <span class="text-text-primary/95">${name}</span>
@@ -710,7 +710,7 @@ export const createGlobalServicesController = ({
       success: {
         icon: "check_circle",
         iconClass:
-          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-primary shadow-sm",
+          "material-symbols-outlined text-[15px] leading-none self-start mt-px text-primary shadow-xs",
         textClass:
           "rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 text-xs text-primary dark:text-primary/95",
       },
@@ -814,10 +814,10 @@ export const createGlobalServicesController = ({
       refs.globalServiceHealthBar.style.width = `${percent}%`;
       refs.globalServiceHealthBar.className =
         hasRoutingWarning || percent < 35
-          ? "h-full rounded-full bg-gradient-to-r from-red-500 via-red-400 to-amber-300 transition-all duration-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+          ? "h-full rounded-full bg-linear-to-r from-red-500 via-red-400 to-amber-300 transition-all duration-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]"
           : percent < 100
-            ? "h-full rounded-full bg-gradient-to-r from-amber-500 via-amber-300 to-primary transition-all duration-500"
-            : "h-full rounded-full bg-gradient-to-r from-primary via-[#9cffc4] to-primary shadow-[0_0_20px_rgba(13,242,89,0.7)] brightness-110 transition-all duration-500";
+            ? "h-full rounded-full bg-linear-to-r from-amber-500 via-amber-300 to-primary transition-all duration-500"
+            : "h-full rounded-full bg-linear-to-r from-primary via-[#9cffc4] to-primary shadow-[0_0_20px_rgba(13,242,89,0.7)] brightness-110 transition-all duration-500";
     }
 
     if (refs.globalServiceHealthLabel instanceof HTMLElement) {

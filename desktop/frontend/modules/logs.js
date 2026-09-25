@@ -434,7 +434,7 @@ export const renderLogsTab = (container) => {
                       >
                     </span>
                     <input
-                      class="bg-surface-secondary text-xs text-text-primary dark:text-white pl-8 pr-3 py-2 rounded-md border border-border-primary focus:border-primary/50 focus:outline-none placeholder-text-tertiary w-44 md:w-56"
+                      class="bg-surface-secondary text-xs text-text-primary dark:text-white pl-8 pr-3 py-2 rounded-md border border-border-primary focus:border-primary/50 focus:outline-hidden placeholder-text-tertiary w-44 md:w-56"
                       placeholder="Filter logs..."
                       type="text"
                       id="logSearch"

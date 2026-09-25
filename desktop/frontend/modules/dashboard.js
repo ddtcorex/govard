@@ -304,7 +304,7 @@ const renderEnvironmentItem = (env, { selectedProject, sidebarMode }) => {
       <div class="relative flex h-6 w-6 items-center justify-center self-center z-10">
         <span data-action="toggle-env" data-env="${escapeHTML(key)}" class="material-symbols-outlined leading-none ${meta.iconClass} transition-colors hover:text-slate-900 dark:hover:text-white text-[20px]" ${meta.iconStyle}>${meta.iconName}</span>
         ${meta.showPulseDot
-      ? `<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary border border-[var(--bg-primary)] animate-pulse"></span>`
+      ? `<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary border border-(--bg-primary) animate-pulse"></span>`
       : ""
     }
       </div>
@@ -594,7 +594,7 @@ export const renderProjectHero = (
             shadow = "rgba(34, 197, 94, 0.5)";
           }
 
-          return `<span class="flex items-center gap-1.5 bg-slate-100 dark:bg-surface-secondary px-2 py-0.5 rounded border border-slate-300 dark:border-border-primary">
+          return `<span class="flex items-center gap-1.5 bg-slate-100 dark:bg-surface-secondary px-2 py-0.5 rounded-sm border border-slate-300 dark:border-border-primary">
             <span class="w-1.5 h-1.5 rounded-full ${color}" style="box-shadow: 0 0 8px ${shadow}"></span>
             <span class="text-[11px] font-black text-slate-800 dark:text-slate-200">${escapeHTML(tech)}</span>
           </span>`;
@@ -626,7 +626,7 @@ export const renderProjectHero = (
       ? "Environment is not running"
       : "Stop Environment";
     refs.heroStopBtn.className = isStopped
-      ? "h-12 w-12 bg-slate-100 dark:bg-[var(--surface-secondary)] text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-border-primary rounded-lg transition-all flex items-center justify-center cursor-not-allowed opacity-70"
+      ? "h-12 w-12 bg-slate-100 dark:bg-(--surface-secondary) text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-border-primary rounded-lg transition-all flex items-center justify-center cursor-not-allowed opacity-70"
       : "h-12 w-12 bg-red-600 text-white border border-red-500 rounded-lg hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/20";
   }
   if (refs.heroPullBtn) {
@@ -753,7 +753,7 @@ export const renderActiveServices = (container, env) => {
       return `
         <div class="glass-panel p-4 rounded-xl border border-slate-200 dark:border-border-primary hover:border-primary/30 transition-all flex items-center justify-between h-[72px]">
           <div class="flex items-center gap-4 h-full">
-            <div class="w-10 h-10 shrink-0 rounded flex items-center justify-center ${iconBg} ${iconText} border ${iconBorder}">
+            <div class="w-10 h-10 shrink-0 rounded-sm flex items-center justify-center ${iconBg} ${iconText} border ${iconBorder}">
               <span class="material-symbols-outlined text-[20px]">${icon}</span>
             </div>
             <div class="flex flex-col justify-center">
@@ -767,7 +767,7 @@ export const renderActiveServices = (container, env) => {
           </div>
           <div class="flex items-center gap-2 h-full">
             <button
-              class="size-8 rounded flex items-center justify-center bg-slate-100 dark:bg-[var(--surface-secondary)] border border-slate-200 dark:border-border-primary text-slate-500 dark:text-slate-300 hover:text-primary dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary transition-all"
+              class="size-8 rounded-sm flex items-center justify-center bg-slate-100 dark:bg-(--surface-secondary) border border-slate-200 dark:border-border-primary text-slate-500 dark:text-slate-300 hover:text-primary dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary transition-all"
               title="View Logs"
               data-action="open-service-logs"
               data-project="${escapeHTML(project)}"
@@ -776,7 +776,7 @@ export const renderActiveServices = (container, env) => {
               <span class="material-symbols-outlined text-[18px]">list_alt</span>
             </button>
             <button
-              class="size-8 rounded flex items-center justify-center bg-slate-100 dark:bg-[var(--surface-secondary)] border border-slate-200 dark:border-border-primary text-slate-500 dark:text-slate-300 hover:text-primary dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary transition-all"
+              class="size-8 rounded-sm flex items-center justify-center bg-slate-100 dark:bg-(--surface-secondary) border border-slate-200 dark:border-border-primary text-slate-500 dark:text-slate-300 hover:text-primary dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary transition-all"
               title="Open OS Terminal"
               data-action="start-service-terminal-os"
               data-project="${escapeHTML(project)}"
@@ -805,9 +805,9 @@ export const renderEnvVars = (container, env) => {
     .map((key) => {
       const value = envVars[key];
       return `
-      <div data-action="copy-text" data-text="${escapeHTML(value)}" class="flex justify-between items-center group cursor-pointer hover:bg-background-secondary/50 p-1.5 -mx-1.5 rounded transition-colors" title="Click to copy">
+      <div data-action="copy-text" data-text="${escapeHTML(value)}" class="flex justify-between items-center group cursor-pointer hover:bg-background-secondary/50 p-1.5 -mx-1.5 rounded-sm transition-colors" title="Click to copy">
         <span class="text-xs text-emerald-700 dark:text-primary font-mono font-bold">${escapeHTML(key)}</span>
-        <span class="text-xs text-slate-800 dark:text-white font-mono bg-surface-secondary px-2 py-0.5 rounded border border-border-primary break-all max-w-[60%] font-medium">${escapeHTML(value)}</span>
+        <span class="text-xs text-slate-800 dark:text-white font-mono bg-surface-secondary px-2 py-0.5 rounded-sm border border-border-primary break-all max-w-[60%] font-medium">${escapeHTML(value)}</span>
       </div>`;
     })
     .join("");

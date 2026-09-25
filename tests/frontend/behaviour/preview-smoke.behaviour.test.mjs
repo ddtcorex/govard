@@ -1,45 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { findFreePort, launchChrome, openTab } from "./support/cdp.mjs";
-import { startVite } from "./support/dev-server.mjs";
-
-const CHROME_BIN = process.env.CHROME_BIN;
-const FRONTEND_DIR = join(import.meta.dirname, "..", "..", "..", "desktop", "frontend");
-
-// Boots the real app against the preview seam once and hands the scenario a
-// ready session. Chrome and vite are torn down even when a scenario fails.
-async function withPreview(t) {
-  if (!CHROME_BIN) {
-    t.skip("CHROME_BIN not set");
-    return null;
-  }
-  const vite = await startVite({ cwd: FRONTEND_DIR });
-  const chromePort = await findFreePort();
-  const userDataDir = mkdtempSync(join(tmpdir(), "govard-cdp-"));
-  const chrome = launchChrome({ chromeBin: CHROME_BIN, port: chromePort, userDataDir });
-  t.after(async () => {
-    // SIGKILL: a graceful kill can leave the debug port held by a zombie long
-    // enough to fail the next scenario's Chrome start.
-    chrome.kill("SIGKILL");
-    await vite.stop();
-  });
-  const session = await openTab({ port: chromePort, url: `${vite.baseUrl}/preview.html` });
-  t.after(async () => {
-    await session.close();
-  });
-  await session.navigate(`${vite.baseUrl}/preview.html`);
-  // main.js's bootstrap ends by writing "Status: Ready", but only after
-  // refreshDashboard awaits loadFooterVersion, which retries GetVersion 15 times
-  // at 300ms while the route answers the generic "" default. Waiting for that
-  // quiescent state is what keeps these scenarios from racing the boot.
-  await session.waitFor(`document.getElementById("status").textContent`, "Status: Ready", {
-    timeoutMs: 10000,
-  });
-  return session;
-}
+import { withPreview } from "./support/preview-session.mjs";
 
 test("a fixture drives the rendered footer, and the app makes the call once per refresh", async (t) => {
   const session = await withPreview(t);

@@ -23,3 +23,7 @@ window.webkit.messageHandlers.external.postMessage = () => {};
 await installPreviewSeam();
 installPreviewControl();
 await import("../main.js");
+
+// After the app has booted, so the island's store reads see the same state
+// main.js has already set. Preview-only: nothing imports this from index.html.
+await import("./demo-island-mount.js").then((m) => m.mountDemoIsland());
