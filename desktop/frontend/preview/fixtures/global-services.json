@@ -1,0 +1,99 @@
+[
+  {
+    "service": "GlobalServiceService",
+    "method": "GetGlobalServices",
+    "args": [],
+    "result": {
+      "active": 2,
+      "total": 3,
+      "summary": "3 global services",
+      "services": [
+        {
+          "id": "caddy",
+          "name": "Caddy Proxy",
+          "composeService": "caddy",
+          "containerName": "govard-proxy-caddy",
+          "status": "running",
+          "state": "running",
+          "health": "healthy",
+          "statusText": "Up 2 hours",
+          "running": true,
+          "openable": true,
+          "url": "https://sample-project.test"
+        },
+        {
+          "id": "dnsmasq",
+          "name": "DNSMasq",
+          "composeService": "dnsmasq",
+          "containerName": "govard-proxy-dnsmasq",
+          "status": "running",
+          "state": "running",
+          "health": "healthy",
+          "statusText": "Up 2 hours",
+          "running": true,
+          "openable": false
+        },
+        {
+          "id": "portainer",
+          "name": "Portainer",
+          "composeService": "portainer",
+          "containerName": "govard-proxy-portainer",
+          "status": "exited",
+          "state": "exited",
+          "health": "unknown",
+          "running": false,
+          "openable": false
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "service": "GlobalServiceService",
+    "method": "StartGlobalService",
+    "args": [],
+    "result": "Global services started.\nContainer govard-proxy-portainer Started"
+  },
+  {
+    "service": "GlobalServiceService",
+    "method": "StopGlobalService",
+    "args": [],
+    "result": "Global services stopped."
+  },
+  {
+    "service": "GlobalServiceService",
+    "method": "RestartGlobalService",
+    "args": [],
+    "result": "Global services restarted.\nContainer govard-proxy-caddy Started"
+  },
+  {
+    "service": "GlobalServiceService",
+    "method": "OpenGlobalService",
+    "args": [],
+    "result": "Opened Caddy Proxy"
+  },
+  {
+    "service": "GlobalServiceService",
+    "method": "PullGlobalServices",
+    "args": [],
+    "result": "Global services restarted.\nContainer govard-proxy-caddy Started"
+  },
+  {
+    "service": "LogService",
+    "method": "GetGlobalServiceLogs",
+    "args": [],
+    "result": "caddy | 2026-09-25 10:00:00 | serving sample-project.test\n"
+  },
+  {
+    "service": "LogService",
+    "method": "StartGlobalServiceLogStream",
+    "args": [],
+    "result": ""
+  },
+  {
+    "service": "LogService",
+    "method": "StopGlobalServiceLogStream",
+    "args": [],
+    "result": ""
+  }
+]

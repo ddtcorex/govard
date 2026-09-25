@@ -17,6 +17,7 @@ func TestDesktopIslandContainersAreMirroredAndMounted(t *testing.T) {
 		"metricsIsland", "updatePromptIsland", "logsIsland", "settingsDrawerMount",
 		"envList", "projectHero", "activeServicesList", "envVarsList",
 		"remotesIsland", "syncOptionsModalMount",
+		"globalHealthIsland", "globalServicesList",
 	}
 	for _, entry := range []string{
 		"../desktop/frontend/index.html",

@@ -18,6 +18,8 @@ import { ActiveServices } from "./islands/ActiveServices.tsx";
 import { EnvVars } from "./islands/EnvVars.tsx";
 import { EnvironmentList } from "./islands/EnvironmentList.tsx";
 import { ProjectHero } from "./islands/ProjectHero.tsx";
+import { GlobalHealthHeader } from "./islands/GlobalHealthHeader.tsx";
+import { GlobalServicesList } from "./islands/GlobalServicesList.tsx";
 import { RemotesList } from "./islands/RemotesList.tsx";
 import { SyncModal } from "./islands/SyncModal.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
@@ -39,21 +41,6 @@ const getLiveRefs = () => ({
   envList: byId("envList"),
   sidebarPanelEnvironments: byId("sidebarPanel-environments"),
   sidebarEnvActions: byId("sidebarEnvActions"),
-  globalServicesList: byId("globalServicesList"),
-  globalServiceCount: byId("globalServiceCount"),
-  globalServiceHealthPercent: byId("globalServiceHealthPercent"),
-  globalServiceHealthBar: byId("globalServiceHealthBar"),
-  globalServiceHealthLabel: byId("globalServiceHealthLabel"),
-  globalServiceHealthLabelIcon: byId("globalServiceHealthLabelIcon"),
-  globalServiceHealthLabelText: byId("globalServiceHealthLabelText"),
-  globalServiceStatusStrip: byId("globalServiceStatusStrip"),
-  globalBulkStart: byId("globalBulkStart"),
-  globalBulkRestart: byId("globalBulkRestart"),
-  globalBulkStop: byId("globalBulkStop"),
-  globalBulkPull: byId("globalBulkPull"),
-  globalActionFeedback: byId("globalActionFeedback"),
-  globalActionFeedbackIcon: byId("globalActionFeedbackIcon"),
-  globalActionFeedbackText: byId("globalActionFeedbackText"),
   globalToggleLive: byId("globalToggleLive"),
   globalLogOutput: byId("globalLogOutput"),
   globalLogViewport: byId("globalLogViewport"),
@@ -967,6 +954,29 @@ const globalServicesController = createGlobalServicesController({
   onToast: showToast,
 });
 
+// The ops deck and the card list are islands over that controller: it publishes
+// the snapshot, the feedback line and the selected service into the store, and
+// each island derives what it renders from them (D6). Their controls call back
+// into the controller, which stays the only thing that talks to the bridge for
+// these actions, so the routing-settle loop and the refresh cadence are
+// unchanged. The Logs panel is still vanilla markup in this change.
+const globalHealthIsland = mountIsland(
+  "globalHealthIsland",
+  createElement(GlobalHealthHeader, {
+    onBulkAction: (action) => globalServicesController.runBulkAction(action),
+  }),
+);
+
+const globalServicesListIsland = mountIsland(
+  "globalServicesList",
+  createElement(GlobalServicesList, {
+    onSelectService: (serviceId) =>
+      globalServicesController.selectService(serviceId),
+    onServiceAction: (action, serviceId) =>
+      globalServicesController.runServiceAction(action, serviceId),
+  }),
+);
+
 document.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
@@ -986,72 +996,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (action === "global-bulk-start") {
-    await globalServicesController.runBulkAction("start", targetElement);
-    return;
-  }
-  if (action === "global-bulk-stop") {
-    await globalServicesController.runBulkAction("stop", targetElement);
-    return;
-  }
-  if (action === "global-bulk-restart") {
-    await globalServicesController.runBulkAction("restart", targetElement);
-    return;
-  }
-  if (action === "global-bulk-pull") {
-    await globalServicesController.runBulkAction("pull", targetElement);
-    return;
-  }
-  if (action === "global-service-start") {
-    await globalServicesController.runServiceAction(
-      "start",
-      String(targetElement.dataset.service || ""),
-      targetElement,
-    );
-    return;
-  }
-  if (action === "global-service-primary") {
-    const operation = String(targetElement.dataset.operation || "start")
-      .trim()
-      .toLowerCase();
-    const resolved = operation === "restart" ? "restart" : "start";
-    await globalServicesController.runServiceAction(
-      resolved,
-      String(targetElement.dataset.service || ""),
-      targetElement,
-    );
-    return;
-  }
-  if (action === "global-service-stop") {
-    await globalServicesController.runServiceAction(
-      "stop",
-      String(targetElement.dataset.service || ""),
-      targetElement,
-    );
-    return;
-  }
-  if (action === "global-service-restart") {
-    await globalServicesController.runServiceAction(
-      "restart",
-      String(targetElement.dataset.service || ""),
-      targetElement,
-    );
-    return;
-  }
-  if (action === "global-service-open") {
-    await globalServicesController.runServiceAction(
-      "open",
-      String(targetElement.dataset.service || ""),
-      targetElement,
-    );
-    return;
-  }
-  if (action === "global-service-select-log") {
-    await globalServicesController.selectService(
-      String(targetElement.dataset.service || ""),
-    );
-    return;
-  }
   if (action === "toggle-global-live") {
     await globalServicesController.toggleLive();
     return;
@@ -1370,5 +1314,7 @@ window.addEventListener("beforeunload", () => {
   envVarsIsland?.unmount();
   remotesIsland?.unmount();
   syncModalIsland?.unmount();
+  globalHealthIsland?.unmount();
+  globalServicesListIsland?.unmount();
   globalServicesController.stopLive({ skipBridge: true });
 });
