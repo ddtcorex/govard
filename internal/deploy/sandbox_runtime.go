@@ -131,6 +131,12 @@ func NewDockerCLIForTest(run SandboxCommandRunner) *DockerCLI {
 	return &DockerCLI{run: run}
 }
 
+// NewSandboxCommandRunnerForTest exposes the production runner for another
+// binary, so a test can drive its stream plumbing without Docker.
+func NewSandboxCommandRunnerForTest(binary string) SandboxCommandRunner {
+	return execSandboxCommand(binary)
+}
+
 // execSandboxCommand runs a binary with an argument array. There is deliberately
 // no shell: a project name or a path never becomes shell syntax.
 func execSandboxCommand(binary string) SandboxCommandRunner {
@@ -142,14 +148,37 @@ func execSandboxCommand(binary string) SandboxCommandRunner {
 		}
 
 		var stdout, stderr bytes.Buffer
+		var streamed chan error
+		var streamWriter *os.File
 		switch {
 		case command.Stdout != nil:
 			// A streamed invocation owns its stdout: capturing it in a buffer
 			// would defeat the pipe the caller built around it.
-			cmd.Stdout = command.Stdout
+			//
+			// The process gets a real pipe, and this function copies from it.
+			// Handing exec a plain writer instead makes exec copy in a goroutine
+			// that WaitDelay abandons one second after the process exits, which
+			// is exactly when a consumer busy with one large statement is still
+			// behind: the tail of a dump was dropped that way and reported as a
+			// timed out command. A process that writes into a real pipe cannot
+			// exit before the reader has taken all but the last buffer, and the
+			// copy below is waited for to the end.
+			destination := command.Stdout
 			if command.Out != nil {
-				cmd.Stdout = io.MultiWriter(command.Stdout, command.Out)
+				destination = io.MultiWriter(command.Stdout, command.Out)
 			}
+			reader, writer, err := os.Pipe()
+			if err != nil {
+				return "", fmt.Errorf("create the stream pipe: %w", err)
+			}
+			cmd.Stdout = writer
+			streamWriter = writer
+			streamed = make(chan error, 1)
+			go func() {
+				_, copyErr := io.Copy(destination, reader)
+				_ = reader.Close()
+				streamed <- copyErr
+			}()
 		case command.Out != nil:
 			cmd.Stdout = io.MultiWriter(&stdout, command.Out)
 		default:
@@ -170,6 +199,14 @@ func execSandboxCommand(binary string) SandboxCommandRunner {
 		}
 
 		err := cmd.Run()
+		if streamed != nil {
+			// The child holds its own copy of the write end; closing ours is
+			// what lets the copy see end of file once the pipe is drained.
+			_ = streamWriter.Close()
+			if copyErr := <-streamed; err == nil && copyErr != nil {
+				return "", fmt.Errorf("stream the output of %s: %w", binary, copyErr)
+			}
+		}
 		if err == nil {
 			return stdout.String(), nil
 		}
