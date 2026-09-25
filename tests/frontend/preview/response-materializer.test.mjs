@@ -41,3 +41,28 @@ test("an unrouted service.method throws with the regeneration hint", async () =>
     /no route default for NoSuchService\.NoSuchMethod[\s\S]*regenerate route-defaults\.generated\.js/,
   );
 });
+
+// An unexported Go type still gets a model class (models.js is generated for
+// every type the services use), but the bindings' index only re-exports the
+// exported ones. RemoteService.GetSyncOptions returns the unexported
+// presetSyncOptions, so this route used to throw here - which is why the sync
+// modal's first step could not be exercised in the preview at all.
+test("a model route whose Go type is unexported still materializes", async () => {
+  const options = await materializeResponse("RemoteService", "GetSyncOptions", {
+    preset: "db",
+    command: "sync",
+    options: [
+      {
+        key: "noNoise",
+        label: "Exclude Noise",
+        description: "Exclude ephemeral tables",
+        defaultValue: false,
+      },
+    ],
+  });
+
+  assert.equal(options.preset, "db");
+  assert.equal(Array.isArray(options.options), true, "the options reach the caller as an array");
+  assert.equal(options.options.length, 1);
+  assert.equal(options.options[0].key, "noNoise");
+});

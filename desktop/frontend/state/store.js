@@ -12,7 +12,27 @@ const state = {
   liveLogsEnabled: false,
   globalLiveLogsEnabled: false,
   terminalModalOpen: false,
+  /**
+   * The per-preset sync options the user has toggled, keyed by preset. Two
+   * readers share it: the remotes list island (the modal's configuration) and
+   * main.js's onboarding flow, which resolves a preset's config from it.
+   * @type {Record<string, Record<string, unknown>>}
+   */
   syncConfigs: {},
+  /**
+   * The option definitions the backend declared for the open preset.
+   * @type {Array<{key: string; label?: string; description?: string; defaultValue?: boolean}>}
+   */
+  currentSyncPresetDefs: [],
+  currentSyncRemote: "",
+  currentSyncPreset: "",
+  // The remotes island owns these now: it is the only reader of "a sync is
+  // running", and main.js's delegate no longer writes them. Declared here so the
+  // store keeps naming its own shape ("" rather than null: the island compares
+  // them against a remote name).
+  syncingProject: "",
+  syncingRemote: "",
+  syncingPreset: "",
 };
 
 const listeners = new Set();

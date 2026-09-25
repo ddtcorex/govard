@@ -1,5 +1,5 @@
 // @ts-check
-import { loadGeneratedModules } from "../services/bridge.js";
+import { loadGeneratedModels, loadGeneratedModules } from "../services/bridge.js";
 import { ROUTE_DEFAULTS } from "./route-defaults.generated.js";
 
 /**
@@ -7,7 +7,9 @@ import { ROUTE_DEFAULTS } from "./route-defaults.generated.js";
  * call would produce, always going through the real generated model class for a
  * "model" route (spec D4) - never returning raw JSON directly. The model classes
  * come from bridge.js's loader for the REAL generated module, because the
- * swappable one hands out the fake module under the loader seam.
+ * swappable one hands out the fake module under the loader seam; a model the
+ * bindings' index does not re-export (an unexported Go type) comes from the
+ * models namespace instead.
  * @param {string} service
  * @param {string} method
  * @param {any} [rawResult]
@@ -30,7 +32,11 @@ export async function materializeResponse(service, method, rawResult) {
     return rawResult ?? descriptor.value;
   }
   const modules = await loadGeneratedModules();
-  const model = modules[descriptor.model];
+  let model = modules[descriptor.model];
+  if (!model || typeof model.createFrom !== "function") {
+    const models = await loadGeneratedModels();
+    model = models[descriptor.model];
+  }
   if (!model || typeof model.createFrom !== "function") {
     throw new Error(
       `preview: the generated bindings export no model class named ${descriptor.model}`,

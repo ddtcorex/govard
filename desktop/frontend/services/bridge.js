@@ -87,6 +87,20 @@ let loadBindings = realLoadBindings;
 export const loadGeneratedModules = realLoadBindings;
 
 /**
+ * The generated model classes, as a namespace.
+ *
+ * The bindings' index re-exports a model per EXPORTED Go type only, while
+ * models.js carries a class for every type the services use - including an
+ * unexported one such as RemoteService.GetSyncOptions's return type. The
+ * preview's materializer falls back to this namespace for exactly those, so a
+ * fixture still replays through the real constructor (spec D4) instead of
+ * failing the route. Lazy for the same reason as the loader above.
+ * @type {() => Promise<Record<string, any>>}
+ */
+export const loadGeneratedModels = () =>
+  import("../bindings/govard/internal/desktop/models.js");
+
+/**
  * Test and preview/record seam: replace the bindings loader, returns a restore function.
  * @param {() => Promise<any>} fn
  */
