@@ -114,6 +114,67 @@ is enough for styling and layout work; real project data needs the app window.
 
 ---
 
+## Preview Mode and Behaviour Tests
+
+Preview mode runs the real `main.js` in plain Chrome with every Go binding call
+answered from JSON fixtures, so UI work and automated scenarios need no Go
+backend and no app window.
+
+```bash
+pnpm --dir desktop/frontend dev    # Vite on http://localhost:5173
+# then open http://localhost:5173/preview.html
+```
+
+`preview.html` is a copy of `index.html` whose only differences are the preview
+bootstrap script and the demo island container. Every markup change in
+`index.html` must be mirrored into `preview.html`;
+`TestPreviewHTMLMirrorsIndexHTML` fails when they drift. Nothing under
+`desktop/frontend/preview/` reaches the production build.
+
+The page exposes one control surface, `window.__govardPreview`:
+
+| Member | Purpose |
+| :--- | :--- |
+| `reset()` | Clear the installed fixtures and the recorded calls |
+| `installFixtures(name)` | Load `desktop/frontend/preview/fixtures/<name>.json` |
+| `pushEvent(name, data)` | Dispatch a backend event to the app's subscriptions |
+| `getCalls()` | Return the binding calls the app has made so far |
+
+A fixture file is a JSON array of `{ "service", "method", "args", "result" }`
+entries, with `"error"` (a message string) in place of `"result"` for a failing
+call. Values use the JSON wire field names the Go services emit (for example
+`cpuUsage`, not `CPUUsage`). A call matches the entry with the same service,
+method and arguments, then falls back to the first entry for that service and
+method, then to the generated route default in
+`preview/route-defaults.generated.js`.
+
+Record mode captures real fixtures from the running app:
+
+```bash
+GOVARD_PREVIEW_RECORD=1 go run ./cmd/govard desktop --dev
+```
+
+Every binding call still reaches the real backend and is also appended to
+`preview/fixtures/<mode>.json`, where `<mode>` is the current sidebar mode.
+Rename the file after the module it belongs to before committing it.
+
+Behaviour tests drive `preview.html` over raw CDP in headless Chrome, each
+scenario against its own throwaway Vite server:
+
+```bash
+make test-frontend-behaviour                                     # finds google-chrome or chromium
+make test-frontend-behaviour CHROME_BIN=/opt/google/chrome/chrome
+```
+
+The scenarios live in `tests/frontend/behaviour/*.behaviour.test.mjs` and CI
+runs them after `make test-frontend`.
+
+React islands mount through `mountIsland(containerId, element)` from
+`desktop/frontend/islands/mount.js`. It returns `{ unmount() }`, or `null` when
+the container is missing, so `main.js` keeps booting on a page without it.
+
+---
+
 ## Frontend Layout
 
 | File | Purpose |

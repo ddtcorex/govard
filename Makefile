@@ -127,7 +127,7 @@ CHROME_BIN ?= $(shell command -v google-chrome || command -v chromium || command
 
 test-frontend-behaviour:
 	@test -x "$(CHROME_BIN)" || (echo "behaviour tests need Chrome; set CHROME_BIN (tried $$(command -v google-chrome), chromium, /opt/google/chrome/chrome)" && exit 1)
-	CHROME_BIN="$(CHROME_BIN)" node --test tests/frontend/behaviour/*.behaviour.test.mjs
+	CHROME_BIN="$(CHROME_BIN)" node --test --test-concurrency=1 tests/frontend/behaviour/*.behaviour.test.mjs
 
 lint-install: ## Install golangci-lint if missing
 	@if ! command -v $(GOLANGCI_LINT_BIN) >/dev/null 2>&1 || ! $(GOLANGCI_LINT_BIN) version | grep -q $(GOLANGCI_LINT_VERSION); then \

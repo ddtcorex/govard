@@ -90,6 +90,10 @@ jobs:
       - name: Run fast test suite
         run: make test-unit test-frontend
 
+      # Raw-CDP scenarios against preview.html; ubuntu-latest ships google-chrome.
+      - name: Frontend behaviour tests (raw CDP)
+        run: make test-frontend-behaviour CHROME_BIN="$(command -v google-chrome)"
+
   integration_tests:
     name: Integration Tests
     runs-on: ubuntu-latest

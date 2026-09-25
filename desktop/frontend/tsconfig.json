@@ -21,6 +21,7 @@
     "state/**/*.js",
     "ui/**/*.js",
     "utils/**/*.js",
+    "islands/**/*.js",
     "islands/**/*.tsx",
     "components/**/*.tsx"
   ]

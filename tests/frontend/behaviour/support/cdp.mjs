@@ -42,14 +42,24 @@ export function launchChrome({ chromeBin, port, userDataDir }) {
     "--no-default-browser-check",
     "--disable-dev-shm-usage",
   ]);
+  // Keep Chrome's last output so a start failure names its cause.
+  let output = "";
+  const keep = (chunk) => {
+    output = (output + chunk).slice(-4000);
+  };
+  proc.stdout?.on("data", keep);
+  proc.stderr?.on("data", keep);
+  Object.defineProperty(proc, "recentOutput", { get: () => output });
   return proc;
 }
 
 /**
- * Polls Chrome's /json/version endpoint until it answers.
+ * Polls Chrome's /json/version endpoint until it answers. A cold Chrome start
+ * on a loaded CI runner can take well over 10 s.
  * @param {number} port
+ * @param {{recentOutput?: string}} [chrome]
  */
-async function waitForChrome(port, timeoutMs = 10000) {
+async function waitForChrome(port, chrome, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -60,17 +70,19 @@ async function waitForChrome(port, timeoutMs = 10000) {
     }
     await new Promise((r) => setTimeout(r, 200));
   }
-  throw new Error(`Chrome did not open its DevTools port ${port} within ${timeoutMs}ms`);
+  throw new Error(
+    `Chrome did not open its DevTools port ${port} within ${timeoutMs}ms; Chrome output:\n${chrome?.recentOutput ?? ""}`,
+  );
 }
 
 /**
  * Opens a new tab and connects to its DevTools WebSocket. Chrome requires PUT
  * on /json/new since version 111.
- * @param {{port: number, url: string}} opts
+ * @param {{port: number, url: string, chrome?: {recentOutput?: string}}} opts
  */
-export async function openTab({ port, url }) {
+export async function openTab({ port, url, chrome }) {
   assertWebSocketAvailable();
-  await waitForChrome(port);
+  await waitForChrome(port, chrome);
   const res = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, {
     method: "PUT",
   });

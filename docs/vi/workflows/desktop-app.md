@@ -115,6 +115,66 @@ phải mở trong cửa sổ ứng dụng.
 
 ---
 
+## Chế độ Preview và Behaviour Test
+
+Chế độ preview chạy chính `main.js` trong Chrome thường, mọi lời gọi binding Go
+đều được trả lời từ fixture JSON, nên việc làm giao diện và các kịch bản tự động
+không cần backend Go hay cửa sổ ứng dụng.
+
+```bash
+pnpm --dir desktop/frontend dev    # Vite tại http://localhost:5173
+# sau đó mở http://localhost:5173/preview.html
+```
+
+`preview.html` là bản sao của `index.html`, chỉ khác ở script bootstrap của
+preview và container của demo island. Mọi thay đổi markup trong `index.html`
+phải được chép sang `preview.html`; `TestPreviewHTMLMirrorsIndexHTML` sẽ báo lỗi
+khi hai file lệch nhau. Không có gì trong `desktop/frontend/preview/` đi vào bản
+build production.
+
+Trang cung cấp một bề mặt điều khiển duy nhất, `window.__govardPreview`:
+
+| Thành phần | Mục đích |
+| :--- | :--- |
+| `reset()` | Xóa các fixture đã cài và danh sách lời gọi đã ghi |
+| `installFixtures(name)` | Nạp `desktop/frontend/preview/fixtures/<name>.json` |
+| `pushEvent(name, data)` | Phát một sự kiện backend tới các subscription của ứng dụng |
+| `getCalls()` | Trả về các lời gọi binding mà ứng dụng đã thực hiện |
+
+Một file fixture là mảng JSON gồm các phần tử `{ "service", "method", "args",
+"result" }`; lời gọi lỗi dùng `"error"` (chuỗi thông báo) thay cho `"result"`.
+Giá trị dùng đúng tên trường JSON mà các Go service trả về (ví dụ `cpuUsage`,
+không phải `CPUUsage`). Một lời gọi khớp với phần tử có cùng service, method và
+tham số; nếu không có thì lấy phần tử đầu tiên cùng service và method, cuối cùng
+là giá trị mặc định sinh sẵn trong `preview/route-defaults.generated.js`.
+
+Chế độ ghi (record mode) thu fixture thật từ ứng dụng đang chạy:
+
+```bash
+GOVARD_PREVIEW_RECORD=1 go run ./cmd/govard desktop --dev
+```
+
+Mọi lời gọi binding vẫn đi tới backend thật và đồng thời được ghi thêm vào
+`preview/fixtures/<mode>.json`, trong đó `<mode>` là chế độ sidebar hiện tại.
+Hãy đổi tên file theo module mà nó thuộc về trước khi commit.
+
+Behaviour test điều khiển `preview.html` qua raw CDP trong Chrome headless, mỗi
+kịch bản dùng một Vite server tạm riêng:
+
+```bash
+make test-frontend-behaviour                                     # tự tìm google-chrome hoặc chromium
+make test-frontend-behaviour CHROME_BIN=/opt/google/chrome/chrome
+```
+
+Các kịch bản nằm trong `tests/frontend/behaviour/*.behaviour.test.mjs` và CI
+chạy chúng sau `make test-frontend`.
+
+Các React island được mount qua `mountIsland(containerId, element)` trong
+`desktop/frontend/islands/mount.js`. Hàm trả về `{ unmount() }`, hoặc `null` khi
+không có container, để `main.js` vẫn khởi động được trên trang không có nó.
+
+---
+
 ## Cấu trúc thư mục Frontend
 
 | File | Mục đích |
