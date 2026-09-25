@@ -17,7 +17,10 @@ test("the hero stop button stops the selected project once and reports it", asyn
   // re-reads GetDashboard so the sidebar lists the fixture's environment, and
   // selecting it from the sidebar is the user's path to the hero.
   await session.evaluate(`document.getElementById("refresh").click()`);
-  const envButton = `document.querySelector('#envList [data-action="select-environment"][data-env="sample-project"]')`;
+  // The sidebar list is an island now, so it is matched by data-testid: the
+  // data-action it used to carry is gone (this scenario exists to pin exactly
+  // that dispatch path through the dashboard migration).
+  const envButton = `document.querySelector('#envList [data-testid="env-card"][data-env="sample-project"]')`;
   await session.waitFor(`!!${envButton}`, true);
   await session.evaluate(`${envButton}.click()`);
   await session.waitFor(

@@ -1,17 +1,6 @@
 console.log("==> main.js top level loaded! <==");
 import { createActionsController } from "./modules/actions.js?v=20260301";
-import {
-  normalizeDashboardPayload,
-  projectKey,
-  renderEnvironmentList,
-  renderProjectHero,
-  renderWarnings,
-  setMetricText,
-  syncProjectSelectors,
-  renderEnvVars,
-  renderMetricSkeletons as renderDashboardSkeletons,
-  renderEnvironmentSkeletons,
-} from "./modules/dashboard.js";
+import { normalizeDashboardPayload, projectKey } from "./modules/dashboard.js";
 import { createGlobalServicesController } from "./modules/global-services.js";
 import { normalizeLogSeverity, resolveServiceTargets } from "./modules/logs.js";
 import {
@@ -30,6 +19,10 @@ import { mountIsland } from "./islands/mount.js";
 import { LogsTab } from "./islands/LogsTab.tsx";
 import { MetricsFooter } from "./islands/MetricsFooter.tsx";
 import { SettingsDrawer } from "./islands/SettingsDrawer.tsx";
+import { ActiveServices } from "./islands/ActiveServices.tsx";
+import { EnvVars } from "./islands/EnvVars.tsx";
+import { EnvironmentList } from "./islands/EnvironmentList.tsx";
+import { ProjectHero } from "./islands/ProjectHero.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
@@ -739,13 +732,6 @@ const switchSidebarMode = async (mode, options = {}) => {
   if (refs.sidebarEnvActions) {
     refs.sidebarEnvActions.classList.remove("hidden");
   }
-  renderEnvironmentList(
-    refs.envList,
-    getState().environments,
-    getState().selectedProject,
-    { sidebarMode: normalized },
-  );
-
   if (normalized === "global-services") {
     switchTab("global-services");
     await globalServicesController.refresh({ silent: Boolean(options.silent) });
@@ -971,9 +957,12 @@ const remotesController = createRemotesController({
 
 
 
+// The sidebar's loading frame belongs to its island now: main.js asks the island
+// to show it instead of writing skeleton markup into a subtree React owns. The
+// metric skeletons went with the footer tiles (#425).
+let envSkeleton = { show: () => {}, hide: () => {} };
 const renderAllSkeletons = () => {
-  renderDashboardSkeletons(refs);
-  renderEnvironmentSkeletons(refs.envList);
+  envSkeleton.show();
 };
 
 const refreshDashboard = async (options = {}) => {
@@ -990,96 +979,22 @@ const refreshDashboard = async (options = {}) => {
       dashboard.environments?.length,
     );
 
-    try {
-      setMetricText(dashboard, refs);
-    } catch (e) {
-      console.error("[refreshDashboard] setMetricText error:", e);
-    }
-    try {
-      renderWarnings(refs.warningList, dashboard.warnings);
-    } catch (e) {
-      console.error("[refreshDashboard] renderWarnings error:", e);
-    }
-    try {
-      renderEnvironmentList(
-        refs.envList,
-        dashboard.environments,
-        getState().selectedProject,
-        { sidebarMode: getState().sidebarMode },
-      );
-      console.log(
-        "[refreshDashboard] renderEnvironmentList called with",
-        dashboard.environments?.length,
-        "envs",
-      );
-    } catch (e) {
-      console.error("[refreshDashboard] renderEnvironmentList error:", e);
-    }
-
-    const previousProject = getState().selectedProject;
-    try {
-      syncProjectSelectors(
-        { envSelector: refs.envSelector, logSelector: refs.logSelector },
-        dashboard.environments,
-        previousProject,
-      );
-    } catch (e) {
-      console.error("[refreshDashboard] syncProjectSelectors error:", e);
-    }
-
-    const selectedProject =
-      refs.envSelector?.value || getState().selectedProject || "";
+    // The sidebar list, the hero, the service cards and the env vars all read
+    // this store now (spec D6), so publishing the environments is what renders
+    // them - there is nothing left to push into the DOM from here.
+    const selectedProject = getState().selectedProject || "";
     setState({ environments: dashboard.environments, selectedProject });
     if (!selectedProject && dashboard.environments.length > 0) {
       setState({ selectedProject: projectKey(dashboard.environments[0]) });
     }
-
-    if (
-      refs.logSelector &&
-      refs.logSelector.value !== getState().selectedProject
-    ) {
-      refs.logSelector.value = getState().selectedProject;
-    }
-    if (
-      refs.envSelector &&
-      refs.envSelector.value !== getState().selectedProject
-    ) {
-      refs.envSelector.value = getState().selectedProject;
-    }
+    // The list has its data now, so the loading frame is over either way: a
+    // silent refresh never showed one, and this is what closes the non-silent one.
+    envSkeleton.hide();
 
     try {
       refreshServiceSelector();
     } catch (e) {
       console.error("[refreshDashboard] refreshServiceSelector error:", e);
-    }
-    try {
-      renderEnvironmentList(
-        refs.envList,
-        dashboard.environments,
-        getState().selectedProject,
-        { sidebarMode: getState().sidebarMode },
-      );
-    } catch (e) {
-      console.error(
-        "[refreshDashboard] second renderEnvironmentList error:",
-        e,
-      );
-    }
-    try {
-      const { environments, selectedProject: project } = getState();
-      const env = environments.find((item) => projectKey(item) === project);
-
-      // Sync "Active Services" block as well
-      const servicesContainer = document.getElementById("activeServicesList");
-      if (servicesContainer && env) {
-        import("./modules/dashboard.js").then((mod) => {
-          mod.renderActiveServices(servicesContainer, env);
-        });
-      }
-
-      renderProjectHero(refs, environments, project);
-    } catch (e) {
-      console.error("[refreshDashboard] renderProjectHero error:", e);
     }
     await refreshMetrics({ silent: true });
     await remotesController.refresh({ silent: true });
@@ -1226,6 +1141,54 @@ const settingsIsland = mountIsland(
   }),
 );
 
+// The dashboard's four surfaces are islands over the same store. Every control
+// they own calls back into the code that already handled it: the environment
+// actions live in actions.js (main.js only forwards), selectProject and
+// openServiceContext are main.js's own, and the terminal/copy bodies are the
+// delegate branches deleted with this change.
+const environmentListIsland = mountIsland(
+  "envList",
+  createElement(EnvironmentList, {
+    onSelect: (project) => void selectProject(project),
+    onToggle: (project) => void actionsController.handle("toggle-env", project),
+    onSwitchSidebarMode: () => void switchSidebarMode("global-services"),
+    registerSkeleton: (api) => {
+      envSkeleton = api;
+    },
+  }),
+);
+const projectHeroIsland = mountIsland(
+  "projectHero",
+  createElement(ProjectHero, {
+    onAction: (action, project) => void actionsController.handle(action, project),
+  }),
+);
+const activeServicesIsland = mountIsland(
+  "activeServicesList",
+  createElement(ActiveServices, {
+    onOpenLogs: (project, service) =>
+      void openServiceContext(project, service, "logs"),
+    onOpenTerminal: (project, service) => {
+      if (!project || !service) return;
+      desktopBridge
+        .startServiceTerminalInOS(project, service, "", "sh")
+        .catch((err) => showToast(`Failed to launch OS Terminal: ${err}`, "error"));
+    },
+  }),
+);
+const envVarsIsland = mountIsland(
+  "envVarsList",
+  createElement(EnvVars, {
+    onCopy: (text) => {
+      if (!text) return;
+      navigator.clipboard
+        .writeText(text)
+        .then(() => showToast("Copied to clipboard!", "success"))
+        .catch((err) => showToast(`Failed to copy: ${err}`, "error"));
+    },
+  }),
+);
+
 const globalServicesController = createGlobalServicesController({
   bridge: desktopBridge,
   refs,
@@ -1343,24 +1306,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (action === "select-environment") {
-    await selectProject(targetElement.dataset.env || "");
-    return;
-  }
-
-  if (action === "copy-text") {
-    const text = targetElement.dataset.text || "";
-    if (text) {
-      try {
-        await navigator.clipboard.writeText(text);
-        showToast("Copied to clipboard!", "success");
-      } catch (err) {
-        showToast(`Failed to copy: ${err}`, "error");
-      }
-    }
-    return;
-  }
-
   if (action === "browse-project") {
     await onboardingController.browseProject();
     return;
@@ -1387,28 +1332,8 @@ document.addEventListener("click", async (event) => {
     await remotesController.refresh();
     return;
   }
-  if (action === "open-service-logs") {
-    await openServiceContext(
-      targetElement.dataset.project,
-      targetElement.dataset.service,
-      "logs",
-    );
-    return;
-  }
   if (action === "open-service-shell") {
     // Redirect to OS Terminal
-    const project = targetElement.dataset.project || "";
-    const service = targetElement.dataset.service || "";
-    if (project && service) {
-      try {
-        await desktopBridge.startServiceTerminalInOS(project, service, "", "sh");
-      } catch (err) {
-        showToast(`Failed to launch OS Terminal: ${err}`, "error");
-      }
-    }
-    return;
-  }
-  if (action === "start-service-terminal-os") {
     const project = targetElement.dataset.project || "";
     const service = targetElement.dataset.service || "";
     if (project && service) {
@@ -1915,5 +1840,9 @@ window.addEventListener("beforeunload", () => {
   metricsIsland?.unmount();
   logsIsland?.unmount();
   settingsIsland?.unmount();
+  environmentListIsland?.unmount();
+  projectHeroIsland?.unmount();
+  activeServicesIsland?.unmount();
+  envVarsIsland?.unmount();
   globalServicesController.stopLive({ skipBridge: true });
 });

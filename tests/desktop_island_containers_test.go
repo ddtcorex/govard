@@ -13,7 +13,10 @@ import (
 // whose container is missing makes mountIsland return null, which drops the
 // feature with no error anywhere.
 func TestDesktopIslandContainersAreMirroredAndMounted(t *testing.T) {
-	containers := []string{"metricsIsland", "updatePromptIsland", "logsIsland", "settingsDrawerMount"}
+	containers := []string{
+		"metricsIsland", "updatePromptIsland", "logsIsland", "settingsDrawerMount",
+		"envList", "projectHero", "activeServicesList", "envVarsList",
+	}
 	for _, entry := range []string{
 		"../desktop/frontend/index.html",
 		"../desktop/frontend/preview.html",

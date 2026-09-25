@@ -46,7 +46,7 @@ async function openLogsWithFixture(session, fixture) {
   await session.evaluate(`window.__govardPreview.installFixtures(${JSON.stringify(fixture)})`);
   await session.evaluate(`document.getElementById("refresh").click()`);
   await session.waitFor(
-    `!!document.querySelector('#envList [data-action="select-environment"][data-env="sample-project"]')`,
+    `!!document.querySelector('#envList [data-testid="env-card"][data-env="sample-project"]')`,
     true,
     { timeoutMs: 10000 },
   );
