@@ -33,7 +33,7 @@ func installCloseHook(window *application.WebviewWindow, gate *closeGate, settin
 func installTray(app *application.App, platform *wailsPlatform, desk *App) func() {
 	tray := app.SystemTray.New()
 	tray.SetIcon(trayIcon)
-	tray.SetTooltip("Govard Desktop")
+	brandTray(tray)
 	menu := app.Menu.New()
 
 	var refresh func()
