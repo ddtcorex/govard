@@ -56,7 +56,7 @@ type Props = {
   onToast(message: string, kind?: ToastKind): void;
   onOpenSyncModal(remote: string, preset: string): void;
   onSyncSettled(): void;
-  registerApi(api: RemotesIslandApi): void;
+  registerApi(api: RemotesIslandApi | null): void;
 };
 
 /** How long an Open SSH/DB/SFTP button stays in its loading state at minimum. */
@@ -130,6 +130,8 @@ export function RemotesList({
   const progressRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const pendingActions = useRef<Set<string>>(new Set());
+  /** False once unmounted: the loading floor below can finish after that. */
+  const mounted = useRef(true);
   const subscriptions = useRef<Array<() => void>>([]);
   // The settled callback reaches the event handlers below through a ref, so a
   // run started before main.js handed a new callback still calls the newest one.
@@ -137,6 +139,13 @@ export function RemotesList({
   useEffect(() => {
     settled.current = onSyncSettled;
   }, [onSyncSettled]);
+
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
 
   const releaseSubscriptions = useCallback(() => {
     subscriptions.current.forEach((off) => off());
@@ -252,11 +261,15 @@ export function RemotesList({
         if (remaining > 0) {
           await wait(remaining);
         }
-        setBusy((prev) => {
-          const next = { ...prev };
-          delete next[busyKey(remoteName, actionName)];
-          return next;
-        });
+        // The floor exists to keep a fast answer from flashing the spinner; if the
+        // island is gone by the time it elapses there is nothing left to un-busy.
+        if (mounted.current) {
+          setBusy((prev) => {
+            const next = { ...prev };
+            delete next[busyKey(remoteName, actionName)];
+            return next;
+          });
+        }
         pendingActions.current.delete(key);
       }
     },
@@ -405,6 +418,10 @@ export function RemotesList({
 
   useEffect(() => {
     registerApi({ refresh, runSync });
+    // Handing the API back on unmount is what stops main.js's own call
+    // sites from reaching an island that no longer exists: the island's timers
+    // die with it, but the closures main.js kept would not.
+    return () => registerApi(null);
   }, [registerApi, refresh, runSync]);
 
   // The first value never waits for main.js's first refreshDashboard, which can

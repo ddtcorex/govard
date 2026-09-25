@@ -29,7 +29,7 @@ type Props = {
   onStatus(message: string): void;
   onToast(message: string, kind?: ToastKind): void;
   onFeedback(message: string, tone?: string): void;
-  registerApi(api: GlobalLogsIslandApi): void;
+  registerApi(api: GlobalLogsIslandApi | null): void;
   pollMs?: number;
 };
 
@@ -228,6 +228,10 @@ export function GlobalLogsPanel({
 
   useEffect(() => {
     registerApi({ refreshLogs, stopLive });
+    // Handing the API back on unmount is what stops main.js's own call
+    // sites from reaching an island that no longer exists: the island's timers
+    // die with it, but the closures main.js kept would not.
+    return () => registerApi(null);
   }, [registerApi, refreshLogs, stopLive]);
 
   // One effect owns the poll, so unmounting the pane is what stops it.

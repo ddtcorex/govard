@@ -248,3 +248,42 @@ test("the sync modal is a two-step machine whose confirm starts the sync", async
 
   assert.deepEqual(session.consoleErrors, []);
 });
+
+test("closing the sync modal while it is still opening leaves it closed", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+
+  // Opening awaits the backend's option list before it reveals the dialog, so a
+  // close that lands during that await has to win: otherwise the continuation
+  // reopens a dialog the user already dismissed. The delay is what makes that
+  // window reachable at all - with an instant fixture the 300 ms close animation
+  // finishes first and the bug hides behind the timing.
+  await session.evaluate(`window.__govardPreviewRouteDelayMs = 600`);
+  await session.evaluate(`(() => {
+    document.querySelector("#remotesList [data-testid='open-sync-modal'][data-preset='db']").click();
+    document.querySelector("[data-testid='close-sync-modal']").click();
+  })()`);
+
+  await new Promise((resolve) => setTimeout(resolve, 1400));
+  assert.equal(
+    await session.evaluate(`document.getElementById("${MODAL}").classList.contains("hidden")`),
+    true,
+    "a close during the open must not be overridden",
+  );
+  await session.evaluate(`window.__govardPreviewRouteDelayMs = 0`);
+  // And a later open still works, so the guard is not a latch.
+  await openModal(session, "db");
+  assert.equal(
+    await session.evaluate(`document.getElementById("syncModalRemoteName").textContent`),
+    "staging",
+  );
+
+  assert.deepEqual(session.consoleErrors, []);
+});

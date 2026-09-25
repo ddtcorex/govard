@@ -18,7 +18,7 @@ export type OnboardingIslandApi = {
 type Props = {
   controller: OnboardingController;
   registerRefs(refs: Record<string, unknown>): void;
-  registerApi(api: OnboardingIslandApi): void;
+  registerApi(api: OnboardingIslandApi | null): void;
 };
 
 /** Every element the onboarding controller writes into, resolved once it exists. */
@@ -103,12 +103,18 @@ export function OnboardingModal({
 
   useEffect(() => {
     registerRefs(collectRefs());
-    registerApi({ open });
     // main.js's bootstrap loads the framework options before React has committed
     // this markup, so the select would stay on its two static options; whichever
     // call finds no refs is a no-op inside the controller.
     void controller.loadFrameworkOptions();
-  }, [controller, registerApi, registerRefs]);
+  }, [controller, registerRefs]);
+
+  // A separate effect owns the API registration, so unmounting can hand it back:
+  // the island's own work dies with it, but the closure main.js kept would not.
+  useEffect(() => {
+    registerApi({ open });
+    return () => registerApi(null);
+  }, [registerApi, open]);
 
   return (
     <div

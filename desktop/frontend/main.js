@@ -53,12 +53,6 @@ const getLiveRefs = () => ({
   confirmMessage: byId("confirmMessage"),
   confirmCancelBtn: byId("confirmCancelBtn"),
   confirmConfirmBtn: byId("confirmConfirmBtn"),
-  confirmModal: byId("confirmModal"),
-  confirmIcon: byId("confirmIcon"),
-  confirmTitle: byId("confirmTitle"),
-  confirmMessage: byId("confirmMessage"),
-  confirmCancelBtn: byId("confirmCancelBtn"),
-  confirmConfirmBtn: byId("confirmConfirmBtn"),
   footerVersion: byId("footerVersion"),
   envVarsList: byId("envVarsList"),
 });
@@ -620,14 +614,16 @@ if (window.__govardPreviewLogsPollMs) window.__govardLogsIsland = logsIsland;
 // control they own calls back into main.js. The card buttons that open the
 // dialog live inside the list island and the dialog lives in its own mount
 // point, so the list hands the open request up and main.js routes it down.
-let remotesApi = {
+const REMOTES_API_STUB = {
   refresh: async () => {},
   runSync: async () => {},
 };
-let syncModalApi = {
+let remotesApi = REMOTES_API_STUB;
+const SYNC_MODAL_API_STUB = {
   open: async () => {},
   close: () => {},
 };
+let syncModalApi = SYNC_MODAL_API_STUB;
 
 const remotesIsland = mountIsland(
   "remotesIsland",
@@ -640,7 +636,7 @@ const remotesIsland = mountIsland(
     // the remotes list itself - the island is the reader of the same store.
     onSyncSettled: () => refreshDashboard({ silent: true }),
     registerApi: (api) => {
-      remotesApi = api;
+      remotesApi = api || REMOTES_API_STUB;
     },
   }),
 );
@@ -661,7 +657,7 @@ const syncModalIsland = mountIsland(
       });
     },
     registerApi: (api) => {
-      syncModalApi = api;
+      syncModalApi = api || SYNC_MODAL_API_STUB;
     },
   }),
 );
@@ -786,7 +782,8 @@ const onboardingController = createOnboardingController({
 // the elements it needs. The controller captured `refs` by reference, so this
 // assign is all it takes for its lookups to see them; `open-onboarding` keeps
 // calling the controller, which still owns the modal's visibility.
-let onboardingApi = { open: () => {} };
+const ONBOARDING_API_STUB = { open: () => {} };
+let onboardingApi = ONBOARDING_API_STUB;
 
 const onboardingIsland = mountIsland(
   "onboardingModalMount",
@@ -796,7 +793,7 @@ const onboardingIsland = mountIsland(
       Object.assign(refs, islandRefs);
     },
     registerApi: (api) => {
-      onboardingApi = api;
+      onboardingApi = api || ONBOARDING_API_STUB;
     },
   }),
 );
@@ -957,10 +954,11 @@ const globalServicesListIsland = mountIsland(
 // The log pane registers the two things main.js still drives in it: the two
 // refreshes and the stop-on-leave. Its poll and its three event subscriptions
 // belong to the island, so unmounting is what stops them.
-let globalLogsApi = {
+const GLOBAL_LOGS_API_STUB = {
   refreshLogs: async () => {},
   stopLive: async () => {},
 };
+let globalLogsApi = GLOBAL_LOGS_API_STUB;
 
 const globalLogsIsland = mountIsland(
   "globalLogsIsland",
@@ -970,7 +968,7 @@ const globalLogsIsland = mountIsland(
     onToast: showToast,
     onFeedback: (message, tone) => raiseActionFeedback(setState, message, tone),
     registerApi: (api) => {
-      globalLogsApi = api;
+      globalLogsApi = api || GLOBAL_LOGS_API_STUB;
     },
     pollMs: window.__govardPreviewGlobalLogsPollMs ?? 2000,
   }),
@@ -992,25 +990,6 @@ document.addEventListener("click", async (event) => {
   }
   event.preventDefault();
 
-  if (action === "switch-sidebar-mode") {
-    const mode = String(targetElement.dataset.mode || "").trim();
-    await switchSidebarMode(mode);
-    return;
-  }
-
-  if (action === "open-service-shell") {
-    // Redirect to OS Terminal
-    const project = targetElement.dataset.project || "";
-    const service = targetElement.dataset.service || "";
-    if (project && service) {
-      try {
-        await desktopBridge.startServiceTerminalInOS(project, service, "", "sh");
-      } catch (err) {
-        showToast(`Failed to launch OS Terminal: ${err}`, "error");
-      }
-    }
-    return;
-  }
   if (action === "open-onboarding") {
     // The island owns opening now: it toggles the modal the controller renders
     // into and re-asks for the framework list, which is fetched data.
@@ -1021,10 +1000,6 @@ document.addEventListener("click", async (event) => {
     setSettingsDrawerOpen(true);
     return;
   }
-  if (action === "close-settings") {
-    setSettingsDrawerOpen(false);
-    return;
-  }
   if (action === "switch-tab") {
     const tab = targetElement.dataset.tab;
     if (tab) {
@@ -1032,19 +1007,6 @@ document.addEventListener("click", async (event) => {
     }
     return;
   }
-  if (action === "open-shell") {
-    // Redirect to OS Terminal for the whole project
-    const project = getState().selectedProject;
-    if (project) {
-      try {
-        await desktopBridge.startServiceTerminalInOS(project, "web", "", "sh");
-      } catch (err) {
-        showToast(`Failed to launch OS Terminal: ${err}`, "error");
-      }
-    }
-    return;
-  }
-
 
   await actionsController.handle(action, targetElement.dataset.env || "");
 });
