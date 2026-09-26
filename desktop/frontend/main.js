@@ -566,17 +566,19 @@ const openServiceContext = async (project, service) => {
 };
 
 // The footer readout is a React island that owns its own polling interval;
-// refreshDashboard reaches it through the function it registers. The preview
-// (preview/bootstrap.js) sets a short interval so a behaviour test can observe
-// the polling stop on unmount; production never defines that global.
-let refreshMetrics = async () => null;
+// refreshDashboard reaches it through the function it registers, and the island
+// hands the stub back on unmount. The preview (preview/bootstrap.js) sets a
+// short interval so a behaviour test can observe the polling stop on unmount;
+// production never defines that global.
+const METRICS_REFRESH_STUB = async () => null;
+let refreshMetrics = METRICS_REFRESH_STUB;
 const metricsIsland = mountIsland(
   "metricsIsland",
   createElement(MetricsFooter, {
     bridge: desktopBridge,
     onStatus: setStatus,
     registerRefresh: (fn) => {
-      refreshMetrics = fn;
+      refreshMetrics = fn || METRICS_REFRESH_STUB;
     },
     intervalMs: window.__govardPreviewMetricsIntervalMs ?? 15000,
   }),
@@ -591,10 +593,11 @@ if (window.__govardPreviewMetricsIntervalMs) window.__govardMetricsIsland = metr
 // (preview/bootstrap.js) shortens the poll and exposes the island so a
 // behaviour test can watch it stop on unmount; production defines no such
 // global.
-let logsApi = {
+const LOGS_API_STUB = {
   refresh: async () => null,
   selectionChanged: async () => {},
 };
+let logsApi = LOGS_API_STUB;
 const logsIsland = mountIsland(
   "logsIsland",
   createElement(LogsTab, {
@@ -602,7 +605,7 @@ const logsIsland = mountIsland(
     onStatus: setStatus,
     onToast: showToast,
     registerController: (api) => {
-      logsApi = api;
+      logsApi = api || LOGS_API_STUB;
     },
     livePollMs: window.__govardPreviewLogsPollMs ?? 2000,
   }),

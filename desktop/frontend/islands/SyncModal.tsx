@@ -334,7 +334,7 @@ export function SyncModal({
             <button
               type="button"
               className="px-4 py-2 rounded-lg text-sm text-text-secondary dark:text-slate-300 font-medium hover:bg-primary/10 transition-colors"
-              data-testid="close-sync-modal"
+              data-testid="cancel-sync-options"
               onClick={close}
             >
               Cancel
@@ -389,7 +389,7 @@ export function SyncModal({
               <button
                 type="button"
                 className="px-4 py-2 rounded-lg text-sm text-text-secondary dark:text-slate-300 font-medium hover:bg-primary/10 transition-colors"
-                data-testid="close-sync-modal"
+                data-testid="cancel-sync-preview"
                 onClick={close}
               >
                 Cancel

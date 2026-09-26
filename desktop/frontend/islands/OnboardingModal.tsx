@@ -553,7 +553,7 @@ export function OnboardingModal({
           <div className="flex items-center gap-4">
             <button
               type="button"
-              data-testid="close-onboarding"
+              data-testid="cancel-onboarding"
               className="px-8 py-3 rounded-2xl text-text-tertiary dark:text-slate-400 text-sm font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-white/5 transition-all active:scale-95"
               onClick={() => controller.toggleModal(false)}
             >

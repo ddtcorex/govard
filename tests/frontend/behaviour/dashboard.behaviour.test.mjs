@@ -13,6 +13,13 @@ const callCount = (session, method) =>
     (c) => c.method === ${JSON.stringify(method)},
   ).length`);
 
+// main.js's refreshDashboard also calls the metrics island's registered refresh
+// function (SystemService.GetSystemMetrics), so it needs the same counter.
+const systemMetricsCalls = (session) =>
+  session.evaluate(`window.__govardPreview.getCalls().filter(
+    (c) => c.method === "GetSystemMetrics",
+  ).length`);
+
 const quiet = (session, ms) => session.evaluate(`new Promise((r) => setTimeout(r, ${ms}))`);
 
 /**
@@ -102,6 +109,25 @@ test("the sidebar list, the hero and the dashboard cards render from the fixture
   assert.equal(await session.evaluate(`document.getElementById("heroStopBtn").disabled`), false);
   assert.equal(await session.evaluate(`document.getElementById("projectGitBranchText").textContent`), "main");
   assert.equal(await session.evaluate(`document.querySelectorAll("#projectTechnologies span").length > 0`), true);
+  // The hero's project link is conditional on the URL the island computes from
+  // the selected environment (ProjectHero.tsx). dashboard_core.test.mjs only
+  // checks that the source contains the expressions, which an inverted
+  // conditional would still satisfy, so assert the rendered state instead:
+  // visible, carrying the URL localEnvironmentURL built from the fixture's
+  // domain, and pointing at it.
+  assert.equal(
+    await session.evaluate(`document.getElementById("projectUrl").classList.contains("hidden")`),
+    false,
+    "the project link is visible when the selected environment has a URL",
+  );
+  assert.equal(
+    await session.evaluate(`document.getElementById("projectUrl").getAttribute("href")`),
+    "https://sample-project.test",
+  );
+  assert.equal(
+    await session.evaluate(`document.getElementById("projectUrlText").textContent`),
+    "https://sample-project.test",
+  );
   assert.equal(
     await session.evaluate(`document.querySelectorAll("#envVarsList [data-testid='env-var-row']").length`),
     2,
@@ -118,6 +144,50 @@ test("the sidebar list, the hero and the dashboard cards render from the fixture
   const shot = await session.screenshot({ x: 0, y: 0, ...viewport });
   assert.ok(shot.length > 0, "the scenario captures the rendered dashboard");
   writeFileSync(join(tmpdir(), "dashboard-island.png"), shot);
+
+  assert.deepEqual(session.consoleErrors, []);
+});
+
+// The logs controller and the footer refresh function are the two imperative
+// APIs main.js itself calls from refreshDashboard. An island that unmounts has
+// to hand its stub back, or that refresh runs a closure whose island is gone:
+// the backend call still leaves the app, the answer just has nowhere to render.
+// The interval assertions in the logs and metrics scenarios only cover the
+// islands' own timers, not main.js's references to them.
+test("a dashboard refresh after the islands unmount reaches their stubs", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+  await loadDashboardFixture(session);
+
+  await session.evaluate(`window.__govardLogsIsland.unmount()`);
+  await session.evaluate(`window.__govardMetricsIsland.unmount()`);
+  // Let an in-flight poll land before the baseline is taken.
+  await quiet(session, 1500);
+  const logsBefore = await callCount(session, "GetLogsForService");
+  const metricsBefore = await systemMetricsCalls(session);
+
+  const dashboardsBefore = await callCount(session, "GetDashboard");
+  await session.evaluate(`document.getElementById("refresh").click()`);
+  // GetDashboard resolves before refreshDashboard calls either registered
+  // function, so its arrival is the signal that the refresh is under way. The
+  // expression is evaluated page-side on every poll, not interpolated once.
+  await session.waitFor(
+    `window.__govardPreview.getCalls().filter((c) => c.method === "GetDashboard").length > ${dashboardsBefore}`,
+    true,
+    { timeoutMs: 10000 },
+  );
+  await quiet(session, 800);
+
+  assert.equal(
+    await callCount(session, "GetLogsForService"),
+    logsBefore,
+    "refreshDashboard reached the unmounted logs island",
+  );
+  assert.equal(
+    await systemMetricsCalls(session),
+    metricsBefore,
+    "refreshDashboard reached the unmounted metrics island",
+  );
 
   assert.deepEqual(session.consoleErrors, []);
 });

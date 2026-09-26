@@ -88,3 +88,59 @@ test("every refs entry names an element in index.html", () => {
   const missing = ids.filter((id) => !html.includes(`id="${id}"`));
   assert.deepEqual(missing, [], "refs entries whose element is not in index.html");
 });
+
+// An island that publishes an imperative API owns the thing main.js later calls,
+// so it has to hand it back when it unmounts: the island's own timers die with
+// it, but the reference main.js kept does not. Passing null restores the stub
+// main.js started from, which is why every registrar has to be null-tolerant
+// (`X = api || X_STUB`).
+//
+// The registrars in scope are the ones that publish behaviour main.js invokes -
+// registerApi, registerController, registerRefresh. registerRefs and
+// registerSkeleton publish DOM elements instead: after unmount React no-ops the
+// state setter behind them and the next refresh re-resolves the refs, so they
+// are deliberately out of scope here.
+//
+// This is the class #452 fixed in four islands but missed in the two that
+// predate it (LogsTab's registerController, MetricsFooter's registerRefresh);
+// the review of the release range found the first one by reading, which is
+// exactly the kind of gap a mechanical check should own.
+test("every island that publishes an imperative API hands it back on unmount", () => {
+  const apiRegistrars = ["registerApi", "registerController", "registerRefresh"];
+  const publishers = [];
+  for (const file of islandFiles) {
+    const src = readFileSync(new URL(file, ISLANDS_DIR), "utf8");
+    for (const registrar of apiRegistrars) {
+      if (!src.includes(`${registrar}(`)) continue;
+      publishers.push({ file, registrar });
+      assert.ok(
+        src.includes(`${registrar}(null)`),
+        `${file} calls ${registrar}(...) but never hands it back; ` +
+          `return () => ${registrar}(null) from the registering effect and make the ` +
+          `registrar in main.js null-tolerant (api || STUB)`,
+      );
+    }
+  }
+  // Not a size target: this only proves the scan matched anything at all, so a
+  // renamed registrar cannot make the loop above vacuous.
+  assert.ok(
+    publishers.length >= 5,
+    `expected at least five island/registrar pairs to check, found ${publishers.length}`,
+  );
+});
+
+// A data-testid is a handle a scenario reaches for with querySelector, so two
+// elements in one island sharing a name make the click land on whichever the
+// DOM happens to put first. The sync dialog shipped three (the header close and
+// both wizard C-cancels) and the onboarding wizard two; both are distinct
+// controls, so they get distinct names.
+test("no island reuses a data-testid", () => {
+  for (const file of islandFiles) {
+    const src = readFileSync(new URL(file, ISLANDS_DIR), "utf8");
+    const seen = new Set();
+    for (const [, id] of src.matchAll(/data-testid="([^"]+)"/g)) {
+      assert.ok(!seen.has(id), `${file} uses data-testid="${id}" twice; give each control its own name`);
+      seen.add(id);
+    }
+  }
+});
