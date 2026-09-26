@@ -23,7 +23,10 @@ func Run(assets fs.FS) error {
 	registerEvents()
 
 	app := application.New(application.Options{
-		Name:     "Govard Desktop",
+		Name: "Govard Desktop",
+		// The Wayland surface app_id is the GtkApplication id, and GNOME matches
+		// it against the installed "<id>.desktop": see DesktopApplicationID.
+		Linux:    application.LinuxOptions{ApplicationID: DesktopApplicationID},
 		Services: desk.boundServices(),
 		Assets:   application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		SingleInstance: &application.SingleInstanceOptions{

@@ -13,6 +13,21 @@ const (
 	desktopSingleInstanceLockID = "govard.desktop.app"
 )
 
+// DesktopApplicationID is the GTK application id of the desktop app, and — with
+// the ".desktop" suffix — the name of the launcher the deb installs.
+//
+// On Wayland this id alone decides which launcher the window belongs to: GNOME
+// Shell takes the GTK application id off the surface and looks up the desktop
+// file id "<application id>.desktop" (gnome-shell src/shell-window-tracker.c,
+// get_app_from_id). Wails derives "org.wails.<sanitised Options.Name>" whenever
+// LinuxOptions leaves ApplicationID empty, that id matches no installed desktop
+// file, and the window becomes a window-backed app: a second, differently named
+// icon appears next to the pinned launcher. The value must also satisfy
+// g_application_id_is_valid() — two or more '.'-separated elements of
+// [A-Za-z0-9_-], none starting with a digit — or GTK refuses it and Wails falls
+// back to the derived id again.
+const DesktopApplicationID = "io.github.ddtcorex.govard"
+
 type LaunchOptions struct {
 	Background bool
 }

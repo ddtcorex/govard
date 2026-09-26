@@ -154,8 +154,8 @@ nfpms:
       - libgtk-4-1
       - libnss3-tools
     contents:
-      - src: ./packaging/linux/govard.desktop
-        dst: /usr/share/applications/govard.desktop
+      - src: ./packaging/linux/io.github.ddtcorex.govard.desktop
+        dst: /usr/share/applications/io.github.ddtcorex.govard.desktop
       - src: ./packaging/icons/govard.svg
         dst: /usr/share/icons/hicolor/scalable/apps/govard.svg
       - src: ./packaging/icons/govard.svg
