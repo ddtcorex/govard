@@ -1,6 +1,9 @@
 package desktop
 
-const trayName = "Govard Desktop"
+// trayName is the name the tray shows, and deliberately the same string the
+// launcher (Name= in the desktop entry) and the window title use: a tray that
+// disagrees with the dock reads as a second application.
+const trayName = "Govard"
 
 // trayBrander is the part of *application.SystemTray that names the tray.
 type trayBrander interface {
