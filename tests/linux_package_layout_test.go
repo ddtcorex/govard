@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"govard/internal/desktop"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -69,25 +71,30 @@ func TestLinuxPackageLayout(t *testing.T) {
 		}
 	}
 
-	desktop := findReleaseNFPM(t, config.NFPMS, "govard-desktop")
-	if desktop.PackageName != "govard-desktop" {
-		t.Errorf("Desktop package name = %q, want govard-desktop", desktop.PackageName)
+	desktopPkg := findReleaseNFPM(t, config.NFPMS, "govard-desktop")
+	if desktopPkg.PackageName != "govard-desktop" {
+		t.Errorf("Desktop package name = %q, want govard-desktop", desktopPkg.PackageName)
 	}
-	if !slices.Equal(desktop.IDs, []string{"govard-desktop"}) {
-		t.Errorf("Desktop build IDs = %v, want [govard-desktop]", desktop.IDs)
+	if !slices.Equal(desktopPkg.IDs, []string{"govard-desktop"}) {
+		t.Errorf("Desktop build IDs = %v, want [govard-desktop]", desktopPkg.IDs)
 	}
-	if !strings.HasPrefix(desktop.FileNameTemplate, "govard-desktop_") {
-		t.Errorf("Desktop file name template = %q, want govard-desktop artifact prefix", desktop.FileNameTemplate)
+	if !strings.HasPrefix(desktopPkg.FileNameTemplate, "govard-desktop_") {
+		t.Errorf("Desktop file name template = %q, want govard-desktop artifact prefix", desktopPkg.FileNameTemplate)
 	}
 	for _, dependency := range []string{"govard", "libwebkitgtk-6.0-4", "libgtk-4-1", "libnss3-tools"} {
-		if !slices.Contains(desktop.Dependencies, dependency) {
-			t.Errorf("Desktop dependencies = %v, want %q", desktop.Dependencies, dependency)
+		if !slices.Contains(desktopPkg.Dependencies, dependency) {
+			t.Errorf("Desktop dependencies = %v, want %q", desktopPkg.Dependencies, dependency)
 		}
 	}
-	if !releaseNFPMHasContent(desktop, "./packaging/linux/govard.desktop", "/usr/share/applications/govard.desktop") {
-		t.Error("Desktop package is missing the application launcher")
+	// The launcher name is the application id plus ".desktop", because that is
+	// the id GNOME Shell looks up for a Wayland window (see
+	// tests/linux_desktop_entry_test.go); derive both ends from the constant so
+	// the two cannot drift apart again.
+	launcher := desktop.DesktopApplicationID + ".desktop"
+	if !releaseNFPMHasContent(desktopPkg, "./packaging/linux/"+launcher, "/usr/share/applications/"+launcher) {
+		t.Errorf("Desktop package is missing the application launcher %q", launcher)
 	}
-	if !releaseNFPMHasContent(desktop, "./packaging/icons/govard.svg", "/usr/share/icons/hicolor/scalable/apps/govard.svg") {
+	if !releaseNFPMHasContent(desktopPkg, "./packaging/icons/govard.svg", "/usr/share/icons/hicolor/scalable/apps/govard.svg") {
 		t.Error("Desktop package is missing the scalable application icon")
 	}
 }

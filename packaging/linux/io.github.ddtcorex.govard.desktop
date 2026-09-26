@@ -8,6 +8,6 @@ Exec=govard-desktop
 Icon=govard
 Terminal=false
 StartupNotify=true
-StartupWMClass=govard-desktop
+StartupWMClass=io.github.ddtcorex.govard
 Categories=Development;Utility;
 Keywords=govard;docker;php;local;development;

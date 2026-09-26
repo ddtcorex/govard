@@ -223,6 +223,18 @@ dự án (dự án đang chạy lên trước), start/stop, mở trên trình du
 | Linux, Ubuntu 22.04 / Debian 12 | Không | Chỉ cài CLI; không có WebKitGTK 6.0 |
 | macOS | Chưa | Gói chỉ có CLI; `govard self-update` giữ nguyên binary desktop đang cài |
 
+### Danh tính launcher trên Linux
+
+Gói deb cài launcher với tên `io.github.ddtcorex.govard.desktop`, và ứng dụng
+desktop công bố đúng chuỗi đó làm GTK application id (`DesktopApplicationID`
+trong `internal/desktop/launch.go`). Trên Wayland, GNOME gom cửa sổ vào launcher
+theo id này: nó tra file desktop `"<application id>.desktop"` và **không** dùng
+`StartupWMClass` cho surface Wayland. Cửa sổ có id không khớp launcher nào sẽ
+thành window-backed app, nên dock hiện thêm một icon thứ hai với tên khác bên
+cạnh icon đã ghim. Hằng số, tên file trong `packaging/linux/`, `StartupWMClass`
+và mục GoReleaser phải luôn khớp nhau — `tests/linux_desktop_entry_test.go` sẽ
+fail nếu chúng lệch.
+
 ---
 
 ## Ghi chú về Kiến trúc (Architecture Notes)

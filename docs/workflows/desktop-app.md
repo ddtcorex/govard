@@ -223,6 +223,19 @@ ones first, starts and stops them, opens them in the browser, and quits.
 | Linux, Ubuntu 22.04 / Debian 12 | No | The CLI installs; no WebKitGTK 6.0 |
 | macOS | Not yet | The package ships the CLI only; `govard self-update` leaves an installed desktop binary unchanged |
 
+### Launcher identity on Linux
+
+The deb installs its launcher as `io.github.ddtcorex.govard.desktop`, and the
+desktop app advertises that same string as its GTK application id
+(`DesktopApplicationID` in `internal/desktop/launch.go`). On Wayland that id is
+what GNOME groups windows by: it looks up the desktop file
+`"<application id>.desktop"` and does not fall back to `StartupWMClass` for a
+Wayland surface. A window whose id matches no launcher becomes a window-backed
+app, so the dock shows a second, differently named icon next to the pinned one.
+Keep the constant, the file name under `packaging/linux/`, its `StartupWMClass`
+and the GoReleaser entry in lockstep — `tests/linux_desktop_entry_test.go` fails
+when they drift.
+
 ---
 
 ## Architecture Notes

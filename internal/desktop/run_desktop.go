@@ -23,7 +23,10 @@ func Run(assets fs.FS) error {
 	registerEvents()
 
 	app := application.New(application.Options{
-		Name:     "Govard Desktop",
+		Name: "Govard",
+		// The Wayland surface app_id is the GtkApplication id, and GNOME matches
+		// it against the installed "<id>.desktop": see DesktopApplicationID.
+		Linux:    application.LinuxOptions{ApplicationID: DesktopApplicationID},
 		Services: desk.boundServices(),
 		Assets:   application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		SingleInstance: &application.SingleInstanceOptions{
@@ -34,7 +37,7 @@ func Run(assets fs.FS) error {
 		},
 	})
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "Govard Desktop",
+		Title:  "Govard",
 		Width:  1200,
 		Height: 800,
 		URL:    "/index.html",
