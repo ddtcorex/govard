@@ -7,7 +7,7 @@ type Metrics = { systemCPU: number; systemMemory: number };
 type Props = {
   bridge: { getSystemMetrics(): Promise<unknown> };
   onStatus(message: string): void;
-  registerRefresh(fn: (opts?: RefreshOptions) => Promise<Metrics | null>): void;
+  registerRefresh(fn: ((opts?: RefreshOptions) => Promise<Metrics | null>) | null): void;
   intervalMs?: number;
 };
 
@@ -46,7 +46,13 @@ export function MetricsFooter({ bridge, onStatus, registerRefresh, intervalMs = 
     // readout never waits a full interval for its first value.
     void refresh({ silent: true });
     const timer = setInterval(() => void refresh({ silent: true }), intervalMs);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      // Handing the function back on unmount is what stops main.js's own call
+      // sites from reaching an island that no longer exists (the same contract
+      // the other islands follow with registerApi(null)).
+      registerRefresh(null);
+    };
   }, [refresh, registerRefresh, intervalMs]);
 
   return (

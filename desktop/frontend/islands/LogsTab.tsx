@@ -28,7 +28,7 @@ type Props = {
   bridge: LogsBridge;
   onStatus(message: string): void;
   onToast(message: string, kind?: ToastKind): void;
-  registerController(api: LogsIslandApi): void;
+  registerController(api: LogsIslandApi | null): void;
   livePollMs?: number;
 };
 
@@ -225,6 +225,12 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
 
   useEffect(() => {
     registerController({ refresh: load, selectionChanged });
+    // Handing the API back on unmount is what stops main.js's own call sites
+    // from reaching an island that no longer exists: the island's timers die
+    // with it, but the closures main.js kept would not (the same contract the
+    // remotes, sync, global-logs and onboarding islands follow with
+    // registerApi(null)).
+    return () => registerController(null);
   }, [registerController, load, selectionChanged]);
 
   // The first value never waits for main.js's first refreshDashboard, which can
