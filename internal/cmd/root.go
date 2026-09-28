@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"govard/internal/conventions"
 	"io"
@@ -147,6 +148,13 @@ func Execute() {
 		command = executed.CommandPath()
 	}
 	err = asUsageIfArgumentError(err)
+	// An error that already wrote its own human-facing message must not also get
+	// an envelope: two JSON documents on stdout are unparseable. The exit code
+	// is unchanged.
+	var reported interface{ AlreadyReported() bool }
+	if errors.As(err, &reported) && reported.AlreadyReported() {
+		os.Exit(cli.Code(err))
+	}
 	if errorJSON {
 		if raw, marshalErr := cli.NewErrorEnvelope(command, err).JSON(); marshalErr == nil {
 			fmt.Println(string(raw))
