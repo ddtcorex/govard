@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,10 +15,20 @@ import (
 	"govard/internal/runtime"
 )
 
-// ErrItemsFailed marks a checklist run that completed with red items. It is a
-// plain error on purpose: the process must exit 1 (execution), because 2 is
+// itemsFailedError marks a checklist run that completed with red items. It is a
+// plain execution error on purpose: the process must exit 1, because 2 is
 // reserved for USAGE and a failing checklist is not a usage mistake.
-var ErrItemsFailed = errors.New("verify: one or more checklist items failed")
+type itemsFailedError struct{}
+
+func (e *itemsFailedError) Error() string { return "verify: one or more checklist items failed" }
+
+// AlreadyReported tells the CLI that the human-facing message for this failure
+// has already been written (to stderr), so `--error-json` must not append a
+// second JSON document to stdout and leave two documents there.
+func (e *itemsFailedError) AlreadyReported() bool { return true }
+
+// ErrItemsFailed is returned when at least one checklist item failed.
+var ErrItemsFailed = &itemsFailedError{}
 
 // summarise turns a finished run into the process verdict. The JSON already
 // carries per-item detail; this is what a CI step branches on.
@@ -152,6 +161,13 @@ Examples:
 				}
 				res, err := verify.RunPhase(ctx, cfg, p, opts)
 				if err != nil {
+					// A gate block is reported as a JSON envelope, exactly like
+					// the explicit phase-5 checks above; returning silently left
+					// stdout empty for a consumer that asked for --json.
+					if err == verify.ErrNeedSnapshot || err == verify.ErrNeedAllowDestructive {
+						payload, _ := json.Marshal(map[string]string{"error": err.Error()})
+						fmt.Fprintln(cmd.OutOrStdout(), string(payload))
+					}
 					return err
 				}
 				if !first {

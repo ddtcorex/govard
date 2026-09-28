@@ -67,3 +67,23 @@ func TestVerifyCommandPhase1JSON(t *testing.T) {
 		t.Fatalf("exit code %d with no red item(s), want 0\nstdout: %s", result.ExitCode, result.Stdout)
 	}
 }
+
+// TestVerifyCommandRedRunWithErrorJSONWritesOneDocument pins that --json and
+// --error-json together still leave ONE document on stdout: the verdict message
+// is already on stderr, so the CLI must not append an envelope after the run
+// artifact. Two JSON documents are unparseable for every machine consumer.
+func TestVerifyCommandRedRunWithErrorJSONWritesOneDocument(t *testing.T) {
+	env := NewTestEnvironment(t)
+	dir := env.CreateTestProject(t, "verify-error-json", map[string]string{
+		".govard.yml": "project_name: verify-test3\nframework: magento2\ndomain: verify-test3.test\n",
+	})
+	result := env.RunGovardWithEnv(t, dir, nil, "verify", "--phase", "1", "--json", "--error-json")
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.Stdout), &payload); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\nstdout: %s", err, result.Stdout)
+	}
+	if result.ExitCode == 0 {
+		t.Fatalf("a red checklist must exit non-zero; stdout: %s", result.Stdout)
+	}
+}

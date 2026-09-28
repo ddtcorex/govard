@@ -105,3 +105,26 @@ func TestVerifyAllPhasesRecomputesTheMergedVerdict(t *testing.T) {
 		t.Fatalf("phase = %v, want \"all\"", payload["phase"])
 	}
 }
+
+// TestVerifyAllPhasesJSONReportsASnapshotGateBlock pins the envelope on the
+// aggregate path: a snapshot-gate block must still leave a JSON document on
+// stdout. Returning silently left it empty for a consumer that asked for --json.
+func TestVerifyAllPhasesJSONReportsASnapshotGateBlock(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	project := t.TempDir() // no snapshot, so no phase-4 artifact can satisfy the gate
+
+	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, _ ...string) (verify.Evidence, bool) {
+		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok"}, true
+	})
+	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
+
+	// --allow-destructive is passed so the run reaches the snapshot gate rather
+	// than stopping at the missing flag; every item is faked, so nothing runs.
+	payload, err := runVerifyAllPhases(t, project, "--allow-destructive")
+	if !errors.Is(err, verify.ErrNeedSnapshot) {
+		t.Fatalf("Execute() = %v, want ErrNeedSnapshot", err)
+	}
+	if _, ok := payload["error"]; !ok {
+		t.Fatalf("stdout carried no gate envelope: %v", payload)
+	}
+}
