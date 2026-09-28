@@ -518,9 +518,13 @@ govard verify --project /path/to/project --json
 
 Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--checks`/`--lint-jobs` được chuyển tiếp tới các mục gọi `govard audit`.
 
-Gates: Pha 5 yêu cầu `P4-08 exit 0` trong `~/.govard/verify-runs/<ISO>-phase4.json` (snapshot) VÀ `--allow-destructive`. Thiếu snapshot → `need snapshot create (P4-08) first`. Thiếu flag → `need --allow-destructive for phase 5`. `--plan` bỏ qua cả hai gates (dry-run). Ghi remote là `READ-ONLY` (`--plan` only); `LOCAL-WRITE` sau snapshot.
+Gates: Pha 5 yêu cầu snapshot **của chính project này** — một lần chạy pha 4 thật (không phải `--plan`) cho cùng project, có `P4-08` exit `0` và snapshot được ghi lại vẫn còn dùng được trên đĩa — VÀ `--allow-destructive`. Thiếu → `need snapshot create (P4-08) first`; thiếu flag → `need --allow-destructive for phase 5`. Lần chạy `--plan` không thoả gate nào và không ghi gì. `P4-08` ghi lại tên snapshot nó tạo và `P5-05` restore đúng tên đó, nên restore không thể lấy nhầm snapshot khác được tạo ở giữa. Ghi remote là `READ-ONLY` (`--plan` only); `LOCAL-WRITE` sau snapshot.
 
-Outputs: `~/.govard/verify-runs/<ISO>-phaseN.json` với `{govard_version, project_sha, phase, items:[{id, command, duration_ms, exit_code, retries, evidence_excerpt, json_valid}]}`. `~/.govard/checklist-runs/` cũ được migrate lần đầu. `phase 0/all --json` xuất một JSON duy nhất `phase: "all"` với `items` gộp.
+Exit codes: `0` mọi mục đều pass; `1` có mục fail **hoặc** một gate của pha chặn lần chạy (thông báo nêu rõ gate nào). `2`/`3`/`4` giữ nguyên nghĩa toàn cục (usage / capability / config) — checklist đỏ là lỗi thực thi, không bao giờ là lỗi dùng lệnh. Script nên rẽ nhánh theo mã này và đọc chi tiết từng mục từ `--json`.
+
+Outputs: `<govard home>/verify-runs/<project-id>/<ISO>-phaseN.json`, với `project-id` là hash của đường dẫn chuẩn hoá của project, gồm `{govard_version, project_sha, project_id, phase, mode, status, items:[{id, command, duration_ms, exit_code, retries, evidence_excerpt, json_valid, artifacts}]}`. `mode` là `run` hoặc `plan`; `status` là `passed` hoặc `failed`; `artifacts` nêu thứ mà mục đó tạo ra (snapshot của `P4-08`, chính là thứ `P5-05` restore). `~/.govard/checklist-runs/` cũ được migrate lần đầu; artifact tạo trước khi có project-scoping (nằm phẳng ở gốc `verify-runs/`) không mang danh tính project nên không bao giờ thoả gate. `phase 0/all --json` xuất một JSON duy nhất `phase: "all"` với `status` được tính lại và `items` gộp.
+
+`GOVARD_VERIFY_BIN` ghim binary mà các mục checklist thực thi. Không đặt thì binary đang chạy sẽ thực thi chúng, và `PATH` chỉ là phương án cuối — để kiểm chứng một bản build từ source, hãy chạy chính bản build đó và đặt biến này (hoặc đảm bảo nó đứng đầu `PATH`), vì `govard` trần có thể là bản cài cũ hơn.
 
 Tự động phát hiện framework qua `engine.DetectFramework` khi thiếu `.govard.yml` (nên project mới có `artisan`/`composer.json` được nhận diện `laravel` v.v.).
 
