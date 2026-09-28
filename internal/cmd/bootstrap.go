@@ -150,8 +150,13 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 		}
 		operationSource = opts.Source
 
-		if err := ensureBootstrapInit(cmd, cwd); err != nil {
-			return err
+		// `govard init` creates `.govard.yml` and renders the project's compose
+		// and proxy config. A --plan run must not write any of that, so it is
+		// skipped here: the plan reports what the run *would* do.
+		if !opts.Plan {
+			if err := bootstrapEnsureInit(cmd, cwd); err != nil {
+				return err
+			}
 		}
 
 		config, err := loadFullConfig()
@@ -273,6 +278,18 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 		pterm.Success.Printf("Bootstrap completed in %s.\n", time.Since(startedAt).Round(time.Second))
 		return nil
 	},
+}
+
+// bootstrapEnsureInit is the seam the project-initialisation step runs through,
+// so a test can prove --plan never creates .govard.yml or renders compose config.
+var bootstrapEnsureInit = ensureBootstrapInit
+
+// SetBootstrapEnsureInitForTest replaces the init step and returns a restore
+// function.
+func SetBootstrapEnsureInitForTest(fn func(*cobra.Command, string) error) func() {
+	original := bootstrapEnsureInit
+	bootstrapEnsureInit = fn
+	return func() { bootstrapEnsureInit = original }
 }
 
 // bootstrapFreshInstall is the seam the fresh path runs through, so a test can

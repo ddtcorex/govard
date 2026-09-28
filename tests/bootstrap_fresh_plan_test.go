@@ -3,6 +3,9 @@ package tests
 import (
 	"bytes"
 	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -104,5 +107,64 @@ func TestBootstrapFreshInstallSeamIsLiveUnderNoPlan(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("the fresh install seam did not fire without --plan; the detector is dead")
+	}
+}
+
+// TestBootstrapFreshPlanDoesNotNameMagentaPackageForLaravel pins the sentinel
+// handling: opts.MetaPackage arrives pre-filled with the Magento default, and a
+// framework that declares no fresh meta package of its own must not have
+// Magento's named in its plan.
+func TestBootstrapFreshPlanDoesNotNameMagentaPackageForLaravel(t *testing.T) {
+	lines, err := cmd.BuildBootstrapFreshPlanForTest(
+		engine.Config{ProjectName: "sample-laravel", Framework: "laravel"},
+		"laravel",
+		cmd.BootstrapRuntimeOptions{
+			Plan:        true,
+			MetaPackage: "magento/project-community-edition", // what the flag default supplies
+		},
+	)
+	if err != nil {
+		t.Fatalf("BuildBootstrapFreshPlanForTest: %v", err)
+	}
+	joined := strings.Join(lines, "\n")
+	if strings.Contains(joined, "magento/project-community-edition") {
+		t.Fatalf("a Laravel plan named Magento's package:\n%s", joined)
+	}
+	if !strings.Contains(strings.ToLower(joined), "laravel") {
+		t.Fatalf("a Laravel plan does not name Laravel:\n%s", joined)
+	}
+}
+
+// TestBootstrapPlanDoesNotInitialiseTheProject pins the "--plan touches nothing"
+// promise at the step that broke it: the command used to run `govard init`
+// (creating .govard.yml and rendering compose/proxy config under the govard
+// home) before any plan existed.
+func TestBootstrapPlanDoesNotInitialiseTheProject(t *testing.T) {
+	initialised := false
+	restore := cmd.SetBootstrapEnsureInitForTest(func(*cobra.Command, string) error {
+		initialised = true
+		return errors.New("init must not run under --plan")
+	})
+	defer restore()
+
+	project := t.TempDir()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(project); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	t.Setenv("GOVARD_HOME_DIR", filepath.Join(project, "govard-home"))
+
+	root := cmd.RootCommandForTest()
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"bootstrap", "--fresh", "--plan"})
+	_ = root.Execute()
+
+	if initialised {
+		t.Fatal("--plan ran the project initialisation step")
 	}
 }

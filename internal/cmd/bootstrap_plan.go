@@ -128,8 +128,12 @@ func buildBootstrapFreshPlan(config engine.Config, def types.FrameworkDefinition
 		plan.Commands = append(plan.Commands, "govard env up --remove-orphans")
 	}
 
+	// opts.MetaPackage arrives pre-filled with the Magento sentinel unless the
+	// operator passed --meta-package, so the sentinel means "nobody chose this":
+	// the framework's own default applies, and a framework that declares none
+	// (Laravel, Symfony, WordPress) gets no package named rather than Magento's.
 	meta := strings.TrimSpace(opts.MetaPackage)
-	if meta == "" {
+	if meta == defaultBootstrapMetaPackage {
 		meta = strings.TrimSpace(def.DefaultFreshMetaPackage)
 	}
 	version := strings.TrimSpace(opts.MetaVersion)
