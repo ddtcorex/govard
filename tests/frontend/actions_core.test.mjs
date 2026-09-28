@@ -63,3 +63,41 @@ test("delete confirm escapes the project name", async () => {
   assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
   assert.match(html, /PERMANENTLY delete project/);
 });
+
+// An environment action raises the sidebar's loading frame before it runs, and
+// only the dashboard refresh closes it. The success path refreshed; the failure
+// path did not, so a failed start/stop/restart left the skeleton up until some
+// unrelated refresh happened. The frame is modelled here the way main.js wires
+// it: renderSkeletons raises it and refreshDashboard publishes and lowers it.
+test("a failed environment action still closes the loading frame it raised", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { createActionsController } = await loadActionsModule();
+  let loading = false;
+  const refreshes = [];
+  const toasts = [];
+  const controller = createActionsController({
+    bridge: {
+      startEnvironment: async () => {
+        throw new Error("compose up failed");
+      },
+    },
+    getProject: () => "sample-project",
+    refreshDashboard: async (options) => {
+      refreshes.push(options);
+      loading = false;
+    },
+    renderSkeletons: () => {
+      loading = true;
+    },
+    onStatus: () => {},
+    onToast: (message, tone) => toasts.push({ message, tone }),
+  });
+
+  await controller.handle("env-start");
+
+  assert.equal(loading, false, "the loading frame must not outlive a failed action");
+  assert.deepEqual(refreshes, [{ silent: true }], "the failure path refreshes once, silently");
+  assert.equal(toasts.length, 1);
+  assert.equal(toasts[0].tone, "error");
+  assert.match(toasts[0].message, /compose up failed/);
+});
