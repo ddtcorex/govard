@@ -253,21 +253,14 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 				return err
 			}
 		} else {
-			startEnvBeforeFreshInstall := !opts.SkipUp && frameworkRequiresRunningEnvForFreshInstall(config.Framework)
-			if startEnvBeforeFreshInstall {
-				if err := runGovardSubcommand(cmd, "env", "up", "--remove-orphans"); err != nil {
-					return fmt.Errorf("failed to start local environment: %w", err)
-				}
-			}
-
-			pterm.Info.Printf("Bootstrapping fresh %s project...\n", config.Framework)
-			if err := runBootstrapFrameworkFreshInstall(cmd, config, opts); err != nil {
+			planned, err := runBootstrapFresh(cmd, config, opts)
+			if err != nil {
 				return err
 			}
-			if !opts.SkipUp && !startEnvBeforeFreshInstall && !frameworkFreshInstallManagesOwnEnvUp(config.Framework) {
-				if err := runGovardSubcommand(cmd, "env", "up", "--remove-orphans"); err != nil {
-					return fmt.Errorf("failed to start local environment: %w", err)
-				}
+			if planned {
+				// --plan printed the intent and touched nothing; there is no
+				// completed bootstrap to report.
+				return nil
 			}
 		}
 
@@ -280,6 +273,64 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 		pterm.Success.Printf("Bootstrap completed in %s.\n", time.Since(startedAt).Round(time.Second))
 		return nil
 	},
+}
+
+// bootstrapFreshInstall is the seam the fresh path runs through, so a test can
+// prove --plan never reaches it.
+var bootstrapFreshInstall = runBootstrapFrameworkFreshInstall
+
+// SetBootstrapFreshInstallForTest replaces the fresh-install step and returns a
+// restore function.
+func SetBootstrapFreshInstallForTest(fn func(*cobra.Command, engine.Config, BootstrapRuntimeOptions) error) func() {
+	original := bootstrapFreshInstall
+	bootstrapFreshInstall = fn
+	return func() { bootstrapFreshInstall = original }
+}
+
+// RunBootstrapFreshForTest exposes runBootstrapFresh for tests in /tests.
+func RunBootstrapFreshForTest(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) (bool, error) {
+	return runBootstrapFresh(cmd, config, opts)
+}
+
+// runBootstrapFresh performs a fresh install, or prints the plan and returns
+// planned=true without touching anything when opts.Plan is set.
+//
+// The plan short-circuit must stay above every write: this path used to ignore
+// --plan entirely and rewrite composer.lock and app/etc/config.php on what the
+// operator believed was a dry run (issue #460). The caller falls through to the
+// completion banner only when planned is false, so a real fresh install keeps
+// the output it always had.
+func runBootstrapFresh(cmd *cobra.Command, config engine.Config, opts BootstrapRuntimeOptions) (planned bool, err error) {
+	def, ok := frameworks.Get(strings.ToLower(strings.TrimSpace(config.Framework)))
+	if !ok {
+		return false, fmt.Errorf("fresh install not supported for framework: %s", config.Framework)
+	}
+
+	if opts.Plan {
+		plan := buildBootstrapFreshPlan(config, def, opts)
+		for _, line := range buildBootstrapFreshPlanSummary(config, def, opts, plan) {
+			fmt.Fprintln(cmd.OutOrStdout(), line)
+		}
+		return true, nil
+	}
+
+	startEnvBeforeFreshInstall := !opts.SkipUp && frameworkRequiresRunningEnvForFreshInstall(config.Framework)
+	if startEnvBeforeFreshInstall {
+		if err := runGovardSubcommand(cmd, "env", "up", "--remove-orphans"); err != nil {
+			return false, fmt.Errorf("failed to start local environment: %w", err)
+		}
+	}
+
+	pterm.Info.Printf("Bootstrapping fresh %s project...\n", config.Framework)
+	if err := bootstrapFreshInstall(cmd, config, opts); err != nil {
+		return false, err
+	}
+	if !opts.SkipUp && !startEnvBeforeFreshInstall && !frameworkFreshInstallManagesOwnEnvUp(config.Framework) {
+		if err := runGovardSubcommand(cmd, "env", "up", "--remove-orphans"); err != nil {
+			return false, fmt.Errorf("failed to start local environment: %w", err)
+		}
+	}
+	return false, nil
 }
 
 func ensureBootstrapInit(cmd *cobra.Command, cwd string) error {

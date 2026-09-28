@@ -6,6 +6,7 @@ import (
 
 	"govard/internal/engine"
 	"govard/internal/frameworks"
+	"govard/internal/frameworks/types"
 
 	"github.com/pterm/pterm"
 )
@@ -109,4 +110,83 @@ func buildBootstrapPlanSummary(config engine.Config, source string, execution bo
 	}
 
 	return lines
+}
+
+// buildBootstrapFreshPlan describes a fresh install from metadata the framework
+// already declares. It deliberately does not enumerate framework internals: a
+// framework that needs more detail exposes it through the registry rather than
+// a name switch here (see AGENTS.md on framework-name branching).
+func buildBootstrapFreshPlan(config engine.Config, def types.FrameworkDefinition, opts BootstrapRuntimeOptions) bootstrapExecutionPlan {
+	plan := bootstrapExecutionPlan{}
+	display := strings.TrimSpace(def.DisplayName)
+	if display == "" {
+		display = config.Framework
+	}
+
+	if !opts.SkipUp {
+		plan.Descriptions = append(plan.Descriptions, "Creating local project scaffolding and starting the environment...")
+		plan.Commands = append(plan.Commands, "govard env up --remove-orphans")
+	}
+
+	meta := strings.TrimSpace(opts.MetaPackage)
+	if meta == "" {
+		meta = strings.TrimSpace(def.DefaultFreshMetaPackage)
+	}
+	version := strings.TrimSpace(opts.MetaVersion)
+	install := fmt.Sprintf("Creating a fresh %s project", display)
+	if meta != "" {
+		install += fmt.Sprintf(" from package %s", meta)
+	}
+	if version != "" {
+		install += fmt.Sprintf(" at version %s", version)
+	}
+	plan.Descriptions = append(plan.Descriptions, install+"...")
+	plan.Commands = append(plan.Commands, "govard tool composer create-project (framework fresh install)")
+
+	if def.FreshInstallNeedsDB {
+		plan.Descriptions = append(plan.Descriptions, "Configuring database credentials for the fresh install...")
+		plan.Commands = append(plan.Commands, "govard config auto")
+	}
+	if opts.HyvaInstall {
+		plan.Descriptions = append(plan.Descriptions, "Installing the Hyva theme...")
+		plan.Commands = append(plan.Commands, "govard bootstrap hyva install")
+	}
+	if opts.IncludeSample {
+		plan.Descriptions = append(plan.Descriptions, "Installing sample data...")
+		plan.Commands = append(plan.Commands, "govard tool magento sampledata:deploy")
+	}
+
+	plan.Descriptions = append(plan.Descriptions, "Rewriting local application configuration...")
+	plan.Commands = append(plan.Commands, "govard config auto")
+	return plan
+}
+
+func buildBootstrapFreshPlanSummary(config engine.Config, def types.FrameworkDefinition, opts BootstrapRuntimeOptions, execution bootstrapExecutionPlan) []string {
+	var lines []string
+
+	header := pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Sprint(" Fresh Bootstrap Plan Review ")
+	lines = append(lines, "", header, "")
+
+	lines = append(lines, fmt.Sprintf("  Destination: local (local project: %s)", pterm.Gray(config.ProjectName)))
+	lines = append(lines, fmt.Sprintf("  Framework:   %s", pterm.LightMagenta(config.Framework)))
+	lines = append(lines, "")
+
+	lines = append(lines, "", pterm.Bold.Sprint("Planned Actions:"), "")
+	for i, description := range execution.Descriptions {
+		lines = append(lines, fmt.Sprintf(" %d. %s", i+1, description))
+		if i < len(execution.Commands) {
+			lines = append(lines, pterm.NewStyle(pterm.FgCyan, pterm.Bold).Sprintf("    ↳ sh: %s", execution.Commands[i]))
+		}
+	}
+
+	return lines
+}
+
+// BuildBootstrapFreshPlanForTest exposes the fresh plan for tests in /tests.
+func BuildBootstrapFreshPlanForTest(config engine.Config, framework string, opts BootstrapRuntimeOptions) ([]string, error) {
+	def, ok := frameworks.Get(strings.ToLower(strings.TrimSpace(framework)))
+	if !ok {
+		return nil, fmt.Errorf("fresh install not supported for framework: %s", framework)
+	}
+	return buildBootstrapFreshPlanSummary(config, def, opts, buildBootstrapFreshPlan(config, def, opts)), nil
 }
