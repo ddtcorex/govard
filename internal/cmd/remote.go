@@ -79,7 +79,6 @@ var remoteAddCmd = &cobra.Command{
 		user, _ := cmd.Flags().GetString("user")
 		path, _ := cmd.Flags().GetString("path")
 		port, _ := cmd.Flags().GetInt("port")
-		protectedSet := cmd.Flags().Changed("protected")
 		protected, _ := cmd.Flags().GetBool("protected")
 		capabilitiesRaw, _ := cmd.Flags().GetString("capabilities")
 		authMethodRaw, _ := cmd.Flags().GetString("auth-method")
@@ -87,25 +86,66 @@ var remoteAddCmd = &cobra.Command{
 		strictHostKey, _ := cmd.Flags().GetBool("strict-host-key")
 		knownHostsFile, _ := cmd.Flags().GetString("known-hosts-file")
 
-		if host == "" && stdinIsTerminal() {
-			host, _ = pterm.DefaultInteractiveTextInput.WithDefaultText(host).Show("Remote host (e.g. example.com)")
-		}
-		if user == "" && stdinIsTerminal() {
-			user, _ = pterm.DefaultInteractiveTextInput.WithDefaultText(user).Show("Remote SSH user")
-		}
-		if port == 22 && !cmd.Flags().Changed("port") && stdinIsTerminal() {
-			portStr, _ := pterm.DefaultInteractiveTextInput.WithDefaultText("22").Show("Remote SSH port")
-			if portStr != "" {
-				if p, err := strconv.Atoi(portStr); err == nil {
-					port = p
-				}
-			}
-		}
-		if path == "" && stdinIsTerminal() {
-			path, _ = pterm.DefaultInteractiveTextInput.WithDefaultText(path).Show("Remote project path on target host (e.g. /var/www/app or ~/public_html)")
+		replace, _ := cmd.Flags().GetBool("replace")
+		forceKeyPath, _ := cmd.Flags().GetBool("force")
+
+		if config.Remotes == nil {
+			config.Remotes = map[string]engine.RemoteConfig{}
 		}
 
-		if host == "" || user == "" || path == "" {
+		// A re-add MERGES: only the fields named on the command line replace what
+		// is already configured. Assigning a whole fresh block instead deleted
+		// everything `remote add` has no flag for — url, the db credentials and
+		// the nested deploy block are YAML-only — and silently dropped a
+		// `protected` flag or a capability restriction the operator had set,
+		// while still printing SUCCESS. --replace restores the wholesale
+		// behaviour for callers that want it.
+		existing, isUpdate := config.Remotes[name]
+		entry := engine.RemoteConfig{}
+		if isUpdate && !replace {
+			entry = existing
+		}
+		// A new remote (or --replace) takes every flag value including the
+		// defaults; an existing one takes only what this invocation named.
+		takes := func(flag string) bool {
+			return !isUpdate || replace || cmd.Flags().Changed(flag)
+		}
+
+		if takes("host") {
+			entry.Host = host
+		}
+		if takes("user") {
+			entry.User = user
+		}
+		if takes("path") {
+			entry.Path = path
+		}
+		if takes("port") {
+			entry.Port = port
+		}
+		if cmd.Flags().Changed("protected") {
+			entry.Protected = engine.BoolPtr(protected)
+		}
+
+		// Prompts fill only what is still missing, so a merged re-add never asks
+		// for a value it already has.
+		if entry.Host == "" && stdinIsTerminal() {
+			entry.Host, _ = pterm.DefaultInteractiveTextInput.Show("Remote host (e.g. example.com)")
+		}
+		if entry.User == "" && stdinIsTerminal() {
+			entry.User, _ = pterm.DefaultInteractiveTextInput.Show("Remote SSH user")
+		}
+		if entry.Port == 0 && stdinIsTerminal() {
+			portStr, _ := pterm.DefaultInteractiveTextInput.WithDefaultText("22").Show("Remote SSH port")
+			if p, err := strconv.Atoi(portStr); err == nil {
+				entry.Port = p
+			}
+		}
+		if entry.Path == "" && stdinIsTerminal() {
+			entry.Path, _ = pterm.DefaultInteractiveTextInput.Show("Remote project path on target host (e.g. /var/www/app or ~/public_html)")
+		}
+
+		if entry.Host == "" || entry.User == "" || entry.Path == "" {
 			err := fmt.Errorf("host, user, and path are required")
 			operationCategory = "validation"
 			operationMessage = "missing required flags: host/user/path"
@@ -121,85 +161,105 @@ var remoteAddCmd = &cobra.Command{
 		}
 
 		// environment is now derived from name
-		capabilities, err := engine.ParseRemoteCapabilitiesCSV(capabilitiesRaw)
-		if err != nil {
-			operationCategory = "validation"
-			operationMessage = err.Error()
-			writeRemoteAuditEvent(remote.AuditEvent{
-				Operation:  "remote.add",
-				Status:     remote.RemoteAuditStatusFailure,
-				Category:   "validation",
-				Remote:     name,
-				DurationMS: time.Since(startedAt).Milliseconds(),
-				Message:    err.Error(),
-			})
-			return err
-		}
-		authMethod := remote.NormalizeAuthMethod(authMethodRaw)
-		if !remote.IsSupportedAuthMethod(authMethod) {
-			err := fmt.Errorf("unsupported auth method '%s' (allowed: keychain, ssh-agent, keyfile)", authMethodRaw)
-			operationCategory = "validation"
-			operationMessage = err.Error()
-			writeRemoteAuditEvent(remote.AuditEvent{
-				Operation:  "remote.add",
-				Status:     remote.RemoteAuditStatusFailure,
-				Category:   "validation",
-				Remote:     name,
-				DurationMS: time.Since(startedAt).Milliseconds(),
-				Message:    err.Error(),
-			})
-			return err
+		if takes("capabilities") {
+			capabilities, err := engine.ParseRemoteCapabilitiesCSV(capabilitiesRaw)
+			if err != nil {
+				operationCategory = "validation"
+				operationMessage = err.Error()
+				writeRemoteAuditEvent(remote.AuditEvent{
+					Operation:  "remote.add",
+					Status:     remote.RemoteAuditStatusFailure,
+					Category:   "validation",
+					Remote:     name,
+					DurationMS: time.Since(startedAt).Milliseconds(),
+					Message:    err.Error(),
+				})
+				return err
+			}
+			entry.Capabilities = capabilities
 		}
 
-		keyPath := strings.TrimSpace(keyPathRaw)
-		if keyPath != "" && authMethod == remote.AuthMethodKeychain {
-			if err := remote.PersistSSHKeyPath(name, keyPath); err != nil {
-				pterm.Warning.Printf("Could not persist key path in auth store (%v); falling back to config auth.key_path.\n", err)
+		if takes("auth-method") {
+			authMethod := remote.NormalizeAuthMethod(authMethodRaw)
+			if !remote.IsSupportedAuthMethod(authMethod) {
+				err := fmt.Errorf("unsupported auth method '%s' (allowed: keychain, ssh-agent, keyfile)", authMethodRaw)
+				operationCategory = "validation"
+				operationMessage = err.Error()
+				writeRemoteAuditEvent(remote.AuditEvent{
+					Operation:  "remote.add",
+					Status:     remote.RemoteAuditStatusFailure,
+					Category:   "validation",
+					Remote:     name,
+					DurationMS: time.Since(startedAt).Milliseconds(),
+					Message:    err.Error(),
+				})
+				return err
+			}
+			entry.Auth.Method = authMethod
+		}
+		// Where a key path is stored follows the method in effect, not the flag's
+		// default: comparing against the default pushed a keyfile remote's key
+		// into the auth store on a re-add that did not repeat --auth-method.
+		effectiveAuthMethod := remote.NormalizeAuthMethod(entry.Auth.Method)
+
+		if takes("key-path") {
+			keyPath := remote.NormalizePath(strings.TrimSpace(keyPathRaw))
+			if keyPath != "" && !forceKeyPath {
+				if err := validatePrivateKeyPath(keyPath); err != nil {
+					operationCategory = "validation"
+					operationMessage = err.Error()
+					writeRemoteAuditEvent(remote.AuditEvent{
+						Operation:  "remote.add",
+						Status:     remote.RemoteAuditStatusFailure,
+						Category:   "validation",
+						Remote:     name,
+						DurationMS: time.Since(startedAt).Milliseconds(),
+						Message:    err.Error(),
+					})
+					return err
+				}
+			}
+			if keyPath != "" && effectiveAuthMethod == remote.AuthMethodKeychain {
+				if err := remote.PersistSSHKeyPath(name, keyPath); err != nil {
+					pterm.Warning.Printf("Could not persist key path in auth store (%v); falling back to config auth.key_path.\n", err)
+					entry.Auth.KeyPath = keyPath
+				} else {
+					pterm.Info.Printf("Stored SSH key path for remote '%s' in auth store.\n", name)
+					entry.Auth.KeyPath = ""
+				}
 			} else {
-				pterm.Info.Printf("Stored SSH key path for remote '%s' in auth store.\n", name)
-				keyPath = ""
+				entry.Auth.KeyPath = keyPath
 			}
 		}
 
-		if knownHostsFile != "" && !strictHostKey {
-			strictHostKey = true
-			pterm.Warning.Println("known-hosts-file specified: enabling strict host key checking.")
+		if takes("strict-host-key") {
+			entry.Auth.StrictHostKey = strictHostKey
+		}
+		if cmd.Flags().Changed("known-hosts-file") {
+			entry.Auth.KnownHostsFile = knownHostsFile
+			if knownHostsFile != "" && !entry.Auth.StrictHostKey {
+				entry.Auth.StrictHostKey = true
+				pterm.Warning.Println("known-hosts-file specified: enabling strict host key checking.")
+			}
 		}
 
-		if config.Remotes == nil {
-			config.Remotes = map[string]engine.RemoteConfig{}
-		}
-
-		var protectedPtr *bool
-		if protectedSet {
-			protectedPtr = engine.BoolPtr(protected)
-		}
-
-		config.Remotes[name] = engine.RemoteConfig{
-			Host:         host,
-			User:         user,
-			Path:         path,
-			Port:         port,
-			Protected:    protectedPtr,
-			Capabilities: capabilities,
-			Auth: engine.RemoteAuth{
-				Method:         authMethod,
-				KeyPath:        keyPath,
-				StrictHostKey:  strictHostKey,
-				KnownHostsFile: knownHostsFile,
-			},
-		}
-
+		config.Remotes[name] = entry
 		saveConfig(config)
 		configForObservability = config
 		effectiveProtected, _ := engine.RemoteWriteBlocked(name, config.Remotes[name])
+		if isUpdate && !replace {
+			pterm.Info.Printf("Updated remote '%s' (merged: only the fields you named were replaced).\n", name)
+			for _, relaxation := range remoteGuardRelaxations(name, existing, entry) {
+				pterm.Warning.Printf("remote '%s': %s\n", name, relaxation)
+			}
+		}
 		pterm.Success.Printf(
 			"Remote '%s' saved (capabilities=%s, auth=%s, protected=%t, strict_host_key=%t).\n",
 			name,
 			strings.Join(engine.RemoteCapabilityList(config.Remotes[name]), ","),
-			authMethod,
+			effectiveAuthMethod,
 			effectiveProtected,
-			strictHostKey,
+			entry.Auth.StrictHostKey,
 		)
 		writeRemoteAuditEvent(remote.AuditEvent{
 			Operation:  "remote.add",
@@ -212,6 +272,50 @@ var remoteAddCmd = &cobra.Command{
 		operationMessage = "remote saved"
 		return nil
 	},
+}
+
+// validatePrivateKeyPath rejects a key path that cannot be an ssh identity: a
+// missing file, a directory, or a public key. ssh only warns about these at
+// connect time, inside a failure that govard classifies as a network problem,
+// so a bad path sends the operator to look at DNS and firewalls.
+func validatePrivateKeyPath(keyPath string) error {
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		return fmt.Errorf("ssh key %s: %w (use --force to store it anyway)", keyPath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("ssh key %s is a directory, not a private key (use --force to store it anyway)", keyPath)
+	}
+	if strings.HasSuffix(keyPath, ".pub") {
+		if private := strings.TrimSuffix(keyPath, ".pub"); fileExists(private) {
+			return fmt.Errorf("ssh key %s is a public key; pass its private key %s", keyPath, private)
+		}
+		return fmt.Errorf("ssh key %s is a public key; pass the private key instead", keyPath)
+	}
+	return nil
+}
+
+// remoteGuardRelaxations names the guards an update loosened, so the operator
+// is told when a re-add removed write protection or widened a blocked
+// capability. Merging makes that impossible by accident, which is exactly why an
+// explicit `--protected=false` is worth announcing.
+func remoteGuardRelaxations(name string, before, after engine.RemoteConfig) []string {
+	var relaxed []string
+
+	wasProtected, _ := engine.RemoteWriteBlocked(name, before)
+	nowProtected, _ := engine.RemoteWriteBlocked(name, after)
+	if wasProtected && !nowProtected {
+		relaxed = append(relaxed, "write protection is gone; db, media and file operations against it are no longer refused")
+	}
+
+	wasBlocked := engine.RemoteCapabilityList(before)
+	nowBlocked := engine.RemoteCapabilityList(after)
+	if len(nowBlocked) < len(wasBlocked) {
+		relaxed = append(relaxed, fmt.Sprintf("capabilities widened (blocked %s -> %s)",
+			strings.Join(wasBlocked, ","), strings.Join(nowBlocked, ",")))
+	}
+
+	return relaxed
 }
 
 var remoteCopyIdCmd = &cobra.Command{
@@ -544,28 +648,58 @@ var remoteListCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: remotes.sandbox is shadowed by the synthetic sandbox; remove it\n")
 		}
 		engine.SortRemoteNames(names)
-		fmt.Fprintf(out, "%-20s %-28s %s\n", "NAME", "HOST", "CAPABILITIES")
+		fmt.Fprintf(out, "%-20s %-28s %-16s %-10s %s\n", "NAME", "HOST", "CAPABILITIES", "AUTH", "KEY")
 		for _, name := range names {
-			remote := config.Remotes[name]
-			fmt.Fprintf(out, "%-20s %-28s %s\n", name, remote.Host, strings.Join(engine.RemoteCapabilityList(remote), ","))
+			remoteCfg := config.Remotes[name]
+			fmt.Fprintf(out, "%-20s %-28s %-16s %-10s %s\n",
+				name,
+				remoteCfg.Host,
+				strings.Join(engine.RemoteCapabilityList(remoteCfg), ","),
+				remote.NormalizeAuthMethod(remoteCfg.Auth.Method),
+				describeResolvedKey(name, remoteCfg),
+			)
 		}
-		fmt.Fprintf(out, "%-20s %-28s %s\n", deploy.SandboxRemoteName, "(implicit)", sandboxListState(cmd.Context(), config.ProjectName))
+		// The synthetic sandbox carries a real identity too (keyfile against the
+		// key `sandbox up` provisioned), so its row reports it rather than "-".
+		sandboxState, sandboxCfg := sandboxListState(cmd.Context(), config.ProjectName)
+		sandboxAuth, sandboxKey := "-", "-"
+		if sandboxCfg.Host != "" {
+			sandboxAuth = remote.NormalizeAuthMethod(sandboxCfg.Auth.Method)
+			sandboxKey = describeResolvedKey(deploy.SandboxRemoteName, sandboxCfg)
+		}
+		fmt.Fprintf(out, "%-20s %-28s %-16s %-10s %s\n", deploy.SandboxRemoteName, "(implicit)", sandboxState, sandboxAuth, sandboxKey)
 		return nil
 	},
 }
 
+// describeResolvedKey renders the identity a remote will actually use, with the
+// place the value came from. The key path is otherwise invisible — with the
+// default keychain method it lives only in the auth store — so this is the only
+// way an operator can confirm which key a remote uses without a failed ssh.
+func describeResolvedKey(name string, remoteCfg engine.RemoteConfig) string {
+	keyPath, source := remote.ResolveSSHKeyPath(name, remoteCfg)
+	if keyPath == "" {
+		return "- (no key configured)"
+	}
+	if source == "" {
+		return keyPath
+	}
+	return keyPath + " [" + source + "]"
+}
+
 // sandboxListState reports the sandbox's liveness for `remote list`, in the
-// same three words ResolveSyntheticSandboxRemote itself distinguishes.
-func sandboxListState(ctx context.Context, projectName string) string {
-	_, liveness, err := resolveSandboxRemote(ctx, projectName)
+// same three words ResolveSyntheticSandboxRemote itself distinguishes, plus the
+// remote it resolves to so the row can name the identity that will be used. The
+// config is zero when no sandbox exists.
+func sandboxListState(ctx context.Context, projectName string) (string, engine.RemoteConfig) {
+	sandboxCfg, liveness, _ := resolveSandboxRemote(ctx, projectName)
 	switch liveness {
 	case deploy.SandboxLivenessRunning:
-		return "running"
+		return "running", sandboxCfg
 	case deploy.SandboxLivenessDormant:
-		return "dormant — govard sandbox up to start it"
+		return "dormant — govard sandbox up to start it", sandboxCfg
 	default:
-		_ = err
-		return "absent — govard sandbox up to create it"
+		return "absent — govard sandbox up to create it", engine.RemoteConfig{}
 	}
 }
 
@@ -576,10 +710,12 @@ func init() {
 	remoteAddCmd.Flags().Int("port", 22, "Remote port")
 	remoteAddCmd.Flags().String("capabilities", "none", "Remote capabilities to block (comma-separated: files,media,db,all or none)")
 	remoteAddCmd.Flags().String("auth-method", remote.AuthMethodKeychain, "Remote auth method (keychain, ssh-agent, keyfile)")
-	remoteAddCmd.Flags().String("key-path", "", "SSH private key path (stored in auth store when --auth-method=keychain)")
+	remoteAddCmd.Flags().String("key-path", "", "SSH private key path (must be an existing private key; stored in the auth store when the effective auth method is keychain, otherwise in the project config)")
 	remoteAddCmd.Flags().Bool("strict-host-key", false, "Enable strict SSH host key checking")
 	remoteAddCmd.Flags().String("known-hosts-file", "", "Custom SSH known_hosts file (implies --strict-host-key)")
 	remoteAddCmd.Flags().Bool("protected", false, "Mark remote as protected (production-named remotes are protected automatically)")
+	remoteAddCmd.Flags().Bool("replace", false, "Replace the whole remote block instead of merging into it (drops every field not named here, including url, db credentials and the deploy block)")
+	remoteAddCmd.Flags().Bool("force", false, "Store --key-path without checking that it is a readable private key")
 	remoteCopyIdCmd.Flags().StringP("identity", "i", "", "Path to the SSH public key to copy (default: the remote key-path, then ~/.ssh/id_ed25519.pub, id_ecdsa.pub, id_rsa.pub)")
 
 	remoteCmd.AddCommand(remoteAddCmd)
