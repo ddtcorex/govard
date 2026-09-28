@@ -193,6 +193,18 @@ func TestRemoteAddKeychainStoresKeyPathInAuthStore(t *testing.T) {
 	storePath := filepath.Join(tempDir, "auth.json")
 	t.Setenv("GOVARD_AUTH_STORE_PATH", storePath)
 
+	// The key must exist: `remote add` refuses a key path that is not a readable
+	// private key. HOME points at the temp dir so the tilde in --key-path still
+	// exercises expansion, but against a real file.
+	t.Setenv("HOME", tempDir)
+	if err := os.MkdirAll(filepath.Join(tempDir, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(tempDir, ".ssh", "id_ed25519")
+	if err := os.WriteFile(keyPath, []byte("PRIVATE KEY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	cwd, _ := os.Getwd()
 	defer func() { _ = os.Chdir(cwd) }()
 	if err := os.Chdir(tempDir); err != nil {
@@ -245,11 +257,8 @@ func TestRemoteAddKeychainStoresKeyPathInAuthStore(t *testing.T) {
 		t.Fatalf("parse auth store: %v", err)
 	}
 	storedKeyPath := entries["remote.staging.key_path"]
-	if storedKeyPath == "" {
-		t.Fatalf("expected remote.staging.key_path in auth store, got %#v", entries)
-	}
-	if !strings.Contains(storedKeyPath, ".ssh/id_ed25519") {
-		t.Fatalf("expected stored key path to contain .ssh/id_ed25519, got %q", storedKeyPath)
+	if storedKeyPath != keyPath {
+		t.Fatalf("auth store holds %q, want the normalised absolute path %q", storedKeyPath, keyPath)
 	}
 }
 
