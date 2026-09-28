@@ -527,7 +527,7 @@ Exit codes: `0` every item passed; `1` any item failed **or** a phase gate block
 
 Outputs: `<govard home>/verify-runs/<project-id>/<ISO>-phaseN.json`, where `project-id` is a hash of the canonical project path, with `{govard_version, project_sha, project_id, phase, mode, status, items:[{id, command, duration_ms, exit_code, retries, evidence_excerpt, json_valid, artifacts}]}`. `mode` is `run` or `plan`; `status` is `passed` or `failed`; `artifacts` names what an item produced (the snapshot `P4-08` created, which `P5-05` restores). Legacy `~/.govard/checklist-runs/` is migrated on first run; artifacts written before project scoping (flat in the `verify-runs/` root) carry no project identity and never satisfy the gate. `phase 0/all --json` emits a single JSON with `phase: "all"`, a recomputed `status` and combined `items`.
 
-`GOVARD_VERIFY_BIN` pins the binary the checklist items execute. Without it the invoked executable runs them and `PATH` is only the last resort — but the checklist's items honor the *same* isolation the exit code does: to validate a source build, run that build and set this variable (or ensure it is first on `PATH`), because a bare `govard` may be an older install.
+`GOVARD_VERIFY_BIN` pins the binary the checklist items execute. Unset, the invoked executable runs them, and `PATH` is only the last resort. To validate a source build, run that build directly and set this variable if the build is not the one the shell would find — otherwise a bare `govard` on `PATH` may be an older install and the checklist will report on it, not on your build.
 
 Framework detection falls back to `engine.DetectFramework` when `.govard.yml` is missing (so fresh `artisan`/`composer.json` projects are detected as `laravel` etc.).
 
