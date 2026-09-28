@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -13,6 +14,25 @@ import (
 	"github.com/spf13/cobra"
 	"govard/internal/runtime"
 )
+
+// ErrItemsFailed marks a checklist run that completed with red items. It is a
+// plain error on purpose: the process must exit 1 (execution), because 2 is
+// reserved for USAGE and a failing checklist is not a usage mistake.
+var ErrItemsFailed = errors.New("verify: one or more checklist items failed")
+
+// summarise turns a finished run into the process verdict. The JSON already
+// carries per-item detail; this is what a CI step branches on.
+func summarise(res verify.RunResult) error {
+	if res.Failed() {
+		passed, failed := res.Counts()
+		pterm.Error.Printf("checklist failed: %d passed, %d failed\n", passed, failed)
+		return ErrItemsFailed
+	}
+	return nil
+}
+
+// SummariseForTest exposes summarise for tests in /tests.
+func SummariseForTest(res verify.RunResult) error { return summarise(res) }
 
 var verifyCmd = &cobra.Command{
 	Annotations: map[string]string{
@@ -102,10 +122,15 @@ Examples:
 				}
 				return err
 			}
-			return renderVerifyResult(cmd, res, jsonOut)
+			if err := renderVerifyResult(cmd, res, jsonOut); err != nil {
+				return err
+			}
+			return summarise(res)
 		}
 
-		// All phases 1..5 sequentially. Stop on gate error.
+		// All phases 1..5 sequentially. A red item does not stop the next phase —
+		// the whole checklist is the deliverable, so the verdict is aggregated
+		// after every phase has run.
 		if jsonOut {
 			var combined verify.RunResult
 			var first bool
@@ -127,8 +152,14 @@ Examples:
 					combined.Items = append(combined.Items, res.Items...)
 				}
 			}
-			return renderVerifyResult(cmd, combined, true)
+			combined.RefreshStatus()
+			if err := renderVerifyResult(cmd, combined, true); err != nil {
+				return err
+			}
+			return summarise(combined)
 		}
+		var combined verify.RunResult
+		var first bool
 		for p := 1; p <= 5; p++ {
 			if p == 5 && !allowDestructive && !plan {
 				pterm.Warning.Println(verify.ErrNeedAllowDestructive.Error())
@@ -138,11 +169,19 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if !first {
+				combined = res
+				combined.Phase = "all"
+				first = true
+			} else {
+				combined.Items = append(combined.Items, res.Items...)
+			}
 			if err := renderVerifyResult(cmd, res, false); err != nil {
 				return err
 			}
 		}
-		return nil
+		combined.RefreshStatus()
+		return summarise(combined)
 	},
 }
 

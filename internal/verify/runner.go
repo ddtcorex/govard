@@ -81,7 +81,36 @@ type RunResult struct {
 	GovardVersion string    `json:"govard_version"`
 	ProjectSHA    string    `json:"project_sha"`
 	Phase         string    `json:"phase"`
+	Status        string    `json:"status,omitempty"`
 	Items         []RunItem `json:"items"`
+}
+
+// Failed reports whether any item exited non-zero.
+func (r RunResult) Failed() bool {
+	_, failed := r.Counts()
+	return failed > 0
+}
+
+// Counts returns the number of passing and failing items.
+func (r RunResult) Counts() (passed, failed int) {
+	for _, it := range r.Items {
+		if it.ExitCode != 0 {
+			failed++
+			continue
+		}
+		passed++
+	}
+	return passed, failed
+}
+
+// RefreshStatus recomputes Status from the items. RunPhase calls it for a single
+// phase; a caller that merges phases into one result must call it again before
+// rendering, or the merged artifact reports the first phase's verdict.
+func (r *RunResult) RefreshStatus() {
+	r.Status = "passed"
+	if r.Failed() {
+		r.Status = "failed"
+	}
 }
 
 // RunItem is one entry in RunResult.
@@ -151,6 +180,8 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 			JSONValid:       ev.JSONValid,
 		})
 	}
+
+	res.RefreshStatus()
 
 	if opts.JSON {
 		_ = MigrateLegacyRuns()
