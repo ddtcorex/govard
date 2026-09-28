@@ -507,7 +507,7 @@ govard status
 
 ### `govard verify`
 
-Chạy bộ kiểm tra QA thực thi 5 pha (thay cho tick thủ công). Registry là nguồn duy nhất — 56 mục P1 7 · P2 14 · P3 15 · P4 12 · P5 8. Chỉ Magento 2 có mục `When isMagento2` (10 mục bị lọc cho Laravel/Symfony/WordPress → 46).
+Chạy bộ kiểm tra QA thực thi 5 pha (thay cho tick thủ công). Registry là nguồn duy nhất — 60 mục tĩnh P1 7 · P2 14 · P3 15 · P4 16 · P5 8, cộng với các mục mà từng framework tự khai báo. 10 mục tĩnh mang `When isMagento2` và bị lọc bỏ với Laravel/Symfony/WordPress; các framework này lấy lại dev loop nhờ mục do framework khai báo (xem bên dưới).
 
 ```bash
 govard verify --plan --json                 # dry-run tất cả pha, JSON máy
@@ -516,7 +516,11 @@ govard verify --phase 5 --allow-destructive --json # destructive sau snapshot
 govard verify --project /path/to/project --json
 ```
 
-Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--checks`/`--lint-jobs` được chuyển tiếp tới các mục gọi `govard audit`.
+Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. Chỉ `--base`, `--allow-xdebug` và `--allow-destructive` thay đổi thứ được chạy: `--checks`, `--lint-jobs` và `--timeout` được nhận nhưng bị bỏ qua, còn các mục audit tự hardcode giá trị của chúng (xem issue #472).
+
+Mục do framework khai báo: mỗi framework khai báo mục checklist của riêng nó ngay trong package của nó — `VerifyToolItems` trên định nghĩa framework nêu id, pha, tiêu đề và đúng một lệnh `govard tool <binary> <args>` — rồi `RegistryFor` ghép chúng với registry tĩnh, nên `internal/verify` không hề nêu tên framework nào. Magento 2 khai báo `P5-MAG-01` (`setup:db:status` sau restore, đúng phần phát hiện mà `P5-07` còn thiếu); Laravel `P3-LAR-01..03` + `P5-LAR-01`; Symfony `P3-SYM-01..03` + `P5-SYM-01`; WordPress `P3-WP-01..03` + `P5-WP-01`. Chỉ những lệnh mà bộ khung của framework đảm bảo mới được khai báo, nên một mục không bao giờ đỏ vĩnh viễn vì thiếu bundle hay plugin tuỳ chọn.
+
+Mục remote: `P4-13`..`P4-16` phủ nửa chỉ-đọc của bề mặt remote — `deploy plan`, `deploy status`, `deploy releases` và `remote list` — an toàn khi chạy vào một remote production, đúng trường hợp cần lưu tâm vì `{{REMOTE}}` mặc định là chuỗi `staging`. Nửa ghi cố ý nằm ngoài checklist: `deploy check` tạo deploy path trên target, `deploy unlock`/`deploy rollback` thay đổi lock và release state của nó, `db`/`snapshot`/`open -e` có thể vượt qua write protection hoặc copy key vào `authorized_keys`, và `tunnel stop` giết mọi tiến trình `cloudflared` trên máy.
 
 Gates: Pha 5 yêu cầu snapshot **của chính project này** — một lần chạy pha 4 thật (không phải `--plan`) cho cùng project, có `P4-08` exit `0` và snapshot được ghi lại vẫn còn dùng được trên đĩa — VÀ `--allow-destructive`. Thiếu → `need snapshot create (P4-08) first`; thiếu flag → `need --allow-destructive for phase 5`. Lần chạy `--plan` không thoả gate nào và không ghi gì. `P4-08` ghi lại tên snapshot nó tạo và `P5-05` restore đúng tên đó, nên restore không thể lấy nhầm snapshot khác được tạo ở giữa. Ghi remote là `READ-ONLY` (`--plan` only); `LOCAL-WRITE` sau snapshot.
 

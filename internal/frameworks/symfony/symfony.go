@@ -45,6 +45,15 @@ func Definition() types.FrameworkDefinition {
 		ToolCommands: []types.ToolCommand{
 			{Name: "symfony", Short: "Run Symfony CLI commands", Binary: "php", PrependArgs: []string{"bin/console"}},
 		},
+		// Only commands the Symfony skeleton guarantees: an item for an optional
+		// bundle (doctrine-migrations) would be permanently red, the defect class
+		// P3-13/P3-14 already suffer from.
+		VerifyToolItems: []engine.VerifyToolItem{
+			{ID: "P3-SYM-01", Phase: 3, Title: "govard tool symfony --version", Tool: "symfony", Args: []string{"--version"}},
+			{ID: "P3-SYM-02", Phase: 3, Title: "govard tool symfony cache:clear", Tool: "symfony", Args: []string{"cache:clear"}},
+			{ID: "P3-SYM-03", Phase: 3, Title: "govard tool symfony debug:router", Tool: "symfony", Args: []string{"debug:router"}},
+			{ID: "P5-SYM-01", Phase: 5, Title: "govard tool symfony cache:clear after restore", Tool: "symfony", Args: []string{"cache:clear"}},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return NewSymfonyBootstrap(opts)
 		},

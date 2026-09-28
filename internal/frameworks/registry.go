@@ -307,6 +307,9 @@ func registerEngineDefinition(def types.FrameworkDefinition) {
 	if def.SandboxSeed != nil {
 		engine.RegisterSandboxSeedDefinition(def.Name, *def.SandboxSeed)
 	}
+	if len(def.VerifyToolItems) > 0 {
+		engine.RegisterVerifyToolItems(def.Name, def.VerifyToolItems)
+	}
 	if def.VersionProfileResolver != nil {
 		engine.RegisterVersionProfileResolver(def.Name, def.VersionProfileResolver)
 	}

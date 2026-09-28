@@ -510,7 +510,7 @@ govard status
 
 ### `govard verify`
 
-Run the 5-phase executable QA harness (replaces manual tick). Registry is the single source of truth — 56 items across P1 7 · P2 14 · P3 15 · P4 12 · P5 8. Only Magento 2 has `When isMagento2` items (10 filtered for Laravel/Symfony/WordPress → 46).
+Run the 5-phase executable QA harness (replaces manual tick). Registry is the single source of truth — 60 static items across P1 7 · P2 14 · P3 15 · P4 16 · P5 8, plus the items each framework declares for itself. 10 static items carry `When isMagento2` and are filtered out for Laravel/Symfony/WordPress, which get their dev loop back from the framework-declared items instead (below).
 
 ```bash
 govard verify --plan --json                 # dry-run all phases, machine JSON
@@ -519,7 +519,11 @@ govard verify --phase 5 --allow-destructive --json # destructive after snapshot
 govard verify --project /path/to/project --json
 ```
 
-Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes` alias), `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--checks`/`--lint-jobs` are proxied to `govard audit` items.
+Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes` alias), `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. Only `--base`, `--allow-xdebug` and `--allow-destructive` change what runs: `--checks`, `--lint-jobs` and `--timeout` are accepted but ignored, and the audit items hardcode their own values (see issue #472).
+
+Framework items: a framework declares its own checklist entries in its own package — `VerifyToolItems` on the framework definition names an id, a phase, a title and one `govard tool <binary> <args>` invocation — and `RegistryFor` composes them with the static registry, so `internal/verify` names no framework. Magento 2 declares `P5-MAG-01` (`setup:db:status` after restore, the read-only detector `P5-07` lacks); Laravel `P3-LAR-01..03` + `P5-LAR-01`; Symfony `P3-SYM-01..03` + `P5-SYM-01`; WordPress `P3-WP-01..03` + `P5-WP-01`. Only commands the framework skeleton guarantees are declared, so an item is never permanently red for a missing optional bundle or plugin.
+
+Remote items: `P4-13`..`P4-16` cover the read-only half of the remote surface — `deploy plan`, `deploy status`, `deploy releases` and `remote list` — which is safe to run against a production remote, the case that matters because `{{REMOTE}}` defaults to the literal `staging`. The writing halves stay out of the checklist on purpose: `deploy check` creates the deploy path on the target, `deploy unlock`/`deploy rollback` mutate its lock and release state, `db`/`snapshot`/`open -e` can bypass write protection or copy a key into `authorized_keys`, and `tunnel stop` kills every `cloudflared` on the host.
 
 Gates: Phase 5 requires a snapshot **of this project** — a real (non-`--plan`) phase-4 run for the same project whose `P4-08` exited `0` and whose recorded snapshot is still usable on disk — AND `--allow-destructive`. Without it → `need snapshot create (P4-08) first`; without the flag → `need --allow-destructive for phase 5`. A `--plan` run satisfies neither gate and touches nothing. `P4-08` records the snapshot name it created and `P5-05` restores exactly that name, so the restore cannot pick up a different snapshot created in between. Remote writes are `READ-ONLY` (`--plan` only); `LOCAL-WRITE` after snapshot.
 

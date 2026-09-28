@@ -58,6 +58,14 @@ func Definition() types.FrameworkDefinition {
 			{Name: "magento", Short: "Run Magento CLI commands", Binary: "php", PrependArgs: []string{"bin/magento"}},
 			{Name: "magerun", Aliases: []string{"mr"}, Short: "Run n98-magerun commands", Binary: "n98-magerun"},
 		},
+		// The read-only detector P5-07 lacks: P5-07 only runs deploy:mode:show and
+		// cache:flush, so a completed wipe/restore cycle can leave a
+		// schema-current-but-unreconciled database and still pass. This reports
+		// that state; it does not run setup:upgrade, which is a write and belongs
+		// to the operator, not to an unattended checklist.
+		VerifyToolItems: []engine.VerifyToolItem{
+			{ID: "P5-MAG-01", Phase: 5, Title: "govard tool magento setup:db:status after restore", Tool: "magento", Args: []string{"setup:db:status"}},
+		},
 		TestSuiteCommands: map[string]types.TestCommand{
 			"mftf":        {Label: "MFTF Tests", Binary: "php", Args: []string{"vendor/bin/mftf", "run:group"}},
 			"integration": {Label: "Magento 2 Integration Tests", Binary: "php", Args: []string{"-c", "dev/tests/integration/phpunit.xml", "vendor/bin/phpunit"}},

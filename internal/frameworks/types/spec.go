@@ -56,6 +56,7 @@ type FrameworkPatch struct {
 	ComposerCodingStandard                  Override[ComposerCodingStandard]
 	ComposerAuth                            Override[ComposerAuthRequirement]
 	ToolCommands                            Override[[]ToolCommand]
+	VerifyToolItems                         Override[[]engine.VerifyToolItem]
 	DefaultTestCommand                      Override[TestCommand]
 	TestSuiteCommands                       Override[map[string]TestCommand]
 	Detect                                  Override[engine.DetectionSpec]
@@ -144,6 +145,7 @@ func (s FrameworkSpec) Resolve(parent FrameworkDefinition) FrameworkDefinition {
 	s.Patch.ComposerCodingStandard.apply(&resolved.ComposerCodingStandard)
 	s.Patch.ComposerAuth.apply(&resolved.ComposerAuth)
 	s.Patch.ToolCommands.apply(&resolved.ToolCommands)
+	s.Patch.VerifyToolItems.apply(&resolved.VerifyToolItems)
 	s.Patch.DefaultTestCommand.apply(&resolved.DefaultTestCommand)
 	s.Patch.TestSuiteCommands.apply(&resolved.TestSuiteCommands)
 	s.Patch.Detect.apply(&resolved.Detect)
@@ -213,6 +215,10 @@ func cloneDefinition(def FrameworkDefinition) FrameworkDefinition {
 	cloned.AuditProfiler = cloneAuditProfilerProfile(def.AuditProfiler)
 	cloned.DefaultChownDirectories = cloneStrings(def.DefaultChownDirectories)
 	cloned.ToolCommands = cloneToolCommands(def.ToolCommands)
+	// A shallow copy is enough: the items are read-only, and the consumer
+	// (verify.RegistryFor) builds a fresh argv slice from Tool and Args rather
+	// than aliasing Args.
+	cloned.VerifyToolItems = append([]engine.VerifyToolItem(nil), def.VerifyToolItems...)
 	cloned.DefaultTestCommand.Args = cloneStrings(def.DefaultTestCommand.Args)
 	cloned.TestSuiteCommands = cloneTestSuiteCommands(def.TestSuiteCommands)
 	cloned.Config.Includes = cloneStrings(def.Config.Includes)

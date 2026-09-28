@@ -210,7 +210,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 
 	// Filter.
 	var filtered []Item
-	for _, it := range Registry {
+	for _, it := range RegistryFor(cfg) {
 		if phase != 0 && it.Phase != phase {
 			continue
 		}

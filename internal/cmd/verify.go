@@ -62,7 +62,10 @@ var verifyCmd = &cobra.Command{
 	Long: `Run the 5-phase Govard verify harness (replaces manual checklist tick).
 
 Phases:
-  1 Preflight (7)  2 Bootstrap & Env (14)  3 Dev Loop (15)  4 Sync/Safety (12)  5 Destructive QA (8)
+  1 Preflight (7)  2 Bootstrap & Env (14)  3 Dev Loop (15)  4 Sync/Safety (16)  5 Destructive QA (8)
+
+Counts are the static registry. A framework may declare extra items for its own
+dev loop; RegistryFor composes them at run time, so a run can be longer.
 
 Examples:
   govard verify --plan --json

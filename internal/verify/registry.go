@@ -50,8 +50,8 @@ func isMagento2(c engine.Config) bool {
 	return c.Framework == "magento2"
 }
 
-// Registry is the single source of truth for 56 items across 5 phases
-// (P1 7 + P2 14 + P3 15 + P4 12 + P5 8). Guard values are constrained to
+// Registry is the static checklist: 60 items across 5 phases
+// (P1 7 + P2 14 + P3 15 + P4 16 + P5 8). Guard values are constrained to
 // {"", "READ-ONLY-REMOTE", "DESTRUCTIVE-LOCAL"} per Global Constraints.
 // Empty guard means local write with no remote/destructive gate.
 var Registry = []Item{
@@ -247,7 +247,7 @@ var Registry = []Item{
 		return execGovard(ctx, cfg, opts, "audit", "status", "--format", "json")
 	}},
 
-	// Phase 4 — Sync / Safety / Snapshot (12)
+	// Phase 4 — Sync / Safety / Snapshot (16)
 	{ID: "P4-01", Phase: 4, Title: "govard remote test {{REMOTE}} x4 (dev1/dev2/staging/production)", Precond: "—", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
@@ -320,6 +320,41 @@ var Registry = []Item{
 	{ID: "P4-12", Phase: 4, Title: "govard logs --tail 20 + govard ps cross-project", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "logs", "--tail", "20")
 	}},
+	// P4-13..P4-16 close the read-only half of the remote surface. They are
+	// safe against a production remote by construction: `deploy plan` does not
+	// connect at all, and `deploy status`, `deploy releases` and `remote list`
+	// only read. The writing halves (`deploy check` creates the deploy path,
+	// `deploy unlock`/`rollback` mutate the target, `db`/`snapshot`/`open -e`
+	// can bypass write protection or copy a key, `tunnel stop` kills every
+	// cloudflared on the host) stay manual recipes until govard#466-#469 land.
+	{ID: "P4-13", Phase: 4, Title: "govard deploy plan {{REMOTE}} --json", Precond: "—", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		remote := opts.Remote
+		if remote == "" {
+			remote = "staging"
+		}
+		return execGovard(ctx, cfg, opts, "deploy", "plan", remote, "--json")
+	}},
+	// No --json here on purpose: runDeployStatus returns its JSON line before
+	// the "no configured remote could be reached" check, so the JSON form exits
+	// 0 for an unreachable remote and this item could never fail — green for
+	// exactly the condition it exists to detect. The human path exits 1.
+	{ID: "P4-14", Phase: 4, Title: "govard deploy status --remote {{REMOTE}}", Precond: "P4-13 ok", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		remote := opts.Remote
+		if remote == "" {
+			remote = "staging"
+		}
+		return execGovard(ctx, cfg, opts, "deploy", "status", "--remote", remote)
+	}},
+	{ID: "P4-15", Phase: 4, Title: "govard deploy releases --remote {{REMOTE}} --json", Precond: "P4-13 ok", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		remote := opts.Remote
+		if remote == "" {
+			remote = "staging"
+		}
+		return execGovard(ctx, cfg, opts, "deploy", "releases", "--remote", remote, "--json")
+	}},
+	{ID: "P4-16", Phase: 4, Title: "govard remote list", Precond: "P4-13 ok", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "remote", "list")
+	}},
 
 	// Phase 5 — Destructive QA (8) — gate: P4-08 snapshot exists
 	{ID: "P5-01", Phase: 5, Title: "govard lock generate -> check -> drift .govard.yml -> lock diff -> check --strict must fail -> revert", Precond: "P1-06 ok, P4-08 snapshot exists", Guard: "DESTRUCTIVE-LOCAL", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -363,4 +398,34 @@ var Registry = []Item{
 	{ID: "P5-08", Phase: 5, Title: "govard snapshot pull/push --help", Precond: "—", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "snapshot", "pull", "--help")
 	}},
+}
+
+// RegistryFor returns the checklist items to execute for cfg: the static
+// registry plus the items the project's framework declared for itself. It
+// returns a copy, so a caller that swaps an item's Run (a test seam) cannot
+// mutate the shared registry.
+//
+// Framework items are appended, so their ids must not collide with a static
+// one — the composed list is not de-duplicated. Each runs one
+// `govard tool <Tool> <Args...>` invocation through the same seam every static
+// item uses, which is what lets a framework own its dev-loop checks without
+// internal/verify naming any framework.
+func RegistryFor(cfg engine.Config) []Item {
+	items := make([]Item, 0, len(Registry))
+	items = append(items, Registry...)
+
+	for _, decl := range engine.VerifyToolItems(cfg.Framework) {
+		args := append([]string{"tool", decl.Tool}, decl.Args...)
+		items = append(items, Item{
+			ID:      decl.ID,
+			Phase:   decl.Phase,
+			Title:   decl.Title,
+			Precond: "P2-01 up",
+			Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+				return execGovard(ctx, cfg, opts, args...)
+			},
+		})
+	}
+
+	return items
 }
