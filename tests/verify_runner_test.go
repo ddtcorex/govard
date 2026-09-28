@@ -93,8 +93,10 @@ func TestVerifyRunnerJSONSchema(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOVARD_HOME_DIR", dir)
 	t.Setenv("GOVARD_VERIFY_FAKE", "1")
+	root := t.TempDir()
 
-	res, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 1, verify.VerifyOpts{JSON: true})
+	res, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 1,
+		verify.VerifyOpts{JSON: true, ProjectRoot: root})
 	if err != nil {
 		t.Fatalf("RunPhase: %v", err)
 	}
@@ -104,8 +106,8 @@ func TestVerifyRunnerJSONSchema(t *testing.T) {
 	if len(res.Items) == 0 {
 		t.Fatalf("expected items")
 	}
-	// Check file written
-	verifyDir := filepath.Join(dir, "verify-runs")
+	// Check file written into this project's scoped store.
+	verifyDir := verify.ProjectRunsDir(root)
 	entries, err := os.ReadDir(verifyDir)
 	if err != nil {
 		t.Fatalf("read verify-runs: %v", err)

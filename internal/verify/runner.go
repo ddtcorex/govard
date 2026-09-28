@@ -2,9 +2,12 @@ package verify
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -22,7 +25,9 @@ var (
 	ErrNeedAllowDestructive = errors.New("need --allow-destructive for phase 5")
 )
 
-// VerifyRunsDir returns the directory for verify JSON runs.
+// VerifyRunsDir returns the root directory for verify JSON runs. Run artifacts
+// live one level down, under ProjectRunsDir, so one project's evidence can never
+// satisfy another project's gate (issue #462).
 func VerifyRunsDir() string {
 	if d := os.Getenv("GOVARD_HOME_DIR"); d != "" {
 		return filepath.Join(d, "verify-runs")
@@ -30,6 +35,70 @@ func VerifyRunsDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".govard", "verify-runs")
 }
+
+// ProjectID keys the local run store to a project. The canonical working-tree
+// path is the whole identity on purpose: run artifacts describe one checkout,
+// and a moved checkout is a different local store (the same trade-off the audit
+// store and DSH project memory already make).
+func ProjectID(projectRoot string) string {
+	canonical := projectRoot
+	if resolved, err := resolveCanonicalRoot(projectRoot); err == nil && resolved != "" {
+		canonical = resolved
+	}
+	sum := sha256.Sum256([]byte(canonical))
+	return "project-" + hex.EncodeToString(sum[:])[:16]
+}
+
+// resolveCanonicalRoot absolutises and dereferences a project root. An empty
+// root means the current directory, matching how cmd/verify.go resolves it. A
+// path that does not exist still yields a stable cleaned value so ProjectID
+// never fails on a root that is merely absent.
+func resolveCanonicalRoot(projectRoot string) (string, error) {
+	if strings.TrimSpace(projectRoot) == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		projectRoot = cwd
+	}
+	abs, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved, nil
+	}
+	return filepath.Clean(abs), nil
+}
+
+// ProjectRunsDir is the per-project run store: <store root>/<project id>.
+func ProjectRunsDir(projectRoot string) string {
+	return filepath.Join(VerifyRunsDir(), ProjectID(projectRoot))
+}
+
+// ResolveProjectSHA returns the revision the run describes, or "unknown" when
+// the root is not a git repository. GOVARD_VERIFY_SHA wins so a CI job can pin
+// the value it built.
+func ResolveProjectSHA(projectRoot string) string {
+	if v := strings.TrimSpace(os.Getenv("GOVARD_VERIFY_SHA")); v != "" {
+		return v
+	}
+	root, err := resolveCanonicalRoot(projectRoot)
+	if err != nil {
+		return "unknown"
+	}
+	out, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return "unknown"
+	}
+	if sha := strings.TrimSpace(string(out)); sha != "" {
+		return sha
+	}
+	return "unknown"
+}
+
+// ResolveProjectSHAForTest exposes ResolveProjectSHA for tests in /tests.
+func ResolveProjectSHAForTest(projectRoot string) string { return ResolveProjectSHA(projectRoot) }
 
 func legacyRunsDir() string {
 	if d := os.Getenv("GOVARD_HOME_DIR"); d != "" {
@@ -80,7 +149,9 @@ func MigrateLegacyRuns() error {
 type RunResult struct {
 	GovardVersion string    `json:"govard_version"`
 	ProjectSHA    string    `json:"project_sha"`
+	ProjectID     string    `json:"project_id,omitempty"`
 	Phase         string    `json:"phase"`
+	Mode          string    `json:"mode,omitempty"`
 	Status        string    `json:"status,omitempty"`
 	Items         []RunItem `json:"items"`
 }
@@ -152,8 +223,13 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 	// Build result.
 	res := RunResult{
 		GovardVersion: GovardVersion,
-		ProjectSHA:    resolveProjectSHA(),
+		ProjectSHA:    ResolveProjectSHA(opts.ProjectRoot),
+		ProjectID:     ProjectID(opts.ProjectRoot),
 		Phase:         phaseLabel(phase),
+		Mode:          "run",
+	}
+	if opts.Plan {
+		res.Mode = "plan"
 	}
 
 	for _, it := range filtered {
@@ -185,7 +261,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 
 	if opts.JSON {
 		_ = MigrateLegacyRuns()
-		dir := VerifyRunsDir()
+		dir := ProjectRunsDir(opts.ProjectRoot)
 		_ = os.MkdirAll(dir, 0755)
 		ts := time.Now().Format("2006-01-02T15-04-05Z07:00")
 		path := filepath.Join(dir, ts+"-phase"+phaseFileSuffix(phase)+".json")
@@ -225,14 +301,6 @@ func phaseLabelRaw(phase int) string {
 	default:
 		return "phase0"
 	}
-}
-
-func resolveProjectSHA() string {
-	// Best-effort: env override for tests, else unknown.
-	if v := os.Getenv("GOVARD_VERIFY_SHA"); v != "" {
-		return v
-	}
-	return "unknown"
 }
 
 func checkP5Gate() error {
