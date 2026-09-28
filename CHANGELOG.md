@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.77.0] - 2026-09-28
+
+### ⚠️ Platform Requirements
+
+- **Govard Desktop needs GTK 4 and WebKitGTK 6.0:** the desktop app now runs on Wails 3 and the deb depends on `libgtk-4-1` and `libwebkitgtk-6.0-4`, so it installs on Ubuntu 24.04+ and Debian 13+. Ubuntu 22.04, Debian 12 and every non-Linux platform install the CLI only. `govard self-update` checks for WebKitGTK 6.0 before it touches the desktop package: on a host without it the desktop is skipped with a warning and the CLI still updates, so an older working desktop is never removed. (#405, #414, #418)
+- **The macOS package is CLI-only** until the native `.app` build returns; self-update skips the desktop there with a warning. (#405, #407)
+
+### ✨ New Features
+
+- **Govard Desktop on Wails 3:** services are bound directly and their JS bindings are generated and committed (`make bindings`, checked in CI by `make bindings-check`), the app has a system tray, and closing the window follows one rule: it hides only when "run in background" is on and a tray exists to bring it back, and an explicit Quit always exits. (#398, #401, #403, #405)
+- **Desktop UI rebuilt on React islands:** the metrics footer, update prompt, logs tab, settings drawer, dashboard, project hero, sidebar list, remotes list and sync dialog, global services deck, card list and log pane, and the onboarding wizard each moved into a React island over one shared store, with the same look. The frontend builds with Vite, pnpm, Tailwind v4 and shadcn/ui. (#411, #420, #425, #427, #435, #438, #440, #442, #444, #446, #448)
+- **Desktop preview and behaviour tests:** the UI runs in a plain browser against fixtures (`preview.html`), `GOVARD_PREVIEW_RECORD=1 govard desktop --dev` records real backend calls as fixtures, and `make test-frontend-behaviour` drives the real UI in headless Chrome over raw CDP, in CI on every PR. (#409, #420, #433)
+
+### 🐛 Bug Fixes
+
+- **The desktop sidebar no longer sticks on its loading skeleton:** a production build published the dashboard before the list island had registered how to leave its loading state, so the environment list stayed as placeholder rows after every launch. The loading state now lives in the shared store, and a failed start, stop or restart also clears it. (#457, #458)
+- **One "Govard" in the dock:** the desktop app reports the GTK application id its launcher is installed under (`io.github.ddtcorex.govard`), so on Wayland the running window groups with the pinned launcher instead of showing a second icon, and every surface uses the name "Govard". (#453, #454)
+- **Desktop fixes from the island migration:** project names are escaped in the delete dialog and in toasts; the onboarding bootstrap options toggle again; island teardown hands every registered API back so a later refresh cannot reach an unmounted island; the Linux tray is labelled "Govard" instead of "Wails"; and `govard desktop --dev` no longer leaves Vite running on port 5173 after it exits. (#414, #422, #430, #450, #452, #456)
+- **`deploy:shared` links a shared directory the release already has:** `ln -sfn` used to create the link inside an existing directory and exit `0`, so a Magento release kept its own near-empty `pub/media` and every image returned 404 on a symlink target. The placeholder directory is replaced by the link, and `deploy:verify` now requires every existing shared directory to be a symlink that resolves. (#412, #413)
+- **Sandbox rehearsals match the project:** `sandbox up` without `--php` uses the project's `stack.php_version` instead of the base image's PHP, and a seeded Magento sandbox has its `base_url` rewritten so the verify check no longer redirects to the origin domain. (#428, #431)
+- **Sandbox seeding streams to the end:** a large `mariadb-dump` was cut off after the process exited, which surfaced as a timeout or a syntax error part way through the import. A streamed stdout now goes through a real pipe that is read to end of file. (#436)
+- **Self-update upgrades `govard-desktop` with the CLI on Debian hosts:** the deb path used to install only the CLI package, leaving the desktop on an old version. Both packages are now checksummed and installed in one `dpkg -i`. (#418)
+
+### 🔧 Maintenance
+
+- The macOS release job no longer uploads a desktop archive it stopped producing, which would have failed the tag build; desktop-tagged Go code is vetted and linted in CI (`make lint-desktop`); the docs no longer describe Wails 2, Yarn or Node.js 20 for the desktop, and the docs site builds on Node 24. (#407, #414, #418)
+
 ## [1.76.5] - 2026-09-24
 
 ### 🐛 Bug Fixes
