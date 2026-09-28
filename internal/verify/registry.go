@@ -28,6 +28,9 @@ type Evidence struct {
 	OutputExcerpt string
 	JSONValid     bool
 	Retries       int
+	// Artifacts names what this item produced (a snapshot directory, for
+	// example). The phase-5 gate uses it to prove a restore target exists.
+	Artifacts []string
 }
 
 // Item is one checklist entry in the 5-phase registry.
@@ -298,6 +301,11 @@ var Registry = []Item{
 		ev2 := execGovard(ctx, cfg, opts, "snapshot", "list")
 		ev.OutputExcerpt += " | list: " + ev2.OutputExcerpt
 		ev.ExitCode = ev2.ExitCode
+		if ev.ExitCode == 0 {
+			if name, ok := LatestSnapshotName(opts.ProjectRoot); ok {
+				ev.Artifacts = []string{name}
+			}
+		}
 		return ev
 	}},
 	{ID: "P4-09", Phase: 4, Title: "govard snapshot export + delete --help", Precond: "P4-08 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -336,7 +344,14 @@ var Registry = []Item{
 		return execGovard(ctx, cfg, opts, args...)
 	}},
 	{ID: "P5-05", Phase: 5, Title: "govard snapshot restore", Precond: "P4-08 snapshot exists", Guard: "DESTRUCTIVE-LOCAL", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		return execGovard(ctx, cfg, opts, "snapshot", "restore")
+		// Restore the exact snapshot the gate verified. The command takes the
+		// name as a positional argument, so omitting it made this item fail
+		// argument validation and restore nothing (issue #461).
+		name, ok := GateSatisfyingSnapshot(opts)
+		if !ok {
+			return Evidence{ExitCode: 1, OutputExcerpt: "no snapshot recorded by a phase-4 run for this project"}
+		}
+		return execGovard(ctx, cfg, opts, "snapshot", "restore", name)
 	}},
 	{ID: "P5-06", Phase: 5, Title: "govard env down && govard env up (no -v)", Precond: "P5-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		_ = execGovard(ctx, cfg, opts, "env", "down")

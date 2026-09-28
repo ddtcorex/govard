@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -186,13 +185,14 @@ func (r *RunResult) RefreshStatus() {
 
 // RunItem is one entry in RunResult.
 type RunItem struct {
-	ID              string `json:"id"`
-	Command         string `json:"command"`
-	DurationMs      int    `json:"duration_ms"`
-	ExitCode        int    `json:"exit_code"`
-	Retries         int    `json:"retries"`
-	EvidenceExcerpt string `json:"evidence_excerpt"`
-	JSONValid       bool   `json:"json_valid"`
+	ID              string   `json:"id"`
+	Command         string   `json:"command"`
+	DurationMs      int      `json:"duration_ms"`
+	ExitCode        int      `json:"exit_code"`
+	Retries         int      `json:"retries"`
+	EvidenceExcerpt string   `json:"evidence_excerpt"`
+	JSONValid       bool     `json:"json_valid"`
+	Artifacts       []string `json:"artifacts,omitempty"`
 }
 
 // RunPhase executes the filtered registry for a single phase and optionally
@@ -200,7 +200,7 @@ type RunItem struct {
 func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts) (RunResult, error) {
 	// Gate for destructive phase 5 — bypassed for --plan (dry-run).
 	if phase == 5 && !opts.Plan {
-		if err := checkP5Gate(); err != nil {
+		if err := checkP5Gate(opts); err != nil {
 			return RunResult{}, err
 		}
 		if !opts.AllowDestructive {
@@ -254,6 +254,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 			Retries:         ev.Retries,
 			EvidenceExcerpt: ev.OutputExcerpt,
 			JSONValid:       ev.JSONValid,
+			Artifacts:       ev.Artifacts,
 		})
 	}
 
@@ -303,38 +304,11 @@ func phaseLabelRaw(phase int) string {
 	}
 }
 
-func checkP5Gate() error {
-	dir := VerifyRunsDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+// checkP5Gate requires a snapshot of this project recorded by a real (non-plan)
+// phase-4 run and still present on disk. See GateSatisfyingSnapshot.
+func checkP5Gate(opts VerifyOpts) error {
+	if _, ok := GateSatisfyingSnapshot(opts); !ok {
 		return ErrNeedSnapshot
 	}
-	var phase4Files []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if strings.Contains(e.Name(), "phase4") && strings.HasSuffix(e.Name(), ".json") {
-			phase4Files = append(phase4Files, filepath.Join(dir, e.Name()))
-		}
-	}
-	if len(phase4Files) == 0 {
-		return ErrNeedSnapshot
-	}
-	sort.Strings(phase4Files)
-	latest := phase4Files[len(phase4Files)-1]
-	b, err := os.ReadFile(latest)
-	if err != nil {
-		return ErrNeedSnapshot
-	}
-	var res RunResult
-	if err := json.Unmarshal(b, &res); err != nil {
-		return ErrNeedSnapshot
-	}
-	for _, it := range res.Items {
-		if it.ID == "P4-08" && it.ExitCode == 0 {
-			return nil
-		}
-	}
-	return ErrNeedSnapshot
+	return nil
 }
