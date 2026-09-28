@@ -524,7 +524,7 @@ Exit codes: `0` mọi mục đều pass; `1` có mục fail **hoặc** một gat
 
 Outputs: `<govard home>/verify-runs/<project-id>/<ISO>-phaseN.json`, với `project-id` là hash của đường dẫn chuẩn hoá của project, gồm `{govard_version, project_sha, project_id, phase, mode, status, items:[{id, command, duration_ms, exit_code, retries, evidence_excerpt, json_valid, artifacts}]}`. `mode` là `run` hoặc `plan`; `status` là `passed` hoặc `failed`; `artifacts` nêu thứ mà mục đó tạo ra (snapshot của `P4-08`, chính là thứ `P5-05` restore). `~/.govard/checklist-runs/` cũ được migrate lần đầu; artifact tạo trước khi có project-scoping (nằm phẳng ở gốc `verify-runs/`) không mang danh tính project nên không bao giờ thoả gate. `phase 0/all --json` xuất một JSON duy nhất `phase: "all"` với `status` được tính lại và `items` gộp.
 
-`GOVARD_VERIFY_BIN` ghim binary mà các mục checklist thực thi. Không đặt thì binary đang chạy sẽ thực thi chúng, và `PATH` chỉ là phương án cuối — để kiểm chứng một bản build từ source, hãy chạy chính bản build đó và đặt biến này (hoặc đảm bảo nó đứng đầu `PATH`), vì `govard` trần có thể là bản cài cũ hơn.
+`GOVARD_VERIFY_BIN` ghim binary mà các mục checklist thực thi. Không đặt thì binary đang chạy sẽ thực thi chúng, và `PATH` chỉ là phương án cuối. Để kiểm chứng một bản build từ source, hãy chạy trực tiếp bản build đó và đặt biến này nếu nó không phải là bản mà shell sẽ tìm thấy — nếu không, `govard` trần trên `PATH` có thể là bản cài cũ và checklist sẽ báo cáo về bản đó, không phải bản build của bạn.
 
 Tự động phát hiện framework qua `engine.DetectFramework` khi thiếu `.govard.yml` (nên project mới có `artisan`/`composer.json` được nhận diện `laravel` v.v.).
 
