@@ -25,35 +25,20 @@ func TestVerifyRunnerGateP5WithoutSnapshot(t *testing.T) {
 }
 
 func TestVerifyRunnerAllowDestructiveRequired(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("GOVARD_HOME_DIR", dir)
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	t.Setenv("GOVARD_VERIFY_FAKE", "1")
+	root := t.TempDir()
+	makeSnapshot(t, root, "20260101-000000", "2026-01-01T00:00:00Z")
+	writePhase4(t, root, goodPhase4(root, "20260101-000000"))
 
-	// Create a fake phase4 file with P4-08 PASS
-	verifyDir := filepath.Join(dir, "verify-runs")
-	if err := os.MkdirAll(verifyDir, 0755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	res := verify.RunResult{
-		GovardVersion: "test",
-		ProjectSHA:    "test-sha",
-		Phase:         "phase4",
-		Items: []verify.RunItem{
-			{ID: "P4-08", Command: "govard snapshot create", ExitCode: 0, EvidenceExcerpt: "ok"},
-		},
-	}
-	b, _ := json.Marshal(res)
-	if err := os.WriteFile(filepath.Join(verifyDir, "2026-01-01T00-00-00Z-phase4.json"), b, 0644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	_, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 5, verify.VerifyOpts{AllowDestructive: false})
+	_, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 5,
+		verify.VerifyOpts{AllowDestructive: false, ProjectRoot: root})
 	if err != verify.ErrNeedAllowDestructive {
 		t.Fatalf("expected ErrNeedAllowDestructive, got %v", err)
 	}
 
-	// With allow, should succeed (even if items are stubs)
-	got, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 5, verify.VerifyOpts{AllowDestructive: true})
+	got, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 5,
+		verify.VerifyOpts{AllowDestructive: true, ProjectRoot: root})
 	if err != nil {
 		t.Fatalf("expected success with AllowDestructive, got %v", err)
 	}
