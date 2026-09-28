@@ -16,16 +16,52 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # The `go` directive in go.mod is the toolchain floor *and* the exact
+      # version this installs, so it must name a patched release: with `go
+      # 1.25.0` setup-go installs 1.25.0 verbatim, and the standard library of
+      # an unpatched release carries CVEs that are already fixed in later
+      # patches of the same minor. Every workflow that reads go.mod — this one,
+      # codeql, release (twice) and audit-glint-image — builds with whatever
+      # this resolves to.
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
 
-      - name: Run govulncheck (SARIF)
+      # The text report is what the gate reads and what a human needs: the SARIF
+      # file is machine-only, so a run that failed on a real finding used to say
+      # nothing about *which* finding. The default (non-verbose) report lists a
+      # `Vulnerability #N:` block only for findings whose code path reaches this
+      # repository; the imported-but-uncalled ones are counted at the end.
+      #
+      # govulncheck is PINNED, and the pin is load-bearing rather than tidiness.
+      # `@latest` is x/vuln v1.8.0, which requires go >= 1.26.0; Go's automatic
+      # toolchain switching then downloads 1.26.0 — the minimum that satisfies it
+      # — and govulncheck reports the standard-library CVEs of the toolchain it
+      # RUNS ON, not of this module's floor. 1.26.0 is unpatched, so the job was
+      # red for 19 stdlib CVEs that pinning `go` in go.mod alone could not fix:
+      # v1.8.0 would still have pulled 1.26.0. v1.7.0 requires only go 1.25.0, so
+      # the scan runs on the patched toolchain go.mod asks for. Bump the pin only
+      # together with the go directive, and check `go` in x/vuln's own go.mod.
+      - name: Run govulncheck
         run: |
-          go run golang.org/x/vuln/cmd/govulncheck@latest -format sarif ./... > govulncheck.sarif
+          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 -format text ./... \
+            > govulncheck.txt 2>&1 || true
+          cat govulncheck.txt
 
+      - name: Gate on findings
+        run: bash scripts/govulncheck-gate.sh govulncheck.txt
+
+      - name: Build SARIF report
+        if: always()
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 -format sarif ./... \
+            > govulncheck.sarif || true
+
+      # Uploaded even when the gate failed, so an accepted or newly discovered
+      # finding reaches code scanning instead of only the job log.
       - name: Upload SARIF report
+        if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: govulncheck.sarif
