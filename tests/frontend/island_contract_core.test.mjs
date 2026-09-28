@@ -96,10 +96,9 @@ test("every refs entry names an element in index.html", () => {
 // (`X = api || X_STUB`).
 //
 // The registrars in scope are the ones that publish behaviour main.js invokes -
-// registerApi, registerController, registerRefresh. registerRefs and
-// registerSkeleton publish DOM elements instead: after unmount React no-ops the
-// state setter behind them and the next refresh re-resolves the refs, so they
-// are deliberately out of scope here.
+// registerApi, registerController, registerRefresh. registerRefs publishes DOM
+// elements instead: after unmount the next refresh re-resolves the refs, so it
+// is deliberately out of scope here.
 //
 // This is the class #452 fixed in four islands but missed in the two that
 // predate it (LogsTab's registerController, MetricsFooter's registerRefresh);

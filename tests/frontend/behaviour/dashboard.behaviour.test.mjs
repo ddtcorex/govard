@@ -215,3 +215,33 @@ test("a service card's logs button opens that service's logs", async (t) => {
 
   assert.deepEqual(session.consoleErrors, []);
 });
+
+// Measured 2026-09-28 on a production build in WebKitGTK: main.js published the
+// dashboard (and asked the list to leave its loading frame) at ~540 ms, while
+// the island's registering effect ran at ~640 ms. The request landed on the
+// no-op placeholder and the sidebar kept its skeleton after every boot. The
+// debug build hides it because its logging slows the IPC round trip past
+// React's commit, so this scenario forces the same order instead of racing it:
+// the dashboard is published first, and only then does a list island mount.
+test("a list island mounted after the dashboard was published shows the environments", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+  await loadDashboardFixture(session);
+
+  await session.evaluate(`import("/preview/late-env-list-mount.js").then((m) => {
+    window.__lateEnvList = m.mountLateEnvList("lateEnvList");
+  })`);
+
+  await session.waitFor(
+    `document.querySelectorAll("#lateEnvList [data-testid='env-card']").length`,
+    2,
+    { timeoutMs: 5000 },
+  );
+  assert.equal(
+    await session.evaluate(`document.querySelectorAll("#lateEnvList .skeleton").length`),
+    0,
+    "a list that mounts after the data arrived must not wait for a hide it already missed",
+  );
+
+  assert.deepEqual(session.consoleErrors, []);
+});

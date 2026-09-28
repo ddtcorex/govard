@@ -1,6 +1,10 @@
 const state = {
   sidebarMode: "global-services",
   environments: [],
+  // The sidebar list shows its loading frame until main.js publishes the first
+  // dashboard, and again for every non-silent refresh. It lives here and not in
+  // the island so a list that mounts after the data arrived still renders it.
+  envListLoading: true,
   selectedProject: "",
   selectedService: "all",
   selectedSeverity: "all",
