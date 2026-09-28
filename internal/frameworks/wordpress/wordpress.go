@@ -65,6 +65,12 @@ func Definition() types.FrameworkDefinition {
 		ToolCommands: []types.ToolCommand{
 			{Name: "wp", Short: "Run WordPress CLI commands", Binary: "wp"},
 		},
+		VerifyToolItems: []engine.VerifyToolItem{
+			{ID: "P3-WP-01", Phase: 3, Title: "govard tool wp core version", Tool: "wp", Args: []string{"core", "version"}},
+			{ID: "P3-WP-02", Phase: 3, Title: "govard tool wp option get siteurl", Tool: "wp", Args: []string{"option", "get", "siteurl"}},
+			{ID: "P3-WP-03", Phase: 3, Title: "govard tool wp cache flush", Tool: "wp", Args: []string{"cache", "flush"}},
+			{ID: "P5-WP-01", Phase: 5, Title: "govard tool wp db check after restore", Tool: "wp", Args: []string{"db", "check"}},
+		},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return NewWordPressBootstrap(opts)
 		},

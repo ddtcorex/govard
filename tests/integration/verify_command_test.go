@@ -5,6 +5,9 @@ package integration
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -85,5 +88,81 @@ func TestVerifyCommandRedRunWithErrorJSONWritesOneDocument(t *testing.T) {
 	}
 	if result.ExitCode == 0 {
 		t.Fatalf("a red checklist must exit non-zero; stdout: %s", result.Stdout)
+	}
+}
+
+// TestVerifyFrameworkItemFailurePropagates pins a framework-declared item's
+// failure path end to end. It cannot live in the unit suite: execGovard treats
+// the running executable as a test binary whenever its path contains ".test",
+// so every in-process item is stubbed to exit 0 and GOVARD_VERIFY_BIN is
+// ignored there. The shim also proves the item keeps the command's own output —
+// a red verdict with an empty excerpt is not diagnosable.
+func TestVerifyFrameworkItemFailurePropagates(t *testing.T) {
+	env := NewTestEnvironment(t)
+	dir := env.CreateTestProject(t, "verify-framework-item", map[string]string{
+		".govard.yml": "project_name: verify-fw\nframework: laravel\ndomain: verify-fw.test\n",
+	})
+
+	shim := filepath.Join(t.TempDir(), "govard-shim")
+	if err := os.WriteFile(shim, []byte("#!/bin/sh\necho 'shim: deliberate failure' >&2\nexit 7\n"), 0o755); err != nil {
+		t.Fatalf("write shim: %v", err)
+	}
+
+	result := env.RunGovardWithEnv(t, dir, []string{"GOVARD_VERIFY_BIN=" + shim},
+		"verify", "--phase", "3", "--json")
+
+	var payload struct {
+		Status string `json:"status"`
+		Items  []struct {
+			ID              string `json:"id"`
+			ExitCode        int    `json:"exit_code"`
+			EvidenceExcerpt string `json:"evidence_excerpt"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(result.Stdout), &payload); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\nstdout: %s", err, result.Stdout)
+	}
+
+	found := false
+	for _, item := range payload.Items {
+		if item.ID != "P3-LAR-02" {
+			continue
+		}
+		found = true
+		if item.ExitCode != 7 {
+			t.Errorf("P3-LAR-02 exit_code = %d, want the shim's 7", item.ExitCode)
+		}
+		if !strings.Contains(item.EvidenceExcerpt, "shim: deliberate failure") {
+			t.Errorf("P3-LAR-02 kept no output: %q", item.EvidenceExcerpt)
+		}
+	}
+	if !found {
+		t.Fatalf("P3-LAR-02 is missing from the phase 3 artifact: %s", result.Stdout)
+	}
+	if payload.Status != "failed" {
+		t.Fatalf("status = %q with a red framework item, want \"failed\"", payload.Status)
+	}
+}
+
+// TestDeployStatusJSONHidesAnUnreachableRemote is the reason P4-14 must not
+// pass --json: the JSON form writes its rows before the "no configured remote
+// could be reached" check, so it exits 0 for a remote that does not exist,
+// while the human form exits non-zero. The checklist item needs the failing
+// exit code, or it is green for exactly the condition it exists to detect.
+func TestDeployStatusJSONHidesAnUnreachableRemote(t *testing.T) {
+	env := NewTestEnvironment(t)
+	dir := env.CreateTestProject(t, "deploy-status-exit", map[string]string{
+		".govard.yml": "project_name: status-exit\nframework: magento2\ndomain: status-exit.test\n",
+	})
+
+	jsonResult := env.RunGovardWithEnv(t, dir, nil, "deploy", "status", "--remote", "absent-remote", "--json")
+	if jsonResult.ExitCode != 0 {
+		t.Fatalf("deploy status --json exit code = %d, want 0 — if this changed, P4-14 should go back to --json\nstdout: %s",
+			jsonResult.ExitCode, jsonResult.Stdout)
+	}
+
+	humanResult := env.RunGovardWithEnv(t, dir, nil, "deploy", "status", "--remote", "absent-remote")
+	if humanResult.ExitCode == 0 {
+		t.Fatalf("deploy status exit code = 0 for an unconfigured remote; P4-14 relies on it failing\nstdout: %s", humanResult.Stdout)
 	}
 }

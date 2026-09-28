@@ -45,6 +45,15 @@ func Definition() types.FrameworkDefinition {
 		ToolCommands: []types.ToolCommand{
 			{Name: "artisan", Short: "Run Laravel Artisan commands", Binary: "php", PrependArgs: []string{"artisan"}},
 		},
+		// The framework's own `govard verify` items. Declared here rather than
+		// branched on in internal/verify, so a Laravel project gets a dev-loop
+		// checklist instead of the 10 Magento-gated items silently vanishing.
+		VerifyToolItems: []engine.VerifyToolItem{
+			{ID: "P3-LAR-01", Phase: 3, Title: "govard tool artisan --version", Tool: "artisan", Args: []string{"--version"}},
+			{ID: "P3-LAR-02", Phase: 3, Title: "govard tool artisan migrate:status", Tool: "artisan", Args: []string{"migrate:status"}},
+			{ID: "P3-LAR-03", Phase: 3, Title: "govard tool artisan cache:clear", Tool: "artisan", Args: []string{"cache:clear"}},
+			{ID: "P5-LAR-01", Phase: 5, Title: "govard tool artisan migrate:status after restore", Tool: "artisan", Args: []string{"migrate:status"}},
+		},
 		DefaultTestCommand: types.TestCommand{Binary: "php", Args: []string{"artisan", "test"}},
 		Bootstrap: func(opts bootstrap.Options) bootstrap.FrameworkBootstrap {
 			return NewLaravelBootstrap(opts)

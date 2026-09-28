@@ -306,6 +306,12 @@ type FrameworkDefinition struct {
 	// frameworks.Register via engine.RegisterSandboxSeedDefinition. nil for
 	// frameworks with nothing to seed beyond the database.
 	SandboxSeed *engine.SandboxSeedDefinition
+	// VerifyToolItems are this framework's own `govard verify` items: each runs
+	// one `govard tool` invocation, so a framework's dev loop is checked
+	// without the verify registry branching on a framework name. Populated by
+	// frameworks.Register via engine.RegisterVerifyToolItems. nil for
+	// frameworks that declare none.
+	VerifyToolItems []engine.VerifyToolItem
 
 	// VersionProfileResolver resolves this framework's version-specific
 	// runtime-profile overrides (e.g. Magento 2's per-patch-release stack),
