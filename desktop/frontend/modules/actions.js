@@ -69,6 +69,10 @@ export const createActionsController = ({
       } else {
         onToast(message, "error");
       }
+      // The refresh is what closes the loading frame raised above, and a failed
+      // action can still have changed containers half way, so the list has to
+      // be re-read on this path too.
+      await refreshDashboard({ silent: true });
     }
   };
 
