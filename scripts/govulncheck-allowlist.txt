@@ -1,0 +1,9 @@
+# Vulnerabilities govard accepts, one per line as "<GO id>  <reason>".
+#
+# Only an upstream-unfixed finding goes here, and the reason must name what would
+# remove it. scripts/govulncheck-gate.sh fails on anything not listed here, and
+# reports an entry that is no longer reported so it can be deleted.
+#
+# Reviewed 2026-09-29.
+GO-2026-4883  Moby plugin privilege validation (daemon side). govard imports only the client API (client, api/types/*), and every reported trace is a package init or a generic client call (NewClientWithOpts, Ping, ContainerList) — no daemon symbol is reachable. github.com/docker/docker is already at the newest release (v28.5.2+incompatible) and the advisory records no fixed version. Remove when a patched Moby client ships.
+GO-2026-4887  Moby AuthZ plugin handling of oversized request bodies (daemon side). Same client-only exposure and same missing upstream fix as GO-2026-4883. Remove when a patched Moby client ships.
