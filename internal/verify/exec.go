@@ -12,6 +12,12 @@ import (
 	"govard/internal/engine"
 )
 
+// EnvBinaryOverride pins the binary the checklist runs. Set it when validating
+// a source build: without it the invoked executable wins, which is the point —
+// resolving through PATH made `./bin/govard verify` silently test whatever
+// `govard` the shell found first (issue #464).
+const EnvBinaryOverride = "GOVARD_VERIFY_BIN"
+
 // execGovardFake is a test hook: when set, execGovard returns this value without spawning a process.
 var execGovardFake func(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ...string) (Evidence, bool)
 
@@ -72,15 +78,24 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 	}
 }
 
+// govardBinary resolves the binary an item runs: an explicit override first,
+// then the executable that is already running, and PATH only as a last resort.
+// Preferring PATH here was the bug — a source build validated the installed CLI.
 func govardBinary() string {
-	if p, err := exec.LookPath("govard"); err == nil {
+	if p := strings.TrimSpace(os.Getenv(EnvBinaryOverride)); p != "" {
 		return p
 	}
 	if exe, err := os.Executable(); err == nil && exe != "" {
 		return exe
 	}
+	if p, err := exec.LookPath("govard"); err == nil {
+		return p
+	}
 	return "govard"
 }
+
+// GovardBinaryForTest exposes govardBinary for tests in /tests.
+func GovardBinaryForTest() string { return govardBinary() }
 
 func isTestBinary(bin string) bool {
 	if strings.Contains(bin, ".test") {
