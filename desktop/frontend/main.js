@@ -669,12 +669,11 @@ const syncModalIsland = mountIsland(
 
 
 
-// The sidebar's loading frame belongs to its island now: main.js asks the island
-// to show it instead of writing skeleton markup into a subtree React owns. The
+// The sidebar's loading frame is a store flag the list island reads: main.js
+// raises it instead of writing skeleton markup into a subtree React owns. The
 // metric skeletons went with the footer tiles (#425).
-let envSkeleton = { show: () => {}, hide: () => {} };
 const renderAllSkeletons = () => {
-  envSkeleton.show();
+  setState({ envListLoading: true });
 };
 
 const refreshDashboard = async (options = {}) => {
@@ -695,13 +694,17 @@ const refreshDashboard = async (options = {}) => {
     // this store now (spec D6), so publishing the environments is what renders
     // them - there is nothing left to push into the DOM from here.
     const selectedProject = getState().selectedProject || "";
-    setState({ environments: dashboard.environments, selectedProject });
+    // The list has its data now, so the loading frame is over either way: a
+    // silent refresh never showed one, and this is what closes the non-silent one
+    // and the boot frame the store starts with.
+    setState({
+      environments: dashboard.environments,
+      selectedProject,
+      envListLoading: false,
+    });
     if (!selectedProject && dashboard.environments.length > 0) {
       setState({ selectedProject: projectKey(dashboard.environments[0]) });
     }
-    // The list has its data now, so the loading frame is over either way: a
-    // silent refresh never showed one, and this is what closes the non-silent one.
-    envSkeleton.hide();
 
     try {
       refreshServiceSelector();
@@ -886,9 +889,6 @@ const environmentListIsland = mountIsland(
     onSelect: (project) => void selectProject(project),
     onToggle: (project) => void actionsController.handle("toggle-env", project),
     onSwitchSidebarMode: () => void switchSidebarMode("global-services"),
-    registerSkeleton: (api) => {
-      envSkeleton = api;
-    },
   }),
 );
 const projectHeroIsland = mountIsland(

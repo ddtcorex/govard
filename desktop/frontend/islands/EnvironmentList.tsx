@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   classifyEnvironmentStatus,
   domainLabel,
@@ -11,7 +10,6 @@ type Props = {
   onSelect(project: string): void;
   onToggle(project: string): void;
   onSwitchSidebarMode(): void;
-  registerSkeleton(api: { show(): void; hide(): void }): void;
 };
 
 const itemClass = (isSelected: boolean, active: boolean) =>
@@ -174,24 +172,16 @@ export function EnvironmentList({
   onSelect,
   onToggle,
   onSwitchSidebarMode,
-  registerSkeleton,
 }: Props) {
   const state = useStore();
-  const [loading, setLoading] = useState(true);
 
-  // main.js owns both ends of the loading frame: it shows the skeleton before a
-  // non-silent refresh and hides it when it publishes the environments. Inferring
-  // "finished" from the environments array's identity does not work here - the
-  // generated model hands back the SAME array for the same source object, so a
-  // refetch can leave the identity untouched and freeze the skeleton on screen.
-  useEffect(() => {
-    registerSkeleton({
-      show: () => setLoading(true),
-      hide: () => setLoading(false),
-    });
-  }, [registerSkeleton]);
-
-  if (loading) return <Skeletons />;
+  // The loading frame is store state, like the list itself. It used to be local
+  // state that main.js closed through a registrar the island handed over from
+  // its effect, but main.js can publish the dashboard before React runs that
+  // effect (measured on a production boot: ~540 ms against ~640 ms), and the
+  // hide then landed on the placeholder and left the skeleton up for good.
+  // Reading the flag from the store makes the mount order irrelevant.
+  if (state.envListLoading) return <Skeletons />;
 
   const sidebarMode =
     state.sidebarMode === "global-services" ? "global-services" : "environments";
