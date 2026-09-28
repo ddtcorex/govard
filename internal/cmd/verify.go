@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"govard/internal/engine"
@@ -22,17 +23,26 @@ var ErrItemsFailed = errors.New("verify: one or more checklist items failed")
 
 // summarise turns a finished run into the process verdict. The JSON already
 // carries per-item detail; this is what a CI step branches on.
-func summarise(res verify.RunResult) error {
+//
+// The human line goes to the writer the caller passes — the command's stderr,
+// never stdout. Printing it through pterm wrote it to fd 1, which appended
+// "checklist failed: ..." after the JSON object and broke `--json` for every
+// machine consumer.
+func summarise(out io.Writer, res verify.RunResult) error {
 	if res.Failed() {
 		passed, failed := res.Counts()
-		pterm.Error.Printf("checklist failed: %d passed, %d failed\n", passed, failed)
+		fmt.Fprintf(out, "checklist failed: %d passed, %d failed\n", passed, failed)
 		return ErrItemsFailed
 	}
 	return nil
 }
 
 // SummariseForTest exposes summarise for tests in /tests.
-func SummariseForTest(res verify.RunResult) error { return summarise(res) }
+func SummariseForTest(res verify.RunResult) error { return summarise(io.Discard, res) }
+
+// VerifyCommandForTest exposes the verify command so a test can drive it and
+// inspect what lands on stdout.
+func VerifyCommandForTest() *cobra.Command { return verifyCmd }
 
 var verifyCmd = &cobra.Command{
 	Annotations: map[string]string{
@@ -125,7 +135,7 @@ Examples:
 			if err := renderVerifyResult(cmd, res, jsonOut); err != nil {
 				return err
 			}
-			return summarise(res)
+			return summarise(cmd.ErrOrStderr(), res)
 		}
 
 		// All phases 1..5 sequentially. A red item does not stop the next phase —
@@ -156,7 +166,7 @@ Examples:
 			if err := renderVerifyResult(cmd, combined, true); err != nil {
 				return err
 			}
-			return summarise(combined)
+			return summarise(cmd.ErrOrStderr(), combined)
 		}
 		var combined verify.RunResult
 		var first bool
@@ -181,7 +191,7 @@ Examples:
 			}
 		}
 		combined.RefreshStatus()
-		return summarise(combined)
+		return summarise(cmd.ErrOrStderr(), combined)
 	},
 }
 
