@@ -29,12 +29,41 @@ func TestVerifyCommandPhase1JSON(t *testing.T) {
 		".govard.yml": "project_name: verify-test2\nframework: magento2\ndomain: verify-test2.test\n",
 	})
 	result := env.RunGovardWithEnv(t, dir, nil, "verify", "--phase", "1", "--json")
-	result.AssertSuccess(t)
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(result.Stdout), &payload); err != nil {
-		t.Fatalf("stdout not JSON: %v\nstdout: %s", err, result.Stdout)
+
+	// stdout must be exactly one JSON object even when items fail: the verdict
+	// line is human output and belongs on stderr. This runs the real binary, so
+	// it is the only test that exercises the real file descriptors.
+	var payload struct {
+		Status string `json:"status"`
+		Items  []struct {
+			ID       string `json:"id"`
+			ExitCode int    `json:"exit_code"`
+		} `json:"items"`
 	}
-	if _, ok := payload["items"]; !ok {
+	if err := json.Unmarshal([]byte(result.Stdout), &payload); err != nil {
+		t.Fatalf("stdout not a single JSON object: %v\nstdout: %s", err, result.Stdout)
+	}
+	if len(payload.Items) == 0 {
 		t.Fatalf("JSON missing items: %s", result.Stdout)
+	}
+
+	red := 0
+	for _, item := range payload.Items {
+		if item.ExitCode != 0 {
+			red++
+		}
+	}
+	if red > 0 {
+		if payload.Status != "failed" {
+			t.Fatalf("status = %q with %d red item(s), want \"failed\"", payload.Status, red)
+		}
+		// A red checklist is an execution failure (1), never success. This
+		// project cannot make every P1 item pass, so the assertion is the
+		// correlation: the exit code tracks the items.
+		if result.ExitCode == 0 {
+			t.Fatalf("exit code 0 with %d red item(s); a failing checklist must exit non-zero\nstdout: %s", red, result.Stdout)
+		}
+	} else if result.ExitCode != 0 {
+		t.Fatalf("exit code %d with no red item(s), want 0\nstdout: %s", result.ExitCode, result.Stdout)
 	}
 }
