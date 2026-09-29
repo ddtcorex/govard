@@ -168,6 +168,18 @@ func TestSandboxUpNoSeedSkipsSnapshot(t *testing.T) {
 // origin container into the sandbox container; the only dump bytes resident are
 // one line at a time.
 func TestSandboxSeedStreamsTheDumpWithoutBufferingIt(t *testing.T) {
+	// TotalAlloc counts every byte the program ever allocated, and the race
+	// detector adds shadow memory for every access it instruments. That turns a
+	// 2 MiB stream into ~146 MiB of accounting — not a shifted version of the
+	// measurement but noise three orders of magnitude above the 16 MiB ceiling.
+	// Raising the ceiling would not restore the signal, it would erase the only
+	// thing separating a stream from a whole-dump copy. So the assertion stands
+	// untouched everywhere the measurement means something, and declines to run
+	// where it does not.
+	if raceDetectorEnabled {
+		t.Skip("asserts a TotalAlloc ceiling the race detector's shadow memory makes meaningless")
+	}
+
 	origin, _ := seedGitRepo(t)
 	root := t.TempDir()
 	fake := freshSandboxFake()

@@ -25,18 +25,26 @@
 #
 # Thresholds were derived from measurement, not taste.
 #
-#   The unit default sits at 5s with no allowances at all. Repeated runs put the
-#   slowest unit test at 3.2s, and the process-lifecycle tests that dominate the
-#   tail are strikingly stable (2.12s, 2.01s and 3.23s reproduced to within
-#   0.01s across runs) because they wait on conditions rather than on the clock.
-#   The two tests that do swing -- the build-parity and prepare-check tests,
-#   which move real files and real builds -- vary by ~70%, so the cap carries
-#   real headroom over the observed maximum rather than sitting just above it.
-#   A cap that flaps on an ordinary run is a cap people learn to re-run past.
+#   These are measured against `make test-unit`, which runs the race detector, so
+#   they describe -race timings and not raw ones. That distinction is worth the
+#   space it takes to state: the same two tests that peak near 2.9s without the
+#   detector reach 4.4s with it, and a 5s ceiling derived from the raw numbers left
+#   only 13% headroom over a -race run and flaked in practice.
+#
+#   The unit default sits at 7s with no allowances at all, against a slowest
+#   measured test of 4.4s under -race. The process-lifecycle tests that dominate the
+#   tail are strikingly stable (2.12s, 2.01s and 3.23s reproduced to within 0.01s
+#   across runs) because they wait on conditions rather than on the clock. The two
+#   tests that do swing -- the build-parity and prepare-check tests, which move real
+#   files -- vary by roughly 2x, so the cap carries real headroom over the observed
+#   maximum rather than sitting just above it. A cap that flaps on an ordinary run is
+#   a cap people learn to re-run past.
 #
 #   Integration runs a much wider net: those tests bring up real containers and
-#   talk real SSH, so their floor is seconds by nature and the useful signal is
-#   an order of magnitude, not a tenth of a second.
+#   talk real SSH, so their floor is seconds by nature and the useful signal is an
+#   order of magnitude, not a tenth of a second. It does not run the race detector
+#   -- it drives the real binary out of process, where the detector would only
+#   cover the test harness.
 #
 # A slower machine (a shared CI runner, a loaded laptop) can set
 # GOVARD_TEST_TIME_SCALE=2 to multiply every budget without editing this file.
@@ -44,26 +52,26 @@
 # ignore -- and so tightening it later is a one-line change rather than a
 # re-argument about every individual test.
 #
-# Note which check is which: CI sets the scale to 2, so CI enforces 10s while a
-# local run enforces 5s. That makes the *authoritative* gate the looser one, and
-# a 6s regression is caught locally and merges clean. The trade is deliberate --
+# Note which check is which: CI sets the scale to 2, so CI enforces 14s while a
+# local run enforces 7s. That makes the *authoritative* gate the looser one, and
+# an 8s regression is caught locally and merges clean. The trade is deliberate --
 # a gate that flaps on a shared runner trains people to ignore it -- but it is a
 # trade, and lowering the scale once the suite is reliably under the ceiling is
 # the obvious follow-up.
 
 suites:
   unit:
-    # No allowances. The slowest unit test measures 3.2s, and the budget sits
-    # well clear of it.
+    # No allowances. The slowest unit test measures 4.4s under -race, and the
+    # budget sits well clear of it.
     #
     # Be precise about what this catches: it is an absolute ceiling, not a
-    # ratio. A test is in trouble when it *ends up above 5s*, whatever it started
-    # at -- so 40ms -> 6s is caught and 40ms -> 4s is not. In practice the second
+    # ratio. A test is in trouble when it *ends up above 7s*, whatever it started
+    # at -- so 40ms -> 8s is caught and 40ms -> 4s is not. In practice the second
     # case is rare, because 84% of the suite runs in under 10ms and anything
     # doing real work lands in seconds, but it is a limit worth stating rather
     # than implying otherwise. The "slowest tests" table printed on every run is
     # what covers the band below the ceiling.
-    default: 5s
+    default: 7s
     overrides: {}
 
   integration:

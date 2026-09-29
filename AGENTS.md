@@ -127,8 +127,9 @@ install -m0755 bin/govard ~/.local/bin/govard     # only to test PATH consumers 
 
 `make test-unit` and `make test-integration` run under `scripts/testbudget`,
 which fails the build when **one test** exceeds its budget in
-`tests/test-time-budget.yml` (`5s` unit with **no** allowances, `30s`
-integration with one). The check reads the `Elapsed` field `go test -json`
+`tests/test-time-budget.yml` (`7s` unit with **no** allowances, `30s`
+integration with one) — measured against `-race` timings, since `make test-unit`
+runs the detector. The check reads the `Elapsed` field `go test -json`
 already reports, so it adds no wall time, and every run prints its ten slowest
 tests — the fastest way to see where the clock is actually going.
 
@@ -154,13 +155,25 @@ tests — the fastest way to see where the clock is actually going.
     the suite. Measure before refactoring 40 call sites for that.
 - **Slower machines:** `GOVARD_TEST_TIME_SCALE=2` multiplies every budget without
   editing the file, so a slow CI runner does not turn the gate into noise.
-- **`make test` does not pass `-race`.** Nothing in the ordinary suite runs a race
-  detector, so a genuine data race in production code can sit there passing for
-  years. Run `go test ./tests -race -short` when touching package-level state that
-  a goroutine reads — test seams are the usual source. Note that
-  `TestSandboxSeedStreamsTheDumpWithoutBufferingIt` fails under `-race` on any
-  revision, including master: it asserts a memory ceiling and the detector's
-  shadow memory trips it. That is a pre-existing artefact, not a regression.
+- **The unit suite runs under the race detector.** `make test-unit` passes
+  `-race`, which is what surfaced two long-standing data races in
+  `internal/deploy/stream.go` that nothing had caught. The cost is roughly 20%
+  (56–60s → 65–72s), because the suite is bound by `ps`/`git`/`docker`/sleeps
+  rather than by CPU-bound Go code, so the detector has little to instrument.
+  Integration is deliberately left alone: it drives the real binary out of
+  process, where the detector would only cover the test harness.
+  - The detector inflates the **slowest** tests, not just the total, so the
+    budget is derived from `-race` timings. The same two tests peak near 2.9s raw
+    and 4.4s under the detector; a ceiling derived from the raw numbers left 13%
+    headroom over a `-race` run and flaked.
+  - A measurement of `runtime.MemStats.TotalAlloc` is **meaningless** under
+    `-race`: the shadow memory turns a 2 MiB allocation into ~146 MiB.
+    `TestSandboxSeedStreamsTheDumpWithoutBufferingIt` skips itself via the `race`
+    build tag for exactly that reason and asserts normally everywhere else. A new
+    allocation-ceiling test needs the same guard, or a measurement the detector
+    does not corrupt.
+  - `raceDetectorEnabled` in `tests/race_on_test.go` / `tests/race_off_test.go`
+    is a build tag because Go exposes no runtime API for the detector.
 - `t.Parallel()` is effectively unused here and cannot simply be added: the suite
   has hundreds of `t.Setenv` calls plus an `os.Chdir` helper, both process-global,
   and Go panics on `t.Setenv` in a parallel test. Parallelising means sharding by

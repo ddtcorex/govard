@@ -107,9 +107,15 @@ build-test-budget:
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(TEST_BUDGET_BINARY) ./scripts/testbudget
 
+# The unit suite runs under the race detector. Two data races in internal/deploy
+# sat here for years precisely because nothing in the ordinary suite ran one, and
+# the cost is ~10% on this suite: it spends its wall clock in `ps`, `git`,
+# `docker` and time.Sleep, not in CPU-bound Go code, so the detector has little
+# to instrument. Integration is left alone — it drives the real binary out of
+# process, where the detector would only cover the test harness.
 test-unit: build-test-budget
-	@echo "Running unit tests (time-budgeted)..."
-	$(TEST_BUDGET_BINARY) -suite unit -stale -- go test $(UNIT_PACKAGES) -short -json
+	@echo "Running unit tests (time-budgeted, race detector on)..."
+	$(TEST_BUDGET_BINARY) -suite unit -stale -- go test $(UNIT_PACKAGES) -short -race -json
 
 test-coverage:
 	@echo "Running unit tests with coverage..."
