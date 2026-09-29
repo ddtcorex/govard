@@ -307,8 +307,10 @@ var Registry = []Item{
 	{ID: "P4-09", Phase: 4, Title: "govard snapshot export + delete --help", Precond: "P4-08 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "snapshot", "export", "--help")
 	}},
-	{ID: "P4-10", Phase: 4, Title: "govard redis cli ping / valkey cli ping + flush", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		return execGovard(ctx, cfg, opts, "tool", "redis-cli", "ping")
+	{ID: "P4-10", Phase: 4, Title: "govard redis cli ping / valkey cli ping", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		// Not `tool redis-cli`: toolCmd has no RunE, so cobra printed help and
+		// returned nil — the item went green without running redis at all.
+		return execGovard(ctx, cfg, opts, "redis", "cli", "ping")
 	}},
 	{ID: "P4-11", Phase: 4, Title: "curl -s http://{{DOMAIN}}:9200 / opensearch health", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "curl", "-s", "http://localhost:9200")
