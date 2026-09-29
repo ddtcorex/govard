@@ -81,6 +81,7 @@ Examples:
 		if allowDestructiveYes {
 			allowDestructive = true
 		}
+		allowRemoteWrite, _ := cmd.Flags().GetBool("allow-remote-write")
 		allowXdebug, _ := cmd.Flags().GetBool("allow-xdebug")
 		lintJobs, _ := cmd.Flags().GetInt("lint-jobs")
 		timeout, _ := cmd.Flags().GetString("timeout")
@@ -119,6 +120,7 @@ Examples:
 			Checks:           checks,
 			LintJobs:         lintJobs,
 			AllowDestructive: allowDestructive,
+			AllowRemoteWrite: allowRemoteWrite,
 			AllowXdebug:      allowXdebug,
 			ProjectRoot:      root,
 		}
@@ -247,6 +249,7 @@ func init() {
 	verifyCmd.Flags().Bool("plan", false, "Dry-run (no side effects)")
 	verifyCmd.Flags().Bool("allow-destructive", false, "Allow phase 5 destructive operations")
 	verifyCmd.Flags().Bool("yes", false, "Alias for --allow-destructive")
+	verifyCmd.Flags().Bool("allow-remote-write", false, "Allow items that write through a remote (skipped by default)")
 	verifyCmd.Flags().Bool("allow-xdebug", false, "Allow running with Xdebug enabled")
 	verifyCmd.Flags().Int("lint-jobs", 4, "Lint worker count")
 	verifyCmd.Flags().String("timeout", "auto", "Timeout (auto|0|<dur>)")

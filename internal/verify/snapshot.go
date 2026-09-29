@@ -149,7 +149,9 @@ func GateSatisfyingSnapshot(opts VerifyOpts) (string, bool) {
 			continue
 		}
 		for _, it := range res.Items {
-			if it.ID != "P4-08" || it.ExitCode != 0 || len(it.Artifacts) == 0 {
+			// A skipped row proves nothing: it records that P4-08 exists, not
+			// that it created a snapshot this destructive phase can restore.
+			if it.ID != "P4-08" || it.ExitCode != 0 || it.Skipped || len(it.Artifacts) == 0 {
 				continue
 			}
 			artifact := strings.TrimSpace(it.Artifacts[0])
