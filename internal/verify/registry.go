@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -86,6 +89,109 @@ func withRemote(inner func(ctx context.Context, cfg engine.Config, opts VerifyOp
 		}
 		return inner(ctx, cfg, opts, opts.Remote)
 	}
+}
+
+// hyvaTailwindGlob is the marker that makes a theme a Hyva theme: the Tailwind
+// manifest its install needs. One vendor and one theme deep, so a theme at an
+// unusual path is simply not a match — the item then skips instead of
+// installing into a directory nobody asked for.
+const hyvaTailwindGlob = "app/design/frontend/*/*/web/tailwind/package.json"
+
+// escapeGlobPath escapes the glob metacharacters in a literal directory path so
+// it can be used as the fixed head of a pattern.
+//
+// filepath.Match's syntax (path/filepath/match.go, "pattern: { term }") makes
+// exactly four characters magic: `*`, `?`, `[` and the escape character `\`.
+// `]` outside a character class is an ordinary character, so it is left alone.
+// On Windows, Match's own documentation says escaping is disabled and `\` is a
+// path separator instead, so the separator must be left alone there — a doubled
+// separator is not an escape, it is a corrupted path — and only the other three
+// are escaped. hyvaTailwindDirs's containment check is what makes a
+// metacharacter in the root harmless on a platform where escaping does not
+// apply.
+func escapeGlobPath(path string) string {
+	var escaped strings.Builder
+	escaped.Grow(len(path))
+	for _, r := range path {
+		switch r {
+		case '*', '?', '[':
+			escaped.WriteRune('\\')
+		case '\\':
+			if filepath.Separator != '\\' {
+				escaped.WriteRune('\\')
+			}
+		}
+		escaped.WriteRune(r)
+	}
+	return escaped.String()
+}
+
+// hyvaTailwindDirs lists the Tailwind roots of the project's Hyva themes as
+// project-root-relative paths with forward slashes, sorted lexicographically so
+// that a project with several themes always resolves to the same one.
+//
+// It is a filesystem rule, not a framework call: internal/verify names no
+// framework package, and the marker is the manifest `npm install` needs rather
+// than a theme's name or its vendor. A root that cannot be read, or a path that
+// no longer exists when it is stat'ed, contributes no theme — skipping is the
+// safe direction for a rule whose failure mode is a stray package-lock.json
+// written into the checkout (issue #494).
+func hyvaTailwindDirs(projectRoot string) []string {
+	pattern := filepath.Join(escapeGlobPath(projectRoot), filepath.FromSlash(hyvaTailwindGlob))
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil
+	}
+
+	dirs := make([]string, 0, len(matches))
+	for _, match := range matches {
+		// Glob matches the name alone, so a *directory* called package.json
+		// would be collected too. A theme's marker is a regular file.
+		info, err := os.Stat(match)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		rel, err := filepath.Rel(projectRoot, filepath.Dir(match))
+		if err != nil {
+			continue
+		}
+		// A candidate that escapes the project root would make --prefix point
+		// outside the checkout, and npm install would write into another
+		// project's theme — the harm class this item exists to prevent. A
+		// containment test on the path string cannot see it: the match comes
+		// from the pattern, so a sibling reached through a glob metacharacter in
+		// the root satisfies "starts with <root>/" lexically, and `..` is not an
+		// absolute path. IsLocal is lexical on purpose, so a theme reached
+		// through a symlinked directory still resolves.
+		if !filepath.IsLocal(rel) {
+			continue
+		}
+		dirs = append(dirs, filepath.ToSlash(rel))
+	}
+	sort.Strings(dirs)
+	return dirs
+}
+
+// hyvaTailwindDir returns the directory P2-09 installs into — the first Hyva
+// theme in sorted order — or false when the project has no Hyva theme at all.
+func hyvaTailwindDir(projectRoot string) (string, bool) {
+	dirs := hyvaTailwindDirs(projectRoot)
+	if len(dirs) == 0 {
+		return "", false
+	}
+	return dirs[0], true
+}
+
+// hyvaThemeEvidenceLine names the theme the item installed into, and discloses
+// the choice when the project has more than one: an artifact that silently
+// picked one of several themes would be as hard to audit as the row that named
+// no theme at all. It re-runs the discovery instead of widening
+// hyvaTailwindDir's return, which the decision itself does not need.
+func hyvaThemeEvidenceLine(projectRoot, theme string) string {
+	if themes := hyvaTailwindDirs(projectRoot); len(themes) > 1 {
+		return fmt.Sprintf("Hyva theme: %s (first of %d Hyva themes, sorted)\n", theme, len(themes))
+	}
+	return "Hyva theme: " + theme + "\n"
 }
 
 // auditRunIdentity is the part of `audit run --format json` the lifecycle needs:
@@ -323,8 +429,18 @@ var Registry = []Item{
 	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e <remote> --no-noise OR --code-only (after P4-08)", Precond: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--no-noise")
 	})},
-	{ID: "P2-09", Phase: 2, Title: "govard tool npm --prefix <hyva-theme>/web/tailwind install + run build (Hyva only)", Precond: "P2-05 or P2-08", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		return execGovard(ctx, cfg, opts, "tool", "npm", "--prefix", "web/tailwind", "install")
+	{ID: "P2-09", Phase: 2, Title: "govard tool npm install in the Hyva theme's web/tailwind (Hyva only)", Precond: "P2-05 or P2-08", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		// When sees only engine.Config, which carries no project root, so the
+		// Hyva rule is decided here. isMagento2 alone let this row install into
+		// a Luma project, leaving a stray web/tailwind/package-lock.json in the
+		// checkout (issue #494).
+		theme, ok := hyvaTailwindDir(opts.ProjectRoot)
+		if !ok {
+			return Skip("no Hyva theme: " + hyvaTailwindGlob + " not found")
+		}
+		ev := execGovard(ctx, cfg, opts, "tool", "npm", "--prefix", theme, "install")
+		ev.OutputExcerpt = hyvaThemeEvidenceLine(opts.ProjectRoot, theme) + ev.OutputExcerpt
+		return ev
 	}},
 	{ID: "P2-10", Phase: 2, Title: "govard config auto", Precond: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "config", "auto")
