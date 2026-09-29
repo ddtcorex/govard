@@ -13,6 +13,10 @@ import (
 func renderDeployHelp(t *testing.T, args []string) string {
 	t.Helper()
 	root := cmd.RootCommandForTest()
+	// Rendering `<cmd> --help` leaves --help set on the process-wide tree, so
+	// the next test to Execute that command prints help and skips RunE.
+	restore := snapshotCommandTreeFlags(t, root)
+	defer restore()
 	output := &bytes.Buffer{}
 	root.SetOut(output)
 	root.SetErr(io.Discard)
@@ -86,10 +90,17 @@ func TestDeployCheckDocumentsJsonPath(t *testing.T) {
 	}
 }
 
-func TestTunnelStopLongStatesScope(t *testing.T) {
+// #469: `tunnel stop` acts on the PID govard recorded, so the help text must
+// scope itself to that one process. This replaced a test that pinned the
+// opposite sentence ("kills every cloudflared process on the host").
+func TestTunnelStopLongOwnsOnePID(t *testing.T) {
 	_, long, _, _ := lookupHelpCommand(t, "tunnel", "stop")
-	if !strings.Contains(long, "every cloudflared") {
-		t.Fatalf("tunnel stop Long understates its scope:\n%s", long)
+	lowered := strings.ToLower(long)
+	if strings.Contains(lowered, "every cloudflared") || strings.Contains(lowered, "all cloudflared") {
+		t.Fatalf("tunnel stop Long still promises a host-wide kill:\n%s", long)
+	}
+	if !strings.Contains(lowered, "govard started") {
+		t.Fatalf("tunnel stop Long does not name the tunnel it stops:\n%s", long)
 	}
 }
 

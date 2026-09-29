@@ -58,11 +58,25 @@ govard tunnel stop
 # hoặc Ctrl+C tiến trình start
 ```
 
+`tunnel start` ghi lại tiến trình mà nó đã khởi động — PID và argv đã dùng để khởi động — vào
+`$GOVARD_HOME_DIR/tunnels/<project>.pid`, và `tunnel stop` gửi tín hiệu tới đúng tiến trình đó.
+Lệnh không bao giờ tìm tiến trình theo tên, nên một `cloudflared` do bạn tự chạy, hoặc thuộc về
+project khác hay công cụ khác, đều không bị đụng tới. Argv được kiểm tra trước mọi tín hiệu: nếu
+PID đã ghi bị một chương trình không liên quan chiếm lại, hoặc không đọc được argv, `tunnel stop`
+sẽ từ chối kèm lỗi và không gửi tín hiệu nào — hãy tự xoá bản ghi sau khi đã kiểm tra tunnel.
+
+Khi không có bản ghi, `tunnel stop` không làm gì, có in ra điều đó và thoát với mã 0, nên chạy hai
+lần vẫn an toàn. Base URL của project được khôi phục trong mọi trường hợp, trừ khi tín hiệu bị
+từ chối — lúc đó tunnel vẫn còn sống, nên base URL vẫn trỏ tới nó.
+
 Kiểm tra trạng thái:
 
 ```bash
 govard tunnel status
 ```
+
+`status` đọc cùng bản ghi đó thay vì dò trên máy, nên nó báo `INACTIVE` mỗi khi Govard không có
+tunnel nào của chính nó đang chạy — kể cả khi một chương trình khác vừa chiếm đúng PID đã ghi.
 
 ---
 
@@ -95,7 +109,7 @@ govard tunnel status
 | `cloudflared: command not found` | Cài `cloudflared` trước (xem Yêu cầu). |
 | Tunnel URL báo 404 của Govard | Chạy `govard env up` trước — project phải đang chạy để Caddy có backend. |
 | Base URL không khôi phục sau Ctrl+C | Chạy `govard tunnel stop` hoặc `govard config auto` (Magento 2) để áp lại URL local. |
-| `tunnel status` báo không có tunnel | Không có tunnel đang chạy — `tunnel start` phải chạy ở terminal khác. |
+| `tunnel status` báo không có tunnel | Govard không có tunnel nào của chính nó đang chạy. `status` đọc PID đã ghi, nên nó cũng báo vậy khi tunnel đã chết và để lại bản ghi cũ (lệnh sẽ xoá bản ghi đó), hoặc khi một chương trình khác đã chiếm mất PID đó. |
 
 ---
 
