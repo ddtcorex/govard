@@ -255,6 +255,6 @@ func init() {
 	verifyCmd.Flags().String("timeout", "auto", "Timeout (auto|0|<dur>)")
 	verifyCmd.Flags().StringSlice("checks", nil, "Checks (lint,profiler)")
 	verifyCmd.Flags().String("base", "", "Base ref for diff scope")
-	verifyCmd.Flags().String("remote", "", "Remote name")
+	verifyCmd.Flags().String("remote", "", "Remote the remote-naming items run against (skipped when empty)")
 	verifyCmd.Flags().String("project", "", "Project path")
 }
