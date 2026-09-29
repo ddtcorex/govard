@@ -196,13 +196,17 @@ govard deploy check staging    # preflight: kết nối, layout, quyền, php, d
 govard deploy staging --yes    # ... hoặc --remote staging
 ```
 
-`deploy check` không tạo gì trên target, dù là local hay remote: một
-`deploy_path` chưa tồn tại được probe tại parent tồn tại gần nhất ngay trên target
-đó, và ở local thì note nói rõ parent nào đã trả lời. Một lệnh gọi remote thì
-không có note — exit code không phân biệt được "chưa tồn tại" với "tồn tại nhưng
-không ghi được", nên note sẽ là một lời khẳng định về một máy mà govard không nhìn
-thấy. Probe chạy qua đúng runner mà deploy dùng, nên nó đi tới máy sở hữu path
-đó — cũng vì vậy một host mới tinh vẫn pass check thay vì hỏng.
+`deploy check` không để lại gì trên target, dù là local hay remote: probe quyền
+ghi của nó không tạo ra path nào — một `deploy_path` chưa tồn tại được probe tại
+parent tồn tại gần nhất ngay trên target đó, và ở local thì note nói rõ parent nào
+đã trả lời — còn probe `mv -T` mà nó chạy trên một target dạng symlink thì tạo một
+thư mục tạm `.dep` ở đó rồi xoá nó đi. Vậy lời hứa ở đây nói về trạng thái cuối,
+không phải về việc "không bao giờ phát ra syscall tạo gì": probe atomic-rename
+cố ý tạo rồi xoá, và đó là điều cho phép nó trả lời được trên một host mới tinh.
+Một lệnh gọi remote thì không có note — exit code không phân biệt được "chưa tồn
+tại" với "tồn tại nhưng không ghi được", nên note sẽ là một lời khẳng định về một
+máy mà govard không nhìn thấy. Probe chạy qua đúng runner mà deploy dùng, nên nó đi
+tới máy sở hữu path đó — cũng vì vậy một host mới tinh vẫn pass check thay vì hỏng.
 
 Theo dõi bằng `--verbose`, nó stream output của từng command dưới đúng task của nó
 và không gom lại. Khi một bước hỏng, lần chạy nói rõ bước nào và làm gì tiếp: hỏng

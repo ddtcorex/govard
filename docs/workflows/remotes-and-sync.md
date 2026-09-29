@@ -208,7 +208,7 @@ To download everything, use `--media all`. To sync only CSS/JS/Fonts, use `--med
 ### Protected Destinations
 
 ::: warning WARNING
-`--delete` combined with `--db` surfaces policy warnings. Production remotes are write-protected by default and will block destructive writes. Protection covers **writes**, not reads: `db info` or `db top` from a protected remote are still allowed (`db dump` stays allowed too — it only creates a new archive file on the remote), and only a write into it — `db import`, `db query`, `db connect`, `snapshot push` — is refused.
+`--delete` combined with `--db` surfaces policy warnings. Production remotes are write-protected by default and will block destructive writes. Protection covers **writes**, not reads: `db info` or `db top` from a protected remote are still allowed (`db dump` stays allowed too — it only creates a new archive file on the remote), and only a write into it — `db import` without `--stream-db`, which reads the remote's dump and writes **your local** database instead, `db query`, `db connect`, `snapshot push` — is refused.
 :::
 
 ### Integration with `bootstrap`

@@ -199,13 +199,18 @@ govard deploy check staging    # preflight: connectivity, layout, permissions, p
 govard deploy staging --yes    # ... or --remote staging
 ```
 
-`deploy check` creates nothing on the target, local or remote: an absent
-`deploy_path` is probed at the nearest existing parent on the target itself, and
-on a local target the note names the parent that answered. A remote call gets no
-such note — an exit code cannot tell an absent path from an unwritable one, so
-the note would be a claim about a machine govard cannot see. The probe runs
-through the same runner a deploy uses, so it travels to the machine that owns the
-path — which is also why a fresh host passes the check instead of failing it.
+`deploy check` leaves nothing behind on the target, local or remote: its
+writability probe creates no path at all — an absent `deploy_path` is probed at
+the nearest existing parent on the target itself, and on a local target the note
+names the parent that answered — and the `mv -T` probe it runs on a symlink
+target creates a `.dep` scratch directory there and removes it again. So the
+promise is about the end state, not about never issuing a creating syscall: the
+atomic-rename probe is create-then-remove by design, which is what lets it
+answer for a fresh host. A remote call gets no such note — an exit code cannot
+tell an absent path from an unwritable one, so the note would be a claim about a
+machine govard cannot see. The probe runs through the same runner a deploy uses,
+so it travels to the machine that owns the path — which is also why a fresh host
+passes the check instead of failing it.
 
 Watch it with `--verbose`, which streams each command's own output under its task
 and never batches it. When a step fails the run says which step, and what to do

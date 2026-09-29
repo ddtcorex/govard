@@ -112,18 +112,34 @@ func readProcessArgv(pid int) (string, bool) {
 	return argv, true
 }
 
-// tunnelArgvMatches compares the executable base name and the first argument —
-// enough to separate `cloudflared tunnel` from any other pid, and stable across
-// the `ps -o args=` truncation and the PATH form the plan's binary carries.
+// tunnelArgvMatches compares the argv govard recorded against the one the host
+// reports for a pid, token by token from the first argument on. The executable
+// is compared by base name rather than by path because the two always differ
+// for govard's own process: the record carries the path exec.LookPath resolved,
+// while the kernel reports argv[0] exactly as exec.Command passed it.
+//
+// Everything past the executable has to match too. Two tokens are not enough to
+// claim ownership: another `cloudflared tunnel` on this host — a systemd unit
+// running `cloudflared tunnel --no-autoupdate --config /etc/cloudflared/other.yml
+// tunnel run` — shares the binary and the verb, and a comparison that stopped
+// there would let a recycled pid reach a tunnel belonging to somebody else. The
+// observed argv therefore has to begin with everything govard recorded; an argv
+// shorter than the record is refused, which is the direction that leaves a
+// running tunnel alone rather than the one that kills a stranger's.
 func tunnelArgvMatches(recorded, observed string) bool {
 	recordedTokens, observedTokens := strings.Fields(recorded), strings.Fields(observed)
-	if len(recordedTokens) == 0 || len(observedTokens) == 0 {
+	if len(recordedTokens) == 0 || len(observedTokens) < len(recordedTokens) {
 		return false
 	}
 	if filepath.Base(recordedTokens[0]) != filepath.Base(observedTokens[0]) {
 		return false
 	}
-	return len(recordedTokens) == 1 || (len(observedTokens) > 1 && recordedTokens[1] == observedTokens[1])
+	for i := 1; i < len(recordedTokens); i++ {
+		if recordedTokens[i] != observedTokens[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // recordIsLiveAndOwned answers whether the recorded pid is still the process
@@ -175,6 +191,18 @@ func signalRecordedTunnel(
 			record.PID, projectName, observed)
 	}
 	if err := tunnelDeps.SignalProcess(record.PID, tunnelSignalTerminate); err != nil {
+		// The tunnel can end on its own between the liveness check above and
+		// this signal. ESRCH says the process this record names is already gone,
+		// which is the outcome a stop exists to reach — not a refusal, and not a
+		// reason to fail. Handing the error back would take the caller's
+		// "nothing was signalled" branch, which skips the base-URL revert
+		// because the tunnel is still up, and it would leave the record behind:
+		// a base URL pointing at a tunnel that is not running, for a command
+		// that did the right thing.
+		if errors.Is(err, os.ErrProcessDone) {
+			clearTunnelPID(projectName)
+			return nil
+		}
 		return fmt.Errorf("stopping tunnel pid %d: %w", record.PID, err)
 	}
 	// Give cloudflared the chance to shut its own connections down before the
@@ -310,4 +338,9 @@ func TunnelPIDRecordForTest(projectName string) (TunnelPIDRecord, bool) {
 // SignalProcessForTest exposes signalProcess to the tests/ package.
 func SignalProcessForTest(pid int, sig os.Signal) error {
 	return signalProcess(pid, sig)
+}
+
+// TunnelArgvMatchesForTest exposes tunnelArgvMatches to the tests/ package.
+func TunnelArgvMatchesForTest(recorded, observed string) bool {
+	return tunnelArgvMatches(recorded, observed)
 }
