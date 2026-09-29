@@ -216,7 +216,13 @@ func signalRecordedTunnel(
 		time.Sleep(tunnelStopPollInterval)
 	}
 	if alive(record.PID) {
-		if err := tunnelDeps.SignalProcess(record.PID, tunnelSignalKill); err != nil {
+		// The same race as the SIGTERM arm exists between the poll's last
+		// liveness check and this signal, and the reasoning is identical: a
+		// process that is already gone is the outcome a stop exists to reach.
+		// Handling ESRCH on one arm and not the other fails the command that
+		// runs when a tunnel ignored SIGTERM long enough to be escalated.
+		if err := tunnelDeps.SignalProcess(record.PID, tunnelSignalKill); err != nil &&
+			!errors.Is(err, os.ErrProcessDone) {
 			return fmt.Errorf("stopping tunnel pid %d: %w", record.PID, err)
 		}
 	}

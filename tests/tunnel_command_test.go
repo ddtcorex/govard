@@ -705,3 +705,49 @@ func TestTunnelStopSucceedsWhenTheTunnelExitsBeforeTheSignal(t *testing.T) {
 		t.Fatalf("stop must report the success it took, got: %q", out)
 	}
 }
+
+// The same race, one branch down: the tunnel ignores SIGTERM long enough to be
+// escalated, then ends before the SIGKILL lands. The escalation arm carries the
+// identical ESRCH meaning, so it must not fail the command — and a reader
+// finding ESRCH handled on one arm and not the other is exactly how the
+// escalation path regresses.
+func TestTunnelStopSucceedsWhenTheTunnelEndsBeforeTheEscalation(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	pid, _ := startSleeper(t)
+	installTunnelPsShim(t, "echo 'sleep 30'")
+	writeTunnelRecord(t, "demo", pid, "sleep 30")
+
+	signals := 0
+	// The first signal is delivered and the process survives it, so the poll
+	// loop runs out its grace and escalates; the escalation finds it gone.
+	restore := cmd.SetTunnelDependenciesForTest(cmd.TunnelDependenciesForTest{
+		SignalProcess: func(int, os.Signal) error {
+			signals++
+			if signals == 1 {
+				return nil
+			}
+			return os.ErrProcessDone
+		},
+		Now: func() time.Time {
+			// Jump past the grace on the first poll, so the escalation is
+			// reached without the test sleeping through it.
+			return time.Now().Add(time.Hour)
+		},
+	})
+	defer restore()
+
+	out, err := runTunnel(t, "tunnel", "stop")
+	if err != nil {
+		t.Fatalf("a tunnel that ended before the escalation is a stopped tunnel, not a refusal: %v (out %q)", err, out)
+	}
+	if signals < 2 {
+		t.Fatalf("this test must reach the escalation signal, made %d", signals)
+	}
+	if _, err := os.Stat(cmd.TunnelPIDFileForTest("demo")); !os.IsNotExist(err) {
+		t.Fatalf("stop must remove the record, stat err = %v", err)
+	}
+	if !strings.Contains(out, "Reverting base URL") {
+		t.Fatalf("a refused branch skips the base-URL revert, which is the harm this guards: %q", out)
+	}
+}

@@ -62,11 +62,16 @@ govard tunnel stop
 started with — under `$GOVARD_HOME_DIR/tunnels/<project>.pid`, and `tunnel stop`
 signals that one process. It never searches the host for a process by name, so
 there is no pattern it can overreach with; what it refuses is any PID whose argv
-is not the one it recorded, token for token from the first argument on. A
-`cloudflared` you started yourself, one belonging to another project, and one
-belonging to another tool are all left alone — including a `cloudflared tunnel`
-unit of another tool, which shares the binary and the `tunnel` verb and is
-separated by the arguments that follow. The argv is checked before any signal:
+does not **begin with** the one it recorded — every argument from the first on,
+compared by the executable's name rather than its path, because the record
+stores the resolved path while the host reports the bare one. A `cloudflared`
+you started yourself, one belonging to another project, and one belonging to
+another tool are all left alone — including a `cloudflared tunnel` unit of
+another tool, which shares the binary and the `tunnel` verb and is separated by
+the arguments that follow. The one shape that is *not* separable is another copy
+of govard's own command line: a different install of the same binary running
+exactly what the record names is indistinguishable from the tunnel govard
+started. The argv is checked before any signal:
 if the recorded PID has been recycled by an unrelated program, or its argv
 cannot be read, `tunnel stop` refuses with an error and signals nothing — remove
 the record by hand once you have checked the tunnel yourself.

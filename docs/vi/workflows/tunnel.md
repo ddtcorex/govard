@@ -61,10 +61,14 @@ govard tunnel stop
 `tunnel start` ghi lại tiến trình mà nó đã khởi động — PID và argv đã dùng để khởi động — vào
 `$GOVARD_HOME_DIR/tunnels/<project>.pid`, và `tunnel stop` gửi tín hiệu tới đúng tiến trình đó.
 Lệnh không bao giờ dò máy tìm tiến trình theo tên, nên không có mẫu nào để nó vượt tay; thứ nó từ
-chối là mọi PID có argv khác với argv mà nó đã ghi, từng token một kể từ đối số đầu tiên. Một
+chối là mọi PID có argv không **bắt đầu bằng** argv mà nó đã ghi — từng đối số kể từ đối số đầu
+tiên, so sánh theo *tên* tệp thực thi chứ không theo đường dẫn, vì bản ghi lưu đường dẫn đã resolve
+còn máy chủ báo tên trần. Một
 `cloudflared` do bạn tự chạy, một cái thuộc về project khác, và một cái thuộc về công cụ khác đều
 không bị đụng tới — kể cả một unit `cloudflared tunnel` của công cụ khác, vốn chia sẻ cả binary lẫn
-động từ `tunnel` và chỉ bị phân biệt bởi các đối số phía sau. Argv được kiểm tra trước mọi tín hiệu:
+động từ `tunnel` và chỉ bị phân biệt bởi các đối số phía sau. Dạng duy nhất *không* phân biệt được
+là một bản cài khác của chính dòng lệnh đó: một bản binary cùng loại chạy đúng những gì bản ghi ghi
+không thể phân biệt với tunnel govard đã khởi chạy. Argv được kiểm tra trước mọi tín hiệu:
 nếu PID đã ghi bị một chương trình không liên quan chiếm lại, hoặc không đọc được argv, `tunnel stop`
 sẽ từ chối kèm lỗi và không gửi tín hiệu nào — hãy tự xoá bản ghi sau khi đã kiểm tra tunnel.
 

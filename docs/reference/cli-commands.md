@@ -1052,8 +1052,10 @@ govard tunnel stop
 `start` records the process it launches (PID plus the argv it was started with)
 under `$GOVARD_HOME_DIR/tunnels/<project>.pid`, and refuses to start a second
 tunnel while that one is still live. `stop` and `status` read that record rather
-than searching the host, so neither can act on a `cloudflared` govard did not
-start: `stop` signals the recorded PID only after its argv still matches, and
+than searching the host, so neither reaches a `cloudflared` govard did not start
+— unless it is running the very command line the record names, which another
+copy of the same binary is indistinguishable from: `stop` signals the recorded
+PID only after its argv still matches, and
 refuses with an error — signalling nothing — when it does not or when the argv
 cannot be read. `status` reports `INACTIVE` for any process govard cannot claim,
 because "govard has no tunnel here" is true even when something else owns the
