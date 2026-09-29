@@ -73,13 +73,27 @@ func isMagento2(c engine.Config) bool {
 	return c.Framework == "magento2"
 }
 
+// withRemote wraps a remote-touching item. A checklist run that was not told
+// which remote to use does not guess one: guessing meant probing whatever the
+// project happens to call staging.
+func withRemote(inner func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence) func(context.Context, engine.Config, VerifyOpts) Evidence {
+	return func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		if opts.Remote == "" {
+			return Skip("no --remote named: this item contacts a remote")
+		}
+		return inner(ctx, cfg, opts, opts.Remote)
+	}
+}
+
 // Registry is the static checklist: 60 items across 5 phases
 // (P1 7 + P2 14 + P3 15 + P4 16 + P5 8). Every item carries a Guard label and
 // the runner acts on it through DecideGuard: an empty Guard is local work with
 // no remote and nothing irreversible, GuardReadOnlyRemote documents that the
 // argv names a remote and writes nothing there (no runtime gate of its own),
 // GuardRemoteWrite is skipped unless --allow-remote-write was passed, and
-// GuardDestructiveLocal runs in phase 5 only.
+// GuardDestructiveLocal runs in phase 5 only. An item that puts a remote in its
+// argv is wrapped in withRemote instead of defaulting one: it takes the name
+// from --remote and skips when the run named none.
 var Registry = []Item{
 	// Phase 1 — Preflight (7)
 	{ID: "P1-01", Phase: 1, Title: "govard doctor", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -125,32 +139,16 @@ var Registry = []Item{
 	{ID: "P2-03", Phase: 2, Title: "govard env up --build (if supported)", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "env", "up", "--build")
 	}},
-	{ID: "P2-04", Phase: 2, Title: "govard bootstrap -e {{REMOTE}} --no-noise --plan", Precond: "P2-01 up", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	{ID: "P2-04", Phase: 2, Title: "govard bootstrap -e <remote> --no-noise --plan", Precond: "P2-01 up", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "-e", remote, "--no-noise", "--plan")
-	}},
-	{ID: "P2-05", Phase: 2, Title: "govard bootstrap -e {{REMOTE}} --no-noise", Precond: "P2-04 plan ok", Guard: GuardRemoteWrite, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P2-05", Phase: 2, Title: "govard bootstrap -e <remote> --no-noise", Precond: "P2-04 plan ok", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "-e", remote, "--no-noise")
-	}},
-	{ID: "P2-06", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --plan", Precond: "P2-01 up", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P2-06", Phase: 2, Title: "govard bootstrap --clone -e <remote> --plan", Precond: "P2-01 up", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--plan")
-	}},
-	{ID: "P2-07", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --no-media --plan + --code-only --plan + --no-pii --plan", Precond: "P2-06 ok", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P2-07", Phase: 2, Title: "govard bootstrap --clone -e <remote> --no-media --plan + --code-only --plan + --no-pii --plan", Precond: "P2-06 ok", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		ev := execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--no-media", "--plan")
 		if ev.ExitCode != 0 {
 			return ev
@@ -165,14 +163,10 @@ var Registry = []Item{
 		ev.ExitCode = ev3.ExitCode
 		ev.JSONValid = ev3.JSONValid
 		return ev
-	}},
-	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --no-noise OR --code-only (after P4-08)", Precond: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e <remote> --no-noise OR --code-only (after P4-08)", Precond: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--no-noise")
-	}},
+	})},
 	{ID: "P2-09", Phase: 2, Title: "govard tool npm --prefix <hyva-theme>/web/tailwind install + run build (Hyva only)", Precond: "P2-05 or P2-08", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "npm", "--prefix", "web/tailwind", "install")
 	}},
@@ -274,51 +268,27 @@ var Registry = []Item{
 	}},
 
 	// Phase 4 — Sync / Safety / Snapshot (16)
-	{ID: "P4-01", Phase: 4, Title: "govard remote test {{REMOTE}} x4 (dev1/dev2/staging/production)", Precond: "—", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	{ID: "P4-01", Phase: 4, Title: "govard remote test <remote> x4 (dev1/dev2/staging/production)", Precond: "—", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "test", remote)
-	}},
+	})},
 	{ID: "P4-02", Phase: 4, Title: "govard remote audit tail + stats", Precond: "P4-01 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "audit", "tail")
 	}},
-	{ID: "P4-03", Phase: 4, Title: "govard sync -s {{REMOTE}} --db --no-noise --plan", Precond: "P4-01 reachable", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	{ID: "P4-03", Phase: 4, Title: "govard sync -s <remote> --db --no-noise --plan", Precond: "P4-01 reachable", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--db", "--no-noise", "--plan")
-	}},
-	{ID: "P4-04", Phase: 4, Title: "govard sync -s {{REMOTE}} --db --no-pii --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P4-04", Phase: 4, Title: "govard sync -s <remote> --db --no-pii --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--db", "--no-pii", "--plan")
-	}},
-	{ID: "P4-05", Phase: 4, Title: "govard sync -s {{REMOTE}} --media optimized --plan + minimal --plan + all --plan + catalog --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P4-05", Phase: 4, Title: "govard sync -s <remote> --media optimized --plan + minimal --plan + all --plan + catalog --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--media", "optimized", "--plan")
-	}},
-	{ID: "P4-06", Phase: 4, Title: "govard sync -s {{REMOTE}} --file --path <path> --plan + --exclude + --delete --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P4-06", Phase: 4, Title: "govard sync -s <remote> --file --path <path> --plan + --exclude + --delete --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--file", "--path", ".", "--plan")
-	}},
-	{ID: "P4-07", Phase: 4, Title: "govard sync -s {{REMOTE_STAGING}} --full --plan", Precond: "P4-01 staging", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P4-07", Phase: 4, Title: "govard sync -s <remote> --full --plan", Precond: "P4-01 staging", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--full", "--plan")
-	}},
+	})},
 	{ID: "P4-08", Phase: 4, Title: "govard snapshot create + govard snapshot list", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		ev := execGovard(ctx, cfg, opts, "snapshot", "create")
 		if ev.ExitCode != 0 {
@@ -353,31 +323,19 @@ var Registry = []Item{
 	// `deploy unlock`/`rollback` mutate the target, `db`/`snapshot`/`open -e`
 	// can bypass write protection or copy a key, `tunnel stop` kills every
 	// cloudflared on the host) stay manual recipes until govard#466-#469 land.
-	{ID: "P4-13", Phase: 4, Title: "govard deploy plan {{REMOTE}} --json", Precond: "—", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	{ID: "P4-13", Phase: 4, Title: "govard deploy plan <remote> --json", Precond: "—", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "deploy", "plan", remote, "--json")
-	}},
+	})},
 	// No --json here on purpose: runDeployStatus returns its JSON line before
 	// the "no configured remote could be reached" check, so the JSON form exits
 	// 0 for an unreachable remote and this item could never fail — green for
 	// exactly the condition it exists to detect. The human path exits 1.
-	{ID: "P4-14", Phase: 4, Title: "govard deploy status --remote {{REMOTE}}", Precond: "P4-13 ok", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	{ID: "P4-14", Phase: 4, Title: "govard deploy status --remote <remote>", Precond: "P4-13 ok", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "deploy", "status", "--remote", remote)
-	}},
-	{ID: "P4-15", Phase: 4, Title: "govard deploy releases --remote {{REMOTE}} --json", Precond: "P4-13 ok", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		remote := opts.Remote
-		if remote == "" {
-			remote = "staging"
-		}
+	})},
+	{ID: "P4-15", Phase: 4, Title: "govard deploy releases --remote <remote> --json", Precond: "P4-13 ok", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "deploy", "releases", "--remote", remote, "--json")
-	}},
+	})},
 	{ID: "P4-16", Phase: 4, Title: "govard remote list", Precond: "P4-13 ok", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "list")
 	}},

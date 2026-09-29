@@ -510,7 +510,7 @@ govard status
 
 ### `govard verify`
 
-Run the 5-phase executable QA harness (replaces manual tick). Registry is the single source of truth — 60 static items across P1 7 · P2 14 · P3 15 · P4 16 · P5 8, plus the items each framework declares for itself. 10 static items carry `When isMagento2` and are filtered out for Laravel/Symfony/WordPress, which get their dev loop back from the framework-declared items instead (below).
+Run the 5-phase executable QA harness (replaces manual tick). Registry is the single source of truth — 60 static items across P1 7 · P2 14 · P3 15 · P4 16 · P5 8, plus the items each framework declares for itself. 10 static items carry `When isMagento2` and are reported as `skipped` rows (not dropped) on Laravel/Symfony/WordPress, which get their dev loop back from the framework-declared items instead (below).
 
 ```bash
 govard verify --plan --json                 # dry-run all phases, machine JSON
@@ -519,11 +519,11 @@ govard verify --phase 5 --allow-destructive --json # destructive after snapshot
 govard verify --project /path/to/project --json
 ```
 
-Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes` alias), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. Only `--base`, `--allow-xdebug`, `--allow-destructive` and `--allow-remote-write` change what runs: `--checks`, `--lint-jobs` and `--timeout` are accepted but ignored, and the audit items hardcode their own values (see issue #472).
+Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes` alias), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. Only `--base`, `--remote`, `--allow-xdebug`, `--allow-destructive` and `--allow-remote-write` change what runs: `--checks`, `--lint-jobs` and `--timeout` are accepted but ignored, and the audit items hardcode their own values (see issue #472).
 
 Framework items: a framework declares its own checklist entries in its own package — `VerifyToolItems` on the framework definition names an id, a phase, a title and one `govard tool <binary> <args>` invocation — and `RegistryFor` composes them with the static registry, so `internal/verify` names no framework. Magento 2 declares `P5-MAG-01` (`setup:db:status` after restore, the read-only detector `P5-07` lacks); Laravel `P3-LAR-01..03` + `P5-LAR-01`; Symfony `P3-SYM-01..03` + `P5-SYM-01`; WordPress `P3-WP-01..03` + `P5-WP-01`. Only commands the framework skeleton guarantees are declared, so an item is never permanently red for a missing optional bundle or plugin.
 
-Remote items: `P4-13`..`P4-16` cover the read-only half of the remote surface — `deploy plan`, `deploy status`, `deploy releases` and `remote list` — which is safe to run against a production remote, the case that matters because `{{REMOTE}}` defaults to the literal `staging`. The writing halves stay out of the checklist on purpose: `deploy check` creates the deploy path on the target, `deploy unlock`/`deploy rollback` mutate its lock and release state, `db`/`snapshot`/`open -e` can bypass write protection or copy a key into `authorized_keys`, and `tunnel stop` kills every `cloudflared` on the host.
+Remote items: every item that names a remote — `P2-04`..`P2-08`, `P4-01`, `P4-03`..`P4-07` and `P4-13`..`P4-15` — takes it from `--remote` and nothing else. A run without `--remote` skips those rows with `no --remote named: this item contacts a remote` instead of guessing, so the checklist never opens a session to whatever the project happens to call `staging`/`stage`/`stg`; `P4-16` (`remote list`) names no remote and keeps running. `P4-13`..`P4-16` cover the read-only half of the remote surface — `deploy plan`, `deploy status`, `deploy releases` and `remote list` — which is safe to run against a production remote. The writing halves stay out of the checklist on purpose: `deploy check` creates the deploy path on the target, `deploy unlock`/`deploy rollback` mutate its lock and release state, `db`/`snapshot`/`open -e` can bypass write protection or copy a key into `authorized_keys`, and `tunnel stop` kills every `cloudflared` on the host.
 
 Gates: Phase 5 requires a snapshot **of this project** — a real (non-`--plan`) phase-4 run for the same project whose `P4-08` exited `0` and whose recorded snapshot is still usable on disk — AND `--allow-destructive`. Without it → `need snapshot create (P4-08) first`; without the flag → `need --allow-destructive for phase 5`. A `--plan` run satisfies neither gate and touches nothing. `P4-08` records the snapshot name it created and `P5-05` restores exactly that name, so the restore cannot pick up a different snapshot created in between. A row marked `skipped` never satisfies the gate: it records that `P4-08` exists, not that it ran.
 
@@ -532,11 +532,11 @@ Guard: every static item carries one of four labels (`Item.Guard`), and the runn
 | Guard | What the argv claims | Runner action | Items |
 | :--- | :--- | :--- | :--- |
 | `""` | local work, no remote, nothing irreversible | run | **42** |
-| `READ-ONLY-REMOTE` | names a remote, writes nothing there | run; no runtime gate of its own — `--plan` already replaces every item with a stub, so blocking these would delete their coverage instead of protecting anything | **13** |
+| `READ-ONLY-REMOTE` | names a remote, writes nothing there | run when `--remote` names one; in a run without it the item keeps its row as a skip and does not probe a guessed remote (`--plan` still stubs it, and `P4-16` names no remote so it always runs). No guard-level gate — `--plan` already replaces every item with a stub, so blocking these there would delete their coverage instead of protecting anything | **13** |
 | `DESTRUCTIVE-LOCAL` | irreversible local destruction | phase 5 only, on top of the snapshot gate and `--allow-destructive` | **3** |
 | `REMOTE-WRITE` | writes through a remote | **skip** unless `--allow-remote-write` is passed | **2**: `P2-05`, `P2-08` |
 
-The two `REMOTE-WRITE` items are the `bootstrap … --no-noise` runs. Their skip reason names the manual command, and `--allow-remote-write` is not a promise they can pass here: verify's children have no tty, so `bootstrap` cannot complete its confirmation. The flag exists for a remote-writing item that can run unattended.
+The two `REMOTE-WRITE` items are the `bootstrap … --no-noise` runs. Their skip reason names the manual command, with `<remote>` standing for the remote you must name with `--remote`, and `--allow-remote-write` is not a promise they can pass here: verify's children have no tty, so `bootstrap` cannot complete its confirmation. The flag exists for a remote-writing item that can run unattended.
 
 Exit codes: `0` every item passed or was skipped; `1` any item failed **or** a phase gate blocked the run (the message names which). `2`/`3`/`4` keep their global meanings (usage / capability / config) — a failing checklist is an execution failure, never a usage error. Scripts should branch on this code and read per-item detail from `--json`.
 
