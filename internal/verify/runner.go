@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -244,7 +245,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 			continue
 		}
 		if it.When != nil && !it.When(cfg) {
-			filtered = append(filtered, filteredItem{item: it, skipped: true, reason: "precondition not met: " + it.Precond})
+			filtered = append(filtered, filteredItem{item: it, skipped: true, reason: frameworkGateReason(it, cfg)})
 			continue
 		}
 		// The guard policy is applied before the plan stub below, so an item
@@ -351,6 +352,20 @@ func selectedByChecks(declared, requested []string) bool {
 // check would have included the item.
 func checksFilterReason(requested, declared []string) string {
 	return "--checks " + strings.Join(requested, ",") + " excludes this item, which exercises " + strings.Join(declared, ",")
+}
+
+// frameworkGateReason is the skip a row reports when its When predicate did not
+// hold. Every When in the registry is a framework predicate, so the gate that
+// fired is the framework — not the item's Precond text, which on a Magento row
+// reads like a prior step ("P2-01 up") and would send an operator on a Laravel
+// project to debug an environment that is fine. The project's own framework is
+// the one fact that explains the row, so the reason names that; which frameworks
+// an item belongs to is what the phase table and the id prefixes already say.
+func frameworkGateReason(it Item, cfg engine.Config) string {
+	if cfg.Framework == "" {
+		return fmt.Sprintf("framework gate: %s is framework-specific and this project declares no framework", it.ID)
+	}
+	return fmt.Sprintf("framework gate: %s is framework-specific and this project is %s", it.ID, cfg.Framework)
 }
 
 func phaseLabel(phase int) string {

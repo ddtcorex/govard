@@ -64,8 +64,13 @@ const (
 
 // Item is one checklist entry in the 5-phase registry.
 type Item struct {
-	ID      string
-	Title   string
+	ID    string
+	Title string
+	// Precond documents, for a human reading the registry, what this item
+	// assumes about the run. It is documentation, not a verdict: the runner
+	// never enforces it, and a skip reason must not quote it, because these
+	// strings name prior steps ("P2-01 up") while the gate that fires is a
+	// framework predicate. frameworkGateReason is what a gated row reports.
 	Precond string
 	// Guard is the item's taxonomy label, not documentation: the runner acts on
 	// it through DecideGuard.
@@ -695,7 +700,7 @@ var Registry = []Item{
 	{ID: "P3-03", Phase: 3, Title: "govard tool magento setup:di:compile", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "setup:di:compile")
 	}},
-	{ID: "P3-04", Phase: 3, Title: "govard tool magento setup:static-content:deploy {{LOCALES}} -f", Precond: "P2-09 Hyva built", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-04", Phase: 3, Title: "govard tool magento setup:static-content:deploy {{LOCALES}} -f", Precond: "P2-09 Hyva theme present", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "setup:static-content:deploy", "-f")
 	}},
 	{ID: "P3-05", Phase: 3, Title: "govard tool magento indexer:reindex", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -806,7 +811,7 @@ var Registry = []Item{
 	{ID: "P4-06", Phase: 4, Title: "govard sync -s <remote> --file --path <path> --plan + --exclude + --delete --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--file", "--path", ".", "--plan")
 	})},
-	{ID: "P4-07", Phase: 4, Title: "govard sync -s <remote> --full --plan", Precond: "P4-01 staging", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+	{ID: "P4-07", Phase: 4, Title: "govard sync -s <remote> --full --plan", Precond: "P4-01 remote reachable", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--full", "--plan")
 	})},
 	{ID: "P4-08", Phase: 4, Title: "govard snapshot create + govard snapshot list", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
