@@ -28,6 +28,12 @@ func TestDesktopOperationWatcherRefreshesOncePerPoll(t *testing.T) {
 	refreshes := 0
 	desktop.SetOperationWatcherRefreshForTest(app, func() { refreshes++ })
 
+	// The production cadence is two seconds. Shortening it keeps the assertion --
+	// one refresh per poll, not one per event -- and drops the two and a half
+	// seconds this test used to spend waiting for a ticker to fire.
+	const pollInterval = 20 * time.Millisecond
+	desktop.SetOperationWatcherPollIntervalForTest(app, pollInterval)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	desktop.StartOperationWatcherForTest(app, ctx)
@@ -44,8 +50,20 @@ func TestDesktopOperationWatcherRefreshesOncePerPoll(t *testing.T) {
 		}
 	}
 
-	// One poll interval plus slack.
-	time.Sleep(2600 * time.Millisecond)
+	// Wait for the notifications instead of sleeping a guessed interval: the
+	// subject of this test is the refresh count, and a slow machine should not
+	// fail it just for being slow.
+	deadline := time.Now().Add(10 * time.Second)
+	for len(fake.EventsNamed("operations:notification")) < 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("emitted %d notifications, want 3", len(fake.EventsNamed("operations:notification")))
+		}
+		time.Sleep(pollInterval)
+	}
+
+	// Let a poll already in flight settle, so a refresh that was about to happen
+	// is counted before the assertion rather than quietly after it.
+	time.Sleep(4 * pollInterval)
 
 	if got := len(fake.EventsNamed("operations:notification")); got != 3 {
 		t.Fatalf("emitted %d notifications, want 3", got)

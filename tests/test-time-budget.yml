@@ -1,10 +1,10 @@
 # Per-test wall-clock budget.
 #
 # The suite is enormous and almost entirely cheap -- roughly 84% of the unit
-# tests finish in under 10ms -- yet its wall clock is owned by a small tail.
-# Without a rule, a test that goes from 40ms to 4s still passes, nothing turns
-# red, and nobody looks at the clock until `make test` takes five minutes. This
-# file is that rule: a test that runs longer than its budget fails the build.
+# tests finish in under 10ms -- yet its wall clock used to be owned by a small
+# tail. Without a rule, a test that goes from 40ms to 4s still passes, nothing
+# turns red, and nobody looks at the clock until `make test` takes five minutes.
+# This file is that rule: a test running longer than its budget fails the build.
 #
 # Enforced by scripts/testbudget, which reads the `Elapsed` field that
 # `go test -json` already reports for every test. The budget is therefore checked
@@ -19,66 +19,47 @@
 #   3. Overrides naming a test that no longer runs are reported as stale on a
 #      full-suite run, so a rename cannot leave a precedent behind for whoever
 #      writes the next slow test.
-#   4. Prefer making a test fast over raising its budget. Every entry below is
-#      slow for a structural reason -- a real poll interval, a real process
-#      group, a real SSH round trip -- and the fastest of them are optimisable.
-#      Each run prints its slowest tests, so this file should shrink over time
-#      rather than grow.
+#   4. Prefer making a test fast over raising its budget. A budget file that
+#      only ever grows is a budget file that stopped working; this one is meant
+#      to shrink.
 #
-# Thresholds were derived from measured runs, not guessed. Two full runs of the
-# unit suite showed the same test varying by up to ~38% between them, so the
-# default is set with real headroom above the slowest test that is *not* on the
-# list (about 2.5s measured, 4s allowed) rather than parked just above it. A cap
-# that flaps on an ordinary run is a cap people learn to re-run past.
+# Thresholds were derived from measurement, not taste.
+#
+#   The unit default sits at 5s with no allowances at all. Repeated runs put the
+#   slowest unit test at 3.2s, and the process-lifecycle tests that dominate the
+#   tail are strikingly stable (2.12s, 2.01s and 3.23s reproduced to within
+#   0.01s across runs) because they wait on conditions rather than on the clock.
+#   The two tests that do swing -- the build-parity and prepare-check tests,
+#   which move real files and real builds -- vary by ~70%, so the cap carries
+#   real headroom over the observed maximum rather than sitting just above it.
+#   A cap that flaps on an ordinary run is a cap people learn to re-run past.
+#
+#   Integration runs a much wider net: those tests bring up real containers and
+#   talk real SSH, so their floor is seconds by nature and the useful signal is
+#   an order of magnitude, not a tenth of a second.
 #
 # A slower machine (a shared CI runner, a loaded laptop) can set
 # GOVARD_TEST_TIME_SCALE=2 to multiply every budget without editing this file.
 # It exists so a slow host does not turn this gate into noise people learn to
 # ignore -- and so tightening it later is a one-line change rather than a
-# re-argument about every individual test.
+# re-argument about every individual test. CI sets it; local runs stay strict.
 
 suites:
   unit:
-    # 84% of unit tests run in under 10ms, so this cap is far above the bulk and
-    # only ever reached by a test doing real subprocess, poll or SSH work. It is
-    # still well under the suite total: a run that starts tripping it is a run
-    # worth looking at.
-    default: 4s
-    overrides:
-      TestEnvRestartReappliesProjectDomainsAfterComposeUp:
-        budget: 9.0s
-        reason: >-
-          re-runs the compose-up domain reconciliation twice to prove the reapply, not a cached one-shot
-      TestTunnelStopSucceedsWhenTheTunnelEndsBeforeTheEscalation:
-        budget: 8.8s
-        reason: >-
-          waits out the real tunnel escalation ladder instead of injecting a shorter one
-      TestARemoteStepThatHasNotRecordedItsPIDYetIsStillStopped:
-        budget: 5.8s
-        reason: >-
-          forks a real remote step, kills the SSH wrapper, then polls until the process group is drained
-      TestWaitForUpRuntimeReadinessFailsFastWhenContainerExited:
-        budget: 5.4s
-        reason: >-
-          asserts the real readiness-timeout path, which is measured in seconds of waiting
-      TestDesktopOperationWatcherRefreshesOncePerPoll:
-        budget: 5.2s
-        reason: >-
-          sleeps one full production poll interval (internal/desktop/notifications.go PollInterval)
-      TestEnvRestartRegistersAndUnregistersRabbitMQDomainWhenQueueEnabled:
-        budget: 4.6s
-        reason: >-
-          drives two full env restart cycles to prove the domain is registered and then removed
-      TestEnvRestartRegistersAndUnregistersSearchDomainWhenSearchEnabled:
-        budget: 4.6s
-        reason: >-
-          drives two full env restart cycles to prove the domain is registered and then removed
+    # No allowances. The slowest unit test measures 3.2s, and the budget sits
+    # well clear of it -- this cap is for catching a test that jumps by orders
+    # of magnitude, not for policing tenths of a second.
+    default: 5s
+    overrides: {}
 
   integration:
-    # Integration tests drive real containers and real SSH, so the default is much wider. The tail is concentrated here too: a test that starts pulling an image per run should show up against this cap.
+    # Integration tests drive real containers and real SSH, so the default is
+    # much wider. The tail is concentrated too: a test that starts pulling an
+    # image on every run should show up against this cap.
     default: 30s
     overrides:
       TestDeploySandboxRunsTheMagentoRecipeOverRealSSH:
-        budget: 41.2s
+        budget: 45s
         reason: >-
-          builds and boots a real sandbox container, then runs the Magento recipe over real SSH
+          builds and boots a real sandbox container, then runs the Magento recipe
+          over real SSH; measured at 30-34s across runs

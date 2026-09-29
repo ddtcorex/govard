@@ -213,7 +213,7 @@ func signalRecordedTunnel(
 		if now().After(deadline) {
 			break
 		}
-		time.Sleep(tunnelStopPollInterval)
+		tunnelDeps.Sleep(tunnelStopPollInterval)
 	}
 	if alive(record.PID) {
 		// The same race as the SIGTERM arm exists between the poll's last

@@ -127,8 +127,8 @@ install -m0755 bin/govard ~/.local/bin/govard     # only to test PATH consumers 
 
 `make test-unit` and `make test-integration` run under `scripts/testbudget`,
 which fails the build when **one test** exceeds its budget in
-`tests/test-time-budget.yml` (`4s` unit, `30s` integration; 7 allowlisted unit
-tests, 1 integration test). The check reads the `Elapsed` field `go test -json`
+`tests/test-time-budget.yml` (`5s` unit with **no** allowances, `30s`
+integration with one). The check reads the `Elapsed` field `go test -json`
 already reports, so it adds no wall time, and every run prints its ten slowest
 tests — the fastest way to see where the clock is actually going.
 
@@ -137,10 +137,21 @@ tests — the fastest way to see where the clock is actually going.
   reported as stale. An unexplained or orphaned allowance is how an allowlist rots
   into a list of tests nobody examined.
 - **Prefer making the test fast over raising its budget.** The suite is ~84%
-  sub-10ms, so a slow test is usually structural: sleeping out a production poll
-  interval (`internal/desktop/notifications.go` `PollInterval`), or rebuilding a
-  fixture per call (`seedGitRepo` in `tests/deploy_prepare_test.go` forks nine
-  `git` processes every time it runs). The budget file should shrink over time.
+  sub-10ms, so a slow test is almost always structural, and the causes found so
+  far were all worth fixing rather than budgeting for:
+  - a **unit test reaching a real container** — `UnregisterSearchDomain` /
+    `UnregisterRabbitMQDomain` default to `docker exec govard-proxy-caddy curl`,
+    so an env-restart test was shelling into whatever the developer happened to
+    be running. Stub every dependency `SetEnvDependenciesForTest` accepts.
+  - **sleeping out a production interval** — a watcher test waited the real
+    2s `PollInterval`; `internal/desktop/test_helpers.go` now exposes
+    `SetOperationWatcherPollIntervalForTest`.
+  - **a clock seam that was not a sleep seam** — moving `Now` past a grace
+    period still left the test paying every `time.Sleep` in between. Where a
+    production loop waits, expose the wait itself (see `TunnelDependenciesForTest.Sleep`).
+  - Rebuilding fixtures per test is a *smaller* lever than it looks:
+    `seedGitRepo` forks nine `git` processes but costs only ~23ms, ~0.9s across
+    the suite. Measure before refactoring 40 call sites for that.
 - **Slower machines:** `GOVARD_TEST_TIME_SCALE=2` multiplies every budget without
   editing the file, so a slow CI runner does not turn the gate into noise.
 - `t.Parallel()` is effectively unused here and cannot simply be added: the suite

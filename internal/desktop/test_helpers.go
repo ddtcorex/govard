@@ -701,6 +701,18 @@ func SetOperationWatcherRefreshForTest(app *App, refresh func()) {
 	app.watcher.onEvent = refresh
 }
 
+// SetOperationWatcherPollIntervalForTest overrides how often the operation
+// watcher polls. Must be called before StartOperationWatcherForTest.
+//
+// The production cadence is two seconds, which is right for a tray and wrong for
+// a test: a watcher test would otherwise have to sleep past a real interval to
+// observe one poll. Shortening it keeps the test asserting the thing that
+// actually matters -- that a burst of events costs one refresh, not one per
+// event -- without the suite paying production cadence for it.
+func SetOperationWatcherPollIntervalForTest(app *App, interval time.Duration) {
+	app.watcher.pollInterval = interval
+}
+
 // DefaultPlatformForTest returns the build-tag-selected default platform.
 func DefaultPlatformForTest() Platform {
 	return newDefaultPlatform()
