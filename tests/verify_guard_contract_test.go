@@ -28,12 +28,63 @@ const captureRemoteForTest = "sandbox"
 // The empty-Remote case is asserted separately, in Task 3's tests.
 //
 // The map is keyed by item id and holds that item's argv, which ExitCode 1 keeps
-// to the item's first invocation. Five items ignore that exit code and make one
-// more call — P1-06 (`lock diff`), P2-01/P5-02/P5-06 (`env up`) and P2-13 (the
-// http retry) — all of them local, none of them remote-guarded. A remote-guarded
-// item that ran twice would leave the fence blind to half of its argv, so the
-// capture fails the test rather than return a partial one.
+// to the item's first invocation. An item that ignores that exit code makes one
+// more call, and a remote-guarded item that ran more than once would leave the
+// guard fences below classifying half of its argv — so the projection refuses to
+// return a partial capture instead.
 func captureItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) map[string][]string {
+	t.Helper()
+
+	// The invariant lives here, on the projection, not in the capture: this is
+	// the function that throws argv away, so it is the one that has to refuse to
+	// do so for an item whose argv the guard fences read.
+	argvs := captureItemArgvsForExit(t, cfg, opts, 1)
+	first := make(map[string][]string)
+	for _, it := range verify.RegistryFor(cfg) {
+		if it.Run == nil {
+			continue
+		}
+		itemArgvs := argvs[it.ID]
+		if len(itemArgvs) > 1 && (it.Guard == verify.GuardReadOnlyRemote || it.Guard == verify.GuardRemoteWrite) {
+			t.Errorf("%s carries %s and made %d govard invocations; the capture keeps only the first, so it can no longer classify all of this item's argv",
+				it.ID, it.Guard, len(itemArgvs))
+		}
+		if len(itemArgvs) > 0 {
+			first[it.ID] = itemArgvs[0]
+			continue
+		}
+		first[it.ID] = nil
+	}
+	return first
+}
+
+// captureAllItemArgvs is captureItemArgvsForExit over both answers a child can
+// give, concatenated: neither exit code alone reaches every argv an item can
+// build. An item that branches on the exit code (P1-06 runs `lock diff` only
+// when `lock check` fails) hides a branch from the succeeding run, and an item
+// that returns early on failure (P2-01 returns after a failed `env up`, so
+// `env ps` runs only on success) hides one from the failing run. The failing run
+// comes first, so the argvs of an item that behaves the same either way read in
+// the order it invokes them.
+//
+// The map holds every invocation, in order, and the same argv can appear twice
+// when both exit codes reach it.
+func captureAllItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) map[string][][]string {
+	t.Helper()
+
+	all := captureItemArgvsForExit(t, cfg, opts, 1)
+	for id, later := range captureItemArgvsForExit(t, cfg, opts, 0) {
+		all[id] = append(all[id], later...)
+	}
+	return all
+}
+
+// captureItemArgvsForExit is the one capture body: it runs every item in
+// RegistryFor(cfg) with a fake exec that records every argv it is handed and
+// answers with exitCode. The map is keyed by item id; an item that invoked no
+// govard command at all (it skipped, or its check never shells out) gets an
+// empty entry, so a caller can tell "ran no command" from "not in the registry".
+func captureItemArgvsForExit(t *testing.T, cfg engine.Config, opts verify.VerifyOpts, exitCode int) map[string][][]string {
 	t.Helper()
 	if opts.Remote == "" {
 		opts.Remote = captureRemoteForTest
@@ -41,26 +92,18 @@ func captureItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) m
 
 	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
 
-	argvs := make(map[string][]string)
+	argvs := make(map[string][][]string)
 	for _, it := range verify.RegistryFor(cfg) {
 		if it.Run == nil {
 			continue
 		}
-		var first []string
-		invocations := 0
+		var itemArgvs [][]string
 		verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
-			invocations++
-			if first == nil {
-				first = append([]string(nil), args...)
-			}
-			return verify.Evidence{ExitCode: 1, OutputExcerpt: "fake: " + strings.Join(args, " ")}, true
+			itemArgvs = append(itemArgvs, append([]string(nil), args...))
+			return verify.Evidence{ExitCode: exitCode, OutputExcerpt: "fake: " + strings.Join(args, " ")}, true
 		})
 		_ = it.Run(context.Background(), cfg, opts)
-		if invocations > 1 && (it.Guard == verify.GuardReadOnlyRemote || it.Guard == verify.GuardRemoteWrite) {
-			t.Errorf("%s carries %s and made %d govard invocations; the capture keeps only the first, so it can no longer classify all of this item's argv",
-				it.ID, it.Guard, invocations)
-		}
-		argvs[it.ID] = first
+		argvs[it.ID] = itemArgvs
 	}
 	verify.SetExecGovardFakeForTest(nil)
 
@@ -252,36 +295,45 @@ func TestNoReadOnlyRemoteItemResolvesTheStagingLiteral(t *testing.T) {
 	}
 }
 
-// The guard label is a rule only if it matches what the item's argv does: an
-// item that writes through a remote without GuardRemoteWrite would run unasked
-// (that was P2-05/P2-08 before Task 2 relabelled them).
+// The guard label is a rule only if it matches what every invocation of the item
+// does: an item that writes through a remote without GuardRemoteWrite would run
+// unasked (that was P2-05/P2-08 before Task 2 relabelled them), and a guarded
+// item whose *later* invocation writes is the same defect one call further in.
+//
+// It classifies captureAllItemArgvs, not the first-argv capture the other fences
+// in this file read: P2-07 is READ-ONLY-REMOTE and only reaches its second and
+// third `bootstrap --clone` calls when the first succeeds, so against a
+// first-argv capture, dropping `--plan` from either of them left this fence green
+// while the item ran an unplanned bootstrap against the remote.
 func TestEveryRemoteWritingItemDeclaresRemoteWrite(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	cfg := engine.Config{Framework: "magento2"}
-	argvs := captureItemArgvs(t, cfg, verify.VerifyOpts{
+	argvs := captureAllItemArgvs(t, cfg, verify.VerifyOpts{
 		Remote:      captureRemoteForTest,
 		ProjectRoot: t.TempDir(),
 	})
 
 	remoteWrites := 0
 	for _, it := range verify.RegistryFor(cfg) {
-		argv := argvs[it.ID]
-		if !isRemoteWriteArgv(argv) {
-			continue
-		}
-		remoteWrites++
-		if it.Guard == verify.GuardReadOnlyRemote {
-			t.Errorf("%s carries %s but runs `%s`, which writes through a remote",
-				it.ID, verify.GuardReadOnlyRemote, strings.Join(argv, " "))
-			continue
-		}
-		if it.Guard != verify.GuardRemoteWrite {
-			t.Errorf("%s runs `%s`, which writes through a remote, but carries Guard %q, want %q",
-				it.ID, strings.Join(argv, " "), it.Guard, verify.GuardRemoteWrite)
+		itemArgvs := argvs[it.ID]
+		for i, argv := range itemArgvs {
+			if !isRemoteWriteArgv(argv) {
+				continue
+			}
+			remoteWrites++
+			if it.Guard == verify.GuardReadOnlyRemote {
+				t.Errorf("%s carries %s but invocation %d of %d runs `%s`, which writes through a remote",
+					it.ID, verify.GuardReadOnlyRemote, i+1, len(itemArgvs), strings.Join(argv, " "))
+				continue
+			}
+			if it.Guard != verify.GuardRemoteWrite {
+				t.Errorf("%s invocation %d of %d runs `%s`, which writes through a remote, but carries Guard %q, want %q",
+					it.ID, i+1, len(itemArgvs), strings.Join(argv, " "), it.Guard, verify.GuardRemoteWrite)
+			}
 		}
 	}
 	if remoteWrites == 0 {
-		t.Fatal("no item's argv matched the remote-write table: the classifier and the registry have drifted apart, so this fence proves nothing")
+		t.Fatal("no invocation of any item matched the remote-write table: the classifier and the registry have drifted apart, so this fence proves nothing")
 	}
 }
 

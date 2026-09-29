@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"testing"
 
 	"github.com/pterm/pterm"
@@ -27,7 +28,11 @@ func runVerifyAllPhases(t *testing.T, project string, extraArgs ...string) (map[
 
 	stdout := &bytes.Buffer{}
 	pterm.SetDefaultOutput(stdout)
-	t.Cleanup(func() { pterm.SetDefaultOutput(nil) })
+	// os.Stdout, not nil: pterm's default writer is initialised to os.Stdout
+	// (print.go:13) and there is no API that puts it back, so SetDefaultOutput(nil)
+	// leaves a nil io.Writer behind and the next render in this package panics in
+	// fmt.Fprint. This cleanup runs at the end of every test that uses this helper.
+	t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
 
 	root := cmd.RootCommandForTest()
 	root.SetOut(stdout)

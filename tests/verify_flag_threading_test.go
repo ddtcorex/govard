@@ -459,11 +459,12 @@ func runVerifyCommandForTest(t *testing.T, args ...string) (string, error) {
 	restoreCapabilities := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapDocker)
 	t.Cleanup(restoreCapabilities)
 
-	// The human table renders through pterm's process-global default output, and
-	// earlier tests in this package legitimately leave it nil (`SetDefaultOutput(nil)`
-	// after their own capture) — printing through a nil writer panics. Discard it
-	// for this case and restore production's os.Stdout after, so this test neither
-	// depends on nor worsens that global.
+	// The human table renders through pterm's process-global default output, so
+	// discard it for this case and restore production's os.Stdout after: this test
+	// then neither depends on nor worsens that global. os.Stdout, not nil —
+	// pterm's default writer is initialised to os.Stdout and SetDefaultOutput has
+	// no inverse, which is why the cleanups in verify_all_phases_test.go and
+	// verify_json_stdout_test.go name os.Stdout too.
 	pterm.SetDefaultOutput(io.Discard)
 	t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
 
