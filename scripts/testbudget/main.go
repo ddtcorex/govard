@@ -175,6 +175,13 @@ func run(args []string, budgetSuite testbudget.Suite, quiet, reportStale bool) (
 
 	scanErr := scanner.Err()
 	waitErr := cmd.Wait()
+	// A read failure is reported together with whatever the process itself said,
+	// not instead of it: the go test exit code carries the real reason a suite
+	// failed, and dropping it because the stream was also truncated would hide
+	// the one answer that matters.
+	if scanErr != nil && waitErr != nil {
+		return report, fmt.Errorf("read go test output: %w (go test also failed: %v)", scanErr, waitErr)
+	}
 	if scanErr != nil {
 		return report, fmt.Errorf("read go test output: %w", scanErr)
 	}

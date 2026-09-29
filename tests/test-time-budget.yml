@@ -42,13 +42,27 @@
 # GOVARD_TEST_TIME_SCALE=2 to multiply every budget without editing this file.
 # It exists so a slow host does not turn this gate into noise people learn to
 # ignore -- and so tightening it later is a one-line change rather than a
-# re-argument about every individual test. CI sets it; local runs stay strict.
+# re-argument about every individual test.
+#
+# Note which check is which: CI sets the scale to 2, so CI enforces 10s while a
+# local run enforces 5s. That makes the *authoritative* gate the looser one, and
+# a 6s regression is caught locally and merges clean. The trade is deliberate --
+# a gate that flaps on a shared runner trains people to ignore it -- but it is a
+# trade, and lowering the scale once the suite is reliably under the ceiling is
+# the obvious follow-up.
 
 suites:
   unit:
     # No allowances. The slowest unit test measures 3.2s, and the budget sits
-    # well clear of it -- this cap is for catching a test that jumps by orders
-    # of magnitude, not for policing tenths of a second.
+    # well clear of it.
+    #
+    # Be precise about what this catches: it is an absolute ceiling, not a
+    # ratio. A test is in trouble when it *ends up above 5s*, whatever it started
+    # at -- so 40ms -> 6s is caught and 40ms -> 4s is not. In practice the second
+    # case is rare, because 84% of the suite runs in under 10ms and anything
+    # doing real work lands in seconds, but it is a limit worth stating rather
+    # than implying otherwise. The "slowest tests" table printed on every run is
+    # what covers the band below the ceiling.
     default: 5s
     overrides: {}
 
