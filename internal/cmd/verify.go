@@ -40,7 +40,7 @@ var ErrItemsFailed = &itemsFailedError{}
 func summarise(out io.Writer, res verify.RunResult) error {
 	if res.Failed() {
 		passed, failed := res.Counts()
-		fmt.Fprintf(out, "checklist failed: %d passed, %d failed\n", passed, failed)
+		fmt.Fprintf(out, "checklist failed: %d passed, %d failed, %d skipped\n", passed, failed, res.SkippedCount())
 		return ErrItemsFailed
 	}
 	return nil
@@ -227,10 +227,16 @@ func renderVerifyResult(cmd *cobra.Command, res verify.RunResult, jsonOut bool) 
 	pterm.Info.Printf("Phase %s: %d items\n", res.Phase, len(res.Items))
 	for _, it := range res.Items {
 		status := "PASS"
-		if it.ExitCode != 0 {
+		if it.Skipped {
+			status = "SKIP"
+		} else if it.ExitCode != 0 {
 			status = "FAIL"
 		}
-		pterm.Info.Printf("  %s %s (%dms) %s\n", it.ID, status, it.DurationMs, it.EvidenceExcerpt)
+		excerpt := it.EvidenceExcerpt
+		if it.Skipped && it.SkipReason != "" {
+			excerpt = it.SkipReason
+		}
+		pterm.Info.Printf("  %s %s (%dms) %s\n", it.ID, status, it.DurationMs, excerpt)
 	}
 	return nil
 }

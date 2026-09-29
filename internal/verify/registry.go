@@ -31,6 +31,10 @@ type Evidence struct {
 	// Artifacts names what this item produced (a snapshot directory, for
 	// example). The phase-5 gate uses it to prove a restore target exists.
 	Artifacts []string
+	// Skipped marks an item that did not run because it does not apply here.
+	// SkipReason says why. See Skip.
+	Skipped    bool
+	SkipReason string
 }
 
 // Item is one checklist entry in the 5-phase registry.
