@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"govard/internal/audit"
 	"govard/internal/cmd"
 	"govard/internal/engine"
 	"govard/internal/verify"
@@ -13,33 +15,34 @@ import (
 )
 
 // verifyNoArgvItemsForTest is the exact set of rows that build no command line
-// under this fence's fixture, each with what it does instead. P2-09, P3-13 and
-// P3-14 skip on a fixture this test does not seed (no Hyva theme, no Magento
-// module under app/code); P2-13 and P4-11 skip without a configured domain,
-// because they probe the project's own site over HTTP rather than shelling out;
-// P5-05 fails on its phase-5 gate, which no hermetic capture can satisfy.
+// under this fence's fixture, each with what it does instead.
+//
+// Two of the six can never appear here, whatever the fixture: P2-13 and P4-11
+// probe the project's own site in-process (`probeSite`, `probeSearchHealth`) and
+// never shell out to a govard child, so they have no argv to resolve at all. The
+// other four skip on a fixture that does not seed what they need, which the
+// fixture below now does seed — a Hyvä theme marker and a module under
+// app/code — so only P5-05's phase-5 gate is left, and no hermetic capture can
+// satisfy it.
 //
 // The set is pinned in both directions: a row that stops building argv must be
 // added here, with its reason, rather than quietly shrinking the fence's reach.
 var verifyNoArgvItemsForTest = map[string]string{
-	"P2-09": "skips: no Hyva theme under the fixture's ProjectRoot",
-	"P2-13": "skips: no configured domain (it probes the project's own site)",
-	"P3-13": "skips: no Magento module under app/code",
-	"P3-14": "skips: no Magento module under app/code",
-	"P4-11": "skips: no configured domain (it probes the project's own site)",
+	"P2-13": "never builds one: it probes the site in-process, so it has no govard child to resolve",
+	"P4-11": "never builds one: it probes the search route in-process, so it has no govard child to resolve",
 	"P5-05": "fails: its phase-5 gate recorded no snapshot in a phase-4 run",
 }
 
 // The reach floors are the numbers this fence measured on the registry it was
-// written against: 60 distinct argvs over 121 invocations, both exit codes
+// written against: 63 distinct argvs over 127 invocations, both exit codes
 // included. They are floors rather than equalities, so a new branch or a new
 // item only raises them; a fall means an item lost a call or a subset stopped
 // building argv — a row can keep running something while dropping a later
 // command, which the no-argv pin above cannot see. Each is the exact measured
 // value because there is no slack to give: the smallest real loss is one call.
 const (
-	verifyDistinctArgvsFloorForTest = 60
-	verifyInvocationsFloorForTest   = 121
+	verifyDistinctArgvsFloorForTest = 63
+	verifyInvocationsFloorForTest   = 127
 )
 
 // Every verify item is a command line, and verify never parses that line
@@ -75,9 +78,20 @@ const (
 func TestEveryItemArgvResolvesToARunnableCommand(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	cfg := engine.Config{Framework: "magento2"}
+	// The fixture seeds what three items need to build an argv at all: a Hyvä
+	// theme's Tailwind manifest (P2-09) and a module under app/code (P3-13 and
+	// P3-14). Those three carry the argv shapes this branch changed most —
+	// `--prefix <theme>`, `--mode module_in_project --path <dir>`,
+	// `--mode standalone --path <dir>` — so a fixture that left them out would
+	// make the blindness an expectation instead of a gap. The fence only resolves
+	// argvs; it never runs a child, so no npm install and no container is
+	// involved.
+	projectRoot, _ := magentoProjectWithAppCodeModule(t, "DemoFence")
+	writeFixtureFile(t, filepath.Join(projectRoot, "app", "design", "frontend", "Acme", "Blank", "web", "tailwind", "package.json"),
+		`{"name":"acme/blank-tailwind","version":"1.0.0"}`)
 	argvs := captureAllItemArgvs(t, cfg, verify.VerifyOpts{
 		Remote:      captureRemoteForTest,
-		ProjectRoot: t.TempDir(),
+		ProjectRoot: projectRoot,
 	})
 
 	root := cmd.RootCommandForTest()
@@ -127,6 +141,18 @@ func TestEveryItemArgvResolvesToARunnableCommand(t *testing.T) {
 // green and the log line smaller.
 func assertVerifyReachForTest(t *testing.T, noArgv []string, reached, items, invocations, distinctArgvs int) {
 	t.Helper()
+
+	// Every declared check must be a name `audit run --checks` accepts, or that
+	// item is unreachable under every legal selection while every test stays
+	// green. The production validator is the source of truth, so this compares
+	// against it instead of restating its three names here.
+	for _, it := range verify.RegistryFor(engine.Config{Framework: "magento2"}) {
+		for _, name := range it.Checks {
+			if _, err := audit.NormalizeChecks([]string{name}); err != nil {
+				t.Errorf("%s declares Item.Checks %q, which `audit run --checks` rejects (%v): a row whose declared check no selection can name is unreachable", it.ID, name, err)
+			}
+		}
+	}
 
 	for id, why := range verifyNoArgvItemsForTest {
 		if !containsString(noArgv, id) {
