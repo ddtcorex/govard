@@ -356,6 +356,17 @@ govard bootstrap -e staging --no-pii --no-noise
 - `--remote` — tên viết tắt của `--environment`.
 - `--db-dump` — import database trực tiếp từ một đường dẫn file SQL local.
 
+Tên `sandbox` cũng được chấp nhận, và được resolve từ container đang chạy giống
+hệt `govard deploy --remote sandbox`. Một lần chạy không phải `--plan` mà chưa có
+container sẽ dừng với thông báo riêng của sandbox (`no sandbox exists for this
+project; run 'govard sandbox up' to create it`) thay vì báo tên này chưa được cấu
+hình, và lệnh sẽ không bao giờ đề nghị chạy `remote add sandbox` — chỉ
+`govard sandbox up` mới tạo được container. Việc dừng này giả định không có prompt
+tương tác để rơi về: trong terminal mà không có `--yes`, cùng thông báo đó được in
+ra và trình chọn tên remote mở ra, và lần thử lại mà nó chạy sẽ lại thất bại y
+hệt. Như với mọi tên không resolve được,
+`--plan` vẫn không coi đây là lỗi và không in ra plan nào.
+
 **Các bộ lọc hiệu năng & bảo mật dữ liệu:**
 
 | Cờ (Flag) | Tác dụng |
@@ -674,9 +685,13 @@ Các tính năng chính:
 - Tự động bảo vệ chống ghi đè cho môi trường production.
 - Ghi nhật ký lịch sử thao tác: `~/.govard/remote.log`.
 
-`remote list` in bảng NAME/HOST/CAPABILITIES gồm các remote đã cấu hình cộng
-dòng synthetic `sandbox | (implicit) | running|dormant|absent`, luôn được liệt
-kê với trạng thái running|dormant|absent.
+`remote list` in bảng NAME/HOST/CAPABILITIES/AUTH/KEY gồm các remote đã cấu
+hình cộng dòng synthetic `sandbox (implicit)`, trong đó cột HOST mang trạng thái
+(`running`, `dormant — …`, `absent — …`) và cột CAPABILITIES mang đúng những gì
+block `remotes.sandbox` cấu hình. Khi có block `remotes.sandbox` được cấu
+hình, sandbox vẫn chỉ có đúng một dòng, và stderr cho biết block đó làm gì:
+`capabilities`, `protected` và cấu hình `deploy` của nó được lớp lên sandbox
+synthetic, còn host, port, user và auth vẫn lấy từ container.
 
 → Hướng dẫn đầy đủ: [Remote & Đồng bộ](/vi/workflows/remotes-and-sync)
 
@@ -693,6 +708,15 @@ govard sync --db --no-noise --no-pii
 
 Tự động chọn remote `staging` nếu không truyền cờ `--source`, và fallback về `dev`.
 Khi cờ `--media` được gọi mà không truyền mode cụ thể, Govard sẽ mặc định chạy ở chế độ `optimized`.
+
+`--source` và `--destination` đều nhận `sandbox`, và tên này được resolve từ
+container đang chạy — cùng một remote mà `govard deploy --remote sandbox` dùng —
+nên không cần block `remotes.sandbox`; và nếu đã có block, block chỉ định hình
+buổi diễn tập (capabilities, protection, cấu hình `deploy`), không bao giờ trỏ
+lại luồng truyền sang máy khác. Bản thân `sync` không yêu cầu Docker, nên trên
+máy không có Docker mà được yêu cầu `-e sandbox` thì lệnh thoát với mã `3` và
+`CAPABILITY_MISSING`; còn khi có Docker nhưng chưa có container thì thoát với mã
+`1` kèm lời nhắc chạy `govard sandbox up`.
 
 **Các cờ chính:**
 
@@ -865,16 +889,42 @@ cổng loopback còn trống, sinh khoá riêng dưới `.govard/sandbox/` (đã
 và mount read-only một mirror repository local. Mirror được refresh trước mỗi lần
 deploy nên commit bạn chưa từng push vẫn triển khai được, và không phần nào trong
 pipeline biết nó đang nói chuyện với container — triển khai vào sandbox chính là deploy
-production trỏ vào container. Không có block `sandbox` trong bất kỳ file cấu hình
-nào: khi container còn chạy, `sandbox` tự resolve thành remote cho mọi lệnh nhận
-remote.
+production trỏ vào container. Khi container còn chạy, `sandbox` tự resolve thành
+remote cho mọi lệnh nhận remote, mà không gì identity nào được ghi vào file cấu
+hình.
 
 `sandbox` là lệnh top-level — hãy deploy bằng dạng flag:
 `govard deploy --remote sandbox --yes`.
 
-Không có block `sandbox` nào để ghi vào đâu cả: sandbox synthetic lấn át mọi
-block `remotes.sandbox` trong `.govard.local.yml` (kèm cảnh báo) và block đó
-không bao giờ thắng.
+Không có *identity* sandbox nào để ghi vào đâu cả: `host`, `port`, `user`,
+`path` và `auth` của `sandbox` được đọc từ container mà `sandbox up` tạo ra, và
+`govard remote add` sẽ bỏ qua chúng nếu bạn truyền vào. Thứ bạn có thể cấu
+hình là **hình dạng** của buổi diễn tập — `capabilities`, `protected` và cấu
+hình `deploy` — qua `govard remote add sandbox --capabilities db --protected`
+hoặc bằng tay trong `.govard.yml` / `.govard.local.yml`:
+
+```yaml
+remotes:
+  sandbox:
+    capabilities:
+      db: false
+    protected: true
+    deploy:
+      keep_releases: 3
+```
+
+Block được lớp **lên trên** remote synthetic, không thay thế nó. Bốn cấu hình
+`deploy` bị ghim vào container vì chúng mô tả đúng thứ image mang theo và một
+lần deploy sẽ từ chối chạy khi đích không khớp: `owner`, `writable_mode`,
+`php_bin` và `php_version`. Phần còn lại của những gì một override per-remote
+copy thì thuộc về bạn — `keep_releases`, `command_timeout`, `artifact_dir`,
+`repository`, `branch`, `publish`, `deploy_path`, `db_backup`, `verify.url`,
+`verify.timeout`, `hooks` và mọi khoá `settings` (trong đó có
+`writable_permissions` và `composer_bin`). `deploy_path` là trường duy nhất
+dời được buổi diễn tập, và nó chỉ dời *bên trong* container.
+`lock_stale_after`, `maintenance_timeout` và `verify.follow_redirects` chỉ đọc ở
+cấp project: block `remotes.sandbox` bị bỏ qua với chúng, nên hãy đặt chúng
+trong block `deploy:` cấp project.
 
 Profile: `basic` (sshd, rsync, git), `php` (thêm php-cli, composer, node) và
 `full` (thêm database và cache), mặc định `php`. `--docroot` định hình target để
@@ -942,9 +992,11 @@ govard sandbox down [--purge] [--volumes]
 Khi container còn chạy, `sandbox` tự resolve thành remote cho mọi lệnh nhận
 remote (`deploy`, `db`, `remote exec`, `sync`):
 `govard deploy --remote sandbox --yes`, `govard sync -e sandbox`,
-`govard remote exec sandbox -- <command>`. Không gì được ghi vào file cấu hình,
-và `govard remote list` hiện dòng synthetic `sandbox | (implicit) | …` cạnh các
-remote đã cấu hình. Trên sandbox mới tinh dạng mặc định (`symlink`),
+`govard remote exec sandbox -- <command>`. Không gì *identity* nào được ghi
+vào file cấu hình, và `govard remote list` hiện dòng synthetic
+`sandbox (implicit) | …` cạnh các remote đã cấu hình. Hình dạng của buổi diễn
+tập thì cấu hình được (xem [Cấu hình remote sandbox](/vi/workflows/remotes-and-sync#cấu-hình-remote-sandbox)).
+Trên sandbox mới tinh dạng mặc định (`symlink`),
 `remote exec` lỗi cho tới lần deploy đầu tiên điền đầy current path — hãy deploy
 lần đầu hoặc dùng `--docroot real`.
 

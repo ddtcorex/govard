@@ -74,6 +74,75 @@ govard remote audit stats --lines 200
 | **Xác thực host-key** | Chỉ áp dụng dạng opt-in trên từng remote, không ép buộc mặc định |
 | **Tích hợp 1Password** | Các trường cấu hình remote hỗ trợ tham chiếu secret dạng `op://...` |
 
+### Cấu hình remote Sandbox
+
+`sandbox` là tên remote duy nhất vừa **resolve được** dù chưa hề được cấu hình:
+`govard sandbox up` tạo một container trên máy này và govard resolve tên đó từ
+chính container đó. Vì vậy luật cho một block `remotes.sandbox` không phải là
+"khai báo host" — mà là **định hình buổi diễn tập, không định hình máy**.
+
+**Luôn lấy từ container:** `host`, `port`, `user`, `path`, `url`, mọi trường
+`auth` (`method`, `key_path`, `strict_host_key`, `known_hosts_file`), `paths`,
+thông tin kết nối `db_*`, và hai cờ topology `local` và `sandbox`. Một identity
+bị rò rỉ không fail ầm ĩ: buổi diễn tập sẽ lặng lẽ chạy trên một máy khác, ở
+một path khác, bằng một key khác — và vẫn báo thành công.
+
+**Block được phép đặt:** `capabilities`, `protected`, và đúng những trường
+`deploy.*` mà một override per-remote thực sự copy — `keep_releases`,
+`command_timeout`, `artifact_dir`, `repository`, `branch`, `publish`,
+`deploy_path`, `db_backup`, `verify.url`, `verify.timeout`, `hooks`, và
+`settings` theo từng khoá. `deploy_path` là trường duy nhất dời được buổi diễn
+tập: nó đổi chỗ release được publish *bên trong* sandbox và không với ra ngoài
+được. `lock_stale_after`, `maintenance_timeout` và `verify.follow_redirects`
+chỉ đọc ở cấp project, block sandbox bị bỏ qua với chúng — hãy để chúng trong
+block `deploy:` cấp project, nơi chúng thực sự được đọc.
+
+Bốn khoá bị ghim ngược về container: `deploy.settings.owner`, `writable_mode`,
+`php_bin` và `php_version`. Bốn khoá đó mô tả đúng thứ image thực sự mang theo
+(user deployer sở hữu file, cách file được ghi, PHP binary và series), và một
+lần deploy sẽ từ chối chạy khi PHP ở đích không khớp series khai báo.
+`writable_permissions` và `composer_bin` **không** bị ghim.
+
+**Vì sao:** người vận hành cần mô tả được hình dạng của đích diễn tập — số bản
+release giữ lại, quyền hạn, có cần xác nhận hay không — còn phương án thay thế
+(từ chối `remote add sandbox`, phớt lờ block viết tay) để lại một block được
+parse bởi một đường đi nhưng bị mọi bên đọc identity bỏ qua, tệ hơn cả hai
+cực đoan.
+
+```yaml
+remotes:
+  sandbox:
+    capabilities:
+      db: false
+    protected: true
+    deploy:
+      keep_releases: 3
+```
+
+```bash
+govard remote add sandbox --capabilities db --protected   # cùng allowlist đó
+```
+
+Mọi cờ identity truyền vào `remote add sandbox` — `--host`, `--user`, `--port`,
+`--path`, `--auth-method`, `--key-path`, `--known-hosts-file` và
+`--strict-host-key` — đều bị bỏ qua và được nêu tên trên stderr; block được ghi ra
+mà không mang giá trị identity nào, và các lần lưu sau vẫn giữ nguyên như vậy.
+`govard remote list` vẫn chỉ in một dòng sandbox, đặt trạng thái ở cột HOST và
+capabilities của block ở cột CAPABILITIES, và báo block đã
+cấu hình là được lớp lên sandbox synthetic.
+
+Desktop app resolve `sandbox` theo cùng cách: các nút Open admin / Open SFTP /
+Open SSH đi qua container, không đi qua block, nên một block không có host không
+thể khiến app mở `https://localhost/admin` trên chính máy của bạn. App liệt kê
+sandbox bất cứ khi nào container trả lời — cùng điều kiện kích hoạt với
+`govard remote list`, chứ không phải cùng quy tắc về dòng: bảng của app bỏ qua
+sandbox mà nó không resolve được, trong khi `remote list` luôn in một dòng và đặt
+trạng thái vào cột HOST. Khi project
+có cấu hình block `remotes.sandbox` mà không có container đang chạy, dòng
+đó bị bỏ khỏi bảng và lý do trả về dưới dạng warning trong bảng remote của
+project; một project không có block và cũng không có container thì không có dòng
+nào và không có warning nào.
+
 ---
 
 ## Tổng quan về Đồng bộ (Sync Overview)
@@ -90,6 +159,15 @@ govard sync -s dev --file app/design/frontend/MyTheme
 
 Tự động chọn remote `staging` nếu không khai báo `--source`, và fallback về `dev`.
 Cờ `--media` đơn lẻ sẽ mặc định chạy chế độ đồng bộ media dạng `optimized`.
+
+Nguồn hoặc đích là `sandbox` sẽ được resolve từ container đang chạy, chứ không
+phải từ file cấu hình, nên `govard sync -s sandbox` chạy được ngay cả khi project
+không có block `remotes.sandbox` nào. Lệnh truyền tải được dựng từ chính identity
+của container — `127.0.0.1`, user `deployer`, port được publish, và khoá do
+`sandbox up` sinh ra — nên block cấu hình chỉ định hình được buổi diễn tập, không
+bao giờ trỏ luồng truyền sang máy khác. Trên máy không có Docker thì không thể
+resolve sandbox, và yêu cầu tên này sẽ thoát với mã `3` kèm `CAPABILITY_MISSING`
+thay vì báo tên chưa được cấu hình.
 
 ### Các cờ chỉ định Endpoint
 

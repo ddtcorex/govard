@@ -285,7 +285,18 @@ func NormalizeConfig(config *Config, root string) {
 
 	if config.Remotes != nil {
 		for name, remote := range config.Remotes {
-			if remote.Port == 0 {
+			// The sandbox is the one remote whose identity is container-derived,
+			// and `sandbox up` publishes a random free loopback port — so the 22
+			// this default would store is a value no reader may trust, and every
+			// identity consumer ignores the block anyway. It was not merely
+			// useless: the default ran at load time on any project that already
+			// carried a `remotes.sandbox` block, so an unrelated save (any
+			// `govard config set`, any `remote add`) rewrote a correct block into
+			// one asserting a port the container does not listen on — the first
+			// identity value persisted in the one file whose point is that it may
+			// not name the machine. `validateOptionalRemoteFields` explicitly
+			// permits a non-zero port there, so nothing downstream objected.
+			if remote.Port == 0 && !strings.EqualFold(strings.TrimSpace(name), conventions.SandboxRemoteName) {
 				remote.Port = 22
 			}
 			remote.Auth.Method = NormalizeRemoteAuthMethod(remote.Auth.Method)

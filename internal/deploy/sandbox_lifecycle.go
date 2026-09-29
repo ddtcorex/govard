@@ -26,8 +26,10 @@ const (
 	SandboxDocRootReal    = "real"
 
 	// SandboxRemoteName is the synthetic sandbox remote, resolved from live
-	// Docker state rather than written anywhere.
-	SandboxRemoteName = "sandbox"
+	// Docker state rather than written anywhere. Its alias lives in
+	// internal/conventions because internal/engine's validator must recognise
+	// the same name and cannot import this package.
+	SandboxRemoteName = conventions.SandboxRemoteName
 	// SandboxDeployerLayout seeds a target that looks like one the other deploy
 	// tool already owns.
 	SandboxDeployerLayout = "deployer"
@@ -1037,7 +1039,11 @@ func LoadSandboxRemote(projectRoot, name string) (SandboxConfig, error) {
 	}
 	remote, liveness, err := resolveSyntheticSandboxRemoteFn(context.Background(), config.ProjectName)
 	if liveness == SandboxLivenessRunning && err == nil {
-		result.Remote, result.RemoteSet = remote, true
+		// A configured `remotes.sandbox` block layers its capabilities,
+		// protection and deploy settings over the container's identity here
+		// too, so `sandbox status` and `sandbox ssh` describe the same remote
+		// the deploy pipeline targets.
+		result.Remote, result.RemoteSet = SandboxRemoteOverlay(remote, config.Remotes), true
 	}
 	return result, nil
 }

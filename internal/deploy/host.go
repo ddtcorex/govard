@@ -1,7 +1,6 @@
 package deploy
 
 import (
-	"context"
 	"path"
 	"strings"
 
@@ -122,7 +121,7 @@ func HostForConfig(cfg engine.Config, remoteName string, opts Options) (Host, er
 	name := strings.ToLower(strings.TrimSpace(remoteName))
 	var remoteCfg engine.RemoteConfig
 	if name == SandboxRemoteName {
-		resolved, _, err := resolveSyntheticSandboxRemoteFn(context.Background(), cfg.ProjectName)
+		resolved, _, err := sandboxRemoteForConfig(cfg)
 		if err != nil {
 			return Host{}, err
 		}

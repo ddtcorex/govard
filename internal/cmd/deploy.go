@@ -320,19 +320,12 @@ func PrepareResumeWithOptionsForTest(ctx context.Context, host deploy.Host, rele
 // explicit confirmation. With no terminal there is nothing to confirm with, so a
 // missing --yes is a usage error rather than an assumption.
 func confirmProtectedRemote(cmd *cobra.Command, config engine.Config, remote string, options deploy.Options, action string) error {
-	var remoteCfg engine.RemoteConfig
-	if strings.ToLower(strings.TrimSpace(remote)) == deploy.SandboxRemoteName {
-		resolved, _, err := resolveSandboxRemote(cmd.Context(), config.ProjectName)
-		if err != nil {
-			return err
-		}
-		remoteCfg = resolved
-	} else {
-		found, ok := config.Remotes[remote]
-		if !ok {
-			return nil
-		}
-		remoteCfg = found
+	remoteCfg, ok, err := resolvedRemoteForName(cmd.Context(), config, remote)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
 	}
 	blocked, reason := engine.RemoteWriteBlocked(remote, remoteCfg)
 	if !blocked || options.Yes {

@@ -9,7 +9,6 @@
 package deploy
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -174,7 +173,7 @@ func resolveBaseOptions(cfg engine.Config, remote string, over Overrides) (Optio
 	name := strings.ToLower(strings.TrimSpace(remote))
 	var remoteCfg engine.RemoteConfig
 	if name == SandboxRemoteName {
-		resolved, _, err := resolveSyntheticSandboxRemoteFn(context.Background(), cfg.ProjectName)
+		resolved, _, err := sandboxRemoteForConfig(cfg)
 		if err != nil {
 			return Options{}, "", err
 		}

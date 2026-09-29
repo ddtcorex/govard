@@ -807,9 +807,20 @@ govard deploy --remote sandbox --yes
 ```
 
 `sandbox` is a top-level command, so deploy to it with the flag form:
-`govard deploy --remote sandbox --yes`. There is no `sandbox` block
-to write anywhere: the synthetic sandbox shadows any `remotes.sandbox` block
-in `.govard.local.yml` (with a warning) and the block never wins.
+`govard deploy --remote sandbox --yes`. A `remotes.sandbox` block **can** be
+written, and it is not dead weight: it is layered *over* the synthetic sandbox, so
+it states the rehearsal's shape — capabilities, protection, deploy settings —
+while host, port, user, path and auth stay container-derived. Write it by hand in
+`.govard.yml` / `.govard.local.yml`, or let `govard remote add sandbox
+--capabilities db --protected` write it; identity flags passed to that command
+are dropped and reported on stderr, never stored. (Earlier revisions of this page
+said there was no block to write and that the synthetic sandbox *shadowed* one
+with a warning. That was true when `remote add sandbox` was refused and a
+hand-written block was parsed by one path while every identity consumer ignored
+it; the decision reversed deliberately, because an operator has to be able to
+state the rehearsal target's shape.) See
+[Configuring the sandbox remote](/workflows/remotes-and-sync#configuring-the-sandbox-remote)
+for the full field list.
 
 Once `govard svc up` has started the shared SSH gateway (see
 [Deployment](/workflows/deployment#the-shared-ssh-gateway)), the same

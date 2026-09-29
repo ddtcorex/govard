@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"govard/internal/conventions"
+	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/engine/bootstrap"
 	"govard/internal/engine/remote"
@@ -80,7 +81,26 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 	requiresRemote := opts.Clone || (opts.DBImport && opts.DBDump == "") || opts.MediaSync != ""
 
 	if requiresRemote {
-		if _, ok := config.Remotes[opts.Source]; !ok {
+		// Resolved, never read raw: `config.Remotes[source]` is a map lookup and
+		// nothing more, so it answered "not configured" for the one remote whose
+		// identity is container-derived, one screen after ResolveAutoRemote had
+		// already accepted the name. resolvedRemoteForName is the seam that
+		// resolves the container and layers the project's `remotes.sandbox`
+		// block over it, and it keeps the two failure shapes apart: a missing
+		// ordinary remote is an absence the caller may act on (offer to add it),
+		// while a missing sandbox is a real error that already names the remedy.
+		//
+		// Today the only name that resolves with an error is the synthetic one,
+		// which is exactly the one `remote add` cannot create — so the two
+		// conditions below always agree and the offer is unreachable for it
+		// today. They are stated separately on purpose: the error is the
+		// resolver's remedy, and bootstrapOffersToAddRemote is the policy of
+		// which names a human prompt could fix at all, and a second erroring
+		// name must not inherit the offer by accident.
+		if _, ok, resolveErr := resolvedRemoteForName(cmd.Context(), config, opts.Source); !ok {
+			if resolveErr != nil && !bootstrapOffersToAddRemote(opts.Source) {
+				return resolveErr
+			}
 			if stdinIsTerminal() {
 				pterm.Warning.Printf("Remote '%s' is not configured.\n", opts.Source)
 				yes, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(true).Show(fmt.Sprintf("Would you like to add remote '%s' now?", opts.Source))
@@ -261,7 +281,10 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 		}
 
 		if def, ok := frameworks.Get(config.Framework); ok && def.ProbeRemoteBootstrapMetadata != nil {
-			if remoteCfg, configured := config.Remotes[opts.Source]; configured {
+			// Resolved, never raw: the probe SSHes to this remote, so a
+			// configured `remotes.sandbox` must contribute its capabilities but
+			// not its host, user or auth.
+			if remoteCfg, configured, _ := resolvedRemoteForName(cmd.Context(), config, opts.Source); configured {
 				metadata, err := def.ProbeRemoteBootstrapMetadata(opts.Source, remoteCfg)
 				if err != nil {
 					pterm.Warning.Printf("Could not probe remote bootstrap metadata, falling back to local config: %v\n", err)
@@ -409,6 +432,30 @@ func bootstrapFileSyncArgs(opts BootstrapRuntimeOptions) []string {
 		"--exclude", "var",
 	)
 	return args
+}
+
+// bootstrapOffersToAddRemote reports whether a missing `source` is something
+// `remote add` could actually create.
+//
+// The synthetic sandbox is the one name it cannot: `remote add sandbox` writes
+// the rehearsal's shape and no identity, and the identity comes from a
+// container only `govard sandbox up` creates. Offering to add it would send an
+// operator through a command that succeeds, writes a block, and leaves them
+// with the same missing sandbox — so the resolver's own message, which names
+// `sandbox up`, is returned instead.
+//
+// The name is matched the way every other sandbox name check in the codebase
+// matches it: case-insensitively and after trimming, because a hand-typed
+// "Sandbox" is the same remote, not a second one that happens to be addable.
+func bootstrapOffersToAddRemote(source string) bool {
+	return !strings.EqualFold(strings.TrimSpace(source), deploy.SandboxRemoteName)
+}
+
+// BootstrapOffersToAddRemoteForTest exposes bootstrapOffersToAddRemote to the
+// tests/ package. The interactive branch it guards cannot be driven from a
+// non-terminal test run, so the decision is pinned where it is made.
+func BootstrapOffersToAddRemoteForTest(source string) bool {
+	return bootstrapOffersToAddRemote(source)
 }
 
 func SetBootstrapRemoteDirExistsForTest(fn func(remoteName string, remoteCfg engine.RemoteConfig, remotePath string) bool) func() {

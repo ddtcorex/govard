@@ -62,8 +62,27 @@ The desktop focuses on operational essentials:
 | Open Database (Remote) | Calls `govard open db -e <remote> --client` |
 | Open SSH (Remote) | Prefers native Linux terminal launchers, falls back to `ssh://` |
 | Open SFTP (Remote) | Prefers FileZilla, falls back to `sftp://` |
+| Open admin URL (Remote) | `OpenRemoteURL` builds `https://<url or host>/<admin path>` from the framework's admin path |
 
 For `auth.method: ssh-agent`, Desktop reuses `SSH_AUTH_SOCK` and also probes `/run/user/<uid>/keyring/ssh` on Linux.
+
+Every action resolves the remote before it builds anything, and a remote that
+resolves to neither a `url` nor a `host` is refused with an error rather than
+opened. The admin URL and the SFTP/SSH launchers would each fall back to the
+literal `localhost`, which opens the developer's own machine while reporting that
+the remote was opened.
+
+The synthetic `sandbox` remote is resolved from the container `govard sandbox up`
+created, never from the project's `remotes.sandbox` block, so a block that names
+no host cannot make an action point at `localhost`. It appears in the remote
+panel whenever that container answers, and independently of whether the project
+configures a block. That is the same trigger `govard remote list` uses, not the
+same row rule: the panel drops a sandbox it cannot resolve, where `remote list`
+always prints a row carrying the liveness in its HOST column. When a block is
+configured but no container is running, the row is left out and the reason comes
+back as a warning in the panel; a project with neither a block nor a container
+gets no row and no warning. See
+[Configuring the sandbox remote](/workflows/remotes-and-sync#configuring-the-sandbox-remote).
 
 ### Local Database Open
 

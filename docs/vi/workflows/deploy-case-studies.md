@@ -793,9 +793,19 @@ govard deploy --remote sandbox --yes
 ```
 
 `sandbox` là lệnh top-level, nên hãy deploy bằng dạng flag:
-`govard deploy --remote sandbox --yes`. Không có block `sandbox` nào để ghi
-vào đâu cả: sandbox synthetic sẽ lấn át mọi block `remotes.sandbox` trong
-`.govard.local.yml` (kèm cảnh báo) và block đó không bao giờ thắng.
+`govard deploy --remote sandbox --yes`. Một block `remotes.sandbox` **có thể**
+ghi được, và nó không phải thừa: block được lớp **lên trên** sandbox synthetic,
+nên nó mô tả *hình dạng* của buổi diễn tập — capabilities, protection, deploy
+settings — còn host, port, user, path và auth vẫn lấy từ container. Ghi tay trong
+`.govard.yml` / `.govard.local.yml`, hoặc để `govard remote add sandbox
+--capabilities db --protected` ghi giúp; các cờ identity truyền vào lệnh đó bị
+bỏ qua và được báo ra stderr, không ghi gì. (Các bản tài liệu trước nói là không
+có block nào để ghi và sandbox synthetic sẽ *lấn át* block đó kèm cảnh báo.
+Điều đó đúng khi `remote add sandbox` bị từ chối và block viết tay được parse bởi
+một đường đi nhưng bị mọi bên đọc identity phớt lờ; quyết định đã bị đảo có chủ
+đích, vì người vận hành cần mô tả được hình dạng của đích diễn tập.) Xem
+[Cấu hình remote sandbox](/vi/workflows/remotes-and-sync#cấu-hình-remote-sandbox)
+để biết danh sách trường đầy đủ.
 
 Khi `govard svc up` đã khởi động SSH gateway dùng chung (xem
 [Triển khai](/vi/workflows/deployment#shared-ssh-gateway)), cùng sandbox đó
