@@ -67,7 +67,7 @@ govard remote audit stats --lines 200
 
 | Protection | Behavior |
 | :--- | :--- |
-| **Production write protection** | `prod` remotes are write-protected by default |
+| **Production write protection** | `prod` remotes are write-protected by default: protection covers **writes**, and reads from a protected remote are allowed |
 | **Capability enforcement** | Each operation checks `files`, `media`, `db`, `deploy` scopes |
 | **Strict host-key** | Opt-in per remote, not enforced by default |
 | **1Password integration** | Remote fields support `op://...` secret references |
@@ -198,7 +198,7 @@ To download everything, use `--media all`. To sync only CSS/JS/Fonts, use `--med
 ### Protected Destinations
 
 ::: warning WARNING
-`--delete` combined with `--db` surfaces policy warnings. Production remotes are write-protected by default and will block destructive writes.
+`--delete` combined with `--db` surfaces policy warnings. Production remotes are write-protected by default and will block destructive writes. Protection covers **writes**, not reads: `db info` or `db top` from a protected remote are still allowed (`db dump` stays allowed too — it only creates a new archive file on the remote), and only a write into it — `db import`, `db query`, `db connect`, `snapshot push` — is refused.
 :::
 
 ### Integration with `bootstrap`

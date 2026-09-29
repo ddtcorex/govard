@@ -25,7 +25,12 @@ func runDBConnect(cmd *cobra.Command, config engine.Config, options dbCommandOpt
 			return connectCmd.Run()
 		}
 
-		remoteCfg, err := resolveDBRemote(config, options.Environment, false)
+		// An interactive mysql client with the terminal attached can DROP, UPDATE
+		// or import just as easily as it can SELECT, so this is a write against
+		// the target. forWrite=true is what refuses it against a protected
+		// remote; the escape stays `protected: false` in that remote's config,
+		// exactly as for db import.
+		remoteCfg, err := resolveDBRemote(config, options.Environment, true)
 		if err != nil {
 			return err
 		}

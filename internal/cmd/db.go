@@ -638,6 +638,14 @@ func buildDBDumpCommand(config engine.Config, options dbCommandOptions) (*exec.C
 		return buildLocalDBDumpCommand(containerName, credentials, options.NoNoise, options.NoPII, config.Framework), "", nil
 	}
 
+	// forWrite=false on purpose, and this is the one member of the read family
+	// that is still allowed against a protected remote: a dump creates a NEW
+	// file and mutates nothing that already exists — no existing row, table,
+	// grant or config on the target is read, written or replaced. Dumping
+	// production to production's own disk and leaving the archive where the
+	// next operator can find it is also the safer default than piping the whole
+	// database onto a laptop. `db dump --local` (piping it to var/ here) is the
+	// variant that moves the bytes off the target.
 	remoteCfg, err := resolveDBRemote(config, options.Environment, false)
 	if err != nil {
 		return nil, "", err
@@ -718,7 +726,9 @@ func resolveDBRemote(config engine.Config, name string, forWrite bool) (engine.R
 			strings.Join(engine.RemoteCapabilityList(remoteCfg), ","),
 		)
 	}
-	if !forWrite {
+	// Write protection covers writes: a read from a protected remote is a
+	// normal operation, only a write against one is what the policy refuses.
+	if forWrite {
 		if blocked, reason := engine.RemoteWriteBlocked(name, remoteCfg); blocked {
 			return engine.RemoteConfig{}, fmt.Errorf("remote environment '%s' is write-protected: %s", name, reason)
 		}
@@ -1195,6 +1205,9 @@ func ResolveDBRemoteForTest(config engine.Config, name string, forWrite bool) (e
 	return resolveDBRemote(config, name, forWrite)
 }
 
+// ClassifyCommandErrorForTest exposes classifyCommandError for tests in /tests.
+func ClassifyCommandErrorForTest(err error) string { return classifyCommandError(err) }
+
 func classifyCommandError(err error) string {
 	if err == nil {
 		return ""
@@ -1206,6 +1219,10 @@ func classifyCommandError(err error) string {
 		strings.Contains(message, "does not support"),
 		strings.Contains(message, "does not allow"),
 		strings.Contains(message, "blocks db write operations"),
+		// The live text resolveDBRemote emits for a write into a protected
+		// remote; the pattern above is the pre-b64df9a6 wording, kept for
+		// any error still carrying it.
+		strings.Contains(message, "write-protected"),
 		strings.Contains(message, "environment cannot be empty"),
 		strings.Contains(message, "database container"):
 		return "validation"
