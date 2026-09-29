@@ -176,6 +176,17 @@ func BuildLocalDBResetScriptForTest(database string) (string, error) {
 }
 
 func runDirectDBImport(cmd *cobra.Command, config engine.Config, options dbCommandOptions) error {
+	// The write-protection gate answers before anything destructive runs. The
+	// --drop block below resets the LOCAL database, so a protected remote has to
+	// be refused first: otherwise the command destroys local data and only then
+	// reports that it was never going to import, and --drop's confirmation reads
+	// as consent to a reset that had no business happening.
+	if options.Environment != "local" {
+		if _, err := resolveDBRemote(config, options.Environment, true); err != nil {
+			return err
+		}
+	}
+
 	if options.Drop {
 		if !options.AssumeYes {
 			if !stdinIsTerminal() {

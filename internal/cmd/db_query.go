@@ -39,7 +39,12 @@ func runDBQuery(cmd *cobra.Command, config engine.Config, options dbCommandOptio
 			return queryCmd.Run()
 		}
 
-		remoteCfg, err := resolveDBRemote(config, options.Environment, false)
+		// The operator's SQL is interpolated verbatim into `mysql -e '<SQL>'`
+		// ON THE REMOTE, so this is a write against the target whatever the
+		// statement happens to be. forWrite=true is what refuses it against a
+		// protected remote; the escape stays `protected: false` in that
+		// remote's config, exactly as for db import.
+		remoteCfg, err := resolveDBRemote(config, options.Environment, true)
 		if err != nil {
 			return err
 		}
