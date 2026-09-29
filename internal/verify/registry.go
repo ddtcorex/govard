@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,7 +69,13 @@ type Item struct {
 	Precond string
 	// Guard is the item's taxonomy label, not documentation: the runner acts on
 	// it through DecideGuard.
-	Guard   string
+	Guard string
+	// Checks names the checks (`lint`, `profiler`, `integrity`) this item
+	// exercises, for a run that selected some with --checks. Empty means the
+	// item is not check-specific: nothing about it belongs to one check, so a
+	// run keeps it whatever it selected. RunPhase decides what the selection
+	// leaves out.
+	Checks  []string
 	Phase   int
 	Timeout time.Duration
 	When    func(engine.Config) bool
@@ -195,6 +202,68 @@ func hyvaThemeEvidenceLine(projectRoot, theme string) string {
 	return "Hyva theme: " + theme + "\n"
 }
 
+// verifyLintJobsDefault and verifyTimeoutDefault are the `verify` command's own
+// flag defaults (internal/cmd/verify.go). The audit items used to hardcode a
+// worker count and a timeout; they read the flag instead, so these two values
+// are how an item tells "the operator asked for this" from "the flag was not
+// touched" — an item sees the default, never whether it was passed.
+const (
+	verifyLintJobsDefault = 4
+	verifyTimeoutDefault  = "auto"
+)
+
+// FlagDefaultsForTest returns the two defaults the audit items read, so a test
+// can pin them to the values the `verify` command actually registers
+// (internal/cmd/verify.go) instead of repeating the literals. A drift between the
+// two would silently stop an untouched flag from meaning "no preference": the
+// item would forward a value the operator never asked for.
+func FlagDefaultsForTest() (lintJobs int, timeout string) {
+	return verifyLintJobsDefault, verifyTimeoutDefault
+}
+
+// p5RelintTimeout is P5-04's own value: the phase-5 re-lint drops the lint
+// result cache and re-analyses everything, so it runs without a deadline. A
+// default is not a request for one, so the item keeps 0.
+const p5RelintTimeout = "0"
+
+// auditLintJobsArgs returns the `--lint-jobs` pair for an audit item, or nothing
+// when the operator chose no count.
+//
+// Verify's flag default is a literal 4, while `audit run --lint-jobs` defaults
+// to engine.AuditRunJobs() — min(nproc,4) clamped 2-4, the host's auto-tuned
+// worker count. Forwarding verify's own 4 would override that tuning on every
+// run (measured: it is the value in the argv today, as a literal), so an
+// untouched flag stays out of the argv and the child chooses. A non-positive
+// value is not a request either: `audit run` rejects fewer than one worker.
+func auditLintJobsArgs(opts VerifyOpts) []string {
+	if opts.LintJobs < 1 || opts.LintJobs == verifyLintJobsDefault {
+		return nil
+	}
+	return []string{"--lint-jobs", strconv.Itoa(opts.LintJobs)}
+}
+
+// auditTimeoutArgs returns the `--timeout` pair for an audit item whose own
+// value is itemDefault. Verify's flag default ("auto") means the operator asked
+// for nothing, and what that leaves is per item: `auto` for the phase-3 lint
+// items — which is also `audit run`'s own default — and 0 for the phase-5
+// re-lint, whose no-deadline choice verify's default must not turn into one.
+func auditTimeoutArgs(opts VerifyOpts, itemDefault string) []string {
+	timeout := strings.TrimSpace(opts.Timeout)
+	if timeout == "" || timeout == verifyTimeoutDefault {
+		timeout = itemDefault
+	}
+	return []string{"--timeout", timeout}
+}
+
+// argvEvidence prefixes an item's evidence with the argv that ran. RunItem's
+// Command is the item's Title (runner.go), so a title cannot carry a value the
+// run resolves — the title would describe an argv that did not run. The
+// resolved argv goes here instead.
+func argvEvidence(args []string, ev Evidence) Evidence {
+	ev.OutputExcerpt = "argv: " + strings.Join(args, " ") + "\n" + ev.OutputExcerpt
+	return ev
+}
+
 // auditRunIdentity is the part of `audit run --format json` the lifecycle needs:
 // the session it created and the run it recorded. It is a local struct rather
 // than internal/audit's RunResult — verify drives the CLI, so it must not gain a
@@ -279,6 +348,13 @@ func auditRunIdentityFrom(excerpt string) auditRunIdentity {
 // framework, an xdebug guard this run did not waive, or a decode that stopped
 // between the two ids — skips, and its reason names the missing half and the
 // child's exit code so the artifact says why.
+//
+// Because that `--checks integrity` create run is machinery rather than the
+// item's subject, the item declares no Checks: `Checks` names the checks an
+// item's subject verifies, so declaring integrity here would let a `--checks
+// profiler` (or any other) selection drop the audit lifecycle that the lint
+// audits' session is the precondition for. It stays check-specific to nothing,
+// and the next reader should not "fix" it into declaring one.
 func auditLifecycleEvidence(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 	create := []string{"audit", "run", "--checks", "integrity", "--format", "json"}
 	if opts.AllowXdebug {
@@ -637,25 +713,29 @@ var Registry = []Item{
 	{ID: "P3-09", Phase: 3, Title: "govard frontend start -> logs -> stop", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "frontend", "start")
 	}},
-	{ID: "P3-10", Phase: 3, Title: "govard audit run --checks lint --scope project --mode auto --format json --lint-jobs 4 --timeout auto", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		args := []string{"audit", "run", "--checks", "lint", "--scope", "project", "--mode", "auto", "--format", "json", "--lint-jobs", "4", "--timeout", "auto"}
+	{ID: "P3-10", Phase: 3, Title: "govard audit run --checks lint --scope project --mode auto --format json", Precond: "P2-01 up", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		args := []string{"audit", "run", "--checks", "lint", "--scope", "project", "--mode", "auto", "--format", "json"}
+		args = append(args, auditLintJobsArgs(opts)...)
+		args = append(args, auditTimeoutArgs(opts, verifyTimeoutDefault)...)
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
-		return execGovard(ctx, cfg, opts, args...)
+		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-11", Phase: 3, Title: "govard audit run --checks lint --scope diff --base {{BASE_BRANCH}} --format json --lint-jobs 4", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-11", Phase: 3, Title: "govard audit run --checks lint --scope diff --base {{BASE_BRANCH}} --format json", Precond: "P2-01 up", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		base := opts.BaseRef
 		if base == "" {
 			base = "origin/master"
 		}
-		args := []string{"audit", "run", "--checks", "lint", "--scope", "diff", "--base", base, "--format", "json", "--lint-jobs", "4"}
+		args := []string{"audit", "run", "--checks", "lint", "--scope", "diff", "--base", base, "--format", "json"}
+		args = append(args, auditLintJobsArgs(opts)...)
+		args = append(args, auditTimeoutArgs(opts, verifyTimeoutDefault)...)
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
-		return execGovard(ctx, cfg, opts, args...)
+		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-12", Phase: 3, Title: "govard audit run --checks profiler --url https://{{DOMAIN}}/ --format json --allow-xdebug", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-12", Phase: 3, Title: "govard audit run --checks profiler --url https://{{DOMAIN}}/ --format json", Precond: "P2-01 up", Guard: "", Checks: []string{"profiler"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		domain := cfg.Domain
 		if domain == "" {
 			domain = "localhost"
@@ -664,9 +744,9 @@ var Registry = []Item{
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
-		return execGovard(ctx, cfg, opts, args...)
+		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-13", Phase: 3, Title: "govard audit run --checks lint --mode module_in_project --format json --allow-xdebug (from app/code/<Vendor>/<Module>)", Precond: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-13", Phase: 3, Title: "govard audit run --checks lint --mode module_in_project --format json (from app/code/<Vendor>/<Module>)", Precond: "P2-05 done", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		moduleDir, ok := auditModuleDir(cfg, opts)
 		if !ok {
 			return Skip(noAuditModuleReason)
@@ -675,9 +755,9 @@ var Registry = []Item{
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
-		return execGovard(ctx, cfg, opts, args...)
+		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-14", Phase: 3, Title: "govard audit run --checks lint --mode standalone --format json (from /tmp/govard-audit-standalone/<Module>)", Precond: "P3-13 ok", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-14", Phase: 3, Title: "govard audit run --checks lint --mode standalone --format json (from /tmp/govard-audit-standalone/<Module>)", Precond: "P3-13 ok", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		moduleDir, ok := auditModuleDir(cfg, opts)
 		if !ok {
 			return Skip(noAuditModuleReason)
@@ -793,12 +873,15 @@ var Registry = []Item{
 		}
 		return execGovard(ctx, cfg, opts, "bootstrap", "--fresh", "--framework", fw, "--plan")
 	}},
-	{ID: "P5-04", Phase: 5, Title: "govard audit run --checks lint --no-lint-result-cache --lint-jobs 4 --timeout 0 --format json --allow-xdebug", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		args := []string{"audit", "run", "--checks", "lint", "--no-lint-result-cache", "--lint-jobs", "4", "--timeout", "0", "--format", "json"}
+	{ID: "P5-04", Phase: 5, Title: "govard audit run --checks lint --no-lint-result-cache --format json", Precond: "P2-01 up", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		args := []string{"audit", "run", "--checks", "lint", "--no-lint-result-cache"}
+		args = append(args, auditLintJobsArgs(opts)...)
+		args = append(args, auditTimeoutArgs(opts, p5RelintTimeout)...)
+		args = append(args, "--format", "json")
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
-		return execGovard(ctx, cfg, opts, args...)
+		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
 	{ID: "P5-05", Phase: 5, Title: "govard snapshot restore", Precond: "P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		// Restore the exact snapshot the gate verified. The command takes the

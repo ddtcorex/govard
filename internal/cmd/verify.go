@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 
+	"govard/internal/audit"
+	"govard/internal/cli"
 	"govard/internal/engine"
 	"govard/internal/verify"
 
@@ -86,6 +88,22 @@ Examples:
 		lintJobs, _ := cmd.Flags().GetInt("lint-jobs")
 		timeout, _ := cmd.Flags().GetString("timeout")
 		checks, _ := cmd.Flags().GetStringSlice("checks")
+		// An unknown check name used to be ignored. Now that the runner honours
+		// --checks, ignoring it would be worse than a no-op: `--checks lints`
+		// selects nothing that declares a check, every skipped row is excluded
+		// from the verdict, and the run reports passed. The names are validated
+		// against audit's own list — the same three `audit run --checks` accepts,
+		// so no second list is invented — before any work starts.
+		//
+		// Only when the operator named one: an empty slice is not a request, and
+		// audit.NormalizeChecks resolves it to ["lint"], so validating
+		// unconditionally would narrow every bare `govard verify` to the lint
+		// items.
+		if len(checks) > 0 {
+			if _, err := audit.NormalizeChecks(checks); err != nil {
+				return &cli.UsageError{Err: err}
+			}
+		}
 		base, _ := cmd.Flags().GetString("base")
 		remote, _ := cmd.Flags().GetString("remote")
 		project, _ := cmd.Flags().GetString("project")
@@ -253,7 +271,7 @@ func init() {
 	verifyCmd.Flags().Bool("allow-xdebug", false, "Allow running with Xdebug enabled")
 	verifyCmd.Flags().Int("lint-jobs", 4, "Lint worker count")
 	verifyCmd.Flags().String("timeout", "auto", "Timeout (auto|0|<dur>)")
-	verifyCmd.Flags().StringSlice("checks", nil, "Checks (lint,profiler)")
+	verifyCmd.Flags().StringSlice("checks", nil, "Checks to run (lint,profiler,integrity)")
 	verifyCmd.Flags().String("base", "", "Base ref for diff scope")
 	verifyCmd.Flags().String("remote", "", "Remote the remote-naming items run against (skipped when empty)")
 	verifyCmd.Flags().String("project", "", "Project path")
