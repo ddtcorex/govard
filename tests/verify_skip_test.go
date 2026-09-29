@@ -64,17 +64,21 @@ func TestVerifyRunnerReportsUnmetWhenAsSkipped(t *testing.T) {
 		t.Fatalf("the gated item ran %d time(s), want 0: a skip must not execute the item", runCalls)
 	}
 
-	// Every other phase-3 item exits 0 under the fake exec, so a correct verdict
-	// counts len(Items)-1 passed and 0 failed.
+	// A skip belongs in neither bucket: passed + skipped must account for every
+	// row. The phase runs on the fake exec, whose excerpt carries no audit
+	// session id, so P3-15 skips for its own reason as well — the invariant is
+	// the identity below, not a count that assumes this gated row is the only
+	// one that skips.
+	skipped := res.SkippedCount()
+	if skipped < 1 {
+		t.Fatalf("SkippedCount() = %d, want at least the gated P3-13", skipped)
+	}
 	passed, failed := res.Counts()
 	if failed != 0 {
 		t.Fatalf("Counts() failed = %d, want 0: a skip is never red", failed)
 	}
-	if want := len(res.Items) - 1; passed != want {
-		t.Fatalf("Counts() passed = %d over %d rows, want %d: a skip belongs in neither bucket", passed, len(res.Items), want)
-	}
-	if got := res.SkippedCount(); got != 1 {
-		t.Fatalf("SkippedCount() = %d, want 1", got)
+	if want := len(res.Items) - skipped; passed != want {
+		t.Fatalf("Counts() passed = %d over %d rows with %d skipped, want %d: a skip belongs in neither bucket", passed, len(res.Items), skipped, want)
 	}
 }
 
@@ -149,8 +153,22 @@ func TestGatedItemsAreCountedInAMergedAllPhasesRun(t *testing.T) {
 			t.Fatalf("skipped row %q has an empty SkipReason", it.ID)
 		}
 	}
-	if want := len(gated.Items) - baseline; len(skipped) != want {
-		t.Fatalf("phase 3 has %d rows and %d skipped, want %d skipped (one per row the old filter dropped)", len(gated.Items), len(skipped), want)
+	// Every row the old filter dropped is present as a skip. The total may be
+	// larger, because an item can also skip for its own reason: under the fake
+	// exec P3-15 is handed no audit session id and skips instead of reporting a
+	// green from a child that never ran.
+	dropped := 0
+	for _, it := range verify.RegistryFor(cfg) {
+		if it.Phase != 3 || it.When == nil || it.When(cfg) {
+			continue
+		}
+		dropped++
+		if !skipped[it.ID] {
+			t.Fatalf("phase-3 row %s was dropped by the old filter but is not a skipped row in the report", it.ID)
+		}
+	}
+	if dropped == 0 {
+		t.Fatal("no phase-3 row is gated on this framework: this test can no longer see the row growth it exists for")
 	}
 
 	// The merge path for a whole run: copy the first phase, append the next
