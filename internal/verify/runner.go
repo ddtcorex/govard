@@ -231,8 +231,8 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 
 	// Filter. An unmet When predicate no longer drops the item: the row stays,
 	// marked with the reason it did not run. A missing row is worse than a red,
-	// because a red is evidence. Later filters (a guard policy, a --checks
-	// filter) mark a row the same way instead of removing it.
+	// because a red is evidence. The guard policy below marks a row the same
+	// way, and a --checks filter will.
 	type filteredItem struct {
 		item    Item
 		skipped bool
@@ -245,6 +245,13 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 		}
 		if it.When != nil && !it.When(cfg) {
 			filtered = append(filtered, filteredItem{item: it, skipped: true, reason: "precondition not met: " + it.Precond})
+			continue
+		}
+		// The guard policy is applied before the plan stub below, so an item
+		// this run may not perform is one skipped row in plan mode too and its
+		// Run is never called.
+		if decision := DecideGuard(it, phase, opts); !decision.Run {
+			filtered = append(filtered, filteredItem{item: it, skipped: true, reason: decision.Reason})
 			continue
 		}
 		filtered = append(filtered, filteredItem{item: it})

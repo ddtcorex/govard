@@ -17,6 +17,7 @@ type VerifyOpts struct {
 	Checks           []string
 	LintJobs         int
 	AllowDestructive bool
+	AllowRemoteWrite bool
 	AllowXdebug      bool
 	ProjectRoot      string
 }
@@ -37,11 +38,29 @@ type Evidence struct {
 	SkipReason string
 }
 
+// The Guard values an item may carry. DecideGuard is their only reader:
+// GuardReadOnlyRemote and the empty value run, the other two are gated.
+const (
+	// GuardReadOnlyRemote marks an item whose argv names a remote and writes
+	// nothing there. It has no runtime gate of its own: plan mode already
+	// replaces every Run with a stub, so blocking these would delete the
+	// coverage rather than protect anything.
+	GuardReadOnlyRemote = "READ-ONLY-REMOTE"
+	// GuardDestructiveLocal marks an item that destroys local state
+	// irreversibly. It runs in phase 5 only.
+	GuardDestructiveLocal = "DESTRUCTIVE-LOCAL"
+	// GuardRemoteWrite marks an item whose argv writes through a remote. It is
+	// skipped unless the operator opted in with --allow-remote-write.
+	GuardRemoteWrite = "REMOTE-WRITE"
+)
+
 // Item is one checklist entry in the 5-phase registry.
 type Item struct {
 	ID      string
 	Title   string
 	Precond string
+	// Guard is the item's taxonomy label, not documentation: the runner acts on
+	// it through DecideGuard.
 	Guard   string
 	Phase   int
 	Timeout time.Duration
@@ -55,9 +74,12 @@ func isMagento2(c engine.Config) bool {
 }
 
 // Registry is the static checklist: 60 items across 5 phases
-// (P1 7 + P2 14 + P3 15 + P4 16 + P5 8). Guard values are constrained to
-// {"", "READ-ONLY-REMOTE", "DESTRUCTIVE-LOCAL"} per Global Constraints.
-// Empty guard means local write with no remote/destructive gate.
+// (P1 7 + P2 14 + P3 15 + P4 16 + P5 8). Every item carries a Guard label and
+// the runner acts on it through DecideGuard: an empty Guard is local work with
+// no remote and nothing irreversible, GuardReadOnlyRemote documents that the
+// argv names a remote and writes nothing there (no runtime gate of its own),
+// GuardRemoteWrite is skipped unless --allow-remote-write was passed, and
+// GuardDestructiveLocal runs in phase 5 only.
 var Registry = []Item{
 	// Phase 1 — Preflight (7)
 	{ID: "P1-01", Phase: 1, Title: "govard doctor", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -103,28 +125,28 @@ var Registry = []Item{
 	{ID: "P2-03", Phase: 2, Title: "govard env up --build (if supported)", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "env", "up", "--build")
 	}},
-	{ID: "P2-04", Phase: 2, Title: "govard bootstrap -e {{REMOTE}} --no-noise --plan", Precond: "P2-01 up", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P2-04", Phase: 2, Title: "govard bootstrap -e {{REMOTE}} --no-noise --plan", Precond: "P2-01 up", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "bootstrap", "-e", remote, "--no-noise", "--plan")
 	}},
-	{ID: "P2-05", Phase: 2, Title: "govard bootstrap -e {{REMOTE}} --no-noise", Precond: "P2-04 plan ok", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P2-05", Phase: 2, Title: "govard bootstrap -e {{REMOTE}} --no-noise", Precond: "P2-04 plan ok", Guard: GuardRemoteWrite, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "bootstrap", "-e", remote, "--no-noise")
 	}},
-	{ID: "P2-06", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --plan", Precond: "P2-01 up", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P2-06", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --plan", Precond: "P2-01 up", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--plan")
 	}},
-	{ID: "P2-07", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --no-media --plan + --code-only --plan + --no-pii --plan", Precond: "P2-06 ok", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P2-07", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --no-media --plan + --code-only --plan + --no-pii --plan", Precond: "P2-06 ok", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
@@ -144,7 +166,7 @@ var Registry = []Item{
 		ev.JSONValid = ev3.JSONValid
 		return ev
 	}},
-	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --no-noise OR --code-only (after P4-08)", Precond: "P4-08 snapshot exists", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e {{REMOTE}} --no-noise OR --code-only (after P4-08)", Precond: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
@@ -252,7 +274,7 @@ var Registry = []Item{
 	}},
 
 	// Phase 4 — Sync / Safety / Snapshot (16)
-	{ID: "P4-01", Phase: 4, Title: "govard remote test {{REMOTE}} x4 (dev1/dev2/staging/production)", Precond: "—", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-01", Phase: 4, Title: "govard remote test {{REMOTE}} x4 (dev1/dev2/staging/production)", Precond: "—", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
@@ -262,35 +284,35 @@ var Registry = []Item{
 	{ID: "P4-02", Phase: 4, Title: "govard remote audit tail + stats", Precond: "P4-01 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "audit", "tail")
 	}},
-	{ID: "P4-03", Phase: 4, Title: "govard sync -s {{REMOTE}} --db --no-noise --plan", Precond: "P4-01 reachable", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-03", Phase: 4, Title: "govard sync -s {{REMOTE}} --db --no-noise --plan", Precond: "P4-01 reachable", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--db", "--no-noise", "--plan")
 	}},
-	{ID: "P4-04", Phase: 4, Title: "govard sync -s {{REMOTE}} --db --no-pii --plan", Precond: "P4-01", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-04", Phase: 4, Title: "govard sync -s {{REMOTE}} --db --no-pii --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--db", "--no-pii", "--plan")
 	}},
-	{ID: "P4-05", Phase: 4, Title: "govard sync -s {{REMOTE}} --media optimized --plan + minimal --plan + all --plan + catalog --plan", Precond: "P4-01", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-05", Phase: 4, Title: "govard sync -s {{REMOTE}} --media optimized --plan + minimal --plan + all --plan + catalog --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--media", "optimized", "--plan")
 	}},
-	{ID: "P4-06", Phase: 4, Title: "govard sync -s {{REMOTE}} --file --path <path> --plan + --exclude + --delete --plan", Precond: "P4-01", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-06", Phase: 4, Title: "govard sync -s {{REMOTE}} --file --path <path> --plan + --exclude + --delete --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--file", "--path", ".", "--plan")
 	}},
-	{ID: "P4-07", Phase: 4, Title: "govard sync -s {{REMOTE_STAGING}} --full --plan", Precond: "P4-01 staging", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-07", Phase: 4, Title: "govard sync -s {{REMOTE_STAGING}} --full --plan", Precond: "P4-01 staging", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
@@ -331,7 +353,7 @@ var Registry = []Item{
 	// `deploy unlock`/`rollback` mutate the target, `db`/`snapshot`/`open -e`
 	// can bypass write protection or copy a key, `tunnel stop` kills every
 	// cloudflared on the host) stay manual recipes until govard#466-#469 land.
-	{ID: "P4-13", Phase: 4, Title: "govard deploy plan {{REMOTE}} --json", Precond: "—", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-13", Phase: 4, Title: "govard deploy plan {{REMOTE}} --json", Precond: "—", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
@@ -342,33 +364,33 @@ var Registry = []Item{
 	// the "no configured remote could be reached" check, so the JSON form exits
 	// 0 for an unreachable remote and this item could never fail — green for
 	// exactly the condition it exists to detect. The human path exits 1.
-	{ID: "P4-14", Phase: 4, Title: "govard deploy status --remote {{REMOTE}}", Precond: "P4-13 ok", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-14", Phase: 4, Title: "govard deploy status --remote {{REMOTE}}", Precond: "P4-13 ok", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "deploy", "status", "--remote", remote)
 	}},
-	{ID: "P4-15", Phase: 4, Title: "govard deploy releases --remote {{REMOTE}} --json", Precond: "P4-13 ok", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-15", Phase: 4, Title: "govard deploy releases --remote {{REMOTE}} --json", Precond: "P4-13 ok", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		remote := opts.Remote
 		if remote == "" {
 			remote = "staging"
 		}
 		return execGovard(ctx, cfg, opts, "deploy", "releases", "--remote", remote, "--json")
 	}},
-	{ID: "P4-16", Phase: 4, Title: "govard remote list", Precond: "P4-13 ok", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-16", Phase: 4, Title: "govard remote list", Precond: "P4-13 ok", Guard: GuardReadOnlyRemote, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "list")
 	}},
 
 	// Phase 5 — Destructive QA (8) — gate: P4-08 snapshot exists
-	{ID: "P5-01", Phase: 5, Title: "govard lock generate -> check -> drift .govard.yml -> lock diff -> check --strict must fail -> revert", Precond: "P1-06 ok, P4-08 snapshot exists", Guard: "DESTRUCTIVE-LOCAL", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-01", Phase: 5, Title: "govard lock generate -> check -> drift .govard.yml -> lock diff -> check --strict must fail -> revert", Precond: "P1-06 ok, P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "lock", "generate")
 	}},
-	{ID: "P5-02", Phase: 5, Title: "govard env down -v -> verify docker volume ls removes govard-* -> govard env up", Precond: "P4-08 snapshot exists", Guard: "DESTRUCTIVE-LOCAL", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-02", Phase: 5, Title: "govard env down -v -> verify docker volume ls removes govard-* -> govard env up", Precond: "P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		_ = execGovard(ctx, cfg, opts, "env", "down", "-v")
 		return execGovard(ctx, cfg, opts, "env", "up")
 	}},
-	{ID: "P5-03", Phase: 5, Title: "govard bootstrap --fresh --framework {{FRAMEWORK}} --framework-version {{VERSION}} --plan", Precond: "P4-08 snapshot exists", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-03", Phase: 5, Title: "govard bootstrap --fresh --framework {{FRAMEWORK}} --framework-version {{VERSION}} --plan", Precond: "P4-08 snapshot exists", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		fw := cfg.Framework
 		if fw == "" {
 			fw = "magento2"
@@ -382,7 +404,7 @@ var Registry = []Item{
 		}
 		return execGovard(ctx, cfg, opts, args...)
 	}},
-	{ID: "P5-05", Phase: 5, Title: "govard snapshot restore", Precond: "P4-08 snapshot exists", Guard: "DESTRUCTIVE-LOCAL", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-05", Phase: 5, Title: "govard snapshot restore", Precond: "P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		// Restore the exact snapshot the gate verified. The command takes the
 		// name as a positional argument, so omitting it made this item fail
 		// argument validation and restore nothing (issue #461).
@@ -399,7 +421,7 @@ var Registry = []Item{
 	{ID: "P5-07", Phase: 5, Title: "govard tool magento deploy:mode:show + cache:flush after restore", Precond: "P5-05 done", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "deploy:mode:show")
 	}},
-	{ID: "P5-08", Phase: 5, Title: "govard snapshot pull/push --help", Precond: "—", Guard: "READ-ONLY-REMOTE", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-08", Phase: 5, Title: "govard snapshot pull/push --help", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "snapshot", "pull", "--help")
 	}},
 }
