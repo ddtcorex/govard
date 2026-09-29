@@ -48,6 +48,8 @@ govard remote test staging       # Kiểm tra kết nối SSH + rsync, đo độ
 
 Lệnh `remote test` phân loại chính xác các lỗi: `network`, `auth`, `permission`, `host_key`, `dependency`.
 
+Thiết lập xác thực bằng key luôn là việc bạn chủ động yêu cầu: cách tường minh là `govard remote copy-id <remote>`. Nơi duy nhất khác còn đề nghị copy public key là `govard remote test` — lệnh mà nhiệm vụ chính là chẩn đoán lỗi xác thực — và lời đề nghị đó giờ mặc định là **Không** trừ khi bạn nói có, nên một lần nhấn Enter sẽ không copy gì cả. Một lần đọc hay đồng bộ với remote chưa được thiết lập key sẽ không bao giờ ghi vào `authorized_keys` của remote như một tác dụng phụ. Trên remote **write-protected** (`--protected`, hoặc môi trường govard nhận ra là production), lời đề nghị bị từ chối hoàn toàn và remote thậm chí không được kết nối để hỏi — hãy tự thiết lập key bằng `copy-id` khi bạn thực sự muốn.
+
 ### Thực thi lệnh và Giám sát lịch sử (Exec & Audit)
 
 ```bash

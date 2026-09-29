@@ -425,9 +425,6 @@ var remoteExecCmd = &cobra.Command{
 			commandLine = fmt.Sprintf("cd %s && %s", remote.QuoteRemotePath(remoteCfg.Path), commandLine)
 		}
 
-		// Pre-flight check: offer to copy SSH key if auth fails
-		_ = offerSSHKeyCopyOnAuthFailure(remoteName, remoteCfg)
-
 		sshCmd := remote.BuildSSHExecCommand(remoteName, remoteCfg, true, commandLine)
 		sshCmd.Stdin = os.Stdin
 		sshCmd.Stdout = os.Stdout

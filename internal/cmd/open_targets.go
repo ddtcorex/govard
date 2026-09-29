@@ -59,13 +59,6 @@ func runOpenShellTarget(config engine.Config, requestedEnvironment string) error
 
 	pterm.Info.Printf("Opening remote shell on '%s'.\n", environment)
 
-	// Pre-flight SSH auth check: since RunRemoteShell uses syscall.Exec
-	// (replacing the current process), we must probe auth and offer
-	// ssh-copy-id *before* the handoff — there's no coming back after.
-	if err := offerSSHKeyCopyOnAuthFailure(environment, remoteCfg); err != nil {
-		return err
-	}
-
 	remoteCommand := buildRemoteShellCommand(remoteCfg.Path)
 	return engineremote.RunRemoteShell(environment, remoteCfg, remoteCommand)
 }

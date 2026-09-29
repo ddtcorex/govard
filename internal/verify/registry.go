@@ -795,7 +795,7 @@ var Registry = []Item{
 	// Phase 4 — Sync / Safety / Snapshot (16)
 	// P4-01 — `remote test` is READ-ONLY-REMOTE because a verify child can
 	// never satisfy the key-copy offer: `offerSSHKeyCopyOnAuthFailure` returns
-	// early when `!stdinIsTerminal()` (internal/cmd/ssh_copy_id.go:101-103), and
+	// early when `!stdinIsTerminal()` (internal/cmd/ssh_copy_id.go:154-156), and
 	// `execGovard` never sets `cmd.Stdin` (internal/verify/exec.go), so the child
 	// has no terminal to offer into. That coupling is the whole reason this label
 	// is honest, and the guard fence cannot see it — its classifier is a pure

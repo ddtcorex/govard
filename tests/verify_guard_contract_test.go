@@ -136,17 +136,18 @@ func isRemoteWriteArgv(argv []string) bool {
 		return snapshotArgvWritesThroughRemote(argv)
 	case "open":
 		// `open` resolves "" and `local` to the local environment and everything
-		// else to a configured remote (internal/cmd/open_targets.go:190-193); a
+		// else to a configured remote (internal/cmd/open_targets.go:183-193); a
 		// remote target is the class the design calls out for `open -e`, since
-		// `open shell -e <remote>` probes SSH auth and can copy a key into the
-		// remote's authorized_keys before it opens anything
-		// (internal/cmd/open_targets.go:65).
+		// `open shell -e <remote>` hands an interactive shell to the host through
+		// `engine.Handoff` (internal/cmd/open_targets.go:46-64), which can write
+		// anything the remote user can. The key copy this class used to rest on
+		// is gone — `open` no longer offers one (fix #467).
 		return namesARemoteEnvironment(argv)
 	case "remote":
 		// `remote copy-id` IS the key copy, so it writes whatever else the argv
 		// says. `remote test` reads — its only write path is the offer in
 		// `offerSSHKeyCopyOnAuthFailure`, which returns early when
-		// `!stdinIsTerminal()` (internal/cmd/ssh_copy_id.go:101-103) — and a
+		// `!stdinIsTerminal()` (internal/cmd/ssh_copy_id.go:154-156) — and a
 		// verify child has no terminal to offer into, because `execGovard` never
 		// sets `cmd.Stdin` (internal/verify/exec.go). This classifier is a pure
 		// function of the argv, so that tty gate is not modelled here; the
@@ -162,11 +163,12 @@ func isRemoteWriteArgv(argv []string) bool {
 // environment defaults to `local` (internal/cmd/db.go:105) and the import stays
 // local there, while a non-local one is the writing form — it builds an SSH
 // import into the remote database, resolved for write
-// (internal/cmd/db.go:684-693), and any non-local db run may first copy an SSH
-// key into the remote's authorized_keys (internal/cmd/db.go:253-258, the
-// mechanism the design cites for `db`/`open -e`). `--stream-db` only reads the
-// remote's dump, but that key copy is decided by the environment alone, so the
-// stream form stays in the same class.
+// (internal/cmd/db.go:686). A non-local db run no longer offers an SSH key
+// copy into the remote's authorized_keys (fix #467), so that second mechanism
+// is gone; `db import` is the writing form on its own account, with or without
+// `--stream-db`. The stream form only reads the remote's dump, but this
+// predicate keys on the subcommand and the environment and never looks at the
+// flag, so the stream import stays in the same class.
 func dbArgvWritesThroughRemote(argv []string) bool {
 	return argvSubcommand(argv) == "import" && namesARemoteEnvironment(argv)
 }
@@ -376,7 +378,7 @@ func TestRemoteWriteClassifierDrawsEveryArm(t *testing.T) {
 		{"db import -e prod writes through the remote", []string{"db", "import", "-e", "prod", "--file", "backup.sql"}, true},
 		{"db import --environment prod writes through the remote", []string{"db", "import", "backup.sql", "--environment", "prod"}, true},
 		{"db import -e=prod writes through the remote", []string{"db", "import", "-e=prod"}, true},
-		{"db import --stream-db -e prod may still copy an SSH key", []string{"db", "import", "--stream-db", "-e", "prod"}, true},
+		{"db import --stream-db -e prod stays in the class on the subcommand and environment alone", []string{"db", "import", "--stream-db", "-e", "prod"}, true},
 
 		// snapshot create/delete/restore: local unless -e names a remote.
 		{"snapshot create without an environment is local", []string{"snapshot", "create", "nightly"}, false},
