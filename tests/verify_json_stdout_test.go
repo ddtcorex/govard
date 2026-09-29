@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -38,7 +39,10 @@ func TestVerifyJSONStdoutStaysMachineParseableWhenAnItemFails(t *testing.T) {
 	stderr := &bytes.Buffer{}
 
 	pterm.SetDefaultOutput(stdout)
-	t.Cleanup(func() { pterm.SetDefaultOutput(nil) }) // nil restores pterm's own default (os.Stdout)
+	// os.Stdout, not nil: pterm's default writer is initialised to os.Stdout
+	// (print.go:13) and no API restores it, so a nil here is a landmine — the next
+	// render in this package writes to a nil io.Writer and panics in fmt.Fprint.
+	t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
 
 	root := cmd.RootCommandForTest()
 	root.SetOut(stdout)
