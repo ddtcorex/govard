@@ -66,6 +66,9 @@ func Definition() types.FrameworkDefinition {
 		VerifyToolItems: []engine.VerifyToolItem{
 			{ID: "P5-MAG-01", Phase: 5, Title: "govard tool magento setup:db:status after restore", Tool: "magento", Args: []string{"setup:db:status"}},
 		},
+		// Two `govard verify` rows audit a module; which directory that is for a
+		// Magento project belongs here, not to internal/verify.
+		VerifySupport: &engine.VerifySupport{AuditModuleDir: AuditModuleDir},
 		TestSuiteCommands: map[string]types.TestCommand{
 			"mftf":        {Label: "MFTF Tests", Binary: "php", Args: []string{"vendor/bin/mftf", "run:group"}},
 			"integration": {Label: "Magento 2 Integration Tests", Binary: "php", Args: []string{"-c", "dev/tests/integration/phpunit.xml", "vendor/bin/phpunit"}},

@@ -3,6 +3,7 @@ package verify
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -347,6 +348,156 @@ func auditIdentitySkipReason(identity auditRunIdentity, exitCode int) string {
 	return fmt.Sprintf("audit run produced no %s (exit %d)", strings.Join(missing, " or "), exitCode)
 }
 
+// noAuditModuleReason is what both module-scoped audit items report when there
+// is nothing to audit: the project has no module, or its framework registers no
+// module discovery at all. Both rows stay in the report as skips — a `When`
+// would have dropped them — so the reason is the whole account of why the phase
+// audited no module.
+const noAuditModuleReason = "no Magento module under app/code"
+
+// standaloneAuditFixtureDirName is the parent P3-14's title names for its
+// scratch copy of the module, below the OS temp directory.
+const standaloneAuditFixtureDirName = "govard-audit-standalone"
+
+// auditModuleDir asks the project's framework for the module directory the
+// audit's module_in_project and standalone modes require. internal/verify names
+// no framework package: the discovery is registered by the framework (Magento 2
+// globs it out of app/code) and read back through the engine, so a framework
+// without a module concept simply reports nothing and both rows skip.
+func auditModuleDir(cfg engine.Config, opts VerifyOpts) (string, bool) {
+	support, ok := engine.VerifySupportFor(cfg.Framework)
+	if !ok || support.AuditModuleDir == nil {
+		return "", false
+	}
+	return support.AuditModuleDir(opts.ProjectRoot)
+}
+
+// errStandaloneFixtureOccupied reports that the titled fixture path was already
+// taken, so this run did not create it and must not touch it.
+var errStandaloneFixtureOccupied = errors.New("standalone audit fixture already exists")
+
+// standaloneAuditFixtureDir is the path P3-14's title names for its scratch copy
+// of moduleDir: <tmp>/govard-audit-standalone/<Module>, below the OS temp
+// directory.
+func standaloneAuditFixtureDir(moduleDir string) string {
+	return filepath.Join(os.TempDir(), standaloneAuditFixtureDirName, filepath.Base(filepath.Clean(moduleDir)))
+}
+
+// standaloneFixtureOccupiedReason is the skip a run reports when the titled
+// fixture path is already taken. The item must not clear it — a directory the
+// operator already had there is not the item's to delete — and only a human can
+// tell a leftover of an interrupted run from a tree that was never ours.
+func standaloneFixtureOccupiedReason(fixtureDir string) string {
+	return fmt.Sprintf("%s already exists and was not created by this run; remove it if it is a leftover from an interrupted run", fixtureDir)
+}
+
+// prepareStandaloneAuditFixture creates the directory P3-14's title names —
+// <tmp>/govard-audit-standalone/<Module> — and copies the project's module into
+// it. Standalone mode requires a module with no Magento project above it, so the
+// copy has to leave the project tree: auditing the module in place would resolve
+// its enclosing project and the mode would refuse it. Nothing in the copy is
+// written by the audit — the child scans it read-only — so the module in the
+// project is only ever read.
+//
+// Creation is exclusive, and what this call did not create it never removes. The
+// path is fixed by the item's title, which makes it shared machine state: a
+// directory already there belongs to someone else — a tree the operator keeps at
+// that path, or a concurrent run that won the same module name — so it is
+// reported as occupied (errStandaloneFixtureOccupied) instead of being replaced.
+// That is what keeps the second of two same-named runs a skip rather than a red,
+// and what makes the caller's deferred removal safe: it only ever runs on the
+// directory this call created.
+//
+// On errStandaloneFixtureOccupied the returned path is still filled in, because
+// the skip reason has to name the directory the operator must inspect.
+func prepareStandaloneAuditFixture(moduleDir string) (string, error) {
+	module := filepath.Base(filepath.Clean(moduleDir))
+	if module == "" || module == "." || module == string(filepath.Separator) {
+		// The fixture path is built from this name, so a nameless module must fail
+		// here rather than resolve to the shared parent directory.
+		return "", fmt.Errorf("module directory %q has no name to build a standalone fixture from", moduleDir)
+	}
+	info, err := os.Stat(moduleDir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("%s is not a directory", moduleDir)
+	}
+
+	fixtureDir := standaloneAuditFixtureDir(moduleDir)
+	perm := info.Mode().Perm()
+	if err := os.MkdirAll(filepath.Dir(fixtureDir), perm); err != nil {
+		return "", fmt.Errorf("create standalone audit fixture parent for %s: %w", fixtureDir, err)
+	}
+	if err := os.Mkdir(fixtureDir, perm); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fixtureDir, fmt.Errorf("%w: %s", errStandaloneFixtureOccupied, fixtureDir)
+		}
+		return "", fmt.Errorf("create standalone audit fixture %s: %w", fixtureDir, err)
+	}
+	if err := copyTree(moduleDir, fixtureDir); err != nil {
+		// Only the directory this call just created is removed: it is incomplete
+		// scratch state, and leaving it behind would make the next run skip.
+		_ = os.RemoveAll(fixtureDir)
+		return "", fmt.Errorf("prepare standalone audit fixture %s: %w", fixtureDir, err)
+	}
+	return fixtureDir, nil
+}
+
+// copyTree copies src into dst recursively. Directories keep the source's own
+// permissions, regular files their bytes, and symlinks are recreated as
+// symlinks rather than followed — a link inside a module usually points at a
+// sibling, and following it would either duplicate the tree or loop.
+func copyTree(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", src)
+	}
+	if err := os.MkdirAll(dst, info.Mode().Perm()); err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		source := filepath.Join(src, entry.Name())
+		target := filepath.Join(dst, entry.Name())
+		entryInfo, err := os.Lstat(source)
+		if err != nil {
+			return err
+		}
+		switch {
+		case entryInfo.Mode()&os.ModeSymlink != 0:
+			link, err := os.Readlink(source)
+			if err != nil {
+				return err
+			}
+			if err := os.Symlink(link, target); err != nil {
+				return err
+			}
+		case entryInfo.IsDir():
+			if err := copyTree(source, target); err != nil {
+				return err
+			}
+		case entryInfo.Mode().IsRegular():
+			contents, err := os.ReadFile(source)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(target, contents, entryInfo.Mode().Perm()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Registry is the static checklist: 60 items across 5 phases
 // (P1 7 + P2 14 + P3 15 + P4 16 + P5 8). Every item carries a Guard label and
 // the runner acts on it through DecideGuard: an empty Guard is local work with
@@ -516,14 +667,37 @@ var Registry = []Item{
 		return execGovard(ctx, cfg, opts, args...)
 	}},
 	{ID: "P3-13", Phase: 3, Title: "govard audit run --checks lint --mode module_in_project --format json --allow-xdebug (from app/code/<Vendor>/<Module>)", Precond: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		args := []string{"audit", "run", "--checks", "lint", "--mode", "module_in_project", "--format", "json"}
+		moduleDir, ok := auditModuleDir(cfg, opts)
+		if !ok {
+			return Skip(noAuditModuleReason)
+		}
+		args := []string{"audit", "run", "--checks", "lint", "--mode", "module_in_project", "--format", "json", "--path", moduleDir}
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
 		return execGovard(ctx, cfg, opts, args...)
 	}},
 	{ID: "P3-14", Phase: 3, Title: "govard audit run --checks lint --mode standalone --format json (from /tmp/govard-audit-standalone/<Module>)", Precond: "P3-13 ok", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		return execGovard(ctx, cfg, opts, "audit", "run", "--checks", "lint", "--mode", "standalone", "--format", "json")
+		moduleDir, ok := auditModuleDir(cfg, opts)
+		if !ok {
+			return Skip(noAuditModuleReason)
+		}
+		fixtureDir, err := prepareStandaloneAuditFixture(moduleDir)
+		if errors.Is(err, errStandaloneFixtureOccupied) {
+			return Skip(standaloneFixtureOccupiedReason(fixtureDir))
+		}
+		if err != nil {
+			return Evidence{ExitCode: 1, OutputExcerpt: err.Error()}
+		}
+		// Reaching here means this run created the directory, and only a
+		// directory it created is removed: the titled path is shared machine
+		// state, so anything that was already there belongs to someone else.
+		defer func() { _ = os.RemoveAll(fixtureDir) }()
+		args := []string{"audit", "run", "--checks", "lint", "--mode", "standalone", "--format", "json", "--path", fixtureDir}
+		if opts.AllowXdebug {
+			args = append(args, "--allow-xdebug")
+		}
+		return execGovard(ctx, cfg, opts, args...)
 	}},
 	{ID: "P3-15", Phase: 3, Title: "govard audit status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Precond: "P3-10 or P3-11 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return auditLifecycleEvidence(ctx, cfg, opts)

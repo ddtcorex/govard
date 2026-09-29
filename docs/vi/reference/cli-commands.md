@@ -174,6 +174,18 @@ Mỗi lệnh trên tự nhận diện mode từ thư mục hiện tại — `--m
 muốn buộc hoặc từ chối một phân loại cụ thể (ví dụ `--mode project` sẽ lỗi khi
 chạy ngoài project root thay vì tự phân loại lại).
 
+`--path <dir>` (dùng cho cả `audit run` và `audit diff`) phân giải target từ
+`<dir>` thay vì thư mục làm việc hiện tại, để một lệnh có thể audit một thư mục
+mà nó không chạy trong đó — ví dụ một dòng checklist audit một module nằm dưới
+project root. Đường dẫn tương đối được tính theo thư mục làm việc hiện tại, và
+`<dir>` phải tồn tại: phân giải sẽ lỗi nếu không, còn việc phân loại mode được
+áp dụng trên `<dir>` đúng như khi áp dụng trên thư mục làm việc.
+
+```bash
+# buộc target module trong khi đang chạy từ project root
+govard audit run --mode module_in_project --path app/code/Acme/Catalog
+```
+
 #### Phiên bản PHP
 
 Lint image cung cấp `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4` và `8.5`.

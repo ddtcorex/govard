@@ -41,6 +41,10 @@ type auditCommandOptions struct {
 	PHPVersions       []string
 	URL               string
 	Timeout           string
+	// TargetPath is the directory the audit target is resolved from, set by
+	// --path. Empty means the process working directory, which is where every
+	// invocation resolved its target before the flag existed.
+	TargetPath string
 }
 
 // AuditRunnerRequest is the resolved context a runner factory needs to build a
@@ -235,7 +239,7 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		use = "diff"
 		short = "Record a diff audit and run its exact checks"
 	}
-	return &cobra.Command{Use: use, Short: short, RunE: func(cmd *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: use, Short: short, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := validateAuditCommandOptions(options); err != nil {
 			return err
 		}
@@ -335,6 +339,11 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		}
 		return auditRunOutcome(result)
 	}}
+	// --path is local to run/diff: the read-only audit commands resolve a target
+	// too, but only to find the project's persisted sessions, and pointing that
+	// at an unrelated directory would name someone else's audit store.
+	command.Flags().StringVar(&options.TargetPath, "path", "", "Directory to resolve the audit target from (default: the current directory)")
+	return command
 }
 
 func newAuditRerunCommand(options *auditCommandOptions, dependencies auditCommandDependencies) *cobra.Command {
@@ -358,7 +367,7 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 					mode = types.AuditTargetAuto
 				}
 				resolvedDeps := currentAuditDependencies(dependencies)
-				peekTarget, err := resolveAuditTarget(cmd.Context(), commandStartDirectory(), mode, options.PHPVersions, resolvedDeps.runtimePHPProbe, false)
+				peekTarget, err := resolveAuditTarget(cmd.Context(), commandStartDirectory(options.TargetPath), mode, options.PHPVersions, resolvedDeps.runtimePHPProbe, false)
 				if err != nil {
 					return err
 				}
@@ -506,7 +515,7 @@ func prepareAudit(cmd *cobra.Command, options *auditCommandOptions, dependencies
 			return nil, resolvedAuditTarget{}, err
 		}
 	}
-	target, err := resolveAuditTarget(cmd.Context(), commandStartDirectory(), mode, options.PHPVersions, resolved.runtimePHPProbe, preparation.ResolvePHPPolicy)
+	target, err := resolveAuditTarget(cmd.Context(), commandStartDirectory(options.TargetPath), mode, options.PHPVersions, resolved.runtimePHPProbe, preparation.ResolvePHPPolicy)
 	if err != nil {
 		return nil, resolvedAuditTarget{}, err
 	}
@@ -549,12 +558,26 @@ func prepareAudit(cmd *cobra.Command, options *auditCommandOptions, dependencies
 	return runner, target, nil
 }
 
-func commandStartDirectory() string {
+// commandStartDirectory is the directory the audit target is resolved from:
+// targetPath when --path named one, otherwise the process working directory. A
+// relative --path resolves against the working directory, so an item can point
+// the audit at a sibling of the project it runs in without building an absolute
+// path. Resolution itself is the framework's job — the resolver walks *up* from
+// this start path, which is why a module below the project root is invisible
+// from the root alone.
+func commandStartDirectory(targetPath string) string {
 	workingDirectory, err := os.Getwd()
 	if err != nil {
-		return "."
+		workingDirectory = "."
 	}
-	return workingDirectory
+	target := strings.TrimSpace(targetPath)
+	if target == "" {
+		return workingDirectory
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(workingDirectory, target)
+	}
+	return target
 }
 
 func auditScope(value string, forceDiff, scopeExplicit bool) (audit.Scope, error) {

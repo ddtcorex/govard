@@ -174,6 +174,19 @@ Each of these selects its mode automatically from the current directory —
 example `--mode project` fails outside a project root instead of silently
 reclassifying).
 
+`--path <dir>` resolves the target from `<dir>` instead of the current working
+directory, on `audit run` and `audit diff` alike, so one invocation can audit a
+directory it does not run in — a checklist row auditing a module below the
+project root, for example. A relative path resolves against the current working
+directory, and `<dir>` must exist: resolution fails when it does not, and the
+mode classification is applied to `<dir>` exactly as it would be to the working
+directory.
+
+```bash
+# force a module target while running from the project root
+govard audit run --mode module_in_project --path app/code/Acme/Catalog
+```
+
 #### PHP versions
 
 The lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, and `8.5`.
