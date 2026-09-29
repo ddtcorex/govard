@@ -855,10 +855,11 @@ var Registry = []Item{
 	// P4-13..P4-16 close the read-only half of the remote surface. They are
 	// safe against a production remote by construction: `deploy plan` does not
 	// connect at all, and `deploy status`, `deploy releases` and `remote list`
-	// only read. The writing halves (`deploy check` creates the deploy path,
-	// `deploy unlock`/`rollback` mutate the target, `db`/`snapshot`/`open -e`
-	// can bypass write protection or copy a key, `tunnel stop` kills every
-	// cloudflared on the host) stay manual recipes until govard#466-#469 land.
+	// only read. The rest stay manual recipes until govard#466-#469 land: `deploy
+	// check` is a preflight of its own and creates nothing on the target,
+	// `deploy unlock`/`rollback` mutate the target, `db`/`snapshot`/`open -e` can
+	// bypass write protection or copy a key, and `tunnel stop` kills every
+	// cloudflared on the host.
 	{ID: "P4-13", Phase: 4, Title: "govard deploy plan <remote> --json", Precond: "—", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "deploy", "plan", remote, "--json")
 	})},

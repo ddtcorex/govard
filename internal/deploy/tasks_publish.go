@@ -17,6 +17,12 @@ var (
 	// ErrMoveAtomicUnsupported means the target's mv cannot do the atomic
 	// rename the symlink swap depends on.
 	ErrMoveAtomicUnsupported = errors.New("mv -T is not supported on the target")
+	// ErrDeployPathNotADirectory means the configured deploy path exists on the
+	// target but is not a directory, so no release can be created under it. It
+	// is a path-shape fault — a mistyped deploy_path, or a file where the
+	// directory belongs — and it is reported as itself rather than as the
+	// `mv` failure the probe used to blame for it.
+	ErrDeployPathNotADirectory = errors.New("the deploy path is not a directory")
 	// ErrNoRevisionForActivation means the deploy has nothing to activate.
 	ErrNoRevisionForActivation = errors.New("no revision to activate")
 )

@@ -196,6 +196,14 @@ govard deploy check staging    # preflight: kết nối, layout, quyền, php, d
 govard deploy staging --yes    # ... hoặc --remote staging
 ```
 
+`deploy check` không tạo gì trên target, dù là local hay remote: một
+`deploy_path` chưa tồn tại được probe tại parent tồn tại gần nhất ngay trên target
+đó, và ở local thì note nói rõ parent nào đã trả lời. Một lệnh gọi remote thì
+không có note — exit code không phân biệt được "chưa tồn tại" với "tồn tại nhưng
+không ghi được", nên note sẽ là một lời khẳng định về một máy mà govard không nhìn
+thấy. Probe chạy qua đúng runner mà deploy dùng, nên nó đi tới máy sở hữu path
+đó — cũng vì vậy một host mới tinh vẫn pass check thay vì hỏng.
+
 Theo dõi bằng `--verbose`, nó stream output của từng command dưới đúng task của nó
 và không gom lại. Khi một bước hỏng, lần chạy nói rõ bước nào và làm gì tiếp: hỏng
 sau khi maintenance window đã mở thì giữ lock và chỉ tới `govard deploy --remote

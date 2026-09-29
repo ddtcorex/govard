@@ -42,6 +42,17 @@ var (
 	ErrDeployPathMissing = errors.New("deploy_path is not configured and no existing layout was found")
 )
 
+// deployPathNotADirectoryExit is the exit code probeAtomicRename raises when the
+// deploy path exists on the target but is not a directory.
+//
+// It is the probe's own report channel, the way `rc` already is, and it exists so
+// the shape fault is not read as a tool fault: the commands after it would fail
+// the same way on a perfectly good `mv`. 65 is EX_DATAERR, and no `mv`, `mkdir`
+// or `ln` in the chain uses it, so the two cannot be confused. The check is in
+// the shell because the remote branch has no os.Stat to consult, and this is
+// exactly the case where a local observation would be a guess.
+const deployPathNotADirectoryExit = 65
+
 // StepContextForTest builds a step context bound to a host. Tests need it
 // because StepContext is otherwise assembled by the executor.
 func StepContextForTest(host Host, opts Options) *StepContext {
@@ -81,8 +92,12 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 		return err
 	}
 
-	if _, err := sc.Runner.Run(ctx, "mkdir -p "+Shell(host.DeployPath)+" && test -w "+Shell(host.DeployPath), opts); err != nil {
+	probe, note := WritabilityProbeCommand(host.DeployPath, host.Local)
+	if _, err := sc.Runner.Run(ctx, probe, opts); err != nil {
 		return fmt.Errorf("deploy path %s is not writable: %w", host.DeployPath, err)
+	}
+	if note != "" {
+		noteStep(sc, note)
 	}
 
 	if err := checkRepositoryReachable(ctx, sc); err != nil {
@@ -155,6 +170,72 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	}
 
 	return nil
+}
+
+// nearestExistingParentCommand is the shell prefix that leaves the nearest
+// existing ancestor of deployPath in $p, walking up until one is there.
+//
+// It is shared rather than written twice because the answer is the same question
+// for both probes, and they are the same question precisely when the deploy path
+// is absent: a fresh host is the case that used to make the disk-space preflight
+// a silent no-op, because `df` on a path that does not exist fails. It runs in
+// the shell because the commands execute through the host's runner — on the
+// machine that owns the path — and it creates nothing on either branch.
+func nearestExistingParentCommand(deployPath string) string {
+	return "p=" + Shell(deployPath) + `; while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; `
+}
+
+// WritabilityProbeCommand answers "can the target receive a release at
+// deployPath" without creating anything: an absent path is a fresh host, and
+// creating it here would make the probe answer its own question. The traversal
+// runs in the shell because the command executes through the host's runner — on
+// the machine that owns the path — so it is the same command for a local and a
+// remote target, and the probe is read-only on both.
+//
+// local says whether this process can see deployPath. Only then may the note
+// report it as absent and name a parent: an exit code cannot distinguish
+// "absent on the target" from "present but unwritable", so a remote call gets
+// no note rather than a claim about a machine it cannot see. That also means the
+// shape of an existing path can only be reported here for a target this process
+// can see — the target-side half is probeAtomicRename's exit code, which is the
+// one shape fault that stops a release.
+func WritabilityProbeCommand(deployPath string, local bool) (command string, note string) {
+	command = nearestExistingParentCommand(deployPath) + `test -w "$p"`
+	if !local {
+		return command, ""
+	}
+	info, err := os.Stat(deployPath)
+	if err != nil {
+		return command, "the deploy path " + deployPath + " does not exist yet: writability was probed at " +
+			nearestExistingDir(deployPath) + ", and the deploy will create the path\n"
+	}
+	if !info.IsDir() {
+		// `-e` cannot tell a file from a directory, and the shell walk stops at
+		// a path that exists whatever it is — so it tested the file, and naming
+		// a parent the shell never reached would be a claim about a directory
+		// that was not tested at all.
+		return command, "the deploy path " + deployPath + " exists and is not a directory, so the deploy has nothing to create a release under\n"
+	}
+	return command, ""
+}
+
+// nearestExistingDir names the ancestor a deploy path would be created under, as
+// far as this process can see. It only ever *names* a directory for the note:
+// the shell walk in WritabilityProbeCommand is what actually tests writability,
+// because it happens on the machine that owns the path. It terminates at the
+// filesystem root and never returns an empty string.
+func nearestExistingDir(p string) string {
+	current := p
+	for {
+		if info, err := os.Stat(current); err == nil && info.IsDir() {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return current
+		}
+		current = parent
+	}
 }
 
 // checkSandboxMirror refreshes the local bare mirror a sandbox container mounts.
@@ -249,15 +330,50 @@ func CheckRepositoryReachableForTest(ctx context.Context, sc *StepContext) error
 
 // probeAtomicRename verifies the target's mv supports the atomic rename the
 // symlink swap depends on.
+//
+// The probe takes back exactly what it made. probeDir is sc.Host.DepPath(), not
+// a scratch directory of this probe's own: CoreLock later runs
+// `mkdir -p <DepPath> && (mkdir <LockPath> || exit N)`, so an empty .dep is
+// recreated there while a .dep holding a lock is non-empty. rmdir therefore
+// succeeds exactly when the probe created it and refuses whenever the target has
+// state in it — including when two `deploy check` runs overlap — while
+// `|| true` keeps that refusal from failing the check. `fresh` is the same
+// argument one level up: a fresh host has no deploy path either, and an empty
+// one says nothing about who made it, so it is removed only when this probe
+// found it missing.
+//
+// Do not "simplify" this into rm -rf, and never remove the lock directory:
+// `<deployPath>/.dep` is where a live deploy's lock lives, so deleting it would
+// let a second deploy start against the same release.
+//
+// rc is captured and re-raised because the cleanup is sequenced with `;`: a
+// trailing `rmdir … || true` would otherwise turn a `mv` without `-T` into a
+// success and report the atomic rename as supported on the one target shape
+// where it is not.
+//
+// The `rm -f` is in the cleanup rather than at the end of the `&&` chain for the
+// same reason the exit code is re-raised: a chain short-circuits, so a `mv` that
+// refuses `-T` would leave its own link behind, that link would keep `.dep` from
+// being empty, and the litter would make the next run see a pre-existing deploy
+// path that nothing will ever remove. It only ever names this probe's own two
+// paths, so running it on the failure path removes nothing of the target's.
 func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 	probeDir := path.Join(sc.Host.DeployPath, ".dep")
 	link := path.Join(probeDir, ".govard-mvprobe.link")
 	target := path.Join(probeDir, ".govard-mvprobe.target")
 	command := fmt.Sprintf(
-		"mkdir -p %s && ln -sfn %s %s && mv -T %s %s && rm -f %s %s",
-		Shell(probeDir), Shell(probeDir), Shell(link), Shell(link), Shell(target), Shell(target), Shell(link),
+		"dp=%s; dep=%s; link=%s; target=%s; fresh=0; [ -e \"$dp\" ] || fresh=1; "+
+			"if [ -e \"$dp\" ] && [ ! -d \"$dp\" ]; then rc=%d; "+
+			"else mkdir -p \"$dep\" && ln -sfn \"$dep\" \"$link\" && mv -T \"$link\" \"$target\"; rc=$?; fi; "+
+			"rm -f \"$link\" \"$target\"; rmdir \"$dep\" 2>/dev/null || true; "+
+			"if [ \"$fresh\" = 1 ]; then rmdir \"$dp\" 2>/dev/null || true; fi; exit $rc",
+		Shell(sc.Host.DeployPath), Shell(probeDir), Shell(link), Shell(target), deployPathNotADirectoryExit,
 	)
 	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
+		var cmdErr *CommandError
+		if errors.As(err, &cmdErr) && cmdErr.ExitCode == deployPathNotADirectoryExit {
+			return fmt.Errorf("%w: %s", ErrDeployPathNotADirectory, sc.Host.DeployPath)
+		}
 		return fmt.Errorf("%w: the symlink swap needs GNU mv (mv -T)", ErrMoveAtomicUnsupported)
 	}
 	sc.Notes = append(sc.Notes, "atomic symlink rename: supported")
@@ -305,8 +421,15 @@ func noteSymlinkRuntimeCache(ctx context.Context, sc *StepContext) {
 // checkDiskSpace reports free space and refuses an actually full filesystem. A
 // release plus its build output is large, and a deploy that dies at 90% is worse
 // than one that never starts.
+//
+// The command asks the same shell that resolves the deploy path's nearest
+// existing parent, so a fresh host — where the path itself does not exist, and
+// `df` on it fails — is answered instead of silently skipped. Measuring the
+// parent is the answer that matters: the deploy will create the path inside it,
+// on that filesystem.
 func checkDiskSpace(ctx context.Context, sc *StepContext) error {
-	result, err := sc.Runner.Run(ctx, "df -Pk "+Shell(sc.Host.DeployPath), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
+	command := nearestExistingParentCommand(sc.Host.DeployPath) + `df -Pk "$p"`
+	result, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live})
 	if err != nil {
 		// `df` is not universal; an unavailable probe must not block a deploy.
 		return nil
