@@ -752,12 +752,14 @@ var Registry = []Item{
 			return Skip(noAuditModuleReason)
 		}
 		args := []string{"audit", "run", "--checks", "lint", "--mode", "module_in_project", "--format", "json", "--path", moduleDir}
+		args = append(args, auditLintJobsArgs(opts)...)
+		args = append(args, auditTimeoutArgs(opts, verifyTimeoutDefault)...)
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-14", Phase: 3, Title: "govard audit run --checks lint --mode standalone --format json (from /tmp/govard-audit-standalone/<Module>)", Precond: "P3-13 ok", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-14", Phase: 3, Title: "govard audit run --checks lint --mode standalone --format json (from os.TempDir()/govard-audit-standalone/<Module>)", Precond: "P3-13 ok", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		moduleDir, ok := auditModuleDir(cfg, opts)
 		if !ok {
 			return Skip(noAuditModuleReason)
@@ -774,10 +776,12 @@ var Registry = []Item{
 		// state, so anything that was already there belongs to someone else.
 		defer func() { _ = os.RemoveAll(fixtureDir) }()
 		args := []string{"audit", "run", "--checks", "lint", "--mode", "standalone", "--format", "json", "--path", fixtureDir}
+		args = append(args, auditLintJobsArgs(opts)...)
+		args = append(args, auditTimeoutArgs(opts, verifyTimeoutDefault)...)
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
-		return execGovard(ctx, cfg, opts, args...)
+		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
 	{ID: "P3-15", Phase: 3, Title: "govard audit status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Precond: "P3-10 or P3-11 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return auditLifecycleEvidence(ctx, cfg, opts)
