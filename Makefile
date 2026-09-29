@@ -12,6 +12,7 @@ DOCKER_PLATFORM_FLAGS := $(foreach platform,$(subst $(comma), ,$(DOCKER_PLATFORM
 BINARY_NAME=govard
 BUILD_DIR=bin
 TEST_BINARY=$(BUILD_DIR)/govard-test
+TEST_BUDGET_BINARY=$(BUILD_DIR)/testbudget
 UNIT_PACKAGES=$(shell go list ./... | grep -v '^govard/tests/integration$$')
 COVER_PACKAGES=$(shell go list ./internal/... | tr '\n' ',' | sed 's/,$$//')
 VERSION_RAW ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo 1.0.0)
@@ -20,7 +21,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.3
 GOLANGCI_LINT_BIN ?= $(shell go env GOPATH)/bin/golangci-lint
 LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 
-.PHONY: help install install-release build-test-binary build frontend build-frontend bindings bindings-check clean test test-unit test-coverage test-integration test-integration-ci test-frontend test-frontend-behaviour lint lint-desktop lint-install fmt fmt-check vet generate generate-check images push
+.PHONY: help install install-release build-test-binary build-test-budget build frontend build-frontend bindings bindings-check clean test test-unit test-coverage test-integration test-integration-ci test-frontend test-frontend-behaviour lint lint-desktop lint-install fmt fmt-check vet generate generate-check images push
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -97,9 +98,18 @@ fmt-check:
 		exit 1; \
 	fi
 
-test-unit:
-	@echo "Running unit tests..."
-	go test $(UNIT_PACKAGES) -v -short
+# The time-budget gate wraps the go test run rather than measuring it in a
+# second pass: it reads the Elapsed field go test -json already reports, so the
+# budget costs no wall time. It is built as a binary instead of `go run` so a
+# budget breach exits quietly rather than trailing go run's own "exit status 1".
+build-test-budget:
+	@echo "Building test time-budget gate..."
+	@mkdir -p $(BUILD_DIR)
+	go build -o $(TEST_BUDGET_BINARY) ./scripts/testbudget
+
+test-unit: build-test-budget
+	@echo "Running unit tests (time-budgeted)..."
+	$(TEST_BUDGET_BINARY) -suite unit -stale -- go test $(UNIT_PACKAGES) -short -json
 
 test-coverage:
 	@echo "Running unit tests with coverage..."
@@ -107,13 +117,13 @@ test-coverage:
 	go tool cover -func=coverage.out
 	@echo "Coverage profile written to coverage.out"
 
-test-integration: build-test-binary
-	@echo "Running integration tests..."
-	go test -tags integration ./tests/integration/... -v -timeout 30m
+test-integration: build-test-binary build-test-budget
+	@echo "Running integration tests (time-budgeted)..."
+	$(TEST_BUDGET_BINARY) -suite integration -stale -- go test -tags integration ./tests/integration/... -json -timeout 30m
 
-test-integration-ci: build-test-binary
-	@echo "Running integration tests (CI mode)..."
-	go test -tags integration ./tests/integration/... -v -timeout 30m -parallel 4
+test-integration-ci: build-test-binary build-test-budget
+	@echo "Running integration tests (CI mode, time-budgeted)..."
+	$(TEST_BUDGET_BINARY) -suite integration -stale -- go test -tags integration ./tests/integration/... -json -timeout 30m -parallel 4
 
 test-frontend:
 	@echo "Running frontend unit tests..."

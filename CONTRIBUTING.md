@@ -91,6 +91,39 @@ Additional checks when relevant:
 # Docs sync — docs/**/*.md auto-syncs to GitHub Wiki on push to master
 ```
 
+### Test time budgets
+
+`make test-unit` and `make test-integration` are wrapped by
+`scripts/testbudget`, which fails the run if a **single test** takes longer than
+its budget in `tests/test-time-budget.yml`.
+
+The gate costs no extra time: it reads the `Elapsed` field `go test -json`
+already reports, so the check happens during the run it governs. Each run also
+prints its ten slowest tests, which is the fastest way to see where the wall
+clock is going.
+
+When a test trips the budget you have two legitimate moves:
+
+- **Make it faster** — the usual answer. Most slow tests here are slow for a
+  structural reason: sleeping out a production poll interval, or rebuilding a
+  fixture (a git repository, a container) from scratch on every call.
+- **Raise its budget, with a reason.** Add an entry under the suite's
+  `overrides` with a `budget` and a `reason`. The tool refuses to load a budget
+  file whose override has no reason, and reports overrides whose test no longer
+  runs, so the allowlist cannot quietly become a list of tests nobody examined.
+
+```yaml
+overrides:
+  TestSomethingSlow:
+    budget: 5.2s
+    reason: >-
+      sleeps one full production poll interval (internal/desktop/notifications.go PollInterval)
+```
+
+On a slower machine (a shared CI runner, a loaded laptop) set
+`GOVARD_TEST_TIME_SCALE=2` to multiply every budget at once rather than editing
+the file.
+
 Do not claim verified/done/clean without having actually run the checks — be ready to paste exact command output in the PR.
 
 ## Pull Requests

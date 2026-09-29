@@ -1,0 +1,84 @@
+# Per-test wall-clock budget.
+#
+# The suite is enormous and almost entirely cheap -- roughly 84% of the unit
+# tests finish in under 10ms -- yet its wall clock is owned by a small tail.
+# Without a rule, a test that goes from 40ms to 4s still passes, nothing turns
+# red, and nobody looks at the clock until `make test` takes five minutes. This
+# file is that rule: a test that runs longer than its budget fails the build.
+#
+# Enforced by scripts/testbudget, which reads the `Elapsed` field that
+# `go test -json` already reports for every test. The budget is therefore checked
+# during the run it governs, costing no wall time of its own.
+#
+# Rules for this file:
+#
+#   1. Every override carries a reason. The tool refuses to load a budget whose
+#      override has none. An unexplained allowance is indistinguishable from a
+#      test that simply got slow, which is the failure this file exists to stop.
+#   2. A missing override is a failing test, not a warning.
+#   3. Overrides naming a test that no longer runs are reported as stale on a
+#      full-suite run, so a rename cannot leave a precedent behind for whoever
+#      writes the next slow test.
+#   4. Prefer making a test fast over raising its budget. Every entry below is
+#      slow for a structural reason -- a real poll interval, a real process
+#      group, a real SSH round trip -- and the fastest of them are optimisable.
+#      Each run prints its slowest tests, so this file should shrink over time
+#      rather than grow.
+#
+# Thresholds were derived from measured runs, not guessed. Two full runs of the
+# unit suite showed the same test varying by up to ~38% between them, so the
+# default is set with real headroom above the slowest test that is *not* on the
+# list (about 2.5s measured, 4s allowed) rather than parked just above it. A cap
+# that flaps on an ordinary run is a cap people learn to re-run past.
+#
+# A slower machine (a shared CI runner, a loaded laptop) can set
+# GOVARD_TEST_TIME_SCALE=2 to multiply every budget without editing this file.
+# It exists so a slow host does not turn this gate into noise people learn to
+# ignore -- and so tightening it later is a one-line change rather than a
+# re-argument about every individual test.
+
+suites:
+  unit:
+    # 84% of unit tests run in under 10ms, so this cap is far above the bulk and
+    # only ever reached by a test doing real subprocess, poll or SSH work. It is
+    # still well under the suite total: a run that starts tripping it is a run
+    # worth looking at.
+    default: 4s
+    overrides:
+      TestEnvRestartReappliesProjectDomainsAfterComposeUp:
+        budget: 9.0s
+        reason: >-
+          re-runs the compose-up domain reconciliation twice to prove the reapply, not a cached one-shot
+      TestTunnelStopSucceedsWhenTheTunnelEndsBeforeTheEscalation:
+        budget: 8.8s
+        reason: >-
+          waits out the real tunnel escalation ladder instead of injecting a shorter one
+      TestARemoteStepThatHasNotRecordedItsPIDYetIsStillStopped:
+        budget: 5.8s
+        reason: >-
+          forks a real remote step, kills the SSH wrapper, then polls until the process group is drained
+      TestWaitForUpRuntimeReadinessFailsFastWhenContainerExited:
+        budget: 5.4s
+        reason: >-
+          asserts the real readiness-timeout path, which is measured in seconds of waiting
+      TestDesktopOperationWatcherRefreshesOncePerPoll:
+        budget: 5.2s
+        reason: >-
+          sleeps one full production poll interval (internal/desktop/notifications.go PollInterval)
+      TestEnvRestartRegistersAndUnregistersRabbitMQDomainWhenQueueEnabled:
+        budget: 4.6s
+        reason: >-
+          drives two full env restart cycles to prove the domain is registered and then removed
+      TestEnvRestartRegistersAndUnregistersSearchDomainWhenSearchEnabled:
+        budget: 4.6s
+        reason: >-
+          drives two full env restart cycles to prove the domain is registered and then removed
+
+  integration:
+    # Integration tests drive real containers and real SSH, so the default is much wider. The tail is concentrated here too: a test that starts pulling an image per run should show up against this cap.
+    default: 30s
+    overrides:
+      TestDeploySandboxRunsTheMagentoRecipeOverRealSSH:
+        budget: 41.2s
+        reason: >-
+          builds and boots a real sandbox container, then runs the Magento recipe over real SSH

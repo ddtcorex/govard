@@ -122,6 +122,32 @@ install -m0755 bin/govard ~/.local/bin/govard     # only to test PATH consumers 
 - Prefer mocks over live network in unit tests
 - Isolate state via `GOVARD_HOME_DIR` (use `TestMain` where appropriate)
 - Gate external service tests with explicit env checks
+
+### Per-test time budget
+
+`make test-unit` and `make test-integration` run under `scripts/testbudget`,
+which fails the build when **one test** exceeds its budget in
+`tests/test-time-budget.yml` (`4s` unit, `30s` integration; 7 allowlisted unit
+tests, 1 integration test). The check reads the `Elapsed` field `go test -json`
+already reports, so it adds no wall time, and every run prints its ten slowest
+tests — the fastest way to see where the clock is actually going.
+
+- **A missing allowance is a failing test, not a warning.** An override without a
+  `reason` is rejected at load time, and an override whose test no longer runs is
+  reported as stale. An unexplained or orphaned allowance is how an allowlist rots
+  into a list of tests nobody examined.
+- **Prefer making the test fast over raising its budget.** The suite is ~84%
+  sub-10ms, so a slow test is usually structural: sleeping out a production poll
+  interval (`internal/desktop/notifications.go` `PollInterval`), or rebuilding a
+  fixture per call (`seedGitRepo` in `tests/deploy_prepare_test.go` forks nine
+  `git` processes every time it runs). The budget file should shrink over time.
+- **Slower machines:** `GOVARD_TEST_TIME_SCALE=2` multiplies every budget without
+  editing the file, so a slow CI runner does not turn the gate into noise.
+- `t.Parallel()` is effectively unused here and cannot simply be added: the suite
+  has hundreds of `t.Setenv` calls plus an `os.Chdir` helper, both process-global,
+  and Go panics on `t.Setenv` in a parallel test. Parallelising means sharding by
+  package (separate processes), not sprinkling `t.Parallel()`.
+
 - A test that drives a capability-gated command **out of process** (the
   integration suite runs the real binary) cannot use the in-process stubs: force
   the requirement with `GOVARD_TEST_SATISFIED_CAPABILITIES=<caps>` instead of
