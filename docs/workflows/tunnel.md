@@ -58,11 +58,29 @@ govard tunnel stop
 # or just Ctrl+C the start process
 ```
 
+`tunnel start` records the process it launched — its PID and the argv it was
+started with — under `$GOVARD_HOME_DIR/tunnels/<project>.pid`, and `tunnel stop`
+signals that one process. It never matches a process by name, so a
+`cloudflared` you started yourself, or one belonging to another project or
+another tool, is left alone. The argv is checked before any signal: if the
+recorded PID has been recycled by an unrelated program, or its argv cannot be
+read, `tunnel stop` refuses with an error and signals nothing — remove the
+record by hand once you have checked the tunnel yourself.
+
+With no record, `tunnel stop` is a no-op that says so and exits 0, so it is
+safe to run twice. The project's base URL is restored either way, except when
+a signal was refused — there the tunnel is still up, so the base URL keeps
+pointing at it.
+
 Check status:
 
 ```bash
 govard tunnel status
 ```
+
+`status` reads the same record rather than searching the host, so it reports
+`INACTIVE` whenever Govard has no tunnel of its own running — including when
+some other program happens to own the recorded PID.
 
 ---
 
@@ -95,7 +113,7 @@ govard tunnel status
 | `cloudflared: command not found` | Install `cloudflared` first (see Prerequisites). |
 | Tunnel URL shows Govard 404 | Run `govard env up` first — the project must be running so Caddy has a backend. |
 | Base URL not restored after Ctrl+C | Run `govard tunnel stop` or `govard config auto` (Magento 2) to re-apply the local URL. |
-| `tunnel status` says no tunnel | No active tunnel — `tunnel start` must be running in another terminal. |
+| `tunnel status` says no tunnel | Govard has no tunnel of its own running. `status` reads the recorded PID, so it also says this when the tunnel died and left a stale record (which it clears), or when another program took over that PID. |
 
 ---
 

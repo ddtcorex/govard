@@ -4,8 +4,116 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"govard/internal/cmd"
 )
+
+// snapshotCommandTreeFlags returns a func that puts every flag of the whole
+// command tree back the way it was, and calling it is not optional.
+//
+// cmd.RootCommandForTest hands out ONE process-wide object, and cobra parses
+// flags onto the live command, not onto a copy. Two leaks in this package were
+// pre-existing and only became visible when #469 added tests that actually run
+// `tunnel stop`:
+//
+//   - renderDeployHelp executes `tunnel stop --help`, and cobra registers
+//     --help at execute time (command.go:1219) and leaves it set on the
+//     command, so every later Execute of that command printed help and skipped
+//     RunE entirely.
+//   - the tunnel tests execute `tunnel start --plan` and `tunnel start <url>
+//     --url <flag>`, leaving --plan and --url set, so a later `tunnel start`
+//     silently became a dry run and a later one reported a bogus "not both".
+//
+// The tree is walked rather than one command, because the leak can sit on a
+// parent (persistent flags) as easily as on the command under test. Values are
+// captured and restored rather than reset to DefValue, because `audit run
+// --checks` declares a non-empty default ([]string{"lint"}) that
+// Replace([]string{}) would silently delete.
+func snapshotCommandTreeFlags(t *testing.T, root *cobra.Command) func() {
+	t.Helper()
+	type savedFlag struct {
+		flag    *pflag.Flag
+		isSlice bool
+		value   string
+		slice   []string
+	}
+	var saved []savedFlag
+	seen := map[*pflag.Flag]bool{}
+	visit := func(set *pflag.FlagSet) {
+		if set == nil {
+			return
+		}
+		set.VisitAll(func(flag *pflag.Flag) {
+			if seen[flag] {
+				return
+			}
+			seen[flag] = true
+			entry := savedFlag{flag: flag, value: flag.Value.String()}
+			if slice, ok := flag.Value.(pflag.SliceValue); ok {
+				entry.isSlice = true
+				entry.slice = append([]string(nil), slice.GetSlice()...)
+			}
+			saved = append(saved, entry)
+		})
+	}
+	var walk func(command *cobra.Command)
+	walk = func(command *cobra.Command) {
+		visit(command.Flags())
+		visit(command.PersistentFlags())
+		for _, child := range command.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
+
+	return func() {
+		t.Helper()
+		for _, entry := range saved {
+			var err error
+			if entry.isSlice {
+				err = entry.flag.Value.(pflag.SliceValue).Replace(entry.slice)
+			} else {
+				err = entry.flag.Value.Set(entry.value)
+			}
+			if err != nil {
+				t.Errorf("restore --%s to %q: %v", entry.flag.Name, entry.value, err)
+			}
+			entry.flag.Changed = false
+		}
+		// Flags cobra registers lazily at execute time -- --help above all,
+		// command.go:1219 -- do not exist yet when the snapshot is taken, so
+		// they cannot be captured. Reset anything that appeared meanwhile to its
+		// default; leaving --help set makes every later Execute of that command
+		// print help and skip RunE.
+		var resetLate func(command *cobra.Command)
+		resetLate = func(command *cobra.Command) {
+			reset := func(set *pflag.FlagSet) {
+				if set == nil {
+					return
+				}
+				set.VisitAll(func(flag *pflag.Flag) {
+					if seen[flag] {
+						return
+					}
+					seen[flag] = true
+					if slice, ok := flag.Value.(pflag.SliceValue); ok {
+						_ = slice.Replace(nil)
+					} else {
+						_ = flag.Value.Set(flag.DefValue)
+					}
+					flag.Changed = false
+				})
+			}
+			reset(command.Flags())
+			reset(command.PersistentFlags())
+			for _, child := range command.Commands() {
+				resetLate(child)
+			}
+		}
+		resetLate(root)
+	}
+}
 
 func lookupHelpCommand(t *testing.T, path ...string) (flagUsage func(name string) string, long string, use string, example string) {
 	t.Helper()

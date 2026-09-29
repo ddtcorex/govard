@@ -21,8 +21,12 @@ import (
 )
 
 type tunnelCommandDependencies struct {
-	NewProvider func(ref engine.ProviderRef) (tunnel.Provider, error)
-	RunCommand  func(command *exec.Cmd) error
+	NewProvider     func(ref engine.ProviderRef) (tunnel.Provider, error)
+	RunCommand      func(command *exec.Cmd) error
+	ReadProcessArgv func(pid int) (string, bool)
+	ProcessAlive    func(pid int) bool
+	SignalProcess   func(pid int, sig os.Signal) error
+	Now             func() time.Time
 }
 
 var tunnelDeps = tunnelCommandDependencies{
@@ -30,12 +34,20 @@ var tunnelDeps = tunnelCommandDependencies{
 	RunCommand: func(command *exec.Cmd) error {
 		return command.Run()
 	},
+	ReadProcessArgv: readProcessArgv,
+	ProcessAlive:    processAlive,
+	SignalProcess:   signalProcess,
+	Now:             time.Now,
 }
 
 // TunnelDependenciesForTest allows tests to swap tunnel command dependencies.
 type TunnelDependenciesForTest struct {
-	NewProvider func(ref engine.ProviderRef) (tunnel.Provider, error)
-	RunCommand  func(command *exec.Cmd) error
+	NewProvider     func(ref engine.ProviderRef) (tunnel.Provider, error)
+	RunCommand      func(command *exec.Cmd) error
+	ReadProcessArgv func(pid int) (string, bool)
+	ProcessAlive    func(pid int) bool
+	SignalProcess   func(pid int, sig os.Signal) error
+	Now             func() time.Time
 }
 
 var tunnelCmd = &cobra.Command{
@@ -147,6 +159,23 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 
 		pterm.Info.Printf("Starting tunnel provider '%s' to %s. Press Ctrl+C to stop.\n", provider.Name(), targetURL)
 
+		// #469: one process per record. A tunnel govard already started is not
+		// replaced by a second one behind the operator's back.
+		record, recorded, err := readTunnelPIDRecord(config.ProjectName)
+		if err != nil {
+			return err
+		}
+		if recorded {
+			if recordIsLiveAndOwned(record, tunnelDeps.ProcessAlive, tunnelDeps.ReadProcessArgv) {
+				return fmt.Errorf(
+					"govard already started a tunnel for %q (pid %d): run 'govard tunnel stop' first",
+					config.ProjectName, record.PID)
+			}
+			// The recorded process is gone, or its pid was recycled; either way
+			// this record points at nothing govard owns.
+			clearTunnelPID(config.ProjectName)
+		}
+
 		mgr := frameworks.NewBaseURLManager(config.Framework)
 		if err := mgr.Backup(cwd, config); err != nil {
 			pterm.Warning.Printf("Failed to backup base URL: %v\n", err)
@@ -167,6 +196,9 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 		// Handle Revert on exit
 		var tunnelHost string
 		defer func() {
+			// The record lives exactly as long as the process it names, so a
+			// crash, a Ctrl+C or a `tunnel stop` all leave none behind.
+			clearTunnelPID(config.ProjectName)
 			if tunnelHost != "" {
 				pterm.Info.Printf("Cleaning up tunnel alias for %s...\n", tunnelHost)
 				_ = proxy.UnregisterDomain(tunnelHost)
@@ -176,6 +208,19 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 				pterm.Warning.Printf("Failed to revert base URL: %v\n", rerr)
 			}
 		}()
+
+		// Record the pid and the argv it was started with, so `tunnel stop` can
+		// reach exactly this process instead of matching a name on the host.
+		argv := append([]string{plan.Binary}, plan.Args...)
+		if resolved, lookErr := exec.LookPath(plan.Binary); lookErr == nil {
+			argv[0] = resolved
+		}
+		if err := recordTunnelPID(config.ProjectName, process.Process.Pid, argv); err != nil {
+			// A tunnel govard cannot stop is not a tunnel worth leaving running.
+			_ = process.Process.Kill()
+			_ = process.Wait()
+			return err
+		}
 
 		// Monitor stderr for the tunnel URL
 		go func() {
@@ -209,8 +254,9 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 		}()
 
 		if err := process.Wait(); err != nil {
-			// If it was killed by user (SIGINT), it's not a failure
-			if strings.Contains(err.Error(), "signal: interrupt") {
+			// Ctrl+C (SIGINT) and this repo's own `tunnel stop` (SIGTERM) both
+			// end the session on purpose; neither is a failure.
+			if isInterruptExit(err) || isTerminationExit(err) {
 				return nil
 			}
 			return fmt.Errorf("tunnel provider %s failed: %w", provider.Name(), err)
@@ -226,23 +272,52 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 var tunnelStopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Stop the running tunnel provider",
-	Long:  "Stop the running tunnel provider and restore the project's base URL. This kills every cloudflared process on the host, not just the tunnel Govard started.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		// cloudflared doesn't usually run in background unless told,
-		// but we can try to find and kill it.
-		// For now, let's just use pkill since we don't save PID yet.
-		pterm.Info.Println("Stopping tunnel provider...")
-		_ = exec.Command("pkill", "cloudflared").Run()
+	Long: `Stop the running tunnel provider and restore the project's base URL.
 
+Only the tunnel govard started for this project is stopped: it is the process
+recorded under $GOVARD_HOME_DIR/tunnels/<project>.pid, and govard signals it only
+while the process still carries the argv it was started with. A pid govard did
+not start — or one whose argv cannot be read — is refused with an error instead
+of being matched by name, so no other cloudflared on this host is touched.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// The record is keyed by project_name, so the config has to be readable
+		// before anything can be signalled. cloudflared does not usually run in
+		// the background unless told to, but the pid govard started is still
+		// worth reaching: it is the one process this project owns.
 		config, err := loadFullConfig()
-		if err == nil {
-			cwd, _ := os.Getwd()
-			mgr := frameworks.NewBaseURLManager(config.Framework)
-			pterm.Info.Println("Reverting base URL...")
-			_ = mgr.Revert(cwd, config)
+		if err != nil {
+			return fmt.Errorf("cannot tell which tunnel to stop without the project config: %w", err)
 		}
 
-		pterm.Success.Println("Tunnel stopped.")
+		record, recorded, err := readTunnelPIDRecord(config.ProjectName)
+		if err != nil {
+			return err
+		}
+
+		if recorded {
+			pterm.Info.Println("Stopping tunnel provider...")
+			if err := signalRecordedTunnel(
+				config.ProjectName,
+				tunnelDeps.ReadProcessArgv,
+				tunnelDeps.ProcessAlive,
+				tunnelDeps.Now,
+			); err != nil {
+				// Refused: nothing was signalled, so the base URL must keep
+				// pointing at a tunnel that is still up.
+				return err
+			}
+		} else {
+			pterm.Info.Println("No tunnel started by govard for this project.")
+		}
+
+		cwd, _ := os.Getwd()
+		mgr := frameworks.NewBaseURLManager(config.Framework)
+		pterm.Info.Println("Reverting base URL...")
+		_ = mgr.Revert(cwd, config)
+
+		if recorded {
+			pterm.Success.Printf("Tunnel stopped (pid %d).\n", record.PID)
+		}
 		return nil
 	},
 }
@@ -251,12 +326,33 @@ var tunnelStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Check tunnel status",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		output, err := exec.Command("pgrep", "cloudflared").Output()
-		if err == nil && len(output) > 0 {
-			pterm.Success.Println("Tunnel is ACTIVE (cloudflared is running).")
-		} else {
-			pterm.Info.Println("Tunnel is INACTIVE.")
+		config, err := loadFullConfig()
+		if err != nil {
+			return fmt.Errorf("cannot tell which tunnel to report on without the project config: %w", err)
 		}
+
+		record, recorded, err := readTunnelPIDRecord(config.ProjectName)
+		if err != nil {
+			return err
+		}
+		if !recorded {
+			pterm.Info.Println("Tunnel is INACTIVE.")
+			return nil
+		}
+		if !tunnelDeps.ProcessAlive(record.PID) {
+			// Nothing is running under that pid: the record is what is stale.
+			clearTunnelPID(config.ProjectName)
+			pterm.Info.Println("Tunnel is INACTIVE (stale record removed).")
+			return nil
+		}
+		observed, readable := tunnelDeps.ReadProcessArgv(record.PID)
+		if !readable || !tunnelArgvMatches(record.Argv, observed) {
+			// "Govard has no tunnel here" is true even when something else owns
+			// that pid, so this reports INACTIVE rather than erroring.
+			pterm.Info.Println("Tunnel is INACTIVE.")
+			return nil
+		}
+		pterm.Success.Printf("Tunnel is ACTIVE (pid %d).\n", record.PID)
 		return nil
 	},
 }
@@ -327,6 +423,26 @@ func SetTunnelDependenciesForTest(deps TunnelDependenciesForTest) func() {
 		tunnelDeps.RunCommand = deps.RunCommand
 	} else {
 		tunnelDeps.RunCommand = func(command *exec.Cmd) error { return command.Run() }
+	}
+	if deps.ReadProcessArgv != nil {
+		tunnelDeps.ReadProcessArgv = deps.ReadProcessArgv
+	} else {
+		tunnelDeps.ReadProcessArgv = readProcessArgv
+	}
+	if deps.ProcessAlive != nil {
+		tunnelDeps.ProcessAlive = deps.ProcessAlive
+	} else {
+		tunnelDeps.ProcessAlive = processAlive
+	}
+	if deps.SignalProcess != nil {
+		tunnelDeps.SignalProcess = deps.SignalProcess
+	} else {
+		tunnelDeps.SignalProcess = signalProcess
+	}
+	if deps.Now != nil {
+		tunnelDeps.Now = deps.Now
+	} else {
+		tunnelDeps.Now = time.Now
 	}
 	return func() {
 		tunnelDeps = previous

@@ -532,7 +532,7 @@ Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--a
 
 Mục do framework khai báo: mỗi framework khai báo mục checklist của riêng nó ngay trong package của nó — `VerifyToolItems` trên định nghĩa framework nêu id, pha, tiêu đề và đúng một lệnh `govard tool <binary> <args>` — rồi `RegistryFor` ghép chúng với registry tĩnh, nên `internal/verify` không hề nêu tên framework nào. Magento 2 khai báo `P5-MAG-01` (`setup:db:status` sau restore, đúng phần phát hiện mà `P5-07` còn thiếu); Laravel `P3-LAR-01..03` + `P5-LAR-01`; Symfony `P3-SYM-01..03` + `P5-SYM-01`; WordPress `P3-WP-01..03` + `P5-WP-01`. Chỉ những lệnh mà bộ khung của framework đảm bảo mới được khai báo, nên một mục không bao giờ đỏ vĩnh viễn vì thiếu bundle hay plugin tuỳ chọn.
 
-Mục remote: mọi mục có nêu remote — `P2-04`..`P2-08`, `P4-01`, `P4-03`..`P4-07` và `P4-13`..`P4-15` — đều lấy remote từ `--remote` và chỉ từ đó. Một lần chạy không có `--remote` sẽ đánh dấu skip các dòng đó với lý do `no --remote named: this item contacts a remote` thay vì đoán, nên checklist không bao giờ mở phiên tới bất cứ thứ gì dự án tình cờ gọi là `staging`/`stage`/`stg`; `P4-16` (`remote list`) không nêu remote nên vẫn chạy. `P4-13`..`P4-16` phủ nửa chỉ-đọc của bề mặt remote — `deploy plan`, `deploy status`, `deploy releases` và `remote list` — an toàn khi chạy vào một remote production. Checklist là một preflight chỉ-đọc, nên thứ ghi vào thì nằm ngoài nó một cách có chủ đích: `deploy check` không tạo gì trên target — probe quyền ghi của nó đi ngược lên parent tồn tại gần nhất ở đó rồi kiểm tra parent đó — và được chạy tay thay vì làm một dòng, trong khi `deploy unlock`/`deploy rollback` thay đổi lock và release state trên target, `db`/`snapshot`/`open -e` thay đổi trạng thái trên remote đích (không lệnh nào đề nghị ghi vào `authorized_keys` để tới được đó — việc thiết lập key là yêu cầu tường minh qua `govard remote copy-id <remote>`), và `tunnel stop` giết mọi tiến trình `cloudflared` trên máy.
+Mục remote: mọi mục có nêu remote — `P2-04`..`P2-08`, `P4-01`, `P4-03`..`P4-07` và `P4-13`..`P4-15` — đều lấy remote từ `--remote` và chỉ từ đó. Một lần chạy không có `--remote` sẽ đánh dấu skip các dòng đó với lý do `no --remote named: this item contacts a remote` thay vì đoán, nên checklist không bao giờ mở phiên tới bất cứ thứ gì dự án tình cờ gọi là `staging`/`stage`/`stg`; `P4-16` (`remote list`) không nêu remote nên vẫn chạy. `P4-13`..`P4-16` phủ nửa chỉ-đọc của bề mặt remote — `deploy plan`, `deploy status`, `deploy releases` và `remote list` — an toàn khi chạy vào một remote production. Checklist là một preflight chỉ-đọc, nên thứ ghi vào thì nằm ngoài nó một cách có chủ đích: `deploy check` không tạo gì trên target — probe quyền ghi của nó đi ngược lên parent tồn tại gần nhất ở đó rồi kiểm tra parent đó — và được chạy tay thay vì làm một dòng, trong khi `deploy unlock`/`deploy rollback` thay đổi lock và release state trên target, `db`/`snapshot`/`open -e` thay đổi trạng thái trên remote đích (không lệnh nào đề nghị ghi vào `authorized_keys` để tới được đó — việc thiết lập key là yêu cầu tường minh qua `govard remote copy-id <remote>`), và `tunnel stop` chỉ gửi tín hiệu tới đúng tunnel mà govard đã ghi nhận cho project, đồng thời từ chối mọi pid mà nó không xác nhận được là do chính mình khởi động.
 
 Mục probe: `P2-13` và `P4-11` gọi tới chính site của project, nên một project chưa cấu hình `domain` thì không probe được — chúng skip với lý do `no configured domain` thay vì đoán `localhost` rồi báo cáo về một môi trường khác. `P2-13` ưu tiên `https://<domain>/` và chỉ lùi về HTTP thuần khi chính tầng TLS không dùng được (CA cục bộ không được tin, hoặc một cổng trả lời bằng clear text), và evidence nêu scheme nó đã dùng; `P4-11` cần một payload health có `status` thật, nên câu trả lời không có body là đỏ chứ không phải xanh.
 
@@ -1023,6 +1023,15 @@ govard tunnel stop
 | `--provider <name>` | Provider tunnel (`cloudflare` là provider duy nhất hiện tại) |
 | `--no-tls-verify` | Bỏ qua xác thực TLS cho endpoint tunnel |
 | `--plan` | In kế hoạch khởi động rồi thoát, không chạy |
+
+`start` ghi lại tiến trình mà nó khởi chạy (PID cùng argv đã dùng để khởi chạy) vào
+`$GOVARD_HOME_DIR/tunnels/<project>.pid`, và từ chối khởi chạy tunnel thứ hai khi cái đó vẫn còn
+sống. `stop` và `status` đọc bản ghi đó thay vì dò trên máy, nên không lệnh nào có thể đụng tới một
+`cloudflared` mà govard không khởi chạy: `stop` chỉ gửi tín hiệu tới PID đã ghi và chỉ khi argv của
+nó vẫn khớp, còn lại từ chối kèm lỗi — không gửi tín hiệu nào — nếu không khớp hoặc không đọc được
+argv. `status` báo `INACTIVE` với bất kỳ tiến trình nào govard không thể nhận là của mình, vì
+"govard không có tunnel nào ở đây" vẫn đúng ngay cả khi tiến trình khác đang giữ PID đó. Khi không
+có bản ghi, `stop` không làm gì và thoát với mã 0.
 
 ::: important QUAN TRỌNG
 Binary `cloudflared` phải được bạn tự cài đặt riêng trên hệ thống.
