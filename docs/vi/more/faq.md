@@ -187,6 +187,8 @@ govard remote copy-id staging    # Sao chép SSH key của bạn lên remote
 ssh-add ~/.ssh/id_rsa            # Đảm bảo key đã được nạp vào SSH agent
 ```
 
+Thiết lập key là việc bạn chủ động yêu cầu, không phải một thao tác sửa chữa do govard tự thực hiện: `govard remote copy-id <remote>` là cách tường minh, và lệnh duy nhất còn đề nghị copy public key là `govard remote test` — lệnh mà nhiệm vụ chính là chẩn đoán lỗi xác thực — nơi lời đề nghị giờ mặc định là **Không** trừ khi bạn nói có. Remote write-protected thậm chí không được kết nối để hỏi.
+
 ### Q: Quá trình đồng bộ chạy rất lâu hoặc bị timeout
 
 - Sử dụng cờ `--no-compress` nếu CPU máy của bạn bị quá tải:

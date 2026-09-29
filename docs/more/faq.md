@@ -187,6 +187,12 @@ govard remote copy-id staging    # Copy your SSH key to the remote
 ssh-add ~/.ssh/id_rsa            # Ensure key is loaded in SSH agent
 ```
 
+Key setup is a request you make, not a repair govard performs: `govard remote
+copy-id <remote>` is the explicit way, and the only other command that offers to
+copy a public key is `govard remote test` — the one whose whole job is diagnosing
+an auth failure — where that offer now answers **No** unless you say yes. A
+write-protected remote is not contacted to ask at all.
+
 ### Q: Sync takes forever or times out
 
 - Use `--no-compress` if CPU is a bottleneck:

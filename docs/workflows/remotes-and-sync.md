@@ -48,6 +48,16 @@ govard remote test staging       # Validate SSH + rsync, measure latency, classi
 
 `remote test` identifies failure types: `network`, `auth`, `permission`, `host_key`, `dependency`.
 
+Setting up key authentication is always something you ask for: the explicit way
+is `govard remote copy-id <remote>`. The one other place govard offers to copy a
+key is `govard remote test`, whose whole job is diagnosing an auth failure — and
+that offer now answers **No** unless you say yes, so a single Enter copies
+nothing. A read or a sync against a remote you have not keyed never writes to
+that remote's `authorized_keys` as a side effect. On a **write-protected**
+remote (`--protected`, or an environment govard recognises as production) the
+offer is refused outright, and the remote is not even contacted to ask — set the
+key up explicitly when you mean to.
+
 ### Exec and Audit
 
 ```bash

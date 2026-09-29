@@ -79,6 +79,44 @@ func copySSHKeyToRemote(remoteName string, remoteCfg engine.RemoteConfig, pubKey
 	return sshCmd.Run()
 }
 
+// shouldOfferSSHKeyCopy is the whole decision, kept pure so it can be asserted
+// without a terminal, a key on disk or an SSH connection. A write-protected
+// remote is out on the same grounds as every other writing helper in the tree:
+// govard does not touch one unless a caller asked for a write explicitly, and
+// a key copy is a write to the remote's authorized_keys.
+func shouldOfferSSHKeyCopy(remoteName string, remoteCfg engine.RemoteConfig, interactive bool, pubKeyPath string) bool {
+	if !interactive {
+		return false
+	}
+	if blocked, _ := engine.RemoteWriteBlocked(remoteName, remoteCfg); blocked {
+		return false
+	}
+	return pubKeyPath != ""
+}
+
+// sshKeyCopyConfirmPrinter builds the prompt. pterm's own default is No; this
+// used to override it to Yes, so a single Enter copied a public key onto a
+// remote nobody had asked govard to write to. The default now takes pterm's,
+// and the text names the key so a Yes is still informed.
+func sshKeyCopyConfirmPrinter() *pterm.InteractiveConfirmPrinter {
+	return pterm.DefaultInteractiveConfirm.WithDefaultValue(false)
+}
+
+// ShouldOfferSSHKeyCopyForTest exposes shouldOfferSSHKeyCopy for tests.
+func ShouldOfferSSHKeyCopyForTest(remoteName string, remoteCfg engine.RemoteConfig, interactive bool, pubKeyPath string) bool {
+	return shouldOfferSSHKeyCopy(remoteName, remoteCfg, interactive, pubKeyPath)
+}
+
+// SSHKeyCopyConfirmPrinterForTest exposes sshKeyCopyConfirmPrinter for tests.
+func SSHKeyCopyConfirmPrinterForTest() *pterm.InteractiveConfirmPrinter {
+	return sshKeyCopyConfirmPrinter()
+}
+
+// OfferSSHKeyCopyOnAuthFailureForTest exposes offerSSHKeyCopyOnAuthFailure for tests.
+func OfferSSHKeyCopyOnAuthFailureForTest(remoteName string, remoteCfg engine.RemoteConfig) error {
+	return offerSSHKeyCopyOnAuthFailure(remoteName, remoteCfg)
+}
+
 // offerSSHKeyCopyOnAuthFailure probes SSH auth for the given remote and, if
 // key-based authentication fails, interactively offers to copy the local
 // SSH public key before the caller proceeds to the full SSH connection.
@@ -86,7 +124,22 @@ func copySSHKeyToRemote(remoteName string, remoteCfg engine.RemoteConfig, pubKey
 // Returns an error only for non-auth failures (network, host key, etc.).
 // Auth failures are handled by offering copy-id; if the user declines,
 // nil is returned so the caller can fall through to password-based SSH.
+//
+// The write-protected check runs before remote.ProbeSSHAuth on purpose: this
+// helper must not open a session to a remote the project has declared off-limits
+// for writes, even a read-only `ssh <host> true` probe. Key setup for such a
+// remote is a request the user makes, not a repair govard performs.
 func offerSSHKeyCopyOnAuthFailure(remoteName string, remoteCfg engine.RemoteConfig) error {
+	if blocked, reason := engine.RemoteWriteBlocked(remoteName, remoteCfg); blocked {
+		pterm.Info.Printf(
+			"Remote '%s' is write-protected (%s): govard will not probe it or copy a key into its authorized_keys. Set key authentication up explicitly with `govard remote copy-id %s`.\n",
+			remoteName,
+			reason,
+			remoteName,
+		)
+		return nil
+	}
+
 	probeErr := remote.ProbeSSHAuth(remoteName, remoteCfg)
 	if probeErr == nil {
 		return nil // Auth OK, nothing to do
@@ -109,8 +162,15 @@ func offerSSHKeyCopyOnAuthFailure(remoteName string, remoteCfg engine.RemoteConf
 		return nil
 	}
 
-	confirmed, _ := pterm.DefaultInteractiveConfirm.
-		WithDefaultValue(true).
+	// Belt and braces: the remote and the key are re-checked through the single
+	// predicate that decides, so reordering or dropping either condition above
+	// cannot quietly re-open the offer. `interactive` is the tty gate above,
+	// already answered, so it is passed as the `true` it is.
+	if !shouldOfferSSHKeyCopy(remoteName, remoteCfg, true, pubKeyPath) {
+		return nil
+	}
+
+	confirmed, _ := sshKeyCopyConfirmPrinter().
 		Show(fmt.Sprintf(
 			"SSH key auth failed for '%s'. Copy your public key (%s) to the remote server?",
 			remoteName,

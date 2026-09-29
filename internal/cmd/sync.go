@@ -285,14 +285,6 @@ Case Studies:
 			}
 		}
 
-		// Pre-flight check: offer SSH key copy if auth fails on remote endpoints
-		if source != "local" {
-			_ = offerSSHKeyCopyOnAuthFailure(source, config.Remotes[source])
-		}
-		if destination != "local" {
-			_ = offerSSHKeyCopyOnAuthFailure(destination, config.Remotes[destination])
-		}
-
 		syncMessage := fmt.Sprintf("Synchronizing %s from '%s' to '%s'...", strings.Join(syncScopes(execOpts), ", "), source, destination)
 		pterm.Info.Println(syncMessage)
 
