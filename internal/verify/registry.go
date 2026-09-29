@@ -2,6 +2,9 @@ package verify
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"govard/internal/engine"
@@ -83,6 +86,159 @@ func withRemote(inner func(ctx context.Context, cfg engine.Config, opts VerifyOp
 		}
 		return inner(ctx, cfg, opts, opts.Remote)
 	}
+}
+
+// auditRunIdentity is the part of `audit run --format json` the lifecycle needs:
+// the session it created and the run it recorded. It is a local struct rather
+// than internal/audit's RunResult — verify drives the CLI, so it must not gain a
+// dependency on the audit store.
+type auditRunIdentity struct {
+	SessionID string `json:"session_id"`
+	RunID     string `json:"run_id"`
+}
+
+// auditRunIdentityFrom reads session_id and run_id out of a run's JSON excerpt.
+//
+// It walks tokens instead of calling json.Unmarshal for two structural reasons.
+// execGovard keeps only the first 500 characters of a child's output
+// (exec.go:66-69) while a real run is far longer — every job's evidence map is
+// inlined, measured at 1996 bytes on a skeleton project — so the document is
+// normally cut short and Unmarshal would reject it, turning the item into a
+// permanent skip. And the excerpt is the child's merged stdout and stderr
+// (exec.go:52-53), so a line logged before the JSON sits in front of it — a
+// queued or stale audit lock logs through slog on exactly that path
+// (internal/cmd/audit_target.go:290, :328, :345). Both ids are encoded before
+// anything else (internal/audit/model.go:92-93), so the walk starts at the first
+// brace and stops as soon as it has them; it never has to read the truncated
+// tail.
+func auditRunIdentityFrom(excerpt string) auditRunIdentity {
+	var identity auditRunIdentity
+	start := strings.Index(excerpt, "{")
+	if start < 0 {
+		return identity
+	}
+	decoder := json.NewDecoder(strings.NewReader(excerpt[start:]))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
+		return identity
+	}
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		name, ok := key.(string)
+		if !ok {
+			break
+		}
+		switch name {
+		case "session_id":
+			_ = decoder.Decode(&identity.SessionID)
+		case "run_id":
+			_ = decoder.Decode(&identity.RunID)
+		default:
+			// Skipping a value means consuming it whole, nested objects and
+			// arrays included; a truncated one ends the walk with what was read.
+			var discard json.RawMessage
+			if err := decoder.Decode(&discard); err != nil {
+				return identity
+			}
+		}
+		if identity.SessionID != "" && identity.RunID != "" {
+			return identity
+		}
+	}
+	return identity
+}
+
+// auditLifecycleEvidence is P3-15. Every command in its title needs a session id
+// the item has to supply itself: `audit status` errors with "audit status
+// requires --session" before it reads any project state (internal/cmd/audit.go:
+// 425) and `audit result` also requires --run (:451), so the row was red on
+// every project and could never go green (issue #493).
+//
+// The session comes from the item's own container-free `audit run --checks
+// integrity` — the `audit` group declares runtime requirement `none`
+// (internal/cmd/audit.go:194) and a run only needs a container runtime for the
+// lint/profiler checks it did not select (:250-256) — never from a
+// package-level variable: Run receives VerifyOpts by value and the registry is
+// shared, so remembering the last session there would be mutable library state
+// serving one item.
+//
+// The creating run is this item's session factory, not its subject: its exit
+// code is the integrity verdict (a manifest finding makes it exit non-zero while
+// still printing the JSON that carries the ids), and the item does not read it —
+// rerun re-executes the same checks, so a findings verdict still reaches the row
+// through the lifecycle. A run that yielded no complete identity — no project, no
+// framework, an xdebug guard this run did not waive, or a decode that stopped
+// between the two ids — skips, and its reason names the missing half and the
+// child's exit code so the artifact says why.
+func auditLifecycleEvidence(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	create := []string{"audit", "run", "--checks", "integrity", "--format", "json"}
+	if opts.AllowXdebug {
+		create = append(create, "--allow-xdebug")
+	}
+	created := execGovard(ctx, cfg, opts, create...)
+	identity := auditRunIdentityFrom(created.OutputExcerpt)
+	// Both ids are required, not just the session: `audit result` rejects an
+	// empty --run (internal/cmd/audit.go:451), so a half identity would turn the
+	// skip the brief mandates into a red. The decode can stop between the two
+	// keys — the excerpt is cut at 500 characters (exec.go:66-69) and a walk that
+	// hits the cut after session_id returns exactly that half identity.
+	if identity.SessionID == "" || identity.RunID == "" {
+		return Skip(auditIdentitySkipReason(identity, created.ExitCode))
+	}
+
+	status := []string{"audit", "status", "--session", identity.SessionID, "--format", "json"}
+	result := []string{"audit", "result", "--session", identity.SessionID, "--run", identity.RunID, "--format", "json"}
+	rerun := []string{"audit", "rerun", "--session", identity.SessionID, "--format", "json"}
+	// `--allow-xdebug` belongs on the two calls that enforce the guard — `run`
+	// and `rerun` (internal/cmd/audit.go:264, :384) — not on the read-only pair,
+	// which never consult it. The flag is persistent on the audit group (:211),
+	// so all four subcommands accept it; waiving it on the creating run alone
+	// would just move the red to the rerun that follows.
+	if opts.AllowXdebug {
+		rerun = append(rerun, "--allow-xdebug")
+	}
+
+	// The verdict is the lifecycle's: a failing command is returned as it is
+	// instead of being overwritten by a later green one, and every non-zero exit
+	// is red. Measured on this branch: `status` and `result` never exit non-zero
+	// for a findings verdict (they exit 0 and print the session or the run),
+	// while `rerun` exits 1 both for "the re-run adjudicated findings" (exit 1
+	// *with* the RunResult on stdout) and for a genuine failure (exit 1 with
+	// nothing on stdout), so the code alone cannot separate the two and the item
+	// does not try. Red set: 1 (execution), 2 (usage), 3 (capability), 4
+	// (config).
+	var evidence Evidence
+	for _, argv := range [][]string{status, result, rerun} {
+		evidence = execGovard(ctx, cfg, opts, argv...)
+		if evidence.ExitCode != 0 {
+			return evidence
+		}
+	}
+	return evidence
+}
+
+// auditIdentitySkipReason says which half of the identity the creating run did
+// not yield, and what that run exited with.
+//
+// The exit code is the whole diagnostic this skip can carry: Skip has no
+// evidence field, and the child's excerpt is truncated log noise that must not
+// be pasted into a report. A zero here means the run claims success yet printed
+// nothing usable — a decode that stopped inside the document — while a non-zero
+// one says the child itself failed and the reason is that failure, not the parse.
+//
+// The phrase "audit run produced no session id" is the one the brief pins, and it
+// survives verbatim whenever the session id is what is missing.
+func auditIdentitySkipReason(identity auditRunIdentity, exitCode int) string {
+	missing := make([]string, 0, 2)
+	if identity.SessionID == "" {
+		missing = append(missing, "session id")
+	}
+	if identity.RunID == "" {
+		missing = append(missing, "run id")
+	}
+	return fmt.Sprintf("audit run produced no %s (exit %d)", strings.Join(missing, " or "), exitCode)
 }
 
 // Registry is the static checklist: 60 items across 5 phases
@@ -254,7 +410,7 @@ var Registry = []Item{
 		return execGovard(ctx, cfg, opts, "audit", "run", "--checks", "lint", "--mode", "standalone", "--format", "json")
 	}},
 	{ID: "P3-15", Phase: 3, Title: "govard audit status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Precond: "P3-10 or P3-11 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		return execGovard(ctx, cfg, opts, "audit", "status", "--format", "json")
+		return auditLifecycleEvidence(ctx, cfg, opts)
 	}},
 
 	// Phase 4 — Sync / Safety / Snapshot (16)
