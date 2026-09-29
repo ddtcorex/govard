@@ -312,6 +312,12 @@ type FrameworkDefinition struct {
 	// frameworks.Register via engine.RegisterVerifyToolItems. nil for
 	// frameworks that declare none.
 	VerifyToolItems []engine.VerifyToolItem
+	// VerifySupport is the discovery the framework's own `govard verify` items
+	// need to build their argv — today the module directory a Magento audit's
+	// module-scoped modes require. Populated by frameworks.Register via
+	// engine.RegisterVerifySupport. nil for frameworks whose checklist items
+	// name no framework-specific directory.
+	VerifySupport *engine.VerifySupport
 
 	// VersionProfileResolver resolves this framework's version-specific
 	// runtime-profile overrides (e.g. Magento 2's per-patch-release stack),

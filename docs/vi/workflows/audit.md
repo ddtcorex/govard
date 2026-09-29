@@ -59,7 +59,7 @@ Artifact: `runs/<run-id>/artifacts/profiler/profile.csv` + digest SHA-256.
 
 ## Chế độ target (`--mode`)
 
-`auto` (mặc định) tự phân loại thư mục hiện tại:
+`auto` (mặc định) tự phân loại thư mục mà target được phân giải từ đó: thư mục làm việc hiện tại, hoặc `--path <dir>` nếu được truyền.
 
 | Mode | Khi nào | Phạm vi phân tích |
 | :--- | :--- | :--- |
@@ -68,6 +68,9 @@ Artifact: `runs/<run-id>/artifacts/profiler/profile.csv` + digest SHA-256.
 | `standalone` | Thư mục là module không có project Magento ở trên | Chỉ module đó (deps cài vào worktree tạm) |
 
 Ép buộc với `--mode project|module_in_project|standalone` — lỗi nếu thư mục không thỏa.
+`audit run` và `audit diff` nhận `--path <dir>` để phân giải target ở nơi khác thư mục làm việc
+hiện tại (đường dẫn tương đối được tính theo thư mục đó; thư mục phải tồn tại), nhờ vậy có thể
+audit một module mà không cần đổi thư mục trước. Chi tiết xem `docs/reference/cli-commands.md`.
 
 ---
 

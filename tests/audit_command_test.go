@@ -86,6 +86,78 @@ func TestAuditDiffRejectsInvalidOrConflictingScope(t *testing.T) {
 	}
 }
 
+// `audit run` resolved its target from the process cwd alone — commandStartDirectory
+// read os.Getwd and ignored positional arguments (internal/cmd/audit.go:238) —
+// so an item that has to audit a directory other than the one it runs in had no
+// way to say so. That is exactly how P3-13/P3-14 were red on every project:
+// launched from the project root, a module two levels down was never in scope
+// (issue #490). `--path` is that way; an omitted flag keeps resolving the cwd, so
+// every existing invocation is unchanged.
+func TestAuditRunAcceptsAPathFlag(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	module := standaloneAuditModule(t, "vendor/audit-module")
+	wantModule, err := filepath.EvalSymlinks(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProject, err := filepath.EvalSymlinks(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("path outside the working directory", func(t *testing.T) {
+		backend := &commandLintBackend{}
+		var request cmd.AuditRunnerRequest
+		captureAuditRunnerRequest(t, backend, &request)
+
+		if _, err := executeAuditCommand(t, project, []string{"audit", "run", "--mode", "standalone", "--path", module}); err != nil {
+			t.Fatal(err)
+		}
+		if request.Target.Mode != types.AuditTargetStandalone {
+			t.Fatalf("target mode = %q, want %q: --path must decide the target", request.Target.Mode, types.AuditTargetStandalone)
+		}
+		if request.Target.TargetPath != wantModule {
+			t.Fatalf("target path = %q, want %q", request.Target.TargetPath, wantModule)
+		}
+		if request.ProjectRoot != wantModule {
+			t.Fatalf("runner project root = %q, want %q", request.ProjectRoot, wantModule)
+		}
+	})
+
+	t.Run("relative path resolves against the working directory", func(t *testing.T) {
+		relative, err := filepath.Rel(project, module)
+		if err != nil {
+			t.Fatal(err)
+		}
+		backend := &commandLintBackend{}
+		var request cmd.AuditRunnerRequest
+		captureAuditRunnerRequest(t, backend, &request)
+
+		if _, err := executeAuditCommand(t, project, []string{"audit", "run", "--mode", "standalone", "--path", relative}); err != nil {
+			t.Fatal(err)
+		}
+		if request.Target.TargetPath != wantModule {
+			t.Fatalf("target path for --path %q = %q, want %q", relative, request.Target.TargetPath, wantModule)
+		}
+	})
+
+	t.Run("default stays the working directory", func(t *testing.T) {
+		backend := &commandLintBackend{}
+		var request cmd.AuditRunnerRequest
+		captureAuditRunnerRequest(t, backend, &request)
+
+		if _, err := executeAuditCommand(t, project, []string{"audit", "run"}); err != nil {
+			t.Fatal(err)
+		}
+		if request.Target.Mode != types.AuditTargetProject {
+			t.Fatalf("target mode = %q, want %q", request.Target.Mode, types.AuditTargetProject)
+		}
+		if request.Target.TargetPath != wantProject {
+			t.Fatalf("target path = %q, want the working directory %q", request.Target.TargetPath, wantProject)
+		}
+	})
+}
+
 func TestAuditRerunRequiresExplicitSession(t *testing.T) {
 	project := auditCommandProject(t, "magento2")
 	_, err := executeAuditCommand(t, project, []string{"audit", "rerun"})

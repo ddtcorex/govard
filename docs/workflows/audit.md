@@ -61,7 +61,7 @@ Artifacts: `runs/<run-id>/artifacts/profiler/profile.csv` + SHA-256 digest.
 
 ## Target Modes (`--mode`)
 
-`auto` (default) classifies the current directory:
+`auto` (default) classifies the directory the target is resolved from: the current working directory, or `--path <dir>` when given.
 
 | Mode | When | What is analyzed |
 | :--- | :--- | :--- |
@@ -70,6 +70,9 @@ Artifacts: `runs/<run-id>/artifacts/profiler/profile.csv` + SHA-256 digest.
 | `standalone` | Directory is a module with no Magento project above it | Only the module (deps installed into a scratch worktree) |
 
 Force with `--mode project|module_in_project|standalone` — fails if the directory doesn't support it.
+`audit run` and `audit diff` accept `--path <dir>` to resolve the target somewhere other than the
+current working directory (a relative path resolves against it; the directory must exist), so a module
+can be audited without changing directory first. `docs/reference/cli-commands.md` has the details.
 
 ---
 

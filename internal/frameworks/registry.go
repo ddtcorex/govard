@@ -310,6 +310,9 @@ func registerEngineDefinition(def types.FrameworkDefinition) {
 	if len(def.VerifyToolItems) > 0 {
 		engine.RegisterVerifyToolItems(def.Name, def.VerifyToolItems)
 	}
+	if def.VerifySupport != nil {
+		engine.RegisterVerifySupport(def.Name, *def.VerifySupport)
+	}
 	if def.VersionProfileResolver != nil {
 		engine.RegisterVersionProfileResolver(def.Name, def.VersionProfileResolver)
 	}
