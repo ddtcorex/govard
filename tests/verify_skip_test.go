@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"govard/internal/engine"
@@ -158,17 +159,40 @@ func TestGatedItemsAreCountedInAMergedAllPhasesRun(t *testing.T) {
 	// exec P3-15 is handed no audit session id and skips instead of reporting a
 	// green from a child that never ran.
 	dropped := 0
+	gatedByFramework := map[string]bool{}
 	for _, it := range verify.RegistryFor(cfg) {
 		if it.Phase != 3 || it.When == nil || it.When(cfg) {
 			continue
 		}
 		dropped++
+		gatedByFramework[it.ID] = true
 		if !skipped[it.ID] {
 			t.Fatalf("phase-3 row %s was dropped by the old filter but is not a skipped row in the report", it.ID)
 		}
 	}
 	if dropped == 0 {
 		t.Fatal("no phase-3 row is gated on this framework: this test can no longer see the row growth it exists for")
+	}
+
+	// A skip that names the wrong cause is the one lie this field can still tell.
+	// `When` is a framework predicate, so the gate that fired is the framework,
+	// not the item's precondition text — which on a Magento item reads like a
+	// prior step ("P2-01 up") and sends the operator looking for a broken
+	// environment instead of a project on the wrong framework. Only the
+	// framework-gated rows are checked: a row that skipped for a reason of its
+	// own (no module, no audit session) already tells the truth.
+	for _, it := range gated.Items {
+		if !gatedByFramework[it.ID] {
+			continue
+		}
+		if !strings.Contains(it.SkipReason, "framework") {
+			t.Errorf("framework-gated row %s skipped with %q, want a reason naming the framework gate rather than its Precond text", it.ID, it.SkipReason)
+		}
+	}
+	if row, ok := findRunItem(gated, "P3-01"); !ok {
+		t.Fatal("P3-01 left no row in the phase-3 report")
+	} else if !row.Skipped || !strings.Contains(row.SkipReason, "laravel") {
+		t.Errorf("P3-01 row = skipped %v reason %q, want a reason naming the project's framework (laravel)", row.Skipped, row.SkipReason)
 	}
 
 	// The merge path for a whole run: copy the first phase, append the next
