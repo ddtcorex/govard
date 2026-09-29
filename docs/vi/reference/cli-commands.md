@@ -1026,9 +1026,10 @@ govard tunnel stop
 
 `start` ghi lại tiến trình mà nó khởi chạy (PID cùng argv đã dùng để khởi chạy) vào
 `$GOVARD_HOME_DIR/tunnels/<project>.pid`, và từ chối khởi chạy tunnel thứ hai khi cái đó vẫn còn
-sống. `stop` và `status` đọc bản ghi đó thay vì dò trên máy, nên không lệnh nào có thể đụng tới một
-`cloudflared` mà govard không khởi chạy: `stop` chỉ gửi tín hiệu tới PID đã ghi và chỉ khi argv của
-nó vẫn khớp, còn lại từ chối kèm lỗi — không gửi tín hiệu nào — nếu không khớp hoặc không đọc được
+sống. `stop` và `status` đọc bản ghi đó thay vì dò trên máy, nên không lệnh nào đụng tới một
+`cloudflared` mà govard không khởi chạy — trừ khi nó chạy đúng dòng lệnh mà bản ghi ghi, thứ mà một
+bản cài khác của cùng binary không phân biệt được: `stop` chỉ gửi tín hiệu tới PID đã ghi và chỉ khi
+argv của nó vẫn khớp, còn lại từ chối kèm lỗi — không gửi tín hiệu nào — nếu không khớp hoặc không đọc được
 argv. `status` báo `INACTIVE` với bất kỳ tiến trình nào govard không thể nhận là của mình, vì
 "govard không có tunnel nào ở đây" vẫn đúng ngay cả khi tiến trình khác đang giữ PID đó. Khi không
 có bản ghi, `stop` không làm gì và thoát với mã 0.
