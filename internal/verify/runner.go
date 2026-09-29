@@ -232,7 +232,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 	// Filter. An unmet When predicate no longer drops the item: the row stays,
 	// marked with the reason it did not run. A missing row is worse than a red,
 	// because a red is evidence. The guard policy below marks a row the same
-	// way, and a --checks filter will.
+	// way, and so does the --checks selection.
 	type filteredItem struct {
 		item    Item
 		skipped bool
@@ -252,6 +252,15 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 		// Run is never called.
 		if decision := DecideGuard(it, phase, opts); !decision.Run {
 			filtered = append(filtered, filteredItem{item: it, skipped: true, reason: decision.Reason})
+			continue
+		}
+		// The --checks selection narrows last, after the safety decision: a
+		// guard verdict is a property of the run, and an item the run may not
+		// perform must keep saying so even when the selection also leaves it
+		// out, so the report cannot be filtered into hiding a gate. (No item
+		// declares both today, so the order decides no verdict yet.)
+		if len(opts.Checks) > 0 && !selectedByChecks(it.Checks, opts.Checks) {
+			filtered = append(filtered, filteredItem{item: it, skipped: true, reason: checksFilterReason(opts.Checks, it.Checks)})
 			continue
 		}
 		filtered = append(filtered, filteredItem{item: it})
@@ -315,6 +324,33 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 	}
 
 	return res, nil
+}
+
+// selectedByChecks reports whether a run that asked for requested includes an
+// item that declares declared. An item that declares nothing is not
+// check-specific — nothing about it belongs to one check — so it is kept
+// whatever the selection is. The comparison mirrors `audit run`'s own --checks
+// matching (internal/cmd/audit.go: auditChecksInclude trims the requested name
+// and compares it exactly), so a name verify accepts is a name audit accepts.
+func selectedByChecks(declared, requested []string) bool {
+	if len(declared) == 0 {
+		return true
+	}
+	for _, want := range requested {
+		for _, have := range declared {
+			if strings.TrimSpace(want) == have {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checksFilterReason is the skip a row reports when the run's --checks selection
+// left the item out: the operator's own choice, named so the artifact says which
+// check would have included the item.
+func checksFilterReason(requested, declared []string) string {
+	return "--checks " + strings.Join(requested, ",") + " excludes this item, which exercises " + strings.Join(declared, ",")
 }
 
 func phaseLabel(phase int) string {
