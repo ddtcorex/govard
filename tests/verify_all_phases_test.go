@@ -20,6 +20,11 @@ import (
 func runVerifyAllPhases(t *testing.T, project string, extraArgs ...string) (map[string]any, error) {
 	t.Helper()
 
+	// Every item is faked so nothing touches Docker — and the two host-probe
+	// items (P2-13, P4-11) need the probe fake too: they do their own HTTP
+	// against the domain derived from the project directory name.
+	fakeProbeHTTP(t)
+
 	stdout := &bytes.Buffer{}
 	pterm.SetDefaultOutput(stdout)
 	t.Cleanup(func() { pterm.SetDefaultOutput(nil) })

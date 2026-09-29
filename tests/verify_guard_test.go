@@ -28,6 +28,9 @@ func installGuardProbe(t *testing.T) *guardProbe {
 		return verify.Evidence{ExitCode: 0, OutputExcerpt: "fake: " + strings.Join(args, " ")}, true
 	})
 	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
+	// The two host-probe items (P2-13, P4-11) do their own HTTP, so faking the
+	// executor is not enough to keep this file's runs inside the process.
+	fakeProbeHTTP(t)
 	return probe
 }
 

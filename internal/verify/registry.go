@@ -179,18 +179,8 @@ var Registry = []Item{
 	{ID: "P2-12", Phase: 2, Title: "govard tool composer validate", Precond: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "composer", "validate")
 	}},
-	{ID: "P2-13", Phase: 2, Title: "curl -k https://{{DOMAIN}}/ + curl -k http://{{DOMAIN}}/", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		domain := cfg.Domain
-		if domain == "" {
-			domain = "localhost"
-		}
-		ev := execGovard(ctx, cfg, opts, "tool", "curl", "-k", "https://"+domain+"/")
-		if ev.ExitCode != 0 {
-			ev2 := execGovard(ctx, cfg, opts, "tool", "curl", "-k", "http://"+domain+"/")
-			ev.OutputExcerpt += " | http: " + ev2.OutputExcerpt
-			ev.ExitCode = ev2.ExitCode
-		}
-		return ev
+	{ID: "P2-13", Phase: 2, Title: "<domain> answers over https (http only when the TLS handshake fails)", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return probeSite(ctx, cfg.Domain)
 	}},
 	{ID: "P2-14", Phase: 2, Title: "govard open --help", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "open", "--help")
@@ -312,8 +302,8 @@ var Registry = []Item{
 		// returned nil — the item went green without running redis at all.
 		return execGovard(ctx, cfg, opts, "redis", "cli", "ping")
 	}},
-	{ID: "P4-11", Phase: 4, Title: "curl -s http://{{DOMAIN}}:9200 / opensearch health", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		return execGovard(ctx, cfg, opts, "tool", "curl", "-s", "http://localhost:9200")
+	{ID: "P4-11", Phase: 4, Title: "<domain>:9200/_cluster/health answers a search health payload", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return probeSearchHealth(ctx, cfg.Domain)
 	}},
 	{ID: "P4-12", Phase: 4, Title: "govard logs --tail 20 + govard ps cross-project", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "logs", "--tail", "20")
