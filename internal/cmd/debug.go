@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os/exec"
-	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -95,6 +94,33 @@ var debugShellCmd = &cobra.Command{
 	},
 }
 
+// debugShellInvocation builds the argv that opens the debug container's shell,
+// keeping the Xdebug exports the IDE session keys on.
+//
+// A bare `govard debug` is an interactive session: nothing is forwarded, and the
+// caller must exec it with stdin attached. A passthrough invocation is a
+// one-shot wrapper and keeps its stdin detached, like `govard sh -c`.
+//
+// The passthrough must not flatten its args into a single string. Joining them
+// made `govard debug shell -c "php -r 'echo 1;'"` reach bash as three separate
+// words, so bash ran `php` with no arguments and the command silently did
+// nothing. The `bash -c SCRIPT NAME ARGS...` idiom hands them back through
+// "$@" with their boundaries and quoting intact.
+func debugShellInvocation(projectName string, shell string, args []string) (string, []string) {
+	exports := fmt.Sprintf("export XDEBUG_SESSION=PHPSTORM; export PHP_IDE_CONFIG=\"serverName=%s-docker\";", projectName)
+	if len(args) == 0 {
+		// Colored PS1 trick, matching the `govard sh` session.
+		coloredPS1 := "\\[\\033[01;36m\\]\\u@\\h\\[\\033[00m\\]:\\w\\$ "
+		return shell, []string{"-c", fmt.Sprintf("%s export PS1='%s'; exec %s", exports, coloredPS1, shell)}
+	}
+	return shell, append([]string{"-c", fmt.Sprintf("%s exec %s \"$@\"", exports, shell), shell}, args...)
+}
+
+// DebugShellInvocationForTest exposes debugShellInvocation for tests in /tests.
+func DebugShellInvocationForTest(projectName string, args []string) (string, []string) {
+	return debugShellInvocation(projectName, "bash", args)
+}
+
 func runDebugShell(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
 		return cmd.Help()
@@ -111,24 +137,20 @@ func runDebugShell(cmd *cobra.Command, args []string) error {
 
 	pterm.Info.Printf("IDE Server Name: %s-docker\n", config.ProjectName)
 
-	if len(args) == 0 {
-		// Interactive session with colored PS1 trick and Xdebug exports
-		coloredPS1 := "\\[\\033[01;36m\\]\\u@\\h\\[\\033[00m\\]:\\w\\$ "
-		bashCmd := fmt.Sprintf("export XDEBUG_SESSION=PHPSTORM; export PHP_IDE_CONFIG=\"serverName=%s-docker\"; export PS1='%s'; exec bash", config.ProjectName, coloredPS1)
-		err = RunInContainer(containerName, user, "bash", []string{"-c", bashCmd})
-	} else {
-		// Passthrough commands (e.g. govard debug shell -c "...")
-		// We still prefix with Xdebug exports so the command has the debugger active.
-		cmdStr := strings.Join(args, " ")
-		bashCmd := fmt.Sprintf("export XDEBUG_SESSION=PHPSTORM; export PHP_IDE_CONFIG=\"serverName=%s-docker\"; exec bash %s", config.ProjectName, cmdStr)
-		err = RunInContainer(containerName, user, "bash", []string{"-c", bashCmd})
-	}
+	// Only the bare form is a session. `docker exec` without -i hands bash an
+	// already-closed stdin, so it would exit on the spot and the shell would
+	// never open; a passthrough is a one-shot and keeps its stdin detached.
+	interactive := len(args) == 0
+	binary, argv := debugShellInvocation(config.ProjectName, "bash", args)
+	err = RunInContainerAt(containerName, user, conventions.DefaultWorkDir, binary, argv, interactive)
 
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		code := exitErr.ExitCode()
 		if code == 126 || code == 127 {
-			// Fallback to sh if bash is not available/executable
-			err = RunInContainer(containerName, user, "sh", args)
+			// Fallback to sh if bash is not available/executable. The exports
+			// live in the script, so sh keeps them too.
+			shBinary, shArgv := debugShellInvocation(config.ProjectName, "sh", args)
+			err = RunInContainerAt(containerName, user, conventions.DefaultWorkDir, shBinary, shArgv, interactive)
 		}
 	}
 
