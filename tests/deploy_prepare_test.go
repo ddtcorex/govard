@@ -1276,6 +1276,262 @@ func TestLockIsReleasedWhenTheOwnerCannotBeRecorded(t *testing.T) {
 	}
 }
 
+// A fresh host has no deploy path, and that is the normal state a first deploy
+// meets: the preflight has to answer from the nearest existing parent rather
+// than make the path so it can find it writable.
+func TestCoreCheckDoesNotCreateAnAbsentDeployPath(t *testing.T) {
+	root := t.TempDir()
+	absent := filepath.Join(root, "public_html") // a fresh host's normal state
+	sc := deploy.StepContextForTest(deploy.HostForTest(absent, deploy.LocalRunner{}), deploy.Options{})
+	out := &bytes.Buffer{}
+	sc.Out = out
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("a fresh deploy path must not fail the check: %v", err)
+	}
+	if _, err := os.Stat(absent); !os.IsNotExist(err) {
+		t.Fatalf("deploy check created %s (stat err = %v)", absent, err)
+	}
+	if !strings.Contains(out.String(), "does not exist") || !strings.Contains(out.String(), root) {
+		t.Fatalf("the note must name the parent that answered, out = %q", out.String())
+	}
+}
+
+// probeTail is the whole traversal the writability probe issues. Its only
+// variable is the start point, the quoted deploy path, so a present and an
+// absent path get the same probe: the process running govard never decides
+// whether the path exists — the shell on the target does.
+const probeTail = `; while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; test -w "$p"`
+
+// The command is the fix: it has to find the path's nearest existing parent on
+// the target with the shell, so the probe is read-only on the branch that has a
+// remote at all. Asserting the string is hermetic — no runner is invoked.
+func TestWritabilityProbeCommandIsOneReadOnlyShellProbe(t *testing.T) {
+	root := t.TempDir()
+	absent := filepath.Join(root, "srv", "www", "app", "public_html") // three levels missing
+
+	command, note := deploy.WritabilityProbeCommand(absent, true)
+	if strings.Contains(command, "mkdir") || strings.Contains(command, "rm ") || strings.Contains(command, "touch") {
+		t.Fatalf("the probe must create nothing: %q", command)
+	}
+	for _, want := range []string{"[ ! -e ", "dirname", `[ "$p" != "/" ]`, "test -w "} {
+		if !strings.Contains(command, want) {
+			t.Fatalf("probe %q must traverse to an existing parent and test it (missing %q)", command, want)
+		}
+	}
+	if want := "p=" + deploy.Shell(absent) + probeTail; command != want {
+		t.Fatalf("command = %q, want the read-only traversal %q", command, want)
+	}
+	if !strings.Contains(note, root) || !strings.Contains(note, "does not exist") {
+		t.Fatalf("note = %q, want it to name %q", note, root)
+	}
+
+	// A path that exists is reported with no note either, and — the load-bearing
+	// part — the command does not change: the traversal would reach the same
+	// directory, so nothing about the host kind may alter the probe itself.
+	present := filepath.Join(root, "here")
+	if err := os.MkdirAll(present, 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	presentCommand, presentNote := deploy.WritabilityProbeCommand(present, true)
+	if want := "p=" + deploy.Shell(present) + probeTail; presentCommand != want {
+		t.Fatalf("an existing path must get the same probe, command = %q, want %q", presentCommand, want)
+	}
+	if presentNote != "" {
+		t.Fatalf("an existing path must need no note, got %q", presentNote)
+	}
+	remoteCommand, remoteNote := deploy.WritabilityProbeCommand(absent, false)
+	if remoteCommand != command {
+		t.Fatalf("the probe must not depend on whose filesystem it describes: %q vs %q", remoteCommand, command)
+	}
+	if remoteNote != "" {
+		t.Fatalf("a remote probe cannot know whether the path is absent or merely unwritable; note = %q, want empty", remoteNote)
+	}
+}
+
+// A remote host gets the same command: it runs through the runner, so the
+// traversal happens on the target and nothing is created there either — and
+// because this process cannot see that target, no note may claim the path is
+// absent. The runner is a capture wrapper over LocalRunner, so no SSH client is
+// involved.
+func TestWritabilityProbeCommandIsReadOnlyForARemoteHost(t *testing.T) {
+	remotePath := "/var/www/app/public_html"
+	commands := new([]string)
+	host := deploy.HostForTest(remotePath, deploy.LocalRunner{}).WithRunner(captureRunner{base: deploy.LocalRunner{}, seen: commands})
+	host.Local = false
+
+	sc := deploy.StepContextForTest(host, deploy.Options{})
+	// The probe is deliberately left to fail ("not writable" locally): the next
+	// check would dial a repository, and the probe is what this test is about.
+	err := deploy.CoreCheck(context.Background(), sc)
+	if err == nil || !strings.Contains(err.Error(), "is not writable") {
+		t.Fatalf("err = %v, want the writability refusal", err)
+	}
+	probe := ""
+	for _, command := range *commands {
+		if strings.Contains(command, "dirname") {
+			probe = command
+			break
+		}
+	}
+	if probe == "" {
+		t.Fatalf("the writability probe must go through the host's runner, saw %q", *commands)
+	}
+	if strings.Contains(probe, "mkdir") {
+		t.Fatalf("the remote branch must not create the deploy path: %q", probe)
+	}
+	for _, want := range []string{"[ ! -e ", "test -w "} {
+		if !strings.Contains(probe, want) {
+			t.Fatalf("remote probe %q must traverse on the target (missing %q)", probe, want)
+		}
+	}
+	if len(sc.Notes) != 0 {
+		t.Fatalf("nothing may be reported about a remote path's absence, notes = %q", sc.Notes)
+	}
+}
+
+func TestCoreCheckCleansUpTheAtomicRenameProbe(t *testing.T) {
+	root := t.TempDir()
+	deployPath := filepath.Join(root, "public_html")
+	if err := os.MkdirAll(deployPath, 0o755); err != nil {
+		t.Fatalf("seed deploy path: %v", err)
+	}
+	sc := deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{Publish: deploy.PublishSymlink})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(deployPath, ".dep")); !os.IsNotExist(err) {
+		t.Fatalf("the mv -T probe left %s/.dep behind (stat err = %v)", deployPath, err)
+	}
+}
+
+// ...but a .dep that was already there and is not empty is the target's state,
+// not the probe's litter: the probe must leave it exactly as it found it.
+func TestCoreCheckLeavesAPreExistingDepDirectoryAlone(t *testing.T) {
+	root := t.TempDir()
+	deployPath := filepath.Join(root, "public_html")
+	keep := filepath.Join(deployPath, ".dep", "keepme")
+	if err := os.MkdirAll(filepath.Dir(keep), 0o755); err != nil {
+		t.Fatalf("seed .dep: %v", err)
+	}
+	if err := os.WriteFile(keep, []byte("state"), 0o644); err != nil {
+		t.Fatalf("seed .dep content: %v", err)
+	}
+	sc := deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{Publish: deploy.PublishSymlink})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	content, err := os.ReadFile(keep)
+	if err != nil || string(content) != "state" {
+		t.Fatalf("a non-empty .dep must survive the probe untouched: content = %q, err = %v", content, err)
+	}
+	for _, leftover := range []string{".govard-mvprobe.link", ".govard-mvprobe.target"} {
+		if _, err := os.Stat(filepath.Join(deployPath, ".dep", leftover)); !os.IsNotExist(err) {
+			t.Fatalf("%s must be cleaned up (stat err = %v)", leftover, err)
+		}
+	}
+}
+
+// An existing but *empty* deploy path is the case the `fresh` guard exists for:
+// an empty directory says nothing about who made it, so the probe may only
+// remove one it found missing itself. Dropping the guard would delete a path the
+// operator created, and nothing else in the check notices.
+func TestCoreCheckLeavesAnExistingEmptyDeployPathAlone(t *testing.T) {
+	root := t.TempDir()
+	deployPath := filepath.Join(root, "public_html")
+	if err := os.MkdirAll(deployPath, 0o755); err != nil {
+		t.Fatalf("seed deploy path: %v", err)
+	}
+	sc := deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{Publish: deploy.PublishSymlink})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	info, err := os.Stat(deployPath)
+	if err != nil {
+		t.Fatalf("an existing empty deploy path must survive the probe: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("the deploy path must still be a directory")
+	}
+	if _, err := os.Stat(filepath.Join(deployPath, ".dep")); !os.IsNotExist(err) {
+		t.Fatalf("the probe's own .dep must still be cleaned up (stat err = %v)", err)
+	}
+}
+
+// The disk-space preflight is for the deploy, and a fresh host is exactly when
+// nobody has looked at its disk. `df` on a path that does not exist fails, so
+// the probe has to ask the nearest existing parent — otherwise the preflight is
+// a silent no-op on the first deploy, which is the case it was written for.
+func TestCoreCheckReportsFreeSpaceOnAFreshHost(t *testing.T) {
+	root := t.TempDir()
+	absent := filepath.Join(root, "public_html")
+	sc := deploy.StepContextForTest(deploy.HostForTest(absent, deploy.LocalRunner{}), deploy.Options{})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	joined := strings.Join(sc.Notes, " | ")
+	if !strings.Contains(joined, "free space") {
+		t.Fatalf("a fresh host has no deploy path for `df`, so it must be probed at the nearest existing parent; notes = %q", joined)
+	}
+}
+
+// A target whose `mv` is not GNU is the one host shape where the probe fails —
+// and it is the shape the documentation promises still leaves nothing behind. The
+// `rm -f` used to ride at the end of the `&&` chain, so a refusal short-circuited
+// it, and the surviving link kept `.dep` non-empty, which in turn kept the whole
+// deploy path alive for every later run.
+func TestCoreCheckLeavesNothingBehindWhenTheAtomicSwapFails(t *testing.T) {
+	root := t.TempDir()
+	deployPath := filepath.Join(root, "public_html")
+	shimNonGNUMv(t)
+
+	sc := deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{Publish: deploy.PublishSymlink})
+	if err := deploy.CoreCheck(context.Background(), sc); !errors.Is(err, deploy.ErrMoveAtomicUnsupported) {
+		t.Fatalf("err = %v, want ErrMoveAtomicUnsupported", err)
+	}
+	if _, err := os.Stat(deployPath); !os.IsNotExist(err) {
+		t.Fatalf("a failed mv -T probe left %s behind (stat err = %v)", deployPath, err)
+	}
+}
+
+// A deploy_path that is a file is a mistyped configuration, not a broken target:
+// `mkdir -p <file>/.dep` fails, and the operator used to be told the target's mv
+// lacks -T. The check must name the shape it found — on the target, so the remote
+// branch says it too.
+func TestCoreCheckRefusesADeployPathThatIsAFile(t *testing.T) {
+	root := t.TempDir()
+	deployPath := filepath.Join(root, "public_html")
+	if err := os.WriteFile(deployPath, []byte("not a directory"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	out := &bytes.Buffer{}
+	sc := deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{})
+	sc.Out = out
+	err := deploy.CoreCheck(context.Background(), sc)
+	if !errors.Is(err, deploy.ErrDeployPathNotADirectory) {
+		t.Fatalf("err = %v, want ErrDeployPathNotADirectory: a file at deploy_path is a path-shape fault, not an mv fault", err)
+	}
+	if !strings.Contains(out.String(), "not a directory") {
+		t.Fatalf("the note must say the path is not a directory, out = %q", out.String())
+	}
+	if content, readErr := os.ReadFile(deployPath); readErr != nil || string(content) != "not a directory" {
+		t.Fatalf("refusing must leave the file alone: content = %q, err = %v", content, readErr)
+	}
+}
+
+// shimNonGNUMv puts a `mv` that refuses -T at the front of PATH for this test,
+// so the atomic-rename probe fails on a real shell exactly as it would on a
+// target whose mv is not GNU. The refusal uses 64, a code no command in the
+// probe chain produces, so it cannot be mistaken for the shape check.
+func shimNonGNUMv(t *testing.T) {
+	t.Helper()
+	shim := t.TempDir()
+	script := "#!/bin/sh\nfor arg in \"$@\"; do\n  [ \"$arg\" = \"-T\" ] && exit 64\ndone\nexec mv \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shim, "mv"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write the mv shim: %v", err)
+	}
+	t.Setenv("PATH", shim+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 // ownerWriteFailsRunner fails the command that records the lock owner and runs
 // everything else for real.
 type ownerWriteFailsRunner struct {

@@ -199,6 +199,14 @@ govard deploy check staging    # preflight: connectivity, layout, permissions, p
 govard deploy staging --yes    # ... or --remote staging
 ```
 
+`deploy check` creates nothing on the target, local or remote: an absent
+`deploy_path` is probed at the nearest existing parent on the target itself, and
+on a local target the note names the parent that answered. A remote call gets no
+such note — an exit code cannot tell an absent path from an unwritable one, so
+the note would be a claim about a machine govard cannot see. The probe runs
+through the same runner a deploy uses, so it travels to the machine that owns the
+path — which is also why a fresh host passes the check instead of failing it.
+
 Watch it with `--verbose`, which streams each command's own output under its task
 and never batches it. When a step fails the run says which step, and what to do
 next: a failure after the maintenance window opened keeps the lock and points at
