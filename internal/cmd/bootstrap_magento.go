@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -48,7 +49,10 @@ func ensureBootstrapFrameworkEnvironment(config engine.Config, opts BootstrapRun
 	cryptKey := hex.EncodeToString(randomBytes)
 
 	tablePrefix := engine.NormalizeTablePrefix(config.TablePrefix)
-	if remoteCfg, ok := config.Remotes[opts.Source]; ok {
+	// Resolved, never raw: this probe SSHes to the source remote, so a
+	// configured `remotes.sandbox` must contribute its capabilities but not its
+	// host, user or auth.
+	if remoteCfg, ok, _ := resolvedRemoteForName(context.Background(), config, opts.Source); ok {
 		if definition.ProbeRemoteBootstrapMetadata != nil {
 			metadata, err := definition.ProbeRemoteBootstrapMetadata(opts.Source, remoteCfg)
 			if err == nil {

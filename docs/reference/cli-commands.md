@@ -359,6 +359,17 @@ govard bootstrap -e staging --no-pii --no-noise
 - `--remote` — alias for `--environment`
 - `--db-dump` — import database from a local SQL file path
 
+`sandbox` is accepted too, and resolves from the running container the same way
+`govard deploy --remote sandbox` does. A non-plan run with no container stops
+with the sandbox's own message (`no sandbox exists for this project; run
+'govard sandbox up' to create it`) rather than reporting the name as
+unconfigured, and it never offers to `remote add sandbox` — only
+`govard sandbox up` creates a container. That stop assumes there is no interactive
+prompt to fall back on: in a terminal without `--yes` the same message is printed
+and the remote-name picker opens instead, and the retry it then runs fails the
+same way. As with any unresolvable name,
+`--plan` stays non-fatal and prints no plan.
+
 **Privacy & performance filters:**
 
 | Flag | Effect |
@@ -681,9 +692,14 @@ Key features:
 - Production write protection by default
 - Audit logs: `~/.govard/remote.log`
 
-`remote list` prints a NAME/HOST/CAPABILITIES table over the configured
-remotes plus the synthetic `sandbox | (implicit) | running|dormant|absent`
-row, always listed with state running|dormant|absent.
+`remote list` prints a NAME/HOST/CAPABILITIES/AUTH/KEY table over the
+configured remotes plus the synthetic `sandbox (implicit)` row, whose host column
+carries the state (`running`, `dormant — …`, `absent — …`) and whose capabilities
+column carries what a `remotes.sandbox` block configures. When a
+`remotes.sandbox` block is configured the sandbox still gets exactly one row, and
+stderr reports what the block does: its `capabilities`, `protected` and `deploy`
+settings are layered over the synthetic sandbox, while host, port, user and auth
+stay container-derived.
 
 → Full guide: [Remotes and Sync](/workflows/remotes-and-sync)
 
@@ -700,6 +716,14 @@ govard sync --db --no-noise --no-pii
 
 Auto-selects `staging` remote if no `--source` is provided, falling back to `dev`.
 When `--media` is used without a mode, Govard defaults it to `optimized`.
+
+`sandbox` is accepted for `--source` and `--destination` and resolves from the
+live container — the same remote `govard deploy --remote sandbox` uses — so no
+`remotes.sandbox` block is required, and a configured block can only shape the
+rehearsal (capabilities, protection, deploy settings), never repoint the
+transfer. `sync` itself declares no Docker requirement, so a Docker-less host
+asked for `-e sandbox` exits `3` with `CAPABILITY_MISSING`; with Docker but no
+container it exits `1` naming `govard sandbox up` as the remedy.
 
 **Key flags:**
 
@@ -879,16 +903,42 @@ a free loopback port, generates a dedicated key under `.govard/sandbox/`
 (gitignored), and mounts a read-only mirror of your local repository. The
 mirror is refreshed before every deploy, so a commit you have never pushed is
 deployable, and nothing in the pipeline knows it is talking to a container —
-a sandbox deploy is a production deploy pointed at one. There is no `sandbox`
-block in any configuration file: while the container runs, `sandbox` resolves
-automatically as a remote for every command that takes one.
+a sandbox deploy is a production deploy pointed at one. While the container
+runs, `sandbox` resolves automatically as a remote for every command that takes
+one, with no identity ever written to a configuration file.
 
 `sandbox` is a top-level command — deploy to it with the flag form:
 `govard deploy --remote sandbox --yes`.
 
-There is no `sandbox` block to write anywhere: the synthetic
-sandbox shadows any `remotes.sandbox` block in `.govard.local.yml`
-(with a warning) and the block never wins.
+There is no sandbox *identity* to write anywhere: `host`, `port`, `user`, `path`
+and `auth` for `sandbox` are read from the container `govard sandbox up`
+created, and `govard remote add` ignores them if you pass them. What you may
+configure is the rehearsal's shape — `capabilities`, `protected` and `deploy`
+settings — through `govard remote add sandbox --capabilities db --protected`
+or by hand in `.govard.yml` / `.govard.local.yml`:
+
+```yaml
+remotes:
+  sandbox:
+    capabilities:
+      db: false
+    protected: true
+    deploy:
+      keep_releases: 3
+```
+
+The block is layered **over** the synthetic remote, never instead of it. Four
+`deploy` settings are pinned to the container because they describe what the
+image shipped and a deploy refuses to run when the target disagrees: `owner`,
+`writable_mode`, `php_bin` and `php_version`. The rest of what a per-remote
+override copies is yours to set — `keep_releases`, `command_timeout`,
+`artifact_dir`, `repository`, `branch`, `publish`, `deploy_path`, `db_backup`,
+`verify.url`, `verify.timeout`, `hooks` and every `settings` key
+(`writable_permissions` and `composer_bin` among them). `deploy_path` is the one
+that moves the rehearsal, and it only moves it *inside* the container.
+`lock_stale_after`, `maintenance_timeout` and `verify.follow_redirects` are
+project-level only: a `remotes.sandbox` block is ignored for them, so put them in
+the project-level `deploy:` block.
 
 Profiles: `basic` (sshd, rsync, git), `php` (adds php-cli, composer, node) and
 `full` (adds a database and a cache), defaulting to `php`. `--php <series>` picks
@@ -966,9 +1016,12 @@ govard sandbox down [--purge] [--volumes]
 While the container runs, `sandbox` resolves automatically as a remote for
 every command that takes one (`deploy`, `db`, `remote exec`, `sync`):
 `govard deploy --remote sandbox --yes`, `govard sync -e sandbox`,
-`govard remote exec sandbox -- <command>`. Nothing is written to any
+`govard remote exec sandbox -- <command>`. No *identity* is written to any
 configuration file, and `govard remote list` shows the synthetic
-`sandbox | (implicit) | …` row next to the configured remotes. On a fresh
+`sandbox (implicit) | …` row next to the configured remotes. The rehearsal's
+shape is configurable — see
+[Configuring the sandbox remote](/workflows/remotes-and-sync#configuring-the-sandbox-remote).
+On a fresh
 default (`symlink`) sandbox, `remote exec` fails until the first deploy
 populates the current path — run the first deploy or use `--docroot real`.
 

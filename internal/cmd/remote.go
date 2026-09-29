@@ -71,9 +71,16 @@ var remoteAddCmd = &cobra.Command{
 		if name == "" {
 			return fmt.Errorf("remote name is required")
 		}
-		if name == deploy.SandboxRemoteName {
-			return fmt.Errorf("%q is reserved for the implicit sandbox remote; it is never configured, only resolved from `govard sandbox up`", name)
-		}
+
+		// A sandbox is the one remote whose identity is not the operator's to
+		// set: it is container-derived, so there is nothing here to refuse. What
+		// `remote add sandbox` does instead is write the rehearsal's *shape* —
+		// capabilities, protection — and drop every identity flag, which is the
+		// reverse of what the 2026-09-17 plan decided and for the same reason it
+		// decided the opposite: an operator needs to state the target's shape,
+		// and a refusal made a hand-written block (which used to be dead weight)
+		// the only way to do it.
+		synthetic := name == deploy.SandboxRemoteName
 
 		host, _ := cmd.Flags().GetString("host")
 		user, _ := cmd.Flags().GetString("user")
@@ -111,17 +118,38 @@ var remoteAddCmd = &cobra.Command{
 			return !isUpdate || replace || cmd.Flags().Changed(flag)
 		}
 
-		if takes("host") {
-			entry.Host = host
-		}
-		if takes("user") {
-			entry.User = user
-		}
-		if takes("path") {
-			entry.Path = path
-		}
-		if takes("port") {
-			entry.Port = port
+		// Identity belongs to the container, so for a synthetic remote none of
+		// these flags is even read. The dropped ones are reported rather than
+		// silently discarded, and they go to the command's stderr writer rather
+		// than pterm: pterm writes to the process stdout, which a caller
+		// capturing this command cannot see. The list is every identity flag the
+		// command registers, --strict-host-key included: a flag that is dropped
+		// without being named breaks the only guarantee this branch makes.
+		if synthetic {
+			ignored := make([]string, 0, 8)
+			for _, flag := range []string{"host", "user", "port", "path", "auth-method", "key-path", "known-hosts-file", "strict-host-key"} {
+				if cmd.Flags().Changed(flag) {
+					ignored = append(ignored, "--"+flag)
+				}
+			}
+			if len(ignored) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"note: ignored for remote %q: %s — the sandbox's host, port, user, path and auth are container-derived (resolved from 'govard sandbox up')\n",
+					name, strings.Join(ignored, ", "))
+			}
+		} else {
+			if takes("host") {
+				entry.Host = host
+			}
+			if takes("user") {
+				entry.User = user
+			}
+			if takes("path") {
+				entry.Path = path
+			}
+			if takes("port") {
+				entry.Port = port
+			}
 		}
 		if cmd.Flags().Changed("protected") {
 			entry.Protected = engine.BoolPtr(protected)
@@ -129,35 +157,37 @@ var remoteAddCmd = &cobra.Command{
 
 		// Prompts fill only what is still missing, so a merged re-add never asks
 		// for a value it already has.
-		if entry.Host == "" && stdinIsTerminal() {
-			entry.Host, _ = pterm.DefaultInteractiveTextInput.Show("Remote host (e.g. example.com)")
-		}
-		if entry.User == "" && stdinIsTerminal() {
-			entry.User, _ = pterm.DefaultInteractiveTextInput.Show("Remote SSH user")
-		}
-		if entry.Port == 0 && stdinIsTerminal() {
-			portStr, _ := pterm.DefaultInteractiveTextInput.WithDefaultText("22").Show("Remote SSH port")
-			if p, err := strconv.Atoi(portStr); err == nil {
-				entry.Port = p
+		if !synthetic {
+			if entry.Host == "" && stdinIsTerminal() {
+				entry.Host, _ = pterm.DefaultInteractiveTextInput.Show("Remote host (e.g. example.com)")
 			}
-		}
-		if entry.Path == "" && stdinIsTerminal() {
-			entry.Path, _ = pterm.DefaultInteractiveTextInput.Show("Remote project path on target host (e.g. /var/www/app or ~/public_html)")
-		}
+			if entry.User == "" && stdinIsTerminal() {
+				entry.User, _ = pterm.DefaultInteractiveTextInput.Show("Remote SSH user")
+			}
+			if entry.Port == 0 && stdinIsTerminal() {
+				portStr, _ := pterm.DefaultInteractiveTextInput.WithDefaultText("22").Show("Remote SSH port")
+				if p, err := strconv.Atoi(portStr); err == nil {
+					entry.Port = p
+				}
+			}
+			if entry.Path == "" && stdinIsTerminal() {
+				entry.Path, _ = pterm.DefaultInteractiveTextInput.Show("Remote project path on target host (e.g. /var/www/app or ~/public_html)")
+			}
 
-		if entry.Host == "" || entry.User == "" || entry.Path == "" {
-			err := fmt.Errorf("host, user, and path are required")
-			operationCategory = "validation"
-			operationMessage = "missing required flags: host/user/path"
-			writeRemoteAuditEvent(remote.AuditEvent{
-				Operation:  "remote.add",
-				Status:     remote.RemoteAuditStatusFailure,
-				Category:   "validation",
-				Remote:     name,
-				DurationMS: time.Since(startedAt).Milliseconds(),
-				Message:    "missing required flags: host/user/path",
-			})
-			return err
+			if entry.Host == "" || entry.User == "" || entry.Path == "" {
+				err := fmt.Errorf("host, user, and path are required")
+				operationCategory = "validation"
+				operationMessage = "missing required flags: host/user/path"
+				writeRemoteAuditEvent(remote.AuditEvent{
+					Operation:  "remote.add",
+					Status:     remote.RemoteAuditStatusFailure,
+					Category:   "validation",
+					Remote:     name,
+					DurationMS: time.Since(startedAt).Milliseconds(),
+					Message:    "missing required flags: host/user/path",
+				})
+				return err
+			}
 		}
 
 		// environment is now derived from name
@@ -179,7 +209,7 @@ var remoteAddCmd = &cobra.Command{
 			entry.Capabilities = capabilities
 		}
 
-		if takes("auth-method") {
+		if takes("auth-method") && !synthetic {
 			authMethod := remote.NormalizeAuthMethod(authMethodRaw)
 			if !remote.IsSupportedAuthMethod(authMethod) {
 				err := fmt.Errorf("unsupported auth method '%s' (allowed: keychain, ssh-agent, keyfile)", authMethodRaw)
@@ -202,7 +232,7 @@ var remoteAddCmd = &cobra.Command{
 		// into the auth store on a re-add that did not repeat --auth-method.
 		effectiveAuthMethod := remote.NormalizeAuthMethod(entry.Auth.Method)
 
-		if takes("key-path") {
+		if takes("key-path") && !synthetic {
 			keyPath := remote.NormalizePath(strings.TrimSpace(keyPathRaw))
 			if keyPath != "" && !forceKeyPath {
 				if err := validatePrivateKeyPath(keyPath); err != nil {
@@ -232,10 +262,10 @@ var remoteAddCmd = &cobra.Command{
 			}
 		}
 
-		if takes("strict-host-key") {
+		if takes("strict-host-key") && !synthetic {
 			entry.Auth.StrictHostKey = strictHostKey
 		}
-		if cmd.Flags().Changed("known-hosts-file") {
+		if cmd.Flags().Changed("known-hosts-file") && !synthetic {
 			entry.Auth.KnownHostsFile = knownHostsFile
 			if knownHostsFile != "" && !entry.Auth.StrictHostKey {
 				entry.Auth.StrictHostKey = true
@@ -254,12 +284,8 @@ var remoteAddCmd = &cobra.Command{
 			}
 		}
 		pterm.Success.Printf(
-			"Remote '%s' saved (capabilities=%s, auth=%s, protected=%t, strict_host_key=%t).\n",
-			name,
-			strings.Join(engine.RemoteCapabilityList(config.Remotes[name]), ","),
-			effectiveAuthMethod,
-			effectiveProtected,
-			entry.Auth.StrictHostKey,
+			"%s",
+			remoteAddSuccessLine(name, config.Remotes[name], effectiveAuthMethod, effectiveProtected, synthetic),
 		)
 		writeRemoteAuditEvent(remote.AuditEvent{
 			Operation:  "remote.add",
@@ -272,6 +298,38 @@ var remoteAddCmd = &cobra.Command{
 		operationMessage = "remote saved"
 		return nil
 	},
+}
+
+// remoteAddSuccessLine renders the confirmation `remote add` prints.
+//
+// For a synthetic remote it does not report an auth method or a strict-host-key
+// setting, because neither was stored: the auth-method write is skipped for a
+// sandbox, so NormalizeAuthMethod("") answers "keychain" about a target whose
+// real key is the keyfile the container provisioned. A SUCCESS line naming a
+// property the target does not have is a false claim printed next to the note
+// that says the opposite, so the container-derived facts are stated instead.
+//
+// effectiveAuthMethod is passed in rather than derived here so the caller keeps
+// ownership of what "effective" means; for a synthetic remote it is ignored by
+// design.
+func remoteAddSuccessLine(name string, saved engine.RemoteConfig, effectiveAuthMethod string, protected bool, synthetic bool) string {
+	capabilities := strings.Join(engine.RemoteCapabilityList(saved), ",")
+	if synthetic {
+		return fmt.Sprintf(
+			"Remote '%s' saved (capabilities=%s, auth=container-derived, protected=%t). "+
+				"Its host, port, user, path, key and auth method come from the sandbox container ('govard sandbox up').\n",
+			name, capabilities, protected,
+		)
+	}
+	return fmt.Sprintf(
+		"Remote '%s' saved (capabilities=%s, auth=%s, protected=%t, strict_host_key=%t).\n",
+		name, capabilities, effectiveAuthMethod, protected, saved.Auth.StrictHostKey,
+	)
+}
+
+// RemoteAddSuccessLineForTest exposes the `remote add` confirmation line.
+func RemoteAddSuccessLineForTest(name string, saved engine.RemoteConfig, effectiveAuthMethod string, protected bool, synthetic bool) string {
+	return remoteAddSuccessLine(name, saved, effectiveAuthMethod, protected, synthetic)
 }
 
 // validatePrivateKeyPath rejects a key path that cannot be an ssh identity: a
@@ -633,16 +691,27 @@ var remoteListCmd = &cobra.Command{
 		}
 		out := cmd.OutOrStdout()
 		names := make([]string, 0, len(config.Remotes))
-		shadowed := false
+		configuredSandbox := false
 		for name := range config.Remotes {
-			if strings.EqualFold(name, deploy.SandboxRemoteName) {
-				shadowed = true
+			// Trimmed, like every other sandbox-name check in the tree. A
+			// hand-edited `" sandbox "` really does load — IsValidRemoteName
+			// lowercases and trims before validating, and the validator's own
+			// sandbox exemption trims too — so without this it printed as an
+			// ordinary remote with an empty host *and* left the sandbox its own
+			// row, which is the hostless row shape the desktop's identity guard
+			// exists to keep off the panel, plus a skipped "configured" note.
+			if strings.EqualFold(strings.TrimSpace(name), deploy.SandboxRemoteName) {
+				configuredSandbox = true
 				continue
 			}
 			names = append(names, name)
 		}
-		if shadowed {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: remotes.sandbox is shadowed by the synthetic sandbox; remove it\n")
+		// One row for the sandbox, whether or not it is configured, and a report
+		// rather than a warning: a `remotes.sandbox` block is load-bearing
+		// configuration, not dead weight. What it cannot do is name the machine,
+		// which is what the second half of the line has to keep saying.
+		if configuredSandbox {
+			fmt.Fprintf(cmd.ErrOrStderr(), "note: remotes.sandbox is configured; its capabilities, protected and deploy settings are layered over the synthetic sandbox (host, port, user and auth stay container-derived)\n")
 		}
 		engine.SortRemoteNames(names)
 		fmt.Fprintf(out, "%-20s %-28s %-16s %-10s %s\n", "NAME", "HOST", "CAPABILITIES", "AUTH", "KEY")
@@ -658,15 +727,47 @@ var remoteListCmd = &cobra.Command{
 		}
 		// The synthetic sandbox carries a real identity too (keyfile against the
 		// key `sandbox up` provisioned), so its row reports it rather than "-".
+		// The capabilities column carries the block's capabilities, not the
+		// liveness: the note above says which capabilities are layered, and this
+		// is the only place an operator can confirm what they configured. The
+		// state moves into the host column, which had nothing to say — the
+		// sandbox has no configured host to print — and "(implicit)" stays on
+		// the name, where `deploy plan` already puts it.
 		sandboxState, sandboxCfg := sandboxListState(cmd.Context(), config.ProjectName)
+		// The capabilities column is read from the block, unconditionally.
+		// sandboxListState resolves the container but does not overlay the block
+		// onto it, so reading the column off that remote reported the container's
+		// capabilities whenever it had any — and it has none today only because
+		// SandboxRemoteConfig never sets Capabilities. The column was right by
+		// accident, resting on an invariant in another package, while the two
+		// reference pages promise it carries what the block configures.
+		sandboxCaps := configuredSandboxBlock(config.Remotes)
 		sandboxAuth, sandboxKey := "-", "-"
 		if sandboxCfg.Host != "" {
 			sandboxAuth = remote.NormalizeAuthMethod(sandboxCfg.Auth.Method)
 			sandboxKey = describeResolvedKey(deploy.SandboxRemoteName, sandboxCfg)
 		}
-		fmt.Fprintf(out, "%-20s %-28s %-16s %-10s %s\n", deploy.SandboxRemoteName, "(implicit)", sandboxState, sandboxAuth, sandboxKey)
+		fmt.Fprintf(out, "%-20s %-28s %-16s %-10s %s\n",
+			fmt.Sprintf("%s (implicit)", deploy.SandboxRemoteName),
+			sandboxState,
+			strings.Join(engine.RemoteCapabilityList(sandboxCaps), ","),
+			sandboxAuth,
+			sandboxKey,
+		)
 		return nil
 	},
+}
+
+// configuredSandboxBlock returns the project's own `remotes.sandbox` block, or
+// the zero config when there is none. It exists so `remote list` can still show
+// what a block configures while no container is running to resolve against.
+func configuredSandboxBlock(remotes engine.RemoteConfigMap) engine.RemoteConfig {
+	for name, remoteCfg := range remotes {
+		if strings.EqualFold(strings.TrimSpace(name), deploy.SandboxRemoteName) {
+			return remoteCfg
+		}
+	}
+	return engine.RemoteConfig{}
 }
 
 // describeResolvedKey renders the identity a remote will actually use, with the
@@ -733,9 +834,12 @@ func RootCommandForTest() *cobra.Command {
 func ensureRemoteKnown(config engine.Config, name string) (string, engine.RemoteConfig, error) {
 	normalized := strings.ToLower(strings.TrimSpace(name))
 	if normalized == deploy.SandboxRemoteName {
-		remote, _, err := resolveSandboxRemote(context.Background(), config.ProjectName)
+		remote, ok, err := resolvedRemoteForName(context.Background(), config, normalized)
 		if err != nil {
 			return "", engine.RemoteConfig{}, err
+		}
+		if !ok {
+			return "", engine.RemoteConfig{}, fmt.Errorf("unknown remote: %s", name)
 		}
 		return deploy.SandboxRemoteName, remote, nil
 	}
@@ -751,9 +855,40 @@ func ensureRemoteKnown(config engine.Config, name string) (string, engine.Remote
 	return resolvedName, resolved, nil
 }
 
+// resolvedRemoteForName returns the RemoteConfig the resolution actually uses
+// for name. ok is false when nothing provides an identity, so a caller that
+// skips on a missing remote keeps skipping; err carries the synthetic
+// resolver's own message, so a missing sandbox is never reported as
+// unconfigured.
+//
+// Every reader of a remote name goes through here. It exists because a
+// `remotes.sandbox` block is now loadable: a raw `config.Remotes["sandbox"]`
+// read is no longer inert, it is an identity the block chose. The synthetic
+// branch resolves the container and layers only the allowlist over it; every
+// other name keeps its plain map lookup, and deliberately does not gain secret
+// resolution — only the sandbox needs the overlay, and widening that is a
+// separate decision.
+func resolvedRemoteForName(ctx context.Context, config engine.Config, name string) (engine.RemoteConfig, bool, error) {
+	if strings.EqualFold(strings.TrimSpace(name), deploy.SandboxRemoteName) {
+		base, _, err := resolveSandboxRemote(ctx, config.ProjectName)
+		if err != nil {
+			return engine.RemoteConfig{}, false, err
+		}
+		return deploy.SandboxRemoteOverlay(base, config.Remotes), true, nil
+	}
+	remote, ok := config.Remotes[name]
+	return remote, ok, nil
+}
+
 // EnsureRemoteKnownForTest exposes ensureRemoteKnown to the tests/ package.
 func EnsureRemoteKnownForTest(config engine.Config, name string) (string, engine.RemoteConfig, error) {
 	return ensureRemoteKnown(config, name)
+}
+
+// ResolvedRemoteForNameForTest exposes resolvedRemoteForName to the tests/
+// package.
+func ResolvedRemoteForNameForTest(ctx context.Context, config engine.Config, name string) (engine.RemoteConfig, bool, error) {
+	return resolvedRemoteForName(ctx, config, name)
 }
 
 // resolveSandboxRemote is the seam ensureRemoteKnown calls through, so a
@@ -827,11 +962,40 @@ func formatDuration(duration time.Duration) string {
 // ResolveAutoRemote determines the source environment to use.
 // If requested is provided, it tries to find it.
 // If requested is empty, it prioritizes "staging" then "dev".
+//
+// It is not a pure lookup. `sandbox` is the one name that can resolve outside
+// the config file, so an explicit `sandbox` is validated against live Docker
+// state: that is what turns a missing container into "no sandbox exists … run
+// `govard sandbox up`" instead of "is not configured", and a host without a
+// container runtime into a *runtime.MissingError (exit 3) rather than a
+// configuration complaint. The empty-requested priority list below stays
+// config-only: an implicit bootstrap must never silently pick a rehearsal
+// target.
 func ResolveAutoRemote(config engine.Config, requested string) (string, error) {
 	requested = strings.ToLower(strings.TrimSpace(requested))
 	if requested != "" {
-		if remoteName, ok := findRemoteByNameOrEnvironment(config, requested); ok {
+		// Config first, synthetic second. A `remotes.sandbox` block is real
+		// configuration (it layers capabilities, protection and deploy settings
+		// over the container), so a config hit on any name ends resolution as
+		// before — but not on this one: the block supplies no identity, and
+		// every identity consumer resolves through the container. A config hit
+		// on `sandbox` must therefore keep going and be validated against the
+		// sandbox itself, exactly as it is without a block. Note this is the
+		// opposite order to ensureRemoteKnown's short-circuit, on purpose.
+		//
+		// The comparison is case-insensitive, and the returned name falls back
+		// to the canonical one, because a hand-edited "Sandbox:" is the same
+		// block: resolvedRemoteForName matches it with EqualFold, so a project
+		// carrying one would otherwise be handed its own spelling here, skip the
+		// probe, and have the accurate message surface one call later instead.
+		if remoteName, ok := findRemoteByNameOrEnvironment(config, requested); ok && !strings.EqualFold(remoteName, deploy.SandboxRemoteName) {
 			return remoteName, nil
+		}
+		if requested == deploy.SandboxRemoteName {
+			if _, _, err := resolveSandboxRemote(context.Background(), config.ProjectName); err != nil {
+				return "", err
+			}
+			return deploy.SandboxRemoteName, nil
 		}
 		return "", fmt.Errorf("remote '%s' is not configured", requested)
 	}

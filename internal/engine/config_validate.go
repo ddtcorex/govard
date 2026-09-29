@@ -3,6 +3,8 @@ package engine
 import (
 	"fmt"
 	"strings"
+
+	"govard/internal/conventions"
 )
 
 var (
@@ -113,6 +115,29 @@ func ValidateConfig(cfg Config) error {
 		if !IsValidRemoteName(name) {
 			return fmt.Errorf("remote name '%s' is not a valid identifier (use lowercase letters, digits, hyphens, underscores)", name)
 		}
+		if strings.EqualFold(strings.TrimSpace(name), conventions.SandboxRemoteName) {
+			// The synthetic sandbox's identity is container-derived: govard
+			// resolves host, user, port, path and auth from the container
+			// `sandbox up` created, so a `remotes.sandbox` block legitimately
+			// carries only capabilities, protection and deploy settings.
+			// Demanding the identity fields here is what made a shape-only
+			// block unloadable — the one configuration an operator could
+			// actually write. Every other remote is unaffected and still has to
+			// name its own target.
+			//
+			// The exemption is that *requirement* and nothing wider. A value
+			// the block does choose to write is still checked, because "never
+			// read" is not the same as "any value goes": an out-of-range port or
+			// an auth method govard does not support is a claim about a
+			// machine, and a reader that has not been taught to ignore the
+			// identity (the desktop was one) would act on it. Omitting the
+			// port and the method entirely stays legal — that is the
+			// shape-only case this exemption exists for.
+			if err := validateOptionalRemoteFields(name, remote); err != nil {
+				return err
+			}
+			continue
+		}
 		if strings.TrimSpace(remote.Host) == "" {
 			return fmt.Errorf("remote '%s' is missing host", name)
 		}
@@ -141,6 +166,21 @@ func ValidateConfig(cfg Config) error {
 		}
 	}
 
+	return nil
+}
+
+// validateOptionalRemoteFields checks the fields a `remotes.sandbox` block
+// inherits from the container. It may leave them unset — that is the whole point
+// of the block — but a value it does write has to be one govard could have used,
+// so a nonsense port or auth method is rejected at load time rather than
+// travelling to a reader as if it meant something.
+func validateOptionalRemoteFields(name string, remote RemoteConfig) error {
+	if remote.Port != 0 && (remote.Port < 1 || remote.Port > 65535) {
+		return fmt.Errorf("remote '%s' has invalid port %d", name, remote.Port)
+	}
+	if method := strings.TrimSpace(remote.Auth.Method); method != "" && !IsSupportedRemoteAuthMethod(method) {
+		return fmt.Errorf("remote '%s' has unsupported auth method '%s' (allowed: ssh-agent, keychain, keyfile)", name, method)
+	}
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"govard/internal/deploy"
 	"govard/internal/engine"
 
 	"github.com/docker/docker/api/types/container"
@@ -242,6 +243,7 @@ func BuildRemoteAdminURLForTest(remote RemoteConfigSnapshot, adminPath string) s
 func ResolveRemoteNameForOpenForTest(
 	remotes map[string]RemoteConfigSnapshot,
 	requestedRemoteName string,
+	projectRoot string,
 ) (string, error) {
 	engineRemotes := map[string]engine.RemoteConfig{}
 	for name, snapshot := range remotes {
@@ -267,12 +269,48 @@ func ResolveRemoteNameForOpenForTest(
 			Remotes:     engineRemotes,
 		},
 		requestedRemoteName,
+		projectRoot,
 	)
 	if err != nil {
 		return "", err
 	}
 
 	return resolved, nil
+}
+
+// ResolveRemoteConfigForCapabilityForTest exposes the desktop's remote
+// resolution, including its synthetic branch, so a test can assert the identity
+// an action would be given — and be refused when there is none.
+func ResolveRemoteConfigForCapabilityForTest(
+	cfg engine.Config,
+	requestedRemoteName string,
+	capability string,
+	projectRoot string,
+) (string, engine.RemoteConfig, error) {
+	return resolveRemoteConfigForCapability(cfg, requestedRemoteName, capability, projectRoot)
+}
+
+// ListProjectRemotesByPathForTest exposes the desktop's remote listing for a
+// project root.
+func ListProjectRemotesByPathForTest(root string) (RemoteSnapshot, error) {
+	return listProjectRemotesByPath(root)
+}
+
+// StubResolveSandboxRemoteForDesktopForTest replaces the desktop's synthetic
+// resolution seam for the duration of a test and returns a func that restores
+// the real one, so listing and opening a sandbox never reach a Docker daemon.
+func StubResolveSandboxRemoteForDesktopForTest(
+	fn func(ctx context.Context, cfg engine.Config, projectRoot string) (engine.RemoteConfig, deploy.SandboxLiveness, error),
+) func() {
+	previous := resolveSandboxRemoteForDesktop
+	if fn == nil {
+		resolveSandboxRemoteForDesktop = deploy.ResolveSandboxRemoteForConfig
+	} else {
+		resolveSandboxRemoteForDesktop = fn
+	}
+	return func() {
+		resolveSandboxRemoteForDesktop = previous
+	}
 }
 
 // SetRunGovardCommandForDesktopForTest overrides the desktop govard command runner.

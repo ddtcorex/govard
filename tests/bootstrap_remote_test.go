@@ -2,13 +2,16 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"govard/internal/cmd"
+	"govard/internal/deploy"
 	"govard/internal/engine"
 
 	"github.com/pterm/pterm"
@@ -244,5 +247,122 @@ func TestRunBootstrapRemoteSkipsMagentoPostCloneHookWhenComposerInstallDisabled(
 
 	if !strings.Contains(captured.String(), "Skipping magento2 post-clone hook because composer install is disabled.") {
 		t.Fatalf("expected skip message for magento2 post-clone hook, got: %q", captured.String())
+	}
+}
+
+// TestRunBootstrapRemoteSandboxIsNotUnconfigured is the site spec §7.1 names
+// separately from the resolver: `runBootstrapRemote` re-read config.Remotes
+// directly, so a project with a running sandbox and no `remotes.sandbox` block
+// passed ResolveAutoRemote and then died one screen later on a check that asked
+// only whether the name is in the file. The connectivity probe has to run
+// against the container, which is the only thing that has the identity.
+func TestRunBootstrapRemoteSandboxIsNotUnconfigured(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	restore := cmd.StubSandboxResolverForTest(func(_ context.Context, _ string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+		return overlayBase(), deploy.SandboxLivenessRunning, nil
+	})
+	defer restore()
+
+	config := engine.Config{ProjectName: "sample-project", Framework: "generic"}
+
+	opts := cmd.DefaultBootstrapRuntimeOptionsForTest()
+	opts.Source = deploy.SandboxRemoteName
+	opts.DBImport = true
+	opts.MediaSync = ""
+	opts.ComposerInstall = false
+	opts.AdminCreate = false
+	opts.AssumeYes = true
+
+	var calls [][]string
+	defer cmd.SetGovardSubcommandRunnerForTest(func(_ *cobra.Command, args ...string) error {
+		calls = append(calls, args)
+		return nil
+	})()
+
+	execCmd := &cobra.Command{}
+	execCmd.SetContext(context.Background())
+	if err := cmd.RunBootstrapRemoteForTest(execCmd, config, opts); err != nil {
+		if strings.Contains(err.Error(), "is not configured") {
+			t.Fatalf("err = %v, want the run to get past the source check", err)
+		}
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	probed := false
+	for _, args := range calls {
+		if len(args) == 3 && args[0] == "remote" && args[1] == "test" && args[2] == deploy.SandboxRemoteName {
+			probed = true
+		}
+	}
+	if !probed {
+		t.Fatalf("no `remote test sandbox` connectivity probe; calls: %v", calls)
+	}
+}
+
+// TestRunBootstrapRemoteSandboxAbsentIsNotOfferedRemoteAdd is the other half of
+// the same site, and the part that cannot be fixed by the resolver alone. The
+// interactive fallback offers `remote add <name>`, which cannot create the
+// container the sandbox remote is; on a host with no sandbox the run has to end
+// with the resolver's own message instead.
+func TestRunBootstrapRemoteSandboxAbsentIsNotOfferedRemoteAdd(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+
+	restore := cmd.StubSandboxResolverForTest(func(_ context.Context, _ string) (engine.RemoteConfig, deploy.SandboxLiveness, error) {
+		return engine.RemoteConfig{}, deploy.SandboxLivenessAbsent, fmt.Errorf(
+			"unknown remote: sandbox — no sandbox exists for this project; run 'govard sandbox up' to create it")
+	})
+	defer restore()
+
+	config := engine.Config{ProjectName: "sample-project", Framework: "generic"}
+
+	opts := cmd.DefaultBootstrapRuntimeOptionsForTest()
+	opts.Source = deploy.SandboxRemoteName
+	opts.DBImport = true
+	opts.MediaSync = ""
+	opts.ComposerInstall = false
+	opts.AdminCreate = false
+	opts.AssumeYes = true
+
+	var calls [][]string
+	defer cmd.SetGovardSubcommandRunnerForTest(func(_ *cobra.Command, args ...string) error {
+		calls = append(calls, args)
+		return nil
+	})()
+
+	execCmd := &cobra.Command{}
+	execCmd.SetContext(context.Background())
+	err := cmd.RunBootstrapRemoteForTest(execCmd, config, opts)
+	if err == nil {
+		t.Fatal("err = <nil>, want the missing sandbox reported")
+	}
+	if !strings.Contains(err.Error(), "no sandbox exists") {
+		t.Errorf("err = %v, want the resolver's own message propagated unchanged", err)
+	}
+	if strings.Contains(err.Error(), "is not configured") {
+		t.Errorf("err = %v, want the sandbox's message, not the config-only one", err)
+	}
+	for _, args := range calls {
+		if len(args) >= 2 && args[0] == "remote" && args[1] == "add" {
+			t.Errorf("offered `remote add %v`: `remote add` cannot create a container", args)
+		}
+	}
+}
+
+// TestBootstrapOffersToAddRemoteForTest pins the decision itself. The
+// interactive branch it guards is unreachable from a non-terminal test run, so
+// the policy is asserted where it is decided rather than through a prompt that
+// no test can drive.
+func TestBootstrapOffersToAddRemoteForTest(t *testing.T) {
+	if cmd.BootstrapOffersToAddRemoteForTest(deploy.SandboxRemoteName) {
+		t.Error("BootstrapOffersToAddRemoteForTest(\"sandbox\") = true, want false: the sandbox remote is created by `govard sandbox up`")
+	}
+	if cmd.BootstrapOffersToAddRemoteForTest(" Sandbox ") {
+		t.Error("BootstrapOffersToAddRemoteForTest(\" Sandbox \") = true, want false: the match is case- and space-insensitive, like every other sandbox name check")
+	}
+	if !cmd.BootstrapOffersToAddRemoteForTest("staging") {
+		t.Error("BootstrapOffersToAddRemoteForTest(\"staging\") = false, want true: an ordinary missing remote is still addable")
 	}
 }

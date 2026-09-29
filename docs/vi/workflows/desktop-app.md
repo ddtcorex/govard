@@ -61,8 +61,27 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 | Mở Database (Remote) | Gọi lệnh `govard open db -e <remote> --client` |
 | Mở terminal SSH (Remote) | Ưu tiên các terminal gốc của Linux, fallback về giao thức `ssh://` |
 | Mở SFTP (Remote) | Ưu tiên ứng dụng FileZilla, fallback về giao thức `sftp://` |
+| Mở URL admin (Remote) | `OpenRemoteURL` dựng `https://<url hoặc host>/<admin path>` từ admin path của framework |
 
 Đối với phương thức cấu hình `auth.method: ssh-agent`, ứng dụng Desktop tái sử dụng `SSH_AUTH_SOCK` và thăm dò socket tại `/run/user/<uid>/keyring/ssh` trên môi trường Linux.
+
+Mọi thao tác đều resolve remote trước khi dựng bất cứ thứ gì, và một remote không
+resolve được cả `url` lẫn `host` sẽ bị từ chối kèm lỗi thay vì được mở. URL admin
+cùng các launcher SFTP/SSH đều sẽ fallback về chuỗi `localhost`, tức là mở chính máy
+của lập trình viên trong khi vẫn báo rằng remote đã được mở.
+
+Remote synthetic `sandbox` được resolve từ container mà `govard sandbox up` đã
+tạo, không bao giờ từ block `remotes.sandbox` của project, nên một block không khai
+báo host không thể khiến thao tác nào trỏ về `localhost`. Nó xuất hiện trong bảng
+remote bất cứ khi nào container đó trả lời, và không phụ thuộc project có cấu
+hình block hay không. Đó là điều kiện kích hoạt mà `govard remote list` cũng dùng,
+chứ không phải cùng một quy tắc về dòng: bảng của app bỏ qua sandbox mà nó không
+resolve được, trong khi `remote list` luôn in một dòng và đặt trạng thái vào cột
+HOST. Khi block đã được cấu
+hình mà không có container đang chạy, dòng đó bị bỏ khỏi bảng và lý do trả về
+dưới dạng warning trong bảng; một project không có block và cũng không có
+container thì không có dòng nào và không có warning nào. Xem thêm
+[Cấu hình remote sandbox](/vi/workflows/remotes-and-sync#cấu-hình-remote-sandbox).
 
 ### Mở Cơ sở dữ liệu local
 

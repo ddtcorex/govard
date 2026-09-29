@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/deploy"
 	"io"
 	"net"
 	"net/url"
@@ -113,12 +114,67 @@ func listProjectRemotesByPath(root string) (RemoteSnapshot, error) {
 		projectName = filepath.Base(cleanRoot)
 	}
 	lastSyncByRemote := buildRemoteLastSyncLabels(projectName, time.Now().UTC())
+	remotes, warnings := resolveSandboxRemoteForListing(cfg, cleanRoot)
 
 	return RemoteSnapshot{
 		Project:  projectName,
-		Remotes:  buildRemoteEntries(cfg.Remotes, lastSyncByRemote),
-		Warnings: []string{},
+		Remotes:  buildRemoteEntries(remotes, lastSyncByRemote),
+		Warnings: warnings,
 	}, nil
+}
+
+// resolveSandboxRemoteForListing resolves the synthetic sandbox for the listing
+// and replaces a configured `remotes.sandbox` block with the remote the desktop
+// will actually act on, for the same reason the resolve path does: the block
+// names a rehearsal's shape and no machine, and a row built from it would carry
+// an empty host.
+//
+// The synthetic name is resolved for every project, not only for the ones that
+// wrote a block. `govard remote list` resolves it for every project too, so
+// keying the row on the block left the two surfaces disagreeing about when
+// `sandbox` exists at all — and left the plain synthetic sandbox, the case the
+// resolver was built for, without a row to click.
+//
+// That shared trigger is where the two surfaces stop agreeing. Row presence is
+// not shared: this listing drops a sandbox it cannot resolve (below), where
+// `remote list` always prints a row and puts the liveness in its HOST column.
+//
+// A sandbox that cannot be resolved is left out of the listing and reported as a
+// warning rather than rendered as a row with nothing behind it — the row is the
+// thing the user clicks, and a click on a hostless row is the localhost
+// fallback. The warning is reserved for a project that configured a block: every
+// project without a container now gets a resolver error, and a warning about a
+// remote nobody asked for would sit permanently in a clean panel. Non-sandbox
+// remotes are untouched, and the map is copied rather than edited so a caller's
+// config is never mutated by a listing.
+func resolveSandboxRemoteForListing(cfg engine.Config, projectRoot string) (map[string]engine.RemoteConfig, []string) {
+	configured := hasSandboxRemoteBlock(cfg.Remotes)
+
+	remotes := make(map[string]engine.RemoteConfig, len(cfg.Remotes)+1)
+	for name, remote := range cfg.Remotes {
+		if !strings.EqualFold(strings.TrimSpace(name), conventions.SandboxRemoteName) {
+			remotes[name] = remote
+		}
+	}
+
+	resolved, _, err := resolveSandboxRemoteForDesktop(context.Background(), cfg, projectRoot)
+	if err != nil {
+		if !configured {
+			return remotes, nil
+		}
+		return remotes, []string{fmt.Sprintf("remote %q is configured but not listed: %v", conventions.SandboxRemoteName, err)}
+	}
+	remotes[conventions.SandboxRemoteName] = resolved
+	return remotes, nil
+}
+
+func hasSandboxRemoteBlock(remotes engine.RemoteConfigMap) bool {
+	for name := range remotes {
+		if strings.EqualFold(strings.TrimSpace(name), conventions.SandboxRemoteName) {
+			return true
+		}
+	}
+	return false
 }
 
 func testRemote(project string, remoteName string) (string, error) {
@@ -160,6 +216,20 @@ func testRemote(project string, remoteName string) (string, error) {
 	}
 	if !hasRemoteName(snapshot.Remotes, remoteName) {
 		category = "validation"
+		// A `remotes.sandbox` block that cannot be resolved is left out of the
+		// listing on purpose, so "not in the list" no longer means "not a
+		// remote" for that one name — it means the container could not answer.
+		// Ask the resolver rather than reporting an unknown remote, which would
+		// send the operator looking for a name that is always valid.
+		if strings.EqualFold(remoteName, conventions.SandboxRemoteName) {
+			cfg, _, loadErr := engine.LoadConfigFromDir(root, true)
+			if loadErr == nil {
+				if _, _, sandboxErr := resolveSandboxRemoteForDesktop(context.Background(), cfg, root); sandboxErr != nil {
+					message = sandboxErr.Error()
+					return "", sandboxErr
+				}
+			}
+		}
 		message = fmt.Sprintf("unknown remote: %s", remoteName)
 		return "", fmt.Errorf("%s", message)
 	}
@@ -236,7 +306,7 @@ func openRemoteDB(project string, remoteName string) (string, error) {
 		return "", fmt.Errorf("load config for remotes: %w", err)
 	}
 
-	resolvedRemoteName, _, err := resolveRemoteConfigForCapability(cfg, trimmedRemoteName, engine.RemoteCapabilityDB)
+	resolvedRemoteName, _, err := resolveRemoteConfigForCapability(cfg, trimmedRemoteName, engine.RemoteCapabilityDB, root)
 	if err != nil {
 		return "", err
 	}
@@ -268,7 +338,7 @@ func openRemoteSFTP(project string, remoteName string, ctx context.Context, p Pl
 		return "", fmt.Errorf("load config for remotes: %w", err)
 	}
 
-	resolvedRemoteName, remoteCfg, err := resolveRemoteConfigForCapability(cfg, trimmedRemoteName, engine.RemoteCapabilityFiles)
+	resolvedRemoteName, remoteCfg, err := resolveRemoteConfigForCapability(cfg, trimmedRemoteName, engine.RemoteCapabilityFiles, root)
 	if err != nil {
 		return "", err
 	}
@@ -315,7 +385,7 @@ func openRemoteShell(project string, remoteName string, ctx context.Context, p P
 		return "", fmt.Errorf("load config for remotes: %w", err)
 	}
 
-	resolvedRemoteName, remoteCfg, err := resolveRemoteConfigForCapability(cfg, trimmedRemoteName, engine.RemoteCapabilityFiles)
+	resolvedRemoteName, remoteCfg, err := resolveRemoteConfigForCapability(cfg, trimmedRemoteName, engine.RemoteCapabilityFiles, root)
 	if err != nil {
 		return "", err
 	}
@@ -361,7 +431,7 @@ func resolveRemoteAdminURL(project string, remoteName string) (string, string, e
 		return "", "", fmt.Errorf("load config for remotes: %w", err)
 	}
 
-	resolvedRemoteName, remoteCfg, err := resolveRemoteConfigForOpen(cfg, trimmedRemoteName)
+	resolvedRemoteName, remoteCfg, err := resolveRemoteConfigForOpen(cfg, trimmedRemoteName, root)
 	if err != nil {
 		return "", "", err
 	}
@@ -374,62 +444,112 @@ func resolveRemoteAdminURL(project string, remoteName string) (string, string, e
 func resolveRemoteConfigForOpen(
 	cfg engine.Config,
 	requestedRemoteName string,
+	projectRoot string,
 ) (string, engine.RemoteConfig, error) {
-	return resolveRemoteConfigForCapability(cfg, requestedRemoteName, engine.RemoteCapabilityFiles)
+	return resolveRemoteConfigForCapability(cfg, requestedRemoteName, engine.RemoteCapabilityFiles, projectRoot)
 }
 
+// resolveSandboxRemoteForDesktop is the seam every desktop path resolves
+// "sandbox" through, so the app and the CLI answer with the same remote and a
+// hermetic test never reaches for a Docker daemon.
+var resolveSandboxRemoteForDesktop = deploy.ResolveSandboxRemoteForConfig
+
+// resolveRemoteConfigForCapability returns the remote a desktop action will act
+// on. The synthetic name is resolved from the container and never from the
+// config map: a `remotes.sandbox` block is loadable and carries no identity, so
+// a plain map lookup would hand the URL builders below an empty host — and an
+// empty host becomes "localhost", which points the operator's own machine at
+// their admin URL while reporting that the remote was opened. Every other name
+// keeps its map lookup.
 func resolveRemoteConfigForCapability(
 	cfg engine.Config,
 	requestedRemoteName string,
 	capability string,
+	projectRoot string,
 ) (string, engine.RemoteConfig, error) {
 	trimmedRequested := strings.TrimSpace(requestedRemoteName)
 	if trimmedRequested == "" {
 		return "", engine.RemoteConfig{}, fmt.Errorf("remote name is required")
 	}
 
-	if remoteCfg, ok := cfg.Remotes[trimmedRequested]; ok {
-		if capability != "" && !engine.RemoteCapabilityEnabled(remoteCfg, capability) {
-			return "", engine.RemoteConfig{}, fmt.Errorf(
-				"remote '%s' does not allow %s operations (capabilities: %s)",
-				trimmedRequested,
-				capability,
-				strings.Join(engine.RemoteCapabilityList(remoteCfg), ","),
-			)
+	if strings.EqualFold(trimmedRequested, conventions.SandboxRemoteName) {
+		resolved, _, err := resolveSandboxRemoteForDesktop(context.Background(), cfg, projectRoot)
+		if err != nil {
+			return "", engine.RemoteConfig{}, err
 		}
-		return trimmedRequested, remoteCfg, nil
+		if err := desktopRemoteCapabilityError(conventions.SandboxRemoteName, resolved, capability); err != nil {
+			return "", engine.RemoteConfig{}, err
+		}
+		return conventions.SandboxRemoteName, resolved, nil
+	}
+
+	if remoteCfg, ok := cfg.Remotes[trimmedRequested]; ok {
+		return desktopResolvedRemote(trimmedRequested, remoteCfg, capability)
 	}
 
 	normalizedRequested := engine.NormalizeRemoteEnvironment(trimmedRequested)
 	for name, remoteCfg := range cfg.Remotes {
 		// Try standard alias normalization first (e.g. "Staging" -> "staging")
 		if engine.NormalizeRemoteEnvironment(name) == normalizedRequested {
-			if capability != "" && !engine.RemoteCapabilityEnabled(remoteCfg, capability) {
-				return "", engine.RemoteConfig{}, fmt.Errorf(
-					"remote '%s' does not allow %s operations (capabilities: %s)",
-					name,
-					capability,
-					strings.Join(engine.RemoteCapabilityList(remoteCfg), ","),
-				)
-			}
-			return name, remoteCfg, nil
+			return desktopResolvedRemote(name, remoteCfg, capability)
 		}
 
 		// Fallback to simple case-insensitive match for custom names
 		if strings.EqualFold(name, trimmedRequested) {
-			if capability != "" && !engine.RemoteCapabilityEnabled(remoteCfg, capability) {
-				return "", engine.RemoteConfig{}, fmt.Errorf(
-					"remote '%s' does not allow %s operations (capabilities: %s)",
-					name,
-					capability,
-					strings.Join(engine.RemoteCapabilityList(remoteCfg), ","),
-				)
-			}
-			return name, remoteCfg, nil
+			return desktopResolvedRemote(name, remoteCfg, capability)
 		}
 	}
 
 	return "", engine.RemoteConfig{}, fmt.Errorf("unknown remote: %s", trimmedRequested)
+}
+
+// desktopResolvedRemote is the one place a configured remote becomes a target
+// the desktop acts on, so the identity and capability rules are the same
+// whichever name matched.
+func desktopResolvedRemote(name string, remoteCfg engine.RemoteConfig, capability string) (string, engine.RemoteConfig, error) {
+	if err := requireDesktopRemoteIdentity(name, remoteCfg); err != nil {
+		return "", engine.RemoteConfig{}, err
+	}
+	if err := desktopRemoteCapabilityError(name, remoteCfg, capability); err != nil {
+		return "", engine.RemoteConfig{}, err
+	}
+	return name, remoteCfg, nil
+}
+
+func desktopRemoteCapabilityError(name string, remoteCfg engine.RemoteConfig, capability string) error {
+	if capability == "" || engine.RemoteCapabilityEnabled(remoteCfg, capability) {
+		return nil
+	}
+	return fmt.Errorf(
+		"remote '%s' does not allow %s operations (capabilities: %s)",
+		name,
+		capability,
+		strings.Join(engine.RemoteCapabilityList(remoteCfg), ","),
+	)
+}
+
+// requireDesktopRemoteIdentity refuses a remote that resolves to no host at all.
+// The URL builders below each fall back to the literal "localhost", and a
+// fallback that fires is a false claim about a target: the action would succeed
+// against the developer's own machine and say it opened the remote.
+//
+// That fallback is unreachable for any remote this package resolves, by two
+// independent means. A loaded config cannot produce it — the validator demands a
+// host for every non-sandbox remote — and this guard refuses the case that would
+// reach it: a remote with neither `url` nor `host`. Note the SFTP and SSH
+// builders never read `url` at all, so for them a url-only remote would still
+// render localhost; the guard is what stops that too, since the validator has
+// already rejected such a config. The literal is retained as a defensive default
+// for a `RemoteConfig` a caller hand-constructs, and
+// TestDesktopPkgBuildRemoteAdminURLForTest pins that branch.
+func requireDesktopRemoteIdentity(name string, remoteCfg engine.RemoteConfig) error {
+	if strings.TrimSpace(remoteCfg.URL) != "" || strings.TrimSpace(remoteCfg.Host) != "" {
+		return nil
+	}
+	return fmt.Errorf(
+		"remote '%s' resolves to no host, so there is nothing to open; refusing to point the desktop at localhost instead",
+		name,
+	)
 }
 
 func buildRemoteAdminURLForDesktop(remoteCfg engine.RemoteConfig, adminPath string) string {

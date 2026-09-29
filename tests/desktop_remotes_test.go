@@ -71,6 +71,16 @@ func TestDesktopPkgBuildRemoteAdminURLForTest(t *testing.T) {
 	if withHostFallback != "https://staging.example.com/admin" {
 		t.Fatalf("unexpected URL with host fallback: %s", withHostFallback)
 	}
+
+	// The third case is the defensive localhost branch the guard's comment in
+	// internal/desktop/remotes.go says no resolved remote can reach. Only a
+	// RemoteConfig a caller hand-constructs gets here — which is what this is —
+	// so the branch is pinned by a test instead of being described as though one
+	// already covered it.
+	defensiveLocalhost := desktop.BuildRemoteAdminURLForTest(desktop.RemoteConfigSnapshot{}, "")
+	if defensiveLocalhost != "https://localhost/admin" {
+		t.Fatalf("unexpected URL for a remote with no identity at all: %s", defensiveLocalhost)
+	}
 }
 
 func TestDesktopPkgResolveRemoteNameForOpenForTest(t *testing.T) {
@@ -85,7 +95,7 @@ func TestDesktopPkgResolveRemoteNameForOpenForTest(t *testing.T) {
 		},
 	}
 
-	resolved, err := desktop.ResolveRemoteNameForOpenForTest(remotes, "dev")
+	resolved, err := desktop.ResolveRemoteNameForOpenForTest(remotes, "dev", t.TempDir())
 	if err != nil {
 		t.Fatalf("unexpected error resolving dev alias: %v", err)
 	}
@@ -101,6 +111,7 @@ func TestDesktopPkgResolveRemoteNameForOpenForTest(t *testing.T) {
 			},
 		},
 		"staging",
+		t.TempDir(),
 	)
 	if err == nil {
 		t.Fatalf("expected error when files capability is missing")

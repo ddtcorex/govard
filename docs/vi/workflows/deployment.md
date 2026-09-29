@@ -1228,16 +1228,16 @@ govard sandbox down [--purge] [--volumes]
 `up` publish SSH trên một cổng loopback còn trống, sinh khoá riêng dưới
 `.govard/sandbox/` (đã gitignore), và mount read-only một mirror của repository
 local. Mirror được refresh trước mỗi lần deploy, nên một commit bạn chưa từng
-push vẫn triển khai được. Không có block `sandbox` trong bất kỳ file cấu hình
-nào — và block `remotes.sandbox` còn sót từ trước phải xoá đi: sandbox
-synthetic sẽ lấn át nó (kèm cảnh báo) và block đó không bao giờ thắng.
-Hễ container sandbox còn chạy, `sandbox` tự resolve thành một remote cho
-mọi lệnh nhận remote — `deploy`, `db`, `remote exec`, `sync` — nên
-`govard deploy --remote sandbox --yes`, `govard db dump -e sandbox`,
+push vẫn triển khai được. Hễ container sandbox còn chạy, `sandbox` tự resolve
+thành một remote cho mọi lệnh nhận remote — `deploy`, `db`, `remote exec`,
+`sync` — nên `govard deploy --remote sandbox --yes`, `govard db dump -e sandbox`,
 `govard remote exec sandbox -- <command>` và `govard sync -e sandbox` đều chạy
-được mà không ghi gì vào cấu hình. `govard remote list` hiện dòng synthetic đó
-(`sandbox | (implicit) | running|dormant|absent`) cạnh các remote đã cấu hình.
-Hãy deploy bằng dạng flag (dạng positional cũng chạy được):
+được mà không gì identity nào được ghi vào cấu hình. `govard remote list` hiện
+dòng synthetic đó (`sandbox (implicit) | running | files,media,db | keyfile | …`)
+cạnh các remote đã cấu hình: tên mang nhãn `(implicit)`, cột HOST mang trạng
+thái (`running`, `dormant — …`, `absent — …`), còn cột CAPABILITIES mang đúng
+những gì block `remotes.sandbox` cấu hình. Hãy deploy bằng dạng flag (dạng
+positional cũng chạy được):
 
 ```bash
 govard deploy --remote sandbox --yes
@@ -1349,6 +1349,76 @@ publish release lên được, và sandbox chưa seed từ chối giả vờ ng�
 `env.php` vào container (`docker exec`, hoặc mount file) rồi chạy lại `govard
 deploy --remote sandbox --yes`; bước hỏng sẽ đi tiếp từ release directory sạch và
 Composer cache được giữ nguyên.
+
+#### Cấu hình remote sandbox
+
+**Identity của sandbox không bao giờ lấy từ cấu hình.** Host, port, user, path,
+auth và thông tin kết nối database luôn được đọc từ container mà `sandbox up`
+tạo ra, mỗi lần chạy. Đó là bản chất của một buổi diễn tập, và đó là lý do
+identity không đơn thuần là "mặc định" mà là **đóng**: một identity lặng lẽ
+lấy từ file cấu hình sẽ chỉ pipeline sang máy khác và vẫn báo thành công.
+
+Một block `remotes.sandbox` vẫn có thể mô tả **hình dạng** của buổi diễn tập.
+Block được lớp **lên trên** remote lấy từ container — theo một allowlist tường
+minh, không phải trộn hai nguồn ngang hàng:
+
+| Trường | Lấy từ đâu |
+| --- | --- |
+| `capabilities` | block (`files`, `media`, `db`) |
+| `protected` | block |
+| các trường `deploy.*` thực sự được copy (xem bên dưới) | block |
+| `deploy.settings.owner`, `.writable_mode`, `.php_bin`, `.php_version` | container |
+| `host`, `port`, `user`, `path`, `url`, `auth.*`, `paths.*`, `db_*`, `local`, `sandbox` | container |
+
+Bốn khoá bị ghim mô tả đúng thứ image thực sự có — user deployer sở hữu file,
+cách file được ghi, và PHP binary cùng series mà image mang theo. Một lần deploy
+sẽ từ chối chạy khi PHP ở máy đích không khớp series khai báo, nên một
+`php_version` do block cấu hình đúng là cách khiến buổi diễn tập fail **vì lý
+do sai**.
+
+Block *được phép* đặt là đúng tập trường mà một override per-remote thực sự
+copy, chứ không phải toàn bộ `deploy.*`: `keep_releases`, `command_timeout`,
+`artifact_dir`, `repository`, `branch`, `publish`, `deploy_path`, `db_backup`,
+`verify.url`, `verify.timeout`, `hooks`, và `settings` theo từng khoá —
+trong đó có `writable_permissions` và `composer_bin`, vì cả hai đều không bị
+ghim. `deploy_path` là trường duy nhất dời được buổi diễn tập *bên trong*
+container, nên nói thẳng: nó đổi chỗ release được publish **trong sandbox**, và
+không với ra ngoài được, vì host mà nó nêu là host của container.
+
+Ba trường chỉ đọc ở cấp project, và block sandbox bị bỏ qua với chúng —
+`lock_stale_after`, `maintenance_timeout` và `verify.follow_redirects`. Chúng vô
+hiệu với mọi remote chứ không chỉ remote này, nên người vận hành đặt chúng trong
+block `remotes.sandbox` sẽ nhận giá trị ở cấp project và không có cảnh báo nào;
+hãy để chúng trong block `deploy:` cấp project, nơi chúng thực sự được đọc.
+
+Viết tay:
+
+```yaml
+# .govard.yml hoặc .govard.local.yml
+remotes:
+  sandbox:
+    capabilities:
+      db: false          # diễn tập không ghi database
+    protected: true      # vẫn yêu cầu --yes dù chỉ là rehearsal local
+    deploy:
+      keep_releases: 3
+      settings:
+        writable_permissions: "0775"
+```
+
+hoặc dùng lệnh — cùng allowlist đó; các cờ identity bị bỏ qua và được báo ra
+stderr, không ghi gì:
+
+```bash
+govard remote add sandbox --capabilities db --protected
+```
+
+`govard remote list` báo một sandbox đã cấu hình là được lớp lên sandbox
+synthetic thay vì cảnh báo bạn xoá nó. (Các bản tài liệu trước bảo bạn xoá block:
+`remote add sandbox` bị từ chối và block viết tay bị coi là thừa. Quyết định đó
+đã bị đảo có chủ đích — người vận hành cần mô tả được hình dạng của đích diễn
+tập, còn trạng thái nửa vời (block được parse bởi một đường đi nhưng bị mọi
+bên đọc identity phớt lờ) tệ hơn cả hai phương án cực đoan.)
 
 ## SSH gateway dùng chung {#shared-ssh-gateway}
 

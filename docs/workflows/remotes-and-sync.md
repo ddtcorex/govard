@@ -82,6 +82,76 @@ govard remote audit stats --lines 200
 | **Strict host-key** | Opt-in per remote, not enforced by default |
 | **1Password integration** | Remote fields support `op://...` secret references |
 
+### Configuring the Sandbox Remote
+
+`sandbox` is the one remote name that is also resolvable *without* being
+configured: `govard sandbox up` creates a container on this machine and govard
+resolves the name from that container. So the rule for a `remotes.sandbox` block
+is not "declare the host" — it is "shape the rehearsal, never the machine".
+
+**What stays container-derived, always:** `host`, `port`, `user`, `path`, `url`,
+every `auth` field (`method`, `key_path`, `strict_host_key`, `known_hosts_file`),
+`paths`, the `db_*` credentials, and the two topology flags `local` and
+`sandbox`. A leaked identity does not fail loudly: the rehearsal would silently
+run against a different machine, at a different path, with a different key, and
+report success.
+
+**What the block may set:** `capabilities`, `protected`, and the `deploy.*`
+fields a per-remote override actually copies — `keep_releases`,
+`command_timeout`, `artifact_dir`, `repository`, `branch`, `publish`,
+`deploy_path`, `db_backup`, `verify.url`, `verify.timeout`, `hooks`, and
+`settings` key by key. `deploy_path` is the one that moves the rehearsal: it
+repoints where the release is published *inside the sandbox* and cannot reach
+outside it. `lock_stale_after`, `maintenance_timeout` and
+`verify.follow_redirects` are project-level only and a sandbox block is ignored
+for them — put them in the project-level `deploy:` block where they are read.
+
+Four settings are pinned back to the container: `deploy.settings.owner`,
+`writable_mode`, `php_bin` and `php_version`. Those four describe what the image
+shipped (which deployer account owns the files, how they are written, which PHP
+binary and series it carries), and a deploy refuses to run when the target's PHP
+does not match the declared series. `writable_permissions` and `composer_bin`
+are *not* pinned.
+
+**Why:** an operator has to be able to state the rehearsal target's shape — its
+retention, its capabilities, whether a confirmation is required — and the
+alternative (refuse `remote add sandbox`, ignore a hand-written block) left the
+block parsed by one path and ignored by every identity consumer, which is worse
+than either extreme.
+
+```yaml
+remotes:
+  sandbox:
+    capabilities:
+      db: false
+    protected: true
+    deploy:
+      keep_releases: 3
+```
+
+```bash
+govard remote add sandbox --capabilities db --protected   # same allowlist
+```
+
+Every identity flag passed to `remote add sandbox` — `--host`, `--user`,
+`--port`, `--path`, `--auth-method`, `--key-path`, `--known-hosts-file` and
+`--strict-host-key` — is dropped and named on stderr; the block is written with
+no identity value in it, and later saves keep it that way. `govard remote list`
+still prints a single sandbox row, showing the liveness in the host column and
+the block's capabilities in the capabilities column, and reports a configured
+block as layered over the synthetic one.
+
+The desktop app resolves `sandbox` the same way: its Open admin / Open SFTP /
+Open SSH actions go through the container, never through the block, so a block
+with no host cannot make the app open `https://localhost/admin` on your own
+machine. It lists the sandbox whenever the container answers — the same trigger
+`govard remote list` uses, not the same row rule: the panel drops a sandbox it
+cannot resolve, where `remote list` always prints a row carrying the liveness in
+its HOST column. When a `remotes.sandbox` block is configured but no
+container is running, the row is dropped and the reason comes back as a warning
+in the project's remote panel; a project with neither a block nor a container
+gets no row and no warning.
+
 ---
 
 ## Sync Overview
@@ -98,6 +168,14 @@ govard sync -s dev --file app/design/frontend/MyTheme
 
 Auto-selects `staging` if no `--source` provided, falling back to `dev`.
 Bare `--media` defaults to the `optimized` media mode.
+
+A `sandbox` source or destination resolves from the live container, not from the
+config file, so `govard sync -s sandbox` works with no `remotes.sandbox` block
+at all. The transfer is built from the container's own identity — `127.0.0.1`,
+user `deployer`, the published port, the key `sandbox up` generated — so a
+configured block can only shape the rehearsal, never repoint it. On a host with
+no Docker the sandbox cannot be resolved at all, and asking for it exits `3`
+with `CAPABILITY_MISSING` rather than reporting the name as unconfigured.
 
 ### Endpoint Flags
 

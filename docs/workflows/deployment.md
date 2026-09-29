@@ -1297,17 +1297,18 @@ govard sandbox down [--purge] [--volumes]
 `up` publishes SSH on a free loopback port, generates a dedicated key under
 `.govard/sandbox/` (gitignored), and mounts a mirror of your local repository
 read-only. The mirror is refreshed before every deploy, so a commit you have
-never pushed is deployable. There is no `sandbox` block in any configuration
-file — and a `remotes.sandbox` block left over from before must be deleted:
-the synthetic sandbox shadows it (with a warning) and the block never wins.
-Whenever the sandbox container is running, `sandbox` resolves
-automatically as a remote for every command that takes one — `deploy`, `db`,
-`remote exec`, `sync` — so `govard deploy --remote sandbox --yes`,
+never pushed is deployable. Whenever the sandbox container is running, `sandbox`
+resolves automatically as a remote for every command that takes one — `deploy`,
+`db`, `remote exec`, `sync` — so `govard deploy --remote sandbox --yes`,
 `govard db dump -e sandbox`, `govard remote exec sandbox -- <command>` and
-`govard sync -e sandbox` all work with nothing ever written to configuration.
-`govard remote list` shows that synthetic row (`sandbox | (implicit) |
-running|dormant|absent`) next to the configured remotes. Deploy to it with the
-flag form (the positional form works too):
+`govard sync -e sandbox` all work with no identity ever written to
+configuration.
+`govard remote list` shows that synthetic row (`sandbox (implicit) | running |
+files,media,db | keyfile | …`) next to the configured remotes: the name carries
+the `(implicit)` marker, the host column carries the liveness
+(`running`, `dormant — …`, `absent — …`), and the capabilities column carries what
+a `remotes.sandbox` block configures. Deploy to it with the flag form (the
+positional form works too):
 
 ```bash
 govard deploy --remote sandbox --yes
@@ -1441,6 +1442,77 @@ reach) and having the data behind it — a `govard bootstrap -e <env>` clone is
 the usual source. Those prerequisites are the target's, not the engine's: a
 server that has never run the application cannot publish a release to it, and
 an unseeded sandbox refuses to pretend otherwise.
+
+#### Configuring the sandbox remote
+
+The sandbox's **identity is never taken from configuration**. Host, port, user,
+path, auth and the database credentials are read from the container `sandbox up`
+created, every time. That is the whole point of a rehearsal, and it is why the
+identity is not merely defaulted but closed: an identity that silently came from
+a config file would point the pipeline at another machine and report success.
+
+A `remotes.sandbox` block may still state the rehearsal's **shape**. It is
+layered *over* the container-derived remote — an explicit allowlist, not a merge
+of two peers:
+
+| Field | Source |
+| --- | --- |
+| `capabilities` | block (`files`, `media`, `db`) |
+| `protected` | block |
+| the copied `deploy.*` fields (below) | block |
+| `deploy.settings.owner`, `.writable_mode`, `.php_bin`, `.php_version` | container |
+| `host`, `port`, `user`, `path`, `url`, `auth.*`, `paths.*`, `db_*`, `local`, `sandbox` | container |
+
+The four pinned settings describe what the image shipped — which deployer
+account owns the files, how they are written, and which PHP binary and series it
+carries. A deploy refuses to run when the target's PHP does not match the
+declared series, so a block-supplied `php_version` is exactly how a rehearsal
+would fail for the wrong reason.
+
+What the block *may* set is the set a per-remote override actually copies, not
+all of `deploy.*`: `keep_releases`, `command_timeout`, `artifact_dir`,
+`repository`, `branch`, `publish`, `deploy_path`, `db_backup`, `verify.url`,
+`verify.timeout`, `hooks`, and `settings` key by key — `writable_permissions` and
+`composer_bin` among them, since neither is pinned. `deploy_path` is the one that
+moves the rehearsal inside the container, so it is worth stating plainly: it
+repoints where the release is published **within the sandbox**, and cannot reach
+outside it, because the host it names is the container's.
+
+Three fields are project-level only and a sandbox block is ignored for them —
+`lock_stale_after`, `maintenance_timeout` and `verify.follow_redirects`. They are
+inert for every remote, not just this one, so an operator who sets one in a
+`remotes.sandbox` block gets the project's value and no warning; keep them in the
+project-level `deploy:` block where they are actually read.
+
+Write it by hand:
+
+```yaml
+# .govard.yml or .govard.local.yml
+remotes:
+  sandbox:
+    capabilities:
+      db: false          # rehearse with no database writes
+    protected: true      # require --yes even for a local rehearsal
+    deploy:
+      keep_releases: 3
+      settings:
+        writable_permissions: "0775"
+```
+
+or with the command, which applies the same allowlist — identity flags are
+dropped and reported, never stored:
+
+```bash
+govard remote add sandbox --capabilities db --protected
+```
+
+`govard remote list` reports a configured sandbox as layered over the synthetic
+one rather than warning you to delete it. (Earlier releases of this page told
+you to delete the block: `remote add sandbox` was refused and a hand-written
+block was treated as dead weight. That reversed deliberately — an operator has
+to be able to state the rehearsal target's shape, and the half-state where a
+block was parsed but ignored by every identity consumer was worse than either
+alternative.)
 
 ## The shared SSH gateway
 

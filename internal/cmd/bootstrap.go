@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -587,12 +588,16 @@ func shouldSkipBootstrapMediaSync(config engine.Config, opts BootstrapRuntimeOpt
 		return true, "code-only mode"
 	}
 
-	remoteCfg, ok := config.Remotes[opts.Source]
+	remoteCfg, ok, _ := resolvedRemoteForName(context.Background(), config, opts.Source)
 	if !ok {
 		return false, ""
 	}
 
-	_, remoteMediaPath := engine.ResolveRemotePaths(config, opts.Source)
+	// The media path comes from the *resolved* remote, not from a raw map
+	// lookup: for a sandbox the identity is the container's, and a block's
+	// `paths.media` is not part of the allowlist, so it must never redirect the
+	// media sync.
+	_, remoteMediaPath := engine.ResolveRemotePathsForConfig(config.Framework, remoteCfg)
 	remoteMediaPath = strings.TrimSpace(remoteMediaPath)
 	if remoteMediaPath == "" {
 		return true, "remote media path is empty"
