@@ -154,6 +154,13 @@ tests — the fastest way to see where the clock is actually going.
     the suite. Measure before refactoring 40 call sites for that.
 - **Slower machines:** `GOVARD_TEST_TIME_SCALE=2` multiplies every budget without
   editing the file, so a slow CI runner does not turn the gate into noise.
+- **`make test` does not pass `-race`.** Nothing in the ordinary suite runs a race
+  detector, so a genuine data race in production code can sit there passing for
+  years. Run `go test ./tests -race -short` when touching package-level state that
+  a goroutine reads — test seams are the usual source. Note that
+  `TestSandboxSeedStreamsTheDumpWithoutBufferingIt` fails under `-race` on any
+  revision, including master: it asserts a memory ceiling and the detector's
+  shadow memory trips it. That is a pre-existing artefact, not a regression.
 - `t.Parallel()` is effectively unused here and cannot simply be added: the suite
   has hundreds of `t.Setenv` calls plus an `os.Chdir` helper, both process-global,
   and Go panics on `t.Setenv` in a parallel test. Parallelising means sharding by
