@@ -136,8 +136,8 @@ var Registry = []Item{
 	{ID: "P2-02", Phase: 2, Title: "govard env logs --tail 20", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "env", "logs", "--tail", "20")
 	}},
-	{ID: "P2-03", Phase: 2, Title: "govard env up --build (if supported)", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		return execGovard(ctx, cfg, opts, "env", "up", "--build")
+	{ID: "P2-03", Phase: 2, Title: "govard env up --force-recreate", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "env", "up", "--force-recreate")
 	}},
 	{ID: "P2-04", Phase: 2, Title: "govard bootstrap -e <remote> --no-noise --plan", Precond: "P2-01 up", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "-e", remote, "--no-noise", "--plan")
