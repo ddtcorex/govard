@@ -142,6 +142,17 @@ func isRemoteWriteArgv(argv []string) bool {
 		// remote's authorized_keys before it opens anything
 		// (internal/cmd/open_targets.go:65).
 		return namesARemoteEnvironment(argv)
+	case "remote":
+		// `remote copy-id` IS the key copy, so it writes whatever else the argv
+		// says. `remote test` reads — its only write path is the offer in
+		// `offerSSHKeyCopyOnAuthFailure`, which returns early when
+		// `!stdinIsTerminal()` (internal/cmd/ssh_copy_id.go:101-103) — and a
+		// verify child has no terminal to offer into, because `execGovard` never
+		// sets `cmd.Stdin` (internal/verify/exec.go). This classifier is a pure
+		// function of the argv, so that tty gate is not modelled here; the
+		// coupling is written down at both sites instead, because plan 2
+		// rewrites the offer and must not lose the dependency.
+		return argvSubcommand(argv) == "copy-id"
 	default:
 		return false
 	}
@@ -397,6 +408,17 @@ func TestRemoteWriteClassifierDrawsEveryArm(t *testing.T) {
 		{"open -e prod opens a remote target", []string{"open", "-e", "prod", "db"}, true},
 		{"open -e=prod is the joined form", []string{"open", "-e=prod", "db"}, true},
 		{"open -e prod works after the target too", []string{"open", "db", "-e", "prod"}, true},
+
+		// remote: `copy-id` is the write, and it is unconditional — the design
+		// (spec §6.2) records that the key-copy offer survives in `remote
+		// copy-id` and `remote test` only. `remote test` reads, and its one write
+		// path is a tty-gated offer a verify child can never satisfy; the
+		// registry says so where the item is declared.
+		{"remote copy-id writes the key whatever else the argv says", []string{"remote", "copy-id", "sandbox"}, true},
+		{"remote copy-id -e prod is the same write", []string{"remote", "copy-id", "--environment", "prod"}, true},
+		{"remote test only reads when it cannot offer a key copy", []string{"remote", "test", "sandbox"}, false},
+		{"remote list is local bookkeeping", []string{"remote", "list"}, false},
+		{"remote audit tail only reads", []string{"remote", "audit", "tail", "-e", "sandbox"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := isRemoteWriteArgv(tc.argv); got != tc.want {

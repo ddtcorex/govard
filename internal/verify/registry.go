@@ -793,6 +793,15 @@ var Registry = []Item{
 	}},
 
 	// Phase 4 — Sync / Safety / Snapshot (16)
+	// P4-01 — `remote test` is READ-ONLY-REMOTE because a verify child can
+	// never satisfy the key-copy offer: `offerSSHKeyCopyOnAuthFailure` returns
+	// early when `!stdinIsTerminal()` (internal/cmd/ssh_copy_id.go:101-103), and
+	// `execGovard` never sets `cmd.Stdin` (internal/verify/exec.go), so the child
+	// has no terminal to offer into. That coupling is the whole reason this label
+	// is honest, and the guard fence cannot see it — its classifier is a pure
+	// function of the argv. Keep this comment in step with
+	// offerSSHKeyCopyOnAuthFailure: if that tty gate ever goes, this label goes
+	// with it.
 	{ID: "P4-01", Phase: 4, Title: "govard remote test <remote> x4 (dev1/dev2/staging/production)", Precond: "—", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "test", remote)
 	})},
