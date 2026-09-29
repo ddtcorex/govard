@@ -161,9 +161,14 @@ func (r RunResult) Failed() bool {
 	return failed > 0
 }
 
-// Counts returns the number of passing and failing items.
+// Counts returns the number of passing and failing items. A skipped item is
+// neither: it never ran, so counting it as passed would claim work that did not
+// happen.
 func (r RunResult) Counts() (passed, failed int) {
 	for _, it := range r.Items {
+		if it.Skipped {
+			continue
+		}
 		if it.ExitCode != 0 {
 			failed++
 			continue
@@ -171,6 +176,18 @@ func (r RunResult) Counts() (passed, failed int) {
 		passed++
 	}
 	return passed, failed
+}
+
+// SkippedCount returns the number of items the run recorded as skipped. A skip
+// never changes a verdict, so it is reported beside Counts, not inside it.
+func (r RunResult) SkippedCount() int {
+	skipped := 0
+	for _, it := range r.Items {
+		if it.Skipped {
+			skipped++
+		}
+	}
+	return skipped
 }
 
 // RefreshStatus recomputes Status from the items. RunPhase calls it for a single
@@ -183,7 +200,9 @@ func (r *RunResult) RefreshStatus() {
 	}
 }
 
-// RunItem is one entry in RunResult.
+// RunItem is one entry in RunResult. A skipped row is additive: an artifact
+// written before the field existed still unmarshals, and a consumer that does
+// not know about skips reads it as a passing row with exit_code 0.
 type RunItem struct {
 	ID              string   `json:"id"`
 	Command         string   `json:"command"`
@@ -193,6 +212,8 @@ type RunItem struct {
 	EvidenceExcerpt string   `json:"evidence_excerpt"`
 	JSONValid       bool     `json:"json_valid"`
 	Artifacts       []string `json:"artifacts,omitempty"`
+	Skipped         bool     `json:"skipped,omitempty"`
+	SkipReason      string   `json:"skip_reason,omitempty"`
 }
 
 // RunPhase executes the filtered registry for a single phase and optionally
@@ -208,16 +229,25 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 		}
 	}
 
-	// Filter.
-	var filtered []Item
+	// Filter. An unmet When predicate no longer drops the item: the row stays,
+	// marked with the reason it did not run. A missing row is worse than a red,
+	// because a red is evidence. Later filters (a guard policy, a --checks
+	// filter) mark a row the same way instead of removing it.
+	type filteredItem struct {
+		item    Item
+		skipped bool
+		reason  string
+	}
+	var filtered []filteredItem
 	for _, it := range RegistryFor(cfg) {
 		if phase != 0 && it.Phase != phase {
 			continue
 		}
 		if it.When != nil && !it.When(cfg) {
+			filtered = append(filtered, filteredItem{item: it, skipped: true, reason: "precondition not met: " + it.Precond})
 			continue
 		}
-		filtered = append(filtered, it)
+		filtered = append(filtered, filteredItem{item: it})
 	}
 
 	// Build result.
@@ -232,12 +262,17 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 		res.Mode = "plan"
 	}
 
-	for _, it := range filtered {
+	for _, fi := range filtered {
+		it := fi.item
 		start := time.Now()
 		var ev Evidence
-		if opts.Plan {
+		switch {
+		case fi.skipped:
+			// Gated out: keep the row, do not execute the item.
+			ev = Skip(fi.reason)
+		case opts.Plan:
 			ev = Evidence{ExitCode: 0, OutputExcerpt: "plan: " + it.Title}
-		} else {
+		default:
 			if it.Run != nil {
 				ev = it.Run(ctx, cfg, opts)
 			} else {
@@ -255,6 +290,8 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 			EvidenceExcerpt: ev.OutputExcerpt,
 			JSONValid:       ev.JSONValid,
 			Artifacts:       ev.Artifacts,
+			Skipped:         ev.Skipped,
+			SkipReason:      ev.SkipReason,
 		})
 	}
 
