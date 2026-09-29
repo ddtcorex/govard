@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -61,6 +62,102 @@ func TestVerifyHonoursLintJobsAndTimeout(t *testing.T) {
 			t.Errorf("%s invoked\n got %v\nwant %v", id, got, want)
 		}
 	}
+}
+
+// The two module-scoped lint audits run lint too, so the two flags are as
+// meaningful there as on P3-10/P3-11 — and these are the two slowest items on a
+// large module. They resolve their target from the project tree, so they need
+// the module fixture rather than captureItemArgvs' empty ProjectRoot (there they
+// skip, which is why verifyAuditArgvsForTest cannot hold them).
+//
+// P3-14's `--path` is the standalone fixture this run creates under
+// os.TempDir(), so its expected argv is built from the captured path and the
+// path itself is pinned separately: a title may not promise `/tmp` when TMPDIR
+// moves the directory.
+func TestVerifyThreadsTheLintFlagsOnTheModuleLintAudits(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	const module = "DemoThreading"
+	projectRoot, moduleRoot := magentoProjectWithAppCodeModule(t, module)
+	cfg := engine.Config{Framework: "magento2"}
+
+	t.Run("flags set", func(t *testing.T) {
+		ev, argvs := captureAuditTargetItem(t, "P3-13", cfg, verify.VerifyOpts{
+			ProjectRoot: projectRoot, LintJobs: 8, Timeout: "25m",
+		}, nil)
+		if len(argvs) != 1 {
+			t.Fatalf("P3-13 made %d govard invocations, want 1", len(argvs))
+		}
+		want := []string{"audit", "run", "--checks", "lint", "--mode", "module_in_project", "--format", "json",
+			"--path", moduleRoot, "--lint-jobs", "8", "--timeout", "25m"}
+		if !reflect.DeepEqual(argvs[0], want) {
+			t.Errorf("P3-13 invoked\n got %v\nwant %v", argvs[0], want)
+		}
+		if ev.SkipReason != "" {
+			t.Errorf("P3-13 skipped (%q) on a project with a module", ev.SkipReason)
+		}
+
+		ev14, argvs14 := captureAuditTargetItem(t, "P3-14", cfg, verify.VerifyOpts{
+			ProjectRoot: projectRoot, LintJobs: 8, Timeout: "25m",
+		}, nil)
+		if len(argvs14) != 1 {
+			t.Fatalf("P3-14 made %d govard invocations, want 1", len(argvs14))
+		}
+		fixture := argvs14[0][indexOfArgvValue(argvs14[0], "--path")+1]
+		want14 := []string{"audit", "run", "--checks", "lint", "--mode", "standalone", "--format", "json",
+			"--path", fixture, "--lint-jobs", "8", "--timeout", "25m"}
+		if !reflect.DeepEqual(argvs14[0], want14) {
+			t.Errorf("P3-14 invoked\n got %v\nwant %v", argvs14[0], want14)
+		}
+		if ev14.SkipReason != "" {
+			t.Errorf("P3-14 skipped (%q) on a project with a module", ev14.SkipReason)
+		}
+		wantPrefix := filepath.Join(os.TempDir(), "govard-audit-standalone")
+		if filepath.Dir(fixture) != wantPrefix {
+			t.Errorf("P3-14 audited %q, want a fixture directly under %q: the title names that directory, and TMPDIR must not move it", fixture, wantPrefix)
+		}
+	})
+
+	// At verify's own defaults neither flag is a request: `--lint-jobs` stays out
+	// so `audit run` keeps engine.AuditRunJobs(), and `--timeout auto` is
+	// `audit run`'s own default, so threading it changes nothing the child does.
+	t.Run("verify defaults", func(t *testing.T) {
+		_, argvs := captureAuditTargetItem(t, "P3-13", cfg, verify.VerifyOpts{
+			ProjectRoot: projectRoot, LintJobs: 4, Timeout: "auto",
+		}, nil)
+		if len(argvs) != 1 {
+			t.Fatalf("P3-13 made %d govard invocations, want 1", len(argvs))
+		}
+		if hasArgvFlag(argvs[0], "--lint-jobs") {
+			t.Errorf("P3-13 invoked %v, want no --lint-jobs at verify's default", argvs[0])
+		}
+		if !containsAdjacent(argvs[0], []string{"--timeout", "auto"}) {
+			t.Errorf("P3-13 invoked %v, want --timeout auto, audit run's own default", argvs[0])
+		}
+		_, argvs14 := captureAuditTargetItem(t, "P3-14", cfg, verify.VerifyOpts{
+			ProjectRoot: projectRoot, LintJobs: 4, Timeout: "auto",
+		}, nil)
+		if len(argvs14) != 1 {
+			t.Fatalf("P3-14 made %d govard invocations, want 1", len(argvs14))
+		}
+		if hasArgvFlag(argvs14[0], "--lint-jobs") {
+			t.Errorf("P3-14 invoked %v, want no --lint-jobs at verify's default", argvs14[0])
+		}
+		if !containsAdjacent(argvs14[0], []string{"--timeout", "auto"}) {
+			t.Errorf("P3-14 invoked %v, want --timeout auto, audit run's own default", argvs14[0])
+		}
+	})
+}
+
+// indexOfArgvValue returns the position of value's flag in argv, or -1 when the
+// flag is absent — so a missing `--path` fails the comparison that reads it
+// rather than panicking on the next index.
+func indexOfArgvValue(argv []string, flag string) int {
+	for i, a := range argv {
+		if a == flag {
+			return i
+		}
+	}
+	return -1
 }
 
 // An untouched flag means the operator asked for no count, not for verify's own

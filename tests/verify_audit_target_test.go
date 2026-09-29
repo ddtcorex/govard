@@ -105,9 +105,15 @@ func captureAuditTargetItem(t *testing.T, id string, cfg engine.Config, opts ver
 }
 
 // auditsTheModule is the argv both items must build once a module is known:
-// `audit run --checks lint --mode <mode> --format json --path <dir>`.
+// `audit run --checks lint --mode <mode> --format json --path <dir>` followed by
+// the threaded flags. `--timeout auto` is there because both items run the lint
+// check, so verify's `--timeout` reaches them (issue #472), and at verify's own
+// default `auto` is `audit run`'s own default — threading it changes nothing the
+// child does. `--lint-jobs` is absent for the same reason it is absent on P3-10
+// and P3-11: an untouched flag is not a request, so the child keeps its own
+// worker count.
 func auditsTheModule(mode, dir string) []string {
-	return []string{"audit", "run", "--checks", "lint", "--mode", mode, "--format", "json", "--path", dir}
+	return []string{"audit", "run", "--checks", "lint", "--mode", mode, "--format", "json", "--path", dir, "--timeout", "auto"}
 }
 
 // A project with no module cannot support either mode, and neither can a
