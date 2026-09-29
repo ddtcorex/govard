@@ -60,12 +60,22 @@ govard tunnel stop
 
 `tunnel start` records the process it launched — its PID and the argv it was
 started with — under `$GOVARD_HOME_DIR/tunnels/<project>.pid`, and `tunnel stop`
-signals that one process. It never matches a process by name, so a
-`cloudflared` you started yourself, or one belonging to another project or
-another tool, is left alone. The argv is checked before any signal: if the
-recorded PID has been recycled by an unrelated program, or its argv cannot be
-read, `tunnel stop` refuses with an error and signals nothing — remove the
-record by hand once you have checked the tunnel yourself.
+signals that one process. It never searches the host for a process by name, so
+there is no pattern it can overreach with; what it refuses is any PID whose argv
+is not the one it recorded, token for token from the first argument on. A
+`cloudflared` you started yourself, one belonging to another project, and one
+belonging to another tool are all left alone — including a `cloudflared tunnel`
+unit of another tool, which shares the binary and the `tunnel` verb and is
+separated by the arguments that follow. The argv is checked before any signal:
+if the recorded PID has been recycled by an unrelated program, or its argv
+cannot be read, `tunnel stop` refuses with an error and signals nothing — remove
+the record by hand once you have checked the tunnel yourself.
+
+A record govard cannot parse at all — a truncated or hand-edited file — makes
+`start`, `stop` and `status` all fail with an error rather than assume there is
+no tunnel, because a record nobody can interpret is not the same as no record
+and assuming so would strand a running tunnel. Remove the file once you have
+checked the tunnel by hand.
 
 With no record, `tunnel stop` is a no-op that says so and exits 0, so it is
 safe to run twice. The project's base URL is restored either way, except when

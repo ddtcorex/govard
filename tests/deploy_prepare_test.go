@@ -1389,6 +1389,26 @@ func TestWritabilityProbeCommandIsReadOnlyForARemoteHost(t *testing.T) {
 	}
 }
 
+// The shell walk stops at the first ancestor that exists, whatever it is, so the
+// note has to name that one: it is the path `test -w` was actually run against.
+// A regular file as an intermediate component is the case that used to break
+// that — os.Stat answers ENOTDIR for every level below it, so a walk that
+// insists on a directory skips the file the shell stops at and names the
+// directory one level above it, which was never tested.
+func TestWritabilityProbeNoteNamesTheAncestorTheShellWalkStopsAt(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "srv")
+	if err := os.WriteFile(file, []byte("not a directory"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	deployPath := filepath.Join(file, "www", "app")
+
+	_, note := deploy.WritabilityProbeCommand(deployPath, true)
+	if !strings.Contains(note, "writability was probed at "+file) {
+		t.Fatalf("note = %q, want it to name %q — the ancestor `[ -e ]` stops at", note, file)
+	}
+}
+
 func TestCoreCheckCleansUpTheAtomicRenameProbe(t *testing.T) {
 	root := t.TempDir()
 	deployPath := filepath.Join(root, "public_html")
@@ -1494,9 +1514,10 @@ func TestCoreCheckLeavesNothingBehindWhenTheAtomicSwapFails(t *testing.T) {
 }
 
 // A deploy_path that is a file is a mistyped configuration, not a broken target:
-// `mkdir -p <file>/.dep` fails, and the operator used to be told the target's mv
-// lacks -T. The check must name the shape it found — on the target, so the remote
-// branch says it too.
+// with the old self-satisfying probe it failed as "deploy path … is not writable",
+// which named a permission problem for what is a path-shape fault. The new probe
+// tests the file itself and probeAtomicRename reports the shape, so a remote
+// target gets the true reason too.
 func TestCoreCheckRefusesADeployPathThatIsAFile(t *testing.T) {
 	root := t.TempDir()
 	deployPath := filepath.Join(root, "public_html")

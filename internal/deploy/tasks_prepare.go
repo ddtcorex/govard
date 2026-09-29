@@ -219,15 +219,20 @@ func WritabilityProbeCommand(deployPath string, local bool) (command string, not
 	return command, ""
 }
 
-// nearestExistingDir names the ancestor a deploy path would be created under, as
-// far as this process can see. It only ever *names* a directory for the note:
-// the shell walk in WritabilityProbeCommand is what actually tests writability,
-// because it happens on the machine that owns the path. It terminates at the
+// nearestExistingDir names the ancestor the deploy path would be created under,
+// as far as this process can see, and it stops on the first path that exists
+// whatever it is — which is exactly what the shell walk does, because `[ -e ]`
+// cannot tell a file from a directory. The two must agree: the walk is what
+// actually tests writability, so an ancestor it never reached would make the
+// note a claim about a path nobody tested. That is the whole difference from
+// requiring a directory here — a regular file as an intermediate component
+// answers ENOTDIR for every level below it, and a directory-only walk would
+// name the level above the file the walk stops at. It terminates at the
 // filesystem root and never returns an empty string.
 func nearestExistingDir(p string) string {
 	current := p
 	for {
-		if info, err := os.Stat(current); err == nil && info.IsDir() {
+		if _, err := os.Stat(current); err == nil {
 			return current
 		}
 		parent := filepath.Dir(current)

@@ -364,6 +364,72 @@ func TestTunnelStopRefusesAForeignPID(t *testing.T) {
 	}
 }
 
+// A recycled pid is not the only way a stop could reach the wrong process. A
+// sibling `cloudflared tunnel` belonging to another tool shares the binary and
+// the `tunnel` verb with the argv govard recorded — a systemd unit running
+// `cloudflared tunnel --no-autoupdate --config /etc/cloudflared/other.yml
+// tunnel run` is exactly that shape — so a comparison that stops at two tokens
+// accepts it. The record here is govard's own and the host reports the sibling's;
+// the stop must refuse rather than signal it.
+func TestTunnelStopRefusesASiblingCloudflaredTunnel(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	pid, _ := startSleeper(t)
+	installTunnelPsShim(t, "echo '/usr/bin/cloudflared tunnel --no-autoupdate --config /etc/cloudflared/other.yml tunnel run'")
+	writeTunnelRecord(t, "demo", pid, "/usr/bin/cloudflared tunnel --url http://localhost:80")
+
+	out, err := runTunnel(t, "tunnel", "stop")
+	if err == nil {
+		t.Fatalf("stop must refuse a sibling cloudflared tunnel, got: %q", out)
+	}
+	assertStillAlive(t, pid)
+	if _, err := os.Stat(cmd.TunnelPIDFileForTest("demo")); err != nil {
+		t.Fatalf("a refused stop must keep the record for inspection: %v", err)
+	}
+}
+
+// The argv comparison is the whole ownership argument, so the shapes it has to
+// separate are pinned here rather than only through a command: the recorded
+// argv must be reproduced token for token, or something the same binary and the
+// same verb happens to share is mistaken for govard's tunnel.
+func TestTunnelArgvMatchesSeparatesAnotherToolsCloudflared(t *testing.T) {
+	const (
+		govardQuickTunnel = "/usr/bin/cloudflared tunnel --url http://localhost:80"
+		siblingUnit       = "/usr/bin/cloudflared tunnel --no-autoupdate --config /etc/cloudflared/other.yml tunnel run"
+		otherVendorPath   = "/opt/vendor/bin/cloudflared tunnel --url http://localhost:80"
+		unrelatedBinary   = "/usr/bin/sleep 30"
+	)
+	for _, tc := range []struct {
+		name               string
+		recorded, observed string
+		want               bool
+	}{
+		{name: "the recorded argv itself", recorded: govardQuickTunnel, observed: govardQuickTunnel, want: true},
+		// The recorded argv[0] is the path exec.LookPath resolved, while the
+		// kernel reports the name exec.Command passed, so the two differ for
+		// govard's own process on every run. Only the base name is comparable —
+		// and the same rule is what accepts a process whose recorded name is
+		// the bare one.
+		{name: "recorded by an unresolved name", recorded: "cloudflared tunnel --url http://localhost:80", observed: govardQuickTunnel, want: true},
+		{name: "a sibling cloudflared tunnel unit", recorded: govardQuickTunnel, observed: siblingUnit, want: false},
+		// The cost of comparing the executable by base name, stated rather than
+		// left implicit: a different vendor path running govard's own command
+		// line byte for byte cannot be told apart from govard's tunnel. Refusing
+		// it instead would refuse govard's own process on every real run, so
+		// this shape is accepted.
+		{name: "another vendor path, identical arguments", recorded: govardQuickTunnel, observed: otherVendorPath, want: true},
+		{name: "an unrelated binary", recorded: govardQuickTunnel, observed: unrelatedBinary, want: false},
+		{name: "a shorter argv than the record", recorded: govardQuickTunnel, observed: "/usr/bin/cloudflared tunnel", want: false},
+		{name: "an unreadable argv", recorded: govardQuickTunnel, observed: "", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := cmd.TunnelArgvMatchesForTest(tc.recorded, tc.observed); got != tc.want {
+				t.Fatalf("tunnelArgvMatches(%q, %q) = %v, want %v", tc.recorded, tc.observed, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestTunnelStatusIsInactiveWithoutARecord(t *testing.T) {
 	initTunnelHome(t)
 	tunnelProjectForTest(t)
@@ -603,5 +669,39 @@ func TestTunnelStopSignalsExactlyTheRecordedPID(t *testing.T) {
 	}
 	if _, err := os.Stat(cmd.TunnelPIDFileForTest("demo")); !os.IsNotExist(err) {
 		t.Fatalf("stop must remove the record, stat err = %v", err)
+	}
+}
+
+// A tunnel can end on its own between the liveness check and the SIGTERM — the
+// check said alive, then the process was gone. That arrives as ESRCH and means
+// the process this record names has already ended, which is the outcome a stop
+// exists to reach. Reported as an error it takes the caller's "refused" branch,
+// which deliberately skips the base-URL revert: the operator is left with a base
+// URL pointing at a tunnel that is not running, and a stale record, for a
+// command that did exactly the right thing.
+func TestTunnelStopSucceedsWhenTheTunnelExitsBeforeTheSignal(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	pid, _ := startSleeper(t)
+	installTunnelPsShim(t, "echo 'sleep 30'")
+	writeTunnelRecord(t, "demo", pid, "sleep 30")
+
+	// Only the signal is replaced. Liveness and the observed argv keep their real
+	// implementations, so the race this covers — alive, matching, then gone — is
+	// the one the host can actually produce.
+	restore := cmd.SetTunnelDependenciesForTest(cmd.TunnelDependenciesForTest{
+		SignalProcess: func(int, os.Signal) error { return os.ErrProcessDone },
+	})
+	defer restore()
+
+	out, err := runTunnel(t, "tunnel", "stop")
+	if err != nil {
+		t.Fatalf("a tunnel that ended before the signal is a stopped tunnel, not a refusal: %v (out %q)", err, out)
+	}
+	if _, err := os.Stat(cmd.TunnelPIDFileForTest("demo")); !os.IsNotExist(err) {
+		t.Fatalf("stop must remove the record, stat err = %v", err)
+	}
+	if !strings.Contains(out, "Tunnel stopped") {
+		t.Fatalf("stop must report the success it took, got: %q", out)
 	}
 }

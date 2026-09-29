@@ -855,11 +855,16 @@ var Registry = []Item{
 	// P4-13..P4-16 close the read-only half of the remote surface. They are
 	// safe against a production remote by construction: `deploy plan` does not
 	// connect at all, and `deploy status`, `deploy releases` and `remote list`
-	// only read. The rest stay manual recipes until govard#466-#469 land: `deploy
-	// check` is a preflight of its own and creates nothing on the target,
-	// `deploy unlock`/`rollback` mutate the target, `db`/`snapshot`/`open -e` can
-	// bypass write protection or copy a key, and `tunnel stop` kills every
-	// cloudflared on the host.
+	// only read. The rest stay manual recipes, and each reason it gives is one a
+	// reader can re-derive from the code rather than assume: `deploy check` is a
+	// preflight of its own that leaves nothing behind on the target,
+	// `deploy unlock`/`rollback` mutate the target, `db query`/`db connect` and
+	// `db import` (without `--stream-db`, which only reads the remote's dump)
+	// are refused against a write-protected remote, as are `snapshot push` and
+	// `snapshot restore`, `db dump` only adds a new archive file there, and
+	// `open -e <remote>` hands over an interactive shell. `tunnel stop` signals
+	// one recorded pid. Keep this in step with those gates: a new writing half
+	// needs a reason here, not a row.
 	{ID: "P4-13", Phase: 4, Title: "govard deploy plan <remote> --json", Precond: "—", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "deploy", "plan", remote, "--json")
 	})},

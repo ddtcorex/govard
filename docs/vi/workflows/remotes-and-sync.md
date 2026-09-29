@@ -199,7 +199,7 @@ Sử dụng `--media all` để tải về toàn bộ media. Sử dụng `--medi
 ### Các đích đến được bảo vệ (Protected Destinations)
 
 ::: warning CẢNH BÁO
-Sử dụng `--delete` kết hợp với `--db` sẽ hiển thị cảnh báo chính sách an toàn. Các remote thuộc môi trường Production được bảo vệ chống ghi đè và sẽ chặn các thao tác phá hủy này. Lớp bảo vệ chỉ áp dụng cho **thao tác ghi**, không áp dụng cho thao tác đọc: `db info` hoặc `db top` trên remote được bảo vệ vẫn được phép (`db dump` cũng vẫn được phép — lệnh này chỉ tạo một tệp archive mới trên remote), và chỉ thao tác ghi vào remote đó — `db import`, `db query`, `db connect`, `snapshot push` — mới bị từ chối.
+Sử dụng `--delete` kết hợp với `--db` sẽ hiển thị cảnh báo chính sách an toàn. Các remote thuộc môi trường Production được bảo vệ chống ghi đè và sẽ chặn các thao tác phá hủy này. Lớp bảo vệ chỉ áp dụng cho **thao tác ghi**, không áp dụng cho thao tác đọc: `db info` hoặc `db top` trên remote được bảo vệ vẫn được phép (`db dump` cũng vẫn được phép — lệnh này chỉ tạo một tệp archive mới trên remote), và chỉ thao tác ghi vào remote đó — `db import` không dùng `--stream-db` (bản dùng cờ đó chỉ đọc dump của remote rồi ghi vào database **cục bộ** của bạn), `db query`, `db connect`, `snapshot push` — mới bị từ chối.
 :::
 
 ### Tích hợp với lệnh `bootstrap`
