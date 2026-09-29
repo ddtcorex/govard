@@ -40,6 +40,14 @@ framework: wordpress
 			return nil
 		},
 		UnregisterDomain: func(string) error { return nil },
+		// Both of these default to the real proxy implementation, which reaches
+		// the Caddy admin API through `docker exec govard-proxy-caddy curl`. A
+		// unit test must not shell into whichever containers happen to be
+		// running on the developer's machine: it costs seconds per call, and it
+		// makes the result depend on host state — with no proxy up, fetchCaddyConfig
+		// errors and the route is never even looked for.
+		UnregisterSearchDomain:   func(string) error { return nil },
+		UnregisterRabbitMQDomain: func(string) error { return nil },
 		AddHostsEntry: func(domain string) error {
 			mappedHosts = append(mappedHosts, domain)
 			return nil
@@ -107,6 +115,10 @@ stack:
 			unregisteredSearchDomains = append(unregisteredSearchDomains, domain)
 			return nil
 		},
+		// The RabbitMQ unregister defaults to a real `docker exec` into the proxy
+		// container; this test is about the search route, so stub it rather than
+		// shell into whatever the developer happens to be running.
+		UnregisterRabbitMQDomain:  func(string) error { return nil },
 		AddHostsEntry:             func(string) error { return nil },
 		RemoveHostsEntry:          func(string) error { return nil },
 		IsDomainResolvableLocally: func(string) bool { return false },
@@ -163,6 +175,10 @@ stack:
 			unregisteredRabbitMQDomains = append(unregisteredRabbitMQDomains, domain)
 			return nil
 		},
+		// The search unregister defaults to a real `docker exec` into the proxy
+		// container; this test is about the RabbitMQ route, so stub it rather than
+		// shell into whatever the developer happens to be running.
+		UnregisterSearchDomain:    func(string) error { return nil },
 		AddHostsEntry:             func(string) error { return nil },
 		RemoveHostsEntry:          func(string) error { return nil },
 		IsDomainResolvableLocally: func(string) bool { return false },

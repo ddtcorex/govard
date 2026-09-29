@@ -26,13 +26,13 @@ type OperationNotification struct {
 	Timestamp string `json:"timestamp"`
 }
 
-func watchOperationNotifications(ctx context.Context, p Platform, onEvent func()) {
+func watchOperationNotifications(ctx context.Context, p Platform, onEvent func(), pollInterval time.Duration) {
 	cursor := ""
 	if events, err := engine.ReadOperationEvents(operationNotificationsReadLimit); err == nil {
 		_, cursor = selectOperationEventsSince(events, cursor)
 	}
 
-	ticker := time.NewTicker(operationNotificationsPollInterval)
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for {

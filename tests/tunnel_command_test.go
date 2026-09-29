@@ -734,6 +734,12 @@ func TestTunnelStopSucceedsWhenTheTunnelEndsBeforeTheEscalation(t *testing.T) {
 			// reached without the test sleeping through it.
 			return time.Now().Add(time.Hour)
 		},
+		Sleep: func(time.Duration) {
+			// Moving the clock is not the same as skipping the wait. Without
+			// this, every poll still slept for real and the test paid the whole
+			// five-second grace it had just told the loop to skip. The poll cap
+			// still bounds the loop, so dropping the wait cannot hang it.
+		},
 	})
 	defer restore()
 

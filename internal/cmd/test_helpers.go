@@ -149,6 +149,21 @@ func WaitForUpRuntimeReadinessForTest(projectRoot string, config engine.Config, 
 	return waitForUpRuntimeReadiness(projectRoot, config, services, timeout)
 }
 
+// SetUpReadinessPollDelayForTest collapses the wait between readiness polls.
+//
+// The loop retries for a whole timeout window, and a test that exercises its
+// failure path otherwise pays that window in real seconds to reach an answer it
+// already knows. Only the sleep is removed: the probe interval stays put,
+// because readinessProbeAttempts derives the attempt count from it, and a test
+// asserting "this takes three polls" must still be allowed to make them.
+func SetUpReadinessPollDelayForTest() func() {
+	previous := upReadinessSleep
+	upReadinessSleep = func(time.Duration) {}
+	return func() {
+		upReadinessSleep = previous
+	}
+}
+
 // SetUpReadinessProbeRunnerForTest overrides the probe runner used by readiness checks.
 func SetUpReadinessProbeRunnerForTest(fn func(containerName string, probeArgs []string) error) func() {
 	previous := upReadinessProbeRunner

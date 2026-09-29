@@ -343,6 +343,11 @@ func TestWaitForUpRuntimeReadinessReturnsErrorAfterTimeout(t *testing.T) {
 }
 
 func TestWaitForUpRuntimeReadinessFailsFastWhenContainerExited(t *testing.T) {
+	// The loop tolerates three consecutive abort states before giving up, so
+	// without this it slept the poll interval twice on the way to the answer it
+	// already had. The attempt count is unchanged.
+	defer cmd.SetUpReadinessPollDelayForTest()()
+
 	restoreState := cmd.SetUpContainerStateRunnerForTest(func(containerName string) (string, error) {
 		if containerName != "demo-php-1" {
 			t.Fatalf("unexpected container %q", containerName)

@@ -27,6 +27,12 @@ type tunnelCommandDependencies struct {
 	ProcessAlive    func(pid int) bool
 	SignalProcess   func(pid int, sig os.Signal) error
 	Now             func() time.Time
+	// Sleep is the wait between liveness polls while a tunnel shuts down. It is
+	// a dependency so a test can control *when* the grace period expires (with
+	// Now) without also paying for it in real time. Those are two separate
+	// decisions: a test that can only move the clock still has to sit through
+	// every sleep that clock would have skipped.
+	Sleep func(d time.Duration)
 }
 
 var tunnelDeps = tunnelCommandDependencies{
@@ -38,6 +44,7 @@ var tunnelDeps = tunnelCommandDependencies{
 	ProcessAlive:    processAlive,
 	SignalProcess:   signalProcess,
 	Now:             time.Now,
+	Sleep:           time.Sleep,
 }
 
 // TunnelDependenciesForTest allows tests to swap tunnel command dependencies.
@@ -48,6 +55,7 @@ type TunnelDependenciesForTest struct {
 	ProcessAlive    func(pid int) bool
 	SignalProcess   func(pid int, sig os.Signal) error
 	Now             func() time.Time
+	Sleep           func(d time.Duration)
 }
 
 var tunnelCmd = &cobra.Command{
@@ -443,6 +451,11 @@ func SetTunnelDependenciesForTest(deps TunnelDependenciesForTest) func() {
 		tunnelDeps.Now = deps.Now
 	} else {
 		tunnelDeps.Now = time.Now
+	}
+	if deps.Sleep != nil {
+		tunnelDeps.Sleep = deps.Sleep
+	} else {
+		tunnelDeps.Sleep = time.Sleep
 	}
 	return func() {
 		tunnelDeps = previous

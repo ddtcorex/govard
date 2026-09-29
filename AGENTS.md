@@ -122,6 +122,63 @@ install -m0755 bin/govard ~/.local/bin/govard     # only to test PATH consumers 
 - Prefer mocks over live network in unit tests
 - Isolate state via `GOVARD_HOME_DIR` (use `TestMain` where appropriate)
 - Gate external service tests with explicit env checks
+
+### Per-test time budget
+
+`make test-unit` and `make test-integration` run under `scripts/testbudget`,
+which fails the build when **one test** exceeds its budget in
+`tests/test-time-budget.yml` (`7s` unit with **no** allowances, `30s`
+integration with one) — measured against `-race` timings, since `make test-unit`
+runs the detector. The check reads the `Elapsed` field `go test -json`
+already reports, so it adds no wall time, and every run prints its ten slowest
+tests — the fastest way to see where the clock is actually going.
+
+- **A missing allowance is a failing test, not a warning.** An override without a
+  `reason` is rejected at load time, and an override whose test no longer runs is
+  reported as stale. An unexplained or orphaned allowance is how an allowlist rots
+  into a list of tests nobody examined.
+- **Prefer making the test fast over raising its budget.** The suite is ~84%
+  sub-10ms, so a slow test is almost always structural, and the causes found so
+  far were all worth fixing rather than budgeting for:
+  - a **unit test reaching a real container** — `UnregisterSearchDomain` /
+    `UnregisterRabbitMQDomain` default to `docker exec govard-proxy-caddy curl`,
+    so an env-restart test was shelling into whatever the developer happened to
+    be running. Stub every dependency `SetEnvDependenciesForTest` accepts.
+  - **sleeping out a production interval** — a watcher test waited the real
+    2s `PollInterval`; `internal/desktop/test_helpers.go` now exposes
+    `SetOperationWatcherPollIntervalForTest`.
+  - **a clock seam that was not a sleep seam** — moving `Now` past a grace
+    period still left the test paying every `time.Sleep` in between. Where a
+    production loop waits, expose the wait itself (see `TunnelDependenciesForTest.Sleep`).
+  - Rebuilding fixtures per test is a *smaller* lever than it looks:
+    `seedGitRepo` forks nine `git` processes but costs only ~23ms, ~0.9s across
+    the suite. Measure before refactoring 40 call sites for that.
+- **Slower machines:** `GOVARD_TEST_TIME_SCALE=2` multiplies every budget without
+  editing the file, so a slow CI runner does not turn the gate into noise.
+- **The unit suite runs under the race detector.** `make test-unit` passes
+  `-race`, which is what surfaced two long-standing data races in
+  `internal/deploy/stream.go` that nothing had caught. The cost is roughly 20%
+  (56–60s → 65–72s), because the suite is bound by `ps`/`git`/`docker`/sleeps
+  rather than by CPU-bound Go code, so the detector has little to instrument.
+  Integration is deliberately left alone: it drives the real binary out of
+  process, where the detector would only cover the test harness.
+  - The detector inflates the **slowest** tests, not just the total, so the
+    budget is derived from `-race` timings. The same two tests peak near 2.9s raw
+    and 4.4s under the detector; a ceiling derived from the raw numbers left 13%
+    headroom over a `-race` run and flaked.
+  - A measurement of `runtime.MemStats.TotalAlloc` is **meaningless** under
+    `-race`: the shadow memory turns a 2 MiB allocation into ~146 MiB.
+    `TestSandboxSeedStreamsTheDumpWithoutBufferingIt` skips itself via the `race`
+    build tag for exactly that reason and asserts normally everywhere else. A new
+    allocation-ceiling test needs the same guard, or a measurement the detector
+    does not corrupt.
+  - `raceDetectorEnabled` in `tests/race_on_test.go` / `tests/race_off_test.go`
+    is a build tag because Go exposes no runtime API for the detector.
+- `t.Parallel()` is effectively unused here and cannot simply be added: the suite
+  has hundreds of `t.Setenv` calls plus an `os.Chdir` helper, both process-global,
+  and Go panics on `t.Setenv` in a parallel test. Parallelising means sharding by
+  package (separate processes), not sprinkling `t.Parallel()`.
+
 - A test that drives a capability-gated command **out of process** (the
   integration suite runs the real binary) cannot use the in-process stubs: force
   the requirement with `GOVARD_TEST_SATISFIED_CAPABILITIES=<caps>` instead of

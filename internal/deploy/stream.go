@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,16 +20,33 @@ const linePrefix = "  │ "
 // bury the timeline.
 const heartbeatInterval = 10 * time.Second
 
-// heartbeatEvery is heartbeatInterval, replaceable in tests: asserting a heartbeat
-// with the real interval would cost ten seconds per test.
-var heartbeatEvery = heartbeatInterval
+// heartbeatOverride replaces the production heartbeat interval for the duration of
+// a test: asserting a heartbeat with the real interval would cost ten seconds per
+// test. nil means "no override", so the zero value is the production behaviour and
+// nothing has to initialise it. A pointer rather than a plain integer because zero
+// is a meaningful value here -- a test that passes 0 turns the heartbeat off -- and
+// "no override" has to stay distinguishable from it.
+//
+// It is atomic because the heartbeat runs on its own goroutine. A plain var here
+// raced with the test that set it -- `go test -race` flagged it, and nothing in
+// the ordinary suite did, because nothing in the ordinary suite runs a race
+// detector.
+var heartbeatOverride atomic.Pointer[time.Duration]
+
+// heartbeatCadence is how often a heartbeat actually ticks.
+func heartbeatCadence() time.Duration {
+	if override := heartbeatOverride.Load(); override != nil {
+		return *override
+	}
+	return heartbeatInterval
+}
 
 // SetHeartbeatForTest shortens the heartbeat for the duration of a test and returns
-// the function that restores it.
+// the function that restores it. Passing 0 turns the heartbeat off, as it always
+// could.
 func SetHeartbeatForTest(interval time.Duration) func() {
-	previous := heartbeatEvery
-	heartbeatEvery = interval
-	return func() { heartbeatEvery = previous }
+	previous := heartbeatOverride.Swap(&interval)
+	return func() { heartbeatOverride.Store(previous) }
 }
 
 // streamTo writes a command's stream to the bounded capture the Result carries
@@ -144,13 +162,18 @@ func progressArgs(sc *StepContext) []string {
 // whole point is that an operator can tell the difference without waiting for the
 // timeout.
 func startHeartbeat(step Step, writer *liveWriter) func() {
-	if heartbeatEvery <= 0 || writer == nil {
+	// Read the cadence once, here, before the goroutine exists. The ticker used to
+	// read the variable from inside its own goroutine, which both raced with a test
+	// setting it and let a heartbeat change speed mid-flight — neither of which is
+	// what starting a heartbeat means.
+	interval := heartbeatCadence()
+	if interval <= 0 || writer == nil {
 		return func() {}
 	}
 	started := time.Now()
 	done := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(heartbeatEvery)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {

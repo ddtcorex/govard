@@ -89,6 +89,13 @@ jobs:
 
       - name: Run fast test suite
         run: make test-unit test-frontend
+        env:
+          # A 2-core runner is slower than a developer machine, and the per-test
+          # budget in tests/test-time-budget.yml is written from measurements on
+          # fast hardware. Scaling keeps the gate meaningful here (a test that
+          # jumps by an order of magnitude still trips it) without flagging
+          # ordinary hardware variance as a regression. Local runs stay strict.
+          GOVARD_TEST_TIME_SCALE: "2"
 
       # Raw-CDP scenarios against preview.html; ubuntu-latest ships google-chrome.
       - name: Frontend behaviour tests (raw CDP)
@@ -119,6 +126,10 @@ jobs:
 
       - name: Run integration test suite
         run: make test-integration-ci
+        env:
+          # Same reasoning as the fast job: container work on a shared runner
+          # varies far more than local hardware does.
+          GOVARD_TEST_TIME_SCALE: "2"
 
   build_binaries:
     name: Build Binaries
