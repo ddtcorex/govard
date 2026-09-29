@@ -150,7 +150,11 @@ func listProjectRemotesByPath(root string) (RemoteSnapshot, error) {
 func resolveSandboxRemoteForListing(cfg engine.Config, projectRoot string) (map[string]engine.RemoteConfig, []string) {
 	configured := hasSandboxRemoteBlock(cfg.Remotes)
 
-	remotes := make(map[string]engine.RemoteConfig, len(cfg.Remotes)+1)
+	// No size hint on purpose: len(cfg.Remotes) comes from a parsed config
+	// file, so hinting it would let a config carrying a pathological number of
+	// remotes pre-allocate a map of that size before a single entry is read.
+	// The map holds a handful of entries either way.
+	remotes := make(map[string]engine.RemoteConfig)
 	for name, remote := range cfg.Remotes {
 		if !strings.EqualFold(strings.TrimSpace(name), conventions.SandboxRemoteName) {
 			remotes[name] = remote
