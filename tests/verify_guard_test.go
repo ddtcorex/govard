@@ -300,7 +300,9 @@ func TestDecideGuardTreatsAllPhasesAsTheItemsOwnPhase(t *testing.T) {
 
 // The policy is only reachable if the flag is registered AND read into
 // VerifyOpts; both halves are pinned here, without the root command's capability
-// gate (which would make the test depend on the host having Docker).
+// gate (which would make the test depend on the host having Docker). The run
+// names a remote too: --allow-remote-write opts into writing through one, it
+// does not supply the target (see TestRemoteItemsSkipWithoutAnExplicitRemote).
 func TestAllowRemoteWriteFlagReachesTheRunner(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	probe := installGuardProbe(t)
@@ -311,6 +313,7 @@ func TestAllowRemoteWriteFlagReachesTheRunner(t *testing.T) {
 	}
 	for name, value := range map[string]string{
 		"allow-remote-write": "true",
+		"remote":             "sandbox",
 		"phase":              "2",
 		"json":               "true",
 		"project":            t.TempDir(),
@@ -325,6 +328,7 @@ func TestAllowRemoteWriteFlagReachesTheRunner(t *testing.T) {
 		command.SetErr(nil)
 		for name, value := range map[string]string{
 			"allow-remote-write": "false",
+			"remote":             "",
 			"phase":              "0",
 			"json":               "false",
 			"project":            "",
@@ -341,7 +345,7 @@ func TestAllowRemoteWriteFlagReachesTheRunner(t *testing.T) {
 	command.SetErr(io.Discard)
 
 	if err := command.RunE(command, nil); err != nil {
-		t.Fatalf("verify --phase 2 --allow-remote-write: %v", err)
+		t.Fatalf("verify --phase 2 --allow-remote-write --remote sandbox: %v", err)
 	}
 	if _, ran := probe.sawNonPlanBootstrap(); !ran {
 		t.Fatalf("--allow-remote-write reached the policy but no bootstrap argv ran (captured %v)", probe.argv)

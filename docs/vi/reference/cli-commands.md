@@ -507,7 +507,7 @@ govard status
 
 ### `govard verify`
 
-Chạy bộ kiểm tra QA thực thi 5 pha (thay cho tick thủ công). Registry là nguồn duy nhất — 60 mục tĩnh P1 7 · P2 14 · P3 15 · P4 16 · P5 8, cộng với các mục mà từng framework tự khai báo. 10 mục tĩnh mang `When isMagento2` và bị lọc bỏ với Laravel/Symfony/WordPress; các framework này lấy lại dev loop nhờ mục do framework khai báo (xem bên dưới).
+Chạy bộ kiểm tra QA thực thi 5 pha (thay cho tick thủ công). Registry là nguồn duy nhất — 60 mục tĩnh P1 7 · P2 14 · P3 15 · P4 16 · P5 8, cộng với các mục mà từng framework tự khai báo. 10 mục tĩnh mang `When isMagento2` và được báo cáo thành dòng `skipped` (không bị loại bỏ) với Laravel/Symfony/WordPress; các framework này lấy lại dev loop nhờ mục do framework khai báo (xem bên dưới).
 
 ```bash
 govard verify --plan --json                 # dry-run tất cả pha, JSON máy
@@ -516,11 +516,11 @@ govard verify --phase 5 --allow-destructive --json # destructive sau snapshot
 govard verify --project /path/to/project --json
 ```
 
-Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. Chỉ `--base`, `--allow-xdebug`, `--allow-destructive` và `--allow-remote-write` thay đổi thứ được chạy: `--checks`, `--lint-jobs` và `--timeout` được nhận nhưng bị bỏ qua, còn các mục audit tự hardcode giá trị của chúng (xem issue #472).
+Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. Chỉ `--base`, `--remote`, `--allow-xdebug`, `--allow-destructive` và `--allow-remote-write` thay đổi thứ được chạy: `--checks`, `--lint-jobs` và `--timeout` được nhận nhưng bị bỏ qua, còn các mục audit tự hardcode giá trị của chúng (xem issue #472).
 
 Mục do framework khai báo: mỗi framework khai báo mục checklist của riêng nó ngay trong package của nó — `VerifyToolItems` trên định nghĩa framework nêu id, pha, tiêu đề và đúng một lệnh `govard tool <binary> <args>` — rồi `RegistryFor` ghép chúng với registry tĩnh, nên `internal/verify` không hề nêu tên framework nào. Magento 2 khai báo `P5-MAG-01` (`setup:db:status` sau restore, đúng phần phát hiện mà `P5-07` còn thiếu); Laravel `P3-LAR-01..03` + `P5-LAR-01`; Symfony `P3-SYM-01..03` + `P5-SYM-01`; WordPress `P3-WP-01..03` + `P5-WP-01`. Chỉ những lệnh mà bộ khung của framework đảm bảo mới được khai báo, nên một mục không bao giờ đỏ vĩnh viễn vì thiếu bundle hay plugin tuỳ chọn.
 
-Mục remote: `P4-13`..`P4-16` phủ nửa chỉ-đọc của bề mặt remote — `deploy plan`, `deploy status`, `deploy releases` và `remote list` — an toàn khi chạy vào một remote production, đúng trường hợp cần lưu tâm vì `{{REMOTE}}` mặc định là chuỗi `staging`. Nửa ghi cố ý nằm ngoài checklist: `deploy check` tạo deploy path trên target, `deploy unlock`/`deploy rollback` thay đổi lock và release state của nó, `db`/`snapshot`/`open -e` có thể vượt qua write protection hoặc copy key vào `authorized_keys`, và `tunnel stop` giết mọi tiến trình `cloudflared` trên máy.
+Mục remote: mọi mục có nêu remote — `P2-04`..`P2-08`, `P4-01`, `P4-03`..`P4-07` và `P4-13`..`P4-15` — đều lấy remote từ `--remote` và chỉ từ đó. Một lần chạy không có `--remote` sẽ đánh dấu skip các dòng đó với lý do `no --remote named: this item contacts a remote` thay vì đoán, nên checklist không bao giờ mở phiên tới bất cứ thứ gì dự án tình cờ gọi là `staging`/`stage`/`stg`; `P4-16` (`remote list`) không nêu remote nên vẫn chạy. `P4-13`..`P4-16` phủ nửa chỉ-đọc của bề mặt remote — `deploy plan`, `deploy status`, `deploy releases` và `remote list` — an toàn khi chạy vào một remote production. Nửa ghi cố ý nằm ngoài checklist: `deploy check` tạo deploy path trên target, `deploy unlock`/`deploy rollback` thay đổi lock và release state của nó, `db`/`snapshot`/`open -e` có thể vượt qua write protection hoặc copy key vào `authorized_keys`, và `tunnel stop` giết mọi tiến trình `cloudflared` trên máy.
 
 Gates: Pha 5 yêu cầu snapshot **của chính project này** — một lần chạy pha 4 thật (không phải `--plan`) cho cùng project, có `P4-08` exit `0` và snapshot được ghi lại vẫn còn dùng được trên đĩa — VÀ `--allow-destructive`. Thiếu → `need snapshot create (P4-08) first`; thiếu flag → `need --allow-destructive for phase 5`. Lần chạy `--plan` không thoả gate nào và không ghi gì. `P4-08` ghi lại tên snapshot nó tạo và `P5-05` restore đúng tên đó, nên restore không thể lấy nhầm snapshot khác được tạo ở giữa. Một dòng bị đánh dấu `skipped` không bao giờ thoả gate: nó ghi nhận rằng `P4-08` tồn tại, không phải rằng nó đã chạy.
 
@@ -529,11 +529,11 @@ Guard: mỗi mục tĩnh mang một trong bốn nhãn (`Item.Guard`) và runner 
 | Guard | Argv tuyên bố điều gì | Runner làm gì | Số mục |
 | :--- | :--- | :--- | :--- |
 | `""` | việc cục bộ, không remote, không có gì không thể hoàn tác | chạy | **42** |
-| `READ-ONLY-REMOTE` | có nêu remote, không ghi gì lên đó | chạy; không có gate runtime riêng — `--plan` vốn đã thay mọi mục bằng stub nên chặn chúng sẽ xoá coverage chứ không bảo vệ được gì | **13** |
+| `READ-ONLY-REMOTE` | có nêu remote, không ghi gì lên đó | chạy khi `--remote` nêu tên một remote; nếu lần chạy không có cờ đó, mục giữ nguyên dòng ở trạng thái skip và không dò một remote đoán mò (`--plan` vẫn thay bằng stub, và `P4-16` không nêu remote nên luôn chạy). Không có gate ở tầng guard — `--plan` vốn đã thay mọi mục bằng stub nên chặn chúng ở đó sẽ xoá coverage chứ không bảo vệ được gì | **13** |
 | `DESTRUCTIVE-LOCAL` | phá huỷ cục bộ không thể hoàn tác | chỉ pha 5, cùng với snapshot gate và `--allow-destructive` | **3** |
 | `REMOTE-WRITE` | ghi qua remote | **skip** trừ khi truyền `--allow-remote-write` | **2**: `P2-05`, `P2-08` |
 
-Hai mục `REMOTE-WRITE` chính là các lần chạy `bootstrap … --no-noise`. Lý do skip nêu lệnh chạy thủ công, và `--allow-remote-write` không phải lời hứa chúng sẽ pass ở đây: các tiến trình con của verify không có tty nên `bootstrap` không thể hoàn tất bước xác nhận. Flag tồn tại cho một mục ghi remote có thể chạy không cần người trả lời.
+Hai mục `REMOTE-WRITE` chính là các lần chạy `bootstrap … --no-noise`. Lý do skip nêu lệnh chạy thủ công, với `<remote>` thay cho remote bạn phải nêu bằng `--remote`, và `--allow-remote-write` không phải lời hứa chúng sẽ pass ở đây: các tiến trình con của verify không có tty nên `bootstrap` không thể hoàn tất bước xác nhận. Flag tồn tại cho một mục ghi remote có thể chạy không cần người trả lời.
 
 Exit codes: `0` mọi mục đều pass hoặc bị skip; `1` có mục fail **hoặc** một gate của pha chặn lần chạy (thông báo nêu rõ gate nào). `2`/`3`/`4` giữ nguyên nghĩa toàn cục (usage / capability / config) — checklist đỏ là lỗi thực thi, không bao giờ là lỗi dùng lệnh. Script nên rẽ nhánh theo mã này và đọc chi tiết từng mục từ `--json`.
 
