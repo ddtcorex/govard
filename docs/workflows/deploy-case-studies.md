@@ -929,6 +929,31 @@ succeeded. Put the credentials where the target can use them (`docker exec`, or 
 mounted file) and re-run — the failing step resumes from a clean release directory
 and the Composer cache is kept.
 
+### The PHP the lock was resolved for
+
+`govard deploy check` reads the PHP constraint the checkout's dependencies were
+resolved for — `composer.lock`'s `platform.php`, then its `platform-dev.php`, then
+`require.php` in `composer.json` — and compares its floor with the PHP the target
+answers with. When the target sits below that floor it prints:
+
+```text
+  ! composer requires PHP >=8.4 (composer.lock platform.php) but the target runs php 8.3.35: …
+```
+
+This is a warning, not a refusal: a rehearsal target is a container that can be
+torn down and brought back on another PHP series, and a preflight that blocked
+here would be wrong as often as it was right. It exists because of the 2026-09-28
+rehearsal, where `check` answered deployable on exactly this pair and the run died
+minutes later at `build:vendors`.
+
+Only the constraint shapes with an unambiguous floor are judged — `>=X`, `>X`,
+`^X`, `~X`, `X.Y.*` and a bare `X.Y`, compared as dotted numbers, with the floor
+taken as the version's first two components. Everything else is silent by
+design: `<8.4` and `<=8.4` are upper bounds, `^8.4 || ^9.0` and `>=8.1,<8.4` are
+two requirements rather than one, and a constraint written `>= 8.4` with a space
+is not parsed at all. A missed warning costs a failed build; a wrong one sends
+you to fix a floor that was never there.
+
 ### Reading a failed rehearsal
 
 | The rehearsal says | What it is |

@@ -195,9 +195,18 @@ and names it instead.
 
 ```bash
 govard deploy plan staging     # the entire task list, connecting nowhere
-govard deploy check staging    # preflight: connectivity, layout, permissions, php, disk, lock
+govard deploy check staging    # preflight: connectivity, layout, permissions, php, locked php floor, disk, lock, local checkout
 govard deploy staging --yes    # ... or --remote staging
 ```
+
+It also reads the local checkout the way the deploy does, because those two
+answers come from the files on disk rather than from the target. A `.gitmodules`
+in the project root is refused — `git archive` cannot carry submodule content, and
+a release with empty submodule directories would look successful — and a
+`composer.json` that declares a non-packagist repository while no credential is
+available is reported as a warning. Both come from the same prepare preflight the
+deploy itself runs, so the `.gitmodules` refusal it reports is the refusal the
+deploy makes.
 
 `deploy check` leaves nothing behind on the target, local or remote: its
 writability probe creates no path at all — an absent `deploy_path` is probed at
@@ -920,6 +929,10 @@ declares a private repository and none is available. It warns rather than refuse
 the declaration it can read is a URL, and a URL cannot tell it whether a repository
 needs credentials. Set `COMPOSER_AUTH` in the CI build job as well as in the deploy
 job when the artifact is built there.
+
+`govard deploy` prints the same line when the target builds the release. It is the
+one prepare preflight, run once by the check and once by the deploy, and a warning
+that only the check had read would never reach the run that has to act on it.
 
 ## Build modes
 

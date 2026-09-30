@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -939,7 +940,11 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 	t.Setenv("COMPOSER_AUTH", "")
 
 	private := `{"require":{"vendor/pkg":"^1.0"},"repositories":[{"type":"composer","url":"https://repo.example.com"},{"type":"composer","url":"https://repo.packagist.org"}]}`
-	check := func(t *testing.T, composerJSON string, seedSharedAuth bool, options deploy.Options) []string {
+	// The warning is read from the step's output, not from Notes: it is a line
+	// the operator is meant to see, and a deploy has no Notes reader to see it
+	// with.
+	const warning = "no credentials are available"
+	check := func(t *testing.T, composerJSON string, seedSharedAuth bool, options deploy.Options) string {
 		t.Helper()
 		work := t.TempDir()
 		writeFile(t, filepath.Join(work, "composer.json"), composerJSON)
@@ -951,34 +956,42 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 				t.Fatalf("seed shared auth.json: %v", err)
 			}
 		}
+		out := &bytes.Buffer{}
 		sc := deploy.StepContextForTest(host, options)
 		sc.WorkDir = work
+		sc.Out = out
 		if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 			t.Fatalf("check: %v", err)
 		}
-		return sc.Notes
+		return out.String()
 	}
 
-	notes := strings.Join(check(t, private, false, deploy.Options{Build: deploy.BuildServer}), "\n")
+	notes := check(t, private, false, deploy.Options{Build: deploy.BuildServer})
 	if !strings.Contains(notes, "COMPOSER_AUTH") || !strings.Contains(notes, "auth.json") {
 		t.Fatalf("the warning must name both remedies, got %q", notes)
 	}
 	if !strings.Contains(notes, "repo.example.com") {
 		t.Fatalf("the warning must name the repository, got %q", notes)
 	}
+	if !strings.Contains(notes, warning) {
+		t.Fatalf("the warning itself must be printed, got %q", notes)
+	}
 
 	// A credential source silences it: the environment…
 	t.Setenv("COMPOSER_AUTH", `{"http-basic":{}}`)
-	notes = strings.Join(check(t, private, false, deploy.Options{Build: deploy.BuildServer}), "\n")
-	if strings.Contains(notes, "warning") {
+	notes = check(t, private, false, deploy.Options{Build: deploy.BuildServer})
+	if strings.Contains(notes, warning) {
 		t.Fatalf("a set COMPOSER_AUTH must silence the warning, got %q", notes)
 	}
 
 	// …or the shared file the other deploy tool leaves behind.
 	t.Setenv("COMPOSER_AUTH", "")
-	notes = strings.Join(check(t, private, true, deploy.Options{Build: deploy.BuildServer}), "\n")
-	if strings.Contains(notes, "warning") {
+	notes = check(t, private, true, deploy.Options{Build: deploy.BuildServer})
+	if strings.Contains(notes, warning) {
 		t.Fatalf("a shared auth.json must silence the warning, got %q", notes)
+	}
+	if !strings.Contains(notes, "shared/auth.json exists on the target") {
+		t.Fatalf("the note must say which source answered, got %q", notes)
 	}
 
 	// …or a credential the project keeps in its own checkout. Composer reads an
@@ -993,13 +1006,15 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 	writeFile(t, filepath.Join(workWithAuth, "auth.json"),
 		`{"http-basic":{"repo.example.com":{"username":"u","password":"p"}}}`)
 	hostWithAuth := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	withAuthOut := &bytes.Buffer{}
 	scWithAuth := deploy.StepContextForTest(hostWithAuth, deploy.Options{Build: deploy.BuildServer})
 	scWithAuth.WorkDir = workWithAuth
+	scWithAuth.Out = withAuthOut
 	if err := deploy.CoreCheck(context.Background(), scWithAuth); err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	projectNotes := strings.Join(scWithAuth.Notes, "\n")
-	if strings.Contains(projectNotes, "warning") {
+	projectNotes := withAuthOut.String()
+	if strings.Contains(projectNotes, warning) {
 		t.Fatalf("a project-committed auth.json must silence the warning, got %q", projectNotes)
 	}
 	if !strings.Contains(projectNotes, "the project itself carries auth.json") {
@@ -1008,8 +1023,8 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 
 	// A packagist-only project needs nothing.
 	public := `{"repositories":[{"type":"composer","url":"https://repo.packagist.org"}]}`
-	notes = strings.Join(check(t, public, false, deploy.Options{Build: deploy.BuildServer}), "\n")
-	if strings.Contains(notes, "warning") {
+	notes = check(t, public, false, deploy.Options{Build: deploy.BuildServer})
+	if strings.Contains(notes, warning) {
 		t.Fatalf("a public-only manifest must not warn, got %q", notes)
 	}
 
@@ -1029,24 +1044,257 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 		`{"repositories":[{"type":"composer","url":"https://repo.example.com"}]}`)
 
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	// The warning goes to the step's output, not to Notes: a preflight whose
+	// finding only lives in a field reads as a finding nobody was told about,
+	// because the deploy that runs this preflight has no Notes reader at all.
+	artifactOut := &bytes.Buffer{}
 	sc := deploy.StepContextForTest(host, deploy.Options{Build: deploy.BuildArtifact, ArtifactDir: t.TempDir()})
 	sc.WorkDir = work
+	sc.Out = artifactOut
 	if err := deploy.NoteComposerCredentialsForTest(context.Background(), sc); err != nil {
 		t.Fatalf("note: %v", err)
 	}
+	if artifactOut.String() != "" {
+		t.Fatalf("an artifact deploy must not warn about target-side credentials, got %q", artifactOut.String())
+	}
 	if len(sc.Notes) != 0 {
-		t.Fatalf("an artifact deploy must not warn about target-side credentials, got %v", sc.Notes)
+		t.Fatalf("the note must not be parked in Notes, which nothing in a deploy reads, got %v", sc.Notes)
 	}
 
 	// The same checkout in server mode warns, which is what makes the silence
 	// above a decision rather than an accident.
+	serverOut := &bytes.Buffer{}
 	server := deploy.StepContextForTest(host, deploy.Options{Build: deploy.BuildServer})
 	server.WorkDir = work
+	server.Out = serverOut
 	if err := deploy.NoteComposerCredentialsForTest(context.Background(), server); err != nil {
 		t.Fatalf("note: %v", err)
 	}
-	if len(server.Notes) == 0 || !strings.Contains(strings.Join(server.Notes, "\n"), "warning") {
-		t.Fatalf("a server build with no credentials must warn, got %v", server.Notes)
+	printed := serverOut.String()
+	if !strings.Contains(printed, "no credentials are available") || !strings.Contains(printed, "repo.example.com") {
+		t.Fatalf("a server build with no credentials must warn, got %q", printed)
+	}
+	if len(server.Notes) != 0 {
+		t.Fatalf("the note must reach the output directly, not through Notes, got %v", server.Notes)
+	}
+}
+
+// platformFloorFixture runs the preflight against a checkout whose composer.lock
+// asks for `constraint`, with a target that reports `targetPHP`, and returns what
+// the preflight printed.
+//
+// The target's PHP is stubbed so the comparison runs on any host, including one
+// with no PHP at all: the answer under test is a decision about two version
+// strings, not about this machine's toolchain.
+func platformFloorFixture(t *testing.T, constraint, targetPHP string) string {
+	t.Helper()
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "composer.lock"), `{"platform":{"php":`+strconv.Quote(constraint)+`}}`)
+
+	host := deploy.HostForTest(t.TempDir(), scriptedRunner{
+		base:            deploy.LocalRunner{},
+		answerSubstring: "PHP_VERSION",
+		answerStdout:    targetPHP + "\n",
+	})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
+	sc.WorkDir = work
+	out := &bytes.Buffer{}
+	sc.Out = out
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	return out.String()
+}
+
+// The rehearsal of 2026-09-28: the lock was resolved for PHP >=8.4, the target
+// ran 8.3.35, `deploy check` called the deploy deployable, and the run died
+// minutes later at build:vendors. It has to be a warning and not a refusal — the
+// target may be a container the operator is one command away from rebuilding, and
+// a preflight that blocks on it would be wrong as often as it was right.
+func TestCoreCheckWarnsWhenTheTargetIsBelowTheLockedPHPFloor(t *testing.T) {
+	printed := platformFloorFixture(t, ">=8.4", "8.3.35")
+	// The opening clause is pinned verbatim because the deployment docs quote it:
+	// a warning whose two halves cannot be read apart is one nobody acts on. The
+	// advice that follows it is free to be reworded without touching this.
+	const finding = "composer requires PHP >=8.4 (composer.lock platform.php) but the target runs php 8.3.35"
+	if !strings.Contains(printed, finding) {
+		t.Fatalf("the warning must read %q, got %q", finding, printed)
+	}
+}
+
+// A floor the target meets, and a floor it clears, are both quiet. Without this
+// the check would be unreadable: a lock that asks for >=8.4 is the normal state of
+// a project on 8.4, and a preflight that speaks up every time is one people learn
+// to scroll past.
+func TestCoreCheckIsSilentWhenTheTargetMeetsTheLockedPHPFloor(t *testing.T) {
+	for _, target := range []string{"8.4.0", "8.5.1"} {
+		t.Run(target, func(t *testing.T) {
+			printed := platformFloorFixture(t, ">=8.4", target)
+			if strings.Contains(printed, "composer requires") {
+				t.Fatalf("a target at or above the floor must not warn, got %q", printed)
+			}
+		})
+	}
+}
+
+// A constraint this check cannot read a floor out of is silent, in every shape —
+// and the shapes it *can* read still warn, which is the half that matters. A
+// comparison that drifts quiet on `^8.4` would pass every other case here while
+// missing the same-series upgrade the issue was filed about.
+func TestCoreCheckIsSilentForConstraintsWithoutAFloor(t *testing.T) {
+	for _, constraint := range []string{"<8.4", "<=8.4", "^8.4 || ^9.0", ">=8.1,<8.4"} {
+		t.Run(constraint, func(t *testing.T) {
+			printed := platformFloorFixture(t, constraint, "8.3.35")
+			if strings.Contains(printed, "composer requires") {
+				t.Fatalf("a constraint with no floor must stay silent, got %q", printed)
+			}
+		})
+	}
+
+	t.Run("judged shapes still warn", func(t *testing.T) {
+		for _, constraint := range []string{"^8.4", "~8.4", "8.4.*", "8.4"} {
+			t.Run(constraint, func(t *testing.T) {
+				printed := platformFloorFixture(t, constraint, "8.3.35")
+				if !strings.Contains(printed, "composer requires") {
+					t.Fatalf("a shape this check judges must warn, got %q", printed)
+				}
+			})
+		}
+	})
+}
+
+// The judging rule itself, one shape per row: only >=, >, ^, ~, X.Y.* and a bare
+// X.Y name a floor, and the floor is the version's first two components. Every
+// other shape is silent, and the two rejections worth pinning are the ones a
+// future reader would call a bug — a space after the operator, and a version with
+// no minor. Both are misses, which is the only direction this check is allowed to
+// err; neither is a guess dressed as a finding.
+func TestComposerPHPFloorJudgesOnlyTheShapesWithAFloor(t *testing.T) {
+	for _, tc := range []struct {
+		constraint string
+		floor      string
+		judged     bool
+	}{
+		{constraint: ">=8.4", floor: "8.4", judged: true},
+		{constraint: ">8.4", floor: "8.4", judged: true},
+		{constraint: "^8.4", floor: "8.4", judged: true},
+		{constraint: "~8.4", floor: "8.4", judged: true},
+		{constraint: "8.4.*", floor: "8.4", judged: true},
+		{constraint: "8.4", floor: "8.4", judged: true},
+		// A third component is truncated, which can only lower the floor and so
+		// makes the check quieter — the safe direction for a floor.
+		{constraint: ">=8.4.1", floor: "8.4", judged: true},
+		{constraint: "8.4.0", floor: "8.4", judged: true},
+
+		// An upper bound names no floor.
+		{constraint: "<8.4"},
+		{constraint: "<=8.4"},
+		{constraint: "=8.4"},
+		{constraint: "!=8.4"},
+		// A compound constraint is two requirements, not one.
+		{constraint: "^8.4 || ^9.0"},
+		{constraint: ">=8.1,<8.4"},
+		// A space after the operator is a shape this check does not read, so
+		// ">= 8.4" is declined the same way a range is.
+		{constraint: ">= 8.4"},
+		{constraint: ">=8.4 <8.5"},
+		// Whitespace that is not a space counts the same: ">=8.4\n<8.5" is a
+		// range, and judging it would read the floor 8.4 off the *first* half
+		// of a two-part constraint — a wrong answer, which is the one this
+		// check is not allowed to give.
+		{constraint: ">=8.4\n<8.5"},
+		{constraint: ">=8.4\t<8.5"},
+		// No minor means no floor worth pinning.
+		{constraint: ">=8"},
+		{constraint: "8.*"},
+		{constraint: "*"},
+		{constraint: "dev-master"},
+		{constraint: ""},
+	} {
+		t.Run(tc.constraint, func(t *testing.T) {
+			floor, judged := deploy.ComposerPHPFloorForTest(tc.constraint)
+			if judged != tc.judged || floor != tc.floor {
+				t.Fatalf("composerPHPFloor(%q) = (%q, %v), want (%q, %v)", tc.constraint, floor, judged, tc.floor, tc.judged)
+			}
+		})
+	}
+}
+
+// The floor the preflight compares against is the one the lock records, and a
+// project that keeps no lock still gets an answer from its own manifest. The
+// source label rides along because a finding that cannot be traced back to the
+// file it came from is one nobody acts on.
+func TestComposerPlatformRequirementNamesTheFileItRead(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		files      map[string]string
+		constraint string
+		source     string
+	}{
+		{
+			name:       "lock platform",
+			files:      map[string]string{"composer.lock": `{"platform":{"php":">=8.4"}}`},
+			constraint: ">=8.4",
+			source:     "composer.lock platform.php",
+		},
+		{
+			name: "lock platform wins over the manifest",
+			files: map[string]string{
+				"composer.lock": `{"platform":{"php":">=8.4"}}`,
+				"composer.json": `{"require":{"php":">=8.1"}}`,
+			},
+			constraint: ">=8.4",
+			source:     "composer.lock platform.php",
+		},
+		{
+			name:       "lock platform-dev",
+			files:      map[string]string{"composer.lock": `{"platform-dev":{"php":">=8.2"}}`},
+			constraint: ">=8.2",
+			source:     "composer.lock platform-dev.php",
+		},
+		{
+			name:       "manifest require",
+			files:      map[string]string{"composer.json": `{"require":{"php":">=8.1"}}`},
+			constraint: ">=8.1",
+			source:     "composer.json require.php",
+		},
+		{
+			name: "a lock that names no platform falls back to the manifest",
+			files: map[string]string{
+				"composer.lock": `{"platform":{}}`,
+				"composer.json": `{"require":{"php":">=8.1"}}`,
+			},
+			constraint: ">=8.1",
+			source:     "composer.json require.php",
+		},
+		{name: "no composer files", files: map[string]string{}},
+		{name: "a malformed lock and no manifest", files: map[string]string{"composer.lock": `{`}},
+		{
+			name: "a malformed lock still lets the manifest answer",
+			files: map[string]string{
+				"composer.lock": `{`,
+				"composer.json": `{"require":{"php":">=8.1"}}`,
+			},
+			constraint: ">=8.1",
+			source:     "composer.json require.php",
+		},
+		{
+			name:       "a manifest that asks for no php",
+			files:      map[string]string{"composer.json": `{"require":{"vendor/pkg":"^1.0"}}`},
+			constraint: "",
+			source:     "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := t.TempDir()
+			for name, content := range tc.files {
+				writeFile(t, filepath.Join(work, name), content)
+			}
+			constraint, source := deploy.ComposerPlatformRequirementForTest(work)
+			if constraint != tc.constraint || source != tc.source {
+				t.Fatalf("composerPlatformRequirement = (%q, %q), want (%q, %q)", constraint, source, tc.constraint, tc.source)
+			}
+		})
 	}
 }
 
