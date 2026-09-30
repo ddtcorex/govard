@@ -6,7 +6,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"govard/internal/cmd"
 	"govard/internal/engine"
@@ -173,4 +175,116 @@ func TestConcurrentTunnelStartsDoNotOverwriteEachOthersRecord(t *testing.T) {
 	if ours == nil || ours.ProcessState == nil {
 		t.Fatal("the losing start must stop and reap the provider it started")
 	}
+}
+
+// startTunnelUntilRecorded runs `tunnel start` with a /bin/sleep provider in the
+// background and waits until the record names a pid other than notPID, which is
+// this start's own process. The cleanup ends that process whatever happened.
+func startTunnelUntilRecorded(t *testing.T, notPID int, startProcess func(*exec.Cmd) error) (cmd.TunnelPIDRecord, <-chan error) {
+	t.Helper()
+	run := newTunnelRunner(t)
+	restore := cmd.SetTunnelDependenciesForTest(cmd.TunnelDependenciesForTest{
+		NewProvider:  fakePlanProvider(tunnel.StartPlan{Binary: "/bin/sleep", Args: []string{"30"}}),
+		StartProcess: startProcess,
+	})
+	t.Cleanup(restore)
+	t.Cleanup(func() {
+		if record, ok := cmd.TunnelPIDRecordForTest("demo"); ok && record.PID > 0 && record.PID != notPID {
+			_ = cmd.SignalProcessForTest(record.PID, os.Kill)
+		}
+		cmd.ClearTunnelPIDForTest("demo")
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := run("tunnel", "start", "https://demo.trycloudflare.com")
+		done <- err
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if record, ok := cmd.TunnelPIDRecordForTest("demo"); ok && record.PID != notPID {
+			return record, done
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("tunnel start ended before recording its own pid: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("tunnel start never recorded its own pid over the stale record")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// endRecordedTunnel stops the start's own process the way `tunnel stop` does and
+// checks the session ends cleanly and takes its record with it.
+func endRecordedTunnel(t *testing.T, record cmd.TunnelPIDRecord, done <-chan error) {
+	t.Helper()
+	if !strings.Contains(record.Argv, "sleep") {
+		t.Fatalf("the record must name this start's provider, got %+v", record)
+	}
+	if err := cmd.SignalProcessForTest(record.PID, syscall.SIGTERM); err != nil {
+		t.Fatalf("terminate the recorded process: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("a SIGTERMed tunnel session is not a failure: %v", err)
+	}
+	if _, err := os.Stat(cmd.TunnelPIDFileForTest("demo")); !os.IsNotExist(err) {
+		t.Fatalf("the start must clear its own record when it ends, stat err = %v", err)
+	}
+}
+
+// deadPIDForTest returns a pid whose process has already ended and been reaped.
+func deadPIDForTest(t *testing.T) int {
+	t.Helper()
+	proc := exec.Command("sleep", "0.01")
+	if err := proc.Start(); err != nil {
+		t.Fatalf("start short sleeper: %v", err)
+	}
+	_ = proc.Wait()
+	return proc.Process.Pid
+}
+
+// A record whose process is gone is stale: start must replace it with its own.
+func TestTunnelStartReplacesARecordWhoseProcessIsGone(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	stale := deadPIDForTest(t)
+	writeTunnelRecord(t, "demo", stale, "cloudflared tunnel --url http://localhost:80")
+
+	record, done := startTunnelUntilRecorded(t, stale, nil)
+	endRecordedTunnel(t, record, done)
+}
+
+// A live pid running something govard did not start (a recycled pid) is stale
+// too: start must replace the record, and must leave that process alone.
+func TestTunnelStartReplacesARecordWhosePIDRunsSomethingElse(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	// This test process is alive and its argv is not the recorded one.
+	writeTunnelRecord(t, "demo", os.Getpid(), "cloudflared tunnel --url http://localhost:80")
+
+	record, done := startTunnelUntilRecorded(t, os.Getpid(), nil)
+	assertStillAlive(t, os.Getpid())
+	endRecordedTunnel(t, record, done)
+}
+
+// The pre-check saw no record, and a stale one lands before the exclusive write:
+// the claim's retry branch has to remove it and record this start's pid.
+func TestTunnelStartClaimsOverAStaleRecordThatAppearsBeforeItsWrite(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	stale := deadPIDForTest(t)
+
+	record, done := startTunnelUntilRecorded(t, stale, func(process *exec.Cmd) error {
+		if err := process.Start(); err != nil {
+			return err
+		}
+		if err := cmd.RecordTunnelPIDForTest("demo", stale, "cloudflared tunnel --url http://localhost:80"); err != nil {
+			t.Errorf("write stale record: %v", err)
+		}
+		return nil
+	})
+	endRecordedTunnel(t, record, done)
 }
