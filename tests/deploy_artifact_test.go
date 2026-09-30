@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -492,23 +493,31 @@ func TestConditionalMigrateArtifactKeepsProbeAndGatedBlockOnTarget(t *testing.T)
 	}
 }
 
-// rsyncSplitE splits an `rsync -e` value the way rsync does: on whitespace,
-// except inside double quotes, where a backslash escapes the next character.
+// rsyncSplitE models how rsync 3.x splits an `rsync -e` value (checked against
+// the real binary by TestRsyncSSHCommandRoundTripsThroughRealRsync): split on the
+// space character only; a single or double quote opens a quoted run; inside it
+// the same quote character doubled is one literal quote and a single one closes
+// the run; backslash has no special meaning anywhere.
 func rsyncSplitE(value string) []string {
 	var args []string
 	var current strings.Builder
-	inQuotes, started := false, false
+	var quote rune
+	started := false
 	runes := []rune(value)
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
 		switch {
-		case inQuotes && r == '\\' && i+1 < len(runes):
-			i++
-			current.WriteRune(runes[i])
-		case r == '"':
-			inQuotes = !inQuotes
+		case quote != 0 && r == quote:
+			if i+1 < len(runes) && runes[i+1] == quote {
+				current.WriteRune(quote)
+				i++
+			} else {
+				quote = 0
+			}
+		case quote == 0 && (r == '"' || r == '\''):
+			quote = r
 			started = true
-		case !inQuotes && (r == ' ' || r == '\t' || r == '\n'):
+		case quote == 0 && r == ' ':
 			if started {
 				args = append(args, current.String())
 				current.Reset()
@@ -532,6 +541,10 @@ func TestRsyncSSHCommandKeepsSpacedArgumentsIntact(t *testing.T) {
 		"-o", "UserKnownHostsFile=/Users/Jane Doe/.ssh/known hosts",
 		"-o", `ProxyCommand=ssh -W "%h:%p" gate\way`,
 		"-i", "/Users/Jane Doe/.ssh/id_ed25519",
+		"-o", `SendEnv=say "hi"`,
+		"-o", "SetEnv=it's here",
+		"-o", `Tab=a	b`,
+		"-o", `Backslash=C:\keys\id`,
 	}
 	got := rsyncSplitE(remote.RsyncSSHCommand(args))
 	if !reflect.DeepEqual(got, args) {
@@ -580,5 +593,39 @@ func TestBuildRsyncCommandQuotesSpacedSSHKeyPath(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("rsync -e value %q does not keep the spaced key path intact (split: %q)", value, split)
+	}
+}
+
+// The oracle above is only as good as its match with rsync, so check it against
+// the real binary: `-e` points at a script that prints each argv entry on its own
+// line, and rsync is asked to copy nothing.
+func TestRsyncSSHCommandRoundTripsThroughRealRsync(t *testing.T) {
+	rsyncPath, err := exec.LookPath("rsync")
+	if err != nil {
+		t.Skip("rsync is not installed")
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "argv.txt")
+	script := filepath.Join(dir, "fake ssh")
+	body := "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> \"" + out + "\"; done\nexit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{
+		script, "-i", "/Users/Jane Doe/.ssh/id_ed25519",
+		"-o", `SendEnv=say "hi"`,
+		"-o", "SetEnv=it's here",
+		"-o", `Backslash=C:\keys\id`,
+	}
+	cmd := exec.Command(rsyncPath, "-e", remote.RsyncSSHCommand(args), "host:/src/", dir+"/dst/")
+	cmd.Env = append(os.Environ(), "RSYNC_OLD_ARGS=1")
+	_ = cmd.Run() // the script fails on purpose; only the argv it saw matters
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("the fake ssh was never run: %v", err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+	if len(lines) < len(args)-1 || !reflect.DeepEqual(lines[:len(args)-1], args[1:]) {
+		t.Fatalf("real rsync passed\n%q\nwant the leading arguments\n%q", lines, args[1:])
 	}
 }
