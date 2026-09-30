@@ -60,19 +60,19 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard project list` | `none` |
 | `govard project open` | `none` |
 | `govard remote add` | `ssh,rsync` |
-| `govard remote audit stats` | `ssh,rsync` |
-| `govard remote audit tail` | `ssh,rsync` |
+| `govard remote audit stats` | `none` |
+| `govard remote audit tail` | `none` |
 | `govard remote copy-id` | `ssh,rsync` |
 | `govard remote exec` | `ssh,rsync` |
-| `govard remote list` | `ssh,rsync` |
+| `govard remote list` | `none` |
 | `govard remote test` | `ssh,rsync` |
 | `govard self-update` | `net` |
 | `govard sync` | `ssh,rsync` |
 | `govard trust` | `none` |
-| `govard tunnel` | `cloudflared` |
+| `govard tunnel` | `none` |
 | `govard tunnel start` | `cloudflared` |
-| `govard tunnel status` | `cloudflared` |
-| `govard tunnel stop` | `cloudflared` |
+| `govard tunnel status` | `none` |
+| `govard tunnel stop` | `none` |
 | `govard version` | `none` |
 | `govard vscode setup` | `none` |
 
@@ -129,11 +129,15 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
   trỏ lại symlink hoặc chạy lại phần publish từ thư mục release đã có trên
   server, nên không cần toolchain build ở máy local.
 
-- **Remote và đồng bộ.** `govard remote add|test|copy-id|exec|list`,
-  `govard remote audit stats|tail`, và `govard sync` cần SSH và rsync, không cần
-  Docker.
-- **Tunnel.** `govard tunnel start|stop|status` điều khiển `cloudflared` trên
-  host.
+- **Remote và đồng bộ.** `govard remote add|test|copy-id|exec` và
+  `govard sync` cần SSH và rsync, không cần Docker; riêng `govard sync --db` và
+  `--full` chuyển database qua container DB local nên cần thêm container runtime
+  (thiếu thì trả exit `3` `CAPABILITY_MISSING`), còn `--plan` thì không.
+  `govard remote list` chỉ đọc cấu hình project và `govard remote audit
+  stats|tail` chỉ đọc log audit local, nên không cần gì cả.
+- **Tunnel.** `govard tunnel start` chạy `cloudflared` trên host. `govard tunnel
+  stop` và `govard tunnel status` chỉ đọc bản ghi PID mà govard giữ, nên không
+  cần `cloudflared`.
 - **Self-update, help, completion.** `govard self-update` chỉ cần mạng;
   `govard version`, `govard help`, và `govard completion bash|zsh|fish|powershell`
   không cần gì cả.
@@ -155,7 +159,7 @@ Gate từ chối trước khi lệnh làm bất cứ việc gì, và nói rõ th
 script không phải parse dạng text:
 
 ```bash
-govard tunnel status --error-json
+govard tunnel start --error-json
 # {"schema_version":1,...,"error":{"code":"CAPABILITY_MISSING","capability":"cloudflared",...}}
 ```
 

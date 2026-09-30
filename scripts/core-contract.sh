@@ -108,7 +108,9 @@ check_gate() {
 }
 
 check_gate "env up" docker
-check_gate "tunnel status" cloudflared
+# Only `tunnel start` runs cloudflared; `tunnel stop` and `tunnel status` are
+# requirement-free and are run for real in section 6.
+check_gate "tunnel start" cloudflared
 # The toolchain commands inspect, pull, and build a Docker image. They live
 # under `audit`, which declares no requirement so the container-free integrity
 # check stays runnable here, so the group re-declares docker itself.
@@ -228,6 +230,14 @@ check_runs "vscode setup" "$fixture_dir" "editor setup"
 check_runs "config get domain" "$fixture_dir" "config read"
 check_runs "custom list" "$fixture_dir" "custom command listing"
 check_runs "blueprint cache list" "$fixture_dir" "blueprint cache listing"
+# `tunnel stop` signals only the pid govard recorded and `tunnel status` reads
+# that record, so neither needs cloudflared (or anything else) on this host.
+check_runs "tunnel stop" "$fixture_dir" "tunnel stop without a record"
+check_runs "tunnel status" "$fixture_dir" "tunnel status without a record"
+# `remote list` reads the config and `remote audit tail` reads a local log; this
+# container has no ssh or rsync, which is exactly what they must not need.
+check_runs "remote list" "$fixture_dir" "remote listing"
+check_runs "remote audit tail" "$fixture_dir" "remote audit log"
 
 # 7. Commands that resolve the runtime environment must be gated, not fail with a
 #    raw docker error: the lock file records the docker/compose versions and

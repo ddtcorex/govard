@@ -125,6 +125,20 @@ Case Studies:
 		excludePatterns := normalizeSyncPatterns(excludePatternsRaw)
 		resumeTransfers := resolveSyncResumeMode(resume, noResume)
 
+		// The database scope streams through the local database container, so
+		// --db and --full need a container runtime on top of the ssh,rsync the
+		// command declares. A static annotation cannot see the flags, so this is
+		// the same explicit, per-flag gate `audit run` uses for its
+		// container-backed checks: it returns the gate's *runtime.MissingError
+		// (exit 3, CAPABILITY_MISSING) before any remote is contacted. A --plan
+		// only prints the pipeline and never reaches the container, so it stays
+		// available on a Docker-free host.
+		if (database || full) && !planOnly {
+			if err := requireDocker("sync files and media without --db/--full on this host, or start a container runtime for the database scope"); err != nil {
+				return err
+			}
+		}
+
 		if source != "local" {
 			resolvedSource, err := ResolveAutoRemote(config, source)
 			if err != nil {

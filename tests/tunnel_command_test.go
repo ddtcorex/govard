@@ -234,8 +234,9 @@ framework: laravel
 func initTunnelHome(t *testing.T) {
 	t.Helper()
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
-	// The tunnel group declares cloudflared and a test host has none. This commit
-	// deliberately leaves the requirement alone, so satisfy the gate explicitly.
+	// `tunnel start` declares cloudflared and a test host has none, so satisfy
+	// the gate explicitly. `stop` and `status` need nothing (#503); that is
+	// pinned by TestTunnelStopAndStatusNeedNoCloudflared without this stub.
 	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapCloudflared)
 	t.Cleanup(restore)
 }

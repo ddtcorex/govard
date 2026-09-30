@@ -61,23 +61,31 @@ type TunnelDependenciesForTest struct {
 }
 
 var tunnelCmd = &cobra.Command{
+	// Only `tunnel start` runs cloudflared and re-declares it below; `stop`
+	// signals one recorded pid and `status` reads one record (#469), so the
+	// group itself needs nothing.
 	Annotations: map[string]string{
-		runtime.AnnotationRequires: string(runtime.CapCloudflared),
+		runtime.AnnotationRequires: string(runtime.CapNone),
 	},
 	Use:   "tunnel",
 	Short: "Manage local project tunnels",
 	Long: `Manage local project tunnels. Tunnels allow you to securely
 expose your local environment to the internet via Cloudflare Tunnels.
 
-Note: This command requires the 'cloudflared' binary to be installed on your host.
-You can install it via the official Cloudflare repository or by downloading it
-from: https://github.com/cloudflare/cloudflared/releases`,
+Note: 'tunnel start' requires the 'cloudflared' binary to be installed on your
+host; 'tunnel stop' and 'tunnel status' only read the record govard keeps and
+need nothing else. You can install cloudflared via the official Cloudflare
+repository or by downloading it from:
+https://github.com/cloudflare/cloudflared/releases`,
 	Run: func(cmd *cobra.Command, args []string) {
 		_ = cmd.Help()
 	},
 }
 
 var tunnelStartCmd = &cobra.Command{
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapCloudflared),
+	},
 	Use:   "start [url]",
 	Short: "Start a public tunnel to the local project",
 	Long: `Start a new public tunnel session. This command will launch 'cloudflared'

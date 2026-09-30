@@ -13,9 +13,15 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"govard/internal/runtime"
 )
 
 var remoteAuditCmd = &cobra.Command{
+	// `stats` and `tail` only read the local remote audit log, so they need
+	// neither ssh nor rsync, which the parent `remote` group declares.
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "audit",
 	Short: "Inspect remote operation audit log",
 }

@@ -739,6 +739,11 @@ var remoteTestCmd = &cobra.Command{
 }
 
 var remoteListCmd = &cobra.Command{
+	// Listing reads the project config and never connects to a remote, so it
+	// does not inherit the group's ssh,rsync.
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "list",
 	Short: "List every configured remote, plus the implicit sandbox",
 	Args:  cobra.NoArgs,
