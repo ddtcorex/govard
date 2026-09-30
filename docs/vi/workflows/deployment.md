@@ -157,6 +157,10 @@ một dòng `known_hosts` cho host đó. Không biến môi trường nào mang 
 run`, `shared/auth.json exists on the target`, hay cảnh báo rằng dự án khai báo
 repository private mà không có credential nào.
 
+`govard deploy` in ra đúng dòng đó khi chính target build release. Đây là một
+preflight duy nhất, chạy một lần bởi `check` và một lần bởi `deploy`; một cảnh báo
+chỉ nằm trong `check` thì không bao giờ tới được lần chạy buộc phải hành động.
+
 ### 5. Release trở thành live thế nào
 
 `auto` (mặc định) resolve từ target: docroot không tồn tại hoặc là symlink thì
@@ -192,9 +196,17 @@ symlink được track hoặc tạo tay) thì không bao giờ bị xoá; bướ
 
 ```bash
 govard deploy plan staging     # toàn bộ danh sách task, không kết nối đi đâu
-govard deploy check staging    # preflight: kết nối, layout, quyền, php, dung lượng, lock
+govard deploy check staging    # preflight: kết nối, layout, quyền, php, sàn php của lock, dung lượng, lock, checkout local
 govard deploy staging --yes    # ... hoặc --remote staging
 ```
+
+Nó còn đọc chính checkout local giống hệt cách deploy đọc, vì hai câu trả lời đó đến
+từ file trên đĩa chứ không phải từ target. Một file `.gitmodules` ở gốc dự án sẽ bị
+từ chối — `git archive` không mang được nội dung của submodule, và một release có
+thư mục submodule rỗng vẫn trông như đã chạy xong — còn một `composer.json` khai báo
+repository ngoài packagist khi không có credential nào thì bị cảnh báo. Cả hai đều đến
+từ đúng preflight mà bản deploy thật chạy, nên lần từ chối `.gitmodules` mà `check`
+báo ra chính là lần từ chối mà deploy sẽ gặp.
 
 `deploy check` không để lại gì trên target, dù là local hay remote: probe quyền
 ghi của nó không tạo ra path nào — một `deploy_path` chưa tồn tại được probe tại

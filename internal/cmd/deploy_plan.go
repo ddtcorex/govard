@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"govard/internal/deploy"
@@ -257,6 +258,17 @@ func runDeployCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	sc := deploy.StepContextForTest(host, options)
+	// The same two bindings a real deploy's executor makes, and for the same
+	// reason: the preflight reads the local checkout (the `.gitmodules` refusal,
+	// the composer probes) and reports what it found on the run's output. Lacking
+	// them is how the check reported a project as deployable that the deploy
+	// itself refuses.
+	if workDir, err := os.Getwd(); err == nil {
+		sc.WorkDir = workDir
+	}
+	// StepContextForTest defaults Out to os.Stderr, so without this the preflight
+	// writes to the terminal instead of to the stream the check's report is on.
+	sc.Out = cmd.OutOrStdout()
 	if err := deploy.CoreCheck(cmd.Context(), sc); err != nil {
 		return err
 	}

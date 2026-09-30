@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"govard/internal/conventions"
+	"govard/internal/engine"
 )
 
 // Prepare-stage failures. They are all detectable before anything live changes,
@@ -123,6 +124,7 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	if err := checkPHPVersion(ctx, sc); err != nil {
 		return err
 	}
+	noteComposerPlatform(ctx, sc)
 	if err := checkArtifactParity(ctx, sc); err != nil {
 		return err
 	}
@@ -481,6 +483,162 @@ func checkPHPVersion(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("target runs php %s but the project declares %s", actual, want)
 	}
 	return nil
+}
+
+// noteComposerPlatform warns when the target runs an older PHP than the one the
+// project's dependencies were resolved for.
+//
+// It is one of the answers `deploy check` could not give before. checkPHPVersion
+// compares the target with the series the *project* declares in
+// `deploy.settings`, which a project that never set one never declares; the
+// constraint Composer itself resolved against lives in the lock, and it is the one
+// a vendor install has to satisfy. Measured on the 2026-09-28 rehearsal: the lock
+// required >=8.4, the target ran 8.3.35, `deploy check` answered deployable, and
+// the deploy died minutes later at build:vendors.
+//
+// A warning, never a refusal — `!` is the marker every other warned-about line in
+// this preflight uses, and carrying the word "warning" as well would say the same
+// thing twice. The target may be a container the operator can tear down and
+// recreate on a newer PHP series, and a preflight that blocks here would be wrong
+// as often as it was right.
+//
+// Every other case is silent: a target that cannot be asked, a PHP that answers
+// with something this cannot read, and a constraint with no floor to compare
+// against (composerPHPFloor). A preflight whose probes are cheap and independent
+// must not fail, or start guessing, because a PHP series is unknown.
+func noteComposerPlatform(ctx context.Context, sc *StepContext) {
+	constraint, source := composerPlatformRequirement(sc.WorkDir)
+	floor, judged := composerPHPFloor(constraint)
+	if !judged {
+		return
+	}
+	actual, err := probeTargetPHP(ctx, sc)
+	if err != nil {
+		// An advisory probe never blocks a deploy, and the target's PHP has
+		// already been reported by checkPHPVersion where the project asked for it.
+		return
+	}
+	if comparison, ok := engine.CompareNumericDotVersions(actual, floor); !ok || comparison >= 0 {
+		return
+	}
+	noteStep(sc, fmt.Sprintf(
+		"  ! composer requires PHP %s (%s) but the target runs php %s: a vendor install run on this target "+
+			"resolves against a PHP the lock does not allow, so build:vendors on a server build runs on the wrong series. "+
+			"Build on a target that runs PHP %s or newer, or resolve the lock against the PHP the target has.\n",
+		constraint, source, actual, floor))
+}
+
+// ComposerPHPFloorForTest exposes composerPHPFloor to the tests/ package, which
+// cannot reach it through CoreCheck without a preflight per constraint shape.
+func ComposerPHPFloorForTest(constraint string) (string, bool) {
+	return composerPHPFloor(constraint)
+}
+
+// ComposerPlatformRequirementForTest exposes composerPlatformRequirement to the
+// tests/ package.
+func ComposerPlatformRequirementForTest(workDir string) (string, string) {
+	return composerPlatformRequirement(workDir)
+}
+
+// composerPHPFloor returns the version a constraint's floor names, and whether
+// this check is willing to judge it at all.
+//
+// Only the shapes whose floor is unambiguous are judged: >=X, >X, ^X, ~X, X.Y.*,
+// a bare X.Y, and a version with further components — which is truncated to its
+// first two, since truncating can only lower the floor and a lower floor makes
+// the check quieter. Every other shape is silent, because a wrong warning here is
+// worse than a missed one: an operator who is sent to fix a floor that was never
+// there stops reading the preflight.
+//
+// `||`, `,` and any interior whitespace are declined *before* the operator is
+// read. A compound constraint is two requirements and not one floor, and a space
+// after the operator ("&gt;= 8.4") is a shape this check does not parse. Both are
+// misses, which is the direction this check is allowed to err; neither is a guess
+// dressed as a finding.
+func composerPHPFloor(constraint string) (string, bool) {
+	value := strings.TrimSpace(constraint)
+	if value == "" || strings.ContainsAny(value, "|,") || len(strings.Fields(value)) != 1 {
+		return "", false
+	}
+	switch {
+	case strings.HasPrefix(value, ">="):
+		value = strings.TrimPrefix(value, ">=")
+	case strings.HasPrefix(value, ">"), strings.HasPrefix(value, "^"), strings.HasPrefix(value, "~"):
+		value = value[1:]
+	case strings.HasPrefix(value, "<"), strings.HasPrefix(value, "="), strings.HasPrefix(value, "!"):
+		// An upper bound, or an operator this check does not read.
+		return "", false
+	}
+	parts := strings.Split(strings.TrimSuffix(value, ".*"), ".")
+	if len(parts) < 2 {
+		// A version with no minor names no floor this check can pin.
+		return "", false
+	}
+	floor := parts[0] + "." + parts[1]
+	// Comparing a version with itself parses it: CompareNumericDotVersions
+	// returns ok only when both sides are numeric dot versions, and a value
+	// against itself is equal whenever both parse.
+	if _, ok := engine.CompareNumericDotVersions(floor, floor); !ok {
+		return "", false
+	}
+	return floor, true
+}
+
+// composerPlatformRequirement reads the PHP constraint the project's dependency
+// set was resolved for, and a label naming the file it was read from.
+//
+// The lock is the answer that matters — it is what a vendor install on the target
+// has to satisfy — and a project that keeps no lock still declares one in its
+// manifest, so the manifest is the fallback rather than a second opinion.
+// `platform-dev` is read only when `platform` names nothing: it is the fallback
+// for a lock that records no platform requirement at all, and the label says
+// which one answered so a finding can be traced back to a file.
+//
+// A file this cannot read yields no constraint at all, and composerPHPFloor then
+// declines to judge. An unreadable file stops the search, because that is a fact
+// about this machine rather than about the project; a lock that parses to nothing
+// usable falls through to the manifest, which is a real declaration either way.
+// Guessing a requirement out of a file this could not read is how a preflight
+// invents a finding, and the cost is asymmetric: one wrong warning teaches an
+// operator to ignore every line after it.
+func composerPlatformRequirement(workDir string) (constraint, source string) {
+	if strings.TrimSpace(workDir) == "" {
+		return "", ""
+	}
+
+	raw, err := os.ReadFile(filepath.Join(workDir, "composer.lock"))
+	switch {
+	case err != nil && !os.IsNotExist(err):
+		return "", ""
+	case err == nil:
+		var lock struct {
+			Platform    map[string]string `json:"platform"`
+			PlatformDev map[string]string `json:"platform-dev"`
+		}
+		if err := json.Unmarshal(raw, &lock); err == nil {
+			if php := strings.TrimSpace(lock.Platform["php"]); php != "" {
+				return php, "composer.lock platform.php"
+			}
+			if php := strings.TrimSpace(lock.PlatformDev["php"]); php != "" {
+				return php, "composer.lock platform-dev.php"
+			}
+		}
+	}
+
+	raw, err = os.ReadFile(filepath.Join(workDir, "composer.json"))
+	if err != nil {
+		return "", ""
+	}
+	var manifest struct {
+		Require map[string]string `json:"require"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return "", ""
+	}
+	if php := strings.TrimSpace(manifest.Require["php"]); php != "" {
+		return php, "composer.json require.php"
+	}
+	return "", ""
 }
 
 // checkArtifactParity is the artifact mode's preflight. An artifact was built
@@ -1221,7 +1379,7 @@ func noteComposerCredentials(ctx context.Context, sc *StepContext) error {
 	}
 
 	if strings.TrimSpace(os.Getenv(ComposerAuthEnv)) != "" {
-		sc.Notes = append(sc.Notes, "composer credentials: "+ComposerAuthEnv+" is set for this run")
+		noteStep(sc, "  - composer credentials: "+ComposerAuthEnv+" is set for this run\n")
 		return nil
 	}
 	if _, err := sc.Runner.Run(ctx, "test -f "+Shell(path.Join(sc.Host.SharedPath(), "auth.json")), RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err == nil {
@@ -1229,8 +1387,8 @@ func noteComposerCredentials(ctx context.Context, sc *StepContext) error {
 		// never from `shared/`: the file only reaches the build when the release
 		// links it, which is a `shared_files` entry. Saying so here is the
 		// difference between "the credential is there" and "the credential is used".
-		sc.Notes = append(sc.Notes, "composer credentials: shared/auth.json exists on the target "+
-			"(it reaches the build when deploy.settings.shared_files lists auth.json)")
+		noteStep(sc, "  - composer credentials: shared/auth.json exists on the target "+
+			"(it reaches the build when deploy.settings.shared_files lists auth.json)\n")
 		return nil
 	}
 	// A credential the project keeps in its own checkout. Composer reads an
@@ -1240,12 +1398,15 @@ func noteComposerCredentials(ctx context.Context, sc *StepContext) error {
 	// that has one actually uses, and warning "no credentials are available" at it
 	// sends the operator looking for a problem that is not there.
 	if _, err := os.Stat(filepath.Join(sc.WorkDir, "auth.json")); err == nil {
-		sc.Notes = append(sc.Notes, "composer credentials: the project itself carries auth.json")
+		noteStep(sc, "  - composer credentials: the project itself carries auth.json\n")
 		return nil
 	}
 
-	sc.Notes = append(sc.Notes, fmt.Sprintf(
-		"warning: this project declares private composer repositories (%s) and the target builds the release, but no credentials are available: set %s in the environment, or provide %s on the target",
+	// `!` is the marker every other warned-about line in the preflight already
+	// uses; carrying the word "warning" as well would say the same thing twice
+	// in the one place the operator is reading.
+	noteStep(sc, fmt.Sprintf(
+		"  ! this project declares private composer repositories (%s) and the target builds the release, but no credentials are available: set %s in the environment, or provide %s on the target\n",
 		strings.Join(repositories, ", "), ComposerAuthEnv, path.Join(sc.Host.SharedPath(), "auth.json")))
 	return nil
 }

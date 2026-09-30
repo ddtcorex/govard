@@ -909,6 +909,31 @@ công. Hãy đặt credential ở nơi target dùng được (`docker exec`, ho�
 mount) rồi chạy lại — bước hỏng sẽ đi tiếp từ release directory sạch và Composer
 cache được giữ nguyên.
 
+### PHP mà lock đã resolve theo
+
+`govard deploy check` đọc ràng buộc PHP mà dependency của checkout đã được resolve
+theo — `platform.php` trong `composer.lock`, rồi `platform-dev.php` của chính file
+đó, rồi `require.php` trong `composer.json` — và so sàn sàn của nó với PHP mà
+target trả lời. Khi target nằm dưới sàn đó, nó in ra:
+
+```text
+  ! composer requires PHP >=8.4 (composer.lock platform.php) but the target runs php 8.3.35: …
+```
+
+Đây là cảnh báo, không phải lần từ chối: một target diễn tập chỉ là một container
+có thể bỏ đi rồi dựng lại trên một PHP series khác, và một preflight chặn ở đây sẽ
+sai cũng nhiều như nó đúng. Cảnh báo này ra đời từ lần diễn tập ngày 2026-09-28, khi
+`check` trả lời "deploy được" đúng trên cặp giá trị này và lần deploy chết vài phút
+sau ở `build:vendors`.
+
+Chỉ những dạng ràng buộc có sàn không thể nhập nhằng mới được phán đoán — `>=X`,
+`>X`, `^X`, `~X`, `X.Y.*` và dạng trần `X.Y`, so sánh như số phân tách bởi dấu chấm,
+lấy sàn là hai thành phần đầu của version. Mọi dạng còn lại im lặng theo thiết kế:
+`<8.4` và `<=8.4` chỉ là cận trên, `^8.4 || ^9.0` và `>=8.1,<8.4` là hai yêu cầu
+chứ không phải một, còn một ràng buộc viết `>= 8.4` có khoảng trắng thì hoàn toàn
+không được phân tích. Một cảnh báo bỏ sót chỉ tốn một lần build hỏng; một cảnh báo
+sai thì đưa bạn đi sửa một cái sàn vốn chưa từng tồn tại.
+
 ### Đọc một lần diễn tập thất bại
 
 | Lần diễn tập báo | Đó là gì |
