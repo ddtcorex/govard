@@ -44,7 +44,12 @@ if ! "$BIN" capabilities | grep -q "$(printf '^govard version\tnone\t')"; then
   echo "core-contract: FAIL govard version is not a requirement-free command" >&2
   failures=$((failures + 1))
 fi
-if ! "$BIN" capabilities --json | grep -q '"schema_version": 1'; then
+# Match without a pipe: `grep -q` exits at the first match, and under pipefail
+# the writer then dies of SIGPIPE (exit 141) and fails this check on a correct
+# binary. Piping the captured output through printf does not help: the builtin
+# writes in chunks and the match is in the first one.
+capabilities_json="$("$BIN" capabilities --json)"
+if [[ "$capabilities_json" != *'"schema_version": 1'* ]]; then
   echo "core-contract: FAIL govard capabilities --json is not versioned" >&2
   failures=$((failures + 1))
 fi
