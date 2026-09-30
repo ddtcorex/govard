@@ -21,6 +21,40 @@ type dbCredentials struct {
 	Password    string
 	Database    string
 	TablePrefix string
+
+	// redactPassword makes the string builders emit a placeholder instead of
+	// the password. It is set only by forDisplay, for text shown to a human
+	// (sync plans); the commands that run are always built from the plain
+	// credentials.
+	redactPassword bool
+}
+
+// forDisplay returns a copy whose command builders hide the password, so a
+// plan can be rendered from the same builders as the real command without
+// ever holding the secret.
+func (c dbCredentials) forDisplay() dbCredentials {
+	c.redactPassword = true
+	return c
+}
+
+func (c dbCredentials) mysqlPasswordPrefix() string {
+	if c.redactPassword {
+		if strings.TrimSpace(c.Password) == "" {
+			return ""
+		}
+		return redactedMySQLPasswordPrefix()
+	}
+	return mysqlPasswordExportPrefix(c.Password)
+}
+
+func (c dbCredentials) postgresPasswordPrefix() string {
+	if c.redactPassword {
+		if strings.TrimSpace(c.Password) == "" {
+			return ""
+		}
+		return redactedPostgresPasswordPrefix()
+	}
+	return postgresPasswordExportPrefix(c.Password)
 }
 
 // remoteMySQLNoDefaults forces every remote mysql/mariadb client invocation
@@ -114,6 +148,11 @@ func postgresPasswordExportPrefix(password string) string {
 	return "export PGPASSWORD=" + engine.ShellQuote(password) + "; "
 }
 
+// redactedPostgresPasswordPrefix is the display form of postgresPasswordExportPrefix.
+func redactedPostgresPasswordPrefix() string {
+	return "export PGPASSWORD=***; "
+}
+
 func pgQuoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
@@ -138,7 +177,7 @@ func buildRemotePostgresDumpCommandString(credentials dbCredentials, compress bo
 	if compress {
 		dumpCmd = stageDumpThroughTempFile(dumpCmd)
 	}
-	return postgresPasswordExportPrefix(credentials.Password) + dumpCmd
+	return credentials.postgresPasswordPrefix() + dumpCmd
 }
 
 func buildRemotePostgresConnectCommandString(credentials dbCredentials) string {
@@ -153,7 +192,7 @@ func buildRemotePostgresConnectCommandString(credentials dbCredentials) string {
 	}
 	args = append(args, "-U"+engine.ShellQuote(credentials.Username), engine.ShellQuote(credentials.Database))
 
-	return postgresPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+	return credentials.postgresPasswordPrefix() + strings.Join(args, " ")
 }
 
 func buildRemotePostgresImportCommandString(credentials dbCredentials) string {
@@ -168,7 +207,7 @@ func buildRemotePostgresImportCommandString(credentials dbCredentials) string {
 	}
 	args = append(args, "-U"+engine.ShellQuote(credentials.Username), "-v", "ON_ERROR_STOP=1", engine.ShellQuote(credentials.Database))
 
-	return postgresPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+	return credentials.postgresPasswordPrefix() + strings.Join(args, " ")
 }
 
 func buildRemotePostgresQueryCommandString(credentials dbCredentials, query string) string {
@@ -183,33 +222,33 @@ func buildRemotePostgresQueryCommandString(credentials dbCredentials, query stri
 	}
 	args = append(args, "-U"+engine.ShellQuote(credentials.Username), "-c", engine.ShellQuote(query), engine.ShellQuote(credentials.Database))
 
-	return postgresPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+	return credentials.postgresPasswordPrefix() + strings.Join(args, " ")
 }
 
 func buildLocalPostgresConnectCommand(containerName string, credentials dbCredentials) *exec.Cmd {
 	credentials = credentials.withDefaults()
-	script := postgresPasswordExportPrefix(credentials.Password) +
+	script := credentials.postgresPasswordPrefix() +
 		"exec psql -U " + engine.ShellQuote(credentials.Username) + " " + engine.ShellQuote(credentials.Database)
 	return exec.Command("docker", "exec", "-it", containerName, "sh", "-lc", script)
 }
 
 func buildLocalPostgresImportCommand(containerName string, credentials dbCredentials) *exec.Cmd {
 	credentials = credentials.withDefaults()
-	script := postgresPasswordExportPrefix(credentials.Password) +
+	script := credentials.postgresPasswordPrefix() +
 		"exec psql -U " + engine.ShellQuote(credentials.Username) + " -v ON_ERROR_STOP=1 " + engine.ShellQuote(credentials.Database)
 	return exec.Command("docker", "exec", "-i", containerName, "sh", "-lc", script)
 }
 
 func buildLocalPostgresDumpCommand(containerName string, credentials dbCredentials) *exec.Cmd {
 	credentials = credentials.withDefaults()
-	script := postgresPasswordExportPrefix(credentials.Password) +
+	script := credentials.postgresPasswordPrefix() +
 		"pg_dump --no-owner --no-privileges -U " + engine.ShellQuote(credentials.Username) + " " + engine.ShellQuote(credentials.Database)
 	return exec.Command("docker", "exec", "-i", containerName, "sh", "-lc", script)
 }
 
 func buildLocalPostgresQueryCommand(containerName string, credentials dbCredentials, query string) *exec.Cmd {
 	credentials = credentials.withDefaults()
-	script := postgresPasswordExportPrefix(credentials.Password) +
+	script := credentials.postgresPasswordPrefix() +
 		"exec psql -U " + engine.ShellQuote(credentials.Username) + " -c " + engine.ShellQuote(query) + " " + engine.ShellQuote(credentials.Database)
 	return exec.Command("docker", "exec", "-i", containerName, "sh", "-lc", script)
 }
@@ -227,7 +266,7 @@ func buildLocalPostgresResetScript(credentials dbCredentials) (string, error) {
 	resetSQL := "DROP DATABASE IF EXISTS " + pgQuoteIdent(name) + "; CREATE DATABASE " +
 		pgQuoteIdent(name) + " OWNER " + pgQuoteIdent(user) + ";"
 
-	passwordPrefix := postgresPasswordExportPrefix(credentials.Password)
+	passwordPrefix := credentials.postgresPasswordPrefix()
 
 	return strings.Join([]string{
 		"set -e",
@@ -253,7 +292,7 @@ func getPostgresDatabaseSize(config engine.Config, remoteName string, remoteCfg 
 	}
 	args = append(args, "-U"+engine.ShellQuote(credentials.Username), "-c", engine.ShellQuote(query), engine.ShellQuote(credentials.Database))
 
-	cmdStr := postgresPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+	cmdStr := credentials.postgresPasswordPrefix() + strings.Join(args, " ")
 
 	var output []byte
 	var err error
@@ -422,7 +461,7 @@ func buildRemoteMySQLDumpCommandString(credentials dbCredentials, noNoise bool, 
 		dumpCmd = stageDumpThroughTempFile(dumpCmd)
 	}
 
-	return dbCliDetect + " && " + mysqlPasswordExportPrefix(credentials.Password) + dumpCmd
+	return dbCliDetect + " && " + credentials.mysqlPasswordPrefix() + dumpCmd
 }
 
 // stageDumpThroughTempFile compresses a dump core without a pipe, so a dump
@@ -452,7 +491,7 @@ func buildRemoteMySQLConnectCommandString(credentials dbCredentials) string {
 	}
 	args = append(args, "-u"+engine.ShellQuote(credentials.Username), engine.ShellQuote(credentials.Database))
 
-	return mysqlPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+	return credentials.mysqlPasswordPrefix() + strings.Join(args, " ")
 }
 
 func buildRemoteMySQLImportCommandString(credentials dbCredentials) string {
@@ -470,7 +509,7 @@ func buildRemoteMySQLImportCommandString(credentials dbCredentials) string {
 	}
 	args = append(args, "-u"+engine.ShellQuote(credentials.Username), engine.ShellQuote(credentials.Database), "-f")
 
-	return mysqlPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+	return credentials.mysqlPasswordPrefix() + strings.Join(args, " ")
 }
 
 func buildLocalDBConnectCommand(containerName string, credentials dbCredentials) *exec.Cmd {
@@ -559,6 +598,11 @@ func mysqlPasswordExportPrefix(password string) string {
 		return ""
 	}
 	return "export MYSQL_PWD=" + engine.ShellQuote(password) + "; "
+}
+
+// redactedMySQLPasswordPrefix is the display form of mysqlPasswordExportPrefix.
+func redactedMySQLPasswordPrefix() string {
+	return "export MYSQL_PWD=***; "
 }
 
 func buildLocalMySQLClientCommandScript(credentials dbCredentials, force bool) string {
@@ -699,7 +743,7 @@ func buildRemoteMySQLQueryCommandString(credentials dbCredentials, query string)
 	}
 	args = append(args, "-u"+engine.ShellQuote(credentials.Username), "-e", engine.ShellQuote(query))
 
-	return mysqlPasswordExportPrefix(credentials.Password) + strings.Join(args, " ")
+	return credentials.mysqlPasswordPrefix() + strings.Join(args, " ")
 }
 
 func buildRemoteMySQLSizeCommandString(credentials dbCredentials, query string) string {
@@ -718,7 +762,7 @@ func buildRemoteMySQLSizeCommandString(credentials dbCredentials, query string) 
 	mysqlArgs = append(mysqlArgs, "-u"+engine.ShellQuote(credentials.Username), "-e", engine.ShellQuote(query))
 
 	dbCliDetect := conventions.MySQLClientBinDetect
-	mysqlCmd := mysqlPasswordExportPrefix(credentials.Password) + strings.Join(mysqlArgs, " ")
+	mysqlCmd := credentials.mysqlPasswordPrefix() + strings.Join(mysqlArgs, " ")
 	return fmt.Sprintf("%s && %s", dbCliDetect, mysqlCmd)
 }
 

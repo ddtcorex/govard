@@ -392,3 +392,8 @@ func SyncExecutionOptionsForTest(files bool, mediaMode string, db bool) SyncExec
 		DB:    db,
 	}
 }
+
+// BuildSyncPlanSummaryForTest exposes buildSyncPlanSummary for tests in /tests.
+func BuildSyncPlanSummaryForTest(endpoints ResolvedSyncEndpoints, execution SyncExecutionPlan, opts SyncExecutionOptions) []string {
+	return buildSyncPlanSummary(endpoints, execution, opts, nil)
+}
