@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"govard/internal/engine"
@@ -286,9 +288,13 @@ func TestPlanPhase5RunsNothingAndStaysOutOfTheGate(t *testing.T) {
 func TestP4RecordsTheSnapshotItCreated(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	root := t.TempDir()
-	makeSnapshot(t, root, "20260101-000000", "2026-01-01T00:00:00Z")
 
-	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, _ ...string) (verify.Evidence, bool) {
+	// The snapshot appears only when the row runs `snapshot create`, the way
+	// the real command adds one to the store.
+	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
+		if len(args) > 1 && args[0] == "snapshot" && args[1] == "create" {
+			makeSnapshot(t, root, "20260101-000000", "2026-01-01T00:00:00Z")
+		}
 		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok"}, true
 	})
 	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
@@ -310,18 +316,20 @@ func TestP4RecordsTheSnapshotItCreated(t *testing.T) {
 func TestP4DoesNotRecordASnapshotItCannotRestore(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	root := t.TempDir()
-	dir := filepath.Join(engine.SnapshotRoot(root), "20260101-000000")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	var empty bytes.Buffer
-	zw := gzip.NewWriter(&empty)
-	_ = zw.Close()
-	if err := os.WriteFile(filepath.Join(dir, "db.sql.gz"), empty.Bytes(), 0o644); err != nil {
-		t.Fatalf("write dump: %v", err)
-	}
-
-	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, _ ...string) (verify.Evidence, bool) {
+	// `snapshot create` exits 0 but leaves an empty dump behind.
+	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
+		if len(args) > 1 && args[0] == "snapshot" && args[1] == "create" {
+			dir := filepath.Join(engine.SnapshotRoot(root), "20260101-000000")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			var empty bytes.Buffer
+			zw := gzip.NewWriter(&empty)
+			_ = zw.Close()
+			if err := os.WriteFile(filepath.Join(dir, "db.sql.gz"), empty.Bytes(), 0o644); err != nil {
+				t.Fatalf("write dump: %v", err)
+			}
+		}
 		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok"}, true
 	})
 	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
@@ -412,8 +420,13 @@ func fakeAllExec(t *testing.T) *int {
 	t.Helper()
 	fakeProbeHTTP(t)
 	calls := 0
-	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, _ ...string) (verify.Evidence, bool) {
+	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, opts verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
 		calls++
+		// P4-08 records the snapshot its `snapshot create` added to the store,
+		// so the fake adds one, the way the real command does.
+		if len(args) > 1 && args[0] == "snapshot" && args[1] == "create" && opts.ProjectRoot != "" {
+			makeSnapshot(t, opts.ProjectRoot, fmt.Sprintf("created-%d", calls), "2026-02-01T00:00:00Z")
+		}
 		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok"}, true
 	})
 	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
@@ -448,8 +461,8 @@ func TestPhase5GateSeesPhase4RunWithoutJSON(t *testing.T) {
 	if _, err := verify.RunPhase(context.Background(), cfg, 4, verify.VerifyOpts{ProjectRoot: root}); err != nil {
 		t.Fatalf("RunPhase 4: %v", err)
 	}
-	if name, ok := verify.GateSatisfyingSnapshot(verify.VerifyOpts{ProjectRoot: root}); !ok || name != "20260101-000000" {
-		t.Fatalf("gate = (%q, %v) after a JSON:false phase 4, want the recorded snapshot", name, ok)
+	if name, ok := verify.GateSatisfyingSnapshot(verify.VerifyOpts{ProjectRoot: root}); !ok || !strings.HasPrefix(name, "created-") {
+		t.Fatalf("gate = (%q, %v) after a JSON:false phase 4, want the snapshot phase 4 created", name, ok)
 	}
 	if _, err := verify.RunPhase(context.Background(), cfg, 5,
 		verify.VerifyOpts{ProjectRoot: root, AllowDestructive: true}); err != nil {

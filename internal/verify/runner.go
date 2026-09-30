@@ -382,6 +382,11 @@ func checksFilterReason(requested, declared []string) string {
 // the one fact that explains the row, so the reason names that; which frameworks
 // an item belongs to is what the phase table and the id prefixes already say.
 func frameworkGateReason(it Item, cfg engine.Config) string {
+	if it.WhenReason != nil {
+		if reason := it.WhenReason(cfg); reason != "" {
+			return reason
+		}
+	}
 	if cfg.Framework == "" {
 		return fmt.Sprintf("framework gate: %s is framework-specific and this project declares no framework", it.ID)
 	}

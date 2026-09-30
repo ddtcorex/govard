@@ -212,7 +212,9 @@ func TestGatedItemsAreCountedInAMergedAllPhasesRun(t *testing.T) {
 	if got, want := len(merged.Items), len(head.Items)+len(gated.Items); got != want {
 		t.Fatalf("merged items = %d, want %d: the skip rows did not survive the append", got, want)
 	}
-	if got := merged.SkippedCount(); got != len(skipped) {
-		t.Fatalf("merged SkippedCount() = %d, want %d: the merge lost a skip row", got, len(skipped))
+	// Phase 1 skips too now (P1-06 has no lock file here), so the merge owes
+	// both phases' skips.
+	if got, want := merged.SkippedCount(), len(skipped)+head.SkippedCount(); got != want {
+		t.Fatalf("merged SkippedCount() = %d, want %d: the merge lost a skip row", got, want)
 	}
 }

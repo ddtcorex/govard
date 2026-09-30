@@ -281,7 +281,13 @@ func TestVerifyAllPhasesKeepsPhases1To4WhenTheRecordCannotBeWritten(t *testing.T
 func TestVerifyAllPhasesJSONRendersPhases1To4WhenTheSnapshotGateRefuses(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	project := t.TempDir() // no snapshot: nothing can satisfy the gate
-	fakeAllExec(t)
+	// Every child succeeds but `snapshot create` adds nothing to the store, so
+	// P4-08 is red and the gate has nothing to open on.
+	fakeProbeHTTP(t)
+	verify.SetExecGovardFakeForTest(func(context.Context, engine.Config, verify.VerifyOpts, ...string) (verify.Evidence, bool) {
+		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok"}, true
+	})
+	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
 
 	payload, err := runVerifyAllPhases(t, project, "--allow-destructive")
 	if !errors.Is(err, verify.ErrNeedSnapshot) {

@@ -88,12 +88,30 @@ type Item struct {
 	Phase   int
 	Timeout time.Duration
 	When    func(engine.Config) bool
-	Run     func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence
+	// WhenReason, when set, explains an unmet When in the item's own terms. It
+	// returns "" to fall back to the framework reason.
+	WhenReason func(engine.Config) string
+	Run        func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence
 }
 
 // isMagento2 reports whether cfg targets Magento 2 (or Mage-OS which normalizes to magento2).
 func isMagento2(c engine.Config) bool {
 	return c.Framework == "magento2"
+}
+
+// frontendSyncEnabled gates P3-09: the frontend command only has something to
+// start on a framework that supports it, with stack.features.frontend_sync on.
+func frontendSyncEnabled(c engine.Config) bool {
+	return isMagento2(c) && c.Stack.Features.FrontendSync
+}
+
+// frontendSyncGateReason names the frontend_sync switch when the framework is
+// right but the feature is off; any other miss is a framework gate.
+func frontendSyncGateReason(c engine.Config) string {
+	if isMagento2(c) && !c.Stack.Features.FrontendSync {
+		return "stack.features.frontend_sync is off: enable it in .govard.yml to exercise `govard frontend start`"
+	}
+	return ""
 }
 
 // withRemote wraps a remote-touching item. A checklist run that was not told
@@ -377,7 +395,18 @@ func auditLifecycleEvidence(ctx context.Context, cfg engine.Config, opts VerifyO
 	// keys — the excerpt is cut at 500 characters (exec.go:66-69) and a walk that
 	// hits the cut after session_id returns exactly that half identity.
 	if identity.SessionID == "" || identity.RunID == "" {
+		// Only a clean exit with no ids is "nothing to drive". A creating run
+		// that failed is a failure the row must show: skipping it would let a
+		// broken audit pass as not applicable.
+		if created.ExitCode != 0 {
+			return created
+		}
 		return Skip(auditIdentitySkipReason(identity, created.ExitCode))
+	}
+	// Exit 3 (capability missing) and 4 (configuration) are never a findings
+	// verdict, even when a JSON body carried ids: the run did not do its job.
+	if created.ExitCode == 3 || created.ExitCode == 4 {
+		return created
 	}
 
 	status := []string{"audit", "status", "--session", identity.SessionID, "--format", "json"}
@@ -603,22 +632,29 @@ var Registry = []Item{
 	{ID: "P1-03", Phase: 1, Title: "govard doctor trust", Precond: "P1-02 green", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "doctor", "trust")
 	}},
-	{ID: "P1-04", Phase: 1, Title: "govard config get project_name / framework / domain / stack.php_version / stack.*", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P1-04", Phase: 1, Title: "govard config get project_name", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "config", "get", "project_name")
 	}},
 	{ID: "P1-05", Phase: 1, Title: "govard env config", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "env", "config")
 	}},
-	{ID: "P1-06", Phase: 1, Title: "govard lock check + govard lock diff (or generate -> check if missing)", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P1-06", Phase: 1, Title: "govard lock check + govard lock diff", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		// A project with no lock file has nothing to check. Generating one here
+		// would write a tracked file from a verify phase, so the row skips and
+		// names the command that creates it. A lock that exists and disagrees
+		// with the project is a real finding and stays red.
+		if _, err := os.Stat(engine.LockFilePath(opts.ProjectRoot)); err != nil && errors.Is(err, os.ErrNotExist) {
+			return Skip("no lock file: run `govard lock generate` to create one, then rerun this item")
+		}
 		ev := execGovard(ctx, cfg, opts, "lock", "check")
 		if ev.ExitCode != 0 {
-			// Try diff for evidence, keep original exit
+			// Run diff for evidence only; the verdict stays the check's exit.
 			ev2 := execGovard(ctx, cfg, opts, "lock", "diff")
 			ev.OutputExcerpt = ev.OutputExcerpt + " | diff: " + ev2.OutputExcerpt
 		}
 		return ev
 	}},
-	{ID: "P1-07", Phase: 1, Title: "govard status / govard project list", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P1-07", Phase: 1, Title: "govard status", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "status")
 	}},
 
@@ -662,7 +698,7 @@ var Registry = []Item{
 		ev.JSONValid = ev3.JSONValid
 		return ev
 	})},
-	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e <remote> --no-noise OR --code-only (after P4-08)", Precond: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e <remote> --no-noise", Precond: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--no-noise")
 	})},
 	{ID: "P2-09", Phase: 2, Title: "govard tool npm install in the Hyva theme's web/tailwind (Hyva only)", Precond: "P2-05 or P2-08", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -681,7 +717,7 @@ var Registry = []Item{
 	{ID: "P2-10", Phase: 2, Title: "govard config auto", Precond: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "config", "auto")
 	}},
-	{ID: "P2-11", Phase: 2, Title: "govard tool magento --version + module:status (magento)", Precond: "P2-05 done", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P2-11", Phase: 2, Title: "govard tool magento --version", Precond: "P2-05 done", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "--version")
 	}},
 	{ID: "P2-12", Phase: 2, Title: "govard tool composer validate", Precond: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -695,7 +731,7 @@ var Registry = []Item{
 	}},
 
 	// Phase 3 — Dev Loop (15)
-	{ID: "P3-01", Phase: 3, Title: "govard tool magento cache:flush + cache:status (or framework equiv)", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-01", Phase: 3, Title: "govard tool magento cache:flush", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "cache:flush")
 	}},
 	{ID: "P3-02", Phase: 3, Title: "govard tool magento setup:upgrade", Precond: "P3-01 ok", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -704,7 +740,7 @@ var Registry = []Item{
 	{ID: "P3-03", Phase: 3, Title: "govard tool magento setup:di:compile", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "setup:di:compile")
 	}},
-	{ID: "P3-04", Phase: 3, Title: "govard tool magento setup:static-content:deploy {{LOCALES}} -f", Precond: "P2-09 Hyva theme present", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-04", Phase: 3, Title: "govard tool magento setup:static-content:deploy -f", Precond: "P2-09 Hyva theme present", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "setup:static-content:deploy", "-f")
 	}},
 	{ID: "P3-05", Phase: 3, Title: "govard tool magento indexer:reindex", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -713,13 +749,13 @@ var Registry = []Item{
 	{ID: "P3-06", Phase: 3, Title: "govard tool magento cron:run", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "cron:run")
 	}},
-	{ID: "P3-07", Phase: 3, Title: "govard tool php vendor/bin/phpstan analyse --help / phpcs --standard", Precond: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-07", Phase: 3, Title: "govard tool php vendor/bin/phpstan analyse --help", Precond: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "php", "vendor/bin/phpstan", "analyse", "--help")
 	}},
-	{ID: "P3-08", Phase: 3, Title: "govard debug status -> on -> verify php-debug routes with XDEBUG_SESSION -> off", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-08", Phase: 3, Title: "govard debug status", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "debug", "status")
 	}},
-	{ID: "P3-09", Phase: 3, Title: "govard frontend start -> logs -> stop", Precond: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-09", Phase: 3, Title: "govard frontend start", Precond: "P2-01 up", Guard: "", When: frontendSyncEnabled, WhenReason: frontendSyncGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "frontend", "start")
 	}},
 	{ID: "P3-10", Phase: 3, Title: "govard audit run --checks lint --scope project --mode auto --format json", Precond: "P2-01 up", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -745,11 +781,10 @@ var Registry = []Item{
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
 	{ID: "P3-12", Phase: 3, Title: "govard audit run --checks profiler --url https://{{DOMAIN}}/ --format json", Precond: "P2-01 up", Guard: "", Checks: []string{"profiler"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		domain := cfg.Domain
-		if domain == "" {
-			domain = "localhost"
+		if cfg.Domain == "" {
+			return Skip("no domain configured: set `domain` in .govard.yml so the profiler has a URL to audit")
 		}
-		args := []string{"audit", "run", "--checks", "profiler", "--url", "https://" + domain + "/", "--format", "json"}
+		args := []string{"audit", "run", "--checks", "profiler", "--url", "https://" + cfg.Domain + "/", "--format", "json"}
 		if opts.AllowXdebug {
 			args = append(args, "--allow-xdebug")
 		}
@@ -792,7 +827,7 @@ var Registry = []Item{
 		}
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-15", Phase: 3, Title: "govard audit status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Precond: "P3-10 or P3-11 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-15", Phase: 3, Title: "govard audit status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Precond: "P3-10 or P3-11 done", Guard: "", Checks: []string{"integrity"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return auditLifecycleEvidence(ctx, cfg, opts)
 	}},
 
@@ -806,10 +841,10 @@ var Registry = []Item{
 	// function of the argv. Keep this comment in step with
 	// offerSSHKeyCopyOnAuthFailure: if that tty gate ever goes, this label goes
 	// with it.
-	{ID: "P4-01", Phase: 4, Title: "govard remote test <remote> x4 (dev1/dev2/staging/production)", Precond: "—", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+	{ID: "P4-01", Phase: 4, Title: "govard remote test <remote>", Precond: "—", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "test", remote)
 	})},
-	{ID: "P4-02", Phase: 4, Title: "govard remote audit tail + stats", Precond: "P4-01 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-02", Phase: 4, Title: "govard remote audit tail", Precond: "P4-01 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "audit", "tail")
 	}},
 	{ID: "P4-03", Phase: 4, Title: "govard sync -s <remote> --db --no-noise --plan", Precond: "P4-01 reachable", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
@@ -818,34 +853,48 @@ var Registry = []Item{
 	{ID: "P4-04", Phase: 4, Title: "govard sync -s <remote> --db --no-pii --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--db", "--no-pii", "--plan")
 	})},
-	{ID: "P4-05", Phase: 4, Title: "govard sync -s <remote> --media optimized --plan + minimal --plan + all --plan + catalog --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+	{ID: "P4-05", Phase: 4, Title: "govard sync -s <remote> --media optimized --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--media", "optimized", "--plan")
 	})},
-	{ID: "P4-06", Phase: 4, Title: "govard sync -s <remote> --file --path <path> --plan + --exclude + --delete --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+	{ID: "P4-06", Phase: 4, Title: "govard sync -s <remote> --file --path . --plan", Precond: "P4-01", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--file", "--path", ".", "--plan")
 	})},
 	{ID: "P4-07", Phase: 4, Title: "govard sync -s <remote> --full --plan", Precond: "P4-01 remote reachable", Guard: GuardReadOnlyRemote, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "sync", "-s", remote, "--full", "--plan")
 	})},
 	{ID: "P4-08", Phase: 4, Title: "govard snapshot create + govard snapshot list", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		// The artifact is the snapshot this run created, found by diffing the
+		// store before and after `snapshot create`. "The newest usable one"
+		// could be an older snapshot standing in for a create that produced
+		// nothing, and phase 5 would then restore data this run never made.
+		before := SnapshotNames(opts.ProjectRoot)
 		ev := execGovard(ctx, cfg, opts, "snapshot", "create")
 		if ev.ExitCode != 0 {
+			return ev
+		}
+		created := newSnapshotNames(before, SnapshotNames(opts.ProjectRoot))
+		if len(created) != 1 {
+			ev.ExitCode = 1
+			ev.OutputExcerpt += fmt.Sprintf(" | expected exactly one new snapshot, found %d %v", len(created), created)
+			return ev
+		}
+		if !usableSnapshot(opts.ProjectRoot, created[0]) {
+			ev.ExitCode = 1
+			ev.OutputExcerpt += fmt.Sprintf(" | snapshot %s has no restorable database dump", created[0])
 			return ev
 		}
 		ev2 := execGovard(ctx, cfg, opts, "snapshot", "list")
 		ev.OutputExcerpt += " | list: " + ev2.OutputExcerpt
 		ev.ExitCode = ev2.ExitCode
 		if ev.ExitCode == 0 {
-			if name, ok := LatestSnapshotName(opts.ProjectRoot); ok {
-				ev.Artifacts = []string{name}
-			}
+			ev.Artifacts = []string{created[0]}
 		}
 		return ev
 	}},
-	{ID: "P4-09", Phase: 4, Title: "govard snapshot export + delete --help", Precond: "P4-08 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-09", Phase: 4, Title: "govard snapshot export --help", Precond: "P4-08 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "snapshot", "export", "--help")
 	}},
-	{ID: "P4-10", Phase: 4, Title: "govard redis cli ping / valkey cli ping", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-10", Phase: 4, Title: "govard redis cli ping", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		// Not `tool redis-cli`: toolCmd has no RunE, so cobra printed help and
 		// returned nil — the item went green without running redis at all.
 		return execGovard(ctx, cfg, opts, "redis", "cli", "ping")
@@ -853,7 +902,7 @@ var Registry = []Item{
 	{ID: "P4-11", Phase: 4, Title: "<domain>:9200/_cluster/health answers a search health payload", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return probeSearchHealth(ctx, cfg.Domain)
 	}},
-	{ID: "P4-12", Phase: 4, Title: "govard logs --tail 20 + govard ps cross-project", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-12", Phase: 4, Title: "govard logs --tail 20", Precond: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "logs", "--tail", "20")
 	}},
 	// P4-13..P4-16 close the read-only half of the remote surface. They are
@@ -887,14 +936,18 @@ var Registry = []Item{
 	}},
 
 	// Phase 5 — Destructive QA (8) — gate: P4-08 snapshot exists
-	{ID: "P5-01", Phase: 5, Title: "govard lock generate -> check -> drift .govard.yml -> lock diff -> check --strict must fail -> revert", Precond: "P1-06 ok, P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-01", Phase: 5, Title: "govard lock generate (destructive overwrite, phase 5)", Precond: "P1-06 ok, P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "lock", "generate")
 	}},
-	{ID: "P5-02", Phase: 5, Title: "govard env down -v -> verify docker volume ls removes govard-* -> govard env up", Precond: "P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		_ = execGovard(ctx, cfg, opts, "env", "down", "-v")
+	{ID: "P5-02", Phase: 5, Title: "govard env down -v -> govard env up", Precond: "P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		// A failed `down -v` left the volume in place, so bringing the
+		// environment up afterwards would report a wipe that never happened.
+		if down := execGovard(ctx, cfg, opts, "env", "down", "-v"); down.ExitCode != 0 {
+			return down
+		}
 		return execGovard(ctx, cfg, opts, "env", "up")
 	}},
-	{ID: "P5-03", Phase: 5, Title: "govard bootstrap --fresh --framework {{FRAMEWORK}} --framework-version {{VERSION}} --plan", Precond: "P4-08 snapshot exists", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-03", Phase: 5, Title: "govard bootstrap --fresh --framework {{FRAMEWORK}} --plan", Precond: "P4-08 snapshot exists", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		fw := cfg.Framework
 		if fw == "" {
 			fw = "magento2"
@@ -925,7 +978,7 @@ var Registry = []Item{
 		_ = execGovard(ctx, cfg, opts, "env", "down")
 		return execGovard(ctx, cfg, opts, "env", "up")
 	}},
-	{ID: "P5-07", Phase: 5, Title: "govard tool magento deploy:mode:show + cache:flush after restore", Precond: "P5-05 done", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-07", Phase: 5, Title: "govard tool magento deploy:mode:show", Precond: "P5-05 done", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "deploy:mode:show")
 	}},
 	{ID: "P5-08", Phase: 5, Title: "govard snapshot pull/push --help", Precond: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {

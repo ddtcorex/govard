@@ -235,7 +235,7 @@ func TestVerifyAuditArgvReachesTheEvidence(t *testing.T) {
 			return verify.Evidence{ExitCode: 0, OutputExcerpt: "fake: " + strings.Join(argv, " ")}, true
 		})
 
-		ev := item.Run(context.Background(), engine.Config{Framework: "magento2"}, opts)
+		ev := item.Run(context.Background(), engine.Config{Framework: "magento2", Domain: "sample.test"}, opts)
 		verify.SetExecGovardFakeForTest(nil)
 
 		if len(argvs) != 1 {
@@ -312,9 +312,8 @@ func conditionalFlagsForTest(base, waived []string) []string {
 //
 // The declaration rule is what an item's *subject* verifies, not every check its
 // argv happens to pass: P3-13/P3-14 audit a module with the lint check, so they
-// declare `lint`; P3-15's own `audit run --checks integrity` is the session
-// factory its status/result/rerun subject needs, so it declares nothing and keeps
-// running under any selection.
+// declare `lint`; P3-15 runs the integrity audit and its own lifecycle over that
+// session, so it declares `integrity` and is left out of a lint or profiler run.
 func TestVerifyFiltersItemsByCheck(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
@@ -375,7 +374,7 @@ func TestVerifyFiltersItemsByCheck(t *testing.T) {
 		if row, ok := findRunItem(res, "P3-15"); !ok {
 			t.Fatal("P3-15 left no row in the phase-3 report")
 		} else if row.Skipped {
-			t.Errorf("P3-15 was skipped (%q); its subject is the audit lifecycle, which no check names", row.SkipReason)
+			t.Errorf("P3-15 was skipped (%q) under --checks integrity, which it declares", row.SkipReason)
 		}
 	})
 
@@ -393,8 +392,8 @@ func TestVerifyFiltersItemsByCheck(t *testing.T) {
 		if *runs["P3-12"] != 0 {
 			t.Errorf("a --checks lint run executed the profiler item %d time(s)", *runs["P3-12"])
 		}
-		if *runs["P3-15"] != 1 {
-			t.Errorf("P3-15 ran %d time(s), want 1: the lint audits are its precondition, so it must survive a --checks lint run", *runs["P3-15"])
+		if *runs["P3-15"] != 0 {
+			t.Errorf("P3-15 ran %d time(s) under --checks lint: its subject is the integrity lifecycle and it builds its own session", *runs["P3-15"])
 		}
 		row, ok := findRunItem(res, "P3-12")
 		if !ok {

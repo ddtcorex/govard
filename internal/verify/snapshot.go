@@ -81,6 +81,35 @@ func dumpHasContent(path string) bool {
 	return n > 0
 }
 
+// SnapshotNames lists every entry in the project's snapshot store, usable or
+// not, so a before/after pair shows exactly what one command added. An
+// unreadable store is an empty set.
+func SnapshotNames(projectRoot string) map[string]bool {
+	names := map[string]bool{}
+	snapshots, err := engine.ListSnapshots(projectRoot)
+	if err != nil {
+		return names
+	}
+	for _, s := range snapshots {
+		if name := strings.TrimSpace(s.Name); name != "" {
+			names[name] = true
+		}
+	}
+	return names
+}
+
+// newSnapshotNames returns the names in after that are not in before, sorted.
+func newSnapshotNames(before, after map[string]bool) []string {
+	var added []string
+	for name := range after {
+		if !before[name] {
+			added = append(added, name)
+		}
+	}
+	sort.Strings(added)
+	return added
+}
+
 // LatestSnapshotName returns the newest usable snapshot of the project. Entries
 // with no metadata sort with a zero CreatedAt and are never preferred; a store
 // with nothing usable is "no snapshot", not an error.

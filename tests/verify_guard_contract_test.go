@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -69,6 +70,10 @@ func captureItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) m
 //
 // The map holds every invocation, in order, and the same argv can appear twice
 // when both exit codes reach it.
+// captureSnapshotSeq numbers the snapshots the capture fake creates, so each
+// `snapshot create` adds a new name to a shared project root.
+var captureSnapshotSeq int
+
 func captureAllItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) map[string][][]string {
 	t.Helper()
 
@@ -98,8 +103,14 @@ func captureItemArgvsForExit(t *testing.T, cfg engine.Config, opts verify.Verify
 			continue
 		}
 		var itemArgvs [][]string
-		verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
+		verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, o verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
 			itemArgvs = append(itemArgvs, append([]string(nil), args...))
+			// A successful `snapshot create` adds a snapshot, as the real one
+			// does; P4-08 only goes on to `snapshot list` when it finds one.
+			if exitCode == 0 && o.ProjectRoot != "" && len(args) > 1 && args[0] == "snapshot" && args[1] == "create" {
+				captureSnapshotSeq++
+				makeSnapshot(t, o.ProjectRoot, fmt.Sprintf("captured-%d", captureSnapshotSeq), "2026-03-01T00:00:00Z")
+			}
 			return verify.Evidence{ExitCode: exitCode, OutputExcerpt: "fake: " + strings.Join(args, " ")}, true
 		})
 		_ = it.Run(context.Background(), cfg, opts)

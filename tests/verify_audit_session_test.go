@@ -131,12 +131,8 @@ func TestP315SkipsWhenNoSessionIdComesBack(t *testing.T) {
 			excerpt:    `{"schema_version":1,"session_id":"sess-1","run_`,
 			wantReason: "audit run produced no run id (exit 0)",
 		},
-		{
-			name:       "the creating run failed and printed nothing",
-			excerpt:    "",
-			runExit:    3,
-			wantReason: "audit run produced no session id or run id (exit 3)",
-		},
+		// A creating run that exits non-zero without ids is red, not a skip:
+		// see TestP315RedOnCreateExit3And4.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("GOVARD_HOME_DIR", t.TempDir())
