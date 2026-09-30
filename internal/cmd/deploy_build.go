@@ -53,7 +53,7 @@ identically. A stopped or missing container exits 3 before the output directory
 is touched. The container carries only its own toolchain: when the recipe's
 frontend step will run, the build first checks the container for node and npm
 and refuses (exit 3) if either is missing, so build with --runner host there.
-Interrupting or timing out a container step also stops it inside the container.
+Interrupting or timing out a container step also signals it inside the container.
 
 The artifact is the tracked files of the revision plus whatever the build tasks
 produced, with a manifest recording the revision, the PHP version, the
@@ -245,6 +245,8 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 		Runner:    runner,
 	})
 	if err != nil {
+		// No current step maps a path the runner check above did not; this
+		// guards a future caller that hands the container a new directory.
 		return containerPathConfigError(err)
 	}
 

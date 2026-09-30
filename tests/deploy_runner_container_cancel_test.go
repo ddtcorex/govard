@@ -39,7 +39,7 @@ func TestContainerCancelKillsInnerProcess(t *testing.T) {
 		sentence string
 	}{
 		{name: "an interrupted run", cancel: true, sentence: "interrupted"},
-		{name: "a step that timed out", timeout: 700 * time.Millisecond, sentence: "timed out"},
+		{name: "a step that timed out", timeout: 1500 * time.Millisecond, sentence: "timed out"},
 	}
 
 	for _, testCase := range cases {

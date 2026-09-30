@@ -429,6 +429,13 @@ func TestContainerBuildRefusesNodeStepWithoutNode(t *testing.T) {
 	if strings.Contains(missing.Detail, "node,") || strings.Contains(missing.Detail, "no node") {
 		t.Errorf("detail %q names node, which the container has", missing.Detail)
 	}
+	// Execute prints err.Error() and nothing else outside --error-json, so the
+	// way out has to be in the text itself, not only in the envelope's hint.
+	for _, want := range []string{"--runner host", "frontend_dir"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the printed error %q must name %q", err.Error(), want)
+		}
+	}
 	if !strings.Contains(missing.Hint, "--runner host") {
 		t.Errorf("hint %q must name --runner host as the workaround", missing.Hint)
 	}

@@ -361,11 +361,14 @@ func preflightContainerNode(ctx context.Context, runner Runner, req BuildRequest
 	if len(missing) == 0 {
 		return nil
 	}
+	// The way out is in the Detail as well as the Hint: outside --error-json
+	// the operator sees only Error(), which carries the Detail and not the Hint.
+	const workaround = "build with --runner host on a machine that has Node, or leave deploy.settings.frontend_dir empty to skip the frontend build"
 	return &runtime.MissingError{
 		Caps: []runtime.Capability{nodeCapability},
-		Detail: fmt.Sprintf("container %s has no %s, which %s needs; --runner container runs every build task in the project's app container, which carries only its own toolchain",
-			container.Container, strings.Join(missing, ", "), step.ID),
-		Hint: "build with --runner host on a machine that has Node, or leave deploy.settings.frontend_dir empty to skip the frontend build",
+		Detail: fmt.Sprintf("container %s has no %s, which %s needs; --runner container runs every build task in the project's app container, which carries only its own toolchain; %s",
+			container.Container, strings.Join(missing, ", "), step.ID, workaround),
+		Hint: workaround,
 	}
 }
 
