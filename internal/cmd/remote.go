@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"govard/internal/cli"
 	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
@@ -839,13 +840,16 @@ func ensureRemoteKnown(config engine.Config, name string) (string, engine.Remote
 			return "", engine.RemoteConfig{}, err
 		}
 		if !ok {
-			return "", engine.RemoteConfig{}, fmt.Errorf("unknown remote: %s", name)
+			// Same class and same sentence as the ordinary branch below: the two
+			// must not drift apart, because a caller that reaches one of them
+			// cannot tell which it reached.
+			return "", engine.RemoteConfig{}, unknownRemoteError(name)
 		}
 		return deploy.SandboxRemoteName, remote, nil
 	}
 	resolvedName, ok := findRemoteByNameOrEnvironment(config, name)
 	if !ok {
-		return "", engine.RemoteConfig{}, fmt.Errorf("unknown remote: %s", name)
+		return "", engine.RemoteConfig{}, unknownRemoteError(name)
 	}
 	remote := config.Remotes[resolvedName]
 	resolved, err := resolveRemoteConfigSecrets(resolvedName, remote)
@@ -853,6 +857,15 @@ func ensureRemoteKnown(config engine.Config, name string) (string, engine.Remote
 		return "", engine.RemoteConfig{}, err
 	}
 	return resolvedName, resolved, nil
+}
+
+// unknownRemoteError is the one answer to "this name is not in .govard.yml" for
+// every consumer of ensureRemoteKnown. The message is byte-for-byte the one that
+// was always printed — the wrapped sentinel contributes the word that sentence
+// already began with — and the ConfigError is what turns it into exit 4 instead
+// of letting each caller decide.
+func unknownRemoteError(name string) error {
+	return &cli.ConfigError{Err: fmt.Errorf("%w: %s", deploy.ErrUnknownRemote, name)}
 }
 
 // resolvedRemoteForName returns the RemoteConfig the resolution actually uses
@@ -997,7 +1010,12 @@ func ResolveAutoRemote(config engine.Config, requested string) (string, error) {
 			}
 			return deploy.SandboxRemoteName, nil
 		}
-		return "", fmt.Errorf("remote '%s' is not configured", requested)
+		// The tail is `'%s' is not configured` and not `remote '%s' is not
+		// configured`: the wrapped sentinel already renders the word "remote", and
+		// repeating it is what would change a message the bootstrap and sync
+		// paths assert on. What is left is the sentence this has always printed,
+		// with the class in front of it.
+		return "", &cli.ConfigError{Err: fmt.Errorf("%w '%s' is not configured", deploy.ErrUnknownRemote, requested)}
 	}
 
 	// Priority: staging then dev

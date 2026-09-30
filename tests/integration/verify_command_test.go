@@ -144,25 +144,30 @@ func TestVerifyFrameworkItemFailurePropagates(t *testing.T) {
 	}
 }
 
-// TestDeployStatusJSONHidesAnUnreachableRemote is the reason P4-14 must not
-// pass --json: the JSON form writes its rows before the "no configured remote
-// could be reached" check, so it exits 0 for a remote that does not exist,
-// while the human form exits non-zero. The checklist item needs the failing
-// exit code, or it is green for exactly the condition it exists to detect.
-func TestDeployStatusJSONHidesAnUnreachableRemote(t *testing.T) {
+// TestDeployStatusFailsForAnUnconfiguredRemoteInBothForms is the condition the
+// P4-14 checklist item needs: `deploy status --remote <name>` has to exit
+// non-zero, or the item is green for exactly the failure it exists to detect.
+//
+// The two forms used to disagree, and this test used to record the gap: the
+// JSON document was written before the "no configured remote could be reached"
+// check, so `--json` exited 0 while the human form exited 1. A name the project
+// never configured is now refused while the remote resolves — before either form
+// prints anything — so both answer 4 and there is no form left that hides it.
+func TestDeployStatusFailsForAnUnconfiguredRemoteInBothForms(t *testing.T) {
 	env := NewTestEnvironment(t)
 	dir := env.CreateTestProject(t, "deploy-status-exit", map[string]string{
 		".govard.yml": "project_name: status-exit\nframework: magento2\ndomain: status-exit.test\n",
 	})
 
 	jsonResult := env.RunGovardWithEnv(t, dir, nil, "deploy", "status", "--remote", "absent-remote", "--json")
-	if jsonResult.ExitCode != 0 {
-		t.Fatalf("deploy status --json exit code = %d, want 0 — if this changed, P4-14 should go back to --json\nstdout: %s",
+	if jsonResult.ExitCode != 4 {
+		t.Fatalf("deploy status --json exit code = %d, want 4 — P4-14 reads the exit code, and a remote the project never configured is a configuration error\nstdout: %s",
 			jsonResult.ExitCode, jsonResult.Stdout)
 	}
 
 	humanResult := env.RunGovardWithEnv(t, dir, nil, "deploy", "status", "--remote", "absent-remote")
-	if humanResult.ExitCode == 0 {
-		t.Fatalf("deploy status exit code = 0 for an unconfigured remote; P4-14 relies on it failing\nstdout: %s", humanResult.Stdout)
+	if humanResult.ExitCode != 4 {
+		t.Fatalf("deploy status exit code = %d, want 4; the two forms must not disagree about a name the project never had\nstdout: %s",
+			humanResult.ExitCode, humanResult.Stdout)
 	}
 }

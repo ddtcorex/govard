@@ -185,8 +185,13 @@ func resolveSyntheticSandboxRemote(ctx context.Context, sandboxRuntime SandboxRu
 		return engine.RemoteConfig{}, SandboxLivenessAbsent, fmt.Errorf("check the sandbox container: %w", err)
 	}
 	if !exists {
+		// The sentinel supplies the class; the sentence is unchanged, so the
+		// "run 'govard sandbox up'" remedy every caller already prints survives.
+		// The dormant branch below deliberately carries no sentinel: a sandbox
+		// that exists and is stopped is a failure of the container's state, not a
+		// name missing from the configuration, and the two must not be merged.
 		return engine.RemoteConfig{}, SandboxLivenessAbsent, fmt.Errorf(
-			"unknown remote: sandbox — no sandbox exists for this project; run 'govard sandbox up' to create it")
+			"%w: sandbox — no sandbox exists for this project; run 'govard sandbox up' to create it", ErrUnknownRemote)
 	}
 
 	running, err := sandboxRuntime.ContainerRunning(ctx, container)

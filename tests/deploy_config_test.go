@@ -220,9 +220,32 @@ remotes:
 		t.Fatalf("load config: %v", err)
 	}
 
-	if _, err := deploy.ResolveOptionsForTest(cfg, "nope", deploy.Overrides{}); err == nil {
+	_, err = deploy.ResolveOptionsForTest(cfg, "nope", deploy.Overrides{})
+	if err == nil {
 		t.Fatal("want an error for an unknown remote")
 	}
+	// The class is what the CLI turns into exit 4, so it has to survive the
+	// resolver — and the message must not move while it does. The wording is
+	// asserted in full, not by substring: a wrap that renders the sentinel as a
+	// prefix is a user-visible change this test is here to prevent.
+	if !errors.Is(err, deploy.ErrUnknownRemote) {
+		t.Errorf("ResolveOptions() err = %v, want deploy.ErrUnknownRemote", err)
+	}
+	if got, want := err.Error(), `unknown remote "nope"; configured remotes: staging`; got != want {
+		t.Errorf("ResolveOptions() error = %q, want %q (the message must stay byte-identical)", got, want)
+	}
+	// The read path resolves the same way (`deploy status`, `releases`, `unlock`),
+	// so it has to carry the same class or those commands keep their own code.
+	_, readErr := deploy.ResolveReadOptions(cfg, "nope", deploy.Overrides{})
+	if !errors.Is(readErr, deploy.ErrUnknownRemote) {
+		t.Errorf("ResolveReadOptions() err = %v, want deploy.ErrUnknownRemote", readErr)
+	}
+	if readErr != nil {
+		if got, want := readErr.Error(), `unknown remote "nope"; configured remotes: staging`; got != want {
+			t.Errorf("ResolveReadOptions() error = %q, want %q (the message must stay byte-identical)", got, want)
+		}
+	}
+
 	if _, err := deploy.ResolveOptionsForTest(cfg, "staging", deploy.Overrides{Revision: "abc", Tag: "v1"}); err == nil {
 		t.Fatal("want an error when --revision and --tag are combined")
 	}

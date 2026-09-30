@@ -344,3 +344,89 @@ remotes:
 		t.Fatalf("the refusal must suggest the near miss, got:\n%s%s", result.Stdout, result.Stderr)
 	}
 }
+
+// One condition — the named remote is not in the project configuration — used to
+// report itself as three different exit codes: `deploy plan` called it a usage
+// mistake (2) while `deploy status` and `sync` let it fall out as a plain
+// execution failure (1). A script branching on the exit code was therefore told
+// to fix its command line for a name that belongs in `.govard.yml`.
+//
+// Exit 4 is the class for "the operator edits the file", and every deploy
+// command has to answer with it. The capability gate is forced rather than left
+// to the host: the six sub-cases fail before any connection is attempted, so
+// nothing here needs a real ssh or rsync, but the gate itself runs first and
+// would otherwise decide the exit code before the command is even reached.
+func TestDeployUnknownRemoteIsAConfigurationError(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-unknown-remote")
+	forced := []string{"GOVARD_TEST_SATISFIED_CAPABILITIES=ssh,rsync"}
+	outputDir := t.TempDir()
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "plan", args: []string{"deploy", "plan", "nope"}},
+		{name: "check", args: []string{"deploy", "check", "nope"}},
+		{name: "releases", args: []string{"deploy", "releases", "nope"}},
+		{name: "build", args: []string{"deploy", "build", "nope", "--output", outputDir}},
+		{name: "deploy", args: []string{"deploy", "nope", "--yes"}},
+		{name: "status", args: []string{"deploy", "status", "nope"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			args := append(append([]string{}, tc.args...), "--error-json")
+			result := env.RunGovardWithEnv(t, projectDir, forced, args...)
+			result.AssertExitCode(t, 4)
+			if !strings.Contains(result.Stdout, `"code": "CONFIG"`) {
+				t.Fatalf("an unknown remote must carry the CONFIG envelope, got:\n%s%s", result.Stdout, result.Stderr)
+			}
+		})
+	}
+
+	// The same class, from the other direction: a project that cannot be read at
+	// all. `deploy plan` reached it as a `ConfigError` and then re-wrapped it as a
+	// usage error on the way out, so the downcast half of the defect was the
+	// missing `.govard.yml` rather than the missing remote.
+	missing := env.RunGovardWithEnv(t, t.TempDir(), forced, "deploy", "plan", "local", "--error-json")
+	missing.AssertExitCode(t, 4)
+	if !strings.Contains(missing.Stdout, `"code": "CONFIG"`) {
+		t.Fatalf("a missing .govard.yml must carry the CONFIG envelope, got:\n%s%s", missing.Stdout, missing.Stderr)
+	}
+}
+
+// The other half of the boundary, and the reason the fix cannot be "make every
+// failure a configuration error". A remote that *is* configured but whose target
+// cannot be read is an execution failure: the operator edits nothing. So
+// `deploy status` must keep answering 1 for a reachable-looking name it could
+// not read, and 4 only for a name the project never had.
+func TestDeployStatusKeepsAConfiguredButUnreachableRemoteAtExitOne(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-unreachable-remote")
+
+	// A local remote with no deploy_path and nothing to discover: the name
+	// resolves, and reading the target fails. That is a row, not the command.
+	deployRoot := t.TempDir()
+	home := t.TempDir()
+	override := fmt.Sprintf(`remotes:
+  local:
+    host: 127.0.0.1
+    user: deployer
+    path: %s/public_html
+    local: true
+    deploy:
+      branch: main
+`, deployRoot)
+	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(override), 0o644); err != nil {
+		t.Fatalf("failed to write .govard.local.yml: %v", err)
+	}
+
+	result := env.RunGovardWithEnv(t, projectDir, []string{"GOVARD_TEST_SATISFIED_CAPABILITIES=ssh", "HOME=" + home}, "deploy", "status", "local")
+	result.AssertExitCode(t, 1)
+	if !strings.Contains(result.Stdout+result.Stderr, "no configured remote could be reached") {
+		t.Fatalf("an unreadable target must still be aggregated as a row, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "deploy_path") {
+		t.Fatalf("the row must carry the reason the target could not be read, got:\n%s", result.Stdout)
+	}
+}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"govard/internal/deploy"
@@ -129,7 +130,11 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 
 	results := make([]statusResult, 0, len(names))
 	for _, name := range names {
-		results = append(results, deployStatusForRemote(cmd, config, name))
+		result, err := deployStatusForRemote(cmd, config, name)
+		if err != nil {
+			return configOrUsageError(err)
+		}
+		results = append(results, result)
 	}
 
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
@@ -189,38 +194,46 @@ func statusRemoteNames(cmd *cobra.Command, args []string, config engine.Config) 
 	return names, nil
 }
 
-func deployStatusForRemote(cmd *cobra.Command, config engine.Config, name string) statusResult {
+// deployStatusForRemote reports one remote. The returned error is only ever a
+// resolution failure that means the name is not configured: everything else — a
+// target that refuses the connection, a layout that cannot be read — is a row,
+// because a table of partial results is the point of the command and an early
+// abort would throw away the remotes that did answer.
+func deployStatusForRemote(cmd *cobra.Command, config engine.Config, name string) (statusResult, error) {
 	result := statusResult{Remote: name}
 
 	options, err := deploy.ResolveReadOptions(config, name, deploy.Overrides{Verify: boolPointer(false), Lock: boolPointer(false)})
 	if err != nil {
+		if errors.Is(err, deploy.ErrUnknownRemote) {
+			return result, err
+		}
 		result.Status = "unknown"
 		result.Error = err.Error()
-		return result
+		return result, nil
 	}
 	// No note here: this runs once per remote and its output is a table.
 	host, err := deployHostFor(cmd.Context(), config, name, options, nil)
 	if err != nil {
 		result.Status = "unknown"
 		result.Error = err.Error()
-		return result
+		return result, nil
 	}
 
 	release, err := deploy.LiveRelease(cmd.Context(), host)
 	if err != nil {
 		result.Status = "unknown"
 		result.Error = err.Error()
-		return result
+		return result, nil
 	}
 	if release == nil {
 		result.Status = "no release"
-		return result
+		return result, nil
 	}
 	result.Release = release.Release
 	result.Revision = release.Revision
 	result.Branch = release.Branch
 	result.Status = release.Status
-	return result
+	return result, nil
 }
 
 func boolPointer(value bool) *bool { return &value }

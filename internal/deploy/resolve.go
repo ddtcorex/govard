@@ -25,6 +25,15 @@ import (
 // other by editing the command line.
 var ErrInvalidConfiguration = errors.New("invalid deploy configuration")
 
+// ErrUnknownRemote marks a remote name the project does not configure.
+//
+// It is deliberately narrower than "the target could not be reached". A name that
+// is not in `.govard.yml` is fixed by editing the file, which is what the
+// configuration exit code (4) means; a name that *is* configured and whose target
+// refuses the connection is an execution failure, and the two must never be
+// merged — a script that branches on the exit code is being told which one it is.
+var ErrUnknownRemote = errors.New("unknown remote")
+
 // Publish strategies. A remote may declare one explicitly; `auto` lets the
 // engine decide from the layout the server actually has.
 const (
@@ -347,8 +356,12 @@ func ValidateSourceSelector(over Overrides) error {
 
 // errUnknownRemote names the remotes that do exist, so a typo is fixable from
 // the error alone.
+//
+// The sentinel supplies the class and the sentence stays as it was: the leading
+// `unknown remote` is the wrapped error's own text, so nothing a caller prints
+// moves when the class is added.
 func errUnknownRemote(name string, cfg engine.Config) error {
-	return fmt.Errorf("unknown remote %q; configured remotes: %s", name, configuredRemotes(cfg))
+	return fmt.Errorf("%w %q; configured remotes: %s", ErrUnknownRemote, name, configuredRemotes(cfg))
 }
 
 func configuredRemotes(cfg engine.Config) string {
