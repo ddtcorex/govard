@@ -183,8 +183,12 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 // a silent no-op, because `df` on a path that does not exist fails. It runs in
 // the shell because the commands execute through the host's runner — on the
 // machine that owns the path — and it creates nothing on either branch.
+//
+// `[ -n "$p" ]` bounds the loop: without dirname, `$(dirname "$p")` is the empty
+// string, and `[ ! -e "" ]` and `[ "" != "/" ]` would both stay true forever, on
+// the target's shell where the local timeout cannot reach it.
 func nearestExistingParentCommand(deployPath string) string {
-	return "p=" + Shell(deployPath) + `; while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; `
+	return "p=" + Shell(deployPath) + `; while [ -n "$p" ] && [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; `
 }
 
 // WritabilityProbeCommand answers "can the target receive a release at
@@ -347,7 +351,8 @@ func CheckRepositoryReachableForTest(ctx context.Context, sc *StepContext) error
 // `|| true` keeps that refusal from failing the check. `fresh` is the same
 // argument one level up: a fresh host has no deploy path either, and an empty
 // one says nothing about who made it, so it is removed only when this probe
-// found it missing.
+// found it missing, together with the levels `mkdir -p` made above it, up to but
+// not including the nearest parent that was already there.
 //
 // Do not "simplify" this into rm -rf, and never remove the lock directory:
 // `<deployPath>/.dep` is where a live deploy's lock lives, so deleting it would
@@ -368,12 +373,20 @@ func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 	probeDir := path.Join(sc.Host.DeployPath, ".dep")
 	link := path.Join(probeDir, ".govard-mvprobe.link")
 	target := path.Join(probeDir, ".govard-mvprobe.target")
-	command := fmt.Sprintf(
+	// $p is the nearest existing ancestor of the deploy path, found before
+	// anything is created. On a fresh host `mkdir -p` makes every level between
+	// it and the deploy path, so the cleanup walks back up from the deploy path
+	// and stops at $p, which is never removed. `rmdir` only removes an empty
+	// directory and a failure ends the walk, so a level that holds anything of
+	// its own stays.
+	command := nearestExistingParentCommand(sc.Host.DeployPath) + fmt.Sprintf(
 		"dp=%s; dep=%s; link=%s; target=%s; fresh=0; [ -e \"$dp\" ] || fresh=1; "+
 			"if [ -e \"$dp\" ] && [ ! -d \"$dp\" ]; then rc=%d; "+
 			"else mkdir -p \"$dep\" && ln -sfn \"$dep\" \"$link\" && mv -T \"$link\" \"$target\"; rc=$?; fi; "+
 			"rm -f \"$link\" \"$target\"; rmdir \"$dep\" 2>/dev/null || true; "+
-			"if [ \"$fresh\" = 1 ]; then rmdir \"$dp\" 2>/dev/null || true; fi; exit $rc",
+			"if [ \"$fresh\" = 1 ]; then d=\"$dp\"; "+
+			"while [ -n \"$d\" ] && [ \"$d\" != \"$p\" ] && [ \"$d\" != \"/\" ]; do rmdir \"$d\" 2>/dev/null || break; d=$(dirname \"$d\"); done; fi; "+
+			"exit $rc",
 		Shell(sc.Host.DeployPath), Shell(probeDir), Shell(link), Shell(target), deployPathNotADirectoryExit,
 	)
 	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
@@ -726,11 +739,13 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 		}
 	}
 
-	// The parent must exist before mkdir can be the atomic acquisition, and the
-	// distinct exit code keeps "already held" separate from a real failure
-	// (permissions, missing path) instead of reporting both as a held lock.
+	// The parent must exist before mkdir can be the atomic acquisition. Only a
+	// lock directory that exists after the failed mkdir means "held" (exit 9);
+	// any other failure (permissions, read-only filesystem, a full disk, a file at
+	// the lock path) exits 1 with mkdir's own message on stderr, so the error
+	// says what happened instead of sending the operator to `deploy unlock`.
 	command := fmt.Sprintf(
-		"mkdir -p %s && (mkdir %s 2>/dev/null || exit %d)",
+		`mkdir -p %[1]s && { err=$(mkdir %[2]s 2>&1) || { [ -d %[2]s ] && exit %[3]d; printf '%%s\n' "$err" >&2; exit 1; }; }`,
 		Shell(host.DepPath()), Shell(host.LockPath()), lockHeldExitCode,
 	)
 	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {

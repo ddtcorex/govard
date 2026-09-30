@@ -1548,7 +1548,7 @@ func TestCoreCheckDoesNotCreateAnAbsentDeployPath(t *testing.T) {
 // variable is the start point, the quoted deploy path, so a present and an
 // absent path get the same probe: the process running govard never decides
 // whether the path exists — the shell on the target does.
-const probeTail = `; while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; test -w "$p"`
+const probeTail = `; while [ -n "$p" ] && [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; test -w "$p"`
 
 // The command is the fix: it has to find the path's nearest existing parent on
 // the target with the shell, so the probe is read-only on the branch that has a
@@ -1813,4 +1813,138 @@ func (r ownerWriteFailsRunner) Run(ctx context.Context, command string, opts dep
 			&deploy.CommandError{Command: command, ExitCode: 1, Stderr: "scripted owner write failure"}
 	}
 	return r.base.Run(ctx, command, opts)
+}
+
+// Without dirname, `p=$(dirname "$p")` yields "" and, unguarded, `[ ! -e "" ]`
+// and `[ "" != "/" ]` both stay true forever. The runner timeout is the bound
+// here: a regression shows up as "timed out" and fails the test in five seconds
+// instead of hanging it for the two-minute production timeout.
+func TestTraversalTerminatesWithoutDirname(t *testing.T) {
+	shimDir := t.TempDir()
+	shPath, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("no sh: %v", err)
+	}
+	if err := os.Symlink(shPath, filepath.Join(shimDir, "sh")); err != nil {
+		t.Fatalf("link sh into the shim dir: %v", err)
+	}
+	// The shim dir holds sh and nothing else, so dirname cannot be found.
+	t.Setenv("PATH", shimDir)
+	absent := filepath.Join(t.TempDir(), "srv", "www", "app", "public_html")
+	command, _ := deploy.WritabilityProbeCommand(absent, false)
+
+	done := make(chan error, 1)
+	go func() {
+		_, runErr := deploy.LocalRunner{}.Run(context.Background(), command, deploy.RunOptions{Timeout: 5 * time.Second})
+		done <- runErr
+	}()
+	select {
+	case runErr := <-done:
+		if runErr != nil && strings.Contains(runErr.Error(), "timed out") {
+			t.Fatalf("the traversal spun until the timeout killed it: %v", runErr)
+		}
+		// Reaching here means it terminated; the probe itself may exit nonzero
+		// because nothing could be tested.
+	case <-time.After(15 * time.Second):
+		t.Fatalf("the traversal did not terminate even with the runner timeout")
+	}
+}
+
+// The guard is the whole change to the command: for a normal absolute path the
+// text is the old traversal with `[ -n "$p" ] &&` in front of its first test.
+func TestTraversalCommandUnchangedForNormalPaths(t *testing.T) {
+	deployPath := "/var/www/app/public_html"
+	command, _ := deploy.WritabilityProbeCommand(deployPath, false)
+	want := `p='/var/www/app/public_html'; while [ -n "$p" ] && [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; test -w "$p"`
+	if command != want {
+		t.Fatalf("command = %q, want %q", command, want)
+	}
+}
+
+// Only an existing lock directory means "held". An unwritable .dep makes the
+// lock mkdir fail with EACCES, and telling the operator to `deploy unlock`
+// cannot fix that.
+func TestCoreLockPermissionErrorIsNotLockHeld(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	deployPath := filepath.Join(t.TempDir(), "public_html")
+	dep := filepath.Join(deployPath, ".dep")
+	if err := os.MkdirAll(dep, 0o755); err != nil {
+		t.Fatalf("seed .dep: %v", err)
+	}
+	if err := os.Chmod(dep, 0o555); err != nil {
+		t.Fatalf("chmod .dep: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dep, 0o755) })
+
+	err := deploy.CoreLock(context.Background(), deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{}))
+	if err == nil {
+		t.Fatalf("an unwritable .dep must fail the lock")
+	}
+	if errors.Is(err, deploy.ErrLockHeld) {
+		t.Fatalf("a permission error must not be reported as a held lock: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Permission denied") {
+		t.Fatalf("the error must carry mkdir's own message, got %q", err.Error())
+	}
+}
+
+// A lock path that exists as a plain file is not a held lock either: the lock
+// is a directory, and only a directory is the other deploy's lock.
+func TestCoreLockOnlyADirectoryCountsAsHeld(t *testing.T) {
+	host := deploy.HostForTest(filepath.Join(t.TempDir(), "public_html"), deploy.LocalRunner{})
+	if err := os.MkdirAll(host.DepPath(), 0o755); err != nil {
+		t.Fatalf("seed .dep: %v", err)
+	}
+	if err := os.WriteFile(host.LockPath(), []byte("not a lock"), 0o644); err != nil {
+		t.Fatalf("seed file at the lock path: %v", err)
+	}
+	err := deploy.CoreLock(context.Background(), deploy.StepContextForTest(host, deploy.Options{}))
+	if err == nil || errors.Is(err, deploy.ErrLockHeld) {
+		t.Fatalf("err = %v, want a plain failure that is not ErrLockHeld", err)
+	}
+}
+
+// `mkdir -p` creates every missing level, so cleaning up only .dep and the leaf
+// left the levels between the nearest existing parent and the deploy path.
+func TestCoreCheckLeavesNoAncestorOnTwoLevelAbsentPath(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "sites")
+	absent := filepath.Join(first, "shop", "app")
+	sc := deploy.StepContextForTest(deploy.HostForTest(absent, deploy.LocalRunner{}), deploy.Options{Publish: deploy.PublishSymlink})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if _, err := os.Stat(first); !os.IsNotExist(err) {
+		t.Fatalf("deploy check left %s behind (stat err = %v)", first, err)
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("the nearest existing parent must survive: %v", err)
+	}
+}
+
+// The upward rmdir stops at the nearest parent that existed and never touches
+// an ancestor that holds anything of its own.
+func TestCoreCheckKeepsAnExistingAncestorAndItsContents(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "sites")
+	keep := filepath.Join(parent, "keepme")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatalf("seed parent: %v", err)
+	}
+	if err := os.WriteFile(keep, []byte("state"), 0o644); err != nil {
+		t.Fatalf("seed sibling: %v", err)
+	}
+	absent := filepath.Join(parent, "shop", "app", "public_html")
+	sc := deploy.StepContextForTest(deploy.HostForTest(absent, deploy.LocalRunner{}), deploy.Options{Publish: deploy.PublishSymlink})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if content, err := os.ReadFile(keep); err != nil || string(content) != "state" {
+		t.Fatalf("the existing parent and its contents must survive: %q, %v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(parent, "shop")); !os.IsNotExist(err) {
+		t.Fatalf("the created levels must be removed (stat err = %v)", err)
+	}
 }
