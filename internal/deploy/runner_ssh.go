@@ -121,7 +121,22 @@ func (r SSHRunner) terminateRemote(pidFile string) {
 	ctx, cancel := context.WithTimeout(context.Background(), remoteInterruptTimeout)
 	defer cancel()
 
-	script := fmt.Sprintf(`p=$(cat %s 2>/dev/null)
+	script := processGroupTeardownScript(pidFile)
+
+	cmd := exec.CommandContext(ctx, "ssh", r.Args(script)...)
+	cmd.WaitDelay = waitDelayAfterKill
+	_ = cmd.Run()
+}
+
+// processGroupTeardownScript is the shell a second connection (ssh) or a second
+// exec (docker) runs to stop a step whose own client was killed: read the pid
+// the step's wrapper recorded, SIGTERM the group it leads, and SIGKILL that group
+// only while it is demonstrably still there. The record is read with a short
+// retry because a cancel can land before the step's shell wrote it. Every
+// character of pidFile comes from this package, which is why the final rm can
+// name it unquoted.
+func processGroupTeardownScript(pidFile string) string {
+	return fmt.Sprintf(`p=$(cat %s 2>/dev/null)
 n=0
 while [ -z "$p" ] && [ $n -lt 2 ]; do
   sleep 1
@@ -138,10 +153,6 @@ if [ -n "$p" ]; then
   kill -0 -$p 2>/dev/null && kill -KILL -$p 2>/dev/null
 fi
 rm -f %s`, conventions.ShellQuote(pidFile), conventions.ShellQuote(pidFile), pidFile)
-
-	cmd := exec.CommandContext(ctx, "ssh", r.Args(script)...)
-	cmd.WaitDelay = waitDelayAfterKill
-	_ = cmd.Run()
 }
 
 // recordRemoteProcessGroup prefixes a step with the two things the cancel path

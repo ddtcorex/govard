@@ -65,6 +65,10 @@ type CommandError struct {
 	ExitCode int
 	Stderr   string
 	Err      error
+	// Note, when set, is one line about what govard did after the command was
+	// stopped: a runner whose work outlives its local client says whether it
+	// tried to stop that work, so the operator knows whether it may still run.
+	Note string
 }
 
 func (e *CommandError) Error() string {
@@ -78,6 +82,9 @@ func (e *CommandError) Error() string {
 		prefix = "the run was interrupted"
 	}
 	message := prefix + ": " + e.Command
+	if e.Note != "" {
+		message += "\n" + e.Note
+	}
 	if trimmed := strings.TrimSpace(e.Stderr); trimmed != "" {
 		message += "\n" + trimmed
 	}
