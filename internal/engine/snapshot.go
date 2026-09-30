@@ -65,7 +65,7 @@ func CreateSnapshot(projectRoot string, config Config, name string) (string, err
 	containerName := fmt.Sprintf("%s-db-1", config.ProjectName)
 	credentials := resolveSnapshotDBCredentials(containerName)
 	dbPath := filepath.Join(snapshotDir, "db.sql.gz")
-	dbFile, err := os.Create(dbPath)
+	dbFile, err := CreatePrivateDumpFile(dbPath)
 	if err == nil {
 		gzipWriter := gzip.NewWriter(dbFile)
 		pterm.Info.Printf("Creating DB snapshot for %s [User: %s, DB: %s]\n", containerName, credentials.Username, credentials.Database)
@@ -406,6 +406,17 @@ func ExportSnapshot(projectRoot string, name string, targetPath string) error {
 		return fmt.Errorf("create export directory %s: %w", filepath.Dir(absTargetPath), err)
 	}
 
+	// The archive carries the database dump, so create it owner-only first.
+	// tar truncates and rewrites the existing file in place and keeps its mode,
+	// which is what makes this independent of the umask.
+	archive, err := CreatePrivateDumpFile(absTargetPath)
+	if err != nil {
+		return fmt.Errorf("create export file %s: %w", absTargetPath, err)
+	}
+	if err := archive.Close(); err != nil {
+		return fmt.Errorf("create export file %s: %w", absTargetPath, err)
+	}
+
 	// Create a tar.gz of the snapshot directory
 	cmd := exec.Command("tar", "-czf", absTargetPath, "-C", filepath.Dir(snapshotDir), name)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -419,4 +430,27 @@ func ExportSnapshot(projectRoot string, name string, targetPath string) error {
 	}
 
 	return nil
+}
+
+// CreatePrivateDumpFile creates (or truncates) a file that only its owner can
+// read. A database dump, or an archive containing one, is created 0600 instead
+// of with the umask-dependent default of os.Create, and a pre-existing file that
+// is broader than that is tightened before anything is written to it.
+func CreatePrivateDumpFile(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		if err := file.Chmod(0o600); err != nil {
+			_ = file.Close()
+			return nil, fmt.Errorf("restrict file permissions: %w", err)
+		}
+	}
+	return file, nil
 }

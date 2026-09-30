@@ -84,25 +84,8 @@ func runDBDump(cmd *cobra.Command, config engine.Config, options dbCommandOption
 	})
 }
 
-// createPrivateDumpFile creates (or truncates) a local dump file that only its
-// owner can read. A dump holds the whole database, so it is created 0600 rather
-// than with the umask-dependent default of os.Create, and a pre-existing file
-// that is broader than that is tightened before anything is written to it.
+// createPrivateDumpFile is the dump-file constructor shared with the snapshot
+// code in internal/engine.
 func createPrivateDumpFile(path string) (*os.File, error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-		return nil, err
-	}
-	if info.Mode().Perm()&0o077 != 0 {
-		if err := file.Chmod(0o600); err != nil {
-			_ = file.Close()
-			return nil, fmt.Errorf("restrict dump file permissions: %w", err)
-		}
-	}
-	return file, nil
+	return engine.CreatePrivateDumpFile(path)
 }

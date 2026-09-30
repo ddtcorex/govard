@@ -83,7 +83,9 @@ func BuildRemoteSnapshotCreateCommand(
 		fmt.Sprintf("printf '%s\\n' > %s", metaContent, engine.ShellQuote(metaPath)),
 	)
 
-	return strings.Join(parts, " && ")
+	// umask 077 first: the dump, the media archive and any directory this
+	// creates (e.g. the snapshots root) are owner-only on the remote.
+	return "umask 077; " + strings.Join(parts, " && ")
 }
 
 // BuildRemoteSnapshotListCommand builds the SSH command to list snapshots on the remote.
