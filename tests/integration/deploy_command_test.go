@@ -529,3 +529,30 @@ func TestDeployStatusJSONAllUnreachableExits1(t *testing.T) {
 	table := env.RunGovardWithEnv(t, projectDir, envVars, "deploy", "status")
 	table.AssertExitCode(t, 1)
 }
+
+// Under --error-json, Execute appends an error envelope to stdout unless the
+// error is marked as already reported. That left the rows array followed by an
+// envelope: two documents. The reason belongs on stderr, stdout stays one array.
+func TestDeployStatusJSONErrorJSONAllUnreachableKeepsOneDocument(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-status-json-errjson")
+	writeDeployLocalOverride(t, projectDir, "")
+	envVars := []string{"GOVARD_TEST_SATISFIED_CAPABILITIES=ssh", "HOME=" + t.TempDir()}
+
+	result := env.RunGovardWithEnv(t, projectDir, envVars, "deploy", "status", "--json", "--error-json")
+	result.AssertExitCode(t, 1)
+
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(result.Stdout), &rows); err != nil {
+		t.Fatalf("stdout must be exactly one JSON array, got:\n%s\nerr: %v", result.Stdout, err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected one row, got %v", rows)
+	}
+	if strings.Contains(result.Stdout, `"code"`) || strings.Contains(result.Stdout, "EXECUTION") {
+		t.Fatalf("stdout must not carry an error envelope, got:\n%s", result.Stdout)
+	}
+	if !strings.Contains(result.Stderr, "no configured remote could be reached") {
+		t.Fatalf("the reason must be on stderr, got:\n%s", result.Stderr)
+	}
+}

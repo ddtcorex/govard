@@ -154,7 +154,10 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		if reachable == 0 {
-			return errNoneReachable
+			// Write the reason ourselves and mark the error as reported, so
+			// --error-json does not append an envelope after the rows.
+			fmt.Fprintln(cmd.ErrOrStderr(), errNoneReachable)
+			return &reportedStatusError{err: errNoneReachable}
 		}
 		return nil
 	}
@@ -185,6 +188,15 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 	}
 	return nil
 }
+
+// reportedStatusError is the --json form of "no remote reachable": a plain
+// execution error (exit 1) whose message was already written to stderr, so the
+// --error-json envelope is not printed as a second document on stdout.
+type reportedStatusError struct{ err error }
+
+func (e *reportedStatusError) Error() string         { return e.err.Error() }
+func (e *reportedStatusError) Unwrap() error         { return e.err }
+func (e *reportedStatusError) AlreadyReported() bool { return true }
 
 // statusRemoteNames resolves which remotes to report on. Naming one is explicit;
 // naming none means every configured remote.
