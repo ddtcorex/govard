@@ -670,7 +670,7 @@ func ArtifactUploadCommand(host Host, source, destination string, progress bool,
 	}
 	return fmt.Sprintf("rsync -az --numeric-ids "+progressFlag+excludeFlags+"--exclude=%s -e %s %s %s",
 		conventions.ShellQuote(ArtifactManifestName),
-		conventions.ShellQuote(strings.Join(sshArgs, " ")),
+		conventions.ShellQuote(remote.RsyncSSHCommand(sshArgs)),
 		conventions.ShellQuote(root+"/"),
 		conventions.ShellQuote(target))
 }

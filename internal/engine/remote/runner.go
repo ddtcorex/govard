@@ -75,7 +75,7 @@ func BuildRsyncCommand(
 	sshOptArgs := []string{"-o", "Cipher=aes128-ctr", "-o", "Compression=no"}
 	sshArgs := append([]string{"ssh"}, BuildSSHArgs(remoteName, remoteCfg, false, false)...)
 	sshArgs = append(sshArgs, sshOptArgs...)
-	args = append(args, "-e", strings.Join(sshArgs, " "))
+	args = append(args, "-e", RsyncSSHCommand(sshArgs))
 	args = append(args, source, destination)
 
 	cmd := exec.Command("rsync", args...)
@@ -96,4 +96,28 @@ func RunRemoteShell(remoteName string, remoteCfg engine.RemoteConfig, remoteComm
 
 	// Since we are replacing the current process, any cleanup logic should be handled before this.
 	return engine.Handoff(sshPath, args)
+}
+
+// RsyncSSHCommand joins ssh arguments into the value of `rsync -e`.
+//
+// rsync does not hand that value to a shell: it splits it on whitespace itself,
+// honouring double quotes (and a backslash inside them). A plain join therefore
+// breaks any argument with whitespace, such as a key, known-hosts or ControlPath
+// under a home directory like `/Users/Jane Doe`. An argument containing
+// whitespace, a quote or a backslash is wrapped in double quotes with embedded
+// `"` and `\` backslash-escaped; every other argument is passed through as is.
+func RsyncSSHCommand(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = quoteRsyncArg(arg)
+	}
+	return strings.Join(quoted, " ")
+}
+
+func quoteRsyncArg(arg string) string {
+	if arg != "" && !strings.ContainsAny(arg, " \t\r\n\"'\\") {
+		return arg
+	}
+	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(arg)
+	return `"` + escaped + `"`
 }

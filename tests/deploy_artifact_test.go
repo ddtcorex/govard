@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"govard/internal/deploy"
 	"govard/internal/engine"
+	"govard/internal/engine/remote"
 )
 
 // writeArtifactTree creates a small tree with a nested directory, so a manifest
@@ -487,5 +489,96 @@ func TestConditionalMigrateArtifactKeepsProbeAndGatedBlockOnTarget(t *testing.T)
 	strategy := plan.ForPublishStrategy(deploy.PublishSymlink)
 	if strategy.MigrationProbe == nil {
 		t.Fatal("ForPublishStrategy dropped the migration probe")
+	}
+}
+
+// rsyncSplitE splits an `rsync -e` value the way rsync does: on whitespace,
+// except inside double quotes, where a backslash escapes the next character.
+func rsyncSplitE(value string) []string {
+	var args []string
+	var current strings.Builder
+	inQuotes, started := false, false
+	runes := []rune(value)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		switch {
+		case inQuotes && r == '\\' && i+1 < len(runes):
+			i++
+			current.WriteRune(runes[i])
+		case r == '"':
+			inQuotes = !inQuotes
+			started = true
+		case !inQuotes && (r == ' ' || r == '\t' || r == '\n'):
+			if started {
+				args = append(args, current.String())
+				current.Reset()
+				started = false
+			}
+		default:
+			current.WriteRune(r)
+			started = true
+		}
+	}
+	if started {
+		args = append(args, current.String())
+	}
+	return args
+}
+
+func TestRsyncSSHCommandKeepsSpacedArgumentsIntact(t *testing.T) {
+	args := []string{
+		"ssh", "-o", "LogLevel=ERROR",
+		"-o", "ControlPath=/Users/Jane Doe/.govard/ssh/%C",
+		"-o", "UserKnownHostsFile=/Users/Jane Doe/.ssh/known hosts",
+		"-o", `ProxyCommand=ssh -W "%h:%p" gate\way`,
+		"-i", "/Users/Jane Doe/.ssh/id_ed25519",
+	}
+	got := rsyncSplitE(remote.RsyncSSHCommand(args))
+	if !reflect.DeepEqual(got, args) {
+		t.Fatalf("rsync would split the -e value into\n%q\nwant\n%q\n(command: %s)", got, args, remote.RsyncSSHCommand(args))
+	}
+	if plain := remote.RsyncSSHCommand([]string{"ssh", "-p", "22"}); plain != "ssh -p 22" {
+		t.Fatalf("arguments without whitespace must stay unquoted, got %q", plain)
+	}
+}
+
+func TestArtifactUploadCommandQuotesSpacedSSHKeyPath(t *testing.T) {
+	host := deploy.Host{
+		Name:       "staging",
+		DeployPath: "/srv/app",
+		Remote: engine.RemoteConfig{
+			Host: "staging.example.com",
+			User: "deploy",
+			Auth: engine.RemoteAuth{KeyPath: "/Users/Jane Doe/.ssh/id_ed25519"},
+		},
+	}
+	command := deploy.ArtifactUploadCommandForTest(host, "/tmp/artifact", "/srv/app/releases/1", false, nil)
+	if !strings.Contains(command, `-i "/Users/Jane Doe/.ssh/id_ed25519"`) {
+		t.Fatalf("the artifact upload must double-quote a spaced key path for rsync -e:\n%s", command)
+	}
+}
+
+func TestBuildRsyncCommandQuotesSpacedSSHKeyPath(t *testing.T) {
+	cfg := engine.RemoteConfig{
+		Host: "staging.example.com",
+		User: "deploy",
+		Auth: engine.RemoteAuth{KeyPath: "/Users/Jane Doe/.ssh/id_ed25519"},
+	}
+	cmd := remote.BuildRsyncCommand("staging", "/src/", "deploy@staging.example.com:/dst/", cfg, false, false, false, nil, nil)
+	var value string
+	for i, arg := range cmd.Args {
+		if arg == "-e" && i+1 < len(cmd.Args) {
+			value = cmd.Args[i+1]
+		}
+	}
+	split := rsyncSplitE(value)
+	found := false
+	for i, arg := range split {
+		if arg == "-i" && i+1 < len(split) && split[i+1] == "/Users/Jane Doe/.ssh/id_ed25519" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("rsync -e value %q does not keep the spaced key path intact (split: %q)", value, split)
 	}
 }
