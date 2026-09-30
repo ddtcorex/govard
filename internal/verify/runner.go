@@ -160,6 +160,12 @@ type RunResult struct {
 	Fake          bool      `json:"fake,omitempty"`
 	Items         []RunItem `json:"items"`
 
+	// Error is set only on the document an all-phases --json run renders when
+	// phase 5 refuses to start: phases 1-4 stay in Items and the gate's reason
+	// rides along, so stdout is still one document. It is never written to an
+	// artifact.
+	Error string `json:"error,omitempty"`
+
 	// RecordErr is why the run artifact could not be written, or nil. It is not
 	// part of the artifact and never changes Status.
 	RecordErr error `json:"-"`

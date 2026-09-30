@@ -273,3 +273,35 @@ func TestVerifyAllPhasesKeepsPhases1To4WhenTheRecordCannotBeWritten(t *testing.T
 		})
 	}
 }
+
+// TestVerifyAllPhasesJSONRendersPhases1To4WhenTheSnapshotGateRefuses: a real
+// snapshot-gate refusal (no snapshot exists, so P4-08 is red) must not discard
+// what phases 1-4 computed. stdout is one document that holds those items and
+// the gate's reason, and the gate error is still returned.
+func TestVerifyAllPhasesJSONRendersPhases1To4WhenTheSnapshotGateRefuses(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	project := t.TempDir() // no snapshot: nothing can satisfy the gate
+	fakeAllExec(t)
+
+	payload, err := runVerifyAllPhases(t, project, "--allow-destructive")
+	if !errors.Is(err, verify.ErrNeedSnapshot) {
+		t.Fatalf("Execute() = %v, want ErrNeedSnapshot", err)
+	}
+	if payload["phase"] != "all" {
+		t.Fatalf("phase = %v, want the merged \"all\" document", payload["phase"])
+	}
+	if msg, _ := payload["error"].(string); !strings.Contains(msg, verify.ErrNeedSnapshot.Error()) {
+		t.Fatalf("error = %v, want the gate's reason in the same document", payload["error"])
+	}
+	items, _ := payload["items"].([]any)
+	seen := map[string]bool{}
+	for _, raw := range items {
+		if m, ok := raw.(map[string]any); ok {
+			id, _ := m["id"].(string)
+			seen[id] = true
+		}
+	}
+	if !seen["P1-01"] || !seen["P4-08"] || seen["P5-01"] {
+		t.Fatalf("items must hold phases 1-4 and no phase 5; saw %v", seen)
+	}
+}

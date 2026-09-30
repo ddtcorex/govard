@@ -197,15 +197,19 @@ Examples:
 					recordErr = res.RecordErr
 				}
 				if err != nil {
-					if p == 5 && errors.Is(err, verify.ErrNeedSnapshot) && recordErr != nil {
-						// Fail closed before the destructive phase, but keep
-						// what phases 1-4 found: render them, then report why
-						// phase 5 cannot start.
+					if p == 5 && errors.Is(err, verify.ErrNeedSnapshot) && first {
+						// Fail closed before the destructive phase, but never
+						// discard what phases 1-4 computed: render them as one
+						// document carrying the reason, then return the error.
+						if recordErr != nil {
+							err = recordFailure(recordErr)
+						}
 						combined.RefreshStatus()
+						combined.Error = err.Error()
 						if rerr := renderVerifyResult(cmd, combined, true); rerr != nil {
 							return rerr
 						}
-						return recordFailure(recordErr)
+						return err
 					}
 					// A gate block is reported as a JSON envelope, exactly like
 					// the explicit phase-5 checks above; returning silently left
