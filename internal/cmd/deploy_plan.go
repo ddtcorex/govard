@@ -250,7 +250,7 @@ func runDeployCheck(cmd *cobra.Command, args []string) error {
 	}
 	config, _, options, err := resolveDeployRecipeOptions(cmd, remote)
 	if err != nil {
-		return err
+		return configOrUsageError(err)
 	}
 	host, err := deployHostFor(cmd.Context(), config, remote, options, cmd.OutOrStdout())
 	if err != nil {

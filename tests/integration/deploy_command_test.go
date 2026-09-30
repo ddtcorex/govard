@@ -430,3 +430,102 @@ func TestDeployStatusKeepsAConfiguredButUnreachableRemoteAtExitOne(t *testing.T)
 		t.Fatalf("the row must carry the reason the target could not be read, got:\n%s", result.Stdout)
 	}
 }
+
+// writeDeployLocalOverride writes a .govard.local.yml that configures one local
+// remote named "local". When deploySettings is non-empty it is emitted verbatim
+// as the top-level `deploy:` block.
+func writeDeployLocalOverride(t *testing.T, projectDir, deploySettings string) {
+	t.Helper()
+	deployRoot := t.TempDir()
+	override := deploySettings + fmt.Sprintf(`remotes:
+  local:
+    host: 127.0.0.1
+    user: deployer
+    path: %s/public_html
+    local: true
+    deploy:
+      branch: main
+`, deployRoot)
+	if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(override), 0o644); err != nil {
+		t.Fatalf("failed to write .govard.local.yml: %v", err)
+	}
+}
+
+// `deploy check` returned resolveDeployRecipeOptions errors raw, so the typo that
+// makes `deploy`, `plan`, `build` and `rollback` exit 4 made `check` exit 1.
+func TestDeployCheckTypoedSettingExits4(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-check-typo")
+	writeDeployLocalOverride(t, projectDir, "deploy:\n  settings:\n    shared_file: app/etc/env.php\n")
+
+	result := env.RunGovardWithEnv(t, projectDir, []string{"GOVARD_TEST_SATISFIED_CAPABILITIES=ssh,rsync"}, "deploy", "check", "local", "--error-json")
+	result.AssertExitCode(t, 4)
+	if !strings.Contains(result.Stdout, `"code": "CONFIG"`) {
+		t.Fatalf("a typoed setting must carry the CONFIG envelope from check, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout+result.Stderr, "shared_file") {
+		t.Fatalf("the refusal must name the key, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+}
+
+// A project with no remotes, and a project that cannot be loaded at all, are
+// both "the operator edits the file" (4), not execution failures (1).
+func TestDeployStatusNoRemotesExits4(t *testing.T) {
+	env := NewTestEnvironment(t)
+	forced := []string{"GOVARD_TEST_SATISFIED_CAPABILITIES=ssh"}
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-status-no-remotes")
+
+	noRemotes := env.RunGovardWithEnv(t, projectDir, forced, "deploy", "status", "--error-json")
+	noRemotes.AssertExitCode(t, 4)
+	if !strings.Contains(noRemotes.Stdout, `"code": "CONFIG"`) || !strings.Contains(noRemotes.Stdout+noRemotes.Stderr, "configures no remotes") {
+		t.Fatalf("no remotes must be a CONFIG error naming the cause, got:\n%s%s", noRemotes.Stdout, noRemotes.Stderr)
+	}
+
+	missing := env.RunGovardWithEnv(t, t.TempDir(), forced, "deploy", "status", "--error-json")
+	missing.AssertExitCode(t, 4)
+	if !strings.Contains(missing.Stdout, `"code": "CONFIG"`) {
+		t.Fatalf("an unloadable project must be a CONFIG error from status, got:\n%s%s", missing.Stdout, missing.Stderr)
+	}
+}
+
+// A positional remote that contradicts --remote is a command-line mistake (2),
+// as it is for the sibling commands.
+func TestDeployStatusRemoteMismatchExits2(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-status-mismatch")
+	writeDeployLocalOverride(t, projectDir, "")
+
+	result := env.RunGovardWithEnv(t, projectDir, []string{"GOVARD_TEST_SATISFIED_CAPABILITIES=ssh"}, "deploy", "status", "local", "--remote", "other", "--error-json")
+	result.AssertExitCode(t, 2)
+	if !strings.Contains(result.Stdout, `"code": "USAGE"`) {
+		t.Fatalf("a remote mismatch must carry the USAGE envelope, got:\n%s%s", result.Stdout, result.Stderr)
+	}
+}
+
+// With every remote unreachable `deploy status --json` used to print the rows
+// and exit 0 while the table mode exited 1, so a health job reading JSON went
+// green with every target down. Both modes now exit 1, and the JSON document is
+// still rendered (once, to stdout) so the consumer sees the per-remote rows.
+func TestDeployStatusJSONAllUnreachableExits1(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "deploy-status-json-down")
+	writeDeployLocalOverride(t, projectDir, "")
+	envVars := []string{"GOVARD_TEST_SATISFIED_CAPABILITIES=ssh", "HOME=" + t.TempDir()}
+
+	result := env.RunGovardWithEnv(t, projectDir, envVars, "deploy", "status", "--json")
+	result.AssertExitCode(t, 1)
+
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(result.Stdout), &rows); err != nil {
+		t.Fatalf("stdout must be exactly one JSON document, got:\n%s\nstderr:\n%s\nerr: %v", result.Stdout, result.Stderr, err)
+	}
+	if len(rows) != 1 || rows[0]["remote"] != "local" || rows[0]["status"] != "unknown" || rows[0]["error"] == "" || rows[0]["error"] == nil {
+		t.Fatalf("the unknown row must be reported, got: %v", rows)
+	}
+	if !strings.Contains(result.Stderr, "no configured remote could be reached") {
+		t.Fatalf("the failure reason must be on stderr, got:\n%s", result.Stderr)
+	}
+
+	table := env.RunGovardWithEnv(t, projectDir, envVars, "deploy", "status")
+	table.AssertExitCode(t, 1)
+}

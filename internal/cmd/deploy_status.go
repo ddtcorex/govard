@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"govard/internal/cli"
 	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/runtime"
@@ -120,7 +121,7 @@ information, not a failure of the command.`,
 func runDeployStatus(cmd *cobra.Command, args []string) error {
 	config, err := loadFullConfig()
 	if err != nil {
-		return err
+		return &cli.ConfigError{Err: err}
 	}
 
 	names, err := statusRemoteNames(cmd, args, config)
@@ -137,19 +138,34 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 		results = append(results, result)
 	}
 
+	reachable := 0
+	for _, result := range results {
+		if result.Error == "" {
+			reachable++
+		}
+	}
+	// Both output modes end in the same error when nothing answered. In JSON mode
+	// the document is written first, so a consumer still gets the per-remote rows
+	// on stdout (one document) while the exit code reports the outage.
+	errNoneReachable := fmt.Errorf("no configured remote could be reached")
+
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
-		return writeJSONLine(cmd, results)
+		if err := writeJSONLine(cmd, results); err != nil {
+			return err
+		}
+		if reachable == 0 {
+			return errNoneReachable
+		}
+		return nil
 	}
 
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "%-16s %-10s %-10s %-12s %s\n", "REMOTE", "RELEASE", "REVISION", "STATUS", "BRANCH")
-	ok := 0
 	for _, result := range results {
 		if result.Error != "" {
 			fmt.Fprintf(out, "%-16s %s\n", result.Remote, result.Error)
 			continue
 		}
-		ok++
 		release := result.Release
 		if release == "" {
 			release = "-"
@@ -164,8 +180,8 @@ func runDeployStatus(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Fprintf(out, "%-16s %-10s %-10s %-12s %s\n", result.Remote, release, deploy.ShortRevision(revision), result.Status, branch)
 	}
-	if ok == 0 {
-		return fmt.Errorf("no configured remote could be reached")
+	if reachable == 0 {
+		return errNoneReachable
 	}
 	return nil
 }
@@ -176,7 +192,7 @@ func statusRemoteNames(cmd *cobra.Command, args []string, config engine.Config) 
 	flag, _ := cmd.Flags().GetString("remote")
 	if len(args) > 0 && args[0] != "" {
 		if flag != "" && flag != args[0] {
-			return nil, fmt.Errorf("remote %q does not match --remote %q", args[0], flag)
+			return nil, &cli.UsageError{Err: fmt.Errorf("remote %q does not match --remote %q", args[0], flag)}
 		}
 		return []string{args[0]}, nil
 	}
@@ -189,7 +205,7 @@ func statusRemoteNames(cmd *cobra.Command, args []string, config engine.Config) 
 	}
 	engine.SortRemoteNames(names)
 	if len(names) == 0 {
-		return nil, fmt.Errorf("this project configures no remotes")
+		return nil, &cli.ConfigError{Err: fmt.Errorf("this project configures no remotes")}
 	}
 	return names, nil
 }
