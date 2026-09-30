@@ -132,7 +132,8 @@ Case Studies:
 		// container-backed checks: it returns the gate's *runtime.MissingError
 		// (exit 3, CAPABILITY_MISSING) before any remote is contacted. A --plan
 		// only prints the pipeline and never reaches the container, so it stays
-		// available on a Docker-free host.
+		// available on a Docker-free host. A refused sync writes no sync.run
+		// event, the same as a command the root gate refuses.
 		if (database || full) && !planOnly {
 			if err := requireDocker("sync files and media without --db/--full on this host, or start a container runtime for the database scope"); err != nil {
 				return err

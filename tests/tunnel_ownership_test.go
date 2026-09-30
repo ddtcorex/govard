@@ -288,3 +288,81 @@ func TestTunnelStartClaimsOverAStaleRecordThatAppearsBeforeItsWrite(t *testing.T
 	})
 	endRecordedTunnel(t, record, done)
 }
+
+// The base URL (and the proxy alias) belong to the start that owns the record.
+// A start that lost the race must not run its deferred revert, or it points
+// the winner's application back at the local domain while the winner's tunnel
+// is still up. The project is Laravel, whose manager rewrites APP_URL in .env,
+// so the effect of a revert is observable on disk.
+func TestALosingTunnelStartLeavesTheWinnersBaseURLAlone(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	projectDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	const winnerEnv = "APP_NAME=sample\nAPP_URL=https://winner.trycloudflare.com\n"
+	envPath := filepath.Join(projectDir, ".env")
+	if err := os.WriteFile(envPath, []byte(winnerEnv), 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+	competitorPID, _ := startSleeper(t)
+	installTunnelPsShim(t, "echo 'sleep 30'")
+	run := newTunnelRunner(t)
+
+	restore := cmd.SetTunnelDependenciesForTest(cmd.TunnelDependenciesForTest{
+		NewProvider: fakePlanProvider(tunnel.StartPlan{Binary: "/bin/sleep", Args: []string{"5"}}),
+		StartProcess: func(process *exec.Cmd) error {
+			if err := process.Start(); err != nil {
+				return err
+			}
+			t.Cleanup(func() { _ = process.Process.Kill() })
+			if err := cmd.RecordTunnelPIDForTest("demo", competitorPID, "sleep 30"); err != nil {
+				t.Errorf("write competing record: %v", err)
+			}
+			return nil
+		},
+	})
+	defer restore()
+
+	out, err := run("tunnel", "start", "https://demo.trycloudflare.com")
+	if err == nil {
+		t.Fatalf("a start that lost the race to the record must refuse, got: %q", out)
+	}
+	got, readErr := os.ReadFile(envPath)
+	if readErr != nil {
+		t.Fatalf("read .env: %v", readErr)
+	}
+	if string(got) != winnerEnv {
+		t.Fatalf("the losing start rewrote the winner's base URL:\n%s", got)
+	}
+	if strings.Contains(out, "Reverting base URL") {
+		t.Fatalf("the losing start ran the base-URL revert: %q", out)
+	}
+}
+
+// The other direction of the same flag: the start that owns the record still
+// reverts the base URL when its session ends.
+func TestAWinningTunnelStartRevertsItsBaseURL(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	projectDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	envPath := filepath.Join(projectDir, ".env")
+	if err := os.WriteFile(envPath, []byte("APP_URL=https://left-over.trycloudflare.com\n"), 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	record, done := startTunnelUntilRecorded(t, 0, nil)
+	endRecordedTunnel(t, record, done)
+
+	got, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("read .env: %v", err)
+	}
+	if !strings.Contains(string(got), "APP_URL=https://demo.test") {
+		t.Fatalf("the owning start must revert the base URL on exit, .env is:\n%s", got)
+	}
+}

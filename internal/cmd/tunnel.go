@@ -213,12 +213,19 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 
 		// Handle Revert on exit
 		var tunnelHost string
+		// claimed is set once this start owns the record. Until then the base
+		// URL and the proxy alias belong to whichever start does own it, so a
+		// start that lost the race must not revert or unalias them.
+		claimed := false
 		defer func() {
 			// The record lives exactly as long as the process it names, so a
 			// crash, a Ctrl+C or a `tunnel stop` all leave none behind. Only a
 			// record naming this start's own process is removed: a start that
 			// lost the race to the record must leave the winner's in place.
 			clearTunnelPIDIfOwner(config.ProjectName, startedPID)
+			if !claimed {
+				return
+			}
 			if tunnelHost != "" {
 				pterm.Info.Printf("Cleaning up tunnel alias for %s...\n", tunnelHost)
 				_ = proxy.UnregisterDomain(tunnelHost)
@@ -242,6 +249,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 			_ = process.Wait()
 			return err
 		}
+		claimed = true
 
 		// Monitor stderr for the tunnel URL
 		go func() {

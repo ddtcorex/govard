@@ -108,6 +108,24 @@ func TestSyncDBRequiresContainerCapability(t *testing.T) {
 		})
 	}
 
+	// The positive direction: with a container runtime available the check lets
+	// the command through, so whatever fails next (here the failing ssh shim) is
+	// not a capability refusal.
+	t.Run("--db with a container runtime", func(t *testing.T) {
+		restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapSSH, runtime.CapRsync, runtime.CapDocker)
+		t.Cleanup(restore)
+		capabilityHostForTest(t)
+
+		err := runCapabilityCommand(t, "sync", "-s", "dev", "--db", "--yes")
+		if err == nil {
+			t.Fatal("the failing shims must stop this sync after the capability check")
+		}
+		var missing *runtime.MissingError
+		if errors.As(err, &missing) {
+			t.Fatalf("sync --db must pass the capability check when docker is available: %v", err)
+		}
+	})
+
 	// A plan only prints what would run and never touches the container, so it
 	// stays available on the same host.
 	t.Run("--db --plan", func(t *testing.T) {
