@@ -1591,6 +1591,12 @@ Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
 capability, `4` configuration. The deploy job in CI therefore runs on a host
 with nothing but govard, SSH and rsync.
 
+A remote that is not in `.govard.yml` is a configuration error (`4`) for every
+deploy command, for `deploy status` and for `sync` alike: the remedy is an edit
+to the file, never to the command line. Exit `1` stays for a remote that *is*
+configured and whose target could not be read, which is the distinction a
+script branching on the exit code is reading.
+
 `govard deploy build` keeps its `none` row whatever `--runner` is set to: a static
 annotation cannot say "only when this flag is passed", so the one flag that needs
 a container runtime asks for it when the flag is read and fails with the same exit

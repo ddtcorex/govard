@@ -222,7 +222,7 @@ func resolveDeployOptions(command *cobra.Command, remote string) (engine.Config,
 	}
 	options, err := deploy.ResolveOptions(config, remote, over)
 	if err != nil {
-		if errors.Is(err, deploy.ErrInvalidConfiguration) {
+		if errors.Is(err, deploy.ErrInvalidConfiguration) || errors.Is(err, deploy.ErrUnknownRemote) {
 			return engine.Config{}, deploy.Options{}, &cli.ConfigError{Err: err}
 		}
 		return engine.Config{}, deploy.Options{}, &cli.UsageError{Err: err}
@@ -246,7 +246,7 @@ func resolveDeployReadOptions(command *cobra.Command, remote string) (engine.Con
 	}
 	options, err := deploy.ResolveReadOptions(config, remote, over)
 	if err != nil {
-		if errors.Is(err, deploy.ErrInvalidConfiguration) {
+		if errors.Is(err, deploy.ErrInvalidConfiguration) || errors.Is(err, deploy.ErrUnknownRemote) {
 			return engine.Config{}, deploy.Options{}, &cli.ConfigError{Err: err}
 		}
 		return engine.Config{}, deploy.Options{}, &cli.UsageError{Err: err}
@@ -285,13 +285,24 @@ func deployHostFor(ctx context.Context, config engine.Config, remote string, opt
 
 // configOrUsageError classifies an error that comes from a configuration file
 // the plan builder refused — an unknown hook anchor, a duplicate hook name, a
-// cycle. The remedy is always an edit to `.govard.yml`, never to the command.
+// cycle, a remote the project never configured. The remedy is always an edit to
+// `.govard.yml`, never to the command.
+//
+// An error that already carries a code passes through untouched. The resolvers
+// classify as they resolve, so re-wrapping one here used to demote it: a
+// missing `.govard.yml` reached `deploy plan` as a ConfigError and left as a
+// UsageError, which is the same defect this function exists to prevent, one
+// layer further out.
 func configOrUsageError(err error) error {
+	if cli.Code(err) != cli.CodeError {
+		return err
+	}
 	switch {
 	case errors.Is(err, deploy.ErrUnknownAnchor),
 		errors.Is(err, deploy.ErrDuplicateHook),
 		errors.Is(err, deploy.ErrHookCycle),
 		errors.Is(err, deploy.ErrInvalidConfiguration),
+		errors.Is(err, deploy.ErrUnknownRemote),
 		errors.Is(err, engine.ErrRemovedRemoteDeployKey):
 		return &cli.ConfigError{Err: err}
 	default:

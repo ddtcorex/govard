@@ -1493,6 +1493,12 @@ Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thi�
 capability, `4` lỗi cấu hình. Nhờ vậy job deploy trong CI chạy được trên host chỉ
 có govard, SSH và rsync.
 
+Một remote không có trong `.govard.yml` là lỗi cấu hình (`4`) với mọi lệnh
+deploy, với `deploy status` và với `sync` — như nhau: cách khắc phục là sửa
+file, không phải sửa dòng lệnh. Exit `1` vẫn dành cho một remote *đã* được cấu
+hình nhưng không đọc được target, và đó chính là điều mà script phân nhánh theo
+exit code đang đọc.
+
 Dò `none` của `govard deploy build` giữ nguyên dù `--runner` được đặt gì: một
 annotation tĩnh không diễn đạt được "chỉ khi truyền flag này", nên flag duy nhất
 cần container runtime sẽ hỏi ngay lúc đọc flag và trả về đúng mã `3` với cùng kiểu

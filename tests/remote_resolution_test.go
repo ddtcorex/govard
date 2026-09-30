@@ -1,7 +1,10 @@
 package tests
 
 import (
+	"errors"
+	"govard/internal/cli"
 	"govard/internal/cmd"
+	"govard/internal/deploy"
 	"govard/internal/engine"
 	"strings"
 	"testing"
@@ -151,5 +154,47 @@ func TestResolveAutoRemote(t *testing.T) {
 				t.Errorf("ResolveAutoRemote() got = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// A name the project does not configure is a configuration error, and the class
+// has to be decided here rather than by each caller: `sync` and `bootstrap`
+// return this error untouched, so a plain error leaves both reporting exit 1 for
+// a file the operator has to edit.
+func TestResolveAutoRemoteClassifiesAnUnknownRemote(t *testing.T) {
+	config := engine.Config{
+		ProjectName: "sample-project",
+		Remotes:     engine.RemoteConfigMap{"staging": {Host: "stg.example.com"}},
+	}
+
+	_, err := cmd.ResolveAutoRemote(config, "prod")
+	if !errors.Is(err, deploy.ErrUnknownRemote) {
+		t.Fatalf("ResolveAutoRemote() err = %v, want deploy.ErrUnknownRemote", err)
+	}
+	if code := cli.Code(err); code != cli.CodeConfig {
+		t.Errorf("cli.Code(err) = %d, want %d (a configuration error)", code, cli.CodeConfig)
+	}
+	// The sentinel supplies the class, not a new sentence: the wording the CLI
+	// has always printed is still there, verbatim.
+	if want := "remote 'prod' is not configured"; !strings.Contains(err.Error(), want) {
+		t.Errorf("ResolveAutoRemote() err = %v, want it to still say %q", err, want)
+	}
+}
+
+// The other half of the same boundary. Nothing was requested here, so there is no
+// name to call unconfigured — the command is telling an operator that nothing in
+// their project offers a source, and that stays an execution failure.
+func TestResolveAutoRemoteWithNoEnvironmentIsNotAnUnknownRemote(t *testing.T) {
+	config := engine.Config{
+		ProjectName: "sample-project",
+		Remotes:     engine.RemoteConfigMap{"production": {Host: "prod.example.com"}},
+	}
+
+	_, err := cmd.ResolveAutoRemote(config, "")
+	if err == nil {
+		t.Fatal("ResolveAutoRemote() err = <nil>, want the no-environment message")
+	}
+	if errors.Is(err, deploy.ErrUnknownRemote) {
+		t.Errorf("ResolveAutoRemote() err = %v, want it not to carry deploy.ErrUnknownRemote: no name was requested", err)
 	}
 }
