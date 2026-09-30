@@ -155,9 +155,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// `--json` reserves stdout for one JSON document, so everything a human
-	// would read — the stage timeline, the discovery note, the warning about a
-	// missing verify URL — goes to stderr instead. A CI job pipes stdout into a
-	// parser and keeps stderr in the job log.
+	// would read goes to stderr instead: the stage timeline, the discovery note
+	// and the preflight warnings (for example a verify URL that does not answer
+	// yet, which the executor prints to this same stream). A CI job pipes stdout
+	// into a parser and keeps stderr in the job log.
 	timeline := cmd.OutOrStdout()
 	if options.JSON {
 		timeline = cmd.ErrOrStderr()

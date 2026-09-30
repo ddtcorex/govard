@@ -441,10 +441,11 @@ func TestCoreCheckCollectsNotesOnAHealthyTarget(t *testing.T) {
 		Branch:     "main",
 		Publish:    deploy.PublishSymlink,
 	})
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	joined := strings.Join(sc.Notes, " | ")
+	joined := out.String()
 	for _, want := range []string{"publish strategy", "atomic symlink rename", "repository reachable", "free space"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("notes %q missing %q", joined, want)
@@ -500,10 +501,11 @@ func TestCoreCheckGatesAnArtifactOnTheTargetsPHPVersion(t *testing.T) {
 		ArtifactDir: artifactGateFixture(t, "abc123", "8.2.11"),
 		Revision:    "abc123",
 	})
+	matchingOut := captureStepOut(matching)
 	if err := deploy.CoreCheck(context.Background(), matching); err != nil {
 		t.Fatalf("an artifact built for the target's php must pass: %v", err)
 	}
-	if joined := strings.Join(matching.Notes, " | "); !strings.Contains(joined, "artifact php 8.2.11") {
+	if joined := matchingOut.String(); !strings.Contains(joined, "artifact php 8.2.11") {
 		t.Errorf("the notes must record the comparison, got %q", joined)
 	}
 
@@ -551,10 +553,11 @@ func TestCoreCheckDoesNotGateAnArtifactWithoutAPHPVersion(t *testing.T) {
 		ArtifactDir: artifactGateFixture(t, "abc123", ""),
 		Revision:    "abc123",
 	})
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("an artifact without a php version must not be gated: %v", err)
 	}
-	if joined := strings.Join(sc.Notes, " | "); !strings.Contains(joined, "no PHP version") {
+	if joined := out.String(); !strings.Contains(joined, "no PHP version") {
 		t.Errorf("the operator must be told the comparison did not happen, got %q", joined)
 	}
 }
@@ -599,6 +602,7 @@ func TestCoreCheckRefreshesTheSandboxMirror(t *testing.T) {
 	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	sc.WorkDir = work
 
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("check: %v", err)
 	}
@@ -606,7 +610,7 @@ func TestCoreCheckRefreshesTheSandboxMirror(t *testing.T) {
 	if mirrored != revision {
 		t.Fatalf("the mirror holds %q, want the commit just made %q", mirrored, revision)
 	}
-	if joined := strings.Join(sc.Notes, " | "); !strings.Contains(joined, "mirror refreshed") {
+	if joined := out.String(); !strings.Contains(joined, "mirror refreshed") {
 		t.Errorf("the notes must say the mirror was refreshed, got %q", joined)
 	}
 }
@@ -940,9 +944,8 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 	t.Setenv("COMPOSER_AUTH", "")
 
 	private := `{"require":{"vendor/pkg":"^1.0"},"repositories":[{"type":"composer","url":"https://repo.example.com"},{"type":"composer","url":"https://repo.packagist.org"}]}`
-	// The warning is read from the step's output, not from Notes: it is a line
-	// the operator is meant to see, and a deploy has no Notes reader to see it
-	// with.
+	// The warning is read from the step's output: it is a line the operator is
+	// meant to see.
 	const warning = "no credentials are available"
 	check := func(t *testing.T, composerJSON string, seedSharedAuth bool, options deploy.Options) string {
 		t.Helper()
@@ -1044,9 +1047,7 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 		`{"repositories":[{"type":"composer","url":"https://repo.example.com"}]}`)
 
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	// The warning goes to the step's output, not to Notes: a preflight whose
-	// finding only lives in a field reads as a finding nobody was told about,
-	// because the deploy that runs this preflight has no Notes reader at all.
+	// The warning goes to the step's output, the stream the operator reads.
 	artifactOut := &bytes.Buffer{}
 	sc := deploy.StepContextForTest(host, deploy.Options{Build: deploy.BuildArtifact, ArtifactDir: t.TempDir()})
 	sc.WorkDir = work
@@ -1056,9 +1057,6 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 	}
 	if artifactOut.String() != "" {
 		t.Fatalf("an artifact deploy must not warn about target-side credentials, got %q", artifactOut.String())
-	}
-	if len(sc.Notes) != 0 {
-		t.Fatalf("the note must not be parked in Notes, which nothing in a deploy reads, got %v", sc.Notes)
 	}
 
 	// The same checkout in server mode warns, which is what makes the silence
@@ -1073,9 +1071,6 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 	printed := serverOut.String()
 	if !strings.Contains(printed, "no credentials are available") || !strings.Contains(printed, "repo.example.com") {
 		t.Fatalf("a server build with no credentials must warn, got %q", printed)
-	}
-	if len(server.Notes) != 0 {
-		t.Fatalf("the note must reach the output directly, not through Notes, got %v", server.Notes)
 	}
 }
 
@@ -1345,10 +1340,11 @@ func TestCheckWarnsWhenTheVerifyURLDoesNotAnswer2xx(t *testing.T) {
 		VerifyURL:     server.URL,
 		VerifyTimeout: 5 * time.Second,
 	})
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("the preflight must warn, never fail: %v", err)
 	}
-	joined := strings.Join(sc.Notes, " | ")
+	joined := out.String()
 	for _, want := range []string{"500", "verify URL"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("notes %q missing %q", joined, want)
@@ -1608,6 +1604,7 @@ func TestWritabilityProbeCommandIsReadOnlyForARemoteHost(t *testing.T) {
 	host.Local = false
 
 	sc := deploy.StepContextForTest(host, deploy.Options{})
+	out := captureStepOut(sc)
 	// The probe is deliberately left to fail ("not writable" locally): the next
 	// check would dial a repository, and the probe is what this test is about.
 	err := deploy.CoreCheck(context.Background(), sc)
@@ -1632,8 +1629,8 @@ func TestWritabilityProbeCommandIsReadOnlyForARemoteHost(t *testing.T) {
 			t.Fatalf("remote probe %q must traverse on the target (missing %q)", probe, want)
 		}
 	}
-	if len(sc.Notes) != 0 {
-		t.Fatalf("nothing may be reported about a remote path's absence, notes = %q", sc.Notes)
+	if strings.Contains(out.String(), "does not exist yet") {
+		t.Fatalf("nothing may be reported about a remote path's absence, output = %q", out.String())
 	}
 }
 
@@ -1733,10 +1730,11 @@ func TestCoreCheckReportsFreeSpaceOnAFreshHost(t *testing.T) {
 	root := t.TempDir()
 	absent := filepath.Join(root, "public_html")
 	sc := deploy.StepContextForTest(deploy.HostForTest(absent, deploy.LocalRunner{}), deploy.Options{})
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	joined := strings.Join(sc.Notes, " | ")
+	joined := out.String()
 	if !strings.Contains(joined, "free space") {
 		t.Fatalf("a fresh host has no deploy path for `df`, so it must be probed at the nearest existing parent; notes = %q", joined)
 	}
@@ -1947,4 +1945,13 @@ func TestCoreCheckKeepsAnExistingAncestorAndItsContents(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(parent, "shop")); !os.IsNotExist(err) {
 		t.Fatalf("the created levels must be removed (stat err = %v)", err)
 	}
+}
+
+// captureStepOut redirects a step context's output into a buffer. The preflight
+// reports what it found on that stream, which is the only place a real deploy
+// shows it, so the tests read the same place the operator does.
+func captureStepOut(sc *deploy.StepContext) *bytes.Buffer {
+	out := &bytes.Buffer{}
+	sc.Out = out
+	return out
 }

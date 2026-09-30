@@ -109,7 +109,7 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	// failure into a preflight failure, which is the whole point of this step.
 	strategy, err := ResolvePublishStrategy(host, sc.Opts)
 	if err == nil {
-		sc.Notes = append(sc.Notes, "publish strategy: "+strategy)
+		noteStep(sc, "  - publish strategy: "+strategy+"\n")
 		if strategy == PublishSymlink {
 			if err := probeAtomicRename(ctx, sc); err != nil {
 				return err
@@ -165,8 +165,8 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 				if errors.Is(err, ErrVerifyRedirect) {
 					return fmt.Errorf("refusing to deploy to %s: %w", host.Name, err)
 				}
-				sc.Notes = append(sc.Notes, fmt.Sprintf(
-					"the verify URL does not answer 2xx yet (%v); deploy:verify runs after activation, so the deploy will report this once the release is live", err))
+				noteStep(sc, fmt.Sprintf(
+					"  ! the verify URL does not answer 2xx yet (%v); deploy:verify runs after activation, so the deploy will report this once the release is live\n", err))
 			}
 		}
 	}
@@ -275,7 +275,7 @@ func checkSandboxMirror(ctx context.Context, sc *StepContext) error {
 	if err := RefreshSandboxMirror(ctx, LocalRunner{}, root, mirror); err != nil {
 		return err
 	}
-	sc.Notes = append(sc.Notes, "sandbox mirror refreshed from the local checkout")
+	noteStep(sc, "  - sandbox mirror refreshed from the local checkout\n")
 	return nil
 }
 
@@ -319,7 +319,7 @@ func checkRepositoryReachable(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("target %s cannot reach %s %s (deploy key, network, or the ref was never pushed): %w", sc.Host.Name, repository, ref, err)
 	}
 	if ref != "" {
-		sc.Notes = append(sc.Notes, "repository reachable from the target: "+ref)
+		noteStep(sc, "  - repository reachable from the target: "+ref+"\n")
 	}
 	return nil
 }
@@ -396,7 +396,7 @@ func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 		}
 		return fmt.Errorf("%w: the symlink swap needs GNU mv (mv -T)", ErrMoveAtomicUnsupported)
 	}
-	sc.Notes = append(sc.Notes, "atomic symlink rename: supported")
+	noteStep(sc, "  - atomic symlink rename: supported\n")
 	return nil
 }
 
@@ -469,7 +469,7 @@ func checkDiskSpace(ctx context.Context, sc *StepContext) error {
 	if availableKB <= 0 {
 		return fmt.Errorf("deploy path %s is on a full filesystem", sc.Host.DeployPath)
 	}
-	sc.Notes = append(sc.Notes, fmt.Sprintf("free space at the deploy path: %.1f GiB", float64(availableKB)/1024/1024))
+	noteStep(sc, fmt.Sprintf("  - free space at the deploy path: %.1f GiB\n", float64(availableKB)/1024/1024))
 	return nil
 }
 
@@ -486,7 +486,7 @@ func checkPHPVersion(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("php is not available as %q on the target: %w", phpBin, err)
 	}
 	actual := strings.TrimSpace(result.Stdout)
-	sc.Notes = append(sc.Notes, "php on the target: "+actual)
+	noteStep(sc, "  - php on the target: "+actual+"\n")
 
 	want := settingsString(sc.Opts.Settings, "php_version")
 	if want == "" {
@@ -685,11 +685,11 @@ func checkArtifactParity(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("the artifact at %s was built for revision %s but %s is being deployed; rebuild it or pass --revision %s",
 			artifactDir, manifest.Revision, revision, manifest.Revision)
 	}
-	sc.Notes = append(sc.Notes, fmt.Sprintf("artifact: %d files, %.1f MiB, revision %s",
+	noteStep(sc, fmt.Sprintf("  - artifact: %d files, %.1f MiB, revision %s\n",
 		manifest.FileCount, float64(manifest.TotalBytes)/1024/1024, manifest.Revision))
 
 	if manifest.PHPVersion == "" {
-		sc.Notes = append(sc.Notes, "artifact records no PHP version; the target's PHP is not compared")
+		noteStep(sc, "  - artifact records no PHP version; the target's PHP is not compared\n")
 		return nil
 	}
 
@@ -698,7 +698,7 @@ func checkArtifactParity(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("the artifact was built with PHP %s but the target's PHP could not be determined (set settings.php_bin, or deploy with --build=server and build on the target): %w",
 			manifest.PHPVersion, err)
 	}
-	sc.Notes = append(sc.Notes, "artifact php "+manifest.PHPVersion+", target php "+actual)
+	noteStep(sc, "  - artifact php "+manifest.PHPVersion+", target php "+actual+"\n")
 	if !strings.HasPrefix(actual, phpSeries(manifest.PHPVersion)) {
 		return fmt.Errorf("the artifact was built with PHP %s but the target runs PHP %s; rebuild it with `govard deploy build` in an image that matches the target, or deploy with --build=server",
 			manifest.PHPVersion, actual)
@@ -1350,9 +1350,9 @@ func noteInPlaceSyncPaths(ctx context.Context, sc *StepContext) error {
 	}
 	paths := settingsStringList(sc.Opts.Settings, "sync_paths")
 	if len(paths) == 0 {
-		sc.Notes = append(sc.Notes, "warning: this target publishes in place and deploy.settings.sync_paths is empty: "+
+		noteStep(sc, "  ! this target publishes in place and deploy.settings.sync_paths is empty: "+
 			"the activation resets the docroot to the revision and copies nothing, so paths the release built "+
-			"(vendor/, generated/, pub/static/) keep whatever the previous deployment left there")
+			"(vendor/, generated/, pub/static/) keep whatever the previous deployment left there\n")
 		return nil
 	}
 
@@ -1363,13 +1363,13 @@ func noteInPlaceSyncPaths(ctx context.Context, sc *StepContext) error {
 	shared := settingsStringList(sc.Opts.Settings, "shared_files", "shared_dirs")
 	for _, entry := range paths {
 		if covering, isShared := sharedCovering(entry, shared); isShared {
-			sc.Notes = append(sc.Notes, "warning: deploy.settings.sync_paths lists "+entry+
+			noteStep(sc, "  ! deploy.settings.sync_paths lists "+entry+
 				", which the release links from shared/ ("+covering+"): it is not copied into the docroot, "+
-				"which keeps its own copy of shared state")
+				"which keeps its own copy of shared state\n")
 		}
 		for _, inside := range sharedInside(entry, shared) {
-			sc.Notes = append(sc.Notes, "warning: deploy.settings.sync_paths lists "+entry+", which contains the shared path "+
-				entry+"/"+inside+": that path is excluded from the copy so the docroot keeps its own")
+			noteStep(sc, "  ! deploy.settings.sync_paths lists "+entry+", which contains the shared path "+
+				entry+"/"+inside+": that path is excluded from the copy so the docroot keeps its own\n")
 		}
 	}
 	return nil

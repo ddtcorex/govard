@@ -1,9 +1,13 @@
 package tests
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -729,5 +733,87 @@ func TestAResumeNeverTakesTheAlreadyDeployedShortcut(t *testing.T) {
 	}
 	if len(outcome.Steps) == 0 {
 		t.Fatal("the resumed run must execute the step that finishes the release")
+	}
+}
+
+// A real deploy that publishes in place with no sync_paths must say so in the
+// output the operator reads. The warning used to be parked on StepContext.Notes,
+// which only `deploy check` printed, so a real run computed it and dropped it.
+func TestInPlacePublishWithoutSyncPathsWarnsDuringRealDeploy(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	cfg := deployRemoteConfig(t, root, origin)
+	options := deployOptionsForTest(t, cfg, revision)
+	options.Publish = deploy.PublishInPlace
+	options.Settings = map[string]any{}
+
+	host, err := deploy.HostForConfigForTest(cfg, "local", options)
+	if err != nil {
+		t.Fatalf("host: %v", err)
+	}
+	if _, err := (deploy.LocalRunner{}).Run(context.Background(),
+		"rm -rf "+host.CurrentPath+" && git clone -q "+origin+" "+host.CurrentPath, deploy.RunOptions{}); err != nil {
+		t.Fatalf("clone docroot: %v", err)
+	}
+	plan, err := deploy.BuildPlanForTest(deploy.DefaultRecipe(), nil)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	output := &bytes.Buffer{}
+	release := deploy.NewReleaseForTest("", revision, "main")
+	if _, err := deploy.NewExecutor(host, options, output).Run(context.Background(), plan, deploy.NewVars(), release); err != nil {
+		t.Fatalf("deploy: %v\n%s", err, output.String())
+	}
+	if !strings.Contains(output.String(), "  ! this target publishes in place and deploy.settings.sync_paths is empty") {
+		t.Fatalf("a real deploy must print the in-place warning, output:\n%s", output.String())
+	}
+}
+
+// Under --json stdout is one document, so the human warning about a verify URL
+// that does not answer yet has to land on stderr, through the same stream the
+// stage timeline uses.
+func TestVerifyURLWarningGoesToStderrUnderJSON(t *testing.T) {
+	origin, revision := seedGitRepo(t)
+	root := t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	deployRemoteConfig(t, root, origin)
+	config := strings.Replace(string(mustReadFile(t, filepath.Join(root, ".govard.yml"))),
+		"      branch: main\n", "      branch: main\n      verify:\n        url: "+server.URL+"\n", 1)
+	writeFile(t, filepath.Join(root, ".govard.yml"), config)
+
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	command := cmd.RootCommandForTest()
+	command.SetArgs([]string{"deploy", "local", "--json", "--yes", "--revision", revision})
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	t.Cleanup(func() {
+		for _, name := range []string{"json", "yes"} {
+			_ = cmd.DeployCommand().Flags().Set(name, "false")
+		}
+		_ = cmd.DeployCommand().Flags().Set("revision", "")
+	})
+	// The run ends at deploy:verify against the 500; the preflight warning is
+	// what this test is about, so the run's own error is not asserted.
+	_ = command.Execute()
+
+	const warning = "  ! the verify URL does not answer 2xx yet"
+	if !strings.Contains(stderr.String(), warning) {
+		t.Fatalf("the verify-URL warning must reach stderr, stderr:\n%s", stderr.String())
+	}
+	if !json.Valid(stdout.Bytes()) || strings.Contains(stdout.String(), "  ! ") {
+		t.Fatalf("stdout must stay one clean JSON document, got:\n%s", stdout.String())
 	}
 }

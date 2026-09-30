@@ -803,11 +803,12 @@ func TestInPlaceActivationWarnsWhenNothingIsConfiguredToSync(t *testing.T) {
 	host.CurrentPath = docroot
 
 	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishInPlace})
+	out := captureStepOut(sc)
 	sc.Release = deploy.NewReleaseForTest("1", "abcdef", "main")
 	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), sc); err != nil {
 		t.Fatalf("note: %v", err)
 	}
-	joined := strings.Join(sc.Notes, "\n")
+	joined := out.String()
 	if !strings.Contains(joined, "sync_paths") || !strings.Contains(joined, "in place") {
 		t.Fatalf("notes = %q, want a warning naming sync_paths and the in-place strategy", joined)
 	}
@@ -817,22 +818,24 @@ func TestInPlaceActivationWarnsWhenNothingIsConfiguredToSync(t *testing.T) {
 		Publish:  deploy.PublishInPlace,
 		Settings: map[string]any{"sync_paths": []string{"vendor", "generated"}},
 	})
+	configuredOut := captureStepOut(configured)
 	configured.Release = sc.Release
 	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), configured); err != nil {
 		t.Fatalf("note: %v", err)
 	}
-	if len(configured.Notes) != 0 {
-		t.Fatalf("a configured sync_paths must not warn, got %q", configured.Notes)
+	if configuredOut.Len() != 0 {
+		t.Fatalf("a configured sync_paths must not warn, got %q", configuredOut.String())
 	}
 
 	// A symlink activation copies nothing by design: no warning either.
 	symlink := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
+	symlinkOut := captureStepOut(symlink)
 	symlink.Release = sc.Release
 	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), symlink); err != nil {
 		t.Fatalf("note: %v", err)
 	}
-	if len(symlink.Notes) != 0 {
-		t.Fatalf("a symlink activation must not warn, got %q", symlink.Notes)
+	if symlinkOut.Len() != 0 {
+		t.Fatalf("a symlink activation must not warn, got %q", symlinkOut.String())
 	}
 }
 
@@ -1030,11 +1033,12 @@ func TestInPlacePreflightNamesTheSharedPathsInSyncPaths(t *testing.T) {
 		},
 	})
 	sc.Release = deploy.NewReleaseForTest("1", "abcdef", "main")
+	out := captureStepOut(sc)
 	if err := deploy.NoteInPlaceSyncPathsForTest(context.Background(), sc); err != nil {
 		t.Fatalf("note: %v", err)
 	}
 
-	joined := strings.Join(sc.Notes, "\n")
+	joined := out.String()
 	if !strings.Contains(joined, "pub/static/_cache, which the release links from shared/") {
 		t.Fatalf("notes = %q, want the shared entry named as not copied", joined)
 	}
