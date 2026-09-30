@@ -891,6 +891,16 @@ trường: có thư mục artifact nghĩa là đã build xong, ngược lại ta
 | `server` | trên target | hotfix từ laptop, hoặc dự án chưa có CI |
 | `artifact` | trên máy chạy `govard deploy build` | CI, để job deploy không cần toolchain |
 
+`--build` nói build chạy **ở đâu**; `--runner` nói **cái gì** chạy nó. Mặc định
+`host` lắp ráp artifact trên shell của máy đó — đó là lý do job build không cần
+container runtime. `--runner container` chạy đúng những task đó qua container app
+của chính dự án bằng `docker exec` — cách build cho dự án không tải nổi dependency
+của chính nó từ host, và một package private VCS mà chỉ container có SSH material
+chính là hình dạng của trường hợp đó. Flag này cần project container đang chạy và
+output directory nằm trong project root, và artifact nó tạo ra ghi lại PHP **của
+container** — nên bước đối chiếu phiên bản PHP ở job deploy chỉ qua được khi
+container chạy đúng PHP series của target.
+
 ### Artifact mang được gì và không mang được gì
 
 Job build chạy đúng recipe mà server build chạy, trừ những bước hỏi chính ứng dụng.
@@ -1482,3 +1492,8 @@ hành động được, trước khi làm bất cứ việc gì:
 Exit code: `0` thành công, `1` lỗi thực thi, `2` sai cách dùng, `3` thiếu
 capability, `4` lỗi cấu hình. Nhờ vậy job deploy trong CI chạy được trên host chỉ
 có govard, SSH và rsync.
+
+Dò `none` của `govard deploy build` giữ nguyên dù `--runner` được đặt gì: một
+annotation tĩnh không diễn đạt được "chỉ khi truyền flag này", nên flag duy nhất
+cần container runtime sẽ hỏi ngay lúc đọc flag và trả về đúng mã `3` với cùng kiểu
+thông báo. `--runner host` — mặc định — không hỏi gì cả.

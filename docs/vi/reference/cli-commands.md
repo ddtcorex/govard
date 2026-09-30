@@ -848,8 +848,12 @@ Thư mục output không rỗng sẽ bị từ chối để một file cũ từ 
 thể lọt ra production: dùng `--force` nếu muốn thay nội dung.
 
 Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--branch`,
-`--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. Lệnh này không
-cần capability nào: `none`.
+`--revision`, `--tag`, `--force`, `--command-timeout`, `--json`, `--runner`
+(`host` là mặc định, hoặc `container`). Lệnh này không cần capability nào: `none`.
+`--runner container` là flag duy nhất có đòi hỏi — container app của chính dự án,
+thiếu nó thì thoát với mã `3` — và nó còn đòi `--output` nằm trong project root để
+container tới được artifact nó đang build; output nằm ngoài đó bị từ chối trước cả
+lúc govard tìm Docker.
 
 **Setting và credential.** `deploy.settings` được đối chiếu với recipe trước khi
 chạy: key lạ, hoặc giá trị sai dạng, thoát với mã 4 kèm tên key và gợi ý key gần

@@ -859,8 +859,12 @@ An output directory that is not empty is refused, so a stale file from an
 earlier build cannot ship: pass `--force` to replace its contents.
 
 `govard deploy build` flags: `--remote`, `--output` (required), `--branch`,
-`--revision`, `--tag`, `--force`, `--command-timeout`, `--json`. It needs no
-capability at all: `none`.
+`--revision`, `--tag`, `--force`, `--command-timeout`, `--json`, `--runner`
+(`host`, the default, or `container`). It needs no capability at all: `none`.
+`--runner container` is the one flag that demands anything — the project's own
+app container, exit `3` without it — and it also requires `--output` to sit
+inside the project root, so the container can reach the artifact it builds; an
+output anywhere else is refused before Docker is even looked for.
 
 **Settings and credentials.** `deploy.settings` is validated against the recipe
 before anything runs: an unknown key, or a value with the wrong shape, exits 4 with
