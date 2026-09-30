@@ -73,14 +73,21 @@ func BuildRemoteSnapshotCreateCommand(
 		)
 	}
 
-	// Write metadata
+	// Write metadata. The timestamp is computed in its own step so no %
+	// sequence ever reaches printf as a format, and every line is passed as a
+	// quoted %s argument so name and framework are never expanded or
+	// interpreted. Values are YAML single-quoted so any text round-trips.
 	metaPath := snapshotDir + "/metadata.yml"
-	metaContent := fmt.Sprintf(
-		"name: %s\\ncreated_at: $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\nframework: %s\\ndb: true\\nmedia: true",
-		name, framework,
-	)
+	yamlQuote := func(value string) string {
+		return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	}
 	parts = append(parts,
-		fmt.Sprintf("printf '%s\\n' > %s", metaContent, engine.ShellQuote(metaPath)),
+		"ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+		fmt.Sprintf("printf '%%s\\n' %s \"created_at: $ts\" %s 'db: true' 'media: true' > %s",
+			engine.ShellQuote("name: "+yamlQuote(name)),
+			engine.ShellQuote("framework: "+yamlQuote(framework)),
+			engine.ShellQuote(metaPath),
+		),
 	)
 
 	// umask 077 first: the dump, the media archive and any directory this

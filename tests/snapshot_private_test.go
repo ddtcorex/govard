@@ -4,11 +4,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestSnapshotDBDumpIsCreated0600(t *testing.T) {
@@ -74,11 +78,7 @@ func TestRemoteSnapshotCreateCommandSetsUmaskAndRuns(t *testing.T) {
 	if !strings.HasPrefix(command, "umask 077; ") {
 		t.Fatalf("create command must start with the umask: %s", command)
 	}
-	// The trailing metadata step is cut off: its printf format contains a
-	// literal %Y (the $(date) inside single quotes is never expanded), which
-	// every shell rejects. That is a separate defect, see the task report.
-	runnable := command[:strings.LastIndex(command, " && printf ")]
-	if out, err := exec.Command("sh", "-c", runnable).CombinedOutput(); err != nil {
+	if out, err := exec.Command("sh", "-c", command).CombinedOutput(); err != nil {
 		t.Fatalf("command failed under sh: %v\n%s", err, out)
 	}
 	snapDir := filepath.Join(root, "app", ".govard", "snapshots", "snap")
@@ -89,5 +89,41 @@ func TestRemoteSnapshotCreateCommandSetsUmaskAndRuns(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o700 {
 		t.Fatalf("snapshot directory mode = %o, want 700", got)
+	}
+}
+
+// The whole generated create command must run to completion under a real sh
+// and leave a parseable metadata.yml whose values round-trip verbatim, even
+// when the name and framework contain shell-significant characters.
+func TestRemoteSnapshotCreateCommandRunsToCompletion(t *testing.T) {
+	setPermissiveUmask(t)
+	root := t.TempDir()
+	cfg := engine.RemoteConfig{Host: "example.com", User: "deploy", Path: filepath.Join(root, "app")}
+	name := "it's a $x snap"
+	framework := "my 'fw' $y"
+	command := remote.BuildRemoteSnapshotCreateCommand(cfg, name, framework, "echo dump", "")
+	if out, err := exec.Command("sh", "-c", command).CombinedOutput(); err != nil {
+		t.Fatalf("whole create command failed under sh: %v\n%s", err, out)
+	}
+	snapDir := filepath.Join(root, "app", ".govard", "snapshots", name)
+	assertMode0600(t, filepath.Join(snapDir, "db.sql.gz"))
+	raw, err := os.ReadFile(filepath.Join(snapDir, "metadata.yml"))
+	if err != nil {
+		t.Fatalf("read metadata.yml: %v", err)
+	}
+	var meta map[string]any
+	if err := yaml.Unmarshal(raw, &meta); err != nil {
+		t.Fatalf("metadata.yml is not valid YAML: %v\n%s", err, raw)
+	}
+	if meta["name"] != name || meta["framework"] != framework || meta["db"] != true || meta["media"] != true {
+		t.Fatalf("metadata values did not round-trip: %#v\n%s", meta, raw)
+	}
+	// An unquoted ISO-8601 UTC timestamp decodes to time.Time, the type the
+	// snapshot metadata struct uses; the raw text pins the exact format.
+	if _, ok := meta["created_at"].(time.Time); !ok {
+		t.Fatalf("created_at decoded as %T, want time.Time", meta["created_at"])
+	}
+	if !regexp.MustCompile(`(?m)^created_at: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`).Match(raw) {
+		t.Fatalf("created_at is not ISO-8601 UTC in:\n%s", raw)
 	}
 }
