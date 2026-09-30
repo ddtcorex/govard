@@ -945,6 +945,17 @@ the target builds.
 | `server` | on the target | a hotfix from a laptop, or a project with no CI |
 | `artifact` | on the machine running `govard deploy build` | CI, so the deploy job needs no toolchain |
 
+`--build` says **where** the build runs; `--runner` says **what runs it**. The
+default `host` assembles the artifact on that machine's shell, which is what
+keeps the build job free of a container runtime. `--runner container` runs the
+same tasks through the project's own app container with `docker exec` instead —
+the way to build a project that cannot fetch its own dependencies from the host,
+which is what a private-VCS package whose SSH material only the container has
+looks like. That flag needs a running project container and an output directory
+inside the project root, and the artifact it produces records the *container's*
+PHP, so the deploy job's PHP parity check only clears when the container runs the
+target's PHP series.
+
 ### What an artifact can and cannot carry
 
 The build job runs the same recipe the server build runs, minus the steps that
@@ -1579,3 +1590,9 @@ Every deploy command declares what it needs, and a missing requirement is exit
 Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
 capability, `4` configuration. The deploy job in CI therefore runs on a host
 with nothing but govard, SSH and rsync.
+
+`govard deploy build` keeps its `none` row whatever `--runner` is set to: a static
+annotation cannot say "only when this flag is passed", so the one flag that needs
+a container runtime asks for it when the flag is read and fails with the same exit
+`3` and the same kind of message. `--runner host` — the default — asks for
+nothing.

@@ -42,6 +42,31 @@ artifact. So:
 A build machine does not need a database, a web server or `app/etc/env.php`; the
 deploy job needs govard, SSH and rsync and nothing else.
 
+### 1a. Which toolchain runs the build
+
+`--build` decides *where*; `--runner` decides *what executes the build tasks*. The
+default `host` runs them on the build machine's shell, which is why the build job
+needs no container runtime at all. Choose `--runner container` for one case: the
+build cannot fetch its own dependencies from the host — a private-VCS package whose
+SSH material the container has and the host shell does not. `--runner container`
+execs the same tasks in the project's own app container through `docker exec`.
+
+Three conditions come with it. The project container has to be **running**, and
+`--output` has to sit **inside the project root** — anywhere else is refused before
+Docker is even looked for. The third is the one that bites: the app container must
+carry **the toolchain the build tasks use**. The container `docker exec` reaches is
+the project's app container, which is a PHP container, so a recipe whose build stage
+also compiles frontend assets needs `npm` in it. Measured on a Magento 2.4.9 project
+on 2026-09-30, whose recipe configures `frontend_dir`: `--runner container` completed
+`build:vendors`, `build:patches` and `build:compile` and then failed on
+`build:frontend` with `sh: npm: not found`.
+
+What the container path buys, on that same project and revision: `build:vendors`
+cloned a private Composer package over SSH from inside the container, where the
+default host runner failed the same step with `Host key verification failed`. A
+project that cannot fetch its own dependencies on the host is the case this flag
+exists for.
+
 ### 2. How the release becomes live — the webroot shape
 
 `remotes.<name>.path` is the **docroot that is served**. `remotes.<name>.deploy_path`

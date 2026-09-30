@@ -41,6 +41,33 @@ deploy** và chạy trên target sau khi `deploy:artifact` bung artifact. Thành
 Máy build không cần database, web server hay `app/etc/env.php`; job deploy chỉ cần
 govard, SSH và rsync, không gì khác.
 
+### 1a. Toolchain nào chạy build
+
+`--build` quyết định build chạy *ở đâu*; `--runner` quyết định *cái gì* thực thi
+các task build. Mặc định `host` chạy chúng trên shell của máy build — đó là lý do
+job build hoàn toàn không cần container runtime. Chọn `--runner container` cho đúng
+một tình huống: build không tải nổi dependency của chính nó từ host — một package
+private VCS mà container có SSH material còn host shell thì không. `--runner
+container` exec đúng những task đó trong container app của dự án qua `docker exec`.
+
+Kèm theo là ba điều kiện. Project container phải **đang chạy**, và `--output` phải
+**nằm trong project root** — nằm ngoài đó bị từ chối trước cả lúc govard tìm Docker.
+Điều kiện thứ ba mới là chỗ cắn: container app phải mang **toolchain mà các task build
+cần**. Container mà `docker exec` tới chính là container app của dự án — một
+container PHP — nên recipe có build frontend trong build stage thì cần `npm` trong đó.
+Đo trên dự án Magento 2.4.9 ngày 2026-09-30, có cấu hình `frontend_dir`: `--runner
+container` chạy xong `build:vendors`, `build:patches` và `build:compile`, rồi hỏng ở
+`build:frontend` với `sh: npm: not found`.
+
+Đổi lại, container path mang lại gì trên chính dự án và revision đó: `build:vendors`
+clone được một package Composer private qua SSH từ trong container, trong khi runner
+host mặc định hỏng đúng bước đó với `Host key verification failed`. Dự án không tải
+nổi dependency của chính nó trên host chính là trường hợp flag này sinh ra để xử lý.
+
+Và còn một cái giá nữa: artifact ghi lại phiên bản PHP **của container**, nên bước đối
+chiếu ở job deploy chỉ qua được khi container đó chạy cùng PHP series với target —
+container chạy 8.2 không thể phục vụ target chạy 8.3, bất kể manifest ghi gì.
+
 ### 2. Release trở thành live thế nào — hình dạng docroot
 
 `remotes.<name>.path` là **docroot đang được phục vụ**. `remotes.<name>.deploy_path`

@@ -9,6 +9,7 @@ import (
 
 	"govard/internal/cli"
 	"govard/internal/deploy"
+	"govard/internal/engine"
 	"govard/internal/runtime"
 
 	"github.com/pterm/pterm"
@@ -20,7 +21,11 @@ import (
 // --artifact-dir` consumes.
 var deployBuildCmd = &cobra.Command{
 	Annotations: map[string]string{
-		// No ssh, no rsync, no container runtime: a build is local work.
+		// A build is local work: no ssh, no rsync, and no container runtime
+		// unless the operator asks for one. `--runner container` is the single
+		// flag that demands a container, and it asks at flag time through
+		// requireDocker — the shape `audit run --checks` already uses, because a
+		// static annotation cannot say "only when this flag is passed".
 		runtime.AnnotationRequires: string(runtime.CapNone),
 	},
 	Use:   "build [remote]",
@@ -36,10 +41,19 @@ govard, ssh and rsync:
   govard deploy build production --output artifacts --revision $CI_COMMIT_SHA
   govard deploy production --artifact-dir artifacts --revision $CI_COMMIT_SHA --yes
 
+The build tasks run on the host shell, which is why the command itself declares no
+capability. A project whose build cannot fetch its own dependencies from the host
+can pass ` + "`--runner container`" + ` to run the same tasks through the project's own app
+container instead. That flag needs a running project container, and an output
+directory inside the project root — everything else on this page behaves
+identically.
+
 The artifact is the tracked files of the revision plus whatever the build tasks
 produced, with a manifest recording the revision, the PHP version, the
 composer.lock hash and a sha256 list of every file. The deploy job verifies the
-revision and compares the PHP version against the target's before publishing.
+revision and compares the PHP version against the target's before publishing, so
+a container build records its container's PHP: it passes that check only when the
+container runs the target's PHP series.
 
 Exit codes: 0 success, 1 execution failure, 2 usage, 3 missing capability,
 4 configuration.`,
@@ -66,7 +80,54 @@ func bindDeployBuildFlags(command *cobra.Command) {
 	command.Flags().String("tag", "", "Tag to build")
 	command.Flags().Bool("force", false, "Replace an output directory that is not empty")
 	command.Flags().Bool("json", false, "Emit the manifest as machine-readable JSON")
+	// No backticks: cobra reads a backquoted word in a usage string as the
+	// flag's value placeholder and prints it in place of the flag name.
+	command.Flags().String("runner", "host", "Where the build tasks run: host (default, needs nothing) or container (the project's own app container, which has to be running; keep --output inside the project root)")
 	command.Flags().Duration(deployFlagTimeout, 0, "Timeout for a single build command")
+}
+
+// deployBuildRunner resolves `--runner` into the runner the build tasks execute
+// through. The host is the default and the only requirement-free answer: the
+// documented build job carries govard and the project's toolchain, and Docker is
+// deliberately not among them, so asking for a container runtime on this path
+// would take away the surface this command exists to provide.
+//
+// The container is the way out for a project whose build cannot fetch its own
+// dependencies from the host — a private-VCS package whose SSH material the
+// container has and the host shell does not. The exec target is the one
+// `govard tool php` resolves, so the build runs in the same container, as the
+// same account and in the same workdir that command already uses.
+func deployBuildRunner(config engine.Config, name, workDir, outputDir string) (deploy.Runner, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "host":
+		return deploy.LocalRunner{}, nil
+	case "container":
+		target := resolveToolExecution(config, "php", "")
+		runner := deploy.ContainerRunner{
+			Container:     target.ContainerName,
+			User:          target.User,
+			LocalRoot:     workDir,
+			ContainerRoot: target.Workdir,
+		}
+		// The refusal comes before the probe: a --output the container cannot
+		// reach is a configuration mistake, and answering it with "install
+		// Docker" would send the operator after a daemon that could not have
+		// made the path mappable.
+		if _, err := runner.ContainerPath(outputDir); err != nil {
+			return nil, err
+		}
+		if err := requireDocker("run `govard env up` first, or build with --runner host"); err != nil {
+			return nil, err
+		}
+		return runner, nil
+	default:
+		return nil, &cli.UsageError{Err: fmt.Errorf("--runner must be host or container, got %q", name)}
+	}
+}
+
+// DeployBuildRunnerForTest exposes the runner resolution for tests.
+func DeployBuildRunnerForTest(config engine.Config, name, workDir, outputDir string) (deploy.Runner, error) {
+	return deployBuildRunner(config, name, workDir, outputDir)
 }
 
 func runDeployBuild(cmd *cobra.Command, args []string) error {
@@ -81,8 +142,9 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 	}
 	force, _ := cmd.Flags().GetBool("force")
 	jsonOut, _ := cmd.Flags().GetBool("json")
+	runnerName, _ := cmd.Flags().GetString("runner")
 
-	_, recipe, options, err := resolveDeployRecipeOptions(cmd, remote)
+	config, recipe, options, err := resolveDeployRecipeOptions(cmd, remote)
 	if err != nil {
 		return configOrUsageError(err)
 	}
@@ -99,11 +161,15 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve the working directory: %w", err)
 	}
+	runner, err := deployBuildRunner(config, runnerName, workDir, absolute)
+	if err != nil {
+		return err
+	}
 
 	// The build has no target, so its variable set is anchored on the output
 	// directory: `{{deploy_path}}` is where the artifact is being assembled,
 	// and `deploy:artifact` re-points `{{release_path}}` at the release.
-	buildHost := deploy.HostForTest(filepath.Dir(absolute), deploy.LocalRunner{})
+	buildHost := deploy.HostForTest(filepath.Dir(absolute), runner)
 
 	manifest, err := deploy.BuildArtifactDir(cmd.Context(), deploy.BuildRequest{
 		Recipe:    recipe,
@@ -114,6 +180,7 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 		OutputDir: absolute,
 		Force:     force,
 		Out:       cmd.OutOrStdout(),
+		Runner:    runner,
 	})
 	if err != nil {
 		return err

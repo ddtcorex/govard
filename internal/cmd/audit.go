@@ -941,26 +941,7 @@ func (e auditRunExitError) Unwrap() error { return e.cause }
 // on a host with no container runtime, pointing at the container-free
 // alternative instead of letting the run die mid-flight.
 func requireContainerRuntime() error {
-	err := runtime.Probe(runtime.CapDocker)
-	if err == nil {
-		return nil
-	}
-	var missing *runtime.MissingError
-	detail := err.Error()
-	if errors.As(err, &missing) {
-		detail = missing.Detail
-	}
-	hint := "run `govard audit run --checks integrity` for container-free analysis on this host"
-	// In machine mode the hint travels inside the JSON envelope, so stdout stays
-	// parseable.
-	if !errorJSON {
-		pterm.Info.Printf("Hint: %s\n", hint)
-	}
-	return &runtime.MissingError{
-		Caps:   []runtime.Capability{runtime.CapDocker},
-		Detail: detail,
-		Hint:   hint,
-	}
+	return requireDocker("run `govard audit run --checks integrity` for container-free analysis on this host")
 }
 
 // auditIntegrityProfile returns the framework's container-free analyzer set, or
