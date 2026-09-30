@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -402,5 +403,136 @@ func TestGateFallsBackToAnOlderSatisfiableArtifact(t *testing.T) {
 	}
 	if name != "20260101-000000" {
 		t.Fatalf("gate returned %q, want the older satisfiable snapshot", name)
+	}
+}
+
+// fakeAllExec makes every verify item succeed without touching Docker and
+// returns a counter of how many govard invocations were attempted.
+func fakeAllExec(t *testing.T) *int {
+	t.Helper()
+	fakeProbeHTTP(t)
+	calls := 0
+	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, _ ...string) (verify.Evidence, bool) {
+		calls++
+		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok"}, true
+	})
+	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
+	return &calls
+}
+
+// The run artifact is what the phase-5 gate reads, so it cannot depend on a
+// flag that only shapes stdout.
+func TestPhase4WritesArtifactWithoutJSON(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	root := t.TempDir()
+	makeSnapshot(t, root, "20260101-000000", "2026-01-01T00:00:00Z")
+	fakeAllExec(t)
+
+	if _, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 4,
+		verify.VerifyOpts{JSON: false, ProjectRoot: root}); err != nil {
+		t.Fatalf("RunPhase 4: %v", err)
+	}
+	entries, err := os.ReadDir(verify.ProjectRunsDir(root))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("no run artifact written with JSON:false (err=%v, entries=%d)", err, len(entries))
+	}
+}
+
+func TestPhase5GateSeesPhase4RunWithoutJSON(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	root := t.TempDir()
+	makeSnapshot(t, root, "20260101-000000", "2026-01-01T00:00:00Z")
+	fakeAllExec(t)
+	cfg := engine.Config{Framework: "magento2"}
+
+	if _, err := verify.RunPhase(context.Background(), cfg, 4, verify.VerifyOpts{ProjectRoot: root}); err != nil {
+		t.Fatalf("RunPhase 4: %v", err)
+	}
+	if name, ok := verify.GateSatisfyingSnapshot(verify.VerifyOpts{ProjectRoot: root}); !ok || name != "20260101-000000" {
+		t.Fatalf("gate = (%q, %v) after a JSON:false phase 4, want the recorded snapshot", name, ok)
+	}
+	if _, err := verify.RunPhase(context.Background(), cfg, 5,
+		verify.VerifyOpts{ProjectRoot: root, AllowDestructive: true}); err != nil {
+		t.Fatalf("RunPhase 5 after a JSON:false phase 4: %v", err)
+	}
+}
+
+// An artifact that cannot be written is a warning: the verdict is the items.
+func TestRunPhaseUnwritableRunsDirKeepsTheVerdict(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	root := t.TempDir()
+	// Occupy the runs dir path with a regular file so MkdirAll and WriteFile fail.
+	dir := verify.ProjectRunsDir(root)
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fakeAllExec(t)
+
+	res, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 1,
+		verify.VerifyOpts{ProjectRoot: root})
+	if err != nil {
+		t.Fatalf("an unwritable runs dir changed RunPhase into an error: %v", err)
+	}
+	if res.Status != "passed" || res.Failed() {
+		t.Fatalf("verdict = %q failed=%v, want passed: the artifact write must not decide it", res.Status, res.Failed())
+	}
+}
+
+func TestRunPhaseZeroEnforcesDestructiveGate(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	calls := fakeAllExec(t)
+
+	_, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 0,
+		verify.VerifyOpts{ProjectRoot: t.TempDir()})
+	if !errors.Is(err, verify.ErrNeedAllowDestructive) {
+		t.Fatalf("RunPhase(0) = %v, want ErrNeedAllowDestructive", err)
+	}
+	if *calls != 0 {
+		t.Fatalf("RunPhase(0) ran %d command(s) before refusing", *calls)
+	}
+}
+
+// Phase 0 runs phase 5 inside one call, so a snapshot recorded by an earlier
+// run must already exist: P5-05 reads it from the store, not from this call.
+func TestRunPhaseZeroNeedsARecordedSnapshot(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	calls := fakeAllExec(t)
+
+	_, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 0,
+		verify.VerifyOpts{ProjectRoot: t.TempDir(), AllowDestructive: true})
+	if !errors.Is(err, verify.ErrNeedSnapshot) {
+		t.Fatalf("RunPhase(0) = %v, want ErrNeedSnapshot", err)
+	}
+	if *calls != 0 {
+		t.Fatalf("RunPhase(0) ran %d command(s) before refusing", *calls)
+	}
+}
+
+func TestPreflightPhaseSelection(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	root := t.TempDir()
+	all := []int{1, 2, 3, 4, 5}
+	cases := []struct {
+		name   string
+		phases []int
+		opts   verify.VerifyOpts
+		want   error
+	}{
+		{"phase 1 needs no gate", []int{1}, verify.VerifyOpts{ProjectRoot: root}, nil},
+		{"all phases without the flag", all, verify.VerifyOpts{ProjectRoot: root}, verify.ErrNeedAllowDestructive},
+		{"all phases with the flag: phase 4 will record the snapshot", all, verify.VerifyOpts{ProjectRoot: root, AllowDestructive: true}, nil},
+		{"phase 5 alone, flag, no snapshot", []int{5}, verify.VerifyOpts{ProjectRoot: root, AllowDestructive: true}, verify.ErrNeedSnapshot},
+		{"phase 5 alone, no flag", []int{5}, verify.VerifyOpts{ProjectRoot: root}, verify.ErrNeedAllowDestructive},
+		{"plan bypasses the gate", all, verify.VerifyOpts{ProjectRoot: root, Plan: true}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := verify.PreflightPhaseSelection(tc.phases, tc.opts); !errors.Is(got, tc.want) {
+				t.Fatalf("PreflightPhaseSelection = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

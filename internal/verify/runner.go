@@ -232,14 +232,10 @@ type RunItem struct {
 // RunPhase executes the filtered registry for a single phase and optionally
 // writes the JSON file when opts.JSON is true.
 func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts) (RunResult, error) {
-	// Gate for destructive phase 5 — bypassed for --plan (dry-run).
-	if phase == 5 && !opts.Plan {
-		if err := checkP5Gate(opts); err != nil {
-			return RunResult{}, err
-		}
-		if !opts.AllowDestructive {
-			return RunResult{}, ErrNeedAllowDestructive
-		}
+	// The destructive gate is keyed on the selection, not on phase == 5: phase 0
+	// selects every phase, so it selects phase 5 too. Bypassed for --plan.
+	if err := PreflightPhaseSelection([]int{phase}, opts); err != nil {
+		return RunResult{}, err
 	}
 
 	// Filter. An unmet When predicate no longer drops the item: the row stays,
@@ -327,14 +323,10 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 
 	res.RefreshStatus()
 
-	if opts.JSON {
-		_ = MigrateLegacyRuns()
-		dir := ProjectRunsDir(opts.ProjectRoot)
-		_ = os.MkdirAll(dir, 0755)
-		ts := time.Now().Format("2006-01-02T15-04-05Z07:00")
-		path := filepath.Join(dir, ts+"-phase"+phaseFileSuffix(phase)+".json")
-		b, _ := json.MarshalIndent(res, "", "  ")
-		_ = os.WriteFile(path, b, 0644)
+	// The artifact is always written: the phase-5 gate reads it, and --json only
+	// shapes stdout. A write failure is a warning, never part of the verdict.
+	if err := writeRunArtifact(res, phase, opts); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not record the verify run artifact: %v\n", err)
 	}
 
 	return res, nil
@@ -410,6 +402,65 @@ func phaseLabelRaw(phase int) string {
 	default:
 		return "phase0"
 	}
+}
+
+// writeRunArtifact stores res under the project's run store.
+func writeRunArtifact(res RunResult, phase int, opts VerifyOpts) error {
+	_ = MigrateLegacyRuns()
+	dir := ProjectRunsDir(opts.ProjectRoot)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	ts := time.Now().Format("2006-01-02T15-04-05Z07:00")
+	path := filepath.Join(dir, ts+"-phase"+phaseFileSuffix(phase)+".json")
+	b, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0644)
+}
+
+// PreflightPhaseSelection applies the phase-5 gates to a selection of phases,
+// before any item of it runs. Phase 0 means every phase and counts as phase 5.
+// A selection without phase 5 is ungated, and so is a --plan run.
+//
+// Order: the --allow-destructive opt-in first, then the snapshot gate. The
+// snapshot gate is skipped only when the selection itself contains phase 4
+// and phase 5 as separate runs (the all-phases CLI path): phase 4 records the
+// artifact before phase 5 starts and RunPhase(5) re-checks it then. A phase 0
+// call runs both inside one RunPhase, where P5-05 reads the store and not the
+// call's own result, so it needs a snapshot recorded by an earlier run.
+func PreflightPhaseSelection(phases []int, opts VerifyOpts) error {
+	if opts.Plan {
+		return nil
+	}
+	has5, has4 := false, false
+	for _, p := range phases {
+		switch p {
+		case 0:
+			has5 = true
+		case 4:
+			has4 = true
+		case 5:
+			has5 = true
+		}
+	}
+	if !has5 {
+		return nil
+	}
+	if !opts.AllowDestructive {
+		return ErrNeedAllowDestructive
+	}
+	recordedInRun := has4
+	for _, p := range phases {
+		if p == 0 {
+			recordedInRun = false
+		}
+	}
+	if recordedInRun {
+		return nil
+	}
+	return checkP5Gate(opts)
 }
 
 // checkP5Gate requires a snapshot of this project recorded by a real (non-plan)

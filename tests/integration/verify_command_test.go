@@ -171,3 +171,30 @@ func TestDeployStatusFailsForAnUnconfiguredRemoteInBothForms(t *testing.T) {
 			humanResult.ExitCode, humanResult.Stdout)
 	}
 }
+
+// TestVerifyJSONWithoutAllowDestructiveRunsNothing drives the real binary: the
+// phase-5 opt-in is checked before phase 1, so a refused `verify --json` leaves
+// one error envelope on stdout and no run artifact, instead of having run (and
+// discarded) phases 1-4 first.
+func TestVerifyJSONWithoutAllowDestructiveRunsNothing(t *testing.T) {
+	env := NewTestEnvironment(t)
+	dir := env.CreateTestProject(t, "verify-gate-first", map[string]string{
+		".govard.yml": "project_name: verify-gate\nframework: magento2\ndomain: verify-gate.test\n",
+	})
+	home := t.TempDir()
+	result := env.RunGovardWithEnv(t, dir, []string{"GOVARD_HOME_DIR=" + home}, "verify", "--json")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("exit code 0, want the gate refusal\nstdout: %s", result.Stdout)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal([]byte(result.Stdout), &payload); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\nstdout: %s", err, result.Stdout)
+	}
+	if !strings.Contains(payload["error"], "--allow-destructive") {
+		t.Fatalf("error = %q, want the --allow-destructive gate", payload["error"])
+	}
+	if files, _ := filepath.Glob(filepath.Join(home, "verify-runs", "*", "*.json")); len(files) != 0 {
+		t.Fatalf("a refused run recorded artifacts: %v", files)
+	}
+}

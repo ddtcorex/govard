@@ -170,6 +170,19 @@ Examples:
 			return summarise(cmd.ErrOrStderr(), res)
 		}
 
+		// Every phase-5 precondition is checked before phase 1 runs, in both
+		// output modes: a refused run must not have stopped the environment or
+		// created a snapshot first.
+		if err := verify.PreflightPhaseSelection([]int{1, 2, 3, 4, 5}, opts); err != nil {
+			if jsonOut {
+				payload, _ := json.Marshal(map[string]string{"error": err.Error()})
+				fmt.Fprintln(cmd.OutOrStdout(), string(payload))
+			} else {
+				pterm.Warning.Println(err.Error())
+			}
+			return err
+		}
+
 		// All phases 1..5 sequentially. A red item does not stop the next phase —
 		// the whole checklist is the deliverable, so the verdict is aggregated
 		// after every phase has run.
@@ -177,11 +190,6 @@ Examples:
 			var combined verify.RunResult
 			var first bool
 			for p := 1; p <= 5; p++ {
-				if p == 5 && !allowDestructive && !plan {
-					payload, _ := json.Marshal(map[string]string{"error": verify.ErrNeedAllowDestructive.Error()})
-					fmt.Fprintln(cmd.OutOrStdout(), string(payload))
-					return verify.ErrNeedAllowDestructive
-				}
 				res, err := verify.RunPhase(ctx, cfg, p, opts)
 				if err != nil {
 					// A gate block is reported as a JSON envelope, exactly like
@@ -210,10 +218,6 @@ Examples:
 		var combined verify.RunResult
 		var first bool
 		for p := 1; p <= 5; p++ {
-			if p == 5 && !allowDestructive && !plan {
-				pterm.Warning.Println(verify.ErrNeedAllowDestructive.Error())
-				return verify.ErrNeedAllowDestructive
-			}
 			res, err := verify.RunPhase(ctx, cfg, p, opts)
 			if err != nil {
 				return err
