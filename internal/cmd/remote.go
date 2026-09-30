@@ -448,7 +448,9 @@ var remoteCopyIdCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		_, remoteCfg, err := ensureRemoteKnown(config, name)
+		// Everything after resolution uses the canonical name: the auth store and
+		// the per-remote env var are keyed by it, not by the typed alias.
+		name, remoteCfg, err := ensureRemoteKnown(config, name)
 		if err != nil {
 			return err
 		}
@@ -468,7 +470,7 @@ var remoteExecCmd = &cobra.Command{
 	Short: "Execute a command on a remote environment",
 	Long:  "Execute a command on a remote environment over SSH. The command runs from the remote's configured path (cd into it first) when the remote defines one.",
 	Example: `  govard remote exec staging -- uptime
-  govard remote exec prod -- "cd /var/www && git pull"`,
+  govard remote exec staging -- "df -h /var/www"`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		startedAt := time.Now()
@@ -499,7 +501,7 @@ var remoteExecCmd = &cobra.Command{
 			return err
 		}
 		configForObservability = config
-		_, remoteCfg, err := ensureRemoteKnown(config, remoteName)
+		resolvedName, remoteCfg, err := ensureRemoteKnown(config, remoteName)
 		if err != nil {
 			operationCategory = "validation"
 			operationMessage = err.Error()
@@ -513,6 +515,9 @@ var remoteExecCmd = &cobra.Command{
 			})
 			return err
 		}
+		// The auth store and the per-remote env var are keyed by the canonical
+		// name, so the typed alias must not reach the SSH builder.
+		remoteName = resolvedName
 
 		commandLine := strings.TrimSpace(strings.Join(args[1:], " "))
 		if commandLine == "" {
@@ -600,7 +605,7 @@ var remoteTestCmd = &cobra.Command{
 			return err
 		}
 		configForObservability = config
-		_, remoteCfg, err := ensureRemoteKnown(config, remoteName)
+		resolvedName, remoteCfg, err := ensureRemoteKnown(config, remoteName)
 		if err != nil {
 			operationCategory = "validation"
 			operationMessage = err.Error()
@@ -613,6 +618,8 @@ var remoteTestCmd = &cobra.Command{
 			})
 			return err
 		}
+		// Canonical name for SSH auth lookup and write-protection (see exec).
+		remoteName = resolvedName
 		effectiveProtected, _ := engine.RemoteWriteBlocked(remoteName, remoteCfg)
 		pterm.Info.Printf(
 			"Remote profile: capabilities=%s, auth=%s, protected=%t, strict_host_key=%t\n",
