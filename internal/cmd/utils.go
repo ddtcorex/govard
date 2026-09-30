@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"govard/internal/cli"
 	"govard/internal/conventions"
 	"govard/internal/engine"
 	"os"
@@ -62,22 +63,24 @@ func loadWritableConfig() (engine.Config, error) {
 	return config, nil
 }
 
-func saveConfig(config engine.Config) {
+// saveConfig validates and writes the base config. A validation failure is a
+// *cli.ConfigError (exit 4) and leaves the file untouched; a marshal or write
+// failure is a plain error. Callers must return the error instead of reporting
+// success.
+func saveConfig(config engine.Config) error {
 	if err := engine.ValidateConfig(config); err != nil {
-		pterm.Error.Printf("Config validation failed: %v\n", err)
-		return
+		return &cli.ConfigError{Err: fmt.Errorf("config validation failed: %w", err)}
 	}
 	writableConfig := engine.PrepareConfigForWrite(config)
 
 	data, err := yaml.Marshal(&writableConfig)
 	if err != nil {
-		pterm.Error.Printf("Failed to marshal config: %v\n", err)
-		return
+		return fmt.Errorf("marshal config: %w", err)
 	}
-	err = os.WriteFile(conventions.BaseConfigFile, data, conventions.DefaultFilePerm)
-	if err != nil {
-		pterm.Error.Printf("Failed to write %s: %v\n", conventions.BaseConfigFile, err)
+	if err := os.WriteFile(conventions.BaseConfigFile, data, conventions.DefaultFilePerm); err != nil {
+		return fmt.Errorf("write %s: %w", conventions.BaseConfigFile, err)
 	}
+	return nil
 }
 
 func runUp() {

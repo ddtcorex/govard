@@ -49,7 +49,9 @@ var domainAddCmd = &cobra.Command{
 		}
 
 		config.ExtraDomains = append(config.ExtraDomains, newDomain)
-		saveConfig(config)
+		if err := saveConfig(config); err != nil {
+			return err
+		}
 		pterm.Success.Printf("Domain %s added to .govard.yml. Run 'govard env up' to apply changes.\n", newDomain)
 		return nil
 	},
@@ -82,7 +84,9 @@ var domainRemoveCmd = &cobra.Command{
 		}
 
 		config.ExtraDomains = updated
-		saveConfig(config)
+		if err := saveConfig(config); err != nil {
+			return err
+		}
 		pterm.Success.Printf("Domain %s removed from .govard.yml. Run 'govard env up' to apply changes.\n", toRemove)
 		return nil
 	},

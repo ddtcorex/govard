@@ -39,7 +39,9 @@ var debugOnCmd = &cobra.Command{
 			return nil
 		}
 		config.Stack.Features.Xdebug = true
-		saveConfig(config)
+		if err := saveConfig(config); err != nil {
+			return err
+		}
 		pterm.Success.Println("Xdebug enabled in .govard.yml. Running 'govard env up' to apply...")
 		runUp()
 		return nil
@@ -59,7 +61,9 @@ var debugOffCmd = &cobra.Command{
 			return nil
 		}
 		config.Stack.Features.Xdebug = false
-		saveConfig(config)
+		if err := saveConfig(config); err != nil {
+			return err
+		}
 		pterm.Success.Println("Xdebug disabled in .govard.yml. Running 'govard env up' to apply...")
 		runUp()
 		return nil
