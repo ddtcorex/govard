@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -105,6 +107,11 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 
 	commands := buildMagento2Commands(projectName, config, lockedKeys)
 
+	// app/etc/config.php sits in the project root, which is the directory the
+	// operator invoked govard from. Resolved once here so the repair steps below
+	// can put back a config.php that only got reordered.
+	projectRoot, _ := os.Getwd()
+
 	for _, cmd := range commands {
 		pterm.Info.Printf("→ %s...\n", cmd.Desc)
 		output, err := exec.Command("docker", cmd.Args...).CombinedOutput()
@@ -131,7 +138,9 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 			if needsConfigImport(outText) {
 				pterm.Warning.Println("Magento requires app:config:import/setup:upgrade before continuing; attempting auto-repair...")
 				_ = ensureMagentoLocalWritableDirs(containerName, config)
-				if repairErr := runMagentoConfigImport(containerName, config); repairErr != nil {
+				if repairErr := runPreservingUnchangedConfigPHP(projectRoot, func() error {
+					return runMagentoConfigImport(containerName, config)
+				}); repairErr != nil {
 					// Fallback to setup:upgrade when import isn't enough.
 					pterm.Warning.Printf("app:config:import failed (%v). Trying autoloader reset and setup:upgrade...\n", repairErr)
 					_ = ensureMagentoLocalWritableDirs(containerName, config)
@@ -148,13 +157,20 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 						pterm.Warning.Printf("composer dump-autoload failed (%v), continuing with setup:upgrade anyway...\n", dumpErr)
 					}
 
-					if upgradeErr := runMagentoSetupUpgrade(containerName, config); upgradeErr != nil {
+					if upgradeErr := runPreservingUnchangedConfigPHP(projectRoot, func() error {
+						return runMagentoSetupUpgrade(containerName, config)
+					}); upgradeErr != nil {
 						// Check if setup:upgrade failed due to search index block too
 						repairOut := upgradeErr.Error()
 						if IsElasticsearchIndexBlockError(repairOut) {
 							pterm.Warning.Println("setup:upgrade failed due to search index block; attempting to unblock and retry...")
 							if fixErr := FixElasticsearchIndexBlock(projectName, config); fixErr == nil {
 								pterm.Success.Println("Elasticsearch/OpenSearch index unblocked. Retrying setup:upgrade...")
+								// Deliberately left outside runPreservingUnchangedConfigPHP: this
+								// retry can reorder app/etc/config.php exactly like the call above
+								// it, so the dirty-file bug (#489) survives on this path. That is a
+								// known, recorded limitation rather than an oversight — a
+								// follow-up, not something to quietly "fix" here.
 								if retryErr := runMagentoSetupUpgrade(containerName, config); retryErr == nil {
 									goto retryInitialCommand
 								} else {
@@ -294,6 +310,86 @@ func runMagentoSetupUpgrade(containerName string, config engine.Config) error {
 		return fmt.Errorf("setup:upgrade failed: %w\nOutput: %s", err, string(output))
 	}
 	return nil
+}
+
+// runPreservingUnchangedConfigPHP runs a Magento config-repair command and, when
+// that command left app/etc/config.php holding the same lines in a different
+// order, writes the original bytes back.
+//
+// `app:config:import` rewrites the module list in the importer's own order, so
+// on a project whose module set did not change it left reordered lines showing
+// up as modifications, which the audit path then reads as a dirty checkout. When
+// the module set really did change, the importer's output stands.
+//
+// The returned error is exactly run's. The call site branches on it to fall
+// back to setup:upgrade, so returning a failed write-back here would send a
+// successful import down the retry path and report a Magento failure that never
+// happened — and a read-only checkout or a container-owned config.php is
+// exactly that case.
+//
+// Rejected, so this does not have to be re-litigated:
+//   - skip the import when the file would be unchanged: running it is the only
+//     way to learn whether it would be;
+//   - compare the two files semantically: that needs a parser for a PHP array
+//     literal and the repo has none (internal/audit's parsePHPJSON decodes
+//     strict JSON, which is what composer.json is; config.php is not JSON);
+//   - `git checkout -- app/etc/config.php` afterwards: it discards the genuine
+//     module change the very same command wrote.
+func runPreservingUnchangedConfigPHP(projectRoot string, run func() error) error {
+	if strings.TrimSpace(projectRoot) == "" {
+		return run() // no root to compare against, and never guess one
+	}
+
+	path := filepath.Join(projectRoot, "app", "etc", "config.php")
+	before, readErr := os.ReadFile(path)
+
+	runErr := run()
+
+	if readErr != nil {
+		// No baseline to compare against: the file is absent or unreadable, so
+		// the command's own result is the only answer there is.
+		return runErr
+	}
+
+	after, rereadErr := os.ReadFile(path)
+	if rereadErr != nil {
+		return runErr // the command left no file to compare against
+	}
+	if bytes.Equal(before, after) {
+		return runErr // nothing was rewritten, so there is nothing to put back
+	}
+	if !sameLineMultiset(before, after) {
+		return runErr // the module set changed: Magento's output stands
+	}
+
+	if writeErr := os.WriteFile(path, before, 0o644); writeErr != nil {
+		// run()'s error is the command's answer; restoring the file is
+		// housekeeping, and a failure there must not become a Magento failure.
+		pterm.Warning.Printf("Could not restore the unchanged %s: %v\n", path, writeErr)
+		return runErr
+	}
+
+	pterm.Info.Printf("%s held the same lines in a different order after the repair, so the original was restored\n", path)
+	return runErr
+}
+
+// sameLineMultiset reports whether a and b hold exactly the same lines,
+// counting repeats, in any order. It compares lines, not PHP: the two files are
+// split on "\n" and the copies sorted before they are compared one by one.
+func sameLineMultiset(a, b []byte) bool {
+	left := strings.Split(string(a), "\n")
+	right := strings.Split(string(b), "\n")
+	if len(left) != len(right) {
+		return false
+	}
+	sort.Strings(left)
+	sort.Strings(right)
+	return slices.Equal(left, right)
+}
+
+// RunPreservingUnchangedConfigPHPForTest exposes runPreservingUnchangedConfigPHP for tests.
+func RunPreservingUnchangedConfigPHPForTest(projectRoot string, run func() error) error {
+	return runPreservingUnchangedConfigPHP(projectRoot, run)
 }
 
 func runMagentoComposerDumpAutoload(containerName string, config engine.Config) error {

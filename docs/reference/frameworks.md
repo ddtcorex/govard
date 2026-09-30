@@ -100,7 +100,7 @@ Magento 2 is the deepest supported workflow in Govard.
 
 ### Key Features
 
-- `govard config auto` injects DB, cache, search, Varnish, and base URLs into `app/etc/env.php`
+- `govard config auto` injects DB, cache, search, Varnish, and base URLs into `app/etc/env.php`; when its config-repair step leaves `app/etc/config.php` holding the same lines in a different order, Govard writes the original bytes back so the tracked file stays clean
 - `govard tool magento [command]` runs Magento CLI (`bin/magento`) inside the PHP container
 - `govard tool magerun [command]` (Shortcut: `mr`) runs `n98-magerun2` inside the PHP container
 - `govard tool magento cron:install` installs crontabs inside the container
