@@ -186,7 +186,7 @@ func TestGatedItemsAreCountedInAMergedAllPhasesRun(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(it.SkipReason, "framework") {
-			t.Errorf("framework-gated row %s skipped with %q, want a reason naming the framework gate rather than its Precond text", it.ID, it.SkipReason)
+			t.Errorf("framework-gated row %s skipped with %q, want a reason naming the framework gate rather than its Requires text", it.ID, it.SkipReason)
 		}
 	}
 	if row, ok := findRunItem(gated, "P3-01"); !ok {

@@ -16,7 +16,7 @@ func TestVerifyRegistryCounts(t *testing.T) {
 	ids := map[string]bool{}
 	allowedGuards := map[string]bool{
 		"":                  true,
-		"READ-ONLY-REMOTE":  true,
+		"REMOTE-PROBE":      true,
 		"DESTRUCTIVE-LOCAL": true,
 		"REMOTE-WRITE":      true,
 	}
@@ -28,7 +28,7 @@ func TestVerifyRegistryCounts(t *testing.T) {
 		}
 		ids[item.ID] = true
 		if !allowedGuards[item.Guard] {
-			t.Fatalf("item %q has invalid Guard %q, want one of \"\", \"READ-ONLY-REMOTE\", \"DESTRUCTIVE-LOCAL\", \"REMOTE-WRITE\"", item.ID, item.Guard)
+			t.Fatalf("item %q has invalid Guard %q, want one of \"\", \"REMOTE-PROBE\", \"DESTRUCTIVE-LOCAL\", \"REMOTE-WRITE\"", item.ID, item.Guard)
 		}
 		// When is nil or func — ensure calling does not panic
 		if item.When != nil {

@@ -234,7 +234,6 @@ type RunItem struct {
 	Command         string   `json:"command"`
 	DurationMs      int      `json:"duration_ms"`
 	ExitCode        int      `json:"exit_code"`
-	Retries         int      `json:"retries"`
 	EvidenceExcerpt string   `json:"evidence_excerpt"`
 	JSONValid       bool     `json:"json_valid"`
 	Artifacts       []string `json:"artifacts,omitempty"`
@@ -325,7 +324,6 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 			Command:         it.Title,
 			DurationMs:      ev.DurationMs,
 			ExitCode:        ev.ExitCode,
-			Retries:         ev.Retries,
 			EvidenceExcerpt: ev.OutputExcerpt,
 			JSONValid:       ev.JSONValid,
 			Artifacts:       ev.Artifacts,
@@ -376,7 +374,7 @@ func checksFilterReason(requested, declared []string) string {
 
 // frameworkGateReason is the skip a row reports when its When predicate did not
 // hold. Every When in the registry is a framework predicate, so the gate that
-// fired is the framework — not the item's Precond text, which on a Magento row
+// fired is the framework — not the item's Requires text, which on a Magento row
 // reads like a prior step ("P2-01 up") and would send an operator on a Laravel
 // project to debug an environment that is fine. The project's own framework is
 // the one fact that explains the row, so the reason names that; which frameworks
