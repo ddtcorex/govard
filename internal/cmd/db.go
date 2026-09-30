@@ -662,7 +662,10 @@ func buildDBDumpCommand(config engine.Config, options dbCommandOptions) (*exec.C
 		// both (a second gzip stage would double-compress and re-mask failures).
 		// Using sh -c to allow redirects and mkdir -p on the remote
 		quotedFile := remote.QuoteRemotePath(remoteFile)
-		remoteCmd := fmt.Sprintf("mkdir -p $(dirname %s) && { %s; } > %s", quotedFile, dumpStr, quotedFile)
+		// umask 077 first, so the file the redirect creates is owner-only; the
+		// dirname substitution is double-quoted so a path with spaces stays a
+		// single argument.
+		remoteCmd := fmt.Sprintf("umask 077; mkdir -p \"$(dirname %s)\" && { %s; } > %s", quotedFile, dumpStr, quotedFile)
 		return remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, remoteCmd), remoteFile, nil
 	}
 
