@@ -373,22 +373,31 @@ func installSyncPasswordFakes(t *testing.T, payload string) string {
 // database password (probed or configured), while the command the action
 // executes still carries the exact value.
 func TestSyncPlanNeverContainsTheDBPassword(t *testing.T) {
-	passwords := []string{"p'w$x", "SECRETPW"}
+	passwords := []string{"p'w$x", "SECRETPW", "pw*$", "line1\nline2", "***"}
 	cases := []struct {
 		name      string
 		framework string
 		remoteCfg func(password string) engine.RemoteConfig
 		pull      bool
+		// envVar is the password variable the framework's DB engine exports:
+		// MYSQL_PWD by default, PGPASSWORD for a Postgres framework.
+		envVar string
 	}{
-		{"magento2 probe pull", "magento2", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, true},
-		{"laravel probe pull", "laravel", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, true},
-		{"magento2 probe push", "magento2", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, false},
+		{"magento2 probe pull", "magento2", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, true, "MYSQL_PWD"},
+		{"laravel probe pull", "laravel", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, true, "MYSQL_PWD"},
+		{"magento2 probe push", "magento2", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, false, "MYSQL_PWD"},
 		{"custom db_pass pull", "custom", func(pw string) engine.RemoteConfig {
 			return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www", DBName: "app", DBUser: "app", DBPass: pw}
-		}, true},
+		}, true, "MYSQL_PWD"},
 		{"custom db_pass push", "custom", func(pw string) engine.RemoteConfig {
 			return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www", DBName: "app", DBUser: "app", DBPass: pw}
-		}, false},
+		}, false, "MYSQL_PWD"},
+		{"postgres django db_pass pull", "django", func(pw string) engine.RemoteConfig {
+			return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www", DBName: "app", DBUser: "app", DBPass: pw}
+		}, true, "PGPASSWORD"},
+		{"postgres django db_pass push", "django", func(pw string) engine.RemoteConfig {
+			return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www", DBName: "app", DBUser: "app", DBPass: pw}
+		}, false, "PGPASSWORD"},
 	}
 
 	for _, password := range passwords {
@@ -422,11 +431,13 @@ func TestSyncPlanNeverContainsTheDBPassword(t *testing.T) {
 				lines = append(lines, plan.Commands...)
 				lines = append(lines, cmd.BuildSyncPlanSummaryForTest(endpoints, plan, opts)...)
 				shown := strings.Join(lines, "\n")
-				if strings.Contains(shown, password) || strings.Contains(shown, engine.ShellQuote(password)) {
+				// "***" is itself the placeholder, so for that password only the
+				// shell-quoted form (which never appears in a redacted plan) is checkable.
+				if (password != "***" && strings.Contains(shown, password)) || strings.Contains(shown, engine.ShellQuote(password)) {
 					t.Fatalf("plan output leaks the password %q:\n%s", password, shown)
 				}
-				if !strings.Contains(shown, "MYSQL_PWD=***") {
-					t.Fatalf("plan output should show the redacted MYSQL_PWD placeholder:\n%s", shown)
+				if !strings.Contains(shown, tc.envVar+"=***;") {
+					t.Fatalf("plan output should show the redacted %s=*** placeholder:\n%s", tc.envVar, shown)
 				}
 
 				if len(plan.DatabaseActions) != 1 {
@@ -439,7 +450,7 @@ func TestSyncPlanNeverContainsTheDBPassword(t *testing.T) {
 				if err != nil {
 					t.Fatalf("the action never ran a command: %v", err)
 				}
-				want := "export MYSQL_PWD=" + engine.ShellQuote(password) + ";"
+				want := "export " + tc.envVar + "=" + engine.ShellQuote(password) + ";"
 				if !strings.Contains(string(calls), want) {
 					t.Fatalf("executed command must carry the real password %q, calls:\n%s", want, calls)
 				}

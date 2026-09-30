@@ -41,6 +41,10 @@ const (
 	SyncScopeDB    = "DB"
 )
 
+// Descriptions and Commands are display-only text for plans and the
+// confirmation prompt. Commands may carry redacted placeholders (for example
+// the DB password as ***), so they must never be executed; execution uses
+// RsyncCommands and DatabaseActions, which hold the real commands.
 type SyncExecutionPlan struct {
 	Descriptions    []string
 	RsyncScopes     []string
