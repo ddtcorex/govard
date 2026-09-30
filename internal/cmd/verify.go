@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -189,9 +190,23 @@ Examples:
 		if jsonOut {
 			var combined verify.RunResult
 			var first bool
+			var recordErr error
 			for p := 1; p <= 5; p++ {
 				res, err := verify.RunPhase(ctx, cfg, p, opts)
+				if p == 4 {
+					recordErr = res.RecordErr
+				}
 				if err != nil {
+					if p == 5 && errors.Is(err, verify.ErrNeedSnapshot) && recordErr != nil {
+						// Fail closed before the destructive phase, but keep
+						// what phases 1-4 found: render them, then report why
+						// phase 5 cannot start.
+						combined.RefreshStatus()
+						if rerr := renderVerifyResult(cmd, combined, true); rerr != nil {
+							return rerr
+						}
+						return recordFailure(recordErr)
+					}
 					// A gate block is reported as a JSON envelope, exactly like
 					// the explicit phase-5 checks above; returning silently left
 					// stdout empty for a consumer that asked for --json.
@@ -217,9 +232,18 @@ Examples:
 		}
 		var combined verify.RunResult
 		var first bool
+		var recordErr error
 		for p := 1; p <= 5; p++ {
 			res, err := verify.RunPhase(ctx, cfg, p, opts)
+			if p == 4 {
+				recordErr = res.RecordErr
+			}
 			if err != nil {
+				// Phases 1-4 were rendered as they finished; only the reason
+				// phase 5 cannot start needs to be made specific.
+				if p == 5 && errors.Is(err, verify.ErrNeedSnapshot) && recordErr != nil {
+					return recordFailure(recordErr)
+				}
 				return err
 			}
 			if !first {
@@ -236,6 +260,12 @@ Examples:
 		combined.RefreshStatus()
 		return summarise(cmd.ErrOrStderr(), combined)
 	},
+}
+
+// recordFailure names the failed phase-4 record write as the reason phase 5
+// cannot start, keeping the underlying error reachable with errors.Is.
+func recordFailure(cause error) error {
+	return fmt.Errorf("%w: %v; phase 5 needs it", verify.ErrRunNotRecorded, cause)
 }
 
 func renderVerifyResult(cmd *cobra.Command, res verify.RunResult, jsonOut bool) error {

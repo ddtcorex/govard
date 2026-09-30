@@ -23,6 +23,10 @@ var GovardVersion = "1.68.0"
 var (
 	ErrNeedSnapshot         = errors.New("need snapshot create (P4-08) first")
 	ErrNeedAllowDestructive = errors.New("need --allow-destructive for phase 5")
+	// ErrRunNotRecorded is returned by the all-phases CLI path when phase 4's
+	// artifact could not be written and phase 5's snapshot gate therefore cannot
+	// open. It wraps the write error so the operator sees the real cause.
+	ErrRunNotRecorded = errors.New("phase 4 result could not be recorded")
 )
 
 // VerifyRunsDir returns the root directory for verify JSON runs. Run artifacts
@@ -155,6 +159,10 @@ type RunResult struct {
 	Status        string    `json:"status,omitempty"`
 	Fake          bool      `json:"fake,omitempty"`
 	Items         []RunItem `json:"items"`
+
+	// RecordErr is why the run artifact could not be written, or nil. It is not
+	// part of the artifact and never changes Status.
+	RecordErr error `json:"-"`
 }
 
 // Failed reports whether any item exited non-zero.
@@ -326,6 +334,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 	// The artifact is always written: the phase-5 gate reads it, and --json only
 	// shapes stdout. A write failure is a warning, never part of the verdict.
 	if err := writeRunArtifact(res, phase, opts); err != nil {
+		res.RecordErr = err
 		fmt.Fprintf(os.Stderr, "warning: could not record the verify run artifact: %v\n", err)
 	}
 
@@ -434,11 +443,11 @@ func PreflightPhaseSelection(phases []int, opts VerifyOpts) error {
 	if opts.Plan {
 		return nil
 	}
-	has5, has4 := false, false
+	has5, has4, hasAll := false, false, false
 	for _, p := range phases {
 		switch p {
 		case 0:
-			has5 = true
+			has5, hasAll = true, true
 		case 4:
 			has4 = true
 		case 5:
@@ -451,13 +460,7 @@ func PreflightPhaseSelection(phases []int, opts VerifyOpts) error {
 	if !opts.AllowDestructive {
 		return ErrNeedAllowDestructive
 	}
-	recordedInRun := has4
-	for _, p := range phases {
-		if p == 0 {
-			recordedInRun = false
-		}
-	}
-	if recordedInRun {
+	if has4 && !hasAll {
 		return nil
 	}
 	return checkP5Gate(opts)

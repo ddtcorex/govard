@@ -7,7 +7,9 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/pterm/pterm"
@@ -186,7 +188,7 @@ func TestVerifyAllPhasesWithoutTheFlagRunsNothing(t *testing.T) {
 	}
 }
 
-// TestVerifyAllPhasesHumanRunWritesArtifactsAndReachesPhase5 drives the whole
+// TestVerifyAllPhasesHumanRunReachesPhase5 drives the whole
 // public path without --json: phase 4 must leave the artifact phase 5 reads.
 func TestVerifyAllPhasesHumanRunReachesPhase5(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
@@ -207,5 +209,67 @@ func TestVerifyAllPhasesHumanRunReachesPhase5(t *testing.T) {
 	}
 	if _, ok := verify.GateSatisfyingSnapshot(verify.VerifyOpts{ProjectRoot: project}); !ok {
 		t.Fatal("no gate-satisfying artifact after a human-mode run")
+	}
+}
+
+// TestVerifyAllPhasesKeepsPhases1To4WhenTheRecordCannotBeWritten: with an
+// unwritable runs dir phase 5 fails closed (its gate cannot see phase 4), but
+// with an error that names the failed record write, and the phase 1-4 results
+// are still rendered in both output modes.
+func TestVerifyAllPhasesKeepsPhases1To4WhenTheRecordCannotBeWritten(t *testing.T) {
+	for _, jsonFlag := range []bool{true, false} {
+		name := "human"
+		if jsonFlag {
+			name = "json"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+			project := t.TempDir()
+			makeSnapshot(t, project, "20260101-000000", "2026-01-01T00:00:00Z")
+			// A regular file where the runs dir belongs: MkdirAll fails.
+			runsDir := verify.ProjectRunsDir(project)
+			if err := os.MkdirAll(filepath.Dir(runsDir), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(runsDir, []byte("not a directory"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			fakeAllExec(t)
+
+			stdout := &bytes.Buffer{}
+			pterm.SetDefaultOutput(stdout)
+			t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
+			root := cmd.RootCommandForTest()
+			root.SetOut(stdout)
+			root.SetErr(io.Discard)
+			root.SetArgs([]string{"verify", "--project", project, "--allow-destructive", "--yes=false",
+				"--json=" + strconv.FormatBool(jsonFlag)})
+
+			err := root.Execute()
+			if !errors.Is(err, verify.ErrRunNotRecorded) {
+				t.Fatalf("Execute() = %v, want ErrRunNotRecorded", err)
+			}
+			if errors.Is(err, verify.ErrNeedSnapshot) {
+				t.Fatalf("error %q is the generic snapshot error, want the record failure", err)
+			}
+			out := stdout.String()
+			if !strings.Contains(out, "P4-08") || strings.Contains(out, "P5-01") {
+				t.Fatalf("output must carry phases 1-4 and no phase 5 item:\n%s", out)
+			}
+			if jsonFlag {
+				var payload struct {
+					Phase string `json:"phase"`
+					Items []struct {
+						ID string `json:"id"`
+					} `json:"items"`
+				}
+				if e := json.Unmarshal(stdout.Bytes(), &payload); e != nil {
+					t.Fatalf("stdout is not one JSON document: %v\n%s", e, out)
+				}
+				if payload.Phase != "all" || len(payload.Items) == 0 {
+					t.Fatalf("merged result = %+v, want phase all with the phase 1-4 items", payload)
+				}
+			}
+		})
 	}
 }
