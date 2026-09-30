@@ -59,6 +59,10 @@ func captureItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) m
 	return first
 }
 
+// captureSnapshotSeq numbers the snapshots the capture fake creates, so each
+// `snapshot create` adds a new name to a shared project root.
+var captureSnapshotSeq int
+
 // captureAllItemArgvs is captureItemArgvsForExit over both answers a child can
 // give, concatenated: neither exit code alone reaches every argv an item can
 // build. An item that branches on the exit code (P1-06 runs `lock diff` only
@@ -70,10 +74,6 @@ func captureItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) m
 //
 // The map holds every invocation, in order, and the same argv can appear twice
 // when both exit codes reach it.
-// captureSnapshotSeq numbers the snapshots the capture fake creates, so each
-// `snapshot create` adds a new name to a shared project root.
-var captureSnapshotSeq int
-
 func captureAllItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) map[string][][]string {
 	t.Helper()
 

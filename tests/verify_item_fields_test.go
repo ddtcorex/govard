@@ -31,7 +31,7 @@ func TestGuardRemoteProbeLabel(t *testing.T) {
 	}
 	for _, it := range verify.Registry {
 		if it.Guard == "READ-ONLY-REMOTE" {
-			t.Errorf("%s still carries the retired REMOTE-PROBE label", it.ID)
+			t.Errorf("%s still carries the retired READ-ONLY-REMOTE label", it.ID)
 		}
 	}
 }

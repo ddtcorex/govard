@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -302,7 +303,7 @@ func TestP502FailsWhenDownVolumesFails(t *testing.T) {
 // minCalls is the lower bound of exec calls under an all-green fake. P1-06 is
 // listed with 1 because its diff step runs only when the check fails.
 var acceptedCompoundTitles = map[string]int{
-	"P1-06": 1, // "govard lock check + govard lock diff": diff only on a failed check
+	"P1-06": 1, // "govard lock check (+ lock diff on failure)": diff only on a failed check
 	"P2-01": 3,
 	"P2-07": 3,
 	"P3-15": 4,
@@ -310,14 +311,28 @@ var acceptedCompoundTitles = map[string]int{
 	"P5-02": 2,
 }
 
+// slashToken matches a whitespace-delimited word of two letter-only parts joined
+// by one slash, the way a title spells `pull/push`.
+var slashToken = regexp.MustCompile(`(^|\s)[A-Za-z-]+/[A-Za-z-]+($|\s)`)
+
+// titleSlashTokensThatArePaths are slash tokens that are one path, not two steps.
+var titleSlashTokensThatArePaths = map[string]bool{"web/tailwind": true}
+
 func TestEveryTitleMatchesItsArgvCount(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 
-	markers := []string{" -> ", " + ", " x4", " / ", " OR ", " or "}
+	markers := []string{" -> ", " + ", "(+ ", " x4", " / ", " OR ", " or "}
 	for _, it := range verify.Registry {
 		compound := false
 		for _, m := range markers {
 			if strings.Contains(it.Title, m) {
+				compound = true
+			}
+		}
+		// A bare `pull/push` token names two subcommands without any spaces.
+		// Path-like tokens are listed in titleSlashTokensThatArePaths.
+		for _, tok := range slashToken.FindAllString(it.Title, -1) {
+			if !titleSlashTokensThatArePaths[strings.TrimSpace(tok)] {
 				compound = true
 			}
 		}

@@ -637,7 +637,7 @@ var Registry = []Item{
 	{ID: "P1-05", Phase: 1, Title: "govard env config", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "env", "config")
 	}},
-	{ID: "P1-06", Phase: 1, Title: "govard lock check + govard lock diff", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P1-06", Phase: 1, Title: "govard lock check (+ lock diff on failure)", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		// A project with no lock file has nothing to check. Generating one here
 		// would write a tracked file from a verify phase, so the row skips and
 		// names the command that creates it. A lock that exists and disagrees
@@ -826,7 +826,7 @@ var Registry = []Item{
 		}
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-15", Phase: 3, Title: "govard audit status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Requires: "P3-10 or P3-11 done", Guard: "", Checks: []string{"integrity"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-15", Phase: 3, Title: "govard audit run --checks integrity (creates the session) -> status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Requires: "—", Guard: "", Checks: []string{"integrity"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return auditLifecycleEvidence(ctx, cfg, opts)
 	}},
 
@@ -980,7 +980,7 @@ var Registry = []Item{
 	{ID: "P5-07", Phase: 5, Title: "govard tool magento deploy:mode:show", Requires: "P5-05 done", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "deploy:mode:show")
 	}},
-	{ID: "P5-08", Phase: 5, Title: "govard snapshot pull/push --help", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-08", Phase: 5, Title: "govard snapshot pull --help", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "snapshot", "pull", "--help")
 	}},
 }
