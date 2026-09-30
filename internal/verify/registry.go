@@ -45,7 +45,8 @@ type Evidence struct {
 	Skipped    bool
 	SkipReason string
 	// Fake marks evidence that no real process produced (the hermetic test
-	// hook). It flows to the run artifact so a fake run never reads as a pass.
+	// hook). It flows to the run artifact, which then carries a fake marker
+	// (Status stays passed).
 	Fake bool
 }
 

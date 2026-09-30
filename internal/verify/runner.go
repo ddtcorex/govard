@@ -210,7 +210,6 @@ func (r *RunResult) RefreshStatus() {
 			break
 		}
 	}
-
 }
 
 // RunItem is one entry in RunResult. A skipped row is additive: an artifact

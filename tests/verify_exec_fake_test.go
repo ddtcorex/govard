@@ -68,12 +68,51 @@ func TestFakeEvidenceMarksTheRunArtifact(t *testing.T) {
 	real := verify.RunResult{Items: []verify.RunItem{{ID: "Y"}}}
 	real.RefreshStatus()
 	rb, _ := json.Marshal(real)
-	if string(rb) == "" || real.Fake || real.Status != "passed" {
+	if real.Fake || real.Status != "passed" {
 		t.Fatalf("real run must stay unmarked and passed: %+v", real)
 	}
 	var rm map[string]any
 	_ = json.Unmarshal(rb, &rm)
 	if _, ok := rm["fake"]; ok {
 		t.Fatalf("real run artifact must omit fake: %s", rb)
+	}
+}
+
+func TestRunPhaseWritesFakeMarkerToTheArtifact(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	t.Setenv("GOVARD_VERIFY_FAKE", "1")
+	t.Setenv(verify.EnvBinaryOverride, "")
+	root := t.TempDir()
+
+	if _, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 1,
+		verify.VerifyOpts{JSON: true, ProjectRoot: root}); err != nil {
+		t.Fatalf("RunPhase: %v", err)
+	}
+	entries, err := os.ReadDir(verify.ProjectRunsDir(root))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("no artifact written: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(verify.ProjectRunsDir(root), entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Fake  bool `json:"fake"`
+		Items []struct {
+			Fake bool `json:"fake"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if !doc.Fake {
+		t.Fatalf("written run file lacks top-level fake: %s", b)
+	}
+	perItem := false
+	for _, it := range doc.Items {
+		perItem = perItem || it.Fake
+	}
+	if !perItem {
+		t.Fatalf("written run file has no per-item fake marker: %s", b)
 	}
 }
