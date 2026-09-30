@@ -153,6 +153,7 @@ type RunResult struct {
 	Phase         string    `json:"phase"`
 	Mode          string    `json:"mode,omitempty"`
 	Status        string    `json:"status,omitempty"`
+	Fake          bool      `json:"fake,omitempty"`
 	Items         []RunItem `json:"items"`
 }
 
@@ -199,6 +200,17 @@ func (r *RunResult) RefreshStatus() {
 	if r.Failed() {
 		r.Status = "failed"
 	}
+	// Fake is the top-level marker: a run containing any fake item carries it,
+	// so the artifact cannot be read as a real pass. Status keeps its two
+	// values for consumers that predate the field.
+	r.Fake = false
+	for _, it := range r.Items {
+		if it.Fake {
+			r.Fake = true
+			break
+		}
+	}
+
 }
 
 // RunItem is one entry in RunResult. A skipped row is additive: an artifact
@@ -215,6 +227,7 @@ type RunItem struct {
 	Artifacts       []string `json:"artifacts,omitempty"`
 	Skipped         bool     `json:"skipped,omitempty"`
 	SkipReason      string   `json:"skip_reason,omitempty"`
+	Fake            bool     `json:"fake,omitempty"`
 }
 
 // RunPhase executes the filtered registry for a single phase and optionally
@@ -309,6 +322,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 			Artifacts:       ev.Artifacts,
 			Skipped:         ev.Skipped,
 			SkipReason:      ev.SkipReason,
+			Fake:            ev.Fake,
 		})
 	}
 

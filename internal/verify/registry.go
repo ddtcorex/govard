@@ -44,6 +44,9 @@ type Evidence struct {
 	// SkipReason says why. See Skip.
 	Skipped    bool
 	SkipReason string
+	// Fake marks evidence that no real process produced (the hermetic test
+	// hook). It flows to the run artifact so a fake run never reads as a pass.
+	Fake bool
 }
 
 // The Guard values an item may carry. DecideGuard is their only reader:

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,12 +34,16 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 			return ev
 		}
 	}
-	if os.Getenv("GOVARD_VERIFY_FAKE") == "1" {
-		return Evidence{ExitCode: 0, OutputExcerpt: "fake: " + strings.Join(args, " "), JSONValid: false}
-	}
 	bin := govardBinary()
+	// Both fake paths are hermetic-test hooks. They fire only when the binary
+	// that would run is a go test binary, so a production run can never be
+	// turned green by a stray GOVARD_VERIFY_FAKE=1 (issue #519).
 	if isTestBinary(bin) {
-		return Evidence{ExitCode: 0, OutputExcerpt: "fake(test-binary): " + strings.Join(args, " "), JSONValid: false}
+		prefix := "fake(test-binary): "
+		if os.Getenv("GOVARD_VERIFY_FAKE") == "1" {
+			prefix = "fake: "
+		}
+		return Evidence{ExitCode: 0, OutputExcerpt: prefix + strings.Join(args, " "), JSONValid: false, Fake: true}
 	}
 	start := time.Now()
 	// Build command — run from ProjectRoot via cmd.Dir, not --project flag (most govard commands don't have it)
@@ -97,21 +102,17 @@ func govardBinary() string {
 // GovardBinaryForTest exposes govardBinary for tests in /tests.
 func GovardBinaryForTest() string { return govardBinary() }
 
+// isTestBinary reports whether bin is a go test binary. Only the basename
+// counts: a directory such as govard.test/ or a name such as x.testing must not
+// match, or a real install path would fake every result.
 func isTestBinary(bin string) bool {
-	if strings.Contains(bin, ".test") {
-		return true
-	}
-	if exe, err := os.Executable(); err == nil && exe != "" {
-		if strings.Contains(exe, ".test") {
-			return true
-		}
-		if bin == exe && strings.HasSuffix(exe, ".test") {
-			return true
-		}
-	}
-	// Also treat go test binary invocation as test.
-	if strings.HasSuffix(os.Args[0], ".test") {
-		return true
-	}
-	return false
+	return strings.HasSuffix(filepath.Base(bin), ".test")
+}
+
+// IsTestBinaryForTest exposes isTestBinary for tests in /tests.
+func IsTestBinaryForTest(bin string) bool { return isTestBinary(bin) }
+
+// ExecGovardForTest exposes execGovard for tests in /tests.
+func ExecGovardForTest(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ...string) Evidence {
+	return execGovard(ctx, cfg, opts, args...)
 }
