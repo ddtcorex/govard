@@ -100,7 +100,7 @@ Magento 2 là framework được hỗ trợ sâu sắc nhất trong Govard.
 
 ### Các tính năng chính
 
-- `govard config auto` tự động cấu hình DB, cache, search, Varnish và các URL cơ sở vào `app/etc/env.php`.
+- `govard config auto` tự động cấu hình DB, cache, search, Varnish và các URL cơ sở vào `app/etc/env.php`; khi bước sửa cấu hình để lại `app/etc/config.php` với đúng các dòng cũ nhưng khác thứ tự, Govard ghi lại đúng các byte gốc để file đang được track không bị bẩn.
 - `govard tool magento [command]` chạy Magento CLI (`bin/magento`) bên trong container PHP.
 - `govard tool magerun [command]` (Phím tắt: `mr`) chạy `n98-magerun2` bên trong container PHP.
 - `govard tool magento cron:install` cài đặt các crontab bên trong container.

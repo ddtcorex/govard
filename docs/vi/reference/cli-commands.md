@@ -1199,6 +1199,14 @@ govard config profile apply       # Áp dụng profile đề xuất vào .govard
 govard config auto                # Magento 2: inject các thiết lập kết nối vào env.php
 ```
 
+`config auto` chạy bước sửa cấu hình của Magento (`app:config:import`, và nếu
+import chưa đủ thì chuyển sang `setup:upgrade`) ngay khi một lệnh báo rằng cần
+đến nó. Khi bước đó để lại `app/etc/config.php` với đúng các dòng cũ nhưng khác
+thứ tự, Govard ghi lại đúng các byte gốc để file đang được track không bị bẩn.
+Một thay đổi module thật sẽ được giữ nguyên, và một thao tác khôi phục mà Govard
+không ghi được — checkout read-only, hoặc config.php thuộc container — chỉ được
+báo dưới dạng cảnh báo, không phải báo lỗi Magento.
+
 `config get` đọc được cả block `deploy:` bên cạnh các key của project và stack:
 `deploy.keep_releases` (số lượng hiệu lực), `deploy.command_timeout`,
 `deploy.maintenance_timeout`, `deploy.lock_stale_after`, `deploy.artifact_dir`,

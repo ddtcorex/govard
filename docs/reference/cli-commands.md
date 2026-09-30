@@ -1228,6 +1228,14 @@ govard config profile apply       # Apply recommended profile to .govard.yml
 govard config auto                # Magento 2: inject settings into env.php
 ```
 
+`config auto` runs Magento's config-repair step (`app:config:import`, falling back
+to `setup:upgrade` when the import was not enough) once a command reports it needs
+one. When that step leaves `app/etc/config.php` holding the same lines in a
+different order, Govard writes the original bytes back so the tracked file stays
+clean. A genuine module change is left alone, and a restore it cannot write — a
+read-only checkout, or a config.php the container owns — is reported as a warning,
+not as a failed Magento command.
+
 `config get` reads the `deploy:` block as well as the project and stack keys:
 `deploy.keep_releases` (the effective count), `deploy.command_timeout`,
 `deploy.maintenance_timeout`, `deploy.lock_stale_after`, `deploy.artifact_dir`,
