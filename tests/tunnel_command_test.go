@@ -133,8 +133,8 @@ framework: laravel
 			}
 			return fakeProvider, nil
 		},
-		RunCommand: func(_ *exec.Cmd) error {
-			t.Fatal("did not expect command execution in --plan mode")
+		StartProcess: func(_ *exec.Cmd) error {
+			t.Fatal("did not expect a process start in --plan mode")
 			return nil
 		},
 	})
@@ -199,8 +199,8 @@ framework: laravel
 				},
 			}, nil
 		},
-		RunCommand: func(_ *exec.Cmd) error {
-			return errors.New("unexpected command run")
+		StartProcess: func(_ *exec.Cmd) error {
+			return errors.New("unexpected process start")
 		},
 	})
 	defer restore()
@@ -574,7 +574,6 @@ func TestTunnelStartRecordsAndClearsThePIDItStarted(t *testing.T) {
 				Binary: "/bin/sleep", Args: []string{"30"},
 			}}, nil
 		},
-		RunCommand: func(command *exec.Cmd) error { return command.Run() },
 	})
 	defer restore()
 
@@ -635,7 +634,6 @@ func TestTunnelStartRefusesWhileItsOwnTunnelIsRunning(t *testing.T) {
 				Binary: "/bin/sleep", Args: []string{"30"},
 			}}, nil
 		},
-		RunCommand: func(command *exec.Cmd) error { return command.Run() },
 	})
 	defer restore()
 

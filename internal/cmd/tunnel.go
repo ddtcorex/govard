@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -21,8 +22,11 @@ import (
 )
 
 type tunnelCommandDependencies struct {
-	NewProvider     func(ref engine.ProviderRef) (tunnel.Provider, error)
-	RunCommand      func(command *exec.Cmd) error
+	NewProvider func(ref engine.ProviderRef) (tunnel.Provider, error)
+	// StartProcess launches the provider process. It is the one step between
+	// the pre-start record check and the exclusive record write, so a test can
+	// land a competing start's record exactly there without racing a goroutine.
+	StartProcess    func(process *exec.Cmd) error
 	ReadProcessArgv func(pid int) (string, bool)
 	ProcessAlive    func(pid int) bool
 	SignalProcess   func(pid int, sig os.Signal) error
@@ -36,10 +40,8 @@ type tunnelCommandDependencies struct {
 }
 
 var tunnelDeps = tunnelCommandDependencies{
-	NewProvider: tunnel.NewProvider,
-	RunCommand: func(command *exec.Cmd) error {
-		return command.Run()
-	},
+	NewProvider:     tunnel.NewProvider,
+	StartProcess:    startTunnelProcess,
 	ReadProcessArgv: readProcessArgv,
 	ProcessAlive:    processAlive,
 	SignalProcess:   signalProcess,
@@ -50,7 +52,7 @@ var tunnelDeps = tunnelCommandDependencies{
 // TunnelDependenciesForTest allows tests to swap tunnel command dependencies.
 type TunnelDependenciesForTest struct {
 	NewProvider     func(ref engine.ProviderRef) (tunnel.Provider, error)
-	RunCommand      func(command *exec.Cmd) error
+	StartProcess    func(process *exec.Cmd) error
 	ReadProcessArgv func(pid int) (string, bool)
 	ProcessAlive    func(pid int) bool
 	SignalProcess   func(pid int, sig os.Signal) error
@@ -130,7 +132,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 
 		targetURL, err := resolveTunnelTarget(config, targetFlag, args)
 		if err != nil {
-			return err
+			return &tunnelValidationError{err: err}
 		}
 
 		provider, err := tunnelDeps.NewProvider(engine.ProviderRef{
@@ -138,7 +140,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 			Name: providerName,
 		})
 		if err != nil {
-			return err
+			return &tunnelValidationError{err: err}
 		}
 
 		// We will NOT override the Host header for tunnels by default.
@@ -152,7 +154,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 			HostHeader:  hostHeader,
 		})
 		if err != nil {
-			return err
+			return &tunnelValidationError{err: err}
 		}
 
 		if planOnly {
@@ -175,13 +177,12 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 		}
 		if recorded {
 			if recordIsLiveAndOwned(record, tunnelDeps.ProcessAlive, tunnelDeps.ReadProcessArgv) {
-				return fmt.Errorf(
-					"govard already started a tunnel for %q (pid %d): run 'govard tunnel stop' first",
-					config.ProjectName, record.PID)
+				return tunnelAlreadyStartedError(config.ProjectName, record.PID)
 			}
 			// The recorded process is gone, or its pid was recycled; either way
-			// this record points at nothing govard owns.
-			clearTunnelPID(config.ProjectName)
+			// this record points at nothing govard owns. Only that record is
+			// removed: a concurrent start may already have replaced it.
+			clearTunnelPIDIfOwner(config.ProjectName, record.PID)
 		}
 
 		mgr := frameworks.NewBaseURLManager(config.Framework)
@@ -197,16 +198,19 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 		stderr, _ := process.StderrPipe()
 		process.Stdout = cmd.OutOrStdout()
 
-		if err := process.Start(); err != nil {
-			return fmt.Errorf("failed to start tunnel provider %s: %w", provider.Name(), err)
+		if err := tunnelDeps.StartProcess(process); err != nil {
+			return &tunnelRuntimeError{err: fmt.Errorf("failed to start tunnel provider %s: %w", provider.Name(), err)}
 		}
+		startedPID := process.Process.Pid
 
 		// Handle Revert on exit
 		var tunnelHost string
 		defer func() {
 			// The record lives exactly as long as the process it names, so a
-			// crash, a Ctrl+C or a `tunnel stop` all leave none behind.
-			clearTunnelPID(config.ProjectName)
+			// crash, a Ctrl+C or a `tunnel stop` all leave none behind. Only a
+			// record naming this start's own process is removed: a start that
+			// lost the race to the record must leave the winner's in place.
+			clearTunnelPIDIfOwner(config.ProjectName, startedPID)
 			if tunnelHost != "" {
 				pterm.Info.Printf("Cleaning up tunnel alias for %s...\n", tunnelHost)
 				_ = proxy.UnregisterDomain(tunnelHost)
@@ -223,8 +227,9 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 		if resolved, lookErr := exec.LookPath(plan.Binary); lookErr == nil {
 			argv[0] = resolved
 		}
-		if err := recordTunnelPID(config.ProjectName, process.Process.Pid, argv); err != nil {
-			// A tunnel govard cannot stop is not a tunnel worth leaving running.
+		if err := claimTunnelPIDRecord(config.ProjectName, startedPID, argv); err != nil {
+			// A tunnel govard cannot stop is not a tunnel worth leaving running,
+			// and neither is one that lost the record to a concurrent start.
 			_ = process.Process.Kill()
 			_ = process.Wait()
 			return err
@@ -267,7 +272,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 			if isInterruptExit(err) || isTerminationExit(err) {
 				return nil
 			}
-			return fmt.Errorf("tunnel provider %s failed: %w", provider.Name(), err)
+			return &tunnelRuntimeError{err: fmt.Errorf("tunnel provider %s failed: %w", provider.Name(), err)}
 		}
 
 		operationStatus = engine.OperationStatusSuccess
@@ -349,7 +354,7 @@ var tunnelStatusCmd = &cobra.Command{
 		}
 		if !tunnelDeps.ProcessAlive(record.PID) {
 			// Nothing is running under that pid: the record is what is stale.
-			clearTunnelPID(config.ProjectName)
+			clearTunnelPIDIfOwner(config.ProjectName, record.PID)
 			pterm.Info.Println("Tunnel is INACTIVE (stale record removed).")
 			return nil
 		}
@@ -402,21 +407,39 @@ func resolveTunnelTarget(config engine.Config, targetFlag string, args []string)
 	return "https://" + domain, nil
 }
 
+// tunnelValidationError marks a failure caused by the operator's input: the
+// target URL, the provider name, or a plan the provider refused to build.
+type tunnelValidationError struct{ err error }
+
+func (e *tunnelValidationError) Error() string { return e.err.Error() }
+func (e *tunnelValidationError) Unwrap() error { return e.err }
+
+// tunnelRuntimeError marks a failure of the provider process itself: it could
+// not be started, or it ended with an error.
+type tunnelRuntimeError struct{ err error }
+
+func (e *tunnelRuntimeError) Error() string { return e.err.Error() }
+func (e *tunnelRuntimeError) Unwrap() error { return e.err }
+
+// classifyTunnelError reads the category the call site attached to the error.
+// An error with no category (a PID record failure, an ownership refusal) is a
+// runtime failure. The message text is never consulted: runtime failures name
+// the provider too, so a word match filed a cloudflared crash as validation.
 func classifyTunnelError(err error) string {
 	if err == nil {
 		return ""
 	}
-	message := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(message, "specify either positional"),
-		strings.Contains(message, "target url"),
-		strings.Contains(message, "domain is required"),
-		strings.Contains(message, "unsupported"),
-		strings.Contains(message, "provider"):
+	var validation *tunnelValidationError
+	if errors.As(err, &validation) {
 		return "validation"
-	default:
-		return "runtime"
 	}
+	return "runtime"
+}
+
+// startTunnelProcess is the production StartProcess: it starts the provider
+// without waiting for it, so the caller can record the pid while it runs.
+func startTunnelProcess(process *exec.Cmd) error {
+	return process.Start()
 }
 
 // SetTunnelDependenciesForTest swaps tunnel command dependencies and returns a restore callback.
@@ -427,10 +450,10 @@ func SetTunnelDependenciesForTest(deps TunnelDependenciesForTest) func() {
 	} else {
 		tunnelDeps.NewProvider = tunnel.NewProvider
 	}
-	if deps.RunCommand != nil {
-		tunnelDeps.RunCommand = deps.RunCommand
+	if deps.StartProcess != nil {
+		tunnelDeps.StartProcess = deps.StartProcess
 	} else {
-		tunnelDeps.RunCommand = func(command *exec.Cmd) error { return command.Run() }
+		tunnelDeps.StartProcess = startTunnelProcess
 	}
 	if deps.ReadProcessArgv != nil {
 		tunnelDeps.ReadProcessArgv = deps.ReadProcessArgv
