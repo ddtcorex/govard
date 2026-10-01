@@ -655,7 +655,7 @@ Target legacy-staging is deployable
 `deploy check` không để lại gì trên target. Probe `mv -T` mà một target dạng symlink cần tạo
 một thư mục tạm `.dep` (và, trên một host mới, các tầng còn thiếu của deploy path phía trên
 nó) rồi xoá chúng đi, còn một target local mà deploy path chưa tồn tại sẽ có một note, in
-đầu tiên và không có dấu, nêu parent mà probe quyền ghi đã dùng thay thế.
+trước các note khác và không có dấu, nêu parent mà probe quyền ghi đã dùng thay thế.
 
 Note nào xuất hiện còn tuỳ target và lần chạy: chiến lược symlink thêm
 `atomic symlink rename: supported`, sandbox thêm việc mirror đã được refresh, artifact

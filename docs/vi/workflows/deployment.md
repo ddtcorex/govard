@@ -1524,10 +1524,12 @@ file, không phải sửa dòng lệnh. Exit `1` vẫn dành cho một remote *�
 hình nhưng không đọc được target, và đó chính là điều mà script phân nhánh theo
 exit code đang đọc.
 
-`deploy check` và `deploy status` theo cùng quy tắc: một key `deploy.settings` gõ sai, một
+`deploy check` và `deploy status` dùng chung các mã cấu hình và dùng lệnh: một key `deploy.settings` gõ sai, một
 project không load được và một project không có remote nào là lỗi cấu hình (`4`), một
-remote positional mâu thuẫn với `--remote` là lỗi dùng lệnh (`2`), và `1` nghĩa là không
-remote nào đã cấu hình tới được. `deploy status --json` vẫn in mảng các dòng theo từng
+remote positional mâu thuẫn với `--remote` là lỗi dùng lệnh (`2`), cũng như `deploy check`
+không nêu remote nào. Exit `1` thì khác: với `check` nó nghĩa là preflight fail hoặc target
+được nêu tên không tới được, với `status` nó nghĩa là không remote nào đã cấu hình tới được.
+`deploy status --json` vẫn in mảng các dòng theo từng
 remote (dòng không tới được có status `unknown` và một `error`) nhưng thoát `1` khi mọi
 remote đều không tới được, như chế độ bảng, với lý do ra stderr; khi không có remote nào
 được cấu hình, nó thoát `4` và không in dòng nào.

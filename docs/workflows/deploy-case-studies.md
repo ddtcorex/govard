@@ -662,7 +662,7 @@ Target legacy-staging is deployable
 `deploy check` leaves nothing behind on the target. The `mv -T` probe a symlink target
 needs creates a `.dep` scratch directory (and, on a fresh host, the missing levels of
 the deploy path above it) and removes them again, and a local target whose deploy path
-does not exist yet gets a note, printed first and without a marker, naming the parent
+does not exist yet gets a note, printed before the other notes and without a marker, naming the parent
 the writability probe used instead.
 
 Which notes appear depends on the target and the run: the symlink strategy adds

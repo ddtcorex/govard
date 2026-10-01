@@ -1624,10 +1624,12 @@ to the file, never to the command line. Exit `1` stays for a remote that *is*
 configured and whose target could not be read, which is the distinction a
 script branching on the exit code is reading.
 
-`deploy check` and `deploy status` follow the same rule: a mistyped `deploy.settings`
+`deploy check` and `deploy status` share the configuration and usage codes: a mistyped `deploy.settings`
 key, a project that cannot be loaded and a project with no remotes are configuration
 errors (`4`), a positional remote that contradicts `--remote` is a usage error
-(`2`), and `1` means no configured remote could be reached. `deploy status --json`
+(`2`), as is a `deploy check` with no remote named. Exit `1` differs: for `check` it
+means the preflight failed or the named target could not be reached, for `status` it
+means no configured remote could be reached. `deploy status --json`
 still prints the array of per-remote rows (an unreachable one has status `unknown`
 and an `error`) but exits `1` when every remote is unreachable, like table mode,
 with the reason on stderr; with no remotes configured it exits `4` and prints no
