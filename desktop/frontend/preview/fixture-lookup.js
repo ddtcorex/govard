@@ -1,11 +1,11 @@
 // @ts-check
 
 /**
- * @param {{service:string, method:string, args:any[], result?:any, error?:string}[]} fixtures
+ * @param {{service:string, method:string, args:any[], result?:any, error?:string, delayMs?:number}[]} fixtures
  * @param {string} service
  * @param {string} method
  * @param {any[]} args
- * @returns {{found:false} | {found:true, result?:any, error?:string}}
+ * @returns {{found:false} | {found:true, result?:any, error?:string, delayMs?:number}}
  */
 export function resolveFixtureResponse(fixtures, service, method, args) {
   const sameRoute = fixtures.filter((f) => f.service === service && f.method === method);
@@ -15,8 +15,10 @@ export function resolveFixtureResponse(fixtures, service, method, args) {
   if (!candidate) {
     return { found: false };
   }
+  // delayMs is only present when the fixture declares one.
+  const delay = "delayMs" in candidate ? { delayMs: Number(candidate.delayMs) } : {};
   if ("error" in candidate) {
-    return { found: true, error: candidate.error };
+    return { found: true, error: candidate.error, ...delay };
   }
-  return { found: true, result: candidate.result };
+  return { found: true, result: candidate.result, ...delay };
 }

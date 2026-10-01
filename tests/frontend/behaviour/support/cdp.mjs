@@ -41,6 +41,12 @@ export function launchChrome({ chromeBin, port, userDataDir }) {
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-dev-shm-usage",
+    // A headless tab can be classed as backgrounded or occluded, which throttles
+    // its timers to 1 s or worse. Scenarios that wait on a 300 ms close or a
+    // 2 s poll must see the timers they set, so none of that throttling may apply.
+    "--disable-background-timer-throttling",
+    "--disable-renderer-backgrounding",
+    "--disable-backgrounding-occluded-windows",
   ]);
   // Keep Chrome's last output so a start failure names its cause.
   let output = "";

@@ -345,3 +345,41 @@ test("an unmounted island's registered API cannot still reach the bridge", async
   );
   assert.deepEqual(session.consoleErrors, []);
 });
+
+test("the log pane keeps loading until its latest request settles", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await loadGlobalServices(session);
+  await session.waitFor(
+    `document.getElementById("globalLogOutput").textContent.includes("serving sample-project.test")`,
+    true,
+  );
+
+  // Two overlapping refreshes: the first answers after 400 ms, the second after
+  // 2000 ms. The route delay is read when a call is made, so it is set per click.
+  const refresh = `document.querySelector("[data-testid='refresh-global-logs']").click()`;
+  await session.evaluate(`window.__govardPreviewRouteDelayMs = 400`);
+  await session.evaluate(refresh);
+  await session.evaluate(`window.__govardPreviewRouteDelayMs = 2000`);
+  await session.evaluate(refresh);
+  await session.evaluate(`window.__govardPreviewRouteDelayMs = 0`);
+
+  // The first request has settled by now; the newest one has not.
+  await session.evaluate(`new Promise((r) => setTimeout(r, 1000))`);
+  assert.equal(
+    await text(session, "#globalLogOutput"),
+    "Loading logs...",
+    "an older request settling must not end the loading state of the newest one",
+  );
+  await session.waitFor(
+    `document.getElementById("globalLogOutput").textContent.includes("serving sample-project.test")`,
+    true,
+    { timeoutMs: 5000 },
+  );
+});

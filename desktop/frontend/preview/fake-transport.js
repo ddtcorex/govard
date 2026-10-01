@@ -43,14 +43,16 @@ export function installFakeTransport() {
       // a call is in flight (the sync dialog reopening after a close that landed
       // during its option fetch), and an instant fixture cannot show them. The call
       // is recorded above, so call counting is unaffected by the delay.
+      const resolved = resolveFixtureResponse(getFixtures(), route.service, route.method, callArgs);
       const routeDelayMs =
         typeof window === "undefined"
           ? 0
           : Number(window.__govardPreviewRouteDelayMs || 0);
-      if (routeDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, routeDelayMs));
+      // A fixture's own delayMs slows only the calls that resolve to it.
+      const delayMs = routeDelayMs + (resolved.found ? Number(resolved.delayMs || 0) : 0);
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
-      const resolved = resolveFixtureResponse(getFixtures(), route.service, route.method, callArgs);
       if (resolved.found && "error" in resolved) {
         throw new Error(String(resolved.error));
       }
