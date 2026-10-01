@@ -122,10 +122,10 @@ func FreshCommands(opts bootstrap.Options) []string {
 // config.platform.php = opts.PHPVersion, and dependencies are installed
 // against that platform. Extension and library requirements stay ignored as
 // before, but the php requirement is enforced, so the resolved vendor tree
-// parses on the container's PHP. Without a PHP version, or on Composer 1
-// (which has no --ignore-platform-req=<name> option, and whose
-// --ignore-platform-reqs would make the pin inert), the command is the
-// original single create-project.
+// parses on the container's PHP. Without a PHP version, or on a Composer
+// older than 2.2 (Composer 1 has no --ignore-platform-req=<name> option and
+// 2.0/2.1 have no ext-* wildcard, while --ignore-platform-reqs would make the
+// pin inert), the command is the original single create-project.
 func BuildFreshCreateProjectCommand(variant FamilyVariant, opts bootstrap.Options) string {
 	versionPart := ""
 	if opts.Version != "" {
@@ -134,7 +134,7 @@ func BuildFreshCreateProjectCommand(variant FamilyVariant, opts bootstrap.Option
 	const stagingDir = "/tmp/govard-create-project"
 	syncStep := "if command -v rsync >/dev/null 2>&1; then rsync -a " + stagingDir + "/ " + conventions.DefaultWorkDir + "/; else cp -a " + stagingDir + "/. " + conventions.DefaultWorkDir + "/; fi"
 
-	if opts.PHPVersion == "" || isComposerMajorOne(opts.ComposerVersion) {
+	if !platformPinApplies(opts.PHPVersion, opts.ComposerVersion) {
 		return strings.Join([]string{
 			"set -e",
 			"rm -rf " + stagingDir,
@@ -159,11 +159,21 @@ func BuildFreshCreateProjectCommand(variant FamilyVariant, opts bootstrap.Option
 	}, " && ")
 }
 
-// isComposerMajorOne reports whether a Composer version pin selects
-// Composer 1 ("1" or "1.x.y").
-func isComposerMajorOne(version string) bool {
-	version = strings.TrimSpace(version)
-	return version == "1" || strings.HasPrefix(version, "1.")
+// platformPinApplies reports whether a composer platform.php pin can be
+// written and honored: the PHP version is known and the Composer pin selects
+// 2.2 or later. "" and "latest" mean the newest Composer, and "2" downloads
+// the newest 2.x; a pin below 2.2, or one that does not parse, keeps the
+// unpinned commands.
+func platformPinApplies(phpVersion, composerVersion string) bool {
+	if strings.TrimSpace(phpVersion) == "" {
+		return false
+	}
+	composerVersion = strings.TrimSpace(composerVersion)
+	switch composerVersion {
+	case "", "latest", "2":
+		return true
+	}
+	return engine.IsNumericDotVersionAtLeast(composerVersion, "2.2")
 }
 
 // magentoOpenSearchEngineMinVersion is the first Magento line whose
@@ -249,6 +259,9 @@ func FreshInstall(variant FamilyVariant, opts bootstrap.Options, projectDir stri
 
 	commandLine := BuildFreshCreateProjectCommand(variant, opts)
 	if err := opts.Runner(commandLine); err != nil {
+		if platformPinApplies(opts.PHPVersion, opts.ComposerVersion) {
+			return fmt.Errorf("fresh create-project failed: %w (composer resolved dependencies for PHP %s, the project's stack.php_version; if this %s version needs another PHP, run `govard config set stack.php_version <version>` and retry)", err, opts.PHPVersion, variant.DisplayName)
+		}
 		return fmt.Errorf("fresh create-project failed: %w", err)
 	}
 

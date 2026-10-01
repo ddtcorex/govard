@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -187,5 +188,80 @@ func TestComposerPlatformPinMatchesProfilePHP(t *testing.T) {
 func TestProfileJSONHasNoUnknownFields(t *testing.T) {
 	if err := magento2.ValidateProfilesJSONStrictForTest(); err != nil {
 		t.Fatalf("profiles.json has a field the loader does not model: %v", err)
+	}
+}
+
+// TestFreshCreateProjectComposerBelow22KeepsLegacyCommand pins that a
+// Composer 2.0 or 2.1 pin keeps the legacy command: the ext-* wildcard of
+// --ignore-platform-req only exists from Composer 2.2.
+func TestFreshCreateProjectComposerBelow22KeepsLegacyCommand(t *testing.T) {
+	for _, composerVersion := range []string{"2.0", "2.1", "2.1.14", "2.0.0"} {
+		got := magento2.BuildFreshCreateProjectCommand(magento2.Variant, bootstrap.Options{
+			MetaPackage:     "magento/project-community-edition",
+			Version:         "2.4.6",
+			PHPVersion:      "8.2",
+			ComposerVersion: composerVersion,
+		})
+		if got != legacyFreshCreateProject {
+			t.Errorf("composer %s: expected the legacy command, got %s", composerVersion, got)
+		}
+	}
+}
+
+// TestFreshCreateProjectPinsForComposer22AndLater pins that every Composer
+// 2.2+ selector (including "2", which downloads the newest 2.x) takes the
+// platform-pinned path.
+func TestFreshCreateProjectPinsForComposer22AndLater(t *testing.T) {
+	for _, composerVersion := range []string{"", "latest", "2", "2.2", "2.2.26", "2.7", "2.10"} {
+		got := magento2.BuildFreshCreateProjectCommand(magento2.Variant, bootstrap.Options{
+			MetaPackage:     "magento/project-community-edition",
+			Version:         "2.4.6",
+			PHPVersion:      "8.2",
+			ComposerVersion: composerVersion,
+		})
+		if !strings.Contains(got, "config platform.php '8.2'") {
+			t.Errorf("composer %q: expected the platform pin, got %s", composerVersion, got)
+		}
+	}
+}
+
+func freshInstallHelpersForTest() bootstrap.CmdHelpers {
+	return bootstrap.CmdHelpers{
+		EnsureAuthJSON:           func() error { return nil },
+		FixComposerCompatibility: func() error { return nil },
+	}
+}
+
+// TestFreshInstallFailureNamesThePHPPinWhenPinned asserts a failed
+// platform-pinned create-project tells the user which PHP composer resolved
+// for and how to change it.
+func TestFreshInstallFailureNamesThePHPPinWhenPinned(t *testing.T) {
+	err := magento2.FreshInstall(magento2.Variant, bootstrap.Options{
+		MetaPackage: "magento/project-community-edition",
+		Version:     "2.4.9",
+		PHPVersion:  "8.2",
+		Runner:      func(string) error { return errors.New("exit status 2") },
+	}, t.TempDir(), freshInstallHelpersForTest())
+	if err == nil {
+		t.Fatal("expected FreshInstall to fail")
+	}
+	msg := err.Error()
+	for _, want := range []string{"fresh create-project failed", "exit status 2", "PHP 8.2", "stack.php_version", "govard config set stack.php_version"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected %q in error, got %q", want, msg)
+		}
+	}
+}
+
+// TestFreshInstallFailureHasNoPHPHintWhenUnpinned asserts the legacy path
+// keeps its original error text.
+func TestFreshInstallFailureHasNoPHPHintWhenUnpinned(t *testing.T) {
+	err := magento2.FreshInstall(magento2.Variant, bootstrap.Options{
+		MetaPackage: "magento/project-community-edition",
+		Version:     "2.4.9",
+		Runner:      func(string) error { return errors.New("exit status 2") },
+	}, t.TempDir(), freshInstallHelpersForTest())
+	if err == nil || err.Error() != "fresh create-project failed: exit status 2" {
+		t.Fatalf("expected the unchanged error, got %v", err)
 	}
 }
