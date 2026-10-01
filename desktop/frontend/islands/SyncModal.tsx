@@ -78,6 +78,8 @@ export function SyncModal({
   const [step, setStep] = useState<"options" | "preview">("options");
   const [planText, setPlanText] = useState("");
   const [planLoading, setPlanLoading] = useState(false);
+  /** True only while the shown plan is one the backend really produced. */
+  const [planOk, setPlanOk] = useState(false);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Bumped by every open and every close: only the newest open may reveal itself. */
@@ -119,6 +121,7 @@ export function SyncModal({
     // Reset to step 1 after the close animation, as the vanilla code did.
     setStep("options");
     setPlanText("");
+    setPlanOk(false);
     setPlanLoading(false);
   }, [setPhase]);
 
@@ -150,6 +153,7 @@ export function SyncModal({
       setPreset(presetName);
       setStep("options");
       setPlanText("");
+      setPlanOk(false);
       setPlanLoading(false);
       setState({
         currentSyncRemote: remoteName,
@@ -256,6 +260,7 @@ export function SyncModal({
     previewRequest.current = request;
     setStep("preview");
     setPlanText("");
+    setPlanOk(false);
     setPlanLoading(true);
 
     try {
@@ -263,8 +268,11 @@ export function SyncModal({
       if (previewRequest.current !== request) {
         return;
       }
-      const normalizedPlan = sanitizeSyncPlanText(plan) || "No plan details returned.";
+      const sanitizedPlan = sanitizeSyncPlanText(plan);
+      const normalizedPlan = sanitizedPlan || "No plan details returned.";
       setPlanText(`${planDetails}\n\n${normalizedPlan}`);
+      // An empty plan is shown but is not one the user can confirm.
+      setPlanOk(Boolean(sanitizedPlan));
     } catch (err) {
       if (previewRequest.current !== request) {
         return;
@@ -442,7 +450,7 @@ export function SyncModal({
                 data-testid="confirm-sync"
                 id="confirmSyncBtn"
                 className="px-5 py-2 bg-primary text-slate-900 rounded-lg text-sm font-bold hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95"
-                disabled={planLoading || !planText}
+                disabled={planLoading || !planOk}
                 onClick={confirm}
               >
                 <span className="material-symbols-outlined text-[16px] transition-colors">

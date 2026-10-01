@@ -504,9 +504,9 @@ test("a rejected background sync clears the progress card and syncing flags", as
       "a failed sync must clear the syncing flags",
     );
     assert.equal(
-      await session.evaluate(`document.querySelector("#toastContainer .toast--error") !== null`),
-      true,
-      "a failed sync raises an error toast",
+      await session.evaluate(`document.querySelectorAll("#toastContainer .toast--error").length`),
+      1,
+      "a failed sync raises exactly one error toast",
     );
     await session.evaluate(
       `document.querySelectorAll("#toastContainer .toast").forEach((el) => el.remove())`,
@@ -562,6 +562,121 @@ test("escape closes the sync modal the moment it appears (#484)", async (t) => {
       { timeoutMs: 3000 },
     );
   }
+
+  assert.deepEqual(session.consoleErrors, []);
+});
+
+test("execute stays disabled after a failed plan preview", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+  await openModal(session, "db");
+  await session.waitFor(
+    `document.querySelectorAll("#syncModalOptionsContainer input").length`,
+    2,
+  );
+  // Only the untouched config fails; the toggled one falls through to the
+  // fixture's good plan.
+  await session.evaluate(`window.__govardPreview.appendFixtures([
+    { service: "RemoteService", method: "RunRemoteSyncPreset", args: [${JSON.stringify(PROJECT)}, "staging", "db", { noNoise: false, noPii: false }], error: "plan backend down" },
+  ])`);
+
+  await clickPreview(session);
+  await session.waitFor(
+    `document.querySelector("${PLAN}").textContent.includes("Failed to generate plan")`,
+    true,
+  );
+  assert.equal(
+    await session.evaluate(`${CONFIRM}.disabled`),
+    true,
+    "a failure message is not a plan: Execute must stay disabled",
+  );
+  await session.evaluate(`${CONFIRM}.click()`);
+  await quiet(session, 200);
+  assert.equal(
+    await session.evaluate(
+      `window.__govardPreview.getCalls().some((c) => c.method === "RunRemoteSync")`,
+    ),
+    false,
+    "no sync may start from a failed plan",
+  );
+
+  await session.evaluate(
+    `document.querySelector("[data-testid='back-to-sync-options']").click()`,
+  );
+  await session.evaluate(`document.querySelector("#syncModalOptionsContainer input").click()`);
+  await clickPreview(session);
+  await session.waitFor(
+    `document.querySelector("${PLAN}").textContent.includes("full snapshot")`,
+    true,
+  );
+  assert.equal(
+    await session.evaluate(`${CONFIRM}.disabled`),
+    false,
+    "a later successful preview enables Execute",
+  );
+});
+
+test("the sync modal closes on transitionend, not only on the fallback timer", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+  await openModal(session, "db");
+  await session.waitFor(
+    `document.getElementById("${MODAL}").className.includes("opacity-0")`,
+    false,
+  );
+
+  // Park the 300 ms fallback far away and switch the CSS transitions off, so the
+  // browser fires no transitionend of its own: only the events dispatched below
+  // can settle the close. Timers set while it is patched are the only ones
+  // affected.
+  await session.evaluate(`(() => {
+    const style = document.createElement("style");
+    style.id = "no-transitions";
+    style.textContent = "#${MODAL}, #${MODAL} * { transition: none !important; }";
+    document.head.append(style);
+    window.__realSetTimeout = window.setTimeout;
+    window.setTimeout = (fn, ms, ...rest) =>
+      window.__realSetTimeout(fn, ms === 300 ? 600000 : ms, ...rest);
+    document.querySelector("[data-testid='close-sync-modal']").click();
+  })()`);
+  await session.waitFor(
+    `document.getElementById("${MODAL}").className.includes("opacity-0")`,
+    true,
+  );
+  await session.evaluate(`window.setTimeout = window.__realSetTimeout`);
+
+  // The dialog card's own transform transition bubbles up and must not close it.
+  await session.evaluate(`document.getElementById("${MODAL}").firstElementChild.dispatchEvent(
+    new TransitionEvent("transitionend", { propertyName: "transform", bubbles: true }))`);
+  await quiet(session, 300);
+  assert.equal(
+    await session.evaluate(`document.getElementById("${MODAL}").classList.contains("hidden")`),
+    false,
+    "a bubbled transform transition must not settle the close",
+  );
+
+  // The backdrop's opacity transition ending does.
+  await session.evaluate(`document.getElementById("${MODAL}").dispatchEvent(
+    new TransitionEvent("transitionend", { propertyName: "opacity", bubbles: true }))`);
+  await session.waitFor(
+    `document.getElementById("${MODAL}").classList.contains("hidden")`,
+    true,
+    { timeoutMs: 2000 },
+  );
 
   assert.deepEqual(session.consoleErrors, []);
 });
