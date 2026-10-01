@@ -37,6 +37,15 @@ type Options struct {
 	HyvaInstall   bool
 	IncludeSample bool
 
+	// PHPVersion is the PHP version the project's runtime container runs
+	// (the effective config.Stack.PHPVersion). The Magento family's fresh
+	// install pins composer's platform.php to it so dependency resolution
+	// matches the container. Empty means unknown: no pin is applied.
+	PHPVersion string
+	// ComposerVersion is the Composer version the runtime is pinned to
+	// (engine.ResolveComposerVersion). Empty or "latest" means Composer 2.
+	ComposerVersion string
+
 	// Database credentials for local configuration
 	DBHost      string
 	DBUser      string

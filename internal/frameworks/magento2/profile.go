@@ -1,6 +1,7 @@
 package magento2
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -73,6 +74,22 @@ func init() {
 	if data, err := profilesJSON.ReadFile("profiles.json"); err == nil {
 		_ = json.Unmarshal(data, &profiles)
 	}
+}
+
+// ValidateProfilesJSONStrictForTest decodes the embedded profiles.json with
+// DisallowUnknownFields and returns the first decode error, so tests catch a
+// key the structs above do not model. The runtime loader in init stays
+// lenient on purpose: a strict decode failure there would leave every
+// profile empty.
+func ValidateProfilesJSONStrictForTest() error {
+	data, err := profilesJSON.ReadFile("profiles.json")
+	if err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var registry profileRegistry
+	return decoder.Decode(&registry)
 }
 
 // ResolveVersionProfile owns Magento 2's patch-level runtime compatibility

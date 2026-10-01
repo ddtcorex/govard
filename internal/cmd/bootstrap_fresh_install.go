@@ -46,6 +46,10 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 		MetaPackage:   opts.MetaPackage,
 		HyvaInstall:   opts.HyvaInstall,
 		IncludeSample: opts.IncludeSample,
+		// The runtime PHP and Composer versions let a framework pin
+		// dependency resolution to the container it installs into.
+		PHPVersion:      config.Stack.PHPVersion,
+		ComposerVersion: engine.ResolveComposerVersion(config),
 		Runner: func(command string) error {
 			return runPHPContainerShellCommand(config, command)
 		},
