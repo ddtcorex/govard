@@ -100,8 +100,10 @@ Magento 2 is the deepest supported workflow in Govard.
 
 ### Key Features
 
-- `govard config auto` injects DB, cache, search, Varnish, and base URLs into `app/etc/env.php`; when its config-repair step leaves `app/etc/config.php` holding the same lines in a different order, Govard writes the original bytes back so the tracked file stays clean
+- `govard config auto` injects DB, cache, search, Varnish, and base URLs into `app/etc/env.php`; when its config-repair step leaves `app/etc/config.php` holding the same lines in a different order, Govard writes the original bytes back so the tracked file stays clean, including after the retry it makes once a read-only search index is unblocked
 - `govard tool magento [command]` runs Magento CLI (`bin/magento`) inside the PHP container
+- The search engine value follows Adobe's documentation per line: `setup:install` and `config auto` (`catalog/search/engine`) use `elasticsearch7` for lines before 2.4.6, even with an OpenSearch backend, and `opensearch` from 2.4.6 when the service is OpenSearch
+- A fresh install (`govard bootstrap` with no project yet) pins `config.platform.php` in the generated `composer.json` to the project's PHP (`stack.php_version`) before dependencies are installed, so Composer refuses a requirement above that PHP instead of leaving a vendor tree that does not parse on it. The pin needs Composer 2.2 or later and a known PHP version; a failed pinned install names `stack.php_version` and the `govard config set stack.php_version <version>` command that changes it
 - `govard tool magerun [command]` (Shortcut: `mr`) runs `n98-magerun2` inside the PHP container
 - `govard tool magento cron:install` installs crontabs inside the container
 - Optional Selenium/MFTF support (`mftf: true` in features)
@@ -174,6 +176,7 @@ What `govard upgrade` does for Magento 2:
 - Resolves correct PHP/MariaDB/Search versions for the target
 - Smart Composer merge (preserves your modules and custom repos)
 - Automatically relaxes version constraints for dev tools (`phpunit`, `phpmd`)
+- Refreshes `config.platform.php` in `composer.json` to the target's PHP right before `composer update` (Composer 2.2 or later and a known PHP only), so a pin written for the previous PHP does not outlive the upgrade; it overwrites an existing pin, including one you set on purpose, and a failing refresh stops the upgrade
 - Handles `composer update`, `setup:upgrade`, and static content compilation
 
 ### Multi-Website / Multi-Store Setup
