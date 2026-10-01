@@ -696,6 +696,23 @@ Key features:
 - Production write protection by default
 - Audit logs: `~/.govard/remote.log`
 
+`remote exec` runs whatever shell command you give it on the remote, and it sits
+**outside** the write-protection gate: nothing inspects the command, protected
+remotes included, so the operator owns what is run. The help example is read-only on
+purpose (`govard remote exec staging -- "df -h /var/www"`). `remote exec`,
+`remote test` and `remote copy-id` take an alias of a configured remote (`stg`,
+`STAGE`) and resolve it to the configured name first, so the key and auth settings
+stored for that remote are the ones used and the audit events carry the configured
+name.
+
+`remote add` validates before it writes anything: an invalid name or an out-of-range
+`--port` (negative or above 65535) exits `4` with the config file and the auth store
+untouched, and a config file that cannot be written exits non-zero instead of
+printing a success line. The same holds for `config set`, `domain add|remove`,
+`profile apply` and `debug on|off`: a resulting config that fails validation exits
+`4` and leaves `.govard.yml` as it was, a failed write is an error, and `debug on|off`
+do not start the environment after a failed save.
+
 `remote list` prints a NAME/HOST/CAPABILITIES/AUTH/KEY table over the
 configured remotes plus the synthetic `sandbox (implicit)` row, whose host column
 carries the state (`running`, `dormant — …`, `absent — …`) and whose capabilities
@@ -725,9 +742,17 @@ When `--media` is used without a mode, Govard defaults it to `optimized`.
 live container — the same remote `govard deploy --remote sandbox` uses — so no
 `remotes.sandbox` block is required, and a configured block can only shape the
 rehearsal (capabilities, protection, deploy settings), never repoint the
-transfer. `sync` itself declares no Docker requirement, so a Docker-less host
-asked for `-e sandbox` exits `3` with `CAPABILITY_MISSING`; with Docker but no
-container it exits `1` naming `govard sandbox up` as the remedy.
+transfer. A Docker-less host asked for `-e sandbox` exits `3` with
+`CAPABILITY_MISSING`; with Docker but no container it exits `1` naming
+`govard sandbox up` as the remedy.
+
+`sync` needs a container runtime only for the database scope: `--db` and `--full`
+move the database through the local database container, so without one they exit `3`
+with `CAPABILITY_MISSING` before any remote is contacted, while `--plan` is exempt
+and a files or media sync needs no Docker. `--plan` and the confirmation summary show
+the database password as `export MYSQL_PWD=***;` (or `export PGPASSWORD=***;` for
+PostgreSQL) in place of the value; those lines are display text, and the command that
+runs still carries the real one.
 
 **Key flags:**
 
@@ -758,6 +783,12 @@ govard db import --file backup.sql --drop
 govard db import --stream-db -e staging --drop
 govard db clone-volume warden_magento2_dbdata
 ```
+
+A dump file is private to its owner. `db dump` and `db import --stream-db` create the
+local file with mode `0600`, and an existing file that is broader is tightened to
+`0600` before anything is written to it. `db dump -e <remote>` without `--local` runs
+under `umask 077` on the remote, so the dump is `0600` and any directory it creates
+(such as `~/backup`) is `0700`.
 
 ### `govard deploy`
 
@@ -1119,6 +1150,13 @@ govard snapshot push before-deploy -e prod
 
 Subcommands: `create`, `list`, `restore`, `delete`, `export`, `pull`, `push`. `export` writes a `tar.gz` archive locally; `delete` removes the named snapshot. `pull`/`push` transfer snapshots between local and a named remote (`-e` flag).
 
+Snapshot files that hold a database dump are private to their owner: `create` writes
+`db.sql.gz` with mode `0600`, and `export` creates the archive with mode `0600`
+(tightening a broader existing file). A remote `create -e` runs under `umask 077`, so
+the directories it creates, such as `<path>/.govard/snapshots`, are `0700` and the
+files in them `0600`, and it finishes by writing the snapshot's `metadata.yml` (name,
+`created_at`, framework).
+
 ### `govard open`
 
 Open common browser targets.
@@ -1133,9 +1171,12 @@ govard open db --client
 govard open db -e staging
 ```
 
+`open db` prints the connection URL with the password masked as `***` (no password
+section when none is set); the database client is handed the full URL.
+
 ### `govard tunnel`
 
-Manage public tunnels (requires `cloudflared`). Govard registers the tunnel domain in Caddy as an alias, keeps the original `Host` header intact, and rewrites the framework base URL (Magento, Laravel, etc.) for the session — restoring it on `tunnel stop` or `Ctrl+C`.
+Manage public tunnels (`start` requires `cloudflared`; `stop` and `status` do not). Govard registers the tunnel domain in Caddy as an alias, keeps the original `Host` header intact, and rewrites the framework base URL (Magento, Laravel, etc.) for the session — restoring it on `tunnel stop` or `Ctrl+C`.
 
 ```bash
 govard tunnel start
@@ -1154,7 +1195,11 @@ govard tunnel stop
 
 `start` records the process it launches (PID plus the argv it was started with)
 under `$GOVARD_HOME_DIR/tunnels/<project>.pid`, and refuses to start a second
-tunnel while that one is still live. `stop` and `status` read that record rather
+tunnel while that one is still live. The record is created exclusively, so two
+starts racing for the same project cannot both win: the loser stops the provider
+process it launched, leaves the winner's record and base URL alone and fails with the
+same refusal, while a record whose process is gone, or whose PID now runs something
+else, is replaced by the next start. `stop` and `status` read that record rather
 than searching the host, so neither reaches a `cloudflared` govard did not start
 — unless it is running the very command line the record names, which another
 copy of the same binary is indistinguishable from: `stop` signals the recorded
@@ -1278,7 +1323,7 @@ govard config auto                # Magento 2: inject settings into env.php
 to `setup:upgrade` when the import was not enough) once a command reports it needs
 one. When that step leaves `app/etc/config.php` holding the same lines in a
 different order, Govard writes the original bytes back so the tracked file stays
-clean. A genuine module change is left alone, and a restore it cannot write — a
+clean, retry after an unblocked read-only search index included. A genuine module change is left alone, and a restore it cannot write — a
 read-only checkout, or a config.php the container owns — is reported as a warning,
 not as a failed Magento command.
 

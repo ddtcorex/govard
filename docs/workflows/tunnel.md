@@ -28,7 +28,9 @@ Verify:
 cloudflared --version
 ```
 
-Govard never bundles `cloudflared` — you manage its install/upgrade yourself.
+Govard never bundles `cloudflared` — you manage its install/upgrade yourself. Only
+`govard tunnel start` needs it: `tunnel stop` and `tunnel status` read the PID record
+described below and run without `cloudflared`.
 
 ---
 
@@ -82,6 +84,12 @@ no tunnel, because a record nobody can interpret is not the same as no record
 and assuming so would strand a running tunnel. Remove the file once you have
 checked the tunnel by hand.
 
+The record is created exclusively, so starting a second tunnel for a project while one
+govard started is still running is refused, including when two starts race: the loser
+stops the provider process it launched, leaves the winner's record and base URL alone,
+and fails with the same refusal. A record whose process is gone, or whose PID now runs
+something else, is replaced by the next start.
+
 With no record, `tunnel stop` is a no-op that says so and exits 0, so it is
 safe to run twice. The project's base URL is restored either way, except when
 a signal was refused — there the tunnel is still up, so the base URL keeps
@@ -125,7 +133,7 @@ some other program happens to own the recorded PID.
 
 | Symptom | Fix |
 | :--- | :--- |
-| `cloudflared: command not found` | Install `cloudflared` first (see Prerequisites). |
+| `cloudflared: command not found` | Install `cloudflared` first (see Prerequisites); only `tunnel start` needs it. |
 | Tunnel URL shows Govard 404 | Run `govard env up` first — the project must be running so Caddy has a backend. |
 | Base URL not restored after Ctrl+C | Run `govard tunnel stop` or `govard config auto` (Magento 2) to re-apply the local URL. |
 | `tunnel status` says no tunnel | Govard has no tunnel of its own running. `status` reads the recorded PID, so it also says this when the tunnel died and left a stale record (which it clears), or when another program took over that PID. |

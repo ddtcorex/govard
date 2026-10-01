@@ -689,6 +689,21 @@ Các tính năng chính:
 - Tự động bảo vệ chống ghi đè cho môi trường production.
 - Ghi nhật ký lịch sử thao tác: `~/.govard/remote.log`.
 
+`remote exec` chạy bất kỳ lệnh shell nào bạn đưa vào trên remote, và nó nằm **ngoài** gate
+bảo vệ ghi: không có gì kiểm tra lệnh đó, kể cả với remote được bảo vệ, nên người vận hành
+tự chịu trách nhiệm về thứ mình chạy. Ví dụ trong help cố ý là lệnh chỉ đọc
+(`govard remote exec staging -- "df -h /var/www"`). `remote exec`, `remote test` và
+`remote copy-id` nhận một alias của remote đã cấu hình (`stg`, `STAGE`) và resolve nó
+về tên đã cấu hình trước, nên key và cấu hình auth lưu cho remote đó mới là thứ được dùng
+và các sự kiện audit mang tên đã cấu hình.
+
+`remote add` kiểm tra trước khi ghi bất cứ thứ gì: tên không hợp lệ hoặc `--port` ngoài
+phạm vi (âm hoặc lớn hơn 65535) thoát `4`, file cấu hình và auth store nguyên vẹn, còn
+file cấu hình không ghi được thì thoát khác 0 thay vì in dòng thành công. Điều tương tự
+áp dụng cho `config set`, `domain add|remove`, `profile apply` và `debug on|off`: cấu hình
+kết quả không qua validate thì thoát `4` và để `.govard.yml` như cũ, ghi hỏng là một lỗi,
+và `debug on|off` không khởi động môi trường sau một lần lưu hỏng.
+
 `remote list` in bảng NAME/HOST/CAPABILITIES/AUTH/KEY gồm các remote đã cấu
 hình cộng dòng synthetic `sandbox (implicit)`, trong đó cột HOST mang trạng thái
 (`running`, `dormant — …`, `absent — …`) và cột CAPABILITIES mang đúng những gì
@@ -717,10 +732,16 @@ Khi cờ `--media` được gọi mà không truyền mode cụ thể, Govard s�
 container đang chạy — cùng một remote mà `govard deploy --remote sandbox` dùng —
 nên không cần block `remotes.sandbox`; và nếu đã có block, block chỉ định hình
 buổi diễn tập (capabilities, protection, cấu hình `deploy`), không bao giờ trỏ
-lại luồng truyền sang máy khác. Bản thân `sync` không yêu cầu Docker, nên trên
-máy không có Docker mà được yêu cầu `-e sandbox` thì lệnh thoát với mã `3` và
-`CAPABILITY_MISSING`; còn khi có Docker nhưng chưa có container thì thoát với mã
-`1` kèm lời nhắc chạy `govard sandbox up`.
+lại luồng truyền sang máy khác. Trên máy không có Docker mà được yêu cầu `-e sandbox`
+thì lệnh thoát với mã `3` và `CAPABILITY_MISSING`; còn khi có Docker nhưng chưa có
+container thì thoát với mã `1` kèm lời nhắc chạy `govard sandbox up`.
+
+`sync` chỉ cần container runtime cho phạm vi database: `--db` và `--full` chuyển database
+qua container database local, nên khi thiếu nó thì thoát `3` với `CAPABILITY_MISSING` trước
+khi liên lạc với bất kỳ remote nào, còn `--plan` được miễn và sync file hay media không cần
+Docker. `--plan` và bản tóm tắt xác nhận hiện mật khẩu database dưới dạng
+`export MYSQL_PWD=***;` (hoặc `export PGPASSWORD=***;` với PostgreSQL) thay cho giá trị thật;
+các dòng đó chỉ là văn bản hiển thị, còn lệnh được chạy vẫn mang giá trị thật.
 
 **Các cờ chính:**
 
@@ -751,6 +772,11 @@ govard db import --file backup.sql --drop
 govard db import --stream-db -e staging --drop
 govard db clone-volume warden_magento2_dbdata
 ```
+
+File dump chỉ thuộc về chủ sở hữu của nó. `db dump` và `db import --stream-db` tạo file
+local với mode `0600`, và một file đã tồn tại mà rộng quyền hơn thì bị siết về `0600` trước
+khi ghi bất cứ thứ gì vào. `db dump -e <remote>` không kèm `--local` chạy dưới `umask 077`
+trên remote, nên dump là `0600` và mọi thư mục nó tạo (như `~/backup`) là `0700`.
 
 ### `govard deploy`
 
@@ -1089,6 +1115,12 @@ govard snapshot push before-deploy -e prod
 
 Các lệnh con: `create`, `list`, `restore`, `delete`, `export`, `pull`, `push`. `export` ghi ra file `tar.gz` local; `delete` xóa snapshot theo tên. `pull`/`push` chuyển snapshot giữa local và remote có tên (`-e`).
 
+Các file snapshot chứa database dump chỉ thuộc về chủ sở hữu: `create` ghi `db.sql.gz` với
+mode `0600`, và `export` tạo archive với mode `0600` (siết một file đã tồn tại mà rộng quyền
+hơn). `create -e` ở remote chạy dưới `umask 077`, nên các thư mục nó tạo, như
+`<path>/.govard/snapshots`, là `0700` và file trong đó là `0600`, và nó kết thúc bằng việc
+ghi `metadata.yml` của snapshot (tên, `created_at`, framework).
+
 ### `govard open`
 
 Mở nhanh các đường dẫn dịch vụ/ứng dụng trên trình duyệt.
@@ -1103,9 +1135,12 @@ govard open db --client
 govard open db -e staging
 ```
 
+`open db` in connection URL với mật khẩu được che bằng `***` (không có phần mật khẩu khi
+chưa đặt); database client nhận URL đầy đủ.
+
 ### `govard tunnel`
 
-Quản lý các đường link public tunnel (yêu cầu cài đặt `cloudflared`). Govard đăng ký domain tunnel trong Caddy như alias, giữ nguyên `Host` header, và tự động rewrite base URL của framework (Magento, Laravel, …) — khôi phục khi `tunnel stop` hoặc `Ctrl+C`.
+Quản lý các đường link public tunnel (`start` yêu cầu `cloudflared`; `stop` và `status` thì không). Govard đăng ký domain tunnel trong Caddy như alias, giữ nguyên `Host` header, và tự động rewrite base URL của framework (Magento, Laravel, …) — khôi phục khi `tunnel stop` hoặc `Ctrl+C`.
 
 ```bash
 govard tunnel start
@@ -1124,7 +1159,10 @@ govard tunnel stop
 
 `start` ghi lại tiến trình mà nó khởi chạy (PID cùng argv đã dùng để khởi chạy) vào
 `$GOVARD_HOME_DIR/tunnels/<project>.pid`, và từ chối khởi chạy tunnel thứ hai khi cái đó vẫn còn
-sống. `stop` và `status` đọc bản ghi đó thay vì dò trên máy, nên không lệnh nào đụng tới một
+sống. Bản ghi được tạo độc quyền, nên hai lần `start` chạy đua cho cùng một project không thể
+cùng thắng: bên thua dừng tiến trình provider nó đã khởi chạy, để nguyên bản ghi và base URL của
+bên thắng và thất bại với cùng lời từ chối, còn một bản ghi mà tiến trình đã chết, hoặc PID của nó
+giờ chạy thứ khác, sẽ được lần `start` kế tiếp thay thế. `stop` và `status` đọc bản ghi đó thay vì dò trên máy, nên không lệnh nào đụng tới một
 `cloudflared` mà govard không khởi chạy — trừ khi nó chạy đúng dòng lệnh mà bản ghi ghi, thứ mà một
 bản cài khác của cùng binary không phân biệt được: `stop` chỉ gửi tín hiệu tới PID đã ghi và chỉ khi
 argv của nó vẫn khớp, còn lại từ chối kèm lỗi — không gửi tín hiệu nào — nếu không khớp hoặc không đọc được
@@ -1244,7 +1282,7 @@ govard config auto                # Magento 2: inject các thiết lập kết n
 `config auto` chạy bước sửa cấu hình của Magento (`app:config:import`, và nếu
 import chưa đủ thì chuyển sang `setup:upgrade`) ngay khi một lệnh báo rằng cần
 đến nó. Khi bước đó để lại `app/etc/config.php` với đúng các dòng cũ nhưng khác
-thứ tự, Govard ghi lại đúng các byte gốc để file đang được track không bị bẩn.
+thứ tự, Govard ghi lại đúng các byte gốc để file đang được track không bị bẩn, kể cả sau lần thử lại khi một search index read-only được gỡ khoá.
 Một thay đổi module thật sẽ được giữ nguyên, và một thao tác khôi phục mà Govard
 không ghi được — checkout read-only, hoặc config.php thuộc container — chỉ được
 báo dưới dạng cảnh báo, không phải báo lỗi Magento.

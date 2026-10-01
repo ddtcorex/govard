@@ -59,6 +59,11 @@ govard remote audit tail --status failure --lines 50
 govard remote audit stats --lines 200
 ```
 
+`remote exec` chạy bất kỳ lệnh shell nào bạn đưa vào và nằm **ngoài** gate bảo vệ ghi, kể
+cả với remote được bảo vệ: không có gì kiểm tra lệnh đó, nên người vận hành tự chịu trách
+nhiệm về thứ mình chạy (ví dụ ở trên cố ý là lệnh chỉ đọc). Một alias như `stg` được
+resolve về remote đã cấu hình trước, nên key của nó và các sự kiện audit dùng tên đã cấu hình.
+
 **Đường dẫn file nhật ký (Audit log paths):**
 - `~/.govard/remote.log`
 - `~/.govard/operations.log`
@@ -199,6 +204,11 @@ thay vì báo tên chưa được cấu hình.
 | `-p, --path` | Chỉ định một file hoặc thư mục cụ thể tương đối với thư mục gốc dự án |
 | `-I, --include` | Cấu hình pattern bao gồm của rsync (có thể lặp lại nhiều lần) |
 | `-X, --exclude` | Cấu hình pattern loại trừ của rsync (có thể lặp lại nhiều lần) |
+
+Kế hoạch và bản tóm tắt xác nhận hiện mật khẩu database dưới dạng `export MYSQL_PWD=***;`
+(`export PGPASSWORD=***;` với PostgreSQL); lệnh được chạy vẫn mang giá trị thật. `--db` và
+`--full` còn cần container runtime (database đi qua container database local), trừ khi dùng
+`--plan`.
 
 ::: tip
 Nếu không truyền `--path`, toàn bộ thư mục gốc của dự án sẽ được đồng bộ — `govard sync` sẽ cảnh báo điều này trong kế hoạch trước khi hỏi xác nhận. Bạn cũng có thể bỏ qua `-p`/`--path` và truyền path dưới dạng tham số cuối cùng, ví dụ: `govard sync -s dev --file app/design/frontend/MyTheme`.
@@ -480,6 +490,10 @@ truyền đi, rồi được xoá bằng `rm -f`. Nếu kết nối SSH đứt g
 dọn dẹp không bao giờ chạy và file thô ở lại (phía remote không có trap — đây
 là giới hạn đã biết), nên hãy dump lại và tự xoá file thừa thay vì mặc định
 rằng nó đã mất.
+
+Bản thân file dump chỉ thuộc về chủ sở hữu: file local được tạo với `0600` (file đã có mà rộng
+quyền hơn thì bị siết trước), còn file remote do `db dump -e <remote>` ghi được tạo dưới
+`umask 077`, nên một thư mục nó tạo, như `~/backup`, là `0700`.
 
 ### Import dữ liệu
 
