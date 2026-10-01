@@ -18,11 +18,6 @@ import (
 //     version 2.4.6 and later, use the opensearch value for the OpenSearch
 //     engine."
 //     https://experienceleague.adobe.com/en/docs/commerce-operations/upgrade-guide/prepare/prerequisites
-//   - Composer for 2.4.0 and 2.4.1: "Adobe Commerce 2.4.2 introduced support
-//     for Composer 2."
-//     https://experienceleague.adobe.com/en/docs/commerce-operations/upgrade-guide/implementation/perform-upgrade
-//     and "2.4.2 is now compatible with Composer 2.x."
-//     https://experienceleague.adobe.com/en/docs/commerce-operations/release/notes/magento-open-source/2-4-2
 //
 // Lines that the system-requirements page no longer lists (2.4.0 to 2.4.3,
 // 2.3, 2.2, 2.1, 2.0) are not in the search table: their values were not
@@ -122,15 +117,13 @@ func TestSetupInstallArgsAreValidForEachLine(t *testing.T) {
 	}
 }
 
-// TestComposerPinPerVerifiedLine asserts the Composer major each verified
-// line resolves to: Composer 1 before 2.4.2, the 2.2 LTS where Adobe lists
-// 2.2.26+, and the newest Composer where Adobe lists 2.9.3+ or 2.10.
+// TestComposerPinPerVerifiedLine asserts the Composer version each verified
+// line resolves to: the 2.2 LTS where Adobe lists 2.2.26+, and the newest
+// Composer where Adobe lists 2.9.3+ or 2.10. 2.4.0 and 2.4.1 are left out on
+// purpose: Adobe documents Composer 1 for them, but Packagist shut down
+// Composer 1 support on 2025-09-01, so their "2.2" pin is unverified.
 func TestComposerPinPerVerifiedLine(t *testing.T) {
 	cases := map[string]string{
-		"2.4.0":     "1",
-		"2.4.0-p1":  "1",
-		"2.4.1":     "1",
-		"2.4.1-p1":  "1",
 		"2.4.4-p18": "2.2",
 		"2.4.5-p17": "2.2",
 		"2.4.6-p15": "2.2",

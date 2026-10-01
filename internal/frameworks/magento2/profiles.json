@@ -237,7 +237,7 @@
           "queue_version": "3.8",
           "varnish_version": "6.0",
           "nginx_version": "1.18",
-          "composer_version": "1"
+          "composer_version": "2.2"
         },
         {
           "patch": 0,
@@ -250,7 +250,7 @@
           "queue_version": "3.8",
           "varnish_version": "6.0",
           "nginx_version": "1.18",
-          "composer_version": "1"
+          "composer_version": "2.2"
         }
       ]
     },
