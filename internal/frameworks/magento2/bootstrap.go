@@ -166,6 +166,15 @@ func isComposerMajorOne(version string) bool {
 	return version == "1" || strings.HasPrefix(version, "1.")
 }
 
+// magentoOpenSearchEngineMinVersion is the first Magento line whose
+// setup:install and catalog/search/engine take the "opensearch" value for an
+// OpenSearch backend. Adobe: "For versions earlier than 2.4.6, use the
+// elasticsearch7 value for the Elasticsearch 7 or OpenSearch engine. For
+// version 2.4.6 and later, use the opensearch value for the OpenSearch
+// engine."
+// https://experienceleague.adobe.com/en/docs/commerce-operations/upgrade-guide/prepare/prerequisites
+const magentoOpenSearchEngineMinVersion = "2.4.6"
+
 // BuildSetupInstallArgs builds the `bin/magento setup:install` argument
 // list for variant - moved verbatim from internal/cmd/
 // bootstrap_post_install.go's runBootstrapPostInstall (the "build
@@ -173,15 +182,15 @@ func isComposerMajorOne(version string) bool {
 // internal/cmd/bootstrap_fresh_install.go's generic setup-install runner,
 // wired through CmdHelpers.RunFrameworkSetupInstall).
 //
-// The legacy elasticsearch7-vs-opensearch version gate is intentionally
-// magento2-only (variant.Name == "magento2"), matching the pre-existing
-// behavior exactly - Mage-OS versions always get OpenSearch regardless of
-// version, which is a known, pre-existing asymmetry this migration does
-// not change.
+// The elasticsearch7-vs-opensearch version gate is intentionally
+// magento2-only (variant.Name == "magento2") - Mage-OS versions always get
+// OpenSearch regardless of version, which is a known, pre-existing
+// asymmetry. Magento lines before 2.4.6 get elasticsearch7, 2.4.6 and later
+// get opensearch (see magentoOpenSearchEngineMinVersion).
 func BuildSetupInstallArgs(variant FamilyVariant, version string, adminEmail string, tablePrefix string) []string {
 	searchEngine := conventions.ServiceOpenSearch
 	if variant.Name == "magento2" && version != "" {
-		if comparison, comparable := engine.CompareNumericDotVersions(version, "2.4.8"); comparable && comparison < 0 {
+		if comparison, comparable := engine.CompareNumericDotVersions(version, magentoOpenSearchEngineMinVersion); comparable && comparison < 0 {
 			searchEngine = "elasticsearch7"
 		}
 	}

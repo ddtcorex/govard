@@ -12,6 +12,20 @@ import (
 	"govard/internal/engine"
 )
 
+// profiles.json is decoded strictly in tests, so it cannot carry inline
+// source comments. Values checked against Adobe's documentation (fetched
+// 2026-10-01; the full table is in tests/magento_profile_pairing_test.go):
+//   - search_version for every 2.4.4 to 2.4.9 patch: the on-premises table at
+//     https://experienceleague.adobe.com/en/docs/commerce-operations/installation-guide/system-requirements
+//   - composer_version "1" for 2.4.0 and 2.4.1: "Adobe Commerce 2.4.2
+//     introduced support for Composer 2."
+//     https://experienceleague.adobe.com/en/docs/commerce-operations/upgrade-guide/implementation/perform-upgrade
+//     and "2.4.2 is now compatible with Composer 2.x."
+//     https://experienceleague.adobe.com/en/docs/commerce-operations/release/notes/magento-open-source/2-4-2
+//
+// Lines the current Adobe pages no longer list (2.4.0 to 2.4.3 apart from the
+// Composer pin above, and 2.3, 2.2, 2.1, 2.0) are unverified.
+//
 //go:embed profiles.json
 var profilesJSON embed.FS
 

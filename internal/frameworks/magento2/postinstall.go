@@ -750,8 +750,10 @@ func ResolveMagentoSearchEngine(config engine.Config) string {
 		return ""
 	}
 
-	// Magento < 2.4.8 uses the elasticsearch7 engine name/flags even when running OpenSearch.
-	if isMagentoVersionAtLeast(config.FrameworkVersion, "2.4.8") && search == conventions.ServiceOpenSearch {
+	// Magento < 2.4.6 uses the elasticsearch7 engine name/flags even when
+	// running OpenSearch; 2.4.6 and later take "opensearch" (see
+	// magentoOpenSearchEngineMinVersion for the Adobe source).
+	if isMagentoVersionAtLeast(config.FrameworkVersion, magentoOpenSearchEngineMinVersion) && search == conventions.ServiceOpenSearch {
 		return conventions.ServiceOpenSearch
 	}
 	return "elasticsearch7"
