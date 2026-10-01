@@ -857,7 +857,24 @@ Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--bran
 `--runner container` là flag duy nhất có đòi hỏi — container app của chính dự án,
 thiếu nó thì thoát với mã `3` — và nó còn đòi `--output` nằm trong project root để
 container tới được artifact nó đang build; output nằm ngoài đó bị từ chối trước cả
-lúc govard tìm Docker.
+lúc govard tìm Docker, như một lỗi cấu hình (exit `4`).
+
+Container chỉ mang toolchain riêng của container app, và build kiểm tra điều đó trước
+khi thay đổi bất cứ thứ gì. Khi bước frontend của recipe sẽ chạy
+(`deploy.settings.frontend_dir` nêu ít nhất một thư mục), build tìm `node` và `npm`
+trong container trước task đầu tiên và từ chối với exit `3`, nêu tên công cụ còn
+thiếu và lối ra: `--runner host` trên máy có Node, hoặc để `frontend_dir` rỗng.
+Envelope `--error-json` của lần từ chối đó báo `capability: "node"`, một giá trị mà
+`govard capabilities` không liệt kê vì nó không phải capability khai báo được.
+Kiểm tra này dựa vào placeholder <span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe, nên một
+dự án có bước frontend (recipe override hoặc command dạng hook) không dùng placeholder
+đó và không cần Node vẫn bị container thiếu `node` và `npm` từ chối; build dự án đó
+bằng `--runner host`. Project container đang dừng hoặc không tồn tại cũng thoát `3`
+(gợi ý: `govard env up`, hoặc `--runner host`). Cả hai lần từ chối đều đến trước khi
+output directory bị đụng tới, nên artifact trước đó còn nguyên. Ctrl-C và
+`--command-timeout` cũng dừng bước đang chạy bên trong container: sau khi client
+`docker exec` ở local bị dọn, một `docker exec` thứ hai gửi tín hiệu tới process group
+của bước đó, và lỗi nói rõ phần teardown có được thử hay không và có hoàn tất hay không.
 
 **Setting và credential.** `deploy.settings` được đối chiếu với recipe trước khi
 chạy: key lạ, hoặc giá trị sai dạng, thoát với mã 4 kèm tên key và gợi ý key gần
@@ -866,6 +883,18 @@ chuỗi. `COMPOSER_AUTH` từ môi trường được chuyển tới bước cà
 standard input (không bao giờ nằm trong command), và `shared/auth.json` trên target
 cũng dùng được; `govard deploy check` cho biết đang dùng nguồn nào và cảnh báo khi
 build trên target cần mà không có.
+
+**`deploy check`.** Preflight không để lại gì trên target, dù là local hay remote. Probe
+quyền ghi của nó không tạo path nào: một `deploy_path` chưa tồn tại được kiểm tra tại
+parent tồn tại gần nhất, ngay trên target, và note của target local nêu rõ parent nào
+đã trả lời (một lệnh gọi remote không có note, vì exit code không phân biệt được path
+chưa tồn tại với path không ghi được). Probe `mv -T` chạy trên target dạng symlink tạo
+một thư mục tạm `.dep` dưới deploy path, và trên một host mới thì cả các tầng còn thiếu
+phía trên nó, rồi xoá chúng đi, dừng ở ancestor gần nhất đã tồn tại và giữ lại tầng nào
+còn chứa thứ gì. Preflight không bao giờ nhìn vào deploy lock. Các note của nó in ra
+trước header `Target <remote> is deployable`, mỗi note một dòng, đánh dấu `  - ` cho
+dữ kiện và `  ! ` cho cảnh báo, và một lần deploy thật in đúng các note đó trong output
+của bước `deploy:check` (ra stderr khi có `--json`, để stdout vẫn là một document).
 
 **Output cho máy đọc.** Với `--json`, stdout chứa đúng một JSON document còn
 timeline cho người đọc đi ra stderr: `schema_version`, `remote`, `branch`,
@@ -980,6 +1009,15 @@ capability, `4` lỗi cấu hình. `govard deploy` và `govard deploy rollback` 
 `deploy unlock` chỉ cần `ssh`; `deploy build` và `deploy plan` không cần gì.
 `govard sandbox *` là ngoại lệ: tạo server giả cần `docker`, sau đó govard
 nói chuyện với nó qua SSH như mọi target khác.
+
+`deploy check` và `deploy status` dùng cùng các mã đó. Một key `deploy.settings` gõ sai,
+một project không load được, hoặc một project không có remote nào là lỗi cấu hình
+(`4`); một remote positional mâu thuẫn với `--remote` là lỗi dùng lệnh (`2`); `1` nghĩa
+là không remote nào đã cấu hình tới được. `deploy status --json` vẫn in mảng các dòng
+theo từng remote (dòng không tới được có status `unknown` và một `error`) nhưng thoát
+`1` khi mọi remote đều không tới được, như chế độ bảng, với lý do ra stderr và stdout
+vẫn là một document khi có `--error-json`. Khi không có remote nào được cấu hình, hoặc
+project không load được, nó thoát `4` với stdout rỗng.
 
 ### `govard sandbox`
 

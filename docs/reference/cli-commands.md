@@ -868,7 +868,26 @@ earlier build cannot ship: pass `--force` to replace its contents.
 `--runner container` is the one flag that demands anything — the project's own
 app container, exit `3` without it — and it also requires `--output` to sit
 inside the project root, so the container can reach the artifact it builds; an
-output anywhere else is refused before Docker is even looked for.
+output anywhere else is refused before Docker is even looked for, as a configuration
+error (exit `4`).
+
+The container carries only the app container's own toolchain, and the build checks
+that before it changes anything. When the recipe's frontend step will run
+(`deploy.settings.frontend_dir` names at least one directory), the build looks for
+`node` and `npm` in the container before the first task and refuses with exit `3`,
+naming the missing tools and the way out: `--runner host` on a machine with Node, or
+an empty `frontend_dir`. The `--error-json` envelope of that refusal reports
+`capability: "node"`, a value `govard capabilities` does not list because it is not
+a declarable capability. The check keys on the recipe's
+<span v-pre>`{{settings.frontend_dir_args}}`</span> placeholder, so a project whose frontend step (a
+recipe override or a hook-shaped command) does not use it and needs no Node is still
+refused by a container without `node` and `npm`; build that project with
+`--runner host`. A project container that is stopped or missing also exits `3` (hint:
+`govard env up`, or `--runner host`). Both refusals come before the output directory
+is touched, so a previous artifact survives. Ctrl-C and `--command-timeout` stop a
+step inside the container too: after the local `docker exec` client is swept, a
+second `docker exec` signals the step's process group, and the error says whether
+that teardown was attempted and whether it completed.
 
 **Settings and credentials.** `deploy.settings` is validated against the recipe
 before anything runs: an unknown key, or a value with the wrong shape, exits 4 with
@@ -878,6 +897,19 @@ environment is forwarded to the dependency step on its standard input (never in 
 command), and a `shared/auth.json` on the target works too; `govard deploy check`
 reports which source is in play and warns when a target-side build will need one
 and there is none.
+
+**`deploy check`.** The preflight leaves nothing behind on the target, local or
+remote. Its writability probe creates no path: an absent `deploy_path` is tested at
+its nearest existing parent, on the target itself, and a local target's note names
+the parent that answered (a remote call gets no note, because an exit code cannot
+tell an absent path from an unwritable one). The `mv -T` probe it runs on a symlink
+target creates a `.dep` scratch directory under the deploy path, and on a fresh host
+the missing levels above it, then removes them again, stopping at the nearest
+ancestor that already existed and keeping any level that holds something. The
+preflight never looks at the deploy lock. Its notes print before the
+`Target <remote> is deployable` header, one per line, marked `  - ` for a fact and
+`  ! ` for a warning, and a real deploy prints the same notes in the output of its
+`deploy:check` step (on stderr under `--json`, so stdout stays one document).
 
 **Machine-readable output.** With `--json`, stdout carries exactly one JSON
 document and the human timeline goes to stderr: `schema_version`, `remote`,
@@ -1004,6 +1036,16 @@ capability, `4` configuration. `govard deploy` and `govard deploy rollback` need
 `deploy unlock` need only `ssh`; `deploy build` and `deploy plan` need nothing.
 `govard sandbox *` is the exception: creating the fake server needs
 `docker`, and then govard talks to it over SSH like any other target.
+
+`deploy check` and `deploy status` use the same codes. A mistyped `deploy.settings`
+key, a project that cannot be loaded, or a project with no remotes is a
+configuration error (`4`); a positional remote that contradicts `--remote` is a usage
+error (`2`); `1` means no configured remote could be reached. `deploy status --json`
+still prints the array of per-remote rows (an unreachable row has status `unknown`
+and an `error`) but exits `1` when every remote is unreachable, as table mode does,
+with the reason on stderr and stdout still one document under `--error-json`. With no
+remotes configured, or a project that cannot be loaded, it exits `4` with an empty
+stdout.
 
 ### `govard sandbox`
 
