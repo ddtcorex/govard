@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -400,5 +401,46 @@ func TestBuildInputsDigestFollowsSettingsHooksAndRecipe(t *testing.T) {
 	deploy.OverrideTaskForTest(&changedRecipe, deploy.TaskAssets, deploy.Task{ID: deploy.TaskAssets, Command: "other"})
 	if base == cmd.BuildInputsDigestForTest(changedRecipe, hooks, options) {
 		t.Error("a changed recipe command must change the digest")
+	}
+}
+
+func manifestRevision(t *testing.T, dir string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, deploy.ArtifactManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m deploy.ArtifactManifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m.Revision
+}
+
+// The deploy compares the manifest's revision text with the revision it is asked
+// to deploy, so a hit must describe the build that was just asked for, not the
+// spelling the first build used; and it must do so without editing the cached
+// copy the output shares its data blocks with.
+func TestCacheHitCarriesTheRevisionSpellingOfThisBuild(t *testing.T) {
+	root, revision := sandboxBuildProject(t)
+	first, second, third := filepath.Join(root, "out-1"), filepath.Join(root, "out-2"), filepath.Join(root, "out-3")
+	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", "HEAD", "--output", first); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runDeployBuildCommand(t, "sandbox", "--revision", revision, "--output", second)
+	if err != nil || !strings.Contains(out, "artifact cache hit") {
+		t.Fatalf("the same commit under another spelling must hit: err=%v out=%q", err, out)
+	}
+	if got := manifestRevision(t, second); got != revision {
+		t.Fatalf("a hit must record the revision it was asked for (%s), got %q", revision, got)
+	}
+	if got := manifestRevision(t, first); got != "HEAD" {
+		t.Fatalf("retargeting the second output must not edit the first through the shared link, got %q", got)
+	}
+	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", "HEAD", "--output", third); err != nil {
+		t.Fatal(err)
+	}
+	if got := manifestRevision(t, third); got != "HEAD" {
+		t.Fatalf("the cached copy must be unchanged by the earlier hit, got %q", got)
 	}
 }

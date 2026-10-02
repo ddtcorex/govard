@@ -257,7 +257,16 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 			if err := restoreFromCache(tree, absolute, force); err != nil {
 				return err
 			}
-			cached, err := readCachedManifest(absolute)
+			// The text a build records is the revision or tag it was given, else
+			// the commit it resolved.
+			spelling := strings.TrimSpace(options.Revision)
+			if spelling == "" {
+				spelling = strings.TrimSpace(options.Tag)
+			}
+			if spelling == "" {
+				spelling = cacheKey.Revision
+			}
+			cached, err := retargetManifestRevision(absolute, spelling)
 			if err != nil {
 				return err
 			}

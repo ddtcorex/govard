@@ -346,6 +346,35 @@ func readCachedManifest(output string) (*deploy.ArtifactManifest, error) {
 	return &manifest, nil
 }
 
+// retargetManifestRevision makes a restored artifact's manifest carry the
+// revision text of the build that asked for it. The deploy compares that text
+// with the revision it is given, and the cache is keyed by the resolved commit, so
+// a hit can come from a build that spelled the same commit another way. The
+// manifest shares its data blocks with the cached copy, so it is replaced by a new
+// file rather than written in place.
+func retargetManifestRevision(output, revision string) (*deploy.ArtifactManifest, error) {
+	manifest, err := readCachedManifest(output)
+	if err != nil {
+		return nil, err
+	}
+	if manifest.Revision == revision {
+		return manifest, nil
+	}
+	manifest.Revision = revision
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("encode the cached artifact manifest: %w", err)
+	}
+	path := filepath.Join(output, deploy.ArtifactManifestName)
+	if err := os.Remove(path); err != nil {
+		return nil, fmt.Errorf("replace the cached artifact manifest: %w", err)
+	}
+	if err := os.WriteFile(path, encoded, 0o644); err != nil {
+		return nil, fmt.Errorf("write the artifact manifest: %w", err)
+	}
+	return manifest, nil
+}
+
 // BuildCacheKeyForTest exposes the cache key to the tests/ package.
 type BuildCacheKeyForTest = buildCacheKey
 
