@@ -144,3 +144,43 @@ func TestRefusedSeriesOnRecreateKeepsTheWorkingContainer(t *testing.T) {
 		t.Fatalf("the working container must survive a refused --recreate: %v", fake.calls)
 	}
 }
+
+func assetsRecipeWith(task deploy.Task) deploy.Recipe {
+	recipe := deploy.DefaultRecipe()
+	task.ID, task.NeedsApplication, task.ReusableOutputs = deploy.TaskAssets, true, []string{"pub/static/frontend"}
+	deploy.OverrideTaskForTest(&recipe, deploy.TaskAssets, task)
+	return recipe
+}
+
+// twoDeploysStamps runs the same artifact twice into one sandbox and returns the
+// stamp each release carries; equal stamps mean the second one reused the first.
+func twoDeploysStamps(t *testing.T, recipe deploy.Recipe) (first, second string) {
+	t.Helper()
+	hermeticPHP(t)
+	work, revision := seedBuildRepo(t)
+	enterSandboxCheckout(t, work)
+	origin := seedOriginFromCheckout(t, work)
+	artifact := buildAssetsArtifact(t, recipe, work, revision)
+	root := t.TempDir()
+	a := deployArtifact(t, root, recipe, origin, revision, artifact, true, nil)
+	b := deployArtifact(t, root, recipe, origin, revision, artifact, true, nil)
+	return stampOf(t, a.releasePath), stampOf(t, b.releasePath)
+}
+
+// An optional step that failed produced nothing worth recording.
+func TestFailedOptionalAssetsStepIsNotRecordedForReuse(t *testing.T) {
+	first, second := twoDeploysStamps(t, assetsRecipeWith(deploy.Task{Optional: true, Command: stampCommand + " && false"}))
+	if first == second {
+		t.Fatal("a failed optional assets step must not be reused by the next deploy")
+	}
+}
+
+// An absolute symlink points into the release it was made in, so a hard-linked
+// copy of the tree would keep pointing at a release that is later pruned.
+func TestAbsoluteSymlinkInTheOutputPreventsReuse(t *testing.T) {
+	command := stampCommand + " && ln -sfn {{release_path}}/app.php pub/static/frontend/link.php"
+	first, second := twoDeploysStamps(t, assetsRecipeWith(deploy.Task{Command: command}))
+	if first == second {
+		t.Fatal("static content holding an absolute symlink must be regenerated, not hard-linked")
+	}
+}

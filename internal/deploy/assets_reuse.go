@@ -116,7 +116,7 @@ func (e *Executor) reuseSandboxAssets(ctx context.Context, step Step, vars Vars,
 
 	var command strings.Builder
 	for _, output := range step.ReusableOutputs {
-		fmt.Fprintf(&command, "test -d %s || exit 3; ", Shell(path.Join(previous, output)))
+		fmt.Fprintf(&command, "test -d %s || exit 3; %s || exit 5; ", Shell(path.Join(previous, output)), noAbsoluteLinks(path.Join(previous, output)))
 	}
 	for _, output := range step.ReusableOutputs {
 		target := path.Join(current, output)
@@ -129,6 +129,14 @@ func (e *Executor) reuseSandboxAssets(ctx context.Context, step Step, vars Vars,
 	return fmt.Sprintf("sandbox: static content reused from release %s (same artifact fingerprint)", record.Release), true
 }
 
+// noAbsoluteLinks is a shell test that a tree holds no symlink with an absolute
+// target. Such a link names the release it was made in (a development-mode
+// application materialises its static files that way), so a hard-linked copy
+// would keep pointing at a release that is later pruned.
+func noAbsoluteLinks(dir string) string {
+	return `test -z "$(find ` + Shell(dir) + ` -type l -lname '/*' -print -quit)"`
+}
+
 // recordSandboxAssets stores what the task just produced, so the next deploy to
 // the sandbox can reuse it.
 func (e *Executor) recordSandboxAssets(ctx context.Context, step Step, vars Vars, release *Release) {
@@ -137,6 +145,14 @@ func (e *Executor) recordSandboxAssets(ctx context.Context, step Step, vars Vars
 	}
 	fingerprint := e.sandboxAssetsFingerprint(ctx, step, vars, release)
 	if fingerprint == "" {
+		return
+	}
+	// Output that points into its own release cannot be shared with another.
+	var check strings.Builder
+	for _, output := range step.ReusableOutputs {
+		fmt.Fprintf(&check, "test -d %s && %s || exit 1; ", Shell(path.Join(e.host.ReleasePath(release.Release), output)), noAbsoluteLinks(path.Join(e.host.ReleasePath(release.Release), output)))
+	}
+	if _, err := e.host.Runner().Run(ctx, strings.TrimSuffix(check.String(), " "), RunOptions{Timeout: shortCommandTimeout}); err != nil {
 		return
 	}
 	payload, err := json.Marshal(sandboxAssetsRecord{Fingerprint: fingerprint, Release: release.Release})

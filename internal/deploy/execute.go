@@ -540,7 +540,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 
 		e.record(ctx, release, step, StepOK, elapsed, nil)
-		e.recordSandboxAssets(ctx, step, stepVars, release)
+		if stepErr == nil {
+			e.recordSandboxAssets(ctx, step, stepVars, release)
+		}
 		if step.ID == TaskLock {
 			e.lockHeld = true
 		}
