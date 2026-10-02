@@ -364,6 +364,7 @@ func TestIncompleteReleaseFindsTheNewestFailedRelease(t *testing.T) {
 }
 
 func TestResumeContinuesTheFailedReleaseInsteadOfStartingANewOne(t *testing.T) {
+	hermeticPHP(t)
 	origin, revision := seedGitRepo(t)
 	root := t.TempDir()
 	cfg := deployRemoteConfig(t, root, origin)

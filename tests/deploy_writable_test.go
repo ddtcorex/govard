@@ -137,6 +137,7 @@ func TestWritableACLNeedsAConfiguredOwner(t *testing.T) {
 // A target without setfacl must be refused before the release is built, not at the
 // writable step after it exists.
 func TestCoreCheckProbesForSetfaclWhenTheModeIsACL(t *testing.T) {
+	hermeticPHP(t)
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
 	seen := new([]string)
 	sc := deploy.StepContextForTest(host, deploy.Options{

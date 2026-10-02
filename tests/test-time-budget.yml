@@ -52,6 +52,11 @@
 # ignore -- and so tightening it later is a one-line change rather than a
 # re-argument about every individual test.
 #
+# Every overrun line carries the host load average and CPU count, and a run that
+# replayed go test's cache says so plainly: cached timings are from an earlier run,
+# not a measurement of this machine. Judge an overrun against both before raising a
+# budget; first ask whether the test does real work or is spawning a host tool.
+#
 # Note which check is which: CI sets the scale to 2, so CI enforces 14s while a
 # local run enforces 7s. That makes the *authoritative* gate the looser one, and
 # an 8s regression is caught locally and merges clean. The trade is deliberate --
@@ -81,7 +86,13 @@ suites:
     default: 30s
     overrides:
       TestDeploySandboxRunsTheMagentoRecipeOverRealSSH:
-        budget: 45s
+        budget: 90s
         reason: >-
-          builds and boots a real sandbox container, then runs the Magento recipe
-          over real SSH; measured at 30-34s across runs
+          boots a real sandbox container and runs the Magento recipe over real SSH
+          for five layouts (single, split, hyva, hyva-multi, in-place), roughly 7-10s
+          each. Measured 41.25s, 41.61s and 41.50s on three isolated runs, so the
+          old 45s cap left 8% headroom and failed on host load alone (45-157s seen
+          in the field). 90s is about twice the quiet-host time: it still fails a
+          layout that doubles, but not a busy laptop. A cold sandbox image build
+          (157s seen) is outside this budget by design; pre-pull or pre-build the
+          image before a timed run.

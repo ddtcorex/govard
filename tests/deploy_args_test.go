@@ -65,6 +65,7 @@ func TestCommandWordsKeepsAWrapperOfSeveralWords(t *testing.T) {
 // the place to evaluate it. A leading tilde is the single exception, and it is
 // expanded by the shell rather than by govard, so the value never becomes code.
 func TestCommandWordsKeepsShellSyntaxInert(t *testing.T) {
+	hermeticPHP(t)
 	for _, value := range []string{"php; echo pwned", "php $(echo pwned)", "php `echo pwned`", "php && echo pwned"} {
 		rendered := deploy.CommandWords(map[string]any{"php_bin": value}, "php_bin", "php")
 		out, _ := exec.Command("sh", "-c", rendered).CombinedOutput()

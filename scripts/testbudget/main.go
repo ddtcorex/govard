@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -108,6 +109,75 @@ type result struct {
 	total      time.Duration
 	slowest    []testbudget.Violation
 	ran        map[string]bool
+	// cachedPackages are packages whose results go test replayed from its cache.
+	// Their per-test Elapsed values come from whenever they last really ran, so
+	// they say nothing about this machine right now.
+	cachedPackages []string
+	load           hostLoad
+}
+
+// hostLoad is the machine's load average, kept next to every overrun because
+// the same test takes 0.4s on a quiet host and 12s on a busy one, and the
+// verdict alone cannot tell a regression from a laptop doing other work.
+type hostLoad struct {
+	One, Five, Fifteen float64
+	CPUs               int
+	known              bool
+}
+
+// busyPerCPU is the one-minute load per CPU above which the report says the
+// host was busy. Three quarters of every CPU already queued is where timing
+// stops being comparable between runs.
+const busyPerCPU = 0.75
+
+func readHostLoad() hostLoad {
+	raw, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return hostLoad{CPUs: runtime.NumCPU()}
+	}
+	load, _ := parseHostLoad(string(raw), runtime.NumCPU())
+	return load
+}
+
+func parseHostLoad(raw string, cpus int) (hostLoad, bool) {
+	fields := strings.Fields(raw)
+	if len(fields) < 3 {
+		return hostLoad{CPUs: cpus}, false
+	}
+	var values [3]float64
+	for i := range values {
+		v, err := strconv.ParseFloat(fields[i], 64)
+		if err != nil {
+			return hostLoad{CPUs: cpus}, false
+		}
+		values[i] = v
+	}
+	return hostLoad{One: values[0], Five: values[1], Fifteen: values[2], CPUs: cpus, known: true}, true
+}
+
+func (l hostLoad) String() string {
+	if !l.known {
+		return fmt.Sprintf("host load unknown, %d CPUs", l.CPUs)
+	}
+	return fmt.Sprintf("host load %.2f/%.2f/%.2f (1/5/15 min), %d CPUs", l.One, l.Five, l.Fifteen, l.CPUs)
+}
+
+func (l hostLoad) busy() bool {
+	return l.known && l.CPUs > 0 && l.One/float64(l.CPUs) >= busyPerCPU
+}
+
+// cachedPackage recognises the package result line go test prints when it
+// replays a package from its cache: `ok  <tab>pkg<tab>(cached)`. Only
+// package-level output counts, so a test that logs "(cached)" is not mistaken
+// for one.
+func cachedPackage(e event) (string, bool) {
+	if e.Action != "output" || e.Test != "" || e.Package == "" {
+		return "", false
+	}
+	if strings.HasPrefix(e.Output, "ok") && strings.Contains(e.Output, "(cached)") {
+		return e.Package, true
+	}
+	return "", false
 }
 
 // slowestToKeep bounds the "slowest tests" table. It is printed on every run
@@ -143,6 +213,10 @@ func run(args []string, budgetSuite testbudget.Suite, quiet, reportStale bool) (
 			// the real error is not swallowed by a JSON gate.
 			fmt.Fprintf(os.Stderr, "%s\n", line)
 			continue
+		}
+
+		if pkg, ok := cachedPackage(e); ok {
+			report.cachedPackages = append(report.cachedPackages, pkg)
 		}
 
 		switch e.Action {
@@ -189,6 +263,7 @@ func run(args []string, budgetSuite testbudget.Suite, quiet, reportStale bool) (
 		return report, waitErr
 	}
 
+	report.load = readHostLoad()
 	byName := timings.ByName()
 	report.total = timings.LeafElapsed()
 	report.violations = budgetSuite.Evaluate(byName)
@@ -247,6 +322,11 @@ func (r result) print(w io.Writer) {
 		}
 	}
 
+	if len(r.cachedPackages) > 0 {
+		fmt.Fprintf(w, "\n%d package(s) were replayed from the go test cache: their timings are from an\n", len(r.cachedPackages))
+		fmt.Fprintf(w, "earlier run, not a fresh measurement of this machine. Pass GOFLAGS=-count=1 to measure.\n")
+	}
+
 	if len(r.stale) > 0 {
 		fmt.Fprintf(w, "\nstale budget overrides (these tests did not run — delete them or fix the name):\n")
 		for _, name := range r.stale {
@@ -260,13 +340,19 @@ func (r result) print(w io.Writer) {
 
 	fmt.Fprintf(w, "\n%d test(s) exceeded their time budget:\n", len(r.violations))
 	for _, v := range r.violations {
-		fmt.Fprintf(w, "  %-64s %8.3fs  (budget %s)\n", v.Test, v.Actual.Seconds(), v.Budget)
+		fmt.Fprintf(w, "  %-64s %8.3fs  (budget %s)  [%s]\n", v.Test, v.Actual.Seconds(), v.Budget, r.load)
 		if v.Reason != "" {
 			fmt.Fprintf(w, "      allowance: %s\n", v.Reason)
 			continue
 		}
 		fmt.Fprintf(w, "      no allowance on file. Either make the test faster, or — if the slowness is\n")
 		fmt.Fprintf(w, "      intrinsic to what it covers — add an entry with a reason to %s\n", defaultBudgetFile)
+	}
+
+	if r.load.busy() {
+		fmt.Fprintf(w, "\nhost was busy (1-minute load %.2f over %d CPUs, read at the end of the run): rerun the\n", r.load.One, r.load.CPUs)
+		fmt.Fprintf(w, "listed tests alone with GOFLAGS=-count=1 before treating an overrun as a regression.\n")
+		fmt.Fprintf(w, "The verdict is unchanged: an overrun still fails the gate.\n")
 	}
 }
 
