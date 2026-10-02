@@ -311,3 +311,33 @@ func currentActor() string {
 	}
 	return "local"
 }
+
+// RecordedBuildMode is the build mode an interrupted release was started in, or
+// "" when the record cannot say (a record from before the mode was stamped, that
+// failed before any build evidence existed).
+//
+// The stamped mode wins. Older records are read from their evidence: a
+// `deploy:artifact` that succeeded means artifact mode, and a build task that
+// succeeded means the target built it.
+func RecordedBuildMode(release *Release) string {
+	if release == nil {
+		return ""
+	}
+	if mode := strings.TrimSpace(release.Build.Mode); mode != "" {
+		return mode
+	}
+	for _, task := range release.Tasks {
+		if task.Status != StepOK {
+			continue
+		}
+		if task.ID == TaskArtifact {
+			return BuildArtifact
+		}
+	}
+	for _, task := range release.Tasks {
+		if task.Status == StepOK && artifactReplacedBuildTasks[task.ID] {
+			return BuildServer
+		}
+	}
+	return ""
+}

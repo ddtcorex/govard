@@ -1235,6 +1235,12 @@ resume nó là đường recovery, không phải mối nguy. Run khởi động 
 `--from`/`--resume` tự lấy deploy lock, nên bước bị bỏ qua không để target chạy không
 được bảo vệ.
 
+Resume cũng giữ nguyên build mode của release. Mode (`server` hoặc `artifact`) được ghi
+vào record khi release bắt đầu, và `--resume` không kèm `--build` sẽ tiếp tục đúng mode
+đó: release artifact bị gián đoạn không bao giờ chạy các task build trên target, và chỉ
+cần `--artifact-dir` lại nếu `deploy:artifact` chưa thành công. `--build` tường minh chỉ
+mode còn lại bị từ chối như lỗi usage (exit 2) thay vì trộn hai mode trong một release.
+
 Có thể `--resume` bao nhiêu lần cũng được, và lần nào cũng tiếp tục đúng release
 đó. Bước mà lần chạy trước đã thành công sẽ không chạy lại, và record giữ nguyên
 trạng thái `ok` mà lần đó ghi, nên lần resume hiện bước đó là `already done in an
@@ -1304,6 +1310,10 @@ deploy — nên ứng dụng ghi được những thư mục mà `deploy:writabl
 `up` publish luôn cổng đó trên loopback và trỏ `deploy.verify.url` của remote
 sandbox vào nó, nghĩa là deploy vào sandbox diễn tập **toàn bộ** pipeline, kể cả
 bước kiểm tra HTTP — bước mà một target không có web server không bao giờ chạy được.
+
+Web tier đệm các response header FastCGI lớn (`fastcgi_buffer_size 128k`, cùng giá trị với
+stack phát triển); container sandbox tạo trước thay đổi này vẫn giữ cấu hình nginx cũ cho
+đến khi được tạo lại (`sandbox down --purge`, rồi `up`).
 
 Kiểm tra đó là thật: target chưa phục vụ được sẽ fail ở bước cuối với đúng mã HTTP
 mà nó trả về (`verify http: http://127.0.0.1:PORT/ returned HTTP 403`) — đó là

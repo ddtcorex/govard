@@ -1307,6 +1307,13 @@ the hazard.
 A run started with `--from`/`--resume` takes the deploy lock itself, so the step
 it skipped does not leave the target unprotected.
 
+A resume also keeps the release's build mode. The mode (`server` or `artifact`) is
+stamped on the record when the release starts, and `--resume` without `--build`
+continues in that mode: an interrupted artifact release never runs the build tasks
+on the target, and needs `--artifact-dir` again only if `deploy:artifact` had not
+yet succeeded. An explicit `--build` that names the other mode is refused as a
+usage error (exit 2) instead of mixing modes in one release.
+
 A resume can be repeated as often as it takes, and it continues the same release
 every time. A step an earlier attempt already succeeded at is not run again, and
 the record keeps the `ok` that attempt stored, so a resumed run shows it as
@@ -1445,6 +1452,10 @@ hands over. `up` publishes that port on loopback too and points the sandbox
 remote's `deploy.verify.url` at it, which means a sandbox deploy rehearses the
 *whole* pipeline, HTTP check included — the one step a target without a web server
 could never exercise.
+
+The web tier buffers large FastCGI response headers (`fastcgi_buffer_size 128k`, the
+development stack's value); a sandbox container created before that setting keeps
+the old nginx configuration until it is recreated (`sandbox down --purge`, then `up`).
 
 That check is real: a target that does not answer yet fails the last step with the
 HTTP status it returned (`verify http: http://127.0.0.1:PORT/ returned HTTP 403`),

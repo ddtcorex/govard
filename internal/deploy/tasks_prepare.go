@@ -675,6 +675,14 @@ func checkArtifactParity(ctx context.Context, sc *StepContext) error {
 
 	artifactDir := strings.TrimSpace(sc.Opts.ArtifactDir)
 	if artifactDir == "" {
+		// A resume continues a release whose artifact is already on the target:
+		// the step is carried over, nothing will be uploaded again, and the
+		// parity gate was passed when it was. Needing the directory back just to
+		// re-prove that would make a bare `--resume` unusable.
+		if sc.Opts.Resume && artifactAlreadyDelivered(sc.Release) {
+			noteStep(sc, "  - artifact already delivered to this release; parity was checked at upload\n")
+			return nil
+		}
 		return fmt.Errorf("artifact mode needs an artifact directory: pass --artifact-dir <dir> or set deploy.artifact_dir")
 	}
 	manifest, err := ReadManifest(artifactDir)
@@ -709,6 +717,20 @@ func checkArtifactParity(ctx context.Context, sc *StepContext) error {
 			manifest.PHPVersion, actual)
 	}
 	return nil
+}
+
+// artifactAlreadyDelivered reports whether the release record says deploy:artifact
+// succeeded, so a resume has nothing left to upload.
+func artifactAlreadyDelivered(release *Release) bool {
+	if release == nil {
+		return false
+	}
+	for _, task := range release.Tasks {
+		if task.ID == TaskArtifact && task.Status == StepOK {
+			return true
+		}
+	}
+	return false
 }
 
 // probeTargetPHP asks the target which PHP it runs. The binary is the project's
