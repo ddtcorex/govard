@@ -160,9 +160,8 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 			}
 		}
 
-		config, err := loadFullConfig()
+		config, err := loadBootstrapConfig(cmd, cwd, opts)
 		if err != nil {
-
 			return err
 		}
 		configForObservability = config
@@ -283,6 +282,25 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 		pterm.Success.Printf("Bootstrap completed in %s.\n", time.Since(startedAt).Round(time.Second))
 		return nil
 	},
+}
+
+// loadBootstrapConfig loads the project config. Under --plan in a directory
+// without .govard.yml it instead builds, in memory, the config `govard init`
+// would write, prints what that init would create, and writes nothing.
+func loadBootstrapConfig(cmd *cobra.Command, cwd string, opts BootstrapRuntimeOptions) (engine.Config, error) {
+	if opts.Plan {
+		if _, statErr := os.Stat(filepath.Join(cwd, conventions.BaseConfigFile)); errors.Is(statErr, os.ErrNotExist) {
+			config, err := buildPlanConfigWithoutInit(cwd, bootstrapFramework, bootstrapFrameworkVersion)
+			if err != nil {
+				return engine.Config{}, err
+			}
+			for _, line := range describePlanInit(config) {
+				fmt.Fprintln(cmd.OutOrStdout(), line)
+			}
+			return config, nil
+		}
+	}
+	return loadFullConfig()
 }
 
 // bootstrapEnsureInit is the seam the project-initialisation step runs through,

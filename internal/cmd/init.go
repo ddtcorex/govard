@@ -192,34 +192,20 @@ Case Studies:
 			}
 		}
 
-		config := engine.Config{
-			ProjectName:      engine.NormalizeProjectName(filepath.Base(cwd)),
-			Framework:        metadata.Framework,
-			FrameworkVersion: metadata.Version,
-			Domain:           engine.InferProjectDomain(cwd),
-			Stack: engine.Stack{
-				PHPVersion:      phpVersion,
-				NodeVersion:     nodeVersion,
-				ComposerVersion: composerVersion,
-				DBVersion:       dbVersion,
-				WebRoot:         webRoot,
-				XdebugSession:   xdebugSession,
-				Services: engine.Services{
-					WebServer: webServer,
-					DB:        dbType,
-					Search:    search,
-					Cache:     cache,
-					Queue:     queue,
-				},
-				Features: engine.Features{
-					Xdebug:  true,
-					Varnish: enableVarnish,
-					Cache:   cache != "" && cache != "none",
-					Search:  search != "" && search != "none",
-					Queue:   queue != "" && queue != "none",
-				},
-			},
-		}
+		config := newInitConfig(cwd, metadata.Framework, metadata.Version, initStackValues{
+			PHPVersion:      phpVersion,
+			NodeVersion:     nodeVersion,
+			ComposerVersion: composerVersion,
+			DBType:          dbType,
+			DBVersion:       dbVersion,
+			WebRoot:         webRoot,
+			XdebugSession:   xdebugSession,
+			WebServer:       webServer,
+			Search:          search,
+			Cache:           cache,
+			Queue:           queue,
+			Varnish:         enableVarnish,
+		})
 
 		if migrated.ProjectName != "" {
 			config.ProjectName = engine.NormalizeProjectName(migrated.ProjectName)
@@ -488,4 +474,48 @@ func textInput(title string, defaultValue string) string {
 		return defaultValue
 	}
 	return result
+}
+
+// initStackValues are the stack choices `govard init` settles on, from the
+// runtime profile or from the operator's custom answers.
+type initStackValues struct {
+	PHPVersion, NodeVersion, ComposerVersion string
+	DBType, DBVersion                        string
+	WebRoot, XdebugSession                   string
+	WebServer, Search, Cache, Queue          string
+	Varnish                                  bool
+}
+
+// newInitConfig assembles the base config `govard init` writes. It is pure (no
+// I/O, no prompts) so `bootstrap --plan` can show the same result without
+// running init.
+func newInitConfig(cwd, framework, version string, v initStackValues) engine.Config {
+	return engine.Config{
+		ProjectName:      engine.NormalizeProjectName(filepath.Base(cwd)),
+		Framework:        framework,
+		FrameworkVersion: version,
+		Domain:           engine.InferProjectDomain(cwd),
+		Stack: engine.Stack{
+			PHPVersion:      v.PHPVersion,
+			NodeVersion:     v.NodeVersion,
+			ComposerVersion: v.ComposerVersion,
+			DBVersion:       v.DBVersion,
+			WebRoot:         v.WebRoot,
+			XdebugSession:   v.XdebugSession,
+			Services: engine.Services{
+				WebServer: v.WebServer,
+				DB:        v.DBType,
+				Search:    v.Search,
+				Cache:     v.Cache,
+				Queue:     v.Queue,
+			},
+			Features: engine.Features{
+				Xdebug:  true,
+				Varnish: v.Varnish,
+				Cache:   v.Cache != "" && v.Cache != "none",
+				Search:  v.Search != "" && v.Search != "none",
+				Queue:   v.Queue != "" && v.Queue != "none",
+			},
+		},
+	}
 }
