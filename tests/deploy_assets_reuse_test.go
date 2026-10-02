@@ -3,9 +3,11 @@ package tests
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -245,35 +247,90 @@ func TestTheSandboxReuseCanBeSwitchedOff(t *testing.T) {
 	}
 }
 
-func TestAssetsFingerprintIgnoresCreatedAtButNotFiles(t *testing.T) {
-	base := &deploy.ArtifactManifest{
-		Revision: "r1", PHPVersion: "8.2", ComposerLockSHA256: "aa", CreatedAt: "2026-01-01T00:00:00Z",
-		Files: []deploy.ArtifactFile{{Path: "a.php", SHA256: "11"}, {Path: "b.php", SHA256: "22"}},
+func TestAssetsFingerprintFollowsTheManifestDigestAndTheCommand(t *testing.T) {
+	base := deploy.AssetsFingerprintForTest("aa", "cmd")
+	if again := deploy.AssetsFingerprintForTest("aa", "cmd"); base != again {
+		t.Error("the fingerprint must be stable")
 	}
-	same := *base
-	same.CreatedAt = "2027-02-02T00:00:00Z"
-	if deploy.AssetsFingerprintForTest(base, "cmd") != deploy.AssetsFingerprintForTest(&same, "cmd") {
-		t.Error("the build time must not change the fingerprint")
+	if deploy.AssetsFingerprintForTest("aa", "cmd") == deploy.AssetsFingerprintForTest("bb", "cmd") {
+		t.Error("a different manifest digest must change the fingerprint")
 	}
-	for name, mutate := range map[string]func(*deploy.ArtifactManifest){
-		"file content": func(m *deploy.ArtifactManifest) {
-			m.Files = []deploy.ArtifactFile{{Path: "a.php", SHA256: "11"}, {Path: "b.php", SHA256: "99"}}
-		},
-		"file added": func(m *deploy.ArtifactManifest) {
-			m.Files = append(m.Files, deploy.ArtifactFile{Path: "c.php", SHA256: "33"})
-		},
-		"revision": func(m *deploy.ArtifactManifest) { m.Revision = "r2" },
-		"php":      func(m *deploy.ArtifactManifest) { m.PHPVersion = "8.3" },
-		"lock":     func(m *deploy.ArtifactManifest) { m.ComposerLockSHA256 = "bb" },
-	} {
-		other := *base
-		other.Files = append([]deploy.ArtifactFile(nil), base.Files...)
-		mutate(&other)
-		if deploy.AssetsFingerprintForTest(base, "cmd") == deploy.AssetsFingerprintForTest(&other, "cmd") {
-			t.Errorf("a change of %s must change the fingerprint", name)
-		}
-	}
-	if deploy.AssetsFingerprintForTest(base, "cmd") == deploy.AssetsFingerprintForTest(base, "other") {
+	if deploy.AssetsFingerprintForTest("aa", "cmd") == deploy.AssetsFingerprintForTest("aa", "other") {
 		t.Error("the rendered command must change the fingerprint")
 	}
+	if deploy.AssetsFingerprintForTest("a", "bc") == deploy.AssetsFingerprintForTest("ab", "c") {
+		t.Error("a field boundary must not be shiftable")
+	}
+}
+
+func TestBuildTimeAloneDoesNotDefeatTheReuse(t *testing.T) {
+	hermeticPHP(t)
+	work, revision := seedBuildRepo(t)
+	enterSandboxCheckout(t, work)
+	origin := seedOriginFromCheckout(t, work)
+	recipe := assetsRecipe(stampCommand)
+	artifact := buildAssetsArtifact(t, recipe, work, revision)
+	root := t.TempDir()
+	deployArtifact(t, root, recipe, origin, revision, artifact, true, nil)
+
+	manifest := filepath.Join(artifact, deploy.ArtifactManifestName)
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := regexp.MustCompile(`"created_at":"[^"]*"`).ReplaceAll(raw, []byte(`"created_at":"2031-01-01T00:00:00Z"`))
+	if bytes.Equal(raw, rewritten) {
+		t.Fatal("the manifest carries no created_at to rewrite")
+	}
+	if err := os.WriteFile(manifest, rewritten, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second := deployArtifact(t, root, recipe, origin, revision, artifact, true, nil)
+	if second.assets.Status != deploy.StepSkipped {
+		t.Fatalf("a rebuild of identical files must still reuse the static content, got %s", second.assets.Status)
+	}
+}
+
+// A storefront artifact lists tens of thousands of files, so its manifest is far
+// past the runner's capture limit. The reuse must not depend on reading the
+// manifest back through the runner, or it never fires on a real project.
+func TestSandboxDeployReusesStaticContentForAnArtifactWithAHugeManifest(t *testing.T) {
+	hermeticPHP(t)
+	work, _ := seedBuildRepo(t)
+	for i := 0; i < 3000; i++ {
+		writeFile(t, filepath.Join(work, "pad", fmt.Sprintf("file-%04d.txt", i)), fmt.Sprintf("padding %d\n", i))
+	}
+	for _, args := range [][]string{{"add", "."}, {"commit", "-q", "-m", "pad"}} {
+		cmd := exec.Command("git", append([]string{"-c", "user.name=Test", "-c", "user.email=test@example.com"}, args...)...)
+		cmd.Dir = work
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	revision := gitRevParse(t, work)
+	enterSandboxCheckout(t, work)
+	origin := seedOriginFromCheckout(t, work)
+	recipe := assetsRecipe(stampCommand)
+	artifact := buildAssetsArtifact(t, recipe, work, revision)
+	if info, err := os.Stat(filepath.Join(artifact, deploy.ArtifactManifestName)); err != nil || info.Size() < 300*1024 {
+		t.Fatalf("the manifest must exceed the capture limit for this test to mean anything: %v %v", info, err)
+	}
+	root := t.TempDir()
+
+	deployArtifact(t, root, recipe, origin, revision, artifact, true, nil)
+	second := deployArtifact(t, root, recipe, origin, revision, artifact, true, nil)
+	if second.assets.Status != deploy.StepSkipped {
+		t.Fatalf("a large artifact must reuse the static content too, got %s:\n%s", second.assets.Status, second.output)
+	}
+}
+
+func gitRevParse(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
 }

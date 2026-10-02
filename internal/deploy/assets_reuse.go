@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
-	"sort"
 	"strings"
 )
 
@@ -31,29 +30,21 @@ type sandboxAssetsRecord struct {
 	Release     string `json:"release"`
 }
 
-// AssetsFingerprint identifies what the assets task would produce: the artifact
-// (revision, PHP, lock file and every file's digest, but not the build time) and
-// the rendered command, which carries the settings that shape the output.
-func AssetsFingerprint(m *ArtifactManifest, command string) string {
+// AssetsFingerprint identifies what the assets task would produce: the digest of
+// the artifact manifest (PHP, lock file and every file's digest, without the build
+// time) and the rendered command, which carries the settings that shape the
+// output.
+func AssetsFingerprint(manifestDigest, command string) string {
 	hash := sha256.New()
-	field := func(value string) { fmt.Fprintf(hash, "%d:%s;", len(value), value) }
-	field(m.Revision)
-	field(m.PHPVersion)
-	field(m.ComposerLockSHA256)
-	files := append([]ArtifactFile(nil), m.Files...)
-	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
-	for _, file := range files {
-		field(file.Path)
-		field(file.SHA256)
-		field(file.Target)
+	for _, value := range []string{manifestDigest, command} {
+		fmt.Fprintf(hash, "%d:%s;", len(value), value)
 	}
-	field(command)
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // AssetsFingerprintForTest exposes AssetsFingerprint to the tests/ package.
-func AssetsFingerprintForTest(m *ArtifactManifest, command string) string {
-	return AssetsFingerprint(m, command)
+func AssetsFingerprintForTest(manifestDigest, command string) string {
+	return AssetsFingerprint(manifestDigest, command)
 }
 
 // sandboxAssetsEligible reports whether the reuse applies to this step at all.
@@ -69,8 +60,8 @@ func (e *Executor) sandboxAssetsEligible(step Step) bool {
 	return true
 }
 
-// sandboxAssetsFingerprint reads the manifest the release carries and
-// fingerprints it together with the step's rendered command. An empty result
+// sandboxAssetsFingerprint digests the manifest the release carries on the
+// target and fingerprints it together with the step's rendered command. An empty result
 // means "no basis for reuse": a server build has no manifest, and a manifest
 // that cannot be read is treated the same.
 func (e *Executor) sandboxAssetsFingerprint(ctx context.Context, step Step, vars Vars, release *Release) string {
@@ -81,16 +72,18 @@ func (e *Executor) sandboxAssetsFingerprint(ctx context.Context, step Step, vars
 	if err != nil {
 		return ""
 	}
-	recordPath := path.Join(e.host.ReleasePath(release.Release), ".dep", ArtifactRecordName)
-	result, err := e.host.Runner().Run(ctx, "cat "+Shell(recordPath), RunOptions{Timeout: shortCommandTimeout})
-	if err != nil {
+	// The manifest of a storefront is megabytes, far past the runner's capture
+	// limit, so the target digests it instead of sending it back. The build time
+	// is the one field that differs between two builds of the same files.
+	manifestPath := path.Join(e.host.ReleasePath(release.Release), ".dep", ArtifactRecordName)
+	result, err := e.host.Runner().Run(ctx,
+		`sed 's/"created_at":"[^"]*",//' `+Shell(manifestPath)+` | sha256sum | cut -d' ' -f1`,
+		RunOptions{Timeout: shortCommandTimeout})
+	digest := strings.TrimSpace(result.Stdout)
+	if err != nil || len(digest) != sha256.Size*2 {
 		return ""
 	}
-	var manifest ArtifactManifest
-	if json.Unmarshal([]byte(result.Stdout), &manifest) != nil {
-		return ""
-	}
-	return AssetsFingerprint(&manifest, command)
+	return AssetsFingerprint(digest, command)
 }
 
 // reuseSandboxAssets hardlinks the recorded release's outputs into this release
