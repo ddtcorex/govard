@@ -78,3 +78,47 @@ func TestTunnelStatusHintsAtAnUnrecordedCloudflared(t *testing.T) {
 		t.Fatalf("status must stay INACTIVE yet name the process and the kill command, got: %q", out)
 	}
 }
+
+func TestTunnelStopStaysSilentForAnUnrelatedQuickTunnel(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	legacyHost(t, cmd.TunnelHostProcess{PID: 88, Argv: "cloudflared tunnel --url http://localhost:3000"})
+
+	out, err := runTunnel(t, "tunnel", "stop")
+	if err != nil {
+		t.Fatalf("a user's own quick tunnel must not fail stop: %v (%q)", err, out)
+	}
+	if strings.Contains(out, "kill 88") || strings.Contains(out, "cannot attribute") {
+		t.Fatalf("an unrelated tunnel must not be reported, got: %q", out)
+	}
+}
+
+func TestTunnelStopStaysSilentForAnotherProjectsQuickTunnel(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	legacyHost(t, cmd.TunnelHostProcess{PID: 99, Argv: "cloudflared tunnel --url https://other-shop.test --no-tls-verify"})
+
+	out, err := runTunnel(t, "tunnel", "stop")
+	if err != nil {
+		t.Fatalf("another project's tunnel must not fail stop: %v (%q)", err, out)
+	}
+	if strings.Contains(out, "kill 99") {
+		t.Fatalf("another project's tunnel must not be reported, got: %q", out)
+	}
+}
+
+func TestTunnelStatusStaysSilentForUnrelatedQuickTunnels(t *testing.T) {
+	initTunnelHome(t)
+	tunnelProjectForTest(t)
+	legacyHost(t,
+		cmd.TunnelHostProcess{PID: 88, Argv: "cloudflared tunnel --url http://localhost:3000"},
+		cmd.TunnelHostProcess{PID: 99, Argv: "cloudflared tunnel --url https://other-shop.test"})
+
+	out, err := runTunnel(t, "tunnel", "status")
+	if err != nil {
+		t.Fatalf("status must exit 0: %v", err)
+	}
+	if strings.Contains(out, "kill ") {
+		t.Fatalf("status must not hint at unrelated tunnels, got: %q", out)
+	}
+}

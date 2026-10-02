@@ -99,11 +99,14 @@ pointing at it.
 > tunnels with `pkill cloudflared`. A tunnel it started that is still running
 > after the upgrade has no record, and Govard never kills a process it did not
 > start. When `tunnel stop` finds no record but a running
-> `cloudflared tunnel --url ...` that no record names, it prints a warning with
+> `cloudflared tunnel --url <this project's domain>` that no record names, it prints a warning with
 > the PID and the exact `kill <pid>` command, still restores the base URL, and
 > exits 1 so a script does not mistake it for success. `tunnel status` stays
-> `INACTIVE` (exit 0) and prints the same hint. A `cloudflared` you run for other
-> purposes, such as a named-tunnel service, is not reported.
+> `INACTIVE` (exit 0) and prints the same hint. Only a tunnel whose
+> `--url` names this project's domain (what v1.77.0 started by default) is
+> reported. A `cloudflared` you run for other purposes, such as a named-tunnel
+> service or `cloudflared tunnel --url http://localhost:3000`, and another
+> project's tunnel are never reported and never change the exit code.
 >
 > Both commands also need the project config now, so **outside a project**
 > `tunnel stop` and `tunnel status` exit 1 with an error; v1.77.0 exited 0 there.

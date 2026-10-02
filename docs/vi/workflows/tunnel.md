@@ -93,10 +93,10 @@ từ chối — lúc đó tunnel vẫn còn sống, nên base URL vẫn trỏ t�
 > **Nâng cấp từ v1.77.0.** Phiên bản đó không ghi bản ghi PID và dừng tunnel bằng
 > `pkill cloudflared`. Một tunnel do nó khởi chạy mà vẫn còn chạy sau khi nâng cấp sẽ không có bản
 > ghi, và Govard không bao giờ kill một tiến trình nó không khởi chạy. Khi `tunnel stop` không thấy
-> bản ghi nhưng có `cloudflared tunnel --url ...` đang chạy mà không bản ghi nào nêu tên, lệnh in
+> bản ghi nhưng có `cloudflared tunnel --url <domain của project này>` đang chạy mà không bản ghi nào nêu tên, lệnh in
 > cảnh báo kèm PID và đúng lệnh `kill <pid>` để bạn tự chạy, vẫn khôi phục base URL, và thoát với
 > mã 1 để script không nhầm là thành công. `tunnel status` vẫn báo `INACTIVE` (mã 0) và in cùng gợi ý
-> đó. Một `cloudflared` bạn chạy cho mục đích khác, như dịch vụ named tunnel, sẽ không bị báo.
+> đó. Chỉ tunnel có `--url` trỏ tới domain của project này (mặc định v1.77.0 đã dùng) mới bị báo. Một `cloudflared` bạn chạy cho mục đích khác, như dịch vụ named tunnel hay `cloudflared tunnel --url http://localhost:3000`, và tunnel của project khác sẽ không bao giờ bị báo và không đổi exit code.
 >
 > Cả hai lệnh giờ còn cần cấu hình project, nên **ngoài một project** `tunnel stop` và
 > `tunnel status` thoát với mã 1 kèm lỗi; v1.77.0 thoát với mã 0 ở đó.

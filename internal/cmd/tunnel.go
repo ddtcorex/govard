@@ -355,7 +355,7 @@ base URL, and exits 1.`,
 		}
 		var legacy []TunnelHostProcess
 		if !recorded {
-			legacy = unattributedGovardTunnels(config.ProjectName)
+			legacy = unattributedGovardTunnels(config)
 			printLegacyTunnelWarning(legacy)
 		}
 
@@ -394,7 +394,7 @@ var tunnelStatusCmd = &cobra.Command{
 		}
 		if !recorded {
 			pterm.Info.Println("Tunnel is INACTIVE.")
-			printLegacyTunnelWarning(unattributedGovardTunnels(config.ProjectName))
+			printLegacyTunnelWarning(unattributedGovardTunnels(config))
 			return nil
 		}
 		if !tunnelDeps.ProcessAlive(record.PID) {
@@ -561,23 +561,41 @@ func listHostProcesses() []TunnelHostProcess {
 	return processes
 }
 
-// isGovardQuickTunnelArgv matches the exact shape govard launches
-// (`cloudflared tunnel --url <target> ...`), so a user's own named-tunnel unit
-// (`cloudflared ... tunnel run`) never triggers the hint.
-func isGovardQuickTunnelArgv(argv string) bool {
+// isGovardQuickTunnelArgvFor matches the exact shape govard launches
+// (`cloudflared tunnel --url <target> ...`) AND a target that names this
+// project's domain, which is what a v1.77.0 `tunnel start` used by default. A
+// named-tunnel unit, a user's own `--url http://localhost:3000` and another
+// project's tunnel never match, so they are never reported.
+func isGovardQuickTunnelArgvFor(argv string, config engine.Config) bool {
 	tokens := strings.Fields(argv)
-	return len(tokens) >= 3 && filepath.Base(tokens[0]) == "cloudflared" &&
-		tokens[1] == "tunnel" && tokens[2] == "--url"
+	if len(tokens) < 4 || filepath.Base(tokens[0]) != "cloudflared" ||
+		tokens[1] != "tunnel" || tokens[2] != "--url" {
+		return false
+	}
+	target, err := resolveTunnelTarget(config, "", nil)
+	if err != nil {
+		return false
+	}
+	want, err := url.Parse(target)
+	if err != nil || want.Hostname() == "" {
+		return false
+	}
+	got, err := url.Parse(tokens[3])
+	if err != nil || got.Hostname() == "" {
+		return false
+	}
+	return strings.EqualFold(got.Hostname(), want.Hostname())
 }
 
-// unattributedGovardTunnels returns running govard-shaped cloudflared processes
-// that no PID record names: what a v1.77.0 `tunnel start` leaves after an
-// upgrade, since that version wrote no record. Nothing is signalled.
-func unattributedGovardTunnels(projectName string) []TunnelHostProcess {
-	recorded := recordedTunnelPIDs(projectName)
+// unattributedGovardTunnels returns running cloudflared processes that no PID
+// record names and that govard v1.77.0 would have started for this project:
+// what a v1.77.0 `tunnel start` leaves after an upgrade, since that version
+// wrote no record. Nothing is signalled.
+func unattributedGovardTunnels(config engine.Config) []TunnelHostProcess {
+	recorded := recordedTunnelPIDs(config.ProjectName)
 	var found []TunnelHostProcess
 	for _, process := range tunnelDeps.ListProcesses() {
-		if recorded[process.PID] || !isGovardQuickTunnelArgv(process.Argv) {
+		if recorded[process.PID] || !isGovardQuickTunnelArgvFor(process.Argv, config) {
 			continue
 		}
 		found = append(found, process)
