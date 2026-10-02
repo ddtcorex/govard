@@ -86,9 +86,20 @@ provider nó đã khởi chạy, để nguyên bản ghi và base URL của bên
 từ chối. Một bản ghi mà tiến trình đã chết, hoặc PID của nó giờ chạy thứ khác, sẽ được lần
 `start` kế tiếp thay thế.
 
-Khi không có bản ghi, `tunnel stop` không làm gì, có in ra điều đó và thoát với mã 0, nên chạy hai
-lần vẫn an toàn. Base URL của project được khôi phục trong mọi trường hợp, trừ khi tín hiệu bị
+Khi không có bản ghi và không có gì đang chạy, `tunnel stop` không làm gì, có in ra điều đó và
+thoát với mã 0, nên chạy hai lần vẫn an toàn. Base URL của project được khôi phục trong mọi trường hợp, trừ khi tín hiệu bị
 từ chối — lúc đó tunnel vẫn còn sống, nên base URL vẫn trỏ tới nó.
+
+> **Nâng cấp từ v1.77.0.** Phiên bản đó không ghi bản ghi PID và dừng tunnel bằng
+> `pkill cloudflared`. Một tunnel do nó khởi chạy mà vẫn còn chạy sau khi nâng cấp sẽ không có bản
+> ghi, và Govard không bao giờ kill một tiến trình nó không khởi chạy. Khi `tunnel stop` không thấy
+> bản ghi nhưng có `cloudflared tunnel --url ...` đang chạy mà không bản ghi nào nêu tên, lệnh in
+> cảnh báo kèm PID và đúng lệnh `kill <pid>` để bạn tự chạy, vẫn khôi phục base URL, và thoát với
+> mã 1 để script không nhầm là thành công. `tunnel status` vẫn báo `INACTIVE` (mã 0) và in cùng gợi ý
+> đó. Một `cloudflared` bạn chạy cho mục đích khác, như dịch vụ named tunnel, sẽ không bị báo.
+>
+> Cả hai lệnh giờ còn cần cấu hình project, nên **ngoài một project** `tunnel stop` và
+> `tunnel status` thoát với mã 1 kèm lỗi; v1.77.0 thoát với mã 0 ở đó.
 
 Kiểm tra trạng thái:
 

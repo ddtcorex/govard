@@ -239,6 +239,11 @@ func initTunnelHome(t *testing.T) {
 	// pinned by TestTunnelStopAndStatusNeedNoCloudflared without this stub.
 	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapCloudflared)
 	t.Cleanup(restore)
+	// Hide the host's own cloudflared processes: a developer machine really
+	// runs some, and the legacy hint would otherwise leak into every test.
+	t.Cleanup(cmd.SetTunnelDependenciesForTest(cmd.TunnelDependenciesForTest{
+		ListProcesses: func() []cmd.TunnelHostProcess { return nil },
+	}))
 }
 
 func writeTunnelRecord(t *testing.T, project string, pid int, argv string) {

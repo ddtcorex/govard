@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +40,9 @@ type tunnelCommandDependencies struct {
 	// decisions: a test that can only move the clock still has to sit through
 	// every sleep that clock would have skipped.
 	Sleep func(d time.Duration)
+	// ListProcesses reads the host's process table, read-only, so stop and
+	// status can point at a cloudflared govard cannot attribute to a record.
+	ListProcesses func() []TunnelHostProcess
 }
 
 var tunnelDeps = tunnelCommandDependencies{
@@ -47,6 +53,7 @@ var tunnelDeps = tunnelCommandDependencies{
 	SignalProcess:   signalProcess,
 	Now:             time.Now,
 	Sleep:           time.Sleep,
+	ListProcesses:   listHostProcesses,
 }
 
 // TunnelDependenciesForTest allows tests to swap tunnel command dependencies.
@@ -58,6 +65,10 @@ type TunnelDependenciesForTest struct {
 	SignalProcess   func(pid int, sig os.Signal) error
 	Now             func() time.Time
 	Sleep           func(d time.Duration)
+	// ListProcesses is nil to keep the current value (unlike the others, which
+	// reset to production), so a test host that really runs cloudflared can be
+	// hidden once for a whole test.
+	ListProcesses func() []TunnelHostProcess
 }
 
 var tunnelCmd = &cobra.Command{
@@ -307,7 +318,11 @@ Only the tunnel govard started for this project is stopped: it is the process
 recorded under $GOVARD_HOME_DIR/tunnels/<project>.pid, and govard signals it only
 while the process still carries the argv it was started with. A pid govard did
 not start — or one whose argv cannot be read — is refused with an error instead
-of being matched by name, so no other cloudflared on this host is touched.`,
+of being matched by name, so no other cloudflared on this host is touched.
+
+A tunnel started by an older govard left no record. If one is still running,
+stop prints its pid and the 'kill <pid>' command to run yourself, restores the
+base URL, and exits 1.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// The record is keyed by project_name, so the config has to be readable
 		// before anything can be signalled. cloudflared does not usually run in
@@ -338,6 +353,11 @@ of being matched by name, so no other cloudflared on this host is touched.`,
 		} else {
 			pterm.Info.Println("No tunnel started by govard for this project.")
 		}
+		var legacy []TunnelHostProcess
+		if !recorded {
+			legacy = unattributedGovardTunnels(config.ProjectName)
+			printLegacyTunnelWarning(legacy)
+		}
 
 		cwd, _ := os.Getwd()
 		mgr := frameworks.NewBaseURLManager(config.Framework)
@@ -346,6 +366,14 @@ of being matched by name, so no other cloudflared on this host is touched.`,
 
 		if recorded {
 			pterm.Success.Printf("Tunnel stopped (pid %d).\n", record.PID)
+		}
+		if len(legacy) > 0 {
+			// Same stance as the other refusals: a tunnel is still up and govard
+			// did not stop it, so the command must not exit 0. The base URL is
+			// reverted anyway, because the user asked for the local URL back.
+			return fmt.Errorf(
+				"a cloudflared govard cannot attribute to a record is still running (%s): stop it with the kill command above",
+				describeTunnelPIDs(legacy))
 		}
 		return nil
 	},
@@ -366,6 +394,7 @@ var tunnelStatusCmd = &cobra.Command{
 		}
 		if !recorded {
 			pterm.Info.Println("Tunnel is INACTIVE.")
+			printLegacyTunnelWarning(unattributedGovardTunnels(config.ProjectName))
 			return nil
 		}
 		if !tunnelDeps.ProcessAlive(record.PID) {
@@ -496,7 +525,98 @@ func SetTunnelDependenciesForTest(deps TunnelDependenciesForTest) func() {
 	} else {
 		tunnelDeps.Sleep = time.Sleep
 	}
+	if deps.ListProcesses != nil {
+		tunnelDeps.ListProcesses = deps.ListProcesses
+	}
 	return func() {
 		tunnelDeps = previous
+	}
+}
+
+// TunnelHostProcess is one row of the host's process table.
+type TunnelHostProcess struct {
+	PID  int
+	Argv string
+}
+
+// listHostProcesses reads `ps` (read-only). An unreadable table yields nothing:
+// the hint it feeds is advisory and must never make stop or status fail.
+func listHostProcesses() []TunnelHostProcess {
+	output, err := exec.Command("ps", "-axo", "pid=,args=").Output()
+	if err != nil {
+		return nil
+	}
+	var processes []TunnelHostProcess
+	for _, line := range strings.Split(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		pid, convErr := strconv.Atoi(fields[0])
+		if convErr != nil || pid <= 0 {
+			continue
+		}
+		processes = append(processes, TunnelHostProcess{PID: pid, Argv: strings.Join(fields[1:], " ")})
+	}
+	return processes
+}
+
+// isGovardQuickTunnelArgv matches the exact shape govard launches
+// (`cloudflared tunnel --url <target> ...`), so a user's own named-tunnel unit
+// (`cloudflared ... tunnel run`) never triggers the hint.
+func isGovardQuickTunnelArgv(argv string) bool {
+	tokens := strings.Fields(argv)
+	return len(tokens) >= 3 && filepath.Base(tokens[0]) == "cloudflared" &&
+		tokens[1] == "tunnel" && tokens[2] == "--url"
+}
+
+// unattributedGovardTunnels returns running govard-shaped cloudflared processes
+// that no PID record names: what a v1.77.0 `tunnel start` leaves after an
+// upgrade, since that version wrote no record. Nothing is signalled.
+func unattributedGovardTunnels(projectName string) []TunnelHostProcess {
+	recorded := recordedTunnelPIDs(projectName)
+	var found []TunnelHostProcess
+	for _, process := range tunnelDeps.ListProcesses() {
+		if recorded[process.PID] || !isGovardQuickTunnelArgv(process.Argv) {
+			continue
+		}
+		found = append(found, process)
+	}
+	return found
+}
+
+// recordedTunnelPIDs collects every PID any project's record names, so a tunnel
+// that has a record elsewhere is not mistaken for a legacy one.
+func recordedTunnelPIDs(projectName string) map[int]bool {
+	pids := map[int]bool{}
+	files, _ := filepath.Glob(filepath.Join(filepath.Dir(tunnelPIDFilePath(projectName)), "*.pid"))
+	for _, file := range files {
+		payload, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		var record TunnelPIDRecord
+		if json.Unmarshal(payload, &record) == nil && record.PID > 0 {
+			pids[record.PID] = true
+		}
+	}
+	return pids
+}
+
+func describeTunnelPIDs(processes []TunnelHostProcess) string {
+	parts := make([]string, 0, len(processes))
+	for _, process := range processes {
+		parts = append(parts, "pid "+strconv.Itoa(process.PID))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func printLegacyTunnelWarning(processes []TunnelHostProcess) {
+	for _, process := range processes {
+		pterm.Warning.Printf(
+			"A cloudflared govard cannot attribute to a record is running (pid %d: %s). "+
+				"It was probably started by an older govard that kept no record; govard never stops a process it did not start. "+
+				"Stop it yourself: kill %d\n",
+			process.PID, process.Argv, process.PID)
 	}
 }

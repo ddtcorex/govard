@@ -90,10 +90,23 @@ stops the provider process it launched, leaves the winner's record and base URL 
 and fails with the same refusal. A record whose process is gone, or whose PID now runs
 something else, is replaced by the next start.
 
-With no record, `tunnel stop` is a no-op that says so and exits 0, so it is
-safe to run twice. The project's base URL is restored either way, except when
+With no record and nothing running, `tunnel stop` is a no-op that says so and
+exits 0, so it is safe to run twice. The project's base URL is restored either way, except when
 a signal was refused — there the tunnel is still up, so the base URL keeps
 pointing at it.
+
+> **Upgrading from v1.77.0.** That version kept no PID record and stopped
+> tunnels with `pkill cloudflared`. A tunnel it started that is still running
+> after the upgrade has no record, and Govard never kills a process it did not
+> start. When `tunnel stop` finds no record but a running
+> `cloudflared tunnel --url ...` that no record names, it prints a warning with
+> the PID and the exact `kill <pid>` command, still restores the base URL, and
+> exits 1 so a script does not mistake it for success. `tunnel status` stays
+> `INACTIVE` (exit 0) and prints the same hint. A `cloudflared` you run for other
+> purposes, such as a named-tunnel service, is not reported.
+>
+> Both commands also need the project config now, so **outside a project**
+> `tunnel stop` and `tunnel status` exit 1 with an error; v1.77.0 exited 0 there.
 
 Check status:
 
