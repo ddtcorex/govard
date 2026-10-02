@@ -286,6 +286,11 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		return nil, err
 	}
 	if exists && request.Recreate {
+		// The replacement is validated before the working container is removed:
+		// a database the sandbox refuses must not cost the sandbox that works.
+		if _, err := sandboxNewDB(request, profile); err != nil {
+			return nil, err
+		}
 		fmt.Fprintf(request.out(), "recreating %s\n", container)
 		if err := runtime.RemoveContainer(ctx, container); err != nil {
 			return nil, err
