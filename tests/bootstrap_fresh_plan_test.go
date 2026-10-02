@@ -253,3 +253,71 @@ func TestBootstrapFreshPlanWithExistingConfigIsUnchanged(t *testing.T) {
 		t.Fatalf("plan ignored the configured version:\n%s", out)
 	}
 }
+
+// A plan in a directory with no .govard.yml invents its project in memory, so it
+// must not leave that invention in the user's registry (which the desktop
+// dashboard lists) or in the operations log.
+func TestBootstrapPlanWithoutConfigWritesNoRegistryOrEvent(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "govard-home")
+	opsLog := filepath.Join(t.TempDir(), "operations.log")
+	t.Setenv(engine.OperationsLogPathEnvVar, opsLog)
+
+	dir := t.TempDir()
+	if _, err := runFreshPlanInHome(t, dir, home, "--fresh", "--plan", "--framework", "magento2"); err != nil {
+		t.Fatalf("plan failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "projects.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("--plan without .govard.yml registered a made-up project (stat err=%v)", err)
+	}
+	if _, err := os.Stat(opsLog); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("--plan without .govard.yml wrote an operation event (stat err=%v)", err)
+	}
+}
+
+// With a real .govard.yml the plan is about a real project, whose existing
+// tracking is kept.
+func TestBootstrapPlanWithConfigStillTracksTheRealProject(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "govard-home")
+	t.Setenv(engine.OperationsLogPathEnvVar, filepath.Join(t.TempDir(), "operations.log"))
+
+	dir := t.TempDir()
+	config := "project_name: sample-project\nframework: magento2\nframework_version: 2.4.7\ndomain: sample-project.test\n"
+	if err := os.WriteFile(filepath.Join(dir, ".govard.yml"), []byte(config), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if _, err := runFreshPlanInHome(t, dir, home, "--fresh", "--plan"); err != nil {
+		t.Fatalf("plan failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "projects.json")); err != nil {
+		t.Fatalf("a plan for a real project keeps its registry tracking: %v", err)
+	}
+}
+
+func runFreshPlanInHome(t *testing.T, dir, home string, args ...string) (string, error) {
+	t.Helper()
+	cmd.ResetBootstrapFlags()
+	t.Cleanup(cmd.ResetBootstrapFlags)
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home: %v", err)
+	}
+	t.Setenv("GOVARD_HOME_DIR", home)
+	// Without an explicit registry path a temp-dir project is refused outright,
+	// which would make "nothing was registered" true for the wrong reason.
+	t.Setenv(engine.ProjectRegistryPathEnvVar, filepath.Join(home, "projects.json"))
+
+	out := &bytes.Buffer{}
+	root := cmd.RootCommandForTest()
+	root.SetOut(out)
+	root.SetErr(io.Discard)
+	root.SetArgs(append([]string{"bootstrap"}, args...))
+	err = root.Execute()
+	return out.String(), err
+}
