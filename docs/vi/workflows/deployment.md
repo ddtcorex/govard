@@ -1419,7 +1419,7 @@ như trước.
 - **Artifact được cache.** `govard deploy build sandbox` resolve sandbox đang chạy
   mà không cần remote cấu hình sẵn, và cache artifact thành phẩm dưới
   `.govard/sandbox/build-cache`, khoá theo commit, sha256 của `composer.lock` tại
-  commit đó, series PHP, chế độ build và runner, và phiên bản govard. Trúng cache thì
+  commit đó, series PHP, chế độ build và runner, deploy settings, hook và lệnh recipe đang hiệu lực, và binary govard. Trúng cache thì
   hard-link cây đã cache vào `--output` và in `artifact cache hit`; `--no-cache` build
   lại. Giữ ba entry dùng gần nhất và `down --purge` xoá hết. Đừng sửa tại chỗ một
   output đã build: hard link dùng chung nội dung với cache.

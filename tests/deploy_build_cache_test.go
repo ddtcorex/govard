@@ -38,6 +38,8 @@ func TestBuildCacheKeyChangesWithEachComponent(t *testing.T) {
 		"php":      func(k *cmd.BuildCacheKeyForTest) { k.PHP = "8.3" },
 		"mode":     func(k *cmd.BuildCacheKeyForTest) { k.Mode = "artifact/container" },
 		"version":  func(k *cmd.BuildCacheKeyForTest) { k.GovardVersion = "v2" },
+		"inputs":   func(k *cmd.BuildCacheKeyForTest) { k.InputsSHA256 = "cc" },
+		"binary":   func(k *cmd.BuildCacheKeyForTest) { k.Binary = "other-binary" },
 	} {
 		key := base
 		mutate(&key)
@@ -351,5 +353,52 @@ func TestRestoreRefusesANonEmptyOutputWithoutForce(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(output, "stale")); !os.IsNotExist(err) {
 		t.Fatal("--force replaces the output")
+	}
+}
+
+// The artifact depends on what the project asks the build to do, not only on the
+// commit: a rehearsal tunes deploy settings in an untracked .govard.yml without
+// committing anything, and a cache hit would hand back the old artifact.
+func TestChangedDeploySettingsMissTheCache(t *testing.T) {
+	root, revision := sandboxBuildProject(t)
+	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", revision, "--output", filepath.Join(root, "out-1")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, ".govard.yml"), `
+project_name: sample-project
+framework: generic
+domain: sample.test
+deploy:
+  settings:
+    content_version: "rehearsal-2"
+`)
+	out, err := runDeployBuildCommand(t, "sandbox", "--revision", revision, "--output", filepath.Join(root, "out-2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "artifact cache hit") {
+		t.Fatalf("changed deploy settings must not reuse the old artifact: %q", out)
+	}
+}
+
+func TestBuildInputsDigestFollowsSettingsHooksAndRecipe(t *testing.T) {
+	recipe := deploy.DefaultRecipe()
+	options := deploy.Options{Settings: map[string]any{"frontend_command": "npm run build"}}
+	hooks := []deploy.Hook{{Name: "h", On: "build", Run: "echo a"}}
+	base := cmd.BuildInputsDigestForTest(recipe, hooks, options)
+	if base != cmd.BuildInputsDigestForTest(recipe, hooks, options) {
+		t.Fatal("the digest must be stable")
+	}
+	changedSettings := deploy.Options{Settings: map[string]any{"frontend_command": "npm run other"}}
+	if base == cmd.BuildInputsDigestForTest(recipe, hooks, changedSettings) {
+		t.Error("a changed setting must change the digest")
+	}
+	if base == cmd.BuildInputsDigestForTest(recipe, []deploy.Hook{{Name: "h", On: "build", Run: "echo b"}}, options) {
+		t.Error("a changed hook must change the digest")
+	}
+	changedRecipe := deploy.DefaultRecipe()
+	deploy.OverrideTaskForTest(&changedRecipe, deploy.TaskAssets, deploy.Task{ID: deploy.TaskAssets, Command: "other"})
+	if base == cmd.BuildInputsDigestForTest(changedRecipe, hooks, options) {
+		t.Error("a changed recipe command must change the digest")
 	}
 }

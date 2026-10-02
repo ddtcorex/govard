@@ -898,7 +898,7 @@ earlier build cannot ship: pass `--force` to replace its contents.
 `--revision`, `--tag`, `--force`, `--command-timeout`, `--json`, `--runner`
 (`host`, the default, or `container`), `--no-cache`. It needs no capability at all: `none`.
 Only the `sandbox` remote caches its artifact (`.govard/sandbox/build-cache`, keyed by
-commit, `composer.lock` hash, PHP series, mode and govard version); `--no-cache`
+commit, `composer.lock` hash, PHP series, mode, effective deploy settings, hooks and recipe commands, and the govard binary); `--no-cache`
 forces a rebuild there and is accepted and ignored for every other remote.
 `--runner container` is the one flag that demands anything — the project's own
 app container, exit `3` without it — and it also requires `--output` to sit

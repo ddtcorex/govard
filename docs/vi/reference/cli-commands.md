@@ -882,7 +882,7 @@ Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--bran
 `--revision`, `--tag`, `--force`, `--command-timeout`, `--json`, `--runner`
 (`host` là mặc định, hoặc `container`), `--no-cache`. Lệnh này không cần capability nào: `none`.
 Chỉ remote `sandbox` cache artifact của nó (`.govard/sandbox/build-cache`, khoá theo
-commit, hash `composer.lock`, series PHP, chế độ và phiên bản govard); `--no-cache`
+commit, hash `composer.lock`, series PHP, chế độ, deploy settings, hook và lệnh recipe đang hiệu lực, và binary govard); `--no-cache`
 buộc build lại ở đó và được chấp nhận rồi bỏ qua với mọi remote khác.
 `--runner container` là flag duy nhất có đòi hỏi — container app của chính dự án,
 thiếu nó thì thoát với mã `3` — và nó còn đòi `--output` nằm trong project root để

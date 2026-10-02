@@ -1451,8 +1451,8 @@ before.
 - **The artifact is cached.** `govard deploy build sandbox` resolves the running
   sandbox without a configured remote and caches the finished artifact under
   `.govard/sandbox/build-cache`, keyed by the commit, the sha256 of `composer.lock`
-  at that commit, the PHP series, the build mode and runner, and the govard
-  version. A hit hard-links the cached tree into `--output` and prints
+  at that commit, the PHP series, the build mode and runner, the effective deploy settings, hooks and recipe
+  commands, and the govard binary. A hit hard-links the cached tree into `--output` and prints
   `artifact cache hit`; `--no-cache` rebuilds. The three most recently used
   entries are kept and `down --purge` removes them. Do not edit a built output in
   place: hard links share content with the cache.

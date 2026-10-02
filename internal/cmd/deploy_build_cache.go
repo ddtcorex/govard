@@ -48,13 +48,20 @@ type buildCacheKey struct {
 	PHP                string
 	Mode               string
 	GovardVersion      string
+	// InputsSHA256 covers what the project asks the build to do beyond the
+	// commit: the effective deploy settings, the hooks and the recipe's task
+	// commands. A rehearsal tunes these in an untracked .govard.yml.
+	InputsSHA256 string
+	// Binary identifies the govard executable that builds, because a development
+	// build keeps one version string across edits.
+	Binary string
 }
 
 // ID is the entry name: the first 16 hex characters of a hash over the fields,
 // each prefixed by its length so a field boundary cannot be shifted.
 func (k buildCacheKey) ID() string {
 	hash := sha256.New()
-	for _, field := range []string{k.Revision, k.ComposerLockSHA256, k.PHP, k.Mode, k.GovardVersion} {
+	for _, field := range []string{k.Revision, k.ComposerLockSHA256, k.PHP, k.Mode, k.GovardVersion, k.InputsSHA256, k.Binary} {
 		fmt.Fprintf(hash, "%d:%s;", len(field), field)
 	}
 	return hex.EncodeToString(hash.Sum(nil))[:16]
@@ -236,7 +243,7 @@ func copyRegularFile(src, dst string, perm fs.FileMode) error {
 // sandboxBuildCacheKey derives the key of the build about to run, or reports
 // that there is none (a revision git cannot resolve is left for the build to
 // report in its own words).
-func sandboxBuildCacheKey(ctx context.Context, workDir string, options deploy.Options, runnerName string) (buildCacheKey, bool) {
+func sandboxBuildCacheKey(ctx context.Context, workDir string, recipe deploy.Recipe, hooks []deploy.Hook, options deploy.Options, runnerName string) (buildCacheKey, bool) {
 	revision := strings.TrimSpace(options.Revision)
 	if revision == "" {
 		revision = strings.TrimSpace(options.Tag)
@@ -264,7 +271,53 @@ func sandboxBuildCacheKey(ctx context.Context, workDir string, options deploy.Op
 		PHP:                strings.TrimSpace(php),
 		Mode:               deploy.BuildArtifact + "/" + runner,
 		GovardVersion:      Version,
+		InputsSHA256:       buildInputsDigest(recipe, hooks, options),
+		Binary:             executableIdentity(),
 	}, true
+}
+
+// buildInputsDigest hashes what the build is told to do. Maps marshal with
+// sorted keys, so equal inputs always give the same digest.
+func buildInputsDigest(recipe deploy.Recipe, hooks []deploy.Hook, options deploy.Options) string {
+	type task struct {
+		ID, Command, RunOn string
+		Optional           bool
+		HasCore            bool
+	}
+	tasks := make([]task, 0, len(recipe.Tasks))
+	for _, t := range recipe.Tasks {
+		tasks = append(tasks, task{ID: t.ID, Command: t.Command, RunOn: string(t.RunOn), Optional: t.Optional, HasCore: t.Core != nil})
+	}
+	raw, err := json.Marshal(struct {
+		Recipe   string
+		Tasks    []task
+		Hooks    []deploy.Hook
+		Settings map[string]any
+	}{recipe.ID, tasks, hooks, options.Settings})
+	if err != nil {
+		// Unhashable inputs must not share an entry with anything else.
+		return fmt.Sprintf("unhashable-%d", time.Now().UnixNano())
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// executableIdentity is the running binary's path, size and modification time.
+func executableIdentity() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return path
+	}
+	return fmt.Sprintf("%s:%d:%d", path, info.Size(), info.ModTime().UnixNano())
+}
+
+// BuildInputsDigestForTest exposes buildInputsDigest to the tests/ package.
+func BuildInputsDigestForTest(recipe deploy.Recipe, hooks []deploy.Hook, options deploy.Options) string {
+	return buildInputsDigest(recipe, hooks, options)
 }
 
 func buildCacheGit(ctx context.Context, workDir string, args ...string) (string, error) {
