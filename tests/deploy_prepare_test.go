@@ -1083,6 +1083,15 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 // strings, not about this machine's toolchain.
 func platformFloorFixture(t *testing.T, constraint, targetPHP string) string {
 	t.Helper()
+	return platformFloorFixtureWithOptions(t, constraint, targetPHP, deploy.Options{Publish: deploy.PublishSymlink})
+}
+
+// platformFloorFixtureWithOptions is platformFloorFixture with the deploy options
+// under the caller's control. The preflight's own verdict is not asserted: an
+// artifact build can legitimately fail the parity check that runs after the note,
+// and the note is what these callers read.
+func platformFloorFixtureWithOptions(t *testing.T, constraint, targetPHP string, opts deploy.Options) string {
+	t.Helper()
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "composer.lock"), `{"platform":{"php":`+strconv.Quote(constraint)+`}}`)
 
@@ -1091,14 +1100,30 @@ func platformFloorFixture(t *testing.T, constraint, targetPHP string) string {
 		answerSubstring: "PHP_VERSION",
 		answerStdout:    targetPHP + "\n",
 	})
-	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
+	sc := deploy.StepContextForTest(host, opts)
 	sc.WorkDir = work
 	out := &bytes.Buffer{}
 	sc.Out = out
-	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil && opts.Build != deploy.BuildArtifact {
 		t.Fatalf("check: %v", err)
 	}
 	return out.String()
+}
+
+// An artifact build never runs build:vendors on the target, and checkArtifactParity
+// already fails on a series mismatch, so the "wrong series" note would be noise
+// there. A server build still needs it.
+func TestCoreCheckSkipsTheComposerPlatformNoteForArtifactBuilds(t *testing.T) {
+	artifact := platformFloorFixtureWithOptions(t, ">=8.4", "8.3.35",
+		deploy.Options{Publish: deploy.PublishSymlink, Build: deploy.BuildArtifact})
+	if strings.Contains(artifact, "composer requires") {
+		t.Fatalf("an artifact build must not print the composer platform note, got %q", artifact)
+	}
+	server := platformFloorFixtureWithOptions(t, ">=8.4", "8.3.35",
+		deploy.Options{Publish: deploy.PublishSymlink, Build: deploy.BuildServer})
+	if !strings.Contains(server, "composer requires") {
+		t.Fatalf("a server build must still print the composer platform note, got %q", server)
+	}
 }
 
 // The rehearsal of 2026-09-28: the lock was resolved for PHP >=8.4, the target

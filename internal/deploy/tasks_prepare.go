@@ -124,7 +124,12 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	if err := checkPHPVersion(ctx, sc); err != nil {
 		return err
 	}
-	noteComposerPlatform(ctx, sc)
+	// An artifact build never runs build:vendors on the target, and
+	// checkArtifactParity below already refuses a series mismatch, so the note
+	// would only repeat it with advice that does not apply.
+	if sc.Opts.Build != BuildArtifact {
+		noteComposerPlatform(ctx, sc)
+	}
 	if err := checkArtifactParity(ctx, sc); err != nil {
 		return err
 	}
