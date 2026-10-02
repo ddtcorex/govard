@@ -40,6 +40,8 @@ type Step struct {
 	NeedsApplication bool
 	// NeedsMigration is copied from the recipe's task: see Task.NeedsMigration.
 	NeedsMigration bool
+	// ReusableOutputs is copied from the recipe's task: see Task.ReusableOutputs.
+	ReusableOutputs []string
 	// Source records which layer contributed the step: "recipe" or "config".
 	Source string
 	// Checks are the recipe's post-publish verifications. They travel with the
@@ -511,6 +513,7 @@ func BuildPlan(recipe Recipe, hooks []Hook) (Plan, error) {
 
 			NeedsApplication: task.NeedsApplication,
 			NeedsMigration:   task.NeedsMigration,
+			ReusableOutputs:  task.ReusableOutputs,
 			Source:           "recipe",
 			core:             task.Core,
 		}

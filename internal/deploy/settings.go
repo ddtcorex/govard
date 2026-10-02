@@ -92,6 +92,7 @@ var engineSettings = []Setting{
 	{Key: "sandbox_packages", Kind: SettingStringList, Title: "extra apt packages the sandbox image installs"},
 	{Key: "sandbox_extensions", Kind: SettingStringList, Title: "PHP extensions the sandbox image installs, as php-<name>"},
 	{Key: "sandbox_services", Kind: SettingStringList, Title: "init services the sandbox starts before sshd"},
+	{Key: "sandbox_reuse_assets", Kind: SettingBool, Title: "whether a sandbox deploy may reuse static content an earlier release produced; default true"},
 	{Key: "sandbox_tools", Kind: SettingStringList, Title: "binaries the sandbox image installs, from the engine's known list"},
 }
 

@@ -90,6 +90,7 @@ func bindDeployBuildFlags(command *cobra.Command) {
 	command.Flags().String("tag", "", "Tag to build")
 	command.Flags().Bool("force", false, "Replace an output directory that is not empty")
 	command.Flags().Bool("json", false, "Emit the manifest as machine-readable JSON")
+	command.Flags().Bool("no-cache", false, "Rebuild even when the sandbox artifact cache holds this revision (only the sandbox remote caches; every other remote always builds)")
 	// No backticks: cobra reads a backquoted word in a usage string as the
 	// flag's value placeholder and prints it in place of the flag name.
 	command.Flags().String("runner", "host", "Where the build tasks run: host (default, needs nothing) or container (the project's own app container, which has to be running; keep --output inside the project root)")
@@ -236,21 +237,72 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 	// and `deploy:artifact` re-points `{{release_path}}` at the release.
 	buildHost := deploy.HostForTest(filepath.Dir(absolute), runner)
 
-	manifest, err := deploy.BuildArtifactDir(cmd.Context(), deploy.BuildRequest{
-		Recipe:    recipe,
-		Hooks:     hooks,
-		Options:   options,
-		Vars:      deployVars(buildHost, options),
-		WorkDir:   workDir,
-		OutputDir: absolute,
-		Force:     force,
-		Out:       cmd.OutOrStdout(),
-		Runner:    runner,
-	})
-	if err != nil {
-		// No current step maps a path the runner check above did not; this
-		// guards a future caller that hands the container a new directory.
-		return containerPathConfigError(err)
+	// Notes about the cache go to stderr under --json, so stdout stays one document.
+	notes := cmd.OutOrStdout()
+	if jsonOut {
+		notes = cmd.ErrOrStderr()
+	}
+	noCache, _ := cmd.Flags().GetBool("no-cache")
+	var (
+		cacheDir   = sandboxBuildCacheDir(workDir)
+		cacheKey   buildCacheKey
+		cacheReady bool
+		manifest   *deploy.ArtifactManifest
+	)
+	if buildCacheApplies(remote, noCache) {
+		cacheKey, cacheReady = sandboxBuildCacheKey(cmd.Context(), workDir, runner, recipe, hooks, options, runnerName)
+	}
+	if cacheReady {
+		if tree, hit := lookupBuildCache(cacheDir, cacheKey); hit {
+			if err := restoreFromCache(tree, absolute, force); err != nil {
+				return err
+			}
+			// The text a build records is the revision or tag it was given, else
+			// the commit it resolved.
+			spelling := strings.TrimSpace(options.Revision)
+			if spelling == "" {
+				spelling = strings.TrimSpace(options.Tag)
+			}
+			if spelling == "" {
+				spelling = cacheKey.Revision
+			}
+			cached, err := retargetManifestRevision(absolute, spelling)
+			if err != nil {
+				return err
+			}
+			manifest = cached
+			fmt.Fprintf(notes, "artifact cache hit %s (revision %s, lock %.12s)\n",
+				cacheKey.ID(), deploy.ShortRevision(cacheKey.Revision), cacheKey.ComposerLockSHA256)
+		}
+	}
+
+	if manifest == nil {
+		built, err := deploy.BuildArtifactDir(cmd.Context(), deploy.BuildRequest{
+			Recipe:    recipe,
+			Hooks:     hooks,
+			Options:   options,
+			Vars:      deployVars(buildHost, options),
+			WorkDir:   workDir,
+			OutputDir: absolute,
+			Force:     force,
+			Out:       cmd.OutOrStdout(),
+			Runner:    runner,
+		})
+		if err != nil {
+			// No current step maps a path the runner check above did not; this
+			// guards a future caller that hands the container a new directory.
+			return containerPathConfigError(err)
+		}
+		manifest = built
+		if cacheReady {
+			// A failed store costs the next build its speed, never this one its
+			// result.
+			if err := storeBuildCache(cacheDir, cacheKey, absolute); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "note: the artifact was built but not cached: %v\n", err)
+			} else {
+				fmt.Fprintf(notes, "artifact cached as %s\n", cacheKey.ID())
+			}
+		}
 	}
 
 	if jsonOut {

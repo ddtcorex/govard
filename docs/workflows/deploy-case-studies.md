@@ -1053,6 +1053,7 @@ Engine-level settings (declared by the default recipe, applied by the core):
 | `php_version` | (empty; not gated when unset) | the series the target runs — a gate, not a preference |
 | `composer_bin` | `composer` | the Composer binary on the target |
 | `content_version` | the short revision | `--content-version`; deterministic, so a retry writes the same asset URLs |
+| `sandbox_reuse_assets` | `true` | `false` keeps `build:assets` running on every deploy to the sandbox; by default the sandbox hard-links the previous release's static content when the artifact and the rendered command are unchanged (a real remote always runs it) |
 
 Magento settings (declared by the Magento recipe):
 

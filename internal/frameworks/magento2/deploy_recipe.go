@@ -166,6 +166,12 @@ func DeployRecipe() deploy.Recipe {
 			`else `+
 			`{{php_bin}} bin/magento setup:static-content:deploy -f --content-version={{settings.content_version}} -j {{settings.static_jobs}} {{settings.static_deploy_options_args}} {{settings.static_content_locales_args}} {{settings.magento_themes_args}}; `+
 			`fi; fi`)
+	// pub/static is the whole output of the static content task, including the
+	// version marker the storefront refuses to start without. The sandbox may
+	// hardlink it from an earlier release when the artifact is unchanged.
+	assets := recipe.Task(deploy.TaskAssets)
+	assets.ReusableOutputs = []string{"pub/static"}
+	recipe.ReplaceTask(assets)
 
 	// Maintenance mode belongs to the application the web server is *serving*,
 	// not to the release being built: the flag is read from the docroot the

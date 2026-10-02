@@ -8,6 +8,7 @@ import (
 	"io"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,12 +61,16 @@ type SeedSpec struct {
 // drifts from the registered one).
 type SeedEnvRewriter = engine.SandboxSeedRewriter
 
+// errOriginNotRunning is the one sentence for a seed that needs the origin
+// project while it is stopped.
+var errOriginNotRunning = fmt.Errorf("the origin project is not running; start it with `govard env up` first, or pass --no-seed for an empty sandbox")
+
 // ResolveSeedSpec validates the source and resolves the snapshot plan. A
 // stopped origin is a refusal, not an empty sandbox: silent emptiness is the
 // failure this gate exists to prevent.
 func ResolveSeedSpec(source SeedSource) (SeedSpec, error) {
 	if !source.OriginRunning {
-		return SeedSpec{}, fmt.Errorf("the origin project is not running; start it with `govard env up` first, or pass --no-seed for an empty sandbox")
+		return SeedSpec{}, errOriginNotRunning
 	}
 	if strings.TrimSpace(source.DB.Container) == "" || strings.TrimSpace(source.DB.Name) == "" {
 		return SeedSpec{}, fmt.Errorf("cannot seed without the origin database container and name")
@@ -311,13 +316,15 @@ func streamContainerTar(ctx context.Context, runtime SandboxRuntime, from, to, s
 	return nil
 }
 
-// runSandboxSeed snapshots the origin into a running sandbox container:
-// create the app user/database, dump (origin) → strip → import (sandbox),
-// stream one media tree, rewrite one env file. webPort is the sandbox's
-// published HTTP port (0 when the profile serves no web tier): it defaults
-// base_url, because docker chooses the port and no caller can know it upfront.
-// Every step is fail-loud; nothing is skipped silently.
-func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
+// The seed has two parts that SandboxUp runs separately: a sandbox whose database
+// lives in a persistent volume skips the first and still needs the second, since
+// media and the env file live in the container filesystem.
+//
+// runSandboxSeedDB seeds the sandbox database: create the app user/database,
+// dump (origin) → strip → import (sandbox), then point the origin's URLs at the
+// sandbox. webPort is the sandbox's published HTTP port (0 when the profile
+// serves no web tier). Every step is fail-loud; nothing is skipped silently.
+func runSandboxSeedDB(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
 	spec, err := ResolveSeedSpec(SeedSource{
 		OriginRunning: request.SeedOriginRunning,
 		DB: SeedDB{
@@ -357,39 +364,71 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 		return err
 	}
 
-	// The import restores the origin's rows verbatim, including any URL that
-	// names the origin: the application the sandbox serves would then answer
-	// with redirects to a host the rehearsal never meant to touch. The
-	// framework-owned rewrite points those rows at the sandbox instead. It
-	// runs only for a sandbox that serves web — without a web URL there is
-	// nothing to point at — and each statement travels the same shape as the
-	// import (password in the environment, SQL on stdin), so no secret ever
-	// reaches argv.
-	if request.DBRewrite != nil && webPort > 0 {
-		fmt.Fprintln(out, "rewriting the seeded database for the sandbox")
-		var envContent []byte
-		if request.SeedEnvSource != "" {
-			raw, err := runtime.Exec(ctx, request.SeedAppContainer, nil, "cat", request.SeedEnvSource)
-			if err != nil {
-				return fmt.Errorf("read the origin env file: %w", err)
-			}
-			envContent = []byte(raw)
+	return rewriteSandboxDatabase(ctx, runtime, out, sandbox, webPort, request, spec)
+}
+
+// rewriteSandboxDatabase points the database at this container's web URL. It is
+// its own step because the URL changes whenever the container does (Docker picks
+// a fresh published port), so a kept database needs it as much as a seeded one.
+//
+// An import restores the origin's rows verbatim, including any URL that names the
+// origin: the application the sandbox serves would then answer with redirects to
+// a host the rehearsal never meant to touch. The framework-owned rewrite points
+// those rows at the sandbox instead. It runs only for a sandbox that serves web,
+// since without a web URL there is nothing to point at, and each statement
+// travels the same shape as the import (password in the environment, SQL on
+// stdin), so no secret ever reaches argv.
+func rewriteSandboxDatabase(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest, spec SeedSpec) error {
+	if request.DBRewrite == nil || webPort <= 0 {
+		return nil
+	}
+	passwordEnv := mysqlPasswordEnv(spec.DBPassword)
+	fmt.Fprintln(out, "rewriting the seeded database for the sandbox")
+	var envContent []byte
+	if request.SeedEnvSource != "" {
+		raw, err := runtime.Exec(ctx, request.SeedAppContainer, nil, "cat", request.SeedEnvSource)
+		if err != nil {
+			return fmt.Errorf("read the origin env file: %w", err)
 		}
-		baseURL := fmt.Sprintf("http://127.0.0.1:%d/", webPort)
-		statements := request.DBRewrite(envContent, baseURL)
-		if len(statements) == 0 {
-			// The framework refused (an unusable table prefix) or had nothing to
-			// say. Either way the origin's URLs stay, and the verify check will
-			// answer with a redirect much later; say it now.
-			fmt.Fprintf(out, "note: nothing to rewrite in the seeded database; URLs that name the origin stay as they are, point them at %s by hand\n", baseURL)
-		}
-		for _, statement := range statements {
-			if err := runtime.ExecStream(ctx, sandbox, passwordEnv, strings.NewReader(statement), nil, spec.DBImportArgs...); err != nil {
-				return fmt.Errorf("rewrite the sandbox database: %w", err)
-			}
+		envContent = []byte(raw)
+	}
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d/", webPort)
+	statements := request.DBRewrite(envContent, baseURL)
+	if len(statements) == 0 {
+		// The framework refused (an unusable table prefix) or had nothing to
+		// say. Either way the origin's URLs stay, and the verify check will
+		// answer with a redirect much later; say it now.
+		fmt.Fprintf(out, "note: nothing to rewrite in the seeded database; URLs that name the origin stay as they are, point them at %s by hand\n", baseURL)
+	}
+	for _, statement := range statements {
+		if err := runtime.ExecStream(ctx, sandbox, passwordEnv, strings.NewReader(statement), nil, spec.DBImportArgs...); err != nil {
+			return fmt.Errorf("rewrite the sandbox database: %w", err)
 		}
 	}
+	return nil
+}
 
+// sandboxDatabaseHasData reports whether the application database already holds
+// tables. The probe asks about that schema only: other schemas (the server's own,
+// or a leftover) say nothing about whether the origin was imported.
+func sandboxDatabaseHasData(ctx context.Context, runtime SandboxRuntime, sandbox, dbName string) (bool, error) {
+	query := fmt.Sprintf("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='%s'", escapeLiteral(dbName))
+	output, err := runtime.Exec(ctx, sandbox, nil, "mysql", "-N", "-e", query)
+	if err != nil {
+		return false, fmt.Errorf("check whether the sandbox database %s holds data: %w", dbName, err)
+	}
+	count, convErr := strconv.Atoi(strings.TrimSpace(output))
+	if convErr != nil {
+		// An answer that is not a number is "nothing there": seeding an empty
+		// database is the safe default, and a real server always answers a count.
+		return false, nil
+	}
+	return count > 0, nil
+}
+
+// runSandboxSeedFiles copies one media tree out of the origin app container,
+// rewrites one env file, and hands the deploy tree to the deploy user.
+func runSandboxSeedFiles(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
 	if request.SeedMediaSource != "" && request.SeedMediaTarget != "" {
 		fmt.Fprintf(out, "copying media %s\n", request.SeedMediaSource)
 		// The tar stream passes through this process between two Exec calls, so

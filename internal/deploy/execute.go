@@ -512,6 +512,14 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			stepCtx.Live = live
 		}
 
+		// The sandbox is a throwaway target, so a second deploy of the same
+		// artifact may reuse the static content an earlier release produced.
+		if reason, reused := e.reuseSandboxAssets(ctx, step, stepVars, release); reused {
+			step.SkipReason = reason
+			e.record(ctx, release, step, StepSkipped, 0, nil)
+			continue
+		}
+
 		stepStarted := time.Now()
 		stepErr := e.runStep(ctx, step, stepCtx, timeoutFor(index), live)
 		elapsed := time.Since(stepStarted)
@@ -532,6 +540,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		}
 
 		e.record(ctx, release, step, StepOK, elapsed, nil)
+		if stepErr == nil {
+			e.recordSandboxAssets(ctx, step, stepVars, release)
+		}
 		if step.ID == TaskLock {
 			e.lockHeld = true
 		}

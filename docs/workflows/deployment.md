@@ -1423,9 +1423,57 @@ entry — so a local `ps` cannot read it; inside the container it is still visib
 to that container's own process list while the client runs. A dump that fails
 midway leaves the sandbox database **partial**, which the seed reports rather
 than hiding: re-run `govard sandbox up`. The seed runs only on a fresh
-container; a reused sandbox keeps its data and `--recreate` is the refresh. The
-origin environment must be running, or `up` refuses and says so — a silent empty
-sandbox helps nobody. `--no-seed` starts deliberately empty.
+container, and its database part only into an empty database: the `full` profile
+keeps the database in a named volume that `down` leaves alone, so a new container
+on a populated volume skips the import (it says so, once) but still gets the
+media and the env file, which live in the container. `--reseed` refreshes both
+from the origin; `down --purge` discards the volume. The origin environment must
+be running, or `up` refuses and says so — a silent empty sandbox helps nobody.
+`--no-seed` starts deliberately empty, and `--reseed` with `--no-seed` is refused.
+
+### The fast loop
+
+A rehearsal repeats the same steps, so the sandbox reuses what it can. All of it
+applies to the `sandbox` remote only; a real remote builds and deploys exactly as
+before.
+
+- **A fixture instead of a fresh install.** A first install takes minutes.
+  `scripts/sandbox-fixture.sh <dir>` creates an installed project once (`init`,
+  `bootstrap --fresh`, then a commit of the files the build reads); afterwards a
+  stopped fixture comes back with `env start`, or with `snapshot restore`.
+- **The database stays.** The `full` profile mounts the named volume
+  `<sandbox container name>-db` over the database data directory. `down` keeps it,
+  `down --purge` removes it, `up` seeds only an empty database, and `--reseed`
+  refreshes it. A volume written by one database series is never opened by
+  another: `--db` (or the stack) naming a different series is refused, before
+  anything is built, with a `--purge` hint. `--recreate` rebuilds the container
+  and keeps the volume, so it no longer refreshes the data by itself.
+- **The artifact is cached.** `govard deploy build sandbox` resolves the running
+  sandbox without a configured remote and caches the finished artifact under
+  `.govard/sandbox/build-cache`, keyed by the commit, the sha256 of `composer.lock`
+  at that commit, the PHP series, the build mode and runner, the effective deploy settings, hooks and recipe
+  commands, the builder's PHP, Composer and Node versions, and the govard binary. A hit hard-links the cached tree into `--output` and prints
+  `artifact cache hit`; `--no-cache` rebuilds. The three most recently used
+  entries are kept and `down --purge` removes them. Do not edit a built output in
+  place: hard links share content with the cache.
+- **Static content is reused.** When the artifact (revision, PHP, lock file, every
+  file's digest) and the rendered static-content command are the same as at the
+  last run, the sandbox hard-links the earlier release's static content instead
+  of generating it again and the timeline says why. A changed artifact, a changed
+  command (themes, locales, jobs) or missing earlier content runs the task.
+  Changes the fingerprint cannot see, such as a theme enabled in the database,
+  need `settings.sandbox_reuse_assets: false` under `deploy:` to keep the task
+  running.
+- **Credentials for a server build.** `--build server` on the sandbox gets the
+  project's `auth.json`, or else `~/.composer/auth.json`, for the run (unless
+  `COMPOSER_AUTH` is set); they travel on the command's standard input, never in
+  argv or on disk. An artifact deploy installs nothing on the target and reads no
+  credentials.
+
+On a warm machine (images present) the loop measured about 6 s for the fixture,
+27 to 33 s for `sandbox up` with a seed, 69 to 79 s for the artifact build and 50
+s for the deploy before these changes; the build and the seed are the parts that
+now drop to seconds on a repeat.
 
 A sandbox you already have is described by what it is, not by the flags of the
 command that reached it: `up` reports the profile and the PHP series the container

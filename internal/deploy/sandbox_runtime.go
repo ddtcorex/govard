@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -75,6 +76,12 @@ type SandboxRuntime interface {
 	// creates). Zero matches is success: an `up` that never created named
 	// volumes has nothing to delete.
 	RemoveVolumesByLabel(ctx context.Context, label, value string) error
+	// EnsureVolume creates a labelled named volume. An existing volume is left
+	// alone: docker ignores the labels of a second create, so its stamp stays.
+	EnsureVolume(ctx context.Context, name string, labels map[string]string) error
+	// VolumeLabel reads one label off a named volume; exists is false when no
+	// such volume exists.
+	VolumeLabel(ctx context.Context, name, key string) (value string, exists bool, err error)
 	// EnsureNetworkConnected joins a running container to a Docker network,
 	// idempotently. A missing network is reported as connected=false with a
 	// nil error rather than failing: the caller (sandbox up) treats gateway
@@ -106,6 +113,9 @@ type SandboxRunRequest struct {
 	PHP string
 	// DB is the database series the image was built for, recorded like PHP.
 	DB string
+	// DBVolume is a named volume mounted over the database data directory, so
+	// the data outlives the container. Empty for a profile with no database.
+	DBVolume string
 	// Web publishes the HTTP port as well. A profile with no web tier has
 	// nothing listening there, and Docker would publish a port that never
 	// answers — which `deploy:verify` would then report as a failed deploy.
@@ -283,6 +293,43 @@ func (d *DockerCLI) RemoveVolumesByLabel(ctx context.Context, label, value strin
 	return nil
 }
 
+// EnsureVolume creates a named volume carrying the given labels. Labels are
+// passed in a fixed order so the command line is stable.
+func (d *DockerCLI) EnsureVolume(ctx context.Context, name string, labels map[string]string) error {
+	args := []string{"volume", "create"}
+	keys := make([]string, 0, len(labels))
+	for key := range labels {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		args = append(args, "--label", key+"="+labels[key])
+	}
+	args = append(args, name)
+	if _, err := d.run(ctx, SandboxCommand{Args: args}); err != nil {
+		return fmt.Errorf("create the volume %s: %w", name, err)
+	}
+	return nil
+}
+
+// VolumeLabel reads one label off a named volume. Existence is asked through
+// `volume ls` with an anchored name filter, whose empty answer is a plain
+// "no", instead of parsing the error `volume inspect` gives for a missing one.
+func (d *DockerCLI) VolumeLabel(ctx context.Context, name, key string) (string, bool, error) {
+	listed, err := d.run(ctx, SandboxCommand{Args: []string{"volume", "ls", "--quiet", "--filter", "name=^" + name + "$"}})
+	if err != nil {
+		return "", false, fmt.Errorf("look up the volume %s: %w", name, err)
+	}
+	if !strings.Contains(listed, name) {
+		return "", false, nil
+	}
+	output, err := d.run(ctx, SandboxCommand{Args: []string{"volume", "inspect", "--format", fmt.Sprintf("{{index .Labels %q}}", key), name}})
+	if err != nil {
+		return "", false, fmt.Errorf("read label %s of the volume %s: %w", key, name, err)
+	}
+	return strings.TrimSpace(output), true, nil
+}
+
 // ImageFile reads one file out of an image without starting the sandbox, which
 // is how `status` reports the package versions the image actually recorded even
 // while the container is stopped.
@@ -308,6 +355,9 @@ func (d *DockerCLI) RunContainer(ctx context.Context, request SandboxRunRequest)
 	}
 	if request.Web {
 		args = append(args, "--publish", SandboxWebBinding)
+	}
+	if request.DBVolume != "" {
+		args = append(args, "--mount", "type=volume,source="+request.DBVolume+",target="+SandboxDBDataDir)
 	}
 	args = append(args,
 		"--mount", "type=bind,source="+request.MirrorPath+",target="+SandboxRepoPath+",readonly",

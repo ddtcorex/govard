@@ -1567,3 +1567,17 @@ func TestMagento2CacheFlushPurgeNamesAnUnreadableCacheDirectory(t *testing.T) {
 		t.Errorf("an unreadable cache directory must be named, not passed over in silence, got:\n%s", result.Stdout)
 	}
 }
+
+// The static content is what the sandbox may reuse between two deploys of the
+// same artifact. The engine only reads the list; it is the recipe that knows the
+// task writes pub/static, and that the version marker the storefront needs to
+// start (deployed_version.txt) lives in it, so the whole directory is the unit.
+func TestMagento2RecipeDeclaresTheStaticContentItProduces(t *testing.T) {
+	got := magento2.DeployRecipe().Task(deploy.TaskAssets).ReusableOutputs
+	if len(got) != 1 || got[0] != "pub/static" {
+		t.Fatalf("ReusableOutputs = %v, want [pub/static]", got)
+	}
+	if other := magento2.DeployRecipe().Task(deploy.TaskCompile).ReusableOutputs; len(other) != 0 {
+		t.Fatalf("only the assets task is reusable, build:compile declares %v", other)
+	}
+}

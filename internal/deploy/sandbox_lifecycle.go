@@ -125,6 +125,9 @@ type SandboxRequest struct {
 	// NoSeed skips the snapshot: the sandbox starts empty (no DB, no media,
 	// no env file) and records no derivation.
 	NoSeed bool
+	// Reseed refreshes the database and the files from the origin even when the
+	// sandbox already holds them. Without it a populated database volume is kept.
+	Reseed bool
 	// Volumes makes `down` delete the derived data volumes as well as the
 	// container. Without it `down` stops and removes the container and keeps
 	// every volume, so a rehearsal can resume tomorrow.
@@ -260,6 +263,14 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err != nil {
 		return nil, err
 	}
+	if request.Reseed {
+		if request.NoSeed {
+			return nil, fmt.Errorf("--reseed refreshes the seed and --no-seed skips it: pass one of them")
+		}
+		if request.SeedOrigin == "" {
+			return nil, fmt.Errorf("--reseed needs an origin project to seed from: run it from a project whose environment is up")
+		}
+	}
 	docRoot, err := request.docRoot()
 	if err != nil {
 		return nil, err
@@ -288,7 +299,14 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if exists && request.Recreate {
 		// The replacement is validated before the working container is removed:
 		// a database the sandbox refuses must not cost the sandbox that works.
-		if _, err := sandboxNewDB(request, profile); err != nil {
+		newDB, err := sandboxNewDB(request, profile)
+		if err != nil {
+			return nil, err
+		}
+		// The kept database volume is checked against the replacement too, for
+		// the same reason: once the container is gone nothing is left to fall
+		// back on.
+		if _, _, err := checkSandboxDBVolume(ctx, runtime, container, profile, newDB); err != nil {
 			return nil, err
 		}
 		fmt.Fprintf(request.out(), "recreating %s\n", container)
@@ -363,6 +381,19 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err != nil {
 		return nil, err
 	}
+	// A volume written by another database series is refused before any build:
+	// the refusal does not depend on the image, and building one takes minutes.
+	var (
+		dbVolume       string
+		dbVolumeExists bool
+	)
+	if !exists {
+		var volErr error
+		dbVolume, dbVolumeExists, volErr = checkSandboxDBVolume(ctx, runtime, container, profile, db)
+		if volErr != nil {
+			return nil, volErr
+		}
+	}
 	if !imageExists || request.Recreate {
 		fmt.Fprintf(request.out(), "building the %s sandbox image %s\n", profile, image)
 		if err := runtime.BuildImage(ctx, SandboxBuildRequest{
@@ -376,6 +407,9 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	}
 
 	if !exists {
+		if err := ensureSandboxDBVolume(ctx, runtime, container, db, dbVolume, dbVolumeExists); err != nil {
+			return nil, err
+		}
 		if err := runtime.RunContainer(ctx, SandboxRunRequest{
 			Name:        container,
 			Image:       image,
@@ -384,6 +418,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 			Profile:     profile,
 			PHP:         php,
 			DB:          db,
+			DBVolume:    dbVolume,
 			Web:         servesWeb,
 		}); err != nil {
 			return nil, err
@@ -481,13 +516,32 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	// means plain `sandbox up` with no derivation: no seed, no record.
 	derived := NewDerivedFrom(request.SeedOrigin, request.SeedBlueprintRev)
 	seeded := false
-	if request.SeedOrigin != "" && !request.NoSeed && !exists && !SandboxHasDatabase(profile) {
+	wantSeed := request.SeedOrigin != "" && !request.NoSeed && (!exists || request.Reseed)
+	switch {
+	case wantSeed && !SandboxHasDatabase(profile):
 		// The snapshot is a database dump: a profile with no database has
 		// nowhere to put it, and attempting it failed with "the sandbox
 		// database never answered" after the sandbox was already up.
 		fmt.Fprintf(request.out(), "note: skipping the database seed, the %s profile has no database; use --profile %s to seed one\n", profile, SandboxProfileFull)
-	} else if request.SeedOrigin != "" && !request.NoSeed && !exists {
-		if err := runSandboxSeed(ctx, runtime, request.out(), container, webPort, request); err != nil {
+	case wantSeed && !request.SeedOriginRunning && (request.SeedMediaSource != "" || request.SeedEnvSource != ""):
+		// The files come out of the origin's container whatever the database
+		// volume holds, so a stopped origin is reported before any work.
+		return nil, errOriginNotRunning
+	case wantSeed:
+		seedDB, err := sandboxSeedDatabaseNeeded(ctx, runtime, request.out(), container, request)
+		if err != nil {
+			return nil, err
+		}
+		if seedDB {
+			if err := runSandboxSeedDB(ctx, runtime, request.out(), container, webPort, request); err != nil {
+				return nil, err
+			}
+		} else if err := repointKeptDatabase(ctx, runtime, request.out(), container, webPort, request); err != nil {
+			return nil, err
+		}
+		// The files live in the container filesystem, so a new container needs
+		// them whatever the database volume held.
+		if err := runSandboxSeedFiles(ctx, runtime, request.out(), container, webPort, request); err != nil {
 			return nil, err
 		}
 		seeded = true
@@ -533,6 +587,55 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		state.DerivedFrom = &derived
 	}
 	return state, nil
+}
+
+// sandboxSeedDatabaseNeeded decides whether the origin database is imported:
+// always under --reseed, otherwise only when the application database holds no
+// tables. A kept volume is announced once, with the way to refresh it.
+func sandboxSeedDatabaseNeeded(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, request SandboxRequest) (bool, error) {
+	if request.Reseed {
+		return true, nil
+	}
+	if err := waitSandboxDB(ctx, runtime, sandbox); err != nil {
+		return false, err
+	}
+	hasData, err := sandboxDatabaseHasData(ctx, runtime, sandbox, request.SeedDBName)
+	if err != nil {
+		return false, err
+	}
+	if hasData {
+		fmt.Fprintf(out, "database seed skipped: the sandbox volume already holds %s (use --reseed to refresh it)\n", request.SeedDBName)
+	}
+	return !hasData, nil
+}
+
+// repointKeptDatabase gives a database kept on the volume the URL of the
+// container it now serves: Docker published a new port for it. The rewrite reads
+// the origin's env file, so a stopped origin is a note rather than a failure, and
+// the data the sandbox already has stays usable.
+func repointKeptDatabase(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
+	if request.DBRewrite == nil || webPort <= 0 {
+		return nil
+	}
+	if !request.SeedOriginRunning {
+		fmt.Fprintf(out, "note: the origin is not running, so the base URL in the kept database may still name an old web port; start the origin and pass --reseed to refresh it\n")
+		return nil
+	}
+	spec, err := ResolveSeedSpec(SeedSource{
+		OriginRunning: request.SeedOriginRunning,
+		DB: SeedDB{
+			Container: request.SeedDBContainer,
+			User:      request.SeedDBUser,
+			Password:  request.SeedDBPassword,
+			Name:      request.SeedDBName,
+		},
+		MediaSource: request.SeedMediaSource,
+		EnvSource:   request.SeedEnvSource,
+	})
+	if err != nil {
+		return err
+	}
+	return rewriteSandboxDatabase(ctx, runtime, out, sandbox, webPort, request, spec)
 }
 
 // localBranch names the branch a checkout is on, and is empty for a detached
@@ -975,6 +1078,12 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 	if !request.Purge {
 		return state, nil
 	}
+	// The database volume is data, not runtime: only --purge discards it.
+	if project != "" {
+		if err := runtime.RemoveVolumesByLabel(ctx, SandboxDBVolumeLabel, SandboxContainerName(project, request.ProjectRoot)); err != nil {
+			return nil, err
+		}
+	}
 	if state.Image != "" {
 		_ = runtime.RemoveImage(ctx, state.Image)
 	}
@@ -1103,6 +1212,37 @@ func containerLabelOrEmpty(ctx context.Context, runtime SandboxRuntime, containe
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+// checkSandboxDBVolume reports, before anything is built, that a new
+// container's database volume already exists and was written by another
+// series. It returns the volume name (empty for a profile with no database) and
+// whether the volume already exists.
+func checkSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, container, profile, db string) (string, bool, error) {
+	if !SandboxHasDatabase(profile) {
+		return "", false, nil
+	}
+	name := SandboxDBVolumeName(container)
+	stamped, exists, err := runtime.VolumeLabel(ctx, name, sandboxDBLabel)
+	if err != nil {
+		return "", false, err
+	}
+	if exists {
+		if err := CheckSandboxDBVolumeSeries(stamped, db); err != nil {
+			return "", false, err
+		}
+	}
+	return name, exists, nil
+}
+
+// ensureSandboxDBVolume creates the volume a new container's database lives in,
+// stamped with the series, unless it already exists.
+func ensureSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, container, db, name string, exists bool) error {
+	if name == "" || exists {
+		return nil
+	}
+	labels := map[string]string{SandboxDBVolumeLabel: container, sandboxDBLabel: db}
+	return runtime.EnsureVolume(ctx, name, labels)
 }
 
 // sandboxDBLabel is the container label the database series is recorded in.

@@ -172,6 +172,12 @@ type Task struct {
 	// before the publish block and skips every flagged step when the probe
 	// reports the target is current.
 	NeedsMigration bool
+	// ReusableOutputs lists, relative to the release, the directories this task
+	// produces from the artifact and its own command alone. On the sandbox
+	// target the executor may hardlink them from an earlier release instead of
+	// running the task again; the engine reads the list and never names what is
+	// in it.
+	ReusableOutputs []string
 }
 
 // IsEmpty reports whether the recipe left this step unimplemented.

@@ -196,7 +196,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	outcome, runErr := deploy.NewExecutor(host, options, timeline).Run(cmd.Context(), plan, deployVars(host, options), release)
+	// A server build on the sandbox gets the host's composer credentials for the
+	// duration of the run; nothing else does, hooks included.
+	var (
+		outcome deploy.Outcome
+		runErr  error
+	)
+	withSandboxComposerAuth(cmd, host.Remote.Sandbox, options.Build == deploy.BuildServer, func() {
+		outcome, runErr = deploy.NewExecutor(host, options, timeline).Run(cmd.Context(), plan, deployVars(host, options), release)
+	})
 
 	if hookErr := engine.RunHooks(config, engine.HookPostDeploy, cmd.OutOrStdout(), cmd.ErrOrStderr()); hookErr != nil && runErr == nil {
 		return fmt.Errorf("post-deploy hooks failed: %w", hookErr)
