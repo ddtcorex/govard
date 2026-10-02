@@ -184,3 +184,32 @@ func TestAbsoluteSymlinkInTheOutputPreventsReuse(t *testing.T) {
 		t.Fatal("static content holding an absolute symlink must be regenerated, not hard-linked")
 	}
 }
+
+// A new container on a kept database still needs its files from the origin, so a
+// stopped origin is reported in the origin's own words before anything is copied.
+func TestKeptDatabaseWithAStoppedOriginAndFilesToCopyIsAnActionableError(t *testing.T) {
+	request := seededMediaRequest(t)
+	request.SeedOriginRunning = false
+	fake := freshSandboxFake()
+	fake.answers["information_schema.tables"] = "371\n"
+	existingVolume(fake, request, "")
+	_, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request)
+	if err == nil || !strings.Contains(err.Error(), "origin project is not running") {
+		t.Fatalf("want the actionable origin-not-running error, got %v", err)
+	}
+	if fake.has("docker exec") || fake.has("tar -C") {
+		t.Fatalf("nothing may be copied from a stopped origin: %v", fake.calls)
+	}
+}
+
+func TestKeptDatabaseWithAStoppedOriginAndNothingToCopyStillComesUp(t *testing.T) {
+	request := seededMediaRequest(t)
+	request.SeedOriginRunning = false
+	request.SeedMediaSource, request.SeedMediaTarget, request.SeedEnvSource = "", "", ""
+	fake := freshSandboxFake()
+	fake.answers["information_schema.tables"] = "371\n"
+	existingVolume(fake, request, "")
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatalf("a kept database with no files to copy must not need the origin: %v", err)
+	}
+}

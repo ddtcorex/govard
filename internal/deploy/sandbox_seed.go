@@ -61,12 +61,16 @@ type SeedSpec struct {
 // drifts from the registered one).
 type SeedEnvRewriter = engine.SandboxSeedRewriter
 
+// errOriginNotRunning is the one sentence for a seed that needs the origin
+// project while it is stopped.
+var errOriginNotRunning = fmt.Errorf("the origin project is not running; start it with `govard env up` first, or pass --no-seed for an empty sandbox")
+
 // ResolveSeedSpec validates the source and resolves the snapshot plan. A
 // stopped origin is a refusal, not an empty sandbox: silent emptiness is the
 // failure this gate exists to prevent.
 func ResolveSeedSpec(source SeedSource) (SeedSpec, error) {
 	if !source.OriginRunning {
-		return SeedSpec{}, fmt.Errorf("the origin project is not running; start it with `govard env up` first, or pass --no-seed for an empty sandbox")
+		return SeedSpec{}, errOriginNotRunning
 	}
 	if strings.TrimSpace(source.DB.Container) == "" || strings.TrimSpace(source.DB.Name) == "" {
 		return SeedSpec{}, fmt.Errorf("cannot seed without the origin database container and name")

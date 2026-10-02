@@ -523,6 +523,10 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		// nowhere to put it, and attempting it failed with "the sandbox
 		// database never answered" after the sandbox was already up.
 		fmt.Fprintf(request.out(), "note: skipping the database seed, the %s profile has no database; use --profile %s to seed one\n", profile, SandboxProfileFull)
+	case wantSeed && !request.SeedOriginRunning && (request.SeedMediaSource != "" || request.SeedEnvSource != ""):
+		// The files come out of the origin's container whatever the database
+		// volume holds, so a stopped origin is reported before any work.
+		return nil, errOriginNotRunning
 	case wantSeed:
 		seedDB, err := sandboxSeedDatabaseNeeded(ctx, runtime, request.out(), container, request)
 		if err != nil {

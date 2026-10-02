@@ -87,7 +87,7 @@ func init() {
 	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default for a new sandbox: stack.php_version when it names a series, else the base image's own; an existing sandbox keeps its series; no effect with --profile basic)")
 	sandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	sandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
-	sandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: start with an empty sandbox (no DB, no media, no env file)")
+	sandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: seed no database, media or env file (a kept database volume keeps its data)")
 	sandboxUpCmd.Flags().Bool("reseed", false, "Refresh the database and the files from the origin even when the sandbox already holds them (the database lives in a volume that down keeps, so a plain up seeds only an empty one)")
 
 	sandboxResetCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
