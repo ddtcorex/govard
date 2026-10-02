@@ -30,6 +30,25 @@ func (e *itemsFailedError) Error() string { return "verify: one or more checklis
 // second JSON document to stdout and leave two documents there.
 func (e *itemsFailedError) AlreadyReported() bool { return true }
 
+// reportedError wraps an error whose JSON form already reached stdout, so the
+// `--error-json` envelope must not be appended as a second document. The
+// wrapped error stays reachable with errors.Is and keeps its exit code.
+type reportedError struct{ error }
+
+func (e reportedError) Unwrap() error         { return e.error }
+func (e reportedError) AlreadyReported() bool { return true }
+
+// printGateRefusal writes the legacy {"error": ...} document for a refusal that
+// happened before any item ran. Under --error-json the envelope main prints is
+// the one document, so this stays silent there.
+func printGateRefusal(cmd *cobra.Command, err error) {
+	if errorJSON {
+		return
+	}
+	payload, _ := json.Marshal(map[string]string{"error": err.Error()})
+	fmt.Fprintln(cmd.OutOrStdout(), string(payload))
+}
+
 // ErrItemsFailed is returned when at least one checklist item failed.
 var ErrItemsFailed = &itemsFailedError{}
 
@@ -158,8 +177,7 @@ Examples:
 				if err == verify.ErrNeedSnapshot || err == verify.ErrNeedAllowDestructive {
 					if jsonOut {
 						// Still output JSON-like error for machine parsing.
-						payload, _ := json.Marshal(map[string]string{"error": err.Error()})
-						fmt.Fprintln(cmd.OutOrStdout(), string(payload))
+						printGateRefusal(cmd, err)
 					}
 					return err
 				}
@@ -176,8 +194,7 @@ Examples:
 		// created a snapshot first.
 		if err := verify.PreflightPhaseSelection([]int{1, 2, 3, 4, 5}, opts); err != nil {
 			if jsonOut {
-				payload, _ := json.Marshal(map[string]string{"error": err.Error()})
-				fmt.Fprintln(cmd.OutOrStdout(), string(payload))
+				printGateRefusal(cmd, err)
 			} else {
 				pterm.Warning.Println(err.Error())
 			}
@@ -209,14 +226,18 @@ Examples:
 						if rerr := renderVerifyResult(cmd, combined, true); rerr != nil {
 							return rerr
 						}
+						// The merged document above carries the reason; main must
+						// not add an envelope as a second document.
+						if errorJSON {
+							return reportedError{err}
+						}
 						return err
 					}
 					// A gate block is reported as a JSON envelope, exactly like
 					// the explicit phase-5 checks above; returning silently left
 					// stdout empty for a consumer that asked for --json.
 					if err == verify.ErrNeedSnapshot || err == verify.ErrNeedAllowDestructive {
-						payload, _ := json.Marshal(map[string]string{"error": err.Error()})
-						fmt.Fprintln(cmd.OutOrStdout(), string(payload))
+						printGateRefusal(cmd, err)
 					}
 					return err
 				}
