@@ -8,6 +8,7 @@ import (
 	"io"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -311,13 +312,22 @@ func streamContainerTar(ctx context.Context, runtime SandboxRuntime, from, to, s
 	return nil
 }
 
-// runSandboxSeed snapshots the origin into a running sandbox container:
-// create the app user/database, dump (origin) → strip → import (sandbox),
-// stream one media tree, rewrite one env file. webPort is the sandbox's
-// published HTTP port (0 when the profile serves no web tier): it defaults
-// base_url, because docker chooses the port and no caller can know it upfront.
-// Every step is fail-loud; nothing is skipped silently.
+// runSandboxSeed snapshots the origin into a running sandbox container: the
+// database, then the files (media, env file). Both parts are separate because a
+// sandbox whose database lives in a persistent volume skips the first and still
+// needs the second: media and the env file live in the container filesystem.
 func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
+	if err := runSandboxSeedDB(ctx, runtime, out, sandbox, webPort, request); err != nil {
+		return err
+	}
+	return runSandboxSeedFiles(ctx, runtime, out, sandbox, webPort, request)
+}
+
+// runSandboxSeedDB seeds the sandbox database: create the app user/database,
+// dump (origin) → strip → import (sandbox), then point the origin's URLs at the
+// sandbox. webPort is the sandbox's published HTTP port (0 when the profile
+// serves no web tier). Every step is fail-loud; nothing is skipped silently.
+func runSandboxSeedDB(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
 	spec, err := ResolveSeedSpec(SeedSource{
 		OriginRunning: request.SeedOriginRunning,
 		DB: SeedDB{
@@ -389,7 +399,30 @@ func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, 
 			}
 		}
 	}
+	return nil
+}
 
+// sandboxDatabaseHasData reports whether the application database already holds
+// tables. The probe asks about that schema only: other schemas (the server's own,
+// or a leftover) say nothing about whether the origin was imported.
+func sandboxDatabaseHasData(ctx context.Context, runtime SandboxRuntime, sandbox, dbName string) (bool, error) {
+	query := fmt.Sprintf("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='%s'", escapeLiteral(dbName))
+	output, err := runtime.Exec(ctx, sandbox, nil, "mysql", "-N", "-e", query)
+	if err != nil {
+		return false, fmt.Errorf("check whether the sandbox database %s holds data: %w", dbName, err)
+	}
+	count, convErr := strconv.Atoi(strings.TrimSpace(output))
+	if convErr != nil {
+		// An answer that is not a number is "nothing there": seeding an empty
+		// database is the safe default, and a real server always answers a count.
+		return false, nil
+	}
+	return count > 0, nil
+}
+
+// runSandboxSeedFiles copies one media tree out of the origin app container,
+// rewrites one env file, and hands the deploy tree to the deploy user.
+func runSandboxSeedFiles(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
 	if request.SeedMediaSource != "" && request.SeedMediaTarget != "" {
 		fmt.Fprintf(out, "copying media %s\n", request.SeedMediaSource)
 		// The tar stream passes through this process between two Exec calls, so

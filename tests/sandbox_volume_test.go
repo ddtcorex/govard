@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -142,5 +143,117 @@ func TestCheckSandboxDBVolumeSeries(t *testing.T) {
 		if (err != nil) != tc.wantErr {
 			t.Errorf("(%q,%q) err = %v, wantErr %v", tc.volume, tc.requested, err, tc.wantErr)
 		}
+	}
+}
+
+// reusedFullSandbox makes the fake describe a running full-profile container
+// that already exists, which is what a second `sandbox up` meets.
+func reusedFullSandbox() *fakeSandboxRuntime {
+	fake := sandboxFake().containerProfile(deploy.SandboxProfileFull).containerPHP("")
+	fake.labels["govard.sandbox.db"] = "\n"
+	fake.answers["image inspect"] = "sha256:abc\n"
+	fake.answers["22/tcp"] = "127.0.0.1:2222\n"
+	fake.answers["mysqladmin ping"] = "mysqld is alive\n"
+	fake.answers["command -v mariadb-dump"] = "/usr/bin/mariadb-dump\n"
+	return fake
+}
+
+func seededMediaRequest(t *testing.T) deploy.SandboxRequest {
+	t.Helper()
+	origin, _ := seedGitRepo(t)
+	request := seedSandboxUpRequest(t, t.TempDir(), origin)
+	request.SeedAppContainer = "seed-shop-php-1"
+	request.SeedMediaSource = "/var/www/html/pub/media"
+	request.SeedMediaTarget = "/home/deployer/media-seed"
+	return request
+}
+
+func TestNewContainerOnAPopulatedVolumeSkipsTheDatabaseSeedButSeedsFiles(t *testing.T) {
+	request := seededMediaRequest(t)
+	var out bytes.Buffer
+	request.Out = &out
+	fake := freshSandboxFake()
+	fake.answers["information_schema.tables"] = "371\n"
+	existingVolume(fake, request.ProjectName, "")
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatal(err)
+	}
+	if fake.has("command -v mariadb-dump") {
+		t.Fatalf("a populated volume must not be re-seeded: %v", fake.calls)
+	}
+	if !fake.has("tar -C /home/deployer/media-seed -xf -") {
+		t.Fatalf("a new container still gets the files seed: %v", fake.calls)
+	}
+	if note := out.String(); !strings.Contains(note, "database seed skipped") || !strings.Contains(note, "--reseed") {
+		t.Fatalf("want one note naming --reseed, got %q", note)
+	}
+}
+
+func TestEmptyVolumeSeedsTheDatabase(t *testing.T) {
+	request := seededMediaRequest(t)
+	fake := freshSandboxFake()
+	fake.answers["information_schema.tables"] = "0\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatal(err)
+	}
+	if !fake.has("command -v mariadb-dump") {
+		t.Fatalf("an empty database must be seeded: %v", fake.calls)
+	}
+}
+
+func TestVolumeWithDataButNoApplicationDatabaseIsSeeded(t *testing.T) {
+	request := seededMediaRequest(t)
+	fake := freshSandboxFake()
+	// Other schemas hold tables, the application database holds none: the probe
+	// asks about the application schema only, and its answer is zero.
+	fake.answers["information_schema.tables"] = "0\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatal(err)
+	}
+	if !fake.has("table_schema='" + request.SeedDBName + "'") {
+		t.Fatalf("the probe must name the application database %q: %v", request.SeedDBName, fake.calls)
+	}
+	if !fake.has("command -v mariadb-dump") {
+		t.Fatalf("a missing application database must be seeded: %v", fake.calls)
+	}
+}
+
+func TestReseedForcesBothSeedsOnAReusedContainer(t *testing.T) {
+	request := seededMediaRequest(t)
+	request.Reseed = true
+	fake := reusedFullSandbox()
+	fake.answers["information_schema.tables"] = "371\n"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatal(err)
+	}
+	if !fake.has("command -v mariadb-dump") || !fake.has("tar -C /home/deployer/media-seed -xf -") {
+		t.Fatalf("--reseed must refresh the database and the files: %v", fake.calls)
+	}
+}
+
+func TestReusedContainerWithoutReseedSeedsNothing(t *testing.T) {
+	request := seededMediaRequest(t)
+	fake := reusedFullSandbox()
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatal(err)
+	}
+	if fake.has("command -v mariadb-dump") || fake.has("tar -C /home/deployer/media-seed") {
+		t.Fatalf("a reused container keeps what it has: %v", fake.calls)
+	}
+}
+
+func TestReseedNeedsASeedToRun(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	request := seedSandboxUpRequest(t, t.TempDir(), origin)
+	request.Reseed, request.NoSeed = true, true
+	_, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(freshSandboxFake().run), deploy.LocalRunner{}, request)
+	if err == nil || !strings.Contains(err.Error(), "--reseed") || !strings.Contains(err.Error(), "--no-seed") {
+		t.Fatalf("err = %v, want a usage error naming both flags", err)
+	}
+	request = seedSandboxUpRequest(t, t.TempDir(), origin)
+	request.Reseed, request.SeedOrigin = true, ""
+	_, err = deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(freshSandboxFake().run), deploy.LocalRunner{}, request)
+	if err == nil || !strings.Contains(err.Error(), "origin") {
+		t.Fatalf("err = %v, want a refusal that names the missing origin", err)
 	}
 }

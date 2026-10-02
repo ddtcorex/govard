@@ -125,6 +125,9 @@ type SandboxRequest struct {
 	// NoSeed skips the snapshot: the sandbox starts empty (no DB, no media,
 	// no env file) and records no derivation.
 	NoSeed bool
+	// Reseed refreshes the database and the files from the origin even when the
+	// sandbox already holds them. Without it a populated database volume is kept.
+	Reseed bool
 	// Volumes makes `down` delete the derived data volumes as well as the
 	// container. Without it `down` stops and removes the container and keeps
 	// every volume, so a rehearsal can resume tomorrow.
@@ -259,6 +262,14 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	profile, err := ValidateSandboxProfile(request.Profile)
 	if err != nil {
 		return nil, err
+	}
+	if request.Reseed {
+		if request.NoSeed {
+			return nil, fmt.Errorf("--reseed refreshes the seed and --no-seed skips it: pass one of them")
+		}
+		if request.SeedOrigin == "" {
+			return nil, fmt.Errorf("--reseed needs an origin project to seed from: run it from a project whose environment is up")
+		}
 	}
 	docRoot, err := request.docRoot()
 	if err != nil {
@@ -498,13 +509,26 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	// means plain `sandbox up` with no derivation: no seed, no record.
 	derived := NewDerivedFrom(request.SeedOrigin, request.SeedBlueprintRev)
 	seeded := false
-	if request.SeedOrigin != "" && !request.NoSeed && !exists && !SandboxHasDatabase(profile) {
+	wantSeed := request.SeedOrigin != "" && !request.NoSeed && (!exists || request.Reseed)
+	switch {
+	case wantSeed && !SandboxHasDatabase(profile):
 		// The snapshot is a database dump: a profile with no database has
 		// nowhere to put it, and attempting it failed with "the sandbox
 		// database never answered" after the sandbox was already up.
 		fmt.Fprintf(request.out(), "note: skipping the database seed, the %s profile has no database; use --profile %s to seed one\n", profile, SandboxProfileFull)
-	} else if request.SeedOrigin != "" && !request.NoSeed && !exists {
-		if err := runSandboxSeed(ctx, runtime, request.out(), container, webPort, request); err != nil {
+	case wantSeed:
+		seedDB, err := sandboxSeedDatabaseNeeded(ctx, runtime, request.out(), container, request)
+		if err != nil {
+			return nil, err
+		}
+		if seedDB {
+			if err := runSandboxSeedDB(ctx, runtime, request.out(), container, webPort, request); err != nil {
+				return nil, err
+			}
+		}
+		// The files live in the container filesystem, so a new container needs
+		// them whatever the database volume held.
+		if err := runSandboxSeedFiles(ctx, runtime, request.out(), container, webPort, request); err != nil {
 			return nil, err
 		}
 		seeded = true
@@ -550,6 +574,26 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		state.DerivedFrom = &derived
 	}
 	return state, nil
+}
+
+// sandboxSeedDatabaseNeeded decides whether the origin database is imported:
+// always under --reseed, otherwise only when the application database holds no
+// tables. A kept volume is announced once, with the way to refresh it.
+func sandboxSeedDatabaseNeeded(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, request SandboxRequest) (bool, error) {
+	if request.Reseed {
+		return true, nil
+	}
+	if err := waitSandboxDB(ctx, runtime, sandbox); err != nil {
+		return false, err
+	}
+	hasData, err := sandboxDatabaseHasData(ctx, runtime, sandbox, request.SeedDBName)
+	if err != nil {
+		return false, err
+	}
+	if hasData {
+		fmt.Fprintf(out, "database seed skipped: the sandbox volume already holds %s (use --reseed to refresh it)\n", request.SeedDBName)
+	}
+	return !hasData, nil
 }
 
 // localBranch names the branch a checkout is on, and is empty for a detached
