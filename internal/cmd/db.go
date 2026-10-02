@@ -1321,8 +1321,11 @@ func formatProcessListTable(raw string) (string, error) {
 
 // buildProcessListCommand builds the processlist query. --no-defaults ignores
 // ~/.my.cnf so the credentials passed here are the only ones in effect, remote
-// or not. The password travels as MYSQL_PWD, never as a -p argument, so it does
-// not land in the process list of the host that runs the command.
+// or not. The password travels as MYSQL_PWD, never as a -p argument. It is still
+// visible in the command line of the `docker exec ... sh -c` on the host and of
+// the container's `sh -c` process, because the export prefix is part of that
+// script. The gain is narrower: the mysql process itself carries no password in
+// its argv and does not inherit it through -p.
 func buildProcessListCommand(username, password, query string) string {
 	return mysqlPasswordExportPrefix(password) + fmt.Sprintf(
 		"mysql --no-defaults -u%s -BN -e %s",
