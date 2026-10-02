@@ -109,7 +109,7 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	// failure into a preflight failure, which is the whole point of this step.
 	strategy, err := ResolvePublishStrategy(host, sc.Opts)
 	if err == nil {
-		sc.Notes = append(sc.Notes, "publish strategy: "+strategy)
+		noteStep(sc, "  - publish strategy: "+strategy+"\n")
 		if strategy == PublishSymlink {
 			if err := probeAtomicRename(ctx, sc); err != nil {
 				return err
@@ -124,7 +124,12 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	if err := checkPHPVersion(ctx, sc); err != nil {
 		return err
 	}
-	noteComposerPlatform(ctx, sc)
+	// An artifact build never runs build:vendors on the target, and
+	// checkArtifactParity below already refuses a series mismatch, so the note
+	// would only repeat it with advice that does not apply.
+	if sc.Opts.Build != BuildArtifact {
+		noteComposerPlatform(ctx, sc)
+	}
 	if err := checkArtifactParity(ctx, sc); err != nil {
 		return err
 	}
@@ -165,8 +170,8 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 				if errors.Is(err, ErrVerifyRedirect) {
 					return fmt.Errorf("refusing to deploy to %s: %w", host.Name, err)
 				}
-				sc.Notes = append(sc.Notes, fmt.Sprintf(
-					"the verify URL does not answer 2xx yet (%v); deploy:verify runs after activation, so the deploy will report this once the release is live", err))
+				noteStep(sc, fmt.Sprintf(
+					"  ! the verify URL does not answer 2xx yet (%v); deploy:verify runs after activation, so the deploy will report this once the release is live\n", err))
 			}
 		}
 	}
@@ -183,8 +188,12 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 // a silent no-op, because `df` on a path that does not exist fails. It runs in
 // the shell because the commands execute through the host's runner — on the
 // machine that owns the path — and it creates nothing on either branch.
+//
+// `[ -n "$p" ]` bounds the loop: without dirname, `$(dirname "$p")` is the empty
+// string, and `[ ! -e "" ]` and `[ "" != "/" ]` would both stay true forever, on
+// the target's shell where the local timeout cannot reach it.
 func nearestExistingParentCommand(deployPath string) string {
-	return "p=" + Shell(deployPath) + `; while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; `
+	return "p=" + Shell(deployPath) + `; while [ -n "$p" ] && [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; `
 }
 
 // WritabilityProbeCommand answers "can the target receive a release at
@@ -271,7 +280,7 @@ func checkSandboxMirror(ctx context.Context, sc *StepContext) error {
 	if err := RefreshSandboxMirror(ctx, LocalRunner{}, root, mirror); err != nil {
 		return err
 	}
-	sc.Notes = append(sc.Notes, "sandbox mirror refreshed from the local checkout")
+	noteStep(sc, "  - sandbox mirror refreshed from the local checkout\n")
 	return nil
 }
 
@@ -315,7 +324,7 @@ func checkRepositoryReachable(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("target %s cannot reach %s %s (deploy key, network, or the ref was never pushed): %w", sc.Host.Name, repository, ref, err)
 	}
 	if ref != "" {
-		sc.Notes = append(sc.Notes, "repository reachable from the target: "+ref)
+		noteStep(sc, "  - repository reachable from the target: "+ref+"\n")
 	}
 	return nil
 }
@@ -347,7 +356,8 @@ func CheckRepositoryReachableForTest(ctx context.Context, sc *StepContext) error
 // `|| true` keeps that refusal from failing the check. `fresh` is the same
 // argument one level up: a fresh host has no deploy path either, and an empty
 // one says nothing about who made it, so it is removed only when this probe
-// found it missing.
+// found it missing, together with the levels `mkdir -p` made above it, up to but
+// not including the nearest parent that was already there.
 //
 // Do not "simplify" this into rm -rf, and never remove the lock directory:
 // `<deployPath>/.dep` is where a live deploy's lock lives, so deleting it would
@@ -368,12 +378,20 @@ func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 	probeDir := path.Join(sc.Host.DeployPath, ".dep")
 	link := path.Join(probeDir, ".govard-mvprobe.link")
 	target := path.Join(probeDir, ".govard-mvprobe.target")
-	command := fmt.Sprintf(
+	// $p is the nearest existing ancestor of the deploy path, found before
+	// anything is created. On a fresh host `mkdir -p` makes every level between
+	// it and the deploy path, so the cleanup walks back up from the deploy path
+	// and stops at $p, which is never removed. `rmdir` only removes an empty
+	// directory and a failure ends the walk, so a level that holds anything of
+	// its own stays.
+	command := nearestExistingParentCommand(sc.Host.DeployPath) + fmt.Sprintf(
 		"dp=%s; dep=%s; link=%s; target=%s; fresh=0; [ -e \"$dp\" ] || fresh=1; "+
 			"if [ -e \"$dp\" ] && [ ! -d \"$dp\" ]; then rc=%d; "+
 			"else mkdir -p \"$dep\" && ln -sfn \"$dep\" \"$link\" && mv -T \"$link\" \"$target\"; rc=$?; fi; "+
 			"rm -f \"$link\" \"$target\"; rmdir \"$dep\" 2>/dev/null || true; "+
-			"if [ \"$fresh\" = 1 ]; then rmdir \"$dp\" 2>/dev/null || true; fi; exit $rc",
+			"if [ \"$fresh\" = 1 ]; then d=\"$dp\"; "+
+			"while [ -n \"$d\" ] && [ \"$d\" != \"$p\" ] && [ \"$d\" != \"/\" ]; do rmdir \"$d\" 2>/dev/null || break; d=$(dirname \"$d\"); done; fi; "+
+			"exit $rc",
 		Shell(sc.Host.DeployPath), Shell(probeDir), Shell(link), Shell(target), deployPathNotADirectoryExit,
 	)
 	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
@@ -383,7 +401,7 @@ func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 		}
 		return fmt.Errorf("%w: the symlink swap needs GNU mv (mv -T)", ErrMoveAtomicUnsupported)
 	}
-	sc.Notes = append(sc.Notes, "atomic symlink rename: supported")
+	noteStep(sc, "  - atomic symlink rename: supported\n")
 	return nil
 }
 
@@ -456,7 +474,7 @@ func checkDiskSpace(ctx context.Context, sc *StepContext) error {
 	if availableKB <= 0 {
 		return fmt.Errorf("deploy path %s is on a full filesystem", sc.Host.DeployPath)
 	}
-	sc.Notes = append(sc.Notes, fmt.Sprintf("free space at the deploy path: %.1f GiB", float64(availableKB)/1024/1024))
+	noteStep(sc, fmt.Sprintf("  - free space at the deploy path: %.1f GiB\n", float64(availableKB)/1024/1024))
 	return nil
 }
 
@@ -473,7 +491,7 @@ func checkPHPVersion(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("php is not available as %q on the target: %w", phpBin, err)
 	}
 	actual := strings.TrimSpace(result.Stdout)
-	sc.Notes = append(sc.Notes, "php on the target: "+actual)
+	noteStep(sc, "  - php on the target: "+actual+"\n")
 
 	want := settingsString(sc.Opts.Settings, "php_version")
 	if want == "" {
@@ -672,11 +690,11 @@ func checkArtifactParity(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("the artifact at %s was built for revision %s but %s is being deployed; rebuild it or pass --revision %s",
 			artifactDir, manifest.Revision, revision, manifest.Revision)
 	}
-	sc.Notes = append(sc.Notes, fmt.Sprintf("artifact: %d files, %.1f MiB, revision %s",
+	noteStep(sc, fmt.Sprintf("  - artifact: %d files, %.1f MiB, revision %s\n",
 		manifest.FileCount, float64(manifest.TotalBytes)/1024/1024, manifest.Revision))
 
 	if manifest.PHPVersion == "" {
-		sc.Notes = append(sc.Notes, "artifact records no PHP version; the target's PHP is not compared")
+		noteStep(sc, "  - artifact records no PHP version; the target's PHP is not compared\n")
 		return nil
 	}
 
@@ -685,7 +703,7 @@ func checkArtifactParity(ctx context.Context, sc *StepContext) error {
 		return fmt.Errorf("the artifact was built with PHP %s but the target's PHP could not be determined (set settings.php_bin, or deploy with --build=server and build on the target): %w",
 			manifest.PHPVersion, err)
 	}
-	sc.Notes = append(sc.Notes, "artifact php "+manifest.PHPVersion+", target php "+actual)
+	noteStep(sc, "  - artifact php "+manifest.PHPVersion+", target php "+actual+"\n")
 	if !strings.HasPrefix(actual, phpSeries(manifest.PHPVersion)) {
 		return fmt.Errorf("the artifact was built with PHP %s but the target runs PHP %s; rebuild it with `govard deploy build` in an image that matches the target, or deploy with --build=server",
 			manifest.PHPVersion, actual)
@@ -726,11 +744,13 @@ func CoreLock(ctx context.Context, sc *StepContext) error {
 		}
 	}
 
-	// The parent must exist before mkdir can be the atomic acquisition, and the
-	// distinct exit code keeps "already held" separate from a real failure
-	// (permissions, missing path) instead of reporting both as a held lock.
+	// The parent must exist before mkdir can be the atomic acquisition. Only a
+	// lock directory that exists after the failed mkdir means "held" (exit 9);
+	// any other failure (permissions, read-only filesystem, a full disk, a file at
+	// the lock path) exits 1 with mkdir's own message on stderr, so the error
+	// says what happened instead of sending the operator to `deploy unlock`.
 	command := fmt.Sprintf(
-		"mkdir -p %s && (mkdir %s 2>/dev/null || exit %d)",
+		`mkdir -p %[1]s && { err=$(mkdir %[2]s 2>&1) || { [ -d %[2]s ] && exit %[3]d; printf '%%s\n' "$err" >&2; exit 1; }; }`,
 		Shell(host.DepPath()), Shell(host.LockPath()), lockHeldExitCode,
 	)
 	if _, err := sc.Runner.Run(ctx, command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
@@ -1335,9 +1355,9 @@ func noteInPlaceSyncPaths(ctx context.Context, sc *StepContext) error {
 	}
 	paths := settingsStringList(sc.Opts.Settings, "sync_paths")
 	if len(paths) == 0 {
-		sc.Notes = append(sc.Notes, "warning: this target publishes in place and deploy.settings.sync_paths is empty: "+
+		noteStep(sc, "  ! this target publishes in place and deploy.settings.sync_paths is empty: "+
 			"the activation resets the docroot to the revision and copies nothing, so paths the release built "+
-			"(vendor/, generated/, pub/static/) keep whatever the previous deployment left there")
+			"(vendor/, generated/, pub/static/) keep whatever the previous deployment left there\n")
 		return nil
 	}
 
@@ -1348,13 +1368,13 @@ func noteInPlaceSyncPaths(ctx context.Context, sc *StepContext) error {
 	shared := settingsStringList(sc.Opts.Settings, "shared_files", "shared_dirs")
 	for _, entry := range paths {
 		if covering, isShared := sharedCovering(entry, shared); isShared {
-			sc.Notes = append(sc.Notes, "warning: deploy.settings.sync_paths lists "+entry+
+			noteStep(sc, "  ! deploy.settings.sync_paths lists "+entry+
 				", which the release links from shared/ ("+covering+"): it is not copied into the docroot, "+
-				"which keeps its own copy of shared state")
+				"which keeps its own copy of shared state\n")
 		}
 		for _, inside := range sharedInside(entry, shared) {
-			sc.Notes = append(sc.Notes, "warning: deploy.settings.sync_paths lists "+entry+", which contains the shared path "+
-				entry+"/"+inside+": that path is excluded from the copy so the docroot keeps its own")
+			noteStep(sc, "  ! deploy.settings.sync_paths lists "+entry+", which contains the shared path "+
+				entry+"/"+inside+": that path is excluded from the copy so the docroot keeps its own\n")
 		}
 	}
 	return nil

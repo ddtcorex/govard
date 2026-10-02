@@ -128,9 +128,6 @@ type StepContext struct {
 	// Checks are the recipe's verifications, carried by the verify step. The
 	// executor fills this from the step; a direct call (rollback) can too.
 	Checks []Check
-	// Notes collects human-readable findings a step wants the operator to see
-	// (`govard deploy check` prints them).
-	Notes []string
 	// Live is where a step's commands stream their output while they run. It is
 	// nil unless the operator asked to watch (--verbose, and not --json), and every
 	// step hands it to the commands it runs, so a step implemented in Go streams

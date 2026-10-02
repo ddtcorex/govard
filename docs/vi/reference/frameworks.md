@@ -100,8 +100,10 @@ Magento 2 là framework được hỗ trợ sâu sắc nhất trong Govard.
 
 ### Các tính năng chính
 
-- `govard config auto` tự động cấu hình DB, cache, search, Varnish và các URL cơ sở vào `app/etc/env.php`; khi bước sửa cấu hình để lại `app/etc/config.php` với đúng các dòng cũ nhưng khác thứ tự, Govard ghi lại đúng các byte gốc để file đang được track không bị bẩn.
+- `govard config auto` tự động cấu hình DB, cache, search, Varnish và các URL cơ sở vào `app/etc/env.php`; khi bước sửa cấu hình để lại `app/etc/config.php` với đúng các dòng cũ nhưng khác thứ tự, Govard ghi lại đúng các byte gốc để file đang được track không bị bẩn, kể cả sau lần thử lại mà nó thực hiện khi một search index read-only được gỡ khoá.
 - `govard tool magento [command]` chạy Magento CLI (`bin/magento`) bên trong container PHP.
+- Giá trị search engine theo tài liệu của Adobe cho từng dòng: `setup:install` và `config auto` (`catalog/search/engine`) dùng `elasticsearch7` cho các dòng trước 2.4.6, kể cả khi backend là OpenSearch, và `opensearch` từ 2.4.6 khi service là OpenSearch; `config auto` giữ `elasticsuite` khi có module ElasticSuite, và `setup:install` của Mage-OS luôn dùng `opensearch`.
+- Một lần cài mới (`govard bootstrap` khi chưa có project) ghim `config.platform.php` trong `composer.json` được sinh ra về PHP của project (`stack.php_version`) trước khi cài dependency, nên Composer từ chối một requirement cao hơn PHP đó thay vì để lại một vendor tree không parse được trên nó. Việc ghim cần Composer 2.2 trở lên và phiên bản PHP đã biết; một lần cài có ghim thất bại sẽ nêu `stack.php_version` và lệnh `govard config set stack.php_version <version>` để đổi nó.
 - `govard tool magerun [command]` (Phím tắt: `mr`) chạy `n98-magerun2` bên trong container PHP.
 - `govard tool magento cron:install` cài đặt các crontab bên trong container.
 - Hỗ trợ Selenium/MFTF tùy chọn (`mftf: true` trong cấu hình features).
@@ -174,6 +176,7 @@ Những gì lệnh `govard upgrade` thực hiện cho Magento 2:
 - Xác định chính xác phiên bản PHP/MariaDB/Search tương ứng cho phiên bản Magento đích.
 - Tự động gộp Composer (Composer merge) thông minh (giữ nguyên các module và custom repo của bạn).
 - Tự động nới lỏng các ràng buộc phiên bản cho các công cụ dev (`phpunit`, `phpmd`).
+- Làm mới `config.platform.php` trong `composer.json` về PHP của đích ngay trước `composer update` (chỉ với Composer 2.2 trở lên và PHP đã biết), để một pin được ghi cho PHP trước đó không sống sót qua lần upgrade; nó ghi đè pin đã có, kể cả pin bạn cố ý đặt, và một lần làm mới thất bại sẽ dừng upgrade.
 - Xử lý các lệnh `composer update`, `setup:upgrade`, và compile static content.
 
 ### Setup Multi-Website / Multi-Store

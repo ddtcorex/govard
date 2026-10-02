@@ -74,6 +74,8 @@ export function GlobalLogsPanel({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const forceScroll = useRef(false);
   const firstSelection = useRef(true);
+  /** Bumped by every refresh: only the newest request may write the pane or clear loading. */
+  const refreshRequest = useRef(0);
 
   const selectedId = String(state.selectedGlobalService || "")
     .trim()
@@ -89,10 +91,15 @@ export function GlobalLogsPanel({
   // refreshLogs() in the same synchronous block as the setState that selects a
   // service, before React has re-rendered with it.
   const refreshLogs = useCallback(async () => {
+    // Every call, including the empty-selection one, takes a new id, so a slow
+    // response can never land after a newer selection.
+    const request = refreshRequest.current + 1;
+    refreshRequest.current = request;
     const serviceID = String(getState().selectedGlobalService || "").trim();
     setLoaded(true);
     if (!serviceID) {
       setRaw("");
+      setLoading(false);
       forceScroll.current = true;
       return;
     }
@@ -101,13 +108,20 @@ export function GlobalLogsPanel({
       const text = String(
         (await bridge.getGlobalServiceLogs(serviceID, 300)) || "",
       );
+      if (refreshRequest.current !== request) {
+        return;
+      }
       setRaw(text);
     } catch (err) {
+      if (refreshRequest.current !== request) {
+        return;
+      }
       setRaw(`Failed to load logs: ${err}`);
-    } finally {
-      setLoading(false);
-      forceScroll.current = true;
     }
+    // Only the newest request reaches here, so `loading` clears when the latest
+    // one settles and not when an older overlapping one does.
+    setLoading(false);
+    forceScroll.current = true;
   }, [bridge]);
 
   const stopLive = useCallback(

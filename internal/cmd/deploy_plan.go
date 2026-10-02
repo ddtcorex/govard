@@ -250,7 +250,7 @@ func runDeployCheck(cmd *cobra.Command, args []string) error {
 	}
 	config, _, options, err := resolveDeployRecipeOptions(cmd, remote)
 	if err != nil {
-		return err
+		return configOrUsageError(err)
 	}
 	host, err := deployHostFor(cmd.Context(), config, remote, options, cmd.OutOrStdout())
 	if err != nil {
@@ -279,9 +279,6 @@ func runDeployCheck(cmd *cobra.Command, args []string) error {
 
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "Target %s is deployable\n", sandboxPlanLabel(remote))
-	for _, note := range sc.Notes {
-		fmt.Fprintf(out, "  %s\n", note)
-	}
 	fmt.Fprintf(out, "  host:            %s\n", host.Name)
 	fmt.Fprintf(out, "  deploy path:     %s\n", host.DeployPath)
 	fmt.Fprintf(out, "  current path:    %s\n", host.CurrentPath)

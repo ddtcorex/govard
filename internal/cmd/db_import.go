@@ -75,7 +75,7 @@ func runStreamDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 
 	if options.File != "" {
 		targetPath := filepath.Clean(options.File)
-		dumpFile, err := os.Create(targetPath)
+		dumpFile, err := createPrivateDumpFile(targetPath)
 		if err != nil {
 			return fmt.Errorf("create stream dump file: %w", err)
 		}

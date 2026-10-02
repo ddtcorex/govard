@@ -78,7 +78,9 @@ settings (e.g. deploy.keep_releases). Unknown keys are an error.`,
 		}
 		wd, _ := os.Getwd()
 		engine.NormalizeConfig(&config, wd)
-		saveConfig(config)
+		if err := saveConfig(config); err != nil {
+			return err
+		}
 		_, err = io.WriteString(cmd.OutOrStdout(), fmt.Sprintf("Config updated: %s = %s\n", key, value))
 		return err
 	},

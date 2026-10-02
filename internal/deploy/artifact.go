@@ -285,10 +285,6 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 	}
 	output := filepath.Clean(req.OutputDir)
 
-	if err := prepareOutputDir(output, req.Force); err != nil {
-		return nil, err
-	}
-
 	workDir := req.WorkDir
 	if workDir == "" {
 		workDir, _ = os.Getwd()
@@ -303,6 +299,17 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 	// unaffected, and a caller that forgot cannot produce an artifact holding
 	// target state.
 	req.Options = WithRecipeDefaults(req.Recipe, req.Options)
+
+	// A refusal that can be known before anything is built comes before the
+	// output directory is cleared, so the previous artifact survives it.
+	if err := preflightContainerNode(ctx, runner, req); err != nil {
+		return nil, err
+	}
+
+	if err := prepareOutputDir(output, req.Force); err != nil {
+		return nil, err
+	}
+
 	timeout := req.Options.CommandTimeout
 	if timeout <= 0 {
 		timeout = DefaultCommandTimeout
@@ -663,7 +670,7 @@ func ArtifactUploadCommand(host Host, source, destination string, progress bool,
 	}
 	return fmt.Sprintf("rsync -az --numeric-ids "+progressFlag+excludeFlags+"--exclude=%s -e %s %s %s",
 		conventions.ShellQuote(ArtifactManifestName),
-		conventions.ShellQuote(strings.Join(sshArgs, " ")),
+		conventions.ShellQuote(remote.RsyncSSHCommand(sshArgs)),
 		conventions.ShellQuote(root+"/"),
 		conventions.ShellQuote(target))
 }

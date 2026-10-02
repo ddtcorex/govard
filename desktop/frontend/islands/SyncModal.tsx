@@ -70,7 +70,7 @@ export function SyncModal({
   onConfirmSync,
   registerApi,
 }: Props) {
-  const [phase, setPhase] = useState<Phase>("closed");
+  const [phase, setPhaseState] = useState<Phase>("closed");
   const [remote, setRemote] = useState("");
   const [preset, setPreset] = useState("");
   const [options, setOptions] = useState<SyncOptionDef[]>([]);
@@ -78,16 +78,22 @@ export function SyncModal({
   const [step, setStep] = useState<"options" | "preview">("options");
   const [planText, setPlanText] = useState("");
   const [planLoading, setPlanLoading] = useState(false);
+  /** True only while the shown plan is one the backend really produced. */
+  const [planOk, setPlanOk] = useState(false);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Bumped by every open and every close: only the newest open may reveal itself. */
   const openRequest = useRef(0);
-  /** The phase as of the last commit, so close() can read it outside an updater. */
+  /** Bumped by every preview, open and close: only the newest preview may show its plan. */
+  const previewRequest = useRef(0);
+  /** The phase as last set, readable outside render (close, Escape, the timers). */
   const phaseRef = useRef<Phase>("closed");
-
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
+  const setPhase = useCallback((next: Phase) => {
+    // The ref moves with the state, not after the commit: a key or a timer that
+    // lands between the two must already see the new phase.
+    phaseRef.current = next;
+    setPhaseState(next);
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (openTimer.current !== null) {
@@ -100,26 +106,39 @@ export function SyncModal({
     }
   }, []);
 
+  /**
+   * Finishes a close: the dialog goes to `closed` and step 1 returns. Reached
+   * from whichever comes first, the opacity transition ending or the fallback
+   * timer (which clears the other), so a throttled timer or a missing
+   * transitionend cannot strand `closing`.
+   */
+  const settleClosed = useCallback(() => {
+    if (closeTimer.current !== null) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    setPhase("closed");
+    // Reset to step 1 after the close animation, as the vanilla code did.
+    setStep("options");
+    setPlanText("");
+    setPlanOk(false);
+    setPlanLoading(false);
+  }, [setPhase]);
+
   const close = useCallback(() => {
     clearTimers();
     // Closing supersedes an open that is still awaiting its option list, so that
     // continuation cannot reveal a dialog the user already dismissed.
     openRequest.current += 1;
+    previewRequest.current += 1;
     if (phaseRef.current !== "closed") {
       // Outside the updater on purpose: an updater must be pure, and this writes
       // to the DOM (main.js's modal blur).
       onModalBlur(false);
       setPhase("closing");
     }
-    closeTimer.current = setTimeout(() => {
-      closeTimer.current = null;
-      setPhase("closed");
-      // Reset to step 1 after the close animation, as the vanilla code did.
-      setStep("options");
-      setPlanText("");
-      setPlanLoading(false);
-    }, CLOSE_DELAY_MS);
-  }, [clearTimers, onModalBlur]);
+    closeTimer.current = setTimeout(settleClosed, CLOSE_DELAY_MS);
+  }, [clearTimers, onModalBlur, settleClosed, setPhase]);
 
   const open = useCallback(
     async (remoteName: string, presetName: string) => {
@@ -129,10 +148,12 @@ export function SyncModal({
       clearTimers();
       const request = openRequest.current + 1;
       openRequest.current = request;
+      previewRequest.current += 1;
       setRemote(remoteName);
       setPreset(presetName);
       setStep("options");
       setPlanText("");
+      setPlanOk(false);
       setPlanLoading(false);
       setState({
         currentSyncRemote: remoteName,
@@ -158,6 +179,14 @@ export function SyncModal({
         });
       } catch (err) {
         console.error("Failed to load sync options", err);
+        if (openRequest.current !== request) {
+          return;
+        }
+        // Nothing of the previous preset may stay on screen or reach Execute.
+        setOptions([]);
+        setConfig({});
+        onToast(`Failed to load sync options: ${err}`, "error");
+        return;
       }
 
       if (openRequest.current !== request) {
@@ -171,7 +200,7 @@ export function SyncModal({
         setPhase("open");
       }, OPEN_DELAY_MS);
     },
-    [bridge, clearTimers, onModalBlur],
+    [bridge, clearTimers, onModalBlur, onToast, setPhase],
   );
 
   useEffect(() => {
@@ -186,19 +215,19 @@ export function SyncModal({
 
   // Escape closes the modal from anywhere on the page, but only while it is up:
   // the vanilla listener lived in main.js's global keydown handler and is this
-  // island's to register and drop now.
+  // island's to register and drop now. It is registered for the island's whole
+  // life and reads the phase ref, so there is no window after the dialog appears
+  // in which the key is not heard (a listener tied to the phase attaches only
+  // after the commit that shows the dialog).
   useEffect(() => {
-    if (phase === "closed") {
-      return undefined;
-    }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && phaseRef.current !== "closed") {
         close();
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [phase, close]);
+  }, [close]);
 
   const toggleOption = useCallback(
     (key: string) => {
@@ -227,20 +256,31 @@ export function SyncModal({
       optionDefs,
     });
 
+    const request = previewRequest.current + 1;
+    previewRequest.current = request;
     setStep("preview");
     setPlanText("");
+    setPlanOk(false);
     setPlanLoading(true);
 
     try {
       const plan = await bridge.runRemoteSyncPreset(project, remote, preset, config);
-      const normalizedPlan = sanitizeSyncPlanText(plan) || "No plan details returned.";
+      if (previewRequest.current !== request) {
+        return;
+      }
+      const sanitizedPlan = sanitizeSyncPlanText(plan);
+      const normalizedPlan = sanitizedPlan || "No plan details returned.";
       setPlanText(`${planDetails}\n\n${normalizedPlan}`);
+      // An empty plan is shown but is not one the user can confirm.
+      setPlanOk(Boolean(sanitizedPlan));
     } catch (err) {
+      if (previewRequest.current !== request) {
+        return;
+      }
       const failure = sanitizeSyncPlanText(err) || "Unknown error";
       setPlanText(`${planDetails}\n\nFailed to generate plan: ${failure}`);
-    } finally {
-      setPlanLoading(false);
     }
+    setPlanLoading(false);
   }, [bridge, config, options, preset, remote]);
 
   const confirm = useCallback(() => {
@@ -261,6 +301,17 @@ export function SyncModal({
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           close();
+        }
+      }}
+      onTransitionEnd={(event) => {
+        // The backdrop's own opacity fade finishing is what ends a close; the
+        // dialog card's transform transition bubbles here too and must not.
+        if (
+          phase === "closing" &&
+          event.target === event.currentTarget &&
+          event.propertyName === "opacity"
+        ) {
+          settleClosed();
         }
       }}
     >
@@ -398,7 +449,8 @@ export function SyncModal({
                 type="button"
                 data-testid="confirm-sync"
                 id="confirmSyncBtn"
-                className="px-5 py-2 bg-primary text-slate-900 rounded-lg text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95"
+                className="px-5 py-2 bg-primary text-slate-900 rounded-lg text-sm font-bold hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95"
+                disabled={planLoading || !planOk}
                 onClick={confirm}
               >
                 <span className="material-symbols-outlined text-[16px] transition-colors">

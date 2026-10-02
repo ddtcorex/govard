@@ -92,7 +92,7 @@ govard sync --source staging --destination local --full
 
 ```bash
 govard deploy plan staging     # the whole task list, connecting nowhere
-govard deploy check staging    # preflight: connectivity, layout, permissions, php, disk, lock
+govard deploy check staging    # preflight: connectivity, layout, permissions, php, disk
 govard deploy staging --yes    # deploy the local HEAD (or --revision <sha>)
 govard deploy releases staging # what is on the target
 govard deploy rollback staging # put the previous release back

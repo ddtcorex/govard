@@ -54,12 +54,18 @@ execs the same tasks in the project's own app container through `docker exec`.
 Three conditions come with it. The project container has to be **running**, and
 `--output` has to sit **inside the project root** — anywhere else is refused before
 Docker is even looked for. The third is the one that bites: the app container must
-carry **the toolchain the build tasks use**. The container `docker exec` reaches is
+carry **the toolchain the build tasks use**, and the build now checks it before it runs
+anything. The container `docker exec` reaches is
 the project's app container, which is a PHP container, so a recipe whose build stage
 also compiles frontend assets needs `npm` in it. Measured on a Magento 2.4.9 project
 on 2026-09-30, whose recipe configures `frontend_dir`: `--runner container` completed
 `build:vendors`, `build:patches` and `build:compile` and then failed on
-`build:frontend` with `sh: npm: not found`.
+`build:frontend` with `sh: npm: not found`. That failure now arrives before the first
+task instead of after three of them: when the recipe's frontend step will run, the build
+looks for `node` and `npm` in the container, refuses with exit `3` naming what is
+missing and `--runner host` as the way out, and leaves the previous artifact alone.
+A stopped or missing project container is refused the same way, and Ctrl-C or
+`--command-timeout` stops the step inside the container too.
 
 What the container path buys, on that same project and revision: `build:vendors`
 cloned a private Composer package over SSH from inside the container, where the
@@ -636,20 +642,28 @@ govard deploy check legacy-staging
 The output names the layout it found, the publish strategy that implies, the free
 space, the PHP the target runs, whether the repository is reachable from the target,
 and which Composer credential route is in play. The notes come first, in the order
-the probes ran, then the resolved fields:
+the probes ran, each marked `  - ` for a fact or `  ! ` for a warning, then the
+resolved fields under the `Target ... is deployable` header (a real deploy prints the
+same notes in its `deploy:check` step output):
 
 ```
+  - repository reachable from the target: refs/heads/main
+  - publish strategy: in_place
+  - free space at the deploy path: 42.4 GiB
+  - php on the target: 8.2.18
 Target legacy-staging is deployable
-  publish strategy: in_place
-  repository reachable from the target: refs/heads/main
-  free space at the deploy path: 42.4 GiB
-  php on the target: 8.2.18
   host:            legacy-staging
   deploy path:     /var/www/shop
   current path:    /var/www/shop
   publish:         in_place
   layout:          current path is a real directory: releases are copied into it
 ```
+
+`deploy check` leaves nothing behind on the target. The `mv -T` probe a symlink target
+needs creates a `.dep` scratch directory (and, on a fresh host, the missing levels of
+the deploy path above it) and removes them again, and a local target whose deploy path
+does not exist yet gets a note, printed before the other notes and without a marker, naming the parent
+the writability probe used instead.
 
 Which notes appear depends on the target and the run: the symlink strategy adds
 `atomic symlink rename: supported`, a sandbox adds that its mirror was refreshed,

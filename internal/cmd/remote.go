@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -71,6 +72,23 @@ var remoteAddCmd = &cobra.Command{
 
 		if name == "" {
 			return fmt.Errorf("remote name is required")
+		}
+
+		// Validate before anything is mutated or saved: the name otherwise only
+		// met engine.IsValidRemoteName at load time, after a bogus "saved".
+		if !engine.IsValidRemoteName(name) {
+			err := &cli.ConfigError{Err: fmt.Errorf("remote name '%s' is not a valid identifier (use lowercase letters, digits, hyphens, underscores)", name)}
+			operationCategory = "validation"
+			operationMessage = err.Error()
+			writeRemoteAuditEvent(remote.AuditEvent{
+				Operation:  "remote.add",
+				Status:     remote.RemoteAuditStatusFailure,
+				Category:   "validation",
+				Remote:     name,
+				DurationMS: time.Since(startedAt).Milliseconds(),
+				Message:    err.Error(),
+			})
+			return err
 		}
 
 		// A sandbox is the one remote whose identity is not the operator's to
@@ -191,6 +209,21 @@ var remoteAddCmd = &cobra.Command{
 			}
 		}
 
+		if !synthetic && (entry.Port < 0 || entry.Port > 65535) {
+			err := &cli.ConfigError{Err: fmt.Errorf("remote '%s' has invalid port %d (use 1-65535)", name, entry.Port)}
+			operationCategory = "validation"
+			operationMessage = err.Error()
+			writeRemoteAuditEvent(remote.AuditEvent{
+				Operation:  "remote.add",
+				Status:     remote.RemoteAuditStatusFailure,
+				Category:   "validation",
+				Remote:     name,
+				DurationMS: time.Since(startedAt).Milliseconds(),
+				Message:    err.Error(),
+			})
+			return err
+		}
+
 		// environment is now derived from name
 		if takes("capabilities") {
 			capabilities, err := engine.ParseRemoteCapabilitiesCSV(capabilitiesRaw)
@@ -275,7 +308,24 @@ var remoteAddCmd = &cobra.Command{
 		}
 
 		config.Remotes[name] = entry
-		saveConfig(config)
+		if err := saveConfig(config); err != nil {
+			category := "io"
+			var configErr *cli.ConfigError
+			if errors.As(err, &configErr) {
+				category = "validation"
+			}
+			operationCategory = category
+			operationMessage = err.Error()
+			writeRemoteAuditEvent(remote.AuditEvent{
+				Operation:  "remote.add",
+				Status:     remote.RemoteAuditStatusFailure,
+				Category:   category,
+				Remote:     name,
+				DurationMS: time.Since(startedAt).Milliseconds(),
+				Message:    err.Error(),
+			})
+			return err
+		}
 		configForObservability = config
 		effectiveProtected, _ := engine.RemoteWriteBlocked(name, config.Remotes[name])
 		if isUpdate && !replace {
@@ -398,7 +448,9 @@ var remoteCopyIdCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		_, remoteCfg, err := ensureRemoteKnown(config, name)
+		// Everything after resolution uses the canonical name: the auth store and
+		// the per-remote env var are keyed by it, not by the typed alias.
+		name, remoteCfg, err := ensureRemoteKnown(config, name)
 		if err != nil {
 			return err
 		}
@@ -418,7 +470,7 @@ var remoteExecCmd = &cobra.Command{
 	Short: "Execute a command on a remote environment",
 	Long:  "Execute a command on a remote environment over SSH. The command runs from the remote's configured path (cd into it first) when the remote defines one.",
 	Example: `  govard remote exec staging -- uptime
-  govard remote exec prod -- "cd /var/www && git pull"`,
+  govard remote exec staging -- "df -h /var/www"`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		startedAt := time.Now()
@@ -449,7 +501,7 @@ var remoteExecCmd = &cobra.Command{
 			return err
 		}
 		configForObservability = config
-		_, remoteCfg, err := ensureRemoteKnown(config, remoteName)
+		resolvedName, remoteCfg, err := ensureRemoteKnown(config, remoteName)
 		if err != nil {
 			operationCategory = "validation"
 			operationMessage = err.Error()
@@ -463,6 +515,9 @@ var remoteExecCmd = &cobra.Command{
 			})
 			return err
 		}
+		// The auth store and the per-remote env var are keyed by the canonical
+		// name, so the typed alias must not reach the SSH builder.
+		remoteName = resolvedName
 
 		commandLine := strings.TrimSpace(strings.Join(args[1:], " "))
 		if commandLine == "" {
@@ -550,7 +605,7 @@ var remoteTestCmd = &cobra.Command{
 			return err
 		}
 		configForObservability = config
-		_, remoteCfg, err := ensureRemoteKnown(config, remoteName)
+		resolvedName, remoteCfg, err := ensureRemoteKnown(config, remoteName)
 		if err != nil {
 			operationCategory = "validation"
 			operationMessage = err.Error()
@@ -563,6 +618,8 @@ var remoteTestCmd = &cobra.Command{
 			})
 			return err
 		}
+		// Canonical name for SSH auth lookup and write-protection (see exec).
+		remoteName = resolvedName
 		effectiveProtected, _ := engine.RemoteWriteBlocked(remoteName, remoteCfg)
 		pterm.Info.Printf(
 			"Remote profile: capabilities=%s, auth=%s, protected=%t, strict_host_key=%t\n",
@@ -682,6 +739,11 @@ var remoteTestCmd = &cobra.Command{
 }
 
 var remoteListCmd = &cobra.Command{
+	// Listing reads the project config and never connects to a remote, so it
+	// does not inherit the group's ssh,rsync.
+	Annotations: map[string]string{
+		runtime.AnnotationRequires: string(runtime.CapNone),
+	},
 	Use:   "list",
 	Short: "List every configured remote, plus the implicit sandbox",
 	Args:  cobra.NoArgs,

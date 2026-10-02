@@ -226,12 +226,15 @@ envelope **before** the command does any work.
   child re-declares the requirement on its own group.
 - Never probe or gate inside `RunE`. The gate owns the message, the hint, and
   the exit code; an ad-hoc check leaks a raw runtime error and breaks the
-  contract. The one sanctioned exception is `govard audit run`: whether Docker
-  is required depends on the parsed `--checks` value, which a static
-  per-command annotation cannot know, so it probes `runtime.CapDocker` in its
-  own preparation path (`requireContainerRuntime`) and returns the same
-  `*runtime.MissingError` — exit code and hint stay identical to the gate's.
-  Everywhere else the fix is an annotation, never a probe.
+  contract. The sanctioned exceptions are the commands whose Docker requirement
+  depends on a parsed flag, which a static per-command annotation cannot know:
+  `govard audit run` (the `--checks` value, through `requireContainerRuntime`),
+  `govard sync` (`--db` and `--full` move the database through the local
+  container, `--plan` and a files or media sync do not) and
+  `govard deploy build` (`--runner container`). Each probes `runtime.CapDocker`
+  through the shared `requireDocker` helper in its own preparation path and
+  returns the same `*runtime.MissingError` — exit code and hint stay identical
+  to the gate's. Everywhere else the fix is an annotation, never a probe.
 - `runtime.AlwaysRunnable` exempts `help`, `completion`, `doctor`,
   `capabilities`, and `version` **by top-level command**. Their subcommands ride
   along (a host with no container runtime must still print `completion bash`),
@@ -256,12 +259,15 @@ inheriting `docker`. The bar, by kind of work:
   `project open`, `domain list`, `vscode setup`;
 - static analysis of the checkout: `audit run --checks integrity` plus the
   host-side audit lifecycle (`status`, `result`, `diff`, `cleanup`);
-- direct host or network work: `remote *` (SSH), `sync` (rsync), `deploy`
+- direct host or network work: `remote *` (SSH; `remote list` and
+  `remote audit stats|tail` read only local state and need nothing), `sync`
+  (rsync; `--db` and `--full` also need `docker`, `--plan` does not), `deploy`
   (SSH + rsync, with `deploy plan` and `deploy build` requirement-free and
   `deploy check` / `releases` / `status` / `unlock` SSH-only; `sandbox *`
   is the one exception — it creates the container that plays the target, then
   talks to it over SSH),
-  `tunnel *` (`cloudflared`), `trust`, `self-update`.
+  `tunnel start` (`cloudflared`; `tunnel stop` and `tunnel status` only read the
+  PID record and need `none`), `trust`, `self-update`.
 
 Container orchestration keeps `docker`: `env`, `svc`, `db`, `shell`, `tool`,
 `test`, `frontend`, `logs`, `ps`, `status`, `bootstrap`, `debug`,

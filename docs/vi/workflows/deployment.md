@@ -196,7 +196,7 @@ symlink được track hoặc tạo tay) thì không bao giờ bị xoá; bướ
 
 ```bash
 govard deploy plan staging     # toàn bộ danh sách task, không kết nối đi đâu
-govard deploy check staging    # preflight: kết nối, layout, quyền, php, sàn php của lock, dung lượng, lock, checkout local
+govard deploy check staging    # preflight: kết nối, layout, quyền, php, sàn php của lock, dung lượng, checkout local
 govard deploy staging --yes    # ... hoặc --remote staging
 ```
 
@@ -212,13 +212,22 @@ báo ra chính là lần từ chối mà deploy sẽ gặp.
 ghi của nó không tạo ra path nào — một `deploy_path` chưa tồn tại được probe tại
 parent tồn tại gần nhất ngay trên target đó, và ở local thì note nói rõ parent nào
 đã trả lời — còn probe `mv -T` mà nó chạy trên một target dạng symlink thì tạo một
-thư mục tạm `.dep` ở đó rồi xoá nó đi. Vậy lời hứa ở đây nói về trạng thái cuối,
+thư mục tạm `.dep` ở đó rồi xoá nó đi. Trên một host mới tinh, probe còn tạo các tầng
+còn thiếu của deploy path phía trên `.dep` rồi xoá chúng đi, dừng ở ancestor gần nhất đã
+tồn tại; tầng nào còn chứa thứ gì của riêng nó thì được giữ lại. Vậy lời hứa ở đây nói về trạng thái cuối,
 không phải về việc "không bao giờ phát ra syscall tạo gì": probe atomic-rename
 cố ý tạo rồi xoá, và đó là điều cho phép nó trả lời được trên một host mới tinh.
 Một lệnh gọi remote thì không có note — exit code không phân biệt được "chưa tồn
 tại" với "tồn tại nhưng không ghi được", nên note sẽ là một lời khẳng định về một
 máy mà govard không nhìn thấy. Probe chạy qua đúng runner mà deploy dùng, nên nó đi
 tới máy sở hữu path đó — cũng vì vậy một host mới tinh vẫn pass check thay vì hỏng.
+Check không bao giờ nhìn vào deploy lock: đó là việc của `deploy:lock` trong một lần
+deploy thật.
+
+Các note mà preflight thu thập được in ra ngay khi tìm thấy, mỗi note một dòng, trước
+header `Target ... is deployable`: `  - ` đánh dấu một dữ kiện và `  ! ` một cảnh báo. Một
+lần deploy thật in đúng các note đó trong output của bước `deploy:check`, ra stderr khi
+có `--json` để stdout vẫn là một document.
 
 Theo dõi bằng `--verbose`, nó stream output của từng command dưới đúng task của nó
 và không gom lại. Khi một bước hỏng, lần chạy nói rõ bước nào và làm gì tiếp: hỏng
@@ -896,10 +905,22 @@ trường: có thư mục artifact nghĩa là đã build xong, ngược lại ta
 container runtime. `--runner container` chạy đúng những task đó qua container app
 của chính dự án bằng `docker exec` — cách build cho dự án không tải nổi dependency
 của chính nó từ host, và một package private VCS mà chỉ container có SSH material
-chính là hình dạng của trường hợp đó. Flag này cần project container đang chạy và
-output directory nằm trong project root, và artifact nó tạo ra ghi lại PHP **của
+chính là hình dạng của trường hợp đó. Flag này cần project container đang chạy (container dừng hoặc không tồn tại thoát `3`
+kèm gợi ý, trước khi output directory bị đụng tới) và
+output directory nằm trong project root (nằm ngoài đó là lỗi cấu hình, exit `4`), và artifact nó tạo ra ghi lại PHP **của
 container** — nên bước đối chiếu phiên bản PHP ở job deploy chỉ qua được khi
 container chạy đúng PHP series của target.
+
+Container chỉ mang toolchain riêng của nó. Khi bước frontend của recipe sẽ chạy
+(`deploy.settings.frontend_dir` nêu một thư mục), build kiểm tra container có `node` và
+`npm` trước task đầu tiên và từ chối với exit `3`, nêu tên công cụ còn thiếu và lối ra:
+`--runner host` trên máy có Node, hoặc để `frontend_dir` rỗng. Artifact trước đó còn
+nguyên sau lần từ chối này. Kiểm tra dựa vào placeholder
+<span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe, nên một bước frontend không dùng nó và không
+cần Node (recipe override, command dạng hook) vẫn bị container thiếu chúng từ chối; dùng
+`--runner host` ở đó. Ctrl-C và `--command-timeout` cũng dừng bước đang chạy bên trong
+container: một `docker exec` thứ hai gửi tín hiệu tới process group của nó, và lỗi nói
+rõ phần teardown có được thử hay không và có hoàn tất hay không.
 
 ### Artifact mang được gì và không mang được gì
 
@@ -1142,7 +1163,11 @@ toàn tốt và loại nó khỏi mọi `rollback --to` về sau. Hãy chạy l�
 
 `deploy.lock_stale_after` (mặc định 2h) là ngưỡng để `govard deploy unlock` nhả
 lock mà không cần `--force`; thông báo từ chối khi lock đang bị giữ có nêu người
-giữ, revision và đã giữ bao lâu.
+giữ, revision và đã giữ bao lâu. Chỉ một thư mục lock còn tồn tại sau lần `mkdir` thất
+bại mới được tính là đang bị giữ: mọi lỗi khác khi lấy lock (quyền, filesystem read-only,
+đĩa đầy, một file nằm ở path của lock) báo lỗi riêng của `mkdir` dưới dạng
+`acquire deploy lock: ...`, nên nó không bao giờ đẩy bạn tới `deploy unlock` cho một lock
+không hề có.
 
 `deploy.maintenance_timeout` (mặc định 15m) chặn mỗi bước chạy trong lúc site đang
 maintenance, thấp hơn hẳn `deploy.command_timeout` là có chủ đích: bước chậm trong
@@ -1498,6 +1523,16 @@ deploy, với `deploy status` và với `sync` — như nhau: cách khắc phụ
 file, không phải sửa dòng lệnh. Exit `1` vẫn dành cho một remote *đã* được cấu
 hình nhưng không đọc được target, và đó chính là điều mà script phân nhánh theo
 exit code đang đọc.
+
+`deploy check` và `deploy status` dùng chung các mã cấu hình và dùng lệnh: một key `deploy.settings` gõ sai, một
+project không load được và một project không có remote nào là lỗi cấu hình (`4`), một
+remote positional mâu thuẫn với `--remote` là lỗi dùng lệnh (`2`), cũng như `deploy check`
+không nêu remote nào. Exit `1` thì khác: với `check` nó nghĩa là preflight fail hoặc target
+được nêu tên không tới được, với `status` nó nghĩa là không remote nào đã cấu hình tới được.
+`deploy status --json` vẫn in mảng các dòng theo từng
+remote (dòng không tới được có status `unknown` và một `error`) nhưng thoát `1` khi mọi
+remote đều không tới được, như chế độ bảng, với lý do ra stderr; khi không có remote nào
+được cấu hình, nó thoát `4` và không in dòng nào.
 
 Dò `none` của `govard deploy build` giữ nguyên dù `--runner` được đặt gì: một
 annotation tĩnh không diễn đạt được "chỉ khi truyền flag này", nên flag duy nhất

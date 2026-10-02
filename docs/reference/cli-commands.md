@@ -543,22 +543,26 @@ govard verify --phase 5 --allow-destructive --json # destructive after snapshot
 govard verify --project /path/to/project --json
 ```
 
-Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes` alias), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--base`, `--remote`, `--allow-xdebug`, `--allow-destructive` and `--allow-remote-write` change which commands run. `--checks lint,profiler` narrows the run to the items that exercise one of those checks: an item that declares no check is not check-specific and always runs, and an item the selection leaves out stays in the report as a `skipped` row naming the selection. Only the names `audit run --checks` accepts are valid — `lint`, `profiler`, `integrity` — so `--checks lints` is a usage error (exit 2) rather than an ignored flag that selects nothing and still reports `passed`. `--lint-jobs N` and `--timeout <value>` are threaded into the argv of the items that run the lint check — `P3-10`, `P3-11`, `P3-13`, `P3-14` and `P5-04` — and every one of those items also records the resolved argv in its evidence excerpt. `P3-12` runs the profiler, so it takes neither flag. An empty `--checks` value is unset rather than a selection: `verify --checks ""` runs everything, while `audit run --checks ""` means `lint`. At their flag defaults (`4`, `auto`) verify treats them as unset: `--lint-jobs` is not forwarded, so `audit run` keeps its own `engine.AuditRunJobs()` worker count rather than verify's 4 overriding a host's auto-tuning — which makes `--lint-jobs 4` the one request that cannot be expressed, and a value below 1 is treated as unset too instead of being forwarded for the child to reject — and `--timeout` falls back to the item's own value: `auto` for the phase-3 lint items, `0` (no deadline) for the phase-5 `--no-lint-result-cache` re-lint. A worker count above what the project's framework can honour is the child's call: `audit run` rejects it, so the item goes red with the child's own message rather than the flag being silently ignored.
+Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes` alias), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--base`, `--remote`, `--allow-xdebug`, `--allow-destructive` and `--allow-remote-write` change which commands run. `--checks lint,profiler` narrows the run to the items that exercise one of those checks: an item that declares no check is not check-specific and always runs, and an item the selection leaves out stays in the report as a `skipped` row naming the selection. `P3-15` runs `audit run --checks integrity` and declares that check, so a `lint` or `profiler` selection leaves it out. Only the names `audit run --checks` accepts are valid — `lint`, `profiler`, `integrity` — so `--checks lints` is a usage error (exit 2) rather than an ignored flag that selects nothing and still reports `passed`. `--lint-jobs N` and `--timeout <value>` are threaded into the argv of the items that run the lint check — `P3-10`, `P3-11`, `P3-13`, `P3-14` and `P5-04` — and every one of those items also records the resolved argv in its evidence excerpt. `P3-12` runs the profiler, so it takes neither flag. An empty `--checks` value is unset rather than a selection: `verify --checks ""` runs everything, while `audit run --checks ""` means `lint`. At their flag defaults (`4`, `auto`) verify treats them as unset: `--lint-jobs` is not forwarded, so `audit run` keeps its own `engine.AuditRunJobs()` worker count rather than verify's 4 overriding a host's auto-tuning — which makes `--lint-jobs 4` the one request that cannot be expressed, and a value below 1 is treated as unset too instead of being forwarded for the child to reject — and `--timeout` falls back to the item's own value: `auto` for the phase-3 lint items, `0` (no deadline) for the phase-5 `--no-lint-result-cache` re-lint. A worker count above what the project's framework can honour is the child's call: `audit run` rejects it, so the item goes red with the child's own message rather than the flag being silently ignored.
 
 Framework items: a framework declares its own checklist entries in its own package — `VerifyToolItems` on the framework definition names an id, a phase, a title and one `govard tool <binary> <args>` invocation — and `RegistryFor` composes them with the static registry, so `internal/verify` names no framework. Magento 2 declares `P5-MAG-01` (`setup:db:status` after restore, the read-only detector `P5-07` lacks); Laravel `P3-LAR-01..03` + `P5-LAR-01`; Symfony `P3-SYM-01..03` + `P5-SYM-01`; WordPress `P3-WP-01..03` + `P5-WP-01`. Only commands the framework skeleton guarantees are declared, so an item is never permanently red for a missing optional bundle or plugin.
 
-Remote items: every item that names a remote — `P2-04`..`P2-08`, `P4-01`, `P4-03`..`P4-07` and `P4-13`..`P4-15` — takes it from `--remote` and nothing else. A run without `--remote` skips those rows with `no --remote named: this item contacts a remote` instead of guessing, so the checklist never opens a session to whatever the project happens to call `staging`/`stage`/`stg`; `P4-16` (`remote list`) names no remote and keeps running. `P4-13`..`P4-16` cover the read-only half of the remote surface — `deploy plan`, `deploy status`, `deploy releases` and `remote list` — which is safe to run against a production remote. The checklist is a read-only preflight, so what writes stays out of it by design: `deploy check` leaves nothing behind on the target — its writability probe creates no path at all and tests the nearest existing parent instead, and the `mv -T` probe it runs on a symlink target creates a `.dep` scratch directory there and removes it again — and is run by hand rather than as a row, while `deploy unlock`/`deploy rollback` mutate the target's lock and release state, `db`/`snapshot`/`open -e` mutate a remote target (the only command that still *offers* an `authorized_keys` write to reach one is `govard remote test`, and that offer answers **No** unless you say yes; key setup is otherwise the explicit `govard remote copy-id <remote>`), and `tunnel stop` signals only the one tunnel govard recorded for the project, refusing any pid whose argv it cannot confirm it started.
+Remote items: every item that names a remote — `P2-04`..`P2-08`, `P4-01`, `P4-03`..`P4-07` and `P4-13`..`P4-15` — takes it from `--remote` and nothing else. A run without `--remote` skips those rows with `no --remote named: this item contacts a remote` instead of guessing, so the checklist never opens a session to whatever the project happens to call `staging`/`stage`/`stg`; `P4-16` (`remote list`) names no remote and keeps running. `P4-13`..`P4-16` cover the read-only half of the remote surface — `deploy plan`, `deploy status`, `deploy releases` and `remote list` — which is safe to run against a production remote. The checklist is a preflight, so what writes stays out of it by design. `deploy check` is run by hand rather than as a row: it leaves nothing behind on the target, because its writability probe creates no path at all and tests the nearest existing parent instead, and the `mv -T` probe it runs on a symlink target creates a `.dep` scratch directory there (and, on a fresh host, the missing levels of the deploy path above it) and removes them again. `deploy unlock`/`deploy rollback` mutate the target's lock and release state, `db`/`snapshot`/`open -e` mutate a remote target (the only command that still *offers* an `authorized_keys` write to reach one is `govard remote test`, and that offer answers **No** unless you say yes; key setup is otherwise the explicit `govard remote copy-id <remote>`), and `tunnel stop` signals only the one tunnel govard recorded for the project, refusing any pid whose argv it cannot confirm it started.
 
-Probe items: `P2-13` and `P4-11` dial the project's own site, so a project with no configured `domain` cannot be probed at all — they skip with `no configured domain` rather than guess `localhost` and report on some other environment. `P2-13` prefers `https://<domain>/` and falls back to plain HTTP only when the TLS layer itself is unusable (an untrusted local CA, or a port that answers in clear text), and its evidence names the scheme it used; `P4-11` wants a search-health payload with a real `status`, so an answer with no body is a failure, not a green.
+Probe items: `P2-13` and `P4-11` dial the project's own site, so a project with no configured `domain` cannot be probed at all — they skip with `no configured domain` rather than guess `localhost` and report on some other environment. `P3-12` has the same rule for the profiler URL: without a `domain` it skips with `no domain configured` instead of auditing a guessed host. `P2-13` prefers `https://<domain>/` and falls back to plain HTTP only when the TLS layer itself is unusable (an untrusted local CA, or a port that answers in clear text), and its evidence names the scheme it used; `P4-11` wants a search-health payload with a real `status`, so an answer with no body is a failure, not a green.
 
-Gates: Phase 5 requires a snapshot **of this project** — a real (non-`--plan`) phase-4 run for the same project whose `P4-08` exited `0` and whose recorded snapshot is still usable on disk — AND `--allow-destructive`. Without it → `need snapshot create (P4-08) first`; without the flag → `need --allow-destructive for phase 5`. A `--plan` run satisfies neither gate and touches nothing. `P4-08` records the snapshot name it created and `P5-05` restores exactly that name, so the restore cannot pick up a different snapshot created in between. A row marked `skipped` never satisfies the gate: it records that `P4-08` exists, not that it ran.
+Row verdicts: a row reports only what it ran. `P1-06` (`lock check`, with `lock diff` for evidence on a failure) skips with a reason that names `govard lock generate` instead of generating a tracked file from a verify phase, while a lock that exists and disagrees with the project stays red; `P3-09` (`frontend start`) skips on Magento 2 unless `stack.features.frontend_sync` is on, and the skip reason names that switch. Each item also carries a `Requires` note (what it assumes, such as `P2-01 up`) for people reading the registry: the runner never enforces it, and no skip reason quotes it.
 
-Guard: every static item carries one of four labels (`Item.Guard`), and the runner acts on them — the label is the rule, not a comment.
+Gates: Phase 5 requires a snapshot **of this project** — a real (non-`--plan`) phase-4 run for the same project whose `P4-08` exited `0` and whose recorded snapshot is still usable on disk — AND `--allow-destructive`. Without it → `need snapshot create (P4-08) first`; without the flag → `need --allow-destructive for phase 5`. A `--plan` run satisfies neither gate, runs nothing and changes no project state (it still writes a `mode: "plan"` artifact, which never satisfies a gate). Every gate is checked before any item runs, in human and `--json` mode alike: `verify` with neither `--phase` nor `--allow-destructive` exits `1` with the gate error and runs nothing (no environment is stopped and no snapshot is created), `--phase 0` is gated like phase 5, and the `--allow-destructive` opt-in is checked before the snapshot gate. In an all-phases run the snapshot gate is checked when phase 5 is reached, because phase 4 creates the snapshot in that same run. A refusal before anything ran prints `{"error": "<reason>"}` on stdout under `--json`. When phase 5 refuses to start after phases 1 to 4 ran, an all-phases `--json` run still prints one document: the merged phase 1-4 result with the reason in an `error` string (an `error` field never appears in a run artifact), and the exit code is `1`.
+
+The run artifact is written whether or not `--json` is set, because `--json` only shapes stdout: `verify --phase 4` followed by `verify --phase 5 --allow-destructive` works without `--json`. A runs directory that cannot be written costs the run nothing: the verdict is kept and a warning goes to stderr. The one place that matters is an all-phases run whose phase 4 record could not be written, since phase 5 then has no snapshot record to read; it is refused with `phase 4 result could not be recorded: <cause>; phase 5 needs it` (`verify.ErrRunNotRecorded`) rather than a bare `need snapshot create` message. `P4-08` records the snapshot name it created and `P5-05` restores exactly that name, so the restore cannot pick up a different snapshot created in between. A row marked `skipped` never satisfies the gate: it records that `P4-08` exists, not that it ran.
+
+Guard: every static item carries one of four labels (`Item.Guard`). The runner acts on `DESTRUCTIVE-LOCAL` and `REMOTE-WRITE`; `REMOTE-PROBE` is a label for the reader, not a protection, and plan mode is its only gate.
 
 | Guard | What the argv claims | Runner action | Items |
 | :--- | :--- | :--- | :--- |
 | `""` | local work, no remote, nothing irreversible | run | **42** |
-| `READ-ONLY-REMOTE` | names a remote, writes nothing there | run when `--remote` names one; in a run without it the item keeps its row as a skip and does not probe a guessed remote (`--plan` still stubs it, and `P4-16` names no remote so it always runs). No guard-level gate — `--plan` already replaces every item with a stub, so blocking these there would delete their coverage instead of protecting anything | **13** |
+| `REMOTE-PROBE` | names a remote, its argv writes nothing there | run when `--remote` names one; in a run without it the item keeps its row as a skip and does not probe a guessed remote (`--plan` still stubs it, and `P4-16` names no remote so it always runs). No guard-level gate — `--plan` already replaces every item with a stub, so blocking these there would delete their coverage instead of protecting anything. On a live run the item reaches the remote unconditionally: the name says "probe" so nobody reads it as a guarantee | **13** |
 | `DESTRUCTIVE-LOCAL` | irreversible local destruction | phase 5 only, on top of the snapshot gate and `--allow-destructive` | **3** |
 | `REMOTE-WRITE` | writes through a remote | **skip** unless `--allow-remote-write` is passed | **2**: `P2-05`, `P2-08` |
 
@@ -566,7 +570,7 @@ The two `REMOTE-WRITE` items are the `bootstrap … --no-noise` runs. Their skip
 
 Exit codes: `0` every item passed or was skipped; `1` any item failed **or** a phase gate blocked the run (the message names which). `2`/`3`/`4` keep their global meanings (usage / capability / config) — a failing checklist is an execution failure, never a usage error. Scripts should branch on this code and read per-item detail from `--json`.
 
-Outputs: `<govard home>/verify-runs/<project-id>/<ISO>-phaseN.json`, where `project-id` is a hash of the canonical project path, with `{govard_version, project_sha, project_id, phase, mode, status, items:[{id, command, duration_ms, exit_code, retries, evidence_excerpt, json_valid, artifacts, skipped, skip_reason}]}`. `mode` is `run` or `plan`; `status` is `passed` or `failed`; `artifacts` names what an item produced (the snapshot `P4-08` created, which `P5-05` restores). `skipped` marks an item that exists but did not apply in this run — a framework-gated item, for example — and `skip_reason` says why; the human table prints `SKIP` for it, it is counted in neither the passed nor the failed tally, and it never makes a phase red or changes the exit code, so a phase of nothing but skips stays `passed` and exits `0`. Legacy `~/.govard/checklist-runs/` is migrated on first run; artifacts written before project scoping (flat in the `verify-runs/` root) carry no project identity and never satisfy the gate. `phase 0/all --json` emits a single JSON with `phase: "all"`, a recomputed `status` and combined `items`.
+Outputs: `<govard home>/verify-runs/<project-id>/<ISO>-phaseN.json`, where `project-id` is a hash of the canonical project path, with `{govard_version, project_sha, project_id, phase, mode, status, items:[{id, command, duration_ms, exit_code, evidence_excerpt, json_valid, artifacts, skipped, skip_reason}]}`. The per-item `retries` key of earlier releases is gone: it was always `0` and nothing read it, so a consumer that read it now sees it absent. `mode` is `run` or `plan`; `status` is `passed` or `failed`; a run whose evidence no process produced carries `fake: true` on the document and on those items (the hermetic hook: whenever the binary that would run the item is a Go test binary it answers with a `fake(test-binary):` excerpt and no env var is needed, and `GOVARD_VERIFY_FAKE=1` only changes that prefix to `fake:`; for any other binary both are ignored, so a stray `GOVARD_VERIFY_FAKE=1` changes nothing in a real run), and `status` still says `passed` or `failed`; `artifacts` names what an item produced (the snapshot `P4-08` created, which `P5-05` restores). `skipped` marks an item that exists but did not apply in this run — a framework-gated item, for example — and `skip_reason` says why; the human table prints `SKIP` for it, it is counted in neither the passed nor the failed tally, and it never makes a phase red or changes the exit code, so a phase of nothing but skips stays `passed` and exits `0`. Legacy `~/.govard/checklist-runs/` is migrated on first run; artifacts written before project scoping (flat in the `verify-runs/` root) carry no project identity and never satisfy the gate. `phase 0/all --json` emits a single JSON with `phase: "all"`, a recomputed `status` and combined `items`.
 
 `GOVARD_VERIFY_BIN` pins the binary the checklist items execute. Unset, the invoked executable runs them, and `PATH` is only the last resort. To validate a source build, run that build directly and set this variable if the build is not the one the shell would find — otherwise a bare `govard` on `PATH` may be an older install and the checklist will report on it, not on your build.
 
@@ -692,6 +696,23 @@ Key features:
 - Production write protection by default
 - Audit logs: `~/.govard/remote.log`
 
+`remote exec` runs whatever shell command you give it on the remote, and it sits
+**outside** the write-protection gate: nothing inspects the command, protected
+remotes included, so the operator owns what is run. The help example is read-only on
+purpose (`govard remote exec staging -- "df -h /var/www"`). `remote exec`,
+`remote test` and `remote copy-id` take an alias of a configured remote (`stg`,
+`STAGE`) and resolve it to the configured name first, so the key and auth settings
+stored for that remote are the ones used and the audit events carry the configured
+name.
+
+`remote add` validates before it writes anything: an invalid name or an out-of-range
+`--port` (negative or above 65535) exits `4` with the config file and the auth store
+untouched, and a config file that cannot be written exits non-zero instead of
+printing a success line. The same holds for `config set`, `domain add|remove`,
+`profile apply` and `debug on|off`: a resulting config that fails validation exits
+`4` and leaves `.govard.yml` as it was, a failed write is an error, and `debug on|off`
+do not start the environment after a failed save.
+
 `remote list` prints a NAME/HOST/CAPABILITIES/AUTH/KEY table over the
 configured remotes plus the synthetic `sandbox (implicit)` row, whose host column
 carries the state (`running`, `dormant — …`, `absent — …`) and whose capabilities
@@ -721,9 +742,17 @@ When `--media` is used without a mode, Govard defaults it to `optimized`.
 live container — the same remote `govard deploy --remote sandbox` uses — so no
 `remotes.sandbox` block is required, and a configured block can only shape the
 rehearsal (capabilities, protection, deploy settings), never repoint the
-transfer. `sync` itself declares no Docker requirement, so a Docker-less host
-asked for `-e sandbox` exits `3` with `CAPABILITY_MISSING`; with Docker but no
-container it exits `1` naming `govard sandbox up` as the remedy.
+transfer. A Docker-less host asked for `-e sandbox` exits `3` with
+`CAPABILITY_MISSING`; with Docker but no container it exits `1` naming
+`govard sandbox up` as the remedy.
+
+`sync` needs a container runtime only for the database scope: `--db` and `--full`
+move the database through the local database container, so without one they exit `3`
+with `CAPABILITY_MISSING` before any remote is contacted, while `--plan` is exempt
+and a files or media sync needs no Docker. `--plan` and the confirmation summary show
+the database password as `export MYSQL_PWD=***;` (or `export PGPASSWORD=***;` for
+PostgreSQL) in place of the value; those lines are display text, and the command that
+runs still carries the real one.
 
 **Key flags:**
 
@@ -754,6 +783,12 @@ govard db import --file backup.sql --drop
 govard db import --stream-db -e staging --drop
 govard db clone-volume warden_magento2_dbdata
 ```
+
+A dump file is private to its owner. `db dump` and `db import --stream-db` create the
+local file with mode `0600`, and an existing file that is broader is tightened to
+`0600` before anything is written to it. `db dump -e <remote>` without `--local` runs
+under `umask 077` on the remote, so the dump is `0600` and any directory it creates
+(such as `~/backup`) is `0700`.
 
 ### `govard deploy`
 
@@ -864,7 +899,26 @@ earlier build cannot ship: pass `--force` to replace its contents.
 `--runner container` is the one flag that demands anything — the project's own
 app container, exit `3` without it — and it also requires `--output` to sit
 inside the project root, so the container can reach the artifact it builds; an
-output anywhere else is refused before Docker is even looked for.
+output anywhere else is refused before Docker is even looked for, as a configuration
+error (exit `4`).
+
+The container carries only the app container's own toolchain, and the build checks
+that before it changes anything. When the recipe's frontend step will run
+(`deploy.settings.frontend_dir` names at least one directory), the build looks for
+`node` and `npm` in the container before the first task and refuses with exit `3`,
+naming the missing tools and the way out: `--runner host` on a machine with Node, or
+an empty `frontend_dir`. The `--error-json` envelope of that refusal reports
+`capability: "node"`, a value `govard capabilities` does not list because it is not
+a declarable capability. The check keys on the recipe's
+<span v-pre>`{{settings.frontend_dir_args}}`</span> placeholder, so a project whose frontend step (a
+recipe override or a hook-shaped command) does not use it and needs no Node is still
+refused by a container without `node` and `npm`; build that project with
+`--runner host`. A project container that is stopped or missing also exits `3` (hint:
+`govard env up`, or `--runner host`). Both refusals come before the output directory
+is touched, so a previous artifact survives. Ctrl-C and `--command-timeout` stop a
+step inside the container too: after the local `docker exec` client is swept, a
+second `docker exec` signals the step's process group, and the error says whether
+that teardown was attempted and whether it completed.
 
 **Settings and credentials.** `deploy.settings` is validated against the recipe
 before anything runs: an unknown key, or a value with the wrong shape, exits 4 with
@@ -874,6 +928,19 @@ environment is forwarded to the dependency step on its standard input (never in 
 command), and a `shared/auth.json` on the target works too; `govard deploy check`
 reports which source is in play and warns when a target-side build will need one
 and there is none.
+
+**`deploy check`.** The preflight leaves nothing behind on the target, local or
+remote. Its writability probe creates no path: an absent `deploy_path` is tested at
+its nearest existing parent, on the target itself, and a local target's note names
+the parent that answered (a remote call gets no note, because an exit code cannot
+tell an absent path from an unwritable one). The `mv -T` probe it runs on a symlink
+target creates a `.dep` scratch directory under the deploy path, and on a fresh host
+the missing levels above it, then removes them again, stopping at the nearest
+ancestor that already existed and keeping any level that holds something. The
+preflight never looks at the deploy lock. Its notes print before the
+`Target <remote> is deployable` header, one per line, marked `  - ` for a fact and
+`  ! ` for a warning, and a real deploy prints the same notes in the output of its
+`deploy:check` step (on stderr under `--json`, so stdout stays one document).
 
 **Machine-readable output.** With `--json`, stdout carries exactly one JSON
 document and the human timeline goes to stderr: `schema_version`, `remote`,
@@ -1001,6 +1068,18 @@ capability, `4` configuration. `govard deploy` and `govard deploy rollback` need
 `govard sandbox *` is the exception: creating the fake server needs
 `docker`, and then govard talks to it over SSH like any other target.
 
+`deploy check` and `deploy status` share the configuration and usage codes. A mistyped `deploy.settings`
+key, a project that cannot be loaded, or a project with no remotes is a
+configuration error (`4`); a positional remote that contradicts `--remote` is a usage
+error (`2`), as is a `deploy check` with no remote named. Exit `1` differs: for `check` it
+means the preflight failed or the named target could not be reached, for `status` it
+means no configured remote could be reached. `deploy status --json`
+still prints the array of per-remote rows (an unreachable row has status `unknown`
+and an `error`) but exits `1` when every remote is unreachable, as table mode does,
+with the reason on stderr and stdout still one document under `--error-json`. With no
+remotes configured, or a project that cannot be loaded, it exits `4` with an empty
+stdout.
+
 ### `govard sandbox`
 
 A container on your machine that plays the deployment target — the top-level
@@ -1073,6 +1152,13 @@ govard snapshot push before-deploy -e prod
 
 Subcommands: `create`, `list`, `restore`, `delete`, `export`, `pull`, `push`. `export` writes a `tar.gz` archive locally; `delete` removes the named snapshot. `pull`/`push` transfer snapshots between local and a named remote (`-e` flag).
 
+Snapshot files that hold a database dump are private to their owner: `create` writes
+`db.sql.gz` with mode `0600`, and `export` creates the archive with mode `0600`
+(tightening a broader existing file). A remote `create -e` runs under `umask 077`, so
+the directories it creates, such as `<path>/.govard/snapshots`, are `0700` and the
+files in them `0600`, and it finishes by writing the snapshot's `metadata.yml` (name,
+`created_at`, framework).
+
 ### `govard open`
 
 Open common browser targets.
@@ -1087,9 +1173,12 @@ govard open db --client
 govard open db -e staging
 ```
 
+`open db` prints the connection URL with the password masked as `***` (no password
+section when none is set); the database client is handed the full URL.
+
 ### `govard tunnel`
 
-Manage public tunnels (requires `cloudflared`). Govard registers the tunnel domain in Caddy as an alias, keeps the original `Host` header intact, and rewrites the framework base URL (Magento, Laravel, etc.) for the session — restoring it on `tunnel stop` or `Ctrl+C`.
+Manage public tunnels (`start` requires `cloudflared`; `stop` and `status` do not). Govard registers the tunnel domain in Caddy as an alias, keeps the original `Host` header intact, and rewrites the framework base URL (Magento, Laravel, etc.) for the session — restoring it on `tunnel stop` or `Ctrl+C`.
 
 ```bash
 govard tunnel start
@@ -1108,7 +1197,11 @@ govard tunnel stop
 
 `start` records the process it launches (PID plus the argv it was started with)
 under `$GOVARD_HOME_DIR/tunnels/<project>.pid`, and refuses to start a second
-tunnel while that one is still live. `stop` and `status` read that record rather
+tunnel while that one is still live. The record is created exclusively, so two
+starts racing for the same project cannot both win: the loser stops the provider
+process it launched, leaves the winner's record and base URL alone and fails with the
+same refusal, while a record whose process is gone, or whose PID now runs something
+else, is replaced by the next start. `stop` and `status` read that record rather
 than searching the host, so neither reaches a `cloudflared` govard did not start
 — unless it is running the very command line the record names, which another
 copy of the same binary is indistinguishable from: `stop` signals the recorded
@@ -1232,7 +1325,7 @@ govard config auto                # Magento 2: inject settings into env.php
 to `setup:upgrade` when the import was not enough) once a command reports it needs
 one. When that step leaves `app/etc/config.php` holding the same lines in a
 different order, Govard writes the original bytes back so the tracked file stays
-clean. A genuine module change is left alone, and a restore it cannot write — a
+clean, retry after an unblocked read-only search index included. A genuine module change is left alone, and a restore it cannot write — a
 read-only checkout, or a config.php the container owns — is reported as a warning,
 not as a failed Magento command.
 

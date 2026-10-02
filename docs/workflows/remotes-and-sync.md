@@ -67,6 +67,12 @@ govard remote audit tail --status failure --lines 50
 govard remote audit stats --lines 200
 ```
 
+`remote exec` runs whatever shell command you give it and sits **outside** the
+write-protection gate, protected remotes included: nothing inspects the command, so
+the operator owns what is run (the example above is read-only on purpose). An alias
+such as `stg` resolves to the configured remote first, so its key and the audit
+events use the configured name.
+
 **Audit log paths:**
 - `~/.govard/remote.log`
 - `~/.govard/operations.log`
@@ -207,6 +213,11 @@ with `CAPABILITY_MISSING` rather than reporting the name as unconfigured.
 | `-p, --path` | Specific file/directory relative to project root |
 | `-I, --include` | Rsync include pattern (repeatable) |
 | `-X, --exclude` | Rsync exclude pattern (repeatable) |
+
+The plan and the confirmation summary show the database password as
+`export MYSQL_PWD=***;` (`export PGPASSWORD=***;` for PostgreSQL); the command that
+runs still carries the real value. `--db` and `--full` also need a container runtime
+(the database moves through the local database container), except with `--plan`.
 
 ::: tip
 Omitting `--path` syncs the entire project root — `govard sync` warns you about this in the plan before asking for confirmation. You can also skip `-p`/`--path` entirely and pass the path as a trailing argument instead, e.g. `govard sync -s dev --file app/design/frontend/MyTheme`.
@@ -492,6 +503,11 @@ SSH connection is interrupted mid-dump, that cleanup never runs and the raw
 file stays behind (there is no trap on the remote side — a known limitation),
 so re-run the dump and delete the leftover yourself rather than assuming it
 is gone.
+
+The dump file itself is private to its owner: a local file is created `0600` (a
+broader existing one is tightened first), and the remote file written by
+`db dump -e <remote>` is created under `umask 077`, so a directory it creates, such
+as `~/backup`, is `0700`.
 
 ### Import
 

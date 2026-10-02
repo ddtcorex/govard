@@ -28,6 +28,9 @@ Kiểm tra:
 cloudflared --version
 ```
 
+Chỉ `govard tunnel start` cần nó: `tunnel stop` và `tunnel status` đọc bản ghi PID mô tả bên
+dưới và chạy được mà không có `cloudflared`.
+
 Govard không bundle `cloudflared` — bạn tự quản lý cài đặt/nâng cấp.
 
 ---
@@ -77,6 +80,12 @@ và `status` đều hỏng kèm lỗi thay vì giả định là không có tunn
 không giống việc không có bản ghi và giả định như vậy sẽ bỏ rơi một tunnel đang chạy. Hãy xoá tệp đó
 sau khi đã tự kiểm tra tunnel.
 
+Bản ghi được tạo độc quyền, nên khởi chạy tunnel thứ hai cho một project khi cái govard đã khởi
+chạy vẫn đang chạy sẽ bị từ chối, kể cả khi hai lần `start` chạy đua: bên thua dừng tiến trình
+provider nó đã khởi chạy, để nguyên bản ghi và base URL của bên thắng và thất bại với cùng lời
+từ chối. Một bản ghi mà tiến trình đã chết, hoặc PID của nó giờ chạy thứ khác, sẽ được lần
+`start` kế tiếp thay thế.
+
 Khi không có bản ghi, `tunnel stop` không làm gì, có in ra điều đó và thoát với mã 0, nên chạy hai
 lần vẫn an toàn. Base URL của project được khôi phục trong mọi trường hợp, trừ khi tín hiệu bị
 từ chối — lúc đó tunnel vẫn còn sống, nên base URL vẫn trỏ tới nó.
@@ -118,7 +127,7 @@ tunnel nào của chính nó đang chạy — kể cả khi một chương trìn
 
 | Triệu chứng | Cách sửa |
 | :--- | :--- |
-| `cloudflared: command not found` | Cài `cloudflared` trước (xem Yêu cầu). |
+| `cloudflared: command not found` | Cài `cloudflared` trước (xem Yêu cầu); chỉ `tunnel start` cần nó. |
 | Tunnel URL báo 404 của Govard | Chạy `govard env up` trước — project phải đang chạy để Caddy có backend. |
 | Base URL không khôi phục sau Ctrl+C | Chạy `govard tunnel stop` hoặc `govard config auto` (Magento 2) để áp lại URL local. |
 | `tunnel status` báo không có tunnel | Govard không có tunnel nào của chính nó đang chạy. `status` đọc PID đã ghi, nên nó cũng báo vậy khi tunnel đã chết và để lại bản ghi cũ (lệnh sẽ xoá bản ghi đó), hoặc khi một chương trình khác đã chiếm mất PID đó. |

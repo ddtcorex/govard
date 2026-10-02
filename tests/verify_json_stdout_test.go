@@ -26,6 +26,10 @@ import (
 func TestVerifyJSONStdoutStaysMachineParseableWhenAnItemFails(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	project := t.TempDir()
+	// P1-06 skips without a lock file, so give it one to fail on.
+	if err := os.WriteFile(engine.LockFilePath(project), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
 		if len(args) > 0 && args[0] == "lock" {

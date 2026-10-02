@@ -34,15 +34,16 @@ var verifyNoArgvItemsForTest = map[string]string{
 }
 
 // The reach floors are the numbers this fence measured on the registry it was
-// written against: 63 distinct argvs over 127 invocations, both exit codes
-// included. They are floors rather than equalities, so a new branch or a new
+// written against: 63 distinct argvs over 126 invocations, both exit codes
+// included (P5-02 no longer runs `env up` after a failed `env down -v`, which
+// took one invocation off the old 127). They are floors rather than equalities, so a new branch or a new
 // item only raises them; a fall means an item lost a call or a subset stopped
 // building argv — a row can keep running something while dropping a later
 // command, which the no-argv pin above cannot see. Each is the exact measured
 // value because there is no slack to give: the smallest real loss is one call.
 const (
 	verifyDistinctArgvsFloorForTest = 63
-	verifyInvocationsFloorForTest   = 127
+	verifyInvocationsFloorForTest   = 126
 )
 
 // Every verify item is a command line, and verify never parses that line
@@ -77,7 +78,7 @@ const (
 // nameless `snapshot restore` — is invisible here and needs its own test.
 func TestEveryItemArgvResolvesToARunnableCommand(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
-	cfg := engine.Config{Framework: "magento2"}
+	cfg := engine.Config{Framework: "magento2", Domain: "sample.test"}
 	// The fixture seeds what three items need to build an argv at all: a Hyvä
 	// theme's Tailwind manifest (P2-09) and a module under app/code (P3-13 and
 	// P3-14). Those three carry the argv shapes this branch changed most —
@@ -89,6 +90,8 @@ func TestEveryItemArgvResolvesToARunnableCommand(t *testing.T) {
 	projectRoot, _ := magentoProjectWithAppCodeModule(t, "DemoFence")
 	writeFixtureFile(t, filepath.Join(projectRoot, "app", "design", "frontend", "Acme", "Blank", "web", "tailwind", "package.json"),
 		`{"name":"acme/blank-tailwind","version":"1.0.0"}`)
+	// P1-06 only runs lock commands when a lock file exists.
+	writeFixtureFile(t, engine.LockFilePath(projectRoot), "{}")
 	argvs := captureAllItemArgvs(t, cfg, verify.VerifyOpts{
 		Remote:      captureRemoteForTest,
 		ProjectRoot: projectRoot,

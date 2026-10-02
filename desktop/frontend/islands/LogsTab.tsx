@@ -93,7 +93,12 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
     state.selectedService,
   );
 
+  /** Bumped by every load: only the newest request may write the pane. */
+  const loadRequest = useRef(0);
+
   const load = useCallback(async () => {
+    const request = loadRequest.current + 1;
+    loadRequest.current = request;
     const { project, service } = currentTarget();
     if (!project) {
       setLines([]);
@@ -106,9 +111,15 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
       // owns the tail default (1000 lines), so the backend sees the same
       // request it saw before the migration.
       const raw = await bridge.getLogsForService(project, service);
+      if (loadRequest.current !== request) {
+        return;
+      }
       setLines(String(raw ?? "").split("\n"));
       setNotice("");
     } catch (err) {
+      if (loadRequest.current !== request) {
+        return;
+      }
       setLines([]);
       setNotice(`Failed to load logs: ${err}`);
     }

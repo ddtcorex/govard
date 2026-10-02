@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -342,4 +344,117 @@ func TestSyncPlanAdvancedMediaModes(t *testing.T) {
 			t.Errorf("expected WordPress to exclude cache patterns, but it didn't: %s", cmdStr)
 		}
 	})
+}
+
+// installSyncPasswordFakes puts a fake ssh and a fake docker on PATH. ssh
+// answers the credential probe (the remote command contains "php -r") with
+// payload and records every other invocation; docker reports the local DB
+// container as running, records the rest and drains stdin. Each recorded
+// invocation is one line in the returned log file.
+func installSyncPasswordFakes(t *testing.T, payload string) string {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls.log")
+	ssh := "#!/bin/sh\ncase \"$*\" in\n*'php -r'*) printf '%s' \"$FAKE_SSH_PAYLOAD\"; exit 0;;\nesac\nprintf 'SSH %s\\n' \"$*\" >> \"$FAKE_CALL_LOG\"\nexit 0\n"
+	docker := "#!/bin/sh\ncase \"$1\" in\ninspect) echo true; exit 0;;\nesac\nprintf 'DOCKER %s\\n' \"$*\" >> \"$FAKE_CALL_LOG\"\ncat >/dev/null\nexit 0\n"
+	for name, body := range map[string]string{"ssh": ssh, "docker": docker} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+			t.Fatalf("write fake %s: %v", name, err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_SSH_PAYLOAD", payload)
+	t.Setenv("FAKE_CALL_LOG", log)
+	return log
+}
+
+// TestSyncPlanNeverContainsTheDBPassword pins #514: the plan shown by
+// `sync --plan` and the interactive confirmation must never carry the remote
+// database password (probed or configured), while the command the action
+// executes still carries the exact value.
+func TestSyncPlanNeverContainsTheDBPassword(t *testing.T) {
+	passwords := []string{"p'w$x", "SECRETPW", "pw*$", "line1\nline2", "***"}
+	cases := []struct {
+		name      string
+		framework string
+		remoteCfg func(password string) engine.RemoteConfig
+		pull      bool
+		// envVar is the password variable the framework's DB engine exports:
+		// MYSQL_PWD by default, PGPASSWORD for a Postgres framework.
+		envVar string
+	}{
+		{"magento2 probe pull", "magento2", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, true, "MYSQL_PWD"},
+		{"laravel probe pull", "laravel", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, true, "MYSQL_PWD"},
+		{"magento2 probe push", "magento2", func(string) engine.RemoteConfig { return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www"} }, false, "MYSQL_PWD"},
+		{"custom db_pass pull", "custom", func(pw string) engine.RemoteConfig {
+			return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www", DBName: "app", DBUser: "app", DBPass: pw}
+		}, true, "MYSQL_PWD"},
+		{"custom db_pass push", "custom", func(pw string) engine.RemoteConfig {
+			return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www", DBName: "app", DBUser: "app", DBPass: pw}
+		}, false, "MYSQL_PWD"},
+		{"postgres django db_pass pull", "django", func(pw string) engine.RemoteConfig {
+			return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www", DBName: "app", DBUser: "app", DBPass: pw}
+		}, true, "PGPASSWORD"},
+		{"postgres django db_pass push", "django", func(pw string) engine.RemoteConfig {
+			return engine.RemoteConfig{Host: "r.example.com", Path: "/var/www", DBName: "app", DBUser: "app", DBPass: pw}
+		}, false, "PGPASSWORD"},
+	}
+
+	for _, password := range passwords {
+		for _, tc := range cases {
+			t.Run(tc.name+" "+password, func(t *testing.T) {
+				raw, err := json.Marshal(map[string]string{
+					"host": "127.0.0.1", "username": "app", "dbname": "app", "password": password,
+					"db_username": "app", "db_database": "app", "db_password": password,
+				})
+				if err != nil {
+					t.Fatalf("marshal payload: %v", err)
+				}
+				log := installSyncPasswordFakes(t, base64.StdEncoding.EncodeToString(raw))
+
+				remoteEndpoint := cmd.SyncEndpoint{Name: "staging", RootPath: "/var/www", RemoteCfg: tc.remoteCfg(password)}
+				localEndpoint := cmd.SyncEndpoint{Name: "local", IsLocal: true, RootPath: t.TempDir()}
+				source, destination := remoteEndpoint, localEndpoint
+				if !tc.pull {
+					source, destination = localEndpoint, remoteEndpoint
+				}
+				endpoints := cmd.ResolveSyncEndpointsForTest(source, destination)
+				opts := cmd.SyncExecutionOptionsForTest(false, "", true)
+				config := engine.Config{ProjectName: "test-project", Framework: tc.framework}
+
+				plan, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts)
+				if err != nil {
+					t.Fatalf("BuildSyncExecutionPlanForTest() error = %v", err)
+				}
+
+				lines := append([]string{}, plan.Descriptions...)
+				lines = append(lines, plan.Commands...)
+				lines = append(lines, cmd.BuildSyncPlanSummaryForTest(endpoints, plan, opts)...)
+				shown := strings.Join(lines, "\n")
+				// "***" is itself the placeholder, so for that password only the
+				// shell-quoted form (which never appears in a redacted plan) is checkable.
+				if (password != "***" && strings.Contains(shown, password)) || strings.Contains(shown, engine.ShellQuote(password)) {
+					t.Fatalf("plan output leaks the password %q:\n%s", password, shown)
+				}
+				if !strings.Contains(shown, tc.envVar+"=***;") {
+					t.Fatalf("plan output should show the redacted %s=*** placeholder:\n%s", tc.envVar, shown)
+				}
+
+				if len(plan.DatabaseActions) != 1 {
+					t.Fatalf("expected 1 database action, got %d", len(plan.DatabaseActions))
+				}
+				// The stream itself is empty, so the action's own result is not
+				// the assertion; what matters is the command it executed.
+				_ = plan.DatabaseActions[0]()
+				calls, err := os.ReadFile(log)
+				if err != nil {
+					t.Fatalf("the action never ran a command: %v", err)
+				}
+				want := "export " + tc.envVar + "=" + engine.ShellQuote(password) + ";"
+				if !strings.Contains(string(calls), want) {
+					t.Fatalf("executed command must carry the real password %q, calls:\n%s", want, calls)
+				}
+			})
+		}
+	}
 }

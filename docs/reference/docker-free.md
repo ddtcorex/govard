@@ -60,19 +60,19 @@ govard capabilities --json   # machine-readable (schema_version 1)
 | `govard project list` | `none` |
 | `govard project open` | `none` |
 | `govard remote add` | `ssh,rsync` |
-| `govard remote audit stats` | `ssh,rsync` |
-| `govard remote audit tail` | `ssh,rsync` |
+| `govard remote audit stats` | `none` |
+| `govard remote audit tail` | `none` |
 | `govard remote copy-id` | `ssh,rsync` |
 | `govard remote exec` | `ssh,rsync` |
-| `govard remote list` | `ssh,rsync` |
+| `govard remote list` | `none` |
 | `govard remote test` | `ssh,rsync` |
 | `govard self-update` | `net` |
 | `govard sync` | `ssh,rsync` |
 | `govard trust` | `none` |
-| `govard tunnel` | `cloudflared` |
+| `govard tunnel` | `none` |
 | `govard tunnel start` | `cloudflared` |
-| `govard tunnel status` | `cloudflared` |
-| `govard tunnel stop` | `cloudflared` |
+| `govard tunnel status` | `none` |
+| `govard tunnel stop` | `none` |
 | `govard version` | `none` |
 | `govard vscode setup` | `none` |
 
@@ -132,10 +132,16 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   that is container work by definition, and it is the only way a rehearsal can
   use the same code path as production.
 
-- **Remote and sync.** `govard remote add|test|copy-id|exec|list`,
-  `govard remote audit stats|tail`, and `govard sync` need SSH and rsync, not
-  Docker.
-- **Tunnels.** `govard tunnel start|stop|status` drive `cloudflared` on the host.
+- **Remote and sync.** `govard remote add|test|copy-id|exec` and
+  `govard sync` need SSH and rsync, not Docker. `govard sync --db` and `--full`
+  move the database through the local database container, so they also need a
+  container runtime and answer exit `3` `CAPABILITY_MISSING` without one; a
+  `--plan` does not. `govard remote list` only reads the project config and
+  `govard remote audit stats|tail` only read the local audit log, so they need
+  nothing at all.
+- **Tunnels.** `govard tunnel start` runs `cloudflared` on the host.
+  `govard tunnel stop` and `govard tunnel status` only read the PID record govard
+  keeps, so they need no `cloudflared`.
 - **Self-update, help, completion.** `govard self-update` needs only network
   access; `govard version`, `govard help`, and `govard completion
   bash|zsh|fish|powershell` need nothing at all.
@@ -157,7 +163,7 @@ The gate refuses before the command does any work, and names what is missing:
 script never has to parse the text form:
 
 ```bash
-govard tunnel status --error-json
+govard tunnel start --error-json
 # {"schema_version":1,...,"error":{"code":"CAPABILITY_MISSING","capability":"cloudflared",...}}
 ```
 

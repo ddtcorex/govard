@@ -133,8 +133,8 @@ framework: laravel
 			}
 			return fakeProvider, nil
 		},
-		RunCommand: func(_ *exec.Cmd) error {
-			t.Fatal("did not expect command execution in --plan mode")
+		StartProcess: func(_ *exec.Cmd) error {
+			t.Fatal("did not expect a process start in --plan mode")
 			return nil
 		},
 	})
@@ -199,8 +199,8 @@ framework: laravel
 				},
 			}, nil
 		},
-		RunCommand: func(_ *exec.Cmd) error {
-			return errors.New("unexpected command run")
+		StartProcess: func(_ *exec.Cmd) error {
+			return errors.New("unexpected process start")
 		},
 	})
 	defer restore()
@@ -234,8 +234,9 @@ framework: laravel
 func initTunnelHome(t *testing.T) {
 	t.Helper()
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
-	// The tunnel group declares cloudflared and a test host has none. This commit
-	// deliberately leaves the requirement alone, so satisfy the gate explicitly.
+	// `tunnel start` declares cloudflared and a test host has none, so satisfy
+	// the gate explicitly. `stop` and `status` need nothing (#503); that is
+	// pinned by TestTunnelStopAndStatusNeedNoCloudflared without this stub.
 	restore := runtime.StubSatisfiedCapabilitiesForTest(runtime.CapCloudflared)
 	t.Cleanup(restore)
 }
@@ -574,7 +575,6 @@ func TestTunnelStartRecordsAndClearsThePIDItStarted(t *testing.T) {
 				Binary: "/bin/sleep", Args: []string{"30"},
 			}}, nil
 		},
-		RunCommand: func(command *exec.Cmd) error { return command.Run() },
 	})
 	defer restore()
 
@@ -635,7 +635,6 @@ func TestTunnelStartRefusesWhileItsOwnTunnelIsRunning(t *testing.T) {
 				Binary: "/bin/sleep", Args: []string{"30"},
 			}}, nil
 		},
-		RunCommand: func(command *exec.Cmd) error { return command.Run() },
 	})
 	defer restore()
 

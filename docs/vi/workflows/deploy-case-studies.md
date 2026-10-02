@@ -53,11 +53,16 @@ container` exec đúng những task đó trong container app của dự án qua 
 Kèm theo là ba điều kiện. Project container phải **đang chạy**, và `--output` phải
 **nằm trong project root** — nằm ngoài đó bị từ chối trước cả lúc govard tìm Docker.
 Điều kiện thứ ba mới là chỗ cắn: container app phải mang **toolchain mà các task build
-cần**. Container mà `docker exec` tới chính là container app của dự án — một
+cần**, và build giờ kiểm tra điều đó trước khi chạy bất cứ thứ gì. Container mà `docker exec` tới chính là container app của dự án — một
 container PHP — nên recipe có build frontend trong build stage thì cần `npm` trong đó.
 Đo trên dự án Magento 2.4.9 ngày 2026-09-30, có cấu hình `frontend_dir`: `--runner
 container` chạy xong `build:vendors`, `build:patches` và `build:compile`, rồi hỏng ở
-`build:frontend` với `sh: npm: not found`.
+`build:frontend` với `sh: npm: not found`. Lỗi đó giờ đến trước task đầu tiên thay vì sau
+ba task: khi bước frontend của recipe sẽ chạy, build tìm `node` và `npm` trong container,
+từ chối với exit `3` nêu tên công cụ còn thiếu và `--runner host` làm lối ra, và để nguyên
+artifact trước đó. Project container đang dừng hoặc không tồn tại bị từ chối theo cách
+tương tự, còn Ctrl-C hoặc `--command-timeout` cũng dừng bước đang chạy bên trong
+container.
 
 Đổi lại, container path mang lại gì trên chính dự án và revision đó: `build:vendors`
 clone được một package Composer private qua SSH từ trong container, trong khi runner
@@ -630,20 +635,27 @@ govard deploy check legacy-staging
 Output nêu layout nó tìm thấy, chiến lược publish mà layout đó ngụ ý, dung lượng
 trống, PHP mà target chạy, repository có tới được từ target hay không, và đường
 credential Composer nào đang được dùng. Các note đến trước, theo thứ tự các phép dò đã
-chạy, rồi mới tới các field đã resolve:
+chạy, mỗi note đánh dấu `  - ` cho dữ kiện hoặc `  ! ` cho cảnh báo, rồi mới tới các field
+đã resolve dưới header `Target ... is deployable` (một lần deploy thật in đúng các note đó
+trong output của bước `deploy:check`):
 
 ```
+  - repository reachable from the target: refs/heads/main
+  - publish strategy: in_place
+  - free space at the deploy path: 42.4 GiB
+  - php on the target: 8.2.18
 Target legacy-staging is deployable
-  publish strategy: in_place
-  repository reachable from the target: refs/heads/main
-  free space at the deploy path: 42.4 GiB
-  php on the target: 8.2.18
   host:            legacy-staging
   deploy path:     /var/www/shop
   current path:    /var/www/shop
   publish:         in_place
   layout:          current path is a real directory: releases are copied into it
 ```
+
+`deploy check` không để lại gì trên target. Probe `mv -T` mà một target dạng symlink cần tạo
+một thư mục tạm `.dep` (và, trên một host mới, các tầng còn thiếu của deploy path phía trên
+nó) rồi xoá chúng đi, còn một target local mà deploy path chưa tồn tại sẽ có một note, in
+trước các note khác và không có dấu, nêu parent mà probe quyền ghi đã dùng thay thế.
 
 Note nào xuất hiện còn tuỳ target và lần chạy: chiến lược symlink thêm
 `atomic symlink rename: supported`, sandbox thêm việc mirror đã được refresh, artifact

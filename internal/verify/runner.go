@@ -23,6 +23,10 @@ var GovardVersion = "1.68.0"
 var (
 	ErrNeedSnapshot         = errors.New("need snapshot create (P4-08) first")
 	ErrNeedAllowDestructive = errors.New("need --allow-destructive for phase 5")
+	// ErrRunNotRecorded is returned by the all-phases CLI path when phase 4's
+	// artifact could not be written and phase 5's snapshot gate therefore cannot
+	// open. It wraps the write error so the operator sees the real cause.
+	ErrRunNotRecorded = errors.New("phase 4 result could not be recorded")
 )
 
 // VerifyRunsDir returns the root directory for verify JSON runs. Run artifacts
@@ -153,7 +157,18 @@ type RunResult struct {
 	Phase         string    `json:"phase"`
 	Mode          string    `json:"mode,omitempty"`
 	Status        string    `json:"status,omitempty"`
+	Fake          bool      `json:"fake,omitempty"`
 	Items         []RunItem `json:"items"`
+
+	// Error is set only on the document an all-phases --json run renders when
+	// phase 5 refuses to start: phases 1-4 stay in Items and the gate's reason
+	// rides along, so stdout is still one document. It is never written to an
+	// artifact.
+	Error string `json:"error,omitempty"`
+
+	// RecordErr is why the run artifact could not be written, or nil. It is not
+	// part of the artifact and never changes Status.
+	RecordErr error `json:"-"`
 }
 
 // Failed reports whether any item exited non-zero.
@@ -199,6 +214,16 @@ func (r *RunResult) RefreshStatus() {
 	if r.Failed() {
 		r.Status = "failed"
 	}
+	// Fake is the top-level marker: a run containing any fake item carries it,
+	// so the artifact cannot be read as a real pass. Status keeps its two
+	// values for consumers that predate the field.
+	r.Fake = false
+	for _, it := range r.Items {
+		if it.Fake {
+			r.Fake = true
+			break
+		}
+	}
 }
 
 // RunItem is one entry in RunResult. A skipped row is additive: an artifact
@@ -209,25 +234,21 @@ type RunItem struct {
 	Command         string   `json:"command"`
 	DurationMs      int      `json:"duration_ms"`
 	ExitCode        int      `json:"exit_code"`
-	Retries         int      `json:"retries"`
 	EvidenceExcerpt string   `json:"evidence_excerpt"`
 	JSONValid       bool     `json:"json_valid"`
 	Artifacts       []string `json:"artifacts,omitempty"`
 	Skipped         bool     `json:"skipped,omitempty"`
 	SkipReason      string   `json:"skip_reason,omitempty"`
+	Fake            bool     `json:"fake,omitempty"`
 }
 
 // RunPhase executes the filtered registry for a single phase and optionally
 // writes the JSON file when opts.JSON is true.
 func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts) (RunResult, error) {
-	// Gate for destructive phase 5 — bypassed for --plan (dry-run).
-	if phase == 5 && !opts.Plan {
-		if err := checkP5Gate(opts); err != nil {
-			return RunResult{}, err
-		}
-		if !opts.AllowDestructive {
-			return RunResult{}, ErrNeedAllowDestructive
-		}
+	// The destructive gate is keyed on the selection, not on phase == 5: phase 0
+	// selects every phase, so it selects phase 5 too. Bypassed for --plan.
+	if err := PreflightPhaseSelection([]int{phase}, opts); err != nil {
+		return RunResult{}, err
 	}
 
 	// Filter. An unmet When predicate no longer drops the item: the row stays,
@@ -303,25 +324,22 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 			Command:         it.Title,
 			DurationMs:      ev.DurationMs,
 			ExitCode:        ev.ExitCode,
-			Retries:         ev.Retries,
 			EvidenceExcerpt: ev.OutputExcerpt,
 			JSONValid:       ev.JSONValid,
 			Artifacts:       ev.Artifacts,
 			Skipped:         ev.Skipped,
 			SkipReason:      ev.SkipReason,
+			Fake:            ev.Fake,
 		})
 	}
 
 	res.RefreshStatus()
 
-	if opts.JSON {
-		_ = MigrateLegacyRuns()
-		dir := ProjectRunsDir(opts.ProjectRoot)
-		_ = os.MkdirAll(dir, 0755)
-		ts := time.Now().Format("2006-01-02T15-04-05Z07:00")
-		path := filepath.Join(dir, ts+"-phase"+phaseFileSuffix(phase)+".json")
-		b, _ := json.MarshalIndent(res, "", "  ")
-		_ = os.WriteFile(path, b, 0644)
+	// The artifact is always written: the phase-5 gate reads it, and --json only
+	// shapes stdout. A write failure is a warning, never part of the verdict.
+	if err := writeRunArtifact(res, phase, opts); err != nil {
+		res.RecordErr = err
+		fmt.Fprintf(os.Stderr, "warning: could not record the verify run artifact: %v\n", err)
 	}
 
 	return res, nil
@@ -356,12 +374,17 @@ func checksFilterReason(requested, declared []string) string {
 
 // frameworkGateReason is the skip a row reports when its When predicate did not
 // hold. Every When in the registry is a framework predicate, so the gate that
-// fired is the framework — not the item's Precond text, which on a Magento row
+// fired is the framework — not the item's Requires text, which on a Magento row
 // reads like a prior step ("P2-01 up") and would send an operator on a Laravel
 // project to debug an environment that is fine. The project's own framework is
 // the one fact that explains the row, so the reason names that; which frameworks
 // an item belongs to is what the phase table and the id prefixes already say.
 func frameworkGateReason(it Item, cfg engine.Config) string {
+	if it.WhenReason != nil {
+		if reason := it.WhenReason(cfg); reason != "" {
+			return reason
+		}
+	}
 	if cfg.Framework == "" {
 		return fmt.Sprintf("framework gate: %s is framework-specific and this project declares no framework", it.ID)
 	}
@@ -397,6 +420,59 @@ func phaseLabelRaw(phase int) string {
 	default:
 		return "phase0"
 	}
+}
+
+// writeRunArtifact stores res under the project's run store.
+func writeRunArtifact(res RunResult, phase int, opts VerifyOpts) error {
+	_ = MigrateLegacyRuns()
+	dir := ProjectRunsDir(opts.ProjectRoot)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	ts := time.Now().Format("2006-01-02T15-04-05Z07:00")
+	path := filepath.Join(dir, ts+"-phase"+phaseFileSuffix(phase)+".json")
+	b, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0600)
+}
+
+// PreflightPhaseSelection applies the phase-5 gates to a selection of phases,
+// before any item of it runs. Phase 0 means every phase and counts as phase 5.
+// A selection without phase 5 is ungated, and so is a --plan run.
+//
+// Order: the --allow-destructive opt-in first, then the snapshot gate. The
+// snapshot gate is skipped only when the selection itself contains phase 4
+// and phase 5 as separate runs (the all-phases CLI path): phase 4 records the
+// artifact before phase 5 starts and RunPhase(5) re-checks it then. A phase 0
+// call runs both inside one RunPhase, where P5-05 reads the store and not the
+// call's own result, so it needs a snapshot recorded by an earlier run.
+func PreflightPhaseSelection(phases []int, opts VerifyOpts) error {
+	if opts.Plan {
+		return nil
+	}
+	has5, has4, hasAll := false, false, false
+	for _, p := range phases {
+		switch p {
+		case 0:
+			has5, hasAll = true, true
+		case 4:
+			has4 = true
+		case 5:
+			has5 = true
+		}
+	}
+	if !has5 {
+		return nil
+	}
+	if !opts.AllowDestructive {
+		return ErrNeedAllowDestructive
+	}
+	if has4 && !hasAll {
+		return nil
+	}
+	return checkP5Gate(opts)
 }
 
 // checkP5Gate requires a snapshot of this project recorded by a real (non-plan)

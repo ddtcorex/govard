@@ -166,12 +166,11 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 							pterm.Warning.Println("setup:upgrade failed due to search index block; attempting to unblock and retry...")
 							if fixErr := FixElasticsearchIndexBlock(projectName, config); fixErr == nil {
 								pterm.Success.Println("Elasticsearch/OpenSearch index unblocked. Retrying setup:upgrade...")
-								// Deliberately left outside runPreservingUnchangedConfigPHP: this
-								// retry can reorder app/etc/config.php exactly like the call above
-								// it, so the dirty-file bug (#489) survives on this path. That is a
-								// known, recorded limitation rather than an oversight — a
-								// follow-up, not something to quietly "fix" here.
-								if retryErr := runMagentoSetupUpgrade(containerName, config); retryErr == nil {
+								// The retry can reorder app/etc/config.php exactly like the
+								// call above it, so it is wrapped the same way (#512).
+								if retryErr := runPreservingUnchangedConfigPHP(projectRoot, func() error {
+									return runMagentoSetupUpgrade(containerName, config)
+								}); retryErr == nil {
 									goto retryInitialCommand
 								} else {
 									upgradeErr = retryErr // Update for final reporting if still fails
@@ -751,8 +750,10 @@ func ResolveMagentoSearchEngine(config engine.Config) string {
 		return ""
 	}
 
-	// Magento < 2.4.8 uses the elasticsearch7 engine name/flags even when running OpenSearch.
-	if isMagentoVersionAtLeast(config.FrameworkVersion, "2.4.8") && search == conventions.ServiceOpenSearch {
+	// Magento < 2.4.6 uses the elasticsearch7 engine name/flags even when
+	// running OpenSearch; 2.4.6 and later take "opensearch" (see
+	// magentoOpenSearchEngineMinVersion for the Adobe source).
+	if isMagentoVersionAtLeast(config.FrameworkVersion, magentoOpenSearchEngineMinVersion) && search == conventions.ServiceOpenSearch {
 		return conventions.ServiceOpenSearch
 	}
 	return "elasticsearch7"

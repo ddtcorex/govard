@@ -260,12 +260,19 @@ func TestContainerRunnerRefusesBeforeItReachesDocker(t *testing.T) {
 				}
 				return
 			}
+			// Run wraps the step so a cancel can find its process group; the
+			// argv around the script is the one Args builds, and the step itself
+			// is inside the script unchanged.
 			want := []string{
 				"exec", "-u", "www-data", "-w", "/var/www/html/artifacts",
-				"sample-php-1", "sh", "-c", "php -v",
+				"sample-php-1", "sh", "-c",
 			}
-			if !slices.Equal(got, want) {
-				t.Fatalf("docker argv = %q, want %q", got, want)
+			if len(got) < len(want)+1 || !slices.Equal(got[:len(want)], want) {
+				t.Fatalf("docker argv = %q, want it to start with %q", got, want)
+			}
+			script := strings.Join(got[len(want):], "\n")
+			if !strings.Contains(script, "( php -v\n)") || !strings.Contains(script, "/tmp/.govard-build-interrupt-") {
+				t.Fatalf("docker script = %q, want the step wrapped with a process-group record", script)
 			}
 		})
 	}
@@ -295,7 +302,9 @@ func TestContainerRunnerBoundsWhatItKeepsOfAChattyStep(t *testing.T) {
 }
 
 func TestContainerRunnerHonoursRunOptionsTimeout(t *testing.T) {
-	argvFile := dockerStub(t, "sleep 30\n")
+	// Only the step sleeps: the teardown exec that follows the timeout returns at
+	// once, as it would against a container whose step already ended.
+	argvFile := dockerStub(t, "case \"$*\" in *'kill -TERM'*) exit 0 ;; esac\nsleep 30\n")
 	start := time.Now()
 
 	_, err := containerRunnerFixture().Run(context.Background(), "composer install", deploy.RunOptions{Timeout: 300 * time.Millisecond})
@@ -317,6 +326,25 @@ func TestContainerRunnerHonoursRunOptionsTimeout(t *testing.T) {
 	}
 	if len(dockerArgv(t, argvFile)) == 0 {
 		t.Fatal("the stub was never called")
+	}
+}
+
+// A teardown that could not run leaves the step possibly alive inside the
+// container, and the operator must be told that rather than assume it stopped.
+func TestContainerRunnerSaysWhenTheTeardownFailed(t *testing.T) {
+	argvFile := dockerStub(t, "case \"$*\" in *'kill -TERM'*) echo 'Error response from daemon: container is not running' >&2; exit 1 ;; esac\nsleep 30\n")
+
+	_, err := containerRunnerFixture().Run(context.Background(), "composer install", deploy.RunOptions{Timeout: 300 * time.Millisecond})
+	if err == nil {
+		t.Fatal("want a timeout error")
+	}
+	for _, want := range []string{"timed out", "teardown attempted but failed", "sample-php-1", "may still be running", "container is not running"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error must say %q, got %q", want, err.Error())
+		}
+	}
+	if got := dockerArgv(t, argvFile); !slices.Contains(got, "sample-php-1") {
+		t.Fatalf("the stub was never called, argv %q", got)
 	}
 }
 

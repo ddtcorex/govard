@@ -78,3 +78,21 @@ func TestComposerEnsureScriptDownloadsWhenVersionDiffers(t *testing.T) {
 		t.Fatalf("did not expect skip message, got: %s", output)
 	}
 }
+
+func TestResolveComposerVersionPrefersStackThenProfile(t *testing.T) {
+	cases := []struct {
+		name   string
+		config engine.Config
+		want   string
+	}{
+		{"stack pin wins", engine.Config{Framework: "magento2", FrameworkVersion: "2.4.6", Stack: engine.Stack{ComposerVersion: "2.7"}}, "2.7"},
+		{"profile pin when stack is empty", engine.Config{Framework: "magento2", FrameworkVersion: "2.4.6"}, "2.2"},
+		{"framework default when the line pins none", engine.Config{Framework: "magento2", FrameworkVersion: "2.4.9"}, "latest"},
+		{"unknown framework", engine.Config{Framework: "no-such-framework"}, ""},
+	}
+	for _, tc := range cases {
+		if got := engine.ResolveComposerVersion(tc.config); got != tc.want {
+			t.Errorf("%s: ResolveComposerVersion() = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

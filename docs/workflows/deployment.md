@@ -195,7 +195,7 @@ and names it instead.
 
 ```bash
 govard deploy plan staging     # the entire task list, connecting nowhere
-govard deploy check staging    # preflight: connectivity, layout, permissions, php, locked php floor, disk, lock, local checkout
+govard deploy check staging    # preflight: connectivity, layout, permissions, php, locked php floor, disk, local checkout
 govard deploy staging --yes    # ... or --remote staging
 ```
 
@@ -212,14 +212,23 @@ deploy makes.
 writability probe creates no path at all — an absent `deploy_path` is probed at
 the nearest existing parent on the target itself, and on a local target the note
 names the parent that answered — and the `mv -T` probe it runs on a symlink
-target creates a `.dep` scratch directory there and removes it again. So the
+target creates a `.dep` scratch directory there and removes it again. On a fresh
+host the probe also creates the missing levels of the deploy path above `.dep`
+and removes them again, stopping at the nearest ancestor that already existed;
+a level that holds anything of its own stays. So the
 promise is about the end state, not about never issuing a creating syscall: the
 atomic-rename probe is create-then-remove by design, which is what lets it
 answer for a fresh host. A remote call gets no such note — an exit code cannot
 tell an absent path from an unwritable one, so the note would be a claim about a
 machine govard cannot see. The probe runs through the same runner a deploy uses,
 so it travels to the machine that owns the path — which is also why a fresh host
-passes the check instead of failing it.
+passes the check instead of failing it. The check never looks at the deploy lock:
+that is `deploy:lock`'s job, in a real deploy.
+
+The notes the preflight collects print as they are found, one per line, before the
+`Target ... is deployable` header: `  - ` marks a fact and `  ! ` a warning. A real
+deploy prints the same notes in the output of its `deploy:check` step, on stderr
+under `--json` so stdout stays one document.
 
 Watch it with `--verbose`, which streams each command's own output under its task
 and never batches it. When a step fails the run says which step, and what to do
@@ -951,10 +960,24 @@ keeps the build job free of a container runtime. `--runner container` runs the
 same tasks through the project's own app container with `docker exec` instead —
 the way to build a project that cannot fetch its own dependencies from the host,
 which is what a private-VCS package whose SSH material only the container has
-looks like. That flag needs a running project container and an output directory
-inside the project root, and the artifact it produces records the *container's*
+looks like. That flag needs a running project container (a stopped or missing one
+exits `3` with a hint, before the output directory is touched) and an output
+directory inside the project root (anywhere else is a configuration error, exit
+`4`), and the artifact it produces records the *container's*
 PHP, so the deploy job's PHP parity check only clears when the container runs the
 target's PHP series.
+
+The container carries only its own toolchain. When the recipe's frontend step will
+run (`deploy.settings.frontend_dir` names a directory), the build checks the
+container for `node` and `npm` before the first task and refuses with exit `3`,
+naming the missing tools and the way out: `--runner host` on a machine with Node,
+or an empty `frontend_dir`. The previous artifact survives that refusal. The check
+keys on the recipe's <span v-pre>`{{settings.frontend_dir_args}}`</span> placeholder, so a frontend
+step that does not use it and needs no Node (a recipe override, a hook-shaped
+command) is still refused by a container without them; use `--runner host` there.
+Ctrl-C and `--command-timeout` stop the step inside the container as well: a second
+`docker exec` signals its process group, and the error says whether that teardown
+was attempted and whether it completed.
 
 ### What an artifact can and cannot carry
 
@@ -1208,7 +1231,11 @@ against a release that is perfectly good and take it out of every future
 
 `deploy.lock_stale_after` (default 2h) is how old a lock must be for
 `govard deploy unlock` to release it without `--force`; the refusal a held lock
-produces names the holder, its revision and how long it has been held.
+produces names the holder, its revision and how long it has been held. Only a lock
+directory that exists after the failed `mkdir` counts as held: any other failure to
+acquire it (permissions, a read-only filesystem, a full disk, a file at the lock
+path) reports `mkdir`'s own error as `acquire deploy lock: ...`, so it never sends you
+to `deploy unlock` for a lock that is not there.
 
 `deploy.maintenance_timeout` (default 15m) bounds any single step that runs with
 the site in maintenance mode, which is far below `deploy.command_timeout` on
@@ -1596,6 +1623,17 @@ deploy command, for `deploy status` and for `sync` alike: the remedy is an edit
 to the file, never to the command line. Exit `1` stays for a remote that *is*
 configured and whose target could not be read, which is the distinction a
 script branching on the exit code is reading.
+
+`deploy check` and `deploy status` share the configuration and usage codes: a mistyped `deploy.settings`
+key, a project that cannot be loaded and a project with no remotes are configuration
+errors (`4`), a positional remote that contradicts `--remote` is a usage error
+(`2`), as is a `deploy check` with no remote named. Exit `1` differs: for `check` it
+means the preflight failed or the named target could not be reached, for `status` it
+means no configured remote could be reached. `deploy status --json`
+still prints the array of per-remote rows (an unreachable one has status `unknown`
+and an `error`) but exits `1` when every remote is unreachable, like table mode,
+with the reason on stderr; with no remotes configured it exits `4` and prints no
+rows.
 
 `govard deploy build` keeps its `none` row whatever `--runner` is set to: a static
 annotation cannot say "only when this flag is passed", so the one flag that needs

@@ -116,20 +116,74 @@ func FreshCommands(opts bootstrap.Options) []string {
 // from internal/cmd/bootstrap_fresh_install.go's
 // bootstrapFreshCreateProjectCommandLine, parameterized by variant instead
 // of a framework-name string check.
+//
+// When opts.PHPVersion is known and the runtime runs Composer 2, the project
+// is created without installing, its composer.json gets
+// config.platform.php = opts.PHPVersion, and dependencies are installed
+// against that platform. Extension and library requirements stay ignored as
+// before, but the php requirement is enforced, so the resolved vendor tree
+// parses on the container's PHP. Without a PHP version, or on a Composer
+// older than 2.2 (Composer 1 has no --ignore-platform-req=<name> option and
+// 2.0/2.1 have no ext-* wildcard, while --ignore-platform-reqs would make the
+// pin inert), the command is the original single create-project.
 func BuildFreshCreateProjectCommand(variant FamilyVariant, opts bootstrap.Options) string {
 	versionPart := ""
 	if opts.Version != "" {
 		versionPart = " " + engine.ShellQuote(opts.Version)
 	}
+	const stagingDir = "/tmp/govard-create-project"
+	syncStep := "if command -v rsync >/dev/null 2>&1; then rsync -a " + stagingDir + "/ " + conventions.DefaultWorkDir + "/; else cp -a " + stagingDir + "/. " + conventions.DefaultWorkDir + "/; fi"
+
+	if !platformPinApplies(opts.PHPVersion, opts.ComposerVersion) {
+		return strings.Join([]string{
+			"set -e",
+			"rm -rf " + stagingDir,
+			"composer create-project -n --ignore-platform-reqs --repository-url=" + variant.RepositoryURL + " " +
+				engine.ShellQuote(opts.MetaPackage) + " " + stagingDir + versionPart,
+			syncStep,
+			"rm -rf " + stagingDir,
+		}, " && ")
+	}
+
 	return strings.Join([]string{
 		"set -e",
-		"rm -rf /tmp/govard-create-project",
-		"composer create-project -n --ignore-platform-reqs --repository-url=" + variant.RepositoryURL + " " +
-			engine.ShellQuote(opts.MetaPackage) + " /tmp/govard-create-project" + versionPart,
-		"if command -v rsync >/dev/null 2>&1; then rsync -a /tmp/govard-create-project/ " + conventions.DefaultWorkDir + "/; else cp -a /tmp/govard-create-project/. " + conventions.DefaultWorkDir + "/; fi",
-		"rm -rf /tmp/govard-create-project",
+		"rm -rf " + stagingDir,
+		// --add-repository persists the repository into the new
+		// composer.json, so the separate install below resolves from it too.
+		"composer create-project -n --no-install --ignore-platform-reqs --add-repository --repository-url=" + variant.RepositoryURL + " " +
+			engine.ShellQuote(opts.MetaPackage) + " " + stagingDir + versionPart,
+		"composer --working-dir=" + stagingDir + " config platform.php " + engine.ShellQuote(opts.PHPVersion),
+		"composer --working-dir=" + stagingDir + " install -n --ignore-platform-req='ext-*' --ignore-platform-req='lib-*'",
+		syncStep,
+		"rm -rf " + stagingDir,
 	}, " && ")
 }
+
+// platformPinApplies reports whether a composer platform.php pin can be
+// written and honored: the PHP version is known and the Composer pin selects
+// 2.2 or later. "" and "latest" mean the newest Composer, and "2" downloads
+// the newest 2.x; a pin below 2.2, or one that does not parse, keeps the
+// unpinned commands.
+func platformPinApplies(phpVersion, composerVersion string) bool {
+	if strings.TrimSpace(phpVersion) == "" {
+		return false
+	}
+	composerVersion = strings.TrimSpace(composerVersion)
+	switch composerVersion {
+	case "", "latest", "2":
+		return true
+	}
+	return engine.IsNumericDotVersionAtLeast(composerVersion, "2.2")
+}
+
+// magentoOpenSearchEngineMinVersion is the first Magento line whose
+// setup:install and catalog/search/engine take the "opensearch" value for an
+// OpenSearch backend. Adobe: "For versions earlier than 2.4.6, use the
+// elasticsearch7 value for the Elasticsearch 7 or OpenSearch engine. For
+// version 2.4.6 and later, use the opensearch value for the OpenSearch
+// engine."
+// https://experienceleague.adobe.com/en/docs/commerce-operations/upgrade-guide/prepare/prerequisites
+const magentoOpenSearchEngineMinVersion = "2.4.6"
 
 // BuildSetupInstallArgs builds the `bin/magento setup:install` argument
 // list for variant - moved verbatim from internal/cmd/
@@ -138,12 +192,19 @@ func BuildFreshCreateProjectCommand(variant FamilyVariant, opts bootstrap.Option
 // internal/cmd/bootstrap_fresh_install.go's generic setup-install runner,
 // wired through CmdHelpers.RunFrameworkSetupInstall).
 //
-// The legacy elasticsearch7-vs-opensearch version gate is intentionally
-// magento2-only (variant.Name == "magento2"), matching the pre-existing
-// behavior exactly - Mage-OS versions always get OpenSearch regardless of
-// version, which is a known, pre-existing asymmetry this migration does
-// not change.
+// The elasticsearch7-vs-opensearch version gate is intentionally
+// magento2-only (variant.Name == "magento2") - Mage-OS versions always get
+// OpenSearch regardless of version, which is a known, pre-existing
+// asymmetry. Magento lines before 2.4.6 get elasticsearch7, 2.4.6 and later
+// get opensearch (see magentoOpenSearchEngineMinVersion).
 func BuildSetupInstallArgs(variant FamilyVariant, version string, adminEmail string, tablePrefix string) []string {
+	searchEngine := conventions.ServiceOpenSearch
+	if variant.Name == "magento2" && version != "" {
+		if comparison, comparable := engine.CompareNumericDotVersions(version, magentoOpenSearchEngineMinVersion); comparable && comparison < 0 {
+			searchEngine = "elasticsearch7"
+		}
+	}
+
 	setupArgs := []string{
 		"setup:install",
 		"--backend-frontname=" + conventions.DefaultAdminPath,
@@ -152,45 +213,34 @@ func BuildSetupInstallArgs(variant FamilyVariant, version string, adminEmail str
 		"--db-user=" + variant.DBUser,
 		"--db-password=" + variant.DBPass,
 		"--db-prefix=" + tablePrefix,
-		"--search-engine=opensearch",
-		"--opensearch-host=elasticsearch",
-		"--opensearch-port=9200",
-		"--opensearch-index-prefix=magento2",
-		"--opensearch-enable-auth=0",
-		"--opensearch-timeout=15",
-		"--admin-user=" + conventions.DefaultAdminUser,
-		"--admin-password=" + conventions.DefaultAdminPassword,
+	}
+	setupArgs = append(setupArgs, setupInstallSearchArgs(searchEngine)...)
+	return append(setupArgs,
+		"--admin-user="+conventions.DefaultAdminUser,
+		"--admin-password="+conventions.DefaultAdminPassword,
 		"--admin-firstname=Admin",
 		"--admin-lastname=User",
-		"--admin-email=" + adminEmail,
-	}
+		"--admin-email="+adminEmail,
+	)
+}
 
-	if variant.Name == "magento2" && version != "" {
-		if comparison, comparable := engine.CompareNumericDotVersions(version, "2.4.8"); comparable && comparison < 0 {
-			setupArgs = []string{
-				"setup:install",
-				"--backend-frontname=" + conventions.DefaultAdminPath,
-				"--db-host=" + conventions.DefaultMagentoDBHost,
-				"--db-name=" + variant.DBName,
-				"--db-user=" + variant.DBUser,
-				"--db-password=" + variant.DBPass,
-				"--db-prefix=" + tablePrefix,
-				"--search-engine=elasticsearch7",
-				"--elasticsearch-host=elasticsearch",
-				"--elasticsearch-port=9200",
-				"--elasticsearch-index-prefix=magento2",
-				"--elasticsearch-enable-auth=0",
-				"--elasticsearch-timeout=15",
-				"--admin-user=" + conventions.DefaultAdminUser,
-				"--admin-password=" + conventions.DefaultAdminPassword,
-				"--admin-firstname=Admin",
-				"--admin-lastname=User",
-				"--admin-email=" + adminEmail,
-			}
-		}
+// setupInstallSearchArgs returns the setup:install search block for a search
+// engine name: "opensearch" uses the --opensearch-* options, any other name
+// (elasticsearch7) the --elasticsearch-* options. Both point at the stack's
+// "elasticsearch" service host.
+func setupInstallSearchArgs(searchEngine string) []string {
+	prefix := "elasticsearch"
+	if searchEngine == conventions.ServiceOpenSearch {
+		prefix = conventions.ServiceOpenSearch
 	}
-
-	return setupArgs
+	return []string{
+		"--search-engine=" + searchEngine,
+		"--" + prefix + "-host=elasticsearch",
+		"--" + prefix + "-port=9200",
+		"--" + prefix + "-index-prefix=magento2",
+		"--" + prefix + "-enable-auth=0",
+		"--" + prefix + "-timeout=15",
+	}
 }
 
 // FreshInstall runs the shared Magento 2/Mage-OS fresh-install sequence:
@@ -209,6 +259,9 @@ func FreshInstall(variant FamilyVariant, opts bootstrap.Options, projectDir stri
 
 	commandLine := BuildFreshCreateProjectCommand(variant, opts)
 	if err := opts.Runner(commandLine); err != nil {
+		if platformPinApplies(opts.PHPVersion, opts.ComposerVersion) {
+			return fmt.Errorf("fresh create-project failed: %w (composer resolved dependencies for PHP %s, the project's stack.php_version; if this %s version needs another PHP, run `govard config set stack.php_version <version>` and retry)", err, opts.PHPVersion, variant.DisplayName)
+		}
 		return fmt.Errorf("fresh create-project failed: %w", err)
 	}
 

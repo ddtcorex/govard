@@ -441,10 +441,11 @@ func TestCoreCheckCollectsNotesOnAHealthyTarget(t *testing.T) {
 		Branch:     "main",
 		Publish:    deploy.PublishSymlink,
 	})
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	joined := strings.Join(sc.Notes, " | ")
+	joined := out.String()
 	for _, want := range []string{"publish strategy", "atomic symlink rename", "repository reachable", "free space"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("notes %q missing %q", joined, want)
@@ -500,10 +501,11 @@ func TestCoreCheckGatesAnArtifactOnTheTargetsPHPVersion(t *testing.T) {
 		ArtifactDir: artifactGateFixture(t, "abc123", "8.2.11"),
 		Revision:    "abc123",
 	})
+	matchingOut := captureStepOut(matching)
 	if err := deploy.CoreCheck(context.Background(), matching); err != nil {
 		t.Fatalf("an artifact built for the target's php must pass: %v", err)
 	}
-	if joined := strings.Join(matching.Notes, " | "); !strings.Contains(joined, "artifact php 8.2.11") {
+	if joined := matchingOut.String(); !strings.Contains(joined, "artifact php 8.2.11") {
 		t.Errorf("the notes must record the comparison, got %q", joined)
 	}
 
@@ -551,10 +553,11 @@ func TestCoreCheckDoesNotGateAnArtifactWithoutAPHPVersion(t *testing.T) {
 		ArtifactDir: artifactGateFixture(t, "abc123", ""),
 		Revision:    "abc123",
 	})
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("an artifact without a php version must not be gated: %v", err)
 	}
-	if joined := strings.Join(sc.Notes, " | "); !strings.Contains(joined, "no PHP version") {
+	if joined := out.String(); !strings.Contains(joined, "no PHP version") {
 		t.Errorf("the operator must be told the comparison did not happen, got %q", joined)
 	}
 }
@@ -599,6 +602,7 @@ func TestCoreCheckRefreshesTheSandboxMirror(t *testing.T) {
 	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
 	sc.WorkDir = work
 
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("check: %v", err)
 	}
@@ -606,7 +610,7 @@ func TestCoreCheckRefreshesTheSandboxMirror(t *testing.T) {
 	if mirrored != revision {
 		t.Fatalf("the mirror holds %q, want the commit just made %q", mirrored, revision)
 	}
-	if joined := strings.Join(sc.Notes, " | "); !strings.Contains(joined, "mirror refreshed") {
+	if joined := out.String(); !strings.Contains(joined, "mirror refreshed") {
 		t.Errorf("the notes must say the mirror was refreshed, got %q", joined)
 	}
 }
@@ -940,9 +944,8 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 	t.Setenv("COMPOSER_AUTH", "")
 
 	private := `{"require":{"vendor/pkg":"^1.0"},"repositories":[{"type":"composer","url":"https://repo.example.com"},{"type":"composer","url":"https://repo.packagist.org"}]}`
-	// The warning is read from the step's output, not from Notes: it is a line
-	// the operator is meant to see, and a deploy has no Notes reader to see it
-	// with.
+	// The warning is read from the step's output: it is a line the operator is
+	// meant to see.
 	const warning = "no credentials are available"
 	check := func(t *testing.T, composerJSON string, seedSharedAuth bool, options deploy.Options) string {
 		t.Helper()
@@ -1044,9 +1047,7 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 		`{"repositories":[{"type":"composer","url":"https://repo.example.com"}]}`)
 
 	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	// The warning goes to the step's output, not to Notes: a preflight whose
-	// finding only lives in a field reads as a finding nobody was told about,
-	// because the deploy that runs this preflight has no Notes reader at all.
+	// The warning goes to the step's output, the stream the operator reads.
 	artifactOut := &bytes.Buffer{}
 	sc := deploy.StepContextForTest(host, deploy.Options{Build: deploy.BuildArtifact, ArtifactDir: t.TempDir()})
 	sc.WorkDir = work
@@ -1056,9 +1057,6 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 	}
 	if artifactOut.String() != "" {
 		t.Fatalf("an artifact deploy must not warn about target-side credentials, got %q", artifactOut.String())
-	}
-	if len(sc.Notes) != 0 {
-		t.Fatalf("the note must not be parked in Notes, which nothing in a deploy reads, got %v", sc.Notes)
 	}
 
 	// The same checkout in server mode warns, which is what makes the silence
@@ -1074,9 +1072,6 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 	if !strings.Contains(printed, "no credentials are available") || !strings.Contains(printed, "repo.example.com") {
 		t.Fatalf("a server build with no credentials must warn, got %q", printed)
 	}
-	if len(server.Notes) != 0 {
-		t.Fatalf("the note must reach the output directly, not through Notes, got %v", server.Notes)
-	}
 }
 
 // platformFloorFixture runs the preflight against a checkout whose composer.lock
@@ -1088,6 +1083,15 @@ func TestComposerCredentialNoteIsSilentForAnArtifactDeploy(t *testing.T) {
 // strings, not about this machine's toolchain.
 func platformFloorFixture(t *testing.T, constraint, targetPHP string) string {
 	t.Helper()
+	return platformFloorFixtureWithOptions(t, constraint, targetPHP, deploy.Options{Publish: deploy.PublishSymlink})
+}
+
+// platformFloorFixtureWithOptions is platformFloorFixture with the deploy options
+// under the caller's control. The preflight's own verdict is not asserted: an
+// artifact build can legitimately fail the parity check that runs after the note,
+// and the note is what these callers read.
+func platformFloorFixtureWithOptions(t *testing.T, constraint, targetPHP string, opts deploy.Options) string {
+	t.Helper()
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "composer.lock"), `{"platform":{"php":`+strconv.Quote(constraint)+`}}`)
 
@@ -1096,14 +1100,30 @@ func platformFloorFixture(t *testing.T, constraint, targetPHP string) string {
 		answerSubstring: "PHP_VERSION",
 		answerStdout:    targetPHP + "\n",
 	})
-	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
+	sc := deploy.StepContextForTest(host, opts)
 	sc.WorkDir = work
 	out := &bytes.Buffer{}
 	sc.Out = out
-	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil && opts.Build != deploy.BuildArtifact {
 		t.Fatalf("check: %v", err)
 	}
 	return out.String()
+}
+
+// An artifact build never runs build:vendors on the target, and checkArtifactParity
+// already fails on a series mismatch, so the "wrong series" note would be noise
+// there. A server build still needs it.
+func TestCoreCheckSkipsTheComposerPlatformNoteForArtifactBuilds(t *testing.T) {
+	artifact := platformFloorFixtureWithOptions(t, ">=8.4", "8.3.35",
+		deploy.Options{Publish: deploy.PublishSymlink, Build: deploy.BuildArtifact})
+	if strings.Contains(artifact, "composer requires") {
+		t.Fatalf("an artifact build must not print the composer platform note, got %q", artifact)
+	}
+	server := platformFloorFixtureWithOptions(t, ">=8.4", "8.3.35",
+		deploy.Options{Publish: deploy.PublishSymlink, Build: deploy.BuildServer})
+	if !strings.Contains(server, "composer requires") {
+		t.Fatalf("a server build must still print the composer platform note, got %q", server)
+	}
 }
 
 // The rehearsal of 2026-09-28: the lock was resolved for PHP >=8.4, the target
@@ -1345,10 +1365,11 @@ func TestCheckWarnsWhenTheVerifyURLDoesNotAnswer2xx(t *testing.T) {
 		VerifyURL:     server.URL,
 		VerifyTimeout: 5 * time.Second,
 	})
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("the preflight must warn, never fail: %v", err)
 	}
-	joined := strings.Join(sc.Notes, " | ")
+	joined := out.String()
 	for _, want := range []string{"500", "verify URL"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("notes %q missing %q", joined, want)
@@ -1548,7 +1569,7 @@ func TestCoreCheckDoesNotCreateAnAbsentDeployPath(t *testing.T) {
 // variable is the start point, the quoted deploy path, so a present and an
 // absent path get the same probe: the process running govard never decides
 // whether the path exists — the shell on the target does.
-const probeTail = `; while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; test -w "$p"`
+const probeTail = `; while [ -n "$p" ] && [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; test -w "$p"`
 
 // The command is the fix: it has to find the path's nearest existing parent on
 // the target with the shell, so the probe is read-only on the branch that has a
@@ -1608,6 +1629,7 @@ func TestWritabilityProbeCommandIsReadOnlyForARemoteHost(t *testing.T) {
 	host.Local = false
 
 	sc := deploy.StepContextForTest(host, deploy.Options{})
+	out := captureStepOut(sc)
 	// The probe is deliberately left to fail ("not writable" locally): the next
 	// check would dial a repository, and the probe is what this test is about.
 	err := deploy.CoreCheck(context.Background(), sc)
@@ -1632,8 +1654,8 @@ func TestWritabilityProbeCommandIsReadOnlyForARemoteHost(t *testing.T) {
 			t.Fatalf("remote probe %q must traverse on the target (missing %q)", probe, want)
 		}
 	}
-	if len(sc.Notes) != 0 {
-		t.Fatalf("nothing may be reported about a remote path's absence, notes = %q", sc.Notes)
+	if strings.Contains(out.String(), "does not exist yet") {
+		t.Fatalf("nothing may be reported about a remote path's absence, output = %q", out.String())
 	}
 }
 
@@ -1733,10 +1755,11 @@ func TestCoreCheckReportsFreeSpaceOnAFreshHost(t *testing.T) {
 	root := t.TempDir()
 	absent := filepath.Join(root, "public_html")
 	sc := deploy.StepContextForTest(deploy.HostForTest(absent, deploy.LocalRunner{}), deploy.Options{})
+	out := captureStepOut(sc)
 	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	joined := strings.Join(sc.Notes, " | ")
+	joined := out.String()
 	if !strings.Contains(joined, "free space") {
 		t.Fatalf("a fresh host has no deploy path for `df`, so it must be probed at the nearest existing parent; notes = %q", joined)
 	}
@@ -1813,4 +1836,179 @@ func (r ownerWriteFailsRunner) Run(ctx context.Context, command string, opts dep
 			&deploy.CommandError{Command: command, ExitCode: 1, Stderr: "scripted owner write failure"}
 	}
 	return r.base.Run(ctx, command, opts)
+}
+
+// Without dirname, `p=$(dirname "$p")` yields "" and, unguarded, `[ ! -e "" ]`
+// and `[ "" != "/" ]` both stay true forever. The runner timeout is the bound
+// here: a regression shows up as "timed out" and fails the test in five seconds
+// instead of hanging it for the two-minute production timeout.
+func TestTraversalTerminatesWithoutDirname(t *testing.T) {
+	shimDir := t.TempDir()
+	shPath, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("no sh: %v", err)
+	}
+	if err := os.Symlink(shPath, filepath.Join(shimDir, "sh")); err != nil {
+		t.Fatalf("link sh into the shim dir: %v", err)
+	}
+	// The shim dir holds sh and nothing else, so dirname cannot be found.
+	t.Setenv("PATH", shimDir)
+	absent := filepath.Join(t.TempDir(), "srv", "www", "app", "public_html")
+	command, _ := deploy.WritabilityProbeCommand(absent, false)
+
+	done := make(chan error, 1)
+	go func() {
+		_, runErr := deploy.LocalRunner{}.Run(context.Background(), command, deploy.RunOptions{Timeout: 5 * time.Second})
+		done <- runErr
+	}()
+	select {
+	case runErr := <-done:
+		if runErr != nil && strings.Contains(runErr.Error(), "timed out") {
+			t.Fatalf("the traversal spun until the timeout killed it: %v", runErr)
+		}
+		// Reaching here means it terminated; the probe itself may exit nonzero
+		// because nothing could be tested.
+	case <-time.After(15 * time.Second):
+		t.Fatalf("the traversal did not terminate even with the runner timeout")
+	}
+}
+
+// The guard is the whole change to the command: for a normal absolute path the
+// text is the old traversal with `[ -n "$p" ] &&` in front of its first test.
+func TestTraversalCommandUnchangedForNormalPaths(t *testing.T) {
+	deployPath := "/var/www/app/public_html"
+	command, _ := deploy.WritabilityProbeCommand(deployPath, false)
+	want := `p='/var/www/app/public_html'; while [ -n "$p" ] && [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done; test -w "$p"`
+	if command != want {
+		t.Fatalf("command = %q, want %q", command, want)
+	}
+}
+
+// Only an existing lock directory means "held". An unwritable .dep makes the
+// lock mkdir fail with EACCES, and telling the operator to `deploy unlock`
+// cannot fix that.
+func TestCoreLockPermissionErrorIsNotLockHeld(t *testing.T) {
+	// A mkdir that fails without leaving a lock directory behind is not a held
+	// lock, whatever the reason. A read-only .dep makes it EACCES, but root
+	// ignores directory modes, so for root a dangling symlink at the lock path makes
+	// the same mkdir fail ("File exists" or "Already exists", by coreutils build)
+	// with no directory to count as a held lock.
+	for _, tc := range []struct {
+		name    string
+		prepare func(t *testing.T, dep string)
+		message string
+	}{
+		{
+			name: "read-only .dep",
+			prepare: func(t *testing.T, dep string) {
+				if os.Geteuid() == 0 {
+					t.Skip("root ignores directory permissions; the dangling-symlink case covers root")
+				}
+				if err := os.MkdirAll(dep, 0o755); err != nil {
+					t.Fatalf("seed .dep: %v", err)
+				}
+				if err := os.Chmod(dep, 0o555); err != nil {
+					t.Fatalf("chmod .dep: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(dep, 0o755) })
+			},
+			message: "Permission denied",
+		},
+		{
+			name: "lock path is a dangling symlink",
+			prepare: func(t *testing.T, dep string) {
+				if err := os.MkdirAll(dep, 0o755); err != nil {
+					t.Fatalf("seed .dep: %v", err)
+				}
+				if err := os.Symlink(filepath.Join(dep, "nowhere"), filepath.Join(dep, "govard.lock")); err != nil {
+					t.Fatalf("seed lock symlink: %v", err)
+				}
+			},
+			message: "mkdir: ", // wording after the colon differs between coreutils builds
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deployPath := filepath.Join(t.TempDir(), "public_html")
+			tc.prepare(t, filepath.Join(deployPath, ".dep"))
+
+			err := deploy.CoreLock(context.Background(), deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{}))
+			if err == nil {
+				t.Fatalf("an unusable .dep must fail the lock")
+			}
+			if errors.Is(err, deploy.ErrLockHeld) {
+				t.Fatalf("a mkdir failure must not be reported as a held lock: %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.message) {
+				t.Fatalf("the error must carry the command's own message %q, got %q", tc.message, err.Error())
+			}
+		})
+	}
+}
+
+// A lock path that exists as a plain file is not a held lock either: the lock
+// is a directory, and only a directory is the other deploy's lock.
+func TestCoreLockOnlyADirectoryCountsAsHeld(t *testing.T) {
+	host := deploy.HostForTest(filepath.Join(t.TempDir(), "public_html"), deploy.LocalRunner{})
+	if err := os.MkdirAll(host.DepPath(), 0o755); err != nil {
+		t.Fatalf("seed .dep: %v", err)
+	}
+	if err := os.WriteFile(host.LockPath(), []byte("not a lock"), 0o644); err != nil {
+		t.Fatalf("seed file at the lock path: %v", err)
+	}
+	err := deploy.CoreLock(context.Background(), deploy.StepContextForTest(host, deploy.Options{}))
+	if err == nil || errors.Is(err, deploy.ErrLockHeld) {
+		t.Fatalf("err = %v, want a plain failure that is not ErrLockHeld", err)
+	}
+}
+
+// `mkdir -p` creates every missing level, so cleaning up only .dep and the leaf
+// left the levels between the nearest existing parent and the deploy path.
+func TestCoreCheckLeavesNoAncestorOnTwoLevelAbsentPath(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "sites")
+	absent := filepath.Join(first, "shop", "app")
+	sc := deploy.StepContextForTest(deploy.HostForTest(absent, deploy.LocalRunner{}), deploy.Options{Publish: deploy.PublishSymlink})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if _, err := os.Stat(first); !os.IsNotExist(err) {
+		t.Fatalf("deploy check left %s behind (stat err = %v)", first, err)
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("the nearest existing parent must survive: %v", err)
+	}
+}
+
+// The upward rmdir stops at the nearest parent that existed and never touches
+// an ancestor that holds anything of its own.
+func TestCoreCheckKeepsAnExistingAncestorAndItsContents(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "sites")
+	keep := filepath.Join(parent, "keepme")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatalf("seed parent: %v", err)
+	}
+	if err := os.WriteFile(keep, []byte("state"), 0o644); err != nil {
+		t.Fatalf("seed sibling: %v", err)
+	}
+	absent := filepath.Join(parent, "shop", "app", "public_html")
+	sc := deploy.StepContextForTest(deploy.HostForTest(absent, deploy.LocalRunner{}), deploy.Options{Publish: deploy.PublishSymlink})
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if content, err := os.ReadFile(keep); err != nil || string(content) != "state" {
+		t.Fatalf("the existing parent and its contents must survive: %q, %v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(parent, "shop")); !os.IsNotExist(err) {
+		t.Fatalf("the created levels must be removed (stat err = %v)", err)
+	}
+}
+
+// captureStepOut redirects a step context's output into a buffer. The preflight
+// reports what it found on that stream, which is the only place a real deploy
+// shows it, so the tests read the same place the operator does.
+func captureStepOut(sc *deploy.StepContext) *bytes.Buffer {
+	out := &bytes.Buffer{}
+	sc.Out = out
+	return out
 }

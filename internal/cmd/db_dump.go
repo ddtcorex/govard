@@ -56,7 +56,7 @@ func runDBDump(cmd *cobra.Command, config engine.Config, options dbCommandOption
 			return fmt.Errorf("create dump directory: %w", err)
 		}
 
-		fileWriter, err = os.Create(targetPath)
+		fileWriter, err = createPrivateDumpFile(targetPath)
 		if err != nil {
 			return fmt.Errorf("create dump file: %w", err)
 		}
@@ -82,4 +82,10 @@ func runDBDump(cmd *cobra.Command, config engine.Config, options dbCommandOption
 		}
 		return nil
 	})
+}
+
+// createPrivateDumpFile is the dump-file constructor shared with the snapshot
+// code in internal/engine.
+func createPrivateDumpFile(path string) (*os.File, error) {
+	return engine.CreatePrivateDumpFile(path)
 }

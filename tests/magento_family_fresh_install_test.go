@@ -104,7 +104,8 @@ func TestBuildMagentoSetupInstallArgsUsesConfigTablePrefix(t *testing.T) {
 }
 
 func TestBuildMagentoSetupInstallArgsUsesElasticsearch7ForLegacyMagento2Version(t *testing.T) {
-	args := magento2.BuildSetupInstallArgs(magento2.Variant, "2.4.7", "admin@sample.test", "")
+	// Lines before 2.4.6 take elasticsearch7 even on an OpenSearch backend.
+	args := magento2.BuildSetupInstallArgs(magento2.Variant, "2.4.5", "admin@sample.test", "")
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--search-engine=elasticsearch7") {
 		t.Fatalf("expected elasticsearch7 engine for legacy versions, args: %s", joined)

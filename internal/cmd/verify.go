@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -170,20 +171,46 @@ Examples:
 			return summarise(cmd.ErrOrStderr(), res)
 		}
 
+		// Every phase-5 precondition is checked before phase 1 runs, in both
+		// output modes: a refused run must not have stopped the environment or
+		// created a snapshot first.
+		if err := verify.PreflightPhaseSelection([]int{1, 2, 3, 4, 5}, opts); err != nil {
+			if jsonOut {
+				payload, _ := json.Marshal(map[string]string{"error": err.Error()})
+				fmt.Fprintln(cmd.OutOrStdout(), string(payload))
+			} else {
+				pterm.Warning.Println(err.Error())
+			}
+			return err
+		}
+
 		// All phases 1..5 sequentially. A red item does not stop the next phase —
 		// the whole checklist is the deliverable, so the verdict is aggregated
 		// after every phase has run.
 		if jsonOut {
 			var combined verify.RunResult
 			var first bool
+			var recordErr error
 			for p := 1; p <= 5; p++ {
-				if p == 5 && !allowDestructive && !plan {
-					payload, _ := json.Marshal(map[string]string{"error": verify.ErrNeedAllowDestructive.Error()})
-					fmt.Fprintln(cmd.OutOrStdout(), string(payload))
-					return verify.ErrNeedAllowDestructive
-				}
 				res, err := verify.RunPhase(ctx, cfg, p, opts)
+				if p == 4 {
+					recordErr = res.RecordErr
+				}
 				if err != nil {
+					if p == 5 && errors.Is(err, verify.ErrNeedSnapshot) && first {
+						// Fail closed before the destructive phase, but never
+						// discard what phases 1-4 computed: render them as one
+						// document carrying the reason, then return the error.
+						if recordErr != nil {
+							err = recordFailure(recordErr)
+						}
+						combined.RefreshStatus()
+						combined.Error = err.Error()
+						if rerr := renderVerifyResult(cmd, combined, true); rerr != nil {
+							return rerr
+						}
+						return err
+					}
 					// A gate block is reported as a JSON envelope, exactly like
 					// the explicit phase-5 checks above; returning silently left
 					// stdout empty for a consumer that asked for --json.
@@ -209,13 +236,18 @@ Examples:
 		}
 		var combined verify.RunResult
 		var first bool
+		var recordErr error
 		for p := 1; p <= 5; p++ {
-			if p == 5 && !allowDestructive && !plan {
-				pterm.Warning.Println(verify.ErrNeedAllowDestructive.Error())
-				return verify.ErrNeedAllowDestructive
-			}
 			res, err := verify.RunPhase(ctx, cfg, p, opts)
+			if p == 4 {
+				recordErr = res.RecordErr
+			}
 			if err != nil {
+				// Phases 1-4 were rendered as they finished; only the reason
+				// phase 5 cannot start needs to be made specific.
+				if p == 5 && errors.Is(err, verify.ErrNeedSnapshot) && recordErr != nil {
+					return recordFailure(recordErr)
+				}
 				return err
 			}
 			if !first {
@@ -232,6 +264,12 @@ Examples:
 		combined.RefreshStatus()
 		return summarise(cmd.ErrOrStderr(), combined)
 	},
+}
+
+// recordFailure names the failed phase-4 record write as the reason phase 5
+// cannot start, keeping the underlying error reachable with errors.Is.
+func recordFailure(cause error) error {
+	return fmt.Errorf("%w: %v; phase 5 needs it", verify.ErrRunNotRecorded, cause)
 }
 
 func renderVerifyResult(cmd *cobra.Command, res verify.RunResult, jsonOut bool) error {

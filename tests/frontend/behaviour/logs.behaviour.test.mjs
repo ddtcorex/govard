@@ -197,3 +197,29 @@ test("the live poll stops when the logs island unmounts", async (t) => {
 
   assert.deepEqual(session.consoleErrors, []);
 });
+
+test("a slow log response for a deselected service is ignored", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await openLogsWithFixture(session, "logs");
+  await session.waitFor(`document.getElementById("logOutput").textContent.includes("fixture line one")`, true);
+
+  await session.evaluate(`window.__govardPreview.appendFixtures([
+    { service: "LogService", method: "GetLogsForService", args: ["sample-project", "web", 1000], result: "WEB-SLOW", delayMs: 1200 },
+    { service: "LogService", method: "GetLogsForService", args: ["sample-project", "php", 1000], result: "PHP-FAST" },
+  ])`);
+  await session.evaluate(`document.querySelector('[data-testid="service-web"]').click()`);
+  await session.evaluate(`document.querySelector('[data-testid="service-php"]').click()`);
+  await session.waitFor(`document.getElementById("logOutput").textContent`, "PHP-FAST");
+
+  // Let the slow response for the deselected service land.
+  await quiet(session, 1700);
+  assert.equal(
+    await session.evaluate(`document.getElementById("logOutput").textContent`),
+    "PHP-FAST",
+    "the deselected service's late response replaced the selected one's lines",
+  );
+
+  assert.deepEqual(session.consoleErrors, []);
+});

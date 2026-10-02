@@ -65,7 +65,7 @@ func TestSSHKeyCopyOfferNeverContactsAProtectedRemote(t *testing.T) {
 
 // Fence, not a new behaviour: the non-tty gate predates this change and is the
 // only thing that lets `govard remote test` (verify item P4-01) honestly carry
-// the READ-ONLY-REMOTE label — `offerSSHKeyCopyOnAuthFailure` must still return
+// the REMOTE-PROBE label — `offerSSHKeyCopyOnAuthFailure` must still return
 // before any prompt when stdin is not a terminal. The internal/verify
 // registry comment says the same thing and cites this gate by line number.
 func TestSSHKeyCopyOfferCopiesNothingWithoutATerminal(t *testing.T) {

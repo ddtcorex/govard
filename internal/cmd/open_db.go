@@ -53,7 +53,7 @@ func runOpenDBTarget(config engine.Config, requestedEnvironment string, pmaFlag 
 			// Assuming Ward doesn't bind MySQL locally by default, we build a connect string to point to 127.0.0.1:3306
 			// A local developer might have overriden their proxy map or bound it to the host.
 			connectionURL := buildOpenDBConnectionURL(credentials, conventions.MySQLPort)
-			pterm.Info.Printf("Opening DB URL %s\n", connectionURL)
+			pterm.Info.Printf("Opening DB URL %s\n", redactedOpenDBConnectionURL(credentials, conventions.MySQLPort))
 			return openURL(connectionURL)
 		}
 	}
@@ -105,7 +105,7 @@ func runOpenDBTarget(config engine.Config, requestedEnvironment string, pmaFlag 
 		return fmt.Errorf("wait for DB tunnel: %w", err)
 	}
 
-	pterm.Info.Printf("Opening DB URL %s\n", connectionURL)
+	pterm.Info.Printf("Opening DB URL %s\n", redactedOpenDBConnectionURL(credentials, localPort))
 	if err := openURL(connectionURL); err != nil {
 		_ = tunnelCmd.Process.Kill()
 		_ = tunnelCmd.Wait()
@@ -134,16 +134,31 @@ func resolveOpenDBEnvironment(config engine.Config, requestedEnvironment string)
 }
 
 func buildOpenDBConnectionURL(credentials dbCredentials, localPort int) string {
+	return openDBConnectionURL(credentials, localPort, credentials.withDefaults().Password)
+}
+
+// redactedOpenDBConnectionURL is the display form of buildOpenDBConnectionURL:
+// the same URL with the password replaced by "***" (no password section when
+// none is set). The real URL goes only to openURL, never to the terminal.
+func redactedOpenDBConnectionURL(credentials dbCredentials, localPort int) string {
+	if strings.TrimSpace(credentials.withDefaults().Password) == "" {
+		return openDBConnectionURL(credentials, localPort, "")
+	}
+	// url.URL escapes "*" in userinfo, so swap the escaped mask back for display.
+	return strings.Replace(openDBConnectionURL(credentials, localPort, "***"), ":%2A%2A%2A@", ":***@", 1)
+}
+
+func openDBConnectionURL(credentials dbCredentials, localPort int, password string) string {
 	credentials = credentials.withDefaults()
 	connectionURL := &url.URL{
 		Scheme: "mysql",
 		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(localPort)),
 		Path:   "/" + credentials.Database,
 	}
-	if strings.TrimSpace(credentials.Password) == "" {
+	if strings.TrimSpace(password) == "" {
 		connectionURL.User = url.User(credentials.Username)
 	} else {
-		connectionURL.User = url.UserPassword(credentials.Username, credentials.Password)
+		connectionURL.User = url.UserPassword(credentials.Username, password)
 	}
 	return connectionURL.String()
 }
@@ -233,6 +248,14 @@ func waitForOpenDBTunnelExit(tunnelCmd *exec.Cmd) error {
 
 func ResolveOpenDBEnvironmentForTest(config engine.Config, requestedEnvironment string) (string, bool, error) {
 	return resolveOpenDBEnvironment(config, requestedEnvironment)
+}
+
+func RedactedOpenDBConnectionURLForTest(username string, password string, database string, localPort int) string {
+	return redactedOpenDBConnectionURL(dbCredentials{
+		Username: username,
+		Password: password,
+		Database: database,
+	}, localPort)
 }
 
 func BuildOpenDBConnectionURLForTest(username string, password string, database string, localPort int) string {

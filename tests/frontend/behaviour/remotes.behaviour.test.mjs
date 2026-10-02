@@ -287,3 +287,396 @@ test("closing the sync modal while it is still opening leaves it closed", async 
 
   assert.deepEqual(session.consoleErrors, []);
 });
+
+const quiet = (session, ms) => session.evaluate(`new Promise((r) => setTimeout(r, ${ms}))`);
+const PROJECT = "sample-project";
+const PLAN = "#syncPlanOutput";
+const CONFIRM = "document.getElementById('confirmSyncBtn')";
+
+/** Clicks Preview Plan, leaving the plan call in flight. */
+const clickPreview = (session) =>
+  session.evaluate(`document.getElementById("previewSyncPlanBtn").click()`);
+
+test("sync modal shows an error and stays closed when preset options fail", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+
+  // A good open first, so the previous preset's toggles are what a failed open
+  // would have to leave behind.
+  await openModal(session, "db");
+  await session.waitFor(
+    `document.querySelectorAll("#syncModalOptionsContainer input").length`,
+    2,
+  );
+  await session.evaluate(`document.querySelector("[data-testid='close-sync-modal']").click()`);
+  await session.waitFor(
+    `document.getElementById("${MODAL}").classList.contains("hidden")`,
+    true,
+  );
+
+  await session.evaluate(`window.__govardPreview.appendFixtures([
+    { service: "RemoteService", method: "GetSyncOptions", args: [${JSON.stringify(PROJECT)}, "media"], error: "options backend down" },
+  ])`);
+  await session.evaluate(
+    `document.querySelector("#remotesList [data-testid='open-sync-modal'][data-preset='media']").click()`,
+  );
+  await session.waitFor(
+    `document.getElementById("toastContainer").textContent.includes("options backend down")`,
+    true,
+  );
+  await quiet(session, 500);
+  assert.equal(
+    await session.evaluate(`document.getElementById("${MODAL}").classList.contains("hidden")`),
+    true,
+    "a failed option load must not open the dialog",
+  );
+  assert.equal(
+    await session.evaluate(`document.querySelectorAll("#syncModalOptionsContainer input").length`),
+    0,
+    "the previous preset's toggles must not survive a failed open",
+  );
+  assert.equal(
+    await session.evaluate(`document.querySelector("#toastContainer .toast--error") !== null`),
+    true,
+    "the failure surfaces as an error toast",
+  );
+
+  // The failure is not a latch: the next open works.
+  await openModal(session, "db");
+  await session.waitFor(
+    `document.querySelectorAll("#syncModalOptionsContainer input").length`,
+    2,
+  );
+});
+
+test("a stale plan preview never overwrites a newer one", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+  await openModal(session, "db");
+  await session.waitFor(
+    `document.querySelectorAll("#syncModalOptionsContainer input").length`,
+    2,
+  );
+
+  // The plan call is keyed by the config, so one toggle makes the second preview
+  // a different request: the first is slow, the second instant.
+  const first = { noNoise: false, noPii: false };
+  const second = { noNoise: true, noPii: false };
+  await session.evaluate(`window.__govardPreview.appendFixtures([
+    { service: "RemoteService", method: "RunRemoteSyncPreset", args: [${JSON.stringify(PROJECT)}, "staging", "db", ${JSON.stringify(first)}], result: "PLAN-STALE", delayMs: 1200 },
+    { service: "RemoteService", method: "RunRemoteSyncPreset", args: [${JSON.stringify(PROJECT)}, "staging", "db", ${JSON.stringify(second)}], result: "PLAN-NEWEST" },
+  ])`);
+
+  await clickPreview(session);
+  await session.evaluate(
+    `document.querySelector("[data-testid='back-to-sync-options']").click()`,
+  );
+  await session.evaluate(`document.querySelector("#syncModalOptionsContainer input").click()`);
+  await clickPreview(session);
+  await session.waitFor(
+    `document.querySelector("${PLAN}").textContent.includes("PLAN-NEWEST")`,
+    true,
+  );
+
+  // Let the slow first response land.
+  await quiet(session, 1600);
+  const text = await session.evaluate(`document.querySelector("${PLAN}").textContent`);
+  assert.ok(text.includes("PLAN-NEWEST"), `the newest plan was replaced: ${text}`);
+  assert.ok(!text.includes("PLAN-STALE"), `a stale plan leaked in: ${text}`);
+  assert.equal(
+    await session.evaluate(`document.getElementById("syncPlanLoading").classList.contains("hidden")`),
+    true,
+  );
+});
+
+test("execute is disabled until a plan exists", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+  await openModal(session, "db");
+  await session.waitFor(
+    `document.querySelectorAll("#syncModalOptionsContainer input").length`,
+    2,
+  );
+  await session.evaluate(`window.__govardPreview.appendFixtures([
+    { service: "RemoteService", method: "RunRemoteSyncPreset", args: [${JSON.stringify(PROJECT)}, "staging", "db", { noNoise: false, noPii: false }], result: "PLAN-LATE", delayMs: 1000 },
+  ])`);
+
+  await clickPreview(session);
+  await session.waitFor(
+    `document.getElementById("syncPlanLoading").classList.contains("hidden")`,
+    false,
+  );
+  assert.equal(
+    await session.evaluate(`${CONFIRM}.disabled`),
+    true,
+    "Execute must be disabled while the plan is generating",
+  );
+  await session.evaluate(`${CONFIRM}.click()`);
+  await quiet(session, 200);
+  assert.equal(
+    await session.evaluate(
+      `window.__govardPreview.getCalls().some((c) => c.method === "RunRemoteSync")`,
+    ),
+    false,
+    "a disabled Execute must not start a sync",
+  );
+
+  await session.waitFor(
+    `document.querySelector("${PLAN}").textContent.includes("PLAN-LATE")`,
+    true,
+  );
+  assert.equal(
+    await session.evaluate(`${CONFIRM}.disabled`),
+    false,
+    "Execute is available once the plan is shown",
+  );
+});
+
+test("a rejected background sync clears the progress card and syncing flags", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+
+  const CARD_STAGING = `document.querySelector("#remotesList [data-testid='remote-card'][data-remote-name='staging']")`;
+  const indicator = `document.querySelector("#remotesList .visual-sync-indicator")`;
+  const progressText = `document.getElementById("visual-sync-progress-line").textContent`;
+
+  // The two failures use different configs because lookup answers with the first
+  // entry whose args match exactly.
+  async function runFailingSync(config, fixtureEntry, wantText) {
+    await session.evaluate(
+      `window.__govardPreview.appendFixtures([${JSON.stringify({ ...fixtureEntry, args: [PROJECT, "staging", "db", config] })}])`,
+    );
+    await openModal(session, "db");
+    await session.waitFor(
+      `document.querySelectorAll("#syncModalOptionsContainer input").length`,
+      2,
+    );
+    if (config.noNoise) {
+      await session.evaluate(`document.querySelector("#syncModalOptionsContainer input").click()`);
+    }
+    await clickPreview(session);
+    await session.waitFor(
+      `document.querySelector("${PLAN}").textContent.includes("full snapshot")`,
+      true,
+    );
+    await session.evaluate(`${CONFIRM}.click()`);
+    await session.waitFor(`${progressText}.includes("[FAILED]")`, true);
+    assert.ok(
+      (await session.evaluate(progressText)).includes(wantText),
+      "the failure reason reaches the progress card",
+    );
+    assert.equal(
+      await session.evaluate(`${indicator}.className.includes("animate-pulse")`),
+      false,
+      "a failed sync must stop the running indicator",
+    );
+    assert.equal(
+      await session.evaluate(`${CARD_STAGING}.className.includes("border-emerald-500/50")`),
+      false,
+      "a failed sync must clear the syncing flags",
+    );
+    assert.equal(
+      await session.evaluate(`document.querySelectorAll("#toastContainer .toast--error").length`),
+      1,
+      "a failed sync raises exactly one error toast",
+    );
+    await session.evaluate(
+      `document.querySelectorAll("#toastContainer .toast").forEach((el) => el.remove())`,
+    );
+  }
+
+  // The bridge call rejects.
+  await runFailingSync(
+    { noNoise: false, noPii: false },
+    { service: "RemoteService", method: "RunRemoteSync", error: "rejected by backend" },
+    "rejected by backend",
+  );
+  // The bridge call resolves with the failure string.
+  await runFailingSync(
+    { noNoise: true, noPii: false },
+    {
+      service: "RemoteService",
+      method: "RunRemoteSync",
+      result: "Remote sync background process failed: exit status 7",
+    },
+    "exit status 7",
+  );
+});
+
+test("escape closes the sync modal the moment it appears (#484)", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+
+  // openModal returns as soon as the dialog is no longer hidden, which is the
+  // commit that shows it. A key sent right then used to be dropped about one run
+  // in three, because the listener attached only in an effect after that commit,
+  // so the scenario looked like a modal stuck open. Twelve rounds make a dropped
+  // key all but certain to show.
+  for (let round = 0; round < 12; round += 1) {
+    await openModal(session, "full");
+    await session.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      key: "Escape",
+      code: "Escape",
+      windowsVirtualKeyCode: 27,
+      nativeVirtualKeyCode: 27,
+    });
+    await session.waitFor(
+      `document.getElementById("${MODAL}").classList.contains("hidden")`,
+      true,
+      { timeoutMs: 3000 },
+    );
+  }
+
+  assert.deepEqual(session.consoleErrors, []);
+});
+
+test("execute stays disabled after a failed plan preview", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+  await openModal(session, "db");
+  await session.waitFor(
+    `document.querySelectorAll("#syncModalOptionsContainer input").length`,
+    2,
+  );
+  // Only the untouched config fails; the toggled one falls through to the
+  // fixture's good plan.
+  await session.evaluate(`window.__govardPreview.appendFixtures([
+    { service: "RemoteService", method: "RunRemoteSyncPreset", args: [${JSON.stringify(PROJECT)}, "staging", "db", { noNoise: false, noPii: false }], error: "plan backend down" },
+  ])`);
+
+  await clickPreview(session);
+  await session.waitFor(
+    `document.querySelector("${PLAN}").textContent.includes("Failed to generate plan")`,
+    true,
+  );
+  assert.equal(
+    await session.evaluate(`${CONFIRM}.disabled`),
+    true,
+    "a failure message is not a plan: Execute must stay disabled",
+  );
+  await session.evaluate(`${CONFIRM}.click()`);
+  await quiet(session, 200);
+  assert.equal(
+    await session.evaluate(
+      `window.__govardPreview.getCalls().some((c) => c.method === "RunRemoteSync")`,
+    ),
+    false,
+    "no sync may start from a failed plan",
+  );
+
+  await session.evaluate(
+    `document.querySelector("[data-testid='back-to-sync-options']").click()`,
+  );
+  await session.evaluate(`document.querySelector("#syncModalOptionsContainer input").click()`);
+  await clickPreview(session);
+  await session.waitFor(
+    `document.querySelector("${PLAN}").textContent.includes("full snapshot")`,
+    true,
+  );
+  assert.equal(
+    await session.evaluate(`${CONFIRM}.disabled`),
+    false,
+    "a later successful preview enables Execute",
+  );
+});
+
+test("the sync modal closes on transitionend, not only on the fallback timer", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+  await openModal(session, "db");
+  await session.waitFor(
+    `document.getElementById("${MODAL}").className.includes("opacity-0")`,
+    false,
+  );
+
+  // Park the 300 ms fallback far away and switch the CSS transitions off, so the
+  // browser fires no transitionend of its own: only the events dispatched below
+  // can settle the close. Timers set while it is patched are the only ones
+  // affected.
+  await session.evaluate(`(() => {
+    const style = document.createElement("style");
+    style.id = "no-transitions";
+    style.textContent = "#${MODAL}, #${MODAL} * { transition: none !important; }";
+    document.head.append(style);
+    window.__realSetTimeout = window.setTimeout;
+    window.setTimeout = (fn, ms, ...rest) =>
+      window.__realSetTimeout(fn, ms === 300 ? 600000 : ms, ...rest);
+    document.querySelector("[data-testid='close-sync-modal']").click();
+  })()`);
+  await session.waitFor(
+    `document.getElementById("${MODAL}").className.includes("opacity-0")`,
+    true,
+  );
+  await session.evaluate(`window.setTimeout = window.__realSetTimeout`);
+
+  // The dialog card's own transform transition bubbles up and must not close it.
+  await session.evaluate(`document.getElementById("${MODAL}").firstElementChild.dispatchEvent(
+    new TransitionEvent("transitionend", { propertyName: "transform", bubbles: true }))`);
+  await quiet(session, 300);
+  assert.equal(
+    await session.evaluate(`document.getElementById("${MODAL}").classList.contains("hidden")`),
+    false,
+    "a bubbled transform transition must not settle the close",
+  );
+
+  // The backdrop's opacity transition ending does.
+  await session.evaluate(`document.getElementById("${MODAL}").dispatchEvent(
+    new TransitionEvent("transitionend", { propertyName: "opacity", bubbles: true }))`);
+  await session.waitFor(
+    `document.getElementById("${MODAL}").classList.contains("hidden")`,
+    true,
+    { timeoutMs: 2000 },
+  );
+
+  assert.deepEqual(session.consoleErrors, []);
+});

@@ -186,7 +186,7 @@ func TestGatedItemsAreCountedInAMergedAllPhasesRun(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(it.SkipReason, "framework") {
-			t.Errorf("framework-gated row %s skipped with %q, want a reason naming the framework gate rather than its Precond text", it.ID, it.SkipReason)
+			t.Errorf("framework-gated row %s skipped with %q, want a reason naming the framework gate rather than its Requires text", it.ID, it.SkipReason)
 		}
 	}
 	if row, ok := findRunItem(gated, "P3-01"); !ok {
@@ -212,7 +212,9 @@ func TestGatedItemsAreCountedInAMergedAllPhasesRun(t *testing.T) {
 	if got, want := len(merged.Items), len(head.Items)+len(gated.Items); got != want {
 		t.Fatalf("merged items = %d, want %d: the skip rows did not survive the append", got, want)
 	}
-	if got := merged.SkippedCount(); got != len(skipped) {
-		t.Fatalf("merged SkippedCount() = %d, want %d: the merge lost a skip row", got, len(skipped))
+	// Phase 1 skips too now (P1-06 has no lock file here), so the merge owes
+	// both phases' skips.
+	if got, want := merged.SkippedCount(), len(skipped)+head.SkippedCount(); got != want {
+		t.Fatalf("merged SkippedCount() = %d, want %d: the merge lost a skip row", got, want)
 	}
 }

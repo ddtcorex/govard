@@ -539,22 +539,26 @@ govard verify --phase 5 --allow-destructive --json # destructive sau snapshot
 govard verify --project /path/to/project --json
 ```
 
-Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--base`, `--remote`, `--allow-xdebug`, `--allow-destructive` và `--allow-remote-write` thay đổi thứ được chạy. `--checks lint,profiler` thu hẹp run xuống các mục dùng một trong các check đó: mục không khai báo check nào không thuộc riêng check nào nên luôn chạy, còn mục bị lựa chọn loại ra vẫn nằm trong báo cáo dưới dạng dòng `skipped` có nêu tên lựa chọn. Chỉ những tên mà `audit run --checks` chấp nhận mới hợp lệ — `lint`, `profiler`, `integrity` — nên `--checks lints` là lỗi usage (exit 2) thay vì một flag bị bỏ qua, chọn không mục nào mà vẫn báo `passed`. `--lint-jobs N` và `--timeout <value>` được truyền vào argv của các mục chạy check lint — `P3-10`, `P3-11`, `P3-13`, `P3-14` và `P5-04` — và mỗi mục trong số đó cũng ghi lại argv đã giải quyết vào evidence excerpt. `P3-12` chạy check profiler nên không nhận flag nào. Giá trị `--checks` rỗng được coi là chưa đặt chứ không phải một lựa chọn: `verify --checks ""` chạy toàn bộ, còn `audit run --checks ""` nghĩa là `lint`. Ở giá trị mặc định của flag (`4`, `auto`) verify coi như chưa được đặt: `--lint-jobs` không được truyền đi, để `audit run` giữ số worker `engine.AuditRunJobs()` của chính nó thay vì số 4 của verify đè lên cơ chế tự điều chỉnh của máy — vì vậy `--lint-jobs 4` là yêu cầu duy nhất không thể diễn đạt, và giá trị nhỏ hơn 1 cũng được coi như chưa đặt thay vì truyền xuống cho lệnh con từ chối — còn `--timeout` rơi về giá trị riêng của mục: `auto` cho các mục lint ở pha 3, `0` (không deadline) cho lần re-lint `--no-lint-result-cache` ở pha 5. Số worker vượt quá khả năng của framework dự án là việc của lệnh con: `audit run` từ chối nó nên mục đó đỏ kèm thông báo của con, chứ không bị bỏ qua trong im lặng.
+Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--base`, `--remote`, `--allow-xdebug`, `--allow-destructive` và `--allow-remote-write` thay đổi thứ được chạy. `--checks lint,profiler` thu hẹp run xuống các mục dùng một trong các check đó: mục không khai báo check nào không thuộc riêng check nào nên luôn chạy, còn mục bị lựa chọn loại ra vẫn nằm trong báo cáo dưới dạng dòng `skipped` có nêu tên lựa chọn. `P3-15` chạy `audit run --checks integrity` và khai báo check đó, nên lựa chọn `lint` hoặc `profiler` loại nó ra. Chỉ những tên mà `audit run --checks` chấp nhận mới hợp lệ — `lint`, `profiler`, `integrity` — nên `--checks lints` là lỗi usage (exit 2) thay vì một flag bị bỏ qua, chọn không mục nào mà vẫn báo `passed`. `--lint-jobs N` và `--timeout <value>` được truyền vào argv của các mục chạy check lint — `P3-10`, `P3-11`, `P3-13`, `P3-14` và `P5-04` — và mỗi mục trong số đó cũng ghi lại argv đã giải quyết vào evidence excerpt. `P3-12` chạy check profiler nên không nhận flag nào. Giá trị `--checks` rỗng được coi là chưa đặt chứ không phải một lựa chọn: `verify --checks ""` chạy toàn bộ, còn `audit run --checks ""` nghĩa là `lint`. Ở giá trị mặc định của flag (`4`, `auto`) verify coi như chưa được đặt: `--lint-jobs` không được truyền đi, để `audit run` giữ số worker `engine.AuditRunJobs()` của chính nó thay vì số 4 của verify đè lên cơ chế tự điều chỉnh của máy — vì vậy `--lint-jobs 4` là yêu cầu duy nhất không thể diễn đạt, và giá trị nhỏ hơn 1 cũng được coi như chưa đặt thay vì truyền xuống cho lệnh con từ chối — còn `--timeout` rơi về giá trị riêng của mục: `auto` cho các mục lint ở pha 3, `0` (không deadline) cho lần re-lint `--no-lint-result-cache` ở pha 5. Số worker vượt quá khả năng của framework dự án là việc của lệnh con: `audit run` từ chối nó nên mục đó đỏ kèm thông báo của con, chứ không bị bỏ qua trong im lặng.
 
 Mục do framework khai báo: mỗi framework khai báo mục checklist của riêng nó ngay trong package của nó — `VerifyToolItems` trên định nghĩa framework nêu id, pha, tiêu đề và đúng một lệnh `govard tool <binary> <args>` — rồi `RegistryFor` ghép chúng với registry tĩnh, nên `internal/verify` không hề nêu tên framework nào. Magento 2 khai báo `P5-MAG-01` (`setup:db:status` sau restore, đúng phần phát hiện mà `P5-07` còn thiếu); Laravel `P3-LAR-01..03` + `P5-LAR-01`; Symfony `P3-SYM-01..03` + `P5-SYM-01`; WordPress `P3-WP-01..03` + `P5-WP-01`. Chỉ những lệnh mà bộ khung của framework đảm bảo mới được khai báo, nên một mục không bao giờ đỏ vĩnh viễn vì thiếu bundle hay plugin tuỳ chọn.
 
-Mục remote: mọi mục có nêu remote — `P2-04`..`P2-08`, `P4-01`, `P4-03`..`P4-07` và `P4-13`..`P4-15` — đều lấy remote từ `--remote` và chỉ từ đó. Một lần chạy không có `--remote` sẽ đánh dấu skip các dòng đó với lý do `no --remote named: this item contacts a remote` thay vì đoán, nên checklist không bao giờ mở phiên tới bất cứ thứ gì dự án tình cờ gọi là `staging`/`stage`/`stg`; `P4-16` (`remote list`) không nêu remote nên vẫn chạy. `P4-13`..`P4-16` phủ nửa chỉ-đọc của bề mặt remote — `deploy plan`, `deploy status`, `deploy releases` và `remote list` — an toàn khi chạy vào một remote production. Checklist là một preflight chỉ-đọc, nên thứ ghi vào thì nằm ngoài nó một cách có chủ đích: `deploy check` không để lại gì trên target — probe quyền ghi của nó không tạo ra path nào mà đi ngược lên parent tồn tại gần nhất ở đó rồi kiểm tra parent đó, còn probe `mv -T` mà nó chạy trên một target dạng symlink thì tạo một thư mục tạm `.dep` ở đó rồi xoá nó đi — và được chạy tay thay vì làm một dòng, trong khi `deploy unlock`/`deploy rollback` thay đổi lock và release state trên target, `db`/`snapshot`/`open -e` thay đổi trạng thái trên remote đích (lệnh duy nhất vẫn còn *đề nghị* ghi vào `authorized_keys` để tới được đó là `govard remote test`, và lời đề nghị đó mặc định là **Không** trừ khi bạn nói có; ngoài ra việc thiết lập key là yêu cầu tường minh qua `govard remote copy-id <remote>`), và `tunnel stop` chỉ gửi tín hiệu tới đúng tunnel mà govard đã ghi nhận cho project, đồng thời từ chối mọi pid mà nó không xác nhận được là do chính mình khởi động.
+Mục remote: mọi mục có nêu remote — `P2-04`..`P2-08`, `P4-01`, `P4-03`..`P4-07` và `P4-13`..`P4-15` — đều lấy remote từ `--remote` và chỉ từ đó. Một lần chạy không có `--remote` sẽ đánh dấu skip các dòng đó với lý do `no --remote named: this item contacts a remote` thay vì đoán, nên checklist không bao giờ mở phiên tới bất cứ thứ gì dự án tình cờ gọi là `staging`/`stage`/`stg`; `P4-16` (`remote list`) không nêu remote nên vẫn chạy. `P4-13`..`P4-16` phủ nửa chỉ-đọc của bề mặt remote — `deploy plan`, `deploy status`, `deploy releases` và `remote list` — an toàn khi chạy vào một remote production. Checklist là một preflight, nên thứ ghi vào thì nằm ngoài nó một cách có chủ đích. `deploy check` được chạy tay thay vì làm một dòng: nó không để lại gì trên target, vì probe quyền ghi của nó không tạo ra path nào mà đi ngược lên parent tồn tại gần nhất ở đó rồi kiểm tra parent đó, còn probe `mv -T` mà nó chạy trên một target dạng symlink thì tạo một thư mục tạm `.dep` ở đó (và, trên một host mới, các tầng còn thiếu của deploy path phía trên nó) rồi xoá chúng đi. `deploy unlock`/`deploy rollback` thay đổi lock và release state trên target, `db`/`snapshot`/`open -e` thay đổi trạng thái trên remote đích (lệnh duy nhất vẫn còn *đề nghị* ghi vào `authorized_keys` để tới được đó là `govard remote test`, và lời đề nghị đó mặc định là **Không** trừ khi bạn nói có; ngoài ra việc thiết lập key là yêu cầu tường minh qua `govard remote copy-id <remote>`), và `tunnel stop` chỉ gửi tín hiệu tới đúng tunnel mà govard đã ghi nhận cho project, đồng thời từ chối mọi pid mà nó không xác nhận được là do chính mình khởi động.
 
-Mục probe: `P2-13` và `P4-11` gọi tới chính site của project, nên một project chưa cấu hình `domain` thì không probe được — chúng skip với lý do `no configured domain` thay vì đoán `localhost` rồi báo cáo về một môi trường khác. `P2-13` ưu tiên `https://<domain>/` và chỉ lùi về HTTP thuần khi chính tầng TLS không dùng được (CA cục bộ không được tin, hoặc một cổng trả lời bằng clear text), và evidence nêu scheme nó đã dùng; `P4-11` cần một payload health có `status` thật, nên câu trả lời không có body là đỏ chứ không phải xanh.
+Mục probe: `P2-13` và `P4-11` gọi tới chính site của project, nên một project chưa cấu hình `domain` thì không probe được — chúng skip với lý do `no configured domain` thay vì đoán `localhost` rồi báo cáo về một môi trường khác. `P2-13` ưu tiên `https://<domain>/` và chỉ lùi về HTTP thuần khi chính tầng TLS không dùng được (CA cục bộ không được tin, hoặc một cổng trả lời bằng clear text), và evidence nêu scheme nó đã dùng; `P4-11` cần một payload health có `status` thật, nên câu trả lời không có body là đỏ chứ không phải xanh. `P3-12` theo cùng quy tắc cho URL của profiler: không có `domain` thì nó skip với lý do `no domain configured` thay vì audit một host đoán mò.
 
-Gates: Pha 5 yêu cầu snapshot **của chính project này** — một lần chạy pha 4 thật (không phải `--plan`) cho cùng project, có `P4-08` exit `0` và snapshot được ghi lại vẫn còn dùng được trên đĩa — VÀ `--allow-destructive`. Thiếu → `need snapshot create (P4-08) first`; thiếu flag → `need --allow-destructive for phase 5`. Lần chạy `--plan` không thoả gate nào và không ghi gì. `P4-08` ghi lại tên snapshot nó tạo và `P5-05` restore đúng tên đó, nên restore không thể lấy nhầm snapshot khác được tạo ở giữa. Một dòng bị đánh dấu `skipped` không bao giờ thoả gate: nó ghi nhận rằng `P4-08` tồn tại, không phải rằng nó đã chạy.
+Verdict của từng dòng: một dòng chỉ báo cáo điều nó đã chạy. `P1-06` (`lock check`, kèm `lock diff` làm evidence khi fail) skip với lý do nêu `govard lock generate` thay vì sinh ra một file được track từ một pha verify, còn lock đã tồn tại mà lệch với project vẫn đỏ; `P3-09` (`frontend start`) skip trên Magento 2 trừ khi `stack.features.frontend_sync` bật, và lý do skip nêu đúng công tắc đó. Mỗi mục còn mang một ghi chú `Requires` (nó giả định điều gì, ví dụ `P2-01 up`) cho người đọc registry: runner không bao giờ bắt buộc nó, và không lý do skip nào trích nó.
 
-Guard: mỗi mục tĩnh mang một trong bốn nhãn (`Item.Guard`) và runner hành động theo nhãn đó — nhãn là quy tắc, không phải chú thích.
+Gates: Pha 5 yêu cầu snapshot **của chính project này** — một lần chạy pha 4 thật (không phải `--plan`) cho cùng project, có `P4-08` exit `0` và snapshot được ghi lại vẫn còn dùng được trên đĩa — VÀ `--allow-destructive`. Thiếu → `need snapshot create (P4-08) first`; thiếu flag → `need --allow-destructive for phase 5`. Lần chạy `--plan` không thoả gate nào, không chạy gì và không đổi trạng thái project nào (nó vẫn ghi một artifact `mode: "plan"`, thứ không bao giờ thoả gate). Mọi gate được kiểm tra trước khi bất kỳ mục nào chạy, ở cả chế độ người đọc lẫn `--json`: `verify` không có `--phase` và không có `--allow-destructive` thoát `1` với lỗi gate và không chạy gì (không môi trường nào bị dừng, không snapshot nào được tạo), `--phase 0` bị gate như pha 5, và opt-in `--allow-destructive` được kiểm tra trước snapshot gate. Ở lần chạy tất cả các pha, snapshot gate được kiểm tra khi tới pha 5, vì chính pha 4 trong lần chạy đó tạo snapshot. Một lần từ chối xảy ra trước khi có gì chạy in `{"error": "<lý do>"}` ra stdout khi có `--json`. Khi pha 5 từ chối khởi động sau khi pha 1 đến 4 đã chạy, lần chạy tất cả các pha với `--json` vẫn in một document duy nhất: kết quả gộp của pha 1-4 kèm lý do trong chuỗi `error` (trường `error` không bao giờ xuất hiện trong run artifact), và exit code là `1`.
+
+Run artifact được ghi dù có `--json` hay không, vì `--json` chỉ định hình stdout: `verify --phase 4` rồi `verify --phase 5 --allow-destructive` chạy được mà không cần `--json`. Thư mục runs không ghi được không làm lần chạy mất gì: verdict được giữ và một cảnh báo ra stderr. Chỗ duy nhất có ý nghĩa là lần chạy tất cả các pha mà bản ghi pha 4 không ghi được, vì khi đó pha 5 không có bản ghi snapshot nào để đọc; nó bị từ chối với `phase 4 result could not be recorded: <nguyên nhân>; phase 5 needs it` (`verify.ErrRunNotRecorded`) thay vì thông báo `need snapshot create` trần. `P4-08` ghi lại tên snapshot nó tạo và `P5-05` restore đúng tên đó, nên restore không thể lấy nhầm snapshot khác được tạo ở giữa. Một dòng bị đánh dấu `skipped` không bao giờ thoả gate: nó ghi nhận rằng `P4-08` tồn tại, không phải rằng nó đã chạy.
+
+Guard: mỗi mục tĩnh mang một trong bốn nhãn (`Item.Guard`). Runner hành động theo `DESTRUCTIVE-LOCAL` và `REMOTE-WRITE`; `REMOTE-PROBE` là nhãn cho người đọc, không phải một lớp bảo vệ, và chế độ plan là gate duy nhất của nó.
 
 | Guard | Argv tuyên bố điều gì | Runner làm gì | Số mục |
 | :--- | :--- | :--- | :--- |
 | `""` | việc cục bộ, không remote, không có gì không thể hoàn tác | chạy | **42** |
-| `READ-ONLY-REMOTE` | có nêu remote, không ghi gì lên đó | chạy khi `--remote` nêu tên một remote; nếu lần chạy không có cờ đó, mục giữ nguyên dòng ở trạng thái skip và không dò một remote đoán mò (`--plan` vẫn thay bằng stub, và `P4-16` không nêu remote nên luôn chạy). Không có gate ở tầng guard — `--plan` vốn đã thay mọi mục bằng stub nên chặn chúng ở đó sẽ xoá coverage chứ không bảo vệ được gì | **13** |
+| `REMOTE-PROBE` | có nêu remote, argv của nó không ghi gì lên đó | chạy khi `--remote` nêu tên một remote; nếu lần chạy không có cờ đó, mục giữ nguyên dòng ở trạng thái skip và không dò một remote đoán mò (`--plan` vẫn thay bằng stub, và `P4-16` không nêu remote nên luôn chạy). Không có gate ở tầng guard — `--plan` vốn đã thay mọi mục bằng stub nên chặn chúng ở đó sẽ xoá coverage chứ không bảo vệ được gì. Ở lần chạy thật, mục này tới remote vô điều kiện: cái tên nói "probe" để không ai đọc nó như một lời đảm bảo | **13** |
 | `DESTRUCTIVE-LOCAL` | phá huỷ cục bộ không thể hoàn tác | chỉ pha 5, cùng với snapshot gate và `--allow-destructive` | **3** |
 | `REMOTE-WRITE` | ghi qua remote | **skip** trừ khi truyền `--allow-remote-write` | **2**: `P2-05`, `P2-08` |
 
@@ -562,7 +566,7 @@ Hai mục `REMOTE-WRITE` chính là các lần chạy `bootstrap … --no-noise`
 
 Exit codes: `0` mọi mục đều pass hoặc bị skip; `1` có mục fail **hoặc** một gate của pha chặn lần chạy (thông báo nêu rõ gate nào). `2`/`3`/`4` giữ nguyên nghĩa toàn cục (usage / capability / config) — checklist đỏ là lỗi thực thi, không bao giờ là lỗi dùng lệnh. Script nên rẽ nhánh theo mã này và đọc chi tiết từng mục từ `--json`.
 
-Outputs: `<govard home>/verify-runs/<project-id>/<ISO>-phaseN.json`, với `project-id` là hash của đường dẫn chuẩn hoá của project, gồm `{govard_version, project_sha, project_id, phase, mode, status, items:[{id, command, duration_ms, exit_code, retries, evidence_excerpt, json_valid, artifacts, skipped, skip_reason}]}`. `mode` là `run` hoặc `plan`; `status` là `passed` hoặc `failed`; `artifacts` nêu thứ mà mục đó tạo ra (snapshot của `P4-08`, chính là thứ `P5-05` restore). `skipped` đánh dấu một mục tồn tại nhưng không áp dụng cho lần chạy này — ví dụ mục bị gate theo framework — và `skip_reason` nói rõ lý do; bảng cho người đọc in `SKIP` cho mục đó, nó không được tính vào cả hai cột pass/fail, không bao giờ làm pha đỏ và không đổi exit code, nên một pha chỉ toàn mục skip vẫn `passed` và exit `0`. `~/.govard/checklist-runs/` cũ được migrate lần đầu; artifact tạo trước khi có project-scoping (nằm phẳng ở gốc `verify-runs/`) không mang danh tính project nên không bao giờ thoả gate. `phase 0/all --json` xuất một JSON duy nhất `phase: "all"` với `status` được tính lại và `items` gộp.
+Outputs: `<govard home>/verify-runs/<project-id>/<ISO>-phaseN.json`, với `project-id` là hash của đường dẫn chuẩn hoá của project, gồm `{govard_version, project_sha, project_id, phase, mode, status, items:[{id, command, duration_ms, exit_code, evidence_excerpt, json_valid, artifacts, skipped, skip_reason}]}`. Khoá `retries` theo từng mục của các bản trước đã bị bỏ: nó luôn là `0` và không có gì đọc nó, nên consumer từng đọc nó giờ thấy nó vắng mặt. `mode` là `run` hoặc `plan`; `status` là `passed` hoặc `failed`; một lần chạy mà evidence không do tiến trình nào tạo ra mang `fake: true` trên document và trên các mục đó (hook hermetic: bất cứ khi nào binary sẽ chạy mục đó là một binary test của Go, nó trả lời bằng excerpt `fake(test-binary):` và không cần biến môi trường nào, còn `GOVARD_VERIFY_FAKE=1` chỉ đổi tiền tố đó thành `fake:`; với mọi binary khác cả hai đều bị bỏ qua, nên một `GOVARD_VERIFY_FAKE=1` lạc loài không đổi gì ở lần chạy thật), và `status` vẫn là `passed` hoặc `failed`; `artifacts` nêu thứ mà mục đó tạo ra (snapshot của `P4-08`, chính là thứ `P5-05` restore). `skipped` đánh dấu một mục tồn tại nhưng không áp dụng cho lần chạy này — ví dụ mục bị gate theo framework — và `skip_reason` nói rõ lý do; bảng cho người đọc in `SKIP` cho mục đó, nó không được tính vào cả hai cột pass/fail, không bao giờ làm pha đỏ và không đổi exit code, nên một pha chỉ toàn mục skip vẫn `passed` và exit `0`. `~/.govard/checklist-runs/` cũ được migrate lần đầu; artifact tạo trước khi có project-scoping (nằm phẳng ở gốc `verify-runs/`) không mang danh tính project nên không bao giờ thoả gate. `phase 0/all --json` xuất một JSON duy nhất `phase: "all"` với `status` được tính lại và `items` gộp.
 
 `GOVARD_VERIFY_BIN` ghim binary mà các mục checklist thực thi. Không đặt thì binary đang chạy sẽ thực thi chúng, và `PATH` chỉ là phương án cuối. Để kiểm chứng một bản build từ source, hãy chạy trực tiếp bản build đó và đặt biến này nếu nó không phải là bản mà shell sẽ tìm thấy — nếu không, `govard` trần trên `PATH` có thể là bản cài cũ và checklist sẽ báo cáo về bản đó, không phải bản build của bạn.
 
@@ -685,6 +689,21 @@ Các tính năng chính:
 - Tự động bảo vệ chống ghi đè cho môi trường production.
 - Ghi nhật ký lịch sử thao tác: `~/.govard/remote.log`.
 
+`remote exec` chạy bất kỳ lệnh shell nào bạn đưa vào trên remote, và nó nằm **ngoài** gate
+bảo vệ ghi: không có gì kiểm tra lệnh đó, kể cả với remote được bảo vệ, nên người vận hành
+tự chịu trách nhiệm về thứ mình chạy. Ví dụ trong help cố ý là lệnh chỉ đọc
+(`govard remote exec staging -- "df -h /var/www"`). `remote exec`, `remote test` và
+`remote copy-id` nhận một alias của remote đã cấu hình (`stg`, `STAGE`) và resolve nó
+về tên đã cấu hình trước, nên key và cấu hình auth lưu cho remote đó mới là thứ được dùng
+và các sự kiện audit mang tên đã cấu hình.
+
+`remote add` kiểm tra trước khi ghi bất cứ thứ gì: tên không hợp lệ hoặc `--port` ngoài
+phạm vi (âm hoặc lớn hơn 65535) thoát `4`, file cấu hình và auth store nguyên vẹn, còn
+file cấu hình không ghi được thì thoát khác 0 thay vì in dòng thành công. Điều tương tự
+áp dụng cho `config set`, `domain add|remove`, `profile apply` và `debug on|off`: cấu hình
+kết quả không qua validate thì thoát `4` và để `.govard.yml` như cũ, ghi hỏng là một lỗi,
+và `debug on|off` không khởi động môi trường sau một lần lưu hỏng.
+
 `remote list` in bảng NAME/HOST/CAPABILITIES/AUTH/KEY gồm các remote đã cấu
 hình cộng dòng synthetic `sandbox (implicit)`, trong đó cột HOST mang trạng thái
 (`running`, `dormant — …`, `absent — …`) và cột CAPABILITIES mang đúng những gì
@@ -713,10 +732,16 @@ Khi cờ `--media` được gọi mà không truyền mode cụ thể, Govard s�
 container đang chạy — cùng một remote mà `govard deploy --remote sandbox` dùng —
 nên không cần block `remotes.sandbox`; và nếu đã có block, block chỉ định hình
 buổi diễn tập (capabilities, protection, cấu hình `deploy`), không bao giờ trỏ
-lại luồng truyền sang máy khác. Bản thân `sync` không yêu cầu Docker, nên trên
-máy không có Docker mà được yêu cầu `-e sandbox` thì lệnh thoát với mã `3` và
-`CAPABILITY_MISSING`; còn khi có Docker nhưng chưa có container thì thoát với mã
-`1` kèm lời nhắc chạy `govard sandbox up`.
+lại luồng truyền sang máy khác. Trên máy không có Docker mà được yêu cầu `-e sandbox`
+thì lệnh thoát với mã `3` và `CAPABILITY_MISSING`; còn khi có Docker nhưng chưa có
+container thì thoát với mã `1` kèm lời nhắc chạy `govard sandbox up`.
+
+`sync` chỉ cần container runtime cho phạm vi database: `--db` và `--full` chuyển database
+qua container database local, nên khi thiếu nó thì thoát `3` với `CAPABILITY_MISSING` trước
+khi liên lạc với bất kỳ remote nào, còn `--plan` được miễn và sync file hay media không cần
+Docker. `--plan` và bản tóm tắt xác nhận hiện mật khẩu database dưới dạng
+`export MYSQL_PWD=***;` (hoặc `export PGPASSWORD=***;` với PostgreSQL) thay cho giá trị thật;
+các dòng đó chỉ là văn bản hiển thị, còn lệnh được chạy vẫn mang giá trị thật.
 
 **Các cờ chính:**
 
@@ -747,6 +772,11 @@ govard db import --file backup.sql --drop
 govard db import --stream-db -e staging --drop
 govard db clone-volume warden_magento2_dbdata
 ```
+
+File dump chỉ thuộc về chủ sở hữu của nó. `db dump` và `db import --stream-db` tạo file
+local với mode `0600`, và một file đã tồn tại mà rộng quyền hơn thì bị siết về `0600` trước
+khi ghi bất cứ thứ gì vào. `db dump -e <remote>` không kèm `--local` chạy dưới `umask 077`
+trên remote, nên dump là `0600` và mọi thư mục nó tạo (như `~/backup`) là `0700`.
 
 ### `govard deploy`
 
@@ -853,7 +883,24 @@ Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--bran
 `--runner container` là flag duy nhất có đòi hỏi — container app của chính dự án,
 thiếu nó thì thoát với mã `3` — và nó còn đòi `--output` nằm trong project root để
 container tới được artifact nó đang build; output nằm ngoài đó bị từ chối trước cả
-lúc govard tìm Docker.
+lúc govard tìm Docker, như một lỗi cấu hình (exit `4`).
+
+Container chỉ mang toolchain riêng của container app, và build kiểm tra điều đó trước
+khi thay đổi bất cứ thứ gì. Khi bước frontend của recipe sẽ chạy
+(`deploy.settings.frontend_dir` nêu ít nhất một thư mục), build tìm `node` và `npm`
+trong container trước task đầu tiên và từ chối với exit `3`, nêu tên công cụ còn
+thiếu và lối ra: `--runner host` trên máy có Node, hoặc để `frontend_dir` rỗng.
+Envelope `--error-json` của lần từ chối đó báo `capability: "node"`, một giá trị mà
+`govard capabilities` không liệt kê vì nó không phải capability khai báo được.
+Kiểm tra này dựa vào placeholder <span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe, nên một
+dự án có bước frontend (recipe override hoặc command dạng hook) không dùng placeholder
+đó và không cần Node vẫn bị container thiếu `node` và `npm` từ chối; build dự án đó
+bằng `--runner host`. Project container đang dừng hoặc không tồn tại cũng thoát `3`
+(gợi ý: `govard env up`, hoặc `--runner host`). Cả hai lần từ chối đều đến trước khi
+output directory bị đụng tới, nên artifact trước đó còn nguyên. Ctrl-C và
+`--command-timeout` cũng dừng bước đang chạy bên trong container: sau khi client
+`docker exec` ở local bị dọn, một `docker exec` thứ hai gửi tín hiệu tới process group
+của bước đó, và lỗi nói rõ phần teardown có được thử hay không và có hoàn tất hay không.
 
 **Setting và credential.** `deploy.settings` được đối chiếu với recipe trước khi
 chạy: key lạ, hoặc giá trị sai dạng, thoát với mã 4 kèm tên key và gợi ý key gần
@@ -862,6 +909,18 @@ chuỗi. `COMPOSER_AUTH` từ môi trường được chuyển tới bước cà
 standard input (không bao giờ nằm trong command), và `shared/auth.json` trên target
 cũng dùng được; `govard deploy check` cho biết đang dùng nguồn nào và cảnh báo khi
 build trên target cần mà không có.
+
+**`deploy check`.** Preflight không để lại gì trên target, dù là local hay remote. Probe
+quyền ghi của nó không tạo path nào: một `deploy_path` chưa tồn tại được kiểm tra tại
+parent tồn tại gần nhất, ngay trên target, và note của target local nêu rõ parent nào
+đã trả lời (một lệnh gọi remote không có note, vì exit code không phân biệt được path
+chưa tồn tại với path không ghi được). Probe `mv -T` chạy trên target dạng symlink tạo
+một thư mục tạm `.dep` dưới deploy path, và trên một host mới thì cả các tầng còn thiếu
+phía trên nó, rồi xoá chúng đi, dừng ở ancestor gần nhất đã tồn tại và giữ lại tầng nào
+còn chứa thứ gì. Preflight không bao giờ nhìn vào deploy lock. Các note của nó in ra
+trước header `Target <remote> is deployable`, mỗi note một dòng, đánh dấu `  - ` cho
+dữ kiện và `  ! ` cho cảnh báo, và một lần deploy thật in đúng các note đó trong output
+của bước `deploy:check` (ra stderr khi có `--json`, để stdout vẫn là một document).
 
 **Output cho máy đọc.** Với `--json`, stdout chứa đúng một JSON document còn
 timeline cho người đọc đi ra stderr: `schema_version`, `remote`, `branch`,
@@ -977,6 +1036,17 @@ capability, `4` lỗi cấu hình. `govard deploy` và `govard deploy rollback` 
 `govard sandbox *` là ngoại lệ: tạo server giả cần `docker`, sau đó govard
 nói chuyện với nó qua SSH như mọi target khác.
 
+`deploy check` và `deploy status` dùng chung các mã cấu hình và dùng lệnh. Một key `deploy.settings` gõ sai,
+một project không load được, hoặc một project không có remote nào là lỗi cấu hình
+(`4`); một remote positional mâu thuẫn với `--remote` là lỗi dùng lệnh (`2`), cũng như
+`deploy check` không nêu remote nào. Exit `1` thì khác: với `check` nó nghĩa là preflight
+fail hoặc target được nêu tên không tới được, với `status` nó nghĩa là không remote nào đã
+cấu hình tới được. `deploy status --json` vẫn in mảng các dòng
+theo từng remote (dòng không tới được có status `unknown` và một `error`) nhưng thoát
+`1` khi mọi remote đều không tới được, như chế độ bảng, với lý do ra stderr và stdout
+vẫn là một document khi có `--error-json`. Khi không có remote nào được cấu hình, hoặc
+project không load được, nó thoát `4` với stdout rỗng.
+
 ### `govard sandbox`
 
 Một container ngay trên máy bạn đóng vai đích triển khai — vòng đời top-level
@@ -1047,6 +1117,12 @@ govard snapshot push before-deploy -e prod
 
 Các lệnh con: `create`, `list`, `restore`, `delete`, `export`, `pull`, `push`. `export` ghi ra file `tar.gz` local; `delete` xóa snapshot theo tên. `pull`/`push` chuyển snapshot giữa local và remote có tên (`-e`).
 
+Các file snapshot chứa database dump chỉ thuộc về chủ sở hữu: `create` ghi `db.sql.gz` với
+mode `0600`, và `export` tạo archive với mode `0600` (siết một file đã tồn tại mà rộng quyền
+hơn). `create -e` ở remote chạy dưới `umask 077`, nên các thư mục nó tạo, như
+`<path>/.govard/snapshots`, là `0700` và file trong đó là `0600`, và nó kết thúc bằng việc
+ghi `metadata.yml` của snapshot (tên, `created_at`, framework).
+
 ### `govard open`
 
 Mở nhanh các đường dẫn dịch vụ/ứng dụng trên trình duyệt.
@@ -1061,9 +1137,12 @@ govard open db --client
 govard open db -e staging
 ```
 
+`open db` in connection URL với mật khẩu được che bằng `***` (không có phần mật khẩu khi
+chưa đặt); database client nhận URL đầy đủ.
+
 ### `govard tunnel`
 
-Quản lý các đường link public tunnel (yêu cầu cài đặt `cloudflared`). Govard đăng ký domain tunnel trong Caddy như alias, giữ nguyên `Host` header, và tự động rewrite base URL của framework (Magento, Laravel, …) — khôi phục khi `tunnel stop` hoặc `Ctrl+C`.
+Quản lý các đường link public tunnel (`start` yêu cầu `cloudflared`; `stop` và `status` thì không). Govard đăng ký domain tunnel trong Caddy như alias, giữ nguyên `Host` header, và tự động rewrite base URL của framework (Magento, Laravel, …) — khôi phục khi `tunnel stop` hoặc `Ctrl+C`.
 
 ```bash
 govard tunnel start
@@ -1082,7 +1161,10 @@ govard tunnel stop
 
 `start` ghi lại tiến trình mà nó khởi chạy (PID cùng argv đã dùng để khởi chạy) vào
 `$GOVARD_HOME_DIR/tunnels/<project>.pid`, và từ chối khởi chạy tunnel thứ hai khi cái đó vẫn còn
-sống. `stop` và `status` đọc bản ghi đó thay vì dò trên máy, nên không lệnh nào đụng tới một
+sống. Bản ghi được tạo độc quyền, nên hai lần `start` chạy đua cho cùng một project không thể
+cùng thắng: bên thua dừng tiến trình provider nó đã khởi chạy, để nguyên bản ghi và base URL của
+bên thắng và thất bại với cùng lời từ chối, còn một bản ghi mà tiến trình đã chết, hoặc PID của nó
+giờ chạy thứ khác, sẽ được lần `start` kế tiếp thay thế. `stop` và `status` đọc bản ghi đó thay vì dò trên máy, nên không lệnh nào đụng tới một
 `cloudflared` mà govard không khởi chạy — trừ khi nó chạy đúng dòng lệnh mà bản ghi ghi, thứ mà một
 bản cài khác của cùng binary không phân biệt được: `stop` chỉ gửi tín hiệu tới PID đã ghi và chỉ khi
 argv của nó vẫn khớp, còn lại từ chối kèm lỗi — không gửi tín hiệu nào — nếu không khớp hoặc không đọc được
@@ -1202,7 +1284,7 @@ govard config auto                # Magento 2: inject các thiết lập kết n
 `config auto` chạy bước sửa cấu hình của Magento (`app:config:import`, và nếu
 import chưa đủ thì chuyển sang `setup:upgrade`) ngay khi một lệnh báo rằng cần
 đến nó. Khi bước đó để lại `app/etc/config.php` với đúng các dòng cũ nhưng khác
-thứ tự, Govard ghi lại đúng các byte gốc để file đang được track không bị bẩn.
+thứ tự, Govard ghi lại đúng các byte gốc để file đang được track không bị bẩn, kể cả sau lần thử lại khi một search index read-only được gỡ khoá.
 Một thay đổi module thật sẽ được giữ nguyên, và một thao tác khôi phục mà Govard
 không ghi được — checkout read-only, hoặc config.php thuộc container — chỉ được
 báo dưới dạng cảnh báo, không phải báo lỗi Magento.

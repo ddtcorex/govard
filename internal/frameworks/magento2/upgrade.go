@@ -152,6 +152,19 @@ func RunUpgrade(ctx context.Context, config engine.Config, opts engine.UpgradeOp
 		updatePkgs = append(updatePkgs, pkgName)
 	}
 
+	// Refresh composer's platform.php to the runtime PHP first: a pin written
+	// for the previous PHP (for example by a fresh install) would otherwise
+	// outlive the upgrade and make later composer commands resolve for it.
+	if platformPinApplies(config.Stack.PHPVersion, engine.ResolveComposerVersion(config)) {
+		pinArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, conventions.BinComposer, "config", "platform.php", config.Stack.PHPVersion}
+		pinCmd := exec.CommandContext(ctx, "docker", pinArgs...)
+		pinCmd.Stdout = opts.Stdout
+		pinCmd.Stderr = opts.Stderr
+		if err := pinCmd.Run(); err != nil {
+			return fmt.Errorf("composer platform pin to PHP %s failed: %w", config.Stack.PHPVersion, err)
+		}
+	}
+
 	cmdArgs := append([]string{"exec", "-w", conventions.DefaultWorkDir, containerName, conventions.BinComposer, "update"}, updatePkgs...)
 	cmdArgs = append(cmdArgs, "--with-all-dependencies", "--ignore-platform-reqs", "--no-install")
 	updateCmd := exec.CommandContext(ctx, "docker", cmdArgs...)
@@ -410,4 +423,9 @@ func checkDatabaseReady(ctx context.Context, config engine.Config, containerName
 		time.Sleep(2 * time.Second)
 	}
 	pterm.Warning.Println("Database may not be ready, continuing anyway...")
+}
+
+// UpgradeVariantForTest exposes Magento 2's own UpgradeVariant for tests.
+func UpgradeVariantForTest() UpgradeVariant {
+	return defaultUpgradeVariant
 }

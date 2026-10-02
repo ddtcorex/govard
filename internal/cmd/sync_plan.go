@@ -41,6 +41,10 @@ const (
 	SyncScopeDB    = "DB"
 )
 
+// Descriptions and Commands are display-only text for plans and the
+// confirmation prompt. Commands may carry redacted placeholders (for example
+// the DB password as ***), so they must never be executed; execution uses
+// RsyncCommands and DatabaseActions, which hold the real commands.
 type SyncExecutionPlan struct {
 	Descriptions    []string
 	RsyncScopes     []string
@@ -391,4 +395,9 @@ func SyncExecutionOptionsForTest(files bool, mediaMode string, db bool) SyncExec
 		Media: mediaMode,
 		DB:    db,
 	}
+}
+
+// BuildSyncPlanSummaryForTest exposes buildSyncPlanSummary for tests in /tests.
+func BuildSyncPlanSummaryForTest(endpoints ResolvedSyncEndpoints, execution SyncExecutionPlan, opts SyncExecutionOptions) []string {
+	return buildSyncPlanSummary(endpoints, execution, opts, nil)
 }

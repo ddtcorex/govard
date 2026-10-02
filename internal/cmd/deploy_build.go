@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -46,7 +49,11 @@ capability. A project whose build cannot fetch its own dependencies from the hos
 can pass ` + "`--runner container`" + ` to run the same tasks through the project's own app
 container instead. That flag needs a running project container, and an output
 directory inside the project root — everything else on this page behaves
-identically.
+identically. A stopped or missing container exits 3 before the output directory
+is touched. The container carries only its own toolchain: when the recipe's
+frontend step will run, the build first checks the container for node and npm
+and refuses (exit 3) if either is missing, so build with --runner host there.
+Interrupting or timing out a container step also signals it inside the container.
 
 The artifact is the tracked files of the revision plus whatever the build tasks
 produced, with a manifest recording the revision, the PHP version, the
@@ -97,7 +104,7 @@ func bindDeployBuildFlags(command *cobra.Command) {
 // container has and the host shell does not. The exec target is the one
 // `govard tool php` resolves, so the build runs in the same container, as the
 // same account and in the same workdir that command already uses.
-func deployBuildRunner(config engine.Config, name, workDir, outputDir string) (deploy.Runner, error) {
+func deployBuildRunner(ctx context.Context, config engine.Config, name, workDir, outputDir string) (deploy.Runner, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "", "host":
 		return deploy.LocalRunner{}, nil
@@ -114,9 +121,15 @@ func deployBuildRunner(config engine.Config, name, workDir, outputDir string) (d
 		// Docker" would send the operator after a daemon that could not have
 		// made the path mappable.
 		if _, err := runner.ContainerPath(outputDir); err != nil {
+			return nil, containerPathConfigError(err)
+		}
+		if err := requireDocker(containerRunnerHint); err != nil {
 			return nil, err
 		}
-		if err := requireDocker("run `govard env up` first, or build with --runner host"); err != nil {
+		// The daemon answering says nothing about the project's container. This
+		// probe runs before the build clears --output, so a stopped container
+		// is exit 3 with the way out, and the previous artifact is still there.
+		if err := probeContainerRunning(ctx, runner.Container); err != nil {
 			return nil, err
 		}
 		return runner, nil
@@ -127,7 +140,56 @@ func deployBuildRunner(config engine.Config, name, workDir, outputDir string) (d
 
 // DeployBuildRunnerForTest exposes the runner resolution for tests.
 func DeployBuildRunnerForTest(config engine.Config, name, workDir, outputDir string) (deploy.Runner, error) {
-	return deployBuildRunner(config, name, workDir, outputDir)
+	return deployBuildRunner(context.Background(), config, name, workDir, outputDir)
+}
+
+// containerRunnerHint is the way out of every refusal that means "there is no
+// container to build in".
+const containerRunnerHint = "run `govard env up` first, or build with --runner host"
+
+// probeContainerRunning asks the daemon whether the project container is up. A
+// container that is stopped or does not exist is the same missing requirement
+// as a missing daemon: exit 3, with the hint that starts it.
+func probeContainerRunning(ctx context.Context, container string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	output, err := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Running}}", container).CombinedOutput()
+	state := strings.TrimSpace(string(output))
+	if err == nil && state == "true" {
+		return nil
+	}
+	detail := fmt.Sprintf("the project container %s is not running", container)
+	if err != nil {
+		detail = fmt.Sprintf("the project container %s could not be inspected, so it is not running (docker inspect: %s)", container, daemonSentence(state, err))
+	}
+	if !errorJSON {
+		pterm.Info.Printf("Hint: %s\n", containerRunnerHint)
+	}
+	return &runtime.MissingError{
+		Caps:   []runtime.Capability{runtime.CapDocker},
+		Detail: detail,
+		Hint:   containerRunnerHint,
+	}
+}
+
+// daemonSentence is the daemon's own sentence, or the exec error when it printed
+// nothing.
+func daemonSentence(output string, err error) string {
+	if line, _, _ := strings.Cut(output, "\n"); strings.TrimSpace(line) != "" {
+		return strings.TrimSpace(line)
+	}
+	return err.Error()
+}
+
+// containerPathConfigError marks a path the container cannot reach as the
+// configuration mistake it is (exit 4): --output has to move, and nothing the
+// runtime could do would make it reachable.
+func containerPathConfigError(err error) error {
+	if errors.Is(err, deploy.ErrContainerPathUnmappable) {
+		return &cli.ConfigError{Err: err}
+	}
+	return err
 }
 
 func runDeployBuild(cmd *cobra.Command, args []string) error {
@@ -161,7 +223,7 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve the working directory: %w", err)
 	}
-	runner, err := deployBuildRunner(config, runnerName, workDir, absolute)
+	runner, err := deployBuildRunner(cmd.Context(), config, runnerName, workDir, absolute)
 	if err != nil {
 		return err
 	}
@@ -183,7 +245,9 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 		Runner:    runner,
 	})
 	if err != nil {
-		return err
+		// No current step maps a path the runner check above did not; this
+		// guards a future caller that hands the container a new directory.
+		return containerPathConfigError(err)
 	}
 
 	if jsonOut {

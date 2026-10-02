@@ -83,7 +83,11 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 		dumpCmdStr := buildRemoteMySQLDumpCommandString(remoteCredentials, noNoise, noPII, config.Framework, true)
 		importCmdStr := buildLocalMySQLClientCommandScript(localCredentials, true)
 
-		desc := fmt.Sprintf("ssh %s \"%s\" | docker exec -i %s sh -lc \"%s\"", remote.RemoteTarget(source.RemoteCfg), dumpCmdStr, localDBContainer, importCmdStr)
+		// The description is shown to people (plan, confirmation), so it is
+		// built from redacted credentials; only the closure below runs the
+		// real command.
+		displayDumpCmdStr := buildRemoteMySQLDumpCommandString(remoteCredentials.forDisplay(), noNoise, noPII, config.Framework, true)
+		desc := fmt.Sprintf("ssh %s \"%s\" | docker exec -i %s sh -lc \"%s\"", remote.RemoteTarget(source.RemoteCfg), displayDumpCmdStr, localDBContainer, importCmdStr)
 
 		return desc, func() error {
 			// The local container is the import target here, so it must be up
@@ -112,7 +116,9 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 		dumpCmdStr := buildLocalMySQLDumpCommandScript(localCredentials, noNoise, noPII, config.Framework)
 		importCmdStr := buildRemoteMySQLImportCommandString(remoteCredentials)
 
-		desc := fmt.Sprintf("docker exec -i %s sh -lc \"%s\" | ssh %s \"%s\"", localDBContainer, dumpCmdStr, remote.RemoteTarget(destination.RemoteCfg), importCmdStr)
+		// Display-only form, see the remote-to-local branch above.
+		displayImportCmdStr := buildRemoteMySQLImportCommandString(remoteCredentials.forDisplay())
+		desc := fmt.Sprintf("docker exec -i %s sh -lc \"%s\" | ssh %s \"%s\"", localDBContainer, dumpCmdStr, remote.RemoteTarget(destination.RemoteCfg), displayImportCmdStr)
 
 		return desc, func() error {
 			// The local container is the dump source here, so it must be up

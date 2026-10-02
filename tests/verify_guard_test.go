@@ -127,7 +127,7 @@ func TestRemoteWriteItemIsSkippedWithoutOptIn(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 	probe := installGuardProbe(t)
 
-	// P2-05 and P2-08 are both phase-2 items (P2-08's Precond names a phase-4
+	// P2-05 and P2-08 are both phase-2 items (P2-08's Requires names a phase-4
 	// snapshot; that is not where it runs), so phase 2 is the run that can show
 	// the policy acting on them.
 	res, err := verify.RunPhase(context.Background(), engine.Config{Framework: "magento2"}, 2,
@@ -234,14 +234,14 @@ func TestPhase5GateStillFiresWhenEveryItemWouldSkip(t *testing.T) {
 func TestGuardValuesAreFromTheAllowedSet(t *testing.T) {
 	allowed := map[string]bool{
 		"":                           true,
-		verify.GuardReadOnlyRemote:   true,
+		verify.GuardRemoteProbe:      true,
 		verify.GuardDestructiveLocal: true,
 		verify.GuardRemoteWrite:      true,
 	}
 	for _, it := range verify.RegistryFor(engine.Config{Framework: "magento2"}) {
 		if !allowed[it.Guard] {
 			t.Fatalf("item %q has Guard %q, want \"\", %q, %q or %q",
-				it.ID, it.Guard, verify.GuardReadOnlyRemote, verify.GuardDestructiveLocal, verify.GuardRemoteWrite)
+				it.ID, it.Guard, verify.GuardRemoteProbe, verify.GuardDestructiveLocal, verify.GuardRemoteWrite)
 		}
 	}
 
@@ -254,7 +254,7 @@ func TestGuardValuesAreFromTheAllowedSet(t *testing.T) {
 	}
 	for guard, want := range map[string]int{
 		"":                           42,
-		verify.GuardReadOnlyRemote:   13,
+		verify.GuardRemoteProbe:      13,
 		verify.GuardDestructiveLocal: 3,
 		verify.GuardRemoteWrite:      2,
 	} {
@@ -284,8 +284,8 @@ func TestDecideGuardTreatsAllPhasesAsTheItemsOwnPhase(t *testing.T) {
 		t.Fatal("phase 0 ran a destructive item whose own phase is 4")
 	}
 
-	if d := verify.DecideGuard(verify.Item{ID: "P4-13", Phase: 4, Guard: verify.GuardReadOnlyRemote}, 4, verify.VerifyOpts{}); !d.Run {
-		t.Fatalf("READ-ONLY-REMOTE has no runtime gate, got a skip: %s", d.Reason)
+	if d := verify.DecideGuard(verify.Item{ID: "P4-13", Phase: 4, Guard: verify.GuardRemoteProbe}, 4, verify.VerifyOpts{}); !d.Run {
+		t.Fatalf("REMOTE-PROBE has no runtime gate, got a skip: %s", d.Reason)
 	}
 
 	remoteWrite := verify.Item{ID: "P2-05", Phase: 2, Title: "govard bootstrap -e {{REMOTE}} --no-noise", Guard: verify.GuardRemoteWrite}

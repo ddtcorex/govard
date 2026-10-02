@@ -347,6 +347,10 @@ func TestConfigureMagentoRestoresTheConfigRewriteTheRepairStepMade(t *testing.T)
 		importExit    int
 		upgradeExit   int
 		upgradeOutput string
+		// retry describes the second setup:upgrade, the one made after the
+		// search index was unblocked. It only exists when the first attempt
+		// failed with a search-block error (upgradeOutput).
+		retry retryStep
 		// wantRan are the repair commands the fake docker must have been asked
 		// for; without them the case would pass on a run that never reached the
 		// repair path at all.
@@ -375,24 +379,47 @@ func TestConfigureMagentoRestoresTheConfigRewriteTheRepairStepMade(t *testing.T)
 			wantRestored: configPHPFixture,
 		},
 		{
-			// Deliberately unwrapped: the search-index retry. The restore above
-			// happens and is reported, and this retry then dirties the file
-			// again. That is the limitation recorded in #489, pinned here so
-			// wrapping it is a deliberate change to this expectation rather
-			// than an accident.
-			name:          "the search-index retry reorders it and is left dirty",
+			// The search-index retry. Every earlier step reorders the file and
+			// is restored; the retry then reorders it once more and must be
+			// restored too (#512), so the file is byte-identical at the end.
+			name:          "the search-index retry reorders it and it is restored",
 			importExit:    1,
 			upgradeExit:   1,
 			upgradeOutput: "cluster_block_exception: index is read-only",
+			retry:         retryStep{exit: 0, writes: configPHPReordered},
+			wantRan:       []string{"app:config:import", "setup:upgrade"},
+			wantRestores:  3,
+			wantRestored:  configPHPFixture,
+		},
+		{
+			// A retry that still fails after reordering is restored as well:
+			// the wrapper returns the command's own error and the caller
+			// reports it.
+			name:          "a failing search-index retry that reorders it is restored",
+			importExit:    1,
+			upgradeExit:   1,
+			upgradeOutput: "cluster_block_exception: index is read-only",
+			retry:         retryStep{exit: 1, writes: configPHPReordered},
+			wantRan:       []string{"app:config:import", "setup:upgrade"},
+			wantRestores:  3,
+			wantRestored:  configPHPFixture,
+		},
+		{
+			// The retry genuinely adds a module: Magento's output stands.
+			name:          "the search-index retry that changes the module set keeps Magento's output",
+			importExit:    1,
+			upgradeExit:   1,
+			upgradeOutput: "cluster_block_exception: index is read-only",
+			retry:         retryStep{exit: 0, writes: configPHPExtraModule},
 			wantRan:       []string{"app:config:import", "setup:upgrade"},
 			wantRestores:  2,
-			wantRestored:  configPHPReordered,
+			wantRestored:  configPHPExtraModule,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, configPath, dockerLog := configureMagentoFixture(t, tc.importExit, tc.upgradeExit, tc.upgradeOutput)
+			_, configPath, dockerLog := configureMagentoFixture(t, tc.importExit, tc.upgradeExit, tc.upgradeOutput, tc.retry)
 			captured := capturePterm(t)
 
 			// The shim keeps failing setup:config:set, so the run ends in the
@@ -425,12 +452,21 @@ func TestConfigureMagentoRestoresTheConfigRewriteTheRepairStepMade(t *testing.T)
 	}
 }
 
+// retryStep scripts the setup:upgrade made after the search index was
+// unblocked: the exit code the fake docker answers with and the config.php
+// content it leaves behind (empty means the same reordered copy as the earlier
+// steps). It applies only when the first attempt failed with upgradeOutput.
+type retryStep struct {
+	exit   int
+	writes string
+}
+
 // configureMagentoFixture lays down a project root, puts a fake docker on PATH
 // and makes it the working directory, because ConfigureMagento resolves the
 // project root from the working directory exactly as `govard config auto` does.
 // Every docker call is logged, and setup:config:set always fails with a
 // setup:upgrade hint so the repair path is entered at all.
-func configureMagentoFixture(t *testing.T, importExit, upgradeExit int, upgradeOutput string) (projectRoot, configPath, dockerLog string) {
+func configureMagentoFixture(t *testing.T, importExit, upgradeExit int, upgradeOutput string, retry retryStep) (projectRoot, configPath, dockerLog string) {
 	t.Helper()
 
 	projectRoot = t.TempDir()
@@ -447,8 +483,17 @@ func configureMagentoFixture(t *testing.T, importExit, upgradeExit int, upgradeO
 		t.Fatalf("write reordered.php: %v", err)
 	}
 
+	retryTarget := reordered
+	if retry.writes != "" {
+		retryTarget = filepath.Join(projectRoot, "app", "etc", "retry.php")
+		if err := os.WriteFile(retryTarget, []byte(retry.writes), 0o644); err != nil {
+			t.Fatalf("write retry.php: %v", err)
+		}
+	}
+
 	shimDir := t.TempDir()
 	dockerLog = filepath.Join(shimDir, "docker.log")
+	firstUpgradeMarker := filepath.Join(shimDir, "first-upgrade-done")
 	script := fmt.Sprintf(`#!/bin/sh
 echo "$*" >> %[1]s
 case "$*" in
@@ -461,13 +506,20 @@ case "$*" in
 	exit %[4]d
 	;;
 *setup:upgrade*)
+	# The first attempt answers as configured. A later one is the retry made
+	# after the search index was unblocked and answers with the retry step.
+	if [ -n "%[5]s" ] && [ -e %[7]s ]; then
+		cp %[8]s %[3]s
+		exit %[9]d
+	fi
+	touch %[7]s
 	cp %[2]s %[3]s
 	[ -n "%[5]s" ] && echo "%[5]s"
 	exit %[6]d
 	;;
 esac
 exit 0
-`, dockerLog, reordered, configPath, importExit, upgradeOutput, upgradeExit)
+`, dockerLog, reordered, configPath, importExit, upgradeOutput, upgradeExit, firstUpgradeMarker, retryTarget, retry.exit)
 
 	dockerPath := filepath.Join(shimDir, "docker")
 	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {

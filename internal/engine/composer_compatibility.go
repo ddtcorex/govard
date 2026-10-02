@@ -16,13 +16,7 @@ import (
 // FixComposerCompatibility ensures the container has the correct Composer version
 // and necessary configurations (like plugin allowance and audit bypass) for the project.
 func FixComposerCompatibility(config Config) error {
-	targetVer := config.Stack.ComposerVersion
-	if targetVer == "" {
-		profileResult, err := ResolveRuntimeProfile(config.Framework, config.FrameworkVersion)
-		if err == nil && profileResult.Profile.ComposerVersion != "" {
-			targetVer = profileResult.Profile.ComposerVersion
-		}
-	}
+	targetVer := ResolveComposerVersion(config)
 
 	if targetVer == "" || targetVer == "latest" {
 		// Even if version is latest, we still want to ensure plugin allowance and audit bypass
@@ -36,6 +30,22 @@ func FixComposerCompatibility(config Config) error {
 	}
 
 	return ensureComposerConfig(config)
+}
+
+// ResolveComposerVersion returns the Composer version the project runtime is
+// pinned to: the explicit stack composer_version, else the runtime profile's
+// composer_version for the framework version (which may itself be "latest"),
+// else "" when no profile resolves. Both "" and "latest" mean the newest
+// Composer 2.
+func ResolveComposerVersion(config Config) string {
+	if config.Stack.ComposerVersion != "" {
+		return config.Stack.ComposerVersion
+	}
+	profileResult, err := ResolveRuntimeProfile(config.Framework, config.FrameworkVersion)
+	if err == nil {
+		return profileResult.Profile.ComposerVersion
+	}
+	return ""
 }
 
 func ensureComposerConfig(config Config) error {

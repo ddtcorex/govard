@@ -7,6 +7,9 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/pterm/pterm"
@@ -136,5 +139,175 @@ func TestVerifyAllPhasesJSONReportsASnapshotGateBlock(t *testing.T) {
 	}
 	if _, ok := payload["error"]; !ok {
 		t.Fatalf("stdout carried no gate envelope: %v", payload)
+	}
+}
+
+// TestVerifyAllPhasesWithoutTheFlagRunsNothing pins the ordering: the
+// destructive gate is checked before phase 1, in both output modes, so a
+// refused run has not already stopped and started the environment.
+func TestVerifyAllPhasesWithoutTheFlagRunsNothing(t *testing.T) {
+	for _, jsonFlag := range []bool{true, false} {
+		name := "human"
+		if jsonFlag {
+			name = "json"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+			project := t.TempDir()
+			calls := fakeAllExec(t)
+
+			stdout := &bytes.Buffer{}
+			pterm.SetDefaultOutput(stdout)
+			t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
+			root := cmd.RootCommandForTest()
+			root.SetOut(stdout)
+			root.SetErr(io.Discard)
+			// cobra flag values persist on the shared root between tests, so the
+			// absence of the flag is stated, not assumed.
+			args := []string{"verify", "--project", project, "--allow-destructive=false", "--yes=false"}
+			args = append(args, "--json="+strconv.FormatBool(jsonFlag))
+			root.SetArgs(args)
+
+			err := root.Execute()
+			if !errors.Is(err, verify.ErrNeedAllowDestructive) {
+				t.Fatalf("Execute() = %v, want ErrNeedAllowDestructive", err)
+			}
+			if *calls != 0 {
+				t.Fatalf("%d command(s) ran before the gate refused the run", *calls)
+			}
+			if jsonFlag {
+				var payload map[string]any
+				if e := json.Unmarshal(stdout.Bytes(), &payload); e != nil || payload["error"] == nil {
+					t.Fatalf("stdout = %q, want one JSON error envelope (%v)", stdout.String(), e)
+				}
+			}
+			if entries, _ := os.ReadDir(verify.ProjectRunsDir(project)); len(entries) != 0 {
+				t.Fatalf("a refused run wrote %d artifact(s)", len(entries))
+			}
+		})
+	}
+}
+
+// TestVerifyAllPhasesHumanRunReachesPhase5 drives the whole
+// public path without --json: phase 4 must leave the artifact phase 5 reads.
+func TestVerifyAllPhasesHumanRunReachesPhase5(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	project := t.TempDir()
+	makeSnapshot(t, project, "20260101-000000", "2026-01-01T00:00:00Z")
+	fakeAllExec(t)
+
+	pterm.SetDefaultOutput(io.Discard)
+	t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
+	root := cmd.RootCommandForTest()
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"verify", "--project", project, "--json=false", "--allow-destructive", "--yes=false"})
+
+	err := root.Execute()
+	if errors.Is(err, verify.ErrNeedSnapshot) || errors.Is(err, verify.ErrNeedAllowDestructive) {
+		t.Fatalf("Execute() = %v: the gate rejected a run whose phase 4 just recorded the snapshot", err)
+	}
+	if _, ok := verify.GateSatisfyingSnapshot(verify.VerifyOpts{ProjectRoot: project}); !ok {
+		t.Fatal("no gate-satisfying artifact after a human-mode run")
+	}
+}
+
+// TestVerifyAllPhasesKeepsPhases1To4WhenTheRecordCannotBeWritten: with an
+// unwritable runs dir phase 5 fails closed (its gate cannot see phase 4), but
+// with an error that names the failed record write, and the phase 1-4 results
+// are still rendered in both output modes.
+func TestVerifyAllPhasesKeepsPhases1To4WhenTheRecordCannotBeWritten(t *testing.T) {
+	for _, jsonFlag := range []bool{true, false} {
+		name := "human"
+		if jsonFlag {
+			name = "json"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+			project := t.TempDir()
+			makeSnapshot(t, project, "20260101-000000", "2026-01-01T00:00:00Z")
+			// A regular file where the runs dir belongs: MkdirAll fails.
+			runsDir := verify.ProjectRunsDir(project)
+			if err := os.MkdirAll(filepath.Dir(runsDir), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(runsDir, []byte("not a directory"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			fakeAllExec(t)
+
+			stdout := &bytes.Buffer{}
+			pterm.SetDefaultOutput(stdout)
+			t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
+			root := cmd.RootCommandForTest()
+			root.SetOut(stdout)
+			root.SetErr(io.Discard)
+			root.SetArgs([]string{"verify", "--project", project, "--allow-destructive", "--yes=false",
+				"--json=" + strconv.FormatBool(jsonFlag)})
+
+			err := root.Execute()
+			if !errors.Is(err, verify.ErrRunNotRecorded) {
+				t.Fatalf("Execute() = %v, want ErrRunNotRecorded", err)
+			}
+			if errors.Is(err, verify.ErrNeedSnapshot) {
+				t.Fatalf("error %q is the generic snapshot error, want the record failure", err)
+			}
+			out := stdout.String()
+			if !strings.Contains(out, "P4-08") || strings.Contains(out, "P5-01") {
+				t.Fatalf("output must carry phases 1-4 and no phase 5 item:\n%s", out)
+			}
+			if jsonFlag {
+				var payload struct {
+					Phase string `json:"phase"`
+					Items []struct {
+						ID string `json:"id"`
+					} `json:"items"`
+				}
+				if e := json.Unmarshal(stdout.Bytes(), &payload); e != nil {
+					t.Fatalf("stdout is not one JSON document: %v\n%s", e, out)
+				}
+				if payload.Phase != "all" || len(payload.Items) == 0 {
+					t.Fatalf("merged result = %+v, want phase all with the phase 1-4 items", payload)
+				}
+			}
+		})
+	}
+}
+
+// TestVerifyAllPhasesJSONRendersPhases1To4WhenTheSnapshotGateRefuses: a real
+// snapshot-gate refusal (no snapshot exists, so P4-08 is red) must not discard
+// what phases 1-4 computed. stdout is one document that holds those items and
+// the gate's reason, and the gate error is still returned.
+func TestVerifyAllPhasesJSONRendersPhases1To4WhenTheSnapshotGateRefuses(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	project := t.TempDir() // no snapshot: nothing can satisfy the gate
+	// Every child succeeds but `snapshot create` adds nothing to the store, so
+	// P4-08 is red and the gate has nothing to open on.
+	fakeProbeHTTP(t)
+	verify.SetExecGovardFakeForTest(func(context.Context, engine.Config, verify.VerifyOpts, ...string) (verify.Evidence, bool) {
+		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok"}, true
+	})
+	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
+
+	payload, err := runVerifyAllPhases(t, project, "--allow-destructive")
+	if !errors.Is(err, verify.ErrNeedSnapshot) {
+		t.Fatalf("Execute() = %v, want ErrNeedSnapshot", err)
+	}
+	if payload["phase"] != "all" {
+		t.Fatalf("phase = %v, want the merged \"all\" document", payload["phase"])
+	}
+	if msg, _ := payload["error"].(string); !strings.Contains(msg, verify.ErrNeedSnapshot.Error()) {
+		t.Fatalf("error = %v, want the gate's reason in the same document", payload["error"])
+	}
+	items, _ := payload["items"].([]any)
+	seen := map[string]bool{}
+	for _, raw := range items {
+		if m, ok := raw.(map[string]any); ok {
+			id, _ := m["id"].(string)
+			seen[id] = true
+		}
+	}
+	if !seen["P1-01"] || !seen["P4-08"] || seen["P5-01"] {
+		t.Fatalf("items must hold phases 1-4 and no phase 5; saw %v", seen)
 	}
 }

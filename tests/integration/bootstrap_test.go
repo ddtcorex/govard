@@ -94,6 +94,10 @@ func TestBootstrapFreshOrchestrationWithShims(t *testing.T) {
 	logs := shim.ReadLog(t)
 	assertBootstrapContains(t, logs, "docker|exec")
 	assertBootstrapContains(t, logs, "/tmp/govard-create-project")
+	// The runtime PHP flows from the project config into the fresh install,
+	// which pins composer's platform before resolving dependencies.
+	assertBootstrapContains(t, logs, "create-project -n --no-install")
+	assertBootstrapContains(t, logs, "config platform.php '")
 	assertBootstrapContains(t, logs, "command -v rsync")
 	assertBootstrapContains(t, logs, "setup:install")
 }

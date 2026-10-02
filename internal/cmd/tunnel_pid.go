@@ -47,8 +47,11 @@ func tunnelPIDFilePath(projectName string) string {
 	return filepath.Join(engine.GovardHomeDir(), "tunnels", name+".pid")
 }
 
-// recordTunnelPID writes the PID and argv of the process govard just started.
-func recordTunnelPID(projectName string, pid int, argv []string) error {
+// writeTunnelPIDExclusive writes the PID and argv of the process govard just
+// started, and only if no record exists: the file is created with O_EXCL, so of
+// two concurrent starts exactly one creates it. The other gets an error that
+// wraps os.ErrExist and must not replace the winner's record.
+func writeTunnelPIDExclusive(projectName string, pid int, argv []string) error {
 	path := tunnelPIDFilePath(projectName)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create tunnel record directory: %w", err)
@@ -57,16 +60,88 @@ func recordTunnelPID(projectName string, pid int, argv []string) error {
 	if err != nil {
 		return fmt.Errorf("encode tunnel record: %w", err)
 	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create tunnel record: %w", err)
+	}
+	if _, err := file.Write(append(payload, '\n')); err != nil {
+		_ = file.Close()
+		// A record nobody can read would block every later start, so a
+		// half-written one is removed rather than left behind.
+		_ = os.Remove(path)
+		return fmt.Errorf("write tunnel record: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
 		return fmt.Errorf("write tunnel record: %w", err)
 	}
 	return nil
 }
 
-// clearTunnelPID drops the record. A record that is already gone is the state
-// this function is trying to reach, so a failed remove is not reported.
+// tunnelAlreadyStartedError is the refusal for a start that finds a live tunnel
+// govard started for this project, whether before launching or at the write.
+func tunnelAlreadyStartedError(projectName string, pid int) error {
+	return fmt.Errorf(
+		"govard already started a tunnel for %q (pid %d): run 'govard tunnel stop' first",
+		projectName, pid)
+}
+
+// tunnelClaimAttempts bounds how often a start retries after removing a stale
+// record it found at the write. One retry covers the only benign case (the
+// record was stale); a record that keeps reappearing means another start keeps
+// winning, and the loser gives up instead of spinning.
+const tunnelClaimAttempts = 2
+
+// claimTunnelPIDRecord records pid as this project's tunnel unless another
+// start got there first. A record already naming a live process govard started
+// is a refusal; a stale one is removed (only if it still names that stale pid)
+// and the write is retried.
+func claimTunnelPIDRecord(projectName string, pid int, argv []string) error {
+	for attempt := 0; attempt < tunnelClaimAttempts; attempt++ {
+		err := writeTunnelPIDExclusive(projectName, pid, argv)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return err
+		}
+		existing, found, readErr := readTunnelPIDRecord(projectName)
+		if readErr != nil {
+			return readErr
+		}
+		if !found {
+			// Removed between the create and the read: try again.
+			continue
+		}
+		if recordIsLiveAndOwned(existing, tunnelDeps.ProcessAlive, tunnelDeps.ReadProcessArgv) {
+			return tunnelAlreadyStartedError(projectName, existing.PID)
+		}
+		clearTunnelPIDIfOwner(projectName, existing.PID)
+	}
+	return fmt.Errorf(
+		"could not record the tunnel for %q: another start keeps replacing %s; run 'govard tunnel stop' first",
+		projectName, tunnelPIDFilePath(projectName))
+}
+
+// clearTunnelPID drops the record unconditionally. A record that is already
+// gone is the state this function is trying to reach, so a failed remove is not
+// reported. Callers that know which process they are done with go through
+// clearTunnelPIDIfOwner, which ends here; the tests use it to reset state.
 func clearTunnelPID(projectName string) {
 	_ = os.Remove(tunnelPIDFilePath(projectName))
+}
+
+// clearTunnelPIDIfOwner drops the record only while it still names pid. Every
+// production removal knows which process it is done with, and a concurrent
+// start may have replaced that record with its own in the meantime; removing
+// the file by name alone would strand that start's tunnel where `tunnel stop`
+// cannot reach it. A record that cannot be read is left for the operator.
+func clearTunnelPIDIfOwner(projectName string, pid int) {
+	record, found, err := readTunnelPIDRecord(projectName)
+	if err != nil || !found || record.PID != pid {
+		return
+	}
+	clearTunnelPID(projectName)
 }
 
 // readTunnelPIDRecord returns the record, whether one exists, and an error only
@@ -176,7 +251,7 @@ func signalRecordedTunnel(
 	}
 	if !alive(record.PID) {
 		// The tunnel is already gone; the record is the only stale thing left.
-		clearTunnelPID(projectName)
+		clearTunnelPIDIfOwner(projectName, record.PID)
 		return nil
 	}
 	observed, ok := readArgv(record.PID)
@@ -200,7 +275,7 @@ func signalRecordedTunnel(
 		// a base URL pointing at a tunnel that is not running, for a command
 		// that did the right thing.
 		if errors.Is(err, os.ErrProcessDone) {
-			clearTunnelPID(projectName)
+			clearTunnelPIDIfOwner(projectName, record.PID)
 			return nil
 		}
 		return fmt.Errorf("stopping tunnel pid %d: %w", record.PID, err)
@@ -226,7 +301,7 @@ func signalRecordedTunnel(
 			return fmt.Errorf("stopping tunnel pid %d: %w", record.PID, err)
 		}
 	}
-	clearTunnelPID(projectName)
+	clearTunnelPIDIfOwner(projectName, record.PID)
 	return nil
 }
 
@@ -322,9 +397,9 @@ func TunnelPIDFileForTest(projectName string) string {
 	return tunnelPIDFilePath(projectName)
 }
 
-// RecordTunnelPIDForTest exposes recordTunnelPID to the tests/ package.
+// RecordTunnelPIDForTest exposes writeTunnelPIDExclusive to the tests/ package.
 func RecordTunnelPIDForTest(projectName string, pid int, argv string) error {
-	return recordTunnelPID(projectName, pid, strings.Fields(argv))
+	return writeTunnelPIDExclusive(projectName, pid, strings.Fields(argv))
 }
 
 // ClearTunnelPIDForTest exposes clearTunnelPID to the tests/ package.

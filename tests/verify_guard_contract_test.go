@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -45,7 +46,7 @@ func captureItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) m
 			continue
 		}
 		itemArgvs := argvs[it.ID]
-		if len(itemArgvs) > 1 && (it.Guard == verify.GuardReadOnlyRemote || it.Guard == verify.GuardRemoteWrite) {
+		if len(itemArgvs) > 1 && (it.Guard == verify.GuardRemoteProbe || it.Guard == verify.GuardRemoteWrite) {
 			t.Errorf("%s carries %s and made %d govard invocations; the capture keeps only the first, so it can no longer classify all of this item's argv",
 				it.ID, it.Guard, len(itemArgvs))
 		}
@@ -57,6 +58,10 @@ func captureItemArgvs(t *testing.T, cfg engine.Config, opts verify.VerifyOpts) m
 	}
 	return first
 }
+
+// captureSnapshotSeq numbers the snapshots the capture fake creates, so each
+// `snapshot create` adds a new name to a shared project root.
+var captureSnapshotSeq int
 
 // captureAllItemArgvs is captureItemArgvsForExit over both answers a child can
 // give, concatenated: neither exit code alone reaches every argv an item can
@@ -98,8 +103,14 @@ func captureItemArgvsForExit(t *testing.T, cfg engine.Config, opts verify.Verify
 			continue
 		}
 		var itemArgvs [][]string
-		verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, _ verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
+		verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, o verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
 			itemArgvs = append(itemArgvs, append([]string(nil), args...))
+			// A successful `snapshot create` adds a snapshot, as the real one
+			// does; P4-08 only goes on to `snapshot list` when it finds one.
+			if exitCode == 0 && o.ProjectRoot != "" && len(args) > 1 && args[0] == "snapshot" && args[1] == "create" {
+				captureSnapshotSeq++
+				makeSnapshot(t, o.ProjectRoot, fmt.Sprintf("captured-%d", captureSnapshotSeq), "2026-03-01T00:00:00Z")
+			}
 			return verify.Evidence{ExitCode: exitCode, OutputExcerpt: "fake: " + strings.Join(args, " ")}, true
 		})
 		_ = it.Run(context.Background(), cfg, opts)
@@ -272,7 +283,7 @@ func hasArgvFlag(argv []string, flag string) bool {
 // The literal `staging` was a guess about what a project calls its remote, and
 // the guess is gone: the remote comes from --remote alone. A capture that built
 // no argv would satisfy "no argv says staging" without testing anything, so
-// every READ-ONLY-REMOTE item must also have produced one — that is the exact
+// every REMOTE-PROBE item must also have produced one — that is the exact
 // vacuity an empty Remote introduces.
 func TestNoReadOnlyRemoteItemResolvesTheStagingLiteral(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
@@ -286,18 +297,18 @@ func TestNoReadOnlyRemoteItemResolvesTheStagingLiteral(t *testing.T) {
 
 	readOnly := 0
 	for _, it := range items {
-		if it.Guard != verify.GuardReadOnlyRemote {
+		if it.Guard != verify.GuardRemoteProbe {
 			continue
 		}
 		readOnly++
 		// P4-16 (`remote list`) names no remote on purpose, so the assertion is
 		// "this item produced an argv", not "that argv carries the remote name".
 		if len(argvs[it.ID]) == 0 {
-			t.Errorf("%s carries %s but produced no argv: the staging fence is vacuous for it", it.ID, verify.GuardReadOnlyRemote)
+			t.Errorf("%s carries %s but produced no argv: the staging fence is vacuous for it", it.ID, verify.GuardRemoteProbe)
 		}
 	}
 	if readOnly == 0 {
-		t.Fatalf("no item carries %s: this fence has nothing to police", verify.GuardReadOnlyRemote)
+		t.Fatalf("no item carries %s: this fence has nothing to police", verify.GuardRemoteProbe)
 	}
 
 	for _, it := range items {
@@ -314,7 +325,7 @@ func TestNoReadOnlyRemoteItemResolvesTheStagingLiteral(t *testing.T) {
 // item whose *later* invocation writes is the same defect one call further in.
 //
 // It classifies captureAllItemArgvs, not the first-argv capture the other fences
-// in this file read: P2-07 is READ-ONLY-REMOTE and only reaches its second and
+// in this file read: P2-07 is REMOTE-PROBE and only reaches its second and
 // third `bootstrap --clone` calls when the first succeeds, so against a
 // first-argv capture, dropping `--plan` from either of them left this fence green
 // while the item ran an unplanned bootstrap against the remote.
@@ -334,9 +345,9 @@ func TestEveryRemoteWritingItemDeclaresRemoteWrite(t *testing.T) {
 				continue
 			}
 			remoteWrites++
-			if it.Guard == verify.GuardReadOnlyRemote {
+			if it.Guard == verify.GuardRemoteProbe {
 				t.Errorf("%s carries %s but invocation %d of %d runs `%s`, which writes through a remote",
-					it.ID, verify.GuardReadOnlyRemote, i+1, len(itemArgvs), strings.Join(argv, " "))
+					it.ID, verify.GuardRemoteProbe, i+1, len(itemArgvs), strings.Join(argv, " "))
 				continue
 			}
 			if it.Guard != verify.GuardRemoteWrite {

@@ -318,6 +318,30 @@ export function RemotesList({
     [bridge, onStatus, onToast, runOpenRemoteAction],
   );
 
+  /**
+   * The one place a sync that never produced a sync:failed event ends: the
+   * bridge call rejected, or it resolved with the failure string. Both must
+   * stop the card, free the syncing flags and release the event subscriptions,
+   * otherwise the card pulses forever and every remote stays locked.
+   */
+  const failSync = useCallback(
+    (message: string) => {
+      const failure = sanitizeSyncToastLine(message) || "Sync failed";
+      setProgress((prev) => ({
+        ...prev,
+        failed: true,
+        running: false,
+        // A sync:failed event may have reported the same failure already.
+        lines: prev.failed ? prev.lines : [...prev.lines, "", `[FAILED] ${failure}`, ""],
+      }));
+      setState({ syncingProject: "", syncingRemote: "", syncingPreset: "" });
+      settled.current?.();
+      releaseSubscriptions();
+      onToast(failure, "error");
+    },
+    [onToast, releaseSubscriptions],
+  );
+
   const runSync = useCallback(
     async ({
       project,
@@ -398,22 +422,14 @@ export function RemotesList({
           typeof result === "string" &&
           result.startsWith("Remote sync background process failed:")
         ) {
-          const failure = sanitizeSyncToastLine(result) || "Sync failed";
-          setProgress((prev) => ({
-            ...prev,
-            failed: true,
-            running: false,
-            lines: [...prev.lines, "", `[FAILED] ${failure}`, ""],
-          }));
-          releaseSubscriptions();
+          failSync(result);
         }
       } catch (err) {
         console.error("Sync failed to start:", err);
-        setState({ syncingProject: "", syncingRemote: "", syncingPreset: "" });
-        releaseSubscriptions();
+        failSync(String(err));
       }
     },
-    [bridge, releaseSubscriptions],
+    [bridge, failSync, releaseSubscriptions],
   );
 
   useEffect(() => {

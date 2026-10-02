@@ -1,6 +1,7 @@
 package magento2
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,18 @@ import (
 	"govard/internal/engine"
 )
 
+// profiles.json is decoded strictly in tests, so it cannot carry inline
+// source comments. Values checked against Adobe's documentation (fetched
+// 2026-10-01; the full table is in tests/magento_profile_pairing_test.go):
+//   - search_version for every 2.4.4 to 2.4.9 patch: the on-premises table at
+//     https://experienceleague.adobe.com/en/docs/commerce-operations/installation-guide/system-requirements
+//
+// Lines the current Adobe pages no longer list (2.4.0 to 2.4.3, and 2.3, 2.2,
+// 2.1, 2.0) are unverified. Adobe documents Composer 1 for 2.4.0 and 2.4.1,
+// but Packagist shut down Composer 1 support on 2025-09-01
+// (https://blog.packagist.com/shutting-down-packagist-org-support-for-composer-1-x/),
+// so those lines keep the "2.2" pin until a live install settles it.
+//
 //go:embed profiles.json
 var profilesJSON embed.FS
 
@@ -73,6 +86,22 @@ func init() {
 	if data, err := profilesJSON.ReadFile("profiles.json"); err == nil {
 		_ = json.Unmarshal(data, &profiles)
 	}
+}
+
+// ValidateProfilesJSONStrictForTest decodes the embedded profiles.json with
+// DisallowUnknownFields and returns the first decode error, so tests catch a
+// key the structs above do not model. The runtime loader in init stays
+// lenient on purpose: a strict decode failure there would leave every
+// profile empty.
+func ValidateProfilesJSONStrictForTest() error {
+	data, err := profilesJSON.ReadFile("profiles.json")
+	if err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var registry profileRegistry
+	return decoder.Decode(&registry)
 }
 
 // ResolveVersionProfile owns Magento 2's patch-level runtime compatibility
