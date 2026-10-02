@@ -19,10 +19,18 @@ import (
 //     https://experienceleague.adobe.com/en/docs/commerce-operations/installation-guide/system-requirements
 //
 // Lines the current Adobe pages no longer list (2.4.0 to 2.4.3, and 2.3, 2.2,
-// 2.1, 2.0) are unverified. Adobe documents Composer 1 for 2.4.0 and 2.4.1,
-// but Packagist shut down Composer 1 support on 2025-09-01
+// 2.1, 2.0): Adobe documents Composer 1 for 2.3.0 to 2.3.6 and for 2.4.0,
+// 2.4.1 and 2.4.3, but Packagist shut down Composer 1 support on 2025-09-01
 // (https://blog.packagist.com/shutting-down-packagist-org-support-for-composer-1-x/),
-// so those lines keep the "2.2" pin until a live install settles it.
+// so no Composer 1 pin is possible. Measured live 2026-10-02 (create-project
+// --no-install, then update --dry-run, against repo.magento.com): Composer
+// 2.2.30 resolves 2.0.18, 2.1.18, 2.2.11, 2.3.0, 2.3.7, 2.4.0, 2.4.1 and
+// 2.4.3; Composer 2.10.3 resolves them too once security-advisory blocking is
+// off (govard writes audit.block-insecure=false), and exits 2 without that.
+// Pins therefore stay on 2.4.0 to 2.4.6 only ("2.2"), and lines below 2.4.0
+// stay unpinned on purpose. setup:install search options exist only from
+// 2.4.0 (see magentoSearchInstallOptionsMinVersion in bootstrap.go). The
+// per-line table is tests/magento_install_profile_lines_test.go.
 //
 //go:embed profiles.json
 var profilesJSON embed.FS

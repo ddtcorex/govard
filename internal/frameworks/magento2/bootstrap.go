@@ -185,6 +185,15 @@ func platformPinApplies(phpVersion, composerVersion string) bool {
 // https://experienceleague.adobe.com/en/docs/commerce-operations/upgrade-guide/prepare/prerequisites
 const magentoOpenSearchEngineMinVersion = "2.4.6"
 
+// magentoSearchInstallOptionsMinVersion is the first Magento line whose
+// setup:install accepts --search-engine and --elasticsearch-*. Measured
+// 2026-10-02 against the magento2 repository: setup/src/Magento/Setup/Model/
+// SearchConfigOptionsList.php (which declares them) is 404 at tags 2.3.5,
+// 2.3.7, 2.3.7-p4 and 2.4.0-beta1 and 200 from 2.4.0. Earlier lines (2.3
+// searches with mysql by default) must receive no search arguments, or
+// setup:install rejects them as unknown options.
+const magentoSearchInstallOptionsMinVersion = "2.4.0"
+
 // BuildSetupInstallArgs builds the `bin/magento setup:install` argument
 // list for variant - moved verbatim from internal/cmd/
 // bootstrap_post_install.go's runBootstrapPostInstall (the "build
@@ -199,9 +208,14 @@ const magentoOpenSearchEngineMinVersion = "2.4.6"
 // get opensearch (see magentoOpenSearchEngineMinVersion).
 func BuildSetupInstallArgs(variant FamilyVariant, version string, adminEmail string, tablePrefix string) []string {
 	searchEngine := conventions.ServiceOpenSearch
+	withSearch := true
 	if variant.Name == "magento2" && version != "" {
 		if comparison, comparable := engine.CompareNumericDotVersions(version, magentoOpenSearchEngineMinVersion); comparable && comparison < 0 {
 			searchEngine = "elasticsearch7"
+		}
+		// Before 2.4.0 setup:install has no search options at all.
+		if comparison, comparable := engine.CompareNumericDotVersions(version, magentoSearchInstallOptionsMinVersion); comparable && comparison < 0 {
+			withSearch = false
 		}
 	}
 
@@ -214,7 +228,9 @@ func BuildSetupInstallArgs(variant FamilyVariant, version string, adminEmail str
 		"--db-password=" + variant.DBPass,
 		"--db-prefix=" + tablePrefix,
 	}
-	setupArgs = append(setupArgs, setupInstallSearchArgs(searchEngine)...)
+	if withSearch {
+		setupArgs = append(setupArgs, setupInstallSearchArgs(searchEngine)...)
+	}
 	return append(setupArgs,
 		"--admin-user="+conventions.DefaultAdminUser,
 		"--admin-password="+conventions.DefaultAdminPassword,
