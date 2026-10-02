@@ -200,8 +200,13 @@ changelog:
 # release goes red once, which is the accepted rehearsal signal.
 # Re-enabled (beta.12): CloudSmith proven green on beta.11; snap returns
 # with a devmode install so the binary can reach the CI keyring.
+# PAUSED (2026-10): the Store rejected the classic-confinement request. The
+# block stays; it is skipped unless the repository variable GOVARD_SNAP_ENABLED
+# is "true" (release.yml passes it through, and also gates the Store login).
+# Restore: gh variable set GOVARD_SNAP_ENABLED --body true -R ddtcorex/govard
 snapcrafts:
   - id: govard
+    disable: '{{ if eq (envOrDefault "GOVARD_SNAP_ENABLED" "") "true" }}false{{ else }}true{{ end }}'
     name: govard
     ids:
       - govard
