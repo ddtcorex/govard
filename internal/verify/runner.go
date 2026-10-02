@@ -426,7 +426,7 @@ func phaseLabelRaw(phase int) string {
 func writeRunArtifact(res RunResult, phase int, opts VerifyOpts) error {
 	_ = MigrateLegacyRuns()
 	dir := ProjectRunsDir(opts.ProjectRoot)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	ts := time.Now().Format("2006-01-02T15-04-05Z07:00")
@@ -435,7 +435,7 @@ func writeRunArtifact(res RunResult, phase int, opts VerifyOpts) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0644)
+	return os.WriteFile(path, b, 0600)
 }
 
 // PreflightPhaseSelection applies the phase-5 gates to a selection of phases,
