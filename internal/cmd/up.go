@@ -624,11 +624,13 @@ func dbReadinessProbeArgs(config engine.Config, containerName string) []string {
 		return []string{"pg_isready", "-h127.0.0.1", "-U" + credentials.Username}
 	}
 	admin := `if command -v mariadb-admin >/dev/null 2>&1; then DBADMIN=mariadb-admin; else DBADMIN=mysqladmin; fi`
-	ping := fmt.Sprintf(`"$DBADMIN" ping -h127.0.0.1 -u%s`, engine.ShellQuote(credentials.Username))
-	if credentials.Password != "" {
-		ping += " -p" + engine.ShellQuote(credentials.Password)
-	}
-	return []string{"sh", "-c", admin + "; " + ping}
+	return []string{"sh", "-c", admin + "; " + dbReadinessPingScript(credentials.Username, credentials.Password)}
+}
+
+// dbReadinessPingScript passes the password as MYSQL_PWD so it never appears
+// as a -p argument in the container's process list.
+func dbReadinessPingScript(username, password string) string {
+	return mysqlPasswordExportPrefix(password) + fmt.Sprintf(`"$DBADMIN" ping -h127.0.0.1 -u%s`, engine.ShellQuote(username))
 }
 
 func readinessProbeAttempts(timeout time.Duration) int {

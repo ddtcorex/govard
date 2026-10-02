@@ -102,6 +102,16 @@ func DBReadinessProbeArgsForTest(config engine.Config, containerName string) []s
 	return dbReadinessProbeArgs(config, containerName)
 }
 
+// DBReadinessProbeScriptForTest exposes the readiness ping script.
+func DBReadinessProbeScriptForTest(username, password string) string {
+	return dbReadinessPingScript(username, password)
+}
+
+// BuildProcessListCommandForTest exposes the processlist command construction.
+func BuildProcessListCommandForTest(username, password, query string) string {
+	return buildProcessListCommand(username, password, query)
+}
+
 // DoctorFixEnabledForTest exposes the --commit-implies---fix resolution.
 func DoctorFixEnabledForTest(fixFlag, commitFlag bool) bool {
 	return doctorFixEnabled(fixFlag, commitFlag)
