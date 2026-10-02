@@ -114,6 +114,9 @@ func TestPopulatedVolumeStillPointsTheDatabaseAtTheNewWebPort(t *testing.T) {
 func TestPopulatedVolumeWithAStoppedOriginSaysTheBaseURLMayBeStale(t *testing.T) {
 	request := seededMediaRequest(t)
 	request.SeedOriginRunning = false
+	// Nothing to copy, so the stopped origin is only a reason the URL cannot be
+	// repointed.
+	request.SeedMediaSource, request.SeedMediaTarget, request.SeedEnvSource = "", "", ""
 	request.DBRewrite = func([]byte, string) []string { return []string{"UPDATE t SET v=1"} }
 	var out bytes.Buffer
 	request.Out = &out
