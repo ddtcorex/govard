@@ -911,14 +911,20 @@ output directory nằm trong project root (nằm ngoài đó là lỗi cấu hì
 container** — nên bước đối chiếu phiên bản PHP ở job deploy chỉ qua được khi
 container chạy đúng PHP series của target.
 
-Container chỉ mang toolchain riêng của nó. Khi bước frontend của recipe sẽ chạy
-(`deploy.settings.frontend_dir` nêu một thư mục), build kiểm tra container có `node` và
-`npm` trước task đầu tiên và từ chối với exit `3`, nêu tên công cụ còn thiếu và lối ra:
-`--runner host` trên máy có Node, hoặc để `frontend_dir` rỗng. Artifact trước đó còn
-nguyên sau lần từ chối này. Kiểm tra dựa vào placeholder
-<span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe, nên một bước frontend không dùng nó và không
-cần Node (recipe override, command dạng hook) vẫn bị container thiếu chúng từ chối; dùng
-`--runner host` ở đó. Ctrl-C và `--command-timeout` cũng dừng bước đang chạy bên trong
+Container chỉ mang toolchain riêng của nó, nên khi cần build sẽ trộn runner.
+Khi bước frontend của recipe sẽ chạy (`deploy.settings.frontend_dir` nêu một thư mục),
+build kiểm tra container có `node` và `npm` trước task đầu tiên. Container có đủ cả hai
+thì giữ bước frontend. Container thiếu một trong hai thì bước đó chạy trên **host**, và
+host phải có `node` và `npm` (kiểm tra trước task đầu tiên); các bước PHP và Composer vẫn
+chạy trong container. Mỗi bước in runner của nó trên timeline (`runner: container <tên>`,
+hoặc `runner: host (node not in container)`), và manifest của artifact ghi
+`frontend_runner` (`container` hoặc `host`) cạnh `php_version` của container. Chỉ khi cả
+hai phía đều không có Node build mới từ chối với exit `3`, nêu tên thứ mỗi phía còn thiếu
+và lối ra: cài Node, hoặc để `frontend_dir` rỗng. Artifact trước đó còn nguyên sau lần
+từ chối này. Kiểm tra dựa vào placeholder <span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe,
+nên một bước frontend không dùng nó và không cần Node (recipe override, command dạng
+hook) vẫn bị kiểm tra Node; để `frontend_dir` rỗng ở đó.
+Ctrl-C và `--command-timeout` cũng dừng bước đang chạy bên trong
 container: một `docker exec` thứ hai gửi tín hiệu tới process group của nó, và lỗi nói
 rõ phần teardown có được thử hay không và có hoàn tất hay không.
 

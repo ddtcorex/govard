@@ -50,9 +50,12 @@ can pass ` + "`--runner container`" + ` to run the same tasks through the projec
 container instead. That flag needs a running project container, and an output
 directory inside the project root — everything else on this page behaves
 identically. A stopped or missing container exits 3 before the output directory
-is touched. The container carries only its own toolchain: when the recipe's
-frontend step will run, the build first checks the container for node and npm
-and refuses (exit 3) if either is missing, so build with --runner host there.
+is touched. The container carries only its own toolchain, so the build mixes runners
+when it has to: when the recipe's frontend step will run and the container has no node
+or npm, that one step runs on the host (which then needs node and npm) while the PHP
+and Composer steps stay in the container. Each step's runner is printed on the timeline
+and the manifest records frontend_runner. The build refuses (exit 3) only when neither
+the container nor the host has Node.
 Interrupting or timing out a container step also signals it inside the container.
 
 The artifact is the tracked files of the revision plus whatever the build tasks

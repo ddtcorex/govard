@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -401,18 +402,67 @@ func TestUnmappableOutputExits4(t *testing.T) {
 	}
 }
 
-// The app container is a PHP container, so a recipe whose frontend step runs npm
-// failed at the fourth step with `sh: npm: not found`, after vendors and compile
-// had spent their time. The preflight refuses before the first task and before
-// the previous artifact is cleared, naming what is missing and the way out.
-func TestContainerBuildRefusesNodeStepWithoutNode(t *testing.T) {
+// isolateHostPath narrows PATH to the docker stub's directory plus the two tools
+// the stub and the shell need, so what the host "has" is exactly what the test
+// installs. Without it a developer machine that happens to carry Node would make
+// the neither-has-Node case pass for the wrong reason. withNode installs fake
+// node and npm that log `npm <cwd> <args>` to the returned file.
+func isolateHostPath(t *testing.T, withNode bool) string {
+	t.Helper()
+	dir := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))[0]
+	for _, tool := range []string{"sh", "tr"} {
+		found, err := exec.LookPath(tool)
+		if err != nil {
+			t.Fatalf("find %s: %v", tool, err)
+		}
+		if err := os.Symlink(found, filepath.Join(dir, tool)); err != nil {
+			t.Fatalf("link %s: %v", tool, err)
+		}
+	}
+	hostLog := filepath.Join(dir, "host.log")
+	if withNode {
+		writeFile(t, filepath.Join(dir, "node"), "#!/bin/sh\nexit 0\n")
+		writeFile(t, filepath.Join(dir, "npm"), "#!/bin/sh\nprintf 'npm %s %s\\n' \"$PWD\" \"$*\" >> '"+hostLog+"'\n")
+		for _, name := range []string{"node", "npm"} {
+			if err := os.Chmod(filepath.Join(dir, name), 0o755); err != nil {
+				t.Fatalf("chmod %s: %v", name, err)
+			}
+		}
+	}
+	t.Setenv("PATH", dir)
+	return hostLog
+}
+
+// runContainerBuildOutput is runContainerBuild with the timeline captured.
+func runContainerBuildOutput(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	t.Cleanup(func() {
+		cmd.DeployBuildCommand().Flags().VisitAll(func(flag *pflag.Flag) {
+			_ = flag.Value.Set(flag.DefValue)
+			flag.Changed = false
+		})
+	})
+	var out strings.Builder
+	command := cmd.RootCommandForTest()
+	command.SetArgs(append([]string{"deploy", "build", "local"}, args...))
+	command.SetOut(&out)
+	command.SetErr(io.Discard)
+	err := command.Execute()
+	return out.String(), err
+}
+
+// Neither the container nor the host has Node: the only case that is still
+// refused. The refusal comes before the first task and before the previous
+// artifact is cleared, and names both sides and the ways out.
+func TestContainerBuildRefusesNodeStepWhenNeitherSideHasNode(t *testing.T) {
 	stubPresentContainerRuntime(t)
 	_, output := containerBuildProject(t, "resources")
 	logFile := buildDockerStub(t, "true", "npm")
+	isolateHostPath(t, false)
 
 	err := runContainerBuild(t, "--runner", "container", "--output", output, "--force", "--revision", "deadbeef")
 	if err == nil {
-		t.Fatal("want a refusal when the container has no npm and build:frontend is enabled")
+		t.Fatal("want a refusal when neither the container nor the host has Node")
 	}
 	if code := cli.Code(err); code != runtime.CodeCapabilityMissing {
 		t.Fatalf("exit code = %d, want %d: %v", code, runtime.CodeCapabilityMissing, err)
@@ -421,23 +471,20 @@ func TestContainerBuildRefusesNodeStepWithoutNode(t *testing.T) {
 	if !errors.As(err, &missing) {
 		t.Fatalf("error = %v, want *runtime.MissingError", err)
 	}
-	for _, want := range []string{"npm", "build:frontend", "sample-php-1"} {
+	for _, want := range []string{"npm", "build:frontend", "sample-php-1", "host"} {
 		if !strings.Contains(missing.Detail, want) {
 			t.Errorf("detail %q must name %q", missing.Detail, want)
 		}
 	}
-	if strings.Contains(missing.Detail, "node,") || strings.Contains(missing.Detail, "no node") {
-		t.Errorf("detail %q names node, which the container has", missing.Detail)
-	}
 	// Execute prints err.Error() and nothing else outside --error-json, so the
 	// way out has to be in the text itself, not only in the envelope's hint.
-	for _, want := range []string{"--runner host", "frontend_dir"} {
+	for _, want := range []string{"frontend_dir", "container", "host"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the printed error %q must name %q", err.Error(), want)
 		}
 	}
-	if !strings.Contains(missing.Hint, "--runner host") {
-		t.Errorf("hint %q must name --runner host as the workaround", missing.Hint)
+	if missing.Hint == "" {
+		t.Error("the refusal carries no hint")
 	}
 	if _, statErr := os.Stat(filepath.Join(output, "previous.txt")); statErr != nil {
 		t.Fatalf("the previous artifact was wiped before the refusal: %v", statErr)
@@ -451,6 +498,136 @@ func TestContainerBuildRefusesNodeStepWithoutNode(t *testing.T) {
 	if len(execs) != 1 || !strings.Contains(execs[0], "command -v") {
 		t.Fatalf("want the preflight as the only exec, before any build task, got %q", execs)
 	}
+}
+
+// The mixed runner (#531): the container has no Node but the host does, so the
+// PHP steps stay in the container, the frontend step runs on the host, the
+// timeline says so per step, and the manifest records which runner built it.
+func TestContainerBuildRunsTheFrontendStepOnTheHostWhenTheContainerHasNoNode(t *testing.T) {
+	stubPresentContainerRuntime(t)
+	_, output := containerBuildProject(t, ".")
+	logFile := buildDockerStub(t, "true", "node npm")
+	hostLog := isolateHostPath(t, true)
+
+	timeline, err := runContainerBuildOutput(t, "--runner", "container", "--output", output, "--force", "--revision", "deadbeef")
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	frontend := timelineBlock(timeline, "build:frontend")
+	if !strings.Contains(frontend, "runner: host (node not in container)") {
+		t.Errorf("the build:frontend entry must name the host runner, got %q in:\n%s", frontend, timeline)
+	}
+	vendors := timelineBlock(timeline, "build:vendors")
+	if !strings.Contains(vendors, "runner: container sample-php-1") {
+		t.Errorf("the build:vendors entry must name the container runner, got %q in:\n%s", vendors, timeline)
+	}
+
+	for _, call := range buildDockerCalls(t, logFile) {
+		if strings.Contains(call, "npm") && !strings.Contains(call, "command -v") {
+			t.Errorf("a Node command reached the container that has no Node: %q", call)
+		}
+	}
+	raw, readErr := os.ReadFile(hostLog)
+	if readErr != nil {
+		t.Fatalf("the host never ran npm: %v", readErr)
+	}
+	if !strings.Contains(string(raw), " ci\n") || !strings.Contains(string(raw), " run build\n") {
+		t.Errorf("host npm log = %q, want ci and run build", raw)
+	}
+	// The docker stub materialises nothing, so the frontend directory is the
+	// artifact root itself: the host step must run inside the artifact tree.
+	if !strings.Contains(string(raw), output) {
+		t.Errorf("host npm ran in %q, want it inside the artifact %s", raw, output)
+	}
+
+	manifest, err := deploy.ReadManifest(output)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if manifest.FrontendRunner != "host" {
+		t.Errorf("manifest frontend_runner = %q, want host", manifest.FrontendRunner)
+	}
+}
+
+// A container that has Node keeps running the frontend in the container, and the
+// host is not consulted at all: its Node, or the lack of it, must not matter.
+func TestContainerBuildKeepsTheFrontendStepInTheContainerWhenItHasNode(t *testing.T) {
+	stubPresentContainerRuntime(t)
+	_, output := containerBuildProject(t, "resources")
+	logFile := buildDockerStub(t, "true", "")
+	hostLog := isolateHostPath(t, true)
+
+	timeline, err := runContainerBuildOutput(t, "--runner", "container", "--output", output, "--force", "--revision", "deadbeef")
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	frontend := timelineBlock(timeline, "build:frontend")
+	if !strings.Contains(frontend, "runner: container sample-php-1") {
+		t.Errorf("the build:frontend entry must name the container runner, got %q", frontend)
+	}
+	if strings.Contains(timeline, "runner: host") {
+		t.Errorf("no step may run on the host, got:\n%s", timeline)
+	}
+	if _, statErr := os.Stat(hostLog); statErr == nil {
+		t.Error("the host ran npm although the container has Node")
+	}
+	ran := false
+	for _, call := range buildDockerCalls(t, logFile) {
+		if strings.Contains(call, "npm ci") {
+			ran = true
+		}
+	}
+	if !ran {
+		t.Error("the frontend step never ran in the container")
+	}
+	manifest, err := deploy.ReadManifest(output)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if manifest.FrontendRunner != "container" {
+		t.Errorf("manifest frontend_runner = %q, want container", manifest.FrontendRunner)
+	}
+}
+
+// With no frontend directory the step never runs, so there is nothing to record
+// and no runner line for it.
+func TestContainerBuildRecordsNoFrontendRunnerWithoutAFrontendStep(t *testing.T) {
+	stubPresentContainerRuntime(t)
+	_, output := containerBuildProject(t, "")
+	buildDockerStub(t, "true", "node npm")
+	isolateHostPath(t, false)
+
+	if _, err := runContainerBuildOutput(t, "--runner", "container", "--output", output, "--force", "--revision", "deadbeef"); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	manifest, err := deploy.ReadManifest(output)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if manifest.FrontendRunner != "" {
+		t.Errorf("manifest frontend_runner = %q, want empty", manifest.FrontendRunner)
+	}
+}
+
+// timelineBlock returns a step's arrow line plus the indented lines under it.
+func timelineBlock(timeline, stepID string) string {
+	lines := strings.Split(timeline, "\n")
+	for index, line := range lines {
+		if !strings.Contains(line, "→ "+stepID) {
+			continue
+		}
+		block := []string{line}
+		for _, next := range lines[index+1:] {
+			if strings.HasPrefix(next, "    ") {
+				block = append(block, next)
+				continue
+			}
+			break
+		}
+		return strings.Join(block, "\n")
+	}
+	return ""
 }
 
 // The preflight is gated on the frontend step actually running: a project with

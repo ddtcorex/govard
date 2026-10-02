@@ -60,12 +60,13 @@ the project's app container, which is a PHP container, so a recipe whose build s
 also compiles frontend assets needs `npm` in it. Measured on a Magento 2.4.9 project
 on 2026-09-30, whose recipe configures `frontend_dir`: `--runner container` completed
 `build:vendors`, `build:patches` and `build:compile` and then failed on
-`build:frontend` with `sh: npm: not found`. That failure now arrives before the first
-task instead of after three of them: when the recipe's frontend step will run, the build
-looks for `node` and `npm` in the container, refuses with exit `3` naming what is
-missing and `--runner host` as the way out, and leaves the previous artifact alone.
-A stopped or missing project container is refused the same way, and Ctrl-C or
-`--command-timeout` stops the step inside the container too.
+`build:frontend` with `sh: npm: not found`. That failure no longer happens: when the recipe's frontend step will run, the build looks
+for `node` and `npm` in the container and, if they are missing, runs that one step on the
+host (the PHP steps stay in the container), printing `runner: host (node not in container)`
+on the timeline and recording `frontend_runner` in the manifest. It refuses with exit `3`,
+before the first task and with the previous artifact intact, only when the host has no
+Node either. A stopped or missing project container is refused the same way, and Ctrl-C
+or `--command-timeout` stops the step inside the container too.
 
 What the container path buys, on that same project and revision: `build:vendors`
 cloned a private Composer package over SSH from inside the container, where the

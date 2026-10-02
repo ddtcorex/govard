@@ -309,15 +309,20 @@ func containerInterruptPIDFile() string {
 }
 
 // missingTools reports which of tools the container cannot find on its PATH.
-// Each name is checked on its own, so the answer names exactly what is missing
-// rather than the first failure.
 func (r ContainerRunner) missingTools(ctx context.Context, tools ...string) ([]string, error) {
+	return missingToolsOn(ctx, r, tools...)
+}
+
+// missingToolsOn reports which of tools runner cannot find on its PATH. Each name
+// is checked on its own, so the answer names exactly what is missing rather than
+// the first failure.
+func missingToolsOn(ctx context.Context, runner Runner, tools ...string) ([]string, error) {
 	words := make([]string, 0, len(tools))
 	for _, tool := range tools {
 		words = append(words, conventions.ShellQuote(tool))
 	}
 	script := fmt.Sprintf(`for tool in %s; do command -v "$tool" >/dev/null 2>&1 || printf '%%s\n' "$tool"; done`, strings.Join(words, " "))
-	result, err := r.Run(ctx, script, RunOptions{Timeout: shortCommandTimeout})
+	result, err := runner.Run(ctx, script, RunOptions{Timeout: shortCommandTimeout})
 	if err != nil {
 		return nil, err
 	}
@@ -340,34 +345,71 @@ const nodeCapability runtime.Capability = "node"
 // over; an empty list is how a project says it has no frontend to build.
 const frontendDirsVariable = "settings.frontend_dir_args"
 
-// preflightContainerNode refuses a container build whose frontend step would
-// run in a container without Node. The app container is a PHP container, so
-// `npm ci` there fails with `sh: npm: not found` at the fourth step, after the
-// vendors and the compile have already spent their time. Asking up front costs
-// one exec, and only when the frontend step will actually run.
-func preflightContainerNode(ctx context.Context, runner Runner, req BuildRequest) error {
+// Runner names recorded in the manifest and printed on the timeline.
+const (
+	runnerNameHost      = "host"
+	runnerNameContainer = "container"
+)
+
+// frontendPlan is where the frontend step runs, decided once before any task so
+// the build is deterministic: the same container and host always give the same
+// answer, and a refusal comes before the previous artifact is cleared.
+type frontendPlan struct {
+	// StepID is the frontend step, empty when the build runs none.
+	StepID string
+	// Runner executes the step.
+	Runner Runner
+	// Name is "host" or "container".
+	Name string
+	// Reason explains a host run, for the timeline.
+	Reason string
+}
+
+// nodeTools are what the frontend step needs from whichever side runs it.
+var nodeTools = []string{"node", "npm"}
+
+// planFrontendRunner decides where the frontend step runs for a container build.
+//
+// The app container is a PHP container, so `npm ci` there fails with `sh: npm:
+// not found` at the fourth step, after the vendors and the compile have already
+// spent their time. A container that has Node keeps the step. One that has not
+// hands the step to the host, which then needs Node itself; when neither does,
+// the build is refused up front. Asking costs one exec, and only when the
+// frontend step will actually run. A host build (or any non-container runner)
+// runs everything on its one runner and is never asked.
+func planFrontendRunner(ctx context.Context, runner, host Runner, req BuildRequest) (frontendPlan, error) {
 	container, ok := runner.(ContainerRunner)
 	if !ok {
-		return nil
+		return frontendPlan{}, nil
 	}
 	step, ok := frontendBuildStep(req)
 	if !ok {
-		return nil
+		return frontendPlan{}, nil
 	}
-	missing, err := container.missingTools(ctx, "node", "npm")
+	missing, err := container.missingTools(ctx, nodeTools...)
 	if err != nil {
-		return fmt.Errorf("check container %s for the Node toolchain %s needs: %w", container.Container, step.ID, err)
+		return frontendPlan{}, fmt.Errorf("check container %s for the Node toolchain %s needs: %w", container.Container, step.ID, err)
 	}
 	if len(missing) == 0 {
-		return nil
+		return frontendPlan{StepID: step.ID, Runner: runner, Name: runnerNameContainer}, nil
+	}
+	if host == nil {
+		host = LocalRunner{}
+	}
+	hostMissing, err := missingToolsOn(ctx, host, nodeTools...)
+	if err != nil {
+		return frontendPlan{}, fmt.Errorf("check the host for the Node toolchain %s needs: %w", step.ID, err)
+	}
+	if len(hostMissing) == 0 {
+		return frontendPlan{StepID: step.ID, Runner: host, Name: runnerNameHost, Reason: "node not in container"}, nil
 	}
 	// The way out is in the Detail as well as the Hint: outside --error-json
 	// the operator sees only Error(), which carries the Detail and not the Hint.
-	const workaround = "build with --runner host on a machine that has Node, or leave deploy.settings.frontend_dir empty to skip the frontend build"
-	return &runtime.MissingError{
+	const workaround = "install Node in the container or on the host running govard, or leave deploy.settings.frontend_dir empty to skip the frontend build"
+	return frontendPlan{}, &runtime.MissingError{
 		Caps: []runtime.Capability{nodeCapability},
-		Detail: fmt.Sprintf("container %s has no %s, which %s needs; --runner container runs every build task in the project's app container, which carries only its own toolchain; %s",
-			container.Container, strings.Join(missing, ", "), step.ID, workaround),
+		Detail: fmt.Sprintf("neither container %s (no %s) nor the host (no %s) has the Node toolchain %s needs; --runner container runs the PHP steps in the project's app container and a step that needs Node on the host when the container has none; %s",
+			container.Container, strings.Join(missing, ", "), strings.Join(hostMissing, ", "), step.ID, workaround),
 		Hint: workaround,
 	}
 }
