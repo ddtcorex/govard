@@ -315,13 +315,16 @@ func runMagentoSetupUpgrade(containerName string, config engine.Config) error {
 // that command left app/etc/config.php differing only in the order of entries
 // outside its 'modules' array, writes the original bytes back.
 //
-// `app:config:import` rewrites the module list in the importer's own order, so
-// on a project whose module set did not change it left reordered lines showing
-// up as modifications, which the audit path then reads as a dirty checkout. When
-// the module set, a module value or the module ORDER changed, the output stands:
-// the order of 'modules' is the module load order (ModuleList follows it and
-// setup:upgrade re-sorts it by module.xml <sequence>), so a reorder there can be
-// a real change that decides plugin, DI and layout merge precedence.
+// Only the order-insensitive sections (scopes, system, themes, ...) are
+// restored: Magento writes those keyed arrays in a nondeterministic order, so on
+// an unchanged project a reshuffle there would otherwise read as a dirty
+// checkout. A reorder of 'modules' is kept on purpose. Issue #489 used to
+// suppress it, and that is the behaviour that changed: Magento's computed order
+// is authoritative, because the order of 'modules' is the module load order
+// (ModuleList follows it and setup:upgrade re-sorts it by module.xml
+// <sequence>), so restoring a stale one would silently decide plugin, DI and
+// layout merge precedence. The same goes for any added, removed or re-valued
+// module, and for a modules block whose syntax is not recognised.
 //
 // The returned error is exactly run's. The call site branches on it to fall
 // back to setup:upgrade, so returning a failed write-back here would send a
@@ -381,7 +384,8 @@ func runPreservingUnchangedConfigPHP(projectRoot string, run func() error) error
 // must appear the same number of times in both. The remaining sections
 // ('scopes', 'system', 'themes', ...) are keyed arrays that Magento writes in a
 // nondeterministic order and reads by key, so their order carries no meaning.
-// A file whose 'modules' block cannot be delimited is never reported as equal.
+// A file whose 'modules' block cannot be delimited, including the legacy
+// `'modules' => array (` syntax of Magento 2.0/2.1, is never reported as equal.
 func sameConfigPHPUpToOrder(a, b []byte) bool {
 	modulesA, restA, okA := splitConfigPHPModules(string(a))
 	modulesB, restB, okB := splitConfigPHPModules(string(b))
@@ -401,11 +405,14 @@ func sameConfigPHPUpToOrder(a, b []byte) bool {
 
 // splitConfigPHPModules separates the lines of the 'modules' array (from its
 // opening line to its closing "]," at the same indent, inclusive) from every
-// other line. ok is false when the block opens and never closes. A file with no
-// 'modules' array yields an empty block.
+// other line. ok is false when the block opens and never closes, or when the
+// 'modules' key is present in a syntax this does not recognise (the legacy
+// `array (` form): its extent is unknown, so nothing may be assumed about its
+// order. A file with no 'modules' key at all yields an empty block.
 func splitConfigPHPModules(content string) (modules []string, rest []string, ok bool) {
 	lines := strings.Split(content, "\n")
 	inBlock := false
+	unrecognised := false
 	closing := ""
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -415,6 +422,10 @@ func splitConfigPHPModules(content string) (modules []string, rest []string, ok 
 			if strings.TrimRight(line, " \t\r") == closing {
 				inBlock = false
 			}
+		case modules == nil && !unrecognised && strings.HasPrefix(trimmed, "'modules' =>") &&
+			!strings.HasPrefix(trimmed, "'modules' => ["):
+			unrecognised = true
+			rest = append(rest, line)
 		case modules == nil && strings.HasPrefix(trimmed, "'modules' => ["):
 			modules = append(modules, line)
 			if strings.HasSuffix(trimmed, "],") {
@@ -426,7 +437,7 @@ func splitConfigPHPModules(content string) (modules []string, rest []string, ok 
 			rest = append(rest, line)
 		}
 	}
-	return modules, rest, !inBlock
+	return modules, rest, !inBlock && !unrecognised
 }
 
 // RunPreservingUnchangedConfigPHPForTest exposes runPreservingUnchangedConfigPHP for tests.

@@ -597,3 +597,81 @@ func configureMagentoConfig() engine.Config {
 		},
 	}
 }
+
+// Issue #489 once restored the original whenever only the 'modules' block was
+// reordered. That is no longer wanted: Magento's computed module order is
+// authoritative, so on an otherwise unchanged project a modules-only reorder
+// keeps Magento's output.
+func TestRunPreservingUnchangedConfigPHPKeepsMagentosOutputWhenOnlyTheModulesBlockIsReordered(t *testing.T) {
+	projectRoot, configPath := writeConfigPHPFixture(t)
+	captured := capturePterm(t)
+
+	if err := magento2.RunPreservingUnchangedConfigPHPForTest(projectRoot, func() error {
+		return os.WriteFile(configPath, []byte(configPHPModulesReordered), 0o644)
+	}); err != nil {
+		t.Fatalf("run the wrapped command: %v", err)
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config.php: %v", err)
+	}
+	if string(got) != configPHPModulesReordered {
+		t.Fatalf("a modules-only reorder must keep Magento's output, got:\n%s", got)
+	}
+	if lines := reportLines(captured.String()); len(lines) != 0 {
+		t.Fatalf("nothing was restored, so nothing may be reported, got %q", lines)
+	}
+}
+
+// The legacy `array (` syntax (Magento 2.0/2.1) has no short-syntax modules
+// line, so its block cannot be delimited. A file the comparison cannot read
+// must keep Magento's output rather than be restored on a guess.
+const configPHPLegacySyntax = `<?php
+return array (
+  'modules' => array (
+    'Magento_Store' => 1,
+    'Magento_Backend' => 1,
+  ),
+  'scopes' => array (
+    'alpha' => 1,
+  ),
+);
+`
+
+const configPHPLegacySyntaxModulesReordered = `<?php
+return array (
+  'modules' => array (
+    'Magento_Backend' => 1,
+    'Magento_Store' => 1,
+  ),
+  'scopes' => array (
+    'alpha' => 1,
+  ),
+);
+`
+
+func TestRunPreservingUnchangedConfigPHPKeepsOutputWhenTheModulesSyntaxIsNotRecognised(t *testing.T) {
+	projectRoot, configPath := writeConfigPHPFixture(t)
+	if err := os.WriteFile(configPath, []byte(configPHPLegacySyntax), 0o644); err != nil {
+		t.Fatalf("write legacy config.php: %v", err)
+	}
+	captured := capturePterm(t)
+
+	if err := magento2.RunPreservingUnchangedConfigPHPForTest(projectRoot, func() error {
+		return os.WriteFile(configPath, []byte(configPHPLegacySyntaxModulesReordered), 0o644)
+	}); err != nil {
+		t.Fatalf("run the wrapped command: %v", err)
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config.php: %v", err)
+	}
+	if string(got) != configPHPLegacySyntaxModulesReordered {
+		t.Fatalf("an unrecognised modules syntax must keep Magento's output, got:\n%s", got)
+	}
+	if lines := reportLines(captured.String()); len(lines) != 0 {
+		t.Fatalf("nothing was restored, got %q", lines)
+	}
+}
