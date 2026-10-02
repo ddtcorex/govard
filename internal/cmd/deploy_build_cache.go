@@ -52,6 +52,9 @@ type buildCacheKey struct {
 	// commit: the effective deploy settings, the hooks and the recipe's task
 	// commands. A rehearsal tunes these in an untracked .govard.yml.
 	InputsSHA256 string
+	// Tools is a digest of the PHP, Composer and Node the build runs with, asked
+	// of the runner that will build.
+	Tools string
 	// Binary identifies the govard executable that builds, because a development
 	// build keeps one version string across edits.
 	Binary string
@@ -61,7 +64,7 @@ type buildCacheKey struct {
 // each prefixed by its length so a field boundary cannot be shifted.
 func (k buildCacheKey) ID() string {
 	hash := sha256.New()
-	for _, field := range []string{k.Revision, k.ComposerLockSHA256, k.PHP, k.Mode, k.GovardVersion, k.InputsSHA256, k.Binary} {
+	for _, field := range []string{k.Revision, k.ComposerLockSHA256, k.PHP, k.Mode, k.GovardVersion, k.InputsSHA256, k.Binary, k.Tools} {
 		fmt.Fprintf(hash, "%d:%s;", len(field), field)
 	}
 	return hex.EncodeToString(hash.Sum(nil))[:16]
@@ -243,7 +246,7 @@ func copyRegularFile(src, dst string, perm fs.FileMode) error {
 // sandboxBuildCacheKey derives the key of the build about to run, or reports
 // that there is none (a revision git cannot resolve is left for the build to
 // report in its own words).
-func sandboxBuildCacheKey(ctx context.Context, workDir string, recipe deploy.Recipe, hooks []deploy.Hook, options deploy.Options, runnerName string) (buildCacheKey, bool) {
+func sandboxBuildCacheKey(ctx context.Context, workDir string, builder deploy.Runner, recipe deploy.Recipe, hooks []deploy.Hook, options deploy.Options, runnerName string) (buildCacheKey, bool) {
 	revision := strings.TrimSpace(options.Revision)
 	if revision == "" {
 		revision = strings.TrimSpace(options.Tag)
@@ -273,6 +276,7 @@ func sandboxBuildCacheKey(ctx context.Context, workDir string, recipe deploy.Rec
 		GovardVersion:      Version,
 		InputsSHA256:       buildInputsDigest(recipe, hooks, options),
 		Binary:             executableIdentity(),
+		Tools:              builderTools(ctx, builder),
 	}, true
 }
 
@@ -300,6 +304,29 @@ func buildInputsDigest(recipe deploy.Recipe, hooks []deploy.Hook, options deploy
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// builderTools digests the versions of the tools the build runs with, as the
+// runner that builds sees them: the host, or the container. A toolchain that
+// cannot be read is a state of its own, so it never shares an entry with a
+// readable one.
+func builderTools(ctx context.Context, runner deploy.Runner) string {
+	if runner == nil {
+		return "unavailable"
+	}
+	result, err := runner.Run(ctx,
+		"php -r 'echo PHP_VERSION, PHP_EOL;'; composer --version 2>/dev/null | head -1; node --version 2>/dev/null; true",
+		deploy.RunOptions{Timeout: 30 * time.Second})
+	if err != nil {
+		return "unavailable"
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(result.Stdout)))
+	return hex.EncodeToString(sum[:])
+}
+
+// BuilderToolsForTest exposes builderTools to the tests/ package.
+func BuilderToolsForTest(ctx context.Context, runner deploy.Runner) string {
+	return builderTools(ctx, runner)
 }
 
 // executableIdentity is the running binary's path, size and modification time.

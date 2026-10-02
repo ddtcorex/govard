@@ -250,7 +250,7 @@ func runDeployBuild(cmd *cobra.Command, args []string) error {
 		manifest   *deploy.ArtifactManifest
 	)
 	if buildCacheApplies(remote, noCache) {
-		cacheKey, cacheReady = sandboxBuildCacheKey(cmd.Context(), workDir, recipe, hooks, options, runnerName)
+		cacheKey, cacheReady = sandboxBuildCacheKey(cmd.Context(), workDir, runner, recipe, hooks, options, runnerName)
 	}
 	if cacheReady {
 		if tree, hit := lookupBuildCache(cacheDir, cacheKey); hit {

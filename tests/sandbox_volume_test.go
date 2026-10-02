@@ -92,12 +92,17 @@ func TestDownKeepsTheVolumeAndPurgeRemovesIt(t *testing.T) {
 	}
 
 	purge := sandboxFake()
+	volume := deploy.SandboxDBVolumeName(deploy.SandboxContainerName("volume-shop", root))
+	purge.answers["volume ls --quiet --filter label="+deploy.SandboxDBVolumeLabel] = volume + "\n"
 	request.Purge = true
 	if _, err := deploy.SandboxDown(context.Background(), deploy.NewDockerCLIForTest(purge.run), request); err != nil {
 		t.Fatal(err)
 	}
 	if !purge.has("volume ls --quiet --filter label=" + deploy.SandboxDBVolumeLabel + "=" + deploy.SandboxContainerName("volume-shop", root)) {
 		t.Fatalf("--purge must look the database volume up by its label: %v", purge.calls)
+	}
+	if !purge.has("volume rm " + volume) {
+		t.Fatalf("--purge must remove the volume it found, %s: %v", volume, purge.calls)
 	}
 }
 
@@ -212,7 +217,7 @@ func TestEmptyVolumeSeedsTheDatabase(t *testing.T) {
 	}
 }
 
-func TestVolumeWithDataButNoApplicationDatabaseIsSeeded(t *testing.T) {
+func TestDatabaseProbeAsksAboutTheApplicationSchemaOnly(t *testing.T) {
 	request := seededMediaRequest(t)
 	fake := freshSandboxFake()
 	// Other schemas hold tables, the application database holds none: the probe

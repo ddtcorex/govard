@@ -41,6 +41,7 @@ func TestBuildCacheKeyChangesWithEachComponent(t *testing.T) {
 		"version":  func(k *cmd.BuildCacheKeyForTest) { k.GovardVersion = "v2" },
 		"inputs":   func(k *cmd.BuildCacheKeyForTest) { k.InputsSHA256 = "cc" },
 		"binary":   func(k *cmd.BuildCacheKeyForTest) { k.Binary = "other-binary" },
+		"tools":    func(k *cmd.BuildCacheKeyForTest) { k.Tools = "other-tools" },
 	} {
 		key := base
 		mutate(&key)
@@ -265,7 +266,7 @@ func TestSandboxBuildHitsTheCacheOnTheSameKey(t *testing.T) {
 	}
 }
 
-func TestChangedLockMissesTheCache(t *testing.T) {
+func TestNewCommitWithANewLockMissesTheCache(t *testing.T) {
 	root, revision := sandboxBuildProject(t)
 	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", revision, "--output", filepath.Join(root, "out-1")); err != nil {
 		t.Fatal(err)
@@ -280,6 +281,9 @@ func TestChangedLockMissesTheCache(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
+	// The lock hash is derived from the commit, so an end-to-end miss cannot
+	// isolate it from the revision; TestBuildCacheKeyChangesWithEachComponent
+	// proves the lock component on its own.
 	writeFile(t, filepath.Join(root, "composer.lock"), `{"packages":[{"name":"x/y"}]}`)
 	git("add", "composer.lock")
 	git("commit", "-q", "-m", "lock")
@@ -442,5 +446,33 @@ func TestCacheHitCarriesTheRevisionSpellingOfThisBuild(t *testing.T) {
 	}
 	if got := manifestRevision(t, third); got != "HEAD" {
 		t.Fatalf("the cached copy must be unchanged by the earlier hit, got %q", got)
+	}
+}
+
+type toolsRunner struct {
+	out string
+	err error
+	ran []string
+}
+
+func (r *toolsRunner) Run(_ context.Context, command string, _ deploy.RunOptions) (deploy.Result, error) {
+	r.ran = append(r.ran, command)
+	return deploy.Result{Stdout: r.out}, r.err
+}
+
+// The builder's own PHP, Composer and Node decide what a build produces, so a
+// different toolchain must not be served an artifact another one made.
+func TestBuilderToolVersionsDecideTheirDigest(t *testing.T) {
+	a := cmd.BuilderToolsForTest(context.Background(), &toolsRunner{out: "PHP 8.2.26\nComposer version 2.7.1\nv20.11.0\n"})
+	b := cmd.BuilderToolsForTest(context.Background(), &toolsRunner{out: "PHP 8.2.26\nComposer version 2.8.0\nv20.11.0\n"})
+	if a == "" || a == b {
+		t.Fatalf("a different Composer must give a different digest: %q vs %q", a, b)
+	}
+	if again := cmd.BuilderToolsForTest(context.Background(), &toolsRunner{out: "PHP 8.2.26\nComposer version 2.7.1\nv20.11.0\n"}); again != a {
+		t.Fatal("the digest must be stable")
+	}
+	unknown := cmd.BuilderToolsForTest(context.Background(), &toolsRunner{err: errors.New("no shell")})
+	if unknown == "" || unknown == a {
+		t.Fatalf("an unreadable toolchain is its own state, not an empty or shared one: %q", unknown)
 	}
 }
