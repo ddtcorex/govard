@@ -305,3 +305,29 @@ func TestSandboxWebPassesTheClientsHostToTheApplication(t *testing.T) {
 		}
 	}
 }
+
+// A storefront answers with many Set-Cookie and cache-tag headers, and nginx's
+// default FastCGI header buffer (4k or 8k) rejects them with "upstream sent too
+// big header", which the client sees as a 502 on a release that is healthy. The
+// values match the development stack's own nginx blueprint so the sandbox and
+// the dev stack tolerate the same responses.
+func TestSandboxWebBuffersLargeResponseHeaders(t *testing.T) {
+	files := deploy.SandboxBuildFiles(deploy.SandboxSpec{
+		Profile: deploy.SandboxProfileFull,
+		PHP:     "8.3",
+	})
+	var nginx string
+	for _, content := range files {
+		if strings.Contains(content, "server {") {
+			nginx = content
+		}
+	}
+	if nginx == "" {
+		t.Fatal("no nginx server block among the build files")
+	}
+	for _, want := range []string{"fastcgi_buffer_size 128k;", "fastcgi_buffers 1024 4k;"} {
+		if !strings.Contains(nginx, want) {
+			t.Errorf("the web tier does not set %q, so large response headers return 502:\n%s", want, nginx)
+		}
+	}
+}

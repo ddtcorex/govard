@@ -138,6 +138,12 @@ func sandboxNginxConfig(webRoot string) string {
         fastcgi_param HTTP_HOST $http_host;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_read_timeout 120s;
+        # A storefront answers with many Set-Cookie and cache-tag headers; the
+        # default 4k/8k header buffer rejects them with "upstream sent too big
+        # header" and the client sees a 502 on a healthy release. These are the
+        # development stack's own values, so both tolerate the same responses.
+        fastcgi_buffers 1024 4k;
+        fastcgi_buffer_size 128k;
     }
 
     location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$ {

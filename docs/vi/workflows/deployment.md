@@ -1305,6 +1305,10 @@ deploy — nên ứng dụng ghi được những thư mục mà `deploy:writabl
 sandbox vào nó, nghĩa là deploy vào sandbox diễn tập **toàn bộ** pipeline, kể cả
 bước kiểm tra HTTP — bước mà một target không có web server không bao giờ chạy được.
 
+Web tier đệm các response header FastCGI lớn (`fastcgi_buffer_size 128k`, cùng giá trị với
+stack phát triển); container sandbox tạo trước thay đổi này vẫn giữ cấu hình nginx cũ cho
+đến khi được tạo lại (`sandbox down --purge`, rồi `up`).
+
 Kiểm tra đó là thật: target chưa phục vụ được sẽ fail ở bước cuối với đúng mã HTTP
 mà nó trả về (`verify http: http://127.0.0.1:PORT/ returned HTTP 403`) — đó là
 check đang làm việc, không phải lỗi. Sandbox đã seed thì có sẵn ứng dụng

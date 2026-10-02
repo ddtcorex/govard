@@ -1446,6 +1446,10 @@ remote's `deploy.verify.url` at it, which means a sandbox deploy rehearses the
 *whole* pipeline, HTTP check included — the one step a target without a web server
 could never exercise.
 
+The web tier buffers large FastCGI response headers (`fastcgi_buffer_size 128k`, the
+development stack's value); a sandbox container created before that setting keeps
+the old nginx configuration until it is recreated (`sandbox down --purge`, then `up`).
+
 That check is real: a target that does not answer yet fails the last step with the
 HTTP status it returned (`verify http: http://127.0.0.1:PORT/ returned HTTP 403`),
 which is the check doing its job rather than a defect. A seeded sandbox already
