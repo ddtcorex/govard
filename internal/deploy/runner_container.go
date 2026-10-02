@@ -405,7 +405,7 @@ func planFrontendRunner(ctx context.Context, runner, host Runner, req BuildReque
 	}
 	// The way out is in the Detail as well as the Hint: outside --error-json
 	// the operator sees only Error(), which carries the Detail and not the Hint.
-	const workaround = "install Node in the container or on the host running govard, or leave deploy.settings.frontend_dir empty to skip the frontend build"
+	const workaround = "install Node in the container or on the host running govard (--runner host does not help: it needs Node on the host too), or, when the frontend command uses {{settings.frontend_dir_args}} as every shipped recipe does, leave deploy.settings.frontend_dir empty to skip the frontend build"
 	return frontendPlan{}, &runtime.MissingError{
 		Caps: []runtime.Capability{nodeCapability},
 		Detail: fmt.Sprintf("neither container %s (no %s) nor the host (no %s) has the Node toolchain %s needs; --runner container runs the PHP steps in the project's app container and a step that needs Node on the host when the container has none; %s",

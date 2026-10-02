@@ -911,12 +911,13 @@ the **host** (which then needs `node` and `npm`; the PHP and Composer steps stay
 container), the timeline prints a `runner:` line per step (for example `runner: host
 (node not in container)`), and the manifest records `frontend_runner` beside the
 container's `php_version`. Only when neither side has Node does it refuse with exit
-`3`, naming what each side lacks and the way out (install Node, or an empty
+`3`, naming what each side lacks and the way out (install Node in the container or on the host, since `--runner host`
+needs it on the host too; or, for a step that uses the placeholder below, an empty
 `frontend_dir`). The `--error-json` envelope of that refusal reports
 `capability: "node"`, a value `govard capabilities` does not list because it is not
 a declarable capability. The check keys on the recipe's
 <span v-pre>`{{settings.frontend_dir_args}}`</span> placeholder, so a project whose frontend step (a
-recipe override or a hook-shaped command) does not use it is still checked for Node.
+recipe override or a hook-shaped command) does not use it is still checked for Node, and an empty `frontend_dir` does not skip that.
 A project container that is stopped or missing also exits `3` (hint:
 `govard env up`, or `--runner host`). Both refusals come before the output directory
 is touched, so a previous artifact survives. Ctrl-C and `--command-timeout` stop a

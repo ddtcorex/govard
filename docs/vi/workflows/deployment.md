@@ -920,10 +920,10 @@ chạy trong container. Mỗi bước in runner của nó trên timeline (`runne
 hoặc `runner: host (node not in container)`), và manifest của artifact ghi
 `frontend_runner` (`container` hoặc `host`) cạnh `php_version` của container. Chỉ khi cả
 hai phía đều không có Node build mới từ chối với exit `3`, nêu tên thứ mỗi phía còn thiếu
-và lối ra: cài Node, hoặc để `frontend_dir` rỗng. Artifact trước đó còn nguyên sau lần
+và lối ra: cài Node trong container hoặc trên host (`--runner host` không giúp được, vì nó cũng cần Node trên host), hoặc, với bước dùng placeholder bên dưới, để `frontend_dir` rỗng. Artifact trước đó còn nguyên sau lần
 từ chối này. Kiểm tra dựa vào placeholder <span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe,
 nên một bước frontend không dùng nó và không cần Node (recipe override, command dạng
-hook) vẫn bị kiểm tra Node; để `frontend_dir` rỗng ở đó.
+hook) vẫn bị kiểm tra Node, và `frontend_dir` rỗng không bỏ qua kiểm tra đó; hãy cài Node.
 Ctrl-C và `--command-timeout` cũng dừng bước đang chạy bên trong
 container: một `docker exec` thứ hai gửi tín hiệu tới process group của nó, và lỗi nói
 rõ phần teardown có được thử hay không và có hoàn tất hay không.

@@ -893,12 +893,12 @@ thiếu một trong hai thì bước frontend chạy trên **host** (host phải
 các bước PHP và Composer vẫn ở trong container), timeline in một dòng `runner:` cho mỗi
 bước (ví dụ `runner: host (node not in container)`), và manifest ghi `frontend_runner`
 cạnh `php_version` của container. Chỉ khi cả hai phía đều không có Node mới từ chối với
-exit `3`, nêu tên thứ mỗi phía còn thiếu và lối ra (cài Node, hoặc để `frontend_dir`
-rỗng). Envelope `--error-json` của lần từ chối đó báo `capability: "node"`, một giá trị
+exit `3`, nêu tên thứ mỗi phía còn thiếu và lối ra (cài Node trong container hoặc trên
+host, vì `--runner host` cũng cần Node trên host; hoặc, với bước dùng placeholder bên dưới, để `frontend_dir` rỗng). Envelope `--error-json` của lần từ chối đó báo `capability: "node"`, một giá trị
 mà `govard capabilities` không liệt kê vì nó không phải capability khai báo được. Kiểm
 tra này dựa vào placeholder <span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe, nên một dự án
 có bước frontend (recipe override hoặc command dạng hook) không dùng placeholder đó vẫn
-bị kiểm tra Node.
+bị kiểm tra Node, và `frontend_dir` rỗng không bỏ qua kiểm tra đó.
 Project container đang dừng hoặc không tồn tại cũng thoát `3`
 (gợi ý: `govard env up`, hoặc `--runner host`). Cả hai lần từ chối đều đến trước khi
 output directory bị đụng tới, nên artifact trước đó còn nguyên. Ctrl-C và

@@ -976,11 +976,12 @@ task); the PHP and Composer steps still run in the container. Every step prints 
 runner on the timeline (`runner: container <name>`, or `runner: host (node not in
 container)`), and the artifact manifest records `frontend_runner` (`container` or `host`)
 next to the container's `php_version`. Only when neither side has Node does the build
-refuse, with exit `3`, naming what each side lacks and the way out: install Node, or an
-empty `frontend_dir`. The previous artifact survives that refusal. The check keys on the
+refuse, with exit `3`, naming what each side lacks and the way out: install Node in the
+container or on the host (`--runner host` does not help, it needs Node on the host too),
+or, for a step that uses the placeholder below, an empty `frontend_dir`. The previous artifact survives that refusal. The check keys on the
 recipe's <span v-pre>`{{settings.frontend_dir_args}}`</span> placeholder, so a frontend step that does not
 use it and needs no Node (a recipe override, a hook-shaped command) is still checked
-for Node; leave `frontend_dir` empty there.
+for Node, and an empty `frontend_dir` does not skip that check; install Node.
 Ctrl-C and `--command-timeout` stop the step inside the container as well: a second
 `docker exec` signals its process group, and the error says whether that teardown
 was attempted and whether it completed.
