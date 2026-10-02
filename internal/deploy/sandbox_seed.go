@@ -360,36 +360,45 @@ func runSandboxSeedDB(ctx context.Context, runtime SandboxRuntime, out io.Writer
 		return err
 	}
 
-	// The import restores the origin's rows verbatim, including any URL that
-	// names the origin: the application the sandbox serves would then answer
-	// with redirects to a host the rehearsal never meant to touch. The
-	// framework-owned rewrite points those rows at the sandbox instead. It
-	// runs only for a sandbox that serves web — without a web URL there is
-	// nothing to point at — and each statement travels the same shape as the
-	// import (password in the environment, SQL on stdin), so no secret ever
-	// reaches argv.
-	if request.DBRewrite != nil && webPort > 0 {
-		fmt.Fprintln(out, "rewriting the seeded database for the sandbox")
-		var envContent []byte
-		if request.SeedEnvSource != "" {
-			raw, err := runtime.Exec(ctx, request.SeedAppContainer, nil, "cat", request.SeedEnvSource)
-			if err != nil {
-				return fmt.Errorf("read the origin env file: %w", err)
-			}
-			envContent = []byte(raw)
+	return rewriteSandboxDatabase(ctx, runtime, out, sandbox, webPort, request, spec)
+}
+
+// rewriteSandboxDatabase points the database at this container's web URL. It is
+// its own step because the URL changes whenever the container does (Docker picks
+// a fresh published port), so a kept database needs it as much as a seeded one.
+//
+// An import restores the origin's rows verbatim, including any URL that names the
+// origin: the application the sandbox serves would then answer with redirects to
+// a host the rehearsal never meant to touch. The framework-owned rewrite points
+// those rows at the sandbox instead. It runs only for a sandbox that serves web,
+// since without a web URL there is nothing to point at, and each statement
+// travels the same shape as the import (password in the environment, SQL on
+// stdin), so no secret ever reaches argv.
+func rewriteSandboxDatabase(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest, spec SeedSpec) error {
+	if request.DBRewrite == nil || webPort <= 0 {
+		return nil
+	}
+	passwordEnv := mysqlPasswordEnv(spec.DBPassword)
+	fmt.Fprintln(out, "rewriting the seeded database for the sandbox")
+	var envContent []byte
+	if request.SeedEnvSource != "" {
+		raw, err := runtime.Exec(ctx, request.SeedAppContainer, nil, "cat", request.SeedEnvSource)
+		if err != nil {
+			return fmt.Errorf("read the origin env file: %w", err)
 		}
-		baseURL := fmt.Sprintf("http://127.0.0.1:%d/", webPort)
-		statements := request.DBRewrite(envContent, baseURL)
-		if len(statements) == 0 {
-			// The framework refused (an unusable table prefix) or had nothing to
-			// say. Either way the origin's URLs stay, and the verify check will
-			// answer with a redirect much later; say it now.
-			fmt.Fprintf(out, "note: nothing to rewrite in the seeded database; URLs that name the origin stay as they are, point them at %s by hand\n", baseURL)
-		}
-		for _, statement := range statements {
-			if err := runtime.ExecStream(ctx, sandbox, passwordEnv, strings.NewReader(statement), nil, spec.DBImportArgs...); err != nil {
-				return fmt.Errorf("rewrite the sandbox database: %w", err)
-			}
+		envContent = []byte(raw)
+	}
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d/", webPort)
+	statements := request.DBRewrite(envContent, baseURL)
+	if len(statements) == 0 {
+		// The framework refused (an unusable table prefix) or had nothing to
+		// say. Either way the origin's URLs stay, and the verify check will
+		// answer with a redirect much later; say it now.
+		fmt.Fprintf(out, "note: nothing to rewrite in the seeded database; URLs that name the origin stay as they are, point them at %s by hand\n", baseURL)
+	}
+	for _, statement := range statements {
+		if err := runtime.ExecStream(ctx, sandbox, passwordEnv, strings.NewReader(statement), nil, spec.DBImportArgs...); err != nil {
+			return fmt.Errorf("rewrite the sandbox database: %w", err)
 		}
 	}
 	return nil

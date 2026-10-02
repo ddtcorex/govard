@@ -299,7 +299,14 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if exists && request.Recreate {
 		// The replacement is validated before the working container is removed:
 		// a database the sandbox refuses must not cost the sandbox that works.
-		if _, err := sandboxNewDB(request, profile); err != nil {
+		newDB, err := sandboxNewDB(request, profile)
+		if err != nil {
+			return nil, err
+		}
+		// The kept database volume is checked against the replacement too, for
+		// the same reason: once the container is gone nothing is left to fall
+		// back on.
+		if _, _, err := checkSandboxDBVolume(ctx, runtime, request.ProjectName, profile, newDB); err != nil {
 			return nil, err
 		}
 		fmt.Fprintf(request.out(), "recreating %s\n", container)
@@ -525,6 +532,8 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 			if err := runSandboxSeedDB(ctx, runtime, request.out(), container, webPort, request); err != nil {
 				return nil, err
 			}
+		} else if err := repointKeptDatabase(ctx, runtime, request.out(), container, webPort, request); err != nil {
+			return nil, err
 		}
 		// The files live in the container filesystem, so a new container needs
 		// them whatever the database volume held.
@@ -594,6 +603,35 @@ func sandboxSeedDatabaseNeeded(ctx context.Context, runtime SandboxRuntime, out 
 		fmt.Fprintf(out, "database seed skipped: the sandbox volume already holds %s (use --reseed to refresh it)\n", request.SeedDBName)
 	}
 	return !hasData, nil
+}
+
+// repointKeptDatabase gives a database kept on the volume the URL of the
+// container it now serves: Docker published a new port for it. The rewrite reads
+// the origin's env file, so a stopped origin is a note rather than a failure, and
+// the data the sandbox already has stays usable.
+func repointKeptDatabase(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
+	if request.DBRewrite == nil || webPort <= 0 {
+		return nil
+	}
+	if !request.SeedOriginRunning {
+		fmt.Fprintf(out, "note: the origin is not running, so the base URL in the kept database may still name an old web port; start the origin and pass --reseed to refresh it\n")
+		return nil
+	}
+	spec, err := ResolveSeedSpec(SeedSource{
+		OriginRunning: request.SeedOriginRunning,
+		DB: SeedDB{
+			Container: request.SeedDBContainer,
+			User:      request.SeedDBUser,
+			Password:  request.SeedDBPassword,
+			Name:      request.SeedDBName,
+		},
+		MediaSource: request.SeedMediaSource,
+		EnvSource:   request.SeedEnvSource,
+	})
+	if err != nil {
+		return err
+	}
+	return rewriteSandboxDatabase(ctx, runtime, out, sandbox, webPort, request, spec)
 }
 
 // localBranch names the branch a checkout is on, and is empty for a detached
