@@ -7,9 +7,9 @@ import (
 )
 
 // The database a `full` sandbox provides has to be the one the project runs.
-// Debian's own MariaDB is a single series (10.11 on the pinned release), and a
-// Magento 2.4.6 deploy rehearsed against it fails at db:migrate with "Current
-// version of RDBMS is not supported" — a failure that looks like a project
+// Debian's own MariaDB is a single series (10.11 on the pinned release), and an
+// application whose supported database range stops below it fails its migrate
+// step with an unsupported-version error - a failure that looks like a project
 // defect. A requested series therefore comes from the official MariaDB
 // repository, the same shape as sury for PHP.
 const (
