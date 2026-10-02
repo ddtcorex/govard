@@ -196,6 +196,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// A server build on the sandbox gets the host's composer credentials for the
+	// duration of the run; nothing else does.
+	defer applySandboxComposerAuth(cmd, host.Remote.Sandbox, options.Build == deploy.BuildServer)()
+
 	outcome, runErr := deploy.NewExecutor(host, options, timeline).Run(cmd.Context(), plan, deployVars(host, options), release)
 
 	if hookErr := engine.RunHooks(config, engine.HookPostDeploy, cmd.OutOrStdout(), cmd.ErrOrStderr()); hookErr != nil && runErr == nil {
