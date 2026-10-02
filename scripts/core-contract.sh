@@ -48,7 +48,7 @@ fi
 # the writer then dies of SIGPIPE (exit 141) and fails this check on a correct
 # binary. Piping the captured output through printf does not help: the builtin
 # writes in chunks and the match is in the first one.
-capabilities_json="$("$BIN" capabilities --json)"
+capabilities_json="$("$BIN" capabilities --json || true)"
 if [[ "$capabilities_json" != *'"schema_version": 1'* ]]; then
   echo "core-contract: FAIL govard capabilities --json is not versioned" >&2
   failures=$((failures + 1))
