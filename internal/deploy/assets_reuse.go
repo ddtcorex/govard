@@ -77,7 +77,10 @@ func (e *Executor) sandboxAssetsFingerprint(ctx context.Context, step Step, vars
 	// is the one field that differs between two builds of the same files.
 	manifestPath := path.Join(e.host.ReleasePath(release.Release), ".dep", ArtifactRecordName)
 	result, err := e.host.Runner().Run(ctx,
-		`sed 's/"created_at":"[^"]*",//' `+Shell(manifestPath)+` | sha256sum | cut -d' ' -f1`,
+		// A pipeline reports its last stage, so a missing manifest (a server
+		// build has none) would otherwise digest the empty input and look like a
+		// valid fingerprint.
+		`test -f `+Shell(manifestPath)+` && sed 's/"created_at":"[^"]*",//' `+Shell(manifestPath)+` | sha256sum | cut -d' ' -f1`,
 		RunOptions{Timeout: shortCommandTimeout})
 	digest := strings.TrimSpace(result.Stdout)
 	if err != nil || len(digest) != sha256.Size*2 {

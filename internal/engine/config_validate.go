@@ -138,6 +138,12 @@ func ValidateConfig(cfg Config) error {
 			}
 			continue
 		}
+		// The flag switches on behaviour that is only safe on a throwaway
+		// container (reused static content, composer credentials in the
+		// environment). It belongs to the synthetic sandbox and to nothing else.
+		if remote.Sandbox {
+			return fmt.Errorf("remote '%s' sets sandbox: true, which only the synthetic %q remote may", name, conventions.SandboxRemoteName)
+		}
 		if strings.TrimSpace(remote.Host) == "" {
 			return fmt.Errorf("remote '%s' is missing host", name)
 		}
