@@ -92,7 +92,7 @@ func seedSandboxUpRequest(t *testing.T, root, origin string) deploy.SandboxReque
 	return deploy.SandboxRequest{
 		ProjectRoot:       root,
 		ProjectName:       "seed-shop-sandbox",
-		Profile:           deploy.SandboxProfileBasic,
+		Profile:           deploy.SandboxProfileFull,
 		Requirements:      deploy.SandboxRequirements{},
 		Repository:        origin,
 		Out:               io.Discard,
@@ -597,7 +597,7 @@ func TestSandboxSeedRunsTheDBRewrite(t *testing.T) {
 	}
 
 	request := seedSandboxUpRequest(t, root, origin)
-	request.Profile = deploy.SandboxProfilePHP
+	request.Profile = deploy.SandboxProfileFull
 	request.SeedDBPassword = "s3cret-pw"
 	request.SeedEnvSource = "app/etc/env.php"
 	request.SeedAppContainer = "seed-shop-php-1"
@@ -668,7 +668,7 @@ func TestSandboxSeedNamesAnEmptyDBRewrite(t *testing.T) {
 
 	var out bytes.Buffer
 	request := seedSandboxUpRequest(t, root, origin)
-	request.Profile = deploy.SandboxProfilePHP
+	request.Profile = deploy.SandboxProfileFull
 	request.Out = &out
 	request.DBRewrite = func([]byte, string) []string { return nil }
 	if _, err := deploy.SandboxUp(context.Background(), containers, deploy.LocalRunner{}, request); err != nil {

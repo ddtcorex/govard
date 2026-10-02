@@ -107,7 +107,21 @@ func noteStep(sc *StepContext, line string) {
 	if sc.Out == nil {
 		return
 	}
-	fmt.Fprint(sc.Out, line)
+	fmt.Fprint(sc.Out, markWarning(line))
+}
+
+// warningMarker is the prefix every finding line starts with; scripts grep the
+// literal `warning:` that follows it.
+const warningMarker = "  ! "
+
+// markWarning keeps the `  ! warning: ...` contract: a finding line carries the
+// word `warning:` right after its marker, unless its text already starts with it.
+func markWarning(line string) string {
+	rest, ok := strings.CutPrefix(line, warningMarker)
+	if !ok || strings.HasPrefix(rest, "warning:") {
+		return line
+	}
+	return warningMarker + "warning: " + rest
 }
 
 // sharedCovering reports the shared entry that covers a sync path — the path is

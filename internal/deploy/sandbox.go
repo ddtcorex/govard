@@ -130,6 +130,10 @@ type SandboxSpec struct {
 	// base image's own version (Debian's), which is what a project that does not ask
 	// for one gets.
 	PHP string
+	// DB is the database server the `full` profile provides, `mariadb:10.6`.
+	// Empty means the base distribution's own server. It is part of the image
+	// definition, so a changed series is a different image tag.
+	DB string
 	// WebRoot is where inside the served path the web server serves from, from the
 	// project's `stack.web_root` (`/pub` for a storefront served from a subdirectory). It is part of the image
 	// because the tag is the hash of the rendered definition.
@@ -290,6 +294,13 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	db, err := ParseSandboxDB(spec.DB)
+	if err != nil {
+		return "", err
+	}
+	if resolved != SandboxProfileFull {
+		db = ""
+	}
 	if err := ValidateSandboxTools(spec.Requirements.Tools); err != nil {
 		return "", err
 	}
@@ -385,6 +396,12 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 `, sandboxSuryKeyring, sandboxSuryKeyring, sandboxDebianCodename, sandboxSurySource)
 	}
 
+	// A database series other than Debian's comes from the official MariaDB
+	// repository, pinned above the distribution's own.
+	if db != "" {
+		builder.WriteString(sandboxDBRepositoryBlock(db))
+	}
+
 	// Node 24 from NodeSource, the same third-party-repository shape as sury
 	// above. Debian's nodejs (18) predates the Node 20+ current frontend
 	// toolchains require, and its npm mishandles their optional dependencies;
@@ -430,6 +447,10 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 				service, shellQuoteScriptLines(sandboxServices[service].InitScript), service, service)
 		}
 		fmt.Fprintf(&builder, "    true\n")
+	}
+
+	if db != "" {
+		builder.WriteString(sandboxDBVerifyBlock(db))
 	}
 
 	// Composer is not a distribution package here (see above), and `php` has to mean

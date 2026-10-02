@@ -32,14 +32,52 @@ return [
         'Magento_Store' => 1,
         'Magento_Backend' => 1,
     ],
+    'scopes' => [
+        'alpha' => 1,
+        'beta' => 2,
+    ],
 ];
 `
 
+// configPHPReordered reorders only the 'scopes' entries, which Magento writes
+// in a nondeterministic order and which are keyed, so order carries no meaning.
 const configPHPReordered = `<?php
+return [
+    'modules' => [
+        'Magento_Store' => 1,
+        'Magento_Backend' => 1,
+    ],
+    'scopes' => [
+        'beta' => 2,
+        'alpha' => 1,
+    ],
+];
+`
+
+// configPHPModulesReordered is what setup:upgrade writes when a new
+// <sequence> dependency moves a module: same entries, different load order.
+const configPHPModulesReordered = `<?php
 return [
     'modules' => [
         'Magento_Backend' => 1,
         'Magento_Store' => 1,
+    ],
+    'scopes' => [
+        'alpha' => 1,
+        'beta' => 2,
+    ],
+];
+`
+
+const configPHPModulesAndScopesReordered = `<?php
+return [
+    'modules' => [
+        'Magento_Backend' => 1,
+        'Magento_Store' => 1,
+    ],
+    'scopes' => [
+        'beta' => 2,
+        'alpha' => 1,
     ],
 ];
 `
@@ -50,6 +88,10 @@ return [
         'Magento_Store' => 1,
         'Magento_Backend' => 0,
     ],
+    'scopes' => [
+        'alpha' => 1,
+        'beta' => 2,
+    ],
 ];
 `
 
@@ -59,6 +101,10 @@ return [
         'Magento_Store' => 1,
         'Magento_Backend' => 1,
         'Magento_Cms' => 1,
+    ],
+    'scopes' => [
+        'alpha' => 1,
+        'beta' => 2,
     ],
 ];
 `
@@ -145,6 +191,8 @@ func TestRunPreservingUnchangedConfigPHPKeepsAGenuineChange(t *testing.T) {
 	}{
 		{name: "a module is disabled", after: configPHPBackendDisabled},
 		{name: "a module is added", after: configPHPExtraModule},
+		{name: "the module load order changes", after: configPHPModulesReordered},
+		{name: "the module load order and scopes both change", after: configPHPModulesAndScopesReordered},
 	}
 
 	for _, tc := range cases {
@@ -547,5 +595,83 @@ func configureMagentoConfig() engine.Config {
 		Stack: engine.Stack{
 			Services: engine.Services{Cache: "none", Search: "none"},
 		},
+	}
+}
+
+// Issue #489 once restored the original whenever only the 'modules' block was
+// reordered. That is no longer wanted: Magento's computed module order is
+// authoritative, so on an otherwise unchanged project a modules-only reorder
+// keeps Magento's output.
+func TestRunPreservingUnchangedConfigPHPKeepsMagentosOutputWhenOnlyTheModulesBlockIsReordered(t *testing.T) {
+	projectRoot, configPath := writeConfigPHPFixture(t)
+	captured := capturePterm(t)
+
+	if err := magento2.RunPreservingUnchangedConfigPHPForTest(projectRoot, func() error {
+		return os.WriteFile(configPath, []byte(configPHPModulesReordered), 0o644)
+	}); err != nil {
+		t.Fatalf("run the wrapped command: %v", err)
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config.php: %v", err)
+	}
+	if string(got) != configPHPModulesReordered {
+		t.Fatalf("a modules-only reorder must keep Magento's output, got:\n%s", got)
+	}
+	if lines := reportLines(captured.String()); len(lines) != 0 {
+		t.Fatalf("nothing was restored, so nothing may be reported, got %q", lines)
+	}
+}
+
+// The legacy `array (` syntax (Magento 2.0/2.1) has no short-syntax modules
+// line, so its block cannot be delimited. A file the comparison cannot read
+// must keep Magento's output rather than be restored on a guess.
+const configPHPLegacySyntax = `<?php
+return array (
+  'modules' => array (
+    'Magento_Store' => 1,
+    'Magento_Backend' => 1,
+  ),
+  'scopes' => array (
+    'alpha' => 1,
+  ),
+);
+`
+
+const configPHPLegacySyntaxModulesReordered = `<?php
+return array (
+  'modules' => array (
+    'Magento_Backend' => 1,
+    'Magento_Store' => 1,
+  ),
+  'scopes' => array (
+    'alpha' => 1,
+  ),
+);
+`
+
+func TestRunPreservingUnchangedConfigPHPKeepsOutputWhenTheModulesSyntaxIsNotRecognised(t *testing.T) {
+	projectRoot, configPath := writeConfigPHPFixture(t)
+	if err := os.WriteFile(configPath, []byte(configPHPLegacySyntax), 0o644); err != nil {
+		t.Fatalf("write legacy config.php: %v", err)
+	}
+	captured := capturePterm(t)
+
+	if err := magento2.RunPreservingUnchangedConfigPHPForTest(projectRoot, func() error {
+		return os.WriteFile(configPath, []byte(configPHPLegacySyntaxModulesReordered), 0o644)
+	}); err != nil {
+		t.Fatalf("run the wrapped command: %v", err)
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config.php: %v", err)
+	}
+	if string(got) != configPHPLegacySyntaxModulesReordered {
+		t.Fatalf("an unrecognised modules syntax must keep Magento's output, got:\n%s", got)
+	}
+	if lines := reportLines(captured.String()); len(lines) != 0 {
+		t.Fatalf("nothing was restored, got %q", lines)
 	}
 }

@@ -152,10 +152,16 @@ func RunUpgrade(ctx context.Context, config engine.Config, opts engine.UpgradeOp
 		updatePkgs = append(updatePkgs, pkgName)
 	}
 
-	// Refresh composer's platform.php to the runtime PHP first: a pin written
-	// for the previous PHP (for example by a fresh install) would otherwise
-	// outlive the upgrade and make later composer commands resolve for it.
-	if platformPinApplies(config.Stack.PHPVersion, engine.ResolveComposerVersion(config)) {
+	// Refresh an EXISTING composer platform.php pin to the runtime PHP first: a
+	// pin written for the previous PHP (for example by a fresh install) would
+	// otherwise outlive the upgrade and make later composer commands resolve for
+	// it. A project without a pin is left alone: the update below runs with
+	// --ignore-platform-reqs, so the pin plays no part in resolving the upgrade,
+	// and adding one would change a committed composer.json and the platform
+	// check of a production `composer install` as a side effect.
+	if platformPinApplies(config.Stack.PHPVersion, engine.ResolveComposerVersion(config)) && !composerHasPlatformPHP(opts.ProjectDir) {
+		pterm.Info.Println("composer.json has no platform pin, so it was left unchanged; to pin it to the stack PHP run: govard tool composer config platform.php <version>")
+	} else if platformPinApplies(config.Stack.PHPVersion, engine.ResolveComposerVersion(config)) {
 		pinArgs := []string{"exec", "-w", conventions.DefaultWorkDir, containerName, conventions.BinComposer, "config", "platform.php", config.Stack.PHPVersion}
 		pinCmd := exec.CommandContext(ctx, "docker", pinArgs...)
 		pinCmd.Stdout = opts.Stdout
@@ -279,6 +285,25 @@ func updateMagentoComposerJson(opts engine.UpgradeOptions, containerName string,
 	}
 
 	return os.WriteFile(composerPath, mergedBytes, conventions.DefaultFilePerm)
+}
+
+// composerHasPlatformPHP reports whether the project's composer.json already
+// carries a config.platform.php pin.
+func composerHasPlatformPHP(projectDir string) bool {
+	raw, err := os.ReadFile(filepath.Join(projectDir, "composer.json"))
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		Config struct {
+			Platform map[string]interface{} `json:"platform"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return false
+	}
+	pin, ok := doc.Config.Platform["php"].(string)
+	return ok && strings.TrimSpace(pin) != ""
 }
 
 func mergeComposerMapKeys(current map[string]interface{}, target map[string]interface{}, key string, packagePrefix string) {

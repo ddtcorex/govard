@@ -766,7 +766,7 @@ func TestInPlacePublishWithoutSyncPathsWarnsDuringRealDeploy(t *testing.T) {
 	if _, err := deploy.NewExecutor(host, options, output).Run(context.Background(), plan, deploy.NewVars(), release); err != nil {
 		t.Fatalf("deploy: %v\n%s", err, output.String())
 	}
-	if !strings.Contains(output.String(), "  ! this target publishes in place and deploy.settings.sync_paths is empty") {
+	if !strings.Contains(output.String(), "  ! warning: this target publishes in place and deploy.settings.sync_paths is empty") {
 		t.Fatalf("a real deploy must print the in-place warning, output:\n%s", output.String())
 	}
 }
@@ -810,7 +810,7 @@ func TestVerifyURLWarningGoesToStderrUnderJSON(t *testing.T) {
 	// what this test is about, so the run's own error is not asserted.
 	_ = command.Execute()
 
-	const warning = "  ! the verify URL does not answer 2xx yet"
+	const warning = "  ! warning: the verify URL does not answer 2xx yet"
 	if !strings.Contains(stderr.String(), warning) {
 		t.Fatalf("the verify-URL warning must reach stderr, stderr:\n%s", stderr.String())
 	}

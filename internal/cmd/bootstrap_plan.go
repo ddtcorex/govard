@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"govard/internal/cli"
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/frameworks"
 	"govard/internal/frameworks/types"
@@ -206,4 +208,58 @@ func describeBootstrapMetaVersion(opts BootstrapRuntimeOptions) string {
 		return fmt.Sprintf("at version %s (from %s)", version, opts.MetaVersionSource)
 	}
 	return fmt.Sprintf("at version %s", version)
+}
+
+// buildPlanConfigWithoutInit returns the config `govard init` would write for
+// the chosen framework, from registry defaults, without touching the disk. The
+// framework comes from --framework or detection; with neither it is a usage
+// error, because a plan cannot describe a project nobody has named.
+func buildPlanConfigWithoutInit(cwd, framework, version string) (engine.Config, error) {
+	metadata := engine.DetectFramework(cwd)
+	if strings.TrimSpace(framework) != "" {
+		metadata.Framework = frameworks.Normalize(framework)
+	}
+	if strings.TrimSpace(version) != "" {
+		metadata.Version = strings.TrimSpace(version)
+	}
+	if metadata.Framework == "" || metadata.Framework == "generic" {
+		return engine.Config{}, &cli.UsageError{Err: fmt.Errorf(
+			"%s not found and no framework could be determined: pass --framework <name> or run `govard init` first",
+			conventions.BaseConfigFile)}
+	}
+	result, err := engine.ResolveRuntimeProfile(metadata.Framework, metadata.Version)
+	if err != nil {
+		return engine.Config{}, &cli.UsageError{Err: fmt.Errorf("resolve runtime profile for %q: %w", metadata.Framework, err)}
+	}
+	p := result.Profile
+	config := newInitConfig(cwd, metadata.Framework, metadata.Version, initStackValues{
+		PHPVersion: p.PHPVersion, NodeVersion: p.NodeVersion, ComposerVersion: p.ComposerVersion,
+		DBType: p.DB, DBVersion: p.DBVersion, WebRoot: p.WebRoot, XdebugSession: p.XdebugSession,
+		WebServer: p.WebServer, Search: p.Search, Cache: p.Cache, Queue: p.Queue,
+	})
+	engine.NormalizeConfig(&config, "")
+	return config, nil
+}
+
+// describePlanInit says what the skipped `govard init` would create.
+func describePlanInit(config engine.Config) []string {
+	version := config.FrameworkVersion
+	if version == "" {
+		version = "default"
+	}
+	return []string{
+		"",
+		fmt.Sprintf("%s not found: `govard init` would create it with framework %s (version %s). Nothing is written under --plan.",
+			conventions.BaseConfigFile, config.Framework, version),
+		fmt.Sprintf("  Stack: PHP %s, DB %s %s, search %s, cache %s, web server %s",
+			valueOrNone(config.Stack.PHPVersion), valueOrNone(config.Stack.Services.DB), config.Stack.DBVersion,
+			valueOrNone(config.Stack.Services.Search), valueOrNone(config.Stack.Services.Cache), valueOrNone(config.Stack.Services.WebServer)),
+	}
+}
+
+func valueOrNone(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "none"
+	}
+	return v
 }

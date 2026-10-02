@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"govard/internal/cli"
 	"govard/internal/cmd"
 	"govard/internal/engine"
 )
@@ -161,10 +162,162 @@ func TestBootstrapPlanDoesNotInitialiseTheProject(t *testing.T) {
 	root := cmd.RootCommandForTest()
 	root.SetOut(io.Discard)
 	root.SetErr(io.Discard)
-	root.SetArgs([]string{"bootstrap", "--fresh", "--plan"})
-	_ = root.Execute()
+	root.SetArgs([]string{"bootstrap", "--fresh", "--plan", "--framework", "magento2"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("bootstrap --fresh --plan in an empty directory failed: %v", err)
+	}
 
 	if initialised {
 		t.Fatal("--plan ran the project initialisation step")
 	}
+}
+
+// runFreshPlanIn runs the real command in dir and returns its output and error.
+func runFreshPlanIn(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	cmd.ResetBootstrapFlags()
+	t.Cleanup(cmd.ResetBootstrapFlags)
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	t.Setenv("GOVARD_HOME_DIR", filepath.Join(t.TempDir(), "govard-home"))
+
+	out := &bytes.Buffer{}
+	root := cmd.RootCommandForTest()
+	root.SetOut(out)
+	root.SetErr(io.Discard)
+	root.SetArgs(append([]string{"bootstrap"}, args...))
+	err = root.Execute()
+	return out.String(), err
+}
+
+func TestBootstrapFreshPlanInEmptyDirectoryNeedsNoConfig(t *testing.T) {
+	dir := t.TempDir()
+	out, err := runFreshPlanIn(t, dir, "--fresh", "--plan", "--framework", "magento2", "--framework-version", "2.4.6")
+	if err != nil {
+		t.Fatalf("plan failed: %v", err)
+	}
+	for _, want := range []string{"magento2", "2.4.6", "PHP", "opensearch", ".govard.yml", "govard init"} {
+		if !strings.Contains(strings.ToLower(out), strings.ToLower(want)) {
+			t.Errorf("plan output lacks %q:\n%s", want, out)
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("--plan wrote files into the directory: %v", entries)
+	}
+}
+
+func TestBootstrapPlanWithoutConfigOrFrameworkIsAUsageError(t *testing.T) {
+	dir := t.TempDir()
+	_, err := runFreshPlanIn(t, dir, "--fresh", "--plan")
+	if err == nil {
+		t.Fatal("plan without a framework and without .govard.yml succeeded")
+	}
+	var usage *cli.UsageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("error is not a usage error (exit 2): %T %v", err, err)
+	}
+	for _, want := range []string{"--framework", "govard init"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err.Error(), want)
+		}
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("directory not left empty: %v", entries)
+	}
+}
+
+func TestBootstrapFreshPlanWithExistingConfigIsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	config := "project_name: sample-project\nframework: magento2\nframework_version: 2.4.7\ndomain: sample-project.test\n"
+	if err := os.WriteFile(filepath.Join(dir, ".govard.yml"), []byte(config), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out, err := runFreshPlanIn(t, dir, "--fresh", "--plan")
+	if err != nil {
+		t.Fatalf("plan failed: %v", err)
+	}
+	if strings.Contains(out, "govard init") {
+		t.Fatalf("an existing config must not produce the would-init note:\n%s", out)
+	}
+	if !strings.Contains(out, "2.4.7") {
+		t.Fatalf("plan ignored the configured version:\n%s", out)
+	}
+}
+
+// A plan in a directory with no .govard.yml invents its project in memory, so it
+// must not leave that invention in the user's registry (which the desktop
+// dashboard lists) or in the operations log.
+func TestBootstrapPlanWithoutConfigWritesNoRegistryOrEvent(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "govard-home")
+	opsLog := filepath.Join(t.TempDir(), "operations.log")
+	t.Setenv(engine.OperationsLogPathEnvVar, opsLog)
+
+	dir := t.TempDir()
+	if _, err := runFreshPlanInHome(t, dir, home, "--fresh", "--plan", "--framework", "magento2"); err != nil {
+		t.Fatalf("plan failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "projects.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("--plan without .govard.yml registered a made-up project (stat err=%v)", err)
+	}
+	if _, err := os.Stat(opsLog); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("--plan without .govard.yml wrote an operation event (stat err=%v)", err)
+	}
+}
+
+// With a real .govard.yml the plan is about a real project, whose existing
+// tracking is kept.
+func TestBootstrapPlanWithConfigStillTracksTheRealProject(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "govard-home")
+	t.Setenv(engine.OperationsLogPathEnvVar, filepath.Join(t.TempDir(), "operations.log"))
+
+	dir := t.TempDir()
+	config := "project_name: sample-project\nframework: magento2\nframework_version: 2.4.7\ndomain: sample-project.test\n"
+	if err := os.WriteFile(filepath.Join(dir, ".govard.yml"), []byte(config), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if _, err := runFreshPlanInHome(t, dir, home, "--fresh", "--plan"); err != nil {
+		t.Fatalf("plan failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "projects.json")); err != nil {
+		t.Fatalf("a plan for a real project keeps its registry tracking: %v", err)
+	}
+}
+
+func runFreshPlanInHome(t *testing.T, dir, home string, args ...string) (string, error) {
+	t.Helper()
+	cmd.ResetBootstrapFlags()
+	t.Cleanup(cmd.ResetBootstrapFlags)
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir home: %v", err)
+	}
+	t.Setenv("GOVARD_HOME_DIR", home)
+	// Without an explicit registry path a temp-dir project is refused outright,
+	// which would make "nothing was registered" true for the wrong reason.
+	t.Setenv(engine.ProjectRegistryPathEnvVar, filepath.Join(home, "projects.json"))
+
+	out := &bytes.Buffer{}
+	root := cmd.RootCommandForTest()
+	root.SetOut(out)
+	root.SetErr(io.Discard)
+	root.SetArgs(append([]string{"bootstrap"}, args...))
+	err = root.Execute()
+	return out.String(), err
 }

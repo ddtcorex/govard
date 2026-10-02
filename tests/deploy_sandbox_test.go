@@ -1780,3 +1780,26 @@ func TestSandboxDownRemovesRawGatewayTargetForUnroutableProjectName(t *testing.T
 		t.Fatal("expected SandboxDown to remove the raw gateway target my.project")
 	}
 }
+
+// A database the sandbox refuses must be reported before the working container
+// is removed: --recreate that deletes the sandbox and then fails loses it.
+func TestSandboxRecreateRefusedDatabaseKeepsTheContainer(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake()
+	fake.answers["image inspect"] = "sha256:abc\n"
+
+	_, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Profile:     deploy.SandboxProfileFull,
+		DB:          "mysql:8.0",
+		Recreate:    true,
+		Probe:       func(context.Context, string, int, time.Duration) error { return nil },
+	})
+	if err == nil {
+		t.Fatal("a refused database must fail the recreate")
+	}
+	if fake.has("rm --force --volumes") {
+		t.Fatalf("the existing container must not be removed when the database is refused:\n%v", fake.calls)
+	}
+}

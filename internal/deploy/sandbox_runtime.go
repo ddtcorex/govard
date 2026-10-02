@@ -104,6 +104,8 @@ type SandboxRunRequest struct {
 	// back without re-deriving or re-reading configuration. Empty means the
 	// base image's own version, exactly like SandboxRequest.PHP.
 	PHP string
+	// DB is the database series the image was built for, recorded like PHP.
+	DB string
 	// Web publishes the HTTP port as well. A profile with no web tier has
 	// nothing listening there, and Docker would publish a port that never
 	// answers — which `deploy:verify` would then report as a failed deploy.
@@ -301,6 +303,7 @@ func (d *DockerCLI) RunContainer(ctx context.Context, request SandboxRunRequest)
 		"--label", "govard.sandbox.project=" + request.ProjectName,
 		"--label", "govard.sandbox.profile=" + request.Profile,
 		"--label", "govard.sandbox.php=" + request.PHP,
+		"--label", sandboxDBLabel + "=" + request.DB,
 		"--publish", SandboxPortBinding,
 	}
 	if request.Web {

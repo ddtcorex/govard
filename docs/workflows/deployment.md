@@ -208,6 +208,8 @@ available is reported as a warning. Both come from the same prepare preflight th
 deploy itself runs, so the `.gitmodules` refusal it reports is the refusal the
 deploy makes.
 
+Findings print before the `Target ... is deployable` line: notes start with `  - `, and warnings are lines starting with `  ! warning:`, so a script can grep `warning:`; exit codes are unchanged.
+
 `deploy check` leaves nothing behind on the target, local or remote: its
 writability probe creates no path at all — an absent `deploy_path` is probed at
 the nearest existing parent on the target itself, and on a local target the note
@@ -1475,6 +1477,20 @@ sury repository and the image's `php` binary, its extensions, `php_bin` and the
 against the PHP its target actually runs, instead of failing in the middle of a
 dependency install. The series is part of the image tag, so asking for a
 different one builds a different image rather than reusing the old one.
+
+`--db` picks the database the `full` profile provides: `--db mariadb:10.6`, or
+`--db default` for the base distribution's own server. Without it a new sandbox
+installs the MariaDB series of the project's `stack.db_version` from the official
+MariaDB repository (pinned above Debian's own, and the build fails if the
+installed server is not that series), so a Magento 2.4.6 rehearsal runs on the
+MariaDB 10.6 it supports instead of Debian's 10.11. A stack that names no
+database keeps the distribution's server, and `sandbox up` prints the installed
+version either way. A MySQL stack is refused with a message naming the mismatch,
+because the sandbox only provides MariaDB; pass `--db mariadb:<series>` to choose
+one anyway. The series is part of the image tag, and an existing sandbox keeps
+the database it ships (a disagreeing `--db` is refused with `--recreate`). The
+`basic` and `php` profiles have no database, so `sandbox up` skips the database
+seed with one note instead of failing; use `--profile full` to seed.
 
 A rehearsal is only as complete as the credentials the deployment has, and the
 three routes are not interchangeable — see *Where Composer credentials come from*

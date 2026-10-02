@@ -18,6 +18,24 @@ allowlist=${2:-"$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/govulncheck-allowl
 [[ -f "$report" ]] || { echo "govulncheck gate: no such report: $report" >&2; exit 2; }
 [[ -f "$allowlist" ]] || { echo "govulncheck gate: no such allowlist: $allowlist" >&2; exit 2; }
 
+# The workflow ends the scan in `|| true`, so a scan that never ran (a build
+# failure, a network error while loading packages) reaches this script as a
+# report with no `Vulnerability #N:` block, which would read as "0 findings" and
+# call every allowlisted entry stale. A report only counts when govulncheck
+# reached its own closing summary and printed no error of its own. Exit 3 keeps
+# "the scan is broken" apart from exit 1, "a finding is untriaged".
+if grep -qE '^govulncheck: |loading packages' "$report"; then
+    {
+        echo "govulncheck gate FAILED: the report is incomplete, govulncheck reported an error:"
+        grep -E '^govulncheck: |loading packages' "$report" | head -5 | sed 's/^/  /'
+    } >&2
+    exit 3
+fi
+if ! grep -qE '^(Your code is affected by [0-9]+ vulnerabilit|No vulnerabilities found)' "$report"; then
+    echo "govulncheck gate FAILED: the report is incomplete, it has no govulncheck summary line (scan did not finish): $report" >&2
+    exit 3
+fi
+
 mapfile -t affecting < <(grep -oE '^Vulnerability #[0-9]+: GO-[0-9]{4}-[0-9]+' "$report" |
     grep -oE 'GO-[0-9]{4}-[0-9]+' | sort -u)
 mapfile -t allowed < <(grep -vE '^[[:space:]]*(#|$)' "$allowlist" | awk '{print $1}' | sort -u)

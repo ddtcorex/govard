@@ -536,7 +536,7 @@ Chạy bộ kiểm tra QA thực thi 5 pha (thay cho tick thủ công). Registry
 govard verify --plan --json                 # dry-run tất cả pha, JSON máy
 govard verify --phase 1 --json              # một pha (1..5, 0=all)
 govard verify --phase 5 --allow-destructive --json # destructive sau snapshot
-govard verify --project /path/to/project --json
+govard verify --phase 3 --project /path/to/project --json # chọn dự án khác (chạy trơn bị từ chối nếu thiếu --allow-destructive)
 ```
 
 Flags: `--phase 0..5`, `--json`, `--plan`, `--allow-destructive` (`--yes`), `--allow-remote-write`, `--allow-xdebug`, `--lint-jobs 4`, `--timeout auto|0|<dur>`, `--checks`, `--base`, `--remote`, `--project`. `--base`, `--remote`, `--allow-xdebug`, `--allow-destructive` và `--allow-remote-write` thay đổi thứ được chạy. `--checks lint,profiler` thu hẹp run xuống các mục dùng một trong các check đó: mục không khai báo check nào không thuộc riêng check nào nên luôn chạy, còn mục bị lựa chọn loại ra vẫn nằm trong báo cáo dưới dạng dòng `skipped` có nêu tên lựa chọn. `P3-15` chạy `audit run --checks integrity` và khai báo check đó, nên lựa chọn `lint` hoặc `profiler` loại nó ra. Chỉ những tên mà `audit run --checks` chấp nhận mới hợp lệ — `lint`, `profiler`, `integrity` — nên `--checks lints` là lỗi usage (exit 2) thay vì một flag bị bỏ qua, chọn không mục nào mà vẫn báo `passed`. `--lint-jobs N` và `--timeout <value>` được truyền vào argv của các mục chạy check lint — `P3-10`, `P3-11`, `P3-13`, `P3-14` và `P5-04` — và mỗi mục trong số đó cũng ghi lại argv đã giải quyết vào evidence excerpt. `P3-12` chạy check profiler nên không nhận flag nào. Giá trị `--checks` rỗng được coi là chưa đặt chứ không phải một lựa chọn: `verify --checks ""` chạy toàn bộ, còn `audit run --checks ""` nghĩa là `lint`. Ở giá trị mặc định của flag (`4`, `auto`) verify coi như chưa được đặt: `--lint-jobs` không được truyền đi, để `audit run` giữ số worker `engine.AuditRunJobs()` của chính nó thay vì số 4 của verify đè lên cơ chế tự điều chỉnh của máy — vì vậy `--lint-jobs 4` là yêu cầu duy nhất không thể diễn đạt, và giá trị nhỏ hơn 1 cũng được coi như chưa đặt thay vì truyền xuống cho lệnh con từ chối — còn `--timeout` rơi về giá trị riêng của mục: `auto` cho các mục lint ở pha 3, `0` (không deadline) cho lần re-lint `--no-lint-result-cache` ở pha 5. Số worker vượt quá khả năng của framework dự án là việc của lệnh con: `audit run` từ chối nó nên mục đó đỏ kèm thông báo của con, chứ không bị bỏ qua trong im lặng.
@@ -802,6 +802,7 @@ top-level `govard sandbox`, được mô tả bên dưới:
 
 ```bash
 govard sandbox up --profile full --php 8.4   # database, cache, PHP 8.4
+govard sandbox up --profile full --db mariadb:10.6   # choose the database series
 govard sandbox status
 govard sandbox down [--purge] [--volumes]
 ```
@@ -1060,6 +1061,7 @@ của target diễn tập:
 govard sandbox up                      # tạo (mặc định profile php)
 govard sandbox up --profile basic      # chỉ sshd, rsync và git
 govard sandbox up --profile full --php 8.4   # database, cache, PHP 8.4
+govard sandbox up --profile full --db mariadb:10.6   # choose the database series
 govard sandbox up --docroot real       # docroot thật: publish in-place
 govard sandbox status
 govard sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
@@ -1077,6 +1079,15 @@ tập thì cấu hình được (xem [Cấu hình remote sandbox](/vi/workflows/
 Trên sandbox mới tinh dạng mặc định (`symlink`),
 `remote exec` lỗi cho tới lần deploy đầu tiên điền đầy current path — hãy deploy
 lần đầu hoặc dùng `--docroot real`.
+
+`--db` chọn database mà profile `full` cung cấp, `mariadb:<series>` (ví dụ
+`mariadb:10.6`) hoặc `default` để dùng server của distribution gốc. Với sandbox
+mới, mặc định lấy từ `stack.services.db` và `stack.db_version` của dự án; sandbox
+đã có giữ database nó đang ship, và `--db` không khớp bị từ chối trừ khi bạn truyền
+`--recreate`. Đường `--recreate` kiểm tra database trước, nên database bị từ chối
+không làm mất container đang chạy. Phần tóm tắt của `sandbox up` in thêm dòng
+`database:` (giữa `php:` và `image:`) nêu server đã cài và việc nó được yêu cầu hay
+là mặc định của distribution gốc; profile không có database thì bỏ dòng này.
 
 → Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment#sandbox).
 
