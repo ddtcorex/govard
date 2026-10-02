@@ -102,6 +102,15 @@ type SandboxRequest struct {
 	// refused for disagreeing with it. A value that is not a sandbox series is
 	// ignored, which keeps the base image's own version.
 	PHPDefault string
+	// DB is the `--db` request, `mariadb:10.6` or `default`. Empty defers to
+	// DBEngine and DBVersion.
+	DB string
+	// DBEngine and DBVersion are the project's own stack database
+	// (`stack.services.db`, `stack.db_version`): the default a *new* `full`
+	// sandbox is built for, resolved like PHPDefault. A reused container keeps
+	// the server it ships.
+	DBEngine  string
+	DBVersion string
 	// WebRoot is where inside the served path the web server serves from, from the
 	// project's `stack.web_root` (`/pub` for a storefront served from a subdirectory). Empty serves the served path
 	// itself, which is what a project with no web root has.
@@ -167,7 +176,13 @@ type SandboxState struct {
 	Image     string
 	Profile   string
 	PHP       string
-	Port      int
+	// DB is the database series the image was built for (`mariadb:10.6`),
+	// empty for the base distribution's own server.
+	DB string
+	// DBServer is the server version the running container reports, empty for
+	// a profile with no database.
+	DBServer string
+	Port     int
 	// WebPort is the published HTTP port, zero for a profile with no web tier.
 	WebPort     int
 	Running     bool
@@ -288,10 +303,21 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		php = SandboxPHPDefault(request.PHPDefault)
 	}
 
+	var db string
+	if exists {
+		db, err = sandboxReusedDB(ctx, runtime, request, container, profile)
+	} else {
+		db, err = sandboxNewDB(request, profile)
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	spec := SandboxSpec{
 		Project:      request.ProjectName,
 		Profile:      profile,
 		PHP:          php,
+		DB:           db,
 		WebRoot:      request.WebRoot,
 		Requirements: request.Requirements,
 	}
@@ -352,6 +378,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 			ProjectName: request.ProjectName,
 			Profile:     profile,
 			PHP:         php,
+			DB:          db,
 			Web:         servesWeb,
 		}); err != nil {
 			return nil, err
@@ -449,7 +476,12 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	// means plain `sandbox up` with no derivation: no seed, no record.
 	derived := NewDerivedFrom(request.SeedOrigin, request.SeedBlueprintRev)
 	seeded := false
-	if request.SeedOrigin != "" && !request.NoSeed && !exists {
+	if request.SeedOrigin != "" && !request.NoSeed && !exists && !SandboxHasDatabase(profile) {
+		// The snapshot is a database dump: a profile with no database has
+		// nowhere to put it, and attempting it failed with "the sandbox
+		// database never answered" after the sandbox was already up.
+		fmt.Fprintf(request.out(), "note: skipping the database seed, the %s profile has no database; use --profile %s to seed one\n", profile, SandboxProfileFull)
+	} else if request.SeedOrigin != "" && !request.NoSeed && !exists {
 		if err := runSandboxSeed(ctx, runtime, request.out(), container, webPort, request); err != nil {
 			return nil, err
 		}
@@ -475,6 +507,8 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		Image:       stateImage,
 		Profile:     profile,
 		PHP:         php,
+		DB:          db,
+		DBServer:    sandboxDBServerVersion(ctx, runtime, container, profile),
 		Port:        port,
 		WebPort:     webPort,
 		Running:     true,
@@ -1064,4 +1098,72 @@ func containerLabelOrEmpty(ctx context.Context, runtime SandboxRuntime, containe
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+// sandboxDBLabel is the container label the database series is recorded in.
+const sandboxDBLabel = "govard.sandbox.db"
+
+// SandboxHasDatabase reports whether a profile ships a database server.
+func SandboxHasDatabase(profile string) bool {
+	return profile == SandboxProfileFull
+}
+
+// sandboxNewDB resolves the database a container about to be built provides:
+// an explicit `--db` first, then the project's stack. Profiles with no database
+// ignore both, so a stack that names MySQL does not block `--profile php`.
+func sandboxNewDB(request SandboxRequest, profile string) (string, error) {
+	if !SandboxHasDatabase(profile) {
+		return "", nil
+	}
+	if strings.TrimSpace(request.DB) != "" {
+		return ParseSandboxDB(request.DB)
+	}
+	return ResolveSandboxDBDefault(request.DBEngine, request.DBVersion)
+}
+
+// sandboxReusedDB describes the database a reused container ships, from its
+// label, and refuses an explicit `--db` that disagrees: the image is what it
+// is, and `--recreate` is the way to get another.
+func sandboxReusedDB(ctx context.Context, runtime SandboxRuntime, request SandboxRequest, container, profile string) (string, error) {
+	if !SandboxHasDatabase(profile) {
+		return "", nil
+	}
+	declared := containerLabelOrEmpty(ctx, runtime, container, sandboxDBLabel)
+	if _, err := ParseSandboxDB(declared); err != nil {
+		declared = ""
+	}
+	if strings.TrimSpace(request.DB) == "" {
+		return declared, nil
+	}
+	requested, err := ParseSandboxDB(request.DB)
+	if err != nil {
+		return "", err
+	}
+	if requested != declared {
+		return "", fmt.Errorf(
+			"the sandbox container ships database %s; changing it to %s means a new image, so run `govard sandbox up --db %s --recreate`",
+			sandboxDBDisplay(declared), sandboxDBDisplay(requested), request.DB)
+	}
+	return declared, nil
+}
+
+// sandboxDBDisplay names a database value for a message.
+func sandboxDBDisplay(db string) string {
+	if db == "" {
+		return "default"
+	}
+	return db
+}
+
+// sandboxDBServerVersion asks the running container which database server it
+// has, so the summary states the installed version instead of the request.
+func sandboxDBServerVersion(ctx context.Context, runtime SandboxRuntime, container, profile string) string {
+	if !SandboxHasDatabase(profile) {
+		return ""
+	}
+	output, err := runtime.Exec(ctx, container, nil, "sh", "-c", "mariadbd --version 2>/dev/null || mysqld --version 2>/dev/null")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.SplitN(strings.TrimSpace(output), "\n", 2)[0])
 }

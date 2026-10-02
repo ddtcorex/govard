@@ -1332,6 +1332,19 @@ binary, các extension, `php_bin` và `php_version` mà remote khai — nên d�
 target thật chạy. Series nằm trong image tag, nên đổi series là build image khác
 chứ không tái dùng image cũ.
 
+`--db` chọn database mà profile `full` cung cấp: `--db mariadb:10.6`, hoặc
+`--db default` để dùng server của distribution gốc. Không có thì sandbox mới cài
+series MariaDB theo `stack.db_version` của dự án từ repository MariaDB chính thức
+(ghim cao hơn bản Debian, và build thất bại nếu server cài ra không đúng series),
+nên rehearsal Magento 2.4.6 chạy trên MariaDB 10.6 mà nó hỗ trợ thay vì 10.11 của
+Debian. Stack không nêu database thì giữ server của distribution, và `sandbox up`
+luôn in version đã cài. Stack MySQL bị từ chối kèm thông báo nêu rõ sự lệch, vì
+sandbox chỉ cung cấp MariaDB; truyền `--db mariadb:<series>` để chọn một series
+khác. Series nằm trong image tag, sandbox đã có giữ database nó đang ship (`--db`
+không khớp bị từ chối kèm `--recreate`). Profile `basic` và `php` không có
+database, nên `sandbox up` bỏ qua bước seed database bằng một ghi chú thay vì
+báo lỗi; dùng `--profile full` để seed.
+
 `--docroot` định hình target để chiến lược publish resolve theo đúng thứ bạn muốn
 kiểm chứng: `absent` hoặc `symlink` (mặc định) chọn cú swap nguyên tử, `real` chọn in-place.
 Một điểm cần lưu ý của dạng `symlink` mặc định: trên sandbox mới tinh,

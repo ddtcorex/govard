@@ -51,6 +51,11 @@ Profiles: basic (sshd, rsync, git), php (adds php-cli, composer, node) and full
 (e.g. --php 8.4); without it a new sandbox is built for the project's
 stack.php_version when it names a series, and the base distribution's version
 otherwise, while an existing sandbox keeps the series it ships.
+--db picks the database the full profile provides (mariadb:10.6, or default for
+the distribution's own); without it a new sandbox installs the MariaDB series of
+the project's stack.db_version from the official MariaDB repository, and a MySQL
+stack is refused rather than rehearsed on another engine. The profile with no
+database (basic, php) skips the database seed with a note.
 The sandbox then declares that series to the pipeline, so a project whose
 composer.lock needs a newer PHP can be rehearsed against the PHP its target
 actually runs. --docroot shapes the target so the publish strategy resolves the
@@ -78,6 +83,7 @@ var (
 
 func init() {
 	sandboxUpCmd.Flags().String("profile", deploy.DefaultSandboxProfile, "Container contents: basic, php or full")
+	sandboxUpCmd.Flags().String("db", "", "Database the full profile provides, mariadb:<series> (e.g. mariadb:10.6) or default for the base distribution's own (default for a new sandbox: stack.services.db and stack.db_version; an existing sandbox keeps its database)")
 	sandboxUpCmd.Flags().String("php", "", "PHP series the image provides, e.g. 8.4 (default for a new sandbox: stack.php_version when it names a series, else the base image's own; an existing sandbox keeps its series; no effect with --profile basic)")
 	sandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	sandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
@@ -129,6 +135,7 @@ func sandboxCommandRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 	// a bare `up` refuse an existing sandbox built for another series, and
 	// describe a base-image sandbox as a series its image does not ship.
 	php, _ := cmd.Flags().GetString("php")
+	db, _ := cmd.Flags().GetString("db")
 	docRoot, _ := cmd.Flags().GetString("docroot")
 	layout, _ := cmd.Flags().GetString("layout")
 	recreate, _ := cmd.Flags().GetBool("recreate")
@@ -164,6 +171,9 @@ func sandboxCommandRequest(cmd *cobra.Command) (deploy.SandboxRequest, error) {
 		Profile:     profile,
 		PHP:         php,
 		PHPDefault:  config.Stack.PHPVersion,
+		DB:          db,
+		DBEngine:    config.Stack.Services.DB,
+		DBVersion:   config.Stack.DBVersion,
 		// Where the web server serves from comes from the project, not from a flag:
 		// `stack.web_root` is already the answer for the local environment, and two
 		// answers would be one too many.
@@ -340,6 +350,13 @@ func printSandboxState(cmd *cobra.Command, state *deploy.SandboxState, headline 
 	if state.PHP != "" {
 		fmt.Fprintf(out, "  php:        %s\n", state.PHP)
 	}
+	if state.DBServer != "" || state.DB != "" {
+		server := state.DBServer
+		if server == "" {
+			server = "not reported"
+		}
+		fmt.Fprintf(out, "  database:   %s (%s)\n", server, sandboxDBRequested(state.DB))
+	}
 	if state.Image != "" {
 		fmt.Fprintf(out, "  image:      %s\n", state.Image)
 	}
@@ -361,4 +378,12 @@ func sandboxRemoteState(state *deploy.SandboxState) string {
 		return "configured"
 	}
 	return "not configured"
+}
+
+// sandboxDBRequested names how the database was chosen for the summary.
+func sandboxDBRequested(db string) string {
+	if db == "" {
+		return "base distribution default"
+	}
+	return "requested " + db
 }

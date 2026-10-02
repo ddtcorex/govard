@@ -1478,6 +1478,20 @@ against the PHP its target actually runs, instead of failing in the middle of a
 dependency install. The series is part of the image tag, so asking for a
 different one builds a different image rather than reusing the old one.
 
+`--db` picks the database the `full` profile provides: `--db mariadb:10.6`, or
+`--db default` for the base distribution's own server. Without it a new sandbox
+installs the MariaDB series of the project's `stack.db_version` from the official
+MariaDB repository (pinned above Debian's own, and the build fails if the
+installed server is not that series), so a Magento 2.4.6 rehearsal runs on the
+MariaDB 10.6 it supports instead of Debian's 10.11. A stack that names no
+database keeps the distribution's server, and `sandbox up` prints the installed
+version either way. A MySQL stack is refused with a message naming the mismatch,
+because the sandbox only provides MariaDB; pass `--db mariadb:<series>` to choose
+one anyway. The series is part of the image tag, and an existing sandbox keeps
+the database it ships (a disagreeing `--db` is refused with `--recreate`). The
+`basic` and `php` profiles have no database, so `sandbox up` skips the database
+seed with one note instead of failing; use `--profile full` to seed.
+
 A rehearsal is only as complete as the credentials the deployment has, and the
 three routes are not interchangeable — see *Where Composer credentials come from*
 above. What matters for a sandbox is that it is a fresh target: a `git`-type
