@@ -2,6 +2,8 @@ package tests
 
 import (
 	"os"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/pterm/pterm"
@@ -73,4 +75,40 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+// A deploy preflight asks the target `php -r ...` twice (OPcache, version). In a
+// test the "target" is this machine, so an unstubbed run executes whatever php
+// the developer has: on a host where that is a docker shim, every ask costs a
+// container start (0.5s quiet, 10s+ loaded) and the answer depends on the
+// machine. hermeticPHP puts a stand-in first on PATH for the one test, so the
+// assertions are about the preflight and not about the toolchain.
+func TestHermeticPHPStandsInForTheHostPHP(t *testing.T) {
+	hermeticPHP(t)
+	for args, want := range map[string]string{
+		"-r 'echo PHP_VERSION;'":                              "8.3.6",
+		`-r 'echo extension_loaded("Zend OPcache") ? 1 : 0;'`: "0",
+	} {
+		out, err := exec.Command("sh", "-c", "php "+args).Output()
+		if err != nil || strings.TrimSpace(string(out)) != want {
+			t.Fatalf("php %s = %q, %v; want %q", args, out, err, want)
+		}
+	}
+}
+
+// hermeticPHP installs a `php` that answers the two probes the deploy preflight
+// makes and succeeds silently for anything else. It does not run PHP code, so a
+// test that needs real PHP semantics must not use it.
+func hermeticPHP(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\n" +
+		"case \"$*\" in\n" +
+		"  *PHP_VERSION*) printf '8.3.6' ;;\n" +
+		"  *extension_loaded*) printf '0' ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(dir+"/php", []byte(script), 0o755); err != nil {
+		t.Fatalf("write php stand-in: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

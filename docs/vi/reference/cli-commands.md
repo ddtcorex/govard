@@ -348,7 +348,7 @@ govard bootstrap -e staging --no-pii --no-noise
 ```
 
 **Lựa chọn chế độ (Mode selection):**
-- `--fresh` + `--framework` + `--framework-version` — cài đặt mới hoàn toàn qua scaffolder của framework.
+- `--fresh` + `--framework` + `--framework-version` — cài đặt mới hoàn toàn qua scaffolder của framework. Không có `--framework-version` thì fresh install dùng `framework_version` đã có trong `.govard.yml` (ví dụ từ `govard init --framework-version 2.4.6`), và plan cùng log nói rõ dùng version nào và lấy từ đâu; không có cả hai thì cài bản mới nhất. Flag tường minh luôn thắng.
 - `--clone` + `--environment` — rsync toàn bộ mã nguồn từ một remote server.
 
 **Lựa chọn nguồn (Source selection):**
@@ -885,17 +885,21 @@ thiếu nó thì thoát với mã `3` — và nó còn đòi `--output` nằm tr
 container tới được artifact nó đang build; output nằm ngoài đó bị từ chối trước cả
 lúc govard tìm Docker, như một lỗi cấu hình (exit `4`).
 
-Container chỉ mang toolchain riêng của container app, và build kiểm tra điều đó trước
-khi thay đổi bất cứ thứ gì. Khi bước frontend của recipe sẽ chạy
-(`deploy.settings.frontend_dir` nêu ít nhất một thư mục), build tìm `node` và `npm`
-trong container trước task đầu tiên và từ chối với exit `3`, nêu tên công cụ còn
-thiếu và lối ra: `--runner host` trên máy có Node, hoặc để `frontend_dir` rỗng.
-Envelope `--error-json` của lần từ chối đó báo `capability: "node"`, một giá trị mà
-`govard capabilities` không liệt kê vì nó không phải capability khai báo được.
-Kiểm tra này dựa vào placeholder <span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe, nên một
-dự án có bước frontend (recipe override hoặc command dạng hook) không dùng placeholder
-đó và không cần Node vẫn bị container thiếu `node` và `npm` từ chối; build dự án đó
-bằng `--runner host`. Project container đang dừng hoặc không tồn tại cũng thoát `3`
+Container chỉ mang toolchain riêng của container app, nên khi cần build sẽ trộn runner,
+và kiểm tra điều đó trước khi thay đổi bất cứ thứ gì. Khi bước frontend của recipe sẽ
+chạy (`deploy.settings.frontend_dir` nêu ít nhất một thư mục), build tìm `node` và `npm`
+trong container trước task đầu tiên. Container có đủ cả hai thì giữ bước đó. Container
+thiếu một trong hai thì bước frontend chạy trên **host** (host phải có `node` và `npm`;
+các bước PHP và Composer vẫn ở trong container), timeline in một dòng `runner:` cho mỗi
+bước (ví dụ `runner: host (node not in container)`), và manifest ghi `frontend_runner`
+cạnh `php_version` của container. Chỉ khi cả hai phía đều không có Node mới từ chối với
+exit `3`, nêu tên thứ mỗi phía còn thiếu và lối ra (cài Node trong container hoặc trên
+host, vì `--runner host` cũng cần Node trên host; hoặc, với bước dùng placeholder bên dưới, để `frontend_dir` rỗng). Envelope `--error-json` của lần từ chối đó báo `capability: "node"`, một giá trị
+mà `govard capabilities` không liệt kê vì nó không phải capability khai báo được. Kiểm
+tra này dựa vào placeholder <span v-pre>`{{settings.frontend_dir_args}}`</span> của recipe, nên một dự án
+có bước frontend (recipe override hoặc command dạng hook) không dùng placeholder đó vẫn
+bị kiểm tra Node, và `frontend_dir` rỗng không bỏ qua kiểm tra đó.
+Project container đang dừng hoặc không tồn tại cũng thoát `3`
 (gợi ý: `govard env up`, hoặc `--runner host`). Cả hai lần từ chối đều đến trước khi
 output directory bị đụng tới, nên artifact trước đó còn nguyên. Ctrl-C và
 `--command-timeout` cũng dừng bước đang chạy bên trong container: sau khi client

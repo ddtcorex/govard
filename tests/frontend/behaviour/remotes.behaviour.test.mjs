@@ -288,6 +288,50 @@ test("closing the sync modal while it is still opening leaves it closed", async 
   assert.deepEqual(session.consoleErrors, []);
 });
 
+test("a failed open during the close window cannot strand the sync modal in closing", async (t) => {
+  const session = await withPreview(t);
+  if (!session) return;
+
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    ...VIEWPORT,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await openRemotes(session);
+  await openModal(session, "db");
+
+  // open() cancels the close timer, so while its option load is in flight the
+  // close can only finish through transitionend. Removing the transition makes
+  // that event never fire, which is the worst case a throttled or reduced-motion
+  // run can hit: if the failed open then leaves the dialog in `closing`, a
+  // transparent full-screen backdrop is left over the whole app.
+  await session.evaluate(`(() => {
+    const style = document.createElement("style");
+    style.textContent = "#${MODAL}, #${MODAL} * { transition: none !important; }";
+    document.head.appendChild(style);
+  })()`);
+  await session.evaluate(`window.__govardPreview.appendFixtures([
+    { service: "RemoteService", method: "GetSyncOptions", args: [${JSON.stringify("sample-project")}, "media"], error: "options backend down" },
+  ])`);
+  await session.evaluate(`window.__govardPreviewRouteDelayMs = 600`);
+  await session.evaluate(`(() => {
+    document.querySelector("[data-testid='close-sync-modal']").click();
+    document.querySelector("#remotesList [data-testid='open-sync-modal'][data-preset='media']").click();
+  })()`);
+
+  await session.waitFor(
+    `document.getElementById("toastContainer").textContent.includes("options backend down")`,
+    true,
+    { timeoutMs: 5000 },
+  );
+  await session.waitFor(
+    `document.getElementById("${MODAL}").classList.contains("hidden")`,
+    true,
+    { timeoutMs: 3000 },
+  );
+  await session.evaluate(`window.__govardPreviewRouteDelayMs = 0`);
+});
+
 const quiet = (session, ms) => session.evaluate(`new Promise((r) => setTimeout(r, ${ms}))`);
 const PROJECT = "sample-project";
 const PLAN = "#syncPlanOutput";

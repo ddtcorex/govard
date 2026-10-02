@@ -23,6 +23,7 @@ import (
 // the difference it makes is deterministic: one build task writes two files,
 // one of them into a directory that does not exist in the checkout.
 func TestBuildModesProduceTheSameRelease(t *testing.T) {
+	hermeticPHP(t)
 	work, revision := seedBuildRepo(t)
 	origin := seedOriginFromCheckout(t, work)
 

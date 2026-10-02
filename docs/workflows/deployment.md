@@ -967,14 +967,21 @@ directory inside the project root (anywhere else is a configuration error, exit
 PHP, so the deploy job's PHP parity check only clears when the container runs the
 target's PHP series.
 
-The container carries only its own toolchain. When the recipe's frontend step will
-run (`deploy.settings.frontend_dir` names a directory), the build checks the
-container for `node` and `npm` before the first task and refuses with exit `3`,
-naming the missing tools and the way out: `--runner host` on a machine with Node,
-or an empty `frontend_dir`. The previous artifact survives that refusal. The check
-keys on the recipe's <span v-pre>`{{settings.frontend_dir_args}}`</span> placeholder, so a frontend
-step that does not use it and needs no Node (a recipe override, a hook-shaped
-command) is still refused by a container without them; use `--runner host` there.
+The container carries only its own toolchain, so the build mixes runners when it has to.
+When the recipe's frontend step will run (`deploy.settings.frontend_dir` names a
+directory), the build checks the container for `node` and `npm` before the first task.
+A container that has both keeps the frontend step. One that lacks either hands the step
+to the **host**, which then needs `node` and `npm` itself (checked before the first
+task); the PHP and Composer steps still run in the container. Every step prints its
+runner on the timeline (`runner: container <name>`, or `runner: host (node not in
+container)`), and the artifact manifest records `frontend_runner` (`container` or `host`)
+next to the container's `php_version`. Only when neither side has Node does the build
+refuse, with exit `3`, naming what each side lacks and the way out: install Node in the
+container or on the host (`--runner host` does not help, it needs Node on the host too),
+or, for a step that uses the placeholder below, an empty `frontend_dir`. The previous artifact survives that refusal. The check keys on the
+recipe's <span v-pre>`{{settings.frontend_dir_args}}`</span> placeholder, so a frontend step that does not
+use it and needs no Node (a recipe override, a hook-shaped command) is still checked
+for Node, and an empty `frontend_dir` does not skip that check; install Node.
 Ctrl-C and `--command-timeout` stop the step inside the container as well: a second
 `docker exec` signals its process group, and the error says whether that teardown
 was attempted and whether it completed.

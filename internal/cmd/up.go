@@ -624,11 +624,16 @@ func dbReadinessProbeArgs(config engine.Config, containerName string) []string {
 		return []string{"pg_isready", "-h127.0.0.1", "-U" + credentials.Username}
 	}
 	admin := `if command -v mariadb-admin >/dev/null 2>&1; then DBADMIN=mariadb-admin; else DBADMIN=mysqladmin; fi`
-	ping := fmt.Sprintf(`"$DBADMIN" ping -h127.0.0.1 -u%s`, engine.ShellQuote(credentials.Username))
-	if credentials.Password != "" {
-		ping += " -p" + engine.ShellQuote(credentials.Password)
-	}
-	return []string{"sh", "-c", admin + "; " + ping}
+	return []string{"sh", "-c", admin + "; " + dbReadinessPingScript(credentials.Username, credentials.Password)}
+}
+
+// dbReadinessPingScript passes the password as MYSQL_PWD instead of a -p
+// argument. It is still visible in the command line of the `docker exec ... sh
+// -c` on the host and of the container's `sh -c` process, because the export
+// prefix is part of that script. The gain is narrower: the mysqladmin/mariadb-admin
+// process itself carries no password in its argv and does not inherit it via -p.
+func dbReadinessPingScript(username, password string) string {
+	return mysqlPasswordExportPrefix(password) + fmt.Sprintf(`"$DBADMIN" ping -h127.0.0.1 -u%s`, engine.ShellQuote(username))
 }
 
 func readinessProbeAttempts(timeout time.Duration) int {

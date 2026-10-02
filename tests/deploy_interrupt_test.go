@@ -130,6 +130,7 @@ remotes:
 // Before the maintenance window: the lock goes back, so a retry is allowed
 // instead of the operator hunting for a lock nobody holds.
 func TestAnInterruptedBuildReleasesTheLock(t *testing.T) {
+	hermeticPHP(t)
 	host, release, err := interruptedDeploy(t, "build:vendors")
 	if err == nil {
 		t.Fatal("an interrupted deploy must fail")

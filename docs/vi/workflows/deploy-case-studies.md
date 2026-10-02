@@ -57,12 +57,13 @@ cần**, và build giờ kiểm tra điều đó trước khi chạy bất cứ 
 container PHP — nên recipe có build frontend trong build stage thì cần `npm` trong đó.
 Đo trên dự án Magento 2.4.9 ngày 2026-09-30, có cấu hình `frontend_dir`: `--runner
 container` chạy xong `build:vendors`, `build:patches` và `build:compile`, rồi hỏng ở
-`build:frontend` với `sh: npm: not found`. Lỗi đó giờ đến trước task đầu tiên thay vì sau
-ba task: khi bước frontend của recipe sẽ chạy, build tìm `node` và `npm` trong container,
-từ chối với exit `3` nêu tên công cụ còn thiếu và `--runner host` làm lối ra, và để nguyên
-artifact trước đó. Project container đang dừng hoặc không tồn tại bị từ chối theo cách
-tương tự, còn Ctrl-C hoặc `--command-timeout` cũng dừng bước đang chạy bên trong
-container.
+`build:frontend` với `sh: npm: not found`. Lỗi đó giờ không còn xảy ra: khi bước frontend của recipe sẽ chạy, build tìm `node` và
+`npm` trong container và, nếu thiếu, chạy riêng bước đó trên host (các bước PHP vẫn ở trong
+container), in `runner: host (node not in container)` trên timeline và ghi `frontend_runner`
+vào manifest. Chỉ khi host cũng không có Node, build mới từ chối với exit `3`, trước task
+đầu tiên và để nguyên artifact trước đó. Project container đang dừng hoặc không tồn tại bị
+từ chối theo cách tương tự, còn Ctrl-C hoặc `--command-timeout` cũng dừng bước đang chạy bên
+trong container.
 
 Đổi lại, container path mang lại gì trên chính dự án và revision đó: `build:vendors`
 clone được một package Composer private qua SSH từ trong container, trong khi runner

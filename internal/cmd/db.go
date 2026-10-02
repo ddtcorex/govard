@@ -1272,14 +1272,7 @@ func runDBTop(cmd *cobra.Command, config engine.Config, options dbCommandOptions
 			var out []byte
 			var cmdErr error
 
-			// Build command string (--no-defaults: ignore ~/.my.cnf so the
-			// credentials above are the only ones in effect, remote or not)
-			var cmdStr string
-			if credentials.Password != "" {
-				cmdStr = fmt.Sprintf("mysql --no-defaults -u%s -p%s -BN -e %s", engine.ShellQuote(credentials.Username), engine.ShellQuote(credentials.Password), engine.ShellQuote(query))
-			} else {
-				cmdStr = fmt.Sprintf("mysql --no-defaults -u%s -BN -e %s", engine.ShellQuote(credentials.Username), engine.ShellQuote(query))
-			}
+			cmdStr := buildProcessListCommand(credentials.Username, credentials.Password, query)
 
 			if options.Environment == "local" {
 				containerName := dbContainerName(config)
@@ -1324,4 +1317,19 @@ func formatProcessListTable(raw string) (string, error) {
 		return "", err
 	}
 	return table, nil
+}
+
+// buildProcessListCommand builds the processlist query. --no-defaults ignores
+// ~/.my.cnf so the credentials passed here are the only ones in effect, remote
+// or not. The password travels as MYSQL_PWD, never as a -p argument. It is still
+// visible in the command line of the `docker exec ... sh -c` on the host and of
+// the container's `sh -c` process, because the export prefix is part of that
+// script. The gain is narrower: the mysql process itself carries no password in
+// its argv and does not inherit it through -p.
+func buildProcessListCommand(username, password, query string) string {
+	return mysqlPasswordExportPrefix(password) + fmt.Sprintf(
+		"mysql --no-defaults -u%s -BN -e %s",
+		engine.ShellQuote(username),
+		engine.ShellQuote(query),
+	)
 }

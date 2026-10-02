@@ -61,6 +61,11 @@ type ArtifactManifest struct {
 	// machine had none. An empty value disables the parity gate rather than
 	// blocking a project that is not a PHP project.
 	PHPVersion string `json:"php_version,omitempty"`
+	// FrontendRunner is which runner built the frontend step: "container" or
+	// "host" (a container build whose container had no Node). Empty when no
+	// frontend step ran. PHPVersion above stays the PHP that built the vendor
+	// tree, whatever ran the frontend.
+	FrontendRunner string `json:"frontend_runner,omitempty"`
 	// ComposerLockSHA256 identifies the dependency set the artifact was built
 	// against, which is what makes "same revision, different vendor/" visible.
 	// It is evidence, not a gate: composer.lock itself is one of Files, so
@@ -267,6 +272,9 @@ type BuildRequest struct {
 	// Runner executes the local commands. It defaults to LocalRunner; tests
 	// substitute it to observe what the build actually runs.
 	Runner Runner
+	// HostRunner runs the frontend step on the host when Runner is a container
+	// without Node. It defaults to LocalRunner and is the seam tests fake.
+	HostRunner Runner
 }
 
 // BuildArtifactDir materialises one revision into an artifact directory, runs
@@ -302,7 +310,8 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 
 	// A refusal that can be known before anything is built comes before the
 	// output directory is cleared, so the previous artifact survives it.
-	if err := preflightContainerNode(ctx, runner, req); err != nil {
+	frontend, err := planFrontendRunner(ctx, runner, req.HostRunner, req)
+	if err != nil {
 		return nil, err
 	}
 
@@ -329,7 +338,7 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 		SetPath("release_path", output).
 		SetPath("deploy_path", filepath.Dir(output))
 
-	if err := runBuildTasks(ctx, runner, req, vars, output, out); err != nil {
+	if err := runBuildTasks(ctx, runner, frontend, req, vars, output, out); err != nil {
 		return nil, err
 	}
 
@@ -355,6 +364,7 @@ func BuildArtifactDir(ctx context.Context, req BuildRequest) (*ArtifactManifest,
 	if err != nil {
 		return nil, err
 	}
+	manifest.FrontendRunner = frontend.Name
 	if err := WriteManifest(output, manifest); err != nil {
 		return nil, err
 	}
@@ -427,7 +437,7 @@ func materialiseRevision(ctx context.Context, runner Runner, workDir, output, re
 // runBuildTasks runs the build stage in the artifact directory, through the same
 // plan a server build would run. That is the parity guarantee: one task list,
 // one expansion, two places to execute it.
-func runBuildTasks(ctx context.Context, runner Runner, req BuildRequest, vars Vars, output string, out io.Writer) error {
+func runBuildTasks(ctx context.Context, runner Runner, frontend frontendPlan, req BuildRequest, vars Vars, output string, out io.Writer) error {
 	plan, err := BuildPlan(req.Recipe, req.Hooks)
 	if err != nil {
 		return err
@@ -464,7 +474,20 @@ func runBuildTasks(ctx context.Context, runner Runner, req BuildRequest, vars Va
 			return fmt.Errorf("expand %s: %w", step.ID, err)
 		}
 		fmt.Fprintf(out, "  → %s\n", step.ID)
-		if _, err := runner.Run(ctx, expanded, RunOptions{Dir: output, Timeout: buildStepTimeout(req.Options)}); err != nil {
+		stepRunner := runner
+		if container, ok := runner.(ContainerRunner); ok {
+			// Only a build that can mix runners says where each step runs; a
+			// host build keeps the timeline it always had.
+			if step.ID == frontend.StepID && frontend.Runner != nil {
+				stepRunner = frontend.Runner
+			}
+			if stepRunner == runner {
+				fmt.Fprintf(out, "    runner: container %s\n", container.Container)
+			} else {
+				fmt.Fprintf(out, "    runner: host (%s)\n", frontend.Reason)
+			}
+		}
+		if _, err := stepRunner.Run(ctx, expanded, RunOptions{Dir: output, Timeout: buildStepTimeout(req.Options)}); err != nil {
 			return fmt.Errorf("%s: %w", step.ID, err)
 		}
 	}

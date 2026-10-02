@@ -76,9 +76,9 @@ func (m *Magento1Manager) executeDockerMysql(container string, sql string) ([]by
 	executor := engine.ResolveDockerExecutor(m.Executor)
 	// Use smart detection for mysql vs mariadb binary
 	script := fmt.Sprintf(
-		`if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb; else exit 1; fi && "$DB_CLI" -u%s -p%s %s -e %s`,
+		`if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb; else exit 1; fi && export MYSQL_PWD=%s; "$DB_CLI" --no-defaults -u%s %s -e %s`,
+		conventions.ShellQuote(conventions.DefaultMagentoDBPass),
 		conventions.DefaultMagentoDBUser,
-		conventions.DefaultMagentoDBPass,
 		conventions.DefaultMagentoDBName,
 		conventions.ShellQuote(sql),
 	)
