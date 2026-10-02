@@ -208,6 +208,8 @@ available is reported as a warning. Both come from the same prepare preflight th
 deploy itself runs, so the `.gitmodules` refusal it reports is the refusal the
 deploy makes.
 
+Findings print before the `Target ... is deployable` line: notes start with `  - `, and warnings are lines starting with `  ! warning:`, so a script can grep `warning:`; exit codes are unchanged.
+
 `deploy check` leaves nothing behind on the target, local or remote: its
 writability probe creates no path at all — an absent `deploy_path` is probed at
 the nearest existing parent on the target itself, and on a local target the note

@@ -208,6 +208,8 @@ repository ngoài packagist khi không có credential nào thì bị cảnh báo
 từ đúng preflight mà bản deploy thật chạy, nên lần từ chối `.gitmodules` mà `check`
 báo ra chính là lần từ chối mà deploy sẽ gặp.
 
+Các phát hiện được in trước dòng `Target ... is deployable`: note bắt đầu bằng `  - `, còn cảnh báo là các dòng bắt đầu bằng `  ! warning:`, nên script có thể grep `warning:`; exit code không đổi.
+
 `deploy check` không để lại gì trên target, dù là local hay remote: probe quyền
 ghi của nó không tạo ra path nào — một `deploy_path` chưa tồn tại được probe tại
 parent tồn tại gần nhất ngay trên target đó, và ở local thì note nói rõ parent nào
