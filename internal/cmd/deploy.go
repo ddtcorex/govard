@@ -37,6 +37,8 @@ A project customises it by anchoring hooks on a task id, on a stage alias
 
 --resume continues the newest unfinished release; when the remote holds no
 unfinished release, the command starts a new one and says so.
+A resumed release keeps the build mode it started in (an artifact release is never
+built on the target); an explicit --build naming the other mode is refused.
 
 This command needs only ssh and rsync: it runs on a host without Docker, which is
 what lets the same command work in CI and on a development machine.
@@ -180,6 +182,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// revision being resumed, not the local HEAD resolved a moment ago.
 			options.Revision = release.Revision
 			options.Tag = ""
+			// The same goes for how it was built: a release that began as an
+			// artifact release is finished as one, whatever flags the retry
+			// repeats, so a resume can never run the build on the target.
+			options, err = reconcileResumeBuildMode(release, options, explicitBuildFlag(cmd))
+			if err != nil {
+				return err
+			}
+			plan, err = deployPlanFor(recipe, hooks, options)
+			if err != nil {
+				return configOrUsageError(err)
+			}
 		}
 	}
 
@@ -299,6 +312,47 @@ func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Releas
 	}
 	pterm.Info.Printf("resuming release %s (previously failed)\n", release.Release)
 	return release, nil
+}
+
+// explicitBuildFlag is the `--build` value the operator typed, or "" when the
+// flag was absent or `auto`: only a deliberate choice can contradict a release.
+func explicitBuildFlag(cmd *cobra.Command) string {
+	if cmd == nil || !cmd.Flags().Changed("build") {
+		return ""
+	}
+	value, _ := cmd.Flags().GetString("build")
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == deploy.BuildAuto {
+		return ""
+	}
+	return value
+}
+
+// reconcileResumeBuildMode makes a resumed run continue in the build mode of the
+// release it continues. Mixing modes in one release is the failure this exists
+// to prevent: a resume that re-resolved `auto` from flags found no artifact
+// directory, fell back to a server build and ran build:vendors and build:compile
+// on the target over a release whose code came from an artifact.
+//
+// An explicit `--build` that names the other mode is refused as a usage error:
+// the operator asked for something the release cannot become. A record that
+// cannot say how it was built leaves the resolved mode alone.
+func reconcileResumeBuildMode(release *deploy.Release, options deploy.Options, explicitBuild string) (deploy.Options, error) {
+	recorded := deploy.RecordedBuildMode(release)
+	if recorded == "" {
+		return options, nil
+	}
+	if explicitBuild != "" && explicitBuild != recorded {
+		return options, &cli.UsageError{Err: fmt.Errorf("release %s was started with --build=%s, so --build=%s cannot resume it: drop --build to continue it as it began, or deploy normally to start a new release", release.Release, recorded, explicitBuild)}
+	}
+	options.Build = recorded
+	return options, nil
+}
+
+// ReconcileResumeBuildModeForTest exposes reconcileResumeBuildMode to the tests/
+// package.
+func ReconcileResumeBuildModeForTest(release *deploy.Release, options deploy.Options, explicitBuild string) (deploy.Options, error) {
+	return reconcileResumeBuildMode(release, options, explicitBuild)
 }
 
 // PrepareResumeForTest exposes prepareResume to the tests/ package. The

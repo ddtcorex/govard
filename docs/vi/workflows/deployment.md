@@ -1235,6 +1235,12 @@ resume nó là đường recovery, không phải mối nguy. Run khởi động 
 `--from`/`--resume` tự lấy deploy lock, nên bước bị bỏ qua không để target chạy không
 được bảo vệ.
 
+Resume cũng giữ nguyên build mode của release. Mode (`server` hoặc `artifact`) được ghi
+vào record khi release bắt đầu, và `--resume` không kèm `--build` sẽ tiếp tục đúng mode
+đó: release artifact bị gián đoạn không bao giờ chạy các task build trên target, và chỉ
+cần `--artifact-dir` lại nếu `deploy:artifact` chưa thành công. `--build` tường minh chỉ
+mode còn lại bị từ chối như lỗi usage (exit 2) thay vì trộn hai mode trong một release.
+
 Có thể `--resume` bao nhiêu lần cũng được, và lần nào cũng tiếp tục đúng release
 đó. Bước mà lần chạy trước đã thành công sẽ không chạy lại, và record giữ nguyên
 trạng thái `ok` mà lần đó ghi, nên lần resume hiện bước đó là `already done in an

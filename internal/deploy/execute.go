@@ -229,6 +229,14 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		release.Branch = e.opts.Branch
 	}
 
+	// The build mode is part of what the release *is*: a resume must continue it,
+	// not re-resolve it from flags the retry may not repeat. It is stamped on the
+	// record before the first step can fail, so an interrupted artifact release
+	// is recognisable even when it never reached deploy:artifact.
+	if release.Build.Mode == "" && strings.TrimSpace(release.Release) == "" && e.opts.Build != "" {
+		release.Build.Mode = e.opts.Build
+	}
+
 	fmt.Fprintf(e.out, "▶ deploy %s (%s @ %s)\n", e.host.Name, BranchLabel(release.Branch), shortRevision(release.Revision))
 
 	// Said before anything runs, so it is on screen when the deploy fails later
