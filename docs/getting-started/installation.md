@@ -184,9 +184,8 @@ brew install ddtcorex/tap/govard
 # Docker (no install needed — CI-friendly)
 docker run --rm ghcr.io/ddtcorex/govard:<version> version
 
-# Snap (Linux, CLI only — classic confinement is required:
-# Govard orchestrates Docker and writes system paths)
-sudo snap install govard --classic
+# Snap: not available for now (the Store has not approved the classic
+# confinement request). Use CloudSmith or the install script instead.
 
 # Debian/Ubuntu via CloudSmith (one-time repo setup, then install)
 curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-deb/setup.deb.sh | sudo -E bash

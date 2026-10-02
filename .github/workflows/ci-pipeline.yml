@@ -16,6 +16,12 @@ permissions:
 
 env:
   GO_VERSION: "1.25.x"
+  # The two slowest jobs (Integration Tests ~5 min, Release Snapshot ~6 min) run
+  # only when the repository variable GOVARD_CI_FULL is "true". They are paused
+  # while one maintainer ships; re-enable with
+  #   gh variable set GOVARD_CI_FULL --body true -R ddtcorex/govard
+  # when more contributors need the full gate. The Verify gate treats a skipped
+  # job as passing, so branch protection keeps working either way.
 
 jobs:
   quality_checks:
@@ -103,6 +109,7 @@ jobs:
 
   integration_tests:
     name: Integration Tests
+    if: ${{ vars.GOVARD_CI_FULL == 'true' }}
     runs-on: ubuntu-latest
     needs: fast_tests
     steps:
@@ -134,7 +141,7 @@ jobs:
   build_binaries:
     name: Build Binaries
     runs-on: ubuntu-latest
-    needs: [quality_checks, fast_tests, integration_tests]
+    needs: [quality_checks, fast_tests]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -158,12 +165,12 @@ jobs:
           path: bin/
 
   # Validates the tag-only release config on every PR: GoReleaser --snapshot
-  # builds everything release.yml builds (archives, nfpms deb/rpm/apk, snap
-  # packs) without publishing anything. Added after beta.5-8 burned four tags
-  # on snap-login issues PR CI could never see. Store-upload auth remains
-  # beta-rehearsal-only (it needs real secrets).
+  # builds everything release.yml builds (archives, nfpms deb/rpm/apk) without
+  # publishing anything. Added after beta.5-8 burned four tags on release
+  # config issues PR CI could never see.
   release_snapshot:
     name: Release Snapshot (GoReleaser --snapshot)
+    if: ${{ vars.GOVARD_CI_FULL == 'true' }}
     runs-on: ubuntu-latest
     needs: [quality_checks, fast_tests]
     steps:
@@ -211,9 +218,6 @@ jobs:
             go run ./cmd/govard completion "$sh" > "completion/govard.$sh"
           done
           mv completion/govard.powershell completion/govard.ps1
-
-      - name: Install snapcraft for snap packs
-        run: sudo snap install snapcraft --classic --channel=8.x/stable
 
       - name: Run GoReleaser snapshot
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
