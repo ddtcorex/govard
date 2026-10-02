@@ -880,7 +880,10 @@ thể lọt ra production: dùng `--force` nếu muốn thay nội dung.
 
 Flag của `govard deploy build`: `--remote`, `--output` (bắt buộc), `--branch`,
 `--revision`, `--tag`, `--force`, `--command-timeout`, `--json`, `--runner`
-(`host` là mặc định, hoặc `container`). Lệnh này không cần capability nào: `none`.
+(`host` là mặc định, hoặc `container`), `--no-cache`. Lệnh này không cần capability nào: `none`.
+Chỉ remote `sandbox` cache artifact của nó (`.govard/sandbox/build-cache`, khoá theo
+commit, hash `composer.lock`, series PHP, chế độ và phiên bản govard); `--no-cache`
+buộc build lại ở đó và được chấp nhận rồi bỏ qua với mọi remote khác.
 `--runner container` là flag duy nhất có đòi hỏi — container app của chính dự án,
 thiếu nó thì thoát với mã `3` — và nó còn đòi `--output` nằm trong project root để
 container tới được artifact nó đang build; output nằm ngoài đó bị từ chối trước cả
@@ -1089,7 +1092,12 @@ không làm mất container đang chạy. Phần tóm tắt của `sandbox up` i
 `database:` (giữa `php:` và `image:`) nêu server đã cài và việc nó được yêu cầu hay
 là mặc định của distribution gốc; profile không có database thì bỏ dòng này.
 
-→ Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment#sandbox).
+Profile `full` giữ database trong named volume `govard-sandbox-<project>-db`: `down`
+giữ nó, `down --purge` xoá nó, và volume do series database khác ghi ra bị từ chối
+kèm gợi ý `--purge`. `up` chỉ seed database trống; `--reseed` làm mới database và
+file từ môi trường gốc (bị từ chối khi đi cùng `--no-seed`), và `--recreate` giữ volume.
+
+→ Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment#sandbox) và phần vòng lặp nhanh.
 
 ### `govard gateway`
 

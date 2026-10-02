@@ -1033,6 +1033,7 @@ Setting ở tầng engine (do recipe mặc định khai, core áp dụng):
 | `php_version` | (rỗng; không chặn khi bỏ trống) | series mà target chạy — một cổng chặn, không phải sở thích |
 | `composer_bin` | `composer` | binary Composer trên target |
 | `content_version` | revision rút gọn | `--content-version`; mang tính xác định, nên lần thử lại ghi ra đúng các asset URL như cũ |
+| `sandbox_reuse_assets` | `true` | `false` giữ `build:assets` chạy ở mọi lần deploy lên sandbox; mặc định sandbox hard-link static content của release trước khi artifact và lệnh đã render không đổi (remote thật luôn chạy task này) |
 
 Setting của Magento (do recipe Magento khai):
 

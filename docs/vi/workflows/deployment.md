@@ -1391,9 +1391,52 @@ bao giờ là một argument và cũng không phải entry argv `NAME=value` —
 bộ không đọc được; bên trong container nó vẫn hiện trong process list của chính
 container đó khi client đang chạy. Dump hỏng giữa đường để lại database sandbox
 **partial**, và seed báo rõ thay vì im lặng: chạy lại `govard sandbox up`. Seed chỉ
-chạy trên container mới; sandbox đã có giữ nguyên data và `--recreate` là cách làm
-mới. Môi trường gốc phải đang chạy, nếu không `up` từ chối và nói rõ — sandbox câm
-mà im lặng thì không giúp được ai. `--no-seed` để khởi đầu trắng một cách chủ đích.
+chạy trên container mới, và phần database chỉ vào database trống: profile `full`
+giữ database trong một named volume mà `down` không đụng tới, nên container mới
+trên volume đã có dữ liệu bỏ qua bước import (và báo đúng một dòng) nhưng vẫn nhận
+media và env file, vì chúng nằm trong container. `--reseed` làm mới cả hai từ môi
+trường gốc; `down --purge` bỏ volume. Môi trường gốc phải đang chạy, nếu không `up`
+từ chối và nói rõ — sandbox câm mà im lặng thì không giúp được ai. `--no-seed` để
+khởi đầu trắng một cách chủ đích, và `--reseed` đi cùng `--no-seed` bị từ chối.
+
+### Vòng lặp nhanh
+
+Một lần diễn tập lặp đi lặp lại cùng các bước, nên sandbox dùng lại những gì dùng
+lại được. Tất cả chỉ áp dụng cho remote `sandbox`; remote thật build và deploy đúng
+như trước.
+
+- **Fixture thay cho cài mới.** Cài lần đầu mất vài phút.
+  `scripts/sandbox-fixture.sh <dir>` tạo một dự án đã cài đúng một lần (`init`,
+  `bootstrap --fresh`, rồi commit những file mà build đọc); sau đó fixture đang dừng
+  quay lại bằng `env start` hoặc `snapshot restore`.
+- **Database được giữ.** Profile `full` mount named volume
+  `govard-sandbox-<project>-db` lên thư mục dữ liệu của database. `down` giữ nó,
+  `down --purge` xoá nó, `up` chỉ seed một database trống, và `--reseed` làm mới.
+  Volume do một series database ghi ra không bao giờ được mở bằng series khác:
+  `--db` (hoặc stack) chỉ một series khác bị từ chối, trước khi build bất cứ gì, kèm
+  gợi ý `--purge`. `--recreate` dựng lại container và giữ volume, nên nó không còn tự
+  làm mới data.
+- **Artifact được cache.** `govard deploy build sandbox` resolve sandbox đang chạy
+  mà không cần remote cấu hình sẵn, và cache artifact thành phẩm dưới
+  `.govard/sandbox/build-cache`, khoá theo commit, sha256 của `composer.lock` tại
+  commit đó, series PHP, chế độ build và runner, và phiên bản govard. Trúng cache thì
+  hard-link cây đã cache vào `--output` và in `artifact cache hit`; `--no-cache` build
+  lại. Giữ ba entry dùng gần nhất và `down --purge` xoá hết. Đừng sửa tại chỗ một
+  output đã build: hard link dùng chung nội dung với cache.
+- **Static content được dùng lại.** Khi artifact (revision, PHP, lock file, digest
+  từng file) và lệnh static-content đã render giống lần chạy trước, sandbox hard-link
+  static content của release trước thay vì sinh lại, và timeline nói lý do. Artifact
+  đổi, lệnh đổi (theme, locale, jobs) hoặc thiếu nội dung cũ thì task chạy. Thay đổi
+  mà fingerprint không thấy được, ví dụ một theme bật trong database, cần
+  `settings.sandbox_reuse_assets: false` dưới `deploy:` để task vẫn chạy.
+- **Credentials cho server build.** `--build server` trên sandbox nhận `auth.json`
+  của dự án, hoặc `~/.composer/auth.json`, trong lần chạy (trừ khi đã đặt
+  `COMPOSER_AUTH`); chúng đi qua standard input của lệnh, không bao giờ vào argv hay
+  ghi ra đĩa. Artifact deploy không cài gì trên target và không đọc credentials.
+
+Trên máy ấm (đã có image) vòng lặp đo được khoảng 6 s cho fixture, 27 đến 33 s cho
+`sandbox up` có seed, 69 đến 79 s cho build artifact và 50 s cho deploy trước các
+thay đổi này; build và seed là hai phần giờ giảm xuống còn vài giây ở lần lặp.
 
 Một sandbox đã tồn tại được mô tả bằng chính nó, không bằng flag của lệnh vừa gọi
 tới: `up` báo đúng profile và series PHP mà container được build, cùng image thật

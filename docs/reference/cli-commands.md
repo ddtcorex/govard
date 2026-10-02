@@ -896,7 +896,10 @@ earlier build cannot ship: pass `--force` to replace its contents.
 
 `govard deploy build` flags: `--remote`, `--output` (required), `--branch`,
 `--revision`, `--tag`, `--force`, `--command-timeout`, `--json`, `--runner`
-(`host`, the default, or `container`). It needs no capability at all: `none`.
+(`host`, the default, or `container`), `--no-cache`. It needs no capability at all: `none`.
+Only the `sandbox` remote caches its artifact (`.govard/sandbox/build-cache`, keyed by
+commit, `composer.lock` hash, PHP series, mode and govard version); `--no-cache`
+forces a rebuild there and is accepted and ignored for every other remote.
 `--runner container` is the one flag that demands anything — the project's own
 app container, exit `3` without it — and it also requires `--output` to sit
 inside the project root, so the container can reach the artifact it builds; an
@@ -1125,7 +1128,13 @@ in place. The `sandbox up` summary prints a `database:` line (between `php:` and
 `image:`) naming the installed server and whether it was requested or is the base
 distribution's default; profiles without a database omit it.
 
-→ Full guide: [Deployment](/workflows/deployment#the-sandbox).
+The `full` profile keeps its database in the named volume
+`govard-sandbox-<project>-db`: `down` keeps it, `down --purge` removes it, and a
+volume written by another database series is refused with a `--purge` hint. `up`
+seeds an empty database only; `--reseed` refreshes the database and the files from
+the origin (refused together with `--no-seed`), and `--recreate` keeps the volume.
+
+→ Full guide: [Deployment](/workflows/deployment#the-sandbox) and its fast loop.
 
 ### `govard gateway`
 

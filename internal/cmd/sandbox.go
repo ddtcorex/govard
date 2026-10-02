@@ -88,7 +88,7 @@ func init() {
 	sandboxUpCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	sandboxUpCmd.Flags().Bool("recreate", false, "Rebuild the image and recreate the container")
 	sandboxUpCmd.Flags().Bool("no-seed", false, "Skip the snapshot: start with an empty sandbox (no DB, no media, no env file)")
-	sandboxUpCmd.Flags().Bool("reseed", false, "Refresh the database and the files from the origin even when the sandbox already holds them (the database lives in a volume that `down` keeps, so a plain `up` seeds only an empty one)")
+	sandboxUpCmd.Flags().Bool("reseed", false, "Refresh the database and the files from the origin even when the sandbox already holds them (the database lives in a volume that down keeps, so a plain up seeds only an empty one)")
 
 	sandboxResetCmd.Flags().String("docroot", "", "Shape of the target's current path: absent, symlink or real")
 	sandboxResetCmd.Flags().String("layout", "", "Seed a target the other deploy tool owns (deployer; any other value is ignored)")
