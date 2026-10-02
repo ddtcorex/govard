@@ -99,7 +99,7 @@ func TestPopulatedVolumeStillPointsTheDatabaseAtTheNewWebPort(t *testing.T) {
 	fake.answers["80/tcp"] = "127.0.0.1:32771\n"
 	fake.answers["cat app/etc/env.php"] = "<?php return [];\n"
 	fake.answers["information_schema.tables"] = "371\n"
-	existingVolume(fake, request.ProjectName, "")
+	existingVolume(fake, request, "")
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestPopulatedVolumeWithAStoppedOriginSaysTheBaseURLMayBeStale(t *testing.T)
 	fake := freshSandboxFake()
 	fake.answers["80/tcp"] = "127.0.0.1:32771\n"
 	fake.answers["information_schema.tables"] = "371\n"
-	existingVolume(fake, request.ProjectName, "")
+	existingVolume(fake, request, "")
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
 		t.Fatalf("a stopped origin must not fail a sandbox that has its data: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestRefusedSeriesOnRecreateKeepsTheWorkingContainer(t *testing.T) {
 	request.Recreate = true
 	request.DB = "mariadb:10.11"
 	fake := reusedFullSandbox()
-	existingVolume(fake, request.ProjectName, "mariadb:10.6")
+	existingVolume(fake, request, "mariadb:10.6")
 	_, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request)
 	if err == nil {
 		t.Fatal("a 10.6 volume must refuse 10.11")

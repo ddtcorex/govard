@@ -306,7 +306,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		// The kept database volume is checked against the replacement too, for
 		// the same reason: once the container is gone nothing is left to fall
 		// back on.
-		if _, _, err := checkSandboxDBVolume(ctx, runtime, request.ProjectName, profile, newDB); err != nil {
+		if _, _, err := checkSandboxDBVolume(ctx, runtime, container, profile, newDB); err != nil {
 			return nil, err
 		}
 		fmt.Fprintf(request.out(), "recreating %s\n", container)
@@ -389,7 +389,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	)
 	if !exists {
 		var volErr error
-		dbVolume, dbVolumeExists, volErr = checkSandboxDBVolume(ctx, runtime, request.ProjectName, profile, db)
+		dbVolume, dbVolumeExists, volErr = checkSandboxDBVolume(ctx, runtime, container, profile, db)
 		if volErr != nil {
 			return nil, volErr
 		}
@@ -407,7 +407,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	}
 
 	if !exists {
-		if err := ensureSandboxDBVolume(ctx, runtime, request.ProjectName, db, dbVolume, dbVolumeExists); err != nil {
+		if err := ensureSandboxDBVolume(ctx, runtime, container, db, dbVolume, dbVolumeExists); err != nil {
 			return nil, err
 		}
 		if err := runtime.RunContainer(ctx, SandboxRunRequest{
@@ -1076,7 +1076,7 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 	}
 	// The database volume is data, not runtime: only --purge discards it.
 	if project != "" {
-		if err := runtime.RemoveVolumesByLabel(ctx, SandboxDBVolumeLabel, project); err != nil {
+		if err := runtime.RemoveVolumesByLabel(ctx, SandboxDBVolumeLabel, SandboxContainerName(project, request.ProjectRoot)); err != nil {
 			return nil, err
 		}
 	}
@@ -1214,11 +1214,11 @@ func containerLabelOrEmpty(ctx context.Context, runtime SandboxRuntime, containe
 // container's database volume already exists and was written by another
 // series. It returns the volume name (empty for a profile with no database) and
 // whether the volume already exists.
-func checkSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, project, profile, db string) (string, bool, error) {
+func checkSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, container, profile, db string) (string, bool, error) {
 	if !SandboxHasDatabase(profile) {
 		return "", false, nil
 	}
-	name := SandboxDBVolumeName(project)
+	name := SandboxDBVolumeName(container)
 	stamped, exists, err := runtime.VolumeLabel(ctx, name, sandboxDBLabel)
 	if err != nil {
 		return "", false, err
@@ -1233,11 +1233,11 @@ func checkSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, project, 
 
 // ensureSandboxDBVolume creates the volume a new container's database lives in,
 // stamped with the series, unless it already exists.
-func ensureSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, project, db, name string, exists bool) error {
+func ensureSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, container, db, name string, exists bool) error {
 	if name == "" || exists {
 		return nil
 	}
-	labels := map[string]string{SandboxDBVolumeLabel: project, sandboxDBLabel: db}
+	labels := map[string]string{SandboxDBVolumeLabel: container, sandboxDBLabel: db}
 	return runtime.EnsureVolume(ctx, name, labels)
 }
 

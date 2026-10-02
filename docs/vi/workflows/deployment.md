@@ -1410,7 +1410,7 @@ như trước.
   `bootstrap --fresh`, rồi commit những file mà build đọc); sau đó fixture đang dừng
   quay lại bằng `env start` hoặc `snapshot restore`.
 - **Database được giữ.** Profile `full` mount named volume
-  `govard-sandbox-<project>-db` lên thư mục dữ liệu của database. `down` giữ nó,
+  `<sandbox container name>-db` lên thư mục dữ liệu của database. `down` giữ nó,
   `down --purge` xoá nó, `up` chỉ seed một database trống, và `--reseed` làm mới.
   Volume do một series database ghi ra không bao giờ được mở bằng series khác:
   `--db` (hoặc stack) chỉ một series khác bị từ chối, trước khi build bất cứ gì, kèm

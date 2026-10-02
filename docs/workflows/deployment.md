@@ -1442,7 +1442,7 @@ before.
   `bootstrap --fresh`, then a commit of the files the build reads); afterwards a
   stopped fixture comes back with `env start`, or with `snapshot restore`.
 - **The database stays.** The `full` profile mounts the named volume
-  `govard-sandbox-<project>-db` over the database data directory. `down` keeps it,
+  `<sandbox container name>-db` over the database data directory. `down` keeps it,
   `down --purge` removes it, `up` seeds only an empty database, and `--reseed`
   refreshes it. A volume written by one database series is never opened by
   another: `--db` (or the stack) naming a different series is refused, before

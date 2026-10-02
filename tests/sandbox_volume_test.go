@@ -11,17 +11,28 @@ import (
 
 // existingVolume makes the fake report that the project's database volume
 // survived an earlier `down`, stamped with one series.
-func existingVolume(fake *fakeSandboxRuntime, project, series string) {
-	fake.answers["volume ls --quiet --filter name="] = deploy.SandboxDBVolumeName(project) + "\n"
+func existingVolume(fake *fakeSandboxRuntime, request deploy.SandboxRequest, series string) {
+	fake.answers["volume ls --quiet --filter name="] = volumeFor(request) + "\n"
 	fake.answers["volume inspect"] = series + "\n"
 }
 
-func TestSandboxDBVolumeNameDerivesFromProject(t *testing.T) {
-	if got := deploy.SandboxDBVolumeName("Seed_Shop"); got != "govard-sandbox-seed_shop-db" {
-		t.Fatalf("name = %q", got)
+// volumeFor is the volume a request's sandbox keeps its database in.
+func volumeFor(request deploy.SandboxRequest) string {
+	return deploy.SandboxDBVolumeName(deploy.SandboxContainerName(request.ProjectName, request.ProjectRoot))
+}
+
+func TestSandboxDBVolumeNameFollowsTheContainerIdentity(t *testing.T) {
+	a := deploy.SandboxDBVolumeName(deploy.SandboxContainerName("shop", "/work/a"))
+	b := deploy.SandboxDBVolumeName(deploy.SandboxContainerName("shop", "/work/b"))
+	if a == b {
+		t.Fatal("two checkouts of one project must not share a database volume")
 	}
-	if deploy.SandboxDBVolumeName("a") == deploy.SandboxDBVolumeName("b") {
-		t.Fatal("two projects must not share a volume")
+	if deploy.SandboxDBVolumeName(deploy.SandboxContainerName("Shop_A", "/work/a")) ==
+		deploy.SandboxDBVolumeName(deploy.SandboxContainerName("shop-a", "/work/b")) {
+		t.Fatal("names the slug folds together must not share a volume across checkouts")
+	}
+	if !strings.HasPrefix(a, "govard-shop-sandbox-") || !strings.HasSuffix(a, "-db") {
+		t.Fatalf("name = %q", a)
 	}
 }
 
@@ -33,14 +44,14 @@ func TestFullProfileMountsTheDBVolumeAndCreatesItLabelled(t *testing.T) {
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
 		t.Fatal(err)
 	}
-	name := deploy.SandboxDBVolumeName(request.ProjectName)
+	name := volumeFor(request)
 	create := fake.call("volume create")
 	if create == nil {
 		t.Fatalf("the volume must be created before the container: %v", fake.calls)
 	}
 	joined := strings.Join(create, " ")
 	for _, want := range []string{
-		"--label " + deploy.SandboxDBVolumeLabel + "=" + request.ProjectName,
+		"--label " + deploy.SandboxDBVolumeLabel + "=" + deploy.SandboxContainerName(request.ProjectName, request.ProjectRoot),
 		"--label govard.sandbox.db=mariadb:10.6",
 		name,
 	} {
@@ -85,7 +96,7 @@ func TestDownKeepsTheVolumeAndPurgeRemovesIt(t *testing.T) {
 	if _, err := deploy.SandboxDown(context.Background(), deploy.NewDockerCLIForTest(purge.run), request); err != nil {
 		t.Fatal(err)
 	}
-	if !purge.has("volume ls --quiet --filter label=" + deploy.SandboxDBVolumeLabel + "=volume-shop") {
+	if !purge.has("volume ls --quiet --filter label=" + deploy.SandboxDBVolumeLabel + "=" + deploy.SandboxContainerName("volume-shop", root)) {
 		t.Fatalf("--purge must look the database volume up by its label: %v", purge.calls)
 	}
 }
@@ -96,7 +107,7 @@ func TestChangedSeriesOnAnExistingVolumeIsRefused(t *testing.T) {
 	request.DBEngine, request.DBVersion = "mariadb", "10.11"
 	fake := freshSandboxFake()
 	// The volume survived an earlier `down`, stamped with another series.
-	existingVolume(fake, request.ProjectName, "mariadb:10.6")
+	existingVolume(fake, request, "mariadb:10.6")
 	_, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request)
 	if err == nil {
 		t.Fatal("a data directory written by 10.6 must not be opened by 10.11")
@@ -119,11 +130,11 @@ func TestSameSeriesOnAnExistingVolumeIsReused(t *testing.T) {
 	request := seedSandboxUpRequest(t, t.TempDir(), origin)
 	request.DBEngine, request.DBVersion = "mariadb", "10.6"
 	fake := freshSandboxFake()
-	existingVolume(fake, request.ProjectName, "mariadb:10.6")
+	existingVolume(fake, request, "mariadb:10.6")
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
 		t.Fatal(err)
 	}
-	if !fake.has("type=volume,source=" + deploy.SandboxDBVolumeName(request.ProjectName)) {
+	if !fake.has("type=volume,source=" + volumeFor(request)) {
 		t.Fatalf("the existing volume must be mounted: %v", fake.calls)
 	}
 }
@@ -174,7 +185,7 @@ func TestNewContainerOnAPopulatedVolumeSkipsTheDatabaseSeedButSeedsFiles(t *test
 	request.Out = &out
 	fake := freshSandboxFake()
 	fake.answers["information_schema.tables"] = "371\n"
-	existingVolume(fake, request.ProjectName, "")
+	existingVolume(fake, request, "")
 	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
 		t.Fatal(err)
 	}

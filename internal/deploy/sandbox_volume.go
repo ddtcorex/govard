@@ -3,19 +3,23 @@ package deploy
 import "fmt"
 
 // SandboxDBVolumeLabel marks the named volume that keeps a sandbox's database
-// across `sandbox down`. Its value is the project name, so `down --purge` can
-// find the volume without knowing its name. The series the data directory was
+// across `sandbox down`. Its value is the container name (the project slug plus
+// a hash of the checkout path), so `down --purge` finds this checkout's volume
+// without knowing its name and never another checkout's. The series the data directory was
 // written by is stamped under sandboxDBLabel, the same key the container uses.
 const SandboxDBVolumeLabel = "govard.sandbox.db-volume"
 
 // SandboxDBDataDir is where the database server keeps its data in the image.
 const SandboxDBDataDir = "/var/lib/mysql"
 
-// SandboxDBVolumeName is the volume that holds a project's sandbox database.
-// It does not depend on the database series: a changed series is refused by
-// CheckSandboxDBVolumeSeries rather than silently getting a second volume.
-func SandboxDBVolumeName(project string) string {
-	return "govard-sandbox-" + sandboxSlug(project) + "-db"
+// SandboxDBVolumeName is the volume that holds one sandbox's database, named
+// after its container so a volume has exactly one owner: two checkouts of the
+// same project (or two names the slug folds together) each get their own, and
+// two servers never open one data directory. It does not depend on the database
+// series: a changed series is refused by CheckSandboxDBVolumeSeries rather than
+// silently getting a second volume.
+func SandboxDBVolumeName(container string) string {
+	return container + "-db"
 }
 
 // CheckSandboxDBVolumeSeries refuses to open a data directory written by one

@@ -1129,7 +1129,7 @@ in place. The `sandbox up` summary prints a `database:` line (between `php:` and
 distribution's default; profiles without a database omit it.
 
 The `full` profile keeps its database in the named volume
-`govard-sandbox-<project>-db`: `down` keeps it, `down --purge` removes it, and a
+`<sandbox container name>-db`: `down` keeps it, `down --purge` removes it, and a
 volume written by another database series is refused with a `--purge` hint. `up`
 seeds an empty database only; `--reseed` refreshes the database and the files from
 the origin (refused together with `--no-seed`), and `--recreate` keeps the volume.

@@ -1092,7 +1092,7 @@ không làm mất container đang chạy. Phần tóm tắt của `sandbox up` i
 `database:` (giữa `php:` và `image:`) nêu server đã cài và việc nó được yêu cầu hay
 là mặc định của distribution gốc; profile không có database thì bỏ dòng này.
 
-Profile `full` giữ database trong named volume `govard-sandbox-<project>-db`: `down`
+Profile `full` giữ database trong named volume `<sandbox container name>-db`: `down`
 giữ nó, `down --purge` xoá nó, và volume do series database khác ghi ra bị từ chối
 kèm gợi ý `--purge`. `up` chỉ seed database trống; `--reseed` làm mới database và
 file từ môi trường gốc (bị từ chối khi đi cùng `--no-seed`), và `--recreate` giữ volume.
