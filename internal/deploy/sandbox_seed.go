@@ -312,17 +312,10 @@ func streamContainerTar(ctx context.Context, runtime SandboxRuntime, from, to, s
 	return nil
 }
 
-// runSandboxSeed snapshots the origin into a running sandbox container: the
-// database, then the files (media, env file). Both parts are separate because a
-// sandbox whose database lives in a persistent volume skips the first and still
-// needs the second: media and the env file live in the container filesystem.
-func runSandboxSeed(ctx context.Context, runtime SandboxRuntime, out io.Writer, sandbox string, webPort int, request SandboxRequest) error {
-	if err := runSandboxSeedDB(ctx, runtime, out, sandbox, webPort, request); err != nil {
-		return err
-	}
-	return runSandboxSeedFiles(ctx, runtime, out, sandbox, webPort, request)
-}
-
+// The seed has two parts that SandboxUp runs separately: a sandbox whose database
+// lives in a persistent volume skips the first and still needs the second, since
+// media and the env file live in the container filesystem.
+//
 // runSandboxSeedDB seeds the sandbox database: create the app user/database,
 // dump (origin) → strip → import (sandbox), then point the origin's URLs at the
 // sandbox. webPort is the sandbox's published HTTP port (0 when the profile
