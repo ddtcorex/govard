@@ -24,18 +24,21 @@ type BootstrapRuntimeOptions struct {
 	SkipUp          bool
 	MetaPackage     string
 	MetaVersion     string
-	DBDump          string
-	HyvaInstall     bool
-	HyvaToken       string
-	MageUsername    string
-	MagePassword    string
-	AssumeYes       bool
-	Plan            bool
-	NoNoise         bool
-	NoPII           bool
-	DeleteSync      bool
-	NoCompress      bool
-	ExcludePatterns []string
+	// MetaVersionSource says where MetaVersion came from (one of the
+	// BootstrapVersionSource constants), so the plan and the log can name it.
+	MetaVersionSource string
+	DBDump            string
+	HyvaInstall       bool
+	HyvaToken         string
+	MageUsername      string
+	MagePassword      string
+	AssumeYes         bool
+	Plan              bool
+	NoNoise           bool
+	NoPII             bool
+	DeleteSync        bool
+	NoCompress        bool
+	ExcludePatterns   []string
 }
 
 func resolveBootstrapOptions(cmd *cobra.Command, args []string) (BootstrapRuntimeOptions, error) {
@@ -99,6 +102,43 @@ func resolveBootstrapOptions(cmd *cobra.Command, args []string) (BootstrapRuntim
 	}
 
 	return opts, nil
+}
+
+// Where a bootstrap's meta version came from.
+const (
+	BootstrapVersionSourceFlag   = "--framework-version"
+	BootstrapVersionSourceConfig = "framework_version in .govard.yml"
+)
+
+// resolveBootstrapMetaVersion picks the version a bootstrap installs. An
+// explicit --framework-version always wins. Otherwise a fresh install defaults
+// to the framework_version already recorded in .govard.yml (written by
+// `govard init --framework-version`), because that version was chosen together
+// with the PHP the config carries, and the latest release may not resolve on it.
+// With neither, the version is empty and the framework installs its latest. The
+// config value goes through the same validation as the flag, so there is one set
+// of rules for both; the framework registry supplies them, not a name switch.
+func resolveBootstrapMetaVersion(framework, flagVersion, configVersion string, fresh bool) (version, source string, err error) {
+	flagVersion = strings.TrimSpace(flagVersion)
+	if flagVersion != "" {
+		if err := validateBootstrapFrameworkVersion(framework, flagVersion); err != nil {
+			return "", "", err
+		}
+		return flagVersion, BootstrapVersionSourceFlag, nil
+	}
+	configVersion = strings.TrimSpace(configVersion)
+	if !fresh || configVersion == "" {
+		return "", "", nil
+	}
+	if err := validateBootstrapFrameworkVersion(framework, configVersion); err != nil {
+		return "", "", fmt.Errorf("%s: %w", BootstrapVersionSourceConfig, err)
+	}
+	return configVersion, BootstrapVersionSourceConfig, nil
+}
+
+// ResolveBootstrapMetaVersionForTest exposes resolveBootstrapMetaVersion for tests in /tests.
+func ResolveBootstrapMetaVersionForTest(framework, flagVersion, configVersion string, fresh bool) (string, string, error) {
+	return resolveBootstrapMetaVersion(framework, flagVersion, configVersion, fresh)
 }
 
 func validateBootstrapFrameworkVersion(framework string, version string) error {

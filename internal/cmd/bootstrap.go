@@ -173,7 +173,8 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 			return fmt.Errorf("bootstrap currently supports these project types: %s (detected: %s)",
 				strings.Join(supportedFrameworks, ", "), config.Framework)
 		}
-		if err := validateBootstrapFrameworkVersion(config.Framework, opts.MetaVersion); err != nil {
+		opts.MetaVersion, opts.MetaVersionSource, err = resolveBootstrapMetaVersion(config.Framework, opts.MetaVersion, config.FrameworkVersion, opts.Fresh)
+		if err != nil {
 			return err
 		}
 
@@ -339,7 +340,7 @@ func runBootstrapFresh(cmd *cobra.Command, config engine.Config, opts BootstrapR
 		}
 	}
 
-	pterm.Info.Printf("Bootstrapping fresh %s project...\n", config.Framework)
+	pterm.Info.Printf("Bootstrapping fresh %s project (%s)...\n", config.Framework, describeBootstrapMetaVersion(opts))
 	if err := bootstrapFreshInstall(cmd, config, opts); err != nil {
 		return false, err
 	}
@@ -658,7 +659,7 @@ func init() {
 	// 2. Fresh Mode
 	bootstrapCmd.Flags().BoolVar(&bootstrapFresh, "fresh", false, "Create a fresh project install (cannot be used with --clone)")
 	bootstrapCmd.Flags().StringVar(&bootstrapFramework, "framework", "", "Framework to use when init is required")
-	bootstrapCmd.Flags().StringVar(&bootstrapFrameworkVersion, "framework-version", "", "Framework version (e.g. 2.4.7 for Magento, 11 for Laravel)")
+	bootstrapCmd.Flags().StringVar(&bootstrapFrameworkVersion, "framework-version", "", "Framework version (e.g. 2.4.7 for Magento, 11 for Laravel); with --fresh defaults to framework_version in .govard.yml")
 	bootstrapCmd.Flags().StringVarP(&bootstrapMetaPackage, "meta-package", "p", defaultBootstrapMetaPackage, "Composer meta-package for fresh install (Magento only)")
 	bootstrapCmd.Flags().StringVar(&bootstrapMageUsername, "mage-username", "", "Magento repo username for auth.json bootstrap (Magento only)")
 	bootstrapCmd.Flags().StringVar(&bootstrapMagePassword, "mage-password", "", "Magento repo password for auth.json bootstrap (Magento only)")

@@ -348,7 +348,7 @@ govard bootstrap -e staging --no-pii --no-noise
 ```
 
 **Lựa chọn chế độ (Mode selection):**
-- `--fresh` + `--framework` + `--framework-version` — cài đặt mới hoàn toàn qua scaffolder của framework.
+- `--fresh` + `--framework` + `--framework-version` — cài đặt mới hoàn toàn qua scaffolder của framework. Không có `--framework-version` thì fresh install dùng `framework_version` đã có trong `.govard.yml` (ví dụ từ `govard init --framework-version 2.4.6`), và plan cùng log nói rõ dùng version nào và lấy từ đâu; không có cả hai thì cài bản mới nhất. Flag tường minh luôn thắng.
 - `--clone` + `--environment` — rsync toàn bộ mã nguồn từ một remote server.
 
 **Lựa chọn nguồn (Source selection):**

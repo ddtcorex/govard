@@ -351,7 +351,7 @@ govard bootstrap -e staging --no-pii --no-noise
 ```
 
 **Mode selection:**
-- `--fresh` + `--framework` + `--framework-version` — fresh install via scaffolder
+- `--fresh` + `--framework` + `--framework-version` — fresh install via scaffolder. Without `--framework-version`, a fresh install uses the `framework_version` already in `.govard.yml` (for example from `govard init --framework-version 2.4.6`), and the plan and log say which version is used and where it came from; with neither it installs the latest. An explicit flag always wins.
 - `--clone` + `--environment` — rsync the whole source from a remote server
 
 **Source selection:**

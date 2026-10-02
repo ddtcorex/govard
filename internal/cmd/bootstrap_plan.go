@@ -136,14 +136,11 @@ func buildBootstrapFreshPlan(config engine.Config, def types.FrameworkDefinition
 	if meta == defaultBootstrapMetaPackage {
 		meta = strings.TrimSpace(def.DefaultFreshMetaPackage)
 	}
-	version := strings.TrimSpace(opts.MetaVersion)
 	install := fmt.Sprintf("Creating a fresh %s project", display)
 	if meta != "" {
 		install += fmt.Sprintf(" from package %s", meta)
 	}
-	if version != "" {
-		install += fmt.Sprintf(" at version %s", version)
-	}
+	install += " " + describeBootstrapMetaVersion(opts)
 	plan.Descriptions = append(plan.Descriptions, install+"...")
 	plan.Commands = append(plan.Commands, "govard tool composer create-project (framework fresh install)")
 
@@ -193,4 +190,17 @@ func BuildBootstrapFreshPlanForTest(config engine.Config, framework string, opts
 		return nil, fmt.Errorf("fresh install not supported for framework: %s", framework)
 	}
 	return buildBootstrapFreshPlanSummary(config, def, opts, buildBootstrapFreshPlan(config, def, opts)), nil
+}
+
+// describeBootstrapMetaVersion says which version a fresh install uses and where
+// it came from, so the default taken from .govard.yml is never silent.
+func describeBootstrapMetaVersion(opts BootstrapRuntimeOptions) string {
+	version := strings.TrimSpace(opts.MetaVersion)
+	if version == "" {
+		return "at the latest version (no --framework-version, no framework_version in .govard.yml)"
+	}
+	if opts.MetaVersionSource != "" {
+		return fmt.Sprintf("at version %s (from %s)", version, opts.MetaVersionSource)
+	}
+	return fmt.Sprintf("at version %s", version)
 }
