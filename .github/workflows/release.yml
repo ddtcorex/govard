@@ -88,8 +88,42 @@ jobs:
           test -s completion/govard.fish
           test -s completion/govard.ps1
 
-      # The Snap Store login step is parked with the snapcrafts block in
-      # .goreleaser.yml (classic confinement was rejected); restore both together.
+      - name: Log in to Snap Store
+        # Paused while the Store has not approved classic confinement; runs only
+        # when the repository variable GOVARD_SNAP_ENABLED is "true".
+        if: ${{ vars.GOVARD_SNAP_ENABLED == 'true' }}
+        # GoReleaser's snapcrafts publisher shells out to the `snapcraft`
+        # binary for pack+upload. Pinned to the 8.x channel: 9.x removed
+        # `login --with` (beta.5, exit 64). Source-read (8.14.5
+        # snapcraft/store/_legacy_account.py + commands/account.py): --with
+        # is a LEGACY-Ubuntu-One shim — modern export-login output can NEVER
+        # parse (beta.9/14/15 "no section headers" is expected, not a pipe
+        # or format bug). The only headless auth is SNAPCRAFT_STORE_CREDENTIALS,
+        # and craft-store persists the session in a keyring — so provide a
+        # real one: dbus session bus + gnome-keyring (daemonized, secrets
+        # component) with a secret-tool round-trip that fails fast if the
+        # daemon is broken. 8.x installs --classic (unconfined) so it can
+        # reach the session bus. If upload still says "No keyring", the
+        # keyring works (secret-tool proved it) and the snap is confined
+        # despite --classic — park snap and ship CloudSmith-only.
+        run: |
+          sudo snap install snapcraft --classic --channel=8.x/stable
+          sudo apt-get install -y gnome-keyring libsecret-1-0 dbus-x11 libsecret-tools
+          eval "$(dbus-launch --sh-syntax)"
+          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "${GITHUB_ENV}"
+          # --login (not --unlock): unlocks the login keyring OR CREATES it
+          # from the stdin password. Empty password is treated as "no
+          # keyring" (beta.19: still no /collection/login), so generate a
+          # random one — ephemeral runner, and only the openssl invocation
+          # appears in logs, never the value.
+          KEYRING_PASS="$(openssl rand -hex 16)"
+          printf '%s' "${KEYRING_PASS}" | gnome-keyring-daemon --daemonize --components=secrets --login
+          # secret-tool reads the SECRET from stdin (beta.20: bare call
+          # stored empty, lookup mismatch failed silently under bash -e).
+          printf '%s' 'probe-secret' | secret-tool store --label=ci-keyring-probe probe-key probe-attr
+          [ "$(secret-tool lookup probe-key probe-attr)" = "probe-secret" ]
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
 
       - name: Run GoReleaser
         # Pinned v6: the v7 SHA (f06c13b) breaks GitHub's startup fetch
@@ -100,8 +134,13 @@ jobs:
           version: "~> v2"
           args: release --clean
         env:
+          GOVARD_SNAP_ENABLED: ${{ vars.GOVARD_SNAP_ENABLED }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_PREVIOUS_TAG: ${{ steps.prev_tag.outputs.tag }}
+          # Step env does NOT cross step boundaries (beta.21: snapcraft
+          # upload ran credential-less and fell back to an interactive
+          # login prompt) — the Store token must be re-declared here.
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
           # Linked into internal/audit.GovardGlintDigest by .goreleaser.yml. An empty value is a valid,
           # degraded state rather than a build failure: ToolchainManager treats
           # it as "no official image pinned" and builds the embedded lint

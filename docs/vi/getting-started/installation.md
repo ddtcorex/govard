@@ -75,6 +75,8 @@ sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_
 ```bash
 # Snap: tạm thời chưa có (Store chưa duyệt yêu cầu classic
 # confinement). Dùng CloudSmith hoặc script cài đặt thay thế.
+# Lệnh dự kiến khi được duyệt (classic confinement):
+#   sudo snap install govard --classic
 
 # Debian/Ubuntu qua CloudSmith (setup repo một lần, rồi cài)
 curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-deb/setup.deb.sh | sudo -E bash
