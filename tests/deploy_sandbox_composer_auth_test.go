@@ -100,7 +100,7 @@ func TestComposerAuthIsRemovedAsSoonAsTheRunReturns(t *testing.T) {
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("COMPOSER_AUTH", "")
-	os.Unsetenv("COMPOSER_AUTH")
+	_ = os.Unsetenv("COMPOSER_AUTH")
 	command := cmd.DeployBuildCommand()
 	var during string
 	cmd.WithSandboxComposerAuthForTest(command, true, true, func() { during = os.Getenv("COMPOSER_AUTH") })
