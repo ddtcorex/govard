@@ -432,10 +432,31 @@ func ExportSnapshot(projectRoot string, name string, targetPath string) error {
 	return nil
 }
 
+// privateDumpChmod and privateDumpWarnings are seams for the tests: a chmod
+// failure on a regular file cannot be produced portably (root, or a filesystem
+// that honours the call).
+var (
+	privateDumpChmod              = func(file *os.File, mode os.FileMode) error { return file.Chmod(mode) }
+	privateDumpWarnings io.Writer = os.Stderr
+)
+
+// SetPrivateDumpHooksForTest swaps the chmod call and the warning sink of
+// CreatePrivateDumpFile and returns a restore function.
+func SetPrivateDumpHooksForTest(chmod func(*os.File, os.FileMode) error, warnings io.Writer) func() {
+	previousChmod, previousWarnings := privateDumpChmod, privateDumpWarnings
+	privateDumpChmod, privateDumpWarnings = chmod, warnings
+	return func() { privateDumpChmod, privateDumpWarnings = previousChmod, previousWarnings }
+}
+
 // CreatePrivateDumpFile creates (or truncates) a file that only its owner can
 // read. A database dump, or an archive containing one, is created 0600 instead
-// of with the umask-dependent default of os.Create, and a pre-existing file that
-// is broader than that is tightened before anything is written to it.
+// of with the umask-dependent default of os.Create, and a pre-existing regular
+// file that is broader than that is tightened before anything is written to it.
+//
+// Only a regular file has a mode worth restricting: /dev/null, a FIFO or a
+// device is left alone. When chmod fails on a regular file the filesystem cannot
+// enforce modes anyway (vfat, NTFS, drvfs, some NFS/SMB), so the dump proceeds
+// and a warning names the path instead of failing the command.
 func CreatePrivateDumpFile(path string) (*os.File, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
@@ -446,10 +467,9 @@ func CreatePrivateDumpFile(path string) (*os.File, error) {
 		_ = file.Close()
 		return nil, err
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		if err := file.Chmod(0o600); err != nil {
-			_ = file.Close()
-			return nil, fmt.Errorf("restrict file permissions: %w", err)
+	if info.Mode().IsRegular() && info.Mode().Perm()&0o077 != 0 {
+		if err := privateDumpChmod(file, 0o600); err != nil {
+			fmt.Fprintf(privateDumpWarnings, "warning: permissions of %s could not be restricted to its owner (%v); the dump proceeds with the existing mode\n", path, err)
 		}
 	}
 	return file, nil
