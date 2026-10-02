@@ -1888,28 +1888,60 @@ func TestTraversalCommandUnchangedForNormalPaths(t *testing.T) {
 // lock mkdir fail with EACCES, and telling the operator to `deploy unlock`
 // cannot fix that.
 func TestCoreLockPermissionErrorIsNotLockHeld(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
-	}
-	deployPath := filepath.Join(t.TempDir(), "public_html")
-	dep := filepath.Join(deployPath, ".dep")
-	if err := os.MkdirAll(dep, 0o755); err != nil {
-		t.Fatalf("seed .dep: %v", err)
-	}
-	if err := os.Chmod(dep, 0o555); err != nil {
-		t.Fatalf("chmod .dep: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dep, 0o755) })
+	// A mkdir that fails without leaving a lock directory behind is not a held
+	// lock, whatever the reason. A read-only .dep makes it EACCES, but root
+	// ignores directory modes, so for root a dangling symlink at the lock path makes
+	// the same mkdir fail ("File exists" or "Already exists", by coreutils build)
+	// with no directory to count as a held lock.
+	for _, tc := range []struct {
+		name    string
+		prepare func(t *testing.T, dep string)
+		message string
+	}{
+		{
+			name: "read-only .dep",
+			prepare: func(t *testing.T, dep string) {
+				if os.Geteuid() == 0 {
+					t.Skip("root ignores directory permissions; the dangling-symlink case covers root")
+				}
+				if err := os.MkdirAll(dep, 0o755); err != nil {
+					t.Fatalf("seed .dep: %v", err)
+				}
+				if err := os.Chmod(dep, 0o555); err != nil {
+					t.Fatalf("chmod .dep: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(dep, 0o755) })
+			},
+			message: "Permission denied",
+		},
+		{
+			name: "lock path is a dangling symlink",
+			prepare: func(t *testing.T, dep string) {
+				if err := os.MkdirAll(dep, 0o755); err != nil {
+					t.Fatalf("seed .dep: %v", err)
+				}
+				if err := os.Symlink(filepath.Join(dep, "nowhere"), filepath.Join(dep, "govard.lock")); err != nil {
+					t.Fatalf("seed lock symlink: %v", err)
+				}
+			},
+			message: "mkdir: ", // wording after the colon differs between coreutils builds
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deployPath := filepath.Join(t.TempDir(), "public_html")
+			tc.prepare(t, filepath.Join(deployPath, ".dep"))
 
-	err := deploy.CoreLock(context.Background(), deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{}))
-	if err == nil {
-		t.Fatalf("an unwritable .dep must fail the lock")
-	}
-	if errors.Is(err, deploy.ErrLockHeld) {
-		t.Fatalf("a permission error must not be reported as a held lock: %v", err)
-	}
-	if !strings.Contains(err.Error(), "Permission denied") {
-		t.Fatalf("the error must carry mkdir's own message, got %q", err.Error())
+			err := deploy.CoreLock(context.Background(), deploy.StepContextForTest(deploy.HostForTest(deployPath, deploy.LocalRunner{}), deploy.Options{}))
+			if err == nil {
+				t.Fatalf("an unusable .dep must fail the lock")
+			}
+			if errors.Is(err, deploy.ErrLockHeld) {
+				t.Fatalf("a mkdir failure must not be reported as a held lock: %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.message) {
+				t.Fatalf("the error must carry the command's own message %q, got %q", tc.message, err.Error())
+			}
+		})
 	}
 }
 

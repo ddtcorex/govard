@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -54,9 +55,14 @@ exit 0
 }
 
 // installOpenDBTunnelSSHShim installs an ssh stand-in that, when asked for a
-// -L forward, listens on the local port for a short while and then exits.
+// -L forward, listens on the local port for a short while and then exits. The
+// listener is a python3 one-liner, so the test skips on a host without python3.
+// The lifetime only has to outlast the 100ms readiness poll and the opener spawn.
 func installOpenDBTunnelSSHShim(t *testing.T, shimDir string) {
 	t.Helper()
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required by the tunnel ssh shim and is not on PATH")
+	}
 	script := `#!/bin/sh
 set -eu
 port=""
@@ -74,7 +80,7 @@ s = socket.socket()
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("127.0.0.1", int(sys.argv[1])))
 s.listen(4)
-time.sleep(1.5)
+time.sleep(0.6)
 PY
 `
 	if err := os.WriteFile(filepath.Join(shimDir, "ssh"), []byte(script), 0o755); err != nil {
