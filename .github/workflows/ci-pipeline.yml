@@ -16,8 +16,8 @@ permissions:
 
 env:
   GO_VERSION: "1.25.x"
-  # The two slowest jobs (Integration Tests ~5 min, Release Snapshot ~6 min) run
-  # only when the repository variable GOVARD_CI_FULL is "true". They are paused
+  # The slowest checks (Integration Tests ~5 min, Release Snapshot ~6 min and the
+  # Frontend behaviour step of Fast Tests) run only when the repository variable GOVARD_CI_FULL is "true". They are paused
   # while one maintainer ships; re-enable with
   #   gh variable set GOVARD_CI_FULL --body true -R ddtcorex/govard
   # when more contributors need the full gate. The Verify gate treats a skipped
@@ -105,6 +105,8 @@ jobs:
 
       # Raw-CDP scenarios against preview.html; ubuntu-latest ships google-chrome.
       - name: Frontend behaviour tests (raw CDP)
+        # Paused with the other slow checks: runs only when GOVARD_CI_FULL is "true".
+        if: ${{ vars.GOVARD_CI_FULL == 'true' }}
         run: make test-frontend-behaviour CHROME_BIN="$(command -v google-chrome)"
 
   integration_tests:
