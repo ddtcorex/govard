@@ -312,13 +312,16 @@ func runMagentoSetupUpgrade(containerName string, config engine.Config) error {
 }
 
 // runPreservingUnchangedConfigPHP runs a Magento config-repair command and, when
-// that command left app/etc/config.php holding the same lines in a different
-// order, writes the original bytes back.
+// that command left app/etc/config.php differing only in the order of entries
+// outside its 'modules' array, writes the original bytes back.
 //
 // `app:config:import` rewrites the module list in the importer's own order, so
 // on a project whose module set did not change it left reordered lines showing
 // up as modifications, which the audit path then reads as a dirty checkout. When
-// the module set really did change, the importer's output stands.
+// the module set, a module value or the module ORDER changed, the output stands:
+// the order of 'modules' is the module load order (ModuleList follows it and
+// setup:upgrade re-sorts it by module.xml <sequence>), so a reorder there can be
+// a real change that decides plugin, DI and layout merge precedence.
 //
 // The returned error is exactly run's. The call site branches on it to fall
 // back to setup:upgrade, so returning a failed write-back here would send a
@@ -357,8 +360,8 @@ func runPreservingUnchangedConfigPHP(projectRoot string, run func() error) error
 	if bytes.Equal(before, after) {
 		return runErr // nothing was rewritten, so there is nothing to put back
 	}
-	if !sameLineMultiset(before, after) {
-		return runErr // the module set changed: Magento's output stands
+	if !sameConfigPHPUpToOrder(before, after) {
+		return runErr // modules or values changed: Magento's output stands
 	}
 
 	if writeErr := os.WriteFile(path, before, 0o644); writeErr != nil {
@@ -372,18 +375,58 @@ func runPreservingUnchangedConfigPHP(projectRoot string, run func() error) error
 	return runErr
 }
 
-// sameLineMultiset reports whether a and b hold exactly the same lines,
-// counting repeats, in any order. It compares lines, not PHP: the two files are
-// split on "\n" and the copies sorted before they are compared one by one.
-func sameLineMultiset(a, b []byte) bool {
-	left := strings.Split(string(a), "\n")
-	right := strings.Split(string(b), "\n")
-	if len(left) != len(right) {
+// sameConfigPHPUpToOrder reports whether a and b are the same config.php apart
+// from the order of lines outside the 'modules' array: the 'modules' block must
+// be identical line for line (entries, values and order), and every other line
+// must appear the same number of times in both. The remaining sections
+// ('scopes', 'system', 'themes', ...) are keyed arrays that Magento writes in a
+// nondeterministic order and reads by key, so their order carries no meaning.
+// A file whose 'modules' block cannot be delimited is never reported as equal.
+func sameConfigPHPUpToOrder(a, b []byte) bool {
+	modulesA, restA, okA := splitConfigPHPModules(string(a))
+	modulesB, restB, okB := splitConfigPHPModules(string(b))
+	if !okA || !okB {
 		return false
 	}
-	sort.Strings(left)
-	sort.Strings(right)
-	return slices.Equal(left, right)
+	if !slices.Equal(modulesA, modulesB) {
+		return false
+	}
+	if len(restA) != len(restB) {
+		return false
+	}
+	sort.Strings(restA)
+	sort.Strings(restB)
+	return slices.Equal(restA, restB)
+}
+
+// splitConfigPHPModules separates the lines of the 'modules' array (from its
+// opening line to its closing "]," at the same indent, inclusive) from every
+// other line. ok is false when the block opens and never closes. A file with no
+// 'modules' array yields an empty block.
+func splitConfigPHPModules(content string) (modules []string, rest []string, ok bool) {
+	lines := strings.Split(content, "\n")
+	inBlock := false
+	closing := ""
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case inBlock:
+			modules = append(modules, line)
+			if strings.TrimRight(line, " \t\r") == closing {
+				inBlock = false
+			}
+		case modules == nil && strings.HasPrefix(trimmed, "'modules' => ["):
+			modules = append(modules, line)
+			if strings.HasSuffix(trimmed, "],") {
+				continue // the whole array sits on one line
+			}
+			inBlock = true
+			closing = line[:len(line)-len(strings.TrimLeft(line, " \t"))] + "],"
+		default:
+			rest = append(rest, line)
+		}
+	}
+	return modules, rest, !inBlock
 }
 
 // RunPreservingUnchangedConfigPHPForTest exposes runPreservingUnchangedConfigPHP for tests.

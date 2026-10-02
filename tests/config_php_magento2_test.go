@@ -32,14 +32,52 @@ return [
         'Magento_Store' => 1,
         'Magento_Backend' => 1,
     ],
+    'scopes' => [
+        'alpha' => 1,
+        'beta' => 2,
+    ],
 ];
 `
 
+// configPHPReordered reorders only the 'scopes' entries, which Magento writes
+// in a nondeterministic order and which are keyed, so order carries no meaning.
 const configPHPReordered = `<?php
+return [
+    'modules' => [
+        'Magento_Store' => 1,
+        'Magento_Backend' => 1,
+    ],
+    'scopes' => [
+        'beta' => 2,
+        'alpha' => 1,
+    ],
+];
+`
+
+// configPHPModulesReordered is what setup:upgrade writes when a new
+// <sequence> dependency moves a module: same entries, different load order.
+const configPHPModulesReordered = `<?php
 return [
     'modules' => [
         'Magento_Backend' => 1,
         'Magento_Store' => 1,
+    ],
+    'scopes' => [
+        'alpha' => 1,
+        'beta' => 2,
+    ],
+];
+`
+
+const configPHPModulesAndScopesReordered = `<?php
+return [
+    'modules' => [
+        'Magento_Backend' => 1,
+        'Magento_Store' => 1,
+    ],
+    'scopes' => [
+        'beta' => 2,
+        'alpha' => 1,
     ],
 ];
 `
@@ -50,6 +88,10 @@ return [
         'Magento_Store' => 1,
         'Magento_Backend' => 0,
     ],
+    'scopes' => [
+        'alpha' => 1,
+        'beta' => 2,
+    ],
 ];
 `
 
@@ -59,6 +101,10 @@ return [
         'Magento_Store' => 1,
         'Magento_Backend' => 1,
         'Magento_Cms' => 1,
+    ],
+    'scopes' => [
+        'alpha' => 1,
+        'beta' => 2,
     ],
 ];
 `
@@ -145,6 +191,8 @@ func TestRunPreservingUnchangedConfigPHPKeepsAGenuineChange(t *testing.T) {
 	}{
 		{name: "a module is disabled", after: configPHPBackendDisabled},
 		{name: "a module is added", after: configPHPExtraModule},
+		{name: "the module load order changes", after: configPHPModulesReordered},
+		{name: "the module load order and scopes both change", after: configPHPModulesAndScopesReordered},
 	}
 
 	for _, tc := range cases {
