@@ -196,6 +196,9 @@ func BuildBootstrapFreshPlanForTest(config engine.Config, framework string, opts
 // it came from, so the default taken from .govard.yml is never silent.
 func describeBootstrapMetaVersion(opts BootstrapRuntimeOptions) string {
 	version := strings.TrimSpace(opts.MetaVersion)
+	if version == "" && opts.MetaVersionIgnored != "" {
+		return "at the latest version (" + opts.MetaVersionIgnored + ")"
+	}
 	if version == "" {
 		return "at the latest version (no --framework-version, no framework_version in .govard.yml)"
 	}

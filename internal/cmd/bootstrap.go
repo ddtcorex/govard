@@ -173,9 +173,12 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 			return fmt.Errorf("bootstrap currently supports these project types: %s (detected: %s)",
 				strings.Join(supportedFrameworks, ", "), config.Framework)
 		}
-		opts.MetaVersion, opts.MetaVersionSource, err = resolveBootstrapMetaVersion(config.Framework, opts.MetaVersion, config.FrameworkVersion, opts.Fresh)
+		opts.MetaVersion, opts.MetaVersionSource, opts.MetaVersionIgnored, err = resolveBootstrapMetaVersion(config.Framework, opts.MetaVersion, config.FrameworkVersion, opts.Fresh)
 		if err != nil {
 			return err
+		}
+		if opts.MetaVersionIgnored != "" {
+			pterm.Warning.Println(opts.MetaVersionIgnored + "; installing the latest release (pass --framework-version to pin one)")
 		}
 
 		var resolvedRemote string

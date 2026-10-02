@@ -27,18 +27,22 @@ type BootstrapRuntimeOptions struct {
 	// MetaVersionSource says where MetaVersion came from (one of the
 	// BootstrapVersionSource constants), so the plan and the log can name it.
 	MetaVersionSource string
-	DBDump            string
-	HyvaInstall       bool
-	HyvaToken         string
-	MageUsername      string
-	MagePassword      string
-	AssumeYes         bool
-	Plan              bool
-	NoNoise           bool
-	NoPII             bool
-	DeleteSync        bool
-	NoCompress        bool
-	ExcludePatterns   []string
+	// MetaVersionIgnored is set when the framework_version in .govard.yml was not
+	// a plain numeric version (a detected composer constraint such as ^11.31) and
+	// was ignored; it names the value and why, for the warning and the plan.
+	MetaVersionIgnored string
+	DBDump             string
+	HyvaInstall        bool
+	HyvaToken          string
+	MageUsername       string
+	MagePassword       string
+	AssumeYes          bool
+	Plan               bool
+	NoNoise            bool
+	NoPII              bool
+	DeleteSync         bool
+	NoCompress         bool
+	ExcludePatterns    []string
 }
 
 func resolveBootstrapOptions(cmd *cobra.Command, args []string) (BootstrapRuntimeOptions, error) {
@@ -118,27 +122,54 @@ const (
 // With neither, the version is empty and the framework installs its latest. The
 // config value goes through the same validation as the flag, so there is one set
 // of rules for both; the framework registry supplies them, not a name switch.
-func resolveBootstrapMetaVersion(framework, flagVersion, configVersion string, fresh bool) (version, source string, err error) {
+//
+// A config value that is not a plain numeric version is not an error: `govard
+// init` records the raw detected composer constraint (^11.31, ~2.4.7, 2.4.*),
+// and the user never passed a flag to blame. It is ignored, ignored says so, and
+// the install falls back to the latest release.
+func resolveBootstrapMetaVersion(framework, flagVersion, configVersion string, fresh bool) (version, source, ignored string, err error) {
 	flagVersion = strings.TrimSpace(flagVersion)
 	if flagVersion != "" {
 		if err := validateBootstrapFrameworkVersion(framework, flagVersion); err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
-		return flagVersion, BootstrapVersionSourceFlag, nil
+		return flagVersion, BootstrapVersionSourceFlag, "", nil
 	}
 	configVersion = strings.TrimSpace(configVersion)
 	if !fresh || configVersion == "" {
-		return "", "", nil
+		return "", "", "", nil
+	}
+	if !plainNumericVersion(configVersion) {
+		return "", "", fmt.Sprintf("framework_version %q in .govard.yml is not a plain numeric version (composer constraints such as ^11.31 are not usable here), so it was ignored", configVersion), nil
 	}
 	if err := validateBootstrapFrameworkVersion(framework, configVersion); err != nil {
-		return "", "", fmt.Errorf("%s: %w", BootstrapVersionSourceConfig, err)
+		return "", "", "", fmt.Errorf("%s: %w", BootstrapVersionSourceConfig, err)
 	}
-	return configVersion, BootstrapVersionSourceConfig, nil
+	return configVersion, BootstrapVersionSourceConfig, "", nil
 }
 
 // ResolveBootstrapMetaVersionForTest exposes resolveBootstrapMetaVersion for tests in /tests.
-func ResolveBootstrapMetaVersionForTest(framework, flagVersion, configVersion string, fresh bool) (string, string, error) {
+func ResolveBootstrapMetaVersionForTest(framework, flagVersion, configVersion string, fresh bool) (string, string, string, error) {
 	return resolveBootstrapMetaVersion(framework, flagVersion, configVersion, fresh)
+}
+
+// plainNumericVersion reports whether raw is digits separated by dots, with no
+// constraint operator, wildcard or suffix.
+func plainNumericVersion(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	for _, segment := range strings.Split(raw, ".") {
+		if segment == "" {
+			return false
+		}
+		for _, r := range segment {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validateBootstrapFrameworkVersion(framework string, version string) error {

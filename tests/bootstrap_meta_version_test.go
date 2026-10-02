@@ -25,6 +25,7 @@ func TestResolveBootstrapMetaVersion(t *testing.T) {
 		wantVersion string
 		wantSource  string
 		wantErr     string
+		wantIgnored string
 	}{
 		{name: "flag wins over config", framework: "magento2", fresh: true, flag: "2.4.7", config: "2.4.6", wantVersion: "2.4.7", wantSource: cmd.BootstrapVersionSourceFlag},
 		{name: "config is the default for fresh", framework: "magento2", fresh: true, config: "2.4.6", wantVersion: "2.4.6", wantSource: cmd.BootstrapVersionSourceConfig},
@@ -34,12 +35,18 @@ func TestResolveBootstrapMetaVersion(t *testing.T) {
 		{name: "not fresh leaves the config alone", framework: "magento2", fresh: false, config: "2.4.6", wantVersion: "", wantSource: ""},
 		{name: "not fresh still honours the flag", framework: "magento2", fresh: false, flag: "2.4.7", config: "2.4.6", wantVersion: "2.4.7", wantSource: cmd.BootstrapVersionSourceFlag},
 		{name: "invalid flag is the flag validation error", framework: "magento2", fresh: true, flag: "abc", config: "2.4.6", wantErr: "invalid --framework-version value \"abc\""},
-		{name: "invalid config is the same validation error", framework: "magento2", fresh: true, config: "latest", wantErr: "invalid --framework-version value \"latest\""},
+		{name: "non-numeric config is ignored, not an error", framework: "magento2", fresh: true, config: "latest", wantIgnored: "latest"},
+		{name: "numeric config below the minimum still names the config", framework: "magento2", fresh: true, config: "1.9.0", wantErr: "invalid --framework-version value \"1.9.0\""},
+		{name: "caret constraint is ignored", framework: "laravel", fresh: true, config: "^11.31", wantIgnored: "^11.31"},
+		{name: "tilde constraint is ignored", framework: "magento2", fresh: true, config: "~2.4.7", wantIgnored: "~2.4.7"},
+		{name: "wildcard constraint is ignored", framework: "magento2", fresh: true, config: "2.4.*", wantIgnored: "2.4.*"},
+		{name: "ignored config does not hide a valid flag", framework: "magento2", fresh: true, flag: "2.4.7", config: "~2.4.7", wantVersion: "2.4.7", wantSource: cmd.BootstrapVersionSourceFlag},
+		{name: "invalid flag still fails with a constraint", framework: "laravel", fresh: true, flag: "^11.31", wantErr: "invalid --framework-version value \"^11.31\""},
 		{name: "config below the framework minimum is refused", framework: "magento2", fresh: true, config: "1.9.0", wantErr: "2.0.0+"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			version, source, err := cmd.ResolveBootstrapMetaVersionForTest(testCase.framework, testCase.flag, testCase.config, testCase.fresh)
+			version, source, ignored, err := cmd.ResolveBootstrapMetaVersionForTest(testCase.framework, testCase.flag, testCase.config, testCase.fresh)
 			if testCase.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
 					t.Fatalf("error = %v, want one containing %q", err, testCase.wantErr)
@@ -51,6 +58,12 @@ func TestResolveBootstrapMetaVersion(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if testCase.wantIgnored != "" && (!strings.Contains(ignored, testCase.wantIgnored) || !strings.Contains(ignored, "ignored")) {
+				t.Errorf("ignored = %q, want it to name %q and say it was ignored", ignored, testCase.wantIgnored)
+			}
+			if testCase.wantIgnored == "" && ignored != "" {
+				t.Errorf("unexpected ignored note %q", ignored)
 			}
 			if version != testCase.wantVersion || source != testCase.wantSource {
 				t.Fatalf("got (%q, %q), want (%q, %q)", version, source, testCase.wantVersion, testCase.wantSource)
@@ -70,6 +83,7 @@ func TestBootstrapFreshPlanSaysWhereTheVersionCameFrom(t *testing.T) {
 	}{
 		{name: "from config", opts: cmd.BootstrapRuntimeOptions{MetaVersion: "2.4.6", MetaVersionSource: cmd.BootstrapVersionSourceConfig}, want: []string{"2.4.6", "framework_version in .govard.yml"}},
 		{name: "from flag", opts: cmd.BootstrapRuntimeOptions{MetaVersion: "2.4.7", MetaVersionSource: cmd.BootstrapVersionSourceFlag}, want: []string{"2.4.7", "--framework-version"}},
+		{name: "constraint ignored", opts: cmd.BootstrapRuntimeOptions{MetaVersionIgnored: "framework_version \"^11.31\" in .govard.yml is not a plain numeric version, so it was ignored"}, want: []string{"latest", "^11.31", "ignored"}, reject: []string{"at version"}},
 		{name: "latest", opts: cmd.BootstrapRuntimeOptions{}, want: []string{"latest"}, reject: []string{"at version"}},
 	}
 	for _, testCase := range cases {
