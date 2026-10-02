@@ -176,7 +176,7 @@ What `govard upgrade` does for Magento 2:
 - Resolves correct PHP/MariaDB/Search versions for the target
 - Smart Composer merge (preserves your modules and custom repos)
 - Automatically relaxes version constraints for dev tools (`phpunit`, `phpmd`)
-- Refreshes `config.platform.php` in `composer.json` to the target's PHP right before `composer update` (Composer 2.2 or later and a known PHP only), so a pin written for the previous PHP does not outlive the upgrade; it overwrites an existing pin, including one you set on purpose, and a failing refresh stops the upgrade
+- Refreshes an existing `config.platform.php` in `composer.json` to the target's PHP right before `composer update` (Composer 2.2 or later and a known PHP only), so a pin written for the previous PHP does not outlive the upgrade; it overwrites that pin, including one you set on purpose, and a failing refresh stops the upgrade. A project with no pin keeps its `composer.json` unchanged (the update runs with `--ignore-platform-reqs`, so the pin is not needed to resolve) and the run prints how to add one: `govard tool composer config platform.php <version>`
 - Handles `composer update`, `setup:upgrade`, and static content compilation
 
 ### Multi-Website / Multi-Store Setup

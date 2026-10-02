@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +14,8 @@ import (
 
 	"govard/internal/engine"
 	"govard/internal/frameworks/magento2"
+
+	"github.com/pterm/pterm"
 )
 
 func TestMergeComposerMapKeys(t *testing.T) {
@@ -126,11 +129,18 @@ func TestMergeComposerMapKeys(t *testing.T) {
 // straight from the composer.json merge to the composer update.
 func runMagentoUpgradeBehindFakeDocker(t *testing.T, config engine.Config) []string {
 	t.Helper()
+	return runMagentoUpgradeWithComposerJSON(t, config, `{"require":{"magento/product-community-edition":"2.4.6"},"config":{"platform":{"php":"8.1"}}}`)
+}
+
+// runMagentoUpgradeWithComposerJSON is runMagentoUpgradeBehindFakeDocker with
+// the project's own composer.json chosen by the caller.
+func runMagentoUpgradeWithComposerJSON(t *testing.T, config engine.Config, composerJSON string) []string {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("fake docker shim targets POSIX sh")
 	}
 	projectDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(projectDir, "composer.json"), []byte(`{"require":{"magento/product-community-edition":"2.4.6"}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, "composer.json"), []byte(composerJSON), 0o644); err != nil {
 		t.Fatalf("write composer.json: %v", err)
 	}
 	shimDir := t.TempDir()
@@ -225,5 +235,31 @@ func TestMagentoUpgradeSkipsThePlatformPinWhenItCannotApply(t *testing.T) {
 				t.Fatalf("did not expect a platform pin, got %s", lines[i])
 			}
 		})
+	}
+}
+
+// TestMagentoUpgradeLeavesAProjectWithoutAPlatformPinAlone asserts upgrade only
+// refreshes an existing config.platform.php. composer update runs with
+// --ignore-platform-reqs, so the pin plays no part in resolving the upgrade, and
+// writing one would change a committed composer.json (and the platform check of
+// a production composer install) as a side effect. The run says how to add one.
+func TestMagentoUpgradeLeavesAProjectWithoutAPlatformPinAlone(t *testing.T) {
+	var captured bytes.Buffer
+	pterm.SetDefaultOutput(&captured)
+	t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
+
+	config := engine.Config{Framework: "magento2", FrameworkVersion: "2.4.8"}
+	config.Stack.PHPVersion = "8.4"
+	lines := runMagentoUpgradeWithComposerJSON(t, config, `{"require":{"magento/product-community-edition":"2.4.6"},"config":{"sort-packages":true}}`)
+
+	if indexOfCommand(lines, "composer update") < 0 {
+		t.Fatalf("the run never reached composer update, docker log:\n%s", strings.Join(lines, "\n"))
+	}
+	if i := indexOfCommand(lines, "composer config platform.php"); i >= 0 {
+		t.Fatalf("did not expect a platform pin to be written, got %s", lines[i])
+	}
+	out := ansiEscape.ReplaceAllString(captured.String(), "")
+	if !strings.Contains(out, "no platform pin") || !strings.Contains(out, "govard tool composer config platform.php <version>") {
+		t.Fatalf("expected one line naming the missing pin and the command to add it, got:\n%s", out)
 	}
 }

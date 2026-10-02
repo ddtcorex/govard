@@ -176,7 +176,7 @@ Những gì lệnh `govard upgrade` thực hiện cho Magento 2:
 - Xác định chính xác phiên bản PHP/MariaDB/Search tương ứng cho phiên bản Magento đích.
 - Tự động gộp Composer (Composer merge) thông minh (giữ nguyên các module và custom repo của bạn).
 - Tự động nới lỏng các ràng buộc phiên bản cho các công cụ dev (`phpunit`, `phpmd`).
-- Làm mới `config.platform.php` trong `composer.json` về PHP của đích ngay trước `composer update` (chỉ với Composer 2.2 trở lên và PHP đã biết), để một pin được ghi cho PHP trước đó không sống sót qua lần upgrade; nó ghi đè pin đã có, kể cả pin bạn cố ý đặt, và một lần làm mới thất bại sẽ dừng upgrade.
+- Làm mới `config.platform.php` đã có trong `composer.json` về PHP của đích ngay trước `composer update` (chỉ với Composer 2.2 trở lên và PHP đã biết), để một pin được ghi cho PHP trước đó không sống sót qua lần upgrade; nó ghi đè pin đó, kể cả pin bạn cố ý đặt, và một lần làm mới thất bại sẽ dừng upgrade. Project chưa có pin thì giữ nguyên `composer.json` (lệnh update chạy với `--ignore-platform-reqs` nên không cần pin để resolve) và lần chạy in cách thêm: `govard tool composer config platform.php <version>`.
 - Xử lý các lệnh `composer update`, `setup:upgrade`, và compile static content.
 
 ### Setup Multi-Website / Multi-Store
