@@ -814,6 +814,7 @@ is the top-level `govard sandbox` command, documented below:
 
 ```bash
 govard sandbox up --profile full --php 8.4   # a database, a cache, PHP 8.4
+govard sandbox up --profile full --db mariadb:10.6   # choose the database series
 govard sandbox status
 govard sandbox down [--purge] [--volumes]
 ```
@@ -1094,6 +1095,7 @@ lifecycle for the rehearsal target:
 govard sandbox up                      # create it (php profile by default)
 govard sandbox up --profile basic      # sshd, rsync and git only
 govard sandbox up --profile full --php 8.4   # a database, a cache, PHP 8.4
+govard sandbox up --profile full --db mariadb:10.6   # choose the database series
 govard sandbox up --docroot real       # a real docroot: in-place publishing
 govard sandbox status
 govard sandbox reset --layout deployer # seed a target the other tool owns
@@ -1112,6 +1114,16 @@ shape is configurable — see
 On a fresh
 default (`symlink`) sandbox, `remote exec` fails until the first deploy
 populates the current path — run the first deploy or use `--docroot real`.
+
+`--db` picks the database the `full` profile provides, `mariadb:<series>` (for
+example `mariadb:10.6`) or `default` for the base distribution's own server. For
+a new sandbox the default comes from the project's `stack.services.db` and
+`stack.db_version`; an existing sandbox keeps the database it ships, and a
+disagreeing `--db` is refused unless you pass `--recreate`. The `--recreate`
+path validates the database first, so a refused one leaves the working container
+in place. The `sandbox up` summary prints a `database:` line (between `php:` and
+`image:`) naming the installed server and whether it was requested or is the base
+distribution's default; profiles without a database omit it.
 
 → Full guide: [Deployment](/workflows/deployment#the-sandbox).
 

@@ -802,6 +802,7 @@ top-level `govard sandbox`, được mô tả bên dưới:
 
 ```bash
 govard sandbox up --profile full --php 8.4   # database, cache, PHP 8.4
+govard sandbox up --profile full --db mariadb:10.6   # choose the database series
 govard sandbox status
 govard sandbox down [--purge] [--volumes]
 ```
@@ -1060,6 +1061,7 @@ của target diễn tập:
 govard sandbox up                      # tạo (mặc định profile php)
 govard sandbox up --profile basic      # chỉ sshd, rsync và git
 govard sandbox up --profile full --php 8.4   # database, cache, PHP 8.4
+govard sandbox up --profile full --db mariadb:10.6   # choose the database series
 govard sandbox up --docroot real       # docroot thật: publish in-place
 govard sandbox status
 govard sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
@@ -1077,6 +1079,15 @@ tập thì cấu hình được (xem [Cấu hình remote sandbox](/vi/workflows/
 Trên sandbox mới tinh dạng mặc định (`symlink`),
 `remote exec` lỗi cho tới lần deploy đầu tiên điền đầy current path — hãy deploy
 lần đầu hoặc dùng `--docroot real`.
+
+`--db` chọn database mà profile `full` cung cấp, `mariadb:<series>` (ví dụ
+`mariadb:10.6`) hoặc `default` để dùng server của distribution gốc. Với sandbox
+mới, mặc định lấy từ `stack.services.db` và `stack.db_version` của dự án; sandbox
+đã có giữ database nó đang ship, và `--db` không khớp bị từ chối trừ khi bạn truyền
+`--recreate`. Đường `--recreate` kiểm tra database trước, nên database bị từ chối
+không làm mất container đang chạy. Phần tóm tắt của `sandbox up` in thêm dòng
+`database:` (giữa `php:` và `image:`) nêu server đã cài và việc nó được yêu cầu hay
+là mặc định của distribution gốc; profile không có database thì bỏ dòng này.
 
 → Hướng dẫn đầy đủ: [Triển khai](/vi/workflows/deployment#sandbox).
 
