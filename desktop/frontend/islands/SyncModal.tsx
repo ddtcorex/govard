@@ -186,6 +186,12 @@ export function SyncModal({
         setOptions([]);
         setConfig({});
         onToast(`Failed to load sync options: ${err}`, "error");
+        // open() cancelled the timer of a close still in progress, and nothing
+        // else will finish it: the fade may already be over (or never run), so
+        // settle here or the transparent backdrop stays over the whole app.
+        if (phaseRef.current === "closing") {
+          settleClosed();
+        }
         return;
       }
 
@@ -200,7 +206,7 @@ export function SyncModal({
         setPhase("open");
       }, OPEN_DELAY_MS);
     },
-    [bridge, clearTimers, onModalBlur, onToast, setPhase],
+    [bridge, clearTimers, onModalBlur, onToast, setPhase, settleClosed],
   );
 
   useEffect(() => {
