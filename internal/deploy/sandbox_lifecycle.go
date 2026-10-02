@@ -363,6 +363,19 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	if err != nil {
 		return nil, err
 	}
+	// A volume written by another database series is refused before any build:
+	// the refusal does not depend on the image, and building one takes minutes.
+	var (
+		dbVolume       string
+		dbVolumeExists bool
+	)
+	if !exists {
+		var volErr error
+		dbVolume, dbVolumeExists, volErr = checkSandboxDBVolume(ctx, runtime, request.ProjectName, profile, db)
+		if volErr != nil {
+			return nil, volErr
+		}
+	}
 	if !imageExists || request.Recreate {
 		fmt.Fprintf(request.out(), "building the %s sandbox image %s\n", profile, image)
 		if err := runtime.BuildImage(ctx, SandboxBuildRequest{
@@ -376,6 +389,9 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	}
 
 	if !exists {
+		if err := ensureSandboxDBVolume(ctx, runtime, request.ProjectName, db, dbVolume, dbVolumeExists); err != nil {
+			return nil, err
+		}
 		if err := runtime.RunContainer(ctx, SandboxRunRequest{
 			Name:        container,
 			Image:       image,
@@ -384,6 +400,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 			Profile:     profile,
 			PHP:         php,
 			DB:          db,
+			DBVolume:    dbVolume,
 			Web:         servesWeb,
 		}); err != nil {
 			return nil, err
@@ -975,6 +992,12 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 	if !request.Purge {
 		return state, nil
 	}
+	// The database volume is data, not runtime: only --purge discards it.
+	if project != "" {
+		if err := runtime.RemoveVolumesByLabel(ctx, SandboxDBVolumeLabel, project); err != nil {
+			return nil, err
+		}
+	}
 	if state.Image != "" {
 		_ = runtime.RemoveImage(ctx, state.Image)
 	}
@@ -1103,6 +1126,37 @@ func containerLabelOrEmpty(ctx context.Context, runtime SandboxRuntime, containe
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+// checkSandboxDBVolume reports, before anything is built, that a new
+// container's database volume already exists and was written by another
+// series. It returns the volume name (empty for a profile with no database) and
+// whether the volume already exists.
+func checkSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, project, profile, db string) (string, bool, error) {
+	if !SandboxHasDatabase(profile) {
+		return "", false, nil
+	}
+	name := SandboxDBVolumeName(project)
+	stamped, exists, err := runtime.VolumeLabel(ctx, name, sandboxDBLabel)
+	if err != nil {
+		return "", false, err
+	}
+	if exists {
+		if err := CheckSandboxDBVolumeSeries(stamped, db); err != nil {
+			return "", false, err
+		}
+	}
+	return name, exists, nil
+}
+
+// ensureSandboxDBVolume creates the volume a new container's database lives in,
+// stamped with the series, unless it already exists.
+func ensureSandboxDBVolume(ctx context.Context, runtime SandboxRuntime, project, db, name string, exists bool) error {
+	if name == "" || exists {
+		return nil
+	}
+	labels := map[string]string{SandboxDBVolumeLabel: project, sandboxDBLabel: db}
+	return runtime.EnsureVolume(ctx, name, labels)
 }
 
 // sandboxDBLabel is the container label the database series is recorded in.
