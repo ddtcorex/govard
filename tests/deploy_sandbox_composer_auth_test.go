@@ -87,3 +87,27 @@ func TestUnreadableAuthFileIsSkipped(t *testing.T) {
 		t.Fatalf("an unreadable file is the same as a missing one: auth=%q note=%q", auth, note)
 	}
 }
+
+// The credentials belong to the deploy run alone: post-deploy hooks and the
+// local commands they start must not inherit them.
+func TestComposerAuthIsRemovedAsSoonAsTheRunReturns(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(home+"/.composer", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(home+"/.composer/auth.json", []byte(sampleAuthJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("COMPOSER_AUTH", "")
+	os.Unsetenv("COMPOSER_AUTH")
+	command := cmd.DeployBuildCommand()
+	var during string
+	cmd.WithSandboxComposerAuthForTest(command, true, true, func() { during = os.Getenv("COMPOSER_AUTH") })
+	if !strings.Contains(during, "repo.example.com") {
+		t.Fatalf("the run must see the credentials, got %q", during)
+	}
+	if after, set := os.LookupEnv("COMPOSER_AUTH"); set {
+		t.Fatalf("the credentials must be gone once the run returns, got %q", after)
+	}
+}

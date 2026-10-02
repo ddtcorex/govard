@@ -70,6 +70,21 @@ func applySandboxComposerAuth(cmd *cobra.Command, remoteIsSandbox, serverBuild b
 	}
 }
 
+// withSandboxComposerAuth runs one deploy with those credentials in the
+// environment and takes them out again the moment it returns. They are scoped to
+// the run itself, not to the command around it: a post-deploy hook, a local
+// step or any git or ssh child started afterwards must not inherit them.
+func withSandboxComposerAuth(cmd *cobra.Command, remoteIsSandbox, serverBuild bool, run func()) {
+	restore := applySandboxComposerAuth(cmd, remoteIsSandbox, serverBuild)
+	defer restore()
+	run()
+}
+
+// WithSandboxComposerAuthForTest exposes withSandboxComposerAuth to the tests/ package.
+func WithSandboxComposerAuthForTest(cmd *cobra.Command, remoteIsSandbox, serverBuild bool, run func()) {
+	withSandboxComposerAuth(cmd, remoteIsSandbox, serverBuild, run)
+}
+
 // SandboxComposerAuthForTest exposes sandboxComposerAuth to the tests/ package.
 func SandboxComposerAuthForTest(remoteIsSandbox, serverBuild bool, getenv func(string) string, readFile func(string) ([]byte, error), home, cwd string) (string, string) {
 	return sandboxComposerAuth(remoteIsSandbox, serverBuild, getenv, readFile, home, cwd)
