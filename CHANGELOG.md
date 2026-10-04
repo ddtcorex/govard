@@ -5,6 +5,225 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.78.0] - 2026-10-04
+
+### ⚠️ Behaviour Changes
+
+- **`govard verify` refuses to run anything bare:** `govard verify` with no
+  `--phase` and no `--allow-destructive` now exits up front instead of running
+  phases 1-4 and failing at phase 5. Use `--phase 1`..`--phase 4` for a
+  preflight. (#533)
+- **Capability declarations were narrowed:** `tunnel stop`/`tunnel status`,
+  `remote list` and `remote audit stats|tail` need nothing at all, and
+  `sync --db|--full` now require a container runtime. The Docker-free list in
+  `docs/reference/docker-free.md` is checked against the shipped binary, so it
+  moves with them. (#533)
+- **`deploy check` / `deploy status` exit codes:** a configuration error exits
+  4, a usage error exits 2, and `deploy status --json` exits 1 when no remote
+  answers — a health job reading that JSON now goes red instead of seeing a
+  success. An unknown remote name is one configuration error everywhere
+  (previously 2 from `deploy plan` and 1 from `deploy status`), while a remote
+  that *is* configured and unreachable still exits 1. (#533, #534)
+- **Magento 2.4.6 and 2.4.7 install with `--search-engine=opensearch`**, and
+  `govard config auto` switches `catalog/search/engine` on an existing project
+  (which then needs a reindex). `min_p_patch` is gone. (#533, #534)
+- **A fresh Magento install pins `config.platform.php`** to the project PHP
+  (Composer 2.2+), and `govard upgrade` refreshes that pin, overwriting an
+  intentional one. (#533)
+
+### ✨ New Features
+
+- **The verify checklist covers the remote and non-Magento surface:** 60 static
+  items across the five phases, plus the framework-declared ones composed in at
+  run time, with the read-only half of the remote surface (`deploy plan`,
+  `deploy status`, `deploy releases`, `remote list`) covered for the first time. Frameworks declare their own
+  items in their own package and they are composed into the registry at run
+  time — Magento 2 `P5-MAG-01`, Laravel `P3-LAR-01..03` + `P5-LAR-01`, Symfony
+  `P3-SYM-01..03` + `P5-SYM-01`, WordPress `P3-WP-01..03` + `P5-WP-01` — so a
+  Laravel or WordPress project runs real cache, setup, migration and post-deploy
+  steps instead of 46 framework-agnostic items. Only commands the framework
+  skeleton guarantees are declared, so no item is permanently red. (#465)
+- **Every checklist item's invocation is pinned by evidence:** each item's argv
+  is resolved against the real command tree in a test, so a title can no longer
+  promise an invocation its body does not make (the defect behind the previous
+  P4-05/P4-06/P4-07 greens). Eight items that named a nonexistent flag, a
+  subcommand that is not runnable, a missing session id or the wrong module were
+  fixed by that same test. (#465)
+- **The verify runner enforces its own Guard taxonomy:** `REMOTE-PROBE`,
+  `DESTRUCTIVE-LOCAL` and `REMOTE-WRITE` were documentation with no reader, and
+  the two items that write through a remote carried no label. The runner now
+  decides from the label, and a declared item must carry an id, title, tool and
+  phase within 1..5 or the registry walk fails. (#465, #486)
+- **A skipped checklist item says so:** an unmet `When` predicate used to drop
+  the item from the report entirely, so the checklist silently shrank; a
+  visible skip state now names the reason. A missing row is worse than a red —
+  a red is evidence. (#465)
+- **The sandbox keeps its database and its build:** the MariaDB data moves to a
+  named volume (`<sandbox-container>-db`, and the container name carries a hash
+  of the checkout path so two checkouts of one project never share data) so
+  `sandbox down`/`up` no longer re-import the origin, `sandbox up --reseed`
+  refreshes it deliberately, and `--purge` removes it by label. A volume stamped with another database
+  series is refused before the image is built. `deploy build sandbox` caches
+  the finished artifact under `.govard/sandbox/build-cache` (keyed by commit,
+  lock hash, PHP series, build mode, runner, effective settings, hooks, recipe
+  commands, builder tool versions and the binary itself; three most-recently-used
+  entries kept, `--no-cache` forces a rebuild), and an unchanged artifact
+  hard-links the previous release's static content instead of spending 30-40 s
+  on `build:assets` (`deploy.sandbox_reuse_assets: false` turns it off). A
+  real remote never reads or writes any of it. (#537, #539)
+- **Sandbox server builds can reach a private Composer repository:** for the
+  sandbox remote only, and only for a server-mode build, the project's
+  `auth.json` (or the user's `~/.composer/auth.json`) is passed in
+  `COMPOSER_AUTH` on the command's standard input — it reaches neither argv nor
+  disk — and is removed as soon as the run returns. (#539)
+- **`deploy build --runner container` can use the host's Node:** a recipe whose
+  frontend step needs Node now runs that step on the host when the PHP container
+  has none, preflighted before the first task and before the previous artifact
+  is cleared. The refusal remains only when neither side has Node, and names
+  both. (#534)
+- **`govard verify` run artifacts are always written**, project-scoped
+  (`GOVARD_HOME_DIR`) and owner-only (`0700`/`0600`), so two projects on one
+  host no longer share a run directory. The always-zero `retries` key is gone
+  and a fake run carries `fake: true`. (#465, #533)
+
+### 🐛 Bug Fixes
+
+- **Phase 5 could destroy a database and report success:** the gate only checked
+  that a snapshot directory existed, so a snapshot whose dump had failed
+  (`db:false` plus a valid but empty gzip) opened the gate — the volume was
+  wiped, nothing was restored, and the run still exited 0. A snapshot now has
+  to record a database *and* decompress to at least one byte. (#465)
+- **`govard verify` could pass while running the wrong binary:** items ran
+  whatever `govard` was first on `PATH` instead of the binary that was invoked;
+  `GOVARD_VERIFY_BIN` (plus `--json`/`--error-json` exit codes and a scoped
+  run store) makes the run self-describing. Exit is non-zero when a checklist
+  item fails, and `--json` stdout stays a single parseable document in every
+  refusal path. (#465, #466)
+- **A bare `govard debug` never opened its shell:** PR #365 redefined
+  `RunInContainer` as the detached one-shot variant and reclassified `govard sh`
+  but not `internal/cmd/debug.go`, so the shell got an already-closed stdin and
+  exited 0 in silence; the passthrough branch also joined `debug shell -c "php
+  -v"` into three bare words. Both are fixed with the same
+  `bash -c SCRIPT NAME ARGS...` shape the other wrappers use. (#501)
+- **The write-protection gate on a protected remote was backwards:** the
+  condition had been inverted in February, so every *read* caller was refused
+  and the one write caller walked straight through — and the two subtests
+  asserting it were inverted with it. The polarity now matches each command
+  (`db query` and `db connect` are writes whatever the SQL says), and
+  `db import --drop` no longer resets the *local* database before the gate is
+  reached. (#466)
+- **`tunnel stop` killed every `cloudflared` on the host:** it ran `pkill
+  cloudflared` and `tunnel status` ran `pgrep cloudflared`, matching by name on
+  a host that may be running anything else. `start` now records the pid *and the
+  argv it launched* under `$GOVARD_HOME_DIR/tunnels/<project>.pid` and removes
+  it in its existing defer; `stop` signals that one pid only after the process
+  still carries the recorded argv, refuses a recycled pid rather than falling
+  back to a name pattern, and treats ESRCH as "already ended" on both the
+  SIGTERM and the SIGKILL arm so a base URL can no longer be left pointing at a
+  tunnel that is not running. With no record, `stop` is a no-op that says so. (#533, #534)
+- **A key could be copied to a remote nobody asked govard to write to:** the
+  `ssh-copy-id` prompt overrode pterm's own safe default, so a single Enter on
+  an auth failure wrote the key — reachable from read-only sites (`db dump`,
+  `open`, `sync`, `remote exec`) where the key was copied *before* the
+  write-protection error surfaced. The default is now No, a write-protected
+  remote is refused before it is contacted at all, and the offer is gone from
+  every read-only site. `remote test` keeps it; `remote copy-id` is the
+  explicit request. (#467)
+- **`deploy check` could not fail for the reason it exists:** the writability
+  probe was `mkdir -p <deploy_path> && test -w <deploy_path>` — a
+  self-satisfying probe that created a missing or mistyped path and then found
+  it writable. It now walks up to the nearest existing parent on the machine
+  that owns the path, so the same bytes serve a local target, an SSH target, a
+  present path and an absent one. (#468)
+- **`deploy check` skipped the checks it was built for:** it built the deploy
+  preflight without binding the local checkout or the stream it reports on, so
+  the `.gitmodules` refusal was skipped outright and the composer findings were
+  appended to a notes slice nothing reads during a real deploy. A preflight that
+  approves a checkout the deploy refuses is worse than no preflight, because it
+  is trusted. (#533)
+- **A resume could run the wrong build mode:** a bare `--resume` re-resolved
+  `--build=auto` from flags the retry did not repeat, found no artifact
+  directory and ran `build:vendors`/`build:compile` on the target over an
+  artifact release. The mode is stamped on the release record when the release
+  starts and a resume continues it; naming the other mode explicitly is a usage
+  error. (#538)
+- **A healthy sandbox release answered 502 at `deploy:verify`:** nginx's default
+  header buffer rejected a storefront's many `Set-Cookie` and cache-tag
+  headers ("upstream sent too big header"). The sandbox web tier now uses the
+  dev stack's own values. (#538)
+- **`remote add` on an existing name deleted everything it had no flag for:**
+  the re-assigned block dropped `url`, the db fields, `paths`, the whole
+  `deploy` block, an explicit `protected: true` and any capability restriction,
+  while printing SUCCESS — so the documented way to rotate a key silently
+  unlocked the remote. A re-add now merges only the flags actually passed
+  (`--replace` keeps the old behaviour) and warns when it loosens a guard.
+  `remote list` also gained AUTH and KEY columns naming where each key came
+  from. (#469)
+- **`bootstrap --plan` could not run where it is documented:** `--plan` skips
+  init, so `loadFullConfig` failed with ".govard.yml not found" on the fresh
+  install starting point. It now builds in memory the config `init` would write,
+  prints it and writes nothing; an undeterminable framework is a usage error
+  naming `--framework` and `govard init`. (#537)
+- **Magento 2 restore/config repairs wrote a stale file back:** `app:config:import`
+  rewrites the module list in its own order, so `config auto` dirtied a tracked
+  `config.php` from a run that changed nothing; and the deploy-time restore
+  compared a *sorted multiset* of lines, so a reorder of the `modules` array
+  counted as unchanged and a stale module load order was written back after a
+  composer update. The modules block must now match line for line. (#536, #537)
+- **`govard upgrade` rewrote `composer.json` on every project:** it ran
+  `composer config platform.php` even with no pin present, changing the platform
+  check of a production install. The pin is refreshed only when one is already
+  there; otherwise the file is left alone and the way to add one is printed.
+  (#537)
+- **Database passwords left the process list:** the processlist query, the
+  Magento 1 base-URL manager and the `up` readiness probe passed `-p<password>`
+  on `argv`; `sync --plan` and `open db` printed the password. All of them use
+  `MYSQL_PWD` (or redaction) now, and remote dumps are written under `umask
+  077`. (#530, #533)
+- **The govulncheck gate was silently passing:** the scan step ended in
+  `|| true`, so a loading error produced a report with no findings that the
+  gate read as zero, and the SARIF was never uploaded, so code scanning had
+  nothing to show either. The scan now exits 3 on an incomplete report, runs
+  govulncheck v1.7.0 on a patched toolchain, and `go.mod`'s floor is the
+  patched **1.25.14** (five workflows read it), so the release and CodeQL
+  builds stop using an unpatched 1.25.0. (#465)
+
+### 🔧 Maintenance
+
+- **Two review sweeps closed the open tracker:** #533 and #534 worked through
+  every open code or docs defect in the tracker as of 2026-09-30 plus the
+  defects a follow-up review filed (#512–#529), each task with a failing test
+  first and mutation checks for the safety properties; #537 closed the
+  release-readiness findings from the v1.77.0..master review. (#533, #534, #537)
+- **The shipped safety claims were made to match the code:** a whole-branch
+  review found the batch's own defect class surviving in its final state —
+  sentences asserting behaviour the code did not have, including the guard-fence
+  rationale in the verify registry, the single place where a stale sentence can
+  silently change what a guard label is asserted for. `tunnelArgvMatches` also
+  matched another tool's `cloudflared tunnel run` invocation until it required
+  every recorded token. (#533)
+- **Per-test time budgets:** `make test-unit` and `make test-integration` run
+  under `scripts/testbudget`, which fails the build when one test exceeds its
+  budget in `tests/test-time-budget.yml` (7s unit, 30s integration), measured
+  against the `-race` timings the suite already runs. Every run prints its ten
+  slowest tests. Fixing the structural causes (tests reaching a real container,
+  tests sleeping out a production interval) cut the unit suite 26% instead of
+  raising the ceilings. (#532, #533)
+- **CI:** the Snap Store rejected the classic-confinement request, so Snap
+  publishing is *parked* rather than removed — it is skipped unless the
+  repository variable `GOVARD_SNAP_ENABLED` is `"true"`, with the restore
+  steps in the config and the install docs. Integration Tests and Release
+  Snapshot run only when `GOVARD_CI_FULL` is `"true"` while one maintainer
+  ships. (#536)
+- **A pre-release review of v1.77.0..master found and fixed** the sandbox
+  database dying with its container, the artifact-cache key ignoring an
+  untracked `.govard.yml` or a development build's version, the manifest read
+  truncated by the runner's 256 KiB capture limit (so static-content reuse
+  never fired on a real project), `sandbox: true` on a real remote being able
+  to reach the reuse and credential paths, and a server build digesting an empty
+  manifest into a valid fingerprint. (#537, #539)
+- **`golang.org/x/mod` is bumped to v0.40.0.** (#465)
+
 ## [1.77.0] - 2026-09-28
 
 ### ⚠️ Platform Requirements
