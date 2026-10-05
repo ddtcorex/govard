@@ -33,7 +33,7 @@ func TestDebugShellInvocationPreservesArgumentBoundaries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, argv := cmd.DebugShellInvocationForTest("bebe9", tt.args)
+			_, argv := cmd.DebugShellInvocationForTest("example-project", tt.args)
 			if len(argv) < 3 {
 				t.Fatalf("expected -c, script and forwarded args, got %#v", argv)
 			}
@@ -59,7 +59,7 @@ func TestDebugShellInvocationPreservesArgumentBoundaries(t *testing.T) {
 // A bare `govard debug` opens a session, so it runs bash with no forwarded
 // arguments and asks for an interactive exec.
 func TestDebugShellInvocationInteractiveHasNoForwardedArgs(t *testing.T) {
-	_, argv := cmd.DebugShellInvocationForTest("bebe9", nil)
+	_, argv := cmd.DebugShellInvocationForTest("example-project", nil)
 	if len(argv) != 2 || argv[0] != "-c" {
 		t.Fatalf("expected an interactive [-c script] invocation, got %#v", argv)
 	}
@@ -74,12 +74,12 @@ func TestDebugShellInvocationInteractiveHasNoForwardedArgs(t *testing.T) {
 // Both forms must export the Xdebug session env the IDE keys on.
 func TestDebugShellInvocationExportsXdebugEnv(t *testing.T) {
 	for _, args := range [][]string{nil, {"-c", "php -v"}} {
-		_, argv := cmd.DebugShellInvocationForTest("bebe9", args)
+		_, argv := cmd.DebugShellInvocationForTest("example-project", args)
 		script := argv[1]
 		if !strings.Contains(script, "export XDEBUG_SESSION=PHPSTORM") {
 			t.Errorf("args %#v: script %q does not export XDEBUG_SESSION", args, script)
 		}
-		if !strings.Contains(script, `export PHP_IDE_CONFIG="serverName=bebe9-docker"`) {
+		if !strings.Contains(script, `export PHP_IDE_CONFIG="serverName=example-project-docker"`) {
 			t.Errorf("args %#v: script %q does not export PHP_IDE_CONFIG", args, script)
 		}
 	}
