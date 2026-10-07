@@ -126,11 +126,7 @@ func resolveOpenDBEnvironment(config engine.Config, requestedEnvironment string)
 		return openDBLocalTarget, false, nil
 	}
 
-	remoteName, ok := findRemoteByNameOrEnvironment(config, requested)
-	if !ok {
-		return "", false, fmt.Errorf("unknown remote environment %q", requestedEnvironment)
-	}
-	return remoteName, true, nil
+	return resolveOpenRemoteName(config, requested, requestedEnvironment)
 }
 
 func buildOpenDBConnectionURL(credentials dbCredentials, localPort int) string {

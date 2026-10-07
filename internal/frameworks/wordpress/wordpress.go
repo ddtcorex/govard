@@ -27,12 +27,13 @@ const (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:           frameworkName,
-		Aliases:        []string{"wp"},
-		DisplayName:    "WordPress",
-		MigrationTypes: types.MigrationTypes{DDEV: []string{"wordpress"}, Warden: []string{"wordpress"}},
-		Config:         config,
-		Manifest:       manifest,
+		Name:             frameworkName,
+		Aliases:          []string{"wp"},
+		DisplayName:      "WordPress",
+		MigrationTypes:   types.MigrationTypes{DDEV: []string{"wordpress"}, Warden: []string{"wordpress"}},
+		Config:           config,
+		Manifest:         manifest,
+		DefaultAdminPath: "wp-admin",
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
 			Username: DefaultDBUser,
