@@ -113,6 +113,85 @@ func frontendSyncGateReason(c engine.Config) string {
 	return ""
 }
 
+// cacheServiceConfigured gates P4-10: `redis cli` talks to the project's cache
+// container, which exists only when stack.services.cache names one. Empty and
+// "none" both mean the stack runs no cache.
+func cacheServiceConfigured(c engine.Config) bool {
+	return serviceConfigured(c.Stack.Services.Cache)
+}
+
+func cacheGateReason(engine.Config) string {
+	return "stack.services.cache is empty or none: the project runs no cache service to ping"
+}
+
+// searchServiceConfigured gates P4-11 on stack.services.search the same way.
+func searchServiceConfigured(c engine.Config) bool {
+	return serviceConfigured(c.Stack.Services.Search)
+}
+
+func searchGateReason(engine.Config) string {
+	return "stack.services.search is empty or none: the project runs no search service to probe"
+}
+
+func serviceConfigured(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "none":
+		return false
+	default:
+		return true
+	}
+}
+
+// The audit rows follow what the framework definition declares: `audit run`
+// refuses a check the framework has no profile for ("framework X does not
+// support ... audit", exit 1), which would be a permanent red for a project
+// that cannot have it. The support check is the engine capability the audit
+// command itself reads.
+func auditLintSupported(c engine.Config) bool {
+	return engine.FrameworkSupportsAuditLint(c.Framework)
+}
+
+func auditLintGateReason(c engine.Config) string {
+	return auditGateReason(c, "lint")
+}
+
+func auditProfilerSupported(c engine.Config) bool {
+	return engine.FrameworkSupportsAuditProfiler(c.Framework)
+}
+
+func auditProfilerGateReason(c engine.Config) string {
+	return auditGateReason(c, "profiler")
+}
+
+func auditIntegritySupported(c engine.Config) bool {
+	return engine.FrameworkSupportsAuditIntegrity(c.Framework)
+}
+
+func auditIntegrityGateReason(c engine.Config) string {
+	return auditGateReason(c, "integrity")
+}
+
+func article(word string) string {
+	if strings.ContainsRune("aeiou", rune(word[0])) {
+		return "an"
+	}
+	return "a"
+}
+
+func auditGateReason(c engine.Config, check string) string {
+	if strings.TrimSpace(c.Framework) == "" {
+		return "this project declares no framework, so no " + check + " audit is available"
+	}
+	return "framework " + c.Framework + " does not declare " + article(check) + " " + check + " audit"
+}
+
+// projectFileExists reports whether root/rel is a regular file. Like the Hyva
+// rule it is decided from the project root, which When cannot see.
+func projectFileExists(root, rel string) bool {
+	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+	return err == nil && info.Mode().IsRegular()
+}
+
 // withRemote wraps a remote-touching item. A checklist run that was not told
 // which remote to use does not guess one: guessing meant probing whatever the
 // project happens to call staging.
@@ -611,8 +690,8 @@ func copyTree(src, dst string) error {
 	return nil
 }
 
-// Registry is the static checklist: 60 items across 5 phases
-// (P1 7 + P2 14 + P3 15 + P4 16 + P5 8). Every item carries a Guard label and
+// Registry is the static checklist: 74 items across 5 phases
+// (P1 15 + P2 15 + P3 15 + P4 21 + P5 8). Every item carries a Guard label and
 // the runner acts on it through DecideGuard: an empty Guard is local work with
 // no remote and nothing irreversible, GuardRemoteProbe documents that the
 // argv names a remote and writes nothing there (no runtime gate of its own),
@@ -621,7 +700,7 @@ func copyTree(src, dst string) error {
 // argv is wrapped in withRemote instead of defaulting one: it takes the name
 // from --remote and skips when the run named none.
 var Registry = []Item{
-	// Phase 1 — Preflight (7)
+	// Phase 1 — Preflight (15)
 	{ID: "P1-01", Phase: 1, Title: "govard doctor", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "doctor")
 	}},
@@ -629,6 +708,12 @@ var Registry = []Item{
 		return execGovard(ctx, cfg, opts, "doctor", "--json")
 	}},
 	{ID: "P1-03", Phase: 1, Title: "govard doctor trust", Requires: "P1-02 green", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		// The command installs the local CA into the system store through sudo
+		// and has no non-mutating form. The child has no terminal, so without
+		// passwordless sudo it can only fail: an environment fact, not a defect.
+		if !sudoWithoutPrompt(ctx) {
+			return Skip("sudo needs a password and this run has no terminal: run `govard doctor trust` by hand, or allow passwordless sudo for this item")
+		}
 		return execGovard(ctx, cfg, opts, "doctor", "trust")
 	}},
 	{ID: "P1-04", Phase: 1, Title: "govard config get project_name", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -656,8 +741,41 @@ var Registry = []Item{
 	{ID: "P1-07", Phase: 1, Title: "govard status", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "status")
 	}},
+	// P1-08 — the capability matrix is a machine contract, so the row also
+	// requires the output to be one valid JSON document: a zero exit with prose
+	// on stdout would be green for a command that no longer does its job. Fake
+	// evidence (the hermetic hook) has no real output and is exempt.
+	{ID: "P1-08", Phase: 1, Title: "govard capabilities --json", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		ev := execGovard(ctx, cfg, opts, "capabilities", "--json")
+		if ev.ExitCode == 0 && !ev.JSONValid && !ev.Fake {
+			ev.ExitCode = 1
+			ev.OutputExcerpt += " | output is not valid JSON"
+		}
+		return ev
+	}},
+	{ID: "P1-09", Phase: 1, Title: "govard config profile", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "config", "profile")
+	}},
+	{ID: "P1-10", Phase: 1, Title: "govard domain list", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "domain", "list")
+	}},
+	{ID: "P1-11", Phase: 1, Title: "govard custom list", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "custom", "list")
+	}},
+	{ID: "P1-12", Phase: 1, Title: "govard project orphans", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "project", "orphans")
+	}},
+	{ID: "P1-13", Phase: 1, Title: "govard gateway status", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "gateway", "status")
+	}},
+	{ID: "P1-14", Phase: 1, Title: "govard audit toolchain status", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "audit", "toolchain", "status")
+	}},
+	{ID: "P1-15", Phase: 1, Title: "govard sandbox status", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "sandbox", "status")
+	}},
 
-	// Phase 2 — Bootstrap & Env (14)
+	// Phase 2 — Bootstrap & Env (15)
 	{ID: "P2-01", Phase: 2, Title: "govard env down -> govard env up -> govard env ps", Requires: "P1 green", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		_ = execGovard(ctx, cfg, opts, "env", "down")
 		ev := execGovard(ctx, cfg, opts, "env", "up")
@@ -675,8 +793,8 @@ var Registry = []Item{
 	{ID: "P2-04", Phase: 2, Title: "govard bootstrap -e <remote> --no-noise --plan", Requires: "P2-01 up", Guard: GuardRemoteProbe, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "-e", remote, "--no-noise", "--plan")
 	})},
-	{ID: "P2-05", Phase: 2, Title: "govard bootstrap -e <remote> --no-noise", Requires: "P2-04 plan ok", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
-		return execGovard(ctx, cfg, opts, "bootstrap", "-e", remote, "--no-noise")
+	{ID: "P2-05", Phase: 2, Title: "govard bootstrap -e <remote> --no-noise -y", Requires: "P2-04 plan ok", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+		return execGovard(ctx, cfg, opts, "bootstrap", "-e", remote, "--no-noise", "-y")
 	})},
 	{ID: "P2-06", Phase: 2, Title: "govard bootstrap --clone -e <remote> --plan", Requires: "P2-01 up", Guard: GuardRemoteProbe, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
 		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--plan")
@@ -697,8 +815,8 @@ var Registry = []Item{
 		ev.JSONValid = ev3.JSONValid
 		return ev
 	})},
-	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e <remote> --no-noise", Requires: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
-		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--no-noise")
+	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e <remote> --no-noise -y", Requires: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--no-noise", "-y")
 	})},
 	{ID: "P2-09", Phase: 2, Title: "govard tool npm install in the Hyva theme's web/tailwind (Hyva only)", Requires: "P2-05 or P2-08", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		// When sees only engine.Config, which carries no project root, so the
@@ -719,8 +837,11 @@ var Registry = []Item{
 	{ID: "P2-11", Phase: 2, Title: "govard tool magento --version", Requires: "P2-05 done", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "tool", "magento", "--version")
 	}},
-	{ID: "P2-12", Phase: 2, Title: "govard tool composer validate", Requires: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		return execGovard(ctx, cfg, opts, "tool", "composer", "validate")
+	{ID: "P2-12", Phase: 2, Title: "govard tool composer validate --no-check-publish", Requires: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		if !projectFileExists(opts.ProjectRoot, "composer.json") {
+			return Skip("no composer.json in the project root: nothing for composer to validate")
+		}
+		return execGovard(ctx, cfg, opts, "tool", "composer", "validate", "--no-check-publish")
 	}},
 	{ID: "P2-13", Phase: 2, Title: "<domain> answers over https (http only when the TLS handshake fails)", Requires: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return probeSite(ctx, cfg.Domain)
@@ -728,6 +849,15 @@ var Registry = []Item{
 	{ID: "P2-14", Phase: 2, Title: "govard open --help", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "open", "--help")
 	}},
+	// P2-15 is the end-to-end remote rehearsal: a real deploy through the remote
+	// the run named, which is what the sandbox target exists to answer. It
+	// writes a release there, so it is REMOTE-WRITE like P2-05 and P2-08 and runs
+	// only with --allow-remote-write. --yes keeps it from waiting on a prompt the
+	// child has no terminal for, and --force keeps a rerun from being a silent
+	// no-op ("already runs <rev>; nothing to do", exit 0) so every run deploys.
+	{ID: "P2-15", Phase: 2, Title: "govard deploy --remote <remote> --yes --force", Requires: "P4-17 check ok", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+		return execGovard(ctx, cfg, opts, "deploy", "--remote", remote, "--yes", "--force")
+	})},
 
 	// Phase 3 — Dev Loop (15)
 	{ID: "P3-01", Phase: 3, Title: "govard tool magento cache:flush", Requires: "P2-01 up", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -749,6 +879,9 @@ var Registry = []Item{
 		return execGovard(ctx, cfg, opts, "tool", "magento", "cron:run")
 	}},
 	{ID: "P3-07", Phase: 3, Title: "govard tool php vendor/bin/phpstan analyse --help", Requires: "P2-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		if !projectFileExists(opts.ProjectRoot, "vendor/bin/phpstan") {
+			return Skip("no vendor/bin/phpstan in the project root: phpstan is not installed here")
+		}
 		return execGovard(ctx, cfg, opts, "tool", "php", "vendor/bin/phpstan", "analyse", "--help")
 	}},
 	{ID: "P3-08", Phase: 3, Title: "govard debug status", Requires: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -757,7 +890,7 @@ var Registry = []Item{
 	{ID: "P3-09", Phase: 3, Title: "govard frontend start", Requires: "P2-01 up", Guard: "", When: frontendSyncEnabled, WhenReason: frontendSyncGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "frontend", "start")
 	}},
-	{ID: "P3-10", Phase: 3, Title: "govard audit run --checks lint --scope project --mode auto --format json", Requires: "P2-01 up", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-10", Phase: 3, Title: "govard audit run --checks lint --scope project --mode auto --format json", Requires: "P2-01 up", Guard: "", Checks: []string{"lint"}, When: auditLintSupported, WhenReason: auditLintGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		args := []string{"audit", "run", "--checks", "lint", "--scope", "project", "--mode", "auto", "--format", "json"}
 		args = append(args, auditLintJobsArgs(opts)...)
 		args = append(args, auditTimeoutArgs(opts, verifyTimeoutDefault)...)
@@ -766,10 +899,10 @@ var Registry = []Item{
 		}
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-11", Phase: 3, Title: "govard audit run --checks lint --scope diff --base {{BASE_BRANCH}} --format json", Requires: "P2-01 up", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
-		base := opts.BaseRef
-		if base == "" {
-			base = "origin/master"
+	{ID: "P3-11", Phase: 3, Title: "govard audit run --checks lint --scope diff --base {{BASE_BRANCH}} --format json", Requires: "P2-01 up", Guard: "", Checks: []string{"lint"}, When: auditLintSupported, WhenReason: auditLintGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		base, ok := ResolveDiffBase(ctx, opts.ProjectRoot, opts.BaseRef)
+		if !ok {
+			return Skip("no base ref for the diff scope: none of origin/master, origin/main, master or main exists in the project root; pass --base <ref>")
 		}
 		args := []string{"audit", "run", "--checks", "lint", "--scope", "diff", "--base", base, "--format", "json"}
 		args = append(args, auditLintJobsArgs(opts)...)
@@ -779,7 +912,7 @@ var Registry = []Item{
 		}
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-12", Phase: 3, Title: "govard audit run --checks profiler --url https://{{DOMAIN}}/ --format json", Requires: "P2-01 up", Guard: "", Checks: []string{"profiler"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-12", Phase: 3, Title: "govard audit run --checks profiler --url https://{{DOMAIN}}/ --format json", Requires: "P2-01 up", Guard: "", Checks: []string{"profiler"}, When: auditProfilerSupported, WhenReason: auditProfilerGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		if cfg.Domain == "" {
 			return Skip("no domain configured: set `domain` in .govard.yml so the profiler has a URL to audit")
 		}
@@ -789,7 +922,7 @@ var Registry = []Item{
 		}
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-13", Phase: 3, Title: "govard audit run --checks lint --mode module_in_project --format json (from app/code/<Vendor>/<Module>)", Requires: "P2-05 done", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-13", Phase: 3, Title: "govard audit run --checks lint --mode module_in_project --format json (from app/code/<Vendor>/<Module>)", Requires: "P2-05 done", Guard: "", Checks: []string{"lint"}, When: auditLintSupported, WhenReason: auditLintGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		moduleDir, ok := auditModuleDir(cfg, opts)
 		if !ok {
 			return Skip(noAuditModuleReason)
@@ -802,7 +935,7 @@ var Registry = []Item{
 		}
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-14", Phase: 3, Title: "govard audit run --checks lint --mode standalone --format json (from os.TempDir()/govard-audit-standalone/<Module>)", Requires: "P3-13 ok", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-14", Phase: 3, Title: "govard audit run --checks lint --mode standalone --format json (from os.TempDir()/govard-audit-standalone/<Module>)", Requires: "P3-13 ok", Guard: "", Checks: []string{"lint"}, When: auditLintSupported, WhenReason: auditLintGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		moduleDir, ok := auditModuleDir(cfg, opts)
 		if !ok {
 			return Skip(noAuditModuleReason)
@@ -826,11 +959,11 @@ var Registry = []Item{
 		}
 		return argvEvidence(args, execGovard(ctx, cfg, opts, args...))
 	}},
-	{ID: "P3-15", Phase: 3, Title: "govard audit run --checks integrity (creates the session) -> status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Requires: "—", Guard: "", Checks: []string{"integrity"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P3-15", Phase: 3, Title: "govard audit run --checks integrity (creates the session) -> status --session <id> --format json + result --session <id> --run <run> --format json + rerun --session <id> --format json", Requires: "—", Guard: "", Checks: []string{"integrity"}, When: auditIntegritySupported, WhenReason: auditIntegrityGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return auditLifecycleEvidence(ctx, cfg, opts)
 	}},
 
-	// Phase 4 — Sync / Safety / Snapshot (16)
+	// Phase 4 — Sync / Safety / Snapshot (21)
 	// P4-01 — `remote test` is REMOTE-PROBE because a verify child can
 	// never satisfy the key-copy offer: `offerSSHKeyCopyOnAuthFailure` returns
 	// early when `!stdinIsTerminal()` (internal/cmd/ssh_copy_id.go:154-156), and
@@ -893,12 +1026,12 @@ var Registry = []Item{
 	{ID: "P4-09", Phase: 4, Title: "govard snapshot export --help", Requires: "P4-08 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "snapshot", "export", "--help")
 	}},
-	{ID: "P4-10", Phase: 4, Title: "govard redis cli ping", Requires: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-10", Phase: 4, Title: "govard redis cli ping", Requires: "P2-01 up", Guard: "", When: cacheServiceConfigured, WhenReason: cacheGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		// Not `tool redis-cli`: toolCmd has no RunE, so cobra printed help and
 		// returned nil — the item went green without running redis at all.
 		return execGovard(ctx, cfg, opts, "redis", "cli", "ping")
 	}},
-	{ID: "P4-11", Phase: 4, Title: "<domain>:9200/_cluster/health answers a search health payload", Requires: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P4-11", Phase: 4, Title: "<domain>:9200/_cluster/health answers a search health payload", Requires: "P2-01 up", Guard: "", When: searchServiceConfigured, WhenReason: searchGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return probeSearchHealth(ctx, cfg.Domain)
 	}},
 	{ID: "P4-12", Phase: 4, Title: "govard logs --tail 20", Requires: "P2-01 up", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -908,9 +1041,9 @@ var Registry = []Item{
 	// safe against a production remote by construction: `deploy plan` does not
 	// connect at all, and `deploy status`, `deploy releases` and `remote list`
 	// only read. The rest stay manual recipes, and each reason it gives is one a
-	// reader can re-derive from the code rather than assume: `deploy check` is a
-	// preflight of its own that leaves nothing behind on the target,
-	// `deploy unlock`/`rollback` mutate the target, `db query`/`db connect` and
+	// reader can re-derive from the code rather than assume:
+	// `deploy unlock`/`rollback` mutate the target (P4-20 and P4-21 run only
+	// their help), `db query`/`db connect` and
 	// `db import` (without `--stream-db`, which only reads the remote's dump)
 	// are refused against a write-protected remote, as are `snapshot push` and
 	// `snapshot restore`, `db dump` only adds a new archive file there, and
@@ -933,6 +1066,28 @@ var Registry = []Item{
 	{ID: "P4-16", Phase: 4, Title: "govard remote list", Requires: "P4-13 ok", Guard: GuardRemoteProbe, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		return execGovard(ctx, cfg, opts, "remote", "list")
 	}},
+	// P4-17..P4-21 extend the read-only surface to what a sandbox can answer.
+	// `deploy check` is a preflight that leaves nothing behind, and `remote exec`
+	// runs one fixed read-only command (`hostname`), so both are probes against a
+	// production remote too. `remote audit stats` reads the local audit log and
+	// names no remote, like P4-02, so it carries no guard and takes no --remote.
+	// The rollback and unlock rows are help-only on purpose: both mutate the
+	// target, and the help page is all the checklist may run of them.
+	{ID: "P4-17", Phase: 4, Title: "govard deploy check --remote <remote>", Requires: "P4-13 ok", Guard: GuardRemoteProbe, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+		return execGovard(ctx, cfg, opts, "deploy", "check", "--remote", remote)
+	})},
+	{ID: "P4-18", Phase: 4, Title: "govard remote exec <remote> -- hostname", Requires: "P4-01 reachable", Guard: GuardRemoteProbe, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+		return execGovard(ctx, cfg, opts, "remote", "exec", remote, "--", "hostname")
+	})},
+	{ID: "P4-19", Phase: 4, Title: "govard remote audit stats", Requires: "P4-02 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "remote", "audit", "stats")
+	}},
+	{ID: "P4-20", Phase: 4, Title: "govard deploy rollback --help", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "deploy", "rollback", "--help")
+	}},
+	{ID: "P4-21", Phase: 4, Title: "govard deploy unlock --help", Requires: "—", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+		return execGovard(ctx, cfg, opts, "deploy", "unlock", "--help")
+	}},
 
 	// Phase 5 — Destructive QA (8) — gate: P4-08 snapshot exists
 	{ID: "P5-01", Phase: 5, Title: "govard lock generate (destructive overwrite, phase 5)", Requires: "P1-06 ok, P4-08 snapshot exists", Guard: GuardDestructiveLocal, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -953,7 +1108,7 @@ var Registry = []Item{
 		}
 		return execGovard(ctx, cfg, opts, "bootstrap", "--fresh", "--framework", fw, "--plan")
 	}},
-	{ID: "P5-04", Phase: 5, Title: "govard audit run --checks lint --no-lint-result-cache --format json", Requires: "P2-01 up", Guard: "", Checks: []string{"lint"}, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
+	{ID: "P5-04", Phase: 5, Title: "govard audit run --checks lint --no-lint-result-cache --format json", Requires: "P2-01 up", Guard: "", Checks: []string{"lint"}, When: auditLintSupported, WhenReason: auditLintGateReason, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		args := []string{"audit", "run", "--checks", "lint", "--no-lint-result-cache"}
 		args = append(args, auditLintJobsArgs(opts)...)
 		args = append(args, auditTimeoutArgs(opts, p5RelintTimeout)...)

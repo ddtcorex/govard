@@ -8,8 +8,8 @@ import (
 )
 
 func TestVerifyRegistryCounts(t *testing.T) {
-	if got := len(verify.Registry); got != 60 {
-		t.Fatalf("Registry length = %d, want 60", got)
+	if got := len(verify.Registry); got != 74 {
+		t.Fatalf("Registry length = %d, want 74", got)
 	}
 
 	phaseCounts := map[int]int{}
@@ -45,7 +45,7 @@ func TestVerifyRegistryCounts(t *testing.T) {
 		}
 	}
 
-	wantCounts := map[int]int{1: 7, 2: 14, 3: 15, 4: 16, 5: 8}
+	wantCounts := map[int]int{1: 15, 2: 15, 3: 15, 4: 21, 5: 8}
 	for phase, want := range wantCounts {
 		if got := phaseCounts[phase]; got != want {
 			t.Fatalf("phase %d count = %d, want %d", phase, got, want)

@@ -21,7 +21,7 @@ func DecideGuard(it Item, phase int, opts VerifyOpts) GuardDecision {
 			return GuardDecision{Run: true}
 		}
 		return GuardDecision{Reason: fmt.Sprintf(
-			"writes through a remote: run `%s` manually, or pass --allow-remote-write to attempt it here; verify's children have no tty, so an interactive bootstrap cannot complete in this run",
+			"writes through a remote: run `%s` manually, or pass --allow-remote-write to attempt it here; verify's children have no tty, so the row carries its own confirmation flag (-y or --yes) and runs unattended",
 			it.Title)}
 	case GuardDestructiveLocal:
 		runIn := phase

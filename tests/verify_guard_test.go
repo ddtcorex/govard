@@ -199,7 +199,7 @@ func TestDestructiveLocalItemIsSkippedOutsidePhase5(t *testing.T) {
 	if !row.Skipped {
 		t.Fatalf("P4-02 labelled DESTRUCTIVE-LOCAL ran in phase 4: %+v", row)
 	}
-	if argv, ran := probe.sawArgv("remote", "audit"); ran {
+	if argv, ran := probe.sawArgv("remote", "audit", "tail"); ran {
 		t.Fatalf("the DESTRUCTIVE-LOCAL item ran `%s` in phase 4", argv)
 	}
 }
@@ -245,7 +245,7 @@ func TestGuardValuesAreFromTheAllowedSet(t *testing.T) {
 		}
 	}
 
-	// The distribution covers the 60 static rows: the framework-composed items
+	// The distribution covers the 74 static rows: the framework-composed items
 	// RegistryFor appends carry the empty guard, because they run
 	// `govard tool <binary> ...` locally.
 	counts := map[string]int{}
@@ -253,10 +253,10 @@ func TestGuardValuesAreFromTheAllowedSet(t *testing.T) {
 		counts[it.Guard]++
 	}
 	for guard, want := range map[string]int{
-		"":                           42,
-		verify.GuardRemoteProbe:      13,
+		"":                           53,
+		verify.GuardRemoteProbe:      15,
 		verify.GuardDestructiveLocal: 3,
-		verify.GuardRemoteWrite:      2,
+		verify.GuardRemoteWrite:      3,
 	} {
 		if counts[guard] != want {
 			t.Fatalf("registry has %d %q items, want %d (distribution %v)", counts[guard], guard, want, counts)
