@@ -84,7 +84,7 @@ var verifyCmd = &cobra.Command{
 	Long: `Run the 5-phase Govard verify harness (replaces manual checklist tick).
 
 Phases:
-  1 Preflight (7)  2 Bootstrap & Env (14)  3 Dev Loop (15)  4 Sync/Safety (16)  5 Destructive QA (8)
+  1 Preflight (15)  2 Bootstrap & Env (15)  3 Dev Loop (15)  4 Sync/Safety (21)  5 Destructive QA (8)
 
 Counts are the static registry. A framework may declare extra items for its own
 dev loop; RegistryFor composes them at run time, so a run can be longer.
@@ -331,7 +331,7 @@ func init() {
 	verifyCmd.Flags().Int("lint-jobs", 4, "Lint worker count")
 	verifyCmd.Flags().String("timeout", "auto", "Timeout (auto|0|<dur>)")
 	verifyCmd.Flags().StringSlice("checks", nil, "Checks to run (lint,profiler,integrity)")
-	verifyCmd.Flags().String("base", "", "Base ref for diff scope")
+	verifyCmd.Flags().String("base", "", "Base ref for the diff-scope row (default: the first of origin/master, origin/main, master, main that exists)")
 	verifyCmd.Flags().String("remote", "", "Remote the remote-naming items run against (skipped when empty)")
 	verifyCmd.Flags().String("project", "", "Project path")
 }

@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -92,6 +93,15 @@ func TestEveryItemArgvResolvesToARunnableCommand(t *testing.T) {
 		`{"name":"acme/blank-tailwind","version":"1.0.0"}`)
 	// P1-06 only runs lock commands when a lock file exists.
 	writeFixtureFile(t, engine.LockFilePath(projectRoot), "{}")
+	// P2-12 and P3-07 skip without the files they act on, and P1-03 skips
+	// without passwordless sudo: seed all three so their argvs are resolved.
+	writeFixtureFile(t, filepath.Join(projectRoot, "composer.json"), "{}")
+	writeFixtureFile(t, filepath.Join(projectRoot, "vendor", "bin", "phpstan"), "#!/bin/sh\n")
+	// P3-11 skips without a base ref that exists, so give the fixture one.
+	initGitForBaseTest(t, projectRoot)
+	gitRefForBaseTest(t, projectRoot, "refs/remotes/origin/master")
+	verify.SetSudoProbeForTest(func(context.Context) bool { return true })
+	t.Cleanup(func() { verify.SetSudoProbeForTest(nil) })
 	argvs := captureAllItemArgvs(t, cfg, verify.VerifyOpts{
 		Remote:      captureRemoteForTest,
 		ProjectRoot: projectRoot,

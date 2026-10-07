@@ -50,7 +50,7 @@ func TestVerifyHonoursLintJobsAndTimeout(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 
 	argvs := captureItemArgvs(t, engine.Config{Framework: "magento2"}, verify.VerifyOpts{
-		ProjectRoot: t.TempDir(),
+		ProjectRoot: gitRepoWithBaseForTest(t),
 		LintJobs:    8,
 		Timeout:     "25m",
 	})
@@ -179,7 +179,7 @@ func TestVerifyDoesNotForwardTheLintJobsFlagDefault(t *testing.T) {
 	// VerifyOpts{LintJobs: 4, Timeout: "auto"} is what a bare `govard verify`
 	// binds: both are the flags' own defaults (internal/cmd/verify.go).
 	argvs := captureItemArgvs(t, engine.Config{Framework: "magento2"}, verify.VerifyOpts{
-		ProjectRoot: t.TempDir(),
+		ProjectRoot: gitRepoWithBaseForTest(t),
 		LintJobs:    4,
 		Timeout:     "auto",
 	})
@@ -199,7 +199,7 @@ func TestVerifyDoesNotForwardTheLintJobsFlagDefault(t *testing.T) {
 	// cannot run, so verify leaves the choice to the child rather than forwarding
 	// one (the reference documents this).
 	unset := captureItemArgvs(t, engine.Config{Framework: "magento2"}, verify.VerifyOpts{
-		ProjectRoot: t.TempDir(),
+		ProjectRoot: gitRepoWithBaseForTest(t),
 		LintJobs:    0,
 		Timeout:     "auto",
 	})
@@ -217,7 +217,7 @@ func TestVerifyDoesNotForwardTheLintJobsFlagDefault(t *testing.T) {
 func TestVerifyAuditArgvReachesTheEvidence(t *testing.T) {
 	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
 
-	opts := verify.VerifyOpts{ProjectRoot: t.TempDir(), LintJobs: 8, Timeout: "25m"}
+	opts := verify.VerifyOpts{ProjectRoot: gitRepoWithBaseForTest(t), LintJobs: 8, Timeout: "25m"}
 	// Every item whose evidence this task wrapped: the four whose titles lost a
 	// resolved value (P3-10, P3-11, P3-12, P5-04) and P3-13, which needs the
 	// module fixture below. P3-12 is the profiler item and needs no fixture — it

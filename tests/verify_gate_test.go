@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -427,7 +428,9 @@ func fakeAllExec(t *testing.T) *int {
 		if len(args) > 1 && args[0] == "snapshot" && args[1] == "create" && opts.ProjectRoot != "" {
 			makeSnapshot(t, opts.ProjectRoot, fmt.Sprintf("created-%d", calls), "2026-02-01T00:00:00Z")
 		}
-		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok"}, true
+		// A child asked for --json answers with a document, so the rows that
+		// require valid JSON (P1-08) see the shape a real run produces.
+		return verify.Evidence{ExitCode: 0, OutputExcerpt: "ok", JSONValid: slices.Contains(args, "--json")}, true
 	})
 	t.Cleanup(func() { verify.SetExecGovardFakeForTest(nil) })
 	return &calls

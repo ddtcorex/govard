@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -222,3 +223,25 @@ func probeSearchHealthURL(ctx context.Context, url string) (int, string, error) 
 func ProbeSearchHealthURLForTest(ctx context.Context, url string) (int, string, error) {
 	return probeSearchHealthURL(ctx, url)
 }
+
+// sudoProbe is the seam for "can this run use sudo without a prompt". A nil
+// value means the real probe.
+var sudoProbe func(ctx context.Context) bool
+
+// sudoWithoutPrompt reports whether `sudo -n true` succeeds. A verify child
+// never has a terminal, so a command that needs sudo can only work when sudo
+// asks for no password.
+func sudoWithoutPrompt(ctx context.Context) bool {
+	if sudoProbe != nil {
+		return sudoProbe(ctx)
+	}
+	// A go test binary is the hermetic hook (see execGovard): it must not reach
+	// for the machine's sudo.
+	if isTestBinary(govardBinary()) {
+		return true
+	}
+	return exec.CommandContext(ctx, "sudo", "-n", "true").Run() == nil
+}
+
+// SetSudoProbeForTest replaces the sudo probe; nil restores the real one.
+func SetSudoProbeForTest(fn func(ctx context.Context) bool) { sudoProbe = fn }
