@@ -117,6 +117,13 @@ type FrameworkDefinition struct {
 	// nil for frameworks that use the generic {"app", "src"} default.
 	PHPStanPaths []string
 
+	// EditorExcludes lists project-relative directories (no globs, no trailing
+	// slash) that `govard vscode setup` keeps out of VSCode's search, file
+	// watcher and Intelephense index. Zero value means the framework has no
+	// generated or runtime-state directories worth hiding. vendor/ is never
+	// listed here: it must stay searchable and indexed.
+	EditorExcludes EditorExcludes
+
 	// AuditLint declares exact lint policy for frameworks that support the
 	// generic audit runner. Nil means lint audit is unsupported.
 	AuditLint      *AuditLintProfile
@@ -471,4 +478,17 @@ type ComposerAuthRequirement struct {
 	Repository    string
 	DisplayName   string
 	CredentialURL string
+}
+
+// EditorExcludes splits a framework's noisy directories by what each editor
+// feature needs. The sets differ on purpose: Magento's generated/code is noise
+// in search results but must stay indexed, because application code references
+// its Factory and Interceptor classes.
+type EditorExcludes struct {
+	// Search hides directories from search and quick open.
+	Search []string
+	// Watch stops VSCode from watching directories that change constantly.
+	Watch []string
+	// Index keeps directories out of the Intelephense symbol index.
+	Index []string
 }

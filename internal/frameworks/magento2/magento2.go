@@ -33,6 +33,11 @@ func Definition() types.FrameworkDefinition {
 		},
 		DefaultChownDirectories: []string{conventions.DefaultWorkDir, conventions.HomeWWWData + "/.cache/composer"},
 		PHPStanPaths:            []string{"app/code", "app/design"},
+		EditorExcludes: types.EditorExcludes{
+			Search: []string{"var/cache", "var/page_cache", "var/view_preprocessed", "var/log", "var/report", "var/tmp", "generated/code", "generated/metadata", "pub/static", "pub/media"},
+			Watch:  []string{"var", "generated", "pub/static", "pub/media"},
+			Index:  []string{"var", "pub/static", "pub/media"},
+		},
 		AuditLint: &types.AuditLintProfile{
 			ProjectPHPVersions:    []string{"7.4", "8.0", "8.1", "8.2", "8.3", "8.4", "8.5"},
 			StandalonePHPVersions: []string{"8.1", "8.2", "8.3", "8.4", "8.5"},

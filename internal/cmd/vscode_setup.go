@@ -7,10 +7,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"govard/internal/engine"
 	"govard/internal/frameworks"
+	"govard/internal/frameworks/types"
 	govardruntime "govard/internal/runtime"
 
 	"github.com/pterm/pterm"
@@ -61,6 +63,17 @@ With --global, updates VSCode's user settings.json once for every project:
 creates the govard-php / govard-php-cs-fixer / govard-phpcs wrapper scripts
 under ~/.govard/bin and points php.validate.executablePath, phpstan.binCommand,
 php-cs-fixer.executablePath, phpcs.executablePath, and phpunit.command at them.
+
+Project mode also tunes indexing for the framework: search.useIgnoreFiles is
+turned off so a gitignored vendor/ stays searchable (vendor/ is never excluded),
+and the framework's generated and runtime directories (for example var/ and
+pub/static for Magento 2, storage/framework for Laravel) are excluded from
+search, the file watcher and the Intelephense index. Magento's generated/code
+stays indexed so Factory and Interceptor classes still resolve. The
+search.exclude, files.watcherExclude and intelephense.files.exclude values are
+merged into whatever is already there, so entries you added yourself are kept.
+Any active search.exclude or files.exclude entry that hides vendor/ itself is
+removed and reported, since quick open (Ctrl+P) honours both settings.
 
 Existing keys in either file are preserved; only the keys this command manages
 are added or overwritten. Note: settings.json is parsed as plain JSON, so any
@@ -141,9 +154,23 @@ func runVSCodeSetupProject() error {
 		}
 	}
 
+	// Search, watcher and index tuning does not depend on any extension being
+	// installed (Intelephense's key is simply ignored without it), so it is
+	// always written.
+	for key, value := range vscodeIndexSettings(config.Framework) {
+		set[key] = value
+	}
+
 	if len(set) > 0 || len(unset) > 0 {
 		settingsPath := filepath.Join(root, ".vscode", "settings.json")
-		if err := mergeJSONObjectFile(settingsPath, set, unset); err != nil {
+		removed, err := pruneVendorExcludes(settingsPath)
+		if err != nil {
+			return fmt.Errorf("write %s: %w", settingsPath, err)
+		}
+		for _, entry := range removed {
+			pterm.Info.Printf("Removed %s: it hides vendor/ from search and quick open (Ctrl+P)\n", entry)
+		}
+		if err := mergeJSONObjectFileMerging(settingsPath, set, unset, vscodeMergedSettingKeys); err != nil {
 			return fmt.Errorf("write %s: %w", settingsPath, err)
 		}
 		pterm.Success.Printf("Updated %s\n", settingsPath)
@@ -544,6 +571,14 @@ func ensureWrapperScript(path, subcommand string) error {
 // the result back with indentation. Keys are re-sorted alphabetically by
 // encoding/json; unrelated existing keys are preserved.
 func mergeJSONObjectFile(path string, set map[string]interface{}, unset []string) error {
+	return mergeJSONObjectFileMerging(path, set, unset, nil)
+}
+
+// mergeJSONObjectFileMerging behaves like mergeJSONObjectFile, except that for
+// each key in mergeKeys a map value is merged entry by entry into the existing
+// map and a list value is unioned with the existing list, so entries the user
+// added themselves survive a re-run. Every other key is replaced as before.
+func mergeJSONObjectFileMerging(path string, set map[string]interface{}, unset []string, mergeKeys []string) error {
 	obj := map[string]interface{}{}
 	if data, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(data, &obj); err != nil {
@@ -556,7 +591,14 @@ func mergeJSONObjectFile(path string, set map[string]interface{}, unset []string
 	for _, key := range unset {
 		delete(obj, key)
 	}
+	merge := map[string]bool{}
+	for _, key := range mergeKeys {
+		merge[key] = true
+	}
 	for key, value := range set {
+		if merge[key] {
+			value = mergeSettingValue(obj[key], value)
+		}
 		obj[key] = value
 	}
 
@@ -622,4 +664,188 @@ func mergeLaunchConfig(path, workdir string) error {
 		return fmt.Errorf("encode %s: %w", path, err)
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o644)
+}
+
+// vscodeMergedSettingKeys are the settings whose value is a collection users
+// commonly extend by hand, so setup merges into them rather than replacing.
+var vscodeMergedSettingKeys = []string{
+	"search.exclude",
+	"files.watcherExclude",
+	"intelephense.files.exclude",
+}
+
+// intelephenseDefaultExcludes mirrors the default of intelephense.files.exclude
+// (verified against the extension's package.json). Setting the key replaces the
+// default rather than extending it, so the defaults are repeated here. They
+// already keep nested vendor/ copies and vendor tests out of the index while
+// leaving the vendor/ packages themselves indexed.
+var intelephenseDefaultExcludes = []string{
+	"**/.git/**",
+	"**/.svn/**",
+	"**/.hg/**",
+	"**/CVS/**",
+	"**/.DS_Store/**",
+	"**/node_modules/**",
+	"**/bower_components/**",
+	"**/vendor/**/{Tests,tests}/**",
+	"**/.history/**",
+	"**/vendor/**/vendor/**",
+}
+
+// vscodeIndexSettings returns the search, file-watcher and Intelephense index
+// settings for a framework.
+//
+// VSCode's search honours .gitignore by default, which hides a gitignored
+// vendor/ from search and quick open even though framework code lives there
+// and is read constantly. search.useIgnoreFiles=false turns that off, and the
+// framework's generated and runtime directories are then excluded explicitly
+// instead. vendor/ is deliberately absent from every list below.
+func vscodeIndexSettings(framework string) map[string]interface{} {
+	var excludes types.EditorExcludes
+	if def, ok := frameworks.Get(framework); ok {
+		excludes = def.EditorExcludes
+	}
+
+	searchExclude := map[string]interface{}{}
+	for _, dir := range excludes.Search {
+		searchExclude["**/"+dir] = true
+	}
+	watcherExclude := map[string]interface{}{}
+	for _, dir := range excludes.Watch {
+		watcherExclude["**/"+dir+"/**"] = true
+	}
+	index := append([]string(nil), intelephenseDefaultExcludes...)
+	for _, dir := range excludes.Index {
+		index = append(index, "**/"+dir+"/**")
+	}
+
+	return map[string]interface{}{
+		"search.useIgnoreFiles":       false,
+		"search.useParentIgnoreFiles": false,
+		"search.exclude":              searchExclude,
+		"files.watcherExclude":        watcherExclude,
+		"intelephense.files.exclude":  index,
+	}
+}
+
+// mergeSettingValue merges incoming into existing for a managed collection
+// setting. Maps are merged key by key with incoming winning; lists keep their
+// existing order and gain any incoming item not already present. Anything else
+// (or a type mismatch with the existing value) is simply replaced.
+func mergeSettingValue(existing, incoming interface{}) interface{} {
+	switch in := incoming.(type) {
+	case map[string]interface{}:
+		current, ok := existing.(map[string]interface{})
+		if !ok {
+			return in
+		}
+		// Pre-size from one side only: len(current)+len(in) can overflow on a
+		// crafted settings file and hand make() a negative length.
+		merged := make(map[string]interface{}, len(in))
+		for k, v := range current {
+			merged[k] = v
+		}
+		for k, v := range in {
+			merged[k] = v
+		}
+		return merged
+	case []string:
+		current, ok := existing.([]interface{})
+		if !ok {
+			return in
+		}
+		seen := map[string]bool{}
+		merged := make([]interface{}, 0, len(in))
+		for _, v := range current {
+			if str, isStr := v.(string); isStr {
+				seen[str] = true
+			}
+			merged = append(merged, v)
+		}
+		for _, v := range in {
+			if !seen[v] {
+				merged = append(merged, v)
+			}
+		}
+		return merged
+	default:
+		return incoming
+	}
+}
+
+// VSCodeIndexSettingsForTest exposes vscodeIndexSettings to the tests package.
+func VSCodeIndexSettingsForTest(framework string) map[string]interface{} {
+	return vscodeIndexSettings(framework)
+}
+
+// MergeJSONObjectFileMergingForTest exposes mergeJSONObjectFileMerging to the tests package.
+func MergeJSONObjectFileMergingForTest(path string, set map[string]interface{}, unset []string, mergeKeys []string) error {
+	return mergeJSONObjectFileMerging(path, set, unset, mergeKeys)
+}
+
+// vendorExcludeSettings are the settings whose entries hide files from search
+// and quick open. files.watcherExclude is deliberately absent: it only affects
+// change notifications, and dropping vendor/ from it is a valid user choice.
+var vendorExcludeSettings = []string{"search.exclude", "files.exclude"}
+
+// isVendorExcludeGlob reports whether glob, as a search/files exclude key,
+// hides the top-level vendor directory itself ("vendor", "**/vendor",
+// "/vendor/", "vendor/**", "**/vendor/**"). Narrower globs such as
+// "**/vendor/**/Test" are left alone.
+func isVendorExcludeGlob(glob string) bool {
+	glob = strings.TrimSuffix(strings.TrimSpace(glob), "/**")
+	glob = strings.Trim(glob, "/")
+	glob = strings.TrimPrefix(glob, "**/")
+	return glob == "vendor"
+}
+
+// pruneVendorExcludes removes active entries that hide vendor/ from
+// search.exclude and files.exclude in the settings file at path, and returns
+// them as "setting: glob". Quick open (Ctrl+P) follows both settings, so
+// leaving one in place defeats search.useIgnoreFiles=false. A missing file is
+// not an error.
+func pruneVendorExcludes(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	obj := map[string]interface{}{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, fmt.Errorf("parse existing %s (comments/trailing commas aren't supported): %w", path, err)
+	}
+
+	var removed []string
+	for _, setting := range vendorExcludeSettings {
+		entries, ok := obj[setting].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for glob, active := range entries {
+			if on, _ := active.(bool); on && isVendorExcludeGlob(glob) {
+				delete(entries, glob)
+				removed = append(removed, setting+": "+glob)
+			}
+		}
+	}
+	if len(removed) == 0 {
+		return nil, nil
+	}
+	sort.Strings(removed)
+
+	out, err := json.MarshalIndent(obj, "", "    ")
+	if err != nil {
+		return nil, fmt.Errorf("encode %s: %w", path, err)
+	}
+	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+		return nil, err
+	}
+	return removed, nil
+}
+
+// PruneVendorExcludesForTest exposes pruneVendorExcludes to the tests package.
+func PruneVendorExcludesForTest(path string) ([]string, error) {
+	return pruneVendorExcludes(path)
 }

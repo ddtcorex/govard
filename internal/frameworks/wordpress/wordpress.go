@@ -27,6 +27,11 @@ const (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
+		EditorExcludes: types.EditorExcludes{
+			Search: []string{"wp-content/uploads", "wp-content/cache", "wp-content/upgrade", "wp-content/logs"},
+			Watch:  []string{"wp-content/uploads", "wp-content/cache", "wp-content/upgrade", "wp-content/logs"},
+			Index:  []string{"wp-content/uploads", "wp-content/cache", "wp-content/upgrade", "wp-content/logs"},
+		},
 		Name:             frameworkName,
 		Aliases:          []string{"wp"},
 		DisplayName:      "WordPress",
