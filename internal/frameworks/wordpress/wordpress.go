@@ -93,10 +93,9 @@ func Definition() types.FrameworkDefinition {
 			_, statErr := os.Stat(filepath.Join(projectDir, "wp-config.php"))
 			return statErr == nil
 		},
-		DBDriverCategory:              "wordpress",
-		TablePrefixDetector:           DetectTablePrefix,
-		RemoteDBUsesConfigTablePrefix: true,
-		TablesUsuallyPrefixed:         true,
+		DBDriverCategory:      "wordpress",
+		TablePrefixDetector:   DetectTablePrefix,
+		TablesUsuallyPrefixed: true,
 		// Sandbox seeding: the database is the whole seed, so the only
 		// framework step is pointing siteurl and home at the sandbox.
 		SandboxSeed:  &engine.SandboxSeedDefinition{DBRewrite: SandboxBaseURLStatements},

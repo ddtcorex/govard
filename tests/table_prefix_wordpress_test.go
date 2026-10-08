@@ -100,13 +100,23 @@ func TestWordPressRemoteProbeScriptReadsTablePrefix(t *testing.T) {
 	}
 }
 
-func TestWordPressDefinitionOptsIntoRemoteTablePrefix(t *testing.T) {
+// The prefix used for a remote dump must come from the remote itself. The
+// configured prefix is detected from the LOCAL wp-config.php, so applying it to a
+// remote whose own prefix could not be read would filter the wrong tables and
+// leave user data in a dump that looks sanitized.
+func TestWordPressNeverGuessesARemotePrefixFromTheLocalConfig(t *testing.T) {
 	def, ok := frameworks.Get("wordpress")
 	if !ok {
 		t.Fatal("wordpress definition missing")
 	}
-	if !def.RemoteDBUsesConfigTablePrefix {
-		t.Fatal("wordpress must use the configured/detected prefix for remote DB commands")
+	if def.RemoteDBUsesConfigTablePrefix {
+		t.Fatal("wordpress must not use the local/configured prefix for a remote whose prefix is unknown")
+	}
+	if got := cmd.RemoteFallbackTablePrefixForTest("wordpress", "wp_"); got != "" {
+		t.Fatalf("a failed remote probe must not fall back to the local prefix, got %q", got)
+	}
+	if got := cmd.RemoteFallbackTablePrefixForTest("magento2", "mg_"); got != "mg_" {
+		t.Fatalf("magento2 keeps its configured-prefix fallback, got %q", got)
 	}
 }
 

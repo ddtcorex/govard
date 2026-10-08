@@ -318,9 +318,26 @@ func getPostgresDatabaseSize(config engine.Config, remoteName string, remoteCfg 
 	return size, nil
 }
 
+// remoteFallbackTablePrefix is the prefix used for a remote when its own could not
+// be read. The configured prefix is only a fallback for frameworks that opt in
+// (RemoteDBUsesConfigTablePrefix): for the others it is detected from the local
+// project and would silently filter the wrong tables on a remote that differs.
+func remoteFallbackTablePrefix(framework string, configured string) string {
+	def, ok := frameworks.Get(framework)
+	if !ok || !def.RemoteDBUsesConfigTablePrefix {
+		return ""
+	}
+	return engine.NormalizeTablePrefix(configured)
+}
+
+// RemoteFallbackTablePrefixForTest exposes remoteFallbackTablePrefix for tests.
+func RemoteFallbackTablePrefixForTest(framework string, configured string) string {
+	return remoteFallbackTablePrefix(framework, configured)
+}
+
 func resolveRemoteDBCredentials(config engine.Config, remoteName string, remoteCfg engine.RemoteConfig) (dbCredentials, error) {
 	fallback := defaultDBCredentialsForFramework(config.Framework)
-	fallback.TablePrefix = engine.NormalizeTablePrefix(config.TablePrefix)
+	fallback.TablePrefix = remoteFallbackTablePrefix(config.Framework, config.TablePrefix)
 
 	def, ok := frameworks.Get(config.Framework)
 	if !ok || def.ProbeRemoteDB == nil {
@@ -847,7 +864,7 @@ func privacyFilterWarning(framework string, tablePrefix string, noNoise bool, no
 	}
 	def, ok := frameworks.Get(framework)
 	if ok && def.TablesUsuallyPrefixed && engine.SafeTablePrefix(tablePrefix) == "" {
-		return fmt.Sprintf("%s requested but the table prefix is unknown for this %s database, so the table filters will not match prefixed tables (for example wp_users) and the dump may still contain personal data. Set table_prefix in .govard.yml.", requested, def.DisplayName)
+		return fmt.Sprintf("%s requested but the table prefix of this %s database could not be determined, so the table filters would not match prefixed tables (for example wp_users) and the dump could still contain personal data. A remote's prefix is read from its own wp-config.php; a local one comes from the project's wp-config.php or table_prefix in .govard.yml.", requested, def.DisplayName)
 	}
 	return ""
 }
