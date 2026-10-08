@@ -60,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (for example `stack.features.varnish: false`) left its container running until
   `env down`. A full-stack `env up` now passes `--remove-orphans` (scoped to the
   same compose project); use `--remove-orphans=false` to keep them. (#582)
+- **Luma `frontend start` names the missing `local-themes.js`.** Stock Magento's
+  Gruntfile loads `dev/tools/grunt/configs/local-themes.js` (a copy of
+  `themes.js`); without it the sync container only reported unhealthy. The
+  command now stops before starting and prints the copy command. (#573)
 
 - Sandbox: MariaDB 11 clients, seed retry after a partial failure, WordPress
   `siteurl`/`home` rewrite, php-fpm sees a new release after the symlink swap,
