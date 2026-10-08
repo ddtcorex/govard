@@ -269,3 +269,36 @@ func writeFrontendSyncLumaRoot(t *testing.T, root string) {
 		t.Fatalf("write Luma package lock: %v", err)
 	}
 }
+
+// Stock Magento's Gruntfile requires dev/tools/grunt/configs/local-themes.js,
+// which is a developer-owned copy of themes.js. Without it `grunt watch`
+// aborts and the sync container only ever reports unhealthy, so the missing
+// copy must be named up front.
+func TestDiscoverFrontendSyncRuntimeRejectsLumaWithoutLocalThemes(t *testing.T) {
+	root := t.TempDir()
+	writeFrontendSyncLumaRoot(t, root)
+	configs := filepath.Join(root, "dev", "tools", "grunt", "configs")
+	if err := os.MkdirAll(configs, 0o755); err != nil {
+		t.Fatalf("create grunt configs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configs, "themes.js"), []byte("module.exports = {};\n"), 0o644); err != nil {
+		t.Fatalf("write themes.js: %v", err)
+	}
+
+	_, err := magento2.DiscoverFrontendSyncRuntime(root)
+	if err == nil {
+		t.Fatal("expected Luma runtime without local-themes.js to be rejected")
+	}
+	for _, want := range []string{"local-themes.js", "themes.js"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("expected local-themes remediation to contain %q, got %v", want, err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(configs, "local-themes.js"), []byte("module.exports = {};\n"), 0o644); err != nil {
+		t.Fatalf("write local-themes.js: %v", err)
+	}
+	if _, err := magento2.DiscoverFrontendSyncRuntime(root); err != nil {
+		t.Fatalf("expected Luma runtime to pass once local-themes.js exists: %v", err)
+	}
+}

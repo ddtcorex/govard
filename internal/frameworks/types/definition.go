@@ -236,6 +236,11 @@ type FrameworkDefinition struct {
 	// is unsupported), so gating on that combined condition would make
 	// this hook permanently unreachable for exactly the frameworks that set it.
 	PostCloneHook func(opts bootstrap.Options, projectDir string, helpers bootstrap.CmdHelpers) error
+	// ComposerInstallGuard is called before the bootstrap's composer install
+	// and returns a function to run right after it. A framework uses it to undo
+	// what its composer installer leaves behind in the checkout (Magento's
+	// sample-data-media copies directories into existing ones). Optional.
+	ComposerInstallGuard func(projectDir string) (done func())
 	// IgnorePostCloneError allows a framework to recognize an already-complete
 	// local configuration after its clone hook reports an otherwise non-fatal
 	// error. Core retains generic composer/vendor fallback handling.
@@ -367,6 +372,10 @@ type FrameworkDefinition struct {
 	// Emdash's _emdash/admin with their framework definition instead of in
 	// command or desktop callers.
 	DefaultAdminPath string
+	// NoStockAdminRoute marks frameworks that ship no admin panel of their
+	// own (Laravel, Symfony). `govard open admin` still opens the generic
+	// /admin route for them but says that it is only a guess.
+	NoStockAdminRoute bool
 	// ResolveRemoteAdminPath optionally probes a remote deployment for its
 	// configured admin route. Core consumes the returned path without knowing
 	// which framework's configuration file supplied it.

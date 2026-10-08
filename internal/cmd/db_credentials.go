@@ -883,6 +883,27 @@ func privacyFilterBlocks(framework string, tablePrefix string, noPII bool) bool 
 	return ok && def.TablesUsuallyPrefixed && engine.SafeTablePrefix(tablePrefix) == ""
 }
 
+// privacyFilterUnresolved reports whether a requested filter cannot be built
+// because the framework's tables are prefixed and the prefix is unknown. A
+// plan must not render unprefixed --ignore-table names for such a filter.
+func privacyFilterUnresolved(framework string, tablePrefix string, noNoise bool, noPII bool) bool {
+	if !noNoise && !noPII {
+		return false
+	}
+	def, ok := frameworks.Get(framework)
+	return ok && def.TablesUsuallyPrefixed && engine.SafeTablePrefix(tablePrefix) == ""
+}
+
+// unresolvedPrivacyPlanNote is the plan-only text that replaces a privacy
+// filter that cannot work: the filter is left out of the displayed command and
+// the note says what a real run would do.
+func unresolvedPrivacyPlanNote(noPII bool) string {
+	if noPII {
+		return "[privacy filter is unresolved: the table prefix is unknown, so the table exclusions are left out of this command; a real run with --no-pii would be refused] "
+	}
+	return "[noise filter is unresolved: the table prefix is unknown, so the table exclusions are left out of this command; a real run would only warn] "
+}
+
 // checkPrivacyFilter is the gate for --no-noise/--no-pii. A --no-pii request
 // that cannot match any table is refused (fail closed): producing an
 // "anonymized" dump that still holds user data is worse than failing. A plan

@@ -19,11 +19,12 @@ const (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:           "symfony",
-		DisplayName:    "Symfony",
-		MigrationTypes: types.MigrationTypes{DDEV: []string{"symfony"}, Warden: []string{"symfony"}},
-		Config:         config,
-		Manifest:       manifest,
+		Name:              "symfony",
+		DisplayName:       "Symfony",
+		MigrationTypes:    types.MigrationTypes{DDEV: []string{"symfony"}, Warden: []string{"symfony"}},
+		Config:            config,
+		Manifest:          manifest,
+		NoStockAdminRoute: true,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
 			Username: DefaultDBUser,
@@ -37,6 +38,7 @@ func Definition() types.FrameworkDefinition {
 			CodingStandard:        "Symfony",
 			PHPStanLevel:          5,
 			PHPStanExtension:      "phpstan/phpstan-symfony",
+			RuleIDPrefix:          "SYMFONY-LINT",
 		},
 		AuditTargetResolver: ResolveAuditTarget,
 		Detect: engine.DetectionSpec{

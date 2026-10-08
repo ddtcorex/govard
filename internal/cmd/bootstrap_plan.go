@@ -43,12 +43,24 @@ func buildBootstrapRemotePlan(config engine.Config, opts BootstrapRuntimeOptions
 	}
 
 	// 4. DB Sync
+	// A plan does not probe the remote, so for a framework with prefixed
+	// tables it cannot know the prefix the --no-pii/--no-noise filter needs.
+	prefixNote := ""
+	if (opts.NoPII || opts.NoNoise) && privacyFilterUnresolved(framework, "", opts.NoNoise, opts.NoPII) {
+		prefixNote = " (the table prefix is resolved from the remote at run time"
+		if opts.NoPII {
+			prefixNote += "; if it cannot be determined, a real --no-pii run is refused"
+		} else {
+			prefixNote += "; if it cannot be determined, the noise filter only warns"
+		}
+		prefixNote += ")"
+	}
 	if opts.DBImport {
 		if opts.DBDump != "" {
 			plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Importing database from local file '%s'...", opts.DBDump))
 			plan.Commands = append(plan.Commands, fmt.Sprintf("govard db import --file %s", opts.DBDump))
 		} else if opts.StreamDB {
-			plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Streaming database import from remote '%s'...", opts.Source))
+			plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Streaming database import from remote '%s'...", opts.Source)+prefixNote)
 			cmdLine := fmt.Sprintf("govard db import --stream-db --environment %s", opts.Source)
 			if opts.NoNoise {
 				cmdLine += " --no-noise"
@@ -58,7 +70,7 @@ func buildBootstrapRemotePlan(config engine.Config, opts BootstrapRuntimeOptions
 			}
 			plan.Commands = append(plan.Commands, cmdLine)
 		} else {
-			plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Synchronizing database from remote '%s'...", opts.Source))
+			plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Synchronizing database from remote '%s'...", opts.Source)+prefixNote)
 			cmdLine := fmt.Sprintf("govard sync --source %s --db", opts.Source)
 			if opts.NoNoise {
 				cmdLine += " --no-noise"

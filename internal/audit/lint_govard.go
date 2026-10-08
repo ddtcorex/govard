@@ -413,6 +413,7 @@ func (backend *GovardLintBackend) acceptReport(request LintRequest, resolved Res
 	// rebuild.
 	filtered := filterGeneratedFindings(report)
 	limited := partitionToolingLimitations(report)
+	applyLintRuleIDPrefix(&report, request.Profile.RuleIDPrefix)
 	if filtered || limited > 0 {
 		// Recompute aggregate status and per-PHP outcomes after filtering;
 		// the container's exit code may still be 1 (findings) while the
@@ -423,6 +424,41 @@ func (backend *GovardLintBackend) acceptReport(request LintRequest, resolved Res
 		return LintReport{}, quarantineGovardLintReport(request, reportPath, fmt.Sprintf("the report status does not match runner exit code %d", exitCode), fmt.Errorf("report status %q is not the expected %q", report.Status, want), log)
 	}
 	return report, nil
+}
+
+// toolchainRuleIDPrefix is the prefix the toolchain image stamps on every
+// finding id it emits.
+const toolchainRuleIDPrefix = "M2-LINT"
+
+// applyLintRuleIDPrefix renames the toolchain's Magento-named finding ids to
+// the framework's own prefix, so a Laravel or WordPress report does not carry
+// M2-LINT-* ids. Only ids that start with the toolchain prefix change; an
+// empty or identical prefix is a no-op, which keeps Magento ids as emitted.
+// Nothing in the host compares ids (no baseline or suppression matching), and
+// stored sessions keep whatever ids they were written with.
+func applyLintRuleIDPrefix(report *LintReport, prefix string) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" || prefix == toolchainRuleIDPrefix {
+		return
+	}
+	rename := func(id string) string {
+		if strings.HasPrefix(id, toolchainRuleIDPrefix+"-") {
+			return prefix + id[len(toolchainRuleIDPrefix):]
+		}
+		return id
+	}
+	for i := range report.PHPResults {
+		findings := report.PHPResults[i].Findings
+		for j := range findings {
+			findings[j].Tool = rename(findings[j].Tool)
+			findings[j].Rule = rename(findings[j].Rule)
+		}
+	}
+}
+
+// ApplyLintRuleIDPrefixForTest exposes applyLintRuleIDPrefix for external tests.
+func ApplyLintRuleIDPrefixForTest(report *LintReport, prefix string) {
+	applyLintRuleIDPrefix(report, prefix)
 }
 
 func isGeneratedFindingPath(path string) bool {

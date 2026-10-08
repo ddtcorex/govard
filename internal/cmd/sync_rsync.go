@@ -135,7 +135,12 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 		// The description is shown to people (plan, confirmation), so it is
 		// built from redacted credentials; only the closure below runs the
 		// real command.
-		displayDumpCmdStr := buildRemoteMySQLDumpCommandString(remoteCredentials.forDisplay(), noNoise, noPII, config.Framework, true)
+		displayNoNoise, displayNoPII := noNoise, noPII
+		if planOnly && privacyFilterUnresolved(config.Framework, remoteCredentials.TablePrefix, noNoise, noPII) {
+			displayNoNoise, displayNoPII = false, false
+			planNote += unresolvedPrivacyPlanNote(noPII)
+		}
+		displayDumpCmdStr := buildRemoteMySQLDumpCommandString(remoteCredentials.forDisplay(), displayNoNoise, displayNoPII, config.Framework, true)
 		desc := planNote + fmt.Sprintf("ssh %s \"%s\" | docker exec -i %s sh -lc \"%s\"", remote.RemoteTarget(source.RemoteCfg), displayDumpCmdStr, localDBContainer, importCmdStr)
 
 		return desc, func() error {
@@ -173,8 +178,13 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 		importCmdStr := buildRemoteMySQLImportCommandString(remoteCredentials)
 
 		// Display-only form, see the remote-to-local branch above.
+		displayDumpCmdStr := dumpCmdStr
+		if planOnly && privacyFilterUnresolved(config.Framework, localCredentials.TablePrefix, noNoise, noPII) {
+			displayDumpCmdStr = buildLocalMySQLDumpCommandScript(localCredentials, false, false, config.Framework)
+			planNote += unresolvedPrivacyPlanNote(noPII)
+		}
 		displayImportCmdStr := buildRemoteMySQLImportCommandString(remoteCredentials.forDisplay())
-		desc := planNote + fmt.Sprintf("docker exec -i %s sh -lc \"%s\" | ssh %s \"%s\"", localDBContainer, dumpCmdStr, remote.RemoteTarget(destination.RemoteCfg), displayImportCmdStr)
+		desc := planNote + fmt.Sprintf("docker exec -i %s sh -lc \"%s\" | ssh %s \"%s\"", localDBContainer, displayDumpCmdStr, remote.RemoteTarget(destination.RemoteCfg), displayImportCmdStr)
 
 		return desc, func() error {
 			// The local container is the dump source here, so it must be up

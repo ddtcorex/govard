@@ -56,3 +56,22 @@ func TestShopwareInstallSyncsDomainAwareURLs(t *testing.T) {
 		t.Fatalf("expected sales channel URL sync command, got:\n%s", joined)
 	}
 }
+
+func TestShopwareEnvUsesResolvableMailHost(t *testing.T) {
+	projectDir := t.TempDir()
+	opts := bootstrap.Options{Runner: func(string) error { return nil }, DBHost: "db", DBUser: "shopware", DBPass: "shopware", DBName: "shopware", Domain: "sample.test"}
+	if err := shopware.NewShopwareBootstrap(opts).Install(projectDir); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(projectDir, ".env"))
+	if err != nil {
+		t.Fatalf("read .env: %v", err)
+	}
+	env := string(data)
+	if !strings.Contains(env, "MAILER_DSN=smtp://mail:1025") {
+		t.Fatalf("MAILER_DSN must use the resolvable mail host:\n%s", env)
+	}
+	if strings.Contains(env, "mailpit") {
+		t.Fatalf("mailpit does not resolve inside the PHP container:\n%s", env)
+	}
+}

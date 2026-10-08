@@ -79,3 +79,19 @@ func TestCapabilitiesRowsAreSorted(t *testing.T) {
 		}
 	}
 }
+
+func TestCapabilityRowsHaveOneRowPerCommandPath(t *testing.T) {
+	rows := capabilityRows()
+	seen := map[string]int{}
+	for _, row := range rows {
+		seen[row.Command]++
+	}
+	for path, count := range seen {
+		if count != 1 {
+			t.Errorf("command %q reported %d times, want 1", path, count)
+		}
+	}
+	if len(rows) != len(seen) {
+		t.Fatalf("len(rows) = %d, unique paths = %d", len(rows), len(seen))
+	}
+}

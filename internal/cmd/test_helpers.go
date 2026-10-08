@@ -265,3 +265,8 @@ func SetUpCrossProjectRefreshDependenciesForTest(deps UpCrossProjectRefreshDepen
 		upRefreshRunCompose = previousRunCompose
 	}
 }
+
+// ResolveUpRemoveOrphansForTest exposes the env up orphan-removal default.
+func ResolveUpRemoveOrphansForTest(flagValue, flagChanged bool, services []string) bool {
+	return resolveUpRemoveOrphans(flagValue, flagChanged, services)
+}

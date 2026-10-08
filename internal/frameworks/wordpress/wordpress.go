@@ -60,6 +60,7 @@ func Definition() types.FrameworkDefinition {
 			Linters:               []string{"phpcs", "phpstan"},
 			CodingStandard:        "WordPress",
 			PHPStanLevel:          5,
+			RuleIDPrefix:          "WP-LINT",
 		},
 		AuditTargetResolver:    ResolveAuditTarget,
 		ComposerCodingStandard: types.ComposerCodingStandard{Package: "wp-coding-standards/wpcs", Standard: "WordPress"},

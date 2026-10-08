@@ -212,7 +212,8 @@ Vì `pub/media` bị analyzer bỏ qua nhưng lại chính là nơi webshell đ�
 mỗi phiên bản PHP được phân tích còn chạy thêm một phase **media guard**: quét
 theo tên trong `pub/media` để tìm file `.php`, `.phtml` và `.pht`. Mỗi file
 tìm thấy được báo thành finding `M2-LINT-MEDIA` với đường dẫn relative từ target
-root, và phase đó làm run thất bại. Phép quét này chỉ mất mili giây dù media lớn
+root, và phase đó làm run thất bại. Tiền tố id do framework quyết định
+(`M2-LINT-*` cho Magento, `LARAVEL-LINT-*`, `SYMFONY-LINT-*`, `WP-LINT-*`). Phép quét này chỉ mất mili giây dù media lớn
 hàng GB; nó chỉ đọc tên file, không bao giờ đọc nội dung file vào report.
 
 #### Provider
@@ -423,7 +424,7 @@ govard env cleanup
 | :--- | :--- |
 | `--pull` | Tải về các image mới nhất trước khi chạy |
 | `--fallback-local-build` | Build các image bị thiếu ở local (mặc định `true`) |
-| `--remove-orphans` | Xóa các container không còn trong cấu hình (orphaned) |
+| `--remove-orphans` | Xóa các container không còn trong cấu hình (orphaned) của dự án. Mặc định bật khi khởi động toàn bộ stack; dùng `--remove-orphans=false` để giữ lại |
 | `--quickstart` | Đường dẫn khởi động nhanh nhất (chỉ dịch vụ tối thiểu) |
 | `--update-lock` | Tự động cập nhật `govard.lock` nếu phát hiện sai lệch |
 | `--no-tuning` | Bỏ qua các prompt cấu hình tự động cho framework |
@@ -566,7 +567,7 @@ Guard: mỗi mục tĩnh mang một trong bốn nhãn (`Item.Guard`). Runner hà
 
 Các dòng không áp dụng được thì skip kèm lý do thay vì fail: `P4-10` và `P4-11` cần `stack.services.cache` / `stack.services.search` nêu tên một service, các dòng audit lint, profiler và integrity (`P3-10`..`P3-15`, `P5-04`) theo đúng những gì định nghĩa framework khai báo, `P2-12` (`tool composer validate --no-check-publish`, nên một project skeleton không có tên package chỉ bị đánh giá về tính nhất quán giữa manifest và lock) cần `composer.json` và `P3-07` cần `vendor/bin/phpstan` trong thư mục gốc project, còn `P1-03` (`doctor trust`, cần sudo và không có terminal để hỏi) cần sudo không mật khẩu. `P2-08` (clone bootstrap) sao chép từ release đang live của remote, nên nó skip kèm lý do nêu rõ khi `deploy releases --remote <remote> --json` báo remote chưa có release nào (chạy `P2-15` trước).
 
-Hai mục `REMOTE-WRITE` gốc chính là các lần chạy `bootstrap … --no-noise`. Lý do skip nêu lệnh chạy thủ công, với `<remote>` thay cho remote bạn phải nêu bằng `--remote`, và chúng chạy `bootstrap -y`: các tiến trình con của verify không có tty, nên thiếu `-y` lệnh sẽ dừng ở bước xác nhận và thoát với mã 1. Với `--allow-remote-write` chúng chạy không cần người trả lời và thực sự ghi qua remote.
+Hai mục `REMOTE-WRITE` gốc chính là các lần chạy `bootstrap … --no-noise`. Lý do skip nêu lệnh chạy thủ công, với `<remote>` thay cho remote bạn phải nêu bằng `--remote`, và chúng chạy `bootstrap -y`: các tiến trình con của verify không có tty, nên thiếu `-y` lệnh sẽ dừng ở bước xác nhận và thoát với mã 1. Với `--allow-remote-write` chúng chạy không cần người trả lời và thực sự ghi qua remote. Chúng cũng thay đổi project cục bộ: bootstrap ghi lại cấu hình framework cục bộ (với Magento 2 là `app/etc/env.php` với cài đặt database, cache và search cục bộ), chạy `composer install` (bootstrap kiểu clone xoá `vendor/` trước), và sửa owner cùng quyền của các thư mục project, việc này có thể đổi mode của file trong checkout. Các mục này cần cấu hình đó để chạy được nên verify không khôi phục nó: hãy chạy phase 2 với `--allow-remote-write` trên một checkout dùng một lần, hoặc xem `git status` sau đó. Bootstrap kiểu clone không chép bản ghi deploy `.dep/` của remote, còn `govard.lock` chỉ được ghi bởi `govard lock generate` (`P5-01`) và `env up --update-lock`, không bao giờ bởi phase 2; đó là lock file dành để commit nên không thêm quy tắc ignore cho nó.
 
 Exit codes: `0` mọi mục đều pass hoặc bị skip; `1` có mục fail **hoặc** một gate của pha chặn lần chạy (thông báo nêu rõ gate nào). `2`/`3`/`4` giữ nguyên nghĩa toàn cục (usage / capability / config) — checklist đỏ là lỗi thực thi, không bao giờ là lỗi dùng lệnh. Script nên rẽ nhánh theo mã này và đọc chi tiết từng mục từ `--json`.
 
@@ -965,7 +966,13 @@ cổng loopback còn trống, sinh khoá riêng dưới `.govard/sandbox/` (đã
 và mount read-only một mirror repository local. Mirror được refresh trước mỗi lần
 deploy nên commit bạn chưa từng push vẫn triển khai được, và không phần nào trong
 pipeline biết nó đang nói chuyện với container — triển khai vào sandbox chính là deploy
-production trỏ vào container. Khi container còn chạy, `sandbox` tự resolve thành
+production trỏ vào container. `sandbox ssh -- <command>` chạy lệnh trong sandbox mà không ép tty, nên dữ liệu pipe vào
+hoạt động (`printf x | govard sandbox ssh -- 'cat > f'`), và govard thoát với đúng exit
+status của lệnh đó vì tiến trình được thay bằng `ssh`. Đây là chủ ý riêng cho lệnh này: các
+bước deploy vẫn không bao giờ lộ exit code của remote. Các từ sau `--` được nối bằng dấu
+cách thành một dòng lệnh remote; lệnh không có `--` là lỗi cách dùng (exit `2`).
+
+Khi container còn chạy, `sandbox` tự resolve thành
 remote cho mọi lệnh nhận remote, mà không gì identity nào được ghi vào file cấu
 hình.
 
@@ -1073,7 +1080,8 @@ govard sandbox up --profile full --db mariadb:10.6   # choose the database serie
 govard sandbox up --docroot real       # docroot thật: publish in-place
 govard sandbox status
 govard sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
-govard sandbox ssh
+govard sandbox ssh                     # shell tương tác
+govard sandbox ssh -- php -v           # chạy một lệnh
 govard sandbox down [--purge] [--volumes]
 ```
 
@@ -1151,6 +1159,15 @@ hơn). `create -e` ở remote chạy dưới `umask 077`, nên các thư mục n
 `<path>/.govard/snapshots`, là `0700` và file trong đó là `0600`, và nó kết thúc bằng việc
 ghi `metadata.yml` của snapshot (tên, `created_at`, framework).
 
+Vị trí lưu snapshot remote: với remote có deploy layout (`releases/`, `shared/` và link
+`current` dưới deploy path), `create -e` và `push` lưu vào
+`<deploy path>/shared/.govard/snapshots`, nằm ngoài release đang được phục vụ và không bị
+mất khi chuyển hay dọn release. Deploy path là `remotes.<name>.deploy.deploy_path` nếu có,
+nếu không thì là `path` của remote (thư mục cha khi path là link `current`). Remote không có
+layout đó giữ vị trí cũ `<remote path>/.govard/snapshots` và `create` sẽ cảnh báo. `list`,
+`restore`, `delete` và `pull` tìm ở cả hai vị trí (deploy layout trước), nên snapshot tạo bởi
+bản cũ vẫn hiện; `list -e` thêm cột `LOCATION` (`shared` hoặc `legacy`).
+
 ### `govard open`
 
 Mở nhanh các đường dẫn dịch vụ/ứng dụng trên trình duyệt.
@@ -1164,6 +1181,10 @@ govard open db --pma
 govard open db --client
 govard open db -e staging
 ```
+
+`open admin` mở `/admin` cho framework không có route admin mặc định. Với Laravel và Symfony
+(không có trang admin riêng) lệnh in một dòng thông báo nói rõ điều đó và path đã mở;
+WordPress mở `/wp-admin`. Không có khóa cấu hình admin path.
 
 `open db` in connection URL với mật khẩu được che bằng `***` (không có phần mật khẩu khi
 chưa đặt); database client nhận URL đầy đủ.

@@ -33,6 +33,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Audit lint findings carry a framework-owned id prefix (`LARAVEL-LINT-*`,
+  `SYMFONY-LINT-*`, `WP-LINT-*`) instead of the Magento `M2-LINT-*` ids; Magento ids
+  are unchanged, and nothing matches on ids, so no baseline or stored session breaks. (#587)
+- Bootstrap: Shopware `.env` uses the resolvable mail host from the shared
+  conventions, and Symfony `Configure` replaces an existing `DATABASE_URL` line
+  instead of concatenating the new URL in front of the old value. (#585)
+- `sync --plan` leaves out table exclusions that cannot match when the table prefix
+  is unknown and says the privacy filter is unresolved; `bootstrap --plan` notes
+  that the prefix is resolved at run time and a `--no-pii` run would be refused
+  without it. (#583)
+- `capabilities` reports one row per command path; service shortcuts registered
+  under two parents are no longer listed twice. (#543)
+- Remote snapshots: on a remote with a deploy layout `snapshot create -e` and
+  `push` store under `<deploy path>/shared/.govard/snapshots` instead of inside
+  the served release; other remotes keep the old location with a warning, and
+  `list`, `restore`, `delete` and `pull` read both locations (`list` shows a
+  `LOCATION` column). `db dump -e <remote> --file` says the file was `written on
+  <remote>: <path>`. (#557)
+- `open admin` on Laravel and Symfony prints a one-line notice that the framework
+  has no stock admin route and which path was opened. (#559)
+- `sandbox ssh -- <command>` runs the command without a forced tty (piped stdin
+  works) and exits with the command's own status; a command without `--` is a
+  usage error. Deploy steps still never leak remote exit codes. (#572)
+- **`env up` removes containers of dropped services.** Switching a feature off
+  (for example `stack.features.varnish: false`) left its container running until
+  `env down`. A full-stack `env up` now passes `--remove-orphans` (scoped to the
+  same compose project); use `--remove-orphans=false` to keep them. (#582)
+- **Luma `frontend start` names the missing `local-themes.js`.** Stock Magento's
+  Gruntfile loads `dev/tools/grunt/configs/local-themes.js` (a copy of
+  `themes.js`); without it the sync container only reported unhealthy. The
+  command now stops before starting and prints the copy command. (#573)
+
+- **Clone bootstrap no longer copies the remote `.dep/` deploy record, and the docs now say that `govard verify --phase 2 --allow-remote-write` modifies the working tree.** The bootstrap rows rewrite local configuration (Magento 2 `app/etc/env.php`), reinstall `vendor/` and fix project permissions; verify does not restore them. (#581)
+- **A clone bootstrap no longer leaves `pub/media/<dir>/<dir>/...` copies behind on Magento 2.** The clone wipes `vendor/` and reinstalls it, and the Magento composer installer copies `magento/sample-data-media` directories into the existing media directories; the bootstrap now removes only the nesting that appeared during that install. (#580)
+- **Desktop `DeleteProject` removes the same verify, audit and project-mode lint-cache stores as `project delete`.** The store resolver now lives in `internal/projectstores` and both entry points register it. Lint cache namespaces of module and standalone audits are keyed by arbitrary module paths, cannot be attributed to a project, and are left in place. (#586)
 - Sandbox: MariaDB 11 clients, seed retry after a partial failure, WordPress
   `siteurl`/`home` rewrite, php-fpm sees a new release after the symlink swap,
   `down --purge` removes every profile image. (#553, #554, #566, #575, #576)

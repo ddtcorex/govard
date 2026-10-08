@@ -205,9 +205,9 @@ func TestSandboxUsageDoesNotPresentSubcommandsAsPositionals(t *testing.T) {
 	}
 }
 
-func TestSandboxSSHHelpStatesNoCommandForm(t *testing.T) {
+func TestSandboxSSHHelpStatesTheCommandForm(t *testing.T) {
 	_, long, _, _ := lookupHelpCommand(t, "sandbox", "ssh")
-	for _, want := range []string{"-- <cmd>", "stdin"} {
+	for _, want := range []string{"-- <command>", "exit status", "without a forced tty"} {
 		if !strings.Contains(long, want) {
 			t.Fatalf("sandbox ssh help omits %q:\n%s", want, long)
 		}

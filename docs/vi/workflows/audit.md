@@ -85,7 +85,7 @@ Lint image cung cấp `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`.
 
 ## Đường dẫn quét & Media guard
 
-Analyzer bỏ qua `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (không phải shipped code). Vì `pub/media` là nơi webshell được upload, mỗi PHP version còn chạy **media guard**: quét theo tên trong `pub/media` tìm `.php/.phtml/.pht`. Mỗi hit là `M2-LINT-MEDIA` và fail run — chỉ mili giây, chỉ tên file.
+Analyzer bỏ qua `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (không phải shipped code). Vì `pub/media` là nơi webshell được upload, mỗi PHP version còn chạy **media guard**: quét theo tên trong `pub/media` tìm `.php/.phtml/.pht`. Mỗi hit là `M2-LINT-MEDIA` (tiền tố theo framework: `M2-LINT-*` cho Magento, `LARAVEL-LINT-*`, `SYMFONY-LINT-*`, `WP-LINT-*`) và fail run — chỉ mili giây, chỉ tên file.
 
 ---
 

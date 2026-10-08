@@ -51,3 +51,63 @@ func TestSymfonyEnvLocalDerivesServerVersionFromStack(t *testing.T) {
 		}
 	}
 }
+
+func symfonyConfigure(t *testing.T, envLocal string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.local")
+	if err := os.WriteFile(path, []byte(envLocal), 0o644); err != nil {
+		t.Fatalf("write .env.local: %v", err)
+	}
+	opts := bootstrap.Options{DBHost: "db", DBUser: "app", DBPass: "secret", DBName: "app", DBEngine: "mariadb", DBVersion: "10.11", Runner: func(string) error { return nil }}
+	if err := symfony.NewSymfonyBootstrap(opts).Configure(dir); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read .env.local: %v", err)
+	}
+	return string(data)
+}
+
+func activeDatabaseURLs(env string) []string {
+	var out []string
+	for _, line := range strings.Split(env, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "DATABASE_URL=") {
+			out = append(out, strings.TrimSpace(line))
+		}
+	}
+	return out
+}
+
+func TestSymfonyConfigureReplacesExistingDatabaseURLCleanly(t *testing.T) {
+	const want = `DATABASE_URL="mysql://app:secret@db:3306/app?serverVersion=10.11-MariaDB&charset=utf8mb4"`
+	cases := map[string]string{
+		"existing quoted":   "APP_ENV=dev\nDATABASE_URL=\"mysql://root:root@127.0.0.1:3306/old?serverVersion=8.0\"\nMAILER_DSN=null://null\n",
+		"existing unquoted": "APP_ENV=dev\nDATABASE_URL=postgresql://u:p@127.0.0.1:5432/old\n",
+		"commented only":    "APP_ENV=dev\n# DATABASE_URL=\"mysql://x:x@db:3306/x\"\n",
+		"absent":            "APP_ENV=dev\n",
+	}
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			env := symfonyConfigure(t, input)
+			urls := activeDatabaseURLs(env)
+			if len(urls) != 1 || urls[0] != want {
+				t.Fatalf("want exactly %q, got %v in:\n%s", want, urls, env)
+			}
+			if strings.Contains(env, `""`) {
+				t.Fatalf("doubled quotes in:\n%s", env)
+			}
+			if strings.Contains(input, "# DATABASE_URL") && !strings.Contains(env, "# DATABASE_URL=\"mysql://x:x@db:3306/x\"") {
+				t.Fatalf("comment must stay untouched:\n%s", env)
+			}
+		})
+	}
+}
+
+func TestSymfonyConfigureKeepsAlreadyConfiguredURL(t *testing.T) {
+	input := "DATABASE_URL=\"mysql://app:secret@db:3306/app?serverVersion=10.11-MariaDB&charset=utf8mb4\"\n"
+	if got := symfonyConfigure(t, input); got != input {
+		t.Fatalf("an already configured URL must stay byte-identical, got:\n%s", got)
+	}
+}

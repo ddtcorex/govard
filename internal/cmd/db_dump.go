@@ -58,7 +58,7 @@ func runDBDump(cmd *cobra.Command, config engine.Config, options dbCommandOption
 // remoteDumpSuccessMessage says where a remote-side dump file lives, so a
 // path such as /tmp/x.sql.gz is not mistaken for a file on this machine.
 func remoteDumpSuccessMessage(environment string, remotePath string) string {
-	return fmt.Sprintf("Database dump written on remote '%s' (not on this machine) at %s. Add --local to save it here instead.", environment, remotePath)
+	return fmt.Sprintf("Database dump written on %s: %s (on the remote, not on this machine). Add --local to save it here instead.", environment, remotePath)
 }
 
 // RemoteDumpSuccessMessageForTest exposes remoteDumpSuccessMessage for tests.

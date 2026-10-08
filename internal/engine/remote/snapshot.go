@@ -3,6 +3,7 @@ package remote
 import (
 	"fmt"
 	"os/exec"
+	"path"
 	"regexp"
 	"strings"
 
@@ -27,9 +28,66 @@ func ValidateSnapshotName(name string) error {
 	return nil
 }
 
-// RemoteSnapshotRoot returns the remote snapshot root path for a given remote config.
+// RemoteSnapshotRoot returns the legacy remote snapshot root: inside the remote
+// path itself. On a deploy layout that path is the served release, so new
+// snapshots no longer go there (see SnapshotRootForLayout); the legacy root is
+// still read by list, restore, delete and pull so existing snapshots stay
+// visible.
 func RemoteSnapshotRoot(remoteCfg engine.RemoteConfig) string {
 	return strings.TrimRight(remoteCfg.Path, "/") + "/.govard/snapshots"
+}
+
+// Snapshot layouts reported by SnapshotLayoutProbeCommand.
+const (
+	SnapshotLayoutDeploy = "deploy"
+	SnapshotLayoutLegacy = "legacy"
+)
+
+// SnapshotDeployPath returns the deploy root used to detect a deploy layout.
+// The per-remote deploy_path wins, then the project-level one (configured),
+// then it is derived from the remote path: the parent when the path is the
+// `current` link, the path itself otherwise.
+func SnapshotDeployPath(remoteCfg engine.RemoteConfig, configured string) string {
+	if remoteCfg.Deploy != nil && strings.TrimSpace(remoteCfg.Deploy.DeployPath) != "" {
+		return strings.TrimSpace(remoteCfg.Deploy.DeployPath)
+	}
+	if strings.TrimSpace(configured) != "" {
+		return strings.TrimSpace(configured)
+	}
+	trimmed := strings.TrimRight(remoteCfg.Path, "/")
+	if path.Base(trimmed) == "current" {
+		return path.Dir(trimmed)
+	}
+	return trimmed
+}
+
+// snapshotLayoutTest is the shell test for "this directory is a deploy root":
+// releases/ and shared/ directories plus a current link.
+const snapshotLayoutTest = `[ -d "$D/releases" ] && [ -d "$D/shared" ] && [ -L "$D/current" ]`
+
+// SnapshotLayoutProbeCommand returns a shell command that prints "deploy" when
+// deployPath holds a deploy layout and "legacy" otherwise. It always exits 0.
+func SnapshotLayoutProbeCommand(deployPath string) string {
+	return fmt.Sprintf("D=%s; if %s; then echo %s; else echo %s; fi",
+		QuoteRemotePath(deployPath), snapshotLayoutTest, SnapshotLayoutDeploy, SnapshotLayoutLegacy)
+}
+
+// SnapshotRootForLayout is where new snapshots are written: shared/.govard/snapshots
+// under the deploy path on a deploy layout (survives release switches and is
+// never served), the legacy root otherwise.
+func SnapshotRootForLayout(remoteCfg engine.RemoteConfig, deployPath string, layout string) string {
+	if layout == SnapshotLayoutDeploy {
+		return strings.TrimRight(deployPath, "/") + "/shared/.govard/snapshots"
+	}
+	return RemoteSnapshotRoot(remoteCfg)
+}
+
+// snapshotRootsPrelude defines N (deploy-layout root, empty when the remote has
+// no deploy layout) and O (legacy root) in the remote shell. Lookups try N first.
+func snapshotRootsPrelude(remoteCfg engine.RemoteConfig) string {
+	deployPath := SnapshotDeployPath(remoteCfg, "")
+	return fmt.Sprintf("D=%s; N=''; if %s; then N=\"$D/shared/.govard/snapshots\"; fi; O=%s; ",
+		QuoteRemotePath(deployPath), snapshotLayoutTest, QuoteRemotePath(RemoteSnapshotRoot(remoteCfg)))
 }
 
 // RemoteSnapshotDir returns the full remote path for a named snapshot.
@@ -39,6 +97,9 @@ func RemoteSnapshotDir(remoteCfg engine.RemoteConfig, name string) string {
 
 // BuildRemoteSnapshotCreateCommand builds the SSH command to create a snapshot on the remote.
 // It creates the directory, dumps the DB to db.sql.gz, and tars media to media.tar.gz.
+//
+// This writes to the legacy root; callers that probe the layout use
+// BuildRemoteSnapshotCreateCommandAtRoot.
 func BuildRemoteSnapshotCreateCommand(
 	remoteCfg engine.RemoteConfig,
 	name string,
@@ -46,7 +107,18 @@ func BuildRemoteSnapshotCreateCommand(
 	dbDumpCommandStr string,
 	remoteMediaPath string,
 ) string {
-	snapshotDir := RemoteSnapshotDir(remoteCfg, name)
+	return BuildRemoteSnapshotCreateCommandAtRoot(RemoteSnapshotRoot(remoteCfg), name, framework, dbDumpCommandStr, remoteMediaPath)
+}
+
+// BuildRemoteSnapshotCreateCommandAtRoot is BuildRemoteSnapshotCreateCommand for an explicit snapshot root.
+func BuildRemoteSnapshotCreateCommandAtRoot(
+	root string,
+	name string,
+	framework string,
+	dbDumpCommandStr string,
+	remoteMediaPath string,
+) string {
+	snapshotDir := strings.TrimRight(root, "/") + "/" + name
 	quoted := QuoteRemotePath(snapshotDir)
 
 	parts := []string{
@@ -96,19 +168,29 @@ func BuildRemoteSnapshotCreateCommand(
 }
 
 // BuildRemoteSnapshotListCommand builds the SSH command to list snapshots on the remote.
+// It reads the deploy-layout root first (when the remote has one), then the
+// legacy root. Each root is announced with an "@@root <path>" line so the caller
+// can say where a snapshot lives.
 func BuildRemoteSnapshotListCommand(remoteCfg engine.RemoteConfig) string {
-	root := RemoteSnapshotRoot(remoteCfg)
-	// List snapshot directories and cat their metadata
-	return fmt.Sprintf(
-		"if [ -d %s ]; then for d in %s/*/; do [ -d \"$d\" ] && cat \"$d/metadata.yml\" 2>/dev/null && echo '---'; done; else echo 'EMPTY'; fi",
-		engine.ShellQuote(root), engine.ShellQuote(root),
-	)
+	return snapshotRootsPrelude(remoteCfg) +
+		`for r in "$N" "$O"; do [ -n "$r" ] && [ -d "$r" ] || continue; echo "@@root $r"; ` +
+		`for d in "$r"/*/; do [ -d "$d" ] && cat "$d/metadata.yml" 2>/dev/null && echo '---'; done; done; true`
+}
+
+// BuildRemoteSnapshotLocateCommand prints the directory of a named snapshot
+// (deploy-layout root first, legacy second) and fails when neither holds it.
+func BuildRemoteSnapshotLocateCommand(remoteCfg engine.RemoteConfig, name string) string {
+	return snapshotRootsPrelude(remoteCfg) + fmt.Sprintf(
+		`for r in "$N" "$O"; do [ -n "$r" ] && [ -d "$r"/%[1]s ] && { printf '%%s\n' "$r"/%[1]s; exit 0; }; done; exit 1`,
+		engine.ShellQuote(name))
 }
 
 // BuildRemoteSnapshotDeleteCommand builds the SSH command to delete a snapshot on the remote.
+// The snapshot is removed from every location that holds it.
 func BuildRemoteSnapshotDeleteCommand(remoteCfg engine.RemoteConfig, name string) string {
-	snapshotDir := RemoteSnapshotDir(remoteCfg, name)
-	return fmt.Sprintf("rm -rf %s", engine.ShellQuote(snapshotDir))
+	return snapshotRootsPrelude(remoteCfg) + fmt.Sprintf(
+		`for r in "$N" "$O"; do [ -n "$r" ] && [ -d "$r"/%[1]s ] && rm -rf "$r"/%[1]s; done; true`,
+		engine.ShellQuote(name))
 }
 
 // BuildRemoteSnapshotRestoreCommand builds the SSH command to restore a snapshot on the remote.
@@ -121,29 +203,25 @@ func BuildRemoteSnapshotRestoreCommand(
 	dbOnly bool,
 	mediaOnly bool,
 ) string {
-	snapshotDir := RemoteSnapshotDir(remoteCfg, name)
-	parts := []string{
-		fmt.Sprintf("test -d %s", engine.ShellQuote(snapshotDir)),
-	}
+	// S is the snapshot directory, found in the deploy-layout root first and
+	// the legacy root second.
+	lookup := snapshotRootsPrelude(remoteCfg) + fmt.Sprintf(
+		`S=''; for r in "$N" "$O"; do [ -n "$r" ] && [ -d "$r"/%s ] && { S="$r"/%s; break; }; done; [ -n "$S" ]`,
+		engine.ShellQuote(name), engine.ShellQuote(name))
+	parts := []string{lookup}
 
 	// Restore DB
 	if !mediaOnly && dbImportCommandStr != "" {
-		dbPath := snapshotDir + "/db.sql.gz"
 		parts = append(parts,
-			fmt.Sprintf("if [ -f %s ]; then zcat %s | %s; fi",
-				engine.ShellQuote(dbPath), engine.ShellQuote(dbPath), dbImportCommandStr,
-			),
+			fmt.Sprintf(`if [ -f "$S/db.sql.gz" ]; then zcat "$S/db.sql.gz" | %s; fi`, dbImportCommandStr),
 		)
 	}
 
 	// Restore media
 	if !dbOnly && strings.TrimSpace(remoteMediaPath) != "" {
-		mediaTar := snapshotDir + "/media.tar.gz"
 		parts = append(parts,
-			fmt.Sprintf("if [ -f %s ]; then mkdir -p %s && tar -xzf %s -C %s; fi",
-				engine.ShellQuote(mediaTar),
+			fmt.Sprintf(`if [ -f "$S/media.tar.gz" ]; then mkdir -p %s && tar -xzf "$S/media.tar.gz" -C %s; fi`,
 				engine.ShellQuote(remoteMediaPath),
-				engine.ShellQuote(mediaTar),
 				engine.ShellQuote(remoteMediaPath),
 			),
 		)
@@ -159,7 +237,17 @@ func BuildRemoteSnapshotPullCommand(
 	name string,
 	localSnapshotDir string,
 ) *exec.Cmd {
-	remoteSnapshotDir := RemoteSnapshotDir(remoteCfg, name) + "/"
+	return BuildRemoteSnapshotPullCommandAt(remoteName, remoteCfg, RemoteSnapshotDir(remoteCfg, name), localSnapshotDir)
+}
+
+// BuildRemoteSnapshotPullCommandAt pulls an explicit remote snapshot directory.
+func BuildRemoteSnapshotPullCommandAt(
+	remoteName string,
+	remoteCfg engine.RemoteConfig,
+	remoteDir string,
+	localSnapshotDir string,
+) *exec.Cmd {
+	remoteSnapshotDir := strings.TrimRight(remoteDir, "/") + "/"
 	source := fmt.Sprintf("%s:%s", RemoteTarget(remoteCfg), remoteSnapshotDir)
 	return BuildRsyncCommand(remoteName, source, localSnapshotDir+"/", remoteCfg, false, true, false, nil, nil)
 }
@@ -171,7 +259,17 @@ func BuildRemoteSnapshotPushCommand(
 	name string,
 	localSnapshotDir string,
 ) *exec.Cmd {
-	remoteSnapshotDir := RemoteSnapshotDir(remoteCfg, name) + "/"
+	return BuildRemoteSnapshotPushCommandAt(remoteName, remoteCfg, RemoteSnapshotDir(remoteCfg, name), localSnapshotDir)
+}
+
+// BuildRemoteSnapshotPushCommandAt pushes into an explicit remote snapshot directory.
+func BuildRemoteSnapshotPushCommandAt(
+	remoteName string,
+	remoteCfg engine.RemoteConfig,
+	remoteDir string,
+	localSnapshotDir string,
+) *exec.Cmd {
+	remoteSnapshotDir := strings.TrimRight(remoteDir, "/") + "/"
 	destination := fmt.Sprintf("%s:%s", RemoteTarget(remoteCfg), remoteSnapshotDir)
 	return BuildRsyncCommand(remoteName, localSnapshotDir+"/", destination, remoteCfg, false, true, false, nil, nil)
 }
@@ -200,6 +298,46 @@ func ParseRemoteSnapshotList(raw string) ([]engine.SnapshotMetadata, error) {
 		snapshots = append(snapshots, meta)
 	}
 	return snapshots, nil
+}
+
+// RemoteSnapshotEntry is a snapshot together with the remote root it was found in.
+type RemoteSnapshotEntry struct {
+	Meta engine.SnapshotMetadata
+	Root string
+}
+
+// ParseRemoteSnapshotListEntries parses the output of BuildRemoteSnapshotListCommand,
+// keeping the order of the roots (deploy layout first, legacy second).
+func ParseRemoteSnapshotListEntries(raw string) ([]RemoteSnapshotEntry, error) {
+	entries := []RemoteSnapshotEntry{}
+	root := ""
+	var doc []string
+	flush := func() {
+		text := strings.TrimSpace(strings.Join(doc, "\n"))
+		doc = doc[:0]
+		if text == "" || text == "EMPTY" {
+			return
+		}
+		var meta engine.SnapshotMetadata
+		if err := yaml.Unmarshal([]byte(text), &meta); err != nil || meta.Name == "" {
+			return
+		}
+		entries = append(entries, RemoteSnapshotEntry{Meta: meta, Root: root})
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "@@root "):
+			flush()
+			root = strings.TrimSpace(strings.TrimPrefix(trimmed, "@@root "))
+		case trimmed == "---":
+			flush()
+		default:
+			doc = append(doc, line)
+		}
+	}
+	flush()
+	return entries, nil
 }
 
 // ForTest wrappers

@@ -93,7 +93,7 @@ func runRemoteSnapshotCreate(cmd *cobra.Command, config engine.Config, envName s
 		return err
 	}
 
-	remoteName, remoteCfg, err := ensureRemoteKnown(config, envName)
+	remoteName, remoteCfg, err := ensureSnapshotRemote(config, envName)
 	if err != nil {
 		return err
 	}
@@ -120,11 +120,15 @@ func runRemoteSnapshotCreate(cmd *cobra.Command, config engine.Config, envName s
 
 	_, mediaPath := engine.ResolveRemotePathsForConfig(config.Framework, remoteCfg)
 
-	createCmdStr := remote.BuildRemoteSnapshotCreateCommand(remoteCfg, name, config.Framework, dbDumpCommandStr, mediaPath)
-
 	if local {
 		return fmt.Errorf("--local mode is not yet implemented for remote snapshots")
 	}
+
+	snapshotRoot, err := resolveSnapshotWriteRoot(remoteName, remoteCfg)
+	if err != nil {
+		return err
+	}
+	createCmdStr := remote.BuildRemoteSnapshotCreateCommandAtRoot(snapshotRoot, name, config.Framework, dbDumpCommandStr, mediaPath)
 
 	pterm.Info.Printf("Creating snapshot %s on remote %s...\n", name, remoteName)
 	sshCmd := remote.BuildSSHExecCommand(remoteName, remoteCfg, true, createCmdStr)
@@ -135,9 +139,46 @@ func runRemoteSnapshotCreate(cmd *cobra.Command, config engine.Config, envName s
 		return fmt.Errorf("remote snapshot creation failed: %w", err)
 	}
 
-	pterm.Success.Printf("Remote snapshot created at %s\n", remote.RemoteSnapshotDir(remoteCfg, name))
+	pterm.Success.Printf("Remote snapshot created at %s\n", strings.TrimRight(snapshotRoot, "/")+"/"+name)
 	operationMessage = "remote snapshot created"
 	return nil
+}
+
+// ensureSnapshotRemote resolves the remote and folds the project-level
+// deploy_path into the copy handed to the snapshot builders, so layout detection
+// uses the same deploy root as `govard deploy`.
+func ensureSnapshotRemote(config engine.Config, envName string) (string, engine.RemoteConfig, error) {
+	remoteName, remoteCfg, err := ensureRemoteKnown(config, envName)
+	if err != nil {
+		return remoteName, remoteCfg, err
+	}
+	deployPath := remote.SnapshotDeployPath(remoteCfg, config.Deploy.DeployPath)
+	override := engine.DeployConfig{}
+	if remoteCfg.Deploy != nil {
+		override = *remoteCfg.Deploy
+	}
+	override.DeployPath = deployPath
+	remoteCfg.Deploy = &override
+	return remoteName, remoteCfg, nil
+}
+
+// resolveSnapshotWriteRoot probes the remote and returns where new snapshots go:
+// <deploy path>/shared/.govard/snapshots on a deploy layout, the legacy
+// <remote path>/.govard/snapshots otherwise (with a warning, because that is
+// inside the served tree on some layouts).
+func resolveSnapshotWriteRoot(remoteName string, remoteCfg engine.RemoteConfig) (string, error) {
+	deployPath := remote.SnapshotDeployPath(remoteCfg, "")
+	probe := remote.BuildSSHExecCommand(remoteName, remoteCfg, false, remote.SnapshotLayoutProbeCommand(deployPath))
+	output, err := probe.Output()
+	if err != nil {
+		return "", fmt.Errorf("probe remote deploy layout: %w", err)
+	}
+	layout := strings.TrimSpace(string(output))
+	root := remote.SnapshotRootForLayout(remoteCfg, deployPath, layout)
+	if layout != remote.SnapshotLayoutDeploy {
+		pterm.Warning.Printf("Remote %s has no deploy layout (releases/, shared/ and a current link under %s); storing snapshots at the legacy location %s\n", remoteName, deployPath, root)
+	}
+	return root, nil
 }
 
 func auditStatusFromEngine(status engine.OperationStatus) string {
@@ -188,7 +229,7 @@ var snapshotListCmd = &cobra.Command{
 }
 
 func runRemoteSnapshotList(cmd *cobra.Command, config engine.Config, envName string) error {
-	remoteName, remoteCfg, err := ensureRemoteKnown(config, envName)
+	remoteName, remoteCfg, err := ensureSnapshotRemote(config, envName)
 	if err != nil {
 		return err
 	}
@@ -201,7 +242,7 @@ func runRemoteSnapshotList(cmd *cobra.Command, config engine.Config, envName str
 		return fmt.Errorf("remote snapshot list failed: %w", err)
 	}
 
-	snapshots, err := remote.ParseRemoteSnapshotList(string(output))
+	snapshots, err := remote.ParseRemoteSnapshotListEntries(string(output))
 	if err != nil {
 		return fmt.Errorf("failed to parse remote snapshots: %w", err)
 	}
@@ -212,13 +253,19 @@ func runRemoteSnapshotList(cmd *cobra.Command, config engine.Config, envName str
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 2, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "NAME\tCREATED_AT\tDB\tMEDIA")
-	for _, snapshot := range snapshots {
+	_, _ = fmt.Fprintln(w, "NAME\tCREATED_AT\tDB\tMEDIA\tLOCATION")
+	legacyRoot := remote.RemoteSnapshotRoot(remoteCfg)
+	for _, entry := range snapshots {
+		snapshot := entry.Meta
 		created := "-"
 		if !snapshot.CreatedAt.IsZero() {
 			created = snapshot.CreatedAt.Format("2006-01-02 15:04:05")
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%t\t%t\n", snapshot.Name, created, snapshot.DB, snapshot.Media)
+		location := "shared"
+		if entry.Root == legacyRoot {
+			location = "legacy"
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%t\t%t\t%s\n", snapshot.Name, created, snapshot.DB, snapshot.Media, location)
 	}
 	_ = w.Flush()
 	return nil
@@ -336,7 +383,7 @@ func runRemoteSnapshotRestore(cmd *cobra.Command, config engine.Config, envName 
 		return err
 	}
 
-	remoteName, remoteCfg, err := ensureRemoteKnown(config, envName)
+	remoteName, remoteCfg, err := ensureSnapshotRemote(config, envName)
 	if err != nil {
 		return err
 	}
@@ -435,7 +482,7 @@ func runRemoteSnapshotDelete(cmd *cobra.Command, config engine.Config, envName s
 		return err
 	}
 
-	remoteName, remoteCfg, err := ensureRemoteKnown(config, envName)
+	remoteName, remoteCfg, err := ensureSnapshotRemote(config, envName)
 	if err != nil {
 		return err
 	}
@@ -497,7 +544,7 @@ var snapshotPullCmd = &cobra.Command{
 			return err
 		}
 
-		remoteName, remoteCfg, err := ensureRemoteKnown(config, environment)
+		remoteName, remoteCfg, err := ensureSnapshotRemote(config, environment)
 		if err != nil {
 			return err
 		}
@@ -536,7 +583,15 @@ var snapshotPullCmd = &cobra.Command{
 		if err := engine.EnsureSnapshotRoot(cwd); err != nil {
 			return err
 		}
-		rsyncCmd := remote.BuildRemoteSnapshotPullCommand(remoteName, remoteCfg, name, localSnapshotDir)
+		locate := remote.BuildSSHExecCommand(remoteName, remoteCfg, false, remote.BuildRemoteSnapshotLocateCommand(remoteCfg, name))
+		located, locateErr := locate.Output()
+		remoteDir := strings.TrimSpace(string(located))
+		if locateErr != nil || remoteDir == "" {
+			err = fmt.Errorf("snapshot '%s' was not found on remote %s (checked the shared and legacy locations)", name, remoteName)
+			return err
+		}
+		pterm.Info.Printf("Found snapshot at %s\n", remoteDir)
+		rsyncCmd := remote.BuildRemoteSnapshotPullCommandAt(remoteName, remoteCfg, remoteDir, localSnapshotDir)
 		rsyncCmd.Stdout = os.Stdout
 		rsyncCmd.Stderr = os.Stderr
 
@@ -573,7 +628,7 @@ var snapshotPushCmd = &cobra.Command{
 			return err
 		}
 
-		remoteName, remoteCfg, err := ensureRemoteKnown(config, environment)
+		remoteName, remoteCfg, err := ensureSnapshotRemote(config, environment)
 		if err != nil {
 			return err
 		}
@@ -590,7 +645,11 @@ var snapshotPushCmd = &cobra.Command{
 		}
 
 		// Ensure the parent directory exists on the remote
-		parentDir := remote.QuoteRemotePath(remote.RemoteSnapshotRoot(remoteCfg))
+		snapshotRoot, rootErr := resolveSnapshotWriteRoot(remoteName, remoteCfg)
+		if rootErr != nil {
+			return rootErr
+		}
+		parentDir := remote.QuoteRemotePath(snapshotRoot)
 		mkdirCmd := remote.BuildSSHExecCommand(remoteName, remoteCfg, true, "mkdir -p "+parentDir)
 		_ = mkdirCmd.Run()
 
@@ -622,7 +681,7 @@ var snapshotPushCmd = &cobra.Command{
 			})
 		}()
 
-		rsyncCmd := remote.BuildRemoteSnapshotPushCommand(remoteName, remoteCfg, name, localSnapshotDir)
+		rsyncCmd := remote.BuildRemoteSnapshotPushCommandAt(remoteName, remoteCfg, strings.TrimRight(snapshotRoot, "/")+"/"+name, localSnapshotDir)
 		rsyncCmd.Stdout = os.Stdout
 		rsyncCmd.Stderr = os.Stderr
 

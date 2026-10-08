@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"govard/internal/cmd"
 	"govard/internal/deploy"
 	"govard/internal/engine"
 	"govard/internal/frameworks"
@@ -1220,6 +1221,41 @@ func TestSandboxSSHArgsUseTheGeneratedKeyAndPort(t *testing.T) {
 	}
 }
 
+func TestSandboxSSHArgsInteractiveForceATTY(t *testing.T) {
+	root := sandboxProject(t)
+	args := deploy.SandboxSSHArgs(deploy.SandboxRequest{ProjectRoot: root}, &deploy.SandboxState{Port: 49153})
+	if args[0] != "-t" {
+		t.Fatalf("the interactive shell must request a tty: %v", args)
+	}
+	if args[len(args)-1] != "deployer@127.0.0.1" {
+		t.Fatalf("interactive session must end at the target: %v", args)
+	}
+}
+
+func TestSandboxSSHCommandArgsDoNotForceATTYAndPassTheCommand(t *testing.T) {
+	root := sandboxProject(t)
+	args := deploy.SandboxSSHCommandArgs(deploy.SandboxRequest{ProjectRoot: root}, &deploy.SandboxState{Port: 49153}, []string{"cat", ">", "f"})
+	for _, arg := range args {
+		if arg == "-t" || arg == "-tt" {
+			t.Fatalf("a command must not force a tty (it breaks piped stdin): %v", args)
+		}
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-i " + filepath.Join(root, ".govard", "sandbox", "id_ed25519"), "-p 49153"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("ssh args are missing %q: %v", want, args)
+		}
+	}
+	n := len(args)
+	if args[n-2] != "deployer@127.0.0.1" || args[n-1] != "cat > f" {
+		t.Fatalf("target then one command string expected at the end, got %v", args[n-2:])
+	}
+	single := deploy.SandboxSSHCommandArgs(deploy.SandboxRequest{ProjectRoot: root}, &deploy.SandboxState{Port: 1}, []string{"echo $HOME | wc -c"})
+	if single[len(single)-1] != "echo $HOME | wc -c" {
+		t.Fatalf("a single argument is a shell command line and must be passed untouched: %v", single)
+	}
+}
+
 func TestRefreshSandboxMirrorMakesLocalBranchesDeployable(t *testing.T) {
 	root := sandboxProject(t)
 	mirror := filepath.Join(t.TempDir(), "repo.git")
@@ -1852,5 +1888,17 @@ func TestSandboxDownKeepsTheImagesWithoutPurge(t *testing.T) {
 	}
 	if fake.has("image rm") {
 		t.Fatalf("a plain down keeps the images: %v", fake.calls)
+	}
+}
+
+func TestSandboxSSHRequiresTheDashBeforeACommand(t *testing.T) {
+	if err := cmd.SandboxSSHArgsValidForTest(nil, -1); err != nil {
+		t.Fatalf("a bare sandbox ssh opens the shell: %v", err)
+	}
+	if err := cmd.SandboxSSHArgsValidForTest([]string{"php", "-v"}, 0); err != nil {
+		t.Fatalf("words after -- are the command: %v", err)
+	}
+	if err := cmd.SandboxSSHArgsValidForTest([]string{"sh"}, -1); err == nil {
+		t.Fatal("a command without -- must be refused, not run")
 	}
 }

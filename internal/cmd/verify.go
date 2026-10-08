@@ -326,7 +326,7 @@ func init() {
 	verifyCmd.Flags().Bool("plan", false, "Dry-run (no side effects)")
 	verifyCmd.Flags().Bool("allow-destructive", false, "Allow phase 5 destructive operations")
 	verifyCmd.Flags().Bool("yes", false, "Alias for --allow-destructive")
-	verifyCmd.Flags().Bool("allow-remote-write", false, "Allow items that write through a remote (skipped by default)")
+	verifyCmd.Flags().Bool("allow-remote-write", false, "Allow items that write through a remote (skipped by default); the phase 2 bootstrap rows also rewrite local config (app/etc/env.php on Magento 2) and reinstall vendor/, so use a disposable checkout")
 	verifyCmd.Flags().Bool("allow-xdebug", false, "Allow running with Xdebug enabled")
 	verifyCmd.Flags().Int("lint-jobs", 4, "Lint worker count")
 	verifyCmd.Flags().String("timeout", "auto", "Timeout (auto|0|<dur>)")

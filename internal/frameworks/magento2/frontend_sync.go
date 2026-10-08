@@ -182,6 +182,9 @@ func discoverFrontendSyncLumaRuntime(root string) (FrontendSyncRuntime, error) {
 	if err := validateFrontendSyncJSONObject(packageLock, packageLockPath, "Luma package lock"); err != nil {
 		return FrontendSyncRuntime{}, err
 	}
+	if err := requireFrontendSyncLumaLocalThemes(root); err != nil {
+		return FrontendSyncRuntime{}, err
+	}
 
 	packageJSONSum := sha256.Sum256(packageJSON)
 	packageLockSum := sha256.Sum256(packageLock)
@@ -194,6 +197,23 @@ func discoverFrontendSyncLumaRuntime(root string) (FrontendSyncRuntime, error) {
 		PackageJSONHash:   hex.EncodeToString(packageJSONSum[:]),
 		NodeModulesVolume: "frontend-sync-luma-node-modules-" + packageLockHash,
 	}, nil
+}
+
+// requireFrontendSyncLumaLocalThemes checks the developer-owned
+// local-themes.js that stock Magento's Gruntfile requires. It only applies to
+// the stock layout (themes.js present); a customized Grunt setup is left alone.
+func requireFrontendSyncLumaLocalThemes(root string) error {
+	configs := filepath.Join(root, "dev", "tools", "grunt", "configs")
+	hasThemes, err := frontendSyncRegularFile(filepath.Join(configs, "themes.js"))
+	if err != nil || !hasThemes {
+		return err
+	}
+	hasLocal, err := frontendSyncRegularFile(filepath.Join(configs, "local-themes.js"))
+	if err != nil || hasLocal {
+		return err
+	}
+	return fmt.Errorf("luma frontend sync requires %s, which Magento's Gruntfile loads; copy it from themes.js: cp %s %s",
+		filepath.Join(configs, "local-themes.js"), filepath.Join("dev", "tools", "grunt", "configs", "themes.js"), filepath.Join("dev", "tools", "grunt", "configs", "local-themes.js"))
 }
 
 func frontendSyncRegularFile(path string) (bool, error) {

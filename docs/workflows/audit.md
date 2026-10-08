@@ -100,7 +100,7 @@ Lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`.
 
 ## Scanned Paths & Media Guard
 
-Analyzers skip `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (never shipped code). Because `pub/media` is where uploaded webshells land, every PHP version also runs a **media guard**: name-only scan of `pub/media` for `.php/.phtml/.pht`. Each hit is `M2-LINT-MEDIA` (`PHP file in pub/media`) and fails the run — milliseconds, names only. Guard phase is `media-guard` in the per-PHP `phases` array (`failed` when found, `passed` otherwise). Hygiene also blocks commits via `.gitignore`:
+Analyzers skip `vendor/`, `generated/`, `var/`, `pub/static/`, `pub/media/` (never shipped code). Because `pub/media` is where uploaded webshells land, every PHP version also runs a **media guard**: name-only scan of `pub/media` for `.php/.phtml/.pht`. Each hit is `M2-LINT-MEDIA` (`PHP file in pub/media`; the prefix is per framework: `M2-LINT-*` for Magento, `LARAVEL-LINT-*`, `SYMFONY-LINT-*`, `WP-LINT-*`) and fails the run — milliseconds, names only. Guard phase is `media-guard` in the per-PHP `phases` array (`failed` when found, `passed` otherwise). Hygiene also blocks commits via `.gitignore`:
 
 ```
 pub/media/*.php

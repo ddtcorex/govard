@@ -123,6 +123,38 @@ func TestIntegrationRemoteExecAgainstTheSandbox(t *testing.T) {
 	}
 }
 
+// `sandbox ssh -- <cmd>` runs the command without a tty and returns the remote
+// command's own exit status (the process is replaced by ssh). A bare `--`-less
+// word is refused instead of being run.
+func TestIntegrationSandboxSSHRunsACommandAndReturnsItsStatus(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/code-only", "sandbox-ssh-cmd")
+
+	origin, _ := seedDeployRevisions(t, 1)
+	seedSandboxCheckout(t, projectDir, origin)
+
+	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "basic", "--docroot", "real", "--no-seed")
+	if up.ExitCode != 0 {
+		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
+	}
+	t.Cleanup(func() {
+		env.RunGovard(t, projectDir, "sandbox", "down", "--purge")
+	})
+
+	ok := env.RunGovard(t, projectDir, "sandbox", "ssh", "--", "echo", "hello-from-ssh")
+	if ok.ExitCode != 0 || !strings.Contains(ok.Stdout, "hello-from-ssh") {
+		t.Fatalf("sandbox ssh -- echo = (%d) %q %q", ok.ExitCode, ok.Stdout, ok.Stderr)
+	}
+	failed := env.RunGovard(t, projectDir, "sandbox", "ssh", "--", "sh -c 'exit 7'")
+	if failed.ExitCode != 7 {
+		t.Fatalf("remote exit status must be returned, got %d\nstdout: %s\nstderr: %s", failed.ExitCode, failed.Stdout, failed.Stderr)
+	}
+	bare := env.RunGovard(t, projectDir, "sandbox", "ssh", "hostname")
+	if bare.ExitCode != 2 {
+		t.Fatalf("a command without -- must be a usage error (2), got %d", bare.ExitCode)
+	}
+}
+
 // TestDeploySandboxInPlaceAndDeployerLayout covers the two levers the design
 // needs from a sandbox: a real docroot selects in-place publishing, and a
 // seeded target proves govard refuses to race the other deploy tool.

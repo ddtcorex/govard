@@ -477,7 +477,7 @@ govard snapshot restore latest -e staging
 govard snapshot delete latest -e staging
 ```
 
-Remote snapshots run `mysqldump` and `tar` directly on the remote server without transferring data over the network. They are stored in `.govard/snapshots/` under the remote project path (`remotes.<name>.path`), which on a deploy layout is inside the served release directory; the directory is created with mode `0700`. `snapshot restore` overwrites data, so it asks for confirmation; pass `-y` to skip the prompt (required without a TTY).
+Remote snapshots run `mysqldump` and `tar` directly on the remote server without transferring data over the network. On a remote with a deploy layout (`releases/`, `shared/` and a `current` link) they are stored in `shared/.govard/snapshots/` under the deploy path, outside the served release and kept across release switches. A remote without that layout keeps the older `.govard/snapshots/` under the remote project path (`remotes.<name>.path`) and `snapshot create` warns about it. `list`, `restore`, `delete` and `pull` read both locations, so older snapshots stay visible. The directories are created with mode `0700`. `snapshot restore` overwrites data, so it asks for confirmation; pass `-y` to skip the prompt (required without a TTY).
 
 Locally, `.govard/snapshots/` ignores itself (it contains a `.gitignore` of `*`), so a DB dump is never staged by `git add -A`. The same applies to `.govard/sandbox/` (the sandbox private key) and the `doctor --pack` output directory. A symlinked directory or `.gitignore` in those places is refused.
 

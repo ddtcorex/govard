@@ -1165,6 +1165,20 @@ func SandboxReset(ctx context.Context, runtime SandboxRuntime, request SandboxRe
 // It is asserted rather than executed by the tests: the point is that the
 // sandbox is reached exactly the way a real remote is.
 func SandboxSSHArgs(request SandboxRequest, state *SandboxState) []string {
+	return sandboxSSHArgs(request, state, true)
+}
+
+// SandboxSSHCommandArgs builds the argv for running one command in the sandbox.
+// No tty is forced: a forced tty merges stderr into stdout and breaks piped
+// input (`printf x | govard sandbox ssh -- 'cat > f'`). The words are joined with
+// spaces into a single remote command line, exactly as `govard remote exec`
+// does, so one quoted argument is a full shell command line.
+func SandboxSSHCommandArgs(request SandboxRequest, state *SandboxState, command []string) []string {
+	args := sandboxSSHArgs(request, state, false)
+	return append(args, strings.Join(command, " "))
+}
+
+func sandboxSSHArgs(request SandboxRequest, state *SandboxState, tty bool) []string {
 	// The state learned the key path when the sandbox was created; a project
 	// root alone re-derives the same default. Preferring the record keeps `ssh`
 	// working when the two ever disagree.
@@ -1172,13 +1186,16 @@ func SandboxSSHArgs(request SandboxRequest, state *SandboxState) []string {
 	if state != nil && strings.TrimSpace(state.KeyPath) != "" {
 		keyPath = state.KeyPath
 	}
-	args := []string{
-		"-t",
+	args := []string{}
+	if tty {
+		args = append(args, "-t")
+	}
+	args = append(args,
 		"-o", "LogLevel=ERROR",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-i", keyPath,
-	}
+	)
 	if state != nil && state.Port > 0 {
 		args = append(args, "-p", strconv.Itoa(state.Port))
 	}

@@ -6,6 +6,7 @@ import (
 	"govard/internal/engine/bootstrap"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -63,7 +64,7 @@ func (s *ShopwareBootstrap) Install(projectDir string) error {
 		content := `APP_ENV=dev
 APP_URL=` + siteURL + `
 DATABASE_URL=` + databaseURL + `
-MAILER_DSN=smtp://mailpit:1025
+MAILER_DSN=smtp://` + conventions.DefaultMailHost + `:` + strconv.Itoa(conventions.SMTPPort) + `
 PROXY_URL=` + siteURL + `
 `
 		if err := os.WriteFile(envPath, []byte(content), conventions.DefaultFilePerm); err != nil {

@@ -46,6 +46,11 @@ type AuditLintProfile struct {
 	CodingStandard        string
 	PHPStanLevel          int
 	PHPStanExtension      string
+	// RuleIDPrefix names the finding ids this framework's lint report carries
+	// (<prefix>-PHPCS, <prefix>-PHPSTAN, <prefix>-COMPAT, <prefix>-MEDIA). The
+	// toolchain image emits the Magento-named M2-LINT ids; the host rewrites
+	// them to this prefix. Empty keeps the ids exactly as emitted.
+	RuleIDPrefix string
 }
 
 // AuditIntegrityProfile declares the container-free analyzers a framework

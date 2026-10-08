@@ -166,7 +166,12 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 			if satisfied, _ := engine.VendorSatisfiesComposerLock(cwd); satisfied {
 				pterm.Info.Println("vendor/ already satisfies composer.lock. Skipping composer install.")
 			} else {
+				guardDone := func() {}
+				if def, ok := frameworks.Get(config.Framework); ok && def.ComposerInstallGuard != nil {
+					guardDone = def.ComposerInstallGuard(cwd)
+				}
 				skipped, installErr := runGovardSubcommandSkippable(cmd, govardComposerSubcommandArgs("install", "-n")...)
+				guardDone()
 				if skipped {
 					fmt.Println()
 					pterm.Warning.Println("Composer install skipped by user (SIGINT).")
@@ -427,6 +432,9 @@ func bootstrapFileSyncArgs(config engine.Config, opts BootstrapRuntimeOptions) [
 		"--exclude", ".idea",
 		"--exclude", "auth.json",
 		"--exclude", "node_modules",
+		// A published release carries govard deploy's record in .dep/; it
+		// describes the remote and has no place in a local checkout.
+		"--exclude", "/.dep",
 	)
 	for _, pattern := range bootstrapFrameworkCloneExcludes(config.Framework) {
 		args = append(args, "--exclude", pattern)

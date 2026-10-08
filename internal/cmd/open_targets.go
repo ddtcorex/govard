@@ -36,8 +36,14 @@ func runOpenAdminTarget(config engine.Config, requestedEnvironment string) error
 			pterm.Warning.Printf("Could not auto-detect admin path for '%s': %v\n", environment, probeErr)
 		}
 		url = buildRemoteAdminURL(remoteCfg, adminPath)
+		if notice := frameworks.AdminPathNotice(config.Framework, adminPath); notice != "" {
+			pterm.Info.Println(notice)
+		}
 	} else {
 		url = detectLocalAdminURL(config)
+		if notice := frameworks.AdminPathNotice(config.Framework, frameworks.DefaultAdminPath(config.Framework)); notice != "" {
+			pterm.Info.Println(notice)
+		}
 	}
 
 	pterm.Info.Printf("Opening %s\n", url)
@@ -305,6 +311,10 @@ func buildSFTPURL(remoteCfg engine.RemoteConfig) string {
 		Path:   strings.TrimSpace(remoteCfg.Path),
 	}
 	return sftpURL.String()
+}
+
+func OpenAdminNoticeForTest(framework string, openedPath string) string {
+	return frameworks.AdminPathNotice(framework, openedPath)
 }
 
 func OpenAdminURLForTest(config engine.Config) string {

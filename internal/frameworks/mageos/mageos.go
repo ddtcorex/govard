@@ -40,6 +40,7 @@ func Definition() types.FrameworkDefinition {
 		},
 		FreshInstall:            freshInstall,
 		PreConfigureHook:        magento2.PreConfigure,
+		ComposerInstallGuard:    magento2.GuardComposerInstallMedia,
 		PostCloneHook:           magento2.PostClone,
 		FreshInstallNeedsDomain: true,
 		SupportsBootstrap:       true,

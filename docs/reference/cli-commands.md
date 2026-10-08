@@ -213,7 +213,8 @@ Because `pub/media` is skipped by the analyzers but is exactly where uploaded
 webshells land, every analyzed PHP version also runs a **media guard** phase: a
 name-only scan of `pub/media` for `.php`, `.phtml`, and `.pht` files. Each hit
 is reported as an `M2-LINT-MEDIA` finding with a path relative to the target
-root, and the phase fails the run. The scan costs milliseconds even on
+root, and the phase fails the run. The id prefix comes from the framework
+(`M2-LINT-*` for Magento, `LARAVEL-LINT-*`, `SYMFONY-LINT-*`, `WP-LINT-*`). The scan costs milliseconds even on
 multi-gigabyte media trees; it inspects file names only and never reads file
 contents into the report.
 
@@ -428,7 +429,7 @@ govard env cleanup
 | :--- | :--- |
 | `--pull` | Pull images before starting |
 | `--fallback-local-build` | Build missing images locally (default `true`) |
-| `--remove-orphans` | Remove orphaned containers |
+| `--remove-orphans` | Remove orphaned containers of this project. On by default for a full-stack start; pass `--remove-orphans=false` to keep them |
 | `--quickstart` | Fastest startup path (minimal services) |
 | `--update-lock` | Auto-update `govard.lock` on mismatches |
 | `--no-tuning` | Skip framework auto-configuration prompts |
@@ -572,7 +573,7 @@ Guard: every static item carries one of four labels (`Item.Guard`). The runner a
 
 Not-applicable rows skip with a reason instead of failing: `P4-10` and `P4-11` need `stack.services.cache` / `stack.services.search` to name a service, the lint, profiler and integrity audit rows (`P3-10`..`P3-15`, `P5-04`) follow what the framework definition declares, `P2-12` (`tool composer validate --no-check-publish`, so a project skeleton without a package name is judged on manifest and lock consistency only) needs a `composer.json` and `P3-07` a `vendor/bin/phpstan` in the project root, and `P1-03` (`doctor trust`, which needs sudo and has no terminal to ask on) needs passwordless sudo. `P2-08` (the clone bootstrap) copies from the remote's live release, so it skips with a reason when `deploy releases --remote <remote> --json` reports that the remote has no release yet (run `P2-15` first).
 
-The two original `REMOTE-WRITE` items are the `bootstrap … --no-noise` runs. Their skip reason names the manual command, with `<remote>` standing for the remote you must name with `--remote`, and they run `bootstrap -y`: verify's children have no tty, so without `-y` the command would stop at its confirmation prompt and exit 1. With `--allow-remote-write` they therefore run unattended and really write through the remote.
+The two original `REMOTE-WRITE` items are the `bootstrap … --no-noise` runs. Their skip reason names the manual command, with `<remote>` standing for the remote you must name with `--remote`, and they run `bootstrap -y`: verify's children have no tty, so without `-y` the command would stop at its confirmation prompt and exit 1. With `--allow-remote-write` they therefore run unattended and really write through the remote. They also change the local project: a bootstrap rewrites the local framework configuration (on Magento 2, `app/etc/env.php` with the local database, cache and search settings), runs `composer install` (a clone bootstrap wipes `vendor/` first), and fixes ownership and permissions of the project directories, which can change file modes in the checkout. Those rows need that configuration to do their job, so verify does not restore it: run phase 2 with `--allow-remote-write` on a disposable checkout, or review `git status` afterwards. A clone bootstrap does not copy the remote's `.dep/` deploy record, and `govard.lock` is written only by `govard lock generate` (`P5-01`) and `env up --update-lock`, never by phase 2; it is a lock file meant to be committed, so no ignore rule is added for it.
 
 Exit codes: `0` every item passed or was skipped; `1` any item failed **or** a phase gate blocked the run (the message names which). `2`/`3`/`4` keep their global meanings (usage / capability / config) — a failing checklist is an execution failure, never a usage error. Scripts should branch on this code and read per-item detail from `--json`.
 
@@ -1109,9 +1110,19 @@ govard sandbox up --profile full --db mariadb:10.6   # choose the database serie
 govard sandbox up --docroot real       # a real docroot: in-place publishing
 govard sandbox status
 govard sandbox reset --layout deployer # seed a target the other tool owns
-govard sandbox ssh
+govard sandbox ssh                     # interactive shell
+govard sandbox ssh -- php -v           # run one command
 govard sandbox down [--purge] [--volumes]
 ```
+
+`sandbox ssh -- <command>` runs the command in the sandbox without a forced tty, so
+piped input works (`printf x | govard sandbox ssh -- 'cat > f'`), and govard exits with
+the command's own exit status, because the process is replaced by `ssh`. This is
+deliberate for this command only: deploy steps still never leak a remote exit code
+(they exit `1` and keep the status in the message). The words after `--` are joined
+with spaces into one remote command line, so quote a whole line as one argument; a
+command without `--` is a usage error (exit `2`). A bare `sandbox ssh` opens the
+interactive shell.
 
 While the container runs, `sandbox` resolves automatically as a remote for
 every command that takes one (`deploy`, `db`, `remote exec`, `sync`):
@@ -1192,6 +1203,17 @@ the directories it creates, such as `<path>/.govard/snapshots`, are `0700` and t
 files in them `0600`, and it finishes by writing the snapshot's `metadata.yml` (name,
 `created_at`, framework).
 
+Where a remote snapshot lives: on a remote with a deploy layout (`releases/`,
+`shared/` and a `current` link under the deploy path), `create -e` and `push` store it
+in `<deploy path>/shared/.govard/snapshots`, outside the served release and kept across
+release switches and pruning. The deploy path is `remotes.<name>.deploy.deploy_path`
+when set, otherwise the remote `path` (its parent when the path is the `current` link).
+A remote without that layout keeps the older location, `<remote path>/.govard/snapshots`,
+and `create` warns that it did. `list`, `restore`, `delete` and `pull` look in both
+locations (the deploy-layout one first), so snapshots made by older versions stay
+visible; `list -e` adds a `LOCATION` column (`shared` or `legacy`) and `pull` prints
+where it found the snapshot. `delete` removes a name from every location that holds it.
+
 ### `govard open`
 
 Open common browser targets.
@@ -1205,6 +1227,10 @@ govard open db --pma
 govard open db --client
 govard open db -e staging
 ```
+
+`open admin` opens `/admin` for frameworks without a stock admin route. For Laravel
+and Symfony, which ship no admin panel, it prints one notice line saying so and which
+path it opened; WordPress opens `/wp-admin`. There is no admin-path configuration key.
 
 `open db` prints the connection URL with the password masked as `***` (no password
 section when none is set); the database client is handed the full URL.
