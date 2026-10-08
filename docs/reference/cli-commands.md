@@ -655,6 +655,8 @@ govard custom deploy -- --dry-run
 
 Browse and manage known projects.
 
+`project list` prints a Status column (`running`, `stopped`, or `unknown`) and lists running projects first; the rest keep registry order. It does not require Docker: when the container runtime cannot be reached, every status reads `unknown` and the registry order is kept.
+
 ```bash
 govard project list
 govard project list --orphans

@@ -113,7 +113,7 @@ the `vscode <tool>` wrappers, `deploy`, `bootstrap`, `debug`, launching
   every `govard lock` command are container work: the lock file records the
   resolved docker/compose versions and service image digests.
 - **Project scaffolding.** `govard init` and `govard custom list`.
-- **Registry and domains.** `project list` and `project open` read the registry;
+- **Registry and domains.** `project list` and `project open` read the registry (`project list` shows `unknown` statuses without Docker);
   `domain list` prints the project's domains; `vscode setup` derives the editor
   settings from the project's own files. `project orphans` inspects Docker
   resources, so it keeps the requirement.

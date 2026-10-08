@@ -99,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`govard project list` shows a Status column and lists running projects first.** Status is `running`, `stopped`, or `unknown` when the container runtime cannot be reached; the listing still works without Docker and then keeps the registry order.
 - `govard verify` covers the whole command surface on Magento 2, Laravel, Symfony
   and WordPress and skips rows that do not apply, with `--remote sandbox
   --allow-remote-write` as the end-to-end remote check. (#578)

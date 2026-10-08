@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"govard/internal/cli"
@@ -303,22 +304,22 @@ func runProjectList(cmd *cobra.Command) error {
 		return nil
 	}
 
-	tableData := [][]string{
-		{"Project", "Framework", "Domain", "Path"},
-	}
-
-	for _, entry := range entries {
-		framework := entry.Framework
-		if framework == "" {
-			framework = "unknown"
+	// Status needs the container runtime, but the listing must keep working
+	// without one: an unreachable Docker degrades to "unknown" and keeps the
+	// registry order.
+	var running map[string]bool
+	if names, runErr := projectListRunningNames(cmd.Context()); runErr == nil {
+		running = make(map[string]bool, len(names))
+		for _, name := range names {
+			running[name] = true
 		}
-		tableData = append(tableData, []string{
-			entry.ProjectName,
-			framework,
-			entry.Domain,
-			entry.Path,
-		})
 	}
+	rows := orderProjectListRows(entries, running)
+
+	tableData := [][]string{
+		{"Project", "Status", "Framework", "Domain", "Path"},
+	}
+	tableData = append(tableData, rows...)
 
 	err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 	if err != nil {
@@ -359,4 +360,36 @@ func init() {
 	// the project path; internal/projectstores resolves them for `project delete`
 	// (the desktop app registers the same resolver).
 	projectstores.Register()
+}
+
+// projectListRunningNames reports the running Govard compose projects. It is a
+// variable so tests can stand in for the Docker daemon.
+var projectListRunningNames = engine.GetRunningProjectNames
+
+// orderProjectListRows builds the table rows with running projects first. A nil
+// running map means the runtime could not be queried: every status is
+// "unknown" and the registry order is kept.
+func orderProjectListRows(entries []engine.ProjectRegistryEntry, running map[string]bool) [][]string {
+	ordered := append([]engine.ProjectRegistryEntry(nil), entries...)
+	if running != nil {
+		sort.SliceStable(ordered, func(i, j int) bool {
+			return running[ordered[i].ProjectName] && !running[ordered[j].ProjectName]
+		})
+	}
+	rows := make([][]string, 0, len(ordered))
+	for _, entry := range ordered {
+		framework := entry.Framework
+		if framework == "" {
+			framework = "unknown"
+		}
+		status := "unknown"
+		if running != nil {
+			status = "stopped"
+			if running[entry.ProjectName] {
+				status = "running"
+			}
+		}
+		rows = append(rows, []string{entry.ProjectName, status, framework, entry.Domain, entry.Path})
+	}
+	return rows
 }

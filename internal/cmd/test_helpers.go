@@ -270,3 +270,8 @@ func SetUpCrossProjectRefreshDependenciesForTest(deps UpCrossProjectRefreshDepen
 func ResolveUpRemoveOrphansForTest(flagValue, flagChanged bool, services []string) bool {
 	return resolveUpRemoveOrphans(flagValue, flagChanged, services)
 }
+
+// OrderProjectListRowsForTest exposes the project list ordering to the tests package.
+func OrderProjectListRowsForTest(entries []engine.ProjectRegistryEntry, running map[string]bool) [][]string {
+	return orderProjectListRows(entries, running)
+}
