@@ -1092,7 +1092,13 @@ func maybeRunMagentoComposerInstall(projectName string, config engine.Config) {
 	}
 
 	pterm.Info.Println("Running composer install for the new profile environment...")
-	if compErr := runMagentoComposerInstallFn(projectName, config, nil, nil); compErr != nil {
+	guardDone := func() {}
+	if projectRoot, rootErr := os.Getwd(); rootErr == nil {
+		guardDone = GuardComposerInstallMedia(projectRoot)
+	}
+	compErr := runMagentoComposerInstallFn(projectName, config, nil, nil)
+	guardDone()
+	if compErr != nil {
 		pterm.Warning.Printf("Composer install failed (continuing): %v\n", compErr)
 	} else {
 		pterm.Success.Println("Composer dependencies synchronized.")

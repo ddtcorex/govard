@@ -87,6 +87,7 @@ func Definition() types.FrameworkDefinition {
 		FreshInstall:            freshInstall,
 		PreConfigureHook:        PreConfigure,
 		PostCloneHook:           PostClone,
+		ComposerInstallGuard:    GuardComposerInstallMedia,
 		FreshInstallNeedsDomain: true,
 		SupportsBootstrap:       true,
 		SupportsFreshInstall:    true,
