@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"govard/internal/gitguard"
 )
 
 // The sandbox authenticates with a dedicated key pair under `.govard/sandbox/`.
@@ -55,38 +57,14 @@ func SandboxDockerfilePath(projectRoot string) string {
 	return filepath.Join(SandboxStateDir(projectRoot), "Dockerfile")
 }
 
-// sandboxStateGitignore ignores everything in the state directory, itself
-// included, so the directory stages nothing whatever the project's own rules say.
-const sandboxStateGitignore = "*\n"
-
 // EnsureSandboxStateDir creates the sandbox state directory (0700) and the
-// self-ignoring `.gitignore` inside it. The guard is written only when no
-// `.gitignore` exists yet: a file the operator wrote there is theirs, and an
-// existing directory that predates the guard gets one on the next call.
+// self-ignoring `.gitignore` inside it (see gitguard.EnsureDir). The project is
+// untrusted input: a state directory that is a symlink is refused.
 func EnsureSandboxStateDir(dir string) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create the sandbox state directory %s: %w", dir, err)
+	if err := gitguard.EnsureDir(dir, 0o700); err != nil {
+		return fmt.Errorf("sandbox state directory: %w", err)
 	}
-	// The project is untrusted input: a state directory that is a symlink would
-	// send the key, the Dockerfile and the guard to wherever it points.
-	if info, err := os.Lstat(dir); err != nil {
-		return fmt.Errorf("inspect the sandbox state directory %s: %w", dir, err)
-	} else if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to use %s: the sandbox state directory is a symlink", dir)
-	}
-	guard := filepath.Join(dir, ".gitignore")
-	file, err := os.OpenFile(guard, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		if os.IsExist(err) {
-			return nil
-		}
-		return fmt.Errorf("write %s: %w", guard, err)
-	}
-	if _, err := file.WriteString(sandboxStateGitignore); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("write %s: %w", guard, err)
-	}
-	return file.Close()
+	return nil
 }
 
 // EnsureSandboxKey returns the project's key pair, generating it on first use.

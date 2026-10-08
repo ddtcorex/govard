@@ -58,6 +58,7 @@ func DeleteProject(ctx context.Context, projectPath string, stdout, stderr io.Wr
 		}
 	}
 
+	stderr = quietStderr(stderr)
 	err := RunCompose(ctx, ComposeOptions{
 		ProjectDir:  projectPath,
 		ProjectName: projectName,

@@ -29,10 +29,12 @@ var projectHomeDirs = []string{"varnish", "rabbitmq", "nginx", "apache"}
 // rendered compose files (and their .hash companions), its per-project asset
 // directories and its entry in active-projects.json.
 type ProjectArtifacts struct {
-	Name        string
-	Root        string
-	Files       []string
-	Dirs        []string
+	Name  string
+	Root  string
+	Files []string
+	Dirs  []string
+	// StoreDirs are the verify-run and audit stores keyed by the project id.
+	StoreDirs   []string
 	ActiveEntry bool
 	// Docker is true when containers, networks or volumes labelled with the
 	// project (or its -frontend companion) exist.
@@ -41,7 +43,7 @@ type ProjectArtifacts struct {
 
 // Empty reports whether the project left nothing behind.
 func (a ProjectArtifacts) Empty() bool {
-	return len(a.Files) == 0 && len(a.Dirs) == 0 && !a.ActiveEntry && !a.Docker
+	return len(a.Files) == 0 && len(a.Dirs) == 0 && len(a.StoreDirs) == 0 && !a.ActiveEntry && !a.Docker
 }
 
 // Lines describes the artifacts for a confirmation prompt or a report.
@@ -52,6 +54,9 @@ func (a ProjectArtifacts) Lines() []string {
 	}
 	lines = append(lines, a.Files...)
 	for _, d := range a.Dirs {
+		lines = append(lines, d+string(filepath.Separator))
+	}
+	for _, d := range a.StoreDirs {
 		lines = append(lines, d+string(filepath.Separator))
 	}
 	if a.ActiveEntry {
@@ -133,6 +138,7 @@ func CollectProjectArtifacts(name, root string, profiles []string) ProjectArtifa
 			art.Dirs = append(art.Dirs, dir)
 		}
 	}
+	art.StoreDirs = collectProjectStoreDirs(root)
 	art.ActiveEntry = activeProjectListed(name)
 	return art
 }
@@ -198,7 +204,12 @@ func withinGovardHome(path string) bool {
 // stop the sweep.
 func RemoveProjectArtifacts(a ProjectArtifacts, stderr io.Writer) []string {
 	var removed []string
-	for _, path := range append(append([]string{}, a.Files...), a.Dirs...) {
+	dirs := append(append([]string{}, a.Dirs...), a.StoreDirs...)
+	for _, path := range append(append([]string{}, a.Files...), dirs...) {
+		if isSymlinkedDir(path, dirs) {
+			fmt.Fprintf(stderr, "Warning: refusing to remove %s: it is a symlink\n", path)
+			continue
+		}
 		if !withinGovardHome(path) {
 			fmt.Fprintf(stderr, "Warning: refusing to remove %s: outside the Govard home\n", path)
 			continue
@@ -217,6 +228,18 @@ func RemoveProjectArtifacts(a ProjectArtifacts, stderr io.Writer) []string {
 		}
 	}
 	return removed
+}
+
+// isSymlinkedDir reports whether path is one of dirs but is now a symlink: a
+// directory entry is never followed or unlinked on a stale listing.
+func isSymlinkedDir(path string, dirs []string) bool {
+	for _, d := range dirs {
+		if d == path {
+			info, err := os.Lstat(path)
+			return err == nil && info.Mode()&os.ModeSymlink != 0
+		}
+	}
+	return false
 }
 
 func dockerListByLabel(ctx context.Context, args []string, project string) []string {
@@ -355,6 +378,7 @@ func cleanupProjectResidue(ctx context.Context, name, root string, profiles []st
 	if !SafeProjectArtifactName(name) {
 		return
 	}
+	stderr = quietStderr(stderr)
 	for _, project := range []string{name, name + "-frontend"} {
 		args := []string{"compose", "-p", project, "down", "-v", "--remove-orphans"}
 		cmd := exec.CommandContext(ctx, "docker", args...)

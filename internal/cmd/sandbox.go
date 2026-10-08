@@ -381,7 +381,9 @@ func printSandboxState(cmd *cobra.Command, state *deploy.SandboxState, headline 
 	fmt.Fprintf(out, "  remote:     %s (%s)\n", state.RemoteName, sandboxRemoteState(state))
 	fmt.Fprintf(out, "  deploy:     %s\n", state.DeployPath)
 	fmt.Fprintf(out, "  current:    %s\n", state.CurrentPath)
-	fmt.Fprintf(out, "  mirror:     %s\n", state.MirrorPath)
+	if state.Exists || pathExists(state.MirrorPath) {
+		fmt.Fprintf(out, "  mirror:     %s\n", state.MirrorPath)
+	}
 	if strings.TrimSpace(state.Packages) != "" {
 		fmt.Fprintf(out, "  packages:   %s\n", strings.ReplaceAll(strings.TrimSpace(state.Packages), "\n", ", "))
 	}

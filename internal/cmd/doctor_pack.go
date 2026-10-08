@@ -17,6 +17,7 @@ import (
 
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
+	"govard/internal/gitguard"
 )
 
 type doctorPackEnvironment struct {
@@ -40,6 +41,11 @@ func defaultDoctorPackDir() string {
 func CreateDoctorDiagnosticsPack(outputDir string, cwd string, report engine.DoctorReport) (string, error) {
 	if strings.TrimSpace(outputDir) == "" {
 		outputDir = defaultDoctorPackDir()
+		// The default directory may be project-relative and holds environment
+		// and config snapshots: keep it out of `git add -A`.
+		if err := gitguard.EnsureDir(outputDir, conventions.SecretDirPerm); err != nil {
+			return "", fmt.Errorf("create doctor output dir: %w", err)
+		}
 	}
 	if err := os.MkdirAll(outputDir, conventions.SecretDirPerm); err != nil {
 		return "", fmt.Errorf("create doctor output dir: %w", err)

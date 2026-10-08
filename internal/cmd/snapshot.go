@@ -533,6 +533,9 @@ var snapshotPullCmd = &cobra.Command{
 			})
 		}()
 
+		if err := engine.EnsureSnapshotRoot(cwd); err != nil {
+			return err
+		}
 		rsyncCmd := remote.BuildRemoteSnapshotPullCommand(remoteName, remoteCfg, name, localSnapshotDir)
 		rsyncCmd.Stdout = os.Stdout
 		rsyncCmd.Stderr = os.Stderr

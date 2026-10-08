@@ -3,11 +3,14 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	"govard/internal/audit"
 	"govard/internal/cli"
 	"govard/internal/engine"
 	"govard/internal/ui"
+	"govard/internal/verify"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -330,4 +333,26 @@ func runProjectOrphans(cmd *cobra.Command) error {
 		orphanData = append(orphanData, []string{o.Name, o.Status, o.ConfigFiles})
 	}
 	return pterm.DefaultTable.WithHasHeader().WithData(orphanData).Render()
+}
+
+func init() {
+	// The verify-run and audit stores are keyed by a project id derived from the
+	// project path, a derivation engine cannot import. Registering them here lets
+	// `project delete` list and remove the stores of exactly that project.
+	engine.RegisterProjectStoreResolver(func(root string) []string {
+		canonical := root
+		if abs, err := filepath.Abs(root); err == nil {
+			canonical = abs
+			if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+				canonical = resolved
+			}
+		}
+		home := engine.GovardHomeDir()
+		dirs := []string{filepath.Join(home, "verify-runs", verify.ProjectID(root))}
+		origin, _ := gitOutput(canonical, "config", "--get", "remote.origin.url")
+		for _, identity := range []string{"", auditRepositoryIdentity(canonical, origin)} {
+			dirs = append(dirs, filepath.Join(home, "audit", audit.ProjectID(canonical, identity)))
+		}
+		return dirs
+	})
 }

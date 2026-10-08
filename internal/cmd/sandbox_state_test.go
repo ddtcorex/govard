@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -39,5 +41,28 @@ func TestPrintSandboxStateKeepsRunningForAContainerThatExists(t *testing.T) {
 	stopped := renderSandboxState(&deploy.SandboxState{Container: "c", Exists: true, RemoteName: "sandbox"})
 	if !bytes.Contains([]byte(stopped), []byte("state:      stopped")) {
 		t.Errorf("a stopped container is stopped:\n%s", stopped)
+	}
+}
+
+// After `down --purge` the mirror directory is gone: naming it would point at
+// something that does not exist.
+func TestPrintSandboxStateOmitsAMirrorThatDoesNotExistForAnAbsentSandbox(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "repo.git")
+	text := renderSandboxState(&deploy.SandboxState{Container: "c", RemoteName: "sandbox", MirrorPath: missing})
+	if bytes.Contains([]byte(text), []byte("mirror:")) {
+		t.Fatalf("a purged mirror must not be listed:\n%s", text)
+	}
+
+	if err := os.MkdirAll(missing, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	text = renderSandboxState(&deploy.SandboxState{Container: "c", RemoteName: "sandbox", MirrorPath: missing})
+	if !bytes.Contains([]byte(text), []byte("mirror:     "+missing)) {
+		t.Fatalf("an existing mirror is still listed:\n%s", text)
+	}
+
+	running := renderSandboxState(&deploy.SandboxState{Container: "c", Exists: true, Running: true, RemoteName: "sandbox", MirrorPath: filepath.Join(t.TempDir(), "x")})
+	if !bytes.Contains([]byte(running), []byte("mirror:")) {
+		t.Fatalf("a live sandbox keeps its mirror line:\n%s", running)
 	}
 }

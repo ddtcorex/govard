@@ -226,6 +226,12 @@ func buildRemoteAdminURL(remoteCfg engine.RemoteConfig, adminPath string) string
 		return joinURLWithPath(remoteCfg.URL, adminPath)
 	}
 
+	// The sandbox serves on a published loopback port over plain HTTP, and the
+	// remote carries that URL for `deploy` verify: reuse it rather than guess.
+	if remoteCfg.Sandbox && remoteCfg.Deploy != nil && strings.TrimSpace(remoteCfg.Deploy.Verify.URL) != "" {
+		return joinURLWithPath(remoteCfg.Deploy.Verify.URL, adminPath)
+	}
+
 	base := strings.TrimSpace(remoteCfg.Host)
 	if base == "" {
 		base = "localhost"
