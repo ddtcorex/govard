@@ -309,7 +309,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 			// Gated out: keep the row, do not execute the item.
 			ev = Skip(fi.reason)
 		case opts.Plan:
-			ev = Evidence{ExitCode: 0, OutputExcerpt: "plan: " + it.Title}
+			ev = Evidence{ExitCode: 0, OutputExcerpt: "plan: " + resolveTitle(ctx, it.Title, opts)}
 		default:
 			if it.Run != nil {
 				ev = it.Run(ctx, cfg, opts)
@@ -321,7 +321,7 @@ func RunPhase(ctx context.Context, cfg engine.Config, phase int, opts VerifyOpts
 		ev.DurationMs = int(dur.Milliseconds())
 		res.Items = append(res.Items, RunItem{
 			ID:              it.ID,
-			Command:         it.Title,
+			Command:         resolveTitle(ctx, it.Title, opts),
 			DurationMs:      ev.DurationMs,
 			ExitCode:        ev.ExitCode,
 			EvidenceExcerpt: ev.OutputExcerpt,
@@ -482,4 +482,20 @@ func checkP5Gate(opts VerifyOpts) error {
 		return ErrNeedSnapshot
 	}
 	return nil
+}
+
+// baseBranchPlaceholder is the literal P3-11 carries in its registry title.
+const baseBranchPlaceholder = "{{BASE_BRANCH}}"
+
+// resolveTitle fills the diff base into a title so plan and run output name the
+// ref the row really uses. When no base resolves the row skips, and the title
+// says so instead of leaking the placeholder.
+func resolveTitle(ctx context.Context, title string, opts VerifyOpts) string {
+	if !strings.Contains(title, baseBranchPlaceholder) {
+		return title
+	}
+	if base, ok := ResolveDiffBase(ctx, opts.ProjectRoot, opts.BaseRef); ok {
+		return strings.ReplaceAll(title, baseBranchPlaceholder, base)
+	}
+	return strings.ReplaceAll(title, baseBranchPlaceholder, "<no base ref found>")
 }

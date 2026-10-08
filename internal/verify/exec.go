@@ -67,11 +67,7 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 		}
 	}
 	out := buf.String()
-	// Truncate excerpt to 500 chars
-	excerpt := strings.TrimSpace(out)
-	if len(excerpt) > 500 {
-		excerpt = excerpt[:500]
-	}
+	excerpt := excerptOf(out, exitCode)
 	// JSON valid if output is JSON (for --json cases)
 	jsonValid := json.Valid([]byte(strings.TrimSpace(out)))
 	_ = dur
@@ -116,3 +112,25 @@ func IsTestBinaryForTest(bin string) bool { return isTestBinary(bin) }
 func ExecGovardForTest(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ...string) Evidence {
 	return execGovard(ctx, cfg, opts, args...)
 }
+
+// excerptLimit bounds the evidence kept per item.
+const excerptLimit = 500
+
+// excerptOf bounds a child's output. A successful run keeps its head (the JSON
+// identity lines consumers read come first). A failing run keeps head and tail
+// with a marker between, because the actual error is the last thing printed.
+func excerptOf(out string, exitCode int) string {
+	excerpt := strings.TrimSpace(out)
+	if len(excerpt) <= excerptLimit {
+		return excerpt
+	}
+	if exitCode == 0 {
+		return excerpt[:excerptLimit]
+	}
+	const marker = "\n[... output truncated ...]\n"
+	half := excerptLimit / 2
+	return excerpt[:half] + marker + excerpt[len(excerpt)-half:]
+}
+
+// ExcerptForTest exposes excerptOf to the tests package.
+func ExcerptForTest(out string, exitCode int) string { return excerptOf(out, exitCode) }

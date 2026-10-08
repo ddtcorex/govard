@@ -816,6 +816,13 @@ var Registry = []Item{
 		return ev
 	})},
 	{ID: "P2-08", Phase: 2, Title: "govard bootstrap --clone -e <remote> --no-noise -y", Requires: "P4-08 snapshot exists", Guard: GuardRemoteWrite, Run: withRemote(func(ctx context.Context, cfg engine.Config, opts VerifyOpts, remote string) Evidence {
+		// A clone bootstrap rsyncs from the remote's live release, so on a fresh
+		// remote it can only fail. Probe with the call P4-15 uses; a probe that
+		// itself fails is not a reason to skip, the bootstrap then reports the
+		// real cause.
+		if probe := execGovard(ctx, cfg, opts, "deploy", "releases", "--remote", remote, "--json"); remoteHasNoRelease(probe) {
+			return Skip("remote " + remote + " has no release yet: a clone bootstrap needs one to copy from (run P2-15 deploy first)")
+		}
 		return execGovard(ctx, cfg, opts, "bootstrap", "--clone", "-e", remote, "--no-noise", "-y")
 	})},
 	{ID: "P2-09", Phase: 2, Title: "govard tool npm install in the Hyva theme's web/tailwind (Hyva only)", Requires: "P2-05 or P2-08", Guard: "", When: isMagento2, Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
@@ -1168,4 +1175,15 @@ func RegistryFor(cfg engine.Config) []Item {
 	}
 
 	return items
+}
+
+// remoteHasNoRelease reads a `deploy releases --json` probe: it exits 0 and
+// prints either an empty JSON list or the "has no releases" sentence when the
+// remote holds no release directory. Any failure is not "no release".
+func remoteHasNoRelease(probe Evidence) bool {
+	if probe.ExitCode != 0 {
+		return false
+	}
+	out := strings.TrimSpace(probe.OutputExcerpt)
+	return out == "[]" || strings.Contains(out, "has no releases")
 }

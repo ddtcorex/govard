@@ -242,3 +242,50 @@ func TestInitRejectsDuplicateProjectIdentity(t *testing.T) {
 		t.Fatalf("expected no .govard.yml to be written, stat err = %v", statErr)
 	}
 }
+
+// A service that left the compose file (Xdebug switched off) keeps running as
+// an orphan; `down` must take it with the rest of the project.
+func TestEnvDownRemovesOrphanContainers(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirForTest(t, tempDir)
+	writeRuntimeConfig(t, tempDir, `project_name: orphan-demo
+domain: orphan-demo.test
+framework: wordpress
+`)
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"plain", []string{"down"}, []string{"down", "--remove-orphans"}},
+		{"with volumes", []string{"down", "-v"}, []string{"down", "-v", "--remove-orphans"}},
+		{"already asked", []string{"down", "--remove-orphans"}, []string{"down", "--remove-orphans"}},
+		{"stop is untouched", []string{"stop"}, []string{"stop"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []string
+			restore := cmd.SetEnvDependenciesForTest(cmd.EnvDependenciesForTest{
+				RunCompose: func(_ context.Context, opts engine.ComposeOptions) error {
+					got = append([]string{}, opts.Args...)
+					return nil
+				},
+				UnregisterDomain:         func(string) error { return nil },
+				UnregisterSearchDomain:   func(string) error { return nil },
+				UnregisterRabbitMQDomain: func(string) error { return nil },
+				RemoveHostsEntry:         func(string) error { return nil },
+				RunHooks:                 func(engine.Config, string, io.Writer, io.Writer) error { return nil },
+			})
+			defer restore()
+			command := &cobra.Command{}
+			command.SetOut(io.Discard)
+			command.SetErr(io.Discard)
+			if err := cmd.ProxyEnvToComposeForTest(command, tc.args); err != nil {
+				t.Fatalf("%v: %v", tc.args, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("compose args = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

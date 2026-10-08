@@ -154,11 +154,18 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("pre-stop hooks failed: %w", err)
 		}
 
+		composeArgs := args
+		if subcommand == "down" && !containsString(args, "--remove-orphans") {
+			// A service dropped from the compose file (php-debug after
+			// `debug off`) keeps running as an orphan, and plain `down` only
+			// warns about it. Teardown must take the whole project.
+			composeArgs = append(append([]string{}, args...), "--remove-orphans")
+		}
 		err := envDeps.RunCompose(cmd.Context(), engine.ComposeOptions{
 			ProjectDir:  cwd,
 			ProjectName: config.ProjectName,
 			ComposeFile: composePath,
-			Args:        args,
+			Args:        composeArgs,
 			Stdout:      cmd.OutOrStdout(),
 			Stderr:      cmd.ErrOrStderr(),
 			Stdin:       os.Stdin,
@@ -482,4 +489,13 @@ var envCleanupCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return proxyEnvToCompose(cmd, []string{"cleanup"})
 	},
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
