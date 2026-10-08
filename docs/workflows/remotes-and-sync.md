@@ -172,6 +172,8 @@ govard sync -s prod --file --path app/etc/config.php
 govard sync -s dev --file app/design/frontend/MyTheme
 ```
 
+On a pull, symlinks that point outside the synced path are not followed by default (rsync `--safe-links`): the local file is left alone and nothing outside the path is read from the remote. Add `--resolve-symlinks` to copy the content of such links instead; it follows any link on the remote, so use it only for known paths.
+
 Auto-selects `staging` if no `--source` provided, falling back to `dev`.
 Bare `--media` defaults to the `optimized` media mode.
 
@@ -233,6 +235,10 @@ Omitting `--path` syncs the entire project root — `govard sync` warns you abou
 ::: info NOTE
 Database filters are optimized for Magento 2. For other frameworks, safe default patterns are used when available.
 :::
+
+The filters match table names, so they need the table prefix. Govard reads it from the project config (`wp-config.php` for WordPress) and, for a remote, from the remote's own config over the same probe that reads its credentials. It never borrows the local prefix for a remote: a wrong prefix would match the wrong tables and still succeed.
+
+`--no-pii` fails closed. When the filter cannot match any table (for example the remote's prefix cannot be read, or is built dynamically), the command is refused instead of producing a dump that still holds user data. Fix the remote config so the prefix is readable, then retry. `--no-noise` and `--plan` only warn in that situation.
 
 ---
 
@@ -471,7 +477,9 @@ govard snapshot restore latest -e staging
 govard snapshot delete latest -e staging
 ```
 
-Remote snapshots run `mysqldump` and `tar` directly on the remote server without transferring data over the network. Stored in `~/.govard/snapshots/` within the remote project path.
+Remote snapshots run `mysqldump` and `tar` directly on the remote server without transferring data over the network. They are stored in `.govard/snapshots/` under the remote project path (`remotes.<name>.path`), which on a deploy layout is inside the served release directory; the directory is created with mode `0700`. `snapshot restore` overwrites data, so it asks for confirmation; pass `-y` to skip the prompt (required without a TTY).
+
+Locally, `.govard/snapshots/` ignores itself (it contains a `.gitignore` of `*`), so a DB dump is never staged by `git add -A`. The same applies to `.govard/sandbox/` (the sandbox private key) and the `doctor --pack` output directory. A symlinked directory or `.gitignore` in those places is refused.
 
 ### Bidirectional Transfer
 

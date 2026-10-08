@@ -772,7 +772,8 @@ runs still carries the real one.
 | `-X, --exclude` | Rsync exclude pattern (repeatable) |
 | `-m, --media [mode]` | Media sync scope (`none`, `minimal`, `optimized`, `catalog` (Magento only), `all`); bare `--media` defaults to `optimized` |
 | `-N, --no-noise` | Exclude ephemeral data |
-| `-P, --no-pii` | Exclude sensitive data |
+| `-P, --no-pii` | Exclude sensitive data; refused when the table prefix is unknown, so it never yields an unfiltered dump |
+| `--resolve-symlinks` | On a pull, copy the content of symlinks that point outside the synced path (default: such links are not followed) |
 
 ### `govard db`
 

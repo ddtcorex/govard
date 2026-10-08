@@ -759,7 +759,8 @@ các dòng đó chỉ là văn bản hiển thị, còn lệnh được chạy v
 | `-X, --exclude` | Pattern loại trừ của rsync (có thể khai báo nhiều lần) |
 | `-m, --media [mode]` | Phạm vi đồng bộ media (`none`, `minimal`, `optimized`, `catalog` (Magento), `all`); cờ `--media` đơn lẻ mặc định là `optimized` |
 | `-N, --no-noise` | Loại bỏ các dữ liệu rác khi đồng bộ |
-| `-P, --no-pii` | Loại bỏ thông tin cá nhân nhạy cảm khi đồng bộ |
+| `-P, --no-pii` | Loại bỏ thông tin cá nhân nhạy cảm khi đồng bộ; bị từ chối khi không biết table prefix, nên không bao giờ tạo dump chưa lọc |
+| `--resolve-symlinks` | Khi pull, sao chép nội dung của symlink trỏ ra ngoài path đồng bộ (mặc định: không đi theo các link đó) |
 
 ### `govard db`
 
