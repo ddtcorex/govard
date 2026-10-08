@@ -215,3 +215,95 @@ func TestSnapshotMetadataReflectsWhatWasCaptured(t *testing.T) {
 		})
 	}
 }
+
+// fakeClientBin writes a database client named `name` that records stdin into
+// out and fails unless the password reached it through the environment.
+func fakeClientBin(t *testing.T, name string, out string) string {
+	t.Helper()
+	bin := t.TempDir()
+	script := "#!/bin/sh\n[ \"$MYSQL_PWD\" = 'secret' ] || { echo 'Access denied (using password: NO)' >&2; exit 3; }\ncat > '" + out + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+func TestSnapshotRestorePassesThePasswordToTheClient(t *testing.T) {
+	setPermissiveUmask(t)
+	root, cfg := deployLayout(t)
+	sharedRoot := filepath.Join(root, "shared", ".govard", "snapshots")
+	runSh(t, remote.BuildRemoteSnapshotCreateCommandAtRoot(sharedRoot, "snap", "laravel", "echo 'SELECT 1;' | gzip", ""))
+
+	out := filepath.Join(t.TempDir(), "imported.sql")
+	bin := fakeClientBin(t, "mysql", out)
+	importCmd := "export MYSQL_PWD='secret'; mysql --no-defaults -uapp appdb -f"
+	command := remote.BuildRemoteSnapshotRestoreCommand(cfg, "snap", "laravel", importCmd, "", true, false)
+	runSh(t, "PATH="+bin+":$PATH; "+command)
+
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("the client never received the dump: %v", err)
+	}
+	if strings.TrimSpace(string(got)) != "SELECT 1;" {
+		t.Fatalf("client stdin = %q, want the decompressed dump", got)
+	}
+}
+
+func TestSnapshotRestoreFallsBackToTheMariaDBClient(t *testing.T) {
+	setPermissiveUmask(t)
+	if _, err := exec.LookPath("mysql"); err == nil {
+		t.Skip("a real mysql client is installed, the fallback cannot be isolated")
+	}
+	root, cfg := deployLayout(t)
+	sharedRoot := filepath.Join(root, "shared", ".govard", "snapshots")
+	runSh(t, remote.BuildRemoteSnapshotCreateCommandAtRoot(sharedRoot, "snap", "laravel", "echo 'SELECT 2;' | gzip", ""))
+
+	out := filepath.Join(t.TempDir(), "imported.sql")
+	bin := fakeClientBin(t, "mariadb", out)
+	importCmd := "export MYSQL_PWD='secret'; mysql --no-defaults -uapp appdb -f"
+	command := remote.BuildRemoteSnapshotRestoreCommand(cfg, "snap", "laravel", importCmd, "", true, false)
+	runSh(t, "PATH="+bin+":$PATH; "+command)
+
+	got, err := os.ReadFile(out)
+	if err != nil || strings.TrimSpace(string(got)) != "SELECT 2;" {
+		t.Fatalf("mariadb client did not receive the dump: %q %v", got, err)
+	}
+}
+
+func TestSnapshotCreateFailureLeavesNothingBehind(t *testing.T) {
+	setPermissiveUmask(t)
+	root := filepath.Join(t.TempDir(), "snapshots")
+
+	// A good snapshot first, so a failed re-create of the same name can be
+	// shown to leave it untouched.
+	runSh(t, remote.BuildRemoteSnapshotCreateCommandAtRoot(root, "keep", "laravel", "echo good", ""))
+	before, err := os.ReadFile(filepath.Join(root, "keep", "db.sql.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"fresh", "keep"} {
+		command := remote.BuildRemoteSnapshotCreateCommandAtRoot(root, name, "laravel", "echo partial; exit 2", "")
+		if err := exec.Command("sh", "-c", command).Run(); err == nil {
+			t.Fatalf("create %q must fail when the dump fails", name)
+		}
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 1 || names[0] != "keep" {
+		t.Fatalf("a failed create left %v behind, want only the earlier good snapshot", names)
+	}
+	after, err := os.ReadFile(filepath.Join(root, "keep", "db.sql.gz"))
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("the existing snapshot was changed by a failed re-create: %q vs %q (%v)", after, before, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "keep", "metadata.yml")); err != nil {
+		t.Fatalf("the existing snapshot lost its metadata: %v", err)
+	}
+}

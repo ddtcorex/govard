@@ -118,10 +118,16 @@ func BuildRemoteSnapshotCreateCommandAtRoot(
 	dbDumpCommandStr string,
 	remoteMediaPath string,
 ) string {
-	snapshotDir := strings.TrimRight(root, "/") + "/" + name
+	finalDir := strings.TrimRight(root, "/") + "/" + name
+	// The snapshot is assembled in a hidden sibling and moved into place only
+	// when every step succeeded: a failed dump leaves nothing behind and a
+	// failed re-create of an existing name leaves the earlier snapshot intact.
+	// The listing glob skips dot directories, so a partial one is never shown.
+	snapshotDir := strings.TrimRight(root, "/") + "/.partial-" + name
 	quoted := QuoteRemotePath(snapshotDir)
 
 	parts := []string{
+		fmt.Sprintf("rm -rf %s", engine.ShellQuote(snapshotDir)),
 		fmt.Sprintf("mkdir -p %s", quoted),
 	}
 
@@ -167,9 +173,17 @@ func BuildRemoteSnapshotCreateCommandAtRoot(
 		),
 	)
 
+	parts = append(parts,
+		fmt.Sprintf("rm -rf %s", engine.ShellQuote(finalDir)),
+		fmt.Sprintf("mv %s %s", engine.ShellQuote(snapshotDir), engine.ShellQuote(finalDir)),
+	)
+
 	// umask 077 first: the dump, the media archive and any directory this
-	// creates (e.g. the snapshots root) are owner-only on the remote.
-	return "umask 077; " + strings.Join(parts, " && ")
+	// creates (e.g. the snapshots root) are owner-only on the remote. The
+	// partial directory is removed on failure and the failing status kept; the
+	// steps run in a subshell so an `exit` inside one of them cannot skip the cleanup.
+	return "umask 077; ( " + strings.Join(parts, " && ") + " ) || { rc=$?; rm -rf " +
+		engine.ShellQuote(snapshotDir) + "; exit $rc; }"
 }
 
 // BuildRemoteSnapshotListCommand builds the SSH command to list snapshots on the remote.
@@ -198,6 +212,13 @@ func BuildRemoteSnapshotDeleteCommand(remoteCfg engine.RemoteConfig, name string
 		engine.ShellQuote(name))
 }
 
+// snapshotMySQLClientShim lets the import command's `mysql` resolve to
+// `mariadb` on hosts that only ship the MariaDB client, the same fallback
+// `db import` uses. It sits inside the brace group that receives the dump, so
+// the password export in the import command runs in the shell that starts the
+// client (an export placed before `|` would be lost in the pipeline's subshell).
+const snapshotMySQLClientShim = `command -v mysql >/dev/null 2>&1 || mysql() { command mariadb "$@"; }; `
+
 // BuildRemoteSnapshotRestoreCommand builds the SSH command to restore a snapshot on the remote.
 func BuildRemoteSnapshotRestoreCommand(
 	remoteCfg engine.RemoteConfig,
@@ -218,7 +239,7 @@ func BuildRemoteSnapshotRestoreCommand(
 	// Restore DB
 	if !mediaOnly && dbImportCommandStr != "" {
 		parts = append(parts,
-			fmt.Sprintf(`if [ -f "$S/db.sql.gz" ]; then zcat "$S/db.sql.gz" | %s; fi`, dbImportCommandStr),
+			fmt.Sprintf(`if [ -f "$S/db.sql.gz" ]; then zcat "$S/db.sql.gz" | { %s%s; }; fi`, snapshotMySQLClientShim, dbImportCommandStr),
 		)
 	}
 

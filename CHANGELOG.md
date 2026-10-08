@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Remote `snapshot restore` now works for a database user with a password (the
+  password export ran inside the pipeline and never reached the client) and on
+  hosts that only ship the MariaDB client. (#594)
+- A failed remote `snapshot create` no longer leaves a directory with an empty dump
+  behind, and a failed re-create of an existing name keeps the earlier snapshot:
+  the snapshot is assembled in a hidden partial directory and moved into place only
+  when every step succeeded. (#595)
 - Remote `snapshot create` writes `db` and `media` in `metadata.yml` from what it
   actually captured instead of always `true`, so a project without a media
   directory no longer claims a media archive.
