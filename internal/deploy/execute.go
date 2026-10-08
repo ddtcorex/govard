@@ -407,6 +407,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		// `Skipped`, so an executor that ignored the flag would run the server
 		// build in artifact mode as well.
 		if step.Skipped || (step.Command == "" && step.core == nil) {
+			if step.SkipReason == "" && step.Implementation() == ImplementationNone {
+				step.SkipReason = fmt.Sprintf("this framework's recipe has no %s step", step.ID)
+			}
 			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
 		}
@@ -780,7 +783,7 @@ func (e *Executor) record(ctx context.Context, release *Release, step Step, stat
 // the directory was there, the step could not run, and the record said the step
 // had never succeeded.
 func (e *Executor) carryOver(ctx context.Context, release *Release, step Step, stored StepRecord) {
-	step.SkipReason = "already done in an earlier run"
+	step.SkipReason = "completed in the interrupted run"
 	e.results = append(e.results, StepResult{ID: step.ID, Stage: step.Stage, Status: StepSkipped, SkipReason: step.SkipReason})
 
 	release.RecordTask(stored)

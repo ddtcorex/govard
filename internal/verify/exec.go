@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"govard/internal/engine"
 )
@@ -116,20 +118,51 @@ func ExecGovardForTest(ctx context.Context, cfg engine.Config, opts VerifyOpts, 
 // excerptLimit bounds the evidence kept per item.
 const excerptLimit = 500
 
-// excerptOf bounds a child's output. A successful run keeps its head (the JSON
-// identity lines consumers read come first). A failing run keeps head and tail
-// with a marker between, because the actual error is the last thing printed.
+// ansiEscapeRe matches the terminal control sequences a child prints when it
+// believes it has a TTY: OSC (title, hyperlinks; BEL or ST terminated), CSI
+// (colors, cursor, erase) and the remaining two-byte escapes. A lone ESC left
+// by an unterminated sequence goes too, so no escape byte reaches the JSON.
+var ansiEscapeRe = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]|\x1b`)
+
+// excerptOf bounds a child's output. Escape sequences are removed first, so a
+// cut can never land inside one, and both cuts move to a UTF-8 boundary. A
+// successful run keeps its head (the JSON identity lines consumers read come
+// first). A failing run keeps head and tail with a marker between, because the
+// actual error is the last thing printed.
 func excerptOf(out string, exitCode int) string {
-	excerpt := strings.TrimSpace(out)
+	excerpt := strings.TrimSpace(ansiEscapeRe.ReplaceAllString(out, ""))
 	if len(excerpt) <= excerptLimit {
 		return excerpt
 	}
 	if exitCode == 0 {
-		return excerpt[:excerptLimit]
+		return headOnRuneBoundary(excerpt, excerptLimit)
 	}
 	const marker = "\n[... output truncated ...]\n"
 	half := excerptLimit / 2
-	return excerpt[:half] + marker + excerpt[len(excerpt)-half:]
+	return headOnRuneBoundary(excerpt, half) + marker + tailOnRuneBoundary(excerpt, half)
+}
+
+// headOnRuneBoundary keeps at most n leading bytes without ending mid-rune.
+func headOnRuneBoundary(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// tailOnRuneBoundary keeps at most n trailing bytes without starting mid-rune.
+func tailOnRuneBoundary(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	start := len(s) - n
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	return s[start:]
 }
 
 // ExcerptForTest exposes excerptOf to the tests package.

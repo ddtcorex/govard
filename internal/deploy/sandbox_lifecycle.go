@@ -648,6 +648,10 @@ func repointKeptDatabase(ctx context.Context, runtime SandboxRuntime, out io.Wri
 	if err != nil {
 		return err
 	}
+	spec, err = withSandboxClient(ctx, runtime, sandbox, spec)
+	if err != nil {
+		return err
+	}
 	return rewriteSandboxDatabase(ctx, runtime, out, sandbox, webPort, request, spec)
 }
 

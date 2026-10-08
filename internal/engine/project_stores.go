@@ -11,8 +11,9 @@ import (
 )
 
 // projectStoreIDPattern is the shape of a per-project store directory name
-// ("project-" + 16 hex): only an exact id match is ever removed.
-var projectStoreIDPattern = regexp.MustCompile(`^project-[0-9a-f]{16}$`)
+// ("project-" + 16 hex) or of a lint cache target namespace ("target-" + 32
+// hex): only an exact id match is ever removed.
+var projectStoreIDPattern = regexp.MustCompile(`^(?:project-[0-9a-f]{16}|target-[0-9a-f]{32})$`)
 
 var (
 	projectStoreMu        sync.Mutex

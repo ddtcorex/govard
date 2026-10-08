@@ -118,6 +118,9 @@ func freshSandboxFake() *fakeSandboxRuntime {
 	// The dump-binary probe asks per candidate; answer the first one the way
 	// a MariaDB container would.
 	fake.answers["command -v mariadb-dump"] = "/usr/bin/mariadb-dump\n"
+	// The sandbox client probe asks mariadb first and then mysql; this
+	// fixture's image only ships mysql.
+	fake.answers["command -v mysql"] = "/usr/bin/mysql\n"
 	return fake
 }
 
@@ -695,5 +698,75 @@ func TestSandboxSeedWaitsWithMariadbAdminWhenMysqladminIsAbsent(t *testing.T) {
 	}
 	if !fake.has("mariadb-admin ping") {
 		t.Errorf("the readiness probe must try mariadb-admin, got: %v", fake.calls)
+	}
+}
+
+// clientOnlyRuntime wraps the fake so that only the named database binaries
+// exist: `command -v` answers for them alone and executing any other known
+// client tool fails the way a missing executable does.
+func clientOnlyRuntime(fake *fakeSandboxRuntime, installed ...string) deploy.SandboxRuntime {
+	has := map[string]bool{}
+	for _, name := range installed {
+		has[name] = true
+	}
+	known := []string{"mysql", "mysqldump", "mysqladmin", "mariadb", "mariadb-dump", "mariadb-admin"}
+	return deploy.NewDockerCLIForTest(func(ctx context.Context, request deploy.SandboxCommand) (string, error) {
+		args := request.Args
+		if n := len(args); n > 0 && strings.HasPrefix(args[n-1], "command -v ") {
+			name := strings.TrimPrefix(args[n-1], "command -v ")
+			if !has[name] {
+				return "", fmt.Errorf("%s: not found", name)
+			}
+			fake.mu.Lock()
+			fake.calls = append(fake.calls, args)
+			fake.envs = append(fake.envs, request.Env)
+			fake.mu.Unlock()
+			return "/usr/bin/" + name + "\n", nil
+		}
+		for _, arg := range args {
+			for _, tool := range known {
+				if arg == tool && !has[tool] {
+					fake.mu.Lock()
+					fake.calls = append(fake.calls, args)
+					fake.envs = append(fake.envs, request.Env)
+					fake.mu.Unlock()
+					return "", fmt.Errorf("exec: %q: executable file not found in $PATH", tool)
+				}
+			}
+		}
+		return fake.run(ctx, request)
+	})
+}
+
+func TestSandboxSeedCompletesWithOnlyMariadbClients(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	delete(fake.answers, "mysqladmin ping")
+	fake.answers["mariadb-admin ping"] = "mysqld is alive\n"
+	fake.answers["mariadb -N -e"] = "0\n"
+	runtime := clientOnlyRuntime(fake, "mariadb", "mariadb-dump", "mariadb-admin")
+
+	if _, err := deploy.SandboxUp(context.Background(), runtime, deploy.LocalRunner{}, seedSandboxUpRequest(t, root, origin)); err != nil {
+		t.Fatalf("sandbox up must seed with only mariadb clients: %v", err)
+	}
+	if !fake.has("mariadb -u magento magento") {
+		t.Errorf("the import must run through the mariadb client, got: %v", fake.calls)
+	}
+}
+
+func TestSandboxSeedStillWorksWithOnlyMysqlClients(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	delete(fake.answers, "command -v mariadb-dump")
+	fake.bodies["mysqldump -u magento"] = []byte("SELECT 1;\n")
+	runtime := clientOnlyRuntime(fake, "mysql", "mysqldump", "mysqladmin")
+
+	if _, err := deploy.SandboxUp(context.Background(), runtime, deploy.LocalRunner{}, seedSandboxUpRequest(t, root, origin)); err != nil {
+		t.Fatalf("sandbox up must still seed with only mysql clients: %v", err)
+	}
+	if !fake.has("mysql -u magento magento") {
+		t.Errorf("the import must run through the mysql client, got: %v", fake.calls)
 	}
 }

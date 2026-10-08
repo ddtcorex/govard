@@ -171,6 +171,7 @@ func reusedFullSandbox() *fakeSandboxRuntime {
 	fake.answers["22/tcp"] = "127.0.0.1:2222\n"
 	fake.answers["mysqladmin ping"] = "mysqld is alive\n"
 	fake.answers["command -v mariadb-dump"] = "/usr/bin/mariadb-dump\n"
+	fake.answers["command -v mysql"] = "/usr/bin/mysql\n"
 	return fake
 }
 

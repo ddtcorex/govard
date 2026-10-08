@@ -9,6 +9,7 @@ import (
 	"govard/internal/audit"
 	"govard/internal/cli"
 	"govard/internal/engine"
+	"govard/internal/frameworks/types"
 	"govard/internal/ui"
 	"govard/internal/verify"
 
@@ -114,6 +115,18 @@ func initProjectCommands() {
 	projectCmd.AddCommand(projectDeleteCmd)
 }
 
+// confirmDestructive asks a yes/no question for a destructive command. The
+// prompt needs a terminal: with a piped or closed stdin it would wait forever,
+// so a non-terminal stdin is a refusal that names the flag which skips the
+// question, and nothing is removed.
+func confirmDestructive(question, escapeFlag string) (bool, error) {
+	if !stdinIsTerminal() {
+		return false, fmt.Errorf("confirmation required but stdin is not a terminal; pass %s to proceed without prompting", escapeFlag)
+	}
+	result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show(question)
+	return result, nil
+}
+
 func runProjectOpen(cmd *cobra.Command, query string) error {
 	match, _, err := engine.FindProjectByQuery(query)
 	if err != nil {
@@ -166,7 +179,10 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 		printProjectArtifactList(projectArtifactsForEntry(cmd, match))
 		fmt.Println()
 
-		result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show("Are you sure you want to proceed?")
+		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
+		if confirmErr != nil {
+			return confirmErr
+		}
 		if !result {
 			pterm.Info.Println("Deletion cancelled.")
 			return nil
@@ -200,7 +216,10 @@ func runUnregisteredDelete(cmd *cobra.Command, art engine.ProjectArtifacts) erro
 		pterm.Warning.Println("This will remove its Docker containers and VOLUMES (database data).")
 		fmt.Println()
 
-		result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show("Are you sure you want to proceed?")
+		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
+		if confirmErr != nil {
+			return confirmErr
+		}
 		if !result {
 			pterm.Info.Println("Deletion cancelled.")
 			return nil
@@ -247,7 +266,10 @@ func runOrphanDelete(cmd *cobra.Command, orphan engine.OrphanProject) error {
 		pterm.Warning.Println("This will remove all Docker containers and VOLUMES (database data).")
 		fmt.Println()
 
-		result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show("Are you sure you want to proceed?")
+		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
+		if confirmErr != nil {
+			return confirmErr
+		}
 		if !result {
 			pterm.Info.Println("Deletion cancelled.")
 			return nil
@@ -352,6 +374,21 @@ func init() {
 		origin, _ := gitOutput(canonical, "config", "--get", "remote.origin.url")
 		for _, identity := range []string{"", auditRepositoryIdentity(canonical, origin)} {
 			dirs = append(dirs, filepath.Join(home, "audit", audit.ProjectID(canonical, identity)))
+		}
+		// The reusable lint cache is namespaced per audit target by a hash of
+		// project id, mode and target path. A project-mode target is the project
+		// root itself, so its namespace is derivable; module and standalone
+		// namespaces are keyed by arbitrary module paths and are left alone.
+		lintRoot := audit.DefaultLintCacheRoot(home)
+		paths := []string{canonical}
+		if root != canonical {
+			paths = append(paths, root)
+		}
+		for _, identity := range []string{"", auditRepositoryIdentity(canonical, origin)} {
+			projectID := audit.ProjectID(canonical, identity)
+			for _, targetPath := range paths {
+				dirs = append(dirs, filepath.Join(lintRoot, audit.LintTargetID(projectID, types.AuditTargetProject, targetPath)))
+			}
 		}
 		return dirs
 	})

@@ -115,3 +115,53 @@ func TestProjectDeleteStaysSilentAboutResourcesThatDoNotExist(t *testing.T) {
 		t.Fatalf("a missing resource must be silent, got %q", stderr.String())
 	}
 }
+
+func TestProjectDeleteRemovesTheProjectLintCacheNamespaceOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GOVARD_HOME_DIR", home)
+	t.Setenv("GOVARD_PROJECT_REGISTRY_PATH", filepath.Join(home, "projects.json"))
+	fakeDockerForProjectDelete(t)
+	root := t.TempDir()
+	if err := engine.UpsertProjectRegistryEntry(engine.ProjectRegistryEntry{Path: root, ProjectName: "lintcache"}); err != nil {
+		t.Fatal(err)
+	}
+
+	canonical := canonicalForTest(t, root)
+	projectID := audit.ProjectID(canonical, "")
+	lintRoot := audit.DefaultLintCacheRoot(home)
+	mine := filepath.Join(lintRoot, audit.LintTargetID(projectID, "project", canonical))
+	otherProject := filepath.Join(lintRoot, audit.LintTargetID("project-fedcba9876543210", "project", "/elsewhere"))
+	// A module namespace of this project is keyed by an arbitrary module path,
+	// so it cannot be attributed from the project root and must stay.
+	module := filepath.Join(lintRoot, audit.LintTargetID(projectID, "module_in_project", filepath.Join(canonical, "app/code/Acme/Mod")))
+	for _, dir := range []string{mine, otherProject, module} {
+		writeArtifactFile(t, filepath.Join(dir, "gen", "state.json"), "{}")
+	}
+
+	art := engine.CollectProjectArtifacts("lintcache", root, nil)
+	listed := false
+	for _, line := range art.Lines() {
+		if strings.HasPrefix(line, mine) {
+			listed = true
+		}
+	}
+	if !listed {
+		t.Errorf("the confirmation must list %s, got %v", mine, art.Lines())
+	}
+
+	c := cmd.RootCommandForTest()
+	c.SetOut(io.Discard)
+	c.SetErr(io.Discard)
+	c.SetArgs([]string{"project", "delete", "lintcache", "-f"})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if artifactExists(mine) {
+		t.Errorf("%s should be removed", mine)
+	}
+	for _, kept := range []string{otherProject, module} {
+		if !artifactExists(kept) {
+			t.Errorf("%s cannot be attributed to this project and must stay", kept)
+		}
+	}
+}

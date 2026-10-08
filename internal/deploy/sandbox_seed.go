@@ -47,7 +47,10 @@ type SeedSpec struct {
 	DBDumpContainer  string
 	DBDumpFlags      []string
 	DBDumpCandidates []string
-	// DBImportArgs is the mysql client argv run inside the sandbox container.
+	// DBImportArgs is the client argv run inside the sandbox container. Its
+	// first element is the client binary; ResolveSeedSpec leaves the
+	// conventional `mysql` there and withSandboxClient swaps in the binary the
+	// sandbox actually ships (MariaDB 11 images have `mariadb` only).
 	DBImportArgs []string
 	DBPassword   string
 	MediaSource  string
@@ -100,6 +103,39 @@ func resolveDumpBinary(ctx context.Context, runtime SandboxRuntime, container st
 		}
 	}
 	return "", fmt.Errorf("no dump client (%s) in %s", strings.Join(candidates, ", "), container)
+}
+
+// dbClientCandidates are the interactive client binaries a database image may
+// ship, newest name first: MariaDB 11 drops the mysql symlinks.
+var dbClientCandidates = []string{"mariadb", "mysql"}
+
+// resolveClientBinary picks the interactive client the container has. The
+// answer must name the candidate exactly (by base name), so a canned or a
+// prefix-sharing path (`mariadb-dump`) never satisfies the wrong query.
+func resolveClientBinary(ctx context.Context, runtime SandboxRuntime, container string) (string, error) {
+	for _, candidate := range dbClientCandidates {
+		out, err := runtime.Exec(ctx, container, nil, "sh", "-c", "command -v "+candidate)
+		if err != nil {
+			continue
+		}
+		if path.Base(strings.TrimSpace(out)) == candidate {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no database client (%s) in %s", strings.Join(dbClientCandidates, ", "), container)
+}
+
+// withSandboxClient returns the spec with the import argv naming the client the
+// sandbox container ships.
+func withSandboxClient(ctx context.Context, runtime SandboxRuntime, sandbox string, spec SeedSpec) (SeedSpec, error) {
+	client, err := resolveClientBinary(ctx, runtime, sandbox)
+	if err != nil {
+		return spec, err
+	}
+	if len(spec.DBImportArgs) > 0 {
+		spec.DBImportArgs = append([]string{client}, spec.DBImportArgs[1:]...)
+	}
+	return spec, nil
 }
 
 // ResolveDumpBinaryForTest exposes resolveDumpBinary to the tests/ package.
@@ -352,7 +388,11 @@ func runSandboxSeedDB(ctx context.Context, runtime SandboxRuntime, out io.Writer
 
 	create := fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s'; CREATE DATABASE IF NOT EXISTS `%s`; GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%'; FLUSH PRIVILEGES;",
 		escapeIdent(request.SeedDBUser), escapeLiteral(request.SeedDBPassword), escapeIdent(request.SeedDBName), escapeIdent(request.SeedDBName), escapeIdent(request.SeedDBUser))
-	if _, err := runtime.Exec(ctx, sandbox, []byte(create), "mysql"); err != nil {
+	spec, err = withSandboxClient(ctx, runtime, sandbox, spec)
+	if err != nil {
+		return err
+	}
+	if _, err := runtime.Exec(ctx, sandbox, []byte(create), spec.DBImportArgs[0]); err != nil {
 		return fmt.Errorf("create the sandbox database user: %w", err)
 	}
 
@@ -418,7 +458,11 @@ func rewriteSandboxDatabase(ctx context.Context, runtime SandboxRuntime, out io.
 // or a leftover) say nothing about whether the origin was imported.
 func sandboxDatabaseHasData(ctx context.Context, runtime SandboxRuntime, sandbox, dbName string) (bool, error) {
 	query := fmt.Sprintf("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='%s'", escapeLiteral(dbName))
-	output, err := runtime.Exec(ctx, sandbox, nil, "mysql", "-N", "-e", query)
+	client, err := resolveClientBinary(ctx, runtime, sandbox)
+	if err != nil {
+		return false, fmt.Errorf("check whether the sandbox database %s holds data: %w", dbName, err)
+	}
+	output, err := runtime.Exec(ctx, sandbox, nil, client, "-N", "-e", query)
 	if err != nil {
 		return false, fmt.Errorf("check whether the sandbox database %s holds data: %w", dbName, err)
 	}
