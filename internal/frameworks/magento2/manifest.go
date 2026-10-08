@@ -232,6 +232,7 @@ var Manifest = engine.FrameworkManifestConfig{
 		},
 	},
 	Sync: engine.FrameworkSyncConfig{
+		CloneExcludes: []string{"app/etc/env.php", "generated", "pub/static", "var"},
 		NoiseExcludes: []string{
 			"var/cache/",
 			"var/page_cache/",

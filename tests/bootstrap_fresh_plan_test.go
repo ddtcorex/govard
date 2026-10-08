@@ -321,3 +321,51 @@ func runFreshPlanInHome(t *testing.T, dir, home string, args ...string) (string,
 	err = root.Execute()
 	return out.String(), err
 }
+
+func TestBootstrapFreshPlanOmitsConfigAutoWhereUnsupported(t *testing.T) {
+	for _, framework := range []string{"symfony"} {
+		lines, err := cmd.BuildBootstrapFreshPlanForTest(
+			engine.Config{ProjectName: "sample-project", Framework: framework},
+			framework,
+			cmd.BootstrapRuntimeOptions{Plan: true},
+		)
+		if err != nil {
+			t.Fatalf("BuildBootstrapFreshPlanForTest(%s): %v", framework, err)
+		}
+		if joined := strings.Join(lines, "\n"); strings.Contains(joined, "config auto") {
+			t.Errorf("%s plan lists a `config auto` step that does nothing for it:\n%s", framework, joined)
+		}
+	}
+}
+
+func TestBootstrapFreshPlanKeepsConfigAutoWhereSupported(t *testing.T) {
+	lines, err := cmd.BuildBootstrapFreshPlanForTest(
+		engine.Config{ProjectName: "sample-project", Framework: "magento2"},
+		"magento2",
+		cmd.BootstrapRuntimeOptions{Plan: true},
+	)
+	if err != nil {
+		t.Fatalf("BuildBootstrapFreshPlanForTest: %v", err)
+	}
+	if !strings.Contains(strings.Join(lines, "\n"), "config auto") {
+		t.Fatalf("magento2 plan lost its config auto step:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+func TestBootstrapFreshPlanWordPressDoesNotClaimComposer(t *testing.T) {
+	lines, err := cmd.BuildBootstrapFreshPlanForTest(
+		engine.Config{ProjectName: "sample-project", Framework: "wordpress"},
+		"wordpress",
+		cmd.BootstrapRuntimeOptions{Plan: true},
+	)
+	if err != nil {
+		t.Fatalf("BuildBootstrapFreshPlanForTest: %v", err)
+	}
+	joined := strings.Join(lines, "\n")
+	if strings.Contains(joined, "composer") {
+		t.Errorf("WordPress downloads a core archive, the plan must not mention composer:\n%s", joined)
+	}
+	if !strings.Contains(joined, "download WordPress core archive") {
+		t.Errorf("plan does not describe the archive download:\n%s", joined)
+	}
+}

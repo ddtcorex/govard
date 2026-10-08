@@ -47,7 +47,12 @@ type Options struct {
 	ComposerVersion string
 
 	// Database credentials for local configuration
-	DBHost      string
+	DBHost string
+	// DBEngine and DBVersion describe the local database service the project
+	// runs (stack.services.db and stack.db_version), so a framework writing a
+	// connection string can name the real server instead of a literal.
+	DBEngine    string
+	DBVersion   string
 	DBUser      string
 	DBPass      string
 	DBName      string

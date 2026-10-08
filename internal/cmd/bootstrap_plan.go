@@ -7,6 +7,7 @@ import (
 	"govard/internal/cli"
 	"govard/internal/conventions"
 	"govard/internal/engine"
+	"govard/internal/engine/bootstrap"
 	"govard/internal/frameworks"
 	"govard/internal/frameworks/types"
 
@@ -30,7 +31,7 @@ func buildBootstrapRemotePlan(config engine.Config, opts BootstrapRuntimeOptions
 
 	// 2. File Sync (Clone)
 	if opts.Clone {
-		syncArgs := bootstrapFileSyncArgs(opts)
+		syncArgs := bootstrapFileSyncArgs(config, opts)
 		plan.Descriptions = append(plan.Descriptions, fmt.Sprintf("Cloning source files from remote '%s'...", opts.Source))
 		plan.Commands = append(plan.Commands, "govard "+strings.Join(syncArgs, " "))
 	}
@@ -144,9 +145,14 @@ func buildBootstrapFreshPlan(config engine.Config, def types.FrameworkDefinition
 	}
 	install += " " + describeBootstrapMetaVersion(opts)
 	plan.Descriptions = append(plan.Descriptions, install+"...")
-	plan.Commands = append(plan.Commands, "govard tool composer create-project (framework fresh install)")
+	plan.Commands = append(plan.Commands, bootstrapFreshInstallCommand(def, opts, meta))
 
-	if def.FreshInstallNeedsDB {
+	// `govard config auto` is only a real step for a framework that provides an
+	// auto-configuration routine; elsewhere it warns "not supported" and writes
+	// nothing, so listing it would promise work that never happens. Those
+	// frameworks write their own local credentials during their install step.
+	autoConfigures := def.AutoConfigure != nil
+	if def.FreshInstallNeedsDB && autoConfigures {
 		plan.Descriptions = append(plan.Descriptions, "Configuring database credentials for the fresh install...")
 		plan.Commands = append(plan.Commands, "govard config auto")
 	}
@@ -159,9 +165,35 @@ func buildBootstrapFreshPlan(config engine.Config, def types.FrameworkDefinition
 		plan.Commands = append(plan.Commands, "govard tool magento sampledata:deploy")
 	}
 
-	plan.Descriptions = append(plan.Descriptions, "Rewriting local application configuration...")
-	plan.Commands = append(plan.Commands, "govard config auto")
+	if autoConfigures {
+		plan.Descriptions = append(plan.Descriptions, "Rewriting local application configuration...")
+		plan.Commands = append(plan.Commands, "govard config auto")
+	}
 	return plan
+}
+
+// bootstrapFreshInstallCommand names what the framework's own fresh install
+// runs, from the commands its bootstrapper declares (composer create-project
+// for the composer frameworks, a core archive download for WordPress, ...). A
+// framework that declares none gets a neutral line instead of a composer
+// command it may not run.
+func bootstrapFreshInstallCommand(def types.FrameworkDefinition, opts BootstrapRuntimeOptions, metaPackage string) string {
+	const neutral = "(framework fresh install)"
+	if def.Bootstrap == nil {
+		return neutral
+	}
+	fresh := def.Bootstrap(bootstrap.Options{
+		Version:     strings.TrimSpace(opts.MetaVersion),
+		MetaPackage: metaPackage,
+	})
+	if fresh == nil {
+		return neutral
+	}
+	commands := fresh.FreshCommands()
+	if len(commands) == 0 {
+		return neutral
+	}
+	return strings.Join(commands, " && ")
 }
 
 func buildBootstrapFreshPlanSummary(config engine.Config, def types.FrameworkDefinition, opts BootstrapRuntimeOptions, execution bootstrapExecutionPlan) []string {

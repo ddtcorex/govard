@@ -226,6 +226,7 @@ func cloneDefinition(def FrameworkDefinition) FrameworkDefinition {
 	cloned.Manifest.Sensitive = cloneStrings(def.Manifest.Sensitive)
 	cloned.Manifest.Paths.WebRootCandidates = append([]engine.FrameworkWebRootCandidate(nil), def.Manifest.Paths.WebRootCandidates...)
 	cloned.Manifest.Sync.NoiseExcludes = cloneStrings(def.Manifest.Sync.NoiseExcludes)
+	cloned.Manifest.Sync.CloneExcludes = cloneStrings(def.Manifest.Sync.CloneExcludes)
 	cloned.Manifest.Sync.MediaExcludes.NonAll = cloneStrings(def.Manifest.Sync.MediaExcludes.NonAll)
 	cloned.Manifest.Sync.MediaExcludes.Optimized = cloneStrings(def.Manifest.Sync.MediaExcludes.Optimized)
 	cloned.Manifest.Sync.MediaExcludes.Minimal = cloneStrings(def.Manifest.Sync.MediaExcludes.Minimal)

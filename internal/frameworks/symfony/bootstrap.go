@@ -103,9 +103,9 @@ func (s *SymfonyBootstrap) Install(projectDir string) error {
 
 		content := fmt.Sprintf(`APP_ENV=dev
 APP_SECRET=your-secret-key-here
-DATABASE_URL="mysql://%s:%s@%s:%d/%s?serverVersion=11.4.0-MariaDB&charset=utf8mb4"
-MAILER_DSN=smtp://mailpit:1025
-`, dbUser, dbPass, dbHost, conventions.MySQLPort, dbName)
+DATABASE_URL="%s"
+MAILER_DSN=smtp://%s:%d
+`, s.databaseURL(dbUser, dbPass, dbHost, dbName), conventions.DefaultMailHost, conventions.SMTPPort)
 		if err := os.WriteFile(envLocalPath, []byte(content), conventions.DefaultFilePerm); err != nil {
 			return fmt.Errorf("failed to create .env.local: %w", err)
 		}
@@ -166,8 +166,7 @@ func (s *SymfonyBootstrap) Configure(projectDir string) error {
 			if !strings.Contains(updated, "@"+dbHost+":") {
 				updated = strings.ReplaceAll(updated,
 					"DATABASE_URL=",
-					fmt.Sprintf("DATABASE_URL=\"mysql://%s:%s@%s:%d/%s?serverVersion=11.4.0-MariaDB&charset=utf8mb4\"",
-						dbUser, dbPass, dbHost, conventions.MySQLPort, dbName))
+					fmt.Sprintf("DATABASE_URL=\"%s\"", s.databaseURL(dbUser, dbPass, dbHost, dbName)))
 				_ = os.WriteFile(envLocalPath, []byte(updated), conventions.DefaultFilePerm)
 			}
 		}
@@ -177,6 +176,30 @@ func (s *SymfonyBootstrap) Configure(projectDir string) error {
 
 	pterm.Success.Println("Symfony configured successfully")
 	return nil
+}
+
+// databaseURL builds the Doctrine DATABASE_URL for the local database service.
+// serverVersion comes from the stack (engine and db_version) because Doctrine
+// uses it to pick the SQL platform without connecting; a literal that does not
+// match the running server makes it generate the wrong platform's SQL.
+func (s *SymfonyBootstrap) databaseURL(user, pass, host, name string) string {
+	return fmt.Sprintf("mysql://%s:%s@%s:%d/%s?serverVersion=%s&charset=utf8mb4",
+		user, pass, host, conventions.MySQLPort, name, doctrineServerVersion(s.Options.DBEngine, s.Options.DBVersion))
+}
+
+// doctrineServerVersion renders the serverVersion query value: MariaDB needs
+// the "-MariaDB" suffix so Doctrine selects the MariaDB platform; MySQL takes
+// the bare version. An unknown stack falls back to the default database
+// (MariaDB 10.11).
+func doctrineServerVersion(dbEngine, dbVersion string) string {
+	dbVersion = strings.TrimSpace(dbVersion)
+	if dbVersion == "" {
+		dbEngine, dbVersion = "mariadb", "10.11"
+	}
+	if strings.EqualFold(strings.TrimSpace(dbEngine), "mysql") {
+		return dbVersion
+	}
+	return dbVersion + "-MariaDB"
 }
 
 func (s *SymfonyBootstrap) PostClone(projectDir string) error {
