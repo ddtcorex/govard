@@ -488,3 +488,37 @@ func TestSyncPlanDegradesWhenRemoteDBProbeFails(t *testing.T) {
 		t.Fatalf("expected a database action, got %d", len(plan.DatabaseActions))
 	}
 }
+
+func TestSyncPlanOmitsUnresolvablePrivacyFilterWhenPrefixUnknown(t *testing.T) {
+	config := engine.Config{ProjectName: "test-project", Framework: "wordpress"}
+	endpoints := cmd.ResolveSyncEndpointsForTest(
+		cmd.SyncEndpoint{
+			Name:      "staging",
+			IsLocal:   false,
+			RootPath:  "/var/www/html",
+			RemoteCfg: engine.RemoteConfig{Host: "127.0.0.1", Port: 1, User: "nobody", Path: "/var/www/html"},
+		},
+		cmd.SyncEndpoint{Name: "local", IsLocal: true, RootPath: t.TempDir()},
+	)
+	opts := cmd.SyncExecutionOptionsForTest(false, "", true)
+	opts.PlanOnly = true
+	opts.NoPII = true
+	opts.NoNoise = true
+
+	plan, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts)
+	if err != nil {
+		t.Fatalf("--plan must not fail: %v", err)
+	}
+	if len(plan.Commands) != 1 {
+		t.Fatalf("expected one DB command, got %v", plan.Commands)
+	}
+	shown := plan.Commands[0]
+	if strings.Contains(shown, "--ignore-table") {
+		t.Fatalf("plan must not show unprefixed --ignore-table names that cannot match:\n%s", shown)
+	}
+	for _, want := range []string{"privacy filter is unresolved", "would be refused"} {
+		if !strings.Contains(shown, want) {
+			t.Fatalf("plan must mention %q:\n%s", want, shown)
+		}
+	}
+}

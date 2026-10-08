@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `sync --plan` leaves out table exclusions that cannot match when the table prefix
+  is unknown and says the privacy filter is unresolved; `bootstrap --plan` notes
+  that the prefix is resolved at run time and a `--no-pii` run would be refused
+  without it. (#583)
 - `capabilities` reports one row per command path; service shortcuts registered
   under two parents are no longer listed twice. (#543)
 - Sandbox: MariaDB 11 clients, seed retry after a partial failure, WordPress
