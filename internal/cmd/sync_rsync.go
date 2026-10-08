@@ -60,7 +60,49 @@ func buildRsyncForEndpoints(
 		includePatterns,
 		excludePatterns,
 	)
+	withPullSymlinkPolicy(cmd)
 	return cmd, cmd.String(), nil
+}
+
+// syncResolveSymlinks is set from `sync --resolve-symlinks` and read when a pull
+// is built. It is off by default on purpose: following a link that points
+// outside the synced tree copies whatever that link names on the remote.
+var syncResolveSymlinks bool
+
+// SetSyncResolveSymlinksForTest sets the opt-in for tests.
+func SetSyncResolveSymlinksForTest(v bool) { syncResolveSymlinks = v }
+
+// withPullSymlinkPolicy decides how a pull treats symlinks that point outside
+// the transferred tree (for example a release file linked into a shared
+// directory).
+//
+// By default the receiver ignores them (--safe-links): archive mode would
+// otherwise copy such a link as a symlink whose target does not exist locally,
+// replacing a real local file with a dangling one. Ignoring leaves the local
+// file untouched and never reads anything outside the synced path.
+//
+// With --resolve-symlinks the content is copied instead
+// (--copy-unsafe-links). That follows any link that leaves the tree, so it can
+// read files elsewhere on the remote; it is for known links only. Links that
+// stay inside the tree are preserved either way, and pushes are unchanged so a
+// deploy layout on the remote is not flattened.
+func withPullSymlinkPolicy(cmd *exec.Cmd) {
+	flag := "--safe-links"
+	if syncResolveSymlinks {
+		flag = "--copy-unsafe-links"
+	}
+	// Insert after the mode flag (args[1]) so the argv still starts with it.
+	if len(cmd.Args) < 2 {
+		return
+	}
+	args := append([]string{}, cmd.Args[:2]...)
+	args = append(args, flag)
+	cmd.Args = append(args, cmd.Args[2:]...)
+}
+
+// BuildRsyncForEndpointsForTest exposes the rsync builder for tests.
+func BuildRsyncForEndpointsForTest(source SyncEndpoint, destination SyncEndpoint, sourcePath string, destinationPath string, isDir bool) (*exec.Cmd, string, error) {
+	return buildRsyncForEndpoints(source, destination, sourcePath, destinationPath, isDir, false, false, false, nil, nil)
 }
 
 func ensureTrailingSlash(path string) string {

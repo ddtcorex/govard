@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"govard/internal/engine"
@@ -115,6 +117,7 @@ Case Studies:
 		resume, _ := cmd.Flags().GetBool("resume")
 		noResume, _ := cmd.Flags().GetBool("no-resume")
 		noCompress, _ := cmd.Flags().GetBool("no-compress")
+		syncResolveSymlinks, _ = cmd.Flags().GetBool("resolve-symlinks")
 		noNoise, _ := cmd.Flags().GetBool("no-noise")
 		noPII, _ := cmd.Flags().GetBool("no-pii")
 		mediaMode, _ := cmd.Flags().GetString("media")
@@ -313,13 +316,17 @@ Case Studies:
 
 			area, _ := pterm.DefaultArea.Start()
 			writer := newTailWriter(area, 10)
-			rsyncCmd.Stdout = writer
-			rsyncCmd.Stderr = writer
+			output := &cappedBuffer{limit: rsyncOutputCaptureLimit}
+			// One writer for both streams: os/exec then copies them from a single
+			// goroutine instead of two writing into the same buffer.
+			combined := io.MultiWriter(writer, output)
+			rsyncCmd.Stdout = combined
+			rsyncCmd.Stderr = combined
 
 			if err := rsyncCmd.Run(); err != nil {
 				_ = area.Stop()
 				fmt.Println()
-				cont, err := handleRsyncError(err, executionPlan.RsyncScopes[i])
+				cont, err := handleRsyncErrorWithOutput(err, executionPlan.RsyncScopes[i], output.String())
 				if !cont {
 					return err
 				}
@@ -389,6 +396,7 @@ func init() {
 	syncCmd.Flags().BoolP("resume", "R", true, "Enable resumable rsync transfers (--partial --append-verify)")
 	syncCmd.Flags().Bool("no-resume", false, "Disable resumable rsync transfers")
 	syncCmd.Flags().BoolP("no-compress", "C", false, "Disable rsync compression")
+	syncCmd.Flags().Bool("resolve-symlinks", false, "On a pull, copy the content of symlinks that point outside the synced path instead of ignoring them (follows any such link on the remote; use only for known links)")
 	syncCmd.Flags().Bool("plan", false, "Print the sync plan and exit")
 	syncCmd.Flags().BoolP("yes", "y", false, "Skip confirmation and proceed with synchronization")
 
@@ -396,6 +404,58 @@ func init() {
 }
 
 func handleRsyncError(err error, scope string) (bool, error) {
+	return handleRsyncErrorWithOutput(err, scope, "")
+}
+
+// rsyncOutputCaptureLimit bounds how much rsync output is kept for error
+// classification; the tail is what carries the diagnostics.
+const rsyncOutputCaptureLimit = 64 * 1024
+
+// cappedBuffer keeps the last `limit` bytes written to it. It is safe for
+// concurrent writers, so a caller that wires it to two streams cannot race.
+type cappedBuffer struct {
+	mu    sync.Mutex
+	limit int
+	data  []byte
+}
+
+func (b *cappedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.data = append(b.data, p...)
+	if len(b.data) > b.limit {
+		b.data = b.data[len(b.data)-b.limit:]
+	}
+	return len(p), nil
+}
+
+func (b *cappedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.data)
+}
+
+// NewCappedBufferForTest exposes the capture buffer for tests.
+func NewCappedBufferForTest(limit int) interface {
+	Write([]byte) (int, error)
+	String() string
+} {
+	return &cappedBuffer{limit: limit}
+}
+
+// rsyncReportsMissingRoot reports whether rsync output shows that the source
+// root itself could not be entered (`change_dir "..." failed`). That is exit
+// code 23 like a partial transfer, but nothing was transferred at all.
+func rsyncReportsMissingRoot(output string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "change_dir") && strings.Contains(line, "failed") {
+			return true
+		}
+	}
+	return false
+}
+
+func handleRsyncErrorWithOutput(err error, scope string, output string) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
@@ -403,6 +463,10 @@ func handleRsyncError(err error, scope string) (bool, error) {
 	exitCode := -1
 	if exitError, ok := err.(*exec.ExitError); ok {
 		exitCode = exitError.ExitCode()
+	}
+
+	if exitCode == 23 && scope == SyncScopeMedia && rsyncReportsMissingRoot(output) {
+		return false, fmt.Errorf("media synchronization failed: the media directory does not exist on the source (rsync exit code 23, change_dir failed); check the media path for this remote: %w", err)
 	}
 
 	if (exitCode == 23 || exitCode == 24) && scope == SyncScopeMedia {
@@ -419,6 +483,11 @@ func handleRsyncError(err error, scope string) (bool, error) {
 // HandleRsyncErrorForTest is a wrapper for testing internal error handling logic.
 func HandleRsyncErrorForTest(err error, scope string) (bool, error) {
 	return handleRsyncError(err, scope)
+}
+
+// HandleRsyncErrorWithOutputForTest wraps the output-aware classifier for tests.
+func HandleRsyncErrorWithOutputForTest(err error, scope string, output string) (bool, error) {
+	return handleRsyncErrorWithOutput(err, scope, output)
 }
 
 // SyncCommand exposes the sync command for testing.
