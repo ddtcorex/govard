@@ -332,7 +332,7 @@ func TestSnapshotCommandsWithShims(t *testing.T) {
 	listResult.AssertSuccess(t)
 	assertContains(t, listResult.Stdout, "test-snapshot")
 
-	restoreResult := env.RunGovardWithEnv(t, projectDir, shim.Env(), "snapshot", "restore", "test-snapshot", "--db-only")
+	restoreResult := env.RunGovardWithEnv(t, projectDir, shim.Env(), "snapshot", "restore", "test-snapshot", "--db-only", "-y")
 	restoreResult.AssertSuccess(t)
 
 	logs := shim.ReadLog(t)
