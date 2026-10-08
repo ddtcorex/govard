@@ -432,6 +432,9 @@ func bootstrapFileSyncArgs(config engine.Config, opts BootstrapRuntimeOptions) [
 		"--exclude", ".idea",
 		"--exclude", "auth.json",
 		"--exclude", "node_modules",
+		// A published release carries govard deploy's record in .dep/; it
+		// describes the remote and has no place in a local checkout.
+		"--exclude", "/.dep",
 	)
 	for _, pattern := range bootstrapFrameworkCloneExcludes(config.Framework) {
 		args = append(args, "--exclude", pattern)
