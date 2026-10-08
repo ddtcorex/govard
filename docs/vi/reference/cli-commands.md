@@ -261,7 +261,7 @@ kèm gợi ý xoá lock cũ hoặc chạy `govard audit cleanup`.
 #### Guard Xdebug
 
 Khi `stack.features.xdebug: true`, lint audit thoát với thông báo
-`Xdebug enabled, ~10-20% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug`
+`Xdebug enabled, ~10-20% tax; disable with govard debug off or pass --allow-xdebug`
 trừ khi truyền `--allow-xdebug`. Guard được thực thi trong command và trong backend
 lint của Govard.
 

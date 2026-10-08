@@ -135,7 +135,7 @@ Runs for the same project are queued via `~/.govard/audit/<projectId>/lock` (und
 
 ## Xdebug guard
 
-With `stack.features.xdebug: true` the audit hard-fails unless `--allow-xdebug` is set (`Xdebug enabled, ~10-20% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug`).
+With `stack.features.xdebug: true` the audit hard-fails unless `--allow-xdebug` is set (`Xdebug enabled, ~10-20% tax; disable with govard debug off or pass --allow-xdebug`).
 
 ---
 

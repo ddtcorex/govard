@@ -262,9 +262,11 @@ lock or run `govard audit cleanup`.
 #### Xdebug guard
 
 When `stack.features.xdebug: true` the lint audit exits with
-`Xdebug enabled, ~10-20% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug`
+`Xdebug enabled, ~10-20% tax; disable with govard debug off or pass --allow-xdebug`
 unless `--allow-xdebug` is passed. The guard is enforced in the command and
-in the Govard lint backend.
+in the Govard lint backend. The container-free `--checks integrity` is exempt,
+and the `--allow-xdebug` warning goes to stderr so `--format json` stays one
+document.
 
 #### Caching
 
@@ -296,7 +298,7 @@ mounted read only.
 Cancelling a run stops the lint container and then removes it, and the run is
 reported as cancelled rather than as an infrastructure failure.
 
-`diff` records the requested base ref in the session manifest, but lint currently
+`diff` fails when the base ref does not resolve to a commit. It records the requested base ref in the session manifest, but lint currently
 analyzes the full target; result evidence therefore reports
 `effective_scope: project`.
 
