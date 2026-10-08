@@ -1333,8 +1333,10 @@ func formatProcessListTable(raw string) (string, error) {
 // script. The gain is narrower: the mysql process itself carries no password in
 // its argv and does not inherit it through -p.
 func buildProcessListCommand(username, password, query string) string {
-	return mysqlPasswordExportPrefix(password) + fmt.Sprintf(
-		"mysql --no-defaults -u%s -BN -e %s",
+	// The client is detected (mysql, else mariadb): MariaDB 11 images ship only
+	// `mariadb`, and a hard-coded `mysql` made db top loop on "not found".
+	return mysqlPasswordExportPrefix(password) + conventions.MySQLClientBinDetect + " && " + fmt.Sprintf(
+		`"$DB_CLI" --no-defaults -u%s -BN -e %s`,
 		engine.ShellQuote(username),
 		engine.ShellQuote(query),
 	)
