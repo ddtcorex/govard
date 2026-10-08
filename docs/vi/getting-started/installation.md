@@ -70,14 +70,9 @@ CLI + Desktop (WebKitGTK 6.0 / Ubuntu 24.04+, Debian 13+):
 sudo apt install ./govard_<version>_linux_<arch>.deb ./govard-desktop_<version>_linux_<arch>.deb
 ```
 
-### Kênh package (Snap / CloudSmith)
+### Kênh package (CloudSmith)
 
 ```bash
-# Snap: tạm thời chưa có (Store chưa duyệt yêu cầu classic
-# confinement). Dùng CloudSmith hoặc script cài đặt thay thế.
-# Lệnh dự kiến khi được duyệt (classic confinement):
-#   sudo snap install govard --classic
-
 # Debian/Ubuntu qua CloudSmith (setup repo một lần, rồi cài)
 curl -1sLf https://dl.cloudsmith.io/public/ddtcorex/govard-deb/setup.deb.sh | sudo -E bash
 sudo apt install govard
