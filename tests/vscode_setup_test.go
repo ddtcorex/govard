@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"govard/internal/cmd"
@@ -235,5 +236,141 @@ func TestMergeLaunchConfigReplacesExistingEntryAndKeepsOthers(t *testing.T) {
 	}
 	if xdebug["port"] != float64(9003) {
 		t.Errorf("expected port to be updated to 9003, got %v", xdebug["port"])
+	}
+}
+
+func TestVSCodeIndexSettingsKeepVendorSearchable(t *testing.T) {
+	for _, framework := range []string{"magento2", "mageos", "laravel", "symfony", "wordpress"} {
+		t.Run(framework, func(t *testing.T) {
+			set := cmd.VSCodeIndexSettingsForTest(framework)
+
+			if v, ok := set["search.useIgnoreFiles"]; !ok || v != false {
+				t.Errorf("search.useIgnoreFiles = %v, want false so a gitignored vendor/ stays searchable", v)
+			}
+			if v, ok := set["search.useParentIgnoreFiles"]; !ok || v != false {
+				t.Errorf("search.useParentIgnoreFiles = %v, want false", v)
+			}
+			searchExclude, _ := set["search.exclude"].(map[string]interface{})
+			for key := range searchExclude {
+				if strings.Contains(key, "vendor") && !strings.Contains(key, "vendor/**/") {
+					t.Errorf("search.exclude must not hide vendor/, found %q", key)
+				}
+			}
+			watcher, _ := set["files.watcherExclude"].(map[string]interface{})
+			if _, ok := watcher["**/vendor/**"]; ok {
+				t.Error("files.watcherExclude must not drop vendor/: Intelephense needs it to see composer updates")
+			}
+			index, _ := set["intelephense.files.exclude"].([]string)
+			if !containsString(index, "**/vendor/**/vendor/**") || !containsString(index, "**/vendor/**/{Tests,tests}/**") {
+				t.Errorf("intelephense.files.exclude must keep Intelephense's own defaults, got %v", index)
+			}
+			for _, glob := range index {
+				if glob == "**/vendor/**" {
+					t.Error("intelephense.files.exclude must not exclude vendor/ itself")
+				}
+			}
+		})
+	}
+}
+
+func TestVSCodeIndexSettingsFrameworkNoise(t *testing.T) {
+	for _, tt := range []struct {
+		framework string
+		search    string
+		watcher   string
+		index     string
+	}{
+		{"magento2", "**/var/cache", "**/var/**", "var/**"},
+		{"mageos", "**/pub/static", "**/pub/static/**", "pub/static/**"},
+		{"laravel", "**/storage/framework", "**/storage/framework/**", "storage/framework/**"},
+		{"symfony", "**/var/cache", "**/var/cache/**", "var/cache/**"},
+		{"wordpress", "**/wp-content/uploads", "**/wp-content/uploads/**", "wp-content/uploads/**"},
+	} {
+		t.Run(tt.framework, func(t *testing.T) {
+			set := cmd.VSCodeIndexSettingsForTest(tt.framework)
+			if _, ok := set["search.exclude"].(map[string]interface{})[tt.search]; !ok {
+				t.Errorf("search.exclude missing %q: %v", tt.search, set["search.exclude"])
+			}
+			if _, ok := set["files.watcherExclude"].(map[string]interface{})[tt.watcher]; !ok {
+				t.Errorf("files.watcherExclude missing %q: %v", tt.watcher, set["files.watcherExclude"])
+			}
+			if !containsString(set["intelephense.files.exclude"].([]string), "**/"+tt.index) {
+				t.Errorf("intelephense.files.exclude missing **/%s: %v", tt.index, set["intelephense.files.exclude"])
+			}
+		})
+	}
+}
+
+// Magento's generated/code holds the Factory and Interceptor classes that
+// application code references constantly, so it must stay indexed even though
+// it is noise in search results.
+func TestVSCodeIndexSettingsMagentoKeepsGeneratedIndexed(t *testing.T) {
+	set := cmd.VSCodeIndexSettingsForTest("magento2")
+	if _, ok := set["search.exclude"].(map[string]interface{})["**/generated/code"]; !ok {
+		t.Error("generated/code should be excluded from search")
+	}
+	for _, glob := range set["intelephense.files.exclude"].([]string) {
+		if strings.Contains(glob, "generated") {
+			t.Errorf("intelephense.files.exclude must keep generated/ indexed, found %q", glob)
+		}
+	}
+}
+
+func TestVSCodeIndexSettingsUnknownFrameworkStillSearchesVendor(t *testing.T) {
+	set := cmd.VSCodeIndexSettingsForTest("no-such-framework")
+	if set["search.useIgnoreFiles"] != false {
+		t.Error("generic fallback must still disable search.useIgnoreFiles")
+	}
+}
+
+func TestMergeJSONObjectFileMergesMapKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	seed := `{"search.exclude": {"**/custom": true, "**/var/cache": false}, "editor.tabSize": 2}`
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set := map[string]interface{}{
+		"search.exclude": map[string]interface{}{"**/var/cache": true, "**/pub/static": true},
+	}
+	if err := cmd.MergeJSONObjectFileMergingForTest(path, set, nil, []string{"search.exclude"}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	var got map[string]interface{}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	exclude := got["search.exclude"].(map[string]interface{})
+	if exclude["**/custom"] != true {
+		t.Error("user's own search.exclude entry was dropped")
+	}
+	if exclude["**/var/cache"] != true || exclude["**/pub/static"] != true {
+		t.Errorf("managed entries not applied: %v", exclude)
+	}
+	if got["editor.tabSize"] != float64(2) {
+		t.Error("unrelated key was not preserved")
+	}
+}
+
+func TestMergeJSONObjectFileUnionsListKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	seed := `{"intelephense.files.exclude": ["**/mine/**", "**/.git/**"]}`
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set := map[string]interface{}{"intelephense.files.exclude": []string{"**/.git/**", "**/var/**"}}
+	for i := 0; i < 2; i++ { // second run proves idempotence
+		if err := cmd.MergeJSONObjectFileMergingForTest(path, set, nil, []string{"intelephense.files.exclude"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, _ := os.ReadFile(path)
+	var got map[string][]string
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"**/mine/**", "**/.git/**", "**/var/**"}
+	if !slicesEqual(got["intelephense.files.exclude"], want) {
+		t.Errorf("got %v, want %v", got["intelephense.files.exclude"], want)
 	}
 }

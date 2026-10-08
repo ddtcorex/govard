@@ -19,6 +19,11 @@ const (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
+		EditorExcludes: types.EditorExcludes{
+			Search: []string{"var/cache", "var/log", "public/build", "public/bundles"},
+			Watch:  []string{"var/cache", "var/log", "public/build", "public/bundles"},
+			Index:  []string{"var/cache", "var/log", "public/build", "public/bundles"},
+		},
 		Name:              "symfony",
 		DisplayName:       "Symfony",
 		MigrationTypes:    types.MigrationTypes{DDEV: []string{"symfony"}, Warden: []string{"symfony"}},

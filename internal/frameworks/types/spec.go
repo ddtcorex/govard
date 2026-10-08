@@ -49,6 +49,7 @@ type FrameworkPatch struct {
 	DefaultDBCredentials                    Override[DefaultDBCredentials]
 	DefaultChownDirectories                 Override[[]string]
 	PHPStanPaths                            Override[[]string]
+	EditorExcludes                          Override[EditorExcludes]
 	AuditLint                               Override[*AuditLintProfile]
 	AuditIntegrity                          Override[*AuditIntegrityProfile]
 	AuditProfiler                           Override[*AuditProfilerProfile]
@@ -138,6 +139,7 @@ func (s FrameworkSpec) Resolve(parent FrameworkDefinition) FrameworkDefinition {
 	s.Patch.NodeImageFlavor.apply(&resolved.NodeImageFlavor)
 	s.Patch.VarnishTemplateFramework.apply(&resolved.VarnishTemplateFramework)
 	s.Patch.PHPStanPaths.apply(&resolved.PHPStanPaths)
+	s.Patch.EditorExcludes.apply(&resolved.EditorExcludes)
 	s.Patch.AuditLint.apply(&resolved.AuditLint)
 	s.Patch.AuditIntegrity.apply(&resolved.AuditIntegrity)
 	s.Patch.AuditProfiler.apply(&resolved.AuditProfiler)
@@ -210,6 +212,11 @@ func cloneDefinition(def FrameworkDefinition) FrameworkDefinition {
 	cloned.MigrationTypes.DDEV = cloneStrings(def.MigrationTypes.DDEV)
 	cloned.MigrationTypes.Warden = cloneStrings(def.MigrationTypes.Warden)
 	cloned.PHPStanPaths = cloneStrings(def.PHPStanPaths)
+	cloned.EditorExcludes = EditorExcludes{
+		Search: cloneStrings(def.EditorExcludes.Search),
+		Watch:  cloneStrings(def.EditorExcludes.Watch),
+		Index:  cloneStrings(def.EditorExcludes.Index),
+	}
 	cloned.AuditLint = cloneAuditLintProfile(def.AuditLint)
 	cloned.AuditIntegrity = cloneAuditIntegrityProfile(def.AuditIntegrity)
 	cloned.AuditProfiler = cloneAuditProfilerProfile(def.AuditProfiler)

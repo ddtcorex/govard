@@ -19,6 +19,11 @@ const (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
+		EditorExcludes: types.EditorExcludes{
+			Search: []string{"storage/framework", "storage/logs", "bootstrap/cache", "public/build", "public/hot"},
+			Watch:  []string{"storage/framework", "storage/logs", "bootstrap/cache", "public/build"},
+			Index:  []string{"storage/framework", "storage/logs", "bootstrap/cache", "public/build"},
+		},
 		Name:              "laravel",
 		DisplayName:       "Laravel",
 		MigrationTypes:    types.MigrationTypes{DDEV: []string{"laravel"}, Warden: []string{"laravel"}},
