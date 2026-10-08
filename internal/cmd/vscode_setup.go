@@ -739,7 +739,9 @@ func mergeSettingValue(existing, incoming interface{}) interface{} {
 		if !ok {
 			return in
 		}
-		merged := make(map[string]interface{}, len(current)+len(in))
+		// Pre-size from one side only: len(current)+len(in) can overflow on a
+		// crafted settings file and hand make() a negative length.
+		merged := make(map[string]interface{}, len(in))
 		for k, v := range current {
 			merged[k] = v
 		}
@@ -753,7 +755,7 @@ func mergeSettingValue(existing, incoming interface{}) interface{} {
 			return in
 		}
 		seen := map[string]bool{}
-		merged := make([]interface{}, 0, len(current)+len(in))
+		merged := make([]interface{}, 0, len(in))
 		for _, v := range current {
 			if str, isStr := v.(string); isStr {
 				seen[str] = true
