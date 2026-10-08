@@ -358,3 +358,5 @@ govard config auto      # Re-inject app configuration (Magento 2)
 ---
 
 [Contributing](/developer/contributing) | [Changelog](/more/changelog)
+
+<rev> bare tag to prove the docs check goes red
