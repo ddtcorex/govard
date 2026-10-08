@@ -367,6 +367,10 @@ type FrameworkDefinition struct {
 	// Emdash's _emdash/admin with their framework definition instead of in
 	// command or desktop callers.
 	DefaultAdminPath string
+	// NoStockAdminRoute marks frameworks that ship no admin panel of their
+	// own (Laravel, Symfony). `govard open admin` still opens the generic
+	// /admin route for them but says that it is only a guess.
+	NoStockAdminRoute bool
 	// ResolveRemoteAdminPath optionally probes a remote deployment for its
 	// configured admin route. Core consumes the returned path without knowing
 	// which framework's configuration file supplied it.

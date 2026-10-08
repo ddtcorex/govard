@@ -302,3 +302,29 @@ func TestOpenAdminURLWordPress(t *testing.T) {
 		t.Fatalf("unexpected remote admin path %q err=%v", path, err)
 	}
 }
+
+func TestOpenAdminNoticeForFrameworksWithoutStockAdminRoute(t *testing.T) {
+	for _, framework := range []string{"laravel", "symfony"} {
+		notice := cmd.OpenAdminNoticeForTest(framework, "admin")
+		if !strings.Contains(notice, "no stock admin route") || !strings.Contains(notice, "/admin") {
+			t.Fatalf("%s: notice %q must say there is no stock admin route and name /admin", framework, notice)
+		}
+		if strings.Contains(notice, "\n") {
+			t.Fatalf("%s: notice must be one line: %q", framework, notice)
+		}
+	}
+	for _, framework := range []string{"wordpress", "magento2", "emdash", "unknown-framework"} {
+		if notice := cmd.OpenAdminNoticeForTest(framework, "admin"); notice != "" {
+			t.Fatalf("%s must not print the notice, got %q", framework, notice)
+		}
+	}
+}
+
+func TestOpenAdminStillOpensAdminForLaravelAndSymfony(t *testing.T) {
+	for _, framework := range []string{"laravel", "symfony"} {
+		url := cmd.OpenAdminURLForTest(engine.Config{Domain: "app.test", Framework: framework})
+		if url != "https://app.test/admin" {
+			t.Fatalf("%s: unexpected admin url %s", framework, url)
+		}
+	}
+}

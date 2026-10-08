@@ -19,11 +19,12 @@ const (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:           "symfony",
-		DisplayName:    "Symfony",
-		MigrationTypes: types.MigrationTypes{DDEV: []string{"symfony"}, Warden: []string{"symfony"}},
-		Config:         config,
-		Manifest:       manifest,
+		Name:              "symfony",
+		DisplayName:       "Symfony",
+		MigrationTypes:    types.MigrationTypes{DDEV: []string{"symfony"}, Warden: []string{"symfony"}},
+		Config:            config,
+		Manifest:          manifest,
+		NoStockAdminRoute: true,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
 			Username: DefaultDBUser,

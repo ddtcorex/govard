@@ -19,11 +19,12 @@ const (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:           "laravel",
-		DisplayName:    "Laravel",
-		MigrationTypes: types.MigrationTypes{DDEV: []string{"laravel"}, Warden: []string{"laravel"}},
-		Config:         config,
-		Manifest:       manifest,
+		Name:              "laravel",
+		DisplayName:       "Laravel",
+		MigrationTypes:    types.MigrationTypes{DDEV: []string{"laravel"}, Warden: []string{"laravel"}},
+		Config:            config,
+		Manifest:          manifest,
+		NoStockAdminRoute: true,
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
 			Username: DefaultDBUser,

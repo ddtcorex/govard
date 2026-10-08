@@ -1,6 +1,7 @@
 package frameworks
 
 import (
+	"fmt"
 	"strings"
 
 	"govard/internal/conventions"
@@ -42,4 +43,19 @@ func DefaultAdminPath(framework string) string {
 		return configured
 	}
 	return path
+}
+
+// AdminPathNotice returns a one-line notice for frameworks that ship no admin
+// panel of their own, saying which path was opened anyway. It is empty for every
+// framework with a real or declared admin route.
+func AdminPathNotice(framework string, openedPath string) string {
+	definition, ok := Get(framework)
+	if !ok || !definition.NoStockAdminRoute {
+		return ""
+	}
+	name := definition.DisplayName
+	if name == "" {
+		name = framework
+	}
+	return fmt.Sprintf("%s has no stock admin route; opened /%s (the configured or default path).", name, strings.Trim(openedPath, "/"))
 }
