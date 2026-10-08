@@ -111,3 +111,34 @@ func TestComposerAuthIsRemovedAsSoonAsTheRunReturns(t *testing.T) {
 		t.Fatalf("the credentials must be gone once the run returns, got %q", after)
 	}
 }
+
+// `govard deploy check` has to see the credentials the run will use. The run
+// reads them through the sandbox helper, and a preflight that skipped it warned
+// "no credentials are available" about a deploy that then found them.
+func TestDeployCheckPreflightSeesTheSandboxComposerAuth(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(home+"/.composer", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(home+"/.composer/auth.json", []byte(sampleAuthJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("COMPOSER_AUTH", "")
+	_ = os.Unsetenv("COMPOSER_AUTH")
+
+	var during string
+	command := cmd.DeployCheckCommand()
+	if err := cmd.RunDeployCheckPreflightForTest(command, true, true, func() error {
+		during = os.Getenv("COMPOSER_AUTH")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(during, "repo.example.com") {
+		t.Fatalf("the preflight must see the credentials the run uses, got %q", during)
+	}
+	if after, set := os.LookupEnv("COMPOSER_AUTH"); set {
+		t.Fatalf("the credentials must be gone once the preflight returns, got %q", after)
+	}
+}

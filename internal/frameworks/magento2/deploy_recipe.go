@@ -305,6 +305,8 @@ func DeployRecipe() deploy.Recipe {
 	backup.Title = "dump the database into shared/backups"
 	backup.Core = deploy.CoreDBBackup(magentoDumpCommand)
 	recipe.ReplaceTask(backup)
+	recipe.DBBackupCommand = magentoDumpCommand
+	recipe.DBBackupProbe = magentoDumpProbe
 
 	recipe.Restore = magentoRestoreCommand
 
@@ -404,34 +406,26 @@ func DeployRecipe() deploy.Recipe {
 const magentoServedAppGuard = "if [ -f {{current_path}}/bin/magento ] && [ -f {{current_path}}/vendor/autoload.php ]; then cd {{current_path}}"
 
 // magentoDumpCommand writes a plain SQL dump to {{backup_path}}. It reads the
-// connection settings from app/etc/env.php through bin/magento, so credentials
-// are never duplicated into the project configuration.
+// connection settings from app/etc/env.php and hands them to the dump client in
+// an option file, so credentials are never duplicated into the project
+// configuration and never appear in a process listing.
 //
-// The file the tool writes is `<timestamp>_db.sql` — `.sql.gz` only when the
-// project configures backup compression — and this command used to look for
-// `*.gz` alone: on a real project the dump succeeded, the glob matched nothing,
-// `test -n` failed, and `>/dev/null` had thrown away the tool's own output, so
-// the deploy said nothing but "exit 1". It now takes whichever of the two the
-// tool wrote and lets its output through — the engine bounds what it keeps, so a
-// failure carries its own explanation.
-//
-// It *moves* that file rather than copying it. `var/backups` is a shared
-// directory, and nothing ever pruned it: every `--db-backup` deploy and every
-// `rollback --with-db` left a full dump — customer data, admin hashes — behind
-// forever, next to the copy govard kept. The file this run produced is
-// identified by a marker taken before the command, never by "newest mtime": an
-// operator who runs a manual `setup:backup` moments earlier would otherwise lose
-// their own dump to the engine's retention.
-//
-// `setup:backup` toggles maintenance mode around the dump, which is safe inside
-// the deploy's window: Magento's own MaintenanceModeEnabler records that the flag
-// was already on and skips disabling it (verified in the vendored
-// framework/App/Console/MaintenanceModeEnabler.php of a real release).
-const magentoDumpCommand = "cd {{release_path}} && marker=\"$(mktemp)\" || exit 1; rc=0; " +
-	"{{php_bin}} bin/magento setup:backup --db --no-interaction || rc=$?; " +
-	"if [ \"$rc\" -eq 0 ]; then latest=\"$(find var/backups -maxdepth 1 -type f -newer \"$marker\" \\( -name '*_db.sql' -o -name '*_db.sql.gz' \\) -printf '%T@ %p\\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2-)\"; fi; " +
-	"rm -f \"$marker\"; " +
-	"[ \"$rc\" -eq 0 ] && test -n \"$latest\" && mv \"$latest\" {{backup_path}}"
+// It does not use `bin/magento setup:backup`: stock Magento ships that command
+// disabled ("Backup functionality is disabled"), so a deploy with --db-backup
+// failed inside the maintenance window on every unconfigured project. A plain
+// mariadb-dump or mysqldump needs nothing enabled, and magentoDumpProbe asks for
+// one in the preflight, before anything on the target is changed.
+var magentoDumpCommand = deploy.OptionFileDumpCommand(magentoDumpFragment)
+
+// magentoDumpFragment reads the default connection out of env.php.
+const magentoDumpFragment = `$c=(require "app/etc/env.php")["db"]["connection"]["default"]; ` +
+	`$u=$c["username"]; $w=$c["password"]??""; $h=$c["host"]??"localhost"; $s=$c["unix_socket"]??""; $n=$c["dbname"];`
+
+// magentoDumpProbe is what the preflight asks of the target.
+var magentoDumpProbe = deploy.DBBackupProbe{
+	Command: deploy.DumpToolProbe,
+	Needs:   "mariadb-dump or mysqldump",
+}
 
 // magentoRestoreCommand loads a dump back over the live database. It is only
 // reached through `govard deploy rollback --with-db`, which is why the

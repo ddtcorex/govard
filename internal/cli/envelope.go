@@ -42,7 +42,6 @@ func NewErrorEnvelope(command string, err error) ErrorEnvelope {
 	entry := EnvelopeError{Code: CodeErrorName, Command: command, Message: err.Error()}
 	var capability capabilityError
 	var usage *UsageError
-	var coded interface{ ExitCode() int }
 	switch {
 	case errors.As(err, &capability):
 		entry.Code = CodeCapabilityMissingName
@@ -50,7 +49,7 @@ func NewErrorEnvelope(command string, err error) ErrorEnvelope {
 		entry.Hint = capability.MissingCapabilityHint()
 	case errors.As(err, &usage):
 		entry.Code = CodeUsageName
-	case errors.As(err, &coded) && coded.ExitCode() == CodeConfig:
+	case govardCoded(err) != nil && govardCoded(err).ExitCode() == CodeConfig:
 		entry.Code = CodeConfigName
 	}
 	return ErrorEnvelope{SchemaVersion: EnvelopeSchemaVersion, OK: false, Error: entry}

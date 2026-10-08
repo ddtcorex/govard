@@ -2,7 +2,9 @@
 // status can never diverge.
 package cli
 
-import "errors"
+import (
+	"os/exec"
+)
 
 const (
 	CodeOK         = 0
@@ -39,9 +41,36 @@ func Code(err error) int {
 	if err == nil {
 		return CodeOK
 	}
-	var coded interface{ ExitCode() int }
-	if errors.As(err, &coded) {
+	if coded := govardCoded(err); coded != nil {
 		return coded.ExitCode()
 	}
 	return CodeError
+}
+
+// govardCoded finds the first error in the chain that carries a govard exit code.
+//
+// A *exec.ExitError also has an ExitCode method, but it reports what a child
+// process chose to exit with (255 from ssh, 22 from curl, 127 for a missing
+// binary), which is not part of the documented 0 to 4 set. It is skipped, so a
+// failed remote step exits 1 and keeps the child's status in the message.
+func govardCoded(err error) interface{ ExitCode() int } {
+	if err == nil {
+		return nil
+	}
+	if _, isChild := err.(*exec.ExitError); !isChild {
+		if coded, ok := err.(interface{ ExitCode() int }); ok {
+			return coded
+		}
+	}
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() error }:
+		return govardCoded(wrapped.Unwrap())
+	case interface{ Unwrap() []error }:
+		for _, inner := range wrapped.Unwrap() {
+			if coded := govardCoded(inner); coded != nil {
+				return coded
+			}
+		}
+	}
+	return nil
 }

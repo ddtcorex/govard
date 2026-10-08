@@ -124,6 +124,9 @@ func CoreCheck(ctx context.Context, sc *StepContext) error {
 	if err := checkPHPVersion(ctx, sc); err != nil {
 		return err
 	}
+	if err := checkDBBackup(ctx, sc); err != nil {
+		return err
+	}
 	// An artifact build never runs build:vendors on the target, and
 	// checkArtifactParity below already refuses a series mismatch, so the note
 	// would only repeat it with advice that does not apply.

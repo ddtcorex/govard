@@ -240,6 +240,14 @@ type Recipe struct {
 	// database dump back. It is empty for a framework with no dump support, and
 	// `rollback --with-db` refuses rather than guessing.
 	Restore string
+	// DBBackupCommand is the dump command template behind the recipe's
+	// `db:backup` task, kept on the recipe as well so it can be inspected.
+	DBBackupCommand string
+	// DBBackupProbe is the cheap check that the target can take a dump at all.
+	// It runs in the preflight when `--db-backup` is on, so a target without the
+	// tool is refused before anything is changed instead of failing inside the
+	// maintenance window.
+	DBBackupProbe DBBackupProbe
 	// VerifyRejectPaths are path prefixes that never mean "the site is serving
 	// the release" — a framework's installer landing page, for instance. The
 	// engine checks them on the final URL after any allowed redirect.

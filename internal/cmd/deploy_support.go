@@ -342,6 +342,10 @@ func deployRecipe(config engine.Config, options deploy.Options) (deploy.Recipe, 
 	if err := deploy.ValidateDBBackup(recipe, options); err != nil {
 		return deploy.Recipe{}, deploy.Options{}, err
 	}
+	// The probe rides the options so the preflight, run by `deploy check` and by
+	// the run's own deploy:check step alike, can refuse a target that cannot take
+	// the dump before anything on it is changed.
+	options.DBBackupProbe = recipe.DBBackupProbe
 	return recipe, deploy.WithRecipeDefaults(recipe, options), nil
 }
 

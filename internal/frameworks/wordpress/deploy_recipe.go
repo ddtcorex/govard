@@ -79,9 +79,11 @@ func DeployRecipe() deploy.Recipe {
 	// wp-cli reads the connection from wp-config.php, so credentials are never
 	// duplicated into the project configuration.
 	backup := recipe.Task(deploy.TaskDBBackup)
-	backup.Title = "dump the database with wp-cli"
-	backup.Core = deploy.CoreDBBackup("cd {{release_path}} && wp db export {{backup_path}}")
+	backup.Title = "dump the database with wp-cli, or with a dump client when wp-cli is absent"
+	backup.Core = deploy.CoreDBBackup(wordpressDumpCommand)
 	recipe.ReplaceTask(backup)
+	recipe.DBBackupCommand = wordpressDumpCommand
+	recipe.DBBackupProbe = wordpressDumpProbe
 
 	recipe.Restore = "cd {{release_path}} && wp db import {{backup_path}}"
 
@@ -115,6 +117,20 @@ func DeployRecipe() deploy.Recipe {
 		Tools:      []string{"wp-cli"},
 	}
 	return recipe
+}
+
+// wordpressDumpCommand dumps with wp-cli when the target has it. Without wp-cli it
+// boots WordPress the way wp-cli does, reads the connection constants and hands
+// them to a plain dump client through an option file, so the password never
+// reaches a command line. The preflight probe (wordpressDumpProbe) refuses a
+// target with neither, before anything is changed.
+var wordpressDumpCommand = `if command -v wp >/dev/null 2>&1; then cd {{release_path}} && wp db export {{backup_path}}; else ` +
+	deploy.OptionFileDumpCommand(`define("WP_USE_THEMES", false); require "wp-load.php"; `+
+		`$u=DB_USER; $w=DB_PASSWORD; $h=DB_HOST; $s=""; $n=DB_NAME;`) + `; fi`
+
+var wordpressDumpProbe = deploy.DBBackupProbe{
+	Command: `command -v wp >/dev/null 2>&1 || ` + deploy.DumpToolProbe,
+	Needs:   "wp-cli, mariadb-dump or mysqldump",
 }
 
 // wordpressWpGuard opens the wp-cli half of a hybrid command.
