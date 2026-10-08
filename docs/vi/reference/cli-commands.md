@@ -966,7 +966,13 @@ cổng loopback còn trống, sinh khoá riêng dưới `.govard/sandbox/` (đã
 và mount read-only một mirror repository local. Mirror được refresh trước mỗi lần
 deploy nên commit bạn chưa từng push vẫn triển khai được, và không phần nào trong
 pipeline biết nó đang nói chuyện với container — triển khai vào sandbox chính là deploy
-production trỏ vào container. Khi container còn chạy, `sandbox` tự resolve thành
+production trỏ vào container. `sandbox ssh -- <command>` chạy lệnh trong sandbox mà không ép tty, nên dữ liệu pipe vào
+hoạt động (`printf x | govard sandbox ssh -- 'cat > f'`), và govard thoát với đúng exit
+status của lệnh đó vì tiến trình được thay bằng `ssh`. Đây là chủ ý riêng cho lệnh này: các
+bước deploy vẫn không bao giờ lộ exit code của remote. Các từ sau `--` được nối bằng dấu
+cách thành một dòng lệnh remote; lệnh không có `--` là lỗi cách dùng (exit `2`).
+
+Khi container còn chạy, `sandbox` tự resolve thành
 remote cho mọi lệnh nhận remote, mà không gì identity nào được ghi vào file cấu
 hình.
 
@@ -1074,7 +1080,8 @@ govard sandbox up --profile full --db mariadb:10.6   # choose the database serie
 govard sandbox up --docroot real       # docroot thật: publish in-place
 govard sandbox status
 govard sandbox reset --layout deployer # seed target mà công cụ kia đang giữ
-govard sandbox ssh
+govard sandbox ssh                     # shell tương tác
+govard sandbox ssh -- php -v           # chạy một lệnh
 govard sandbox down [--purge] [--volumes]
 ```
 
@@ -1152,6 +1159,15 @@ hơn). `create -e` ở remote chạy dưới `umask 077`, nên các thư mục n
 `<path>/.govard/snapshots`, là `0700` và file trong đó là `0600`, và nó kết thúc bằng việc
 ghi `metadata.yml` của snapshot (tên, `created_at`, framework).
 
+Vị trí lưu snapshot remote: với remote có deploy layout (`releases/`, `shared/` và link
+`current` dưới deploy path), `create -e` và `push` lưu vào
+`<deploy path>/shared/.govard/snapshots`, nằm ngoài release đang được phục vụ và không bị
+mất khi chuyển hay dọn release. Deploy path là `remotes.<name>.deploy.deploy_path` nếu có,
+nếu không thì là `path` của remote (thư mục cha khi path là link `current`). Remote không có
+layout đó giữ vị trí cũ `<remote path>/.govard/snapshots` và `create` sẽ cảnh báo. `list`,
+`restore`, `delete` và `pull` tìm ở cả hai vị trí (deploy layout trước), nên snapshot tạo bởi
+bản cũ vẫn hiện; `list -e` thêm cột `LOCATION` (`shared` hoặc `legacy`).
+
 ### `govard open`
 
 Mở nhanh các đường dẫn dịch vụ/ứng dụng trên trình duyệt.
@@ -1165,6 +1181,10 @@ govard open db --pma
 govard open db --client
 govard open db -e staging
 ```
+
+`open admin` mở `/admin` cho framework không có route admin mặc định. Với Laravel và Symfony
+(không có trang admin riêng) lệnh in một dòng thông báo nói rõ điều đó và path đã mở;
+WordPress mở `/wp-admin`. Không có khóa cấu hình admin path.
 
 `open db` in connection URL với mật khẩu được che bằng `***` (không có phần mật khẩu khi
 chưa đặt); database client nhận URL đầy đủ.

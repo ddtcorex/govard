@@ -1110,9 +1110,19 @@ govard sandbox up --profile full --db mariadb:10.6   # choose the database serie
 govard sandbox up --docroot real       # a real docroot: in-place publishing
 govard sandbox status
 govard sandbox reset --layout deployer # seed a target the other tool owns
-govard sandbox ssh
+govard sandbox ssh                     # interactive shell
+govard sandbox ssh -- php -v           # run one command
 govard sandbox down [--purge] [--volumes]
 ```
+
+`sandbox ssh -- <command>` runs the command in the sandbox without a forced tty, so
+piped input works (`printf x | govard sandbox ssh -- 'cat > f'`), and govard exits with
+the command's own exit status, because the process is replaced by `ssh`. This is
+deliberate for this command only: deploy steps still never leak a remote exit code
+(they exit `1` and keep the status in the message). The words after `--` are joined
+with spaces into one remote command line, so quote a whole line as one argument; a
+command without `--` is a usage error (exit `2`). A bare `sandbox ssh` opens the
+interactive shell.
 
 While the container runs, `sandbox` resolves automatically as a remote for
 every command that takes one (`deploy`, `db`, `remote exec`, `sync`):
@@ -1193,6 +1203,17 @@ the directories it creates, such as `<path>/.govard/snapshots`, are `0700` and t
 files in them `0600`, and it finishes by writing the snapshot's `metadata.yml` (name,
 `created_at`, framework).
 
+Where a remote snapshot lives: on a remote with a deploy layout (`releases/`,
+`shared/` and a `current` link under the deploy path), `create -e` and `push` store it
+in `<deploy path>/shared/.govard/snapshots`, outside the served release and kept across
+release switches and pruning. The deploy path is `remotes.<name>.deploy.deploy_path`
+when set, otherwise the remote `path` (its parent when the path is the `current` link).
+A remote without that layout keeps the older location, `<remote path>/.govard/snapshots`,
+and `create` warns that it did. `list`, `restore`, `delete` and `pull` look in both
+locations (the deploy-layout one first), so snapshots made by older versions stay
+visible; `list -e` adds a `LOCATION` column (`shared` or `legacy`) and `pull` prints
+where it found the snapshot. `delete` removes a name from every location that holds it.
+
 ### `govard open`
 
 Open common browser targets.
@@ -1206,6 +1227,10 @@ govard open db --pma
 govard open db --client
 govard open db -e staging
 ```
+
+`open admin` opens `/admin` for frameworks without a stock admin route. For Laravel
+and Symfony, which ship no admin panel, it prints one notice line saying so and which
+path it opened; WordPress opens `/wp-admin`. There is no admin-path configuration key.
 
 `open db` prints the connection URL with the password masked as `***` (no password
 section when none is set); the database client is handed the full URL.

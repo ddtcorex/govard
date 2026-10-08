@@ -45,6 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without it. (#583)
 - `capabilities` reports one row per command path; service shortcuts registered
   under two parents are no longer listed twice. (#543)
+- Remote snapshots: on a remote with a deploy layout `snapshot create -e` and
+  `push` store under `<deploy path>/shared/.govard/snapshots` instead of inside
+  the served release; other remotes keep the old location with a warning, and
+  `list`, `restore`, `delete` and `pull` read both locations (`list` shows a
+  `LOCATION` column). `db dump -e <remote> --file` says the file was `written on
+  <remote>: <path>`. (#557)
+- `open admin` on Laravel and Symfony prints a one-line notice that the framework
+  has no stock admin route and which path was opened. (#559)
+- `sandbox ssh -- <command>` runs the command without a forced tty (piped stdin
+  works) and exits with the command's own status; a command without `--` is a
+  usage error. Deploy steps still never leak remote exit codes. (#572)
+
 - Sandbox: MariaDB 11 clients, seed retry after a partial failure, WordPress
   `siteurl`/`home` rewrite, php-fpm sees a new release after the symlink swap,
   `down --purge` removes every profile image. (#553, #554, #566, #575, #576)

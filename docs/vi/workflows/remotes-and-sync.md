@@ -459,7 +459,7 @@ govard snapshot restore latest -e staging
 govard snapshot delete latest -e staging
 ```
 
-Các snapshot remote chạy trực tiếp lệnh `mysqldump` và `tar` trên remote server mà không cần truyền tải dữ liệu qua mạng. Dữ liệu snapshot được lưu tại thư mục `~/.govard/snapshots/` trong thư mục dự án remote.
+Các snapshot remote chạy trực tiếp lệnh `mysqldump` và `tar` trên remote server mà không cần truyền tải dữ liệu qua mạng. Với remote có deploy layout (`releases/`, `shared/` và link `current`), snapshot được lưu tại `shared/.govard/snapshots/` dưới deploy path, ngoài release đang phục vụ. Remote không có layout đó giữ vị trí cũ `.govard/snapshots/` dưới path của remote và `snapshot create` sẽ cảnh báo. `list`, `restore`, `delete` và `pull` đọc cả hai vị trí.
 
 ### Truyền tải hai chiều (Bidirectional Transfer)
 

@@ -1355,7 +1355,7 @@ govard sandbox up --profile basic      # sshd, rsync, git only
 govard sandbox up --profile full --php 8.4   # database, cache, web server, PHP 8.4
 govard sandbox status
 govard sandbox reset --layout deployer # seed a target the other tool owns
-govard sandbox ssh
+govard sandbox ssh                     # or: govard sandbox ssh -- <command>
 govard sandbox down [--purge] [--volumes]
 ```
 
