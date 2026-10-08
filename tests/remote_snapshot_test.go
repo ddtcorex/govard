@@ -57,8 +57,8 @@ func TestBuildRemoteSnapshotDeleteCommand(t *testing.T) {
 	if !strings.Contains(cmd, "rm -rf") {
 		t.Fatalf("expected rm -rf in delete command, got: %s", cmd)
 	}
-	if !strings.Contains(cmd, ".govard/snapshots/old-snap") {
-		t.Fatalf("expected snapshot name in delete command, got: %s", cmd)
+	if !strings.Contains(cmd, ".govard/snapshots") || !strings.Contains(cmd, "'old-snap'") {
+		t.Fatalf("expected snapshot roots and name in delete command, got: %s", cmd)
 	}
 }
 
@@ -73,8 +73,8 @@ func TestBuildRemoteSnapshotRestoreCommand(t *testing.T) {
 	if cmd == "" {
 		t.Fatal("expected non-empty restore command")
 	}
-	if !strings.Contains(cmd, ".govard/snapshots/my-snap") {
-		t.Fatalf("expected snapshot path in restore command, got: %s", cmd)
+	if !strings.Contains(cmd, ".govard/snapshots") || !strings.Contains(cmd, "'my-snap'") {
+		t.Fatalf("expected snapshot roots and name in restore command, got: %s", cmd)
 	}
 }
 

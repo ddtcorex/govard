@@ -71,7 +71,7 @@ func TestDumpFileSuccessIsRenamedIntoPlaceAndValid(t *testing.T) {
 
 func TestRemoteDumpSuccessMessageSaysWhereTheFileIs(t *testing.T) {
 	msg := cmd.RemoteDumpSuccessMessageForTest("sandbox", "/tmp/r.sql.gz")
-	for _, want := range []string{"sandbox", "/tmp/r.sql.gz", "not on this machine", "--local"} {
+	for _, want := range []string{"written on sandbox: /tmp/r.sql.gz", "not on this machine", "--local"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("message %q must mention %q", msg, want)
 		}
