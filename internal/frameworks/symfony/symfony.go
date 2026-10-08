@@ -37,6 +37,7 @@ func Definition() types.FrameworkDefinition {
 			CodingStandard:        "Symfony",
 			PHPStanLevel:          5,
 			PHPStanExtension:      "phpstan/phpstan-symfony",
+			RuleIDPrefix:          "SYMFONY-LINT",
 		},
 		AuditTargetResolver: ResolveAuditTarget,
 		Detect: engine.DetectionSpec{

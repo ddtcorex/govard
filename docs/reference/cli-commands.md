@@ -213,7 +213,8 @@ Because `pub/media` is skipped by the analyzers but is exactly where uploaded
 webshells land, every analyzed PHP version also runs a **media guard** phase: a
 name-only scan of `pub/media` for `.php`, `.phtml`, and `.pht` files. Each hit
 is reported as an `M2-LINT-MEDIA` finding with a path relative to the target
-root, and the phase fails the run. The scan costs milliseconds even on
+root, and the phase fails the run. The id prefix comes from the framework
+(`M2-LINT-*` for Magento, `LARAVEL-LINT-*`, `SYMFONY-LINT-*`, `WP-LINT-*`). The scan costs milliseconds even on
 multi-gigabyte media trees; it inspects file names only and never reads file
 contents into the report.
 

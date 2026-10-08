@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Audit lint findings carry a framework-owned id prefix (`LARAVEL-LINT-*`,
+  `SYMFONY-LINT-*`, `WP-LINT-*`) instead of the Magento `M2-LINT-*` ids; Magento ids
+  are unchanged, and nothing matches on ids, so no baseline or stored session breaks. (#587)
 - Bootstrap: Shopware `.env` uses the resolvable mail host from the shared
   conventions, and Symfony `Configure` replaces an existing `DATABASE_URL` line
   instead of concatenating the new URL in front of the old value. (#585)

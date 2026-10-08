@@ -212,7 +212,8 @@ Vì `pub/media` bị analyzer bỏ qua nhưng lại chính là nơi webshell đ�
 mỗi phiên bản PHP được phân tích còn chạy thêm một phase **media guard**: quét
 theo tên trong `pub/media` để tìm file `.php`, `.phtml` và `.pht`. Mỗi file
 tìm thấy được báo thành finding `M2-LINT-MEDIA` với đường dẫn relative từ target
-root, và phase đó làm run thất bại. Phép quét này chỉ mất mili giây dù media lớn
+root, và phase đó làm run thất bại. Tiền tố id do framework quyết định
+(`M2-LINT-*` cho Magento, `LARAVEL-LINT-*`, `SYMFONY-LINT-*`, `WP-LINT-*`). Phép quét này chỉ mất mili giây dù media lớn
 hàng GB; nó chỉ đọc tên file, không bao giờ đọc nội dung file vào report.
 
 #### Provider

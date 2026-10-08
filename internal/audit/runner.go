@@ -408,12 +408,16 @@ func (runner *Runner) lintJob(request RunRequest, manifest SessionManifest, runI
 		// guard" hold even for external providers or when the container phase
 		// is skipped. It also provides Go-native enforcement for tests.
 		if findings := engine.ScanMediaGuard(request.ProjectRoot); len(findings) > 0 {
+			mediaID := toolchainRuleIDPrefix + "-MEDIA"
+			if prefix := strings.TrimSpace(request.LintProfile.RuleIDPrefix); prefix != "" {
+				mediaID = prefix + "-MEDIA"
+			}
 			mediaEvidence := make([]map[string]any, 0, len(findings))
 			for _, f := range findings {
 				mediaEvidence = append(mediaEvidence, map[string]any{
 					"path":    f.Path,
-					"tool":    "M2-LINT-MEDIA",
-					"rule":    "M2-LINT-MEDIA",
+					"tool":    mediaID,
+					"rule":    mediaID,
 					"message": "PHP file in pub/media",
 				})
 			}

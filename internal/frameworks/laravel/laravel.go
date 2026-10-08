@@ -39,6 +39,7 @@ func Definition() types.FrameworkDefinition {
 			Linters:               []string{"phpcs", "phpstan"},
 			CodingStandard:        "PSR12",
 			PHPStanLevel:          5,
+			RuleIDPrefix:          "LARAVEL-LINT",
 		},
 		AuditTargetResolver:    ResolveAuditTarget,
 		ComposerCodingStandard: types.ComposerCodingStandard{Package: "laravel/pint", Standard: "Laravel"},

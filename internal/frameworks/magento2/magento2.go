@@ -40,6 +40,7 @@ func Definition() types.FrameworkDefinition {
 			CodingStandard:        "Magento2",
 			PHPStanLevel:          5,
 			PHPStanExtension:      "bitexpert/phpstan-magento",
+			RuleIDPrefix:          "M2-LINT",
 		},
 		AuditIntegrity: &types.AuditIntegrityProfile{
 			// Container-free analyzers: the composer manifest/lock and Magento

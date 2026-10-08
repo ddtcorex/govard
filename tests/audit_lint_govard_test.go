@@ -1191,3 +1191,37 @@ func TestPartitionedLimitationsRecomputeOutcome(t *testing.T) {
 		t.Fatalf("outcome = %q; want failed while actionable findings remain", report.PHPResults[0].Outcome)
 	}
 }
+
+func TestLintRuleIDPrefixComesFromTheFrameworkProfile(t *testing.T) {
+	build := func() audit.LintReport {
+		return audit.LintReport{PHPResults: []audit.LintPHPResult{{Findings: []audit.LintFinding{
+			{Tool: "M2-LINT-PHPCS", Rule: "Generic.Files.LineLength.TooLong", Message: "long"},
+			{Tool: "M2-LINT-PHPSTAN", Rule: "method.notFound", Message: "x"},
+			{Tool: "M2-LINT-MEDIA", Rule: "M2-LINT-MEDIA", Message: "m"},
+			{Tool: "other-provider", Rule: "R1", Message: "untouched"},
+		}}}}
+	}
+	report := build()
+	audit.ApplyLintRuleIDPrefixForTest(&report, "LARAVEL-LINT")
+	got := report.PHPResults[0].Findings
+	if got[0].Tool != "LARAVEL-LINT-PHPCS" || got[0].Rule != "Generic.Files.LineLength.TooLong" {
+		t.Fatalf("phpcs finding = %+v", got[0])
+	}
+	if got[1].Tool != "LARAVEL-LINT-PHPSTAN" {
+		t.Fatalf("phpstan finding = %+v", got[1])
+	}
+	if got[2].Tool != "LARAVEL-LINT-MEDIA" || got[2].Rule != "LARAVEL-LINT-MEDIA" {
+		t.Fatalf("media finding = %+v", got[2])
+	}
+	if got[3].Tool != "other-provider" || got[3].Rule != "R1" {
+		t.Fatalf("foreign finding must stay untouched: %+v", got[3])
+	}
+
+	for _, prefix := range []string{"", "M2-LINT"} {
+		unchanged := build()
+		audit.ApplyLintRuleIDPrefixForTest(&unchanged, prefix)
+		if unchanged.PHPResults[0].Findings[0].Tool != "M2-LINT-PHPCS" {
+			t.Fatalf("prefix %q must keep Magento ids, got %+v", prefix, unchanged.PHPResults[0].Findings[0])
+		}
+	}
+}
