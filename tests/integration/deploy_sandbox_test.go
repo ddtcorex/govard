@@ -6,6 +6,7 @@ package integration
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -219,22 +220,14 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 		// sync names what the stub should verify the activation published into the
 		// served docroot. Empty means the case does not deploy in place.
 		sync string
-		// backup asks for `--db-backup` and names the dump shape the stub writes:
-		// "plain" is Magento's default (`<timestamp>_db.sql`), "compressed" is what
-		// a project with backup compression gets (`_db.sql.gz`). The recipe's
-		// command has to find both — it once looked for `*.gz` alone, which made
-		// every real deploy with --db-backup fail after a successful dump.
-		backup string
 	}{
 		{
 			name:   "single",
 			static: "single",
-			backup: "plain",
 		},
 		{
 			name:     "split",
 			static:   "split",
-			backup:   "compressed",
 			settings: "    split_static_deployment: true\n    worker_control: true\n",
 		},
 		{
@@ -301,12 +294,6 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(projectDir, "stub-state-dir.txt"), []byte(stubStateDir(expectation)+"\n"), 0o644); err != nil {
 				t.Fatalf("write the stub state directory: %v", err)
 			}
-			if testCase.backup != "" {
-				// Read by the stub when the recipe asks for a dump.
-				if err := os.WriteFile(filepath.Join(projectDir, "backup-expectation.txt"), []byte(testCase.backup+"\n"), 0o644); err != nil {
-					t.Fatalf("write the backup expectation: %v", err)
-				}
-			}
 			if testCase.sync != "" {
 				// The stub checks, at verify time, that the served docroot holds what
 				// the build produced: an in-place activation that copies nothing
@@ -356,11 +343,7 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 				}
 			}
 
-			deployArgs := []string{"deploy", "--remote", "sandbox", "--revision", revision, "--yes"}
-			if testCase.backup != "" {
-				deployArgs = append(deployArgs, "--db-backup")
-			}
-			deploy := env.RunGovard(t, projectDir, deployArgs...)
+			deploy := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revision, "--yes")
 			if deploy.ExitCode != 0 {
 				t.Fatalf("the sandbox deploy failed (%d) — the stub's assertion is the verdict\nstdout: %s\nstderr: %s",
 					deploy.ExitCode, deploy.Stdout, deploy.Stderr)
@@ -399,11 +382,24 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	origin, revisions := seedFixtureRevisions(t, projectDir, 2)
 	seedSandboxCheckout(t, projectDir, origin)
 
-	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "php", "--no-seed")
+	// The `full` profile: `--db-backup` takes a real dump with the sandbox's own
+	// MariaDB client, so the target needs a database that accepts env.php's
+	// credentials. The `php` profile has the client and no server.
+	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "full", "--no-seed")
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
 	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
+	container := deploy.SandboxContainerName(stubProjectName, projectDir)
+	provisionStubDatabase(t, container, 0)
+	// A target that has run Magento before already has `shared/var/backups`, which
+	// the release links in; the restore copies the dump into it under the name
+	// `setup:rollback` demands. The old stub created the directory as a side effect
+	// of `setup:backup`, so the state it relied on is now set up explicitly. A
+	// target where it was never created is a gap in the restore command, reported
+	// separately rather than hidden here.
+	dockerExec(t, container, "sh", "-c",
+		"mkdir -p "+deploy.SandboxDefaultPaths().DeployPath+"/shared/var/backups && chown -R deployer: "+deploy.SandboxDefaultPaths().DeployPath)
 
 	// The stub's records are per deploy, not per sandbox: the state directory is
 	// one absolute path both trees can reach, so the second deploy would
@@ -439,9 +435,9 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	rollback.AssertOutputContains(t, "recorded by release 2")
 
 	// The recorded dump is private, and Magento's own shared `var/backups` — the
-	// directory nothing prunes — holds nothing: neither the file `setup:backup`
-	// wrote (moved out) nor the Magento-shaped copy `setup:rollback` demands
-	// (removed again after the restore).
+	// directory nothing prunes, holds nothing: the dump is written straight to
+	// govard's namespace, and the Magento-shaped copy `setup:rollback` demands is
+	// removed again after the restore.
 	deployPath := deploy.SandboxDefaultPaths().DeployPath
 	recorded := deployPath + "/shared/backups/deploy/2/dump.sql"
 	mode := env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--", "stat", "-c", "%a", recorded)
@@ -449,10 +445,9 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	if got := strings.TrimSpace(mode.Stdout); got != "600" {
 		t.Fatalf("the recorded dump %s has mode %s, want 600", recorded, got)
 	}
-	// Nothing the tool wrote survives anywhere under the deploy path except the
-	// pruned namespace govard owns: `setup:backup`'s file is moved out of
-	// `var/backups` (a shared dir in the recipe) and the Magento-shaped copy the
-	// restore has to place there is removed again. The search is layout
+	// No Magento-shaped dump survives anywhere under the deploy path except the
+	// pruned namespace govard owns: the Magento-shaped copy the restore has to
+	// place in `var/backups` is removed again. The search is layout
 	// independent on purpose — whether `var/backups` is shared or, as in this
 	// fixture, a directory the tool creates per release, a leftover shows up.
 	leftovers := env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--",
@@ -460,6 +455,195 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	leftovers.AssertSuccess(t)
 	if got := strings.TrimSpace(leftovers.Stdout); got != "" {
 		t.Fatalf("a dump was left behind after two deploys and a rollback:\n%s", got)
+	}
+}
+
+// stubProjectName is the project_name of the deploy/magento-stub fixture, which
+// names its sandbox container.
+const stubProjectName = "deploy-magento-stub"
+
+// The database the fixture's app/etc/env.php points at. The values are committed
+// in that file, so a test that provisions something else would dump nothing.
+const (
+	stubDBName     = "govard_deploy"
+	stubDBUser     = "govard_deploy"
+	stubDBPassword = "sandbox-dump-secret-7f3a"
+)
+
+// dockerExec runs a command inside the sandbox container as root.
+func dockerExec(t *testing.T, container string, argv ...string) string {
+	t.Helper()
+	output, err := exec.Command("docker", append([]string{"exec", container}, argv...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker exec %s %v: %v\n%s", container, argv, err, output)
+	}
+	return string(output)
+}
+
+// provisionStubDatabase creates the database and user env.php names inside a
+// `full` profile sandbox, the way a real target's database already exists before
+// a deploy. rows > 0 also fills a table so the dump runs long enough for a
+// process-list sampler to catch the client.
+func provisionStubDatabase(t *testing.T, container string, rows int) {
+	t.Helper()
+	// `up --no-seed` starts the services without waiting for them.
+	dockerExec(t, container, "sh", "-c",
+		"for i in $(seq 1 120); do mariadb-admin ping >/dev/null 2>&1 && exit 0; sleep 1; done; echo 'MariaDB never answered' >&2; exit 1")
+	statements := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`; "+
+		"CREATE USER IF NOT EXISTS '%s'@'localhost' IDENTIFIED BY '%s'; "+
+		"GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost'; FLUSH PRIVILEGES;",
+		stubDBName, stubDBUser, stubDBPassword, stubDBName, stubDBUser)
+	dockerExec(t, container, "sh", "-c", "mariadb -e \"$1\"", "sh", statements)
+	if rows > 0 {
+		// The sequence engine resolves `seq_1_to_N` against the default database.
+		fill := fmt.Sprintf("CREATE TABLE ledger ENGINE=InnoDB SELECT seq AS id, REPEAT('x', 40) AS filler FROM seq_1_to_%d;", rows)
+		dockerExec(t, container, "sh", "-c", "mariadb -D "+stubDBName+" -e \"$1\"", "sh", fill)
+	}
+}
+
+// TestDeploySandboxDBBackupWritesAPrivatePlainDump runs `--db-backup` for real:
+// the recipe reads app/etc/env.php, hands the credentials to mariadb-dump through
+// an option file, and the dump lands in govard's backup namespace.
+//
+// The proof has four parts a template assertion cannot give: the file exists, is
+// private and holds the database; Magento's own `var/backups` stays empty;
+// `setup:backup` is never called (the stub fails the deploy if it is); and the
+// password is in neither govard's output nor any process listing sampled while
+// the dump ran.
+func TestDeploySandboxDBBackupWritesAPrivatePlainDump(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/magento-stub", "deploy-sandbox-db-dump")
+
+	envPHP, err := os.ReadFile(filepath.Join(projectDir, "app", "etc", "env.php"))
+	if err != nil {
+		t.Fatalf("read the fixture env.php: %v", err)
+	}
+	for _, want := range []string{stubDBName, stubDBUser, stubDBPassword} {
+		if !strings.Contains(string(envPHP), want) {
+			t.Fatalf("the fixture env.php does not carry %q, so the provisioned database would not match it", want)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "deploy-expectation.txt"), []byte("single\n"), 0o644); err != nil {
+		t.Fatalf("write the expectation: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
+		t.Fatalf("write the served path: %v", err)
+	}
+	stateDir := stubStateDir("deploy-sandbox-db-dump")
+	if err := os.WriteFile(filepath.Join(projectDir, "stub-state-dir.txt"), []byte(stateDir+"\n"), 0o644); err != nil {
+		t.Fatalf("write the stub state directory: %v", err)
+	}
+	origin, revision := seedOriginFromProject(t, projectDir)
+	seedSandboxCheckout(t, projectDir, origin)
+
+	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "full", "--no-seed")
+	if up.ExitCode != 0 {
+		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
+	}
+	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
+	container := deploy.SandboxContainerName(stubProjectName, projectDir)
+	provisionStubDatabase(t, container, 400000)
+
+	// Sample the target's process list while the deploy runs. The sampler's own
+	// command line carries no secret, and it is stopped again below.
+	const samples = "/tmp/govard-ps-samples.txt"
+	dockerExec(t, container, "sh", "-c", "rm -f "+samples)
+	sampler := exec.Command("docker", "exec", container, "sh", "-c",
+		"i=0; while [ $i -lt 6000 ]; do ps -eo args >> "+samples+"; i=$((i+1)); sleep 0.02; done # govard-sampler")
+	if err := sampler.Start(); err != nil {
+		t.Fatalf("start the process-list sampler: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "exec", container, "pkill", "-f", "govard-sampler").Run()
+		_ = sampler.Wait()
+	})
+
+	deployed := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revision, "--db-backup", "--yes")
+	if deployed.ExitCode != 0 {
+		t.Fatalf("the --db-backup deploy failed (%d)\nstdout: %s\nstderr: %s", deployed.ExitCode, deployed.Stdout, deployed.Stderr)
+	}
+	_ = exec.Command("docker", "exec", container, "pkill", "-f", "govard-sampler").Run()
+
+	deployPath := deploy.SandboxDefaultPaths().DeployPath
+	recorded := deployPath + "/shared/backups/deploy/1/dump.sql"
+
+	mode := env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--", "stat", "-c", "%a", recorded)
+	mode.AssertSuccess(t)
+	if got := strings.TrimSpace(mode.Stdout); got != "600" {
+		t.Fatalf("the dump %s has mode %s, want 600", recorded, got)
+	}
+	env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--", "test", "-s", recorded).AssertSuccess(t)
+	// `remote exec` does not re-quote a shell script, so the content check runs in
+	// the container directly.
+	dockerExec(t, container, "sh", "-c", "grep -q 'CREATE TABLE `ledger`' "+recorded+" && grep -q 'INSERT INTO `ledger`' "+recorded)
+
+	// Magento's own backup directory holds nothing, and no dump hides anywhere
+	// else under the deploy path.
+	leftovers := dockerExec(t, container, "find", deployPath, "(", "-name", "*_db.sql*", "-o", "-path", "*/var/backups/*", ")",
+		"-type", "f", "-not", "-path", "*/shared/backups/deploy/*")
+	if got := strings.TrimSpace(leftovers); got != "" {
+		t.Fatalf("a dump or a file was left in Magento's backup directory:\n%s", got)
+	}
+
+	// The credential never reached argv: not in govard's output, and not in any
+	// process listing sampled while the dump client ran. The sampler has to have
+	// seen the client, or its silence proves nothing.
+	if strings.Contains(deployed.Stdout+deployed.Stderr, stubDBPassword) {
+		t.Fatalf("govard printed the database password:\nstdout: %s\nstderr: %s", deployed.Stdout, deployed.Stderr)
+	}
+	seen := dockerExec(t, container, "sh", "-c", "grep -c -e 'mariadb-dump' -e 'mysqldump' "+samples+" || true")
+	if strings.TrimSpace(seen) == "0" {
+		t.Fatalf("the sampler never saw the dump client, so the process-list check proved nothing")
+	}
+	leaked := dockerExec(t, container, "sh", "-c", "grep -c -F -e '"+stubDBPassword+"' "+samples+" || true")
+	if strings.TrimSpace(leaked) != "0" {
+		t.Fatalf("the database password appeared in the target's process list %s times", strings.TrimSpace(leaked))
+	}
+	// And the option file that carried it is gone.
+	files := dockerExec(t, container, "sh", "-c", "grep -rl -F -e '"+stubDBPassword+"' /tmp /var/tmp 2>/dev/null | grep -v govard-ps-samples || true")
+	if strings.TrimSpace(files) != "" {
+		t.Fatalf("a file holding the password was left in a temporary directory:\n%s", files)
+	}
+}
+
+// TestDeploySandboxDBBackupRefusesATargetWithoutADumpClient is the other half of
+// the contract: with no mariadb-dump or mysqldump on the target the preflight
+// refuses `--db-backup` as a configuration error (exit 4) before anything is
+// changed. The recipe installs a MariaDB client in every sandbox profile, so the
+// test removes the dump binaries from a `basic` target to build one that has none.
+func TestDeploySandboxDBBackupRefusesATargetWithoutADumpClient(t *testing.T) {
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/magento-stub", "deploy-sandbox-db-refuse")
+
+	if err := os.WriteFile(filepath.Join(projectDir, "deploy-expectation.txt"), []byte("single\n"), 0o644); err != nil {
+		t.Fatalf("write the expectation: %v", err)
+	}
+	origin, revision := seedOriginFromProject(t, projectDir)
+	seedSandboxCheckout(t, projectDir, origin)
+
+	up := env.RunGovard(t, projectDir, "sandbox", "up", "--profile", "basic", "--no-seed")
+	if up.ExitCode != 0 {
+		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
+	}
+	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
+	container := deploy.SandboxContainerName(stubProjectName, projectDir)
+	dockerExec(t, container, "sh", "-c", "rm -f \"$(command -v mariadb-dump)\" \"$(command -v mysqldump)\"")
+	if out := dockerExec(t, container, "sh", "-c", "command -v mariadb-dump || command -v mysqldump || echo none"); strings.TrimSpace(out) != "none" {
+		t.Fatalf("the target still has a dump client: %s", out)
+	}
+
+	refused := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revision, "--db-backup", "--yes")
+	if refused.ExitCode != 4 {
+		t.Fatalf("a target without a dump client must exit 4, got %d\nstdout: %s\nstderr: %s", refused.ExitCode, refused.Stdout, refused.Stderr)
+	}
+	if !strings.Contains(refused.Stdout+refused.Stderr, "mariadb-dump or mysqldump") {
+		t.Fatalf("the refusal must name the missing tool:\nstdout: %s\nstderr: %s", refused.Stdout, refused.Stderr)
+	}
+
+	// Nothing was changed: no release was created on the target.
+	releases := env.RunGovard(t, projectDir, "deploy", "releases", "sandbox")
+	if strings.Contains(releases.Stdout, "(live)") {
+		t.Fatalf("the refused deploy left a live release behind:\n%s", releases.Stdout)
 	}
 }
 
