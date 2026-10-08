@@ -78,7 +78,15 @@ This command will:
 1. Stop all containers for the project.
 2. Remove all Docker volumes (database data, etc.).
 3. Unregister project domains from proxy and hosts.
-4. Remove the project from the Govard registry.
+4. Remove the project's files under the Govard home (compose file and its
+   .hash, varnish/rabbitmq/nginx/apache directories, its active-projects.json
+   entry), its frontend containers and network, and its sandbox (container,
+   database volume, image, key and mirror).
+5. Remove the project from the Govard registry.
+
+<query> is a project name, domain or path. A project that is down, or already
+missing from the registry, is still found when it left files or Docker
+resources behind. Docker resources are matched by exact compose project name.
 
 WARNING: This action is destructive and cannot be undone (for volumes).
 It does NOT delete your project source code.`,
@@ -127,10 +135,16 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 				}
 			}
 		}
+		// A project that is down or no longer in the registry can still have
+		// left files and Docker resources behind. Resolve it by exact name or
+		// by its directory instead of answering "no project matches".
+		if art, ok := engine.DiscoverProjectByQuery(cmd.Context(), query); ok {
+			return runUnregisteredDelete(cmd, art)
+		}
 	}
 
 	if err != nil {
-		return err
+		return fmt.Errorf("%w (no leftover files or Docker resources were found for it either)", err)
 	}
 
 	// For destructive operations, we only allow strong matches (exact, prefix, or substring).
@@ -146,6 +160,7 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 		pterm.Warning.Printf("You are about to delete project: %s\n", match.ProjectName)
 		pterm.Warning.Println("This will remove all Docker containers and VOLUMES (database data).")
 		pterm.Warning.Printf("Project path: %s\n", match.Path)
+		printProjectArtifactList(projectArtifactsForEntry(cmd, match))
 		fmt.Println()
 
 		result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show("Are you sure you want to proceed?")
@@ -160,6 +175,7 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 	fmt.Println()
 
 	spinner, _ := pterm.DefaultSpinner.Start("Cleaning up resources...")
+	cleanupProjectSandbox(cmd.Context(), match.ProjectName, match.Path, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
 	err = engine.DeleteProject(cmd.Context(), match.Path, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
 	if err != nil {
 		spinner.Fail(err.Error())
@@ -170,7 +186,58 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 	return nil
 }
 
+// runUnregisteredDelete removes a project that is not in the registry but left
+// files or Docker resources behind (for example after `env down`, or after the
+// registry entry was already dropped).
+func runUnregisteredDelete(cmd *cobra.Command, art engine.ProjectArtifacts) error {
+	if !projectDeleteForce {
+		pterm.Warning.Printf("You are about to delete an UNREGISTERED project: %s\n", art.Name)
+		pterm.Warning.Println("It is not in the Govard registry, but it left these behind:")
+		printProjectArtifactList(art)
+		pterm.Warning.Println("This will remove its Docker containers and VOLUMES (database data).")
+		fmt.Println()
+
+		result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show("Are you sure you want to proceed?")
+		if !result {
+			pterm.Info.Println("Deletion cancelled.")
+			return nil
+		}
+	}
+
+	fmt.Println()
+	pterm.NewStyle(pterm.BgLightRed, pterm.FgWhite, pterm.Bold).Printf(" DELETING UNREGISTERED PROJECT: %s \n", art.Name)
+	fmt.Println()
+
+	spinner, _ := pterm.DefaultSpinner.Start("Cleaning up leftover resources...")
+	cleanupProjectSandbox(cmd.Context(), art.Name, art.Root, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
+	if err := engine.DeleteProjectByName(cmd.Context(), art, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error)); err != nil {
+		spinner.Fail(err.Error())
+		return err
+	}
+	spinner.Success("Project resources removed.")
+	return nil
+}
+
+// projectArtifactsForEntry lists what deleting a registered project will
+// remove beyond its containers, so the confirmation shows the whole blast
+// radius.
+func projectArtifactsForEntry(cmd *cobra.Command, entry engine.ProjectRegistryEntry) engine.ProjectArtifacts {
+	art := engine.CollectProjectArtifacts(entry.ProjectName, entry.Path, []string{entry.Profile, entry.PreviousProfile})
+	art.Docker = engine.ComposeProjectResourcesExist(cmd.Context(), entry.ProjectName)
+	return art
+}
+
+func printProjectArtifactList(art engine.ProjectArtifacts) {
+	for _, line := range art.Lines() {
+		pterm.Warning.Printf("  - %s\n", line)
+	}
+}
+
 func runOrphanDelete(cmd *cobra.Command, orphan engine.OrphanProject) error {
+	if art := engine.CollectProjectArtifacts(orphan.Name, "", nil); engine.SafeProjectArtifactName(orphan.Name) {
+		art.Docker = true
+		return runUnregisteredDelete(cmd, art)
+	}
 	if !projectDeleteForce {
 		pterm.Warning.Printf("You are about to delete an UNREGISTERED project: %s\n", orphan.Name)
 		pterm.Warning.Println("This project was found in Docker but is not in the Govard registry.")

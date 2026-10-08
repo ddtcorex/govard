@@ -663,7 +663,7 @@ govard project delete --yes demo
 ```
 
 ::: warning CAUTION
-`govard project delete` removes persistent database volumes by default. Project source code is **never** deleted.
+`govard project delete` removes persistent database volumes by default. Project source code is **never** deleted. It also removes the project's compose file and `.hash`, its varnish/rabbitmq/nginx/apache directories, its `active-projects.json` entry, its frontend containers and network, and its sandbox, and it finds a project that is down or no longer in the registry by exact name or path.
 :::
 
 **Deletion process:**

@@ -39,12 +39,19 @@ Note: 'log' streams the Varnish request log; 'logs' shows the container logs via
 			}
 		}
 
-		config := loadConfig()
-		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.VarnishSuffix)
-
 		if len(args) == 0 {
 			return cmd.Help()
 		}
+		// Flag parsing is off, so a help flag after a subcommand would be
+		// forwarded as data (`ban --help` would ban the literal "--help").
+		for _, a := range args[1:] {
+			if a == "-h" || a == "--help" {
+				return cmd.Help()
+			}
+		}
+
+		config := loadConfig()
+		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.VarnishSuffix)
 
 		subcommand := args[0]
 		switch subcommand {

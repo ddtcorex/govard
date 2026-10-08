@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"govard/internal/cmd"
+	"govard/internal/deploy"
 )
 
 func renderServiceHelp(t *testing.T, args []string) string {
@@ -152,5 +153,78 @@ func TestServiceLongSpelling(t *testing.T) {
 		if strings.Contains(l, " \n") {
 			t.Fatalf("%v Long has trailing whitespace:\n%q", tc.path, l)
 		}
+	}
+}
+
+func TestVarnishSubcommandHelpDoesNotRunTheSubcommand(t *testing.T) {
+	for _, args := range [][]string{
+		{"varnish", "ban", "--help"},
+		{"varnish", "ban", "-h"},
+		{"varnish", "log", "--help"},
+		{"varnish", "stats", "-h"},
+	} {
+		help := renderServiceHelp(t, args)
+		if !strings.Contains(help, "Usage:") {
+			t.Fatalf("%v shows no Usage:\n%s", args, help)
+		}
+	}
+}
+
+func TestDoctorHelpStatesPortCheckIsReportOnly(t *testing.T) {
+	_, long, _, _ := lookupHelpCommand(t, "doctor")
+	var portLine string
+	for _, line := range strings.Split(long, "\n") {
+		if strings.Contains(line, "Port conflicts") {
+			portLine = line
+		}
+	}
+	if !strings.Contains(portLine, "report only") {
+		t.Fatalf("doctor help does not say the port check is report only: %q", portLine)
+	}
+}
+
+func TestAuditRunHelpOmitsFlagsThatOnlyApplyToOtherSubcommands(t *testing.T) {
+	for _, sub := range []string{"run", "diff"} {
+		help := renderServiceHelp(t, []string{"audit", sub, "--help"})
+		for _, flag := range []string{"--older-than", "--session", "--run "} {
+			if strings.Contains(help, flag) {
+				t.Fatalf("audit %s --help lists %s, which does not apply to it:\n%s", sub, flag, help)
+			}
+		}
+	}
+	help := renderServiceHelp(t, []string{"audit", "cleanup", "--help"})
+	if !strings.Contains(help, "--older-than") {
+		t.Fatalf("audit cleanup lost --older-than:\n%s", help)
+	}
+}
+
+func TestSandboxUsageDoesNotPresentSubcommandsAsPositionals(t *testing.T) {
+	_, _, use, _ := lookupHelpCommand(t, "sandbox")
+	if strings.Contains(use, "[up|") {
+		t.Fatalf("sandbox usage reads as a positional argument: %q", use)
+	}
+}
+
+func TestSandboxSSHHelpStatesNoCommandForm(t *testing.T) {
+	_, long, _, _ := lookupHelpCommand(t, "sandbox", "ssh")
+	for _, want := range []string{"-- <cmd>", "stdin"} {
+		if !strings.Contains(long, want) {
+			t.Fatalf("sandbox ssh help omits %q:\n%s", want, long)
+		}
+	}
+}
+
+func TestSandboxProjectImageTagsMatchExactShapeOnly(t *testing.T) {
+	refs := []string{
+		"govard-sandbox:shop-php-0123456789ab",
+		"govard-sandbox:shop-full-0123456789ab",
+		"govard-sandbox:shop-php-basic-0123456789ab",
+		"govard-sandbox:shop2-php-0123456789ab",
+		"govard-sandbox:shop-php-0123456789abcd",
+		"other:shop-php-0123456789ab",
+	}
+	got := deploy.SandboxProjectImageTags("Shop", refs)
+	if len(got) != 2 || got[0] != refs[0] || got[1] != refs[1] {
+		t.Fatalf("unexpected tags: %v", got)
 	}
 }

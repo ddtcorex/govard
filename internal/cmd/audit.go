@@ -204,8 +204,6 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().StringVar(&options.BaseRef, "base", "", "Base ref for diff scope (or auto to detect from git)")
 	command.PersistentFlags().StringSliceVar(&options.Checks, "checks", []string{"lint"}, "Checks to run (lint, profiler, or integrity; integrity needs no container)")
 	command.PersistentFlags().StringVar(&options.Format, "format", "text", "Output format (text or json)")
-	command.PersistentFlags().StringVar(&options.SessionID, "session", "", "Explicit audit session ID")
-	command.PersistentFlags().StringVar(&options.RunID, "run", "", "Explicit audit run ID")
 	command.PersistentFlags().StringVar(&options.LintProvider, "lint-provider", audit.GovardLintProvider, "Lint provider: govard, or an audit.lint.external_providers name from the project config")
 	command.PersistentFlags().StringVar(&options.LintProvider, "provider", audit.GovardLintProvider, "Alias for --lint-provider")
 	_ = command.PersistentFlags().MarkHidden("provider")
@@ -213,7 +211,6 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().BoolVar(&options.NoLintResultCache, "no-lint-result-cache", false, "Ignore reusable lint analyzer state for this run (the Composer download cache is kept)")
 	command.PersistentFlags().BoolVar(&options.AllowLintSSHAgent, "allow-lint-ssh-agent", false, "Forward SSH_AUTH_SOCK into the lint container for private Composer dependencies")
 	command.PersistentFlags().BoolVar(&options.AllowXdebug, "allow-xdebug", false, "Allow audit with Xdebug enabled (10-20% performance tax)")
-	command.PersistentFlags().DurationVar(&options.OlderThan, "older-than", 0, "Remove sessions older than this duration")
 	command.PersistentFlags().StringVar(&options.TargetMode, "mode", "auto", auditTargetModeUsage())
 	command.PersistentFlags().StringSliceVar(&options.PHPVersions, "php", nil, "PHP versions; standalone only unless matching active project PHP")
 	command.PersistentFlags().StringVar(&options.URL, "url", "", "Absolute HTTP(S) URL captured by runtime audit checks")
@@ -223,12 +220,28 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.AddCommand(
 		newAuditRunCommand(options, dependencies, false),
 		newAuditRunCommand(options, dependencies, true),
-		newAuditRerunCommand(options, dependencies),
-		newAuditStatusCommand(options, dependencies),
-		newAuditResultCommand(options, dependencies),
-		newAuditCleanupCommand(options, dependencies),
+		withAuditScopedFlags(newAuditRerunCommand(options, dependencies), options, true, false, false),
+		withAuditScopedFlags(newAuditStatusCommand(options, dependencies), options, true, false, false),
+		withAuditScopedFlags(newAuditResultCommand(options, dependencies), options, true, true, false),
+		withAuditScopedFlags(newAuditCleanupCommand(options, dependencies), options, false, false, true),
 		newAuditToolchainCommand(options, dependencies),
 	)
+	return command
+}
+
+// withAuditScopedFlags registers the flags that only some audit subcommands
+// use on those subcommands, so `audit run --help` does not advertise a
+// session, run or retention flag that a run ignores.
+func withAuditScopedFlags(command *cobra.Command, options *auditCommandOptions, session, run, olderThan bool) *cobra.Command {
+	if session {
+		command.Flags().StringVar(&options.SessionID, "session", "", "Explicit audit session ID")
+	}
+	if run {
+		command.Flags().StringVar(&options.RunID, "run", "", "Explicit audit run ID")
+	}
+	if olderThan {
+		command.Flags().DurationVar(&options.OlderThan, "older-than", 0, "Remove sessions older than this duration")
+	}
 	return command
 }
 

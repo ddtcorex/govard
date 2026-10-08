@@ -254,7 +254,7 @@ func deployStatusForRemote(cmd *cobra.Command, config engine.Config, name string
 		return result, nil
 	}
 	if release == nil {
-		result.Status = "no release"
+		result.Status = "no live release"
 		return result, nil
 	}
 	result.Release = release.Release

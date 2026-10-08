@@ -29,7 +29,7 @@ var sandboxCmd = &cobra.Command{
 		// govard uses it to create the fake server, then talks to it over SSH.
 		runtime.AnnotationRequires: string(runtime.CapDocker),
 	},
-	Use:   "sandbox [up|status|reset|ssh|down]",
+	Use:   "sandbox",
 	Short: "Create a container that plays the deployment target for this project",
 	Long: `Create and manage a local deployment target.
 
@@ -77,7 +77,7 @@ var (
 	sandboxUpCmd     = &cobra.Command{Use: "up", Short: "Create or reuse the sandbox", Long: "Create the sandbox, or reuse the running one as-is. Flags that disagree with a running sandbox: --docroot reshapes only when passed, while an explicit conflicting --profile is refused — pass --recreate to rebuild it.", Args: cobra.NoArgs, RunE: runSandboxUp}
 	sandboxStatusCmd = &cobra.Command{Use: "status", Short: "Report the sandbox state", Args: cobra.NoArgs, RunE: runSandboxStatusRun}
 	sandboxResetCmd  = &cobra.Command{Use: "reset", Short: "Wipe the sandbox's deploy directories", Args: cobra.NoArgs, RunE: runSandboxReset}
-	sandboxSSHCmd    = &cobra.Command{Use: "ssh", Short: "Open a shell in the sandbox", Long: "Open an interactive shell in the sandbox. Takes no command: it always drops into the shell.", Args: cobra.NoArgs, RunE: runSandboxSSH}
+	sandboxSSHCmd    = &cobra.Command{Use: "ssh", Short: "Open a shell in the sandbox", Long: "Open an interactive shell in the sandbox. Takes no command: `sandbox ssh -- <cmd>` is rejected as an unknown command, and a bare `sandbox ssh` always drops into the shell. To run one command, pipe it on stdin (echo 'ls -la' | govard sandbox ssh) or use `govard remote exec sandbox -- <cmd>`.", Args: cobra.NoArgs, RunE: runSandboxSSH}
 	sandboxDownCmd   = &cobra.Command{Use: "down", Short: "Stop and remove the sandbox", Args: cobra.NoArgs, RunE: runSandboxDown}
 )
 
