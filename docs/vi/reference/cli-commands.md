@@ -424,7 +424,7 @@ govard env cleanup
 | :--- | :--- |
 | `--pull` | Tải về các image mới nhất trước khi chạy |
 | `--fallback-local-build` | Build các image bị thiếu ở local (mặc định `true`) |
-| `--remove-orphans` | Xóa các container không còn trong cấu hình (orphaned) |
+| `--remove-orphans` | Xóa các container không còn trong cấu hình (orphaned) của dự án. Mặc định bật khi khởi động toàn bộ stack; dùng `--remove-orphans=false` để giữ lại |
 | `--quickstart` | Đường dẫn khởi động nhanh nhất (chỉ dịch vụ tối thiểu) |
 | `--update-lock` | Tự động cập nhật `govard.lock` nếu phát hiện sai lệch |
 | `--no-tuning` | Bỏ qua các prompt cấu hình tự động cho framework |

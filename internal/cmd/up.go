@@ -519,6 +519,19 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 	}
 }
 
+// resolveUpRemoveOrphans decides whether the Start stage passes
+// --remove-orphans. An explicit flag always wins. Otherwise a full-stack start
+// removes containers of services dropped from the compose file (for example a
+// feature switched off), because compose scopes that cleanup to the project
+// name and a stale container such as varnish would keep serving or holding
+// ports. A start narrowed to named services leaves the rest alone.
+func resolveUpRemoveOrphans(flagValue, flagChanged bool, services []string) bool {
+	if flagChanged {
+		return flagValue
+	}
+	return len(services) == 0
+}
+
 // buildUpStartArgs assembles the 'docker compose up' invocation for the Start
 // stage. Named services narrow the start (and the Ready checks) to that
 // subset; an empty list starts the whole stack.
@@ -920,7 +933,8 @@ func runUpCommand(cmd *cobra.Command, args []string) (err error) {
 	explicitProfile, _ := cmd.Flags().GetString("profile")
 	pull, _ := cmd.Flags().GetBool("pull")
 	fallbackLocalBuild := boolFlagOrDefault(cmd, "fallback-local-build", true)
-	removeOrphans, _ := cmd.Flags().GetBool("remove-orphans")
+	removeOrphansFlag, _ := cmd.Flags().GetBool("remove-orphans")
+	removeOrphans := resolveUpRemoveOrphans(removeOrphansFlag, cmd.Flags().Changed("remove-orphans"), args)
 	forceRecreate, _ := cmd.Flags().GetBool("force-recreate")
 	updateLock, _ := cmd.Flags().GetBool("update-lock")
 	skipTuning, _ := cmd.Flags().GetBool("no-tuning")
@@ -1035,7 +1049,7 @@ func addUpFlags(command *cobra.Command) {
 	command.Flags().String("profile", "", "Environment scope (profile) to use")
 	command.Flags().Bool("pull", false, "Pull latest images before starting")
 	command.Flags().Bool("fallback-local-build", true, "When pull/start fails due missing Govard images, build missing Govard-managed images locally and retry")
-	command.Flags().Bool("remove-orphans", false, "Remove containers for services not defined in the compose file")
+	command.Flags().Bool("remove-orphans", false, "Remove containers for services not defined in the compose file (default on for a full-stack start, use --remove-orphans=false to keep them)")
 	command.Flags().Bool("force-recreate", false, "Recreate containers even if their configuration and image haven't changed")
 	command.Flags().Bool("update-lock", false, "Automatically update govard.lock if mismatches are found")
 	command.Flags().Bool("no-tuning", false, "Skip framework auto-configuration after environment starts")

@@ -429,7 +429,7 @@ govard env cleanup
 | :--- | :--- |
 | `--pull` | Pull images before starting |
 | `--fallback-local-build` | Build missing images locally (default `true`) |
-| `--remove-orphans` | Remove orphaned containers |
+| `--remove-orphans` | Remove orphaned containers of this project. On by default for a full-stack start; pass `--remove-orphans=false` to keep them |
 | `--quickstart` | Fastest startup path (minimal services) |
 | `--update-lock` | Auto-update `govard.lock` on mismatches |
 | `--no-tuning` | Skip framework auto-configuration prompts |

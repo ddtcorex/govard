@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sandbox ssh -- <command>` runs the command without a forced tty (piped stdin
   works) and exits with the command's own status; a command without `--` is a
   usage error. Deploy steps still never leak remote exit codes. (#572)
+- **`env up` removes containers of dropped services.** Switching a feature off
+  (for example `stack.features.varnish: false`) left its container running until
+  `env down`. A full-stack `env up` now passes `--remove-orphans` (scoped to the
+  same compose project); use `--remove-orphans=false` to keep them. (#582)
 
 - Sandbox: MariaDB 11 clients, seed retry after a partial failure, WordPress
   `siteurl`/`home` rewrite, php-fpm sees a new release after the symlink swap,

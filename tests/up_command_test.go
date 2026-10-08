@@ -620,3 +620,27 @@ func TestEnvUpLongDocumentsAllStages(t *testing.T) {
 		}
 	}
 }
+
+// A service dropped from the compose file (for example varnish switched off)
+// must not survive the next full-stack env up. Compose scopes orphan removal
+// to the project name, so this never touches another project.
+func TestResolveUpRemoveOrphansDefaults(t *testing.T) {
+	cases := []struct {
+		name     string
+		value    bool
+		changed  bool
+		services []string
+		want     bool
+	}{
+		{"full stack default removes orphans", false, false, nil, true},
+		{"named services keep the narrow start", false, false, []string{"php"}, false},
+		{"explicit true wins for named services", true, true, []string{"php"}, true},
+		{"explicit false opts out", false, true, nil, false},
+		{"explicit true on full stack", true, true, nil, true},
+	}
+	for _, tc := range cases {
+		if got := cmd.ResolveUpRemoveOrphansForTest(tc.value, tc.changed, tc.services); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
