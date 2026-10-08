@@ -646,6 +646,8 @@ govard custom deploy -- --dry-run
 
 Xem và quản lý các dự án Govard đã đăng ký trên hệ thống.
 
+`project list` hiển thị cột Status (`running`, `stopped` hoặc `unknown`) và đưa các dự án đang chạy lên đầu; các dự án còn lại giữ thứ tự registry. Lệnh không yêu cầu Docker: khi không kết nối được container runtime, mọi trạng thái là `unknown` và giữ nguyên thứ tự registry.
+
 ```bash
 govard project list
 govard project list --orphans

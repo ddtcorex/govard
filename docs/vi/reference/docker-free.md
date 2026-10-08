@@ -112,7 +112,7 @@ Những lệnh có yêu cầu bao gồm `docker` thì đi qua gate: vòng đời
   việc của container: lock file ghi lại version docker/compose đã phân giải và
   digest image của từng service.
 - **Khởi tạo project.** `govard init` và `govard custom list`.
-- **Registry và domain.** `project list` và `project open` đọc registry;
+- **Registry và domain.** `project list` và `project open` đọc registry (`project list` hiển thị trạng thái `unknown` khi không có Docker);
   `domain list` in ra domain của project; `vscode setup` suy ra cấu hình editor từ
   chính file của project. `project orphans` quét tài nguyên Docker nên vẫn cần runtime.
 - **Triển khai.** `govard deploy` và `govard deploy rollback` cần SSH và rsync;
