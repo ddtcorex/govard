@@ -42,6 +42,9 @@ func runStreamDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 	if probeErr != nil {
 		pterm.Warning.Println(formatRemoteDBProbeWarning(options.Environment, probeErr))
 	}
+	if err := checkPrivacyFilter(config.Framework, remoteCredentials.TablePrefix, options.NoNoise, options.NoPII, false); err != nil {
+		return err
+	}
 	localCredentials := resolveLocalDBCredentials(config, containerName)
 	localPoller := &finalizePoller{config: config, remoteName: "local", credentials: localCredentials, noNoise: options.NoNoise, noPII: options.NoPII}
 	if options.Drop {

@@ -93,9 +93,12 @@ func Definition() types.FrameworkDefinition {
 			_, statErr := os.Stat(filepath.Join(projectDir, "wp-config.php"))
 			return statErr == nil
 		},
-		DBDriverCategory: "wordpress",
-		Upgrade:          Upgrade,
-		DeployRecipe:     DeployRecipe,
+		DBDriverCategory:              "wordpress",
+		TablePrefixDetector:           DetectTablePrefix,
+		RemoteDBUsesConfigTablePrefix: true,
+		TablesUsuallyPrefixed:         true,
+		Upgrade:                       Upgrade,
+		DeployRecipe:                  DeployRecipe,
 		ProbeRemoteDB: func(remoteName string, remoteCfg engine.RemoteConfig) (remote.RemoteDatabaseMetadata, error) {
 			metadata, err := ProbeEnvironment(remoteName, remoteCfg)
 			if err != nil {
@@ -120,6 +123,8 @@ func Definition() types.FrameworkDefinition {
 				Username: metadata.DB.Username,
 				Password: metadata.DB.Password,
 				Database: metadata.DB.Database,
+
+				TablePrefix: metadata.DB.TablePrefix,
 			}, nil
 		},
 		AutoConfigure: func(cmd *cobra.Command, config engine.Config) error {

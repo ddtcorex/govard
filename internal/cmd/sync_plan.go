@@ -26,6 +26,9 @@ type SyncExecutionOptions struct {
 	Path       string
 	Include    []string
 	Exclude    []string
+	// PlanOnly marks a --plan review: a remote DB credential probe that fails
+	// then degrades into a plan that says so, instead of failing the review.
+	PlanOnly bool
 }
 
 const (
@@ -127,7 +130,7 @@ func buildSyncExecutionPlan(config engine.Config, endpoints ResolvedSyncEndpoint
 	}
 
 	if opts.DB {
-		dbDesc, action, err := buildDatabaseSyncAction(config, endpoints.Source, endpoints.Destination, opts.NoNoise, opts.NoPII)
+		dbDesc, action, err := buildDatabaseSyncAction(config, endpoints.Source, endpoints.Destination, opts.NoNoise, opts.NoPII, opts.PlanOnly)
 		if err != nil {
 			return SyncExecutionPlan{}, err
 		}

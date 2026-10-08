@@ -11,6 +11,8 @@ import (
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
 	"govard/internal/frameworks"
+
+	"github.com/pterm/pterm"
 )
 
 type dbCredentials struct {
@@ -741,7 +743,7 @@ func buildRemoteMySQLQueryCommandString(credentials dbCredentials, query string)
 	if credentials.Port > 0 {
 		args = append(args, "-P"+strconv.Itoa(credentials.Port))
 	}
-	args = append(args, "-u"+engine.ShellQuote(credentials.Username), "-e", engine.ShellQuote(query))
+	args = append(args, "-u"+engine.ShellQuote(credentials.Username), "-e", engine.ShellQuote(query), engine.ShellQuote(credentials.Database))
 
 	return credentials.mysqlPasswordPrefix() + strings.Join(args, " ")
 }
@@ -824,4 +826,69 @@ func BuildLocalMySQLQueryCommandScriptForTest(username string, database string, 
 		Username: username,
 		Database: database,
 	}, query)
+}
+
+// privacyFilterWarning explains why a requested --no-pii/--no-noise filter
+// would silently match nothing, or "" when the filter is expected to work.
+func privacyFilterWarning(framework string, tablePrefix string, noNoise bool, noPII bool) string {
+	if !noNoise && !noPII {
+		return ""
+	}
+	flags := make([]string, 0, 2)
+	if noNoise {
+		flags = append(flags, "--no-noise")
+	}
+	if noPII {
+		flags = append(flags, "--no-pii")
+	}
+	requested := strings.Join(flags, " and ")
+	if len(engine.GetFrameworkIgnoredTables(framework, noNoise, noPII)) == 0 {
+		return fmt.Sprintf("%s requested but govard knows no tables to exclude for framework %q: nothing will be filtered and the dump will contain all data.", requested, framework)
+	}
+	def, ok := frameworks.Get(framework)
+	if ok && def.TablesUsuallyPrefixed && engine.SafeTablePrefix(tablePrefix) == "" {
+		return fmt.Sprintf("%s requested but the table prefix is unknown for this %s database, so the table filters will not match prefixed tables (for example wp_users) and the dump may still contain personal data. Set table_prefix in .govard.yml.", requested, def.DisplayName)
+	}
+	return ""
+}
+
+// privacyFilterBlocks reports whether a requested --no-pii filter cannot match
+// anything, so the dump or sync would silently carry personal data. --no-noise
+// alone is not personal data and only warns.
+func privacyFilterBlocks(framework string, tablePrefix string, noPII bool) bool {
+	if !noPII {
+		return false
+	}
+	if len(engine.GetFrameworkIgnoredTables(framework, false, true)) == 0 {
+		return true
+	}
+	def, ok := frameworks.Get(framework)
+	return ok && def.TablesUsuallyPrefixed && engine.SafeTablePrefix(tablePrefix) == ""
+}
+
+// checkPrivacyFilter is the gate for --no-noise/--no-pii. A --no-pii request
+// that cannot match any table is refused (fail closed): producing an
+// "anonymized" dump that still holds user data is worse than failing. A plan
+// only describes what would happen, so it warns instead. --no-noise problems
+// always only warn.
+func checkPrivacyFilter(framework string, tablePrefix string, noNoise bool, noPII bool, planOnly bool) error {
+	message := privacyFilterWarning(framework, tablePrefix, noNoise, noPII)
+	if message == "" {
+		return nil
+	}
+	if privacyFilterBlocks(framework, tablePrefix, noPII) && !planOnly {
+		return fmt.Errorf("%s Refusing to continue without a working filter: set table_prefix in .govard.yml (or fix the framework table list), or drop --no-pii", message)
+	}
+	pterm.Warning.Println(message)
+	return nil
+}
+
+// CheckPrivacyFilterForTest exposes checkPrivacyFilter for tests.
+func CheckPrivacyFilterForTest(framework string, tablePrefix string, noNoise bool, noPII bool, planOnly bool) error {
+	return checkPrivacyFilter(framework, tablePrefix, noNoise, noPII, planOnly)
+}
+
+// PrivacyFilterWarningForTest exposes privacyFilterWarning for tests.
+func PrivacyFilterWarningForTest(framework string, tablePrefix string, noNoise bool, noPII bool) string {
+	return privacyFilterWarning(framework, tablePrefix, noNoise, noPII)
 }

@@ -112,15 +112,22 @@ func ensureTrailingSlash(path string) string {
 	return path + "/"
 }
 
-func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destination SyncEndpoint, noNoise bool, noPII bool) (string, func() error, error) {
+func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destination SyncEndpoint, noNoise bool, noPII bool, planOnly bool) (string, func() error, error) {
 	localDBContainer := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
 	localCredentials := resolveLocalDBCredentials(config, localDBContainer)
 
 	switch {
 	case !source.IsLocal && destination.IsLocal:
 		remoteCredentials, probeErr := resolveRemoteDBCredentials(config, source.Name, source.RemoteCfg)
+		planNote := ""
 		if probeErr != nil {
-			return "", nil, fmt.Errorf("cannot sync database: %s", formatRemoteDBProbeWarning(source.Name, probeErr))
+			if !planOnly {
+				return "", nil, fmt.Errorf("cannot sync database: %s", formatRemoteDBProbeWarning(source.Name, probeErr))
+			}
+			planNote = remoteProbePlanNote(source.Name, probeErr)
+		}
+		if err := checkPrivacyFilter(config.Framework, remoteCredentials.TablePrefix, noNoise, noPII, planOnly); err != nil {
+			return "", nil, err
 		}
 		dumpCmdStr := buildRemoteMySQLDumpCommandString(remoteCredentials, noNoise, noPII, config.Framework, true)
 		importCmdStr := buildLocalMySQLClientCommandScript(localCredentials, true)
@@ -129,7 +136,7 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 		// built from redacted credentials; only the closure below runs the
 		// real command.
 		displayDumpCmdStr := buildRemoteMySQLDumpCommandString(remoteCredentials.forDisplay(), noNoise, noPII, config.Framework, true)
-		desc := fmt.Sprintf("ssh %s \"%s\" | docker exec -i %s sh -lc \"%s\"", remote.RemoteTarget(source.RemoteCfg), displayDumpCmdStr, localDBContainer, importCmdStr)
+		desc := planNote + fmt.Sprintf("ssh %s \"%s\" | docker exec -i %s sh -lc \"%s\"", remote.RemoteTarget(source.RemoteCfg), displayDumpCmdStr, localDBContainer, importCmdStr)
 
 		return desc, func() error {
 			// The local container is the import target here, so it must be up
@@ -152,15 +159,22 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 		}, nil
 	case source.IsLocal && !destination.IsLocal:
 		remoteCredentials, probeErr := resolveRemoteDBCredentials(config, destination.Name, destination.RemoteCfg)
+		planNote := ""
 		if probeErr != nil {
-			return "", nil, fmt.Errorf("cannot sync database: %s", formatRemoteDBProbeWarning(destination.Name, probeErr))
+			if !planOnly {
+				return "", nil, fmt.Errorf("cannot sync database: %s", formatRemoteDBProbeWarning(destination.Name, probeErr))
+			}
+			planNote = remoteProbePlanNote(destination.Name, probeErr)
+		}
+		if err := checkPrivacyFilter(config.Framework, localCredentials.TablePrefix, noNoise, noPII, planOnly); err != nil {
+			return "", nil, err
 		}
 		dumpCmdStr := buildLocalMySQLDumpCommandScript(localCredentials, noNoise, noPII, config.Framework)
 		importCmdStr := buildRemoteMySQLImportCommandString(remoteCredentials)
 
 		// Display-only form, see the remote-to-local branch above.
 		displayImportCmdStr := buildRemoteMySQLImportCommandString(remoteCredentials.forDisplay())
-		desc := fmt.Sprintf("docker exec -i %s sh -lc \"%s\" | ssh %s \"%s\"", localDBContainer, dumpCmdStr, remote.RemoteTarget(destination.RemoteCfg), displayImportCmdStr)
+		desc := planNote + fmt.Sprintf("docker exec -i %s sh -lc \"%s\" | ssh %s \"%s\"", localDBContainer, dumpCmdStr, remote.RemoteTarget(destination.RemoteCfg), displayImportCmdStr)
 
 		return desc, func() error {
 			// The local container is the dump source here, so it must be up
@@ -182,4 +196,11 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 	default:
 		return "", nil, fmt.Errorf("database synchronization only supports transfers between local and remote environments")
 	}
+}
+
+// remoteProbePlanNote prefixes a --plan DB step whose remote credentials could
+// not be probed. The plan contacts the remote to read them; when that fails
+// the step is rendered with default credentials and says so.
+func remoteProbePlanNote(remoteName string, probeErr error) string {
+	return fmt.Sprintf("[remote DB credentials for '%s' could not be probed (%s); this plan shows default credentials, and a real sync would stop here] ", remoteName, strings.Join(strings.Fields(probeErr.Error()), " "))
 }

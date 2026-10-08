@@ -1180,7 +1180,7 @@ govard snapshot pull latest -e staging
 govard snapshot push before-deploy -e prod
 ```
 
-Subcommands: `create`, `list`, `restore`, `delete`, `export`, `pull`, `push`. `export` writes a `tar.gz` archive locally; `delete` removes the named snapshot. `pull`/`push` transfer snapshots between local and a named remote (`-e` flag).
+Subcommands: `create`, `list`, `restore`, `delete`, `export`, `pull`, `push`. `restore` overwrites existing data, so it asks for confirmation; pass `-y`/`--yes` to skip the prompt (required in non-interactive sessions). `export` writes a `tar.gz` archive locally; `delete` removes the named snapshot. `pull`/`push` transfer snapshots between local and a named remote (`-e` flag).
 
 Snapshot files that hold a database dump are private to their owner: `create` writes
 `db.sql.gz` with mode `0600`, and `export` creates the archive with mode `0600`

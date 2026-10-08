@@ -245,6 +245,7 @@ Case Studies:
 			Path:       path,
 			Include:    includePatterns,
 			Exclude:    excludePatterns,
+			PlanOnly:   planOnly,
 		}
 
 		endpoints, err := resolveSyncEndpoints(config, source, destination)

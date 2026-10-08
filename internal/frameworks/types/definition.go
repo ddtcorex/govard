@@ -352,10 +352,15 @@ type FrameworkDefinition struct {
 	ProbeRemoteBootstrapMetadata func(remoteName string, remoteCfg engine.RemoteConfig) (remote.RemoteDatabaseMetadata, error)
 	// RemoteDBUsesConfigTablePrefix allows config.TablePrefix to act as a
 	// fallback only for frameworks whose historical remote DB workflow has a
-	// table-prefix concept. A probed prefix always wins. Frameworks such as
-	// WordPress and dotenv-based applications leave this false so a local
-	// config value cannot silently alter a remote import/query.
+	// table-prefix concept. A probed prefix always wins. Dotenv-based
+	// applications leave this false so a local config value cannot silently
+	// alter a remote import/query.
 	RemoteDBUsesConfigTablePrefix bool
+	// TablesUsuallyPrefixed marks frameworks whose installs are practically
+	// always prefixed (WordPress installs with `wp_`). An empty prefix then
+	// means the prefix is unknown, so privacy filters would match nothing and
+	// the dump commands warn instead of silently producing an unfiltered dump.
+	TablesUsuallyPrefixed bool
 
 	// DefaultAdminPath is this framework's conventional admin route. Empty
 	// uses the product-wide default. It keeps non-standard paths such as

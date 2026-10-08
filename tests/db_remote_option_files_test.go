@@ -68,3 +68,10 @@ func TestLocalMySQLCommandsKeepOptionFiles(t *testing.T) {
 		t.Fatalf("local container commands must not skip option files, got: %s", script)
 	}
 }
+
+func TestRemoteMySQLQuerySelectsTheDatabase(t *testing.T) {
+	command := cmd.BuildRemoteMySQLQueryCommandForTest("remote-host", 3306, "remote-user", "remote-pass", "remote-db", "SELECT 1")
+	if !strings.HasSuffix(command, "-e 'SELECT 1' 'remote-db'") && !strings.HasSuffix(command, "-e 'SELECT 1' remote-db") {
+		t.Fatalf("remote query must select the database (else ERROR 1046 No database selected), got: %s", command)
+	}
+}

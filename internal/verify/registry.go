@@ -1126,7 +1126,7 @@ var Registry = []Item{
 		if !ok {
 			return Evidence{ExitCode: 1, OutputExcerpt: "no snapshot recorded by a phase-4 run for this project"}
 		}
-		return execGovard(ctx, cfg, opts, "snapshot", "restore", name)
+		return execGovard(ctx, cfg, opts, "snapshot", "restore", name, "-y")
 	}},
 	{ID: "P5-06", Phase: 5, Title: "govard env down && govard env up (no -v)", Requires: "P5-05 done", Guard: "", Run: func(ctx context.Context, cfg engine.Config, opts VerifyOpts) Evidence {
 		_ = execGovard(ctx, cfg, opts, "env", "down")

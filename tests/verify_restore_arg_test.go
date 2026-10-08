@@ -33,7 +33,7 @@ func TestP5RestoreReceivesTheGatedSnapshotName(t *testing.T) {
 		t.Fatalf("RunPhase: %v", err)
 	}
 
-	want := []string{"snapshot", "restore", "20260101-000000"}
+	want := []string{"snapshot", "restore", "20260101-000000", "-y"}
 	if !reflect.DeepEqual(restoreArgs, want) {
 		t.Fatalf("P5-05 invoked %v, want %v", restoreArgs, want)
 	}
