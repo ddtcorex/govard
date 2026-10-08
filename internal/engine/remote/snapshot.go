@@ -155,7 +155,12 @@ func BuildRemoteSnapshotCreateCommandAtRoot(
 	}
 	parts = append(parts,
 		"ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-		fmt.Sprintf("printf '%%s\\n' %s \"created_at: $ts\" %s 'db: true' 'media: true' > %s",
+		// db and media describe what this run actually captured, so a project
+		// with no media directory (or no dump command) does not claim archives
+		// that were never written.
+		fmt.Sprintf("if [ -s %s ]; then hasdb=true; else hasdb=false; fi", engine.ShellQuote(snapshotDir+"/db.sql.gz")),
+		fmt.Sprintf("if [ -s %s ]; then hasmedia=true; else hasmedia=false; fi", engine.ShellQuote(snapshotDir+"/media.tar.gz")),
+		fmt.Sprintf("printf '%%s\\n' %s \"created_at: $ts\" %s \"db: $hasdb\" \"media: $hasmedia\" > %s",
 			engine.ShellQuote("name: "+yamlQuote(name)),
 			engine.ShellQuote("framework: "+yamlQuote(framework)),
 			engine.ShellQuote(metaPath),

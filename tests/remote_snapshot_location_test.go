@@ -168,3 +168,50 @@ func TestSnapshotListNoDeployLayoutOnlyLegacy(t *testing.T) {
 		t.Fatalf("entries = %#v err=%v", entries, err)
 	}
 }
+
+// The metadata must describe what the snapshot holds: the old command wrote
+// `db: true` and `media: true` unconditionally, so a snapshot of a project with
+// no media directory (or no dump command) claimed archives that do not exist.
+func TestSnapshotMetadataReflectsWhatWasCaptured(t *testing.T) {
+	setPermissiveUmask(t)
+	cases := []struct {
+		name      string
+		dump      string
+		mediaDir  bool
+		wantDB    string
+		wantMedia string
+	}{
+		{"db and media", "echo dump", true, "db: true", "media: true"},
+		{"no media directory", "echo dump", false, "db: true", "media: false"},
+		{"no dump command", "", true, "db: false", "media: true"},
+		{"neither", "", false, "db: false", "media: false"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "snapshots")
+			media := filepath.Join(t.TempDir(), "media")
+			if tc.mediaDir {
+				if err := os.MkdirAll(media, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(media, "a.txt"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runSh(t, remote.BuildRemoteSnapshotCreateCommandAtRoot(root, "snap", "laravel", tc.dump, media))
+			meta, err := os.ReadFile(filepath.Join(root, "snap", "metadata.yml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{tc.wantDB, tc.wantMedia} {
+				if !strings.Contains(string(meta), want) {
+					t.Fatalf("metadata missing %q:\n%s", want, meta)
+				}
+			}
+			_, mediaErr := os.Stat(filepath.Join(root, "snap", "media.tar.gz"))
+			if (mediaErr == nil) != tc.mediaDir {
+				t.Fatalf("media archive presence = %v, want %v", mediaErr == nil, tc.mediaDir)
+			}
+		})
+	}
+}
