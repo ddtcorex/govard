@@ -325,6 +325,8 @@ type deployJSONTask struct {
 	Status     string `json:"status"`
 	DurationMS int64  `json:"duration_ms"`
 	Error      string `json:"error,omitempty"`
+	// SkipReason is the same field the plan document uses for a skipped step.
+	SkipReason string `json:"skip_reason,omitempty"`
 }
 
 // deployJSONPayload is the contract spec 13 describes: nested build and publish
@@ -382,6 +384,7 @@ func writeDeployJSON(cmd *cobra.Command, remote string, options deploy.Options, 
 		if step.Err != nil {
 			task.Error = step.Err.Error()
 		}
+		task.SkipReason = step.SkipReason
 		payload.Tasks = append(payload.Tasks, task)
 	}
 	encoded, err := json.Marshal(payload)
