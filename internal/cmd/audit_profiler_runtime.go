@@ -301,24 +301,47 @@ func writeAuditProfilerConfigAtomic(destination string, content []byte) (resultE
 
 func (runtime *govardAuditProfilerRuntime) reloadWebServer(ctx context.Context) error {
 	if runtime.webServer == "nginx" {
+		// Learn which workers are the old ones BEFORE signalling: right after the
+		// signal the master may not have acted yet, and "no worker is shutting
+		// down" is then true of the old workers too.
+		before := runtime.nginxWorkerPIDs(ctx)
 		if _, err := runtime.docker(ctx, "exec", runtime.webContainer, "nginx", "-s", "reload"); err != nil {
 			return err
 		}
-		runtime.waitForNginxReload(ctx)
+		runtime.waitForNginxReload(ctx, before)
 		return nil
 	}
 	_, err := runtime.docker(ctx, "exec", runtime.webContainer, "httpd", "-k", "graceful")
 	return err
 }
 
-// nginxWorkerListing prints one process title per line from /proc, which works
-// without procps in minimal images.
-const nginxWorkerListing = `for p in /proc/[0-9]*; do tr '\0' ' ' < "$p/cmdline" 2>/dev/null; echo; done`
+// nginxWorkerListing prints `<pid> <process title>` per process from /proc, which
+// works without procps in minimal images.
+const nginxWorkerListing = `for p in /proc/[0-9]*; do c=$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null); [ -n "$c" ] && echo "${p#/proc/} $c"; done`
 
-// waitForNginxReload polls until at least one nginx worker exists and none is
-// still shutting down. It never fails the audit: on timeout or probe error it
-// warns and lets the caller proceed.
-func (runtime *govardAuditProfilerRuntime) waitForNginxReload(ctx context.Context) {
+// nginxWorkerPIDs returns the PIDs of the running (not shutting down) workers, or
+// nil when they cannot be listed.
+func (runtime *govardAuditProfilerRuntime) nginxWorkerPIDs(ctx context.Context) map[string]bool {
+	if runtime.settleTimeout <= 0 {
+		return nil
+	}
+	output, err := runtime.docker(ctx, "exec", runtime.webContainer, "sh", "-c", nginxWorkerListing)
+	if err != nil {
+		return nil
+	}
+	workers, _ := parseNginxWorkers(string(output))
+	if len(workers) == 0 {
+		return nil
+	}
+	return workers
+}
+
+// waitForNginxReload polls until the reload has taken effect: a worker that was
+// not there before the signal exists and none is still shutting down. Without a
+// snapshot of the old workers it falls back to "some worker exists and none is
+// shutting down". It never fails the audit: on timeout it warns and lets the
+// caller proceed.
+func (runtime *govardAuditProfilerRuntime) waitForNginxReload(ctx context.Context, before map[string]bool) {
 	if runtime.settleTimeout <= 0 {
 		return
 	}
@@ -329,7 +352,7 @@ func (runtime *govardAuditProfilerRuntime) waitForNginxReload(ctx context.Contex
 	deadline := time.Now().Add(runtime.settleTimeout)
 	for {
 		output, err := runtime.docker(ctx, "exec", runtime.webContainer, "sh", "-c", nginxWorkerListing)
-		if err == nil && nginxReloadSettled(string(output)) {
+		if err == nil && nginxReloadSettled(string(output), before) {
 			return
 		}
 		if ctx.Err() != nil || !time.Now().Before(deadline) {
@@ -343,18 +366,47 @@ func (runtime *govardAuditProfilerRuntime) waitForNginxReload(ctx context.Contex
 	}
 }
 
-func nginxReloadSettled(listing string) bool {
-	workers := 0
+// parseNginxWorkers returns the PIDs of running workers and whether any worker is
+// still shutting down.
+func parseNginxWorkers(listing string) (running map[string]bool, shuttingDown bool) {
+	running = map[string]bool{}
 	for _, line := range strings.Split(listing, "\n") {
 		if !strings.Contains(line, "nginx: worker process") {
 			continue
 		}
 		if strings.Contains(line, "shutting down") {
+			shuttingDown = true
+			continue
+		}
+		if fields := strings.Fields(line); len(fields) > 0 {
+			running[fields[0]] = true
+		}
+	}
+	return running, shuttingDown
+}
+
+// nginxReloadSettled reports whether the reload has taken effect: a worker that
+// was not there before the signal is running, and no old worker still runs
+// normally. An old worker that is shutting down no longer accepts connections, so
+// it is not waited for (a keepalive connection can keep it alive for a long time).
+// Without a snapshot of the old workers it falls back to "some worker runs and
+// none is shutting down".
+func nginxReloadSettled(listing string, before map[string]bool) bool {
+	running, shuttingDown := parseNginxWorkers(listing)
+	if len(running) == 0 {
+		return false
+	}
+	if len(before) == 0 {
+		return !shuttingDown
+	}
+	newWorker := false
+	for pid := range running {
+		if before[pid] {
 			return false
 		}
-		workers++
+		newWorker = true
 	}
-	return workers > 0
+	return newWorker
 }
 
 func (runtime *govardAuditProfilerRuntime) warnf(format string, arguments ...any) {
