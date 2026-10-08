@@ -77,7 +77,7 @@ var (
 	sandboxUpCmd     = &cobra.Command{Use: "up", Short: "Create or reuse the sandbox", Long: "Create the sandbox, or reuse the running one as-is. Flags that disagree with a running sandbox: --docroot reshapes only when passed, while an explicit conflicting --profile is refused — pass --recreate to rebuild it.", Args: cobra.NoArgs, RunE: runSandboxUp}
 	sandboxStatusCmd = &cobra.Command{Use: "status", Short: "Report the sandbox state", Args: cobra.NoArgs, RunE: runSandboxStatusRun}
 	sandboxResetCmd  = &cobra.Command{Use: "reset", Short: "Wipe the sandbox's deploy directories", Args: cobra.NoArgs, RunE: runSandboxReset}
-	sandboxSSHCmd    = &cobra.Command{Use: "ssh", Short: "Open a shell in the sandbox", Long: "Open an interactive shell in the sandbox. Takes no command: `sandbox ssh -- <cmd>` is rejected as an unknown command, and a bare `sandbox ssh` always drops into the shell. To run one command, pipe it on stdin (echo 'ls -la' | govard sandbox ssh) or use `govard remote exec sandbox -- <cmd>`.", Args: cobra.NoArgs, RunE: runSandboxSSH}
+	sandboxSSHCmd    = &cobra.Command{Use: "ssh [-- <command>]", Short: "Open a shell in the sandbox, or run one command", Long: "Open an interactive shell in the sandbox. With `-- <command>` the command runs in the sandbox without a forced tty, so piped input works (printf x | govard sandbox ssh -- 'cat > f'), and govard exits with the command's own exit status. This is deliberate for this command only: the process is replaced by ssh, so the remote status is the status you get. Deploy steps never leak remote exit codes; see `govard deploy`. The words after `--` are joined with spaces into one remote command line, so quote a whole line as one argument. A bare `sandbox ssh` always drops into the interactive shell.", Example: "  govard sandbox ssh\n  govard sandbox ssh -- php -v\n  govard sandbox ssh -- 'cd current && ls -la'\n  printf hello | govard sandbox ssh -- 'cat > /tmp/f'", Args: sandboxSSHArgs, RunE: runSandboxSSH}
 	sandboxDownCmd   = &cobra.Command{Use: "down", Short: "Stop and remove the sandbox", Args: cobra.NoArgs, RunE: runSandboxDown}
 )
 
@@ -318,7 +318,26 @@ func runSandboxDown(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runSandboxSSH(cmd *cobra.Command, _ []string) error {
+// sandboxSSHArgs only accepts words after `--`: a typo such as `sandbox ssh sh`
+// must not silently run `sh` remotely.
+func sandboxSSHArgs(cmd *cobra.Command, args []string) error {
+	return sandboxSSHArgsAt(args, cmd.ArgsLenAtDash())
+}
+
+// SandboxSSHArgsValidForTest runs the argument validation of `sandbox ssh`;
+// dash is the index of `--` in args (-1 when absent).
+func SandboxSSHArgsValidForTest(args []string, dash int) error {
+	return sandboxSSHArgsAt(args, dash)
+}
+
+func sandboxSSHArgsAt(args []string, dash int) error {
+	if len(args) > 0 && dash != 0 {
+		return &cli.UsageError{Err: fmt.Errorf("put the command after --: govard sandbox ssh -- %s", strings.Join(args, " "))}
+	}
+	return nil
+}
+
+func runSandboxSSH(cmd *cobra.Command, command []string) error {
 	request, err := sandboxCommandRequest(cmd)
 	if err != nil {
 		return err
@@ -336,8 +355,14 @@ func runSandboxSSH(cmd *cobra.Command, _ []string) error {
 	}
 	// The session replaces this process, exactly like `govard remote exec`: an
 	// interactive shell that govard proxies would lose job control and the TTY.
-	args := append([]string{sshPath}, deploy.SandboxSSHArgs(request, state)...)
-	return engine.Handoff(sshPath, args)
+	// For `-- <command>` the replacement also hands the remote command's exit
+	// status straight back as govard's own, and stdin stays the caller's pipe.
+	// This is the one place a remote status is returned on purpose; the exit-code
+	// mapping in internal/cli (and every deploy step) still never leaks it.
+	if len(command) > 0 {
+		return engine.Handoff(sshPath, append([]string{sshPath}, deploy.SandboxSSHCommandArgs(request, state, command)...))
+	}
+	return engine.Handoff(sshPath, append([]string{sshPath}, deploy.SandboxSSHArgs(request, state)...))
 }
 
 func printSandboxState(cmd *cobra.Command, state *deploy.SandboxState, headline string) {
