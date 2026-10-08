@@ -115,7 +115,8 @@ func TestRemoteSnapshotCreateCommandRunsToCompletion(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &meta); err != nil {
 		t.Fatalf("metadata.yml is not valid YAML: %v\n%s", err, raw)
 	}
-	if meta["name"] != name || meta["framework"] != framework || meta["db"] != true || meta["media"] != true {
+	// No media path was given, so the metadata must not claim a media archive.
+	if meta["name"] != name || meta["framework"] != framework || meta["db"] != true || meta["media"] != false {
 		t.Fatalf("metadata values did not round-trip: %#v\n%s", meta, raw)
 	}
 	// An unquoted ISO-8601 UTC timestamp decodes to time.Time, the type the

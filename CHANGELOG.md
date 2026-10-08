@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Remote `snapshot create` writes `db` and `media` in `metadata.yml` from what it
+  actually captured instead of always `true`, so a project without a media
+  directory no longer claims a media archive.
 - Audit lint findings carry a framework-owned id prefix (`LARAVEL-LINT-*`,
   `SYMFONY-LINT-*`, `WP-LINT-*`) instead of the Magento `M2-LINT-*` ids; Magento ids
   are unchanged, and nothing matches on ids, so no baseline or stored session breaks. (#587)
