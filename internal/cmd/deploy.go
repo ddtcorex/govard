@@ -318,7 +318,8 @@ func prepareResume(ctx context.Context, host deploy.Host, release *deploy.Releas
 	if err := deploy.CoreUnlock(ctx, unlock); err != nil {
 		return nil, err
 	}
-	pterm.Info.Printf("resuming release %s (previously failed)\n", release.Release)
+	// To the run's own writer: stderr under --json, so stdout stays one document.
+	pterm.Info.WithWriter(out).Printf("resuming release %s (previously failed)\n", release.Release)
 	return release, nil
 }
 
@@ -369,6 +370,13 @@ func ReconcileResumeBuildModeForTest(release *deploy.Release, options deploy.Opt
 // restated in the caller.
 func PrepareResumeForTest(ctx context.Context, host deploy.Host, release *deploy.Release) error {
 	_, err := prepareResume(ctx, host, release, deploy.Options{}, io.Discard)
+	return err
+}
+
+// PrepareResumeToForTest exposes prepareResume with a chosen output writer, the
+// one a `--json` run points at stderr so stdout stays a single JSON document.
+func PrepareResumeToForTest(ctx context.Context, host deploy.Host, release *deploy.Release, out io.Writer) error {
+	_, err := prepareResume(ctx, host, release, deploy.Options{}, out)
 	return err
 }
 
