@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `capabilities` reports one row per command path; service shortcuts registered
+  under two parents are no longer listed twice. (#543)
 - Sandbox: MariaDB 11 clients, seed retry after a partial failure, WordPress
   `siteurl`/`home` rewrite, php-fpm sees a new release after the symlink swap,
   `down --purge` removes every profile image. (#553, #554, #566, #575, #576)

@@ -62,10 +62,18 @@ func walkCommandTree(cmd *cobra.Command, visit func(*cobra.Command)) {
 func capabilityRows() []CapabilityRow {
 	rows := []CapabilityRow{}
 	satisfiedByRequirement := map[string]bool{}
+	// A command registered under two parents (for example the service
+	// shortcuts also reachable as "env <service>") is the same pointer, so the
+	// walk visits it twice. First occurrence wins; the alias stays reachable.
+	emitted := map[string]bool{}
 	walkCommandTree(rootCmd, func(cmd *cobra.Command) {
 		if cmd == rootCmd || (cmd.RunE == nil && cmd.Run == nil) {
 			return
 		}
+		if emitted[cmd.CommandPath()] {
+			return
+		}
+		emitted[cmd.CommandPath()] = true
 		capabilities := runtime.Requires(cmd)
 		names := make([]string, 0, len(capabilities))
 		for _, capability := range capabilities {
