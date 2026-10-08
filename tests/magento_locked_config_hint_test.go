@@ -32,3 +32,17 @@ func TestMagentoLockedConfigHintIgnoresOtherFailures(t *testing.T) {
 		t.Fatalf("unrelated failure got a hint: %q", hint)
 	}
 }
+
+func TestMagentoConfigureBannerIsAWarningWhenStepsWereRefused(t *testing.T) {
+	msg, ok := magento2.ConfigureCompletionMessage("Magento 2", 0)
+	if !ok || !strings.Contains(msg, "configured successfully") {
+		t.Fatalf("clean run = (%q, %v), want success banner", msg, ok)
+	}
+	msg, ok = magento2.ConfigureCompletionMessage("Magento 2", 2)
+	if ok {
+		t.Fatalf("a run with refused steps must not be a success banner: %q", msg)
+	}
+	if !strings.Contains(msg, "2 step(s) were refused") || strings.Contains(msg, "successfully") {
+		t.Fatalf("warning banner = %q, want it to state 2 step(s) were refused without 'successfully'", msg)
+	}
+}

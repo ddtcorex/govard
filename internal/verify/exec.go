@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -55,9 +57,13 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 		cmd.Dir = opts.ProjectRoot
 	}
 	// Capture combined
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
+	// Keep the interleaved text for the evidence excerpt, but validate JSON on
+	// stdout alone: a warning on stderr must not turn one valid document into
+	// "invalid JSON".
+	var buf, stdout bytes.Buffer
+	combined := &lockedWriter{w: &buf}
+	cmd.Stdout = io.MultiWriter(&stdout, combined)
+	cmd.Stderr = combined
 	err := cmd.Run()
 	dur := time.Since(start)
 	exitCode := 0
@@ -71,7 +77,7 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 	out := buf.String()
 	excerpt := excerptOf(out, exitCode)
 	// JSON valid if output is JSON (for --json cases)
-	jsonValid := json.Valid([]byte(strings.TrimSpace(out)))
+	jsonValid := json.Valid([]byte(strings.TrimSpace(stdout.String())))
 	_ = dur
 	_ = cfg
 	return Evidence{
@@ -79,6 +85,18 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 		OutputExcerpt: excerpt,
 		JSONValid:     jsonValid,
 	}
+}
+
+// lockedWriter serializes the stdout and stderr copiers that share one buffer.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }
 
 // govardBinary resolves the binary an item runs: an explicit override first,

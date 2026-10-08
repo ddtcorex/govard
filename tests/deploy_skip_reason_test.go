@@ -75,3 +75,37 @@ func TestResumeCarriedStepsSayTheyCompletedInTheInterruptedRun(t *testing.T) {
 		t.Errorf("the timeline must show the reason:\n%s", out.String())
 	}
 }
+
+func TestStepsBeforeFromSayTheyWereNotRunBecauseOfResume(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	plan, err := deploy.BuildPlanForTest(deploy.RecipeForTest("test", []deploy.Task{
+		{ID: deploy.TaskVendors, Stage: deploy.StageBuild, Command: "true"},
+		{ID: deploy.TaskActivate, Stage: deploy.StagePublish, Command: "true"},
+	}), nil)
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+	release := deploy.NewReleaseForTest("4", "abc", "local")
+	var out bytes.Buffer
+	outcome, err := deploy.NewExecutor(host, deploy.Options{CommandTimeout: time.Minute, From: deploy.TaskActivate}, &out).Run(context.Background(), plan, deploy.NewVars(), release)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	want := "not run: resumed from " + deploy.TaskActivate
+	found := false
+	for _, step := range outcome.Steps {
+		if step.ID != deploy.TaskVendors {
+			continue
+		}
+		found = true
+		if step.Status != deploy.StepSkipped || step.SkipReason != want {
+			t.Errorf("%s: status %q reason %q, want skipped with %q", step.ID, step.Status, step.SkipReason, want)
+		}
+	}
+	if !found {
+		t.Fatalf("%s missing: %+v", deploy.TaskVendors, outcome.Steps)
+	}
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("the timeline must show the reason:\n%s", out.String())
+	}
+}

@@ -398,6 +398,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			} else {
 				// `--from` put this step behind the run without an earlier run
 				// having succeeded at it, so there is no success to keep.
+				if step.SkipReason == "" && e.opts.From != "" {
+					step.SkipReason = "not run: resumed from " + e.opts.From
+				}
 				e.record(ctx, release, step, StepSkipped, 0, nil)
 			}
 			continue

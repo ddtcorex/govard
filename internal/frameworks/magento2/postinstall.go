@@ -106,6 +106,7 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 	}
 
 	commands := buildMagento2Commands(projectName, config, lockedKeys)
+	refusedSteps := 0
 
 	// app/etc/config.php sits in the project root, which is the directory the
 	// operator invoked govard from. Resolved once here so the repair steps below
@@ -205,6 +206,7 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 			if cmd.Optional {
 				pterm.Warning.Printf("Non-fatal Magento configure step failed (%s): %v\n", cmd.Desc, err)
 				if hint := LockedConfigHint(cmd.Desc, cmd.Args, outText); hint != "" {
+					refusedSteps++
 					pterm.Warning.Println(hint)
 				}
 				if outText != "" {
@@ -219,8 +221,23 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 		}
 	}
 
-	pterm.Success.Printf("%s environment configured successfully!\n", frameworkName)
+	message, success := ConfigureCompletionMessage(frameworkName, refusedSteps)
+	if success {
+		pterm.Success.Println(message)
+	} else {
+		pterm.Warning.Println(message)
+	}
 	return nil
+}
+
+// ConfigureCompletionMessage is the closing line of the configure run. A run
+// where Magento refused locked values is still a zero exit (scripts rely on
+// it), but it must not print a success banner next to the refusal hints.
+func ConfigureCompletionMessage(frameworkName string, refusedSteps int) (string, bool) {
+	if refusedSteps > 0 {
+		return fmt.Sprintf("%s environment configured with warnings: %d step(s) were refused by locked config values (see the hints above).", frameworkName, refusedSteps), false
+	}
+	return fmt.Sprintf("%s environment configured successfully!", frameworkName), true
 }
 
 func displayNameForDistribution(framework string) string {
