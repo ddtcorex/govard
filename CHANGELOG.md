@@ -97,6 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `project delete` removes everything a project left and never prompts without a
   TTY; `varnish ban --help`; a locked-config hint. (#565, #567, #569)
 
+### Removed
+
+- **Snap packaging is removed.** The Snap Store never approved the classic-confinement request, so the `snapcrafts` GoReleaser block, the Store login step in the release workflow, the snap CI step, and the `snap` install source (including its `snap refresh` upgrade hint and the read-only `--force` refusal) are gone. Install through Homebrew, npm, CloudSmith (apt, dnf, apk), Docker, or the install script.
+
 ### Added
 
 - **`govard project list` shows a Status column and lists running projects first.** Status is `running`, `stopped`, or `unknown` when the container runtime cannot be reached; the listing still works without Docker and then keeps the registry order.
