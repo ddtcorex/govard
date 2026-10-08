@@ -374,3 +374,49 @@ func TestMergeJSONObjectFileUnionsListKeys(t *testing.T) {
 		t.Errorf("got %v, want %v", got["intelephense.files.exclude"], want)
 	}
 }
+
+func TestPruneVendorExcludes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	seed := `{
+		"search.exclude": {"**/vendor": true, "vendor/**": true, "/vendor/": true, "**/vendor/**": true, "**/var": true, "**/vendor/**/Test": true, "**/other/vendor": false},
+		"files.exclude": {"**/vendor": true, "**/generated": true},
+		"files.watcherExclude": {"**/vendor/**": true}
+	}`
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := cmd.PruneVendorExcludesForTest(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 5 {
+		t.Errorf("removed = %v, want 5 entries (4 in search.exclude, 1 in files.exclude)", removed)
+	}
+	data, _ := os.ReadFile(path)
+	var got map[string]map[string]interface{}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	search := got["search.exclude"]
+	for _, key := range []string{"**/vendor", "vendor/**", "/vendor/", "**/vendor/**"} {
+		if _, ok := search[key]; ok {
+			t.Errorf("search.exclude still hides vendor via %q", key)
+		}
+	}
+	if search["**/var"] != true || search["**/vendor/**/Test"] != true {
+		t.Errorf("unrelated search.exclude entries must survive: %v", search)
+	}
+	if _, ok := got["files.exclude"]["**/vendor"]; ok || got["files.exclude"]["**/generated"] != true {
+		t.Errorf("files.exclude not pruned correctly: %v", got["files.exclude"])
+	}
+	if got["files.watcherExclude"]["**/vendor/**"] != true {
+		t.Error("files.watcherExclude is the user's call and must not be touched")
+	}
+}
+
+func TestPruneVendorExcludesMissingFile(t *testing.T) {
+	removed, err := cmd.PruneVendorExcludesForTest(filepath.Join(t.TempDir(), "none.json"))
+	if err != nil || len(removed) != 0 {
+		t.Errorf("missing file: removed=%v err=%v, want none", removed, err)
+	}
+}

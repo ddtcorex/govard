@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"govard/internal/engine"
@@ -71,6 +72,8 @@ search, the file watcher and the Intelephense index. Magento's generated/code
 stays indexed so Factory and Interceptor classes still resolve. The
 search.exclude, files.watcherExclude and intelephense.files.exclude values are
 merged into whatever is already there, so entries you added yourself are kept.
+Any active search.exclude or files.exclude entry that hides vendor/ itself is
+removed and reported, since quick open (Ctrl+P) honours both settings.
 
 Existing keys in either file are preserved; only the keys this command manages
 are added or overwritten. Note: settings.json is parsed as plain JSON, so any
@@ -160,6 +163,13 @@ func runVSCodeSetupProject() error {
 
 	if len(set) > 0 || len(unset) > 0 {
 		settingsPath := filepath.Join(root, ".vscode", "settings.json")
+		removed, err := pruneVendorExcludes(settingsPath)
+		if err != nil {
+			return fmt.Errorf("write %s: %w", settingsPath, err)
+		}
+		for _, entry := range removed {
+			pterm.Info.Printf("Removed %s: it hides vendor/ from search and quick open (Ctrl+P)\n", entry)
+		}
 		if err := mergeJSONObjectFileMerging(settingsPath, set, unset, vscodeMergedSettingKeys); err != nil {
 			return fmt.Errorf("write %s: %w", settingsPath, err)
 		}
@@ -769,4 +779,71 @@ func VSCodeIndexSettingsForTest(framework string) map[string]interface{} {
 // MergeJSONObjectFileMergingForTest exposes mergeJSONObjectFileMerging to the tests package.
 func MergeJSONObjectFileMergingForTest(path string, set map[string]interface{}, unset []string, mergeKeys []string) error {
 	return mergeJSONObjectFileMerging(path, set, unset, mergeKeys)
+}
+
+// vendorExcludeSettings are the settings whose entries hide files from search
+// and quick open. files.watcherExclude is deliberately absent: it only affects
+// change notifications, and dropping vendor/ from it is a valid user choice.
+var vendorExcludeSettings = []string{"search.exclude", "files.exclude"}
+
+// isVendorExcludeGlob reports whether glob, as a search/files exclude key,
+// hides the top-level vendor directory itself ("vendor", "**/vendor",
+// "/vendor/", "vendor/**", "**/vendor/**"). Narrower globs such as
+// "**/vendor/**/Test" are left alone.
+func isVendorExcludeGlob(glob string) bool {
+	glob = strings.TrimSuffix(strings.TrimSpace(glob), "/**")
+	glob = strings.Trim(glob, "/")
+	glob = strings.TrimPrefix(glob, "**/")
+	return glob == "vendor"
+}
+
+// pruneVendorExcludes removes active entries that hide vendor/ from
+// search.exclude and files.exclude in the settings file at path, and returns
+// them as "setting: glob". Quick open (Ctrl+P) follows both settings, so
+// leaving one in place defeats search.useIgnoreFiles=false. A missing file is
+// not an error.
+func pruneVendorExcludes(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	obj := map[string]interface{}{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, fmt.Errorf("parse existing %s (comments/trailing commas aren't supported): %w", path, err)
+	}
+
+	var removed []string
+	for _, setting := range vendorExcludeSettings {
+		entries, ok := obj[setting].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for glob, active := range entries {
+			if on, _ := active.(bool); on && isVendorExcludeGlob(glob) {
+				delete(entries, glob)
+				removed = append(removed, setting+": "+glob)
+			}
+		}
+	}
+	if len(removed) == 0 {
+		return nil, nil
+	}
+	sort.Strings(removed)
+
+	out, err := json.MarshalIndent(obj, "", "    ")
+	if err != nil {
+		return nil, fmt.Errorf("encode %s: %w", path, err)
+	}
+	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+		return nil, err
+	}
+	return removed, nil
+}
+
+// PruneVendorExcludesForTest exposes pruneVendorExcludes to the tests package.
+func PruneVendorExcludesForTest(path string) ([]string, error) {
+	return pruneVendorExcludes(path)
 }
