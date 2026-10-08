@@ -1238,6 +1238,40 @@ exit 1
 	}
 }
 
+// A target that never had `shared/var/backups` gets no `var/backups` link in the
+// release, so the restore copied its dump into a directory that did not exist and
+// `rollback --with-db` failed with "No such file or directory". The restore now
+// creates the directory it needs.
+func TestMagento2RestoreWorksWhenTheReleaseHasNoVarBackups(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := deploy.NewReleaseForTest("1", "abcdef", "main")
+	release.Path = host.ReleasePath("1")
+	if err := os.MkdirAll(filepath.Join(release.Path, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\nfile=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in --db-file=*) file=\"${arg#--db-file=}\" ;; esac\ndone\n" +
+		"if [ ! -f \"var/backups/$file\" ]; then echo \"The rollback file is invalid.\" >&2; exit 1; fi\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(release.Path, "bin", "magento"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dump := filepath.Join(host.BackupRootPath(), "1", "dump.sql")
+	if err := os.MkdirAll(filepath.Dir(dump), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dump, []byte("dump"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	release.Database.Backup = dump
+
+	sc := deploy.StepContextForTest(host, deploy.Options{CommandTimeout: time.Minute})
+	sc.Release = release
+	sc.Vars = sc.Vars.Set("php_bin", "sh").SetPath("release_path", release.Path)
+
+	if err := deploy.CoreDBRestore(magento2.DeployRecipe().Restore)(context.Background(), sc); err != nil {
+		t.Fatalf("db:restore on a release without var/backups: %v", err)
+	}
+}
+
 // The framework flush is not a sweep on Magento 2.4.9: the file cache is a
 // Symfony pool and `TagScope::clean()` rewrites CLEANING_MODE_ALL into a *tag*
 // clean, so `cache:flush` removes only the entries its own index still knows

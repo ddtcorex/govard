@@ -452,5 +452,6 @@ var magentoDumpProbe = deploy.DBBackupProbe{
 // therefore copied back under a Magento-shaped name inside `var/backups`, where
 // the release already links that directory from `shared/`.
 const magentoRestoreCommand = "cd {{release_path}} && restore=\"$(date +%s)_db.sql\" && " +
+	"mkdir -p var/backups && " +
 	"cp {{backup_path}} \"var/backups/$restore\" && " +
 	"{ {{php_bin}} bin/magento setup:rollback --db-file=\"$restore\" --no-interaction; rc=$?; rm -f \"var/backups/$restore\"; exit $rc; }"
