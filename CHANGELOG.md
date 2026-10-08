@@ -65,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `themes.js`); without it the sync container only reported unhealthy. The
   command now stops before starting and prints the copy command. (#573)
 
+- **Desktop `DeleteProject` removes the same verify, audit and project-mode lint-cache stores as `project delete`.** The store resolver now lives in `internal/projectstores` and both entry points register it. Lint cache namespaces of module and standalone audits are keyed by arbitrary module paths, cannot be attributed to a project, and are left in place. (#586)
 - Sandbox: MariaDB 11 clients, seed retry after a partial failure, WordPress
   `siteurl`/`home` rewrite, php-fpm sees a new release after the symlink swap,
   `down --purge` removes every profile image. (#553, #554, #566, #575, #576)

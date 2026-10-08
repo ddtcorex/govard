@@ -3,15 +3,12 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
-	"govard/internal/audit"
 	"govard/internal/cli"
 	"govard/internal/engine"
-	"govard/internal/frameworks/types"
+	"govard/internal/projectstores"
 	"govard/internal/ui"
-	"govard/internal/verify"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -358,38 +355,8 @@ func runProjectOrphans(cmd *cobra.Command) error {
 }
 
 func init() {
-	// The verify-run and audit stores are keyed by a project id derived from the
-	// project path, a derivation engine cannot import. Registering them here lets
-	// `project delete` list and remove the stores of exactly that project.
-	engine.RegisterProjectStoreResolver(func(root string) []string {
-		canonical := root
-		if abs, err := filepath.Abs(root); err == nil {
-			canonical = abs
-			if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-				canonical = resolved
-			}
-		}
-		home := engine.GovardHomeDir()
-		dirs := []string{filepath.Join(home, "verify-runs", verify.ProjectID(root))}
-		origin, _ := gitOutput(canonical, "config", "--get", "remote.origin.url")
-		for _, identity := range []string{"", auditRepositoryIdentity(canonical, origin)} {
-			dirs = append(dirs, filepath.Join(home, "audit", audit.ProjectID(canonical, identity)))
-		}
-		// The reusable lint cache is namespaced per audit target by a hash of
-		// project id, mode and target path. A project-mode target is the project
-		// root itself, so its namespace is derivable; module and standalone
-		// namespaces are keyed by arbitrary module paths and are left alone.
-		lintRoot := audit.DefaultLintCacheRoot(home)
-		paths := []string{canonical}
-		if root != canonical {
-			paths = append(paths, root)
-		}
-		for _, identity := range []string{"", auditRepositoryIdentity(canonical, origin)} {
-			projectID := audit.ProjectID(canonical, identity)
-			for _, targetPath := range paths {
-				dirs = append(dirs, filepath.Join(lintRoot, audit.LintTargetID(projectID, types.AuditTargetProject, targetPath)))
-			}
-		}
-		return dirs
-	})
+	// The verify-run, audit and lint-cache stores are keyed by ids derived from
+	// the project path; internal/projectstores resolves them for `project delete`
+	// (the desktop app registers the same resolver).
+	projectstores.Register()
 }

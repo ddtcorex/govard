@@ -12,6 +12,7 @@ import (
 
 	"govard/internal/engine"
 	"govard/internal/frameworks"
+	"govard/internal/projectstores"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -382,6 +383,13 @@ func (s *EnvironmentService) QuickAction(action string) (res string, err error) 
 func (s *EnvironmentService) QuickActionForProject(action string, project string) (res string, err error) {
 	defer RecoverPanic(&err, "QuickActionForProject")
 	return quickAction(s.platform, action, project)
+}
+
+func init() {
+	// The desktop binary does not link the CLI package, so it registers the
+	// verify, audit and lint-cache store resolver itself; otherwise DeleteProject
+	// would keep the stores that `project delete` removes.
+	projectstores.Register()
 }
 
 func (s *EnvironmentService) DeleteProject(projectQuery string) (res string, err error) {

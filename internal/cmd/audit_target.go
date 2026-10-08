@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"govard/internal/projectstores"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -217,20 +217,7 @@ func auditSourceFingerprint(root string) (audit.SourceFingerprint, string) {
 }
 
 func auditRepositoryIdentity(root, origin string) string {
-	if strings.TrimSpace(origin) != "" {
-		return strings.TrimSpace(origin)
-	}
-	contents, err := os.ReadFile(filepath.Join(root, "composer.json"))
-	if err != nil {
-		return ""
-	}
-	var manifest struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(contents, &manifest); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(manifest.Name)
+	return projectstores.RepositoryIdentity(root, origin)
 }
 
 // AuditLockPath returns the filesystem lock path for a given audit projectId.
