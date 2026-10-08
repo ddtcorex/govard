@@ -162,11 +162,8 @@ func (s *SymfonyBootstrap) Configure(projectDir string) error {
 				dbName = "symfony"
 			}
 
-			updated := string(content)
-			if !strings.Contains(updated, "@"+dbHost+":") {
-				updated = strings.ReplaceAll(updated,
-					"DATABASE_URL=",
-					fmt.Sprintf("DATABASE_URL=\"%s\"", s.databaseURL(dbUser, dbPass, dbHost, dbName)))
+			desired := fmt.Sprintf("DATABASE_URL=\"%s\"", s.databaseURL(dbUser, dbPass, dbHost, dbName))
+			if updated := setEnvAssignment(string(content), "DATABASE_URL", desired); updated != string(content) {
 				_ = os.WriteFile(envLocalPath, []byte(updated), conventions.DefaultFilePerm)
 			}
 		}
@@ -176,6 +173,30 @@ func (s *SymfonyBootstrap) Configure(projectDir string) error {
 
 	pterm.Success.Println("Symfony configured successfully")
 	return nil
+}
+
+// setEnvAssignment makes the active `key=...` line of a dotenv file equal to
+// assignment (a full `KEY=value` line). Only the line's own value is replaced,
+// so a quoted or unquoted old value cannot leak into the new one; commented
+// lines are left alone; the line is appended when the key has no active line.
+// An already-equal file is returned unchanged.
+func setEnvAssignment(content, key, assignment string) string {
+	lines := strings.Split(content, "\n")
+	needle := key + "="
+	replaced := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), needle) {
+			lines[i] = assignment
+			replaced = true
+		}
+	}
+	if !replaced {
+		if len(lines) > 0 && lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
+		lines = append(lines, assignment, "")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // databaseURL builds the Doctrine DATABASE_URL for the local database service.

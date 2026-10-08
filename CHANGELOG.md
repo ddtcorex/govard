@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Bootstrap: Shopware `.env` uses the resolvable mail host from the shared
+  conventions, and Symfony `Configure` replaces an existing `DATABASE_URL` line
+  instead of concatenating the new URL in front of the old value. (#585)
 - `sync --plan` leaves out table exclusions that cannot match when the table prefix
   is unknown and says the privacy filter is unresolved; `bootstrap --plan` notes
   that the prefix is resolved at run time and a `--no-pii` run would be refused
