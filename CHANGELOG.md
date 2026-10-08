@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ⚠️ Behaviour Changes
+
+- **`--no-pii` fails closed.** A request that cannot match any table (WordPress
+  remote with an unreadable or dynamic prefix) is refused instead of producing a
+  dump that still holds user data. A remote's prefix is never guessed from the
+  local config. (#544)
+- **`sync` pulls no longer follow symlinks out of the synced path.** The default is
+  rsync `--safe-links`; the new `--resolve-symlinks` flag opts in to copying the
+  target's content. (#547)
+- **`snapshot restore` asks for confirmation**; pass `-y` in non-interactive
+  sessions. (#558)
+- **`deploy --db-backup` takes a plain dump** (`mariadb-dump`/`mysqldump`, or
+  `wp db export`) with a private option file, and a target with no dump client is a
+  configuration error (exit 4). Magento no longer uses `setup:backup`. (#549)
+- **A failing remote deploy step exits 1** instead of leaking the remote status.
+  (#550)
+
+### Security
+
+- `.govard/sandbox/`, `.govard/snapshots/` and the `doctor --pack` directory get a
+  self-ignoring `.gitignore`, so `git add -A` no longer stages the sandbox private
+  key or a database dump. A symlinked directory or `.gitignore` is refused and keys
+  are created with `O_EXCL`.
+
+### Fixed
+
+- Sandbox: MariaDB 11 clients, seed retry after a partial failure, WordPress
+  `siteurl`/`home` rewrite, php-fpm sees a new release after the symlink swap,
+  `down --purge` removes every profile image. (#553, #554, #566, #575, #576)
+- `open -e sandbox` resolves the synthetic remote; WordPress opens `/wp-admin`.
+  (#559, #577)
+- `db query -e` selects the database; `db top` validates and detects the SQL
+  client; a failed dump leaves no stub; `sync --plan` no longer needs the remote.
+  (#546, #555, #556, #568)
+- `deploy --resume` honors `--from` and re-links shared entries; `deploy check`
+  resolves composer credentials like the run; skipped steps say why. (#548, #551,
+  #552, #571)
+- `audit`: an unresolvable `--base` fails, the Xdebug gate hint is correct and
+  warnings go to stderr, the profiler waits for nginx to switch workers. (#560,
+  #561, #562)
+- `bootstrap`: Symfony `MAILER_DSN` and `serverVersion` come from the stack, every
+  WordPress plan form prints. (#563, #564)
+- `project delete` removes everything a project left and never prompts without a
+  TTY; `varnish ban --help`; a locked-config hint. (#565, #567, #569)
+
+### Added
+
+- `govard verify` covers the whole command surface on Magento 2, Laravel, Symfony
+  and WordPress and skips rows that do not apply, with `--remote sandbox
+  --allow-remote-write` as the end-to-end remote check. (#578)
+
 ## [1.78.0] - 2026-10-04
 
 ### ⚠️ Behaviour Changes
