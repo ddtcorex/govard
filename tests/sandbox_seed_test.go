@@ -678,3 +678,22 @@ func TestSandboxSeedNamesAnEmptyDBRewrite(t *testing.T) {
 		t.Fatalf("an empty rewrite must be reported, got:\n%s", out.String())
 	}
 }
+
+// Newer MariaDB images ship mariadb-admin and no mysqladmin, so a readiness
+// probe that only knows mysqladmin exits 127 forever.
+func TestSandboxSeedWaitsWithMariadbAdminWhenMysqladminIsAbsent(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	root := t.TempDir()
+	fake := freshSandboxFake()
+	delete(fake.answers, "mysqladmin ping")
+	fake.fail["mysqladmin ping"] = "exec: \"mysqladmin\": executable file not found in $PATH"
+	fake.answers["mariadb-admin ping"] = "mysqld is alive\n"
+	runtime := deploy.NewDockerCLIForTest(fake.run)
+
+	if _, err := deploy.SandboxUp(context.Background(), runtime, deploy.LocalRunner{}, seedSandboxUpRequest(t, root, origin)); err != nil {
+		t.Fatalf("sandbox up must accept a database that only has mariadb-admin: %v", err)
+	}
+	if !fake.has("mariadb-admin ping") {
+		t.Errorf("the readiness probe must try mariadb-admin, got: %v", fake.calls)
+	}
+}

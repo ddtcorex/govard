@@ -1395,8 +1395,10 @@ deploy directories and laying them out again is what it is for. `down` stops and
 removes the container — the implicit `sandbox` remote exists only while it
 does, so there is nothing left to clean out of any configuration file — and
 keeps every data volume so a rehearsal resumes tomorrow; `down --volumes`
-deletes the derived volumes too. `--purge` also removes the image, the key
-and the mirror.
+deletes the derived volumes too. `--purge` also removes the images of every
+profile built for the project, the key and the mirror. The state directory
+`.govard/sandbox/` ignores itself (it holds a `.gitignore` of `*`), so
+`git add -A` never stages the private key.
 
 A sandbox is a derived project, not a generic container: `up` renders the origin
 project's own blueprint — same PHP series, same services — into a dedicated

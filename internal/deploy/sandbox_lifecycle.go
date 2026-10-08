@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -284,8 +285,8 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	}
 
 	stateDir := SandboxStateDir(request.ProjectRoot)
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		return nil, fmt.Errorf("create %s: %w", stateDir, err)
+	if err := EnsureSandboxStateDir(stateDir); err != nil {
+		return nil, err
 	}
 
 	// Whether the container already exists decides what the flags mean, so it is
@@ -516,6 +517,14 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 	// means plain `sandbox up` with no derivation: no seed, no record.
 	derived := NewDerivedFrom(request.SeedOrigin, request.SeedBlueprintRev)
 	seeded := false
+	// A seed that started and never finished left a marker behind: the next `up`
+	// finishes it, because a reused container normally seeds nothing and a
+	// half-seeded sandbox would otherwise look healthy from then on.
+	resumeSeed := exists && sandboxSeedPending(request.ProjectRoot)
+	if resumeSeed {
+		fmt.Fprintln(request.out(), "the previous seed did not finish, seeding again")
+		request.Reseed = true
+	}
 	wantSeed := request.SeedOrigin != "" && !request.NoSeed && (!exists || request.Reseed)
 	switch {
 	case wantSeed && !SandboxHasDatabase(profile):
@@ -528,6 +537,9 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		// volume holds, so a stopped origin is reported before any work.
 		return nil, errOriginNotRunning
 	case wantSeed:
+		if err := markSandboxSeedPending(request.ProjectRoot); err != nil {
+			return nil, err
+		}
 		seedDB, err := sandboxSeedDatabaseNeeded(ctx, runtime, request.out(), container, request)
 		if err != nil {
 			return nil, err
@@ -544,6 +556,7 @@ func SandboxUp(ctx context.Context, runtime SandboxRuntime, git Runner, request 
 		if err := runSandboxSeedFiles(ctx, runtime, request.out(), container, webPort, request); err != nil {
 			return nil, err
 		}
+		clearSandboxSeedPending(request.ProjectRoot)
 		seeded = true
 	}
 
@@ -1087,6 +1100,16 @@ func SandboxDown(ctx context.Context, runtime SandboxRuntime, request SandboxReq
 	if state.Image != "" {
 		_ = runtime.RemoveImage(ctx, state.Image)
 	}
+	// A sandbox recreated with another profile leaves the earlier profile's
+	// image behind, and the container only knows the last one: sweep every
+	// image this project's sandbox ever built.
+	if project != "" {
+		for _, image := range sandboxProjectImages(ctx, runtime, project) {
+			if image != state.Image {
+				_ = runtime.RemoveImage(ctx, image)
+			}
+		}
+	}
 	// The rendered Dockerfile and the mirror are derived state; the key is the
 	// one thing here that cannot be regenerated into an already-running
 	// container, which is why it only goes with --purge.
@@ -1311,4 +1334,26 @@ func sandboxDBServerVersion(ctx context.Context, runtime SandboxRuntime, contain
 		return ""
 	}
 	return strings.TrimSpace(strings.SplitN(strings.TrimSpace(output), "\n", 2)[0])
+}
+
+// sandboxImageRepository is the repository every sandbox image is tagged under.
+const sandboxImageRepository = "govard-sandbox"
+
+// sandboxProjectImages lists the images built for one project, whatever their
+// profile: `<slug>-<profile>-<12 hex>` under the sandbox repository. Matching
+// the whole tag keeps a project whose name extends this one's (`shop` and
+// `shop-eu`) out of the sweep.
+func sandboxProjectImages(ctx context.Context, runtime SandboxRuntime, project string) []string {
+	images, err := runtime.ListImages(ctx, sandboxImageRepository)
+	if err != nil {
+		return nil
+	}
+	pattern := regexp.MustCompile("^" + regexp.QuoteMeta(sandboxImageRepository+":"+sandboxSlug(project)) + "-(basic|php|full)-[0-9a-f]{12}$")
+	var matched []string
+	for _, image := range images {
+		if pattern.MatchString(image) {
+			matched = append(matched, image)
+		}
+	}
+	return matched
 }

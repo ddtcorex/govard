@@ -97,8 +97,11 @@ func Definition() types.FrameworkDefinition {
 		TablePrefixDetector:           DetectTablePrefix,
 		RemoteDBUsesConfigTablePrefix: true,
 		TablesUsuallyPrefixed:         true,
-		Upgrade:                       Upgrade,
-		DeployRecipe:                  DeployRecipe,
+		// Sandbox seeding: the database is the whole seed, so the only
+		// framework step is pointing siteurl and home at the sandbox.
+		SandboxSeed:  &engine.SandboxSeedDefinition{DBRewrite: SandboxBaseURLStatements},
+		Upgrade:      Upgrade,
+		DeployRecipe: DeployRecipe,
 		ProbeRemoteDB: func(remoteName string, remoteCfg engine.RemoteConfig) (remote.RemoteDatabaseMetadata, error) {
 			metadata, err := ProbeEnvironment(remoteName, remoteCfg)
 			if err != nil {

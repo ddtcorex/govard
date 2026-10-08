@@ -299,7 +299,7 @@ func TestSandboxWebPassesTheClientsHostToTheApplication(t *testing.T) {
 		t.Errorf("the web tier does not pass the client's host, so a canonicalising application loops:\n%s", nginx)
 	}
 	// The rest of the PHP location must stay: the fix adds one parameter.
-	for _, want := range []string{"include fastcgi_params;", "fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;"} {
+	for _, want := range []string{"include fastcgi_params;", "fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;"} {
 		if !strings.Contains(nginx, want) {
 			t.Errorf("the web tier lost %q:\n%s", want, nginx)
 		}
@@ -328,6 +328,34 @@ func TestSandboxWebBuffersLargeResponseHeaders(t *testing.T) {
 	for _, want := range []string{"fastcgi_buffer_size 128k;", "fastcgi_buffers 1024 4k;"} {
 		if !strings.Contains(nginx, want) {
 			t.Errorf("the web tier does not set %q, so large response headers return 502:\n%s", want, nginx)
+		}
+	}
+}
+
+// `current` is a symlink the publish step swaps. With $document_root PHP-FPM is
+// handed the path through the symlink, and its realpath and opcache entries stay
+// keyed on that path, so the pool keeps serving the previous release (measured
+// against a real php-fpm and nginx: the second request still answered with the
+// first release). $realpath_root gives FPM the resolved release path, which
+// changes with every release. The old expectation of $document_root in
+// TestSandboxWebPassesTheClientsHostToTheApplication encoded the bug and was updated with it.
+func TestSandboxWebResolvesTheSymlinkBeforeHandingTheScriptToFPM(t *testing.T) {
+	files := deploy.SandboxBuildFiles(deploy.SandboxSpec{
+		Profile: deploy.SandboxProfileFull,
+		PHP:     "8.3",
+	})
+	var nginx string
+	for _, content := range files {
+		if strings.Contains(content, "server {") {
+			nginx = content
+		}
+	}
+	if strings.Contains(nginx, "$document_root$fastcgi_script_name") {
+		t.Errorf("SCRIPT_FILENAME must not go through the current symlink:\n%s", nginx)
+	}
+	for _, want := range []string{"$realpath_root$fastcgi_script_name"} {
+		if !strings.Contains(nginx, want) {
+			t.Errorf("missing %q:\n%s", want, nginx)
 		}
 	}
 }

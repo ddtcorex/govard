@@ -1803,3 +1803,54 @@ func TestSandboxRecreateRefusedDatabaseKeepsTheContainer(t *testing.T) {
 		t.Fatalf("the existing container must not be removed when the database is refused:\n%v", fake.calls)
 	}
 }
+
+// A sandbox recreated with another profile leaves the first profile's image
+// behind, and `--purge` used to remove only the image of the container that
+// existed at that moment.
+func TestSandboxDownPurgeRemovesTheImagesOfEveryProfile(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake()
+	fake.answers["images --format"] = strings.Join([]string{
+		"govard-sandbox:sample-project-php-0123456789ab",
+		"govard-sandbox:sample-project-full-ba9876543210",
+		"govard-sandbox:sample-project-extra-php-0123456789ab",
+		"govard-sandbox:other-project-php-0123456789ab",
+		"govard-sandbox:sample-project-php-notahash",
+	}, "\n") + "\n"
+	if _, err := deploy.SandboxDown(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+		Purge:       true,
+	}); err != nil {
+		t.Fatalf("down --purge: %v", err)
+	}
+	for _, want := range []string{
+		"image rm --force govard-sandbox:sample-project-php-0123456789ab",
+		"image rm --force govard-sandbox:sample-project-full-ba9876543210",
+	} {
+		if !fake.has(want) {
+			t.Errorf("--purge must remove %q: %v", want, fake.calls)
+		}
+	}
+	for _, kept := range []string{"sample-project-extra", "other-project", "notahash"} {
+		if fake.has("image rm --force govard-sandbox:" + kept) {
+			t.Errorf("--purge removed an image of another project: %s", kept)
+		}
+	}
+}
+
+// Without --purge no image is touched.
+func TestSandboxDownKeepsTheImagesWithoutPurge(t *testing.T) {
+	root := sandboxProject(t)
+	fake := sandboxFake()
+	fake.answers["images --format"] = "govard-sandbox:sample-project-php-0123456789ab\n"
+	if _, err := deploy.SandboxDown(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.SandboxRequest{
+		ProjectRoot: root,
+		ProjectName: "sample-project",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if fake.has("image rm") {
+		t.Fatalf("a plain down keeps the images: %v", fake.calls)
+	}
+}

@@ -186,9 +186,14 @@ func waitSandboxDB(ctx context.Context, runtime SandboxRuntime, container string
 	var err error
 	for i := 0; i < seedDBPolls; i++ {
 		var out string
-		out, err = runtime.Exec(ctx, container, nil, "mysqladmin", "ping")
-		if err == nil && strings.Contains(out, "alive") {
-			return nil
+		// Newer MariaDB images ship mariadb-admin and no mysqladmin; older
+		// ones and MySQL only have mysqladmin. Ask for the new name first and
+		// fall back, so neither series waits forever on a missing binary.
+		for _, admin := range []string{"mariadb-admin", "mysqladmin"} {
+			out, err = runtime.Exec(ctx, container, nil, admin, "ping")
+			if err == nil && strings.Contains(out, "alive") {
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -476,8 +481,16 @@ func runSandboxSeedFiles(ctx context.Context, runtime SandboxRuntime, out io.Wri
 	// first deploy dies in deploy:check on a non-writable deploy path (found
 	// live). Numeric IDs, never the name: the container's passwd is not
 	// guaranteed to resolve them, and chown accepts both.
+	//
+	// The tree may not exist yet: a framework that seeds neither media nor an
+	// env file never created it, and chown on a missing path failed the whole
+	// `up` after the database was already imported.
+	deployPath := SandboxDefaultPaths().DeployPath
+	if _, err := runtime.Exec(ctx, sandbox, nil, "mkdir", "-p", deployPath); err != nil {
+		return fmt.Errorf("prepare the sandbox deploy tree: %w", err)
+	}
 	if _, err := runtime.Exec(ctx, sandbox, nil, "chown", "-R",
-		fmt.Sprintf("%d:%d", SandboxUserUID, SandboxUserGID), SandboxDefaultPaths().DeployPath); err != nil {
+		fmt.Sprintf("%d:%d", SandboxUserUID, SandboxUserGID), deployPath); err != nil {
 		return fmt.Errorf("hand the seeded tree to the deploy user: %w", err)
 	}
 	return nil

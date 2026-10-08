@@ -136,7 +136,12 @@ func sandboxNginxConfig(webRoot string) string {
         # the client's own Host header is the fidelity a real proxy gives an
         # application rather than a risk worth trading that for.
         fastcgi_param HTTP_HOST $http_host;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        # The served path is a symlink the publish step swaps. FPM keys its
+        # realpath and opcache entries on the path it is handed, so passing it
+        # through the symlink ($document_root) keeps serving the release that was
+        # live when the entry was made; the resolved path changes with every
+        # release, so the swap takes effect on the next request without a reload.
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
         fastcgi_read_timeout 120s;
         # A storefront answers with many Set-Cookie and cache-tag headers; the
         # default 4k/8k header buffer rejects them with "upstream sent too big

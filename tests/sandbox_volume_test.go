@@ -273,3 +273,62 @@ func TestReseedNeedsASeedToRun(t *testing.T) {
 		t.Fatalf("err = %v, want a refusal that names the missing origin", err)
 	}
 }
+
+// A framework that seeds neither media nor an env file never creates the deploy
+// tree, so the ownership hand-over must create it first instead of failing on a
+// directory that does not exist.
+func TestSeedCreatesTheDeployTreeBeforeHandingItOver(t *testing.T) {
+	origin, _ := seedGitRepo(t)
+	request := seedSandboxUpRequest(t, t.TempDir(), origin)
+	fake := freshSandboxFake()
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(fake.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatal(err)
+	}
+	mkdirAt, chownAt := -1, -1
+	for i, call := range fake.calls {
+		line := strings.Join(call, " ")
+		if strings.Contains(line, "mkdir -p /home/deployer/.deployer") && mkdirAt < 0 {
+			mkdirAt = i
+		}
+		if strings.Contains(line, "chown -R") && strings.Contains(line, "/home/deployer/.deployer") {
+			chownAt = i
+		}
+	}
+	if chownAt < 0 || mkdirAt < 0 || mkdirAt > chownAt {
+		t.Fatalf("the deploy tree must be created before the chown (mkdir at %d, chown at %d): %v", mkdirAt, chownAt, fake.calls)
+	}
+}
+
+// A seed that died midway must not be forgiven by the next plain `up`: the
+// container exists then, and a reused container normally seeds nothing.
+func TestHalfFailedSeedIsRetriedByThePlainUpThatFollows(t *testing.T) {
+	request := seededMediaRequest(t)
+
+	failing := freshSandboxFake()
+	failing.fail["chown -R 1000:1000"] = "chown: cannot access"
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(failing.run), deploy.LocalRunner{}, request); err == nil {
+		t.Fatal("the seed failure must fail the first up")
+	}
+
+	reused := reusedFullSandbox()
+	reused.answers["information_schema.tables"] = "371\n"
+	state, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(reused.run), deploy.LocalRunner{}, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reused.has("tar -C /home/deployer/media-seed -xf -") {
+		t.Fatalf("the plain up after a failed seed must finish the seed: %v", reused.calls)
+	}
+	if state.DerivedFrom == nil {
+		t.Fatal("the completed seed must be recorded")
+	}
+
+	// Once the seed completed, the following plain up is a plain reuse again.
+	again := reusedFullSandbox()
+	if _, err := deploy.SandboxUp(context.Background(), deploy.NewDockerCLIForTest(again.run), deploy.LocalRunner{}, request); err != nil {
+		t.Fatal(err)
+	}
+	if again.has("tar -C /home/deployer/media-seed") {
+		t.Fatalf("a completed seed must not repeat: %v", again.calls)
+	}
+}

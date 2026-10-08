@@ -363,7 +363,18 @@ func printSandboxState(cmd *cobra.Command, state *deploy.SandboxState, headline 
 	if state.Image != "" {
 		fmt.Fprintf(out, "  image:      %s\n", state.Image)
 	}
-	fmt.Fprintf(out, "  running:    %t\n", state.Running)
+	// A container that does not exist is absent, which is not the same as a
+	// stopped one: the latter can be started, the former has to be created.
+	switch {
+	case !state.Exists:
+		fmt.Fprintf(out, "  state:      absent\n")
+	case state.Running:
+		fmt.Fprintf(out, "  state:      running\n")
+		fmt.Fprintf(out, "  running:    true\n")
+	default:
+		fmt.Fprintf(out, "  state:      stopped\n")
+		fmt.Fprintf(out, "  running:    false\n")
+	}
 	if state.Port > 0 {
 		fmt.Fprintf(out, "  ssh:        ssh -p %d %s@127.0.0.1\n", state.Port, deploy.SandboxUser)
 	}
