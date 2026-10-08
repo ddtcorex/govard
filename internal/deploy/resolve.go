@@ -118,6 +118,9 @@ type Options struct {
 	// database dump on a large database is the one step that may need it raised.
 	MaintenanceTimeout time.Duration
 	DBBackup           bool
+	// DBBackupProbe is the recipe's dump-tool probe, layered in by the command
+	// layer so the preflight can run it. It is never read from configuration.
+	DBBackupProbe DBBackupProbe
 	// SkipLock disables locking. It is stated as a skip rather than as "take
 	// the lock" so that the zero value is the safe one: an Options built
 	// without resolving the CLI flags takes the lock, which is the behaviour a

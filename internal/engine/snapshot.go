@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"govard/internal/conventions"
+	"govard/internal/gitguard"
 	"io"
 	"os"
 	"os/exec"
@@ -37,6 +38,12 @@ func SnapshotRoot(projectRoot string) string {
 	return filepath.Join(projectRoot, ".govard", "snapshots")
 }
 
+// EnsureSnapshotRoot creates the local snapshots directory with a self-ignoring
+// guard: it holds database dumps, which must never be staged by `git add -A`.
+func EnsureSnapshotRoot(projectRoot string) error {
+	return gitguard.EnsureDir(SnapshotRoot(projectRoot), conventions.DefaultDirPerm)
+}
+
 func CreateSnapshot(projectRoot string, config Config, name string) (string, error) {
 	if name == "" {
 		name = time.Now().Format("20060102-150405")
@@ -48,6 +55,9 @@ func CreateSnapshot(projectRoot string, config Config, name string) (string, err
 		return "", fmt.Errorf("snapshot %s already exists", name)
 	}
 
+	if err := EnsureSnapshotRoot(projectRoot); err != nil {
+		return "", fmt.Errorf("create snapshot directory: %w", err)
+	}
 	if err := os.MkdirAll(snapshotDir, conventions.DefaultDirPerm); err != nil {
 		return "", fmt.Errorf("create snapshot directory: %w", err)
 	}

@@ -59,7 +59,7 @@ This builds missing Govard-managed images locally from embedded blueprints.
 ### Q: Port conflict when starting the environment
 
 ```bash
-govard doctor       # Checks for port conflicts
+govard doctor       # Reports port conflicts (report only, --fix does not free ports)
 govard env ps       # Check what containers are currently running
 ```
 

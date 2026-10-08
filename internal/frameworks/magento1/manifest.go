@@ -79,6 +79,7 @@ var Manifest = engine.FrameworkManifestConfig{
 		WebRootCandidates: []engine.FrameworkWebRootCandidate{},
 	},
 	Sync: engine.FrameworkSyncConfig{
+		CloneExcludes: []string{"app/etc/local.xml", "var"},
 		NoiseExcludes: []string{
 			"var/cache/",
 			"var/full_page_cache/",

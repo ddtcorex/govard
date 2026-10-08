@@ -65,6 +65,9 @@ var debugOffCmd = &cobra.Command{
 			return err
 		}
 		pterm.Success.Println("Xdebug disabled in .govard.yml. Running 'govard env up' to apply...")
+		// php-debug is no longer in the compose file; without this it keeps
+		// running as an orphan after the switch-off.
+		_ = upCmd.Flags().Set("remove-orphans", "true")
 		runUp()
 		return nil
 	},

@@ -56,7 +56,13 @@ type FrameworkWebRootCandidate struct {
 }
 
 type FrameworkSyncConfig struct {
-	NoiseExcludes []string                 `json:"noise_excludes"`
+	NoiseExcludes []string `json:"noise_excludes"`
+	// CloneExcludes lists the paths a bootstrap file clone must never
+	// overwrite or pull from the remote beyond the generic ones (VCS, .env,
+	// editor and dependency directories): local-only config, generated code
+	// and runtime state the framework owns. The media directory is excluded
+	// separately from Paths.LocalMedia because media has its own sync.
+	CloneExcludes []string                 `json:"clone_excludes,omitempty"`
 	MediaExcludes FrameworkMediaExcludeSet `json:"media_excludes"`
 }
 

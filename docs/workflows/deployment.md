@@ -390,7 +390,7 @@ rm -f {{current_path}}/.maintenance {{current_path}}/wp-content/maintenance.php
 ```
 
 **`db:backup` is opt-in per framework.** It defaults to off everywhere. Magento
-has it through `setup:backup` and WordPress has it through `wp db export/import`;
+has it through a plain `mariadb-dump`/`mysqldump` of the application's database (stock Magento ships `setup:backup` disabled) and WordPress has it through `wp db export/import`, or the same plain dump when the target has no wp-cli;
 Laravel and Symfony have **no dump command** in their recipes. Turning
 `--db-backup` on for a framework without one is refused before the run starts
 (exit 4), with a message naming the recipe and the remedy — deliberately, because
@@ -1181,14 +1181,16 @@ every local user. `deploy:cleanup` prunes those dumps on the same
 `keep_releases` window as the releases they belong to, so backups cannot
 accumulate forever on a production box.
 
-Magento's own `setup:backup` writes into `var/backups`, a shared directory that
-nothing prunes, and govard used to leave that file there while copying it out: a
-full dump per deploy and per rollback, kept forever. The recipe now **moves** the
-file this run produced — identified by a marker taken before the command, so a
-manual `setup:backup` run moments earlier is left alone — and a rollback removes
-the Magento-shaped copy it has to place inside `var/backups` for
-`setup:rollback` to accept it. Dumps left there by earlier versions are **not**
-deleted: they may be the operator's own. An upgrade is the moment to look:
+The dump reads the connection from `app/etc/env.php` (Magento) or `wp-config.php`
+(WordPress without wp-cli) and gives it to the dump client in a private temporary
+option file, so the password never appears on a command line or in a log. With
+`--db-backup`, `deploy check` and the run's own `deploy:check` step refuse a target
+that has none of `wp-cli` (WordPress only), `mariadb-dump` or `mysqldump`, as a
+configuration error (exit 4), before anything on the target is changed.
+
+Releases made by earlier versions used Magento's `setup:backup`, which wrote into
+the shared `var/backups`. Dumps left there are **not** deleted: they may be the
+operator's own. An upgrade is the moment to look:
 
 ```bash
 ssh <target> 'ls -la <deploy_path>/shared/var/backups'
@@ -1395,8 +1397,10 @@ deploy directories and laying them out again is what it is for. `down` stops and
 removes the container — the implicit `sandbox` remote exists only while it
 does, so there is nothing left to clean out of any configuration file — and
 keeps every data volume so a rehearsal resumes tomorrow; `down --volumes`
-deletes the derived volumes too. `--purge` also removes the image, the key
-and the mirror.
+deletes the derived volumes too. `--purge` also removes the images of every
+profile built for the project, the key and the mirror. The state directory
+`.govard/sandbox/` ignores itself (it holds a `.gitignore` of `*`), so
+`git add -A` never stages the private key.
 
 A sandbox is a derived project, not a generic container: `up` renders the origin
 project's own blueprint — same PHP series, same services — into a dedicated
@@ -1698,7 +1702,9 @@ Every deploy command declares what it needs, and a missing requirement is exit
 
 Exit codes: `0` success, `1` execution failure, `2` usage, `3` missing
 capability, `4` configuration. The deploy job in CI therefore runs on a host
-with nothing but govard, SSH and rsync.
+with nothing but govard, SSH and rsync. A failing remote step never leaks its
+own status (255, 22, 127, ...) as the process exit code: the run exits `1` and the
+remote status stays in the message (`command failed (exit N)`).
 
 A remote that is not in `.govard.yml` is a configuration error (`4`) for every
 deploy command, for `deploy status` and for `sync` alike: the remedy is an edit

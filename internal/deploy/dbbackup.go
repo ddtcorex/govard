@@ -17,6 +17,54 @@ var ErrNoDatabaseBackup = errors.New("the release recorded no database backup")
 // backupFileName is the dump's name inside the release's backup directory.
 const backupFileName = "dump.sql"
 
+// ErrDBBackupUnavailable means `--db-backup` was asked for and the target cannot
+// take a dump.
+var ErrDBBackupUnavailable = errors.New("the target cannot take a database dump")
+
+// DBBackupProbe is a recipe's check that the target has what its dump command
+// needs. Needs names that requirement for the operator.
+type DBBackupProbe struct {
+	Command string
+	Needs   string
+}
+
+// DBBackupUnavailableError is the preflight's refusal. It is a configuration
+// error (exit 4), like the refusal of a recipe with no dump at all: the remedy
+// is on the target or in the flag, not a retry.
+type DBBackupUnavailableError struct{ Needs string }
+
+func (e *DBBackupUnavailableError) Error() string {
+	return fmt.Sprintf("%v: --db-backup needs %s on the target, and it was not found; install it, or deploy without --db-backup (nothing was changed)",
+		ErrDBBackupUnavailable, e.Needs)
+}
+func (e *DBBackupUnavailableError) Unwrap() error { return ErrDBBackupUnavailable }
+func (e *DBBackupUnavailableError) ExitCode() int { return 4 }
+
+// checkDBBackup runs the recipe's probe when a backup was asked for.
+func checkDBBackup(ctx context.Context, sc *StepContext) error {
+	probe := sc.Opts.DBBackupProbe
+	if !sc.Opts.DBBackup || strings.TrimSpace(probe.Command) == "" {
+		return nil
+	}
+	if _, err := sc.Runner.Run(ctx, probe.Command, RunOptions{Timeout: shortCommandTimeout, Out: sc.Live}); err != nil {
+		var cmdErr *CommandError
+		if errors.As(err, &cmdErr) && !errors.Is(err, ErrConnectionMayHaveDropped) {
+			needs := probe.Needs
+			if needs == "" {
+				needs = "a database dump tool"
+			}
+			return &DBBackupUnavailableError{Needs: needs}
+		}
+		return fmt.Errorf("check the database dump tool: %w", err)
+	}
+	return nil
+}
+
+// CheckDBBackupForTest exposes checkDBBackup to the tests/ package.
+func CheckDBBackupForTest(ctx context.Context, sc *StepContext) error {
+	return checkDBBackup(ctx, sc)
+}
+
 // ValidateDBBackup refuses `--db-backup` for a recipe that has no dump command.
 //
 // The executor skips a task carrying neither a command nor a core implementation

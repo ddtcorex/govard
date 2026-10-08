@@ -102,20 +102,12 @@ if ($command === 'maintenance:enable' || $command === 'maintenance:disable') {
     }
 }
 
-// `setup:backup --db` is what the recipe's db:backup step calls when the deploy
-// asks for a database dump. Real Magento writes `<timestamp>_db.sql` (`.sql.gz`
-// only with backup compression configured), and the recipe's command used to look
-// for `*.gz` alone — so the stub writes what the tool writes, and the integration
-// suite fails if the command stops finding it.
+// `setup:backup` must never be called: stock Magento ships it disabled, so the
+// recipe takes `--db-backup` dumps with a plain mariadb-dump or mysqldump instead.
+// A regression to the old command fails the deploy here with a message that names
+// the cause, rather than passing because the stub used to write a file for it.
 if ($command === 'setup:backup') {
-    $backupExpectation = trim((string) @file_get_contents($release . '/backup-expectation.txt'));
-    $suffix = $backupExpectation === 'compressed' ? '_db.sql.gz' : '_db.sql';
-    $directory = $release . '/var/backups';
-    if (!is_dir($directory)) {
-        mkdir($directory, 0777, true);
-    }
-    file_put_contents($directory . '/' . time() . $suffix, "dump\n");
-    exit(0);
+    $fail('setup:backup is disabled in stock Magento; the recipe must dump with mariadb-dump or mysqldump');
 }
 
 // `setup:rollback --db-file` is not "import this file": Magento validates the name

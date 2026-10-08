@@ -458,3 +458,33 @@ func TestSyncPlanNeverContainsTheDBPassword(t *testing.T) {
 		}
 	}
 }
+
+func TestSyncPlanDegradesWhenRemoteDBProbeFails(t *testing.T) {
+	config := engine.Config{ProjectName: "test-project", Framework: "laravel"}
+	endpoints := cmd.ResolveSyncEndpointsForTest(
+		cmd.SyncEndpoint{
+			Name:      "staging",
+			IsLocal:   false,
+			RootPath:  "/var/www/html",
+			RemoteCfg: engine.RemoteConfig{Host: "127.0.0.1", Port: 1, User: "nobody", Path: "/var/www/html"},
+		},
+		cmd.SyncEndpoint{Name: "local", IsLocal: true, RootPath: t.TempDir()},
+	)
+
+	opts := cmd.SyncExecutionOptionsForTest(false, "", true)
+	if _, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts); err == nil {
+		t.Fatal("a real sync must still refuse to run without remote DB credentials")
+	}
+
+	opts.PlanOnly = true
+	plan, err := cmd.BuildSyncExecutionPlanForTest(config, endpoints, opts)
+	if err != nil {
+		t.Fatalf("--plan must degrade instead of failing: %v", err)
+	}
+	if len(plan.Commands) != 1 || !strings.Contains(plan.Commands[0], "could not be probed") {
+		t.Fatalf("plan must say the remote credentials were not probed, got %v", plan.Commands)
+	}
+	if len(plan.DatabaseActions) != 1 {
+		t.Fatalf("expected a database action, got %d", len(plan.DatabaseActions))
+	}
+}

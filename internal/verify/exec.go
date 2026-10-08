@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"govard/internal/engine"
 )
@@ -53,9 +57,13 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 		cmd.Dir = opts.ProjectRoot
 	}
 	// Capture combined
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
+	// Keep the interleaved text for the evidence excerpt, but validate JSON on
+	// stdout alone: a warning on stderr must not turn one valid document into
+	// "invalid JSON".
+	var buf, stdout bytes.Buffer
+	combined := &lockedWriter{w: &buf}
+	cmd.Stdout = io.MultiWriter(&stdout, combined)
+	cmd.Stderr = combined
 	err := cmd.Run()
 	dur := time.Since(start)
 	exitCode := 0
@@ -67,13 +75,9 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 		}
 	}
 	out := buf.String()
-	// Truncate excerpt to 500 chars
-	excerpt := strings.TrimSpace(out)
-	if len(excerpt) > 500 {
-		excerpt = excerpt[:500]
-	}
+	excerpt := excerptOf(out, exitCode)
 	// JSON valid if output is JSON (for --json cases)
-	jsonValid := json.Valid([]byte(strings.TrimSpace(out)))
+	jsonValid := json.Valid([]byte(strings.TrimSpace(stdout.String())))
 	_ = dur
 	_ = cfg
 	return Evidence{
@@ -81,6 +85,18 @@ func execGovard(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ..
 		OutputExcerpt: excerpt,
 		JSONValid:     jsonValid,
 	}
+}
+
+// lockedWriter serializes the stdout and stderr copiers that share one buffer.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }
 
 // govardBinary resolves the binary an item runs: an explicit override first,
@@ -116,3 +132,56 @@ func IsTestBinaryForTest(bin string) bool { return isTestBinary(bin) }
 func ExecGovardForTest(ctx context.Context, cfg engine.Config, opts VerifyOpts, args ...string) Evidence {
 	return execGovard(ctx, cfg, opts, args...)
 }
+
+// excerptLimit bounds the evidence kept per item.
+const excerptLimit = 500
+
+// ansiEscapeRe matches the terminal control sequences a child prints when it
+// believes it has a TTY: OSC (title, hyperlinks; BEL or ST terminated), CSI
+// (colors, cursor, erase) and the remaining two-byte escapes. A lone ESC left
+// by an unterminated sequence goes too, so no escape byte reaches the JSON.
+var ansiEscapeRe = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]|\x1b`)
+
+// excerptOf bounds a child's output. Escape sequences are removed first, so a
+// cut can never land inside one, and both cuts move to a UTF-8 boundary. A
+// successful run keeps its head (the JSON identity lines consumers read come
+// first). A failing run keeps head and tail with a marker between, because the
+// actual error is the last thing printed.
+func excerptOf(out string, exitCode int) string {
+	excerpt := strings.TrimSpace(ansiEscapeRe.ReplaceAllString(out, ""))
+	if len(excerpt) <= excerptLimit {
+		return excerpt
+	}
+	if exitCode == 0 {
+		return headOnRuneBoundary(excerpt, excerptLimit)
+	}
+	const marker = "\n[... output truncated ...]\n"
+	half := excerptLimit / 2
+	return headOnRuneBoundary(excerpt, half) + marker + tailOnRuneBoundary(excerpt, half)
+}
+
+// headOnRuneBoundary keeps at most n leading bytes without ending mid-rune.
+func headOnRuneBoundary(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// tailOnRuneBoundary keeps at most n trailing bytes without starting mid-rune.
+func tailOnRuneBoundary(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	start := len(s) - n
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	return s[start:]
+}
+
+// ExcerptForTest exposes excerptOf to the tests package.
+func ExcerptForTest(out string, exitCode int) string { return excerptOf(out, exitCode) }

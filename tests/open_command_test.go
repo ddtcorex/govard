@@ -267,3 +267,38 @@ func TestBuildOpenDBConnectionURLForTest(t *testing.T) {
 		t.Fatalf("expected encoded database name in URL, got %q", connectionURL)
 	}
 }
+
+func TestOpenResolvesSyntheticSandboxRemote(t *testing.T) {
+	cfg := engine.Config{Remotes: map[string]engine.RemoteConfig{"dev": {}}}
+
+	t.Run("open environment accepts sandbox", func(t *testing.T) {
+		environment, isRemote, err := cmd.ResolveOpenEnvironmentForTest(cfg, "sandbox")
+		if err != nil {
+			t.Fatalf("expected sandbox to resolve, got %v", err)
+		}
+		if !isRemote || environment != "sandbox" {
+			t.Fatalf("expected remote sandbox, got %q remote=%v", environment, isRemote)
+		}
+	})
+
+	t.Run("open db environment accepts sandbox", func(t *testing.T) {
+		environment, isRemote, err := cmd.ResolveOpenDBEnvironmentForTest(cfg, "Sandbox")
+		if err != nil {
+			t.Fatalf("expected sandbox to resolve, got %v", err)
+		}
+		if !isRemote || environment != "sandbox" {
+			t.Fatalf("expected remote sandbox, got %q remote=%v", environment, isRemote)
+		}
+	})
+}
+
+func TestOpenAdminURLWordPress(t *testing.T) {
+	cfg := engine.Config{Domain: "blog.test", Framework: "wordpress"}
+	if url := cmd.OpenAdminURLForTest(cfg); url != "https://blog.test/wp-admin" {
+		t.Fatalf("unexpected local admin url: %s", url)
+	}
+	path, err := frameworks.ResolveRemoteAdminPath("wordpress", "dev", engine.RemoteConfig{})
+	if err != nil || path != "wp-admin" {
+		t.Fatalf("unexpected remote admin path %q err=%v", path, err)
+	}
+}

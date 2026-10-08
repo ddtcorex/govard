@@ -54,6 +54,8 @@ type SandboxRuntime interface {
 	ImageExists(ctx context.Context, image string) (bool, error)
 	BuildImage(ctx context.Context, request SandboxBuildRequest) error
 	RemoveImage(ctx context.Context, image string) error
+	// ListImages lists the local images of one repository as `repository:tag`.
+	ListImages(ctx context.Context, repository string) ([]string, error)
 	ImageFile(ctx context.Context, image, path string) (string, error)
 
 	RunContainer(ctx context.Context, request SandboxRunRequest) error
@@ -265,6 +267,23 @@ func (d *DockerCLI) BuildImage(ctx context.Context, request SandboxBuildRequest)
 		return fmt.Errorf("build the sandbox image %s: %w", request.Image, err)
 	}
 	return nil
+}
+
+// ListImages lists the local images of one repository as `repository:tag`,
+// skipping untagged ones.
+func (d *DockerCLI) ListImages(ctx context.Context, repository string) ([]string, error) {
+	output, err := d.run(ctx, SandboxCommand{Args: []string{"images", "--format", "{{.Repository}}:{{.Tag}}", repository}})
+	if err != nil {
+		return nil, fmt.Errorf("list the %s images: %w", repository, err)
+	}
+	var images []string
+	for _, line := range strings.Fields(output) {
+		if strings.HasSuffix(line, ":<none>") {
+			continue
+		}
+		images = append(images, line)
+	}
+	return images, nil
 }
 
 // RemoveImage removes a local image, for `down --purge`.

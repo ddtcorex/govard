@@ -269,7 +269,11 @@ func runDeployCheck(cmd *cobra.Command, args []string) error {
 	// StepContextForTest defaults Out to os.Stderr, so without this the preflight
 	// writes to the terminal instead of to the stream the check's report is on.
 	sc.Out = cmd.OutOrStdout()
-	if err := deploy.CoreCheck(cmd.Context(), sc); err != nil {
+	// Under the same credential resolution the run uses, so the preflight never
+	// warns about credentials the deploy will find.
+	if err := runDeployCheckPreflight(cmd, host.Remote.Sandbox, options.Build == deploy.BuildServer, func() error {
+		return deploy.CoreCheck(cmd.Context(), sc)
+	}); err != nil {
 		return err
 	}
 	strategy, err := deploy.ResolvePublishStrategy(host, options)
@@ -290,6 +294,19 @@ func runDeployCheck(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(out, "  warning:         no repository configured for this remote")
 	}
 	return nil
+}
+
+// runDeployCheckPreflight runs the preflight inside the same credential scope a
+// deploy run gets, and removes the credentials again when it returns.
+func runDeployCheckPreflight(cmd *cobra.Command, remoteIsSandbox, serverBuild bool, preflight func() error) error {
+	var err error
+	withSandboxComposerAuth(cmd, remoteIsSandbox, serverBuild, func() { err = preflight() })
+	return err
+}
+
+// RunDeployCheckPreflightForTest exposes runDeployCheckPreflight to the tests/ package.
+func RunDeployCheckPreflightForTest(cmd *cobra.Command, remoteIsSandbox, serverBuild bool, preflight func() error) error {
+	return runDeployCheckPreflight(cmd, remoteIsSandbox, serverBuild, preflight)
 }
 
 func describeLayout(strategy string) string {
@@ -325,6 +342,8 @@ type deployJSONTask struct {
 	Status     string `json:"status"`
 	DurationMS int64  `json:"duration_ms"`
 	Error      string `json:"error,omitempty"`
+	// SkipReason is the same field the plan document uses for a skipped step.
+	SkipReason string `json:"skip_reason,omitempty"`
 }
 
 // deployJSONPayload is the contract spec 13 describes: nested build and publish
@@ -382,6 +401,7 @@ func writeDeployJSON(cmd *cobra.Command, remote string, options deploy.Options, 
 		if step.Err != nil {
 			task.Error = step.Err.Error()
 		}
+		task.SkipReason = step.SkipReason
 		payload.Tasks = append(payload.Tasks, task)
 	}
 	encoded, err := json.Marshal(payload)

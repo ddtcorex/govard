@@ -204,8 +204,6 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().StringVar(&options.BaseRef, "base", "", "Base ref for diff scope (or auto to detect from git)")
 	command.PersistentFlags().StringSliceVar(&options.Checks, "checks", []string{"lint"}, "Checks to run (lint, profiler, or integrity; integrity needs no container)")
 	command.PersistentFlags().StringVar(&options.Format, "format", "text", "Output format (text or json)")
-	command.PersistentFlags().StringVar(&options.SessionID, "session", "", "Explicit audit session ID")
-	command.PersistentFlags().StringVar(&options.RunID, "run", "", "Explicit audit run ID")
 	command.PersistentFlags().StringVar(&options.LintProvider, "lint-provider", audit.GovardLintProvider, "Lint provider: govard, or an audit.lint.external_providers name from the project config")
 	command.PersistentFlags().StringVar(&options.LintProvider, "provider", audit.GovardLintProvider, "Alias for --lint-provider")
 	_ = command.PersistentFlags().MarkHidden("provider")
@@ -213,7 +211,6 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.PersistentFlags().BoolVar(&options.NoLintResultCache, "no-lint-result-cache", false, "Ignore reusable lint analyzer state for this run (the Composer download cache is kept)")
 	command.PersistentFlags().BoolVar(&options.AllowLintSSHAgent, "allow-lint-ssh-agent", false, "Forward SSH_AUTH_SOCK into the lint container for private Composer dependencies")
 	command.PersistentFlags().BoolVar(&options.AllowXdebug, "allow-xdebug", false, "Allow audit with Xdebug enabled (10-20% performance tax)")
-	command.PersistentFlags().DurationVar(&options.OlderThan, "older-than", 0, "Remove sessions older than this duration")
 	command.PersistentFlags().StringVar(&options.TargetMode, "mode", "auto", auditTargetModeUsage())
 	command.PersistentFlags().StringSliceVar(&options.PHPVersions, "php", nil, "PHP versions; standalone only unless matching active project PHP")
 	command.PersistentFlags().StringVar(&options.URL, "url", "", "Absolute HTTP(S) URL captured by runtime audit checks")
@@ -223,12 +220,28 @@ func newAuditCommand(dependencies auditCommandDependencies) *cobra.Command {
 	command.AddCommand(
 		newAuditRunCommand(options, dependencies, false),
 		newAuditRunCommand(options, dependencies, true),
-		newAuditRerunCommand(options, dependencies),
-		newAuditStatusCommand(options, dependencies),
-		newAuditResultCommand(options, dependencies),
-		newAuditCleanupCommand(options, dependencies),
+		withAuditScopedFlags(newAuditRerunCommand(options, dependencies), options, true, false, false),
+		withAuditScopedFlags(newAuditStatusCommand(options, dependencies), options, true, false, false),
+		withAuditScopedFlags(newAuditResultCommand(options, dependencies), options, true, true, false),
+		withAuditScopedFlags(newAuditCleanupCommand(options, dependencies), options, false, false, true),
 		newAuditToolchainCommand(options, dependencies),
 	)
+	return command
+}
+
+// withAuditScopedFlags registers the flags that only some audit subcommands
+// use on those subcommands, so `audit run --help` does not advertise a
+// session, run or retention flag that a run ignores.
+func withAuditScopedFlags(command *cobra.Command, options *auditCommandOptions, session, run, olderThan bool) *cobra.Command {
+	if session {
+		command.Flags().StringVar(&options.SessionID, "session", "", "Explicit audit session ID")
+	}
+	if run {
+		command.Flags().StringVar(&options.RunID, "run", "", "Explicit audit run ID")
+	}
+	if olderThan {
+		command.Flags().DurationVar(&options.OlderThan, "older-than", 0, "Remove sessions older than this duration")
+	}
 	return command
 }
 
@@ -265,10 +278,14 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 			return err
 		}
-		if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
-			return err
+		// Only checks that execute PHP are gated; the container-free integrity
+		// check reads files and never starts a PHP process.
+		if auditChecksExecutePHP(options.Checks) {
+			if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
+				return err
+			}
+			warnXdebugGuard(cmd, resolvedTarget.Config)
 		}
-		warnXdebugGuard(resolvedTarget.Config)
 		// Resolve --base auto for diff scope after target is known (needs project root for git).
 		effectiveBase := options.BaseRef
 		if scope == audit.ScopeDiff && strings.TrimSpace(effectiveBase) == "auto" {
@@ -277,6 +294,13 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 				return fmt.Errorf("detect audit base for --base auto: %w", detErr)
 			}
 			effectiveBase = detected
+		}
+		if scope == audit.ScopeDiff {
+			// A base that does not resolve would otherwise widen the run to
+			// the whole project while still being labelled a diff audit.
+			if err := verifyAuditBaseRef(auditTargetRoot(resolvedTarget.Target), effectiveBase); err != nil {
+				return err
+			}
 		}
 		// Acquire per-project audit lock (queue, not cancel).
 		releaseLock, lockErr := AcquireAuditLock(resolvedTarget.ProjectID)
@@ -390,8 +414,10 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 			if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 				return err
 			}
-			if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
-				return err
+			if auditChecksExecutePHP(effectiveChecks) {
+				if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
+					return err
+				}
 			}
 			releaseLock, lockErr := AcquireAuditLock(resolvedTarget.ProjectID)
 			if lockErr != nil {
@@ -694,12 +720,38 @@ func validateAuditOutputOptions(options *auditCommandOptions) error {
 	return nil
 }
 
-func warnXdebugGuard(cfg *engine.Config) {
+// auditChecksExecutePHP reports whether any selected check starts PHP and is
+// therefore subject to the Xdebug gate. An empty selection runs the defaults,
+// which include lint.
+func auditChecksExecutePHP(checks []string) bool {
+	if len(checks) == 0 {
+		return true
+	}
+	for _, check := range checks {
+		if strings.TrimSpace(check) != audit.IntegrityCheck {
+			return true
+		}
+	}
+	return false
+}
+
+// verifyAuditBaseRef fails when the diff base does not resolve to a commit.
+func verifyAuditBaseRef(projectRoot, base string) error {
+	base = strings.TrimSpace(base)
+	out, err := exec.Command("git", "-C", projectRoot, "rev-parse", "--verify", "--quiet", base+"^{commit}").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return fmt.Errorf("audit diff base %q does not resolve to a commit in %s (fetch it, pass a valid ref, or use --base auto)", base, projectRoot)
+	}
+	return nil
+}
+
+// warnXdebugGuard prints on stderr so --format json stdout stays one document.
+func warnXdebugGuard(cmd *cobra.Command, cfg *engine.Config) {
 	if cfg == nil {
 		return
 	}
 	if engine.XdebugGuard(*cfg) {
-		pterm.Warning.Println("Xdebug enabled, ~10-20% performance tax; disable for bench fidelity (stack.features.xdebug:true)")
+		pterm.Warning.WithWriter(cmd.ErrOrStderr()).Println("Xdebug enabled, ~10-20% performance tax; disable for bench fidelity (govard debug off)")
 	}
 }
 
@@ -711,7 +763,7 @@ func enforceXdebugGuard(cfg *engine.Config, allow bool) error {
 		return nil
 	}
 	if engine.XdebugGuard(*cfg) && !allow {
-		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard config set stack.features.xdebug false or --allow-xdebug") //nolint:staticcheck // ST1005: Xdebug is proper noun
+		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard debug off or pass --allow-xdebug") //nolint:staticcheck // ST1005: Xdebug is proper noun
 	}
 	return nil
 }

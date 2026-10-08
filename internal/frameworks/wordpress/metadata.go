@@ -16,15 +16,17 @@ type Environment struct {
 	DB DatabaseInfo
 }
 
-// DatabaseInfo is the WordPress wp-config.php connection shape. It intentionally
-// has no table-prefix field: WordPress remote imports do not inherit a local
-// configuration prefix.
+// DatabaseInfo is the WordPress wp-config.php connection shape. TablePrefix is
+// the remote's own `$table_prefix`, so privacy filters match the remote's real
+// table names.
 type DatabaseInfo struct {
 	Host     string
 	Port     int
 	Username string
 	Password string
 	Database string
+
+	TablePrefix string
 }
 
 // ProbeEnvironment SSHs to the remote project and extracts WordPress DB
@@ -70,6 +72,8 @@ func decodeEnvironmentPayload(encoded string) (Environment, error) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 		DBName   string `json:"dbname"`
+
+		TablePrefix string `json:"table_prefix"`
 	}
 	if err := json.Unmarshal(decoded, &payload); err != nil {
 		return Environment{}, fmt.Errorf("parse remote probe payload: %w", err)
@@ -88,17 +92,23 @@ func decodeEnvironmentPayload(encoded string) (Environment, error) {
 		Username: username,
 		Password: payload.Password,
 		Database: database,
+
+		TablePrefix: engine.SafeTablePrefix(payload.TablePrefix),
 	}}, nil
 }
 
 const dbProbePHP = `
-$dbname = ""; $dbuser = ""; $dbpass = ""; $dbhost = "";
+$dbname = ""; $dbuser = ""; $dbpass = ""; $dbhost = ""; $dbprefix = "";
 $content = @file_get_contents("wp-config.php");
 if ($content) {
     if (preg_match("/define\s*\(\s*['\"]DB_NAME['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)/", $content, $m)) $dbname = $m[1];
     if (preg_match("/define\s*\(\s*['\"]DB_USER['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)/", $content, $m)) $dbuser = $m[1];
     if (preg_match("/define\s*\(\s*['\"]DB_PASSWORD['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)/", $content, $m)) $dbpass = $m[1];
     if (preg_match("/define\s*\(\s*['\"]DB_HOST['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)/", $content, $m)) $dbhost = $m[1];
+    if (preg_match_all("/^[ \t]*\\\$table_prefix[ \t]*=[ \t]*(?:'([^'\r\n]*)'|\"([^\"\r\n]*)\")[ \t]*;/m", $content, $pm, PREG_SET_ORDER)) {
+        $last = end($pm);
+        $dbprefix = $last[1] !== "" ? $last[1] : (isset($last[2]) ? $last[2] : "");
+    }
     if (!$dbname || !$dbuser) {
         define('SHORTINIT', true);
         @include "wp-config.php";
@@ -108,6 +118,9 @@ if ($content) {
         if (defined('DB_HOST')) $dbhost = DB_HOST;
     }
 }
-$r = ["host" => (string)$dbhost, "username" => (string)$dbuser, "password" => (string)$dbpass, "dbname" => (string)$dbname];
+$r = ["host" => (string)$dbhost, "username" => (string)$dbuser, "password" => (string)$dbpass, "dbname" => (string)$dbname, "table_prefix" => (string)$dbprefix];
 echo base64_encode(json_encode($r));
 `
+
+// DBProbePHPForTest exposes the remote probe script for contract tests.
+func DBProbePHPForTest() string { return dbProbePHP }

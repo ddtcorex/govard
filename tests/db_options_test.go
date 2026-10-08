@@ -43,6 +43,24 @@ func TestValidateDBCommandOptions(t *testing.T) {
 			options:   cmd.DBCommandOptions{Environment: "local", NoPII: false, Drop: false, Local: false},
 			expectErr: false,
 		},
+		{
+			name:      "top is a known subcommand",
+			sub:       "top",
+			options:   cmd.DBCommandOptions{Environment: "local"},
+			expectErr: false,
+		},
+		{
+			name:      "top allows a remote environment",
+			sub:       "top",
+			options:   cmd.DBCommandOptions{Environment: "staging"},
+			expectErr: false,
+		},
+		{
+			name:      "top rejects dump flags",
+			sub:       "top",
+			options:   cmd.DBCommandOptions{Environment: "local", NoPII: true},
+			expectErr: true,
+		},
 	}
 
 	for _, testCase := range testCases {

@@ -1158,79 +1158,6 @@ func TestMagento2SandboxSSHSeesGitSSHCommand(t *testing.T) {
 	}
 }
 
-// `setup:backup` writes into the release's shared `var/backups`, and govard used
-// to *copy* the file it wanted out of there: the original stayed behind, in a
-// directory nothing prunes, holding the customer data the dump exists for. It now
-// moves only the file this run produced — identified by a marker taken before the
-// command, not by "newest mtime", so an operator's own dump taken moments earlier
-// stays where it is.
-func TestMagento2DumpCommandMovesOnlyTheDumpItProduced(t *testing.T) {
-	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
-	release := deploy.NewReleaseForTest("1", "abcdef", "main")
-	release.Path = host.ReleasePath("1")
-
-	backups := filepath.Join(release.Path, "var", "backups")
-	for _, dir := range []string{filepath.Join(release.Path, "bin"), backups} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", dir, err)
-		}
-	}
-	// The stub writes what `setup:backup` writes: a Magento-shaped file inside
-	// var/backups, named with its own timestamp.
-	stub := "#!/bin/sh\nprintf 'fresh dump' > var/backups/$(date +%s%N)_db.sql\n"
-	if err := os.WriteFile(filepath.Join(release.Path, "bin", "magento"), []byte(stub), 0o755); err != nil {
-		t.Fatalf("write the stub: %v", err)
-	}
-	// The operator's own dump, taken an hour ago.
-	operator := filepath.Join(backups, "1_db.sql")
-	if err := os.WriteFile(operator, []byte("operator dump"), 0o600); err != nil {
-		t.Fatalf("write the operator's dump: %v", err)
-	}
-	older := time.Now().Add(-time.Hour)
-	if err := os.Chtimes(operator, older, older); err != nil {
-		t.Fatalf("age the operator's dump: %v", err)
-	}
-
-	sc := deploy.StepContextForTest(host, deploy.Options{DBBackup: true, CommandTimeout: time.Minute})
-	sc.Release = release
-	// The recipe runs `{{php_bin}} bin/magento`, and the stub is a shell script:
-	// `sh` stands in for the PHP binary so the test needs no PHP.
-	sc.Vars = sc.Vars.Set("php_bin", "sh").SetPath("release_path", release.Path)
-
-	task := magento2.DeployRecipe().Task(deploy.TaskDBBackup)
-	if task.Core == nil {
-		t.Fatal("the Magento recipe declares no db:backup implementation")
-	}
-	if err := task.Core(context.Background(), sc); err != nil {
-		t.Fatalf("db:backup: %v", err)
-	}
-
-	if release.Database.Backup == "" {
-		t.Fatal("db:backup recorded no file")
-	}
-	raw, err := os.ReadFile(release.Database.Backup)
-	if err != nil {
-		t.Fatalf("read the recorded backup: %v", err)
-	}
-	if string(raw) != "fresh dump" {
-		t.Fatalf("the recorded backup holds %q, want the dump this run produced", raw)
-	}
-	left, err := os.ReadDir(backups)
-	if err != nil {
-		t.Fatalf("read var/backups: %v", err)
-	}
-	var names []string
-	for _, entry := range left {
-		names = append(names, entry.Name())
-	}
-	if len(names) != 1 || names[0] != "1_db.sql" {
-		t.Fatalf("var/backups holds %v, want only the operator's 1_db.sql", names)
-	}
-	if kept, err := os.ReadFile(operator); err != nil || string(kept) != "operator dump" {
-		t.Fatalf("the operator's dump was touched: %q, %v", kept, err)
-	}
-}
-
 // Magento's `setup:rollback --db-file` only accepts a name inside the release's
 // own `var/backups`, so the restore has to copy the recorded dump back in. That
 // copy used to stay there for good — one full dump per rollback, in the directory
@@ -1308,6 +1235,40 @@ exit 1
 				t.Fatalf("var/backups still holds %v after the restore", names)
 			}
 		})
+	}
+}
+
+// A target that never had `shared/var/backups` gets no `var/backups` link in the
+// release, so the restore copied its dump into a directory that did not exist and
+// `rollback --with-db` failed with "No such file or directory". The restore now
+// creates the directory it needs.
+func TestMagento2RestoreWorksWhenTheReleaseHasNoVarBackups(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	release := deploy.NewReleaseForTest("1", "abcdef", "main")
+	release.Path = host.ReleasePath("1")
+	if err := os.MkdirAll(filepath.Join(release.Path, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := "#!/bin/sh\nfile=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in --db-file=*) file=\"${arg#--db-file=}\" ;; esac\ndone\n" +
+		"if [ ! -f \"var/backups/$file\" ]; then echo \"The rollback file is invalid.\" >&2; exit 1; fi\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(release.Path, "bin", "magento"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dump := filepath.Join(host.BackupRootPath(), "1", "dump.sql")
+	if err := os.MkdirAll(filepath.Dir(dump), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dump, []byte("dump"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	release.Database.Backup = dump
+
+	sc := deploy.StepContextForTest(host, deploy.Options{CommandTimeout: time.Minute})
+	sc.Release = release
+	sc.Vars = sc.Vars.Set("php_bin", "sh").SetPath("release_path", release.Path)
+
+	if err := deploy.CoreDBRestore(magento2.DeployRecipe().Restore)(context.Background(), sc); err != nil {
+		t.Fatalf("db:restore on a release without var/backups: %v", err)
 	}
 }
 

@@ -160,6 +160,24 @@ func (r *Release) RecordTask(record StepRecord) {
 	r.Tasks = append(r.Tasks, record)
 }
 
+// MaintenanceMayBeOn reports whether this release switched maintenance mode on
+// and never recorded switching it off. A failed enable counts: it may have
+// written the flag before it failed.
+func (r *Release) MaintenanceMayBeOn() bool {
+	enabled := false
+	for _, task := range r.Tasks {
+		switch task.ID {
+		case TaskMaintenanceEnable:
+			enabled = task.Status == StepOK || task.Status == StepFailed
+		case TaskMaintenanceDisable:
+			if task.Status == StepOK {
+				return false
+			}
+		}
+	}
+	return enabled
+}
+
 // WriteRelease stores the record on the target.
 //
 // The write goes to a temporary path and is renamed into place, for the same

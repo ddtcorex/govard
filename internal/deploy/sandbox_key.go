@@ -10,10 +10,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"govard/internal/gitguard"
 )
 
-// The sandbox authenticates with a dedicated key pair under `.govard/sandbox/`,
-// which is gitignored. It is generated in Go rather than by shelling out to
+// The sandbox authenticates with a dedicated key pair under `.govard/sandbox/`.
+// That directory keeps itself out of version control: EnsureSandboxStateDir
+// writes a `.gitignore` of `*` into it, because nothing in the project's own
+// ignore rules covers it and a `git add -A` would otherwise commit the private
+// key. The pair is generated in Go rather than by shelling out to
 // `ssh-keygen`: `govard sandbox` declares `docker`, and ssh-keygen is not
 // part of that contract, so depending on it would make the command fail on a
 // host that meets its own stated requirement.
@@ -52,6 +57,16 @@ func SandboxDockerfilePath(projectRoot string) string {
 	return filepath.Join(SandboxStateDir(projectRoot), "Dockerfile")
 }
 
+// EnsureSandboxStateDir creates the sandbox state directory (0700) and the
+// self-ignoring `.gitignore` inside it (see gitguard.EnsureDir). The project is
+// untrusted input: a state directory that is a symlink is refused.
+func EnsureSandboxStateDir(dir string) error {
+	if err := gitguard.EnsureDir(dir, 0o700); err != nil {
+		return fmt.Errorf("sandbox state directory: %w", err)
+	}
+	return nil
+}
+
 // EnsureSandboxKey returns the project's key pair, generating it on first use.
 //
 // An existing pair is reused unchanged: the public key is installed in the
@@ -63,16 +78,29 @@ func EnsureSandboxKey(dir string) (SandboxKeyPair, error) {
 		PublicPath:  filepath.Join(dir, SandboxKeyName+".pub"),
 	}
 
+	if err := EnsureSandboxStateDir(dir); err != nil {
+		return SandboxKeyPair{}, err
+	}
+
 	if existing, err := readSandboxPublicKey(pair.PublicPath); err == nil {
 		pair.PublicKey = existing
+		// A private key that was loosened by hand or by a copy is tightened
+		// again: it is the one file here that must never be group-readable.
+		// Lstat, not Stat: chmod follows symlinks, and a link planted at the
+		// key path would change the mode of whatever it points at.
+		if info, statErr := os.Lstat(pair.PrivatePath); statErr == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				return SandboxKeyPair{}, fmt.Errorf("refusing to use %s: the sandbox private key is a symlink", pair.PrivatePath)
+			}
+			if info.Mode().Perm() != 0o600 {
+				_ = os.Chmod(pair.PrivatePath, 0o600)
+			}
+		}
 		return pair, nil
 	} else if !os.IsNotExist(err) {
 		return SandboxKeyPair{}, err
 	}
 
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return SandboxKeyPair{}, fmt.Errorf("create the sandbox state directory %s: %w", dir, err)
-	}
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return SandboxKeyPair{}, fmt.Errorf("generate the sandbox key: %w", err)
@@ -83,13 +111,28 @@ func EnsureSandboxKey(dir string) (SandboxKeyPair, error) {
 	if err != nil {
 		return SandboxKeyPair{}, err
 	}
-	if err := os.WriteFile(pair.PrivatePath, privateFile, 0o600); err != nil {
+	if err := createNewFile(pair.PrivatePath, privateFile, 0o600); err != nil {
 		return SandboxKeyPair{}, fmt.Errorf("write the sandbox private key: %w", err)
 	}
-	if err := os.WriteFile(pair.PublicPath, []byte(pair.PublicKey+"\n"), 0o644); err != nil {
+	if err := createNewFile(pair.PublicPath, []byte(pair.PublicKey+"\n"), 0o644); err != nil {
 		return SandboxKeyPair{}, fmt.Errorf("write the sandbox public key: %w", err)
 	}
 	return pair, nil
+}
+
+// createNewFile writes a file that must not exist yet. O_EXCL makes the open
+// fail on any existing entry, including a symlink (dangling or not), so nothing
+// is ever written through a link.
+func createNewFile(path string, content []byte, mode os.FileMode) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 func readSandboxPublicKey(path string) (string, error) {

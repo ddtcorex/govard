@@ -29,7 +29,7 @@ Run system diagnostics and report on the health of your local Govard environment
 Checks:
   - Docker daemon connectivity
   - Docker Compose plugin availability
-  - Port conflicts on host (80/443)
+  - Port conflicts on host (80/443), report only: --fix never frees a port
   - Disk scratch write sanity
   - Govard home directory readiness (~/.govard)
   - Outbound network probe sanity

@@ -258,6 +258,20 @@ var snapshotRestoreCmd = &cobra.Command{
 
 		environment, _ := cmd.Flags().GetString("environment")
 		environment = strings.ToLower(strings.TrimSpace(environment))
+
+		assumeYes, _ := cmd.Flags().GetBool("yes")
+		target := "the local database and media"
+		if environment != "" && environment != "local" {
+			target = fmt.Sprintf("the database and media of remote '%s'", environment)
+		}
+		if err := confirmSnapshotRestore(assumeYes, stdinIsTerminal(), func() bool {
+			confirmed, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).
+				WithDefaultText(fmt.Sprintf("Restoring snapshot %s will overwrite %s. Continue?", name, target)).Show()
+			return confirmed
+		}, name); err != nil {
+			return err
+		}
+
 		if environment != "" && environment != "local" {
 			return runRemoteSnapshotRestore(cmd, config, environment, name, dbOnly, mediaOnly)
 		}
@@ -269,6 +283,27 @@ var snapshotRestoreCmd = &cobra.Command{
 		pterm.Success.Printf("Snapshot %s restored.\n", name)
 		return nil
 	},
+}
+
+// confirmSnapshotRestore gates the destructive restore the way sync, bootstrap
+// and `db import --drop` are gated: --yes skips the prompt, a non-interactive
+// session without it is refused, and an interactive one is asked.
+func confirmSnapshotRestore(assumeYes bool, interactive bool, ask func() bool, name string) error {
+	if assumeYes {
+		return nil
+	}
+	if !interactive {
+		return fmt.Errorf("confirmation required to restore snapshot %s, which overwrites existing data; use -y to assume yes in non-interactive environments", name)
+	}
+	if !ask() {
+		return fmt.Errorf("snapshot restore cancelled by user")
+	}
+	return nil
+}
+
+// ConfirmSnapshotRestoreForTest exposes confirmSnapshotRestore for tests.
+func ConfirmSnapshotRestoreForTest(assumeYes bool, interactive bool, answer bool, name string) error {
+	return confirmSnapshotRestore(assumeYes, interactive, func() bool { return answer }, name)
 }
 
 func runRemoteSnapshotRestore(cmd *cobra.Command, config engine.Config, envName string, name string, dbOnly, mediaOnly bool) (err error) {
@@ -498,6 +533,9 @@ var snapshotPullCmd = &cobra.Command{
 			})
 		}()
 
+		if err := engine.EnsureSnapshotRoot(cwd); err != nil {
+			return err
+		}
 		rsyncCmd := remote.BuildRemoteSnapshotPullCommand(remoteName, remoteCfg, name, localSnapshotDir)
 		rsyncCmd.Stdout = os.Stdout
 		rsyncCmd.Stderr = os.Stderr
@@ -606,6 +644,7 @@ func init() {
 
 	snapshotRestoreCmd.Flags().Bool("db-only", false, "Restore database only")
 	snapshotRestoreCmd.Flags().Bool("media-only", false, "Restore media only")
+	snapshotRestoreCmd.Flags().BoolP("yes", "y", false, "Skip the confirmation prompt")
 
 	snapshotCmd.AddCommand(snapshotCreateCmd)
 	snapshotCmd.AddCommand(snapshotListCmd)

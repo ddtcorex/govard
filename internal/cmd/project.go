@@ -3,11 +3,15 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	"govard/internal/audit"
 	"govard/internal/cli"
 	"govard/internal/engine"
+	"govard/internal/frameworks/types"
 	"govard/internal/ui"
+	"govard/internal/verify"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -78,7 +82,15 @@ This command will:
 1. Stop all containers for the project.
 2. Remove all Docker volumes (database data, etc.).
 3. Unregister project domains from proxy and hosts.
-4. Remove the project from the Govard registry.
+4. Remove the project's files under the Govard home (compose file and its
+   .hash, varnish/rabbitmq/nginx/apache directories, its active-projects.json
+   entry), its frontend containers and network, and its sandbox (container,
+   database volume, image, key and mirror).
+5. Remove the project from the Govard registry.
+
+<query> is a project name, domain or path. A project that is down, or already
+missing from the registry, is still found when it left files or Docker
+resources behind. Docker resources are matched by exact compose project name.
 
 WARNING: This action is destructive and cannot be undone (for volumes).
 It does NOT delete your project source code.`,
@@ -101,6 +113,18 @@ func initProjectCommands() {
 
 	projectDeleteCmd.Flags().BoolVarP(&projectDeleteForce, "force", "f", false, "Delete without confirmation")
 	projectCmd.AddCommand(projectDeleteCmd)
+}
+
+// confirmDestructive asks a yes/no question for a destructive command. The
+// prompt needs a terminal: with a piped or closed stdin it would wait forever,
+// so a non-terminal stdin is a refusal that names the flag which skips the
+// question, and nothing is removed.
+func confirmDestructive(question, escapeFlag string) (bool, error) {
+	if !stdinIsTerminal() {
+		return false, fmt.Errorf("confirmation required but stdin is not a terminal; pass %s to proceed without prompting", escapeFlag)
+	}
+	result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show(question)
+	return result, nil
 }
 
 func runProjectOpen(cmd *cobra.Command, query string) error {
@@ -127,10 +151,16 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 				}
 			}
 		}
+		// A project that is down or no longer in the registry can still have
+		// left files and Docker resources behind. Resolve it by exact name or
+		// by its directory instead of answering "no project matches".
+		if art, ok := engine.DiscoverProjectByQuery(cmd.Context(), query); ok {
+			return runUnregisteredDelete(cmd, art)
+		}
 	}
 
 	if err != nil {
-		return err
+		return fmt.Errorf("%w (no leftover files or Docker resources were found for it either)", err)
 	}
 
 	// For destructive operations, we only allow strong matches (exact, prefix, or substring).
@@ -146,9 +176,13 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 		pterm.Warning.Printf("You are about to delete project: %s\n", match.ProjectName)
 		pterm.Warning.Println("This will remove all Docker containers and VOLUMES (database data).")
 		pterm.Warning.Printf("Project path: %s\n", match.Path)
+		printProjectArtifactList(projectArtifactsForEntry(cmd, match))
 		fmt.Println()
 
-		result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show("Are you sure you want to proceed?")
+		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
+		if confirmErr != nil {
+			return confirmErr
+		}
 		if !result {
 			pterm.Info.Println("Deletion cancelled.")
 			return nil
@@ -160,6 +194,7 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 	fmt.Println()
 
 	spinner, _ := pterm.DefaultSpinner.Start("Cleaning up resources...")
+	cleanupProjectSandbox(cmd.Context(), match.ProjectName, match.Path, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
 	err = engine.DeleteProject(cmd.Context(), match.Path, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
 	if err != nil {
 		spinner.Fail(err.Error())
@@ -170,14 +205,71 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 	return nil
 }
 
+// runUnregisteredDelete removes a project that is not in the registry but left
+// files or Docker resources behind (for example after `env down`, or after the
+// registry entry was already dropped).
+func runUnregisteredDelete(cmd *cobra.Command, art engine.ProjectArtifacts) error {
+	if !projectDeleteForce {
+		pterm.Warning.Printf("You are about to delete an UNREGISTERED project: %s\n", art.Name)
+		pterm.Warning.Println("It is not in the Govard registry, but it left these behind:")
+		printProjectArtifactList(art)
+		pterm.Warning.Println("This will remove its Docker containers and VOLUMES (database data).")
+		fmt.Println()
+
+		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
+		if confirmErr != nil {
+			return confirmErr
+		}
+		if !result {
+			pterm.Info.Println("Deletion cancelled.")
+			return nil
+		}
+	}
+
+	fmt.Println()
+	pterm.NewStyle(pterm.BgLightRed, pterm.FgWhite, pterm.Bold).Printf(" DELETING UNREGISTERED PROJECT: %s \n", art.Name)
+	fmt.Println()
+
+	spinner, _ := pterm.DefaultSpinner.Start("Cleaning up leftover resources...")
+	cleanupProjectSandbox(cmd.Context(), art.Name, art.Root, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
+	if err := engine.DeleteProjectByName(cmd.Context(), art, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error)); err != nil {
+		spinner.Fail(err.Error())
+		return err
+	}
+	spinner.Success("Project resources removed.")
+	return nil
+}
+
+// projectArtifactsForEntry lists what deleting a registered project will
+// remove beyond its containers, so the confirmation shows the whole blast
+// radius.
+func projectArtifactsForEntry(cmd *cobra.Command, entry engine.ProjectRegistryEntry) engine.ProjectArtifacts {
+	art := engine.CollectProjectArtifacts(entry.ProjectName, entry.Path, []string{entry.Profile, entry.PreviousProfile})
+	art.Docker = engine.ComposeProjectResourcesExist(cmd.Context(), entry.ProjectName)
+	return art
+}
+
+func printProjectArtifactList(art engine.ProjectArtifacts) {
+	for _, line := range art.Lines() {
+		pterm.Warning.Printf("  - %s\n", line)
+	}
+}
+
 func runOrphanDelete(cmd *cobra.Command, orphan engine.OrphanProject) error {
+	if art := engine.CollectProjectArtifacts(orphan.Name, "", nil); engine.SafeProjectArtifactName(orphan.Name) {
+		art.Docker = true
+		return runUnregisteredDelete(cmd, art)
+	}
 	if !projectDeleteForce {
 		pterm.Warning.Printf("You are about to delete an UNREGISTERED project: %s\n", orphan.Name)
 		pterm.Warning.Println("This project was found in Docker but is not in the Govard registry.")
 		pterm.Warning.Println("This will remove all Docker containers and VOLUMES (database data).")
 		fmt.Println()
 
-		result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).Show("Are you sure you want to proceed?")
+		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
+		if confirmErr != nil {
+			return confirmErr
+		}
 		if !result {
 			pterm.Info.Println("Deletion cancelled.")
 			return nil
@@ -263,4 +355,41 @@ func runProjectOrphans(cmd *cobra.Command) error {
 		orphanData = append(orphanData, []string{o.Name, o.Status, o.ConfigFiles})
 	}
 	return pterm.DefaultTable.WithHasHeader().WithData(orphanData).Render()
+}
+
+func init() {
+	// The verify-run and audit stores are keyed by a project id derived from the
+	// project path, a derivation engine cannot import. Registering them here lets
+	// `project delete` list and remove the stores of exactly that project.
+	engine.RegisterProjectStoreResolver(func(root string) []string {
+		canonical := root
+		if abs, err := filepath.Abs(root); err == nil {
+			canonical = abs
+			if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+				canonical = resolved
+			}
+		}
+		home := engine.GovardHomeDir()
+		dirs := []string{filepath.Join(home, "verify-runs", verify.ProjectID(root))}
+		origin, _ := gitOutput(canonical, "config", "--get", "remote.origin.url")
+		for _, identity := range []string{"", auditRepositoryIdentity(canonical, origin)} {
+			dirs = append(dirs, filepath.Join(home, "audit", audit.ProjectID(canonical, identity)))
+		}
+		// The reusable lint cache is namespaced per audit target by a hash of
+		// project id, mode and target path. A project-mode target is the project
+		// root itself, so its namespace is derivable; module and standalone
+		// namespaces are keyed by arbitrary module paths and are left alone.
+		lintRoot := audit.DefaultLintCacheRoot(home)
+		paths := []string{canonical}
+		if root != canonical {
+			paths = append(paths, root)
+		}
+		for _, identity := range []string{"", auditRepositoryIdentity(canonical, origin)} {
+			projectID := audit.ProjectID(canonical, identity)
+			for _, targetPath := range paths {
+				dirs = append(dirs, filepath.Join(lintRoot, audit.LintTargetID(projectID, types.AuditTargetProject, targetPath)))
+			}
+		}
+		return dirs
+	})
 }

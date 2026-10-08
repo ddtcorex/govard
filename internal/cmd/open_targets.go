@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"govard/internal/conventions"
+	"govard/internal/deploy"
 	"govard/internal/engine"
 	engineremote "govard/internal/engine/remote"
 	"govard/internal/frameworks"
@@ -186,9 +187,20 @@ func resolveOpenEnvironment(config engine.Config, requestedEnvironment string) (
 		return openLocalEnvironment, false, nil
 	}
 
+	return resolveOpenRemoteName(config, requested, requestedEnvironment)
+}
+
+// resolveOpenRemoteName maps a non-local -e value to a remote name. The
+// synthetic sandbox is container-derived and has no config entry, so it is
+// recognised by name here (as ensureRemoteKnown does) and validated against
+// the live container later, when the identity is actually resolved.
+func resolveOpenRemoteName(config engine.Config, requested string, original string) (string, bool, error) {
+	if strings.EqualFold(requested, deploy.SandboxRemoteName) {
+		return deploy.SandboxRemoteName, true, nil
+	}
 	remoteName, ok := findRemoteByNameOrEnvironment(config, requested)
 	if !ok {
-		return "", false, fmt.Errorf("unknown remote environment %q", requestedEnvironment)
+		return "", false, fmt.Errorf("unknown remote environment %q", original)
 	}
 	return remoteName, true, nil
 }
@@ -212,6 +224,12 @@ func ensureOpenRemote(config engine.Config, name string, capability string) (eng
 func buildRemoteAdminURL(remoteCfg engine.RemoteConfig, adminPath string) string {
 	if remoteCfg.URL != "" {
 		return joinURLWithPath(remoteCfg.URL, adminPath)
+	}
+
+	// The sandbox serves on a published loopback port over plain HTTP, and the
+	// remote carries that URL for `deploy` verify: reuse it rather than guess.
+	if remoteCfg.Sandbox && remoteCfg.Deploy != nil && strings.TrimSpace(remoteCfg.Deploy.Verify.URL) != "" {
+		return joinURLWithPath(remoteCfg.Deploy.Verify.URL, adminPath)
 	}
 
 	base := strings.TrimSpace(remoteCfg.Host)

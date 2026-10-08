@@ -6,6 +6,7 @@ import (
 	"govard/internal/conventions"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,15 +34,9 @@ func runDBDump(cmd *cobra.Command, config engine.Config, options dbCommandOption
 			if err != nil {
 				return fmt.Errorf("remote db dump failed: %w\nOutput: %s", err, string(output))
 			}
-			// We don't have the final filename easily here if it was defaulted in buildDBDumpCommand
-			// but we can at least show success.
-			// Actually, let's fix buildDBDumpCommand to return the filename or just rely on Warden-like patterns.
-			pterm.Success.Printf("Database dump completed on remote environment '%s' at '%s'.\n", options.Environment, remoteFilePath)
+			pterm.Success.Println(remoteDumpSuccessMessage(options.Environment, remoteFilePath))
 			return nil
 		}
-
-		var writer io.Writer
-		var fileWriter *os.File
 
 		targetFile := options.File
 		if targetFile == "" {
@@ -51,37 +46,88 @@ func runDBDump(cmd *cobra.Command, config engine.Config, options dbCommandOption
 		}
 
 		targetPath := filepath.Clean(targetFile)
-		// Ensure the directory exists (e.g. var/)
-		if err := os.MkdirAll(filepath.Dir(targetPath), conventions.DefaultDirPerm); err != nil {
-			return fmt.Errorf("create dump directory: %w", err)
-		}
-
-		fileWriter, err = createPrivateDumpFile(targetPath)
-		if err != nil {
-			return fmt.Errorf("create dump file: %w", err)
-		}
-		defer fileWriter.Close()
-
-		writer = fileWriter
-
-		var gzWriter *gzip.Writer
-		if strings.HasSuffix(targetPath, ".gz") {
-			gzWriter = gzip.NewWriter(fileWriter)
-			defer func() { _ = gzWriter.Close() }()
-			writer = gzWriter
-		}
 		pterm.Info.Printf("Writing database dump to %s...\n", targetPath)
-		options.File = targetPath // Update for the success message below
-
-		if err := runDumpToWriter(dumpCommand, writer, true, cmd.ErrOrStderr()); err != nil {
-			return fmt.Errorf("db dump failed: %w", err)
+		if err := writeDumpFile(dumpCommand, targetPath, cmd.ErrOrStderr()); err != nil {
+			return err
 		}
-
-		if options.File != "" {
-			pterm.Success.Printf("Database dump saved to %s.\n", filepath.Clean(options.File))
-		}
+		pterm.Success.Printf("Database dump saved to %s (on this machine).\n", targetPath)
 		return nil
 	})
+}
+
+// remoteDumpSuccessMessage says where a remote-side dump file lives, so a
+// path such as /tmp/x.sql.gz is not mistaken for a file on this machine.
+func remoteDumpSuccessMessage(environment string, remotePath string) string {
+	return fmt.Sprintf("Database dump written on remote '%s' (not on this machine) at %s. Add --local to save it here instead.", environment, remotePath)
+}
+
+// RemoteDumpSuccessMessageForTest exposes remoteDumpSuccessMessage for tests.
+func RemoteDumpSuccessMessageForTest(environment string, remotePath string) string {
+	return remoteDumpSuccessMessage(environment, remotePath)
+}
+
+// writeDumpFile streams dumpCommand into targetPath through a sibling
+// ".partial" file that is renamed into place only after the dump succeeded and
+// the file (and its gzip trailer) is fully written. A failed dump therefore
+// never leaves a stub that looks like a dump, and an earlier file at targetPath
+// survives a failed run.
+func writeDumpFile(dumpCommand *exec.Cmd, targetPath string, stderr io.Writer) (err error) {
+	if err := os.MkdirAll(filepath.Dir(targetPath), conventions.DefaultDirPerm); err != nil {
+		return fmt.Errorf("create dump directory: %w", err)
+	}
+	// A device or pipe target (/dev/null, /dev/stdout) cannot be renamed into
+	// place, so it is written directly.
+	partialPath := targetPath + ".partial"
+	direct := false
+	if info, statErr := os.Stat(targetPath); statErr == nil && !info.Mode().IsRegular() {
+		partialPath = targetPath
+		direct = true
+	}
+	fileWriter, err := createPrivateDumpFile(partialPath)
+	if err != nil {
+		return fmt.Errorf("create dump file: %w", err)
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = fileWriter.Close()
+		}
+		if err != nil && !direct {
+			_ = os.Remove(partialPath)
+		}
+	}()
+
+	var writer io.Writer = fileWriter
+	var gzWriter *gzip.Writer
+	if strings.HasSuffix(targetPath, ".gz") {
+		gzWriter = gzip.NewWriter(fileWriter)
+		writer = gzWriter
+	}
+
+	if runErr := runDumpToWriter(dumpCommand, writer, true, stderr); runErr != nil {
+		return fmt.Errorf("db dump failed: %w", runErr)
+	}
+	if gzWriter != nil {
+		if err := gzWriter.Close(); err != nil {
+			return fmt.Errorf("finish dump compression: %w", err)
+		}
+	}
+	closed = true
+	if err := fileWriter.Close(); err != nil {
+		return fmt.Errorf("close dump file: %w", err)
+	}
+	if direct {
+		return nil
+	}
+	if err := os.Rename(partialPath, targetPath); err != nil {
+		return fmt.Errorf("move dump into place: %w", err)
+	}
+	return nil
+}
+
+// WriteDumpFileForTest exposes writeDumpFile for tests.
+func WriteDumpFileForTest(dumpCommand *exec.Cmd, targetPath string) error {
+	return writeDumpFile(dumpCommand, targetPath, io.Discard)
 }
 
 // createPrivateDumpFile is the dump-file constructor shared with the snapshot

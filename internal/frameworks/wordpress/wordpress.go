@@ -27,12 +27,13 @@ const (
 
 func Definition() types.FrameworkDefinition {
 	return types.FrameworkDefinition{
-		Name:           frameworkName,
-		Aliases:        []string{"wp"},
-		DisplayName:    "WordPress",
-		MigrationTypes: types.MigrationTypes{DDEV: []string{"wordpress"}, Warden: []string{"wordpress"}},
-		Config:         config,
-		Manifest:       manifest,
+		Name:             frameworkName,
+		Aliases:          []string{"wp"},
+		DisplayName:      "WordPress",
+		MigrationTypes:   types.MigrationTypes{DDEV: []string{"wordpress"}, Warden: []string{"wordpress"}},
+		Config:           config,
+		Manifest:         manifest,
+		DefaultAdminPath: "wp-admin",
 		DefaultDBCredentials: types.DefaultDBCredentials{
 			Port:     conventions.MySQLPort,
 			Username: DefaultDBUser,
@@ -92,9 +93,14 @@ func Definition() types.FrameworkDefinition {
 			_, statErr := os.Stat(filepath.Join(projectDir, "wp-config.php"))
 			return statErr == nil
 		},
-		DBDriverCategory: "wordpress",
-		Upgrade:          Upgrade,
-		DeployRecipe:     DeployRecipe,
+		DBDriverCategory:      "wordpress",
+		TablePrefixDetector:   DetectTablePrefix,
+		TablesUsuallyPrefixed: true,
+		// Sandbox seeding: the database is the whole seed, so the only
+		// framework step is pointing siteurl and home at the sandbox.
+		SandboxSeed:  &engine.SandboxSeedDefinition{DBRewrite: SandboxBaseURLStatements},
+		Upgrade:      Upgrade,
+		DeployRecipe: DeployRecipe,
 		ProbeRemoteDB: func(remoteName string, remoteCfg engine.RemoteConfig) (remote.RemoteDatabaseMetadata, error) {
 			metadata, err := ProbeEnvironment(remoteName, remoteCfg)
 			if err != nil {
@@ -119,6 +125,8 @@ func Definition() types.FrameworkDefinition {
 				Username: metadata.DB.Username,
 				Password: metadata.DB.Password,
 				Database: metadata.DB.Database,
+
+				TablePrefix: metadata.DB.TablePrefix,
 			}, nil
 		},
 		AutoConfigure: func(cmd *cobra.Command, config engine.Config) error {

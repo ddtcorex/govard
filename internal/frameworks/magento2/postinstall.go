@@ -106,6 +106,7 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 	}
 
 	commands := buildMagento2Commands(projectName, config, lockedKeys)
+	refusedSteps := 0
 
 	// app/etc/config.php sits in the project root, which is the directory the
 	// operator invoked govard from. Resolved once here so the repair steps below
@@ -204,17 +205,39 @@ func ConfigureMagento(projectName string, config engine.Config, force bool, shif
 			}
 			if cmd.Optional {
 				pterm.Warning.Printf("Non-fatal Magento configure step failed (%s): %v\n", cmd.Desc, err)
+				if hint := LockedConfigHint(cmd.Desc, cmd.Args, outText); hint != "" {
+					refusedSteps++
+					pterm.Warning.Println(hint)
+				}
 				if outText != "" {
 					pterm.Debug.Printf("Command output: %s\n", outText)
 				}
 				continue
 			}
+			if hint := LockedConfigHint(cmd.Desc, cmd.Args, outText); hint != "" {
+				return fmt.Errorf("command failed: %s %v\nOutput: %s\n%s", cmd.Desc, err, outText, hint)
+			}
 			return fmt.Errorf("command failed: %s %v\nOutput: %s", cmd.Desc, err, outText)
 		}
 	}
 
-	pterm.Success.Printf("%s environment configured successfully!\n", frameworkName)
+	message, success := ConfigureCompletionMessage(frameworkName, refusedSteps)
+	if success {
+		pterm.Success.Println(message)
+	} else {
+		pterm.Warning.Println(message)
+	}
 	return nil
+}
+
+// ConfigureCompletionMessage is the closing line of the configure run. A run
+// where Magento refused locked values is still a zero exit (scripts rely on
+// it), but it must not print a success banner next to the refusal hints.
+func ConfigureCompletionMessage(frameworkName string, refusedSteps int) (string, bool) {
+	if refusedSteps > 0 {
+		return fmt.Sprintf("%s environment configured with warnings: %d step(s) were refused by locked config values (see the hints above).", frameworkName, refusedSteps), false
+	}
+	return fmt.Sprintf("%s environment configured successfully!", frameworkName), true
 }
 
 func displayNameForDistribution(framework string) string {
@@ -275,6 +298,39 @@ func FixElasticsearchIndexBlock(projectName string, config engine.Config) error 
 	}
 
 	return nil
+}
+
+// LockedConfigHint explains a Magento "already been locked" failure: it names
+// the config paths the failing step writes and the usual fix. It returns ""
+// when the output is not a locked-config failure. The failure itself stays an
+// error; this only adds guidance to it.
+func LockedConfigHint(desc string, args []string, output string) string {
+	if !strings.Contains(strings.ToLower(output), "already been locked") {
+		return ""
+	}
+	var paths []string
+	for i, a := range args {
+		switch a {
+		case "config:set":
+			for _, v := range args[i+1:] {
+				if !strings.HasPrefix(v, "-") {
+					paths = append(paths, v)
+					break
+				}
+			}
+		case "setup:store-config:set":
+			paths = append(paths, "web/unsecure/base_url", "web/secure/base_url")
+		}
+	}
+	target := "step " + strconv.Quote(desc)
+	if len(paths) > 0 {
+		target = "config path(s) " + strings.Join(paths, ", ") + " (step " + strconv.Quote(desc) + ")"
+	}
+	return "Magento refused to change a locked value: " + target + ". " +
+		"Values locked by bin/magento app:config:dump live in app/etc/config.php (system section) " +
+		"or app/etc/env.php. For local development, remove those entries from app/etc/config.php " +
+		"(or env.php) and rerun `govard config auto`, or set the value yourself with " +
+		"`bin/magento config:set --lock-env <path> <value>`."
 }
 
 func isMagentoConfigPathUnavailable(output string) bool {

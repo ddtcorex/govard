@@ -26,6 +26,11 @@ const (
 	auditProfilerDockerTimeout = 30 * time.Second
 	auditProfilerHTTPTimeout   = 30 * time.Second
 	auditProfilerNginxSubdir   = "audit-profiler"
+
+	// nginx -s reload only signals the master, so an old worker may still serve
+	// the next request without the profiler variable. Wait briefly for it.
+	auditProfilerSettleInterval = 100 * time.Millisecond
+	auditProfilerSettleTimeout  = 5 * time.Second
 )
 
 var (
@@ -36,6 +41,11 @@ var (
 type auditProfilerRuntimeDependencies struct {
 	runDocker func(context.Context, ...string) ([]byte, error)
 	httpGet   func(context.Context, string) (int, error)
+	// settleInterval and settleTimeout bound the wait for an nginx reload to
+	// take effect; a zero settleTimeout disables the wait.
+	settleInterval time.Duration
+	settleTimeout  time.Duration
+	warn           func(string)
 }
 
 // AuditProfilerRuntimeDependenciesForTest replaces only external Docker and
@@ -43,6 +53,11 @@ type auditProfilerRuntimeDependencies struct {
 type AuditProfilerRuntimeDependenciesForTest struct {
 	RunDocker func(context.Context, ...string) ([]byte, error)
 	HTTPGet   func(context.Context, string) (int, error)
+	// SettleInterval, SettleTimeout and Warn make the post-reload wait fast and
+	// observable; a zero SettleTimeout disables the wait.
+	SettleInterval time.Duration
+	SettleTimeout  time.Duration
+	Warn           func(string)
 }
 
 type govardAuditProfilerRuntime struct {
@@ -54,11 +69,20 @@ type govardAuditProfilerRuntime struct {
 	httpGet      func(context.Context, string) (int, error)
 	phpContainer string
 	webContainer string
+
+	settleInterval time.Duration
+	settleTimeout  time.Duration
+	warn           func(string)
 }
 
 func defaultAuditProfilerRuntimeDependencies() auditProfilerRuntimeDependencies {
 	client := &http.Client{Timeout: auditProfilerHTTPTimeout}
 	return auditProfilerRuntimeDependencies{
+		settleInterval: auditProfilerSettleInterval,
+		settleTimeout:  auditProfilerSettleTimeout,
+		warn: func(message string) {
+			fmt.Fprintln(os.Stderr, "Warning: "+message)
+		},
 		runDocker: runAuditProfilerDocker,
 		httpGet: func(ctx context.Context, targetURL string) (int, error) {
 			request, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
@@ -143,6 +167,10 @@ func newAuditProfilerRuntime(request AuditRunnerRequest, dependencies auditProfi
 		httpGet:      dependencies.httpGet,
 		phpContainer: projectName + conventions.PHPSuffix,
 		webContainer: webContainer,
+
+		settleInterval: dependencies.settleInterval,
+		settleTimeout:  dependencies.settleTimeout,
+		warn:           dependencies.warn,
 	}, nil
 }
 
@@ -273,11 +301,118 @@ func writeAuditProfilerConfigAtomic(destination string, content []byte) (resultE
 
 func (runtime *govardAuditProfilerRuntime) reloadWebServer(ctx context.Context) error {
 	if runtime.webServer == "nginx" {
-		_, err := runtime.docker(ctx, "exec", runtime.webContainer, "nginx", "-s", "reload")
-		return err
+		// Learn which workers are the old ones BEFORE signalling: right after the
+		// signal the master may not have acted yet, and "no worker is shutting
+		// down" is then true of the old workers too.
+		before := runtime.nginxWorkerPIDs(ctx)
+		if _, err := runtime.docker(ctx, "exec", runtime.webContainer, "nginx", "-s", "reload"); err != nil {
+			return err
+		}
+		runtime.waitForNginxReload(ctx, before)
+		return nil
 	}
 	_, err := runtime.docker(ctx, "exec", runtime.webContainer, "httpd", "-k", "graceful")
 	return err
+}
+
+// nginxWorkerListing prints `<pid> <process title>` per process from /proc, which
+// works without procps in minimal images.
+const nginxWorkerListing = `for p in /proc/[0-9]*; do c=$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null); [ -n "$c" ] && echo "${p#/proc/} $c"; done`
+
+// nginxWorkerPIDs returns the PIDs of the running (not shutting down) workers, or
+// nil when they cannot be listed.
+func (runtime *govardAuditProfilerRuntime) nginxWorkerPIDs(ctx context.Context) map[string]bool {
+	if runtime.settleTimeout <= 0 {
+		return nil
+	}
+	output, err := runtime.docker(ctx, "exec", runtime.webContainer, "sh", "-c", nginxWorkerListing)
+	if err != nil {
+		return nil
+	}
+	workers, _ := parseNginxWorkers(string(output))
+	if len(workers) == 0 {
+		return nil
+	}
+	return workers
+}
+
+// waitForNginxReload polls until the reload has taken effect: a worker that was
+// not there before the signal exists and none is still shutting down. Without a
+// snapshot of the old workers it falls back to "some worker exists and none is
+// shutting down". It never fails the audit: on timeout it warns and lets the
+// caller proceed.
+func (runtime *govardAuditProfilerRuntime) waitForNginxReload(ctx context.Context, before map[string]bool) {
+	if runtime.settleTimeout <= 0 {
+		return
+	}
+	interval := runtime.settleInterval
+	if interval <= 0 {
+		interval = 100 * time.Millisecond
+	}
+	deadline := time.Now().Add(runtime.settleTimeout)
+	for {
+		output, err := runtime.docker(ctx, "exec", runtime.webContainer, "sh", "-c", nginxWorkerListing)
+		if err == nil && nginxReloadSettled(string(output), before) {
+			return
+		}
+		if ctx.Err() != nil || !time.Now().Before(deadline) {
+			runtime.warnf("nginx reload in %s did not settle within %s; continuing, the profiler capture may miss", runtime.webContainer, runtime.settleTimeout)
+			return
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(interval):
+		}
+	}
+}
+
+// parseNginxWorkers returns the PIDs of running workers and whether any worker is
+// still shutting down.
+func parseNginxWorkers(listing string) (running map[string]bool, shuttingDown bool) {
+	running = map[string]bool{}
+	for _, line := range strings.Split(listing, "\n") {
+		if !strings.Contains(line, "nginx: worker process") {
+			continue
+		}
+		if strings.Contains(line, "shutting down") {
+			shuttingDown = true
+			continue
+		}
+		if fields := strings.Fields(line); len(fields) > 0 {
+			running[fields[0]] = true
+		}
+	}
+	return running, shuttingDown
+}
+
+// nginxReloadSettled reports whether the reload has taken effect: a worker that
+// was not there before the signal is running, and no old worker still runs
+// normally. An old worker that is shutting down no longer accepts connections, so
+// it is not waited for (a keepalive connection can keep it alive for a long time).
+// Without a snapshot of the old workers it falls back to "some worker runs and
+// none is shutting down".
+func nginxReloadSettled(listing string, before map[string]bool) bool {
+	running, shuttingDown := parseNginxWorkers(listing)
+	if len(running) == 0 {
+		return false
+	}
+	if len(before) == 0 {
+		return !shuttingDown
+	}
+	newWorker := false
+	for pid := range running {
+		if before[pid] {
+			return false
+		}
+		newWorker = true
+	}
+	return newWorker
+}
+
+func (runtime *govardAuditProfilerRuntime) warnf(format string, arguments ...any) {
+	if runtime.warn != nil {
+		runtime.warn(fmt.Sprintf(format, arguments...))
+	}
 }
 
 func (runtime *govardAuditProfilerRuntime) removeRuntimeCSV(ctx context.Context) error {
@@ -308,5 +443,9 @@ func NewAuditProfilerRuntimeForTest(request AuditRunnerRequest, dependencies Aud
 	return newAuditProfilerRuntime(request, auditProfilerRuntimeDependencies{
 		runDocker: dependencies.RunDocker,
 		httpGet:   dependencies.HTTPGet,
+
+		settleInterval: dependencies.SettleInterval,
+		settleTimeout:  dependencies.SettleTimeout,
+		warn:           dependencies.Warn,
 	})
 }

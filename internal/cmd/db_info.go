@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
@@ -9,6 +10,16 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
+
+// dbInfoHost returns the host to print: a remote or container that reaches its
+// database over localhost reports an empty host, which must not render as a
+// blank value.
+func dbInfoHost(host, fallback string) string {
+	if strings.TrimSpace(host) == "" {
+		return fallback
+	}
+	return host
+}
 
 func runDBInfo(cmd *cobra.Command, config engine.Config, options dbCommandOptions) error {
 	return runDBHooks(config, engine.HookPreDBConnect, engine.HookPostDBConnect, cmd, func() error {
@@ -25,10 +36,7 @@ func runDBInfo(cmd *cobra.Command, config engine.Config, options dbCommandOption
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Environment:  local\n")
 			fmt.Fprintf(cmd.OutOrStdout(), "Container:    %s\n", containerName)
-			fmt.Fprintf(cmd.OutOrStdout(), "Host:         %s\n", credentials.Host)
-			if credentials.Host == "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "Host:         localhost (inside container)\n")
-			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Host:         %s\n", dbInfoHost(credentials.Host, "localhost (inside container)"))
 			fmt.Fprintf(cmd.OutOrStdout(), "Port:         %d\n", credentials.Port)
 			if credentials.Port == 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Port:         %d (default)\n", conventions.MySQLPort)
@@ -49,10 +57,7 @@ func runDBInfo(cmd *cobra.Command, config engine.Config, options dbCommandOption
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Environment:  %s\n", options.Environment)
-			fmt.Fprintf(cmd.OutOrStdout(), "Host:         %s\n", credentials.Host)
-			if credentials.Host == "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "Host:         localhost (or internal container hostname)\n")
-			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Host:         %s\n", dbInfoHost(credentials.Host, "localhost (or internal container hostname)"))
 			fmt.Fprintf(cmd.OutOrStdout(), "Port:         %d\n", credentials.Port)
 			if credentials.Port == 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Port:         %d (default)\n", conventions.MySQLPort)

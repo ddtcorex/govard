@@ -58,6 +58,8 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
 		localDB := resolveLocalDBCredentials(config, containerName)
 		fwOpts.DBHost = conventions.DefaultDBHost
+		fwOpts.DBEngine = config.Stack.Services.DB
+		fwOpts.DBVersion = config.Stack.DBVersion
 		fwOpts.DBUser = localDB.Username
 		fwOpts.DBPass = localDB.Password
 		fwOpts.DBName = localDB.Database

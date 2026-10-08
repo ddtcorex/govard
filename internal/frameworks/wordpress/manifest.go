@@ -28,6 +28,7 @@ var manifest = engine.FrameworkManifestConfig{
 		},
 	},
 	Sync: engine.FrameworkSyncConfig{
+		CloneExcludes: []string{"wp-config.php"},
 		NoiseExcludes: []string{
 			"wp-content/cache/",
 			"wp-content/logs/",

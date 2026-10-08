@@ -104,6 +104,12 @@ func captureItemArgvsForExit(t *testing.T, cfg engine.Config, opts verify.Verify
 		}
 		var itemArgvs [][]string
 		verify.SetExecGovardFakeForTest(func(_ context.Context, _ engine.Config, o verify.VerifyOpts, args ...string) (verify.Evidence, bool) {
+			// P2-08 first probes `deploy releases` (read-only) to skip on a
+			// remote with no release; that precondition is not part of the
+			// write argv the guard fences classify.
+			if it.ID == "P2-08" && len(args) > 1 && args[0] == "deploy" && args[1] == "releases" {
+				return verify.Evidence{ExitCode: exitCode, OutputExcerpt: "fake: " + strings.Join(args, " ")}, true
+			}
 			itemArgvs = append(itemArgvs, append([]string(nil), args...))
 			// A successful `snapshot create` adds a snapshot, as the real one
 			// does; P4-08 only goes on to `snapshot list` when it finds one.

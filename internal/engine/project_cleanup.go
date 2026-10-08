@@ -25,8 +25,20 @@ func DeleteProject(ctx context.Context, projectPath string, stdout, stderr io.Wr
 
 	// Derive project name: from config if available, otherwise from directory name
 	projectName := filepath.Base(projectPath)
+	var profiles []string
+	if entry, ok := GetProjectRegistryEntry(projectPath); ok {
+		// The registry remembers the name and profiles even when the project
+		// directory or its config is gone.
+		if entry.ProjectName != "" {
+			projectName = entry.ProjectName
+		}
+		profiles = append(profiles, entry.Profile, entry.PreviousProfile)
+	}
 	if loadErr == nil && config.ProjectName != "" {
 		projectName = config.ProjectName
+	}
+	if loadErr == nil && config.Profile != "" {
+		profiles = append(profiles, config.Profile)
 	}
 
 	// 2. Pre-delete hooks (only if config exists)
@@ -46,6 +58,7 @@ func DeleteProject(ctx context.Context, projectPath string, stdout, stderr io.Wr
 		}
 	}
 
+	stderr = quietStderr(stderr)
 	err := RunCompose(ctx, ComposeOptions{
 		ProjectDir:  projectPath,
 		ProjectName: projectName,
@@ -60,6 +73,10 @@ func DeleteProject(ctx context.Context, projectPath string, stdout, stderr io.Wr
 		// the project can still be removed from the registry even if Docker is stuck.
 		fmt.Fprintf(stderr, "Warning: docker compose down -v: %v\n", err)
 	}
+
+	// 3b. The frontend compose project, leftover containers/networks/volumes
+	// and the rendered files under the Govard home. Matched by exact name only.
+	cleanupProjectResidue(ctx, projectName, projectPath, profiles, stdout, stderr)
 
 	// 4. Unregister domains from proxy and hosts (only if config exists)
 	if loadErr == nil {

@@ -163,3 +163,31 @@ func gitRepoWithBaseForTest(t *testing.T) string {
 	gitRefForBaseTest(t, root, "refs/remotes/origin/master")
 	return root
 }
+
+func TestPlanTitleOfTheDiffRowNamesTheResolvedBase(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	commandOf := func(root, base string) string {
+		res, err := verify.RunPhase(context.Background(), engine.Config{Framework: "laravel"}, 3, verify.VerifyOpts{Plan: true, ProjectRoot: root, BaseRef: base})
+		if err != nil {
+			t.Fatalf("RunPhase: %v", err)
+		}
+		for _, it := range res.Items {
+			if it.ID == "P3-11" {
+				return it.Command
+			}
+		}
+		t.Fatal("P3-11 missing from the plan")
+		return ""
+	}
+	root := gitRepoForBaseTest(t)
+	gitRefForBaseTest(t, root, "refs/heads/main")
+	if got := commandOf(root, ""); strings.Contains(got, "{{") || !strings.Contains(got, "--base main ") {
+		t.Fatalf("title = %q, want the resolved base main and no placeholder", got)
+	}
+	if got := commandOf(root, "release/1"); !strings.Contains(got, "--base release/1 ") {
+		t.Fatalf("title = %q, want the explicit base", got)
+	}
+	if got := commandOf(gitRepoForBaseTest(t), ""); strings.Contains(got, "{{") {
+		t.Fatalf("title = %q, an unresolvable base must not leave the placeholder", got)
+	}
+}

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -11,6 +12,8 @@ import (
 
 	"govard/internal/audit"
 	"govard/internal/cmd"
+
+	"github.com/pterm/pterm"
 )
 
 // TestAuditProviderAliasProvider verifies --provider is an alias for --lint-provider (hidden).
@@ -212,5 +215,75 @@ func TestGovardLintBackendXdebugGuardAllowsWithFlag(t *testing.T) {
 	}
 	if report.Status != "passed" {
 		t.Fatalf("report status = %q, want passed", report.Status)
+	}
+}
+
+// TestAuditDiffRejectsUnresolvableBase pins that a diff-scoped audit never
+// silently widens to the whole project when the base ref does not resolve.
+func TestAuditDiffRejectsUnresolvableBase(t *testing.T) {
+	project := auditCommandProject(t, "magento2")
+	setupGitOriginMaster(t, project)
+	backend := &commandLintBackend{}
+	installAuditCommandDependencies(t, backend)
+	_, err := executeAuditCommand(t, project, []string{"audit", "run", "--scope", "diff", "--base", "origin/does-not-exist", "--format", "json"})
+	if err == nil || !strings.Contains(err.Error(), "origin/does-not-exist") {
+		t.Fatalf("expected unresolvable base error naming the ref, got %v", err)
+	}
+	if len(backend.requests) != 0 {
+		t.Fatalf("lint must not run with an unresolvable base, got %d requests", len(backend.requests))
+	}
+}
+
+// TestAuditXdebugHintIsActionable pins that the refusal names a remedy that exists.
+func TestAuditXdebugHintIsActionable(t *testing.T) {
+	project := auditCommandProjectWithXdebug(t, "magento2", true)
+	_, err := executeAuditCommand(t, project, []string{"audit", "run", "--format", "json"})
+	if err == nil || !strings.Contains(err.Error(), "Xdebug enabled") {
+		t.Fatalf("expected Xdebug guard error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "config set stack.features.xdebug") {
+		t.Fatalf("hint names a key config set rejects: %v", err)
+	}
+	if !strings.Contains(err.Error(), "govard debug off") {
+		t.Fatalf("hint should name govard debug off: %v", err)
+	}
+}
+
+// TestAuditXdebugGateExemptsIntegrity pins that the container-free integrity
+// check does not trip the Xdebug gate.
+func TestAuditXdebugGateExemptsIntegrity(t *testing.T) {
+	project := auditCommandProjectWithXdebug(t, "magento2", true)
+	_, err := executeAuditCommand(t, project, []string{"audit", "run", "--checks", "integrity", "--format", "json"})
+	if err != nil && strings.Contains(err.Error(), "Xdebug enabled") {
+		t.Fatalf("integrity must not be gated by Xdebug: %v", err)
+	}
+}
+
+// TestAuditXdebugWarningStaysOffStdout pins that --format json stays a single
+// document when --allow-xdebug prints its warning.
+func TestAuditXdebugWarningStaysOffStdout(t *testing.T) {
+	project := auditCommandProjectWithXdebug(t, "magento2", true)
+	installAuditCommandDependencies(t, &commandLintBackend{})
+	// pterm writes to the process stdout, so capture it as well as the command output.
+	realStdout := os.Stdout
+	reader, writer, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatal(pipeErr)
+	}
+	os.Stdout = writer
+	pterm.SetDefaultOutput(writer)
+	out, err := executeAuditCommand(t, project, []string{"audit", "run", "--allow-xdebug", "--format", "json"})
+	os.Stdout = realStdout
+	pterm.SetDefaultOutput(realStdout)
+	_ = writer.Close()
+	leaked, _ := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("audit run: %v", err)
+	}
+	if len(leaked) != 0 {
+		t.Fatalf("process stdout must stay empty in json mode, got %q", leaked)
+	}
+	if !json.Valid(out) {
+		t.Fatalf("stdout is not a single JSON document: %q", out)
 	}
 }

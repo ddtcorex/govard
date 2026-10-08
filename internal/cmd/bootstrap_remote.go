@@ -128,7 +128,7 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 	}
 
 	if opts.Clone {
-		syncArgs := append(bootstrapFileSyncArgs(opts), "--yes")
+		syncArgs := append(bootstrapFileSyncArgs(config, opts), "--yes")
 		skipped, err := runGovardSubcommandSkippable(cmd, syncArgs...)
 		if skipped {
 			fmt.Println()
@@ -272,6 +272,8 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 				return runPHPContainerShellCommand(config, command)
 			},
 			DBHost:      conventions.DefaultDBHost,
+			DBEngine:    config.Stack.Services.DB,
+			DBVersion:   config.Stack.DBVersion,
 			DBUser:      localDB.Username,
 			DBPass:      localDB.Password,
 			DBName:      localDB.Database,
@@ -396,7 +398,7 @@ func runBootstrapDatabaseSync(cmd *cobra.Command, opts BootstrapRuntimeOptions) 
 	return nil
 }
 
-func bootstrapFileSyncArgs(opts BootstrapRuntimeOptions) []string {
+func bootstrapFileSyncArgs(config engine.Config, opts BootstrapRuntimeOptions) []string {
 	args := []string{
 		"sync",
 		"--source", opts.Source,
@@ -416,22 +418,35 @@ func bootstrapFileSyncArgs(opts BootstrapRuntimeOptions) []string {
 		args = append(args, "--exclude", pattern)
 	}
 
-	// Default excludes for bootstrap (to protect local config)
+	// Default excludes for bootstrap (to protect local config): the generic set
+	// every project needs, then what the framework itself declares as local-only
+	// and its media directory (media has its own sync step).
 	args = append(args,
 		"--exclude", ".git",
 		"--exclude", ".env",
 		"--exclude", ".idea",
 		"--exclude", "auth.json",
-		"--exclude", "app/etc/env.php",
-		"--exclude", "app/etc/local.xml",
-		"--exclude", "generated",
 		"--exclude", "node_modules",
-		"--exclude", "pub/static",
-		"--exclude", "pub/media",
-		"--exclude", "media",
-		"--exclude", "var",
 	)
+	for _, pattern := range bootstrapFrameworkCloneExcludes(config.Framework) {
+		args = append(args, "--exclude", pattern)
+	}
 	return args
+}
+
+// bootstrapFrameworkCloneExcludes returns the clone excludes the framework's
+// definition declares, plus its local media directory. An unknown framework
+// contributes none, so a clone never carries another framework's paths.
+func bootstrapFrameworkCloneExcludes(framework string) []string {
+	def, ok := frameworks.Get(strings.ToLower(strings.TrimSpace(framework)))
+	if !ok {
+		return nil
+	}
+	patterns := append([]string(nil), def.Manifest.Sync.CloneExcludes...)
+	if media := strings.TrimSpace(def.Manifest.Paths.LocalMedia); media != "" {
+		patterns = append(patterns, media)
+	}
+	return patterns
 }
 
 // bootstrapOffersToAddRemote reports whether a missing `source` is something

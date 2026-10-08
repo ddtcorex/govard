@@ -459,7 +459,14 @@ func (runner *Runner) lintJob(request RunRequest, manifest SessionManifest, runI
 // names, and including the mode and target path keeps a project, a module
 // inside it, and a standalone module in distinct namespaces.
 func lintTargetID(projectID string, target types.AuditTarget) string {
-	identity := strings.Join([]string{projectID, string(target.Mode), target.TargetPath}, "\x00")
+	return LintTargetID(projectID, target.Mode, target.TargetPath)
+}
+
+// LintTargetID is the lint cache namespace directory name of one audit target
+// under DefaultLintCacheRoot. It is exported so `project delete` can derive the
+// exact namespace of a project-mode target without a second copy of the hash.
+func LintTargetID(projectID string, mode types.AuditTargetMode, targetPath string) string {
+	identity := strings.Join([]string{projectID, string(mode), targetPath}, "\x00")
 	sum := sha256.Sum256([]byte(identity))
 	return "target-" + hex.EncodeToString(sum[:])[:32]
 }

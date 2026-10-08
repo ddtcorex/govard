@@ -221,11 +221,17 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 						return err
 					}
 				} else {
-					if opts.Plan {
-						// For plans, failure to resolve an auto-remote is non-fatal.
-						return nil
+					if !opts.Plan {
+						return err
 					}
-					return err
+					// A plan never stops at an unresolved remote: it says why the
+					// remote is unnamed and still prints every action, so the
+					// operator sees what a real run would do once one exists.
+					fmt.Fprintf(cmd.OutOrStdout(), "\nNote: %v. The plan below uses a placeholder remote.\n", err)
+					resolvedRemote = strings.TrimSpace(opts.Source)
+					if resolvedRemote == "" {
+						resolvedRemote = "<remote>"
+					}
 				}
 			}
 			opts.Source = resolvedRemote

@@ -41,10 +41,11 @@ func runDBCloneVolume(cmd *cobra.Command, config engine.Config, options dbComman
 		// It is running
 		pterm.Warning.Printf("Database container %s is currently running.\n", dbContainer)
 		if !options.AssumeYes {
-			proceed, err := pterm.DefaultInteractiveConfirm.
-				WithDefaultValue(false).
-				Show("Stop the database container and proceed with cloning?")
-			if err != nil || !proceed {
+			proceed, err := confirmDestructive("Stop the database container and proceed with cloning?", "--yes")
+			if err != nil {
+				return err
+			}
+			if !proceed {
 				return fmt.Errorf("aborted by user")
 			}
 		}
@@ -57,10 +58,11 @@ func runDBCloneVolume(cmd *cobra.Command, config engine.Config, options dbComman
 	}
 
 	if !options.AssumeYes {
-		proceed, err := pterm.DefaultInteractiveConfirm.
-			WithDefaultValue(false).
-			Show(fmt.Sprintf("Clone all data from '%s' into '%s' (this replaces existing target data)?", sourceVolume, targetVolume))
-		if err != nil || !proceed {
+		proceed, err := confirmDestructive(fmt.Sprintf("Clone all data from '%s' into '%s' (this replaces existing target data)?", sourceVolume, targetVolume), "--yes")
+		if err != nil {
+			return err
+		}
+		if !proceed {
 			return fmt.Errorf("aborted by user")
 		}
 	}

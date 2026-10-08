@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os/exec"
 	"testing"
 )
 
@@ -53,5 +54,33 @@ func TestConfigErrorCarriesTheConfigEnvelopeCode(t *testing.T) {
 	envelope := NewErrorEnvelope("govard deploy", &ConfigError{Err: errors.New("bad value")})
 	if envelope.Error.Code != CodeConfigName {
 		t.Fatalf("envelope code = %q, want %q", envelope.Error.Code, CodeConfigName)
+	}
+}
+
+// A failed child process is not a govard result: its status (255 from ssh, 22
+// from curl, 127 for a missing binary) is whatever the remote command chose, and
+// only 0 to 4 are documented. The child's code stays in the message.
+func TestCodeIgnoresAChildProcessExitStatus(t *testing.T) {
+	for _, status := range []int{255, 22, 127, 4, 3} {
+		child := exec.Command("sh", "-c", fmt.Sprintf("exit %d", status)).Run()
+		var exitErr *exec.ExitError
+		if !errors.As(child, &exitErr) {
+			t.Fatalf("status %d: want an ExitError, got %v", status, child)
+		}
+		wrapped := fmt.Errorf("step db:migrate failed: %w", fmt.Errorf("command failed (exit %d): x: %w", status, child))
+		if got := Code(wrapped); got != CodeError {
+			t.Fatalf("exit %d: Code = %d, want %d", status, got, CodeError)
+		}
+		if got := NewErrorEnvelope("govard deploy", wrapped).Error.Code; got != CodeErrorName {
+			t.Fatalf("exit %d: envelope code = %q, want %q", status, got, CodeErrorName)
+		}
+	}
+}
+
+func TestCodeKeepsAGovardCodeBeneathAChildFailure(t *testing.T) {
+	child := exec.Command("sh", "-c", "exit 255").Run()
+	err := fmt.Errorf("outer: %w", errors.Join(child, &ConfigError{Err: errors.New("bad")}))
+	if got := Code(err); got != CodeConfig {
+		t.Fatalf("Code = %d, want %d", got, CodeConfig)
 	}
 }

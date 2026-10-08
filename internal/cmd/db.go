@@ -384,9 +384,9 @@ func validateDBCommandOptions(subcommand string, options dbCommandOptions) error
 		if options.StreamDB && options.Environment == "local" {
 			return errors.New("--stream-db requires a remote --environment source")
 		}
-	case "query", "info", "clone-volume":
+	case "query", "info", "top", "clone-volume":
 		if options.File != "" || options.StreamDB || options.NoNoise || options.NoPII || options.Drop || options.Local {
-			return errors.New("query, info, and clone-volume do not support --file, --stream-db, --no-noise, --no-pii, --drop, or --local")
+			return errors.New("query, info, top, and clone-volume do not support --file, --stream-db, --no-noise, --no-pii, --drop, or --local")
 		}
 	default:
 		return fmt.Errorf("unknown db subcommand: %s", subcommand)
@@ -629,6 +629,9 @@ func buildDBDumpCommand(config engine.Config, options dbCommandOptions) (*exec.C
 			return nil, "", err
 		}
 		credentials := resolveLocalDBCredentials(config, containerName)
+		if err := checkPrivacyFilter(config.Framework, credentials.TablePrefix, options.NoNoise, options.NoPII, false); err != nil {
+			return nil, "", err
+		}
 		return buildLocalDBDumpCommand(containerName, credentials, options.NoNoise, options.NoPII, config.Framework), "", nil
 	}
 
@@ -649,6 +652,9 @@ func buildDBDumpCommand(config engine.Config, options dbCommandOptions) (*exec.C
 		pterm.Warning.Println(formatRemoteDBProbeWarning(options.Environment, probeErr))
 	}
 
+	if err := checkPrivacyFilter(config.Framework, credentials.TablePrefix, options.NoNoise, options.NoPII, false); err != nil {
+		return nil, "", err
+	}
 	dumpStr := buildRemoteMySQLDumpCommandString(credentials, options.NoNoise, options.NoPII, config.Framework, true)
 
 	// If not local, we dump to a file on the remote server
@@ -1327,8 +1333,10 @@ func formatProcessListTable(raw string) (string, error) {
 // script. The gain is narrower: the mysql process itself carries no password in
 // its argv and does not inherit it through -p.
 func buildProcessListCommand(username, password, query string) string {
-	return mysqlPasswordExportPrefix(password) + fmt.Sprintf(
-		"mysql --no-defaults -u%s -BN -e %s",
+	// The client is detected (mysql, else mariadb): MariaDB 11 images ship only
+	// `mariadb`, and a hard-coded `mysql` made db top loop on "not found".
+	return mysqlPasswordExportPrefix(password) + conventions.MySQLClientBinDetect + " && " + fmt.Sprintf(
+		`"$DB_CLI" --no-defaults -u%s -BN -e %s`,
 		engine.ShellQuote(username),
 		engine.ShellQuote(query),
 	)

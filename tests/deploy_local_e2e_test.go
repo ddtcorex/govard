@@ -818,3 +818,29 @@ func TestVerifyURLWarningGoesToStderrUnderJSON(t *testing.T) {
 		t.Fatalf("stdout must stay one clean JSON document, got:\n%s", stdout.String())
 	}
 }
+
+// `deploy --resume --json` keeps stdout for one JSON document: the "resuming
+// release" notice goes to the writer the run points at stderr, not to stdout.
+func TestResumeNoticeGoesToTheRunsOutputWriter(t *testing.T) {
+	host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+	ctx := context.Background()
+
+	record := deploy.NewReleaseForTest("2", "bbb", "main")
+	record.Status = deploy.StatusFailed
+	record.CreatedAt = "2026-09-11T10:00:00Z"
+	if err := deploy.WriteRelease(ctx, host, record); err != nil {
+		t.Fatalf("seed failed release: %v", err)
+	}
+	if _, err := host.Runner().Run(ctx, "mkdir -p "+host.LockPath(), deploy.RunOptions{}); err != nil {
+		t.Fatalf("seed stale lock: %v", err)
+	}
+
+	var out strings.Builder
+	release := deploy.NewReleaseForTest("", "local-head", "main")
+	if err := cmd.PrepareResumeToForTest(ctx, host, release, &out); err != nil {
+		t.Fatalf("prepare resume: %v", err)
+	}
+	if !strings.Contains(out.String(), "resuming release 2") {
+		t.Fatalf("the resume notice must go to the run's output writer, got %q", out.String())
+	}
+}

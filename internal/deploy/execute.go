@@ -25,6 +25,10 @@ var resumeAlwaysReruns = map[string]bool{
 	TaskCheck:  true,
 	TaskLock:   true,
 	TaskUnlock: true,
+	// deploy:shared only links what exists under shared/ and replaces a link it
+	// made before, so repeating it is safe, and it is the step that picks up a
+	// shared file the operator seeded after the first run failed.
+	TaskShared: true,
 }
 
 // StepResult is the outcome of one executed (or skipped) step.
@@ -34,6 +38,9 @@ type StepResult struct {
 	Status   string
 	Duration time.Duration
 	Err      error
+	// SkipReason says why a skipped step did not run. It is empty for a step that
+	// ran, and for a skip that has no reason of its own to give.
+	SkipReason string
 }
 
 // Outcome is what one `Run` produced.
@@ -316,7 +323,14 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 	// skipped rather than dropped, so the timeline still shows the whole
 	// pipeline and an operator can see what was deliberately not repeated.
 	if e.opts.From != "" {
-		if index := plan.IndexOf(e.opts.From); index > 0 {
+		if index := plan.IndexOf(e.opts.From); index >= 0 {
+			// Under --resume the record may mark the named step, or a later
+			// one, ok. --from asks for them to run again, so the carry-over
+			// must not hide them.
+			for _, step := range plan.Steps[index:] {
+				delete(completed, step.ID)
+				delete(carried, step.ID)
+			}
 			for _, step := range plan.Steps[:index] {
 				completed[step.ID] = true
 			}
@@ -384,6 +398,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 			} else {
 				// `--from` put this step behind the run without an earlier run
 				// having succeeded at it, so there is no success to keep.
+				if step.SkipReason == "" && e.opts.From != "" {
+					step.SkipReason = "not run: resumed from " + e.opts.From
+				}
 				e.record(ctx, release, step, StepSkipped, 0, nil)
 			}
 			continue
@@ -393,6 +410,9 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		// `Skipped`, so an executor that ignored the flag would run the server
 		// build in artifact mode as well.
 		if step.Skipped || (step.Command == "" && step.core == nil) {
+			if step.SkipReason == "" && step.Implementation() == ImplementationNone {
+				step.SkipReason = fmt.Sprintf("this framework's recipe has no %s step", step.ID)
+			}
 			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
 		}
@@ -457,6 +477,15 @@ func (e *Executor) Run(ctx context.Context, plan Plan, vars Vars, release *Relea
 		// deploy:lock, or after a lock acquisition that never happened.
 		if step.ID == TaskUnlock && !e.lockHeld {
 			step.SkipReason = "this run did not hold the deploy lock"
+			e.record(ctx, release, step, StepSkipped, 0, nil)
+			continue
+		}
+
+		// A step the run's own options switch off did nothing, and a success tick
+		// would say it did. The recipes keep their own guards (a step can still
+		// be gated in the shell), so this only reports what the engine can see.
+		if reason := optionSkipReason(step.ID, e.opts); reason != "" {
+			step.SkipReason = reason
 			e.record(ctx, release, step, StepSkipped, 0, nil)
 			continue
 		}
@@ -723,6 +752,9 @@ func ComposerAuthCommandForTest(command string) string {
 // writing late.
 func (e *Executor) record(ctx context.Context, release *Release, step Step, status string, duration time.Duration, err error) {
 	result := StepResult{ID: step.ID, Stage: step.Stage, Status: status, Duration: duration, Err: err}
+	if status == StepSkipped {
+		result.SkipReason = step.SkipReason
+	}
 	e.results = append(e.results, result)
 
 	record := StepRecord{ID: step.ID, Status: status, DurationMS: duration.Milliseconds()}
@@ -754,7 +786,8 @@ func (e *Executor) record(ctx context.Context, release *Release, step Step, stat
 // the directory was there, the step could not run, and the record said the step
 // had never succeeded.
 func (e *Executor) carryOver(ctx context.Context, release *Release, step Step, stored StepRecord) {
-	e.results = append(e.results, StepResult{ID: step.ID, Stage: step.Stage, Status: StepSkipped})
+	step.SkipReason = "completed in the interrupted run"
+	e.results = append(e.results, StepResult{ID: step.ID, Stage: step.Stage, Status: StepSkipped, SkipReason: step.SkipReason})
 
 	release.RecordTask(stored)
 	if release.Release != "" {
@@ -763,7 +796,6 @@ func (e *Executor) carryOver(ctx context.Context, release *Release, step Step, s
 		}
 	}
 
-	step.SkipReason = "already done in an earlier run"
 	e.printStep(step, StepSkipped, 0)
 }
 
@@ -782,6 +814,25 @@ func (e *Executor) printStep(step Step, status string, duration time.Duration) {
 		title += " — " + step.SkipReason
 	}
 	fmt.Fprintf(e.out, "  %s %-22s %8s  %s\n", icon, step.ID, duration.Round(time.Millisecond), title)
+}
+
+// optionSkipReason names why a task has nothing to do under this run's options,
+// or "" when it has work. It covers the two tasks whose switch lives in the
+// options rather than in the recipe's command: the database backup runs only
+// with --db-backup, and the worker pause and resume only with the worker_control
+// setting. Both used to return success without doing anything.
+func optionSkipReason(id string, opts Options) string {
+	switch id {
+	case TaskDBBackup:
+		if !opts.DBBackup {
+			return "--db-backup not given"
+		}
+	case TaskWorkersPause, TaskWorkersResume:
+		if text, _ := SettingText(opts.Settings["worker_control"]); text != "true" {
+			return "worker_control is off"
+		}
+	}
+	return ""
 }
 
 // BranchLabel renders a branch for a human line, naming the detached state
