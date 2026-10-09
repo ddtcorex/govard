@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.79.0] - 2026-10-08
 
 ### ⚠️ Behaviour Changes
 
@@ -107,6 +107,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `govard verify` covers the whole command surface on Magento 2, Laravel, Symfony
   and WordPress and skips rows that do not apply, with `--remote sandbox
   --allow-remote-write` as the end-to-end remote check. (#578)
+- `govard vscode setup` keeps a gitignored `vendor/` searchable: it disables
+  `search.useIgnoreFiles` and excludes each framework's generated and runtime
+  directories from search, the watcher and the Intelephense index instead,
+  preserving user entries and pruning stale ones that hide `vendor/`. (#599)
 
 ## [1.78.0] - 2026-10-04
 
