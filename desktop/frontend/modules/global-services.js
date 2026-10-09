@@ -1,4 +1,6 @@
 
+import { getState as getStoreState } from "../state/store.js";
+
 const globalServiceIcons = {
   caddy: "shield",
   mail: "mail",
@@ -579,17 +581,16 @@ export const feedbackTone = (tone = "info") => {
 
 /**
  * Raises the deck's feedback line. Two React roots write it (the deck island's
- * bulk actions and the logs island's log actions), so the writer and its `seq`
- * counter live here rather than in either of them.
+ * bulk actions and the logs island's log actions). The sequence counter lives
+ * in the store, not in a module global, so there is exactly one identity.
  */
-let feedbackSeq = 0;
 export const raiseActionFeedback = (setState, message, tone = "info") => {
-  feedbackSeq += 1;
+  const seq = (getStoreState().globalActionFeedback?.seq || 0) + 1;
   setState({
     globalActionFeedback: {
       message: String(message || "") || "Ready for global operations.",
       tone: tone || "info",
-      seq: feedbackSeq,
+      seq,
     },
   });
 };

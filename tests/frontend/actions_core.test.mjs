@@ -101,3 +101,29 @@ test("a failed environment action still closes the loading frame it raised", asy
   assert.equal(toasts[0].tone, "error");
   assert.match(toasts[0].message, /compose up failed/);
 });
+
+test("action backstop defers to the backend timeout", async () => {
+  const { ACTION_BACKSTOP_MS } = await import(
+    "../../desktop/frontend/modules/actions.js"
+  );
+  assert.equal(
+    ACTION_BACKSTOP_MS,
+    16 * 60 * 1000,
+    "backstop must sit above the 15-minute backend maximum",
+  );
+
+  const actionsJS = await readFile(
+    new URL("../../desktop/frontend/modules/actions.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    actionsJS.includes("timed out on frontend"),
+    false,
+    "frontend must not contradict the backend with its own timeout story",
+  );
+  assert.equal(
+    actionsJS.includes("clearTimeout("),
+    true,
+    "the backstop timer must not outlive a settled action",
+  );
+});

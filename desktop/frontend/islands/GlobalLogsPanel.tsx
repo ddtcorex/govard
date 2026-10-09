@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hasEventRuntime, onEvent } from "../services/events.js";
+import { createVisiblePoll } from "../utils/visible-interval.js";
 import {
+  appendCappedLogText,
   buildLogFilename,
   downloadTextAsFile,
   filterLogsText,
+  maxLogLines,
   normalizeLogSeverity,
   severityChipClass,
 } from "../modules/logs.js";
@@ -249,12 +252,17 @@ export function GlobalLogsPanel({
   }, [registerApi, refreshLogs, stopLive]);
 
   // One effect owns the poll, so unmounting the pane is what stops it.
+  // The poll pauses while the window is hidden and reloads once on return.
   useEffect(() => {
     if (!polling) {
       return undefined;
     }
-    const timer = setInterval(() => void refreshLogs(), pollMs);
-    return () => clearInterval(timer);
+    const poll = createVisiblePoll({
+      intervalMs: pollMs,
+      onTick: () => void refreshLogs(),
+      doc: document,
+    });
+    return () => poll.dispose();
   }, [polling, pollMs, refreshLogs]);
 
   // The three runtime events die with the panel too; the vanilla subscribed once
@@ -269,7 +277,7 @@ export function GlobalLogsPanel({
         if (!value) {
           return;
         }
-        setRaw((prev) => (prev ? `${prev}\n${value}` : value));
+        setRaw((prev) => appendCappedLogText(prev, value, maxLogLines));
         setLoaded(true);
       }),
       onEvent("global-logs:status", (message) => {

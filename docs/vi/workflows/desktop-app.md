@@ -43,6 +43,10 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 
 > Các thao tác khởi động/dừng/tải môi trường và quản lý dịch vụ toàn cục trên Desktop đều gọi trực tiếp tới tầng lệnh CLI của Govard (`govard up`, `govard env ...`, `govard svc ...`), giúp hành vi của ứng dụng Desktop luôn đồng bộ với các cập nhật mới nhất của CLI.
 
+Các thao tác dài được chờ lâu hơn: `up`, `bootstrap`, restart và pull chờ tối đa 15 phút (10 phút cho global-services start) thay vì thất bại sau hai phút. Thông báo timeout nêu rõ thời lượng; khi thao tác có thể đã để lại container dở dang, thông báo sẽ nói rõ và chỉ tới chức năng phát hiện dự án mồ côi trên dashboard. Mỗi action và project chỉ chạy một thao tác tại một thời điểm — lần bấm thứ hai sẽ báo đang chạy thay vì khởi động trùng lặp.
+
+Các panel log trực tiếp giữ 2.000 dòng gần nhất và tạm dừng polling khi cửa sổ bị ẩn, rồi tải dữ liệu mới khi quay lại. Nếu một panel gặp lỗi, nó hiển thị thông báo kèm nút thử lại thay vì trắng trơn.
+
 ---
 
 ## Phím tắt (Keyboard Shortcuts)

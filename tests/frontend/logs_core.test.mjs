@@ -88,3 +88,29 @@ test("resolveServiceTargets drops a selection the environment no longer offers",
   assert.equal(service, "all");
 });
 
+
+test("appendCappedLogText keeps the last N lines", async () => {
+  const { appendCappedLogText, maxLogLines } = await import(
+    "../../desktop/frontend/modules/logs.js"
+  );
+  assert.equal(maxLogLines, 2000);
+  assert.equal(appendCappedLogText("", "a\nb", 2), "a\nb");
+  assert.equal(appendCappedLogText("a\nb", "c", 2), "b\nc");
+  assert.equal(appendCappedLogText("a", "", 2), "a");
+  assert.equal(appendCappedLogText("", "", 2), "");
+  // Default cap applies without an explicit max.
+  const big = Array.from({ length: maxLogLines + 5 }, (_, i) => `l${i}`).join("\n");
+  assert.equal(appendCappedLogText("", big).split("\n").length, maxLogLines);
+});
+
+test("appendCappedLogLines keeps the last N entries", async () => {
+  const { appendCappedLogLines, maxLogLines } = await import(
+    "../../desktop/frontend/modules/logs.js"
+  );
+  assert.deepEqual(appendCappedLogLines(["a", "b"], "c", 2), ["b", "c"]);
+  assert.deepEqual(appendCappedLogLines([], "a", 2), ["a"]);
+  const big = Array.from({ length: maxLogLines + 5 }, (_, i) => `l${i}`);
+  assert.equal(appendCappedLogLines(big, "x").length, maxLogLines);
+  assert.equal(appendCappedLogLines(big, "x")[maxLogLines - 1], "x");
+  assert.deepEqual(appendCappedLogLines(["a"], "b", 0), []);
+});

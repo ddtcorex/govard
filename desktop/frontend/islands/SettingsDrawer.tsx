@@ -11,11 +11,13 @@ type SettingsController = {
   toggleDrawer(open: boolean): void;
   updateRefs(refs: Record<string, unknown>): void;
 };
+type ToastKind = "info" | "success" | "error" | "warning";
 type Props = {
   bridge: { quit(): Promise<unknown> };
   controller: SettingsController;
   onOpenChange(open: boolean): void;
   onResetSettings(): Promise<void>;
+  onToast(message: string, kind?: ToastKind): void;
   registerRefs(refs: Record<string, unknown>): void;
 };
 
@@ -54,7 +56,7 @@ const collectRefs = () => ({
  * drawer's `hidden` class is toggled synchronously by the controller, which
  * main.js's isSettingsDrawerOpen probe and the update prompt read.
  */
-export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettings, registerRefs }: Props) {
+export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettings, onToast, registerRefs }: Props) {
   useEffect(() => {
     registerRefs(collectRefs());
     // main.js's bootstrap load can run before React has committed this markup,
@@ -310,7 +312,13 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
               className="flex items-center justify-center gap-2.5 px-4 py-3.5 bg-red-500/5 border border-red-500/20 rounded-xl text-[13px] font-bold text-red-400 hover:bg-red-500/15 hover:text-red-300 hover:border-red-500/40 transition-all active:scale-[0.98] group"
               data-testid="quit-app"
               type="button"
-              onClick={() => void bridge.quit().catch(() => {})}
+              onClick={() =>
+                void bridge
+                  .quit()
+                  .catch((err) =>
+                    onToast(`Failed to quit: ${err}`, "error"),
+                  )
+              }
             >
               <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">power_settings_new</span>
               <span>Quit Govard</span>

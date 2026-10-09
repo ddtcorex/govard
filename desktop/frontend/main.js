@@ -7,6 +7,7 @@ import {
 } from "./modules/global-services.js";
 import { resolveServiceTargets } from "./modules/logs.js";
 import { createOnboardingController } from "./modules/onboarding.js?v=20260302";
+import { resolveSyncPresetConfig } from "./modules/remotes.js";
 import { createSettingsController } from "./modules/settings.js";
 import { createUpdateNotifierModel } from "./modules/update-notifier.js";
 import { createElement } from "react";
@@ -29,7 +30,7 @@ import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
 import { getState, setState } from "./state/store.js";
 import { createToast } from "./ui/toast.js?v=20260301";
-import { byId, setText } from "./utils/dom.js";
+import { byId, escapeHTML, setText } from "./utils/dom.js";
 console.log("==> Finished imports <==");
 
 const initUI = () => {
@@ -211,10 +212,10 @@ const showLoadingToast = (
     </div>
     <div class="toast-content">
       <div style="display:flex; align-items:center; gap:8px;">
-        <p class="toast-message" style="font-weight:600; margin:0;">${String(title)}</p>
+        <p class="toast-message" style="font-weight:600; margin:0;">${escapeHTML(title)}</p>
         <span class="toast-spinner inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
       </div>
-      <p class="toast-stream-line text-xs font-mono opacity-80 mt-1">${String(initialLine || "Please wait...")}</p>
+      <p class="toast-stream-line text-xs font-mono opacity-80 mt-1">${escapeHTML(initialLine || "Please wait...")}</p>
     </div>
     <button class="toast-close" aria-label="Close">
       <span class="material-symbols-outlined">close</span>
@@ -279,13 +280,9 @@ const resolveSyncConfigForPreset = async (preset) => {
   const optionsDef = Array.isArray(payload?.options) ? payload.options : [];
 
   const currentConfigs = state.syncConfigs || {};
-  const currentConfig = { ...(currentConfigs[preset] || {}) };
-
-  optionsDef.forEach((option) => {
-    if (currentConfig[option.key] === undefined) {
-      currentConfig[option.key] = Boolean(option.defaultValue);
-    }
-  });
+  // The default overlay lives in modules/remotes.js next to the island that
+  // shares it; this flow only fetches the definitions and persists the result.
+  const currentConfig = resolveSyncPresetConfig(optionsDef, currentConfigs[preset] || {});
 
   setState({
     syncConfigs: { ...currentConfigs, [preset]: currentConfig },
@@ -871,6 +868,7 @@ const settingsIsland = mountIsland(
     controller: settingsController,
     onOpenChange: setSettingsDrawerOpen,
     onResetSettings: resetSettings,
+    onToast: showToast,
     registerRefs: (islandRefs) => {
       Object.assign(refs, islandRefs);
       settingsController.updateRefs(refs);

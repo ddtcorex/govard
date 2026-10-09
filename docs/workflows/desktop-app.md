@@ -44,6 +44,10 @@ The desktop focuses on operational essentials:
 
 > Desktop environment start/stop/pull and global-services operations call the Govard CLI command surface (`govard up`, `govard env ...`, `govard svc ...`), keeping desktop behavior aligned with all CLI updates.
 
+Long operations get long ceilings: `up`, `bootstrap`, restarts and pulls wait up to 15 minutes (10 for global-services start) instead of failing at two. A timeout names its duration; when the operation may have left containers half-started, the message says so and points at the dashboard's orphan detection. Only one operation runs per action and project — a second click reports that one is already running instead of starting a duplicate.
+
+Live log panes keep the last 2,000 lines and pause their polling while the window is hidden, resuming with fresh data on return. If a panel crashes, it shows a notice with a retry button rather than going blank.
+
 ---
 
 ## Keyboard Shortcuts

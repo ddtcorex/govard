@@ -38,6 +38,18 @@ func ResetStateForTest() {
 	writeLogFileForDesktop = defaultWriteLogFileForDesktop
 }
 
+// GovardCommandTimeoutForTest exposes the CLI timeout policy for tests.
+func GovardCommandTimeoutForTest(args []string) time.Duration {
+	return govardCommandTimeout(args)
+}
+
+// SimulateGovardCommandTimeoutForTest returns the exact error the desktop
+// runner produces when the given args hit their deadline, without spawning
+// a process.
+func SimulateGovardCommandTimeoutForTest(args []string) error {
+	return newGovardCommandTimeoutError(govardCommandTimeout(args), "")
+}
+
 // ResolveRequestedLogTargetsForTest exposes log target normalization for tests.
 func ResolveRequestedLogTargetsForTest(service string, discovered []string) []string {
 	return resolveRequestedLogTargets(service, discovered)

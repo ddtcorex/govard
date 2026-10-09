@@ -27,7 +27,7 @@ import (
 const remoteLastSyncReadLimit = 5000
 
 var defaultRunGovardCommandForDesktop = func(root string, args []string) (string, error) {
-	return runGovardCommandForDesktopWithTimeout(root, args, 2*time.Minute)
+	return runGovardCommandForDesktopWithTimeout(root, args, govardCommandTimeout(args))
 }
 
 var defaultRunGovardCommandForDesktopWithTimeout = func(root string, args []string, timeout time.Duration) (string, error) {
@@ -45,7 +45,7 @@ var defaultRunGovardCommandForDesktopWithTimeout = func(root string, args []stri
 	trimmed := strings.TrimSpace(string(output))
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return "", fmt.Errorf("command timed out after %v: %s", timeout, trimmed)
+			return "", newGovardCommandTimeoutError(timeout, trimmed)
 		}
 		if trimmed != "" {
 			return "", fmt.Errorf("%v: %s", err, trimmed)
