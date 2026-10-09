@@ -64,3 +64,43 @@ test("extractor keeps code-only icon map values and fallbacks", async () => {
     assert.ok(names.includes(name), `${name} must reach the subset`);
   }
 });
+
+test("committed manifest covers every icon the scanner sees in source", async () => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { join, extname, dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const { extractMaterialIconNames, SCAN_SURFACE } = await import(
+    "../../desktop/frontend/scripts/subset-icons.mjs"
+  );
+  const root = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../desktop/frontend",
+  );
+  const texts = [];
+  const walk = async (dir) => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (SCAN_SURFACE.exts.includes(extname(entry.name))) {
+        texts.push(await readFile(full, "utf8"));
+      }
+    }
+  };
+  for (const dir of SCAN_SURFACE.dirs) {
+    await walk(join(root, dir));
+  }
+  for (const file of SCAN_SURFACE.files) {
+    texts.push(await readFile(join(root, file), "utf8"));
+  }
+  const manifest = JSON.parse(
+    await readFile(join(root, "assets/material-symbols.subset.json"), "utf8"),
+  );
+  const covered = new Set(manifest.icons);
+  const missing = extractMaterialIconNames(texts).filter((n) => !covered.has(n));
+  assert.deepEqual(
+    missing,
+    [],
+    `icons used in source but missing from the committed manifest (rebuild: ${missing.join(", ")})`,
+  );
+});

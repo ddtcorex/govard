@@ -1,6 +1,6 @@
 import { confirm } from "../ui/modal.js";
 import { escapeHTML } from "../utils/dom.js";
-import { beginOperation, endOperation } from "./operations.js";
+import { beginOperation, endOperation, operationLabel, releaseWhenSettled } from "./operations.js";
 
 // The backend owns per-operation timeouts (up to 15 minutes for `up`);
 // this is only a hard backstop so a lost RPC can never hang the UI.
@@ -39,19 +39,24 @@ export const createActionsController = ({
       onStatus("Please select an environment first.");
       return;
     }
-    // One in-flight operation per action and project: a double-click or a
-    // Start-then-Stop race reports instead of running `up` twice.
+    // One mutating operation per project: a double-click or a Start-then-Stop
+    // race reports instead of running two engine operations at once.
     let opToken = null;
-    if (opAction) {
-      opToken = beginOperation(`${opAction}:${project}`);
+    const opKey = opAction ? `env:${project}` : "";
+    if (opKey) {
+      opToken = beginOperation(opKey, opAction);
       if (opToken === null) {
-        onStatus(`${opAction} is already running for ${project}.`);
+        onStatus(
+          `Cannot start ${opAction}: ${operationLabel(opKey)} is already running for ${project}.`,
+        );
         return;
       }
     }
     let loadingToast = null;
     let loadingStartedAt = 0;
     let backstopTimer = null;
+    let backstopFired = false;
+    let actionPromise = null;
     const waitForToastVisibility = async () => {
       if (!loadingToast || loadingStartedAt <= 0) {
         return;
@@ -71,12 +76,16 @@ export const createActionsController = ({
 
       const backstopPromise = new Promise((_, reject) => {
         backstopTimer = setTimeout(
-          () => reject(new Error(ACTION_BACKSTOP_MESSAGE)),
+          () => {
+            backstopFired = true;
+            reject(new Error(ACTION_BACKSTOP_MESSAGE));
+          },
           ACTION_BACKSTOP_MS,
         );
       });
 
-      const message = await Promise.race([fn(project), backstopPromise]);
+      actionPromise = fn(project);
+      const message = await Promise.race([actionPromise, backstopPromise]);
       onStatus(message || fallbackMessage);
       if (loadingToast) {
         await waitForToastVisibility();
@@ -103,7 +112,13 @@ export const createActionsController = ({
         clearTimeout(backstopTimer);
       }
       if (opToken !== null) {
-        endOperation(opToken);
+        // When the backstop won, the backend call is still running: hold the
+        // project's lock until it settles instead of admitting a duplicate.
+        if (backstopFired) {
+          releaseWhenSettled(opToken, actionPromise);
+        } else {
+          endOperation(opToken);
+        }
       }
     }
   };

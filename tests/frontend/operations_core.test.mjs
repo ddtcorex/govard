@@ -6,6 +6,7 @@ import {
   beginOperation,
   endOperation,
   isOperationInFlight,
+  operationLabel,
 } from "../../desktop/frontend/modules/operations.js";
 
 test("beginOperation hands out one token per key", () => {
@@ -63,4 +64,55 @@ test("the sync preset default resolver is defined exactly once", async () => {
     mainJS.includes("resolveSyncPresetConfig"),
     "main.js must delegate to the single resolver",
   );
+});
+
+test("one mutating operation per project, labeled", () => {
+  const token = beginOperation("env:sample-project", "env-start");
+  try {
+    assert.ok(typeof token === "string" && token.length > 0);
+    assert.equal(beginOperation("env:sample-project", "env-stop"), null);
+    assert.equal(operationLabel("env:sample-project"), "env-start");
+  } finally {
+    endOperation(token);
+  }
+  assert.equal(operationLabel("env:sample-project"), "");
+  assert.equal(isOperationInFlight("env:sample-project"), false);
+});
+
+test("releaseWhenSettled holds the key until the backend settles", async () => {
+  const { beginOperation, isOperationInFlight, releaseWhenSettled } = await import(
+    "../../desktop/frontend/modules/operations.js"
+  );
+  let releaseBackend;
+  const backend = new Promise((resolve) => {
+    releaseBackend = resolve;
+  });
+  const token = beginOperation("env:slow-project", "env-start");
+  assert.ok(token);
+  releaseWhenSettled(token, backend);
+  assert.equal(isOperationInFlight("env:slow-project"), true);
+  assert.equal(beginOperation("env:slow-project", "env-stop"), null);
+  releaseBackend("started");
+  await backend;
+  // Let the release microtask run.
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(isOperationInFlight("env:slow-project"), false);
+});
+
+test("releaseWhenSettled releases on rejection too", async () => {
+  const { beginOperation, isOperationInFlight, releaseWhenSettled } = await import(
+    "../../desktop/frontend/modules/operations.js"
+  );
+  let rejectBackend;
+  const backend = new Promise((_, reject) => {
+    rejectBackend = reject;
+  });
+  const token = beginOperation("env:fail-project", "env-start");
+  releaseWhenSettled(token, backend);
+  rejectBackend(new Error("gone"));
+  await backend.catch(() => {});
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(isOperationInFlight("env:fail-project"), false);
 });

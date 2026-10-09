@@ -127,3 +127,44 @@ test("action backstop defers to the backend timeout", async () => {
     "the backstop timer must not outlive a settled action",
   );
 });
+
+test("a second mutating action for the same project is refused while one runs", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { createActionsController } = await loadActionsModule();
+  let releaseStart;
+  const statuses = [];
+  let starts = 0;
+  let stops = 0;
+  const controller = createActionsController({
+    bridge: {
+      startEnvironment: () => {
+        starts += 1;
+        return new Promise((resolve) => {
+          releaseStart = resolve;
+        });
+      },
+      stopEnvironment: async () => {
+        stops += 1;
+        return "stopped";
+      },
+    },
+    getProject: () => "sample-project",
+    refreshDashboard: async () => {},
+    renderSkeletons: () => {},
+    onStatus: (message) => statuses.push(message),
+    onToast: () => {},
+  });
+
+  const first = controller.handle("env-start");
+  // Let the first action claim the project's lock before the second fires.
+  await Promise.resolve();
+  await controller.handle("env-stop");
+  assert.equal(starts, 1);
+  assert.equal(stops, 0, "Stop must not run concurrently with Start");
+  assert.ok(
+    statuses.some((s) => s.includes("env-start is already running")),
+    `expected a refusal notice, got: ${JSON.stringify(statuses)}`,
+  );
+  releaseStart("started");
+  await first;
+});

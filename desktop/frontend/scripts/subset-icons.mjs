@@ -93,6 +93,10 @@ const SCAN_DIRS = ["modules", "islands", "ui", "services", "state"];
 const SCAN_FILES = ["main.js", "index.html", "preview.html"];
 const SCAN_EXTS = new Set([".js", ".tsx"]);
 
+// Exported so the coverage test walks exactly the surface the build scans:
+// a name the scanner cannot see is a name the test cannot pin.
+export const SCAN_SURFACE = { dirs: SCAN_DIRS, files: SCAN_FILES, exts: [...SCAN_EXTS] };
+
 async function collectSourceTexts(root) {
   const texts = [];
   const walk = async (dir) => {
