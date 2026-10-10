@@ -13,7 +13,11 @@ import (
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	env := append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	// core.excludesFile defaults to ~/.config/git/ignore by path, which
+	// GIT_CONFIG_GLOBAL does not neutralize: pin it so a developer's global
+	// excludes cannot decide what these tests prove.
+	env := append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.excludesFile", "GIT_CONFIG_VALUE_0=/dev/null")
 	cmd := exec.Command("git", "init", "-q")
 	cmd.Dir = root
 	cmd.Env = env
@@ -25,7 +29,8 @@ func gitRepo(t *testing.T) string {
 
 func staged(t *testing.T, root string) string {
 	t.Helper()
-	env := append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	env := append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.excludesFile", "GIT_CONFIG_VALUE_0=/dev/null")
 	for _, args := range [][]string{{"add", "-A"}, {"diff", "--cached", "--name-only"}} {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = root
