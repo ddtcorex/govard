@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatMetricMB, formatMetricPercent, normalizeMetricsPayload } from "../modules/metrics.js";
+import { createVisiblePoll } from "../utils/visible-interval.js";
 
 type RefreshOptions = { silent?: boolean };
 type Metrics = { systemCPU: number; systemMemory: number };
@@ -45,9 +46,15 @@ export function MetricsFooter({ bridge, onStatus, registerRefresh, intervalMs = 
     // before this effect registers the function; fetch once here so the
     // readout never waits a full interval for its first value.
     void refresh({ silent: true });
-    const timer = setInterval(() => void refresh({ silent: true }), intervalMs);
+    // The footer polls for the app's whole lifetime, so it pauses while the
+    // window is hidden and refreshes once on return.
+    const poll = createVisiblePoll({
+      intervalMs,
+      onTick: () => void refresh({ silent: true }),
+      doc: document,
+    });
     return () => {
-      clearInterval(timer);
+      poll.dispose();
       // Handing the function back on unmount is what stops main.js's own call
       // sites from reaching an island that no longer exists (the same contract
       // the other islands follow with registerApi(null)).

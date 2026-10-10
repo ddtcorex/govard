@@ -1,5 +1,15 @@
 import { confirm } from "../ui/modal.js";
 import { escapeHTML } from "../utils/dom.js";
+import { beginOperation, endOperation, operationLabel, releaseWhenSettled } from "./operations.js";
+
+// The backend owns per-operation timeouts (up to 15 minutes for `up`);
+// this is only a hard backstop so a lost RPC can never hang the UI.
+// It must stay above the backend maximum, and its message must defer to
+// the backend's instead of inventing a second timeout story.
+export const ACTION_BACKSTOP_MS = 16 * 60 * 1000;
+
+export const ACTION_BACKSTOP_MESSAGE =
+  "The backend stopped responding after 16 minutes; the operation may have been interrupted. Check the dashboard for partial state.";
 
 export const buildDeleteConfirmMessage = (project) =>
   `Are you sure you want to PERMANENTLY delete project <span class="text-primary font-bold">"${escapeHTML(project)}"</span>?<br><br>
@@ -23,13 +33,30 @@ export const createActionsController = ({
     project,
     fallbackMessage,
     loadingLabel = "Processing environment...",
+    opAction = "",
   ) => {
     if (!project) {
       onStatus("Please select an environment first.");
       return;
     }
+    // One mutating operation per project: a double-click or a Start-then-Stop
+    // race reports instead of running two engine operations at once.
+    let opToken = null;
+    const opKey = opAction ? `env:${project}` : "";
+    if (opKey) {
+      opToken = beginOperation(opKey, opAction);
+      if (opToken === null) {
+        onStatus(
+          `Cannot start ${opAction}: ${operationLabel(opKey)} is already running for ${project}.`,
+        );
+        return;
+      }
+    }
     let loadingToast = null;
     let loadingStartedAt = 0;
+    let backstopTimer = null;
+    let backstopFired = false;
+    let actionPromise = null;
     const waitForToastVisibility = async () => {
       if (!loadingToast || loadingStartedAt <= 0) {
         return;
@@ -46,12 +73,19 @@ export const createActionsController = ({
       renderSkeletons();
       loadingToast = onToastLoading?.(loadingLabel, "info", "Please wait...");
       loadingStartedAt = Date.now();
-      
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Operation timed out on frontend. Checkout Logs or restart app if issue persists.")), 300000); // 5 minute safety timeout
+
+      const backstopPromise = new Promise((_, reject) => {
+        backstopTimer = setTimeout(
+          () => {
+            backstopFired = true;
+            reject(new Error(ACTION_BACKSTOP_MESSAGE));
+          },
+          ACTION_BACKSTOP_MS,
+        );
       });
 
-      const message = await Promise.race([fn(project), timeoutPromise]);
+      actionPromise = fn(project);
+      const message = await Promise.race([actionPromise, backstopPromise]);
       onStatus(message || fallbackMessage);
       if (loadingToast) {
         await waitForToastVisibility();
@@ -73,6 +107,19 @@ export const createActionsController = ({
       // action can still have changed containers half way, so the list has to
       // be re-read on this path too.
       await refreshDashboard({ silent: true });
+    } finally {
+      if (backstopTimer !== null) {
+        clearTimeout(backstopTimer);
+      }
+      if (opToken !== null) {
+        // When the backstop won, the backend call is still running: hold the
+        // project's lock until it settles instead of admitting a duplicate.
+        if (backstopFired) {
+          releaseWhenSettled(opToken, actionPromise);
+        } else {
+          endOperation(opToken);
+        }
+      }
     }
   };
 
@@ -85,6 +132,7 @@ export const createActionsController = ({
         project,
         `Started ${project} successfully`,
         `Starting ${project}...`,
+        action,
       );
       return;
     }
@@ -94,6 +142,7 @@ export const createActionsController = ({
         project,
         `Restarted ${project} successfully`,
         `Restarting ${project}...`,
+        action,
       );
       return;
     }
@@ -103,6 +152,7 @@ export const createActionsController = ({
         project,
         `Stopped ${project} successfully`,
         `Stopping ${project}...`,
+        action,
       );
       return;
     }
@@ -112,6 +162,7 @@ export const createActionsController = ({
         project,
         `Pulled images for ${project}`,
         `Pulling images for ${project}...`,
+        action,
       );
       return;
     }
@@ -130,6 +181,7 @@ export const createActionsController = ({
         project,
         `Deleted ${project} from Govard`,
         `Deleting ${project}...`,
+        action,
       );
       return;
     }
@@ -146,6 +198,8 @@ export const createActionsController = ({
         bridge.toggleEnvironment,
         project,
         `Toggled ${project} state`,
+        "Processing environment...",
+        action,
       );
       return;
     }

@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hasEventRuntime, onEvent } from "../services/events.js";
+import { createVisiblePoll } from "../utils/visible-interval.js";
 import {
+  appendCappedLogLines,
   buildLogFilename,
   downloadTextAsFile,
   filterLogsText,
+  maxLogLines,
   resolveLogTarget,
   resolveServiceTargets,
   severityChipClass,
@@ -114,7 +117,7 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
       if (loadRequest.current !== request) {
         return;
       }
-      setLines(String(raw ?? "").split("\n"));
+      setLines(String(raw ?? "").split("\n").slice(-maxLogLines));
       setNotice("");
     } catch (err) {
       if (loadRequest.current !== request) {
@@ -251,13 +254,22 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
   }, [load]);
 
   // One effect owns the whole live lifecycle, so unmounting is what stops the
-  // poll and the backend stream (Review Focus 2).
+  // poll and the backend stream (Review Focus 2). The poll pauses while the
+  // window is hidden and reloads once on return.
   useEffect(() => {
     if (liveMode === "off") return undefined;
-    const timer =
-      liveMode === "poll" ? setInterval(() => void load(), livePollMs) : null;
+    if (liveMode !== "poll") {
+      return () => {
+        void Promise.resolve(bridge.stopLogStream()).catch(() => {});
+      };
+    }
+    const poll = createVisiblePoll({
+      intervalMs: livePollMs,
+      onTick: () => void load(),
+      doc: document,
+    });
     return () => {
-      if (timer !== null) clearInterval(timer);
+      poll.dispose();
       void Promise.resolve(bridge.stopLogStream()).catch(() => {});
     };
   }, [liveMode, livePollMs, load, bridge]);
@@ -266,7 +278,7 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
     if (!hasEventRuntime()) return undefined;
     const offs = [
       onEvent("logs:line", (line: unknown) => {
-        setLines((prev) => [...prev, String(line ?? "")]);
+        setLines((prev) => appendCappedLogLines(prev, line, maxLogLines));
       }),
       onEvent("logs:status", (message: unknown) => {
         const text = String(message ?? "").trim();
@@ -294,7 +306,10 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines]);
 
-  const filtered = filterLogsText(lines.join("\n"), target.severity, target.query);
+  const filtered = useMemo(
+    () => filterLogsText(lines.join("\n"), target.severity, target.query),
+    [lines, target.severity, target.query],
+  );
   const output = notice || filtered || "No logs match the current filters.";
 
   return (

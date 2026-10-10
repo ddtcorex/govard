@@ -114,6 +114,44 @@ export const filterLogsText = (raw = "", severity = "all", query = "") => {
   return filtered.join("\n").trim();
 };
 
+/**
+ * Live-log buffers grow without bound unless capped: the sync terminal
+ * already caps at maxSyncProgressLines, and these two helpers bring the
+ * same bound to the log panes. A non-positive max retains nothing.
+ */
+export const maxLogLines = 2000;
+
+/**
+ * @param {unknown} [prev]
+ * @param {unknown} [value]
+ * @param {number} [max]
+ */
+export const appendCappedLogText = (prev = "", value = "", max = maxLogLines) => {
+  const text = String(value ?? "");
+  const combined = text ? (prev ? `${prev}\n${text}` : text) : String(prev ?? "");
+  if (!combined.trim()) {
+    return "";
+  }
+  if (!(max > 0)) {
+    return "";
+  }
+  const lines = combined.split("\n");
+  return lines.length > max ? lines.slice(-max).join("\n") : combined;
+};
+
+/**
+ * @param {unknown} [prev]
+ * @param {unknown} [value]
+ * @param {number} [max]
+ */
+export const appendCappedLogLines = (prev = [], value = "", max = maxLogLines) => {
+  if (!(max > 0)) {
+    return [];
+  }
+  const next = [...(Array.isArray(prev) ? prev : []), String(value ?? "")];
+  return next.length > max ? next.slice(-max) : next;
+};
+
 export const resolveLogTarget = ({
   project = "",
   service = "all",

@@ -101,3 +101,70 @@ test("a failed environment action still closes the loading frame it raised", asy
   assert.equal(toasts[0].tone, "error");
   assert.match(toasts[0].message, /compose up failed/);
 });
+
+test("action backstop defers to the backend timeout", async () => {
+  const { ACTION_BACKSTOP_MS } = await import(
+    "../../desktop/frontend/modules/actions.js"
+  );
+  assert.equal(
+    ACTION_BACKSTOP_MS,
+    16 * 60 * 1000,
+    "backstop must sit above the 15-minute backend maximum",
+  );
+
+  const actionsJS = await readFile(
+    new URL("../../desktop/frontend/modules/actions.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    actionsJS.includes("timed out on frontend"),
+    false,
+    "frontend must not contradict the backend with its own timeout story",
+  );
+  assert.equal(
+    actionsJS.includes("clearTimeout("),
+    true,
+    "the backstop timer must not outlive a settled action",
+  );
+});
+
+test("a second mutating action for the same project is refused while one runs", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { createActionsController } = await loadActionsModule();
+  let releaseStart;
+  const statuses = [];
+  let starts = 0;
+  let stops = 0;
+  const controller = createActionsController({
+    bridge: {
+      startEnvironment: () => {
+        starts += 1;
+        return new Promise((resolve) => {
+          releaseStart = resolve;
+        });
+      },
+      stopEnvironment: async () => {
+        stops += 1;
+        return "stopped";
+      },
+    },
+    getProject: () => "sample-project",
+    refreshDashboard: async () => {},
+    renderSkeletons: () => {},
+    onStatus: (message) => statuses.push(message),
+    onToast: () => {},
+  });
+
+  const first = controller.handle("env-start");
+  // Let the first action claim the project's lock before the second fires.
+  await Promise.resolve();
+  await controller.handle("env-stop");
+  assert.equal(starts, 1);
+  assert.equal(stops, 0, "Stop must not run concurrently with Start");
+  assert.ok(
+    statuses.some((s) => s.includes("env-start is already running")),
+    `expected a refusal notice, got: ${JSON.stringify(statuses)}`,
+  );
+  releaseStart("started");
+  await first;
+});

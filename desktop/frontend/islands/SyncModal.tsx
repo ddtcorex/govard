@@ -285,8 +285,14 @@ export function SyncModal({
       }
       const failure = sanitizeSyncPlanText(err) || "Unknown error";
       setPlanText(`${planDetails}\n\nFailed to generate plan: ${failure}`);
+    } finally {
+      // Stale responses must not hide a newer request's spinner, but the
+      // current request always settles its own loading flag — even on the
+      // early returns above, which used to strand it.
+      if (previewRequest.current === request) {
+        setPlanLoading(false);
+      }
     }
-    setPlanLoading(false);
   }, [bridge, config, options, preset, remote]);
 
   const confirm = useCallback(() => {
