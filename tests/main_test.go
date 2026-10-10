@@ -112,3 +112,25 @@ func hermeticPHP(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
+
+// stubBuilderToolchain puts fixed php/composer/node stand-ins first on PATH so
+// a build records a stable toolchain digest without starting containers or
+// runtimes. The versions are arbitrary but fixed: the digest only has to be
+// stable within the run for cache hits to hit and misses to miss. A test that
+// asserts how versions shape the digest (TestBuilderToolVersionsDecideTheirDigest)
+// must not use it.
+func stubBuilderToolchain(t *testing.T) {
+	t.Helper()
+	hermeticPHP(t)
+	dir := t.TempDir()
+	shims := map[string]string{
+		"composer": "#!/bin/sh\nprintf 'Composer version 2.9.9 2025-01-01\n'\n",
+		"node":     "#!/bin/sh\nprintf 'v20.99.0\n'\n",
+	}
+	for name, script := range shims {
+		if err := os.WriteFile(dir+"/"+name, []byte(script), 0o755); err != nil {
+			t.Fatalf("write %s stand-in: %v", name, err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}

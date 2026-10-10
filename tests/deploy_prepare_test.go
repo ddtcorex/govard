@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -400,12 +401,22 @@ type scriptedRunner struct {
 	failSubstring   string
 	answerSubstring string
 	answerStdout    string
+	// answers scripts several probes at once; checked after failSubstring,
+	// before the legacy single answer. Keys iterate sorted so overlapping
+	// substrings resolve deterministically — overlapping keys are a test bug,
+	// keep them disjoint.
+	answers map[string]string
 }
 
 func (r scriptedRunner) Run(ctx context.Context, command string, opts deploy.RunOptions) (deploy.Result, error) {
 	if r.failSubstring != "" && strings.Contains(command, r.failSubstring) {
 		result := deploy.Result{ExitCode: 1, Stderr: "scripted failure"}
 		return result, &deploy.CommandError{Command: command, ExitCode: 1, Stderr: "scripted failure"}
+	}
+	for _, substring := range sortedKeys(r.answers) {
+		if strings.Contains(command, substring) {
+			return deploy.Result{Stdout: r.answers[substring]}, nil
+		}
 	}
 	if r.answerSubstring != "" && strings.Contains(command, r.answerSubstring) {
 		return deploy.Result{Stdout: r.answerStdout}, nil
@@ -952,7 +963,10 @@ func TestCoreCheckWarnsWhenPrivateRepositoriesHaveNoCredentials(t *testing.T) {
 		work := t.TempDir()
 		writeFile(t, filepath.Join(work, "composer.json"), composerJSON)
 
-		host := deploy.HostForTest(t.TempDir(), deploy.LocalRunner{})
+		host := deploy.HostForTest(t.TempDir(), scriptedRunner{
+			base:    deploy.LocalRunner{},
+			answers: map[string]string{"Zend OPcache": "0"},
+		})
 		if seedSharedAuth {
 			if _, err := host.Runner().Run(context.Background(),
 				"mkdir -p "+host.SharedPath()+" && echo '{}' > "+host.SharedPath()+"/auth.json", deploy.RunOptions{}); err != nil {
@@ -1090,15 +1104,25 @@ func platformFloorFixture(t *testing.T, constraint, targetPHP string) string {
 // under the caller's control. The preflight's own verdict is not asserted: an
 // artifact build can legitimately fail the parity check that runs after the note,
 // and the note is what these callers read.
+// floorFixtureAnswers scripts the probes a composer-note assertion does not
+// read: the target PHP version (varies per caller) and the OPcache probe
+// (silent either way for these tests). Everything else falls through to real
+// cheap shell builtins; nothing reaches a container or a toolchain.
+func floorFixtureAnswers(targetPHP string) map[string]string {
+	return map[string]string{
+		"PHP_VERSION":  targetPHP + "\n",
+		"Zend OPcache": "0",
+	}
+}
+
 func platformFloorFixtureWithOptions(t *testing.T, constraint, targetPHP string, opts deploy.Options) string {
 	t.Helper()
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "composer.lock"), `{"platform":{"php":`+strconv.Quote(constraint)+`}}`)
 
 	host := deploy.HostForTest(t.TempDir(), scriptedRunner{
-		base:            deploy.LocalRunner{},
-		answerSubstring: "PHP_VERSION",
-		answerStdout:    targetPHP + "\n",
+		base:    deploy.LocalRunner{},
+		answers: floorFixtureAnswers(targetPHP),
 	})
 	sc := deploy.StepContextForTest(host, opts)
 	sc.WorkDir = work
@@ -1108,6 +1132,34 @@ func platformFloorFixtureWithOptions(t *testing.T, constraint, targetPHP string,
 		t.Fatalf("check: %v", err)
 	}
 	return out.String()
+}
+
+// The floor fixture exists to read one note, not to prove the target has a
+// toolchain: every command below that reaches a real runner is wall clock the
+// note does not need (docker starts, php/composer/node startups), and on a
+// host without them it is behavior that varies by machine.
+var floorFixtureHeavyProbePattern = regexp.MustCompile(`docker|\bphp\b|composer|\bnode\b|\bssh\b`)
+
+func TestCoreCheckFixturePerformsNoHeavyProbes(t *testing.T) {
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "composer.lock"), `{"platform":{"php":">=8.4"}}`)
+
+	fallthroughRec := &recordingRunner{inner: deploy.LocalRunner{}}
+	host := deploy.HostForTest(t.TempDir(), scriptedRunner{
+		base:    fallthroughRec,
+		answers: floorFixtureAnswers("8.3.35"),
+	})
+	sc := deploy.StepContextForTest(host, deploy.Options{Publish: deploy.PublishSymlink})
+	sc.WorkDir = work
+	sc.Out = &bytes.Buffer{}
+	if err := deploy.CoreCheck(context.Background(), sc); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	for _, command := range fallthroughRec.commands {
+		if floorFixtureHeavyProbePattern.MatchString(command) {
+			t.Errorf("heavy probe reached a real runner: %q", command)
+		}
+	}
 }
 
 // An artifact build never runs build:vendors on the target, and checkArtifactParity

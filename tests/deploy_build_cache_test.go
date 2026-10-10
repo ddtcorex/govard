@@ -235,6 +235,7 @@ func runDeployBuildCommand(t *testing.T, args ...string) (string, error) {
 }
 
 func TestDeployBuildSandboxResolvesTheSyntheticRemote(t *testing.T) {
+	stubBuilderToolchain(t)
 	root, revision := sandboxBuildProject(t)
 	output := filepath.Join(root, "artifact-out")
 	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", revision, "--output", output); err != nil {
@@ -246,6 +247,7 @@ func TestDeployBuildSandboxResolvesTheSyntheticRemote(t *testing.T) {
 }
 
 func TestSandboxBuildHitsTheCacheOnTheSameKey(t *testing.T) {
+	stubBuilderToolchain(t)
 	root, revision := sandboxBuildProject(t)
 	first := filepath.Join(root, "out-1")
 	second := filepath.Join(root, "out-2")
@@ -267,6 +269,7 @@ func TestSandboxBuildHitsTheCacheOnTheSameKey(t *testing.T) {
 }
 
 func TestNewCommitWithANewLockMissesTheCache(t *testing.T) {
+	stubBuilderToolchain(t)
 	root, revision := sandboxBuildProject(t)
 	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", revision, "--output", filepath.Join(root, "out-1")); err != nil {
 		t.Fatal(err)
@@ -297,6 +300,7 @@ func TestNewCommitWithANewLockMissesTheCache(t *testing.T) {
 }
 
 func TestNoCacheForcesARebuild(t *testing.T) {
+	stubBuilderToolchain(t)
 	root, revision := sandboxBuildProject(t)
 	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", revision, "--output", filepath.Join(root, "out-1")); err != nil {
 		t.Fatal(err)
@@ -311,6 +315,7 @@ func TestNoCacheForcesARebuild(t *testing.T) {
 }
 
 func TestRealRemoteNeverReadsOrWritesTheCache(t *testing.T) {
+	stubBuilderToolchain(t)
 	root, revision := sandboxBuildProject(t)
 	writeFile(t, filepath.Join(root, ".govard.yml"), `
 project_name: sample-project
@@ -365,6 +370,7 @@ func TestRestoreRefusesANonEmptyOutputWithoutForce(t *testing.T) {
 // commit: a rehearsal tunes deploy settings in an untracked .govard.yml without
 // committing anything, and a cache hit would hand back the old artifact.
 func TestChangedDeploySettingsMissTheCache(t *testing.T) {
+	stubBuilderToolchain(t)
 	root, revision := sandboxBuildProject(t)
 	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", revision, "--output", filepath.Join(root, "out-1")); err != nil {
 		t.Fatal(err)
@@ -426,6 +432,7 @@ func manifestRevision(t *testing.T, dir string) string {
 // spelling the first build used; and it must do so without editing the cached
 // copy the output shares its data blocks with.
 func TestCacheHitCarriesTheRevisionSpellingOfThisBuild(t *testing.T) {
+	stubBuilderToolchain(t)
 	root, revision := sandboxBuildProject(t)
 	first, second, third := filepath.Join(root, "out-1"), filepath.Join(root, "out-2"), filepath.Join(root, "out-3")
 	if _, err := runDeployBuildCommand(t, "sandbox", "--revision", "HEAD", "--output", first); err != nil {
