@@ -75,12 +75,18 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$port" ] || exit 1
 exec python3 - "$port" <<'PY'
-import socket, sys, time
+import socket, sys
 s = socket.socket()
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("127.0.0.1", int(sys.argv[1])))
 s.listen(4)
-time.sleep(0.6)
+# Exit on the first dial instead of a fixed sleep: production polls the port
+# every 100ms and the opener never connects, so holding the listener only
+# wastes the wait. The accept deadline matches production's 5s tunnel timeout,
+# so a pairing that never dials fails loudly instead of hanging the suite.
+s.settimeout(5.0)
+conn, _ = s.accept()
+conn.close()
 PY
 `
 	if err := os.WriteFile(filepath.Join(shimDir, "ssh"), []byte(script), 0o755); err != nil {

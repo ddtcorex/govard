@@ -216,7 +216,7 @@ export const ROUTE_DEFAULTS = {
   },
   "SystemService.GetVersion": {
     "kind": "value",
-    "value": ""
+    "value": "0.0.0-dev"
   },
   "SystemService.Quit": {
     "kind": "void"
