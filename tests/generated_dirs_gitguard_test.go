@@ -15,7 +15,11 @@ func isolatedGit(t *testing.T, root string, args ...string) string {
 	t.Helper()
 	c := exec.Command("git", args...)
 	c.Dir = root
-	c.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	c.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		// core.excludesFile defaults to ~/.config/git/ignore by path, which
+		// GIT_CONFIG_GLOBAL does not neutralize: pin it so a developer's
+		// global excludes cannot decide what these tests prove.
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.excludesFile", "GIT_CONFIG_VALUE_0=/dev/null")
 	out, err := c.CombinedOutput()
 	if err != nil {
 		t.Skipf("git %v unavailable: %v %s", args, err, out)
