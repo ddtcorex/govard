@@ -175,6 +175,7 @@ export const serviceTargets = (env = {}) => {
 const ACTIVE_ENVIRONMENT_STATUSES = new Set([
   "running",
   "warning",
+  "degraded",
   "healthy",
   "up",
   "starting",
@@ -229,7 +230,12 @@ export const classifyEnvironmentStatus = (env = {}) => {
     meta.iconClass = "text-blue-400";
     meta.detailClass = "text-blue-400";
     meta.dotClass = "bg-blue-400";
-    meta.detailText = status === "starting" ? "Starting..." : "Restarting...";
+    meta.detailText =
+      status === "starting"
+        ? "Starting..."
+        : status === "syncing"
+          ? "Syncing..."
+          : "Restarting...";
     return meta;
   }
 
@@ -239,6 +245,15 @@ export const classifyEnvironmentStatus = (env = {}) => {
     meta.detailClass = "text-amber-500";
     meta.dotClass = "bg-amber-500";
     meta.detailText = "Warning";
+    return meta;
+  }
+
+  if (status === "degraded") {
+    meta.iconName = "warning";
+    meta.iconClass = "text-amber-500";
+    meta.detailClass = "text-amber-500";
+    meta.dotClass = "bg-amber-500";
+    meta.detailText = "Degraded";
     return meta;
   }
 

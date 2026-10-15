@@ -851,10 +851,25 @@ func resolveDesktopGovardCommandDir() (string, error) {
 	return home, nil
 }
 
+// maxCommandOutputLines caps how much CLI output rides along in toasts and
+// the status line: the tail is what diagnoses a run, the head is scrollback
+// nobody reads in a 4-second toast.
+const maxCommandOutputLines = 40
+
 func withCommandOutput(base string, commandOutput string) string {
 	trimmed := strings.TrimSpace(commandOutput)
 	if trimmed == "" {
 		return base
+	}
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) > maxCommandOutputLines {
+		kept := lines[len(lines)-maxCommandOutputLines:]
+		return fmt.Sprintf(
+			"%s\n... (%d lines truncated, tail kept) ...\n%s",
+			base,
+			len(lines)-maxCommandOutputLines,
+			strings.Join(kept, "\n"),
+		)
 	}
 	return base + "\n" + trimmed
 }

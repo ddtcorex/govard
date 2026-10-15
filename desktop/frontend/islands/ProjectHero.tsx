@@ -11,7 +11,8 @@ const STATUS_BADGE_BASE =
 
 const statusTone = (status: string) => {
   if (status === "running") return "bg-primary/20 border-primary/30 text-primary";
-  if (status === "warning") return "bg-amber-500/20 border-amber-500/30 text-amber-500";
+  if (status === "warning" || status === "degraded")
+    return "bg-amber-500/20 border-amber-500/30 text-amber-500";
   return "bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400";
 };
 
@@ -19,7 +20,7 @@ const dotTone = (status: string) => {
   if (status === "running") {
     return "bg-primary shadow-[0_0_12px_rgba(13,242,89,0.9)] animate-pulse";
   }
-  if (status === "warning") return "bg-amber-500";
+  if (status === "warning" || status === "degraded") return "bg-amber-500";
   return "bg-slate-500";
 };
 
@@ -101,6 +102,8 @@ export function ProjectHero({ onAction }: Props) {
       ? (env.technologies as string[])
       : [];
   const isStopped = status !== "running" && status !== "warning";
+  const isSyncing = status === "syncing";
+  const pausedTitle = "Sync in progress — environment actions are paused";
   const restartLabel = isStopped ? "Start" : "Restart";
   const restartIcon = isStopped ? "play_arrow" : "restart_alt";
 
@@ -180,8 +183,9 @@ export function ProjectHero({ onAction }: Props) {
               type="button"
               data-testid="hero-restart"
               data-env={project}
-              className="h-12 px-6 bg-primary text-slate-900 rounded-lg text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95"
-              title={`${restartLabel} Environment`}
+              className="h-12 px-6 bg-primary text-slate-900 rounded-lg text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isSyncing ? pausedTitle : `${restartLabel} Environment`}
+              disabled={isSyncing}
               onClick={() => onAction(isStopped ? "env-start" : "env-restart", project)}
             >
               <span className="material-symbols-outlined text-lg">{restartIcon}</span>
@@ -197,8 +201,8 @@ export function ProjectHero({ onAction }: Props) {
                   ? "h-12 w-12 bg-slate-100 dark:bg-(--surface-secondary) text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-border-primary rounded-lg transition-all flex items-center justify-center cursor-not-allowed opacity-70"
                   : "h-12 w-12 bg-red-600 text-white border border-red-500 rounded-lg hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/20"
               }
-              disabled={isStopped}
-              title={isStopped ? "Environment is not running" : "Stop Environment"}
+              disabled={isStopped || isSyncing}
+              title={isSyncing ? pausedTitle : isStopped ? "Environment is not running" : "Stop Environment"}
               onClick={() => onAction("env-stop", project)}
             >
               <span className="material-symbols-outlined fill-1" style={{ fontVariationSettings: '"FILL" 1' }}>
@@ -210,8 +214,9 @@ export function ProjectHero({ onAction }: Props) {
               type="button"
               data-testid="hero-pull"
               data-env={project}
-              className="h-12 w-12 bg-surface-secondary text-primary border border-border-primary rounded-lg hover:bg-surface-primary hover:text-primary transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-primary/10"
-              title="Pull Images"
+              className="h-12 w-12 bg-surface-secondary text-primary border border-border-primary rounded-lg hover:bg-surface-primary hover:text-primary transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-primary/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isSyncing ? pausedTitle : "Pull Images"}
+              disabled={isSyncing}
               onClick={() => onAction("env-pull", project)}
             >
               <span className="material-symbols-outlined">download</span>
@@ -221,8 +226,9 @@ export function ProjectHero({ onAction }: Props) {
               type="button"
               data-testid="hero-delete"
               data-env={project}
-              className="h-12 w-12 bg-surface-secondary text-red-500 border border-red-500/30 rounded-lg hover:bg-red-500 hover:text-white transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/10"
-              title={`Delete ${title}`}
+              className="h-12 w-12 bg-surface-secondary text-red-500 border border-red-500/30 rounded-lg hover:bg-red-500 hover:text-white transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isSyncing ? pausedTitle : `Delete ${title}`}
+              disabled={isSyncing}
               onClick={() => onAction("env-delete", project)}
             >
               <span className="material-symbols-outlined">delete</span>

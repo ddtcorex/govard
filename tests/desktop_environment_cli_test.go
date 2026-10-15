@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -133,5 +134,84 @@ func TestDesktopPullEnvironmentUsesGovardEnvPullForProjectForTest(t *testing.T) 
 	}
 	if !strings.Contains(message, "env pulled via cli") {
 		t.Fatalf("unexpected message: %q", message)
+	}
+}
+
+func TestDesktopEnvironmentActionsRefuseDuringSyncForTest(t *testing.T) {
+	desktop.ResetStateForTest()
+
+	root := t.TempDir()
+	writeDesktopProjectConfigForTest(t, root, "sample-project", "laravel", "sample-project.test")
+	registerDesktopProjectForTest(t, root, "sample-project", "sample-project.test", "laravel")
+
+	called := false
+	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+		called = true
+		return "should not run", nil
+	})
+	defer restore()
+
+	desktop.RegisterSyncingProject("sample-project", "staging")
+	defer desktop.UnregisterSyncingProject("sample-project")
+
+	app := desktop.NewApp()
+	actions := map[string]func(string) (string, error){
+		"start":   app.Environment.StartEnvironment,
+		"stop":    app.Environment.StopEnvironment,
+		"restart": app.Environment.RestartEnvironment,
+		"pull":    app.Environment.PullEnvironment,
+		"delete":  app.Environment.DeleteProject,
+		"toggle":  app.Environment.ToggleEnvironment,
+	}
+	for name, action := range actions {
+		if _, err := action("sample-project"); err == nil {
+			t.Fatalf("expected %s to refuse during sync", name)
+		} else if !strings.Contains(err.Error(), "staging") || !strings.Contains(strings.ToLower(err.Error()), "sync") {
+			t.Fatalf("expected %s error to name the sync remote, got: %v", name, err)
+		}
+	}
+	if called {
+		t.Fatal("expected no CLI command to run during sync")
+	}
+}
+
+func TestDesktopRestartEnvironmentNamesFallbackForTest(t *testing.T) {
+	desktop.ResetStateForTest()
+
+	root := t.TempDir()
+	writeDesktopProjectConfigForTest(t, root, "sample-project", "laravel", "sample-project.test")
+	registerDesktopProjectForTest(t, root, "sample-project", "sample-project.test", "laravel")
+
+	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+		if len(args) >= 2 && args[0] == "env" && args[1] == "restart" {
+			return "", fmt.Errorf("restart not supported here")
+		}
+		return "up ran", nil
+	})
+	defer restore()
+
+	app := desktop.NewApp()
+	message, err := app.Environment.RestartEnvironment("sample-project")
+	if err != nil {
+		t.Fatalf("RestartEnvironment fallback failed: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(message), "fallback") {
+		t.Fatalf("expected fallback restart to say so, got %q", message)
+	}
+}
+
+func TestDesktopComposeProjectNameForTogglePrefersRegistryForTest(t *testing.T) {
+	root := t.TempDir()
+	writeDesktopProjectConfigForTest(t, root, "sample-project", "laravel", "sample-project.test")
+	registerDesktopProjectForTest(t, root, "sample-project", "sample-project.test", "laravel")
+
+	if got := desktop.ComposeProjectNameForToggleForTest("sample-project.test"); got != "sample-project" {
+		t.Fatalf("expected registry project name, got %q", got)
+	}
+	if got := desktop.ComposeProjectNameForToggleForTest("sample-project"); got != "sample-project" {
+		t.Fatalf("expected registry project name, got %q", got)
+	}
+	if got := desktop.ComposeProjectNameForToggleForTest("unknown"); got != "unknown" {
+		t.Fatalf("expected fallback to input, got %q", got)
 	}
 }
