@@ -479,7 +479,6 @@ export function OnboardingModal({
                       id="onboardRedis"
                       type="checkbox"
                       value="redis"
-                      defaultChecked
                       className="size-5 accent-primary rounded-md transition-transform active:scale-90"
                     />
                   </label>
@@ -514,7 +513,6 @@ export function OnboardingModal({
                       id="onboardElasticsearch"
                       type="checkbox"
                       value="elasticsearch"
-                      defaultChecked
                       className="size-5 accent-primary rounded-md transition-transform active:scale-90"
                     />
                   </label>

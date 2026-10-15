@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 
 import {
   applySyncOutputBatch,
+  canOpenRemoteTarget,
+  canUseFilesCapability,
   canUseSyncPreset,
   formatAuthMethodLabel,
   normalizeRemotePreset,
@@ -115,6 +117,27 @@ test("canUseSyncPreset gates a preset on the capabilities the remote declares", 
     canUseSyncPreset({ capabilities: ["files"] }, "full"),
     true,
     "pull-everything has no capability of its own and is never gated",
+  );
+});
+
+test("canUseFilesCapability gates file operations on the files capability", () => {
+  assert.equal(canUseFilesCapability({ capabilities: [] }), true);
+  assert.equal(canUseFilesCapability({}), true);
+  assert.equal(canUseFilesCapability({ capabilities: ["files"] }), true);
+  assert.equal(canUseFilesCapability({ capabilities: ["db"] }), false);
+  assert.equal(canUseFilesCapability({ capabilities: ["db", "media"] }), false);
+});
+
+test("canOpenRemoteTarget requires a host and the files capability", () => {
+  assert.equal(canOpenRemoteTarget({ host: "stage.example.com", capabilities: [] }), true);
+  assert.equal(
+    canOpenRemoteTarget({ host: "stage.example.com", capabilities: ["files"] }),
+    true,
+  );
+  assert.equal(canOpenRemoteTarget({ host: "", capabilities: [] }), false);
+  assert.equal(
+    canOpenRemoteTarget({ host: "stage.example.com", capabilities: ["db"] }),
+    false,
   );
 });
 
@@ -276,5 +299,15 @@ test("the card renders the module's auth summary and capability gate", async () 
     list.includes("protectedWarningCopy"),
     true,
     "the protected notice must render the shared copy",
+  );
+  assert.equal(
+    list.includes("canOpenRemoteTarget"),
+    true,
+    "the open buttons must be gated by the module's target helper",
+  );
+  assert.equal(
+    list.includes("bridge.openRemoteURL"),
+    true,
+    "the open-URL button must call the bridge instead of sitting dead",
   );
 });

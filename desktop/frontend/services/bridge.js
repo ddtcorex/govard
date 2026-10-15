@@ -330,7 +330,7 @@ export const desktopBridge = {
       redisEnabled: Boolean(opts.redis),
       rabbitMQEnabled: Boolean(opts.rabbitmq),
       elasticsearchEnabled: Boolean(opts.elasticsearch),
-      applyOverrides: false,
+      applyOverrides: true,
       skipIDE: false,
     });
   },

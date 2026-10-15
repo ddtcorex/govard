@@ -137,6 +137,33 @@ export const canUseSyncPreset = (remote, preset) => {
 };
 
 /**
+ * File operations (SSH/SFTP/URL opens) run against the remote's files, so a
+ * remote that declares a capability list is gated on `files` the same way
+ * pull buttons gate on their own capability. A remote that declares nothing
+ * keeps every open enabled, mirroring canUseSyncPreset.
+ */
+export const canUseFilesCapability = (remote) => {
+  const capabilities = Array.isArray(remote?.capabilities)
+    ? remote.capabilities
+    : [];
+  if (capabilities.length === 0) {
+    return true;
+  }
+  return capabilities.includes("files");
+};
+
+/**
+ * What the card's open buttons gate on: the backend refuses a remote that
+ * resolves to no host rather than pointing the desktop at localhost, so a
+ * hostless row offers no opens at all.
+ */
+export const canOpenRemoteTarget = (remote) => {
+  if (!String(remote?.host || "").trim()) {
+    return false;
+  }
+  return canUseFilesCapability(remote);
+};
+/**
  * The three pull buttons, in the order the card renders them. `capability` is
  * what canUseSyncPreset gates on; `disabledReason` is what the button's title
  * says when the gate - rather than a running sync - is what disabled it.

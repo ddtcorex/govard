@@ -1,7 +1,10 @@
 package tests
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -348,5 +351,72 @@ func TestDesktopPkgBuildRemoteLastSyncLabelsFromEventsForTest(t *testing.T) {
 	}
 	if !reflect.DeepEqual(labels, expected) {
 		t.Fatalf("unexpected labels: got %#v, want %#v", labels, expected)
+	}
+}
+
+func TestDesktopPkgRemoteSyncPresetMatchesRemoteCaseInsensitively(t *testing.T) {
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+	t.Setenv("HOME", t.TempDir())
+	desktop.ResetStateForTest()
+
+	projectRoot := t.TempDir()
+	baseConfig := strings.TrimSpace(`
+project_name: caseless
+framework: laravel
+domain: caseless.test
+remotes:
+  staging:
+    host: stage.example.com
+    user: deploy
+    path: /var/www/stage
+    environment: staging
+`) + "\n"
+	if err := os.WriteFile(filepath.Join(projectRoot, ".govard.yml"), []byte(baseConfig), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
+	}
+
+	restore := desktop.SetRunGovardCommandForDesktopWithTimeoutForTest(func(root string, args []string, timeout time.Duration) (string, error) {
+		return "Sync plan generated.", nil
+	})
+	defer restore()
+
+	app := desktop.NewApp()
+	planMessage, err := app.Remote.RunRemoteSyncPreset(projectRoot, "Staging", "db", map[string]bool{})
+	if err != nil {
+		t.Fatalf("expected case-insensitive remote match, got error: %v", err)
+	}
+	if !strings.Contains(planMessage, "Sync plan generated.") {
+		t.Fatalf("unexpected sync plan message: %q", planMessage)
+	}
+}
+
+func TestDesktopPkgRemoteSyncBackgroundRejectsUnknownRemote(t *testing.T) {
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", "")
+	desktop.ResetStateForTest()
+
+	projectRoot := t.TempDir()
+	baseConfig := strings.TrimSpace(`
+project_name: bgsync
+framework: laravel
+domain: bgsync.test
+remotes:
+  staging:
+    host: stage.example.com
+    user: deploy
+    path: /var/www/stage
+    environment: staging
+`) + "\n"
+	if err := os.WriteFile(filepath.Join(projectRoot, ".govard.yml"), []byte(baseConfig), 0o644); err != nil {
+		t.Fatalf("write .govard.yml: %v", err)
+	}
+
+	app := desktop.NewApp()
+	_, err := app.Remote.RunRemoteSync(projectRoot, "nope", "db", map[string]bool{})
+	if err == nil || !strings.Contains(err.Error(), "unknown remote") {
+		t.Fatalf("expected unknown-remote error, got: %v", err)
 	}
 }
