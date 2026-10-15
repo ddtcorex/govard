@@ -267,6 +267,9 @@ func detectOnboardingMigrationSource(root string) string {
 	if hasWardenProjectSignals(root) {
 		return "warden"
 	}
+	if hasDdevProjectSignals(root) {
+		return "ddev"
+	}
 	return ""
 }
 
@@ -274,9 +277,24 @@ func normalizeOnboardingMigrationSource(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "warden":
 		return "warden"
+	case "ddev":
+		return "ddev"
 	default:
 		return ""
 	}
+}
+
+func hasDdevProjectSignals(root string) bool {
+	cleanRoot := filepath.Clean(strings.TrimSpace(root))
+	if cleanRoot == "" {
+		return false
+	}
+
+	if info, err := os.Stat(filepath.Join(cleanRoot, ".ddev", "config.yaml")); err == nil && !info.IsDir() {
+		return true
+	}
+
+	return false
 }
 
 func hasWardenProjectSignals(root string) bool {

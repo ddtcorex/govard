@@ -86,10 +86,10 @@ export const normalizeOnboardingDomain = (domain = "", projectPath = "") => {
   if (!base) {
     return "";
   }
-  if (base.includes(".")) {
-    return base;
+  if (!base.includes(".") && !base.includes(":")) {
+    return `${base}.test`;
   }
-  return `${base}.test`;
+  return base;
 };
 
 // extraPathInferenceAliases covers path-matching hints that are NOT
@@ -920,9 +920,10 @@ export const createOnboardingController = ({
   };
 
   const skipBootstrapPrompt = async () => {
+    const context = pendingBootstrapContext;
     closeBootstrapPrompt();
-    if (typeof onSelectProject === "function") {
-      const projectName = inferProjectNameFromPath(pendingBootstrapContext.projectPath);
+    if (typeof onSelectProject === "function" && context?.projectPath) {
+      const projectName = inferProjectNameFromPath(context.projectPath);
       await onSelectProject(projectName);
     }
     toggleModal(false);

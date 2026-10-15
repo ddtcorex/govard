@@ -676,3 +676,52 @@ remotes:
 		t.Fatalf("did not expect auto bootstrap summary in message, got %q", message)
 	}
 }
+
+func TestDesktopPkgOnboardProjectForPathForTestAutoMigrateFromDDEV(t *testing.T) {
+	root := t.TempDir()
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+
+	ddevDir := filepath.Join(root, ".ddev")
+	if err := os.MkdirAll(ddevDir, 0o755); err != nil {
+		t.Fatalf("create .ddev dir: %v", err)
+	}
+	ddevConfig := strings.TrimSpace(`
+name: ddev-demo
+type: magento2
+php_version: "8.3"
+`) + "\n"
+	if err := os.WriteFile(filepath.Join(ddevDir, "config.yaml"), []byte(ddevConfig), 0o644); err != nil {
+		t.Fatalf("write .ddev/config.yaml: %v", err)
+	}
+
+	var initArgs []string
+	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+		if dir != root {
+			t.Fatalf("unexpected command dir %s", dir)
+		}
+		initArgs = append([]string{}, args...)
+		content := strings.TrimSpace(`
+project_name: ddev-demo
+framework: magento2
+domain: ddev-demo.test
+`) + "\n"
+		if err := os.WriteFile(filepath.Join(dir, ".govard.yml"), []byte(content), 0o644); err != nil {
+			return "", err
+		}
+		return "init ok", nil
+	})
+	defer restore()
+
+	message, err := desktop.OnboardProjectForPathForTest(root, "magento2")
+	if err != nil {
+		t.Fatalf("onboard project: %v", err)
+	}
+	expected := []string{"init", "--framework", "magento2", "--migrate-from", "ddev"}
+	if !reflect.DeepEqual(initArgs, expected) {
+		t.Fatalf("unexpected init args: %#v", initArgs)
+	}
+	if !strings.Contains(strings.ToLower(message), "initialized") {
+		t.Fatalf("expected initialized message, got %q", message)
+	}
+}

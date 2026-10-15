@@ -858,6 +858,14 @@ func runRemoteSyncBackgroundWithOptions(
 		return err
 	}
 
+	snapshot, err := listProjectRemotesByPath(root)
+	if err != nil {
+		return err
+	}
+	if !hasRemoteName(snapshot.Remotes, remoteName) {
+		return fmt.Errorf("unknown remote: %s", remoteName)
+	}
+
 	normalizedPreset, err := normalizeRemoteSyncPreset(preset)
 	if err != nil {
 		return err
@@ -1479,7 +1487,7 @@ func writeBaseConfig(root string, config engine.Config) error {
 
 func hasRemoteName(remotes []RemoteEntry, name string) bool {
 	for _, remote := range remotes {
-		if remote.Name == name {
+		if strings.EqualFold(remote.Name, name) {
 			return true
 		}
 	}

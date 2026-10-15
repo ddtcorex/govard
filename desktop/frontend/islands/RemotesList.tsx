@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { hasEventRuntime, onEvent } from "../services/events.js";
 import {
   applySyncOutputBatch,
+  canOpenRemoteTarget,
   canUseSyncPreset,
   formatAuthMethodLabel,
   getSyncPresetLabel,
@@ -29,6 +30,7 @@ type RemoteRow = {
 type RemotesBridge = {
   getRemotes(project: string): Promise<Record<string, unknown>>;
   testRemote(project: string, remote: string): Promise<string>;
+  openRemoteURL(project: string, remote: string): Promise<string>;
   openRemoteShell(project: string, remote: string): Promise<string>;
   openRemoteDB(project: string, remote: string): Promise<string>;
   openRemoteSFTP(project: string, remote: string): Promise<string>;
@@ -66,7 +68,14 @@ const IDLE_NOTICE = "Select an environment to load remotes.";
 const EMPTY_NOTICE = "No remotes configured for this project.";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const busyKey = (remote: string, action: string) => `${remote}:${action}`;
+const busyKeyFor = (project: string, remote: string, action: string) =>
+  `${project}:${remote}:${action}`;
+const busyKey = (remote: string, action: string) =>
+  busyKeyFor(
+    String(getState().selectedProject || "").trim(),
+    remote,
+    action,
+  );
 
 const presetButtonClass = (enabled: boolean) =>
   enabled
@@ -74,7 +83,7 @@ const presetButtonClass = (enabled: boolean) =>
     : "flex-1 px-4 py-2.5 bg-background-secondary dark:bg-[#13231a] border border-border-primary dark:border-[#2b3d31] rounded-lg text-sm text-slate-500 font-medium transition-all flex items-center justify-center gap-2 opacity-70 cursor-not-allowed";
 
 const openButtonClass =
-  "flex-1 min-h-[42px] px-4 py-2.5 bg-background-secondary hover:bg-surface-primary border border-border-primary rounded-lg text-sm text-text-secondary dark:text-slate-300 hover:text-text-primary dark:hover:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn";
+  "flex-1 min-h-[42px] px-4 py-2.5 bg-background-secondary hover:bg-surface-primary border border-border-primary rounded-lg text-sm text-text-secondary dark:text-slate-300 hover:text-text-primary dark:hover:text-white font-medium transition-all flex items-center justify-center gap-2 group/btn disabled:opacity-50 disabled:cursor-not-allowed";
 
 type ProgressState = {
   visible: boolean;
@@ -212,7 +221,7 @@ export function RemotesList({
         return;
       }
 
-      setBusy((prev) => ({ ...prev, [busyKey(remoteName, "test")]: true }));
+      setBusy((prev) => ({ ...prev, [busyKeyFor(project, remoteName, "test")]: true }));
       onToast(`Checking connection to ${remoteName}...`, "info");
       onStatus(`Testing connection to ${remoteName}...`);
 
@@ -226,7 +235,7 @@ export function RemotesList({
       } finally {
         setBusy((prev) => {
           const next = { ...prev };
-          delete next[busyKey(remoteName, "test")];
+          delete next[busyKeyFor(project, remoteName, "test")];
           return next;
         });
       }
@@ -253,7 +262,8 @@ export function RemotesList({
 
       pendingActions.current.add(key);
       const startedAt = Date.now();
-      setBusy((prev) => ({ ...prev, [busyKey(remoteName, actionName)]: true }));
+      const entry = busyKeyFor(project, remoteName, actionName);
+      setBusy((prev) => ({ ...prev, [entry]: true }));
       try {
         await runner(project);
       } finally {
@@ -266,7 +276,7 @@ export function RemotesList({
         if (mounted.current) {
           setBusy((prev) => {
             const next = { ...prev };
-            delete next[busyKey(remoteName, actionName)];
+            delete next[entry];
             return next;
           });
         }
@@ -313,6 +323,20 @@ export function RemotesList({
       }).catch((err) => {
         onStatus(`Failed to open SFTP for ${remoteName}: ${err}`);
         onToast(`Failed to open SFTP for ${remoteName}.`, "error");
+      });
+    },
+    [bridge, onStatus, onToast, runOpenRemoteAction],
+  );
+
+  const openRemoteURL = useCallback(
+    async (remoteName: string) => {
+      await runOpenRemoteAction(remoteName, "url", async (project) => {
+        const message = await bridge.openRemoteURL(project, remoteName);
+        onStatus(message || `Opened URL for ${remoteName}`);
+        onToast(message || `Opened URL for ${remoteName}`, "success");
+      }).catch((err) => {
+        onStatus(`Failed to open URL for ${remoteName}: ${err}`);
+        onToast(`Failed to open URL for ${remoteName}.`, "error");
       });
     },
     [bridge, onStatus, onToast, runOpenRemoteAction],
@@ -509,6 +533,18 @@ export function RemotesList({
     // This card's own button, never a document lookup: two remotes may share a
     // name, and the card re-renders.
     const testIcon = `material-symbols-outlined text-[18px] ${busy[busyKey(remote.name, "test")] ? "animate-spin" : ""}`;
+    // The open buttons mirror the backend's own gates: URL/SSH/SFTP need the
+    // files capability and a host to point at, the database open needs db.
+    const canOpenTarget = canOpenRemoteTarget(remote);
+    const openTargetTitle = canOpenTarget
+      ? undefined
+      : !String(remote.host || "").trim()
+        ? "No host configured for this remote."
+        : "File actions are disabled for this remote (capability: files).";
+    const canOpenDb = canUseSyncPreset(remote, "db");
+    const openDbTitle = canOpenDb
+      ? undefined
+      : "Database actions are disabled for this remote (capability: db).";
 
     return (
       <div
@@ -555,8 +591,11 @@ export function RemotesList({
                 <button
                   type="button"
                   data-testid="open-remote-url"
-                  className="h-8 w-8 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary rounded-md transition-all"
-                  title="Open Remote URL"
+                  className="h-8 w-8 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-background-secondary rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={openTargetTitle ?? "Open Remote URL"}
+                  disabled={!canOpenTarget}
+                  aria-disabled={!canOpenTarget || undefined}
+                  onClick={() => void openRemoteURL(remote.name)}
                 >
                   <span className="material-symbols-outlined text-[20px]">open_in_new</span>
                 </button>
@@ -643,6 +682,9 @@ export function RemotesList({
                 data-remote={remote.name}
                 data-loading-label="Opening SSH..."
                 className={openButtonClass}
+                title={openTargetTitle}
+                disabled={!canOpenTarget}
+                aria-disabled={!canOpenTarget || undefined}
                 onClick={() => void openRemoteShell(remote.name)}
               >
                 <span className="material-symbols-outlined inline-flex h-[18px] w-[18px] items-center justify-center text-[18px] opacity-70 group-hover/btn:opacity-100">
@@ -656,6 +698,9 @@ export function RemotesList({
                 data-remote={remote.name}
                 data-loading-label="Opening Database..."
                 className={openButtonClass}
+                title={openDbTitle}
+                disabled={!canOpenDb}
+                aria-disabled={!canOpenDb || undefined}
                 onClick={() => void openRemoteDB(remote.name)}
               >
                 <span className="material-symbols-outlined inline-flex h-[18px] w-[18px] items-center justify-center text-[18px] opacity-70 group-hover/btn:opacity-100">
@@ -669,6 +714,9 @@ export function RemotesList({
                 data-remote={remote.name}
                 data-loading-label="Opening SFTP..."
                 className={openButtonClass}
+                title={openTargetTitle}
+                disabled={!canOpenTarget}
+                aria-disabled={!canOpenTarget || undefined}
                 onClick={() => void openRemoteSFTP(remote.name)}
               >
                 <span className="material-symbols-outlined inline-flex h-[18px] w-[18px] items-center justify-center text-[18px] opacity-70 group-hover/btn:opacity-100">
