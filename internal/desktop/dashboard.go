@@ -43,6 +43,39 @@ func GetSyncingRemote(project string) string {
 	return syncingProjects[project]
 }
 
+// syncingRemoteForProject reports the remote an in-flight sync is pulling
+// from for a project, matching case-insensitively: lifecycle entry points
+// receive names, domains and paths interchangeably while the sync runner
+// registers the selected project name.
+func syncingRemoteForProject(project string) string {
+	trimmed := strings.TrimSpace(project)
+	if trimmed == "" {
+		return ""
+	}
+	syncingProjectsMu.Lock()
+	defer syncingProjectsMu.Unlock()
+	if remote, ok := syncingProjects[trimmed]; ok {
+		return remote
+	}
+	for name, remote := range syncingProjects {
+		if strings.EqualFold(name, trimmed) {
+			return remote
+		}
+	}
+	return ""
+}
+
+// refuseDuringSync rejects a mutating environment action while a sync is
+// pulling into the same project: the sync owns the containers (bootstrap
+// runs `up` itself unless told otherwise), so a concurrent start/stop would
+// strand one of the two operations halfway.
+func refuseDuringSync(verb string, project string) error {
+	if remote := syncingRemoteForProject(project); remote != "" {
+		return fmt.Errorf("cannot %s %s while sync from %q is in progress", verb, strings.TrimSpace(project), remote)
+	}
+	return nil
+}
+
 type projectInfo struct {
 	name         string
 	services     map[string]bool
@@ -239,7 +272,7 @@ func buildDashboardInternal() (Dashboard, error) {
 
 	activeEnvs := 0
 	for _, env := range environments {
-		if env.Status == "running" {
+		if env.Status == "running" || env.Status == "degraded" {
 			activeEnvs++
 		}
 	}
@@ -277,13 +310,16 @@ func (s *EnvironmentService) GetDashboard() (dashboard Dashboard, err error) {
 
 func (s *EnvironmentService) StartEnvironment(project string) (res string, err error) {
 	defer RecoverPanic(&err, "StartEnvironment")
+	if err := refuseDuringSync("start", project); err != nil {
+		return "", err
+	}
 	root, _, err := resolveProjectRootForRemotes(project)
 	if err != nil {
 		return "", err
 	}
-	// 'up' can take a while, but we want to show output if possible.
-	// However, Wails calls usually expect a relatively quick response or use events.
-	// For now, let's use the CLI runner which captures output.
+	// A start always recreates: the desktop owns no per-service start, so a
+	// plain `up` could leave config drift (a switched-off service, a changed
+	// image) half applied. Volumes hold the data, so recreation is safe.
 	output, err := runGovardCommandForDesktop(root, []string{"up", "--force-recreate", "--remove-orphans"})
 	if err != nil {
 		return "", err
@@ -293,6 +329,9 @@ func (s *EnvironmentService) StartEnvironment(project string) (res string, err e
 
 func (s *EnvironmentService) StopEnvironment(project string) (res string, err error) {
 	defer RecoverPanic(&err, "StopEnvironment")
+	if err := refuseDuringSync("stop", project); err != nil {
+		return "", err
+	}
 	root, _, err := resolveProjectRootForRemotes(project)
 	if err != nil {
 		return "", err
@@ -306,6 +345,9 @@ func (s *EnvironmentService) StopEnvironment(project string) (res string, err er
 
 func (s *EnvironmentService) RestartEnvironment(project string) (res string, err error) {
 	defer RecoverPanic(&err, "RestartEnvironment")
+	if err := refuseDuringSync("restart", project); err != nil {
+		return "", err
+	}
 	root, _, err := resolveProjectRootForRemotes(project)
 	if err != nil {
 		return "", err
@@ -318,12 +360,16 @@ func (s *EnvironmentService) RestartEnvironment(project string) (res string, err
 		if err != nil {
 			return "", err
 		}
+		return withCommandOutput("Environment restarted (fallback: stop + recreate).", output), nil
 	}
 	return withCommandOutput("Environment restarted.", output), nil
 }
 
 func (s *EnvironmentService) PullEnvironment(project string) (res string, err error) {
 	defer RecoverPanic(&err, "PullEnvironment")
+	if err := refuseDuringSync("pull images for", project); err != nil {
+		return "", err
+	}
 	root, _, err := resolveProjectRootForRemotes(project)
 	if err != nil {
 		return "", err
@@ -335,9 +381,27 @@ func (s *EnvironmentService) PullEnvironment(project string) (res string, err er
 	return withCommandOutput("Environment images pulled.", output), nil
 }
 
+// composeProjectNameForToggle maps whatever identifier the UI hands over
+// (project name, domain or path) to the compose project name Docker labels
+// carry, falling back to the input when the registry knows nothing about
+// it. Toggle decides stop-vs-start off container labels, so resolving
+// through the registry first keeps a renamed or domain-addressed project
+// from taking the wrong branch.
+func composeProjectNameForToggle(project string) string {
+	if entry, err := findExactProjectMatch(project); err == nil {
+		if name := strings.TrimSpace(entry.ProjectName); name != "" {
+			return name
+		}
+	}
+	return strings.TrimSpace(project)
+}
+
 func (s *EnvironmentService) ToggleEnvironment(project string) (res string, err error) {
 	defer RecoverPanic(&err, "ToggleEnvironment")
-	info, err := loadProjectInfo(project)
+	if err := refuseDuringSync("toggle", project); err != nil {
+		return "", err
+	}
+	info, err := loadProjectInfo(composeProjectNameForToggle(project))
 	if err == nil && info.runningCount > 0 {
 		return s.StopEnvironment(project)
 	}
@@ -396,6 +460,9 @@ func (s *EnvironmentService) DeleteProject(projectQuery string) (res string, err
 	defer RecoverPanic(&err, "DeleteProject")
 	if projectQuery == "" {
 		return "", fmt.Errorf("project name or path is required")
+	}
+	if err := refuseDuringSync("delete", projectQuery); err != nil {
+		return "", err
 	}
 
 	root, score, err := resolveProjectRootForRemotes(projectQuery)
@@ -544,14 +611,24 @@ func isGovardComposeConfigFile(path string) bool {
 	return strings.Contains(normalized, "/.govard/compose/") || strings.HasPrefix(normalized, ".govard/compose/")
 }
 
+// rollupEnvironmentStatus reduces container counts to one environment
+// status: anything less than fully up but not fully down is degraded rather
+// than green, so a half-started stack never reads as healthy.
+func rollupEnvironmentStatus(runningCount int, totalCount int) string {
+	if runningCount <= 0 {
+		return "stopped"
+	}
+	if runningCount < totalCount {
+		return "degraded"
+	}
+	return "running"
+}
+
 func buildEnvironment(info *projectInfo) Environment {
 	env := Environment{
 		Project: info.name,
 		Name:    info.name,
-		Status:  "stopped",
-	}
-	if info.runningCount > 0 {
-		env.Status = "running"
+		Status:  rollupEnvironmentStatus(info.runningCount, info.totalCount),
 	}
 
 	if remote := GetSyncingRemote(info.name); remote != "" {

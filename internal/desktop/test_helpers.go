@@ -195,6 +195,21 @@ func BuildRemoteSyncPlanArgsForTest(remoteName string, preset string) ([]string,
 	return buildRemoteSyncPlanArgs(remoteName, preset)
 }
 
+// RollupEnvironmentStatusForTest exposes the container-count to environment-status rollup for tests.
+func RollupEnvironmentStatusForTest(runningCount int, totalCount int) string {
+	return rollupEnvironmentStatus(runningCount, totalCount)
+}
+
+// WithCommandOutputForTest exposes the base-message plus capped CLI output builder for tests.
+func WithCommandOutputForTest(base string, commandOutput string) string {
+	return withCommandOutput(base, commandOutput)
+}
+
+// ComposeProjectNameForToggleForTest exposes the UI identifier to compose project name mapping for tests.
+func ComposeProjectNameForToggleForTest(project string) string {
+	return composeProjectNameForToggle(project)
+}
+
 // BuildRemoteSyncPlanArgsWithOptionsForTest exposes sync preset argument generation with desktop sync toggles.
 func BuildRemoteSyncPlanArgsWithOptionsForTest(
 	remoteName string,

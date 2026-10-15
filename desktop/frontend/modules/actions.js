@@ -131,7 +131,7 @@ export const createActionsController = ({
         bridge.startEnvironment,
         project,
         `Started ${project} successfully`,
-        `Starting ${project}...`,
+        `Starting ${project} (recreating containers)...`,
         action,
       );
       return;
@@ -200,14 +200,6 @@ export const createActionsController = ({
         `Toggled ${project} state`,
         "Processing environment...",
         action,
-      );
-      return;
-    }
-    if (action === "open-env") {
-      await runEnvironmentAction(
-        bridge.openEnvironment,
-        project,
-        `Opened ${project} in browser`,
       );
       return;
     }

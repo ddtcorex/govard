@@ -375,3 +375,43 @@ test("the hero hides the project URL link when the environment has no URL", asyn
   );
 });
 
+
+test("project hero pauses environment actions while syncing", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/ProjectHero.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes("isSyncing"),
+    true,
+    "project hero should track the syncing state",
+  );
+  assert.equal(
+    island.includes("Sync in progress"),
+    true,
+    "project hero should explain why actions are paused during sync",
+  );
+});
+
+test("classifyEnvironmentStatus labels a syncing environment as syncing", async () => {
+  const { classifyEnvironmentStatus } = await import(
+    "../../desktop/frontend/modules/dashboard.js"
+  );
+  assert.equal(
+    classifyEnvironmentStatus({ Status: "syncing" }).detailText,
+    "Syncing...",
+  );
+  assert.equal(
+    classifyEnvironmentStatus({ Status: "syncing" }).active,
+    true,
+  );
+});
+
+test("classifyEnvironmentStatus marks a partial environment as degraded", async () => {
+  const { classifyEnvironmentStatus } = await import(
+    "../../desktop/frontend/modules/dashboard.js"
+  );
+  const meta = classifyEnvironmentStatus({ Status: "degraded" });
+  assert.equal(meta.active, true);
+  assert.equal(meta.detailText, "Degraded");
+});

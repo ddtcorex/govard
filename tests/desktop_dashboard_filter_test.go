@@ -55,3 +55,25 @@ func TestDesktopPkgLooksLikeGovardForTest(t *testing.T) {
 		}
 	})
 }
+
+func TestDesktopRollupEnvironmentStatusForTest(t *testing.T) {
+	cases := map[string]struct {
+		running int
+		total   int
+		want    string
+	}{
+		"all stopped":    {running: 0, total: 4, want: "stopped"},
+		"none tracked":   {running: 0, total: 0, want: "stopped"},
+		"partially up":   {running: 1, total: 6, want: "degraded"},
+		"all but one":    {running: 5, total: 6, want: "degraded"},
+		"fully up":       {running: 6, total: 6, want: "running"},
+		"single running": {running: 1, total: 1, want: "running"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := desktop.RollupEnvironmentStatusForTest(tc.running, tc.total); got != tc.want {
+				t.Fatalf("rollup(%d/%d) = %q, want %q", tc.running, tc.total, got, tc.want)
+			}
+		})
+	}
+}
