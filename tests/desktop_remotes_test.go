@@ -199,6 +199,21 @@ func TestDesktopPkgBuildRemoteSyncPlanArgsWithOptionsForTest_DBIgnoresCompressTo
 	}
 }
 
+func TestDesktopPkgBuildRemoteSyncPlanArgsWithOptionsForTest_MediaKeepsNoiseToggle(t *testing.T) {
+	args, err := desktop.BuildRemoteSyncPlanArgsWithOptionsForTest(
+		"staging",
+		"media",
+		true,
+		true,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !containsString(args, "--no-noise") {
+		t.Fatalf("expected --no-noise for media sync args: %#v", args)
+	}
+}
+
 func containsString(items []string, expected string) bool {
 	for _, item := range items {
 		if item == expected {
@@ -228,6 +243,9 @@ func TestBuildPresetSyncOptionDefs_Media(t *testing.T) {
 	}
 	if opts.Options[0].Key != "noNoise" || opts.Options[1].Key != "compress" || opts.Options[2].Key != "delete" {
 		t.Fatalf("unexpected options for media preset: %#v", opts.Options)
+	}
+	if !opts.Options[1].DefaultValue {
+		t.Fatalf("expected compression on by default to match the CLI default: %#v", opts.Options[1])
 	}
 }
 
@@ -265,6 +283,19 @@ func TestBuildBootstrapArgsWithOptions(t *testing.T) {
 
 		if !containsString(args, "--plan") {
 			t.Fatalf("expected --plan in args: %v", args)
+		}
+	})
+
+	t.Run("Delete Missing Files", func(t *testing.T) {
+		args, err := desktop.BuildBootstrapArgsWithOptionsForTest("staging", map[string]bool{
+			"delete": true,
+		}, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !containsString(args, "--delete") {
+			t.Fatalf("expected --delete in args: %v", args)
 		}
 	})
 }

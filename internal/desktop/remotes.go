@@ -1306,7 +1306,7 @@ func buildRemoteSyncArgsWithOptions(
 		args = append(args, "--no-compress")
 	}
 
-	if options["noNoise"] && (normalizedPreset == "db" || normalizedPreset == "full" || normalizedPreset == "files") {
+	if options["noNoise"] && (normalizedPreset == "db" || normalizedPreset == "full" || normalizedPreset == "files" || normalizedPreset == "media") {
 		args = append(args, "--no-noise")
 	}
 
@@ -1366,7 +1366,7 @@ func buildPresetSyncOptionDefs(project, preset string) presetSyncOptions {
 	case "media":
 		opts := []presetOptionDef{
 			{Key: "noNoise", Label: "Exclude Noise", Description: "Exclude logs and sensitive configs (.env, keys, etc)", DefaultValue: false},
-			{Key: "compress", Label: "Use Compression", Description: "Compress data during transfer", DefaultValue: false},
+			{Key: "compress", Label: "Use Compression", Description: "Compress data during transfer", DefaultValue: true},
 			{Key: "delete", Label: "Delete Missing Files", Description: "Delete files on destination that are missing on source", DefaultValue: false},
 		}
 		return presetSyncOptions{
@@ -1409,7 +1409,7 @@ func buildPresetSyncOptionDefs(project, preset string) presetSyncOptions {
 		// Fallback for "files" or unknown presets
 		opts := []presetOptionDef{
 			{Key: "noNoise", Label: "Exclude Noise", Description: "Exclude logs and sensitive configs (.env, keys, etc)", DefaultValue: false},
-			{Key: "compress", Label: "Use Compression", Description: "Compress data during transfer", DefaultValue: false},
+			{Key: "compress", Label: "Use Compression", Description: "Compress data during transfer", DefaultValue: true},
 			{Key: "delete", Label: "Delete Missing Files", Description: "Delete files on destination missing on source", DefaultValue: false},
 		}
 		return presetSyncOptions{
@@ -1444,6 +1444,9 @@ func buildBootstrapArgsWithOptions(remoteName string, options map[string]bool, p
 	}
 	if options["noStreamDb"] {
 		args = append(args, "--no-stream-db")
+	}
+	if options["delete"] {
+		args = append(args, "--delete")
 	}
 	if options["noNoise"] {
 		args = append(args, "--no-noise")
