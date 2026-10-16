@@ -1301,6 +1301,8 @@ Nếu có `vendor/bin/phpstan` nhưng project **chưa có** config `phpstan.neon
 
 Mỗi nhóm cấu hình cần đúng 1 extension VSCode tương ứng (Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHPUnit, PHP Debug). Nếu chưa cài, `setup` sẽ cảnh báo và hỏi có muốn cài ngay qua `code --install-extension` không — đồng ý thì setting tương ứng vẫn được wire luôn trong lần chạy đó. Truyền `--yes` để tự cài hết những gì thiếu mà không hỏi (hữu ích khi chạy script); nếu không có TTY và không có `--yes`, các extension còn thiếu sẽ tự bị bỏ qua, không hỏi.
 
+Gangway (`ddtcorex.gangway`, sửa hotfix qua SFTP) cũng được đảm bảo ở cả hai mode. Extension này không đóng góp VSCode settings nào nên không có gì được ghi ra — khi đã cài xong, `setup` sẽ chỉ tới lệnh `Gangway: Import Remotes from Govard` trong Command Palette để import các remote Govard của bạn.
+
 Các key hiện có và các configuration khác trong `launch.json` được giữ nguyên — chỉ những key do Govard quản lý mới bị thêm/ghi đè. Lưu ý: settings.json được parse như JSON thuần, nên comment (nếu có) sẽ bị mất khi ghi lại.
 
 ### `govard vscode <tool>`
