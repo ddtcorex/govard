@@ -28,6 +28,7 @@ const (
 	extPHPCS        = "shevaua.phpcs"
 	extPHPUnit      = "recca0120.vscode-phpunit"
 	extXdebug       = "xdebug.php-debug"
+	extGangway      = "ddtcorex.gangway"
 )
 
 var vscodeSetupGlobal bool
@@ -81,7 +82,12 @@ comments in it will be dropped when rewritten.
 
 For each setting group whose VSCode extension isn't installed, you'll be asked
 whether to install it (via "code --install-extension") before that group is
-skipped. Pass --yes to install everything missing without asking.`,
+skipped. Pass --yes to install everything missing without asking.
+
+Gangway (ddtcorex.gangway, SFTP hotfix editing) is also ensured in both
+modes; it contributes no VSCode settings, so nothing is written for it —
+run "Gangway: Import Remotes from Govard" from the Command Palette to
+import your Govard remotes.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if vscodeSetupGlobal {
 			return runVSCodeSetupGlobal()
@@ -184,6 +190,13 @@ func runVSCodeSetupProject() error {
 		pterm.Success.Printf("Updated %s\n", launchPath)
 	}
 
+	// Gangway contributes no VSCode settings (connections live in VSCode
+	// SecretStorage), so this only ensures the extension is installed and
+	// points at its govard-remotes import.
+	if ensureVSCodeExtension(extGangway, gangwaySettingLabel) {
+		pterm.Info.Println(gangwayImportHint())
+	}
+
 	return nil
 }
 
@@ -252,7 +265,26 @@ func runVSCodeSetupGlobal() error {
 	}
 	pterm.Success.Printf("Updated %s\n", settingsPath)
 
+	// Last, like project mode: if a write above failed, the run errors
+	// before ever claiming Gangway is ready.
+	if ensureVSCodeExtension(extGangway, gangwaySettingLabel) {
+		pterm.Info.Println(gangwayImportHint())
+	}
+
 	return nil
+}
+
+// gangwaySettingLabel names the capability Gangway provides. It is not a
+// VSCode settings group (Gangway contributes no settings), so it reads as a
+// capability in ensureVSCodeExtension's messages rather than a group name.
+const gangwaySettingLabel = "SFTP hotfix editing"
+
+// gangwayImportHint points at the Gangway command that imports Govard
+// remotes. Gangway stores connections itself (VSCode SecretStorage), so
+// setup installs the extension but never writes its configuration. The
+// wording stays mode-neutral: --global runs without a project root.
+func gangwayImportHint() string {
+	return "Gangway is ready: run \"Gangway: Import Remotes from Govard\" from the Command Palette to import your Govard remotes."
 }
 
 // ensureVSCodeExtension reports whether extensionID is installed. If it
@@ -307,6 +339,16 @@ func ensureVSCodeExtension(extensionID, settingLabel string) bool {
 		extensionID, extensionID,
 	)
 	return false
+}
+
+// EnsureVSCodeExtensionForTest exposes ensureVSCodeExtension to the tests package.
+func EnsureVSCodeExtensionForTest(extensionID, settingLabel string) bool {
+	return ensureVSCodeExtension(extensionID, settingLabel)
+}
+
+// SetVSCodeSetupYesForTest overrides the --yes flag value for tests.
+func SetVSCodeSetupYesForTest(value bool) {
+	vscodeSetupYes = value
 }
 
 // joinWithLeadingComma formats extra wrapper paths for the "Wrote ..." success
@@ -543,6 +585,16 @@ func DetectPHPCSStandardForTest(root string) string {
 // NormalizeIntelephensePHPVersionForTest exposes normalizeIntelephensePHPVersion to the tests package.
 func NormalizeIntelephensePHPVersionForTest(version string) string {
 	return normalizeIntelephensePHPVersion(version)
+}
+
+// ExtGangwayForTest exposes the Gangway VSCode extension ID to the tests package.
+func ExtGangwayForTest() string {
+	return extGangway
+}
+
+// GangwayImportHintForTest exposes gangwayImportHint to the tests package.
+func GangwayImportHintForTest() string {
+	return gangwayImportHint()
 }
 
 // MergeJSONObjectFileForTest exposes mergeJSONObjectFile to the tests package.

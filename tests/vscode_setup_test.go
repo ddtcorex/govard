@@ -420,3 +420,62 @@ func TestPruneVendorExcludesMissingFile(t *testing.T) {
 		t.Errorf("missing file: removed=%v err=%v, want none", removed, err)
 	}
 }
+
+func TestGangwayExtensionID(t *testing.T) {
+	if got := cmd.ExtGangwayForTest(); got != "ddtcorex.gangway" {
+		t.Errorf("ExtGangwayForTest() = %q, want %q", got, "ddtcorex.gangway")
+	}
+}
+
+func TestGangwayImportHintNamesImportCommand(t *testing.T) {
+	hint := cmd.GangwayImportHintForTest()
+	if !strings.Contains(hint, "Gangway: Import Remotes from Govard") {
+		t.Errorf("hint must name the exact Gangway import command, got %q", hint)
+	}
+	if strings.Contains(hint, "this project") {
+		t.Errorf("hint must stay mode-neutral (--global has no project root), got %q", hint)
+	}
+}
+
+func TestVscodeSetupLongMentionsGangway(t *testing.T) {
+	_, long, _, _ := lookupHelpCommand(t, "vscode", "setup")
+	if !strings.Contains(long, "Gangway") {
+		t.Errorf("vscode setup Long must mention Gangway:\n%s", long)
+	}
+}
+
+func seedHomeWithGangway(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	extDir := filepath.Join(dir, ".vscode", "extensions")
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		t.Fatalf("mkdir fake extensions dir: %v", err)
+	}
+	manifest := `[{"identifier": {"id": "ddtcorex.gangway"}, "version": "0.5.0"}]`
+	if err := os.WriteFile(filepath.Join(extDir, "extensions.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write fake extensions.json: %v", err)
+	}
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	return dir
+}
+
+func TestEnsureVSCodeExtensionGangwayInstalledNeedsNoPrompt(t *testing.T) {
+	seedHomeWithGangway(t)
+	cmd.SetVSCodeSetupYesForTest(false)
+	t.Cleanup(cmd.SetStdinIsTerminalForTest(func() bool { return false }))
+	if !cmd.EnsureVSCodeExtensionForTest("ddtcorex.gangway", "Gangway SFTP hotfix editing") {
+		t.Error("expected true for an installed extension without prompting")
+	}
+}
+
+func TestEnsureVSCodeExtensionMissingSkippedWithoutTTY(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	cmd.SetVSCodeSetupYesForTest(false)
+	t.Cleanup(cmd.SetStdinIsTerminalForTest(func() bool { return false }))
+	if cmd.EnsureVSCodeExtensionForTest("ddtcorex.gangway", "Gangway SFTP hotfix editing") {
+		t.Error("expected false when the extension is missing with no TTY and no --yes")
+	}
+}

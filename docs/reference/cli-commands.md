@@ -1351,6 +1351,8 @@ If `vendor/bin/phpstan` exists but the project has **no** `phpstan.neon`/`.dist`
 
 Each setting group requires a specific VSCode extension (Intelephense, PHPStan, PHP CS Fixer, PHPCS, PHPUnit, PHP Debug). If one isn't installed, `setup` warns and asks whether to install it now via `code --install-extension` — accept and the corresponding setting is still wired up in that same run. Pass `--yes` to install everything missing without asking (useful for scripting); with no TTY attached and no `--yes`, missing extensions are skipped without prompting.
 
+Gangway (`ddtcorex.gangway`, SFTP hotfix editing) is also ensured in both modes. It contributes no VSCode settings, so nothing is written for it — once it is installed, `setup` points at `Gangway: Import Remotes from Govard` in the Command Palette to import your Govard remotes.
+
 Existing keys and unrelated `launch.json` configurations are preserved — only the keys Govard manages are added or overwritten. Note: settings.json is parsed as plain JSON, so any comments in it are dropped when rewritten.
 
 ### `govard vscode <tool>`
