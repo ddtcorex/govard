@@ -376,7 +376,7 @@ func TestDesktopNotifyThenPersistEmitsBeforePersisting(t *testing.T) {
 	}
 	next := desktop.PollOperationNotificationsForTest(probe, "stale-cursor")
 
-	if got := len(probe.FakePlatform.EventsNamed("operations:notification")); got != 1 {
+	if got := len(probe.EventsNamed("operations:notification")); got != 1 {
 		t.Fatalf("poll emitted %d notifications, want 1", got)
 	}
 	if len(observedAtEmit) != 1 || observedAtEmit[0] != "stale-cursor" {

@@ -233,7 +233,9 @@ func RecoverInterruptedOps() int {
 		})
 		marked++
 	}
-	writeInflightFile(kept)
+	// Best-effort like persistInflightLocked: the count is the result and
+	// there is no error return to report through.
+	_ = writeInflightFile(kept)
 	return marked
 }
 
