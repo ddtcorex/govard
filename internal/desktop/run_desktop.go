@@ -61,7 +61,7 @@ func Run(assets fs.FS) error {
 	return app.Run()
 }
 
-// boundServices is the complete frontend-callable surface: the eight domain
+// boundServices is the complete frontend-callable surface: the nine domain
 // services plus the watcher, which is bound for its lifecycle alone.
 func (app *App) boundServices() []application.Service {
 	return []application.Service{
@@ -73,6 +73,7 @@ func (app *App) boundServices() []application.Service {
 		application.NewService(app.Logs),
 		application.NewService(app.Global),
 		application.NewService(app.Update),
+		application.NewService(app.Tool),
 		application.NewService(app.watcher),
 	}
 }

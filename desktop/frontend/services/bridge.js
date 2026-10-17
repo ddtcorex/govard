@@ -62,6 +62,10 @@ export const ROUTES = {
   SetUpdateChannel: ["UpdateService", "SetUpdateChannel"],
   InstallLatestUpdate: ["UpdateService", "InstallLatestUpdate"],
   RestartDesktopApp: ["UpdateService", "RestartDesktopApp"],
+  ListToolPresets: ["ToolService", "ListToolPresets"],
+  RunTool: ["ToolService", "RunTool"],
+  CancelToolRun: ["ToolService", "CancelToolRun"],
+  GetToolHistory: ["ToolService", "GetToolHistory"],
 };
 
 /**
@@ -565,6 +569,34 @@ export const desktopBridge = {
   },
   async restartDesktopApp() {
     return invoke("RestartDesktopApp");
+  },
+  /**
+   * @param {string} project
+   */
+  async listToolPresets(project) {
+    return invoke("ListToolPresets", project);
+  },
+  /**
+   * Runs a preset by ID with an args map. The palette never sends argv or a
+   * command line: the exec argv is backend-owned.
+   * @param {string} project
+   * @param {string} presetId
+   * @param {Record<string, string>} [args={}]
+   */
+  async runTool(project, presetId, args = {}) {
+    return invoke("RunTool", project, presetId, args || {});
+  },
+  /**
+   * @param {string} opId
+   */
+  async cancelToolRun(opId) {
+    return invoke("CancelToolRun", opId);
+  },
+  /**
+   * @param {string} project
+   */
+  async getToolHistory(project) {
+    return invoke("GetToolHistory", project);
   },
   async quit() {
     return invoke("Quit");

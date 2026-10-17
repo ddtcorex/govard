@@ -50,6 +50,18 @@ func NewSystemService() *SystemService {
 	return &SystemService{serviceBase: serviceBase{platform: newDefaultPlatform()}}
 }
 
+// ToolService exposes the preset tool runner: the allowlisted presets,
+// validated runs with streamed output, cancellation, and scrubbed history.
+// The palette NEVER sends argv: runs take a preset ID plus an args map and
+// the backend owns the exec argv.
+type ToolService struct {
+	serviceBase
+}
+
+func NewToolService() *ToolService {
+	return &ToolService{serviceBase: serviceBase{platform: newDefaultPlatform()}}
+}
+
 // LogService handles log streaming and terminal sessions.
 type LogService struct {
 	serviceBase

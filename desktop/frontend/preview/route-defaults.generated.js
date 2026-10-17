@@ -221,6 +221,20 @@ export const ROUTE_DEFAULTS = {
   "SystemService.Quit": {
     "kind": "void"
   },
+  "ToolService.CancelToolRun": {
+    "kind": "value",
+    "value": false
+  },
+  "ToolService.GetToolHistory": {
+    "kind": "slice"
+  },
+  "ToolService.ListToolPresets": {
+    "kind": "slice"
+  },
+  "ToolService.RunTool": {
+    "kind": "value",
+    "value": ""
+  },
   "UpdateService.CheckForUpdates": {
     "kind": "model",
     "model": "UpdateCheckResult"

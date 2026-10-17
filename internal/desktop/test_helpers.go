@@ -28,6 +28,7 @@ func ResetStateForTest() {
 	runGovardCommandForDesktop = defaultRunGovardCommandForDesktop
 	runGovardCommandForDesktopWithTimeout = defaultRunGovardCommandForDesktopWithTimeout
 	startGovardCommandForDesktop = defaultStartGovardCommandForDesktop
+	startToolProcess = defaultStartToolProcess
 	validateGitConnectionForDesktop = defaultValidateGitConnectionForDesktop
 	cloneGitRepoForDesktop = defaultCloneGitRepoForDesktop
 	openExternalURLForDesktop = defaultOpenExternalURLForDesktop
@@ -831,4 +832,41 @@ func BrandTrayForTest(t interface {
 // CancelOp, FinishOp, ListOps) is exported, so no other seams are needed.
 func ResetOperationRegistryForTest() {
 	resetOperationRegistry()
+}
+
+// SetStartToolProcessForTest replaces the tool-run process spawner for the
+// duration of a test and returns a func that restores the real one, so tool
+// runs never spawn project binaries under test.
+func SetStartToolProcessForTest(fn func(ctx context.Context, dir string, argv []string) (io.Reader, io.Reader, func() error, error)) func() {
+	previous := startToolProcess
+	if fn == nil {
+		startToolProcess = defaultStartToolProcess
+	} else {
+		startToolProcess = fn
+	}
+	return func() {
+		startToolProcess = previous
+	}
+}
+
+// ToolRunTimeoutForTest exposes the tool-run ceiling for tests.
+func ToolRunTimeoutForTest(presetID string) time.Duration {
+	return toolRunTimeout(presetID)
+}
+
+// ScrubToolHistoryArgsForTest exposes history arg scrubbing for tests.
+func ScrubToolHistoryArgsForTest(args map[string]string) map[string]string {
+	return scrubToolHistoryArgs(args)
+}
+
+// AppendToolHistoryLineForTest appends one history entry for a project with
+// the production single-write path, so tests can drive the store with arg
+// shapes (e.g. secret key names) the preset validator would reject at the
+// RunTool gate.
+func AppendToolHistoryLineForTest(project string, entry ToolHistoryEntry) error {
+	root, _, err := resolveProjectRootForRemotes(project)
+	if err != nil {
+		return err
+	}
+	return appendToolHistoryEntryForRoot(root, entry)
 }
