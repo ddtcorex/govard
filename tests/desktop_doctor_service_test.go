@@ -543,6 +543,32 @@ func TestDoctorService_PreviewRandFailureReturnsNoToken(t *testing.T) {
 	}
 }
 
+// A preview token older than the 15-minute TTL is refused as expired,
+// forcing a fresh preview (project or container state may have drifted
+// since the dry run). Kept from the divergent remote worker: the local
+// suite pinned token/check and token/scope binding but never the TTL.
+func TestDoctorService_AgedPreviewTokenRefusedAsExpired(t *testing.T) {
+	setupDoctorServiceTest(t)
+	t.Cleanup(desktop.SetDoctorFixExecutorForDesktopForTest(
+		func(ctx context.Context, checkID string, dryRun bool) ([]string, string, error) {
+			if dryRun {
+				return []string{"sync php_version"}, "1 drift entry", nil
+			}
+			return []string{"synced drift"}, "drift synced", nil
+		}))
+
+	preview, err := desktop.PreviewDoctorFix("project.config.drift")
+	if err != nil {
+		t.Fatalf("PreviewDoctorFix error = %v", err)
+	}
+	desktop.AgeDoctorPreviewTokensForTest(16 * time.Minute)
+	if _, err := desktop.ApplyDoctorFix("project.config.drift", preview.PreviewID, true); err == nil {
+		t.Fatalf("ApplyDoctorFix(aged token) = nil error, want an expiry refusal")
+	} else if !strings.Contains(strings.ToLower(err.Error()), "expired") {
+		t.Fatalf("ApplyDoctorFix(aged token) error = %v, want an expiry refusal", err)
+	}
+}
+
 // I1: a scoped run diagnoses the project root, not the process CWD. The
 // frontend stores the report under the selected-project key, so the run
 // itself must diagnose that project.

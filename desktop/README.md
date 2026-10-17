@@ -74,3 +74,26 @@ Frontend file management:
 - `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `health`)
 - `frontend/ui/toast.js` notifications
 - `frontend/utils/dom.js` DOM helpers
+
+## Health UX (doctor + integrity audit)
+
+User documentation lives in `docs/workflows/desktop-app.md` ("Health: Doctor
+and Integrity Audit", with a Vietnamese counterpart under `docs/vi/`).
+
+Implementation map:
+
+- Backend: `internal/desktop/doctor_service.go` (fix allowlist, preview
+  tokens), `internal/desktop/audit_service.go` (docker-free integrity run,
+  disabled `lint`/`profiler` rows), `internal/desktop/health_service.go`
+  (`HealthService`, project scoping). The allowlist in `doctor_service.go` is
+  the source of truth for which check IDs get `Fix`, `Preview fix`, or no
+  button; the docs table must match it exactly.
+- Frontend: `frontend/modules/health.js` (banner derivations, per-project
+  scoping, ephemeral preview-token controller state),
+  `frontend/islands/GlobalHealthHeader.tsx` (banners) and
+  `frontend/islands/HealthPanels.tsx` (panels).
+- Routes (`bridge.js` onto `HealthService`): `RunDoctor`,
+  `PreviewDoctorFix`, `ApplyDoctorFix`, `CancelDoctorRun`,
+  `RunIntegrityAudit`, `GetAuditResult`, `GetAuditDiff`, `LastAuditResult`,
+  `CancelAudit`, `RunningAuditOp`. Progress streams on `audit:progress`
+  (see `internal/desktop/events.go`).

@@ -50,6 +50,97 @@ Live log panes keep the last 2,000 lines and pause their polling while the windo
 
 ---
 
+## Health: Doctor and Integrity Audit
+
+The health header at the top of the dashboard runs two read-only checks for
+the selected project: `RunDoctor` (host and project diagnostics with per-check
+fixes) and `RunIntegrityAudit` (container-free project integrity audit). Both
+are reached through `HealthService` routes in
+`desktop/frontend/services/bridge.js` (`runDoctor(project)`,
+`runIntegrityAudit(project)`); audit progress streams on the
+`audit:progress` event. Long runs can be cancelled (`CancelDoctorRun`,
+`CancelAudit`); cancelling an audit discards its late result and the banner
+keeps the last completed run.
+
+The doctor run is scoped to the selected project's root: project-bound
+checks read that project's files, and the report is bucketed under that
+project. A non-empty project that resolves to no directory is refused with
+a select-a-project error instead of auditing the working directory. With no
+project selected the run stays host-level (working directory) under the
+empty scope.
+
+### Doctor fixes: what each button means
+
+Every doctor check carries one of three fix affordances. `Fix` applies in one
+click. `Preview fix` opens a dry-run plan that must be confirmed explicitly
+before anything changes. Checks with no safe fix show no fix button at all;
+follow the hint and the suggested CLI command instead. A check ID the
+allowlist has never seen is refused rather than given a button.
+
+| Check ID | Button | What the fix does |
+| :--- | :--- | :--- |
+| `host.govard.home` | Fix | Repairs Govard runtime directory permissions |
+| `host.compose.spam` | Fix | Purges stale compose files older than 7 days |
+| `host.govard.registry` | Fix | Repairs the project registry path (a directory at the file path is refused, never auto-deleted) |
+| `host.search.index_block` | Preview fix | Unblocks the search index with a write into the running search container |
+| `project.runtime.images` | Preview fix | Pulls missing Docker runtime images (network heavy) |
+| `project.config.audit` | Preview fix | Migrates legacy config keys to the services block in `.govard.yml` |
+| `project.config.drift` | Preview fix | Syncs `.govard.yml` with the detected framework profile |
+| `project.profile.sync` | Preview fix | Fills gaps from the framework profile, preserving explicit user settings |
+| `docker.daemon` | None | No fix in the desktop; follow the hint |
+| `docker.compose` | None | No fix in the desktop; follow the hint |
+| `host.port.80` | None | No fix in the desktop; follow the hint |
+| `host.port.443` | None | No fix in the desktop; follow the hint |
+| `host.disk.scratch` | None | No fix in the desktop; follow the hint |
+| `host.network.outbound` | None | No fix in the desktop; follow the hint |
+| `host.ssh.agent` | None | No fix in the desktop; follow the hint |
+| `host.deps.docker` | None | No fix in the desktop; follow the hint |
+| `host.deps.remote` | None | No fix in the desktop; follow the hint |
+
+Project-touching fixes (`host.search.index_block` and every `project.*`
+check) need a project selected in the desktop app; host-global fixes may run
+without one. After any applied fix the panel re-runs doctor silently, so the
+banner clears only when a fresh run is clean.
+
+### Risky fixes: preview, confirm, expiry
+
+`PreviewDoctorFix` returns a dry-run plan (summary plus actions) without
+changing anything; `ApplyDoctorFix` with explicit confirm applies it. In user
+terms: a preview stays valid for a short time (about 15 minutes) and can be
+used once. If project files or container state change between the preview and
+the apply, the apply is refused and the panel asks for a fresh preview, so
+confirm again on the new plan. Closing the preview or switching projects drops
+the pending preview.
+
+### Integrity audit scope
+
+The desktop runs exactly the container-free `integrity` check, the same
+analysis `govard audit run --checks integrity` executes. The `lint` and
+`profiler` rows stay visible in the result with `Enabled=false` and a reason
+pointing at the CLI (`govard audit run --checks lint`, `govard audit run
+--checks profiler`); they are never run from the desktop and never hidden.
+`GetAuditResult` reads one stored run, `GetAuditDiff` summarizes the finding
+delta between two stored runs, and `LastAuditResult` fills the banner from
+the last completed run without running anything. The panel queries
+`RunningAuditOp` on mount, so Cancel is offered even when the run started
+before the panel did.
+
+### Banners and per-project scoping
+
+Banners derive from the latest results for the currently selected project
+only. Switching projects re-derives that project's banners and shows
+loading or empty meanwhile, never another project's banner.
+
+| Banner | Meaning |
+| :--- | :--- |
+| Doctor, red (`error`) | The latest doctor report has at least one failing check. The banner names the issue count and how many are fixable below |
+| Doctor, amber (`warning`) | Warnings only, no failures |
+| No doctor banner | No report yet, or the latest report passes all checks. A clean re-run is what clears a stale banner |
+| Audit, amber (`warning`) | The latest integrity result has findings (or a non-passed status). The banner names the finding count; the panel lists each finding plus the disabled `lint` and `profiler` rows |
+| No audit banner | No audit ran yet for this project, or the latest run passed clean. Cancelled and failed runs never replace the last completed result |
+
+---
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
