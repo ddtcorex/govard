@@ -53,6 +53,37 @@ func RegisterOp(id string, project string, kind string, cancel context.CancelFun
 // the id (unknown or already finished); callers treat that as success and
 // show no error toast. Only the side that claims the running entry
 // records, so a cancel racing a finish yields exactly one terminal state.
+
+// RegisterDBTransferOp registers one database dump/import op under the
+// backend single-flight rule: at most one running db transfer per project.
+// The scan and the insert hold the same mutex, so two concurrent starts
+// cannot both succeed (the frontend guard is UX only; a double-click race
+// would otherwise orphan the first op). A refusal names the EXISTING running
+// op id, never the new one, so the error tells the user what to cancel.
+// Different projects never block each other; non-transfer ops are ignored.
+// After FinishOp/CancelOp the project accepts a new transfer again.
+func RegisterDBTransferOp(id string, project string, kind string, cancel context.CancelFunc) (bool, string) {
+	operationRegistry.Lock()
+	defer operationRegistry.Unlock()
+	want := normalizeDBProject(project)
+	for _, entry := range operationRegistry.running {
+		if entry.info.Kind != dbTransferOpKindDump && entry.info.Kind != dbTransferOpKindImport {
+			continue
+		}
+		if normalizeDBProject(entry.info.Project) != want {
+			continue
+		}
+		return false, entry.info.ID
+	}
+	if _, ok := operationRegistry.running[id]; ok {
+		return false, id
+	}
+	operationRegistry.running[id] = operationEntry{
+		info:   OpInfo{ID: id, Project: project, Kind: kind, StartedAt: time.Now()},
+		cancel: cancel,
+	}
+	return true, ""
+}
 func CancelOp(id string) bool {
 	operationRegistry.Lock()
 	entry, ok := operationRegistry.running[id]
@@ -110,6 +141,16 @@ func ListOps() []OpInfo {
 		return ops[i].StartedAt.Before(ops[j].StartedAt)
 	})
 	return ops
+}
+
+// isOpRegistered reports whether id is currently running. The tool runner's
+// publish stage uses it to drop stream lines from cancelled or superseded
+// ops so a fast rerun never mixes tails.
+func isOpRegistered(id string) bool {
+	operationRegistry.Lock()
+	defer operationRegistry.Unlock()
+	_, ok := operationRegistry.running[id]
+	return ok
 }
 
 // resetOperationRegistry clears running ops and drops persisted history,

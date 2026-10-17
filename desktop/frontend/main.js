@@ -6,6 +6,7 @@ import {
   createGlobalServicesController,
   raiseActionFeedback,
 } from "./modules/global-services.js";
+import { createHealthController, selectDoctorEntry } from "./modules/health.js";
 import { resolveServiceTargets, shouldStopEnvLiveOnTabSwitch } from "./modules/logs.js";
 import { createOnboardingController } from "./modules/onboarding.js?v=20260302";
 import {
@@ -32,6 +33,8 @@ import { GlobalServicesList } from "./islands/GlobalServicesList.tsx";
 import { RemotesList } from "./islands/RemotesList.tsx";
 import { OperationCenter } from "./islands/OperationCenter.tsx";
 import { SyncModal } from "./islands/SyncModal.tsx";
+import { ToolPalette } from "./islands/ToolPalette.tsx";
+import { DataTab } from "./islands/DataTab.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
@@ -355,6 +358,10 @@ const selectProject = async (project) => {
     void logsApi.refresh();
   } else if (activeTabId === "remotes") {
     remotesApi.refresh();
+  } else if (activeTabId === "tools") {
+    void toolPaletteApi.refresh();
+  } else if (activeTabId === "data") {
+    void dataTabApi.refresh();
   }
 };
 
@@ -395,7 +402,7 @@ const switchTab = (tabId) => {
   const tabsInner = byId("tabsHeaderInner");
 
   if (scrollContainer && hero && tabs && tabsInner) {
-    const showHero = ["dashboard", "remotes", "logs", "operations"].includes(tabId);
+    const showHero = ["dashboard", "remotes", "logs", "operations", "tools", "data"].includes(tabId);
     hero.classList.toggle("hidden", !showHero);
     const showPrimaryTabs = tabId !== "global-services";
 
@@ -417,6 +424,14 @@ const switchTab = (tabId) => {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
       void operationCenterApi.refresh();
+    } else if (tabId === "tools") {
+      scrollContainer.classList.remove("overflow-y-auto");
+      scrollContainer.classList.add("overflow-hidden");
+      void toolPaletteApi.refresh();
+    } else if (tabId === "data") {
+      scrollContainer.classList.add("overflow-y-auto");
+      scrollContainer.classList.remove("overflow-hidden");
+      void dataTabApi.refresh();
     } else if (tabId === "global-services") {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
@@ -560,10 +575,18 @@ const refreshServiceSelector = () => {
   setState({ selectedService: service });
 };
 
+// Assigned where the health controller is created below; null until then so
+// project switches during early init stay safe.
+let healthController = null;
 const setSelectedProject = (project) => {
   const value = String(project || "").trim();
   if (!value) return;
   setState({ selectedProject: value });
+  // Health banners are keyed per project: re-derive this project's banners
+  // (loading/empty meanwhile, never the previous project's).
+  if (healthController) {
+    void healthController.selectHealthProject(value);
+  }
   if (refs.logSelector && refs.logSelector.value !== value) {
     refs.logSelector.value = value;
   }
@@ -674,6 +697,24 @@ const remotesIsland = mountIsland(
   }),
 );
 
+// The tools tab is an island over the same seam the logs tab uses: it
+// registers the imperative API main.js still calls on tab switches.
+const TOOL_PALETTE_API_STUB = {
+  refresh: async () => {},
+};
+let toolPaletteApi = TOOL_PALETTE_API_STUB;
+const toolPaletteIsland = mountIsland(
+  "toolPaletteIsland",
+  createElement(ToolPalette, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    registerApi: (api) => {
+      toolPaletteApi = api || TOOL_PALETTE_API_STUB;
+    },
+  }),
+);
+
 const syncModalIsland = mountIsland(
   "syncOptionsModalMount",
   createElement(SyncModal, {
@@ -711,6 +752,25 @@ const operationCenterIsland = mountIsland(
     onToast: showToast,
     registerApi: (api) => {
       operationCenterApi = api || OPERATIONS_API_STUB;
+    },
+  }),
+);
+
+// The data tab is an island over the same seam the logs tab uses: it
+// registers the imperative API main.js still calls on tab switches and
+// project changes, and every control calls back through the bridge.
+const DATA_TAB_API_STUB = {
+  refresh: async () => {},
+};
+let dataTabApi = DATA_TAB_API_STUB;
+const dataTabIsland = mountIsland(
+  "dataTabIsland",
+  createElement(DataTab, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    registerApi: (api) => {
+      dataTabApi = api || DATA_TAB_API_STUB;
     },
   }),
 );
@@ -965,10 +1025,52 @@ const globalServicesController = createGlobalServicesController({
 // into the controller, which stays the only thing that talks to the bridge for
 // these actions, so the routing-settle loop and the refresh cadence are
 // unchanged. The Logs panel is still vanilla markup in this change.
+healthController = createHealthController({
+  bridge: desktopBridge,
+  getState,
+  setState,
+  onStatus: setStatus,
+  onToast: showToast,
+});
+
+// Health actions scope to the selected project ("" when none). Banners are
+// keyed per project scope in the store; the Go side hard-refuses
+// project-touching fixes with no usable scope.
+const healthProject = () => String(getState().selectedProject || "");
+const healthCallbacks = {
+  project: "",
+  onRunDoctor: () => void healthController.runDoctor(healthProject()),
+  onCancelDoctor: () => void healthController.cancelDoctor(),
+  onApplySafeFix: (check) => void healthController.applySafeFix(healthProject(), check),
+  onPreviewFix: (check) => void healthController.previewFix(healthProject(), check),
+  onConfirmPreview: () => {
+    // The token lives in module-local controller state, never the store.
+    const pending = healthController.pendingPreview();
+    const report = selectDoctorEntry(getState()).report;
+    const check = (report?.checks || []).find((item) => item.id === pending.checkId);
+    if (!check) {
+      return;
+    }
+    void healthController.applyFix(healthProject(), check, pending.previewId, true);
+  },
+  onClosePreview: () => healthController.closePreview(),
+  onRunAudit: () => void healthController.runAudit(healthProject()),
+  onCancelAudit: () => void healthController.cancelAudit(),
+};
+onEvent("audit:progress", (payload = {}) => healthController.handleAuditProgress(payload));
+// Fill the audit banner from the persisted last result without running
+// anything; a miss is neutral (never-ran state), never an error toast.
+// Then recover any audit or doctor run that started before this panel
+// mounted, so its Cancel is available immediately.
+void healthController.refreshBanner(healthProject());
+void healthController.recoverAuditOp(healthProject());
+void healthController.recoverDoctorOp(healthProject());
+
 const globalHealthIsland = mountIsland(
   "globalHealthIsland",
   createElement(GlobalHealthHeader, {
     onBulkAction: (action) => globalServicesController.runBulkAction(action),
+    health: healthCallbacks,
   }),
 );
 
@@ -1215,6 +1317,7 @@ window.addEventListener("beforeunload", () => {
   envVarsIsland?.unmount();
   remotesIsland?.unmount();
   syncModalIsland?.unmount();
+  dataTabIsland?.unmount();
   globalHealthIsland?.unmount();
   globalServicesListIsland?.unmount();
   globalLogsIsland?.unmount();

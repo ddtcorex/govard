@@ -35,9 +35,11 @@ The desktop focuses on operational essentials:
 | **Project Workspace** | Environments list, quick actions, onboarding flow |
 | **Quick Actions** | PHPMyAdmin, Xdebug toggle, health check, Mailpit, DB client |
 | **Remotes Tab** | Add/test/open/sync-plan workflows for remote environments |
+| **Data Tab** | Masked DB fact sheet, guarded ad-hoc queries, dump/import, snapshots (see below) |
 | **Resource Monitor** | CPU, RAM, network, OOM hints |
 | **Logs** | Multi-service selection, severity filtering, text search, live streaming |
 | **Shell Launcher** | Service, user, and shell selection |
+| **Tool Runner** | Preset framework tool commands with streamed output (see below) |
 | **System Tray** | Show/hide the window, start/stop/open projects, quit |
 | **Native Notifications** | Operation success/failure alerts |
 | **Settings Drawer** | Theme, proxy target, preferred browser, database client |
@@ -169,6 +171,337 @@ The island refreshes both lists on the `sync:progress` and
 
 ---
 
+## Health: Doctor and Integrity Audit
+
+The health header at the top of the dashboard runs two read-only checks for
+the selected project: `RunDoctor` (host and project diagnostics with per-check
+fixes) and `RunIntegrityAudit` (container-free project integrity audit). Both
+are reached through `HealthService` routes in
+`desktop/frontend/services/bridge.js` (`runDoctor(project)`,
+`runIntegrityAudit(project)`); audit progress streams on the
+`audit:progress` event. Long runs can be cancelled (`CancelDoctorRun`,
+`CancelAudit`); cancelling an audit discards its late result and the banner
+keeps the last completed run.
+
+The doctor run is scoped to the selected project's root: project-bound
+checks read that project's files, and the report is bucketed under that
+project. A non-empty project that resolves to no directory is refused with
+a select-a-project error instead of auditing the working directory. With no
+project selected the run stays host-level (working directory) under the
+empty scope.
+
+### Doctor fixes: what each button means
+
+Every doctor check carries one of three fix affordances. `Fix` applies in one
+click. `Preview fix` opens a dry-run plan that must be confirmed explicitly
+before anything changes. Checks with no safe fix show no fix button at all;
+follow the hint and the suggested CLI command instead. A check ID the
+allowlist has never seen is refused rather than given a button.
+
+| Check ID | Button | What the fix does |
+| :--- | :--- | :--- |
+| `host.govard.home` | Fix | Repairs Govard runtime directory permissions |
+| `host.compose.spam` | Fix | Purges stale compose files older than 7 days |
+| `host.govard.registry` | Fix | Repairs the project registry path (a directory at the file path is refused, never auto-deleted) |
+| `host.search.index_block` | Preview fix | Unblocks the search index with a write into the running search container |
+| `project.runtime.images` | Preview fix | Pulls missing Docker runtime images (network heavy) |
+| `project.config.audit` | Preview fix | Migrates legacy config keys to the services block in `.govard.yml` |
+| `project.config.drift` | Preview fix | Syncs `.govard.yml` with the detected framework profile |
+| `project.profile.sync` | Preview fix | Fills gaps from the framework profile, preserving explicit user settings |
+| `docker.daemon` | None | No fix in the desktop; follow the hint |
+| `docker.compose` | None | No fix in the desktop; follow the hint |
+| `host.port.80` | None | No fix in the desktop; follow the hint |
+| `host.port.443` | None | No fix in the desktop; follow the hint |
+| `host.disk.scratch` | None | No fix in the desktop; follow the hint |
+| `host.network.outbound` | None | No fix in the desktop; follow the hint |
+| `host.ssh.agent` | None | No fix in the desktop; follow the hint |
+| `host.deps.docker` | None | No fix in the desktop; follow the hint |
+| `host.deps.remote` | None | No fix in the desktop; follow the hint |
+
+Project-touching fixes (`host.search.index_block` and every `project.*`
+check) need a project selected in the desktop app; host-global fixes may run
+without one. After any applied fix the panel re-runs doctor silently, so the
+banner clears only when a fresh run is clean.
+
+### Risky fixes: preview, confirm, expiry
+
+`PreviewDoctorFix` returns a dry-run plan (summary plus actions) without
+changing anything; `ApplyDoctorFix` with explicit confirm applies it. In user
+terms: a preview stays valid for a short time (about 15 minutes) and can be
+used once. If project files or container state change between the preview and
+the apply, the apply is refused and the panel asks for a fresh preview, so
+confirm again on the new plan. Closing the preview or switching projects drops
+the pending preview.
+
+### Integrity audit scope
+
+The desktop runs exactly the container-free `integrity` check, the same
+analysis `govard audit run --checks integrity` executes. The `lint` and
+`profiler` rows stay visible in the result with `Enabled=false` and a reason
+pointing at the CLI (`govard audit run --checks lint`, `govard audit run
+--checks profiler`); they are never run from the desktop and never hidden.
+`GetAuditResult` reads one stored run, `GetAuditDiff` summarizes the finding
+delta between two stored runs, and `LastAuditResult` fills the banner from
+the last completed run without running anything. The panel queries
+`RunningAuditOp` on mount, so Cancel is offered even when the run started
+before the panel did.
+
+### Banners and per-project scoping
+
+Banners derive from the latest results for the currently selected project
+only. Switching projects re-derives that project's banners and shows
+loading or empty meanwhile, never another project's banner.
+
+| Banner | Meaning |
+| :--- | :--- |
+| Doctor, red (`error`) | The latest doctor report has at least one failing check. The banner names the issue count and how many are fixable below |
+| Doctor, amber (`warning`) | Warnings only, no failures |
+| No doctor banner | No report yet, or the latest report passes all checks. A clean re-run is what clears a stale banner |
+| Audit, amber (`warning`) | The latest integrity result has findings (or a non-passed status). The banner names the finding count; the panel lists each finding plus the disabled `lint` and `profiler` rows |
+| No audit banner | No audit ran yet for this project, or the latest run passed clean. Cancelled and failed runs never replace the last completed result |
+
+## Tool Runner
+
+The Tool Runner palette runs framework tool commands from a backend-owned
+preset allowlist. Pick a project, pick a preset, fill its arguments, then Run.
+Output streams into the pane (last 2,000 lines, same cap as the log panes).
+The Recent runs dropdown re-applies a past preset plus its arguments
+(scrubbed values shown as `***` are not re-applied). With no project selected
+the palette shows `Select a project to run tools.` and stays disabled.
+
+The UI lives in the React island `desktop/frontend/islands/ToolPalette.tsx`
+with pure helpers in `desktop/frontend/modules/tool-palette.js`. It talks to
+Go only through `services/bridge.js`:
+
+| Frontend wrapper | Backend route |
+| :--- | :--- |
+| `listToolPresets(project)` | `ToolService.ListToolPresets` |
+| `runTool(project, presetId, args)` | `ToolService.RunTool` |
+| `cancelToolRun(opId)` | `ToolService.CancelToolRun` |
+| `getToolHistory(project)` | `ToolService.GetToolHistory` |
+
+Progress streams on `tool:output`; the outcome arrives on `tool:completed` or
+`tool:failed`.
+
+### Presets
+
+Presets are defined in `internal/desktop/tool_runner.go`. The palette lists
+the framework-scoped presets for the selected project plus the generic set;
+an unknown or empty framework yields the generic set only.
+
+| Preset ID | Runs | Arguments | Applies to |
+| :--- | :--- | :--- | :--- |
+| `magento-cache-flush` | `bin/magento cache:flush` | `type` (optional, `^[a-z_]+$`) | Magento family |
+| `magento-cache-clean` | `bin/magento cache:clean` | `type` (optional, `^[a-z_]+$`) | Magento family |
+| `magento-setup-di-compile` | `bin/magento setup:di:compile` | none | Magento family |
+| `magento-indexer-reindex` | `bin/magento indexer:reindex` | `indexer` (optional, `^[a-z_]+$`) | Magento family |
+| `laravel-migrate` | `php artisan migrate` | `database` (optional flag), `force` (optional flag, `true/false/1/0`) | Laravel |
+| `laravel-cache-clear` | `php artisan cache:clear` | none | Laravel |
+| `laravel-config-clear` | `php artisan config:clear` | none | Laravel |
+| `composer-install` | `composer install` | `no-dev` (optional flag, `true/false/1/0`) | All projects |
+| `npm-install` | `npm install` | none | All projects |
+| `npm-run-build` | `npm run build` | none | All projects |
+
+Magento family covers `magento1`, `magento2`, `mageos` and `openmage`
+(including framework aliases registered as Magento-derived).
+
+Slow presets (`magento-setup-di-compile`, `magento-indexer-reindex`,
+`laravel-migrate`, `composer-install`, `npm-install`, `npm-run-build`) run
+with the 15-minute long ceiling; the fast cache clears keep the 2-minute
+default. A timeout reports its duration, and the history entry records the
+run as failed (timeout) or cancelled (cancel).
+
+### No-shell guarantee
+
+The palette sends a preset ID plus an args map only. The exec argv stays
+backend-owned: unknown preset IDs are refused before any process exists, and
+args are validated against the preset's `ArgSpec` (unknown names, missing
+required args, values over 256 characters, and values outside the arg
+pattern are rejected; args without an explicit pattern use
+`^[A-Za-z0-9_@+.,:/=-]+$`, which rejects whitespace and every shell
+metacharacter with no quoting exemption). Validated args render onto the
+preset argv in `ArgSpec` order (flag args become `--name` or
+`--name=value`), and the result runs via `exec.CommandContext` directly:
+no shell, no `sh -c`, no string joining, ever.
+
+### Cancel guarantee
+
+One tool run per project at a time. A second Run while one is active is
+refused with an already-running error, and the lock is freed on completion
+or cancel. `CancelToolRun` kills the running process through the op registry
+and frees the lock; cancelling an unknown or finished ID is a harmless no-op
+reporting `false`, and the synchronous return value is the cancelling
+caller's confirmation.
+
+Terminal events carry the run generation (`OpID`, `Gen` in
+`ToolResultPayload`). The palette applies a `tool:completed` or `tool:failed`
+receipt only when its generation is still current
+(`IsCurrentToolGeneration` on the backend, `applyToolTerminalEvent` in
+`modules/tool-palette.js`), and a finished run never flips back to running.
+Streamed `tool:output` batches from a cancelled, timed-out, or superseded
+run are dropped, so a fast rerun never mixes tails; the terminal receipt
+itself always arrives so history and status settle.
+
+### History and secret scrubbing
+
+Each admitted run is recorded in a per-project JSONL history file under
+`tool-history/` in the Govard home directory, capped at the most recent 50
+runs (the oldest entries evict first). The admission entry starts as
+`unknown` and is promoted to `success`, `failed`, or `cancelled` before its
+terminal event emits, so a run whose terminal never arrives (crash) reads
+`unknown`, never success. A history failure never fails the run itself.
+
+Args are scrubbed on write, so raw secrets never reach the file: values under
+secret key names (`password`, `passwd`, `passphrase`, `secret`, `token`,
+`apikey`, `accesskey`, `privatekey`, `pwd`, including suffix matches such as
+`db-password` or `apiKey`) become `***`, and secret-shaped value text
+(`KEY=value` pairs, `scheme://user:pass@` credentialed URLs, PEM private-key
+blocks) is masked the same way. One boundary applies: a bare secret value
+under a non-secret key name is indistinguishable from an innocent value and
+is not detectable, so only the key name and the value shape drive scrubbing.
+The file is written atomically with strict permissions.
+
+## Data Tab
+
+The Data tab manages the selected project database and its snapshots. It
+covers the masked connection fact sheet, guarded ad-hoc queries,
+dump/import with streaming progress, and snapshot list/create/export plus
+preview-gated restore.
+
+### Read-only queries by default, explicit opt-in for writes
+
+`DBService.RunDBQuery(project, sql, allowWrite, confirmToken)` classifies
+every statement before it touches anything:
+
+- Read-only openers are `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`,
+  `EXPLAIN`. Anything else takes the write path.
+- A read-looking opener is not enough on its own: the whole statement is
+  scanned for data-modifying words (`DELETE`, `UPDATE`, `INSERT`,
+  `INTO`, `UNION` and friends, locking reads such as `FOR UPDATE`), so a
+  write hidden in the body still takes the write path.
+- Multi-statement input is always refused. Refusal happens before project
+  discovery, so a refused statement touches nothing.
+
+A write needs two things together: `allowWrite=true` plus the per-project
+confirm token from `DBService.GetDBWriteConfirmToken(project)`. The UI
+flow is: the mode badge reads anything uncertain as "write", the write
+checkbox enables the confirm dialog, the dialog fetches the token and
+passes it back to `RunDBQuery`. The token format is
+`confirm-write:<lowercased-project>` and stays Go-owned; the island only
+carries it. The token guards against accidental clicks, not against
+malice: the desktop already holds the credentials.
+
+### Restore is preview plus confirm, never one-shot
+
+`SnapshotService.PreviewSnapshotRestore(project, name, dbOnly, mediaOnly)`
+writes nothing. It reports exactly what an apply would replace
+(`willReplaceDb`, `willReplaceMedia`, plus a human `summary` line) and
+returns a single-use `previewToken`. The confirm control stays disabled
+until that preview renders.
+
+`SnapshotService.ApplySnapshotRestore(project, name, previewToken,
+confirm, dbOnly, mediaOnly)` requires the token plus `confirm=true`.
+Either missing, the restore never starts. The token is bound to the
+project, snapshot, and scope, expires after 15 minutes, and is consumed by
+a validated apply, so a replay never reaches the engine. A refused apply
+consumes nothing, so confirming afterwards still works. Scope is `full`
+by default, or `dbOnly` / `mediaOnly` from the scope radio.
+
+### Scrubbing guarantees
+
+- `DBService.GetDBInfo` returns a struct with no password field by
+  construction. `hasPassword` only reports whether one is configured, and
+  `displayUrl` renders the password as `****`.
+- Query output passes through `sanitizeUIText`, capped at 20,000 runes,
+  which also strips ANSI escapes and control bytes.
+- The frontend renders DB info through the `pickDisplayDBInfo` allowlist
+  (`project`, `engine`, `host`, `port`, `database`, `user`,
+  `hasPassword`, `displayUrl`): any unexpected key, including a password
+  under any name, is dropped before it can reach the DOM.
+- There is deliberately no query history: nothing typed into the query
+  box is stored, so no secret can linger in one.
+
+### Cancel semantics
+
+`DBService.CancelDBOp(opId)` and
+`SnapshotService.CancelSnapshotOp(opId)` stop desktop tracking first: the
+op identity is dropped so late events from the dying goroutine never
+reach the UI, and the user gets a terminal `db:failed` /
+`snapshot:failed` event. What happens underneath differs:
+
+- Dump/import run the transfer through a `docker` process started with
+  the op context, so cancelling fires that context and kills the process.
+  A cancelled dump also removes its `.partial` sibling, and an earlier
+  file at the destination survives.
+- Snapshot restore calls the engine, which is not context-aware once the
+  import starts. Cancelling stops the desktop op and its events while the
+  underlying import may run to completion, the same as interrupting the
+  CLI. The message says exactly that: "`<Kind>` tracking stopped by user; the
+  underlying operation may run to completion" (for example "Snapshot restore
+  tracking stopped by user; ..."). It never claims a
+  cancellation that was not delivered.
+
+### Disk preflight
+
+- `DumpDB` estimates the database size, then probes free space against
+  the nearest existing ancestor of the destination before creating any
+  directory or starting any process. A refusal leaves no file, no
+  directory, and no started process behind.
+- `ImportDB` validates the file synchronously before the op is
+  registered: it must be a non-empty file (not a directory) carrying a
+  recognized dump header (`mysqldump`/`MariaDB` or PostgreSQL, gzip
+  handled transparently), and its engine must match the project database.
+  A refused file never opens the database writer.
+- `ExportSnapshot` refuses a destination that is a directory or whose
+  parent directory does not exist. Overwrite confirmation for an existing
+  file stays the UI job: the save dialogs return `{ path, exists }` so
+  the island can ask before calling dump or export.
+
+### Routes and events
+
+Bridge routes in `desktop/frontend/services/bridge.js` onto the generated
+bindings (verified against `DBService`, `SnapshotService`, and
+`data_dialog.go`):
+
+| Route | Go service.method |
+| :--- | :--- |
+| `GetDBInfo` | `DBService.GetDBInfo` |
+| `RunDBQuery` | `DBService.RunDBQuery` |
+| `DumpDB` | `DBService.DumpDB` |
+| `ImportDB` | `DBService.ImportDB` |
+| `CancelDBOp` | `DBService.CancelDBOp` |
+| `PickDumpDestination` | `DBService.PickDumpDestination` |
+| `PickImportSource` | `DBService.PickImportSource` |
+| `GetDBWriteConfirmToken` | `DBService.GetDBWriteConfirmToken` |
+| `ListSnapshots` | `SnapshotService.ListSnapshots` |
+| `CreateSnapshot` | `SnapshotService.CreateSnapshot` |
+| `PreviewSnapshotRestore` | `SnapshotService.PreviewSnapshotRestore` |
+| `ApplySnapshotRestore` | `SnapshotService.ApplySnapshotRestore` |
+| `ExportSnapshot` | `SnapshotService.ExportSnapshot` |
+| `CancelSnapshotOp` | `SnapshotService.CancelSnapshotOp` |
+| `PickExportDestination` | `SnapshotService.PickExportDestination` |
+
+Backend events in `internal/desktop/events.go`:
+
+| Event | Purpose |
+| :--- | :--- |
+| `db:progress` | Structured dump/import progress (`opId`, `generation`, byte counts, percent) |
+| `db:completed` | Finished dump/import |
+| `db:failed` | Failed or cancelled dump/import |
+| `snapshot:completed` | Finished snapshot create/restore/export |
+| `snapshot:failed` | Failed or cancelled snapshot op |
+
+Snapshot ops emit terminal events only, no progress events. An empty
+dialog pick (save or open) with no error means the user cancelled, and
+the island sends exactly the picked path to dump/import/export, never an
+invented one. The dump dialog defaults to `<project>-dump.sql`; the
+export dialog defaults to `<name>.tar.gz`, matching the CLI.
+
+---
+
+
+---
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
@@ -227,6 +560,95 @@ Current persisted preferences:
 - Proxy target
 - Preferred browser
 - Database client preference
+
+---
+
+## Health: Doctor and Audit
+
+The header shows one banner per source, each scoped to the selected project.
+Switching projects shows that project's banners; a scope that never ran shows
+none. Both banners derive from the latest result only, so a clean re-run
+clears a stale banner instead of letting it linger. The Doctor and Audit
+panels sit below the mesh snapshot in the same view.
+
+### Doctor banner
+
+Run doctor from the Doctor panel. The banner appears only when the latest
+report has a failing or warning check:
+
+| Banner | Meaning |
+| :--- | :--- |
+| Red (error), `Doctor: N issues` | At least one check failed. When at least one failing or warning check has a fix button, `, M fixable below` is appended. |
+| Yellow (warning), same text | Warnings only, no failures. |
+| No banner | The latest run passed everything, or doctor never ran for this project. |
+
+`Re-run` on the banner runs doctor again. Long runs can be cancelled; a
+cancelled run leaves the previous banner untouched.
+
+### Doctor fixes: what each check offers
+
+Every doctor check carries one of three fix kinds. The button label tells
+which one before anything runs:
+
+| Check ID | What the fix does | How it applies |
+| :--- | :--- | :--- |
+| `host.govard.home` | Repairs Govard runtime directories (permissions) | `Fix` button, one click |
+| `host.compose.spam` | Prunes stale compose files | `Fix` button, one click |
+| `host.govard.registry` | Repairs a corrupt project registry file path (a directory at that path is refused, nothing is ever deleted) | `Fix` button, one click |
+| `host.search.index_block` | Unblocks the search index (writes into the running search container, so it is never one click) | `Preview fix`, then confirm |
+| `project.runtime.images` | Pulls missing runtime images (network download) | `Preview fix`, then confirm |
+| `project.config.audit` | Migrates legacy config keys (config write) | `Preview fix`, then confirm |
+| `project.config.drift` | Syncs `.govard.yml` with the detected profile (config write) | `Preview fix`, then confirm |
+| `project.profile.sync` | Syncs the profile without overwriting explicit user settings (config write) | `Preview fix`, then confirm |
+| `docker.daemon`, `docker.compose`, `host.port.80`, `host.port.443`, `host.disk.scratch`, `host.network.outbound`, `host.ssh.agent`, `host.deps.docker`, `host.deps.remote` | No fix path, follow the check's hint or suggested command instead | No fix button |
+
+A check ID the desktop does not recognise is refused with an `unknown doctor
+check` error rather than silently offering nothing, so a new engine check
+forces an allowlist review instead of landing on the wrong button.
+
+Project fixes (every `project.*` check plus `host.search.index_block`) need a
+project selected first; with nothing selected the preview and the apply both
+refuse and say so. Host-global one-click fixes run without a project.
+
+### Preview and confirm, in plain terms
+
+Risky fixes always open a preview first. The preview is a dry run: it lists
+what would change and changes nothing. Confirming (`Confirm and apply`)
+applies exactly the previewed plan, then doctor re-runs so fixed issues
+disappear from fresh results.
+
+Each preview mints a one-time approval that is valid for 15 minutes, for that
+check and that plan only. It works once: confirming consumes it, cancelling
+the dialog drops it, and switching projects drops it. If anything changed
+between preview and confirm, the apply is refused and asks for a fresh
+preview instead of applying a stale plan. The approval itself is never shown
+on screen; it lives in memory only, so restarting the app invalidates pending
+previews. Safe one-click fixes skip all of this and apply immediately.
+
+### Audit scope and banner
+
+`Run audit` from the Audit panel runs the container-free integrity audit only,
+the same analyzers as `govard audit run --checks integrity`. It never needs
+Docker and never touches a container.
+
+The result lists three rows. The integrity row runs; the other two stay
+visible but disabled, never hidden:
+
+| Row | State | Reason shown |
+| :--- | :--- | :--- |
+| `integrity` | Runs | Container-free |
+| `lint` | Disabled | Requires Docker and is not run from the desktop; run `govard audit run --checks lint` from the CLI |
+| `profiler` | Disabled | Requires Docker and is not run from the desktop; run `govard audit run --checks profiler` from the CLI |
+
+A session with no integrity run shows the integrity row disabled with a `Session has no integrity run` reason instead of claiming a run.
+
+The audit banner is yellow (warning) with `Audit: N findings` and a `Run
+audit` button. There is no banner when the audit never ran for this project,
+or when the latest run passed with zero findings. Cancelling an audit
+discards the in-flight result: the analysis may finish in the background, but
+its result is never recorded and the previous banner stays. `Cancel` is also
+available when the run started before the panel did, via the running-operation
+lookup on mount.
 
 ---
 

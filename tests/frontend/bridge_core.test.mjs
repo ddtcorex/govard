@@ -12,12 +12,50 @@ test("every route targets a known service", () => {
     "SettingsService", "OnboardingService", "EnvironmentService", "RemoteService",
     "SystemService", "LogService", "GlobalServiceService", "UpdateService",
     "OperationService",
+    "HealthService",
+    "ToolService", "DBService", "SnapshotService",
   ]);
   for (const [name, [service, method]] of Object.entries(ROUTES)) {
     assert.ok(services.has(service), `${name} routes to unknown service ${service}`);
     assert.match(method, /^[A-Z][A-Za-z]+$/, `${name} has a bad method name`);
   }
-  assert.equal(Object.keys(ROUTES).length, 59);
+  assert.equal(Object.keys(ROUTES).length, 89);
+});
+
+test("health routes reach the HealthService bindings", () => {
+  assert.deepEqual(ROUTES.RunDoctor, ["HealthService", "RunDoctor"]);
+  assert.deepEqual(ROUTES.RunningDoctorOp, ["HealthService", "RunningDoctorOp"]);
+  assert.deepEqual(ROUTES.PreviewDoctorFix, ["HealthService", "PreviewDoctorFix"]);
+  assert.deepEqual(ROUTES.ApplyDoctorFix, ["HealthService", "ApplyDoctorFix"]);
+  assert.deepEqual(ROUTES.RunIntegrityAudit, ["HealthService", "RunIntegrityAudit"]);
+  assert.deepEqual(ROUTES.LastAuditResult, ["HealthService", "LastAuditResult"]);
+  assert.deepEqual(ROUTES.CancelAudit, ["HealthService", "CancelAudit"]);
+  assert.deepEqual(ROUTES.RunningAuditOp, ["HealthService", "RunningAuditOp"]);
+});
+
+test("tool routes reach the ToolService bindings", () => {
+  assert.deepEqual(ROUTES.ListToolPresets, ["ToolService", "ListToolPresets"]);
+  assert.deepEqual(ROUTES.RunTool, ["ToolService", "RunTool"]);
+  assert.deepEqual(ROUTES.CancelToolRun, ["ToolService", "CancelToolRun"]);
+  assert.deepEqual(ROUTES.GetToolHistory, ["ToolService", "GetToolHistory"]);
+});
+
+test("data routes reach the DBService and SnapshotService bindings", () => {
+  assert.deepEqual(ROUTES.GetDBInfo, ["DBService", "GetDBInfo"]);
+  assert.deepEqual(ROUTES.RunDBQuery, ["DBService", "RunDBQuery"]);
+  assert.deepEqual(ROUTES.DumpDB, ["DBService", "DumpDB"]);
+  assert.deepEqual(ROUTES.ImportDB, ["DBService", "ImportDB"]);
+  assert.deepEqual(ROUTES.ListSnapshots, ["SnapshotService", "ListSnapshots"]);
+  assert.deepEqual(ROUTES.CreateSnapshot, ["SnapshotService", "CreateSnapshot"]);
+  assert.deepEqual(ROUTES.ApplySnapshotRestore, ["SnapshotService", "ApplySnapshotRestore"]);
+  assert.deepEqual(ROUTES.CancelSnapshotOp, ["SnapshotService", "CancelSnapshotOp"]);
+});
+
+test("operation routes reach the OperationService bindings", () => {
+  assert.deepEqual(ROUTES.ListOps, ["OperationService", "ListOps"]);
+  assert.deepEqual(ROUTES.ListHistory, ["OperationService", "ListHistory"]);
+  assert.deepEqual(ROUTES.CancelOp, ["OperationService", "CancelOp"]);
+  assert.deepEqual(ROUTES.RetryOp, ["OperationService", "RetryOp"]);
 });
 
 test("renamed routes keep their frontend names", () => {

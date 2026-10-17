@@ -280,7 +280,7 @@ func ClearOperationRegistryMemoryForTest() {
 }
 
 // scrubToolHistoryArgv copies CLI argv with every secret scrubbed through
-// the shared tool-history primitives (see tool_history_scrub_shim.go), so
+// the shared tool-history primitives (see tool_history.go), so
 // the history file and the crash sidecar never store raw secrets. Each
 // element passes through scrubToolHistoryText (secret KEY=value pairs,
 // credentialed-URL userinfo, PEM blocks); additionally a bare secret flag

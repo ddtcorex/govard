@@ -2,12 +2,15 @@ package desktop
 
 import (
 	"context"
+	"crypto/rand"
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
+	"govard/internal/audit"
 	"govard/internal/deploy"
 	"govard/internal/engine"
 
@@ -28,14 +31,36 @@ func ResetStateForTest() {
 	runGovardCommandForDesktop = defaultRunGovardCommandForDesktop
 	runGovardCommandForDesktopWithTimeout = defaultRunGovardCommandForDesktopWithTimeout
 	startGovardCommandForDesktop = defaultStartGovardCommandForDesktop
+	startToolProcess = defaultStartToolProcess
 	validateGitConnectionForDesktop = defaultValidateGitConnectionForDesktop
 	cloneGitRepoForDesktop = defaultCloneGitRepoForDesktop
 	openExternalURLForDesktop = defaultOpenExternalURLForDesktop
+	inspectDBContainerEnvForDesktop = defaultInspectDBContainerEnvForDesktop
+	publishedDBContainerPortForDesktop = defaultPublishedDBContainerPortForDesktop
+	inspectDBContainerIPsForDesktop = defaultInspectDBContainerIPsForDesktop
+	probeReachableDBHostForDesktop = defaultProbeReachableDBHostForDesktop
+	runDBQueryForDesktop = defaultRunDBQueryForDesktop
+	estimateDBSizeForDesktop = defaultEstimateDBSizeForDesktop
+	freeDiskSpaceForDesktop = defaultFreeDiskSpaceForDesktop
+	openDBDumpReaderForDesktop = defaultOpenDBDumpReaderForDesktop
+	openDBImportWriterForDesktop = defaultOpenDBImportWriterForDesktop
+	createDBDumpDestForDesktop = defaultCreateDBDumpDestForDesktop
+	resetDBTransferGens()
 	runGlobalServicesComposeForDesktop = defaultRunGlobalServicesComposeForDesktop
 	ensureGlobalServicesForDesktop = defaultEnsureGlobalServicesForDesktop
 	runHostPortProbeForDesktop = defaultRunHostPortProbeForDesktop
 	chooseSaveFileForDesktop = defaultChooseSaveFileForDesktop
 	writeLogFileForDesktop = defaultWriteLogFileForDesktop
+	chooseOpenFileForDesktop = defaultChooseOpenFileForDesktop
+	resolveSnapshotContextForDesktop = defaultResolveSnapshotContextForDesktop
+	listSnapshotsForDesktop = defaultListSnapshotsForDesktop
+	createSnapshotForDesktop = defaultCreateSnapshotForDesktop
+	restoreSnapshotForDesktop = defaultRestoreSnapshotForDesktop
+	exportSnapshotForDesktop = defaultExportSnapshotForDesktop
+	registerSnapshotOpForDesktop = RegisterOp
+	snapshotRestoreNow = time.Now
+	resetSnapshotRestorePreviews()
+	resetSnapshotOpGens()
 }
 
 // GovardCommandTimeoutForTest exposes the CLI timeout policy for tests.
@@ -718,7 +743,7 @@ func desktopBoolPtr(v bool) *bool {
 
 // AppPlatformsForTest returns the platform held by the App and each service,
 // in the order App, Settings, Onboarding, Environment, Remote, System, Logs,
-// Global, Update.
+// Global, Update, DB, Snapshot.
 func AppPlatformsForTest(app *App) []Platform {
 	return []Platform{
 		app.platform,
@@ -730,6 +755,8 @@ func AppPlatformsForTest(app *App) []Platform {
 		app.Logs.platform,
 		app.Global.platform,
 		app.Update.platform,
+		app.DB.platform,
+		app.Snapshot.platform,
 	}
 }
 
@@ -861,4 +888,582 @@ func BrandTrayForTest(t interface {
 // CancelOp, FinishOp, ListOps) is exported, so no other seams are needed.
 func ResetOperationRegistryForTest() {
 	resetOperationRegistry()
+}
+
+// AgeDoctorPreviewTokensForTest advances every stored preview token's age
+// by the given duration, so expiry tests pin the TTL refusal without
+// sleeping out the real 15-minute window.
+func AgeDoctorPreviewTokensForTest(age time.Duration) {
+	doctorPreviewTokens.Lock()
+	defer doctorPreviewTokens.Unlock()
+	for id, tok := range doctorPreviewTokens.byID {
+		tok.createdAt = tok.createdAt.Add(-age)
+		doctorPreviewTokens.byID[id] = tok
+	}
+}
+
+// SetDoctorRunDiagnosticsForDesktopForTest overrides the doctor engine run
+// behind RunDoctor for the duration of a test and returns a func that
+// restores the real one, so doctor service tests never probe the host.
+func SetDoctorRunDiagnosticsForDesktopForTest(fn func() engine.DoctorReport) func() {
+	previous := doctorRunDiagnosticsForDesktop
+	if fn == nil {
+		doctorRunDiagnosticsForDesktop = func() engine.DoctorReport {
+			return engine.RunDoctorDiagnostics(engine.DoctorDependencies{})
+		}
+	} else {
+		doctorRunDiagnosticsForDesktop = fn
+	}
+	return func() {
+		doctorRunDiagnosticsForDesktop = previous
+	}
+}
+
+// SetDoctorFixExecutorForDesktopForTest overrides the per-check fix
+// executor behind Preview/ApplyDoctorFix for the duration of a test and
+// returns a func that restores the real one, so tests never mutate the
+// host (no mkdir, no docker, no config writes).
+func SetDoctorFixExecutorForDesktopForTest(fn DoctorFixExecutor) func() {
+	previous := doctorFixExecutorForDesktop
+	if fn == nil {
+		doctorFixExecutorForDesktop = defaultDoctorFixExecutor
+	} else {
+		doctorFixExecutorForDesktop = fn
+	}
+	return func() {
+		doctorFixExecutorForDesktop = previous
+	}
+}
+
+// ResetDoctorServiceForTest clears single-use preview tokens so doctor
+// service tests stay hermetic.
+func ResetDoctorServiceForTest() {
+	resetDoctorPreviewTokens()
+}
+
+// SetDoctorRandReadForDesktopForTest overrides the randomness source behind
+// preview-token minting for the duration of a test and returns a func that
+// restores crypto/rand, so minting failures are testable deterministically.
+func SetDoctorRandReadForDesktopForTest(fn func([]byte) (int, error)) func() {
+	previous := doctorRandRead
+	if fn == nil {
+		doctorRandRead = rand.Read
+	} else {
+		doctorRandRead = fn
+	}
+	return func() {
+		doctorRandRead = previous
+	}
+}
+
+// ResetAuditServiceForTest clears the last-result-per-project index so audit
+// service tests stay hermetic.
+func ResetAuditServiceForTest() {
+	resetLastAuditResults()
+}
+
+// SetAuditResolveForDesktopForTest overrides integrity target resolution
+// behind RunIntegrityAudit for the duration of a test and returns a func
+// that restores the real one, so audit service tests never probe the host
+// (no framework detection, no git, no config reads).
+func SetAuditResolveForDesktopForTest(fn func(projectRoot string) (audit.RunRequest, error)) func() {
+	previous := resolveAuditRunRequestForDesktop
+	if fn == nil {
+		resolveAuditRunRequestForDesktop = defaultResolveAuditRunRequest
+	} else {
+		resolveAuditRunRequestForDesktop = fn
+	}
+	return func() {
+		resolveAuditRunRequestForDesktop = previous
+	}
+}
+
+// SetAuditRunnerForDesktopForTest overrides audit runner execution behind
+// RunIntegrityAudit for the duration of a test and returns a func that
+// restores the real one, so tests never run real analyzers.
+func SetAuditRunnerForDesktopForTest(fn func(ctx context.Context, request audit.RunRequest) (audit.RunResult, error)) func() {
+	previous := runAuditRunnerForDesktop
+	if fn == nil {
+		runAuditRunnerForDesktop = defaultRunAuditRunner
+	} else {
+		runAuditRunnerForDesktop = fn
+	}
+	return func() {
+		runAuditRunnerForDesktop = previous
+	}
+}
+
+// SetAuditResultReaderForDesktopForTest overrides persisted-run reads behind
+// GetAuditResult for the duration of a test and returns a func that restores
+// the real store-backed one.
+func SetAuditResultReaderForDesktopForTest(fn func(projectID, sessionID, runID string) (audit.RunResult, error)) func() {
+	previous := readAuditRunResultForDesktop
+	if fn == nil {
+		readAuditRunResultForDesktop = defaultReadAuditRunResult
+	} else {
+		readAuditRunResultForDesktop = fn
+	}
+	return func() {
+		readAuditRunResultForDesktop = previous
+	}
+}
+
+// SetAuditRunListForDesktopForTest overrides the session run listing behind
+// GetAuditDiff for the duration of a test and returns a func that restores
+// the real store-backed one.
+func SetAuditRunListForDesktopForTest(fn func(projectID, sessionID string) ([]string, error)) func() {
+	previous := listAuditRunIDsForDesktop
+	if fn == nil {
+		listAuditRunIDsForDesktop = defaultListAuditRunIDs
+	} else {
+		listAuditRunIDsForDesktop = fn
+	}
+	return func() {
+		listAuditRunIDsForDesktop = previous
+	}
+}
+
+// SetAuditPreRecordHookForDesktopForTest installs a hook that RunIntegrityAudit
+// runs synchronously between its completion check and the banner record (nil
+// in production). Tests use it to deliver CancelAudit deterministically inside
+// that race window without sleeps, proving late completions are discarded.
+func SetAuditPreRecordHookForDesktopForTest(fn func(opID string)) func() {
+	previous := auditPreRecordHookForDesktop
+	auditPreRecordHookForDesktop = fn
+	return func() {
+		auditPreRecordHookForDesktop = previous
+	}
+}
+
+// AuditCancelledSetSizeForTest reports how many cancellation marks the banner
+// index currently holds, so tests can prove the set stays bounded.
+func AuditCancelledSetSizeForTest() int {
+	lastAuditResultsCache.Lock()
+	defer lastAuditResultsCache.Unlock()
+	return len(lastAuditResultsCache.cancelled)
+}
+
+// PlantAuditCancelledMarksForTest inserts stale marks directly (bypassing the
+// insert purge), simulating paths that predate it: unacked ones must be
+// purged on the next insert, won ones must survive. Age is measured back from
+// now.
+func PlantAuditCancelledMarksForTest(unacked, won int, age time.Duration) {
+	lastAuditResultsCache.Lock()
+	defer lastAuditResultsCache.Unlock()
+	at := time.Now().Add(-age)
+	for i := 0; i < unacked; i++ {
+		lastAuditResultsCache.cancelled["audit:stale-unacked-"+strconv.Itoa(i)] = auditCancelledMark{at: at}
+	}
+	for i := 0; i < won; i++ {
+		lastAuditResultsCache.cancelled["audit:stale-won-"+strconv.Itoa(i)] = auditCancelledMark{won: true, at: at}
+	}
+}
+
+// PlantAuditCancelledMarkForOpForTest inserts one mark for an explicit op id
+// (bypassing the insert purge), so tests can arm a stale won mark for exactly
+// the op under test.
+func PlantAuditCancelledMarkForOpForTest(opID string, won bool, age time.Duration) {
+	if opID == "" {
+		return
+	}
+	lastAuditResultsCache.Lock()
+	defer lastAuditResultsCache.Unlock()
+	lastAuditResultsCache.cancelled[opID] = auditCancelledMark{won: won, at: time.Now().Add(-age)}
+}
+
+// SetStartToolProcessForTest replaces the tool-run process spawner for the
+// duration of a test and returns a func that restores the real one, so tool
+// runs never spawn project binaries under test.
+func SetStartToolProcessForTest(fn func(ctx context.Context, dir string, argv []string) (io.Reader, io.Reader, func() error, error)) func() {
+	previous := startToolProcess
+	if fn == nil {
+		startToolProcess = defaultStartToolProcess
+	} else {
+		startToolProcess = fn
+	}
+	return func() {
+		startToolProcess = previous
+	}
+}
+
+// ToolRunTimeoutForTest exposes the tool-run ceiling for tests.
+func ToolRunTimeoutForTest(presetID string) time.Duration {
+	return toolRunTimeout(presetID)
+}
+
+// ScrubToolHistoryArgsForTest exposes history arg scrubbing for tests.
+func ScrubToolHistoryArgsForTest(args map[string]string) map[string]string {
+	return scrubToolHistoryArgs(args)
+}
+
+// AppendToolHistoryLineForTest appends one history entry for a project with
+// the production single-write path, so tests can drive the store with arg
+// shapes (e.g. secret key names) the preset validator would reject at the
+// RunTool gate.
+func AppendToolHistoryLineForTest(project string, entry ToolHistoryEntry) error {
+	root, _, err := resolveProjectRootForRemotes(project)
+	if err != nil {
+		return err
+	}
+	return appendToolHistoryEntryForRoot(root, entry)
+}
+
+// DBWriteConfirmTokenForTest exposes the per-project write confirm token the
+// data tab confirm dialog passes back for a write statement.
+func DBWriteConfirmTokenForTest(project string) string {
+	return dbWriteConfirmToken(project)
+}
+
+// ClassifyDBStatementForTest exposes the read-only statement classifier:
+// the first keyword plus the single-statement rule.
+func ClassifyDBStatementForTest(sql string) (string, bool, error) {
+	return classifyDBStatement(sql)
+}
+
+// SetInspectDBContainerEnvForDesktopForTest overrides docker inspect env
+// sampling in DB discovery.
+func SetInspectDBContainerEnvForDesktopForTest(
+	fn func(container string) (string, error),
+) func() {
+	previous := inspectDBContainerEnvForDesktop
+	if fn == nil {
+		inspectDBContainerEnvForDesktop = defaultInspectDBContainerEnvForDesktop
+	} else {
+		inspectDBContainerEnvForDesktop = fn
+	}
+	return func() {
+		inspectDBContainerEnvForDesktop = previous
+	}
+}
+
+// SetPublishedDBContainerPortForDesktopForTest overrides docker port sampling
+// in DB discovery.
+func SetPublishedDBContainerPortForDesktopForTest(
+	fn func(container string, internalPort string) (string, error),
+) func() {
+	previous := publishedDBContainerPortForDesktop
+	if fn == nil {
+		publishedDBContainerPortForDesktop = defaultPublishedDBContainerPortForDesktop
+	} else {
+		publishedDBContainerPortForDesktop = fn
+	}
+	return func() {
+		publishedDBContainerPortForDesktop = previous
+	}
+}
+
+// SetInspectDBContainerIPsForDesktopForTest overrides docker inspect IP
+// sampling in DB discovery.
+func SetInspectDBContainerIPsForDesktopForTest(
+	fn func(container string) (string, error),
+) func() {
+	previous := inspectDBContainerIPsForDesktop
+	if fn == nil {
+		inspectDBContainerIPsForDesktop = defaultInspectDBContainerIPsForDesktop
+	} else {
+		inspectDBContainerIPsForDesktop = fn
+	}
+	return func() {
+		inspectDBContainerIPsForDesktop = previous
+	}
+}
+
+// SetProbeReachableDBHostForDesktopForTest overrides container-IP reachability
+// probing in DB discovery (the production probe dials TCP).
+func SetProbeReachableDBHostForDesktopForTest(
+	fn func(candidates []string, port string) string,
+) func() {
+	previous := probeReachableDBHostForDesktop
+	if fn == nil {
+		probeReachableDBHostForDesktop = defaultProbeReachableDBHostForDesktop
+	} else {
+		probeReachableDBHostForDesktop = fn
+	}
+	return func() {
+		probeReachableDBHostForDesktop = previous
+	}
+}
+
+// SetEstimateDBSizeForDesktopForTest overrides the dump size estimator. The
+// recording target carries no password by construction.
+func SetEstimateDBSizeForDesktopForTest(fn func(target DBTransferTarget) (int64, error)) func() {
+	previous := estimateDBSizeForDesktop
+	if fn == nil {
+		estimateDBSizeForDesktop = defaultEstimateDBSizeForDesktop
+	} else {
+		estimateDBSizeForDesktop = func(_ context.Context, conn dbConnection) (int64, error) {
+			return fn(conn.transferTarget())
+		}
+	}
+	return func() {
+		estimateDBSizeForDesktop = previous
+	}
+}
+
+// SetFreeDiskSpaceForDesktopForTest overrides the destination free-space probe.
+func SetFreeDiskSpaceForDesktopForTest(fn func(path string) (uint64, error)) func() {
+	previous := freeDiskSpaceForDesktop
+	if fn == nil {
+		freeDiskSpaceForDesktop = defaultFreeDiskSpaceForDesktop
+	} else {
+		freeDiskSpaceForDesktop = fn
+	}
+	return func() {
+		freeDiskSpaceForDesktop = previous
+	}
+}
+
+// SetOpenDBDumpReaderForDesktopForTest overrides dump-side process startup.
+// The recording target carries no password by construction.
+func SetOpenDBDumpReaderForDesktopForTest(
+	fn func(ctx context.Context, target DBTransferTarget) (io.ReadCloser, func() error, error),
+) func() {
+	previous := openDBDumpReaderForDesktop
+	if fn == nil {
+		openDBDumpReaderForDesktop = defaultOpenDBDumpReaderForDesktop
+	} else {
+		openDBDumpReaderForDesktop = func(ctx context.Context, conn dbConnection) (io.ReadCloser, func() error, error) {
+			return fn(ctx, conn.transferTarget())
+		}
+	}
+	return func() {
+		openDBDumpReaderForDesktop = previous
+	}
+}
+
+// SetOpenDBImportWriterForDesktopForTest overrides import-side process
+// startup. The recording target carries no password by construction.
+func SetOpenDBImportWriterForDesktopForTest(
+	fn func(ctx context.Context, target DBTransferTarget) (io.WriteCloser, func() error, error),
+) func() {
+	previous := openDBImportWriterForDesktop
+	if fn == nil {
+		openDBImportWriterForDesktop = defaultOpenDBImportWriterForDesktop
+	} else {
+		openDBImportWriterForDesktop = func(ctx context.Context, conn dbConnection) (io.WriteCloser, func() error, error) {
+			return fn(ctx, conn.transferTarget())
+		}
+	}
+	return func() {
+		openDBImportWriterForDesktop = previous
+	}
+}
+
+// SetCreateDBDumpDestForDesktopForTest overrides the dump destination file
+// creator, so a test can inject a failing writer and pin mid-stream cleanup.
+func SetCreateDBDumpDestForDesktopForTest(fn func(path string) (io.WriteCloser, error)) func() {
+	previous := createDBDumpDestForDesktop
+	if fn == nil {
+		createDBDumpDestForDesktop = defaultCreateDBDumpDestForDesktop
+	} else {
+		createDBDumpDestForDesktop = fn
+	}
+	return func() {
+		createDBDumpDestForDesktop = previous
+	}
+}
+
+// CreateDBDumpDestForTest exposes the dump destination file creator for
+// tests (mode assertions run it unstubbed under a hostile umask).
+func CreateDBDumpDestForTest(path string) (io.WriteCloser, error) {
+	return createDBDumpDestForDesktop(path)
+}
+
+// FormatBytesForTest exposes preflight byte formatting for tests.
+func FormatBytesForTest(bytes int64) string {
+	return formatDBBytes(bytes)
+}
+
+// SniffDBDumpHeaderForTest exposes dump header engine detection for tests.
+func SniffDBDumpHeaderForTest(head []byte) (string, bool) {
+	return sniffDBDumpHead(head)
+}
+
+// BuildDBTransferDockerArgsForTest exposes the secret-free docker argv
+// builder: the password must appear in the env file, never in argv.
+func BuildDBTransferDockerArgsForTest(
+	container string,
+	password string,
+	envName string,
+	script string,
+) ([]string, string, func(), error) {
+	return buildDBTransferDockerArgs(container, password, envName, script)
+}
+
+// BuildDBQueryDockerArgsForTest exposes the ad-hoc query docker argv
+// builder: the password must appear in the env file, never in argv.
+func BuildDBQueryDockerArgsForTest(
+	container string,
+	scheme string,
+	user string,
+	password string,
+	sql string,
+) ([]string, string, func(), error) {
+	return buildDBQueryDockerArgs(dbConnection{
+		container: container,
+		scheme:    scheme,
+		user:      user,
+		password:  password,
+		database:  "appdb",
+	}, sql)
+}
+
+// SniffDBDumpFileForTest exposes the call-time import header check for tests.
+func SniffDBDumpFileForTest(path string) (string, bool, error) {
+	return sniffDBDumpFile(path)
+}
+
+// RevalidateDBImportSourceForTest exposes the op-start import re-validation
+// (re-sniff plus fresh stat from the opened file) for tests.
+func RevalidateDBImportSourceForTest(path string, scheme string) (int64, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, "", err
+	}
+	defer func() { _ = file.Close() }()
+	return revalidateDBImportSourceFile(file, scheme)
+}
+
+// SetRunDBQueryForDesktopForTest overrides ad-hoc query execution. The
+// recording call carries no password by construction.
+func SetRunDBQueryForDesktopForTest(fn func(call DBQueryCall) (string, error)) func() {
+	previous := runDBQueryForDesktop
+	if fn == nil {
+		runDBQueryForDesktop = defaultRunDBQueryForDesktop
+	} else {
+		runDBQueryForDesktop = func(_ context.Context, target dbConnection, sql string) (string, error) {
+			return fn(DBQueryCall{
+				Container: target.container,
+				Scheme:    target.scheme,
+				Host:      target.host,
+				Port:      target.port,
+				Database:  target.database,
+				User:      target.user,
+				SQL:       sql,
+			})
+		}
+	}
+	return func() {
+		runDBQueryForDesktop = previous
+	}
+}
+
+// SetResolveSnapshotContextForDesktopForTest overrides project-to-snapshot
+// root plus config resolution.
+func SetResolveSnapshotContextForDesktopForTest(
+	fn func(project string) (string, engine.Config, error),
+) func() {
+	previous := resolveSnapshotContextForDesktop
+	if fn == nil {
+		resolveSnapshotContextForDesktop = defaultResolveSnapshotContextForDesktop
+	} else {
+		resolveSnapshotContextForDesktop = fn
+	}
+	return func() {
+		resolveSnapshotContextForDesktop = previous
+	}
+}
+
+// SetListSnapshotsForDesktopForTest overrides snapshot listing.
+func SetListSnapshotsForDesktopForTest(
+	fn func(root string) ([]engine.SnapshotMetadata, error),
+) func() {
+	previous := listSnapshotsForDesktop
+	if fn == nil {
+		listSnapshotsForDesktop = defaultListSnapshotsForDesktop
+	} else {
+		listSnapshotsForDesktop = fn
+	}
+	return func() {
+		listSnapshotsForDesktop = previous
+	}
+}
+
+// SetCreateSnapshotForDesktopForTest overrides snapshot creation. The func
+// receives the op context so a test can prove cancellation reaches the
+// engine call instead of being dropped at the seam.
+func SetCreateSnapshotForDesktopForTest(
+	fn func(ctx context.Context, root string, cfg engine.Config, name string) (string, error),
+) func() {
+	previous := createSnapshotForDesktop
+	if fn == nil {
+		createSnapshotForDesktop = defaultCreateSnapshotForDesktop
+	} else {
+		createSnapshotForDesktop = fn
+	}
+	return func() {
+		createSnapshotForDesktop = previous
+	}
+}
+
+// SetRestoreSnapshotForDesktopForTest overrides snapshot restore. The
+// recording target carries no secrets by construction.
+func SetRestoreSnapshotForDesktopForTest(
+	fn func(ctx context.Context, target SnapshotRestoreTarget) error,
+) func() {
+	previous := restoreSnapshotForDesktop
+	if fn == nil {
+		restoreSnapshotForDesktop = defaultRestoreSnapshotForDesktop
+	} else {
+		restoreSnapshotForDesktop = fn
+	}
+	return func() {
+		restoreSnapshotForDesktop = previous
+	}
+}
+
+// SetExportSnapshotForDesktopForTest overrides snapshot export. The func
+// receives the op context so a test can prove cancellation reaches the
+// engine call instead of being dropped at the seam.
+func SetExportSnapshotForDesktopForTest(
+	fn func(ctx context.Context, root string, name string, target string) error,
+) func() {
+	previous := exportSnapshotForDesktop
+	if fn == nil {
+		exportSnapshotForDesktop = defaultExportSnapshotForDesktop
+	} else {
+		exportSnapshotForDesktop = fn
+	}
+	return func() {
+		exportSnapshotForDesktop = previous
+	}
+}
+
+// SetRegisterSnapshotOpForDesktopForTest overrides op registration for
+// snapshot ops, so a test can force the contention path and prove a refused
+// registration consumes no preview token.
+func SetRegisterSnapshotOpForDesktopForTest(
+	fn func(id string, project string, kind string, cancel context.CancelFunc) bool,
+) func() {
+	previous := registerSnapshotOpForDesktop
+	if fn == nil {
+		registerSnapshotOpForDesktop = RegisterOp
+	} else {
+		registerSnapshotOpForDesktop = fn
+	}
+	return func() {
+		registerSnapshotOpForDesktop = previous
+	}
+}
+
+// SetSnapshotRestoreNowForTest overrides the preview-token clock, so a test
+// can age a token past its TTL without sleeping.
+func SetSnapshotRestoreNowForTest(fn func() time.Time) func() {
+	previous := snapshotRestoreNow
+	if fn == nil {
+		snapshotRestoreNow = time.Now
+	} else {
+		snapshotRestoreNow = fn
+	}
+	return func() {
+		snapshotRestoreNow = previous
+	}
+}
+
+// SnapshotRestorePreviewCountForTest exposes the live preview-token count so
+// a test can prove eviction bounds the map.
+func SnapshotRestorePreviewCountForTest() int {
+	snapshotRestorePreviews.Lock()
+	defer snapshotRestorePreviews.Unlock()
+	return len(snapshotRestorePreviews.byToken)
 }

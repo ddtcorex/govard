@@ -54,7 +54,9 @@ Lightweight dashboard highlights:
 - Environment list with start/stop/open
 - Project workspace layout (environments, quick actions, onboarding)
 - Quick actions (PHPMyAdmin, Xdebug toggle, health)
+- Data tab (masked DB info, guarded queries, dump/import, snapshots)
 - Log viewer with service selection and live streaming
+- Tool Runner palette: preset framework commands with streamed output
 - OS Terminal launcher for service shells
 - System tray: show/hide the window, start/stop/open projects, quit
 - Settings drawer (theme, proxy target, preferred browser, run in background)
@@ -64,6 +66,21 @@ Lightweight dashboard highlights:
   at 200 records with restart recovery; at-least-once
   `operations:notification` events). Full behavior is documented in
   `docs/workflows/desktop-app.md` under Operation Center.
+- Health: per-project doctor and audit banners plus Doctor/Audit panels below
+  the mesh snapshot. Doctor fixes are allowlisted (one-click `Fix` for safe
+  checks, `Preview fix` plus confirm for risky ones, no button otherwise);
+  audits run the container-free integrity check only, with the Docker-backed
+  lint/profiler rows shown disabled. Full table and banner meanings live in
+  `docs/workflows/desktop-app.md` under "Health: Doctor and Audit".
+
+The Data tab is read-only by default: ad-hoc queries run only
+`SELECT`-style statements unless the write opt-in plus its per-project
+confirm token (`DBService.GetDBWriteConfirmToken`) travels with the call,
+snapshot restore needs a preview token plus explicit confirm
+(`SnapshotService.PreviewSnapshotRestore` then `ApplySnapshotRestore`),
+and cancel stops desktop tracking while a started restore may run to
+completion. Full behavior, scrubbing guarantees, and disk preflight are
+documented under Data Tab in `docs/workflows/desktop-app.md`.
 
 Frontend file management:
 - `frontend/main.js` bootstrap + wiring
@@ -71,6 +88,60 @@ Frontend file management:
 - `frontend/services/events.js` backend event subscriptions
 - `frontend/bindings/` generated and committed; never edit by hand
 - `frontend/state/store.js` local state
-- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`)
+- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `health`, `tool-palette`, `data-tab`)
 - `frontend/ui/toast.js` notifications
 - `frontend/utils/dom.js` DOM helpers
+
+## Health UX (doctor + integrity audit)
+
+User documentation lives in `docs/workflows/desktop-app.md` ("Health: Doctor
+and Integrity Audit", with a Vietnamese counterpart under `docs/vi/`).
+
+Implementation map:
+
+- Backend: `internal/desktop/doctor_service.go` (fix allowlist, preview
+  tokens), `internal/desktop/audit_service.go` (docker-free integrity run,
+  disabled `lint`/`profiler` rows), `internal/desktop/health_service.go`
+  (`HealthService`, project scoping). The allowlist in `doctor_service.go` is
+  the source of truth for which check IDs get `Fix`, `Preview fix`, or no
+  button; the docs table must match it exactly.
+- Frontend: `frontend/modules/health.js` (banner derivations, per-project
+  scoping, ephemeral preview-token controller state),
+  `frontend/islands/GlobalHealthHeader.tsx` (banners) and
+  `frontend/islands/HealthPanels.tsx` (panels).
+- Routes (`bridge.js` onto `HealthService`): `RunDoctor`,
+  `PreviewDoctorFix`, `ApplyDoctorFix`, `CancelDoctorRun`,
+  `RunIntegrityAudit`, `GetAuditResult`, `GetAuditDiff`, `LastAuditResult`,
+  `CancelAudit`, `RunningAuditOp`. Progress streams on `audit:progress`
+  (see `internal/desktop/events.go`).
+- `frontend/islands/ToolPalette.tsx` Tool Runner palette island
+- `frontend/islands/DataTab.tsx` Data tab island
+- `frontend/ui/toast.js` notifications
+- `frontend/utils/dom.js` DOM helpers
+
+## Tool Runner
+
+The Tool Runner palette (`frontend/islands/ToolPalette.tsx`, helpers in
+`frontend/modules/tool-palette.js`) runs framework tool commands from a
+backend-owned preset allowlist in `internal/desktop/tool_runner.go`. The
+palette sends a preset ID plus an args map only; the exec argv stays
+backend-owned and runs shell-free via `exec.CommandContext` (no shell, no
+`sh -c`, no string joining). Unknown preset IDs are refused before any
+process exists, and args are validated against the preset's `ArgSpec`
+(unknown names, missing required args, values over 256 characters, and
+values outside the arg pattern are rejected).
+
+Presets: `magento-cache-flush`, `magento-cache-clean`,
+`magento-setup-di-compile`, `magento-indexer-reindex` (Magento family);
+`laravel-migrate`, `laravel-cache-clear`, `laravel-config-clear` (Laravel);
+`composer-install`, `npm-install`, `npm-run-build` (all projects). Slow
+presets get the 15-minute ceiling, fast cache clears keep 2 minutes.
+
+One tool run per project at a time; `CancelToolRun` kills the process through
+the op registry and frees the lock. Terminal events (`tool:completed`,
+`tool:failed`) carry the run generation (`OpID`, `Gen`) and apply only when
+current, so a stale receipt never marks the current run. Per-project history
+(50 runs, JSONL under `tool-history/` in the Govard home) scrubs secrets on
+write (secret key names, `KEY=value` pairs, credentialed URLs, PEM blocks);
+scrubbed `***` values are not re-applied by Recent runs. Full details live in
+`docs/workflows/desktop-app.md`.
