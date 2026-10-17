@@ -19,6 +19,10 @@ func (stubPlatform) ChooseSaveFile(SaveFileOptions) (string, error) {
 	return "", errDesktopNotAvailableFn()
 }
 
+func (stubPlatform) ChooseOpenFile(string, string) (string, error) {
+	return "", errDesktopNotAvailableFn()
+}
+
 func (stubPlatform) ShowWindow() {}
 func (stubPlatform) HideWindow() {}
 func (stubPlatform) Quit()       {}

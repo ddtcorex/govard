@@ -3,6 +3,38 @@
 // Regenerate with: node desktop/frontend/scripts/generate-preview-route-defaults.mjs
 
 export const ROUTE_DEFAULTS = {
+  "DBService.CancelDBOp": {
+    "kind": "value",
+    "value": false
+  },
+  "DBService.DumpDB": {
+    "kind": "value",
+    "value": ""
+  },
+  "DBService.GetDBInfo": {
+    "kind": "model",
+    "model": "DBInfo"
+  },
+  "DBService.GetDBWriteConfirmToken": {
+    "kind": "value",
+    "value": ""
+  },
+  "DBService.ImportDB": {
+    "kind": "value",
+    "value": ""
+  },
+  "DBService.PickDumpDestination": {
+    "kind": "model",
+    "model": "FilePick"
+  },
+  "DBService.PickImportSource": {
+    "kind": "value",
+    "value": ""
+  },
+  "DBService.RunDBQuery": {
+    "kind": "model",
+    "model": "DBQueryResult"
+  },
   "EnvironmentService.DeleteProject": {
     "kind": "value",
     "value": ""
@@ -245,6 +277,33 @@ export const ROUTE_DEFAULTS = {
   "SettingsService.UpdateSettings": {
     "kind": "value",
     "value": ""
+  },
+  "SnapshotService.ApplySnapshotRestore": {
+    "kind": "value",
+    "value": ""
+  },
+  "SnapshotService.CancelSnapshotOp": {
+    "kind": "value",
+    "value": false
+  },
+  "SnapshotService.CreateSnapshot": {
+    "kind": "value",
+    "value": ""
+  },
+  "SnapshotService.ExportSnapshot": {
+    "kind": "value",
+    "value": ""
+  },
+  "SnapshotService.ListSnapshots": {
+    "kind": "slice"
+  },
+  "SnapshotService.PickExportDestination": {
+    "kind": "model",
+    "model": "FilePick"
+  },
+  "SnapshotService.PreviewSnapshotRestore": {
+    "kind": "model",
+    "model": "SnapshotRestorePreview"
   },
   "SystemService.GetResourceMetrics": {
     "kind": "value",

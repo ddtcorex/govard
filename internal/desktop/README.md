@@ -6,7 +6,7 @@ seam onto the Wails v3 runtime.
 ## Shape
 
 - `App` is the composition root. It owns the services and the platform, and is
-  NOT bound to the frontend: the eight services are (`boundServices` in
+  NOT bound to the frontend: the ten services are (`boundServices` in
   `run_desktop.go`), plus the operation watcher for its lifecycle alone.
 - Services embed `serviceBase`, which carries the `Platform` and the lifecycle
   context Wails hands to `ServiceStartup` and cancels at shutdown. Services never

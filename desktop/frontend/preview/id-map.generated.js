@@ -71,6 +71,10 @@ export const ID_MAP = {
     "service": "HealthService",
     "method": "GetAuditDiff"
   },
+  "687778518": {
+    "service": "DBService",
+    "method": "GetDBWriteConfirmToken"
+  },
   "697778984": {
     "service": "UpdateService",
     "method": "CheckForUpdates"
@@ -79,9 +83,17 @@ export const ID_MAP = {
     "service": "HealthService",
     "method": "RunIntegrityAudit"
   },
+  "762673893": {
+    "service": "SnapshotService",
+    "method": "ListSnapshots"
+  },
   "773330695": {
     "service": "EnvironmentService",
     "method": "RestartEnvironment"
+  },
+  "856215433": {
+    "service": "SnapshotService",
+    "method": "CancelSnapshotOp"
   },
   "881667841": {
     "service": "UpdateService",
@@ -107,9 +119,17 @@ export const ID_MAP = {
     "service": "GlobalServiceService",
     "method": "StartGlobalServices"
   },
+  "1411286530": {
+    "service": "SnapshotService",
+    "method": "ExportSnapshot"
+  },
   "1457209326": {
     "service": "SystemService",
     "method": "Quit"
+  },
+  "1598817722": {
+    "service": "SnapshotService",
+    "method": "ApplySnapshotRestore"
   },
   "1617905692": {
     "service": "LogService",
@@ -126,6 +146,10 @@ export const ID_MAP = {
   "1788071524": {
     "service": "HealthService",
     "method": "RunDoctor"
+  },
+  "1791321060": {
+    "service": "DBService",
+    "method": "GetDBInfo"
   },
   "1866001717": {
     "service": "EnvironmentService",
@@ -162,6 +186,10 @@ export const ID_MAP = {
   "2261945243": {
     "service": "SystemService",
     "method": "GetSystemMetrics"
+  },
+  "2286866791": {
+    "service": "DBService",
+    "method": "RunDBQuery"
   },
   "2361133561": {
     "service": "SettingsService",
@@ -203,6 +231,10 @@ export const ID_MAP = {
     "service": "RemoteService",
     "method": "RunRemoteSyncInTerminal"
   },
+  "2898025557": {
+    "service": "DBService",
+    "method": "ImportDB"
+  },
   "2927128584": {
     "service": "HealthService",
     "method": "PreviewDoctorFix"
@@ -218,6 +250,10 @@ export const ID_MAP = {
   "3011851361": {
     "service": "SettingsService",
     "method": "ResetSettings"
+  },
+  "3046315352": {
+    "service": "SnapshotService",
+    "method": "CreateSnapshot"
   },
   "3122740469": {
     "service": "LogService",
@@ -251,6 +287,14 @@ export const ID_MAP = {
     "service": "RemoteService",
     "method": "OpenRemoteShell"
   },
+  "3496922531": {
+    "service": "DBService",
+    "method": "PickDumpDestination"
+  },
+  "3506600030": {
+    "service": "DBService",
+    "method": "DumpDB"
+  },
   "3540647888": {
     "service": "EnvironmentService",
     "method": "ToggleEnvironment"
@@ -271,6 +315,10 @@ export const ID_MAP = {
     "service": "LogService",
     "method": "StopGlobalServiceLogStream"
   },
+  "3935980433": {
+    "service": "DBService",
+    "method": "CancelDBOp"
+  },
   "3953136504": {
     "service": "OnboardingService",
     "method": "PickProjectDirectory"
@@ -287,6 +335,10 @@ export const ID_MAP = {
     "service": "ToolService",
     "method": "ListToolPresets"
   },
+  "4112041786": {
+    "service": "SnapshotService",
+    "method": "PreviewSnapshotRestore"
+  },
   "4117557808": {
     "service": "GlobalServiceService",
     "method": "RestartGlobalServices"
@@ -298,6 +350,14 @@ export const ID_MAP = {
   "4143521014": {
     "service": "GlobalServiceService",
     "method": "StartGlobalService"
+  },
+  "4156128259": {
+    "service": "DBService",
+    "method": "PickImportSource"
+  },
+  "4215536221": {
+    "service": "SnapshotService",
+    "method": "PickExportDestination"
   },
   "4265091045": {
     "service": "UpdateService",

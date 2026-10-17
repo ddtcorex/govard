@@ -12,13 +12,13 @@ test("every route targets a known service", () => {
     "SettingsService", "OnboardingService", "EnvironmentService", "RemoteService",
     "SystemService", "LogService", "GlobalServiceService", "UpdateService",
     "HealthService",
-    "ToolService",
+    "ToolService", "DBService", "SnapshotService",
   ]);
   for (const [name, [service, method]] of Object.entries(ROUTES)) {
     assert.ok(services.has(service), `${name} routes to unknown service ${service}`);
     assert.match(method, /^[A-Z][A-Za-z]+$/, `${name} has a bad method name`);
   }
-  assert.equal(Object.keys(ROUTES).length, 70);
+  assert.equal(Object.keys(ROUTES).length, 85);
 });
 
 test("health routes reach the HealthService bindings", () => {
@@ -37,6 +37,17 @@ test("tool routes reach the ToolService bindings", () => {
   assert.deepEqual(ROUTES.RunTool, ["ToolService", "RunTool"]);
   assert.deepEqual(ROUTES.CancelToolRun, ["ToolService", "CancelToolRun"]);
   assert.deepEqual(ROUTES.GetToolHistory, ["ToolService", "GetToolHistory"]);
+});
+
+test("data routes reach the DBService and SnapshotService bindings", () => {
+  assert.deepEqual(ROUTES.GetDBInfo, ["DBService", "GetDBInfo"]);
+  assert.deepEqual(ROUTES.RunDBQuery, ["DBService", "RunDBQuery"]);
+  assert.deepEqual(ROUTES.DumpDB, ["DBService", "DumpDB"]);
+  assert.deepEqual(ROUTES.ImportDB, ["DBService", "ImportDB"]);
+  assert.deepEqual(ROUTES.ListSnapshots, ["SnapshotService", "ListSnapshots"]);
+  assert.deepEqual(ROUTES.CreateSnapshot, ["SnapshotService", "CreateSnapshot"]);
+  assert.deepEqual(ROUTES.ApplySnapshotRestore, ["SnapshotService", "ApplySnapshotRestore"]);
+  assert.deepEqual(ROUTES.CancelSnapshotOp, ["SnapshotService", "CancelSnapshotOp"]);
 });
 
 test("renamed routes keep their frontend names", () => {

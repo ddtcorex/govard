@@ -80,6 +80,22 @@ func (p *wailsPlatform) ChooseSaveFile(opts SaveFileOptions) (string, error) {
 		PromptForSingleSelection()
 }
 
+func (p *wailsPlatform) ChooseOpenFile(title, defaultDir string) (string, error) {
+	app, _ := p.handles()
+	if app == nil {
+		return "", errDesktopNotAvailableFn()
+	}
+	return app.Dialog.OpenFile().
+		CanChooseFiles(true).
+		CanChooseDirectories(false).
+		SetTitle(title).
+		SetDirectory(defaultDir).
+		AddFilter("SQL Dumps (*.sql)", "*.sql").
+		AddFilter("Gzip Files (*.gz)", "*.gz").
+		AddFilter("All Files (*.*)", "*.*").
+		PromptForSingleSelection()
+}
+
 func (p *wailsPlatform) ShowWindow() {
 	if _, w := p.handles(); w != nil {
 		w.Show()

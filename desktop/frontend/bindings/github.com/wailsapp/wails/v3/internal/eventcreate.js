@@ -13,23 +13,33 @@ import * as desktop$0 from "../../../../../govard/internal/desktop/models.js";
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
         "audit:progress": $$createType0,
-        "onboarding:progress": $$createType1,
-        "operations:notification": $$createType2,
-        "sync:progress": $$createType3,
-        "sync:started": $$createType4,
-        "tool:completed": $$createType5,
-        "tool:failed": $$createType5,
-        "tool:output": $$createType6,
+        "db:completed": $$createType1,
+        "db:failed": $$createType2,
+        "db:progress": $$createType3,
+        "onboarding:progress": $$createType4,
+        "operations:notification": $$createType5,
+        "snapshot:completed": $$createType6,
+        "snapshot:failed": $$createType7,
+        "sync:progress": $$createType8,
+        "sync:started": $$createType9,
+        "tool:completed": $$createType10,
+        "tool:failed": $$createType10,
+        "tool:output": $$createType11,
     }));
 }
 
 // Private type creation functions
 const $$createType0 = desktop$0.AuditProgressPayload.createFrom;
-const $$createType1 = desktop$0.OnboardingProgressPayload.createFrom;
-const $$createType2 = desktop$0.OperationNotification.createFrom;
-const $$createType3 = desktop$0.SyncProgressPayload.createFrom;
-const $$createType4 = desktop$0.SyncStartedPayload.createFrom;
-const $$createType5 = desktop$0.ToolResultPayload.createFrom;
-const $$createType6 = desktop$0.ToolOutputPayload.createFrom;
+const $$createType1 = desktop$0.DBTransferCompleted.createFrom;
+const $$createType2 = desktop$0.DBTransferFailed.createFrom;
+const $$createType3 = desktop$0.DBTransferProgress.createFrom;
+const $$createType4 = desktop$0.OnboardingProgressPayload.createFrom;
+const $$createType5 = desktop$0.OperationNotification.createFrom;
+const $$createType6 = desktop$0.SnapshotOpCompleted.createFrom;
+const $$createType7 = desktop$0.SnapshotOpFailed.createFrom;
+const $$createType8 = desktop$0.SyncProgressPayload.createFrom;
+const $$createType9 = desktop$0.SyncStartedPayload.createFrom;
+const $$createType10 = desktop$0.ToolResultPayload.createFrom;
+const $$createType11 = desktop$0.ToolOutputPayload.createFrom;
 
 configure();

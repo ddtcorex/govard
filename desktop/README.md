@@ -53,7 +53,8 @@ Bindings:
 Lightweight dashboard highlights:
 - Environment list with start/stop/open
 - Project workspace layout (environments, quick actions, onboarding)
-- Quick actions (PHPMyAdmin, Xdebug toggle)
+- Quick actions (PHPMyAdmin, Xdebug toggle, health)
+- Data tab (masked DB info, guarded queries, dump/import, snapshots)
 - Log viewer with service selection and live streaming
 - Tool Runner palette: preset framework commands with streamed output
 - OS Terminal launcher for service shells
@@ -66,13 +67,22 @@ Lightweight dashboard highlights:
   lint/profiler rows shown disabled. Full table and banner meanings live in
   `docs/workflows/desktop-app.md` under "Health: Doctor and Audit".
 
+The Data tab is read-only by default: ad-hoc queries run only
+`SELECT`-style statements unless the write opt-in plus its per-project
+confirm token (`DBService.GetDBWriteConfirmToken`) travels with the call,
+snapshot restore needs a preview token plus explicit confirm
+(`SnapshotService.PreviewSnapshotRestore` then `ApplySnapshotRestore`),
+and cancel stops desktop tracking while a started restore may run to
+completion. Full behavior, scrubbing guarantees, and disk preflight are
+documented under Data Tab in `docs/workflows/desktop-app.md`.
+
 Frontend file management:
 - `frontend/main.js` bootstrap + wiring
 - `frontend/services/bridge.js` route table onto the generated bindings
 - `frontend/services/events.js` backend event subscriptions
 - `frontend/bindings/` generated and committed; never edit by hand
 - `frontend/state/store.js` local state
-- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `health`, `tool-palette`)
+- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `health`, `tool-palette`, `data-tab`)
 - `frontend/ui/toast.js` notifications
 - `frontend/utils/dom.js` DOM helpers
 
@@ -99,6 +109,7 @@ Implementation map:
   `CancelAudit`, `RunningAuditOp`. Progress streams on `audit:progress`
   (see `internal/desktop/events.go`).
 - `frontend/islands/ToolPalette.tsx` Tool Runner palette island
+- `frontend/islands/DataTab.tsx` Data tab island
 - `frontend/ui/toast.js` notifications
 - `frontend/utils/dom.js` DOM helpers
 
