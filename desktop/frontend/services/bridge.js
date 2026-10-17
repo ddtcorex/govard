@@ -73,6 +73,10 @@ export const ROUTES = {
   LastAuditResult: ["HealthService", "LastAuditResult"],
   CancelAudit: ["HealthService", "CancelAudit"],
   RunningAuditOp: ["HealthService", "RunningAuditOp"],
+  ListToolPresets: ["ToolService", "ListToolPresets"],
+  RunTool: ["ToolService", "RunTool"],
+  CancelToolRun: ["ToolService", "CancelToolRun"],
+  GetToolHistory: ["ToolService", "GetToolHistory"],
 };
 
 /**
@@ -617,6 +621,28 @@ export const desktopBridge = {
   /**
    * @param {string} project
    */
+  async listToolPresets(project) {
+    return invoke("ListToolPresets", project);
+  },
+  /**
+   * Runs a preset by ID with an args map. The palette never sends argv or a
+   * command line: the exec argv is backend-owned.
+   * @param {string} project
+   * @param {string} presetId
+   * @param {Record<string, string>} [args={}]
+   */
+  async runTool(project, presetId, args = {}) {
+    return invoke("RunTool", project, presetId, args || {});
+  },
+  /**
+   * @param {string} opId
+   */
+  async cancelToolRun(opId) {
+    return invoke("CancelToolRun", opId);
+  },
+  /**
+   * @param {string} project
+   */
   async runIntegrityAudit(project) {
     return invoke("RunIntegrityAudit", project);
   },
@@ -657,6 +683,12 @@ export const desktopBridge = {
    */
   async runningAuditOp(project) {
     return invoke("RunningAuditOp", project);
+  },
+  /**
+   * @param {string} project
+   */
+  async getToolHistory(project) {
+    return invoke("GetToolHistory", project);
   },
   async quit() {
     return invoke("Quit");

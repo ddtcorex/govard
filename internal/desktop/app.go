@@ -17,6 +17,7 @@ type App struct {
 	Global      *GlobalServiceService
 	Update      *UpdateService
 	Health      *HealthService
+	Tool        *ToolService
 
 	// watcher is bound as a service for its lifecycle only: it emits
 	// operations:notification and has no frontend-callable methods.
@@ -43,6 +44,7 @@ func NewApp(opts ...AppOption) *App {
 		Global:      NewGlobalServiceService(),
 		Update:      NewUpdateService(),
 		Health:      NewHealthService(),
+		Tool:        NewToolService(),
 		watcher:     &operationWatcher{},
 	}
 	for _, opt := range opts {
@@ -57,6 +59,7 @@ func NewApp(opts ...AppOption) *App {
 	app.Global.platform = app.platform
 	app.Update.platform = app.platform
 	app.Health.platform = app.platform
+	app.Tool.platform = app.platform
 	app.watcher.platform = app.platform
 	return app
 }

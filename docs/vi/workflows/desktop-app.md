@@ -38,6 +38,7 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 | **Giám sát tài nguyên** | CPU, RAM, mạng, cảnh báo OOM |
 | **Nhật ký (Logs)** | Lọc logs theo dịch vụ, mức độ nghiêm trọng, tìm kiếm text, stream trực tiếp |
 | **Shell Launcher** | Chọn container dịch vụ, user kết nối và loại shell tương ứng |
+| **Tool Runner** | Chạy các lệnh tool theo preset của framework, có stream output (xem bên dưới) |
 | **Thông báo hệ thống** | Hiển thị cảnh báo khi các thao tác thành công hoặc thất bại |
 | **Bảng Cài đặt** | Thay đổi theme giao diện, cấu hình proxy, trình duyệt ưa thích, DB client |
 
@@ -135,6 +136,105 @@ trong lúc chờ, không bao giờ hiện banner của dự án khác.
 | Không có banner doctor | Chưa chạy lần nào, hoặc lượt chạy mới nhất đạt toàn bộ. Chỉ lượt chạy sạch mới tắt được banner cũ |
 | Audit, vàng (`warning`) | Kết quả toàn vẹn mới nhất còn finding (hoặc trạng thái chưa đạt). Banner nêu số finding; panel liệt kê từng finding cùng hai dòng `lint` và `profiler` bị tắt |
 | Không có banner audit | Dự án này chưa audit lần nào, hoặc lượt chạy mới nhất sạch. Các lượt bị hủy hay lỗi không thay thế kết quả hoàn tất gần nhất |
+
+## Tool Runner
+
+Bảng Tool Runner chạy các lệnh tool của framework từ danh sách preset do
+backend sở hữu. Chọn project, chọn preset, điền tham số rồi bấm Run. Output
+được stream vào panel (giữ 2.000 dòng gần nhất, cùng giới hạn với các panel
+log). Dropdown Recent runs nạp lại preset cùng tham số của một lần chạy trước
+(các giá trị đã scrub hiển thị `***` sẽ không được nạp lại). Khi chưa chọn
+project, bảng hiển thị `Select a project to run tools.` và không cho chạy.
+
+Giao diện nằm trong React island `desktop/frontend/islands/ToolPalette.tsx`
+với các helper thuần trong `desktop/frontend/modules/tool-palette.js`. Nó gọi
+Go chỉ qua `services/bridge.js`:
+
+| Wrapper frontend | Route backend |
+| :--- | :--- |
+| `listToolPresets(project)` | `ToolService.ListToolPresets` |
+| `runTool(project, presetId, args)` | `ToolService.RunTool` |
+| `cancelToolRun(opId)` | `ToolService.CancelToolRun` |
+| `getToolHistory(project)` | `ToolService.GetToolHistory` |
+
+Tiến trình chạy được stream qua `tool:output`; kết quả đến qua
+`tool:completed` hoặc `tool:failed`.
+
+### Preset
+
+Preset được định nghĩa trong `internal/desktop/tool_runner.go`. Bảng liệt kê
+các preset theo framework của project đang chọn cộng thêm nhóm generic;
+framework lạ hoặc rỗng chỉ nhận nhóm generic.
+
+| ID preset | Chạy lệnh | Tham số | Áp dụng cho |
+| :--- | :--- | :--- | :--- |
+| `magento-cache-flush` | `bin/magento cache:flush` | `type` (tùy chọn, `^[a-z_]+$`) | Họ Magento |
+| `magento-cache-clean` | `bin/magento cache:clean` | `type` (tùy chọn, `^[a-z_]+$`) | Họ Magento |
+| `magento-setup-di-compile` | `bin/magento setup:di:compile` | không có | Họ Magento |
+| `magento-indexer-reindex` | `bin/magento indexer:reindex` | `indexer` (tùy chọn, `^[a-z_]+$`) | Họ Magento |
+| `laravel-migrate` | `php artisan migrate` | `database` (flag tùy chọn), `force` (flag tùy chọn, `true/false/1/0`) | Laravel |
+| `laravel-cache-clear` | `php artisan cache:clear` | không có | Laravel |
+| `laravel-config-clear` | `php artisan config:clear` | không có | Laravel |
+| `composer-install` | `composer install` | `no-dev` (flag tùy chọn, `true/false/1/0`) | Mọi project |
+| `npm-install` | `npm install` | không có | Mọi project |
+| `npm-run-build` | `npm run build` | không có | Mọi project |
+
+Họ Magento gồm `magento1`, `magento2`, `mageos` và `openmage` (kể cả các alias
+framework đã đăng ký dẫn xuất từ Magento).
+
+Các preset chậm (`magento-setup-di-compile`, `magento-indexer-reindex`,
+`laravel-migrate`, `composer-install`, `npm-install`, `npm-run-build`) chạy
+với trần 15 phút; các lệnh xóa cache nhanh giữ trần mặc định 2 phút. Timeout
+báo rõ thời lượng, và entry history ghi lần chạy là failed (timeout) hoặc
+cancelled (hủy).
+
+### Đảm bảo không shell
+
+Bảng chỉ gửi ID preset kèm map tham số. Argv thực thi do backend sở hữu: ID
+preset lạ bị từ chối trước khi có process nào tồn tại, và tham số được kiểm
+tra theo `ArgSpec` của preset (tên lạ, thiếu tham số bắt buộc, giá trị dài
+quá 256 ký tự và giá trị ngoài pattern của arg đều bị loại; arg không có
+pattern riêng dùng `^[A-Za-z0-9_@+.,:/=-]+$`, loại mọi khoảng trắng và ký tự
+đặc biệt của shell mà không có ngoại lệ quoting). Tham số hợp lệ được ráp vào
+argv của preset theo thứ tự `ArgSpec` (flag thành `--name` hoặc
+`--name=value`), rồi chạy trực tiếp qua `exec.CommandContext`: không shell,
+không `sh -c`, không nối chuỗi, trong mọi trường hợp.
+
+### Đảm bảo hủy (cancel)
+
+Mỗi project chỉ chạy một tool tại một thời điểm. Lần Run thứ hai khi đang có
+lần chạy active bị từ chối với lỗi already-running, và khóa được thả khi chạy
+xong hoặc khi hủy. `CancelToolRun` kill process đang chạy qua op registry và
+thả khóa; hủy một ID không tồn tại hoặc đã xong là no-op vô hại trả về
+`false`, và giá trị trả về đồng bộ chính là xác nhận cho phía gọi hủy.
+
+Sự kiện terminal mang theo generation của lần chạy (`OpID`, `Gen` trong
+`ToolResultPayload`). Bảng chỉ áp dụng receipt `tool:completed` hoặc
+`tool:failed` khi generation của nó vẫn còn hiện hành
+(`IsCurrentToolGeneration` ở backend, `applyToolTerminalEvent` trong
+`modules/tool-palette.js`), và một lần chạy đã kết thúc không bao giờ lật lại
+thành đang chạy. Các batch `tool:output` từ lần chạy đã hủy, đã timeout hoặc
+đã bị thay thế đều bị bỏ, nên rerun nhanh không bao giờ trộn output cũ; còn
+receipt terminal luôn đến để history và trạng thái được chốt.
+
+### Lịch sử và scrub secret
+
+Mỗi lần chạy được duyệt đều ghi vào file history JSONL riêng từng project
+trong thư mục `tool-history/` thuộc Govard home, giữ tối đa 50 lần chạy gần
+nhất (entry cũ nhất bị loại trước). Entry lúc duyệt mang trạng thái `unknown`
+rồi được nâng thành `success`, `failed` hoặc `cancelled` trước khi sự kiện
+terminal phát ra, nên lần chạy mất terminal (crash) đọc là `unknown`, không
+bao giờ là success. Lỗi ghi history không bao giờ làm hỏng lần chạy.
+
+Tham số được scrub ngay khi ghi, nên secret thô không bao giờ chạm tới file:
+giá trị dưới tên key secret (`password`, `passwd`, `passphrase`, `secret`,
+`token`, `apikey`, `accesskey`, `privatekey`, `pwd`, kể cả khớp hậu tố như
+`db-password` hay `apiKey`) thành `***`, và text mang dạng secret (cặp
+`KEY=value`, URL có credential dạng `scheme://user:pass@`, block private-key
+PEM) cũng bị che tương tự. Có một giới hạn: giá trị secret trần đặt dưới tên
+key không phải secret thì không phân biệt được với giá trị vô hại và không bị
+phát hiện, nên chỉ tên key và dạng giá trị mới quyết định việc scrub. File
+được ghi nguyên tử (atomic) với quyền hạn chế.
 
 ---
 

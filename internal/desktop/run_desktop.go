@@ -74,6 +74,7 @@ func (app *App) boundServices() []application.Service {
 		application.NewService(app.Global),
 		application.NewService(app.Update),
 		application.NewService(app.Health),
+		application.NewService(app.Tool),
 		application.NewService(app.watcher),
 	}
 }

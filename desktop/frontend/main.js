@@ -27,6 +27,7 @@ import { GlobalLogsPanel } from "./islands/GlobalLogsPanel.tsx";
 import { GlobalServicesList } from "./islands/GlobalServicesList.tsx";
 import { RemotesList } from "./islands/RemotesList.tsx";
 import { SyncModal } from "./islands/SyncModal.tsx";
+import { ToolPalette } from "./islands/ToolPalette.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
@@ -350,6 +351,8 @@ const selectProject = async (project) => {
     void logsApi.refresh();
   } else if (activeTabId === "remotes") {
     remotesApi.refresh();
+  } else if (activeTabId === "tools") {
+    void toolPaletteApi.refresh();
   }
 };
 
@@ -390,7 +393,7 @@ const switchTab = (tabId) => {
   const tabsInner = byId("tabsHeaderInner");
 
   if (scrollContainer && hero && tabs && tabsInner) {
-    const showHero = ["dashboard", "remotes", "logs"].includes(tabId);
+    const showHero = ["dashboard", "remotes", "logs", "tools"].includes(tabId);
     hero.classList.toggle("hidden", !showHero);
     const showPrimaryTabs = tabId !== "global-services";
 
@@ -408,6 +411,10 @@ const switchTab = (tabId) => {
       setState({ selectedService: "all" });
       refreshServiceSelector();
       void logsApi.refresh();
+    } else if (tabId === "tools") {
+      scrollContainer.classList.remove("overflow-y-auto");
+      scrollContainer.classList.add("overflow-hidden");
+      void toolPaletteApi.refresh();
     } else if (tabId === "global-services") {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
@@ -644,6 +651,24 @@ const remotesIsland = mountIsland(
     onSyncSettled: () => refreshDashboard({ silent: true }),
     registerApi: (api) => {
       remotesApi = api || REMOTES_API_STUB;
+    },
+  }),
+);
+
+// The tools tab is an island over the same seam the logs tab uses: it
+// registers the imperative API main.js still calls on tab switches.
+const TOOL_PALETTE_API_STUB = {
+  refresh: async () => {},
+};
+let toolPaletteApi = TOOL_PALETTE_API_STUB;
+const toolPaletteIsland = mountIsland(
+  "toolPaletteIsland",
+  createElement(ToolPalette, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    registerApi: (api) => {
+      toolPaletteApi = api || TOOL_PALETTE_API_STUB;
     },
   }),
 );

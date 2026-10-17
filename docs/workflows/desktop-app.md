@@ -38,6 +38,7 @@ The desktop focuses on operational essentials:
 | **Resource Monitor** | CPU, RAM, network, OOM hints |
 | **Logs** | Multi-service selection, severity filtering, text search, live streaming |
 | **Shell Launcher** | Service, user, and shell selection |
+| **Tool Runner** | Preset framework tool commands with streamed output (see below) |
 | **System Tray** | Show/hide the window, start/stop/open projects, quit |
 | **Native Notifications** | Operation success/failure alerts |
 | **Settings Drawer** | Theme, proxy target, preferred browser, database client |
@@ -138,6 +139,107 @@ loading or empty meanwhile, never another project's banner.
 | No doctor banner | No report yet, or the latest report passes all checks. A clean re-run is what clears a stale banner |
 | Audit, amber (`warning`) | The latest integrity result has findings (or a non-passed status). The banner names the finding count; the panel lists each finding plus the disabled `lint` and `profiler` rows |
 | No audit banner | No audit ran yet for this project, or the latest run passed clean. Cancelled and failed runs never replace the last completed result |
+
+## Tool Runner
+
+The Tool Runner palette runs framework tool commands from a backend-owned
+preset allowlist. Pick a project, pick a preset, fill its arguments, then Run.
+Output streams into the pane (last 2,000 lines, same cap as the log panes).
+The Recent runs dropdown re-applies a past preset plus its arguments
+(scrubbed values shown as `***` are not re-applied). With no project selected
+the palette shows `Select a project to run tools.` and stays disabled.
+
+The UI lives in the React island `desktop/frontend/islands/ToolPalette.tsx`
+with pure helpers in `desktop/frontend/modules/tool-palette.js`. It talks to
+Go only through `services/bridge.js`:
+
+| Frontend wrapper | Backend route |
+| :--- | :--- |
+| `listToolPresets(project)` | `ToolService.ListToolPresets` |
+| `runTool(project, presetId, args)` | `ToolService.RunTool` |
+| `cancelToolRun(opId)` | `ToolService.CancelToolRun` |
+| `getToolHistory(project)` | `ToolService.GetToolHistory` |
+
+Progress streams on `tool:output`; the outcome arrives on `tool:completed` or
+`tool:failed`.
+
+### Presets
+
+Presets are defined in `internal/desktop/tool_runner.go`. The palette lists
+the framework-scoped presets for the selected project plus the generic set;
+an unknown or empty framework yields the generic set only.
+
+| Preset ID | Runs | Arguments | Applies to |
+| :--- | :--- | :--- | :--- |
+| `magento-cache-flush` | `bin/magento cache:flush` | `type` (optional, `^[a-z_]+$`) | Magento family |
+| `magento-cache-clean` | `bin/magento cache:clean` | `type` (optional, `^[a-z_]+$`) | Magento family |
+| `magento-setup-di-compile` | `bin/magento setup:di:compile` | none | Magento family |
+| `magento-indexer-reindex` | `bin/magento indexer:reindex` | `indexer` (optional, `^[a-z_]+$`) | Magento family |
+| `laravel-migrate` | `php artisan migrate` | `database` (optional flag), `force` (optional flag, `true/false/1/0`) | Laravel |
+| `laravel-cache-clear` | `php artisan cache:clear` | none | Laravel |
+| `laravel-config-clear` | `php artisan config:clear` | none | Laravel |
+| `composer-install` | `composer install` | `no-dev` (optional flag, `true/false/1/0`) | All projects |
+| `npm-install` | `npm install` | none | All projects |
+| `npm-run-build` | `npm run build` | none | All projects |
+
+Magento family covers `magento1`, `magento2`, `mageos` and `openmage`
+(including framework aliases registered as Magento-derived).
+
+Slow presets (`magento-setup-di-compile`, `magento-indexer-reindex`,
+`laravel-migrate`, `composer-install`, `npm-install`, `npm-run-build`) run
+with the 15-minute long ceiling; the fast cache clears keep the 2-minute
+default. A timeout reports its duration, and the history entry records the
+run as failed (timeout) or cancelled (cancel).
+
+### No-shell guarantee
+
+The palette sends a preset ID plus an args map only. The exec argv stays
+backend-owned: unknown preset IDs are refused before any process exists, and
+args are validated against the preset's `ArgSpec` (unknown names, missing
+required args, values over 256 characters, and values outside the arg
+pattern are rejected; args without an explicit pattern use
+`^[A-Za-z0-9_@+.,:/=-]+$`, which rejects whitespace and every shell
+metacharacter with no quoting exemption). Validated args render onto the
+preset argv in `ArgSpec` order (flag args become `--name` or
+`--name=value`), and the result runs via `exec.CommandContext` directly:
+no shell, no `sh -c`, no string joining, ever.
+
+### Cancel guarantee
+
+One tool run per project at a time. A second Run while one is active is
+refused with an already-running error, and the lock is freed on completion
+or cancel. `CancelToolRun` kills the running process through the op registry
+and frees the lock; cancelling an unknown or finished ID is a harmless no-op
+reporting `false`, and the synchronous return value is the cancelling
+caller's confirmation.
+
+Terminal events carry the run generation (`OpID`, `Gen` in
+`ToolResultPayload`). The palette applies a `tool:completed` or `tool:failed`
+receipt only when its generation is still current
+(`IsCurrentToolGeneration` on the backend, `applyToolTerminalEvent` in
+`modules/tool-palette.js`), and a finished run never flips back to running.
+Streamed `tool:output` batches from a cancelled, timed-out, or superseded
+run are dropped, so a fast rerun never mixes tails; the terminal receipt
+itself always arrives so history and status settle.
+
+### History and secret scrubbing
+
+Each admitted run is recorded in a per-project JSONL history file under
+`tool-history/` in the Govard home directory, capped at the most recent 50
+runs (the oldest entries evict first). The admission entry starts as
+`unknown` and is promoted to `success`, `failed`, or `cancelled` before its
+terminal event emits, so a run whose terminal never arrives (crash) reads
+`unknown`, never success. A history failure never fails the run itself.
+
+Args are scrubbed on write, so raw secrets never reach the file: values under
+secret key names (`password`, `passwd`, `passphrase`, `secret`, `token`,
+`apikey`, `accesskey`, `privatekey`, `pwd`, including suffix matches such as
+`db-password` or `apiKey`) become `***`, and secret-shaped value text
+(`KEY=value` pairs, `scheme://user:pass@` credentialed URLs, PEM private-key
+blocks) is masked the same way. One boundary applies: a bare secret value
+under a non-secret key name is indistinguishable from an innocent value and
+is not detectable, so only the key name and the value shape drive scrubbing.
+The file is written atomically with strict permissions.
 
 ---
 

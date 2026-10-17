@@ -59,6 +59,10 @@ export const ID_MAP = {
     "service": "SettingsService",
     "method": "UpdateSettings"
   },
+  "601364668": {
+    "service": "ToolService",
+    "method": "GetToolHistory"
+  },
   "662956515": {
     "service": "EnvironmentService",
     "method": "GetDashboard"
@@ -110,6 +114,10 @@ export const ID_MAP = {
   "1617905692": {
     "service": "LogService",
     "method": "StartLogStreamForService"
+  },
+  "1703122777": {
+    "service": "ToolService",
+    "method": "RunTool"
   },
   "1725097703": {
     "service": "OnboardingService",
@@ -199,6 +207,10 @@ export const ID_MAP = {
     "service": "HealthService",
     "method": "PreviewDoctorFix"
   },
+  "2943280639": {
+    "service": "ToolService",
+    "method": "CancelToolRun"
+  },
   "2944376646": {
     "service": "EnvironmentService",
     "method": "StartEnvironment"
@@ -270,6 +282,10 @@ export const ID_MAP = {
   "4061846439": {
     "service": "HealthService",
     "method": "RunningAuditOp"
+  },
+  "4069163600": {
+    "service": "ToolService",
+    "method": "ListToolPresets"
   },
   "4117557808": {
     "service": "GlobalServiceService",

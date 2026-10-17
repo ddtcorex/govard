@@ -26,6 +26,9 @@ declare module "@wailsio/runtime" {
             "sync:output": string;
             "sync:progress": desktop$0.SyncProgressPayload;
             "sync:started": desktop$0.SyncStartedPayload;
+            "tool:completed": desktop$0.ToolResultPayload;
+            "tool:failed": desktop$0.ToolResultPayload;
+            "tool:output": desktop$0.ToolOutputPayload;
         }
     }
 }

@@ -99,6 +99,16 @@ func ListOps() []OpInfo {
 	return ops
 }
 
+// isOpRegistered reports whether id is currently running. The tool runner's
+// publish stage uses it to drop stream lines from cancelled or superseded
+// ops so a fast rerun never mixes tails.
+func isOpRegistered(id string) bool {
+	operationRegistry.Lock()
+	defer operationRegistry.Unlock()
+	_, ok := operationRegistry.running[id]
+	return ok
+}
+
 // resetOperationRegistry clears running ops. Tests only.
 func resetOperationRegistry() {
 	operationRegistry.Lock()

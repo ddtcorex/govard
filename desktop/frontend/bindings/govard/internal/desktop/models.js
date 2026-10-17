@@ -1742,6 +1742,318 @@ export class SystemMetrics {
 }
 
 /**
+ * ToolArgSpec describes one named argument a tool preset accepts. Pattern is
+ * a full-match regex for the value; empty means the default safe pattern.
+ * An optional arg (Required false) may also be omitted or empty.
+ * Flag renders the arg as a --name option instead of a positional value:
+ * present-empty/true/1 emits --name, false/0 omits it, any other validated
+ * value emits --name=value. Non-flag args render positionally (bare value)
+ * in ArgSpec order, or are omitted when empty.
+ */
+export class ToolArgSpec {
+    /**
+     * Creates a new ToolArgSpec instance.
+     * @param {Partial<ToolArgSpec>} [$$source = {}] - The source object to create the ToolArgSpec.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("label" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["label"] = "";
+        }
+        if (!("required" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["required"] = false;
+        }
+        if (!("pattern" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["pattern"] = "";
+        }
+        if (!("flag" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["flag"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolArgSpec instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolArgSpec}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ToolArgSpec(/** @type {Partial<ToolArgSpec>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolHistoryEntry is one recorded tool run: which op generation ran what,
+ * when, and how it ended. Consumers (palette UI, operation center) attribute
+ * terminal events idempotently keyed on (OpID, Gen).
+ */
+export class ToolHistoryEntry {
+    /**
+     * Creates a new ToolHistoryEntry instance.
+     * @param {Partial<ToolHistoryEntry>} [$$source = {}] - The source object to create the ToolHistoryEntry.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("gen" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["gen"] = 0;
+        }
+        if (!("preset" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["preset"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {{ [_ in string]?: string } | undefined}
+             */
+            this["args"] = undefined;
+        }
+        if (!("timestamp" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["timestamp"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("outcome" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["outcome"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolHistoryEntry instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolHistoryEntry}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType11;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("args" in $$parsedSource) {
+            $$parsedSource["args"] = $$createField3_0($$parsedSource["args"]);
+        }
+        return new ToolHistoryEntry(/** @type {Partial<ToolHistoryEntry>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolOutputPayload tags one streamed tool:output batch with its op so the
+ * palette can attribute lines when runs overlap, and the publish stage can
+ * drop batches from an op that is no longer current for the project.
+ */
+export class ToolOutputPayload {
+    /**
+     * Creates a new ToolOutputPayload instance.
+     * @param {Partial<ToolOutputPayload>} [$$source = {}] - The source object to create the ToolOutputPayload.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("text" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["text"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolOutputPayload instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolOutputPayload}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ToolOutputPayload(/** @type {Partial<ToolOutputPayload>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolPreset is one allowlisted tool invocation the desktop may run.
+ * Display is the human-readable form of the base command, never executed.
+ * Argv is the exec-ready base argv (no shell metacharacters by
+ * construction); Task 2 appends validated args and runs it with exec.Command
+ * and no shell.
+ */
+export class ToolPreset {
+    /**
+     * Creates a new ToolPreset instance.
+     * @param {Partial<ToolPreset>} [$$source = {}] - The source object to create the ToolPreset.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("label" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["label"] = "";
+        }
+        if (!("display" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["display"] = "";
+        }
+        if (!("argv" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["argv"] = [];
+        }
+        if (!("argSpec" in $$source)) {
+            /**
+             * @member
+             * @type {ToolArgSpec[]}
+             */
+            this["argSpec"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolPreset instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolPreset}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        const $$createField4_0 = $$createType17;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("argv" in $$parsedSource) {
+            $$parsedSource["argv"] = $$createField3_0($$parsedSource["argv"]);
+        }
+        if ("argSpec" in $$parsedSource) {
+            $$parsedSource["argSpec"] = $$createField4_0($$parsedSource["argSpec"]);
+        }
+        return new ToolPreset(/** @type {Partial<ToolPreset>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolResultPayload is the tool:completed / tool:failed event payload: which
+ * op finished and how it ended. Gen is the admitted-run generation for the
+ * project lock: OpIDs are stable per project across reruns, so consumers
+ * apply a terminal event only when its Gen is still current (see
+ * IsCurrentToolGeneration); stale dead-run receipts are dropped, never
+ * allowed to mark the current run failed.
+ */
+export class ToolResultPayload {
+    /**
+     * Creates a new ToolResultPayload instance.
+     * @param {Partial<ToolResultPayload>} [$$source = {}] - The source object to create the ToolResultPayload.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("preset" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["preset"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (!("gen" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["gen"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolResultPayload instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolResultPayload}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ToolResultPayload(/** @type {Partial<ToolResultPayload>} */($$parsedSource));
+    }
+}
+
+/**
  * TrayStatus tells the Settings page whether "run in background" can actually
  * hide the window, which needs a tray to bring it back.
  */
@@ -1957,7 +2269,7 @@ export class presetSyncOptions {
      * @returns {presetSyncOptions}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType17;
+        const $$createField2_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("options" in $$parsedSource) {
             $$parsedSource["options"] = $$createField2_0($$parsedSource["options"]);
@@ -1983,5 +2295,7 @@ const $$createType12 = GlobalService.createFrom;
 const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = RemoteEntry.createFrom;
 const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = presetOptionDef.createFrom;
+const $$createType16 = ToolArgSpec.createFrom;
 const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = presetOptionDef.createFrom;
+const $$createType19 = $Create.Array($$createType18);
