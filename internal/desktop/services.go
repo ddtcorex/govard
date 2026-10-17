@@ -50,6 +50,17 @@ func NewSystemService() *SystemService {
 	return &SystemService{serviceBase: serviceBase{platform: newDefaultPlatform()}}
 }
 
+// HealthService exposes the doctor + audit health UX: runs, per-check
+// fixes (safe 1-click, risky preview-gated), integrity audit results, and
+// the persisted banner index. See health_service.go.
+type HealthService struct {
+	serviceBase
+}
+
+func NewHealthService() *HealthService {
+	return &HealthService{serviceBase: serviceBase{platform: newDefaultPlatform()}}
+}
+
 // LogService handles log streaming and terminal sessions.
 type LogService struct {
 	serviceBase

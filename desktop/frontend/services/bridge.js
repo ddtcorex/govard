@@ -62,6 +62,16 @@ export const ROUTES = {
   SetUpdateChannel: ["UpdateService", "SetUpdateChannel"],
   InstallLatestUpdate: ["UpdateService", "InstallLatestUpdate"],
   RestartDesktopApp: ["UpdateService", "RestartDesktopApp"],
+  RunDoctor: ["HealthService", "RunDoctor"],
+  PreviewDoctorFix: ["HealthService", "PreviewDoctorFix"],
+  ApplyDoctorFix: ["HealthService", "ApplyDoctorFix"],
+  CancelDoctorRun: ["HealthService", "CancelDoctorRun"],
+  RunIntegrityAudit: ["HealthService", "RunIntegrityAudit"],
+  GetAuditResult: ["HealthService", "GetAuditResult"],
+  GetAuditDiff: ["HealthService", "GetAuditDiff"],
+  LastAuditResult: ["HealthService", "LastAuditResult"],
+  CancelAudit: ["HealthService", "CancelAudit"],
+  RunningAuditOp: ["HealthService", "RunningAuditOp"],
 };
 
 /**
@@ -565,6 +575,75 @@ export const desktopBridge = {
   },
   async restartDesktopApp() {
     return invoke("RestartDesktopApp");
+  },
+  async runDoctor() {
+    return invoke("RunDoctor");
+  },
+  /**
+   * @param {string} project
+   * @param {string} checkID
+   */
+  async previewDoctorFix(project, checkID) {
+    return invoke("PreviewDoctorFix", project, checkID);
+  },
+  /**
+   * @param {string} project
+   * @param {string} checkID
+   * @param {string} previewID
+   * @param {boolean} confirm
+   */
+  async applyDoctorFix(project, checkID, previewID, confirm) {
+    return invoke("ApplyDoctorFix", project, checkID, previewID, Boolean(confirm));
+  },
+  /**
+   * @param {string} opID
+   */
+  async cancelDoctorRun(opID) {
+    return invoke("CancelDoctorRun", opID);
+  },
+  /**
+   * @param {string} project
+   */
+  async runIntegrityAudit(project) {
+    return invoke("RunIntegrityAudit", project);
+  },
+  /**
+   * @param {string} projectID
+   * @param {string} sessionID
+   * @param {string} runID
+   */
+  async getAuditResult(projectID, sessionID, runID) {
+    return invoke("GetAuditResult", projectID, sessionID, runID);
+  },
+  /**
+   * @param {string} projectID
+   * @param {string} sessionID
+   * @param {string} fromRunID
+   * @param {string} toRunID
+   */
+  async getAuditDiff(projectID, sessionID, fromRunID, toRunID) {
+    return invoke("GetAuditDiff", projectID, sessionID, fromRunID, toRunID);
+  },
+  /**
+   * @param {string} project
+   */
+  async lastAuditResult(project) {
+    return invoke("LastAuditResult", project);
+  },
+  /**
+   * @param {string} opID
+   */
+  async cancelAudit(opID) {
+    return invoke("CancelAudit", opID);
+  },
+  /**
+   * The in-flight integrity-audit op id for a project scope, or "" when
+   * none is running. The health panel queries it on mount so Cancel is
+   * available even when the run started before the panel did.
+   * @param {string} project
+   */
+  async runningAuditOp(project) {
+    return invoke("RunningAuditOp", project);
   },
   async quit() {
     return invoke("Quit");

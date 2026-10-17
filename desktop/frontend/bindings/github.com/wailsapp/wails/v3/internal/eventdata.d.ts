@@ -12,6 +12,7 @@ import type * as desktop$0 from "../../../../../govard/internal/desktop/models.j
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "audit:progress": desktop$0.AuditProgressPayload;
             "global-logs:error": string;
             "global-logs:line": string;
             "global-logs:status": string;

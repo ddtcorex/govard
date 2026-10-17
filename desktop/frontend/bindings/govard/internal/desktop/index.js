@@ -4,6 +4,7 @@
 
 import * as EnvironmentService from "./environmentservice.js";
 import * as GlobalServiceService from "./globalserviceservice.js";
+import * as HealthService from "./healthservice.js";
 import * as LogService from "./logservice.js";
 import * as OnboardingService from "./onboardingservice.js";
 import * as RemoteService from "./remoteservice.js";
@@ -13,6 +14,7 @@ import * as UpdateService from "./updateservice.js";
 export {
     EnvironmentService,
     GlobalServiceService,
+    HealthService,
     LogService,
     OnboardingService,
     RemoteService,
@@ -22,8 +24,18 @@ export {
 };
 
 export {
+    AuditCheckView,
+    AuditDiffView,
+    AuditFindingView,
+    AuditProgressPayload,
+    AuditResultView,
     Dashboard,
     DesktopSettings,
+    DoctorCheckView,
+    DoctorFixKind,
+    DoctorFixOutcome,
+    DoctorFixPreview,
+    DoctorReportView,
     Environment,
     FrameworkOption,
     GlobalService,

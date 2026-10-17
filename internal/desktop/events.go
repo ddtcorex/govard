@@ -17,6 +17,7 @@ const (
 	EventSyncCompleted          = "sync:completed"
 	EventOnboardingProgress     = "onboarding:progress"
 	EventOperationsNotification = "operations:notification"
+	EventAuditProgress          = "audit:progress"
 )
 
 // SyncStartedPayload replaces the map[string]string sync:started payload with
