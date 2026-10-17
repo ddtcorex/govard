@@ -62,6 +62,18 @@ export const ROUTES = {
   SetUpdateChannel: ["UpdateService", "SetUpdateChannel"],
   InstallLatestUpdate: ["UpdateService", "InstallLatestUpdate"],
   RestartDesktopApp: ["UpdateService", "RestartDesktopApp"],
+  DeployPlan: ["DeployService", "DeployPlan"],
+  DeployCheck: ["DeployService", "DeployCheck"],
+  DeployStatus: ["DeployService", "DeployStatus"],
+  ListReleases: ["DeployService", "ListReleases"],
+  PreviewRollback: ["DeployService", "PreviewRollback"],
+  ApplyRollback: ["DeployService", "ApplyRollback"],
+  PreviewSandboxUp: ["DeployService", "PreviewSandboxUp"],
+  SandboxUp: ["DeployService", "SandboxUp"],
+  PreviewSandboxDown: ["DeployService", "PreviewSandboxDown"],
+  SandboxDown: ["DeployService", "SandboxDown"],
+  SandboxSSHinfo: ["DeployService", "SandboxSSHinfo"],
+  OpenSandboxSSHInTerminal: ["DeployService", "OpenSandboxSSHInTerminal"],
 };
 
 /**
@@ -565,6 +577,103 @@ export const desktopBridge = {
   },
   async restartDesktopApp() {
     return invoke("RestartDesktopApp");
+  },
+  /**
+   * Read-only deploy surface (M1): plan, check, status and releases for one
+   * remote of one project. The M2 mutating calls below stay behind their own
+   * preview token plus explicit confirm: no apply runs without both.
+   * @param {string} project
+   * @param {string} remote
+   */
+  async deployPlan(project, remote) {
+    return invoke("DeployPlan", project, remote);
+  },
+  /**
+   * @param {string} project
+   * @param {string} remote
+   */
+  async deployCheck(project, remote) {
+    return invoke("DeployCheck", project, remote);
+  },
+  /**
+   * @param {string} project
+   * @param {string} remote
+   */
+  async deployStatus(project, remote) {
+    return invoke("DeployStatus", project, remote);
+  },
+  /**
+   * @param {string} project
+   * @param {string} remote
+   */
+  async listReleases(project, remote) {
+    return invoke("ListReleases", project, remote);
+  },
+  /**
+   * Mutating deploy surface (M2). Each preview mints a single-use token for
+   * exactly the swap or container it describes; each apply spends that token
+   * and additionally requires an explicit confirm flag. Tokens expire after
+   * 15 minutes; a stale or foreign token is refused before any engine call.
+   * @param {string} project
+   * @param {string} remote
+   * @param {string} to
+   */
+  async previewRollback(project, remote, to) {
+    return invoke("PreviewRollback", project, remote, to);
+  },
+  /**
+   * @param {string} project
+   * @param {string} token
+   * @param {boolean} confirm
+   */
+  async applyRollback(project, token, confirm) {
+    return invoke("ApplyRollback", project, token, Boolean(confirm));
+  },
+  /**
+   * @param {string} project
+   * @param {string} profile
+   * @param {boolean} recreate
+   */
+  async previewSandboxUp(project, profile, recreate) {
+    return invoke("PreviewSandboxUp", project, profile, Boolean(recreate));
+  },
+  /**
+   * @param {string} project
+   * @param {string} token
+   * @param {boolean} confirm
+   */
+  async sandboxUp(project, token, confirm) {
+    return invoke("SandboxUp", project, token, Boolean(confirm));
+  },
+  /**
+   * @param {string} project
+   * @param {boolean} purge
+   * @param {boolean} volumes
+   */
+  async previewSandboxDown(project, purge, volumes) {
+    return invoke("PreviewSandboxDown", project, Boolean(purge), Boolean(volumes));
+  },
+  /**
+   * @param {string} project
+   * @param {string} token
+   * @param {boolean} confirm
+   */
+  async sandboxDown(project, token, confirm) {
+    return invoke("SandboxDown", project, token, Boolean(confirm));
+  },
+  /**
+   * Read-only sandbox connection facts (key path, never key material).
+   * @param {string} project
+   */
+  async sandboxSSHinfo(project) {
+    return invoke("SandboxSSHinfo", project);
+  },
+  /**
+   * Opens the sandbox shell in the OS terminal; no embedded terminal.
+   * @param {string} project
+   */
+  async openSandboxSSHInTerminal(project) {
+    return invoke("OpenSandboxSSHInTerminal", project);
   },
   async quit() {
     return invoke("Quit");

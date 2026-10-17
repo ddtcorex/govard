@@ -25,6 +25,7 @@ import { OnboardingModal } from "./islands/OnboardingModal.tsx";
 import { GlobalLogsPanel } from "./islands/GlobalLogsPanel.tsx";
 import { GlobalServicesList } from "./islands/GlobalServicesList.tsx";
 import { RemotesList } from "./islands/RemotesList.tsx";
+import { DeployPanel } from "./islands/DeployPanel.tsx";
 import { SyncModal } from "./islands/SyncModal.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
@@ -389,7 +390,7 @@ const switchTab = (tabId) => {
   const tabsInner = byId("tabsHeaderInner");
 
   if (scrollContainer && hero && tabs && tabsInner) {
-    const showHero = ["dashboard", "remotes", "logs"].includes(tabId);
+    const showHero = ["dashboard", "remotes", "logs", "deploy"].includes(tabId);
     hero.classList.toggle("hidden", !showHero);
     const showPrimaryTabs = tabId !== "global-services";
 
@@ -407,6 +408,10 @@ const switchTab = (tabId) => {
       setState({ selectedService: "all" });
       refreshServiceSelector();
       void logsApi.refresh();
+    } else if (tabId === "deploy") {
+      scrollContainer.classList.add("overflow-y-auto");
+      scrollContainer.classList.remove("overflow-hidden");
+      void deployApi.refresh({ silent: true });
     } else if (tabId === "global-services") {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
@@ -635,6 +640,27 @@ const remotesIsland = mountIsland(
     onSyncSettled: () => refreshDashboard({ silent: true }),
     registerApi: (api) => {
       remotesApi = api || REMOTES_API_STUB;
+    },
+  }),
+);
+
+// The deploy tab is a read-only island over the DeployService routes: releases,
+// status and plan/check panes for the picked remote. It registers the same
+// refresh API shape the other tabs use, so tab switches and dashboard refreshes
+// reach it without a second fetch path.
+const DEPLOY_API_STUB = {
+  refresh: async () => {},
+};
+let deployApi = DEPLOY_API_STUB;
+
+const deployIsland = mountIsland(
+  "deployIsland",
+  createElement(DeployPanel, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    registerApi: (api) => {
+      deployApi = api || DEPLOY_API_STUB;
     },
   }),
 );
@@ -1159,6 +1185,7 @@ window.addEventListener("beforeunload", () => {
   activeServicesIsland?.unmount();
   envVarsIsland?.unmount();
   remotesIsland?.unmount();
+  deployIsland?.unmount();
   syncModalIsland?.unmount();
   globalHealthIsland?.unmount();
   globalServicesListIsland?.unmount();

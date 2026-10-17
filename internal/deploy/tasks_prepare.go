@@ -377,10 +377,16 @@ func CheckRepositoryReachableForTest(ctx context.Context, sc *StepContext) error
 // being empty, and the litter would make the next run see a pre-existing deploy
 // path that nothing will ever remove. It only ever names this probe's own two
 // paths, so running it on the failure path removes nothing of the target's.
+// ProbeMarker is the filename fragment the atomic-rename probe writes with
+// and the desktop probe observer matches on. It lives here, not as a literal
+// on each side, so neither the engine nor the observer can drift to a name
+// the other no longer recognises.
+const ProbeMarker = ".govard-mvprobe"
+
 func probeAtomicRename(ctx context.Context, sc *StepContext) error {
 	probeDir := path.Join(sc.Host.DeployPath, ".dep")
-	link := path.Join(probeDir, ".govard-mvprobe.link")
-	target := path.Join(probeDir, ".govard-mvprobe.target")
+	link := path.Join(probeDir, ProbeMarker+".link")
+	target := path.Join(probeDir, ProbeMarker+".target")
 	// $p is the nearest existing ancestor of the deploy path, found before
 	// anything is created. On a fresh host `mkdir -p` makes every level between
 	// it and the deploy path, so the cleanup walks back up from the deploy path

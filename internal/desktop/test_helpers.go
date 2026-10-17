@@ -28,6 +28,22 @@ func ResetStateForTest() {
 	runGovardCommandForDesktop = defaultRunGovardCommandForDesktop
 	runGovardCommandForDesktopWithTimeout = defaultRunGovardCommandForDesktopWithTimeout
 	startGovardCommandForDesktop = defaultStartGovardCommandForDesktop
+	_ = SetDeployHostResolverForTest(nil)
+	_ = SetDeployListReleasesForTest(nil)
+	_ = SetDeployLiveReleaseForTest(nil)
+	_ = SetDeployPublishStrategyForTest(nil)
+	_ = SetDeployCoreCheckForTest(nil)
+	_ = SetDeployTimeoutsForTest(defaultDeployPlanTimeout, defaultDeployReadTimeout)
+	_ = SetDeployMutateTimeoutForTest(defaultDeployMutateTimeout)
+	_ = SetDeploySelectRollbackTargetForTest(nil)
+	_ = SetDeployRunStepForTest(nil)
+	_ = SetDeployExecutorRunForTest(nil)
+	_ = SetDeploySandboxRuntimeForTest(nil)
+	_ = SetDeploySandboxProbeForTest(nil)
+	_ = SetLaunchInTerminalForTest(nil)
+	_ = SetDeployPreviewTTLForTest(defaultDeployPreviewTTL)
+	_ = SetDeployPreviewRandForTest(nil)
+	resetDeployPreviewTokens()
 	validateGitConnectionForDesktop = defaultValidateGitConnectionForDesktop
 	cloneGitRepoForDesktop = defaultCloneGitRepoForDesktop
 	openExternalURLForDesktop = defaultOpenExternalURLForDesktop

@@ -19,6 +19,10 @@ export const ID_MAP = {
     "service": "GlobalServiceService",
     "method": "RestartGlobalService"
   },
+  "268284666": {
+    "service": "DeployService",
+    "method": "SandboxDown"
+  },
   "273718460": {
     "service": "EnvironmentService",
     "method": "QuickAction"
@@ -30,6 +34,10 @@ export const ID_MAP = {
   "410454013": {
     "service": "EnvironmentService",
     "method": "PullEnvironment"
+  },
+  "429136164": {
+    "service": "DeployService",
+    "method": "PreviewSandboxDown"
   },
   "436647391": {
     "service": "LogService",
@@ -43,6 +51,10 @@ export const ID_MAP = {
     "service": "RemoteService",
     "method": "RunRemoteSync"
   },
+  "516940333": {
+    "service": "DeployService",
+    "method": "ListReleases"
+  },
   "555268093": {
     "service": "SettingsService",
     "method": "UpdateSettings"
@@ -54,6 +66,10 @@ export const ID_MAP = {
   "697778984": {
     "service": "UpdateService",
     "method": "CheckForUpdates"
+  },
+  "711916983": {
+    "service": "DeployService",
+    "method": "DeployPlan"
   },
   "773330695": {
     "service": "EnvironmentService",
@@ -75,9 +91,21 @@ export const ID_MAP = {
     "service": "GlobalServiceService",
     "method": "GetGlobalServices"
   },
+  "954604761": {
+    "service": "DeployService",
+    "method": "PreviewRollback"
+  },
   "1098421658": {
     "service": "SettingsService",
     "method": "GetMailpitURL"
+  },
+  "1205243988": {
+    "service": "DeployService",
+    "method": "SandboxSSHinfo"
+  },
+  "1278191521": {
+    "service": "DeployService",
+    "method": "ApplyRollback"
   },
   "1328014687": {
     "service": "GlobalServiceService",
@@ -86,6 +114,10 @@ export const ID_MAP = {
   "1457209326": {
     "service": "SystemService",
     "method": "Quit"
+  },
+  "1499988748": {
+    "service": "DeployService",
+    "method": "DeployCheck"
   },
   "1617905692": {
     "service": "LogService",
@@ -98,6 +130,10 @@ export const ID_MAP = {
   "1866001717": {
     "service": "EnvironmentService",
     "method": "DeleteProject"
+  },
+  "1905749015": {
+    "service": "DeployService",
+    "method": "OpenSandboxSSHInTerminal"
   },
   "1906961010": {
     "service": "GlobalServiceService",
@@ -167,6 +203,10 @@ export const ID_MAP = {
     "service": "SettingsService",
     "method": "ResetSettings"
   },
+  "3119630094": {
+    "service": "DeployService",
+    "method": "DeployStatus"
+  },
   "3122740469": {
     "service": "LogService",
     "method": "GetGlobalServiceLogs"
@@ -178,6 +218,10 @@ export const ID_MAP = {
   "3206548853": {
     "service": "RemoteService",
     "method": "RunRemoteSyncPreset"
+  },
+  "3304083807": {
+    "service": "DeployService",
+    "method": "SandboxUp"
   },
   "3326070746": {
     "service": "LogService",
@@ -214,6 +258,10 @@ export const ID_MAP = {
   "3743652420": {
     "service": "EnvironmentService",
     "method": "StopEnvironment"
+  },
+  "3757020869": {
+    "service": "DeployService",
+    "method": "PreviewSandboxUp"
   },
   "3830432576": {
     "service": "LogService",

@@ -398,66 +398,10 @@ func hooksFromConfig(configs []engine.DeployHookConfig) ([]deploy.Hook, error) {
 }
 
 // deployVars builds the variable set available to recipe commands and hooks.
+// The mapping lives in deploy.VarsFor so the CLI and the desktop apply paths
+// expand steps identically; this wrapper keeps the call sites unchanged.
 func deployVars(host deploy.Host, options deploy.Options) deploy.Vars {
-	vars := deploy.NewVars().
-		SetPath("release_path", "").
-		SetPath("previous_release", "").
-		SetPath("deploy_path", host.DeployPath).
-		SetPath("current_path", host.CurrentPath).
-		SetPath("shared_path", host.SharedPath()).
-		SetPath("repo_path", host.RepoPath()).
-		Set("release", "").
-		Set("branch", options.Branch).
-		Set("revision", options.Revision).
-		Set("tag", options.Tag).
-		Set("verify_url", options.VerifyURL)
-
-	// SetRaw with the words already quoted: a configured wrapper of several
-	// words has to reach the command as several words, and a value carrying shell
-	// syntax must stay inert. The probes render the same value through the same
-	// helper, so `deploy:check` tests the binary the recipe runs.
-	vars = vars.SetRaw("php_bin", deploy.CommandWords(options.Settings, "php_bin", "php"))
-	vars = vars.SetRaw("composer_bin", deploy.CommandWords(options.Settings, "composer_bin", "composer"))
-	for key, value := range options.Settings {
-		if text, ok := deploy.SettingText(value); ok {
-			vars = vars.Set("settings."+key, text)
-		}
-	}
-	// Argument lists and shell fragments are substituted verbatim: quoting an
-	// argument list collapses several arguments into one, and quoting a command
-	// turns `npm ci && npm run build` into a single word the shell cannot find.
-	// Which settings are fragments is the recipe's declaration, carried on the
-	// options (see SettingCommand).
-	for key, value := range options.Settings {
-		text, ok := deploy.SettingText(value)
-		if !ok {
-			continue
-		}
-		switch {
-		case strings.HasSuffix(key, "_args"):
-			// An argument list renders to nothing when it is empty, because it
-			// is appended to a command that already has its own arguments.
-			vars = vars.SetRaw("settings."+key, text)
-		case options.RawSettings[key]:
-			// A shell fragment is substituted verbatim, and an empty one becomes
-			// `true`: rendering nothing at all leaves `cmd && ` behind, which is
-			// a syntax error, and `''` is a command the shell cannot find.
-			if strings.TrimSpace(text) == "" {
-				text = "true"
-			}
-			vars = vars.SetRaw("settings."+key, text)
-		}
-	}
-	// Deployer's content version was a timestamp, which busts every browser
-	// cache on every deploy. The revision is deterministic: a retry or a resume
-	// of the same revision writes the same static URLs, and a new revision
-	// still changes them. A project can still override it.
-	if text, ok := options.Settings["content_version"].(string); ok && strings.TrimSpace(text) == "" {
-		// Short, per spec 10.4: readable in an asset URL, and still different
-		// for every revision so a deploy busts caches exactly once.
-		vars = vars.Set("settings.content_version", deploy.ShortRevision(options.Revision))
-	}
-	return vars
+	return deploy.VarsFor(host, options)
 }
 
 // DeployVarsForTest exposes deployVars to the tests/ package.
