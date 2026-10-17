@@ -11,6 +11,7 @@ type Platform interface {
 	OpenURL(url string) error
 	ChooseDirectory(title, defaultDir string) (string, error)
 	ChooseSaveFile(opts SaveFileOptions) (string, error)
+	ChooseOpenFile(title, defaultDir string) (string, error)
 	ShowWindow()
 	HideWindow()
 	Quit()

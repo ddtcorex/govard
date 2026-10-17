@@ -30,6 +30,15 @@ func govardCommandTimeout(args []string) time.Duration {
 	switch strings.TrimSpace(args[0]) {
 	case "up", "bootstrap":
 		return govardCommandLongTimeout
+	case "db":
+		// Desktop database transfers stream whole dumps through docker exec;
+		// like `up` they must never be killed by the short default.
+		return govardCommandLongTimeout
+	case "snapshot":
+		// Snapshot create/restore/export move the same whole dumps (plus a
+		// media tree) through docker exec and tar, so they share the
+		// transfer ceiling rather than the short default.
+		return govardCommandLongTimeout
 	case "env":
 		if len(args) > 1 {
 			switch strings.TrimSpace(args[1]) {

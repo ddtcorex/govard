@@ -20,6 +20,11 @@ const (
 	EventToolOutput             = "tool:output"
 	EventToolCompleted          = "tool:completed"
 	EventToolFailed             = "tool:failed"
+	EventDBProgress             = "db:progress"
+	EventDBCompleted            = "db:completed"
+	EventDBFailed               = "db:failed"
+	EventSnapshotCompleted      = "snapshot:completed"
+	EventSnapshotFailed         = "snapshot:failed"
 )
 
 // ToolResultPayload is the tool:completed / tool:failed event payload: which

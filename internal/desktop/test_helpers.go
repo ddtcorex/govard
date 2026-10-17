@@ -32,11 +32,32 @@ func ResetStateForTest() {
 	validateGitConnectionForDesktop = defaultValidateGitConnectionForDesktop
 	cloneGitRepoForDesktop = defaultCloneGitRepoForDesktop
 	openExternalURLForDesktop = defaultOpenExternalURLForDesktop
+	inspectDBContainerEnvForDesktop = defaultInspectDBContainerEnvForDesktop
+	publishedDBContainerPortForDesktop = defaultPublishedDBContainerPortForDesktop
+	inspectDBContainerIPsForDesktop = defaultInspectDBContainerIPsForDesktop
+	probeReachableDBHostForDesktop = defaultProbeReachableDBHostForDesktop
+	runDBQueryForDesktop = defaultRunDBQueryForDesktop
+	estimateDBSizeForDesktop = defaultEstimateDBSizeForDesktop
+	freeDiskSpaceForDesktop = defaultFreeDiskSpaceForDesktop
+	openDBDumpReaderForDesktop = defaultOpenDBDumpReaderForDesktop
+	openDBImportWriterForDesktop = defaultOpenDBImportWriterForDesktop
+	createDBDumpDestForDesktop = defaultCreateDBDumpDestForDesktop
+	resetDBTransferGens()
 	runGlobalServicesComposeForDesktop = defaultRunGlobalServicesComposeForDesktop
 	ensureGlobalServicesForDesktop = defaultEnsureGlobalServicesForDesktop
 	runHostPortProbeForDesktop = defaultRunHostPortProbeForDesktop
 	chooseSaveFileForDesktop = defaultChooseSaveFileForDesktop
 	writeLogFileForDesktop = defaultWriteLogFileForDesktop
+	chooseOpenFileForDesktop = defaultChooseOpenFileForDesktop
+	resolveSnapshotContextForDesktop = defaultResolveSnapshotContextForDesktop
+	listSnapshotsForDesktop = defaultListSnapshotsForDesktop
+	createSnapshotForDesktop = defaultCreateSnapshotForDesktop
+	restoreSnapshotForDesktop = defaultRestoreSnapshotForDesktop
+	exportSnapshotForDesktop = defaultExportSnapshotForDesktop
+	registerSnapshotOpForDesktop = RegisterOp
+	snapshotRestoreNow = time.Now
+	resetSnapshotRestorePreviews()
+	resetSnapshotOpGens()
 }
 
 // GovardCommandTimeoutForTest exposes the CLI timeout policy for tests.
@@ -719,7 +740,7 @@ func desktopBoolPtr(v bool) *bool {
 
 // AppPlatformsForTest returns the platform held by the App and each service,
 // in the order App, Settings, Onboarding, Environment, Remote, System, Logs,
-// Global, Update.
+// Global, Update, DB, Snapshot.
 func AppPlatformsForTest(app *App) []Platform {
 	return []Platform{
 		app.platform,
@@ -731,6 +752,8 @@ func AppPlatformsForTest(app *App) []Platform {
 		app.Logs.platform,
 		app.Global.platform,
 		app.Update.platform,
+		app.DB.platform,
+		app.Snapshot.platform,
 	}
 }
 
@@ -869,4 +892,364 @@ func AppendToolHistoryLineForTest(project string, entry ToolHistoryEntry) error 
 		return err
 	}
 	return appendToolHistoryEntryForRoot(root, entry)
+}
+
+// DBWriteConfirmTokenForTest exposes the per-project write confirm token the
+// data tab confirm dialog passes back for a write statement.
+func DBWriteConfirmTokenForTest(project string) string {
+	return dbWriteConfirmToken(project)
+}
+
+// ClassifyDBStatementForTest exposes the read-only statement classifier:
+// the first keyword plus the single-statement rule.
+func ClassifyDBStatementForTest(sql string) (string, bool, error) {
+	return classifyDBStatement(sql)
+}
+
+// SetInspectDBContainerEnvForDesktopForTest overrides docker inspect env
+// sampling in DB discovery.
+func SetInspectDBContainerEnvForDesktopForTest(
+	fn func(container string) (string, error),
+) func() {
+	previous := inspectDBContainerEnvForDesktop
+	if fn == nil {
+		inspectDBContainerEnvForDesktop = defaultInspectDBContainerEnvForDesktop
+	} else {
+		inspectDBContainerEnvForDesktop = fn
+	}
+	return func() {
+		inspectDBContainerEnvForDesktop = previous
+	}
+}
+
+// SetPublishedDBContainerPortForDesktopForTest overrides docker port sampling
+// in DB discovery.
+func SetPublishedDBContainerPortForDesktopForTest(
+	fn func(container string, internalPort string) (string, error),
+) func() {
+	previous := publishedDBContainerPortForDesktop
+	if fn == nil {
+		publishedDBContainerPortForDesktop = defaultPublishedDBContainerPortForDesktop
+	} else {
+		publishedDBContainerPortForDesktop = fn
+	}
+	return func() {
+		publishedDBContainerPortForDesktop = previous
+	}
+}
+
+// SetInspectDBContainerIPsForDesktopForTest overrides docker inspect IP
+// sampling in DB discovery.
+func SetInspectDBContainerIPsForDesktopForTest(
+	fn func(container string) (string, error),
+) func() {
+	previous := inspectDBContainerIPsForDesktop
+	if fn == nil {
+		inspectDBContainerIPsForDesktop = defaultInspectDBContainerIPsForDesktop
+	} else {
+		inspectDBContainerIPsForDesktop = fn
+	}
+	return func() {
+		inspectDBContainerIPsForDesktop = previous
+	}
+}
+
+// SetProbeReachableDBHostForDesktopForTest overrides container-IP reachability
+// probing in DB discovery (the production probe dials TCP).
+func SetProbeReachableDBHostForDesktopForTest(
+	fn func(candidates []string, port string) string,
+) func() {
+	previous := probeReachableDBHostForDesktop
+	if fn == nil {
+		probeReachableDBHostForDesktop = defaultProbeReachableDBHostForDesktop
+	} else {
+		probeReachableDBHostForDesktop = fn
+	}
+	return func() {
+		probeReachableDBHostForDesktop = previous
+	}
+}
+
+// SetEstimateDBSizeForDesktopForTest overrides the dump size estimator. The
+// recording target carries no password by construction.
+func SetEstimateDBSizeForDesktopForTest(fn func(target DBTransferTarget) (int64, error)) func() {
+	previous := estimateDBSizeForDesktop
+	if fn == nil {
+		estimateDBSizeForDesktop = defaultEstimateDBSizeForDesktop
+	} else {
+		estimateDBSizeForDesktop = func(_ context.Context, conn dbConnection) (int64, error) {
+			return fn(conn.transferTarget())
+		}
+	}
+	return func() {
+		estimateDBSizeForDesktop = previous
+	}
+}
+
+// SetFreeDiskSpaceForDesktopForTest overrides the destination free-space probe.
+func SetFreeDiskSpaceForDesktopForTest(fn func(path string) (uint64, error)) func() {
+	previous := freeDiskSpaceForDesktop
+	if fn == nil {
+		freeDiskSpaceForDesktop = defaultFreeDiskSpaceForDesktop
+	} else {
+		freeDiskSpaceForDesktop = fn
+	}
+	return func() {
+		freeDiskSpaceForDesktop = previous
+	}
+}
+
+// SetOpenDBDumpReaderForDesktopForTest overrides dump-side process startup.
+// The recording target carries no password by construction.
+func SetOpenDBDumpReaderForDesktopForTest(
+	fn func(ctx context.Context, target DBTransferTarget) (io.ReadCloser, func() error, error),
+) func() {
+	previous := openDBDumpReaderForDesktop
+	if fn == nil {
+		openDBDumpReaderForDesktop = defaultOpenDBDumpReaderForDesktop
+	} else {
+		openDBDumpReaderForDesktop = func(ctx context.Context, conn dbConnection) (io.ReadCloser, func() error, error) {
+			return fn(ctx, conn.transferTarget())
+		}
+	}
+	return func() {
+		openDBDumpReaderForDesktop = previous
+	}
+}
+
+// SetOpenDBImportWriterForDesktopForTest overrides import-side process
+// startup. The recording target carries no password by construction.
+func SetOpenDBImportWriterForDesktopForTest(
+	fn func(ctx context.Context, target DBTransferTarget) (io.WriteCloser, func() error, error),
+) func() {
+	previous := openDBImportWriterForDesktop
+	if fn == nil {
+		openDBImportWriterForDesktop = defaultOpenDBImportWriterForDesktop
+	} else {
+		openDBImportWriterForDesktop = func(ctx context.Context, conn dbConnection) (io.WriteCloser, func() error, error) {
+			return fn(ctx, conn.transferTarget())
+		}
+	}
+	return func() {
+		openDBImportWriterForDesktop = previous
+	}
+}
+
+// SetCreateDBDumpDestForDesktopForTest overrides the dump destination file
+// creator, so a test can inject a failing writer and pin mid-stream cleanup.
+func SetCreateDBDumpDestForDesktopForTest(fn func(path string) (io.WriteCloser, error)) func() {
+	previous := createDBDumpDestForDesktop
+	if fn == nil {
+		createDBDumpDestForDesktop = defaultCreateDBDumpDestForDesktop
+	} else {
+		createDBDumpDestForDesktop = fn
+	}
+	return func() {
+		createDBDumpDestForDesktop = previous
+	}
+}
+
+// CreateDBDumpDestForTest exposes the dump destination file creator for
+// tests (mode assertions run it unstubbed under a hostile umask).
+func CreateDBDumpDestForTest(path string) (io.WriteCloser, error) {
+	return createDBDumpDestForDesktop(path)
+}
+
+// FormatBytesForTest exposes preflight byte formatting for tests.
+func FormatBytesForTest(bytes int64) string {
+	return formatDBBytes(bytes)
+}
+
+// SniffDBDumpHeaderForTest exposes dump header engine detection for tests.
+func SniffDBDumpHeaderForTest(head []byte) (string, bool) {
+	return sniffDBDumpHead(head)
+}
+
+// BuildDBTransferDockerArgsForTest exposes the secret-free docker argv
+// builder: the password must appear in the env file, never in argv.
+func BuildDBTransferDockerArgsForTest(
+	container string,
+	password string,
+	envName string,
+	script string,
+) ([]string, string, func(), error) {
+	return buildDBTransferDockerArgs(container, password, envName, script)
+}
+
+// BuildDBQueryDockerArgsForTest exposes the ad-hoc query docker argv
+// builder: the password must appear in the env file, never in argv.
+func BuildDBQueryDockerArgsForTest(
+	container string,
+	scheme string,
+	user string,
+	password string,
+	sql string,
+) ([]string, string, func(), error) {
+	return buildDBQueryDockerArgs(dbConnection{
+		container: container,
+		scheme:    scheme,
+		user:      user,
+		password:  password,
+		database:  "appdb",
+	}, sql)
+}
+
+// SniffDBDumpFileForTest exposes the call-time import header check for tests.
+func SniffDBDumpFileForTest(path string) (string, bool, error) {
+	return sniffDBDumpFile(path)
+}
+
+// RevalidateDBImportSourceForTest exposes the op-start import re-validation
+// (re-sniff plus fresh stat from the opened file) for tests.
+func RevalidateDBImportSourceForTest(path string, scheme string) (int64, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, "", err
+	}
+	defer func() { _ = file.Close() }()
+	return revalidateDBImportSourceFile(file, scheme)
+}
+
+// SetRunDBQueryForDesktopForTest overrides ad-hoc query execution. The
+// recording call carries no password by construction.
+func SetRunDBQueryForDesktopForTest(fn func(call DBQueryCall) (string, error)) func() {
+	previous := runDBQueryForDesktop
+	if fn == nil {
+		runDBQueryForDesktop = defaultRunDBQueryForDesktop
+	} else {
+		runDBQueryForDesktop = func(_ context.Context, target dbConnection, sql string) (string, error) {
+			return fn(DBQueryCall{
+				Container: target.container,
+				Scheme:    target.scheme,
+				Host:      target.host,
+				Port:      target.port,
+				Database:  target.database,
+				User:      target.user,
+				SQL:       sql,
+			})
+		}
+	}
+	return func() {
+		runDBQueryForDesktop = previous
+	}
+}
+
+// SetResolveSnapshotContextForDesktopForTest overrides project-to-snapshot
+// root plus config resolution.
+func SetResolveSnapshotContextForDesktopForTest(
+	fn func(project string) (string, engine.Config, error),
+) func() {
+	previous := resolveSnapshotContextForDesktop
+	if fn == nil {
+		resolveSnapshotContextForDesktop = defaultResolveSnapshotContextForDesktop
+	} else {
+		resolveSnapshotContextForDesktop = fn
+	}
+	return func() {
+		resolveSnapshotContextForDesktop = previous
+	}
+}
+
+// SetListSnapshotsForDesktopForTest overrides snapshot listing.
+func SetListSnapshotsForDesktopForTest(
+	fn func(root string) ([]engine.SnapshotMetadata, error),
+) func() {
+	previous := listSnapshotsForDesktop
+	if fn == nil {
+		listSnapshotsForDesktop = defaultListSnapshotsForDesktop
+	} else {
+		listSnapshotsForDesktop = fn
+	}
+	return func() {
+		listSnapshotsForDesktop = previous
+	}
+}
+
+// SetCreateSnapshotForDesktopForTest overrides snapshot creation. The func
+// receives the op context so a test can prove cancellation reaches the
+// engine call instead of being dropped at the seam.
+func SetCreateSnapshotForDesktopForTest(
+	fn func(ctx context.Context, root string, cfg engine.Config, name string) (string, error),
+) func() {
+	previous := createSnapshotForDesktop
+	if fn == nil {
+		createSnapshotForDesktop = defaultCreateSnapshotForDesktop
+	} else {
+		createSnapshotForDesktop = fn
+	}
+	return func() {
+		createSnapshotForDesktop = previous
+	}
+}
+
+// SetRestoreSnapshotForDesktopForTest overrides snapshot restore. The
+// recording target carries no secrets by construction.
+func SetRestoreSnapshotForDesktopForTest(
+	fn func(ctx context.Context, target SnapshotRestoreTarget) error,
+) func() {
+	previous := restoreSnapshotForDesktop
+	if fn == nil {
+		restoreSnapshotForDesktop = defaultRestoreSnapshotForDesktop
+	} else {
+		restoreSnapshotForDesktop = fn
+	}
+	return func() {
+		restoreSnapshotForDesktop = previous
+	}
+}
+
+// SetExportSnapshotForDesktopForTest overrides snapshot export. The func
+// receives the op context so a test can prove cancellation reaches the
+// engine call instead of being dropped at the seam.
+func SetExportSnapshotForDesktopForTest(
+	fn func(ctx context.Context, root string, name string, target string) error,
+) func() {
+	previous := exportSnapshotForDesktop
+	if fn == nil {
+		exportSnapshotForDesktop = defaultExportSnapshotForDesktop
+	} else {
+		exportSnapshotForDesktop = fn
+	}
+	return func() {
+		exportSnapshotForDesktop = previous
+	}
+}
+
+// SetRegisterSnapshotOpForDesktopForTest overrides op registration for
+// snapshot ops, so a test can force the contention path and prove a refused
+// registration consumes no preview token.
+func SetRegisterSnapshotOpForDesktopForTest(
+	fn func(id string, project string, kind string, cancel context.CancelFunc) bool,
+) func() {
+	previous := registerSnapshotOpForDesktop
+	if fn == nil {
+		registerSnapshotOpForDesktop = RegisterOp
+	} else {
+		registerSnapshotOpForDesktop = fn
+	}
+	return func() {
+		registerSnapshotOpForDesktop = previous
+	}
+}
+
+// SetSnapshotRestoreNowForTest overrides the preview-token clock, so a test
+// can age a token past its TTL without sleeping.
+func SetSnapshotRestoreNowForTest(fn func() time.Time) func() {
+	previous := snapshotRestoreNow
+	if fn == nil {
+		snapshotRestoreNow = time.Now
+	} else {
+		snapshotRestoreNow = fn
+	}
+	return func() {
+		snapshotRestoreNow = previous
+	}
+}
+
+// SnapshotRestorePreviewCountForTest exposes the live preview-token count so
+// a test can prove eviction bounds the map.
+func SnapshotRestorePreviewCountForTest() int {
+	snapshotRestorePreviews.Lock()
+	defer snapshotRestorePreviews.Unlock()
+	return len(snapshotRestorePreviews.byToken)
 }

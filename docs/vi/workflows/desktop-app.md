@@ -35,6 +35,7 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 | **Workspace dự án** | Danh sách các môi trường, các thao tác nhanh, quy trình onboard |
 | **Thao tác nhanh** | PHPMyAdmin, bật/tắt Xdebug, kiểm tra sức khỏe, Mailpit, DB client |
 | **Tab Remotes** | Quy trình thêm/kiểm tra/mở/lập kế hoạch đồng bộ cho môi trường remote |
+| **Tab Data** | Thông tin DB đã che, query có kiểm soát, dump/import, snapshot (xem bên dưới) |
 | **Giám sát tài nguyên** | CPU, RAM, mạng, cảnh báo OOM |
 | **Nhật ký (Logs)** | Lọc logs theo dịch vụ, mức độ nghiêm trọng, tìm kiếm text, stream trực tiếp |
 | **Shell Launcher** | Chọn container dịch vụ, user kết nối và loại shell tương ứng |
@@ -148,6 +149,141 @@ PEM) cũng bị che tương tự. Có một giới hạn: giá trị secret tr�
 key không phải secret thì không phân biệt được với giá trị vô hại và không bị
 phát hiện, nên chỉ tên key và dạng giá trị mới quyết định việc scrub. File
 được ghi nguyên tử (atomic) với quyền hạn chế.
+
+## Tab Data
+
+Tab Data quản lý database của project đang chọn và các snapshot của nó:
+bảng thông tin kết nối đã che, query tự do có kiểm soát, dump/import với
+tiến trình streaming, và liệt kê/tạo/export snapshot cùng khôi phục qua
+cổng preview.
+
+### Query chỉ đọc theo mặc định, ghi phải opt-in rõ ràng
+
+`DBService.RunDBQuery(project, sql, allowWrite, confirmToken)` phân loại
+mọi câu lệnh trước khi chạm vào bất cứ thứ gì:
+
+- Các từ mở đầu chỉ đọc là `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`,
+  `EXPLAIN`. Mọi từ khác đi theo đường ghi.
+- Từ mở đầu trông như đọc là chưa đủ: toàn bộ câu lệnh còn bị quét tìm
+  các từ thay đổi dữ liệu (`DELETE`, `UPDATE`, `INSERT`, `INTO`, `UNION`
+  và các từ tương tự, các lệnh khóa đọc như `FOR UPDATE`), nên một lệnh
+  ghi giấu trong thân query vẫn đi theo đường ghi.
+- Input nhiều câu lệnh luôn bị từ chối. Việc từ chối diễn ra trước khi
+  resolve project, nên câu lệnh bị từ chối không chạm vào gì cả.
+
+Một lệnh ghi cần đồng thời hai thứ: `allowWrite=true` cộng token xác
+nhận của từng project từ `DBService.GetDBWriteConfirmToken(project)`.
+Luồng UI là: huy hiệu mode coi mọi thứ chưa chắc chắn là "write",
+checkbox ghi mở hộp thoại xác nhận, hộp thoại lấy token rồi trả lại cho
+`RunDBQuery`. Định dạng token là
+`confirm-write:<tên-project-viết-thường>` và do phía Go sở hữu; island
+chỉ mang token đi. Token chống bấm nhầm, không chống phá hoại có chủ ý:
+bản thân desktop đã giữ credentials.
+
+### Khôi phục chỉ qua preview cộng xác nhận, không có đường tắt
+
+`SnapshotService.PreviewSnapshotRestore(project, name, dbOnly, mediaOnly)`
+không ghi gì cả. Nó báo chính xác những gì lệnh apply sẽ thay thế
+(`willReplaceDb`, `willReplaceMedia`, kèm dòng `summary` cho người đọc)
+và trả về một `previewToken` dùng một lần. Nút xác nhận giữ disabled cho
+tới khi preview này hiển thị.
+
+`SnapshotService.ApplySnapshotRestore(project, name, previewToken,
+confirm, dbOnly, mediaOnly)` đòi token cộng `confirm=true`. Thiếu một
+trong hai, lệnh khôi phục không bao giờ chạy. Token gắn với project,
+snapshot và scope, hết hạn sau 15 phút, và bị tiêu thụ bởi một lần apply
+hợp lệ, nên phát lại không bao giờ tới được engine. Lần apply bị từ chối
+không tiêu thụ gì, nên xác nhận lại sau đó vẫn được. Scope mặc định là
+`full`, hoặc `dbOnly` / `mediaOnly` từ nút radio scope.
+
+### Cam kết che dữ liệu nhạy cảm
+
+- `DBService.GetDBInfo` trả về struct không có trường password theo thiết
+  kế. `hasPassword` chỉ báo có cấu hình password hay không, và
+  `displayUrl` hiển thị password dưới dạng `****`.
+- Output của query đi qua `sanitizeUIText`, giới hạn 20.000 ký tự, đồng
+  thời loại bỏ escape ANSI và byte điều khiển.
+- Frontend chỉ hiển thị thông tin DB qua allowlist `pickDisplayDBInfo`
+  (`project`, `engine`, `host`, `port`, `database`, `user`,
+  `hasPassword`, `displayUrl`): mọi khóa lạ, kể cả password dưới bất kỳ
+  tên nào, đều bị loại trước khi chạm tới DOM.
+- Cố tình không có lịch sử query: không có gì gõ vào ô query được lưu
+  lại, nên không có secret nào kẹt lại trong đó.
+
+### Ngữ nghĩa của cancel
+
+`DBService.CancelDBOp(opId)` và
+`SnapshotService.CancelSnapshotOp(opId)` dừng theo dõi của desktop trước:
+định danh op bị xóa để các sự kiện muộn từ goroutine đang tắt không bao
+giờ tới UI, và người dùng nhận một sự kiện kết thúc `db:failed` /
+`snapshot:failed`. Những gì diễn ra bên dưới thì khác nhau:
+
+- Dump/import chạy qua tiến trình `docker` khởi động cùng context của op,
+  nên cancel kích hoạt context đó và kill tiến trình. Dump bị hủy còn xóa
+  file `.partial` của nó, và file đã có sẵn tại đích vẫn nguyên vẹn.
+- Khôi phục snapshot gọi engine, mà engine không nhận context một khi
+  import đã chạy. Cancel dừng op desktop và các sự kiện của nó trong khi
+  import bên dưới có thể vẫn chạy tới cùng, giống như ngắt CLI giữa
+  chừng. Thông báo nói đúng như vậy: "<Kind> tracking stopped by user; the
+  underlying operation may run to completion" (ví dụ "Snapshot restore
+  tracking stopped by user; ..."). Nó không bao giờ báo đã hủy
+  điều chưa được hủy.
+
+### Kiểm tra đĩa trước khi chạy
+
+- `DumpDB` ước lượng kích thước database, rồi thăm dò dung lượng trống
+  tại thư mục cha gần nhất còn tồn tại của đích trước khi tạo bất kỳ
+  thư mục nào hay khởi động tiến trình nào. Lần từ chối không để lại
+  file, thư mục hay tiến trình nào.
+- `ImportDB` kiểm tra file đồng bộ trước khi đăng ký op: file phải là
+  file thường không rỗng (không phải thư mục), mang header dump được
+  nhận diện (`mysqldump`/`MariaDB` hoặc PostgreSQL, gzip được xử lý
+  trong suốt), và engine phải khớp database của project. File bị từ chối
+  không bao giờ mở writer tới database.
+- `ExportSnapshot` từ chối đích là thư mục hoặc có thư mục cha không tồn
+  tại. Xác nhận ghi đè file đã có là việc của UI: các hộp thoại lưu trả
+  về `{ path, exists }` để island hỏi trước khi gọi dump hay export.
+
+### Route và sự kiện
+
+Các route của bridge trong `desktop/frontend/services/bridge.js` trỏ tới
+bindings đã sinh (đã đối chiếu với `DBService`, `SnapshotService` và
+`data_dialog.go`):
+
+| Route | Go service.method |
+| :--- | :--- |
+| `GetDBInfo` | `DBService.GetDBInfo` |
+| `RunDBQuery` | `DBService.RunDBQuery` |
+| `DumpDB` | `DBService.DumpDB` |
+| `ImportDB` | `DBService.ImportDB` |
+| `CancelDBOp` | `DBService.CancelDBOp` |
+| `PickDumpDestination` | `DBService.PickDumpDestination` |
+| `PickImportSource` | `DBService.PickImportSource` |
+| `GetDBWriteConfirmToken` | `DBService.GetDBWriteConfirmToken` |
+| `ListSnapshots` | `SnapshotService.ListSnapshots` |
+| `CreateSnapshot` | `SnapshotService.CreateSnapshot` |
+| `PreviewSnapshotRestore` | `SnapshotService.PreviewSnapshotRestore` |
+| `ApplySnapshotRestore` | `SnapshotService.ApplySnapshotRestore` |
+| `ExportSnapshot` | `SnapshotService.ExportSnapshot` |
+| `CancelSnapshotOp` | `SnapshotService.CancelSnapshotOp` |
+| `PickExportDestination` | `SnapshotService.PickExportDestination` |
+
+Các sự kiện backend trong `internal/desktop/events.go`:
+
+| Sự kiện | Mục đích |
+| :--- | :--- |
+| `db:progress` | Tiến trình dump/import có cấu trúc (`opId`, `generation`, số byte, phần trăm) |
+| `db:completed` | Dump/import hoàn tất |
+| `db:failed` | Dump/import thất bại hoặc bị hủy |
+| `snapshot:completed` | Tạo/khôi phục/export snapshot hoàn tất |
+| `snapshot:failed` | Op snapshot thất bại hoặc bị hủy |
+
+Các op snapshot chỉ phát sự kiện kết thúc, không có sự kiện tiến trình.
+Lựa chọn trống trong hộp thoại (lưu hay mở) mà không có lỗi nghĩa là
+người dùng đã hủy, và island gửi đúng đường dẫn đã chọn tới
+dump/import/export, không bao giờ tự bịa đường dẫn. Hộp thoại dump mặc
+định là `<project>-dump.sql`; hộp thoại export mặc định là
+`<name>.tar.gz`, khớp với CLI.
 
 ---
 

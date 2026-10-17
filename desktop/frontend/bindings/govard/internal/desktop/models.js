@@ -6,6 +6,334 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+/**
+ * DBInfo is the masked connection fact sheet for one project database. It
+ * deliberately has no password field: HasPassword only reports whether one
+ * is configured, and DisplayURL renders it as ****.
+ */
+export class DBInfo {
+    /**
+     * Creates a new DBInfo instance.
+     * @param {Partial<DBInfo>} [$$source = {}] - The source object to create the DBInfo.
+     */
+    constructor($$source = {}) {
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("engine" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["engine"] = "";
+        }
+        if (!("host" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["host"] = "";
+        }
+        if (!("port" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["port"] = "";
+        }
+        if (!("database" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["database"] = "";
+        }
+        if (!("user" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["user"] = "";
+        }
+        if (!("hasPassword" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["hasPassword"] = false;
+        }
+        if (!("displayUrl" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["displayUrl"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBInfo(/** @type {Partial<DBInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBQueryResult is one executed ad-hoc query: the classified first keyword,
+ * whether it ran under the read-only gate, and the sanitized output.
+ */
+export class DBQueryResult {
+    /**
+     * Creates a new DBQueryResult instance.
+     * @param {Partial<DBQueryResult>} [$$source = {}] - The source object to create the DBQueryResult.
+     */
+    constructor($$source = {}) {
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("statement" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["statement"] = "";
+        }
+        if (!("output" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["output"] = "";
+        }
+        if (!("readOnly" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["readOnly"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBQueryResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBQueryResult}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBQueryResult(/** @type {Partial<DBQueryResult>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBTransferCompleted is the db:completed payload for a finished transfer.
+ */
+export class DBTransferCompleted {
+    /**
+     * Creates a new DBTransferCompleted instance.
+     * @param {Partial<DBTransferCompleted>} [$$source = {}] - The source object to create the DBTransferCompleted.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBTransferCompleted instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBTransferCompleted}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBTransferCompleted(/** @type {Partial<DBTransferCompleted>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBTransferFailed is the db:failed payload for a failed or cancelled transfer.
+ */
+export class DBTransferFailed {
+    /**
+     * Creates a new DBTransferFailed instance.
+     * @param {Partial<DBTransferFailed>} [$$source = {}] - The source object to create the DBTransferFailed.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBTransferFailed instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBTransferFailed}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBTransferFailed(/** @type {Partial<DBTransferFailed>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBTransferProgress is the structured db:progress payload: byte counts for
+ * the bar plus a short human message for the toast. Every transfer event
+ * carries the op identity so late events from a superseded op drop stale.
+ */
+export class DBTransferProgress {
+    /**
+     * Creates a new DBTransferProgress instance.
+     * @param {Partial<DBTransferProgress>} [$$source = {}] - The source object to create the DBTransferProgress.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("generation" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["generation"] = 0;
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("bytesWritten" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["bytesWritten"] = 0;
+        }
+        if (!("totalEstimate" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["totalEstimate"] = 0;
+        }
+        if (!("percent" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["percent"] = 0;
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBTransferProgress instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBTransferProgress}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBTransferProgress(/** @type {Partial<DBTransferProgress>} */($$parsedSource));
+    }
+}
+
 export class Dashboard {
     /**
      * Creates a new Dashboard instance.
@@ -290,6 +618,48 @@ export class Environment {
             $$parsedSource["envVars"] = $$createField13_0($$parsedSource["envVars"]);
         }
         return new Environment(/** @type {Partial<Environment>} */($$parsedSource));
+    }
+}
+
+/**
+ * FilePick is one native-dialog file choice handed back to the data tab: the
+ * dialog-picked path plus whether it already exists, so the island can show
+ * its overwrite-confirm before calling dump or export. The island never
+ * invents paths: every destination or source it sends backend-side came from
+ * one of these picks (controller binding decisions 1-2).
+ */
+export class FilePick {
+    /**
+     * Creates a new FilePick instance.
+     * @param {Partial<FilePick>} [$$source = {}] - The source object to create the FilePick.
+     */
+    constructor($$source = {}) {
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("exists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["exists"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FilePick instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {FilePick}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FilePick(/** @type {Partial<FilePick>} */($$parsedSource));
     }
 }
 
@@ -928,6 +1298,266 @@ export class Service {
     static createFrom($$source = {}) {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new Service(/** @type {Partial<Service>} */($$parsedSource));
+    }
+}
+
+/**
+ * SnapshotInfo is one listed snapshot: identity plus the size and creation
+ * facts the data tab shows. It carries no paths and no secrets.
+ */
+export class SnapshotInfo {
+    /**
+     * Creates a new SnapshotInfo instance.
+     * @param {Partial<SnapshotInfo>} [$$source = {}] - The source object to create the SnapshotInfo.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["createdAt"] = "";
+        }
+        if (!("sizeBytes" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["sizeBytes"] = 0;
+        }
+        if (!("sizeHuman" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["sizeHuman"] = "";
+        }
+        if (!("hasDb" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["hasDb"] = false;
+        }
+        if (!("hasMedia" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["hasMedia"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SnapshotInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotInfo(/** @type {Partial<SnapshotInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * SnapshotOpCompleted is the snapshot:completed payload for a finished op.
+ */
+export class SnapshotOpCompleted {
+    /**
+     * Creates a new SnapshotOpCompleted instance.
+     * @param {Partial<SnapshotOpCompleted>} [$$source = {}] - The source object to create the SnapshotOpCompleted.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotOpCompleted instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SnapshotOpCompleted}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotOpCompleted(/** @type {Partial<SnapshotOpCompleted>} */($$parsedSource));
+    }
+}
+
+/**
+ * SnapshotOpFailed is the snapshot:failed payload for a failed or cancelled op.
+ */
+export class SnapshotOpFailed {
+    /**
+     * Creates a new SnapshotOpFailed instance.
+     * @param {Partial<SnapshotOpFailed>} [$$source = {}] - The source object to create the SnapshotOpFailed.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotOpFailed instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SnapshotOpFailed}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotOpFailed(/** @type {Partial<SnapshotOpFailed>} */($$parsedSource));
+    }
+}
+
+/**
+ * SnapshotRestorePreview describes exactly what an apply would replace. The
+ * PreviewToken is single-use and bound to the project, snapshot, and scope:
+ * ApplySnapshotRestore replays nothing else.
+ */
+export class SnapshotRestorePreview {
+    /**
+     * Creates a new SnapshotRestorePreview instance.
+     * @param {Partial<SnapshotRestorePreview>} [$$source = {}] - The source object to create the SnapshotRestorePreview.
+     */
+    constructor($$source = {}) {
+        if (!("previewToken" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["previewToken"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("snapshot" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["snapshot"] = "";
+        }
+        if (!("dbOnly" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["dbOnly"] = false;
+        }
+        if (!("mediaOnly" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["mediaOnly"] = false;
+        }
+        if (!("willReplaceDb" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["willReplaceDb"] = false;
+        }
+        if (!("willReplaceMedia" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["willReplaceMedia"] = false;
+        }
+        if (!("summary" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["summary"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotRestorePreview instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SnapshotRestorePreview}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotRestorePreview(/** @type {Partial<SnapshotRestorePreview>} */($$parsedSource));
     }
 }
 

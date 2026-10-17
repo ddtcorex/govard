@@ -45,8 +45,8 @@ func TestDesktopNewAppWithPlatformWiresEveryService(t *testing.T) {
 	app := desktop.NewApp(desktop.WithPlatform(fake))
 
 	platforms := desktop.AppPlatformsForTest(app)
-	if len(platforms) != 9 { // App + 8 services
-		t.Fatalf("expected 9 platform holders, got %d", len(platforms))
+	if len(platforms) != 11 { // App + 10 services
+		t.Fatalf("expected 11 platform holders, got %d", len(platforms))
 	}
 	for i, p := range platforms {
 		if p != desktop.Platform(fake) {
@@ -69,6 +69,9 @@ func TestDesktopDefaultPlatformIsStubOutsideDesktopBuild(t *testing.T) {
 	}
 	if _, err := p.ChooseSaveFile(desktop.SaveFileOptions{}); err == nil {
 		t.Fatal("ChooseSaveFile: expected error from stub")
+	}
+	if _, err := p.ChooseOpenFile("Pick", ""); err == nil {
+		t.Fatal("ChooseOpenFile: expected error from stub")
 	}
 }
 

@@ -47,6 +47,37 @@ func RegisterOp(id string, project string, kind string, cancel context.CancelFun
 	return true
 }
 
+// RegisterDBTransferOp registers one database dump/import op under the
+// backend single-flight rule: at most one running db transfer per project.
+// The scan and the insert hold the same mutex, so two concurrent starts
+// cannot both succeed (the frontend guard is UX only; a double-click race
+// would otherwise orphan the first op). A refusal names the EXISTING running
+// op id, never the new one, so the error tells the user what to cancel.
+// Different projects never block each other; non-transfer ops are ignored.
+// After FinishOp/CancelOp the project accepts a new transfer again.
+func RegisterDBTransferOp(id string, project string, kind string, cancel context.CancelFunc) (bool, string) {
+	operationRegistry.Lock()
+	defer operationRegistry.Unlock()
+	want := normalizeDBProject(project)
+	for _, entry := range operationRegistry.running {
+		if entry.info.Kind != dbTransferOpKindDump && entry.info.Kind != dbTransferOpKindImport {
+			continue
+		}
+		if normalizeDBProject(entry.info.Project) != want {
+			continue
+		}
+		return false, entry.info.ID
+	}
+	if _, ok := operationRegistry.running[id]; ok {
+		return false, id
+	}
+	operationRegistry.running[id] = operationEntry{
+		info:   OpInfo{ID: id, Project: project, Kind: kind, StartedAt: time.Now()},
+		cancel: cancel,
+	}
+	return true, ""
+}
+
 // CancelOp removes a running op and fires its cancel func exactly once
 // (after releasing the mutex, so a cancel func that re-enters the registry
 // cannot deadlock). It reports true when an op was cancelled and false when

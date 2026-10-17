@@ -11,13 +11,13 @@ test("every route targets a known service", () => {
   const services = new Set([
     "SettingsService", "OnboardingService", "EnvironmentService", "RemoteService",
     "SystemService", "LogService", "GlobalServiceService", "UpdateService",
-    "ToolService",
+    "ToolService", "DBService", "SnapshotService",
   ]);
   for (const [name, [service, method]] of Object.entries(ROUTES)) {
     assert.ok(services.has(service), `${name} routes to unknown service ${service}`);
     assert.match(method, /^[A-Z][A-Za-z]+$/, `${name} has a bad method name`);
   }
-  assert.equal(Object.keys(ROUTES).length, 59);
+  assert.equal(Object.keys(ROUTES).length, 74);
 });
 
 test("renamed routes keep their frontend names", () => {
