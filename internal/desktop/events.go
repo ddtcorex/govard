@@ -17,6 +17,7 @@ const (
 	EventSyncCompleted          = "sync:completed"
 	EventOnboardingProgress     = "onboarding:progress"
 	EventOperationsNotification = "operations:notification"
+	EventAuditProgress          = "audit:progress"
 	EventToolOutput             = "tool:output"
 	EventToolCompleted          = "tool:completed"
 	EventToolFailed             = "tool:failed"

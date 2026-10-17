@@ -33,7 +33,7 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 | :--- | :--- |
 | **Bảng điều khiển môi trường** | Start/stop/open/delete — bao gồm việc phát hiện các dự án Docker mồ côi |
 | **Workspace dự án** | Danh sách các môi trường, các thao tác nhanh, quy trình onboard |
-| **Thao tác nhanh** | PHPMyAdmin, bật/tắt Xdebug, kiểm tra sức khỏe, Mailpit, DB client |
+| **Thao tác nhanh** | PHPMyAdmin, bật/tắt Xdebug, Mailpit, DB client |
 | **Tab Remotes** | Quy trình thêm/kiểm tra/mở/lập kế hoạch đồng bộ cho môi trường remote |
 | **Tab Data** | Thông tin DB đã che, query có kiểm soát, dump/import, snapshot (xem bên dưới) |
 | **Giám sát tài nguyên** | CPU, RAM, mạng, cảnh báo OOM |
@@ -50,6 +50,93 @@ Các thao tác dài được chờ lâu hơn: `up`, `bootstrap`, restart và pul
 Các panel log trực tiếp giữ 2.000 dòng gần nhất và tạm dừng polling khi cửa sổ bị ẩn, rồi tải dữ liệu mới khi quay lại. Nếu một panel gặp lỗi, nó hiển thị thông báo kèm nút thử lại thay vì trắng trơn.
 
 ---
+
+## Sức khỏe: Doctor và Audit toàn vẹn
+
+Thanh sức khỏe ở đầu dashboard chạy hai kiểm tra chỉ đọc cho dự án đang
+chọn: `RunDoctor` (chẩn đoán máy và dự án, kèm nút sửa từng mục) và
+`RunIntegrityAudit` (audit toàn vẹn dự án không cần container). Cả hai đều đi
+qua các route `HealthService` trong `desktop/frontend/services/bridge.js`
+(`runDoctor(project)`, `runIntegrityAudit(project)`);
+tiến trình audit phát trên sự kiện `audit:progress`. Các lượt chạy dài có thể
+hủy (`CancelDoctorRun`, `CancelAudit`); hủy audit sẽ loại bỏ kết quả đến muộn
+và banner giữ nguyên kết quả hoàn tất gần nhất.
+
+Lượt chạy doctor bị giới hạn theo thư mục gốc của dự án đang chọn: các mục
+kiểm tra gắn với dự án đọc file của đúng dự án đó, và báo cáo được gom theo
+đúng dự án. Dự án có tên nhưng không phân giải được thành thư mục sẽ bị từ
+chối kèm hướng dẫn chọn dự án, thay vì audit nhầm thư mục làm việc hiện tại.
+Khi chưa chọn dự án, lượt chạy ở mức máy (thư mục làm việc) thuộc scope rỗng.
+
+### Nút sửa của Doctor có ý nghĩa gì
+
+Mỗi mục kiểm tra của doctor thuộc một trong ba loại. `Fix` sửa ngay trong một
+lượt bấm. `Preview fix` mở kế hoạch chạy thử (dry-run) và phải được xác nhận
+rõ ràng trước khi thay đổi bất cứ thứ gì. Các mục không có cách sửa an toàn
+không hiện nút sửa; hãy làm theo gợi ý và lệnh CLI được đề xuất. Mục kiểm tra
+nào chưa từng được allowlist phân loại sẽ bị từ chối thay vì được gắn nút.
+
+| ID mục kiểm tra | Nút | Cách sửa làm gì |
+| :--- | :--- | :--- |
+| `host.govard.home` | Fix | Sửa quyền các thư mục runtime của Govard |
+| `host.compose.spam` | Fix | Dọn các file compose tồn quá 7 ngày |
+| `host.govard.registry` | Fix | Sửa đường dẫn registry dự án (gặp thư mục nằm ở vị trí file thì từ chối, không bao giờ tự xóa) |
+| `host.search.index_block` | Preview fix | Gỡ nghẽn chỉ mục tìm kiếm bằng một lệnh ghi vào container search đang chạy |
+| `project.runtime.images` | Preview fix | Tải các image Docker runtime còn thiếu (tốn mạng) |
+| `project.config.audit` | Preview fix | Chuyển các key cấu hình cũ sang khối services trong `.govard.yml` |
+| `project.config.drift` | Preview fix | Đồng bộ `.govard.yml` với framework profile đã phát hiện |
+| `project.profile.sync` | Preview fix | Bù các thiếu hụt từ framework profile, giữ nguyên mọi thiết lập người dùng đã khai báo |
+| `docker.daemon` | Không có | Không sửa trên desktop; làm theo gợi ý |
+| `docker.compose` | Không có | Không sửa trên desktop; làm theo gợi ý |
+| `host.port.80` | Không có | Không sửa trên desktop; làm theo gợi ý |
+| `host.port.443` | Không có | Không sửa trên desktop; làm theo gợi ý |
+| `host.disk.scratch` | Không có | Không sửa trên desktop; làm theo gợi ý |
+| `host.network.outbound` | Không có | Không sửa trên desktop; làm theo gợi ý |
+| `host.ssh.agent` | Không có | Không sửa trên desktop; làm theo gợi ý |
+| `host.deps.docker` | Không có | Không sửa trên desktop; làm theo gợi ý |
+| `host.deps.remote` | Không có | Không sửa trên desktop; làm theo gợi ý |
+
+Các cách sửa chạm tới dự án (`host.search.index_block` và mọi mục
+`project.*`) yêu cầu đang chọn một dự án trong ứng dụng desktop; các cách sửa
+toàn cục của máy có thể chạy mà không cần chọn dự án. Sau mỗi lần sửa, panel
+tự chạy lại doctor trong nền, nên banner chỉ tắt khi một lượt chạy mới sạch
+hoàn toàn.
+
+### Cách sửa rủi ro: xem trước, xác nhận, hết hạn
+
+`PreviewDoctorFix` trả về kế hoạch chạy thử (tóm tắt kèm danh sách hành động)
+mà không thay đổi gì; `ApplyDoctorFix` kèm xác nhận rõ ràng mới áp dụng.
+Hiểu đơn giản: một bản xem trước chỉ hiệu lực trong thời gian ngắn (khoảng 15
+phút) và dùng được một lần. Nếu file dự án hay trạng thái container đổi sau
+lúc xem trước, lệnh áp dụng bị từ chối và panel yêu cầu xem trước lại, lúc đó
+hãy xác nhận trên kế hoạch mới. Đóng bản xem trước hay chuyển dự án sẽ hủy bản
+xem trước đang chờ.
+
+### Phạm vi audit toàn vẹn
+
+Desktop chỉ chạy đúng mục `integrity` không cần container, cùng phân tích mà
+`govard audit run --checks integrity` thực hiện. Hai dòng `lint` và `profiler`
+vẫn hiển thị trong kết quả ở trạng thái `Enabled=false` kèm lý do và hướng tới
+CLI (`govard audit run --checks lint`, `govard audit run --checks profiler`);
+chúng không bao giờ chạy từ desktop và không bao giờ bị ẩn. `GetAuditResult`
+đọc một lượt chạy đã lưu, `GetAuditDiff` tóm tắt chênh lệch finding giữa hai
+lượt chạy đã lưu, còn `LastAuditResult` điền banner từ lượt chạy hoàn tất gần
+nhất mà không chạy gì thêm. Panel hỏi `RunningAuditOp` khi mở, nên nút hủy
+luôn có mặt kể cả khi lượt chạy đã bắt đầu từ trước lúc mở panel.
+
+### Banner và phạm vi từng dự án
+
+Banner luôn suy ra từ kết quả mới nhất của đúng dự án đang chọn. Chuyển dự án
+sẽ tính lại banner của dự án đó và hiển thị trạng thái đang tải hoặc trống
+trong lúc chờ, không bao giờ hiện banner của dự án khác.
+
+| Banner | Ý nghĩa |
+| :--- | :--- |
+| Doctor, đỏ (`error`) | Báo cáo doctor mới nhất có ít nhất một mục lỗi. Banner nêu số vấn đề và số mục sửa được bên dưới |
+| Doctor, vàng (`warning`) | Chỉ có cảnh báo, không có lỗi |
+| Không có banner doctor | Chưa chạy lần nào, hoặc lượt chạy mới nhất đạt toàn bộ. Chỉ lượt chạy sạch mới tắt được banner cũ |
+| Audit, vàng (`warning`) | Kết quả toàn vẹn mới nhất còn finding (hoặc trạng thái chưa đạt). Banner nêu số finding; panel liệt kê từng finding cùng hai dòng `lint` và `profiler` bị tắt |
+| Không có banner audit | Dự án này chưa audit lần nào, hoặc lượt chạy mới nhất sạch. Các lượt bị hủy hay lỗi không thay thế kết quả hoàn tất gần nhất |
 
 ## Tool Runner
 
@@ -345,6 +432,96 @@ Các cấu hình ưu tiên hiện được ghi nhớ:
 - Proxy target
 - Trình duyệt ưa thích
 - Trình kết nối database client ưa thích
+
+---
+
+## Sức khỏe: Doctor và Audit (Health)
+
+Header hiển thị một banner cho mỗi nguồn, mỗi banner thuộc về project đang
+chọn. Đổi project thì banner của project đó hiện ra; project chưa từng chạy
+không có banner. Cả hai banner đều chỉ suy từ kết quả mới nhất, nên chạy lại
+mà sạch sẽ xóa banner cũ thay vì để nó treo lại. Hai panel Doctor và Audit nằm
+ngay dưới ảnh chụp mesh trong cùng khung hình.
+
+### Banner Doctor
+
+Chạy doctor từ panel Doctor. Banner chỉ xuất hiện khi báo cáo mới nhất còn
+check trượt hoặc cảnh báo:
+
+| Banner | Ý nghĩa |
+| :--- | :--- |
+| Đỏ (error), `Doctor: N issues` | Có ít nhất một check trượt. Khi có ít nhất một check trượt hoặc cảnh báo kèm nút sửa, đoạn `, M fixable below` được thêm vào. |
+| Vàng (warning), cùng nội dung | Chỉ có cảnh báo, không có lỗi trượt. |
+| Không có banner | Lần chạy mới nhất đạt toàn bộ, hoặc project này chưa từng chạy doctor. |
+
+Nút `Re-run` trên banner chạy lại doctor. Lần chạy dài có thể hủy; lần chạy bị
+hủy giữ nguyên banner trước đó.
+
+### Sửa lỗi doctor: mỗi check làm được gì
+
+Mỗi check doctor thuộc một trong ba loại sửa. Nhãn nút cho biết loại nào
+trước khi bất cứ thứ gì chạy:
+
+| ID check | Bản sửa làm gì | Cách áp dụng |
+| :--- | :--- | :--- |
+| `host.govard.home` | Sửa thư mục runtime của Govard (quyền ghi) | Nút `Fix`, một lần bấm |
+| `host.compose.spam` | Dọn các file compose thừa | Nút `Fix`, một lần bấm |
+| `host.govard.registry` | Sửa đường dẫn registry project bị hỏng (đường dẫn đang là thư mục thì bị từ chối, không bao giờ xóa gì) | Nút `Fix`, một lần bấm |
+| `host.search.index_block` | Gỡ kẹt chỉ mục tìm kiếm (ghi vào container search đang chạy, nên không bao giờ một lần bấm) | `Preview fix`, rồi xác nhận |
+| `project.runtime.images` | Tải các image runtime còn thiếu (tải qua mạng) | `Preview fix`, rồi xác nhận |
+| `project.config.audit` | Chuyển các key cấu hình cũ (ghi cấu hình) | `Preview fix`, rồi xác nhận |
+| `project.config.drift` | Đồng bộ `.govard.yml` với profile phát hiện được (ghi cấu hình) | `Preview fix`, rồi xác nhận |
+| `project.profile.sync` | Đồng bộ profile mà không ghi đè các cài đặt người dùng đã chọn rõ ràng (ghi cấu hình) | `Preview fix`, rồi xác nhận |
+| `docker.daemon`, `docker.compose`, `host.port.80`, `host.port.443`, `host.disk.scratch`, `host.network.outbound`, `host.ssh.agent`, `host.deps.docker`, `host.deps.remote` | Không có đường sửa, làm theo gợi ý hoặc lệnh đề xuất của check | Không có nút sửa |
+
+ID check nào ứng dụng chưa biết sẽ bị từ chối kèm lỗi `unknown doctor
+check` thay vì lặng lẽ không đưa gì, để check mới của engine buộc phải được
+xét duyệt allowlist thay vì rơi nhầm nút.
+
+Các bản sửa thuộc project (mọi check `project.*` cộng `host.search.index_block`)
+đòi hỏi phải chọn project trước; chưa chọn gì thì cả xem trước lẫn áp dụng đều
+bị từ chối kèm hướng dẫn. Các bản sửa một lần bấm thuộc về máy (host-global)
+chạy được mà không cần project.
+
+### Xem trước và xác nhận, nói dễ hiểu
+
+Bản sửa rủi ro luôn mở xem trước. Bản xem trước là chạy thử: liệt kê những gì
+sẽ đổi mà không đổi gì cả. Bấm xác nhận (`Confirm and apply`) áp dụng đúng kế
+hoạch đã xem, rồi doctor chạy lại để các lỗi đã sửa biến khỏi kết quả mới.
+
+Mỗi lần xem trước tạo một lượt duyệt dùng một lần, hiệu lực 15 phút, chỉ cho
+check đó và đúng kế hoạch đó. Lượt duyệt dùng một lần: xác nhận thì hết, đóng
+hộp thoại thì mất, đổi project thì mất. Nếu có gì đổi khác giữa lúc xem và lúc
+xác nhận, lệnh áp dụng bị từ chối và yêu cầu xem lại thay vì áp dụng kế hoạch
+cũ. Bản thân lượt duyệt không bao giờ hiện lên màn hình; nó chỉ nằm trong bộ
+nhớ, nên khởi động lại ứng dụng là các lần xem trước đang dở hết hiệu lực. Các
+bản sửa một lần bấm bỏ qua toàn bộ bước này và áp dụng ngay.
+
+### Phạm vi audit và banner
+
+Nút `Run audit` trong panel Audit chỉ chạy kiểm tra toàn vẹn (integrity) không
+cần container, đúng các bộ phân tích của `govard audit run --checks integrity`.
+Nó không bao giờ cần Docker và không bao giờ chạm vào container.
+
+Kết quả liệt kê ba dòng. Dòng integrity chạy thật; hai dòng còn lại vẫn hiện
+nhưng bị tắt, không bao giờ giấu đi:
+
+| Dòng | Trạng thái | Lý do hiển thị |
+| :--- | :--- | :--- |
+| `integrity` | Chạy | Không cần container |
+| `lint` | Tắt | Đòi Docker nên không chạy từ desktop; chạy `govard audit run --checks lint` từ CLI |
+| `profiler` | Tắt | Đòi Docker nên không chạy từ desktop; chạy `govard audit run --checks profiler` từ CLI |
+
+Phiên không có lần chạy integrity nào hiển thị dòng integrity ở trạng thái tắt
+với lý do `Session has no integrity run` thay vì nhận đã chạy.
+
+Banner audit màu vàng (warning) với nội dung `Audit: N findings` và nút `Run
+audit`. Không có banner khi project này chưa từng chạy audit, hoặc lần chạy
+mới nhất đạt và không có finding nào. Hủy audit thì kết quả đang chạy bị bỏ:
+quá trình phân tích có thể chạy nốt trong nền, nhưng kết quả của nó không bao
+giờ được ghi nhận và banner trước đó giữ nguyên. Nút `Cancel` vẫn dùng được kể
+cả khi lần chạy bắt đầu trước lúc panel mở, nhờ tra cứu thao tác đang chạy khi
+gắn panel.
 
 ---
 

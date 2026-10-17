@@ -5,6 +5,7 @@
 import * as DBService from "./dbservice.js";
 import * as EnvironmentService from "./environmentservice.js";
 import * as GlobalServiceService from "./globalserviceservice.js";
+import * as HealthService from "./healthservice.js";
 import * as LogService from "./logservice.js";
 import * as OnboardingService from "./onboardingservice.js";
 import * as RemoteService from "./remoteservice.js";
@@ -17,6 +18,7 @@ export {
     DBService,
     EnvironmentService,
     GlobalServiceService,
+    HealthService,
     LogService,
     OnboardingService,
     RemoteService,
@@ -28,6 +30,11 @@ export {
 };
 
 export {
+    AuditCheckView,
+    AuditDiffView,
+    AuditFindingView,
+    AuditProgressPayload,
+    AuditResultView,
     DBInfo,
     DBQueryResult,
     DBTransferCompleted,
@@ -35,6 +42,11 @@ export {
     DBTransferProgress,
     Dashboard,
     DesktopSettings,
+    DoctorCheckView,
+    DoctorFixKind,
+    DoctorFixOutcome,
+    DoctorFixPreview,
+    DoctorReportView,
     Environment,
     FilePick,
     FrameworkOption,

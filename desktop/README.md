@@ -60,6 +60,12 @@ Lightweight dashboard highlights:
 - OS Terminal launcher for service shells
 - System tray: show/hide the window, start/stop/open projects, quit
 - Settings drawer (theme, proxy target, preferred browser, run in background)
+- Health: per-project doctor and audit banners plus Doctor/Audit panels below
+  the mesh snapshot. Doctor fixes are allowlisted (one-click `Fix` for safe
+  checks, `Preview fix` plus confirm for risky ones, no button otherwise);
+  audits run the container-free integrity check only, with the Docker-backed
+  lint/profiler rows shown disabled. Full table and banner meanings live in
+  `docs/workflows/desktop-app.md` under "Health: Doctor and Audit".
 
 The Data tab is read-only by default: ad-hoc queries run only
 `SELECT`-style statements unless the write opt-in plus its per-project
@@ -76,7 +82,32 @@ Frontend file management:
 - `frontend/services/events.js` backend event subscriptions
 - `frontend/bindings/` generated and committed; never edit by hand
 - `frontend/state/store.js` local state
-- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `tool-palette`, `data-tab`)
+- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `health`, `tool-palette`, `data-tab`)
+- `frontend/ui/toast.js` notifications
+- `frontend/utils/dom.js` DOM helpers
+
+## Health UX (doctor + integrity audit)
+
+User documentation lives in `docs/workflows/desktop-app.md` ("Health: Doctor
+and Integrity Audit", with a Vietnamese counterpart under `docs/vi/`).
+
+Implementation map:
+
+- Backend: `internal/desktop/doctor_service.go` (fix allowlist, preview
+  tokens), `internal/desktop/audit_service.go` (docker-free integrity run,
+  disabled `lint`/`profiler` rows), `internal/desktop/health_service.go`
+  (`HealthService`, project scoping). The allowlist in `doctor_service.go` is
+  the source of truth for which check IDs get `Fix`, `Preview fix`, or no
+  button; the docs table must match it exactly.
+- Frontend: `frontend/modules/health.js` (banner derivations, per-project
+  scoping, ephemeral preview-token controller state),
+  `frontend/islands/GlobalHealthHeader.tsx` (banners) and
+  `frontend/islands/HealthPanels.tsx` (panels).
+- Routes (`bridge.js` onto `HealthService`): `RunDoctor`,
+  `PreviewDoctorFix`, `ApplyDoctorFix`, `CancelDoctorRun`,
+  `RunIntegrityAudit`, `GetAuditResult`, `GetAuditDiff`, `LastAuditResult`,
+  `CancelAudit`, `RunningAuditOp`. Progress streams on `audit:progress`
+  (see `internal/desktop/events.go`).
 - `frontend/islands/ToolPalette.tsx` Tool Runner palette island
 - `frontend/islands/DataTab.tsx` Data tab island
 - `frontend/ui/toast.js` notifications

@@ -24,6 +24,7 @@ func registerEvents() {
 	application.RegisterEvent[ToolResultPayload](EventToolFailed)
 	application.RegisterEvent[OnboardingProgressPayload](EventOnboardingProgress)
 	application.RegisterEvent[OperationNotification](EventOperationsNotification)
+	application.RegisterEvent[AuditProgressPayload](EventAuditProgress)
 	application.RegisterEvent[DBTransferProgress](EventDBProgress)
 	application.RegisterEvent[DBTransferCompleted](EventDBCompleted)
 	application.RegisterEvent[DBTransferFailed](EventDBFailed)

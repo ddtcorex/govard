@@ -15,6 +15,10 @@ export const ID_MAP = {
     "service": "LogService",
     "method": "GetLogsForService"
   },
+  "189304092": {
+    "service": "HealthService",
+    "method": "LastAuditResult"
+  },
   "244015971": {
     "service": "GlobalServiceService",
     "method": "RestartGlobalService"
@@ -31,6 +35,10 @@ export const ID_MAP = {
     "service": "EnvironmentService",
     "method": "PullEnvironment"
   },
+  "427479427": {
+    "service": "HealthService",
+    "method": "CancelAudit"
+  },
   "436647391": {
     "service": "LogService",
     "method": "GetLogs"
@@ -42,6 +50,10 @@ export const ID_MAP = {
   "507222310": {
     "service": "RemoteService",
     "method": "RunRemoteSync"
+  },
+  "512971056": {
+    "service": "HealthService",
+    "method": "CancelDoctorRun"
   },
   "555268093": {
     "service": "SettingsService",
@@ -55,6 +67,10 @@ export const ID_MAP = {
     "service": "EnvironmentService",
     "method": "GetDashboard"
   },
+  "680134074": {
+    "service": "HealthService",
+    "method": "GetAuditDiff"
+  },
   "687778518": {
     "service": "DBService",
     "method": "GetDBWriteConfirmToken"
@@ -62,6 +78,10 @@ export const ID_MAP = {
   "697778984": {
     "service": "UpdateService",
     "method": "CheckForUpdates"
+  },
+  "742472753": {
+    "service": "HealthService",
+    "method": "RunIntegrityAudit"
   },
   "762673893": {
     "service": "SnapshotService",
@@ -123,6 +143,10 @@ export const ID_MAP = {
     "service": "OnboardingService",
     "method": "DetectMigrationSource"
   },
+  "1788071524": {
+    "service": "HealthService",
+    "method": "RunDoctor"
+  },
   "1791321060": {
     "service": "DBService",
     "method": "GetDBInfo"
@@ -142,6 +166,10 @@ export const ID_MAP = {
   "2129346863": {
     "service": "UpdateService",
     "method": "RestartDesktopApp"
+  },
+  "2135181772": {
+    "service": "HealthService",
+    "method": "ApplyDoctorFix"
   },
   "2154490700": {
     "service": "SystemService",
@@ -179,6 +207,10 @@ export const ID_MAP = {
     "service": "LogService",
     "method": "SaveLogsToFile"
   },
+  "2550973997": {
+    "service": "HealthService",
+    "method": "RunningDoctorOp"
+  },
   "2571085722": {
     "service": "EnvironmentService",
     "method": "ListFrameworks"
@@ -191,6 +223,10 @@ export const ID_MAP = {
     "service": "SettingsService",
     "method": "GetSettings"
   },
+  "2656846212": {
+    "service": "HealthService",
+    "method": "GetAuditResult"
+  },
   "2878495869": {
     "service": "RemoteService",
     "method": "RunRemoteSyncInTerminal"
@@ -198,6 +234,10 @@ export const ID_MAP = {
   "2898025557": {
     "service": "DBService",
     "method": "ImportDB"
+  },
+  "2927128584": {
+    "service": "HealthService",
+    "method": "PreviewDoctorFix"
   },
   "2943280639": {
     "service": "ToolService",
@@ -286,6 +326,10 @@ export const ID_MAP = {
   "4017840019": {
     "service": "GlobalServiceService",
     "method": "StopGlobalServices"
+  },
+  "4061846439": {
+    "service": "HealthService",
+    "method": "RunningAuditOp"
   },
   "4069163600": {
     "service": "ToolService",

@@ -7,6 +7,394 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * AuditCheckView is one audit check row for the UI. Docker-backed checks
+ * render with Enabled=false and a DisabledReason, never hidden.
+ */
+export class AuditCheckView {
+    /**
+     * Creates a new AuditCheckView instance.
+     * @param {Partial<AuditCheckView>} [$$source = {}] - The source object to create the AuditCheckView.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("title" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["title"] = "";
+        }
+        if (!("enabled" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["enabled"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["disabledReason"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditCheckView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditCheckView}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuditCheckView(/** @type {Partial<AuditCheckView>} */($$parsedSource));
+    }
+}
+
+/**
+ * AuditDiffView is the previous-vs-current integrity finding summary over two
+ * stored runs. Findings are matched by tool, rule, path, line, and message:
+ * a finding that moved lines reads as one removal plus one addition, which is
+ * honest for a summary (the code did change under it).
+ */
+export class AuditDiffView {
+    /**
+     * Creates a new AuditDiffView instance.
+     * @param {Partial<AuditDiffView>} [$$source = {}] - The source object to create the AuditDiffView.
+     */
+    constructor($$source = {}) {
+        if (!("projectId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["projectId"] = "";
+        }
+        if (!("sessionId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["sessionId"] = "";
+        }
+        if (!("fromRunId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["fromRunId"] = "";
+        }
+        if (!("toRunId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["toRunId"] = "";
+        }
+        if (!("fromStatus" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["fromStatus"] = "";
+        }
+        if (!("toStatus" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["toStatus"] = "";
+        }
+        if (!("added" in $$source)) {
+            /**
+             * @member
+             * @type {AuditFindingView[]}
+             */
+            this["added"] = [];
+        }
+        if (!("removed" in $$source)) {
+            /**
+             * @member
+             * @type {AuditFindingView[]}
+             */
+            this["removed"] = [];
+        }
+        if (!("unchangedCount" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["unchangedCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditDiffView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditDiffView}
+     */
+    static createFrom($$source = {}) {
+        const $$createField6_0 = $$createType1;
+        const $$createField7_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("added" in $$parsedSource) {
+            $$parsedSource["added"] = $$createField6_0($$parsedSource["added"]);
+        }
+        if ("removed" in $$parsedSource) {
+            $$parsedSource["removed"] = $$createField7_0($$parsedSource["removed"]);
+        }
+        return new AuditDiffView(/** @type {Partial<AuditDiffView>} */($$parsedSource));
+    }
+}
+
+/**
+ * AuditFindingView is one sanitized integrity finding for the UI.
+ */
+export class AuditFindingView {
+    /**
+     * Creates a new AuditFindingView instance.
+     * @param {Partial<AuditFindingView>} [$$source = {}] - The source object to create the AuditFindingView.
+     */
+    constructor($$source = {}) {
+        if (!("tool" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["tool"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["rule"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["path"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {number | undefined}
+             */
+            this["line"] = undefined;
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditFindingView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditFindingView}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuditFindingView(/** @type {Partial<AuditFindingView>} */($$parsedSource));
+    }
+}
+
+/**
+ * AuditProgressPayload is the structured audit:progress event payload.
+ * ProjectRoot is the normalized project root (normalizeAuditProjectRoot,
+ * the same identity the banner index keys on) the run was launched for, so
+ * the UI can drop events from other scopes instead of showing project A's
+ * progress on project B's panel. It is always set on desktop emits; an
+ * empty value means a legacy or foreign sender the UI must handle by its
+ * documented unscoped rule.
+ */
+export class AuditProgressPayload {
+    /**
+     * Creates a new AuditProgressPayload instance.
+     * @param {Partial<AuditProgressPayload>} [$$source = {}] - The source object to create the AuditProgressPayload.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("phase" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["phase"] = "";
+        }
+        if (!("percent" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["percent"] = 0;
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["sessionId"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["projectRoot"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditProgressPayload instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditProgressPayload}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuditProgressPayload(/** @type {Partial<AuditProgressPayload>} */($$parsedSource));
+    }
+}
+
+/**
+ * AuditResultView is the sanitized integrity run result the health header
+ * renders and the banner reads back via LastAuditResult. ProjectRoot is the
+ * normalized (absolute, symlink-resolved, cleaned) project root the run was
+ * recorded under; OpID is the historical registry op of the finished run (a
+ * late CancelAudit for it is a harmless no-op).
+ */
+export class AuditResultView {
+    /**
+     * Creates a new AuditResultView instance.
+     * @param {Partial<AuditResultView>} [$$source = {}] - The source object to create the AuditResultView.
+     */
+    constructor($$source = {}) {
+        if (!("projectId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["projectId"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["projectRoot"] = undefined;
+        }
+        if (!("sessionId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["sessionId"] = "";
+        }
+        if (!("runId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["runId"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("findingCount" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["findingCount"] = 0;
+        }
+        if (!("finishedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["finishedAt"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("checks" in $$source)) {
+            /**
+             * @member
+             * @type {AuditCheckView[]}
+             */
+            this["checks"] = [];
+        }
+        if (!("findings" in $$source)) {
+            /**
+             * @member
+             * @type {AuditFindingView[]}
+             */
+            this["findings"] = [];
+        }
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditResultView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditResultView}
+     */
+    static createFrom($$source = {}) {
+        const $$createField7_0 = $$createType3;
+        const $$createField8_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("checks" in $$parsedSource) {
+            $$parsedSource["checks"] = $$createField7_0($$parsedSource["checks"]);
+        }
+        if ("findings" in $$parsedSource) {
+            $$parsedSource["findings"] = $$createField8_0($$parsedSource["findings"]);
+        }
+        return new AuditResultView(/** @type {Partial<AuditResultView>} */($$parsedSource));
+    }
+}
+
+/**
  * DBInfo is the masked connection fact sheet for one project database. It
  * deliberately has no password field: HasPassword only reports whether one
  * is configured, and DisplayURL renders it as ****.
@@ -406,8 +794,8 @@ export class Dashboard {
      * @returns {Dashboard}
      */
     static createFrom($$source = {}) {
-        const $$createField6_0 = $$createType1;
-        const $$createField7_0 = $$createType2;
+        const $$createField6_0 = $$createType5;
+        const $$createField7_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("environments" in $$parsedSource) {
             $$parsedSource["environments"] = $$createField6_0($$parsedSource["environments"]);
@@ -479,6 +867,300 @@ export class DesktopSettings {
     static createFrom($$source = {}) {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new DesktopSettings(/** @type {Partial<DesktopSettings>} */($$parsedSource));
+    }
+}
+
+/**
+ * DoctorCheckView is one engine check plus its fix affordance for the UI.
+ */
+export class DoctorCheckView {
+    /**
+     * Creates a new DoctorCheckView instance.
+     * @param {Partial<DoctorCheckView>} [$$source = {}] - The source object to create the DoctorCheckView.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("title" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["title"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["hint"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["suggestedCommand"] = undefined;
+        }
+        if (!("fixKind" in $$source)) {
+            /**
+             * @member
+             * @type {DoctorFixKind}
+             */
+            this["fixKind"] = DoctorFixKind.$zero;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["fixLabel"] = undefined;
+        }
+        if (!("needsPreview" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["needsPreview"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DoctorCheckView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DoctorCheckView}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DoctorCheckView(/** @type {Partial<DoctorCheckView>} */($$parsedSource));
+    }
+}
+
+/**
+ * @readonly
+ * @enum {string}
+ */
+export const DoctorFixKind = {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero: "",
+
+    DoctorFixKindSafe: "safe",
+    DoctorFixKindRisky: "risky",
+    DoctorFixKindNone: "none",
+};
+
+/**
+ * DoctorFixOutcome is the per-check result of one applied fix.
+ */
+export class DoctorFixOutcome {
+    /**
+     * Creates a new DoctorFixOutcome instance.
+     * @param {Partial<DoctorFixOutcome>} [$$source = {}] - The source object to create the DoctorFixOutcome.
+     */
+    constructor($$source = {}) {
+        if (!("checkId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["checkId"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string[] | undefined}
+             */
+            this["actions"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DoctorFixOutcome instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DoctorFixOutcome}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("actions" in $$parsedSource) {
+            $$parsedSource["actions"] = $$createField3_0($$parsedSource["actions"]);
+        }
+        return new DoctorFixOutcome(/** @type {Partial<DoctorFixOutcome>} */($$parsedSource));
+    }
+}
+
+/**
+ * DoctorFixPreview is the dry-run plan for a risky fix. PreviewID is a
+ * single-use token bound to CheckID; ApplyDoctorFix consumes it. OpID is
+ * the finished registry op of the preview computation: a late cancel of it
+ * is a harmless no-op by registry contract.
+ */
+export class DoctorFixPreview {
+    /**
+     * Creates a new DoctorFixPreview instance.
+     * @param {Partial<DoctorFixPreview>} [$$source = {}] - The source object to create the DoctorFixPreview.
+     */
+    constructor($$source = {}) {
+        if (!("previewId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["previewId"] = "";
+        }
+        if (!("checkId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["checkId"] = "";
+        }
+        if (!("summary" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["summary"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string[] | undefined}
+             */
+            this["actions"] = undefined;
+        }
+        if (!("requiresConfirm" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["requiresConfirm"] = false;
+        }
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DoctorFixPreview instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DoctorFixPreview}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("actions" in $$parsedSource) {
+            $$parsedSource["actions"] = $$createField3_0($$parsedSource["actions"]);
+        }
+        return new DoctorFixPreview(/** @type {Partial<DoctorFixPreview>} */($$parsedSource));
+    }
+}
+
+/**
+ * DoctorReportView is the sanitized run result the health header renders.
+ */
+export class DoctorReportView {
+    /**
+     * Creates a new DoctorReportView instance.
+     * @param {Partial<DoctorReportView>} [$$source = {}] - The source object to create the DoctorReportView.
+     */
+    constructor($$source = {}) {
+        if (!("checks" in $$source)) {
+            /**
+             * @member
+             * @type {DoctorCheckView[]}
+             */
+            this["checks"] = [];
+        }
+        if (!("passed" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["passed"] = 0;
+        }
+        if (!("warnings" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["warnings"] = 0;
+        }
+        if (!("failures" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["failures"] = 0;
+        }
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DoctorReportView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DoctorReportView}
+     */
+    static createFrom($$source = {}) {
+        const $$createField0_0 = $$createType8;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("checks" in $$parsedSource) {
+            $$parsedSource["checks"] = $$createField0_0($$parsedSource["checks"]);
+        }
+        return new DoctorReportView(/** @type {Partial<DoctorReportView>} */($$parsedSource));
     }
 }
 
@@ -596,11 +1278,11 @@ export class Environment {
      * @returns {Environment}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType2;
-        const $$createField5_0 = $$createType2;
-        const $$createField8_0 = $$createType4;
-        const $$createField9_0 = $$createType2;
-        const $$createField13_0 = $$createType5;
+        const $$createField2_0 = $$createType6;
+        const $$createField5_0 = $$createType6;
+        const $$createField8_0 = $$createType10;
+        const $$createField9_0 = $$createType6;
+        const $$createField13_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("extraDomains" in $$parsedSource) {
             $$parsedSource["extraDomains"] = $$createField2_0($$parsedSource["extraDomains"]);
@@ -705,7 +1387,7 @@ export class FrameworkOption {
      * @returns {FrameworkOption}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType2;
+        const $$createField2_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("aliases" in $$parsedSource) {
             $$parsedSource["aliases"] = $$createField2_0($$parsedSource["aliases"]);
@@ -863,8 +1545,8 @@ export class GlobalServicesSnapshot {
      * @returns {GlobalServicesSnapshot}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType7;
-        const $$createField4_0 = $$createType2;
+        const $$createField3_0 = $$createType13;
+        const $$createField4_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("services" in $$parsedSource) {
             $$parsedSource["services"] = $$createField3_0($$parsedSource["services"]);
@@ -1193,7 +1875,7 @@ export class RemoteEntry {
      * @returns {RemoteEntry}
      */
     static createFrom($$source = {}) {
-        const $$createField8_0 = $$createType2;
+        const $$createField8_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField8_0($$parsedSource["capabilities"]);
@@ -1239,8 +1921,8 @@ export class RemoteSnapshot {
      * @returns {RemoteSnapshot}
      */
     static createFrom($$source = {}) {
-        const $$createField1_0 = $$createType9;
-        const $$createField2_0 = $$createType2;
+        const $$createField1_0 = $$createType15;
+        const $$createField2_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("remotes" in $$parsedSource) {
             $$parsedSource["remotes"] = $$createField1_0($$parsedSource["remotes"]);
@@ -1817,7 +2499,7 @@ export class ToolHistoryEntry {
      * @returns {ToolHistoryEntry}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType5;
+        const $$createField3_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("args" in $$parsedSource) {
             $$parsedSource["args"] = $$createField3_0($$parsedSource["args"]);
@@ -1924,8 +2606,8 @@ export class ToolPreset {
      * @returns {ToolPreset}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType2;
-        const $$createField4_0 = $$createType11;
+        const $$createField3_0 = $$createType6;
+        const $$createField4_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("argv" in $$parsedSource) {
             $$parsedSource["argv"] = $$createField3_0($$parsedSource["argv"]);
@@ -2217,7 +2899,7 @@ export class presetSyncOptions {
      * @returns {presetSyncOptions}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType13;
+        const $$createField2_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("options" in $$parsedSource) {
             $$parsedSource["options"] = $$createField2_0($$parsedSource["options"]);
@@ -2227,17 +2909,23 @@ export class presetSyncOptions {
 }
 
 // Private type creation functions
-const $$createType0 = Environment.createFrom;
+const $$createType0 = AuditFindingView.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $Create.Array($Create.Any);
-const $$createType3 = Service.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $Create.Map($Create.Any, $Create.Any);
-const $$createType6 = GlobalService.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = RemoteEntry.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = ToolArgSpec.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = presetOptionDef.createFrom;
+const $$createType2 = AuditCheckView.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = Environment.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = DoctorCheckView.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = Service.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = $Create.Map($Create.Any, $Create.Any);
+const $$createType12 = GlobalService.createFrom;
 const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = RemoteEntry.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = ToolArgSpec.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = presetOptionDef.createFrom;
+const $$createType19 = $Create.Array($$createType18);
