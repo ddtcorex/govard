@@ -58,6 +58,12 @@ Lightweight dashboard highlights:
 - OS Terminal launcher for service shells
 - System tray: show/hide the window, start/stop/open projects, quit
 - Settings drawer (theme, proxy target, preferred browser, run in background)
+- Operation Center: running ops with cancel plus terminal history with
+  failed-only retry (`OperationService` via the `ListOps`, `ListHistory`,
+  `CancelOp`, `RetryOp` bridge routes; one sync per project; history capped
+  at 200 records with restart recovery; at-least-once
+  `operations:notification` events). Full behavior is documented in
+  `docs/workflows/desktop-app.md` under Operation Center.
 
 Frontend file management:
 - `frontend/main.js` bootstrap + wiring

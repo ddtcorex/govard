@@ -18,6 +18,10 @@ func (b *serviceBase) ServiceStartup(ctx context.Context, _ application.ServiceO
 }
 
 func (w *operationWatcher) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
+	// Startup scan: ops in flight when the app last exited never reached a
+	// terminal state, so mark them interrupted in history (recovery, never
+	// silent) before polling for new events.
+	RecoverInterruptedOps()
 	w.start(ctx)
 	return nil
 }

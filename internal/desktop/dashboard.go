@@ -25,44 +25,42 @@ var (
 	syncingProjectsMu sync.Mutex
 )
 
+// RegisterSyncingProject records an in-flight sync outside the atomic
+// claim. Production starters must use TryRegisterSyncingProject (check and
+// register under one mutex hold); this export stays for test setup only,
+// where a fresh map makes the claim trivially succeed.
 func RegisterSyncingProject(project, remote string) {
 	syncingProjectsMu.Lock()
 	defer syncingProjectsMu.Unlock()
-	syncingProjects[project] = remote
+	if id := canonicalProjectID(project); id != "" {
+		syncingProjects[id] = remote
+	}
 }
 
 func UnregisterSyncingProject(project string) {
 	syncingProjectsMu.Lock()
 	defer syncingProjectsMu.Unlock()
-	delete(syncingProjects, project)
+	delete(syncingProjects, canonicalProjectID(project))
 }
 
 func GetSyncingRemote(project string) string {
 	syncingProjectsMu.Lock()
 	defer syncingProjectsMu.Unlock()
-	return syncingProjects[project]
+	return syncingProjects[canonicalProjectID(project)]
 }
 
 // syncingRemoteForProject reports the remote an in-flight sync is pulling
-// from for a project, matching case-insensitively: lifecycle entry points
-// receive names, domains and paths interchangeably while the sync runner
-// registers the selected project name.
+// from for a project. Both sides key on the canonical project ID, so names,
+// domains and paths that resolve to the same project share one map entry
+// and a single lookup suffices.
 func syncingRemoteForProject(project string) string {
-	trimmed := strings.TrimSpace(project)
-	if trimmed == "" {
+	id := canonicalProjectID(strings.TrimSpace(project))
+	if id == "" {
 		return ""
 	}
 	syncingProjectsMu.Lock()
 	defer syncingProjectsMu.Unlock()
-	if remote, ok := syncingProjects[trimmed]; ok {
-		return remote
-	}
-	for name, remote := range syncingProjects {
-		if strings.EqualFold(name, trimmed) {
-			return remote
-		}
-	}
-	return ""
+	return syncingProjects[id]
 }
 
 // refuseDuringSync rejects a mutating environment action while a sync is
@@ -385,13 +383,11 @@ func (s *EnvironmentService) PullEnvironment(project string) (res string, err er
 // (project name, domain or path) to the compose project name Docker labels
 // carry, falling back to the input when the registry knows nothing about
 // it. Toggle decides stop-vs-start off container labels, so resolving
-// through the registry first keeps a renamed or domain-addressed project
-// from taking the wrong branch.
+// through the canonical project ID first keeps a renamed or
+// domain-addressed project from taking the wrong branch.
 func composeProjectNameForToggle(project string) string {
-	if entry, err := findExactProjectMatch(project); err == nil {
-		if name := strings.TrimSpace(entry.ProjectName); name != "" {
-			return name
-		}
+	if id := canonicalProjectID(project); id != "" {
+		return id
 	}
 	return strings.TrimSpace(project)
 }

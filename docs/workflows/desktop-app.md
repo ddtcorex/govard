@@ -50,6 +50,125 @@ Live log panes keep the last 2,000 lines and pause their polling while the windo
 
 ---
 
+## Operation Center
+
+The Operations tab is the visible home for long operations. It shows two
+lists, both served by `OperationService` through the `bridge.js` routes
+`ListOps`, `ListHistory`, `CancelOp` and `RetryOp`, which map onto the Go
+methods of the same names (`internal/desktop/operation_service.go`). The
+tab itself is the `OperationCenter` React island with pure helpers in
+`desktop/frontend/modules/operation-center.js`.
+
+| List | Source | Order |
+| :--- | :--- | :--- |
+| Running | `ListOps` | Oldest first, with a Cancel button per op |
+| History | `ListHistory` | Newest first; `ListHistory(limit)` caps the read, `limit <= 0` means all |
+
+The island refreshes both lists on the `sync:progress` and
+`operations:notification` backend events (subscribed through
+`services/events.js`; the constants `SYNC_PROGRESS_EVENT` and
+`OPERATIONS_NOTIFICATION_EVENT` live in `modules/operation-center.js`).
+
+### Concurrency: one sync per project
+
+- One background sync runs per project. `RunRemoteSync` claims the project
+  through `TryRegisterSyncingProject` under a single mutex hold, where the
+  claim itself is the guard, so two concurrent starters cannot both pass. A
+  second start is refused with `cannot start sync for "X" while sync from
+  "Y" is in progress` (or `another sync is already in progress` when no
+  remote is recorded). Keys are canonical project IDs, so a start addressed
+  by domain cannot slip past a sync started by path.
+- While a sync runs, mutating environment actions on the same project
+  (start, stop, restart, pull, toggle, delete) are refused, because the sync
+  owns the containers.
+- The registry rejects a duplicate op id (`RegisterOp` and
+  `RegisterOpWithArgs` return false and keep the original entry), so a
+  duplicate can never displace a cancel func and orphan its context.
+- A second `RetryOp` for a record that already has a retry in flight is
+  refused; wait for the current run to finish before retrying.
+
+### Cancel
+
+- `CancelOp(id)` on a tracked running op removes the entry, appends one
+  `cancelled` terminal record, and fires the stored cancel func exactly once
+  (after releasing the lock, so a re-entrant cancel func cannot deadlock). A
+  cancel racing a finish records exactly one terminal state. An unknown or
+  already finished id returns false, which the UI treats as a harmless no-op
+  (`<id> already finished`) rather than an error.
+- Limits, stated plainly: background syncs (`RemoteService.RunRemoteSync`)
+  and one-shot environment CLI calls are not tracked registry ops in this
+  release, so they do not appear under Running and the center cannot cancel
+  them. They run to completion and report through the `sync:failed` /
+  `sync:completed` events and the operation notifications below. Syncs
+  launched in an OS terminal (`RunRemoteSyncInTerminal`) run outside the app
+  entirely. Live log streams are separate: `StopLogStream` and
+  `StopGlobalServiceLogStream` stop the stream and kill the underlying
+  `docker logs` process.
+
+### History retention and crash recovery
+
+- Terminal records persist as JSONL in `<govard-home>/desktop/operation-history.jsonl`
+  (honoring `GOVARD_HOME_DIR`), one line per terminal state: `completed`,
+  `failed`, `cancelled`, `interrupted`. Args are scrubbed at write (secrets
+  become `***` placeholders); messages are sanitized and capped at 2,000
+  characters. Corrupt or blank lines are skipped and never consume budget.
+- Cap: `OperationHistoryCap` is 200 valid records. Appending past the cap
+  evicts the oldest records while the newest stay intact. Full rewrites
+  publish atomically (temp file plus rename), so a crash mid-write never
+  leaves a half-truncated history.
+- Crash recovery: every registered op is mirrored to the
+  `operation-inflight.json` sidecar until it reaches a terminal state.
+  `RecoverInterruptedOps` runs at startup and marks orphan entries
+  `interrupted` with the message `Interrupted by app restart`, deduped by
+  (op id, start time) so a terminal record that landed before the crash is
+  never duplicated. An unreadable sidecar is quarantined aside
+  (`operation-inflight.json.corrupt-<timestamp>`) for forensics: never
+  silently dropped, never invented from.
+
+### Retry
+
+- The Retry button appears on failed records only. `RetryOp` replays the
+  stored args through the original service path under a fresh op id; the old
+  terminal record is never rewritten, so finish and cancel attribution keep
+  their exactly-once semantics.
+- Every refusal fails closed with an actionable error: an unknown id or an
+  id with no terminal record; a record that ended `completed`, `cancelled`
+  or `interrupted`; stored args carrying a `***` scrub placeholder (re-run
+  with fresh credentials instead of replaying, since the placeholder no
+  longer authenticates); an op kind with no registered replay handler
+  (`RegisterOpRetryHandler`); a retry already in progress for the same
+  record.
+- Interrupted entries never replay. The history row shows a fresh-run hint
+  instead: `Interrupted by an app restart. Start a fresh run; the stored
+  args are kept for reference.`
+- Replay handlers for the WS-A/B/C operation families land with those
+  follow-ups. Until a kind registers its handler, `RetryOp` keeps failing
+  closed (`no replay path`) and the Retry button explains re-running the op
+  from its original view instead of replaying it here.
+
+### Notifications
+
+- Terminal operations emit `operations:notification`
+  (`EventOperationsNotification`), polled every 2 seconds with a read limit
+  of 256 events. Delivery is at-least-once: the watcher emits first and
+  persists the cursor second, so a crash between the two redelivers (a
+  visible duplicate) instead of silently losing a notification.
+- A fresh install suppresses pre-existing log history. A restart resumes
+  from the persisted cursor (`operation-notify-cursor` in the same state
+  dir) and delivers the downtime gap on its first poll. If the cursor is
+  gone (log rotation, or the read window slid past it while the app was
+  down), the whole window is delivered rather than dropped.
+- Failure toasts carry catalog actions (`retry`, `open-logs`, `copy`
+  through `OpActionRetry`, `OpActionOpenLogs`, `OpActionCopy`). Retry is
+  bound to the exact source terminal record id (`retryId`): the event's op
+  id must name a history record that exists and ended `failed`, and that id
+  is what `RetryOp` replays. No match means no Retry button, and a retry
+  dispatched without a bound id fails closed as record unavailable instead
+  of scanning for a substitute that could replay the wrong run. Success
+  notifications carry no actions.
+
+---
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |

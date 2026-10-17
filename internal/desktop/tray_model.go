@@ -1,12 +1,29 @@
 package desktop
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
 type trayProject struct {
 	Project string
 	Name    string
 	URL     string
 	Running bool
+}
+
+// trayTitle renders the tray label with the running-op count: plain "Govard"
+// when idle, with a "(N op/N ops)" badge while operations run. The refresh
+// path (see tray_wails.go) applies it to the label and tooltip on every
+// rebuild so the count tracks ListOps.
+func trayTitle(runningOps int) string {
+	if runningOps <= 0 {
+		return trayName
+	}
+	if runningOps == 1 {
+		return trayName + " (1 op)"
+	}
+	return fmt.Sprintf("%s (%d ops)", trayName, runningOps)
 }
 
 // buildTrayProjects lists every environment for the tray menu: running ones

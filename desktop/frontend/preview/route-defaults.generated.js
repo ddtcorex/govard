@@ -142,6 +142,20 @@ export const ROUTE_DEFAULTS = {
     "kind": "value",
     "value": ""
   },
+  "OperationService.CancelOp": {
+    "kind": "value",
+    "value": false
+  },
+  "OperationService.ListHistory": {
+    "kind": "slice"
+  },
+  "OperationService.ListOps": {
+    "kind": "slice"
+  },
+  "OperationService.RetryOp": {
+    "kind": "value",
+    "value": ""
+  },
   "RemoteService.GetRemotes": {
     "kind": "model",
     "model": "RemoteSnapshot"

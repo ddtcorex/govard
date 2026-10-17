@@ -83,6 +83,10 @@ export const ID_MAP = {
     "service": "GlobalServiceService",
     "method": "StartGlobalServices"
   },
+  "1391531249": {
+    "service": "OperationService",
+    "method": "ListHistory"
+  },
   "1457209326": {
     "service": "SystemService",
     "method": "Quit"
@@ -183,6 +187,10 @@ export const ID_MAP = {
     "service": "LogService",
     "method": "StopLogStream"
   },
+  "3334096344": {
+    "service": "OperationService",
+    "method": "RetryOp"
+  },
   "3389507184": {
     "service": "EnvironmentService",
     "method": "QuickActionForProject"
@@ -207,6 +215,10 @@ export const ID_MAP = {
     "service": "SystemService",
     "method": "GetUserInfo"
   },
+  "3636449998": {
+    "service": "OperationService",
+    "method": "CancelOp"
+  },
   "3666528904": {
     "service": "EnvironmentService",
     "method": "OpenDocs"
@@ -218,6 +230,10 @@ export const ID_MAP = {
   "3830432576": {
     "service": "LogService",
     "method": "StopGlobalServiceLogStream"
+  },
+  "3936715673": {
+    "service": "OperationService",
+    "method": "ListOps"
   },
   "3953136504": {
     "service": "OnboardingService",

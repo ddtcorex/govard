@@ -62,6 +62,10 @@ export const ROUTES = {
   SetUpdateChannel: ["UpdateService", "SetUpdateChannel"],
   InstallLatestUpdate: ["UpdateService", "InstallLatestUpdate"],
   RestartDesktopApp: ["UpdateService", "RestartDesktopApp"],
+  ListOps: ["OperationService", "ListOps"],
+  ListHistory: ["OperationService", "ListHistory"],
+  CancelOp: ["OperationService", "CancelOp"],
+  RetryOp: ["OperationService", "RetryOp"],
 };
 
 /**
@@ -565,6 +569,27 @@ export const desktopBridge = {
   },
   async restartDesktopApp() {
     return invoke("RestartDesktopApp");
+  },
+  async listOps() {
+    return invoke("ListOps");
+  },
+  /**
+   * @param {number} [limit=0] at most this many records, newest first; 0 means all.
+   */
+  async listHistory(limit = 0) {
+    return invoke("ListHistory", Number(limit) || 0);
+  },
+  /**
+   * @param {string} id
+   */
+  async cancelOp(id) {
+    return invoke("CancelOp", String(id || ""));
+  },
+  /**
+   * @param {string} id
+   */
+  async retryOp(id) {
+    return invoke("RetryOp", String(id || ""));
   },
   async quit() {
     return invoke("Quit");

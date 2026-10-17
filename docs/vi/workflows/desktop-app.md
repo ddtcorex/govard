@@ -49,6 +49,128 @@ Các panel log trực tiếp giữ 2.000 dòng gần nhất và tạm dừng pol
 
 ---
 
+## Trung tâm điều hành (Operation Center)
+
+Tab Operations là nơi hiển thị các thao tác dài. Tab gồm hai danh sách, cả
+hai đều do `OperationService` phục vụ qua các route `ListOps`,
+`ListHistory`, `CancelOp` và `RetryOp` trong `bridge.js`, ánh xạ tới các
+method Go cùng tên (`internal/desktop/operation_service.go`). Bản thân tab
+là React island `OperationCenter` với các helper thuần trong
+`desktop/frontend/modules/operation-center.js`.
+
+| Danh sách | Nguồn | Thứ tự |
+| :--- | :--- | :--- |
+| Đang chạy (Running) | `ListOps` | Cũ nhất trước, mỗi op có nút Cancel |
+| Lịch sử (History) | `ListHistory` | Mới nhất trước; `ListHistory(limit)` giới hạn số bản ghi đọc, `limit <= 0` nghĩa là đọc tất cả |
+
+Island tải lại cả hai danh sách khi nhận sự kiện backend `sync:progress` và
+`operations:notification` (đăng ký qua `services/events.js`; hai hằng số
+`SYNC_PROGRESS_EVENT` và `OPERATIONS_NOTIFICATION_EVENT` nằm trong
+`modules/operation-center.js`).
+
+### Đồng thời: một sync mỗi project
+
+- Mỗi project chỉ chạy một sync nền tại một thời điểm. `RunRemoteSync`
+  giữ project qua `TryRegisterSyncingProject` trong một lần khóa mutex duy
+  nhất, và chính lần giữ đó là chốt chặn, nên hai lần khởi động đồng thời
+  không thể cùng vượt qua. Lần khởi động thứ hai bị từ chối với
+  `cannot start sync for "X" while sync from "Y" is in progress` (hoặc
+  `another sync is already in progress` khi không ghi nhận remote nào).
+  Khóa dùng ID project chuẩn hóa, nên một lần Start gọi bằng domain không
+  thể lọt qua một sync đã khởi động bằng đường dẫn.
+- Trong khi sync đang chạy, các thao tác thay đổi môi trường trên cùng
+  project (start, stop, restart, pull, toggle, delete) đều bị từ chối, vì
+  sync đang sở hữu các container.
+- Registry từ chối id op trùng lặp (`RegisterOp` và `RegisterOpWithArgs`
+  trả về false và giữ nguyên entry cũ), nên bản trùng không bao giờ đẩy
+  được hàm cancel ra và làm mồ côi context của nó.
+- Một `RetryOp` thứ hai cho bản ghi đã có retry đang chạy cũng bị từ chối;
+  hãy đợi lần chạy hiện tại kết thúc rồi mới retry.
+
+### Hủy (Cancel)
+
+- `CancelOp(id)` trên một op đang chạy bị theo dõi sẽ gỡ entry, ghi thêm
+  một bản ghi terminal `cancelled`, và kích hoạt hàm cancel đã lưu đúng một
+  lần (sau khi đã thả khóa, để hàm cancel có gọi ngược vào registry cũng
+  không deadlock). Một cancel đua với một finish chỉ ghi đúng một trạng
+  thái terminal. Id không tồn tại hoặc đã kết thúc trả về false, và UI coi
+  đó là thành công không cần báo (`<id> already finished`) chứ không phải
+  lỗi.
+- Giới hạn, nói rõ ràng: các sync nền (`RemoteService.RunRemoteSync`) và
+  các lệnh CLI môi trường một lần hiện chưa phải op được registry theo dõi,
+  nên chúng không xuất hiện trong Running và trung tâm không thể hủy chúng.
+  Chúng chạy tới khi xong và báo cáo qua các sự kiện `sync:failed` /
+  `sync:completed` cùng notification thao tác bên dưới. Các sync mở trong
+  terminal của hệ điều hành (`RunRemoteSyncInTerminal`) chạy hoàn toàn ngoài
+  ứng dụng. Luồng log trực tiếp là cơ chế riêng: `StopLogStream` và
+  `StopGlobalServiceLogStream` dừng luồng và kill tiến trình `docker logs`
+  bên dưới.
+
+### Lưu lịch sử và khôi phục sau crash
+
+- Các bản ghi terminal được lưu dạng JSONL trong
+  `<govard-home>/desktop/operation-history.jsonl` (tôn trọng
+  `GOVARD_HOME_DIR`), mỗi dòng một trạng thái terminal: `completed`,
+  `failed`, `cancelled`, `interrupted`. Tham số args được tẩy secret khi
+  ghi (secret thành placeholder `***`); message được làm sạch và cắt ở
+  2.000 ký tự. Dòng hỏng hoặc dòng trống bị bỏ qua và không bao giờ chiếm
+  ngân sách.
+- Trần: `OperationHistoryCap` là 200 bản ghi hợp lệ. Ghi vượt trần sẽ loại
+  các bản ghi cũ nhất, giữ nguyên các bản ghi mới nhất. Các lần ghi lại toàn
+  bộ xuất bản nguyên tử (file tạm rồi rename), nên crash giữa chừng không
+  bao giờ để lại file lịch sử cắt dở.
+- Khôi phục sau crash: mỗi op đã đăng ký được nhân bản vào sidecar
+  `operation-inflight.json` cho tới khi đạt trạng thái terminal.
+  `RecoverInterruptedOps` chạy khi khởi động và đánh dấu các entry mồ côi
+  thành `interrupted` với message `Interrupted by app restart`, khử trùng
+  theo cặp (id op, thời điểm start) để bản ghi terminal đã kịp ghi trước
+  crash không bao giờ bị trùng. Sidecar không đọc được sẽ bị cách ly sang
+  một bên (`operation-inflight.json.corrupt-<timestamp>`) để điều tra: không
+  bao giờ lặng lẽ xóa, cũng không bao giờ bịa bản ghi từ đó.
+
+### Chạy lại (Retry)
+
+- Nút Retry chỉ xuất hiện trên các bản ghi thất bại. `RetryOp` phát lại
+  args đã lưu qua đúng đường service gốc dưới một id op mới; bản ghi
+  terminal cũ không bao giờ bị sửa, nên ngữ nghĩa exactly-once của finish
+  và cancel được giữ nguyên.
+- Mọi từ chối đều fail-closed kèm lỗi có hướng xử lý: id không tồn tại hoặc
+  id không có bản ghi terminal; bản ghi đã kết thúc ở `completed`,
+  `cancelled` hoặc `interrupted`; args đã lưu mang placeholder tẩy `***`
+  (hãy chạy lại với credential mới thay vì phát lại, vì placeholder không
+  còn xác thực được); loại op chưa có handler phát lại đã đăng ký
+  (`RegisterOpRetryHandler`); đã có một retry đang chạy cho cùng bản ghi.
+- Các entry bị gián đoạn không bao giờ phát lại. Dòng lịch sử hiển thị gợi
+  ý chạy mới thay thế: `Interrupted by an app restart. Start a fresh run;
+  the stored args are kept for reference.`
+- Các handler phát lại cho các họ thao tác WS-A/B/C sẽ đi kèm các follow-up
+  đó. Cho tới khi một loại đăng ký handler của mình, `RetryOp` vẫn fail-closed
+  (`no replay path`) và nút Retry hướng dẫn chạy lại thao tác từ view gốc thay
+  vì phát lại tại đây.
+
+### Thông báo (Notifications)
+
+- Các thao tác terminal phát `operations:notification`
+  (`EventOperationsNotification`), được thăm dò mỗi 2 giây với giới hạn đọc
+  256 sự kiện. Phân phối là at-least-once: watcher phát trước rồi mới lưu
+  cursor sau, nên crash xen giữa hai bước sẽ gửi lại (trùng lặp hiển thị)
+  thay vì lặng lẽ mất notification.
+- Cài mới sẽ ẩn lịch sử log có sẵn từ trước. Khởi động lại tiếp tục từ
+  cursor đã lưu (`operation-notify-cursor` trong cùng thư mục state) và gửi
+  bù khoảng trống downtime ngay lần poll đầu. Nếu cursor đã mất (log xoay
+  vòng, hoặc cửa sổ đọc đã trượt qua trong lúc app tắt), toàn bộ cửa sổ sẽ
+  được gửi thay vì bị bỏ.
+- Toast thất bại mang các action trong catalog (`retry`, `open-logs`,
+  `copy` qua `OpActionRetry`, `OpActionOpenLogs`, `OpActionCopy`). Retry
+  gắn với đúng id bản ghi terminal nguồn (`retryId`): op id của sự kiện
+  phải trỏ tới một bản ghi lịch sử tồn tại và đã kết thúc ở `failed`, và
+  đúng id đó là thứ `RetryOp` phát lại. Không khớp thì không có nút Retry,
+  và một retry không có id gắn kèm sẽ fail-closed dạng record unavailable
+  thay vì quét tìm bản thay thế có thể phát lại nhầm lần chạy. Notification
+  thành công không mang action nào.
+
+---
+
 ## Phím tắt (Keyboard Shortcuts)
 
 | Phím tắt | Thao tác |
