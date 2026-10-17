@@ -23,6 +23,7 @@ declare module "@wailsio/runtime" {
             "sync:completed": string;
             "sync:failed": string;
             "sync:output": string;
+            "sync:progress": desktop$0.SyncProgressPayload;
             "sync:started": desktop$0.SyncStartedPayload;
         }
     }

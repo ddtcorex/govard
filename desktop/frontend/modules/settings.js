@@ -1,4 +1,8 @@
 import { formatUpdateMessage } from "./update-message.js";
+import {
+  focusFirstElement,
+  rememberFocus,
+} from "../utils/focus-trap.js";
 
 export const normalizeSettingsPayload = (settings = {}) => ({
   theme: settings.theme || settings.Theme || "system",
@@ -13,6 +17,41 @@ export const normalizeSettingsPayload = (settings = {}) => ({
       ? Boolean(settings.RunInBackground ?? true)
       : Boolean(settings.runInBackground),
 });
+
+/**
+ * Validate the proxy gateway URL field. Returns "" when the value is usable
+ * and a human-readable field error otherwise. Empty means unset (the backend
+ * default applies), so it validates clean.
+ */
+export const validateProxyTarget = (value) => {
+  const trimmed = String(value ?? "").trim();
+  if (trimmed === "") {
+    return "";
+  }
+  if (/\s/.test(trimmed)) {
+    return "Enter a valid hostname or URL, e.g. govard.test.";
+  }
+  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch (_parseErr) {
+    return "Enter a valid hostname or URL, e.g. govard.test.";
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return "Proxy URL must start with http:// or https://, e.g. https://govard.test.";
+  }
+  const host = parsed.hostname;
+  if (!/^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(host)) {
+    return "Enter a valid hostname or URL, e.g. govard.test.";
+  }
+  if (host !== "localhost" && !host.includes(".")) {
+    return "Enter a valid hostname or URL, e.g. govard.test.";
+  }
+  return "";
+};
 
 export const applyTheme = (theme) => {
   const root = document.documentElement;
@@ -64,9 +103,11 @@ export const createSettingsController = ({
     outdated: false,
     installCompleted: false,
     failed: false,
+    restartFailed: false,
     message: "Version check has not been run yet.",
     changelog: "",
     channel: "stable",
+    lastChecked: "",
   };
 
   const normalizeUpdateResult = (payload = {}) => ({
@@ -100,6 +141,18 @@ export const createSettingsController = ({
       options && typeof options === "object" ? Boolean(options.silent) : false,
   });
 
+  const formatLastChecked = (iso) => {
+    const trimmed = String(iso || "").trim();
+    if (!trimmed) {
+      return "Last checked: never";
+    }
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Last checked: never";
+    }
+    return `Last checked: ${parsed.toLocaleString()}`;
+  };
+
   const renderUpdateSection = () => {
     if (refs.settingsUpdateStatus) {
       refs.settingsUpdateStatus.textContent = updateState.message;
@@ -112,6 +165,12 @@ export const createSettingsController = ({
       if (shouldShowChangelog) {
         refs.settingsUpdateChangelog.textContent = updateState.changelog;
       }
+    }
+
+    if (refs.settingsUpdateLastChecked) {
+      refs.settingsUpdateLastChecked.textContent = formatLastChecked(
+        updateState.lastChecked,
+      );
     }
 
     if (refs.settingsUpdateBadge) {
@@ -159,12 +218,23 @@ export const createSettingsController = ({
         ? '<span class="material-symbols-outlined text-[18px]">install_desktop</span><span>Installing...</span>'
         : '<span class="material-symbols-outlined text-[18px]">download</span><span>Download & Install Update</span>';
     }
+
+    if (refs.retryRestartButton) {
+      refs.retryRestartButton.classList.toggle(
+        "hidden",
+        !updateState.restartFailed,
+      );
+    }
   };
 
   const updateRefs = (newRefs) => {
     refs = newRefs;
     renderUpdateSection();
+    refreshDirtyState();
   };
+  // Baseline dialog focus contract: opening remembers who was focused and
+  // moves focus into the drawer; closing hands focus back.
+  let restoreDrawerFocus = null;
   const toggleDrawer = (open) => {
     if (!refs.settingsDrawer) {
       return;
@@ -173,11 +243,109 @@ export const createSettingsController = ({
       window.dispatchEvent(new CustomEvent("govard:blur", { detail: { isVisible: true } }));
       refs.settingsDrawer.classList.remove("hidden");
       refs.settingsDrawer.setAttribute("aria-hidden", "false");
+      restoreDrawerFocus = rememberFocus();
+      focusFirstElement(refs.settingsDrawer);
       return;
     }
     window.dispatchEvent(new CustomEvent("govard:blur", { detail: { isVisible: false } }));
     refs.settingsDrawer.classList.add("hidden");
     refs.settingsDrawer.setAttribute("aria-hidden", "true");
+    if (restoreDrawerFocus) {
+      restoreDrawerFocus();
+      restoreDrawerFocus = null;
+    }
+  };
+
+  // Explicit save discipline (Task 8): typing in a field must never fire an
+  // RPC. The controller keeps the last saved snapshot, compares the live form
+  // against it, and drives the drawer's dirty dot plus Save/Discard buttons.
+  // save() is the only path that calls bridge.updateSettings, and it refuses
+  // to call it while the proxy URL fails validation.
+  const SETTINGS_FORM_KEYS = [
+    "theme",
+    "proxyTarget",
+    "preferredBrowser",
+    "codeEditor",
+    "dbClientPreference",
+    "runInBackground",
+  ];
+
+  const readForm = () => ({
+    theme: refs.themeSelect?.value || "system",
+    proxyTarget: refs.proxyTarget?.value || "",
+    preferredBrowser: refs.preferredBrowser?.value || "",
+    codeEditor: refs.codeEditor?.value || "",
+    dbClientPreference: refs.dbClientPreference?.value || "pma",
+    runInBackground: refs.runInBackgroundToggle
+      ? Boolean(refs.runInBackgroundToggle.checked)
+      : true,
+  });
+
+  let savedSnapshot = readForm();
+
+  const setHidden = (el, hidden) => {
+    if (!el || !el.classList || typeof el.classList.toggle !== "function") {
+      return;
+    }
+    el.classList.toggle("hidden", hidden);
+  };
+
+  const renderProxyError = (message) => {
+    if (refs.proxyTargetError) {
+      refs.proxyTargetError.textContent = message || "";
+    }
+    setHidden(refs.proxyTargetError, !message);
+    const input = refs.proxyTarget;
+    if (
+      input &&
+      typeof input.setAttribute === "function" &&
+      typeof input.removeAttribute === "function"
+    ) {
+      if (message) {
+        input.setAttribute("aria-invalid", "true");
+      } else {
+        input.removeAttribute("aria-invalid");
+      }
+    }
+  };
+
+  const isDirty = () => {
+    const form = readForm();
+    return SETTINGS_FORM_KEYS.some((key) => form[key] !== savedSnapshot[key]);
+  };
+
+  const refreshDirtyState = () => {
+    const dirty = isDirty();
+    setHidden(refs.settingsDirtyDot, !dirty);
+    if (refs.saveSettingsButton && "disabled" in refs.saveSettingsButton) {
+      refs.saveSettingsButton.disabled = !dirty;
+    }
+    if (refs.discardSettingsButton && "disabled" in refs.discardSettingsButton) {
+      refs.discardSettingsButton.disabled = !dirty;
+    }
+    return dirty;
+  };
+
+  const handleFieldChange = () => {
+    if (!validateProxyTarget(readForm().proxyTarget)) {
+      renderProxyError("");
+    }
+    return refreshDirtyState();
+  };
+
+  const discard = () => {
+    if (refs.themeSelect) refs.themeSelect.value = savedSnapshot.theme;
+    if (refs.proxyTarget) refs.proxyTarget.value = savedSnapshot.proxyTarget;
+    if (refs.preferredBrowser)
+      refs.preferredBrowser.value = savedSnapshot.preferredBrowser;
+    if (refs.codeEditor) refs.codeEditor.value = savedSnapshot.codeEditor;
+    if (refs.dbClientPreference)
+      refs.dbClientPreference.value = savedSnapshot.dbClientPreference;
+    if (refs.runInBackgroundToggle) {
+      refs.runInBackgroundToggle.checked = savedSnapshot.runInBackground;
+    }
+    renderProxyError("");
+    refreshDirtyState();
   };
 
   const load = async () => {
@@ -205,6 +373,9 @@ export const createSettingsController = ({
         refs.runInBackgroundToggle.checked = settings.runInBackground;
       }
       applyTheme(settings.theme);
+      savedSnapshot = { ...settings };
+      renderProxyError("");
+      refreshDirtyState();
 
       if (refs.trayUnavailableHint) {
         try {
@@ -229,30 +400,29 @@ export const createSettingsController = ({
   };
 
   const save = async () => {
-    const theme = refs.themeSelect?.value || "system";
-    const proxyTarget = refs.proxyTarget?.value || "";
-    const preferredBrowser = refs.preferredBrowser?.value || "";
-    const codeEditor = refs.codeEditor?.value || "";
-    const dbClientPreference = refs.dbClientPreference?.value || "pma";
-    const runInBackground = refs.runInBackgroundToggle
-      ? Boolean(refs.runInBackgroundToggle.checked)
-      : true;
+    const form = readForm();
+    const proxyError = validateProxyTarget(form.proxyTarget);
+    if (proxyError) {
+      renderProxyError(proxyError);
+      refreshDirtyState();
+      onStatus("Fix the highlighted settings field before saving.");
+      onToast(proxyError, "error");
+      return { ok: false, error: proxyError };
+    }
+    renderProxyError("");
     try {
-      const message = await bridge.updateSettings({
-        theme,
-        proxyTarget,
-        preferredBrowser,
-        codeEditor,
-        dbClientPreference,
-        runInBackground,
-      });
-      applyTheme(theme);
+      const message = await bridge.updateSettings({ ...form });
+      savedSnapshot = { ...form };
+      applyTheme(form.theme);
+      refreshDirtyState();
       onStatus("Settings saved successfully.");
       onToast("Settings saved successfully.", "success");
+      return { ok: true, message };
     } catch (err) {
       const message = "Could not save settings.";
       onStatus(message);
       onToast(message, "error");
+      return { ok: false, error: message };
     }
   };
 
@@ -285,9 +455,11 @@ export const createSettingsController = ({
       const result = normalizeUpdateResult(raw);
 
       updateState.checked = true;
+      updateState.lastChecked = new Date().toISOString();
       updateState.outdated = result.outdated;
       updateState.installCompleted = false;
       updateState.failed = false;
+      updateState.restartFailed = false;
       updateState.changelog = result.changelog;
 
       if (result.outdated) {
@@ -317,9 +489,11 @@ export const createSettingsController = ({
         latestVersion: result.latestVersion,
         changelog: result.changelog,
         message: updateState.message,
+        lastChecked: updateState.lastChecked,
       };
     } catch (_err) {
       updateState.checked = true;
+      updateState.lastChecked = new Date().toISOString();
       updateState.outdated = false;
       updateState.failed = true;
       updateState.changelog = "";
@@ -338,6 +512,7 @@ export const createSettingsController = ({
         currentVersion: "",
         latestVersion: "",
         message: updateState.message,
+        lastChecked: updateState.lastChecked,
       };
     } finally {
       updateState.checking = false;
@@ -352,6 +527,7 @@ export const createSettingsController = ({
 
     updateState.installing = true;
     updateState.message = "Downloading and installing update...";
+    updateState.restartFailed = false;
     renderUpdateSection();
     let updateInstalled = false;
     let restartFailed = false;
@@ -371,6 +547,7 @@ export const createSettingsController = ({
         await bridge.restartDesktopApp();
       } catch (restartErr) {
         restartFailed = true;
+        updateState.restartFailed = true;
         updateState.failed = true;
         updateState.message = normalizeErrorMessage(
           restartErr,
@@ -401,6 +578,29 @@ export const createSettingsController = ({
     };
   };
 
+  const retryRestart = async () => {
+    try {
+      await bridge.restartDesktopApp();
+      updateState.restartFailed = false;
+      updateState.failed = false;
+      updateState.message = "Restarting Govard Desktop...";
+      onStatus(updateState.message);
+      renderUpdateSection();
+      return { ok: true, message: updateState.message };
+    } catch (err) {
+      updateState.restartFailed = true;
+      updateState.failed = true;
+      updateState.message = normalizeErrorMessage(
+        err,
+        "Restart failed. Use Retry Restart to try again.",
+      );
+      onStatus(updateState.message);
+      onToast(updateState.message, "warning");
+      renderUpdateSection();
+      return { ok: false, message: updateState.message };
+    }
+  };
+
   const setUpdateChannel = async (channel) => {
     try {
       const applied = await bridge.setUpdateChannel(channel);
@@ -428,8 +628,12 @@ export const createSettingsController = ({
     load,
     save,
     reset,
+    discard,
+    isDirty,
+    handleFieldChange,
     checkForUpdates,
     installLatestUpdate,
+    retryRestart,
     setUpdateChannel,
     updateRefs,
   };

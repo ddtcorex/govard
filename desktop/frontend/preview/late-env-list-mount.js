@@ -16,6 +16,8 @@ export function mountLateEnvList(containerId) {
       onSelect: () => {},
       onToggle: () => {},
       onSwitchSidebarMode: () => {},
+      onRetry: () => {},
+      onOpenOnboarding: () => {},
     }),
   );
 }

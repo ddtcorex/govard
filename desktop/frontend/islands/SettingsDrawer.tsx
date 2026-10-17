@@ -1,12 +1,17 @@
 import { useEffect } from "react";
 import { byId } from "../utils/dom.js";
+import { trapTabKey } from "../utils/focus-trap.js";
 
 type SettingsController = {
   load(): Promise<void>;
-  save(): Promise<void>;
+  save(): Promise<unknown>;
   reset(): Promise<void>;
+  discard(): void;
+  isDirty(): boolean;
+  handleFieldChange(): boolean;
   checkForUpdates(options?: { silent?: boolean }): Promise<unknown>;
   installLatestUpdate(): Promise<unknown>;
+  retryRestart(): Promise<unknown>;
   setUpdateChannel(channel: string): Promise<unknown>;
   toggleDrawer(open: boolean): void;
   updateRefs(refs: Record<string, unknown>): void;
@@ -35,9 +40,15 @@ const collectRefs = () => ({
   settingsUpdateBadge: byId("settingsUpdateBadge"),
   settingsUpdateStatus: byId("settingsUpdateStatus"),
   settingsUpdateChangelog: byId("settingsUpdateChangelog"),
+  settingsUpdateLastChecked: byId("settingsUpdateLastChecked"),
+  retryRestartButton: byId("retryRestartButton"),
   updateChannelSelect: byId("updateChannelSelect"),
   checkUpdatesButton: byId("checkUpdatesButton"),
   installUpdateButton: byId("installUpdateButton"),
+  saveSettingsButton: byId("saveSettingsButton"),
+  discardSettingsButton: byId("discardSettingsButton"),
+  settingsDirtyDot: byId("settingsDirtyDot"),
+  proxyTargetError: byId("proxyTargetError"),
 });
 
 /**
@@ -55,6 +66,12 @@ const collectRefs = () => ({
  * its own: React must not re-render the nodes the controller mutates, and the
  * drawer's `hidden` class is toggled synchronously by the controller, which
  * main.js's isSettingsDrawerOpen probe and the update prompt read.
+ *
+ * Interactive state the controller owns (the Save/Discard `disabled` flag) is
+ * deliberately absent from the JSX: React's click dispatcher consults the
+ * fiber props, so a statically rendered `disabled` keeps swallowing clicks
+ * even after the controller clears the DOM property. The controller sets the
+ * initial state on load through the same refreshDirtyState path as edits.
  */
 export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettings, onToast, registerRefs }: Props) {
   useEffect(() => {
@@ -69,22 +86,38 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
     <div
       className="drawer hidden fixed inset-0 z-100 bg-slate-900/40 dark:bg-background-primary/80 backdrop-blur-md transition-all duration-500"
       id="settingsDrawer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settingsDrawerTitle"
+      tabIndex={-1}
       aria-hidden="true"
       onClick={(event) => {
         if (event.target === event.currentTarget) onOpenChange(false);
       }}
+      onKeyDown={(event) => {
+        trapTabKey(event.currentTarget, event.nativeEvent);
+      }}
     >
-      <div className="bg-white dark:bg-[#112217] border-l border-slate-200 dark:border-white/5 h-full ml-auto w-[460px] shadow-[0_0_80px_rgba(0,0,0,0.6)] flex flex-col relative overflow-hidden">
+      <div className="bg-white dark:bg-[#112217] border-l border-slate-200 dark:border-white/5 h-full ml-auto w-[460px] max-w-full shadow-[0_0_80px_rgba(0,0,0,0.6)] flex flex-col relative overflow-hidden">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/10 blur-[120px] pointer-events-none rounded-full"></div>
         <div className="absolute bottom-20 -left-20 w-64 h-64 bg-primary/5 blur-[100px] pointer-events-none rounded-full"></div>
 
         <header className="flex items-center justify-between p-8 border-b border-slate-200 dark:border-white/5 relative z-10 bg-slate-50/80 dark:bg-black/10 backdrop-blur-xs">
           <div className="flex items-center gap-4">
             <div className="size-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-lg shadow-primary/5">
-              <span className="material-symbols-outlined text-[28px]">settings</span>
+              <span className="material-symbols-outlined text-[28px]" aria-hidden="true">settings</span>
             </div>
             <div>
-              <h3 className="text-text-primary text-xl font-bold tracking-tight">Application Settings</h3>
+              <h3 id="settingsDrawerTitle" className="text-text-primary text-xl font-bold tracking-tight">
+                Application Settings
+                <span
+                  id="settingsDirtyDot"
+                  data-testid="settings-dirty-dot"
+                  title="Unsaved changes"
+                  aria-label="Unsaved changes"
+                  className="hidden ml-2 inline-block size-2 rounded-full bg-amber-400 align-middle"
+                ></span>
+              </h3>
               <p className="text-text-tertiary text-xs mt-0.5 font-medium">Customize your workspace environment</p>
             </div>
           </div>
@@ -95,7 +128,7 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
             type="button"
             onClick={() => onOpenChange(false)}
           >
-            <span className="material-symbols-outlined group-hover:rotate-90 transition-transform">close</span>
+            <span className="material-symbols-outlined group-hover:rotate-90 transition-transform" aria-hidden="true">close</span>
           </button>
         </header>
 
@@ -113,13 +146,13 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                   <select
                     id="themeSelect"
                     className="w-full bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 appearance-none cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
-                    onChange={() => void controller.save()}
+                    onChange={() => controller.handleFieldChange()}
                   >
                     <option value="system">System Default</option>
                     <option value="light">Light Mode</option>
                     <option value="dark">Dark Mode</option>
                   </select>
-                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none text-xl">unfold_more</span>
+                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none text-xl" aria-hidden="true">unfold_more</span>
                 </div>
               </div>
               <div className="flex flex-col gap-2 group">
@@ -129,11 +162,18 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                     id="proxyTarget"
                     type="text"
                     placeholder="govard.test"
+                    aria-describedby="proxyTargetError"
                     className="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
-                    onChange={() => void controller.save()}
+                    onChange={() => controller.handleFieldChange()}
                   />
-                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl">dns</span>
+                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl" aria-hidden="true">dns</span>
                 </div>
+                <p
+                  id="proxyTargetError"
+                  data-testid="proxy-target-error"
+                  role="alert"
+                  className="hidden px-1 text-[11px] font-medium leading-relaxed text-red-500 dark:text-red-300"
+                ></p>
               </div>
 
               <div className="flex flex-col gap-2 group">
@@ -144,9 +184,9 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                     type="text"
                     placeholder="code"
                     className="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
-                    onChange={() => void controller.save()}
+                    onChange={() => controller.handleFieldChange()}
                   />
-                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl">code</span>
+                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl" aria-hidden="true">code</span>
                 </div>
               </div>
 
@@ -158,9 +198,9 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                     type="text"
                     placeholder="firefox"
                     className="w-full bg-surface-secondary dark:bg-[#162a1d] border border-border-primary dark:border-white/10 rounded-xl px-4 py-3.5 text-text-primary dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-text-tertiary dark:placeholder:text-slate-600 hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
-                    onChange={() => void controller.save()}
+                    onChange={() => controller.handleFieldChange()}
                   />
-                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl">open_in_new</span>
+                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 pointer-events-none text-xl" aria-hidden="true">open_in_new</span>
                 </div>
               </div>
 
@@ -170,12 +210,12 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                   <select
                     id="dbClientPreference"
                     className="w-full bg-slate-50 dark:bg-[#162a1d] border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white outline-hidden focus:border-primary/50 focus:ring-4 focus:ring-primary/10 appearance-none cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-surface-primary font-medium"
-                    onChange={() => void controller.save()}
+                    onChange={() => controller.handleFieldChange()}
                   >
                     <option value="pma">Built-in PHPMyAdmin</option>
                     <option value="desktop">Local App (TablePlus/BeeKeeper)</option>
                   </select>
-                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none text-xl">database</span>
+                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none text-xl" aria-hidden="true">database</span>
                 </div>
               </div>
             </div>
@@ -190,7 +230,7 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
             <div className="bg-slate-100/70 dark:bg-[#162a1d]/40 border border-slate-200 dark:border-white/5 rounded-2xl p-6 flex items-center justify-between hover:bg-slate-200/60 dark:hover:bg-[#162a1d]/60 transition-all cursor-default group hover:border-primary/10">
               <div className="flex items-center gap-4">
                 <div className="size-10 rounded-xl bg-primary/5 flex items-center justify-center text-primary/60 group-hover:text-primary group-hover:bg-primary/10 transition-all">
-                  <span className="material-symbols-outlined text-[20px]">background_replace</span>
+                  <span className="material-symbols-outlined text-[20px]" aria-hidden="true">background_replace</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-bold text-text-primary dark:text-slate-200">Run in background</span>
@@ -202,7 +242,7 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                   id="runInBackgroundToggle"
                   type="checkbox"
                   className="sr-only peer"
-                  onChange={() => void controller.save()}
+                  onChange={() => controller.handleFieldChange()}
                 />
                 <div className="w-11 h-6 bg-slate-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:rtl:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:inset-s-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
@@ -228,7 +268,7 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                      <span className="material-symbols-outlined text-[22px]">auto_awesome</span>
+                      <span className="material-symbols-outlined text-[22px]" aria-hidden="true">auto_awesome</span>
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">Software Updates</h4>
@@ -261,13 +301,17 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                     id="settingsUpdateStatus"
                     aria-live="polite"
                   >
-                    <span className="material-symbols-outlined text-[18px] text-primary/60">info</span>
+                    <span className="material-symbols-outlined text-[18px] text-primary/60" aria-hidden="true">info</span>
                     <span>Version check has not been run yet.</span>
                   </p>
                   <div
                     id="settingsUpdateChangelog"
                     className="hidden text-[13px] leading-relaxed text-slate-600 dark:text-slate-400 max-h-[160px] overflow-y-auto font-sans whitespace-pre-wrap select-text custom-scrollbar pr-2"
                   ></div>
+                  <p
+                    id="settingsUpdateLastChecked"
+                    className="text-[11px] text-slate-500 dark:text-slate-400"
+                  >Last checked: never</p>
                 </div>
 
                 <div className="flex flex-col gap-2.5">
@@ -278,7 +322,7 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                     type="button"
                     onClick={() => void controller.checkForUpdates()}
                   >
-                    <span className="material-symbols-outlined text-[18px]">sync</span>
+                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">sync</span>
                     <span>Scan for updates</span>
                   </button>
                   <button
@@ -288,8 +332,18 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                     type="button"
                     onClick={() => void controller.installLatestUpdate()}
                   >
-                    <span className="material-symbols-outlined text-[20px]">download_for_offline</span>
+                    <span className="material-symbols-outlined text-[20px]" aria-hidden="true">download_for_offline</span>
                     <span>Update Govard Now</span>
+                  </button>
+                  <button
+                    className="hidden flex w-full items-center justify-center gap-2.5 rounded-xl border border-amber-500/35 bg-amber-50 dark:bg-amber-500/15 px-4 py-3 text-xs font-bold text-amber-600 dark:text-amber-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    data-testid="retry-restart"
+                    id="retryRestartButton"
+                    type="button"
+                    onClick={() => void controller.retryRestart()}
+                  >
+                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">restart_alt</span>
+                    <span>Retry Restart</span>
                   </button>
                 </div>
               </div>
@@ -298,6 +352,28 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
         </div>
 
         <footer className="p-8 bg-slate-50/90 dark:bg-black/40 border-t border-slate-200 dark:border-white/5 backdrop-blur-xl relative z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
+          <div className="mb-4 grid grid-cols-2 gap-4">
+            <button
+              className="flex items-center justify-center gap-2.5 px-4 py-3.5 bg-surface-secondary dark:bg-white/5 border border-border-primary dark:border-white/10 rounded-xl text-[13px] font-bold text-text-secondary dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-text-primary dark:hover:text-white hover:border-slate-300 dark:hover:border-white/20 transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+              data-testid="discard-settings"
+              id="discardSettingsButton"
+              type="button"
+              onClick={() => controller.discard()}
+            >
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">undo</span>
+              <span>Discard</span>
+            </button>
+            <button
+              className="flex items-center justify-center gap-2.5 px-4 py-3.5 bg-primary rounded-xl text-[13px] font-black text-slate-900 shadow-[0_12px_24px_rgba(13,242,89,0.2)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+              data-testid="save-settings"
+              id="saveSettingsButton"
+              type="button"
+              onClick={() => void controller.save()}
+            >
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">save</span>
+              <span>Save Changes</span>
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <button
               className="flex items-center justify-center gap-2.5 px-4 py-3.5 bg-surface-secondary dark:bg-white/5 border border-border-primary dark:border-white/10 rounded-xl text-[13px] font-bold text-text-secondary dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-text-primary dark:hover:text-white hover:border-slate-300 dark:hover:border-white/20 transition-all active:scale-[0.98] group"
@@ -305,7 +381,7 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
               type="button"
               onClick={() => void onResetSettings()}
             >
-              <span className="material-symbols-outlined text-[18px] group-hover:rotate-180 transition-transform duration-500">restart_alt</span>
+              <span className="material-symbols-outlined text-[18px] group-hover:rotate-180 transition-transform duration-500" aria-hidden="true">restart_alt</span>
               <span>Reset Settings</span>
             </button>
             <button
@@ -320,7 +396,7 @@ export function SettingsDrawer({ bridge, controller, onOpenChange, onResetSettin
                   )
               }
             >
-              <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">power_settings_new</span>
+              <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform" aria-hidden="true">power_settings_new</span>
               <span>Quit Govard</span>
             </button>
           </div>

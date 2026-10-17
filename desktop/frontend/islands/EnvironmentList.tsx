@@ -10,6 +10,8 @@ type Props = {
   onSelect(project: string): void;
   onToggle(project: string): void;
   onSwitchSidebarMode(): void;
+  onRetry(): void;
+  onOpenOnboarding(): void;
 };
 
 const itemClass = (isSelected: boolean, active: boolean) =>
@@ -22,11 +24,15 @@ const itemClass = (isSelected: boolean, active: boolean) =>
 function EnvironmentItem({
   env,
   isSelected,
+  isBusy,
+  busyLabel,
   onSelect,
   onToggle,
 }: {
   env: Env;
   isSelected: boolean;
+  isBusy: boolean;
+  busyLabel: string;
   onSelect(project: string): void;
   onToggle(project: string): void;
 }) {
@@ -36,48 +42,86 @@ function EnvironmentItem({
   const titleClass = meta.active ? "text-text-primary" : "text-text-secondary";
 
   return (
-    <button
-      type="button"
+    <div
       data-testid="env-card"
       data-env={key}
       className={itemClass(isSelected, meta.active)}
       style={{ gridTemplateColumns: "24px minmax(0,1fr)" }}
-      title={`Select ${domain}`}
-      onClick={() => onSelect(key)}
+      // Mouse-only convenience: clicking anywhere on the row selects the
+      // project (the behaviour suite clicks the card itself). Keyboard and
+      // screen-reader users get the two native sibling buttons below, one
+      // tab stop each, so this container stays a plain layout element.
+      onClick={() => {
+        if (!isBusy) onSelect(key);
+      }}
     >
       {isSelected ? (
         <div className="absolute inset-y-0 left-0 w-1 bg-primary"></div>
       ) : null}
       <div className="relative flex h-6 w-6 items-center justify-center self-center z-10">
-        {/* The glyph keeps its own click, exactly as the vanilla delegate
-            resolved the nearest data-action: without stopPropagation one click
-            would also select the project. */}
-        <span
-          data-testid="toggle-env"
-          data-env={key}
-          className={`material-symbols-outlined leading-none ${meta.iconClass} transition-colors hover:text-slate-900 dark:hover:text-white text-[20px]`}
-          style={meta.fill ? { fontVariationSettings: "'FILL' 1" } : undefined}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggle(key);
-          }}
-        >
-          {meta.iconName}
-        </span>
+        {/* Start/stop is its own button next to the select button, not a
+            control nested inside it: nested interactives are a double tab
+            stop and invalid HTML. While the env lock is held the toggle is
+            replaced by a spinner, so a double-click during start/stop is
+            impossible instead of a status-line surprise. */}
+        {isBusy ? (
+          <span
+            data-testid="env-busy-spinner"
+            data-env={key}
+            className="material-symbols-outlined leading-none text-[20px] animate-spin"
+            aria-hidden="true"
+            title={`${busyLabel} in progress...`}
+          >
+            sync
+          </span>
+        ) : (
+          <button
+            type="button"
+            data-testid="toggle-env"
+            data-env={key}
+            aria-label={`${meta.active ? "Stop" : "Start"} ${domain}`}
+            title={`${meta.active ? "Stop" : "Start"} ${domain}`}
+            className="flex h-6 w-6 items-center justify-center rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle(key);
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className={`material-symbols-outlined leading-none ${meta.iconClass} transition-colors hover:text-slate-900 dark:hover:text-white text-[20px]`}
+              style={meta.fill ? { fontVariationSettings: "'FILL' 1" } : undefined}
+            >
+              {meta.iconName}
+            </span>
+          </button>
+        )}
         {meta.showPulseDot ? (
           <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary border border-(--bg-primary) animate-pulse"></span>
         ) : null}
       </div>
-      <div className="min-w-0 flex flex-col justify-center pointer-events-none">
+      <button
+        type="button"
+        data-testid="env-select"
+        data-env={key}
+        className="min-w-0 flex flex-col justify-center text-left bg-transparent cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        title={isBusy ? `${busyLabel} in progress...` : `Select ${domain}`}
+        disabled={isBusy}
+        aria-disabled={isBusy || undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect(key);
+        }}
+      >
         <div className={`text-sm font-semibold leading-tight truncate ${titleClass}`}>{domain}</div>
         <div
           className={`text-[11px] ${meta.active ? meta.detailClass : "text-text-tertiary"} flex items-center gap-1 font-medium`}
         >
           <span className={`w-1 h-1 rounded-full ${meta.dotClass}`}></span>
-          <span>{meta.detailText}</span>
+          <span>{isBusy ? `${busyLabel}...` : meta.detailText}</span>
         </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -90,6 +134,7 @@ function Group({
   onToggle,
   selectedProject,
   sidebarMode,
+  busyEnvs,
 }: {
   title: string;
   items: Env[];
@@ -99,6 +144,7 @@ function Group({
   onToggle(project: string): void;
   selectedProject: string;
   sidebarMode: string;
+  busyEnvs: Record<string, string>;
 }) {
   return (
     <>
@@ -108,15 +154,21 @@ function Group({
         {title}
       </div>
       {items.length ? (
-        items.map((env) => (
-          <EnvironmentItem
-            key={projectKey(env)}
-            env={env}
-            isSelected={sidebarMode === "environments" && projectKey(env) === selectedProject}
-            onSelect={onSelect}
-            onToggle={onToggle}
-          />
-        ))
+        items.map((env) => {
+          const key = projectKey(env);
+          const busyLabel = String(busyEnvs[key] || "");
+          return (
+            <EnvironmentItem
+              key={key}
+              env={env}
+              isSelected={sidebarMode === "environments" && key === selectedProject}
+              isBusy={busyLabel !== ""}
+              busyLabel={busyLabel}
+              onSelect={onSelect}
+              onToggle={onToggle}
+            />
+          );
+        })
       ) : (
         <div className="px-3 py-2 text-xs text-text-tertiary italic">{empty}</div>
       )}
@@ -172,6 +224,8 @@ export function EnvironmentList({
   onSelect,
   onToggle,
   onSwitchSidebarMode,
+  onRetry,
+  onOpenOnboarding,
 }: Props) {
   const state = useStore();
 
@@ -182,6 +236,13 @@ export function EnvironmentList({
   // hide then landed on the placeholder and left the skeleton up for good.
   // Reading the flag from the store makes the mount order irrelevant.
   if (state.envListLoading) return <Skeletons />;
+
+  const environments = Array.isArray(state.environments) ? state.environments : [];
+  const dashboardError = String(state.dashboardError || "");
+  const isEmpty = environments.length === 0;
+  // Project-scoped env locks, published by modules/operations.js: the row for
+  // a busy project disables with a spinner while other projects stay enabled.
+  const busyEnvs = (state.busyEnvs || {}) as Record<string, string>;
 
   const sidebarMode =
     state.sidebarMode === "global-services" ? "global-services" : "environments";
@@ -199,7 +260,6 @@ export function EnvironmentList({
     ? "text-xs text-text-secondary"
     : "text-xs text-text-tertiary group-hover:text-text-secondary transition-colors";
 
-  const environments = Array.isArray(state.environments) ? state.environments : [];
   const active: Env[] = [];
   const inactive: Env[] = [];
   const seen = new Set<string>();
@@ -218,6 +278,47 @@ export function EnvironmentList({
     seen.add(label);
   });
 
+  // A failed dashboard fetch must never render fake projects: with nothing
+  // real to show, the list renders its offline state (with its own Retry
+  // control) on error, or an invite into onboarding when simply empty. The
+  // Global Services row stays above either way: that panel never depended on
+  // the dashboard fetch.
+  const emptyState = !isEmpty ? null : dashboardError ? (
+    <div className="w-full mt-3 mb-4 text-left p-4 rounded-xl bg-background-secondary border border-border-primary">
+      <div className="text-text-primary text-sm font-semibold">Dashboard offline</div>
+      <div className="mt-1 text-xs text-text-tertiary">
+        Could not reach the desktop bridge. No projects to show.
+      </div>
+      <button
+        type="button"
+        data-testid="env-list-retry"
+        className="mt-3 h-9 px-4 bg-primary text-slate-900 rounded-lg text-xs font-bold hover:bg-primary/90 transition-all flex items-center gap-2 active:scale-95"
+        title="Retry loading the dashboard"
+        onClick={onRetry}
+      >
+        <span className="material-symbols-outlined text-[16px]" aria-hidden="true">refresh</span>
+        Retry
+      </button>
+    </div>
+  ) : (
+    <div className="w-full mt-3 mb-4 text-left p-4 rounded-xl bg-background-secondary border border-border-primary">
+      <div className="text-text-primary text-sm font-semibold">No environments yet</div>
+      <div className="mt-1 text-xs text-text-tertiary">
+        Onboard your first project to get started.
+      </div>
+      <button
+        type="button"
+        data-testid="env-list-empty-onboarding"
+        className="mt-3 h-9 px-4 bg-primary text-slate-900 rounded-lg text-xs font-bold hover:bg-primary/90 transition-all flex items-center gap-2 active:scale-95"
+        title="Add your first project"
+        onClick={onOpenOnboarding}
+      >
+        <span className="material-symbols-outlined text-[16px]" aria-hidden="true">add</span>
+        Add project
+      </button>
+    </div>
+  );
+
   return (
     <>
       <button
@@ -232,7 +333,7 @@ export function EnvironmentList({
         ) : null}
         <div className="flex items-center gap-3">
           <div className={globalIconWrapClass}>
-            <span className="material-symbols-outlined text-[20px]">hub</span>
+            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">hub</span>
           </div>
           <div className="flex flex-col items-start min-w-0 pointer-events-none">
             <span className={globalTitleClass}>Global Services</span>
@@ -240,25 +341,32 @@ export function EnvironmentList({
           </div>
         </div>
       </button>
-      <Group
-        title="Active Environments"
-        items={active}
-        empty="No active environments."
-        onSelect={onSelect}
-        onToggle={onToggle}
-        selectedProject={state.selectedProject}
-        sidebarMode={sidebarMode}
-      />
-      <Group
-        title="Inactive Environments"
-        items={inactive}
-        empty="No projects found."
-        mt="mt-8"
-        onSelect={onSelect}
-        onToggle={onToggle}
-        selectedProject={state.selectedProject}
-        sidebarMode={sidebarMode}
-      />
+      {emptyState}
+      {!isEmpty ? (
+        <>
+          <Group
+            title="Active Environments"
+            items={active}
+            empty="No active environments."
+            onSelect={onSelect}
+            onToggle={onToggle}
+            selectedProject={state.selectedProject}
+            sidebarMode={sidebarMode}
+            busyEnvs={busyEnvs}
+          />
+          <Group
+            title="Inactive Environments"
+            items={inactive}
+            empty="No projects found."
+            mt="mt-8"
+            onSelect={onSelect}
+            onToggle={onToggle}
+            selectedProject={state.selectedProject}
+            sidebarMode={sidebarMode}
+            busyEnvs={busyEnvs}
+          />
+        </>
+      ) : null}
     </>
   );
 }

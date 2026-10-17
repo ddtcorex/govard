@@ -6,15 +6,12 @@ import (
 	"context"
 	"fmt"
 	"govard/internal/conventions"
+	"io"
 	"os/exec"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
 )
-
-var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
-var orphanAnsiStylePattern = regexp.MustCompile(`\[(?:\d{1,3}(?:;\d{1,3})*)m`)
 
 // Internal log streaming logic
 
@@ -211,45 +208,70 @@ func scanLogPipe(ctx context.Context, p Platform, pipe interface{}, event string
 		return
 	}
 
-	scanner := bufio.NewScanner(reader)
-	// Progress bars and spinners use \r to update the same line.
-	// We want to treat \r as a line ending so that progress is reflected in the UI.
-	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF && len(data) == 0 {
-			return 0, nil, nil
-		}
-		if i := bytes.IndexAny(data, "\r\n"); i >= 0 {
-			if data[i] == '\r' && i+1 < len(data) && data[i+1] == '\n' {
-				return i + 2, data[0:i], nil
-			}
-			return i + 1, data[0:i], nil
-		}
-		if atEOF {
-			return len(data), data, nil
-		}
-		return 0, nil, nil
+	streamSanitizedBatches(p, reader, func(batch []string) {
+		p.Emit(event, strings.Join(batch, "\n"))
 	})
+	done <- struct{}{}
+}
 
-	// Increase buffer for very long log lines (e.g. detailed SQL or JSON)
-	const maxLogLine = 1024 * 1024
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, maxLogLine)
+func sanitizeStreamLine(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
 
-	// Throttle: batch lines and emit at most every 150ms to prevent IPC saturation
+	// Log lines keep their full length (max <= 0 disables truncation);
+	// display caps belong to the toast/status-line callers.
+	return sanitizeUIText(string(raw), 0)
+}
+
+// Shared pipe batching for scanLogPipe and scanSyncPipe: one \r/\n splitter,
+// one sanitized-line pump, one throttle. Callers differ only in what a flush
+// emits, so behavior stays identical whichever pipe a service streams.
+const (
+	// logFlushInterval throttles batch emission to prevent IPC saturation
 	// which causes WebKitWebProcess crashes on high-volume syncs (e.g. large DB imports).
-	const (
-		flushInterval = 150 * time.Millisecond
-		maxBatchSize  = 50
-	)
+	logFlushInterval = 150 * time.Millisecond
+	logMaxBatchSize  = 50
+	// maxScanLineBytes fits very long log lines (e.g. detailed SQL or JSON).
+	maxScanLineBytes = 1024 * 1024
+)
+
+// splitLogChunks treats \r as a line ending so progress bars and spinners,
+// which redraw with \r, are reflected in the UI.
+func splitLogChunks(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexAny(data, "\r\n"); i >= 0 {
+		if data[i] == '\r' && i+1 < len(data) && data[i+1] == '\n' {
+			return i + 2, data[0:i], nil
+		}
+		return i + 1, data[0:i], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
+// streamSanitizedBatches pumps sanitized non-blank lines from pipe and calls
+// flush with each throttled batch; it returns once the pipe is drained.
+func streamSanitizedBatches(p Platform, pipe io.Reader, flush func(batch []string)) {
+	scanner := bufio.NewScanner(pipe)
+	scanner.Split(splitLogChunks)
+
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, maxScanLineBytes)
+
 	var batch []string
-	ticker := time.NewTicker(flushInterval)
+	ticker := time.NewTicker(logFlushInterval)
 	defer ticker.Stop()
 
 	flushBatch := func() {
 		if len(batch) == 0 {
 			return
 		}
-		p.Emit(event, strings.Join(batch, "\n"))
+		flush(batch)
 		batch = batch[:0]
 	}
 
@@ -272,39 +294,18 @@ func scanLogPipe(ctx context.Context, p Platform, pipe interface{}, event string
 		select {
 		case line, ok := <-linesCh:
 			if !ok {
-				// Scanner finished — flush remaining and signal done
+				// Scanner finished — flush remaining and return
 				flushBatch()
-				done <- struct{}{}
 				return
 			}
 			batch = append(batch, line)
-			if len(batch) >= maxBatchSize {
+			if len(batch) >= logMaxBatchSize {
 				flushBatch()
 			}
 		case <-ticker.C:
 			flushBatch()
 		}
 	}
-}
-
-func sanitizeStreamLine(raw []byte) string {
-	if len(raw) == 0 {
-		return ""
-	}
-
-	valid := bytes.ToValidUTF8(raw, []byte{})
-	line := string(valid)
-	line = ansiEscapePattern.ReplaceAllString(line, "")
-	line = orphanAnsiStylePattern.ReplaceAllString(line, "")
-
-	var builder strings.Builder
-	builder.Grow(len(line))
-	for _, r := range line {
-		if r == '\t' || (r >= 0x20 && r != 0x7f) {
-			builder.WriteRune(r)
-		}
-	}
-	return builder.String()
 }
 
 func resolveLogContainer(info *projectInfo, service string) string {

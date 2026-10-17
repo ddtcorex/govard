@@ -180,7 +180,7 @@ test("the live poll stops when the logs island unmounts", async (t) => {
 
   const beforeLive = await callCount(session);
   await session.evaluate(`document.querySelector('[data-testid="toggle-live"]').click()`);
-  await session.waitFor(`document.getElementById("toggleLive").textContent`, "Live: On");
+  await session.waitFor(`document.getElementById("toggleLive").textContent`, "Live: Poll");
   // Two polls after the immediate one prove the interval is really running.
   await session.waitFor(`${CALL_COUNT_EXPR} >= ${beforeLive + 3}`, true, { timeoutMs: 8000 });
 

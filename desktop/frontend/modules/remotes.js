@@ -7,8 +7,11 @@
  * createRemotesController state machine, and none of that is left. What stays is
  * the part that has no element in it - the payload normalizers, the capability
  * gate, the preset table, the sync-plan text builders and the progress buffer -
- * which is why the module no longer imports a DOM helper at all.
+ * which is why the module touches no document: its only import is the shared
+ * UI-text sanitizer every toast string goes through.
  */
+
+import { sanitizeUIText } from "../utils/sanitize.js";
 
 const asNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -114,6 +117,28 @@ export const protectedWarningCopy =
 
 /** The sync reason a disabled pull button carries while another one runs. */
 export const syncInProgressReason = "Another sync is currently in progress.";
+
+/**
+ * Whether the preset buttons of one remote card are blocked by a running sync.
+ * The lock is scoped per (project, remote): only the card that started the
+ * sync disables. Other remotes in the same project and every card of a second
+ * project stay actionable. The backend guard stays global; this is only the
+ * visual scope, so a second concurrent sync is still refused backend-side.
+ */
+export const isPresetBlockedBySync = ({
+  syncingProject = "",
+  syncingRemote = "",
+  selectedProject = "",
+  remoteName = "",
+} = {}) => {
+  const syncing = String(syncingProject || "").trim();
+  const active = String(syncingRemote || "").trim();
+  const current = String(selectedProject || "").trim();
+  const remote = String(remoteName || "").trim();
+  return (
+    syncing !== "" && active !== "" && syncing === current && active === remote
+  );
+};
 
 /**
  * A remote that declares no capabilities keeps every pull enabled; one that
@@ -281,20 +306,48 @@ export const resolveSyncPresetConfig = (optionsDef = [], currentConfig = {}) => 
   return config;
 };
 
-const ansiSequencePattern = /\u001b\[[0-?]*[ -/]*[@-~]/g;
-const orphanAnsiStylePattern = /\[(?:\d{1,3}(?:;\d{1,3})*)m/g;
+/** The structured sync progress event: short human payload for toasts. */
+export const SYNC_PROGRESS_EVENT = "sync:progress";
 
-export const sanitizeSyncToastLine = (value) => {
-  const raw = String(value ?? "");
-  if (!raw) {
-    return "";
-  }
-  return raw
-    .replace(ansiSequencePattern, "")
-    .replace(orphanAnsiStylePattern, "")
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
-    .trim();
+/** Toast messages stay short: the raw tail lives in the progress panel. */
+export const SYNC_PROGRESS_MAX_MESSAGE = 140;
+
+/**
+ * One short human message per sync phase, so the toast never shows the raw
+ * log tail. Unmatched lines report the neutral working phase instead of
+ * claiming a stage the backend cannot see.
+ */
+export const syncProgressPhaseMessages = {
+  prepare: "Preparing sync...",
+  transfer: "Transferring files...",
+  db: "Importing database...",
+  media: "Syncing media...",
+  finalize: "Finalizing sync...",
+  working: "Working...",
 };
+
+/**
+ * Normalize one sync:progress payload for the toast: the phase and percent
+ * drive the spinner copy, and the message goes through the shared UI-text
+ * sanitizer so ANSI escapes and control bytes never reach the toast.
+ */
+export const describeSyncProgress = (payload) => {
+  const phase = String(payload?.phase || "").trim().toLowerCase();
+  const known = Object.prototype.hasOwnProperty.call(syncProgressPhaseMessages, phase)
+    ? phase
+    : "working";
+  let percent = Number(payload?.percent);
+  if (!Number.isFinite(percent)) {
+    percent = 0;
+  }
+  percent = Math.min(100, Math.max(0, Math.round(percent)));
+  const message =
+    sanitizeUIText(payload?.message, SYNC_PROGRESS_MAX_MESSAGE).trim() ||
+    syncProgressPhaseMessages[known];
+  return { phase: known, percent, message };
+};
+
+export const sanitizeSyncToastLine = (value) => sanitizeUIText(value, 0).trim();
 
 export const sanitizeSyncPlanText = (value) => {
   const raw = String(value ?? "");

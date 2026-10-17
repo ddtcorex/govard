@@ -6,10 +6,14 @@ import {
   buildLogFilename,
   downloadTextAsFile,
   filterLogsText,
+  formatPendingLines,
+  isViewportAtBottom,
+  liveModeLabel,
   maxLogLines,
   resolveLogTarget,
   resolveServiceTargets,
   severityChipClass,
+  shouldStickToBottom,
 } from "../modules/logs.js";
 import { getState, setState } from "../state/store.js";
 import { useStore } from "../state/useStore.js";
@@ -26,6 +30,7 @@ type ToastKind = "info" | "success" | "error" | "warning";
 export type LogsIslandApi = {
   refresh(options?: { silent?: boolean }): Promise<void>;
   selectionChanged(): Promise<void>;
+  stopLive(): void;
 };
 type Props = {
   bridge: LogsBridge;
@@ -82,7 +87,14 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
   const [lines, setLines] = useState<string[]>([]);
   const [notice, setNotice] = useState("Select an environment to view logs.");
   const [liveMode, setLiveMode] = useState<LiveMode>("off");
+  /** Autoscroll stays on unless the user opts out: the default preserves the old yank. */
+  const [autoscroll, setAutoscroll] = useState(true);
+  /** Lines that arrived while the pane was scrolled up (or autoscroll was off). */
+  const [pending, setPending] = useState(0);
   const viewport = useRef<HTMLDivElement | null>(null);
+  /** Whether the pane reads as pinned to the bottom; scroll position, not state. */
+  const atBottomRef = useRef(true);
+  const prevLineCount = useRef(0);
 
   const target = resolveLogTarget({
     project: state.selectedProject,
@@ -149,6 +161,10 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
     await load();
   }, [bridge, load, onStatus]);
 
+  // Flipping the mode is what stops the backend stream: the live-lifecycle
+  // effect below owns the stream, so its cleanup calls stopLogStream on the
+  // transition to "off". main.js calls this when the tab hides, which is what
+  // keeps a hidden tab from orphaning its stream.
   const stopLive = useCallback(() => {
     setLiveMode("off");
   }, []);
@@ -166,6 +182,9 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
       // Write the selection before anything reads it: the reload below resolves
       // the target from the store, so the order matters.
       setState({ selectedService: service });
+      // A new target owns a new buffer: the pill counted the old one's lines.
+      setPending(0);
+      atBottomRef.current = true;
       if (liveMode !== "off") {
         stopLive();
         await startLive();
@@ -179,6 +198,9 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
   const clearLogs = useCallback(() => {
     stopLive();
     setLines([]);
+    prevLineCount.current = 0;
+    setPending(0);
+    atBottomRef.current = true;
     setNotice("");
     onStatus("Logs cleared.");
     onToast("Logs cleared successfully.", "success");
@@ -229,6 +251,9 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
   // change) rather than the island watching the store, so no path fetches the
   // same buffer twice.
   const selectionChanged = useCallback(async () => {
+    // A new project owns a new buffer, like a service switch does.
+    setPending(0);
+    atBottomRef.current = true;
     if (liveMode !== "off") {
       stopLive();
       await startLive();
@@ -238,14 +263,14 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
   }, [liveMode, load, startLive, stopLive]);
 
   useEffect(() => {
-    registerController({ refresh: load, selectionChanged });
+    registerController({ refresh: load, selectionChanged, stopLive });
     // Handing the API back on unmount is what stops main.js's own call sites
     // from reaching an island that no longer exists: the island's timers die
     // with it, but the closures main.js kept would not (the same contract the
     // remotes, sync, global-logs and onboarding islands follow with
     // registerApi(null)).
     return () => registerController(null);
-  }, [registerController, load, selectionChanged]);
+  }, [registerController, load, selectionChanged, stopLive]);
 
   // The first value never waits for main.js's first refreshDashboard, which can
   // run before React has mounted at all.
@@ -299,12 +324,41 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
     return () => offs.forEach((off) => off());
   }, [onStatus, onToast]);
 
-  // Only the buffer changes scroll the pane: filtering leaves the user where
-  // they were, which is what the vanilla controller did.
-  useEffect(() => {
+  // The pane sticks to the bottom only while the autoscroll toggle is on
+  // (its default, preserving the old behavior) and the user never scrolled
+  // up. Otherwise new lines pile into the pill counter and the viewport stays
+  // where the user left it. Only the buffer moves the pane: filtering leaves
+  // the user where they were, which is what the vanilla controller did.
+  const jumpToBottom = useCallback(() => {
     const el = viewport.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [lines]);
+    atBottomRef.current = true;
+    setPending(0);
+  }, []);
+
+  const handleViewportScroll = useCallback(() => {
+    const el = viewport.current;
+    if (!el) return;
+    const atBottom = isViewportAtBottom(el);
+    atBottomRef.current = atBottom;
+    if (atBottom) {
+      setPending((prev) => (prev === 0 ? prev : 0));
+    }
+  }, []);
+
+  useEffect(() => {
+    const added = lines.length - prevLineCount.current;
+    prevLineCount.current = lines.length;
+    if (shouldStickToBottom({ autoscroll, atBottom: atBottomRef.current })) {
+      const el = viewport.current;
+      if (el) el.scrollTop = el.scrollHeight;
+      setPending((prev) => (prev === 0 ? prev : 0));
+      return;
+    }
+    if (added > 0) {
+      setPending((prev) => prev + added);
+    }
+  }, [lines, autoscroll]);
 
   const filtered = useMemo(
     () => filterLogsText(lines.join("\n"), target.severity, target.query),
@@ -413,14 +467,36 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
                   id="toggleLive"
                   type="button"
                   data-testid="toggle-live"
+                  data-live-mode={liveMode}
                   className={
                     liveMode === "off"
                       ? "h-8 px-3 rounded-md text-xs font-semibold text-text-tertiary dark:text-slate-400 hover:text-text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-surface-secondary transition-all"
                       : "h-8 px-3 rounded-md text-xs font-semibold bg-primary text-slate-900 hover:bg-primary/90 transition-colors"
                   }
+                  title={
+                    liveMode === "stream"
+                      ? "Live log stream active"
+                      : liveMode === "poll"
+                        ? "Live log polling active (stream unavailable)"
+                        : "Start live log tail"
+                  }
                   onClick={() => void toggleLive()}
                 >
-                  {liveMode === "off" ? "Live: Off" : "Live: On"}
+                  {liveModeLabel(liveMode)}
+                </button>
+                <button
+                  type="button"
+                  data-testid="autoscroll-toggle"
+                  aria-pressed={autoscroll}
+                  className={
+                    autoscroll
+                      ? "h-8 px-3 rounded-md text-xs font-semibold text-primary dark:text-white hover:bg-slate-100 dark:hover:bg-surface-secondary transition-all"
+                      : "h-8 px-3 rounded-md text-xs font-semibold text-text-tertiary dark:text-slate-400 hover:text-text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-surface-secondary transition-all"
+                  }
+                  title={autoscroll ? "Stop following new log lines" : "Follow new log lines"}
+                  onClick={() => setAutoscroll((prev) => !prev)}
+                >
+                  {autoscroll ? "Autoscroll: On" : "Autoscroll: Off"}
                 </button>
                 <button
                   type="button"
@@ -436,10 +512,22 @@ export function LogsTab({ bridge, onStatus, onToast, registerController, livePol
           <div
             id="logOutputViewport"
             ref={viewport}
+            onScroll={handleViewportScroll}
             className="flex-1 overflow-y-auto px-4 pb-4 pt-2 terminal-text text-xs bg-slate-900 dark:bg-background-primary custom-scrollbar log-pane-scroll text-slate-300 dark:text-slate-300"
           >
             <pre id="logOutput" className="m-0 font-mono whitespace-pre-wrap">{output}</pre>
           </div>
+          {pending > 0 && (
+            <button
+              type="button"
+              data-testid="new-lines-pill"
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 h-7 px-3 rounded-full text-xs font-semibold bg-primary text-slate-900 hover:bg-primary/90 shadow-lg transition-colors"
+              title="Jump to the newest log lines"
+              onClick={jumpToBottom}
+            >
+              {formatPendingLines(pending)}
+            </button>
+          )}
         </div>
       </div>
     </div>

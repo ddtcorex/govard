@@ -12,6 +12,7 @@ const (
 	EventGlobalLogsError        = "global-logs:error"
 	EventSyncStarted            = "sync:started"
 	EventSyncOutput             = "sync:output"
+	EventSyncProgress           = "sync:progress"
 	EventSyncFailed             = "sync:failed"
 	EventSyncCompleted          = "sync:completed"
 	EventOnboardingProgress     = "onboarding:progress"

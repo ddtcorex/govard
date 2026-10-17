@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatMetricMB, formatMetricPercent, normalizeMetricsPayload } from "../modules/metrics.js";
+import { useStore } from "../state/useStore.js";
 import { createVisiblePoll } from "../utils/visible-interval.js";
 
 type RefreshOptions = { silent?: boolean };
@@ -23,6 +24,9 @@ type Props = {
  */
 export function MetricsFooter({ bridge, onStatus, registerRefresh, intervalMs = 15000 }: Props) {
   const [metrics, setMetrics] = useState<Metrics>({ systemCPU: 0, systemMemory: 0 });
+  // The dashboard refresh timestamp main.js publishes on every success; 0
+  // means no successful fetch yet, and the readout stays hidden.
+  const lastRefreshed = Number(useStore().lastRefreshed || 0);
 
   const refresh = useCallback(
     async ({ silent = false }: RefreshOptions = {}) => {
@@ -73,6 +77,17 @@ export function MetricsFooter({ bridge, onStatus, registerRefresh, intervalMs = 
         <span id="footerMemory">{formatMetricMB(metrics.systemMemory)}</span>
       </div>
       <div className="h-8 w-px bg-border-primary"></div>
+      {lastRefreshed ? (
+        <div className="flex items-center gap-1 text-[10px] text-text-tertiary font-mono">
+          <span className="material-symbols-outlined text-[14px]">history</span>
+          <span
+            data-testid="last-refreshed"
+            title={`Last dashboard refresh: ${new Date(lastRefreshed).toLocaleString()}`}
+          >
+            Updated {new Date(lastRefreshed).toLocaleTimeString()}
+          </span>
+        </div>
+      ) : null}
       <button
         type="button"
         data-testid="refresh-metrics"

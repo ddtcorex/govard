@@ -4,6 +4,8 @@ import { useStore } from "../state/useStore.js";
 type Env = Record<string, unknown>;
 type Props = {
   onAction(action: string, project: string): void;
+  onRetry(): void;
+  onOpenOnboarding(): void;
 };
 
 const STATUS_BADGE_BASE =
@@ -51,15 +53,83 @@ const technologyTone = (tech: string) => {
  * technology dots - are the same computations renderProjectHero performed, so
  * the runtime data-action assignment becomes a plain onClick (spec D5).
  */
-export function ProjectHero({ onAction }: Props) {
+export function ProjectHero({ onAction, onRetry, onOpenOnboarding }: Props) {
   const state = useStore();
   const environments = Array.isArray(state.environments) ? state.environments : [];
   const env = (environments.find(
     (item: Env) => projectKey(item) === state.selectedProject,
   ) || null) as Env | null;
   const project = env ? projectKey(env) : String(state.selectedProject || "");
+  const dashboardError = String(state.dashboardError || "");
 
   if (!env) {
+    // A failed dashboard fetch must never render fake projects: with nothing
+    // real to show, the hero renders its offline state (with its own Retry
+    // control) on error, or an invite into onboarding when simply empty.
+    if (dashboardError) {
+      return (
+        <div className="relative rounded-2xl overflow-hidden group border border-slate-200 dark:border-border-primary w-full">
+          <HeroBackdrop />
+          <div className="relative z-20 px-8 py-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex items-start gap-6 flex-1 min-w-0">
+              <HeroGlyph />
+              <div className="flex-1 min-w-0">
+                <h2 id="projectTitle" className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                  Dashboard offline
+                </h2>
+                <p className="mt-2 text-sm text-text-secondary dark:text-slate-400">
+                  Could not reach the desktop bridge. No projects to show.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                data-testid="dashboard-retry"
+                className="h-12 px-6 bg-primary text-slate-900 rounded-lg text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95"
+                title="Retry loading the dashboard"
+                onClick={onRetry}
+              >
+                <span className="material-symbols-outlined text-lg">refresh</span>
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    if (!state.envListLoading) {
+      return (
+        <div className="relative rounded-2xl overflow-hidden group border border-slate-200 dark:border-border-primary w-full">
+          <HeroBackdrop />
+          <div className="relative z-20 px-8 py-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex items-start gap-6 flex-1 min-w-0">
+              <HeroGlyph />
+              <div className="flex-1 min-w-0">
+                <h2 id="projectTitle" className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                  No environments yet
+                </h2>
+                <p className="mt-2 text-sm text-text-secondary dark:text-slate-400">
+                  Onboard your first project to get started.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                data-testid="dashboard-empty-onboarding"
+                className="h-12 px-6 bg-primary text-slate-900 rounded-lg text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95"
+                title="Add your first project"
+                onClick={onOpenOnboarding}
+              >
+                <span className="material-symbols-outlined text-lg">add</span>
+                Add project
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="relative rounded-2xl overflow-hidden group border border-slate-200 dark:border-border-primary w-full">
         <HeroBackdrop />
@@ -103,7 +173,16 @@ export function ProjectHero({ onAction }: Props) {
       : [];
   const isStopped = status !== "running" && status !== "warning";
   const isSyncing = status === "syncing";
+  // The env lock for this project, published by modules/operations.js into
+  // busyEnvs: while held, every hero action for this project is visibly
+  // disabled with a spinner, so a double-click during start/stop/pull is
+  // impossible instead of a status-line surprise. Other projects stay enabled.
+  const busyEnvs = (state.busyEnvs || {}) as Record<string, string>;
+  const envBusyOp = project ? String(busyEnvs[project] || "") : "";
+  const isEnvBusy = envBusyOp !== "";
+  const isLocked = isSyncing || isEnvBusy;
   const pausedTitle = "Sync in progress — environment actions are paused";
+  const busyTitle = isEnvBusy ? `${envBusyOp} in progress...` : pausedTitle;
   const restartLabel = isStopped ? "Start" : "Restart";
   const restartIcon = isStopped ? "play_arrow" : "restart_alt";
 
@@ -184,12 +263,12 @@ export function ProjectHero({ onAction }: Props) {
               data-testid="hero-restart"
               data-env={project}
               className="h-12 px-6 bg-primary text-slate-900 rounded-lg text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/10 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={isSyncing ? pausedTitle : `${restartLabel} Environment`}
-              disabled={isSyncing}
+              title={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : `${restartLabel} Environment`}
+              disabled={isLocked}
               onClick={() => onAction(isStopped ? "env-start" : "env-restart", project)}
             >
-              <span className="material-symbols-outlined text-lg">{restartIcon}</span>
-              {restartLabel}
+              <span className={`material-symbols-outlined text-lg${isEnvBusy ? " animate-spin" : ""}`}>{isEnvBusy ? "sync" : restartIcon}</span>
+              {isEnvBusy ? `${restartLabel}...` : restartLabel}
             </button>
             <button
               id="heroStopBtn"
@@ -201,12 +280,12 @@ export function ProjectHero({ onAction }: Props) {
                   ? "h-12 w-12 bg-slate-100 dark:bg-(--surface-secondary) text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-border-primary rounded-lg transition-all flex items-center justify-center cursor-not-allowed opacity-70"
                   : "h-12 w-12 bg-red-600 text-white border border-red-500 rounded-lg hover:bg-red-500 transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/20"
               }
-              disabled={isStopped || isSyncing}
-              title={isSyncing ? pausedTitle : isStopped ? "Environment is not running" : "Stop Environment"}
+              disabled={isStopped || isLocked}
+              title={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : isStopped ? "Environment is not running" : "Stop Environment"}
               onClick={() => onAction("env-stop", project)}
             >
-              <span className="material-symbols-outlined fill-1" style={{ fontVariationSettings: '"FILL" 1' }}>
-                stop
+              <span className={`material-symbols-outlined fill-1${isEnvBusy ? " animate-spin" : ""}`} style={{ fontVariationSettings: '"FILL" 1' }}>
+                {isEnvBusy ? "sync" : "stop"}
               </span>
             </button>
             <button
@@ -215,11 +294,11 @@ export function ProjectHero({ onAction }: Props) {
               data-testid="hero-pull"
               data-env={project}
               className="h-12 w-12 bg-surface-secondary text-primary border border-border-primary rounded-lg hover:bg-surface-primary hover:text-primary transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-primary/10 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={isSyncing ? pausedTitle : "Pull Images"}
-              disabled={isSyncing}
+              title={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : "Pull Images"}
+              disabled={isLocked}
               onClick={() => onAction("env-pull", project)}
             >
-              <span className="material-symbols-outlined">download</span>
+              <span className={`material-symbols-outlined${isEnvBusy ? " animate-spin" : ""}`}>{isEnvBusy ? "sync" : "download"}</span>
             </button>
             <button
               id="heroDeleteBtn"
@@ -227,11 +306,11 @@ export function ProjectHero({ onAction }: Props) {
               data-testid="hero-delete"
               data-env={project}
               className="h-12 w-12 bg-surface-secondary text-red-500 border border-red-500/30 rounded-lg hover:bg-red-500 hover:text-white transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={isSyncing ? pausedTitle : `Delete ${title}`}
-              disabled={isSyncing}
+              title={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : `Delete ${title}`}
+              disabled={isLocked}
               onClick={() => onAction("env-delete", project)}
             >
-              <span className="material-symbols-outlined">delete</span>
+              <span className={`material-symbols-outlined${isEnvBusy ? " animate-spin" : ""}`}>{isEnvBusy ? "sync" : "delete"}</span>
             </button>
           </div>
         </div>

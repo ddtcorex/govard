@@ -4,6 +4,11 @@ import {
   resolveSyncPresetConfig,
   sanitizeSyncPlanText,
 } from "../modules/remotes.js";
+import {
+  focusFirstElement,
+  rememberFocus,
+  trapTabKey,
+} from "../utils/focus-trap.js";
 import { getState, setState } from "../state/store.js";
 
 type SyncOptionDef = {
@@ -86,6 +91,8 @@ export function SyncModal({
   const openRequest = useRef(0);
   /** Bumped by every preview, open and close: only the newest preview may show its plan. */
   const previewRequest = useRef(0);
+  /** Focus restore for the element that was focused before the dialog opened. */
+  const restoreFocus = useRef<(() => void) | null>(null);
   /** The phase as last set, readable outside render (close, Escape, the timers). */
   const phaseRef = useRef<Phase>("closed");
   const setPhase = useCallback((next: Phase) => {
@@ -117,12 +124,15 @@ export function SyncModal({
       clearTimeout(closeTimer.current);
       closeTimer.current = null;
     }
-    setPhase("closed");
-    // Reset to step 1 after the close animation, as the vanilla code did.
+    setPhase("closed");    // Reset to step 1 after the close animation, as the vanilla code did.
     setStep("options");
     setPlanText("");
     setPlanOk(false);
     setPlanLoading(false);
+    if (restoreFocus.current) {
+      restoreFocus.current();
+      restoreFocus.current = null;
+    }
   }, [setPhase]);
 
   const close = useCallback(() => {
@@ -200,10 +210,12 @@ export function SyncModal({
       }
 
       onModalBlur(true);
+      restoreFocus.current = rememberFocus();
       setPhase("opening");
       openTimer.current = setTimeout(() => {
         openTimer.current = null;
         setPhase("open");
+        focusFirstElement(document.getElementById("syncOptionsModal"));
       }, OPEN_DELAY_MS);
     },
     [bridge, clearTimers, onModalBlur, onToast, setPhase, settleClosed],
@@ -224,12 +236,17 @@ export function SyncModal({
   // island's to register and drop now. It is registered for the island's whole
   // life and reads the phase ref, so there is no window after the dialog appears
   // in which the key is not heard (a listener tied to the phase attaches only
-  // after the commit that shows the dialog).
+  // after the commit that shows the dialog). Tab cycles inside while open.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && phaseRef.current !== "closed") {
-        close();
+      if (phaseRef.current === "closed") {
+        return;
       }
+      if (event.key === "Escape") {
+        close();
+        return;
+      }
+      trapTabKey(document.getElementById("syncOptionsModal"), event);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -309,6 +326,10 @@ export function SyncModal({
   return (
     <div
       id="syncOptionsModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="syncModalTitle"
+      tabIndex={-1}
       className={`${hidden ? "hidden " : ""}fixed inset-0 z-150 bg-background-primary/60 backdrop-blur-md flex items-center justify-center p-4 transition-opacity duration-300 ${scaled ? "opacity-0" : ""}`}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
@@ -332,7 +353,7 @@ export function SyncModal({
       >
         <div className="px-6 py-4 border-b border-border-primary flex justify-between items-center bg-surface-secondary/50">
           <h3 className="text-text-primary dark:text-white text-lg font-bold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary" id="syncModalIcon">
+            <span className="material-symbols-outlined text-primary" id="syncModalIcon" aria-hidden="true">
               {step === "preview" ? "fact_check" : "sync"}
             </span>
             <span id="syncModalTitle">
@@ -345,7 +366,7 @@ export function SyncModal({
             data-testid="close-sync-modal"
             onClick={close}
           >
-            <span className="material-symbols-outlined">close</span>
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </div>
 
@@ -409,7 +430,7 @@ export function SyncModal({
               className="px-5 py-2 bg-surface-secondary dark:bg-slate-700 hover:bg-primary/10 dark:hover:bg-slate-600 border border-border-primary dark:border-slate-500 rounded-lg text-sm text-text-primary dark:text-white font-medium transition-all group flex items-center gap-2"
               onClick={() => void previewPlan()}
             >
-              <span className="material-symbols-outlined text-[16px] group-hover:text-primary transition-colors">
+              <span className="material-symbols-outlined text-[16px] group-hover:text-primary transition-colors" aria-hidden="true">
                 preview
               </span>
               <span>Preview Plan</span>
@@ -419,7 +440,7 @@ export function SyncModal({
 
         <div id="syncModalStep2" className={`p-6 space-y-4 ${step === "preview" ? "" : "hidden"}`}>
           <div className="flex items-center gap-2 text-sm text-text-secondary dark:text-slate-300">
-            <span className="material-symbols-outlined text-[18px] text-primary">fact_check</span>
+            <span className="material-symbols-outlined text-[18px] text-primary" aria-hidden="true">fact_check</span>
             Review the actions below, then confirm to proceed:
           </div>
 
@@ -445,7 +466,7 @@ export function SyncModal({
               className="px-4 py-2 rounded-lg text-sm text-text-secondary dark:text-slate-300 font-medium hover:bg-primary/10 transition-colors flex items-center gap-1"
               onClick={() => setStep("options")}
             >
-              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">arrow_back</span>
               Back
             </button>
             <div className="flex gap-3">
@@ -465,7 +486,7 @@ export function SyncModal({
                 disabled={planLoading || !planOk}
                 onClick={confirm}
               >
-                <span className="material-symbols-outlined text-[16px] transition-colors">
+                <span className="material-symbols-outlined text-[16px] transition-colors" aria-hidden="true">
                   play_arrow
                 </span>
                 <span>Execute Sync</span>

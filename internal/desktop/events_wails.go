@@ -16,6 +16,7 @@ func registerEvents() {
 	application.RegisterEvent[string](EventGlobalLogsError)
 	application.RegisterEvent[SyncStartedPayload](EventSyncStarted)
 	application.RegisterEvent[string](EventSyncOutput)
+	application.RegisterEvent[SyncProgressPayload](EventSyncProgress)
 	application.RegisterEvent[string](EventSyncFailed)
 	application.RegisterEvent[string](EventSyncCompleted)
 	application.RegisterEvent[OnboardingProgressPayload](EventOnboardingProgress)

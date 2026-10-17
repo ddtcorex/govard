@@ -65,6 +65,11 @@ func SanitizeStreamLineForTest(raw []byte) string {
 	return sanitizeStreamLine(raw)
 }
 
+// SanitizeUITextForTest exposes UI-bound text sanitization for tests.
+func SanitizeUITextForTest(s string, max int) string {
+	return sanitizeUIText(s, max)
+}
+
 // ResolveShellServiceNameForTest exposes shell target service resolution for tests.
 func ResolveShellServiceNameForTest(requested string, available []string) string {
 	info := &projectInfo{services: map[string]bool{}}
@@ -783,6 +788,29 @@ func DefaultPlatformForTest() Platform {
 	return newDefaultPlatform()
 }
 
+// MapSyncProgressLineForTest exposes the sync log line to structured progress
+// mapping for tests.
+func MapSyncProgressLineForTest(line string) (SyncProgressPayload, bool) {
+	return mapSyncProgressLine(line)
+}
+
+// ScanSyncPipeForTest runs scanSyncPipe to completion against r.
+func ScanSyncPipeForTest(p Platform, r io.Reader) {
+	done := make(chan struct{}, 1)
+	scanSyncPipe(context.Background(), p, r, done)
+	<-done
+}
+
+// SyncFailedMessageForTest exposes sync failure payload formatting for tests.
+func SyncFailedMessageForTest(err error) string {
+	return syncFailedMessage(err)
+}
+
+// HumanOpMessageForTest exposes the human operation-failure catalog for tests.
+func HumanOpMessageForTest(op string, err error) OpMessage {
+	return humanOpMessage(op, err)
+}
+
 // ScanLogPipeForTest runs scanLogPipe to completion against r.
 func ScanLogPipeForTest(p Platform, r io.Reader, event string) {
 	done := make(chan struct{}, 1)
@@ -796,4 +824,11 @@ func BrandTrayForTest(t interface {
 	SetTooltip(tooltip string)
 }) {
 	brandTray(t)
+}
+
+// ResetOperationRegistryForTest clears the cancellable-op registry so
+// registry tests stay hermetic. The registry API itself (RegisterOp,
+// CancelOp, FinishOp, ListOps) is exported, so no other seams are needed.
+func ResetOperationRegistryForTest() {
+	resetOperationRegistry()
 }

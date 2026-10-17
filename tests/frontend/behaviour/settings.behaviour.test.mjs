@@ -21,6 +21,19 @@ const callArgs = (session, method) =>
 
 const quiet = (session, ms) => session.evaluate(`new Promise((r) => setTimeout(r, ${ms}))`);
 
+/** Sets a text <input> the way a user types: native setter + input event. */
+const inputValue = (selector, value) => `(() => {
+  const el = document.querySelector('${selector}');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  setter.call(el, ${JSON.stringify(value)});
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return el.value;
+})()`;
+/** Computed display of the dirty dot: guards the Tailwind ordering trap where
+ * `hidden` loses to `inline-block` and the dot stays visible (pinned here, not
+ * just the class list). */
+const dotDisplay = () =>
+  `window.getComputedStyle(document.querySelector('[data-testid="settings-dirty-dot"]')).display`;
 /** Sets a React-controlled <select> the way a user does: native setter + change event. */
 const selectValue = (selector, value) => `(() => {
   const el = document.querySelector('${selector}');
@@ -104,11 +117,36 @@ test("the settings drawer renders the fixture and saves exactly one change per e
     true,
   );
 
-  // One edit, one call - and the payload must be read from the island's own
-  // fields, which is what makes save() work at all after the migration.
+  // Explicit save discipline: an edit marks the form dirty (dirty dot, Save
+  // enabled) but fires no RPC on its own - typing a proxy URL must never spam
+  // RPCs again.
   await quiet(session, 300);
   const beforeSave = await callCount(session, "UpdateSettings");
   await session.evaluate(selectValue("#themeSelect", "light"));
+  await session.waitFor(
+    `document.querySelector('[data-testid="settings-dirty-dot"]').classList.contains("hidden")`,
+    false,
+  );
+  assert.notEqual(
+    await session.evaluate(dotDisplay()),
+    "none",
+    "dirty dot must be visibly rendered once the form is dirty",
+  );
+  assert.equal(
+    await session.evaluate(`document.querySelector('[data-testid="save-settings"]').disabled`),
+    false,
+    "Save must enable once the form is dirty",
+  );
+  await quiet(session, 300);
+  assert.equal(
+    await callCount(session, "UpdateSettings") - beforeSave,
+    0,
+    "an edit alone must fire no UpdateSettings call",
+  );
+
+  // Save flushes exactly one call, and the payload is read from the island's
+  // own fields, which is what makes save() work at all after the migration.
+  await session.evaluate(`document.querySelector('[data-testid="save-settings"]').click()`);
   await session.waitFor(
     `window.__govardPreview.getCalls().some((c) => c.method === "UpdateSettings")`,
     true,
@@ -116,7 +154,7 @@ test("the settings drawer renders the fixture and saves exactly one change per e
   assert.equal(
     await callCount(session, "UpdateSettings") - beforeSave,
     1,
-    "one edit must produce exactly one UpdateSettings call",
+    "one save must produce exactly one UpdateSettings call",
   );
   const payloads = JSON.parse(await callArgs(session, "UpdateSettings"));
   assert.deepEqual(payloads.at(-1), [
@@ -129,6 +167,55 @@ test("the settings drawer renders the fixture and saves exactly one change per e
       runInBackground: false,
     },
   ]);
+  // A saved form reads clean again: dot hidden, Save disabled.
+  assert.equal(
+    await session.evaluate(`document.querySelector('[data-testid="settings-dirty-dot"]').classList.contains("hidden")`),
+    true,
+    "dirty dot must hide after save",
+  );
+  assert.equal(
+    await session.evaluate(dotDisplay()),
+    "none",
+    "dirty dot must be visually gone after save",
+  );
+  assert.equal(
+    await session.evaluate(`document.querySelector('[data-testid="save-settings"]').disabled`),
+    true,
+    "Save must disable after save",
+  );
+
+  // An invalid proxy URL blocks the save with a field-level error and no RPC.
+  await session.evaluate(inputValue("#proxyTarget", "not a url"));
+  await session.evaluate(`document.querySelector('[data-testid="save-settings"]').click()`);
+  await session.waitFor(
+    `document.querySelector('[data-testid="proxy-target-error"]').classList.contains("hidden")`,
+    false,
+  );
+  await quiet(session, 300);
+  assert.equal(
+    await callCount(session, "UpdateSettings") - beforeSave,
+    1,
+    "an invalid proxy URL must block the settings RPC",
+  );
+  assert.match(
+    await session.evaluate(`document.querySelector('[data-testid="proxy-target-error"]').textContent`),
+    /hostname|URL/,
+    "field error must explain the problem",
+  );
+
+  // Discard restores the saved value and clears the dirty state.
+  await session.evaluate(`document.querySelector('[data-testid="discard-settings"]').click()`);
+  assert.equal(await session.evaluate(`document.getElementById("proxyTarget").value`), "govard.test");
+  assert.equal(
+    await session.evaluate(`document.querySelector('[data-testid="settings-dirty-dot"]').classList.contains("hidden")`),
+    true,
+    "dirty dot must hide after discard",
+  );
+  assert.equal(
+    await session.evaluate(dotDisplay()),
+    "none",
+    "dirty dot must be visually gone after discard",
+  );
 
   const shot = await session.screenshot({ x: 0, y: 0, ...viewport });
   assert.ok(shot.length > 0, "the scenario captures the rendered drawer");

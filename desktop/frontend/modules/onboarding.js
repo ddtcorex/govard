@@ -1,4 +1,8 @@
 import { normalizeRemotesPayload } from "./remotes.js";
+import {
+  focusFirstElement,
+  rememberFocus,
+} from "../utils/focus-trap.js";
 
 // Legacy shorthand aliases kept as a static fallback so normalization still
 // works correctly for callers that run before loadFrameworkOptions() has
@@ -983,6 +987,10 @@ export const createOnboardingController = ({
     }
   };
 
+  // Baseline dialog focus contract: opening remembers who was focused and
+  // moves focus into the wizard; closing hands focus back.
+  let restoreOnboardingFocus = null;
+
   const toggleModal = (open) => {
     if (!refs.onboardingModal) {
       return;
@@ -991,8 +999,13 @@ export const createOnboardingController = ({
       window.dispatchEvent(new CustomEvent("govard:blur", { detail: { isVisible: true } }));
       refs.onboardingModal.classList.remove("hidden");
       refs.onboardingModal.classList.add("flex");
+      // Remember focus BEFORE resetForm: resetForm rewrites form fields and a
+      // future edit there could move focus, which would capture the wrong
+      // element to restore on close.
+      restoreOnboardingFocus = rememberFocus();
       resetForm();
       closeBootstrapPrompt();
+      focusFirstElement(refs.onboardingModal);
       return;
     }
 
@@ -1000,6 +1013,10 @@ export const createOnboardingController = ({
     closeBootstrapPrompt();
     refs.onboardingModal.classList.add("hidden");
     refs.onboardingModal.classList.remove("flex");
+    if (restoreOnboardingFocus) {
+      restoreOnboardingFocus();
+      restoreOnboardingFocus = null;
+    }
   };
 
   const handleProgress = (payload = {}) => {

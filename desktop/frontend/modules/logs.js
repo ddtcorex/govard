@@ -201,3 +201,47 @@ export const severityChipClass = (active = false) =>
       ? "bg-primary/20 text-primary dark:text-white border-primary/30"
       : "bg-surface-secondary dark:bg-surface-secondary text-text-tertiary dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-surface-primary hover:text-text-primary dark:hover:text-white transition-all"
   }`;
+
+/**
+ * Whether a log viewport reads as pinned to the bottom. The scroll effect
+ * sticks only then: a pane the user scrolled up keeps its position while new
+ * lines pile into the "N new lines" pill instead of yanking the viewport.
+ *
+ * @param {{scrollTop: number, scrollHeight: number, clientHeight: number}} viewport
+ * @param {number} [tolerance]
+ */
+export const isViewportAtBottom = (viewport, tolerance = 24) => {
+  const el = viewport || {};
+  const top = Number(el.scrollTop) || 0;
+  const height = Number(el.scrollHeight) || 0;
+  const visible = Number(el.clientHeight) || 0;
+  const gap = height - top - visible;
+  return gap <= tolerance;
+};
+
+/**
+ * Whether fresh lines may pull the viewport to the bottom: only when the
+ * autoscroll toggle is on (its default) and the pane is still pinned there.
+ * Either condition off means the pane stays where the user left it.
+ */
+export const shouldStickToBottom = ({ autoscroll = true, atBottom = true } = {}) =>
+  Boolean(autoscroll) && Boolean(atBottom);
+
+/** The pill copy for lines that arrived while the pane was scrolled up. */
+export const formatPendingLines = (count = 0) => {
+  const pending = Math.max(0, Math.trunc(Number(count) || 0));
+  return pending === 1 ? "1 new line" : `${pending} new lines`;
+};
+
+/** The Live button copy, naming the mode live actually reached. */
+export const liveModeLabel = (mode = "off") =>
+  mode === "stream" ? "Live: Stream" : mode === "poll" ? "Live: Poll" : "Live: Off";
+
+/**
+ * Whether switching tabs must stop env live: only when the switch hides the
+ * logs tab. Stopping goes through the island's stopLive, whose effect cleanup
+ * stops the backend stream too, so no orphaned stream outlives the tab.
+ */
+export const shouldStopEnvLiveOnTabSwitch = ({ nextTab = "", activeTab = "" } = {}) =>
+  String(nextTab || "").trim() !== "logs" &&
+  String(activeTab || "").trim() === "tab-logs";

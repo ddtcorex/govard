@@ -4,13 +4,16 @@ import {
   applySyncOutputBatch,
   canOpenRemoteTarget,
   canUseSyncPreset,
+  describeSyncProgress,
   formatAuthMethodLabel,
   getSyncPresetLabel,
+  isPresetBlockedBySync,
   normalizeRemotesPayload,
   protectedWarningCopy,
   safeRemotes,
   sanitizeSyncToastLine,
   syncInProgressReason,
+  SYNC_PROGRESS_EVENT,
   syncPresets,
 } from "../modules/remotes.js";
 import { getState, setState } from "../state/store.js";
@@ -139,6 +142,8 @@ export function RemotesList({
   const progressRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const pendingActions = useRef<Set<string>>(new Set());
+  /** Last sync:progress phase toasted: one short toast per phase, no spam. */
+  const progressPhase = useRef<string>("");
   /** False once unmounted: the loading floor below can finish after that. */
   const mounted = useRef(true);
   const subscriptions = useRef<Array<() => void>>([]);
@@ -401,6 +406,7 @@ export function RemotesList({
       });
 
       releaseSubscriptions();
+      progressPhase.current = "";
       if (hasEventRuntime()) {
         subscriptions.current = [
           onEvent("sync:output", (payload) => {
@@ -408,6 +414,16 @@ export function RemotesList({
               ...prev,
               lines: applySyncOutputBatch(prev.lines, String(payload ?? "")),
             }));
+          }),
+          // The toast shows the short human message only: one toast per
+          // phase, while the raw lines above stay in the progress panel.
+          onEvent(SYNC_PROGRESS_EVENT, (payload) => {
+            const desc = describeSyncProgress(payload);
+            if (!desc.message || desc.phase === progressPhase.current) {
+              return;
+            }
+            progressPhase.current = desc.phase;
+            onToast(desc.message, "info");
           }),
           onEvent("sync:completed", (message) => {
             const finalMessage = sanitizeSyncToastLine(message) || "Sync completed ✔";
@@ -453,7 +469,7 @@ export function RemotesList({
         failSync(String(err));
       }
     },
-    [bridge, failSync, releaseSubscriptions],
+    [bridge, failSync, onToast, releaseSubscriptions],
   );
 
   useEffect(() => {
@@ -511,16 +527,26 @@ export function RemotesList({
   const centerIconColor = visualProtected ? "text-amber-500" : "text-blue-500";
   const centerIcon = visualProtected ? "gpp_bad" : "cloud_sync";
 
+  const syncingProject = String(state.syncingProject || "");
   const syncingRemote = String(state.syncingRemote || "");
   const syncingPreset = String(state.syncingPreset || "");
-  const anySyncing = syncingRemote !== "";
+  const selectedProject = String(state.selectedProject || "").trim();
 
   const cards = remotes.map((remote) => {
-    const isSyncing = syncingRemote === remote.name;
+    // The sync lock is scoped per (project, remote) via the module helper:
+    // only the card that started the sync disables with a spinner. Other
+    // remotes in the same project and every card of a second project stay
+    // actionable. The backend guard stays global; this is only the visual scope.
+    const isSyncingThisRemote = isPresetBlockedBySync({
+      syncingProject,
+      syncingRemote,
+      selectedProject,
+      remoteName: remote.name,
+    });
     const isProtected = Boolean(remote.protected);
-    const themeColor = isSyncing ? "emerald" : isProtected ? "amber" : "blue";
-    const themeIcon = isSyncing ? "sync" : isProtected ? "rocket_launch" : "science";
-    const borderColor = isSyncing
+    const themeColor = isSyncingThisRemote ? "emerald" : isProtected ? "amber" : "blue";
+    const themeIcon = isSyncingThisRemote ? "sync" : isProtected ? "rocket_launch" : "science";
+    const borderColor = isSyncingThisRemote
       ? "border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
       : isProtected
         ? "border-amber-500/20"
@@ -576,7 +602,7 @@ export function RemotesList({
                         Protected
                       </span>
                     ) : null}
-                    {isSyncing ? (
+                    {isSyncingThisRemote ? (
                       <span className="px-2 py-0.5 rounded-sm text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wide animate-pulse">
                         Syncing...
                       </span>
@@ -641,11 +667,13 @@ export function RemotesList({
             <div className="flex flex-wrap gap-3">
               {syncPresets.map((entry) => {
                 const canUse = canUseSyncPreset(remote, entry.capability);
-                const enabled = canUse && (!anySyncing || isSyncing);
-                const spinner = isSyncing && (syncingPreset === entry.preset || !syncingPreset);
+                const enabled = canUse && !isSyncingThisRemote;
+                const spinner =
+                  isSyncingThisRemote &&
+                  (syncingPreset === entry.preset || !syncingPreset);
                 const title = enabled
                   ? entry.label
-                  : anySyncing
+                  : isSyncingThisRemote
                     ? syncInProgressReason
                     : entry.disabledReason;
                 return (

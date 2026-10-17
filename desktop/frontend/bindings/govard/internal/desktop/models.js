@@ -932,6 +932,53 @@ export class Service {
 }
 
 /**
+ * SyncProgressPayload is the structured sync:progress event payload: a short
+ * human message for toasts plus the phase and percent for spinners. Raw log
+ * lines keep flowing through sync:output for the progress panel.
+ */
+export class SyncProgressPayload {
+    /**
+     * Creates a new SyncProgressPayload instance.
+     * @param {Partial<SyncProgressPayload>} [$$source = {}] - The source object to create the SyncProgressPayload.
+     */
+    constructor($$source = {}) {
+        if (!("phase" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["phase"] = "";
+        }
+        if (!("percent" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["percent"] = 0;
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SyncProgressPayload instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SyncProgressPayload}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SyncProgressPayload(/** @type {Partial<SyncProgressPayload>} */($$parsedSource));
+    }
+}
+
+/**
  * SyncStartedPayload replaces the map[string]string sync:started payload with
  * byte-identical JSON.
  */
