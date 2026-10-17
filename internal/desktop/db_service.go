@@ -766,7 +766,7 @@ func firstDBKeyword(statement string) string {
 		}
 		if i+1 < len(runes) && runes[i] == '/' && runes[i+1] == '*' {
 			i += 2
-			for i+1 < len(runes) && !(runes[i] == '*' && runes[i+1] == '/') {
+			for i+1 < len(runes) && (runes[i] != '*' || runes[i+1] != '/') {
 				i++
 			}
 			i += 2
