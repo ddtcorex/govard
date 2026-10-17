@@ -228,7 +228,7 @@ reach the UI, and the user gets a terminal `db:failed` /
 - Snapshot restore calls the engine, which is not context-aware once the
   import starts. Cancelling stops the desktop op and its events while the
   underlying import may run to completion, the same as interrupting the
-  CLI. The message says exactly that: "<Kind> tracking stopped by user; the
+  CLI. The message says exactly that: "`<Kind>` tracking stopped by user; the
   underlying operation may run to completion" (for example "Snapshot restore
   tracking stopped by user; ..."). It never claims a
   cancellation that was not delivered.

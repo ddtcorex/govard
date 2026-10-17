@@ -224,7 +224,7 @@ giờ tới UI, và người dùng nhận một sự kiện kết thúc `db:fail
 - Khôi phục snapshot gọi engine, mà engine không nhận context một khi
   import đã chạy. Cancel dừng op desktop và các sự kiện của nó trong khi
   import bên dưới có thể vẫn chạy tới cùng, giống như ngắt CLI giữa
-  chừng. Thông báo nói đúng như vậy: "<Kind> tracking stopped by user; the
+  chừng. Thông báo nói đúng như vậy: "`<Kind>` tracking stopped by user; the
   underlying operation may run to completion" (ví dụ "Snapshot restore
   tracking stopped by user; ..."). Nó không bao giờ báo đã hủy
   điều chưa được hủy.
