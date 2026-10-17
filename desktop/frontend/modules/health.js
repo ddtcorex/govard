@@ -254,7 +254,9 @@ export function selectAuditEntry(state) {
 /**
  * Points both health slices at one scope, creating its empty entries when
  * this scope never ran. The standalone seam the islands' project-switch path
- * and the controller share.
+ * and the controller share. This is the ONLY place that moves the scope
+ * pointer: every other write stores data under its captured key and leaves
+ * scope alone.
  */
 export function selectHealthProjectForTest(setState, getState, project) {
   const key = normalizeHealthScope(project);
@@ -305,18 +307,24 @@ export function createHealthController({ bridge, getState, setState, onStatus, o
 
   const scopeKey = (project) => normalizeHealthScope(project);
 
+  // Data writes never move the scope pointer: every async completion
+  // (runDoctor/runAudit/refreshBanner/recoverAuditOp/handleAuditProgress/
+  // cancelAudit) stores its payload under the captured key only. ONLY an
+  // explicit user project-switch (selectHealthProjectForTest below) moves
+  // scope, so a late completion from an old scope can never yank the
+  // pointer back during rapid A-B-A switches.
   const writeDoctor = (key, patch) => {
     const slice = getState().healthDoctor || {};
     const byProject = { ...(slice.byProject || {}) };
     byProject[key] = { ...emptyDoctorEntry(), ...byProject[key], ...patch };
-    setState({ healthDoctor: { ...slice, byProject, scope: key } });
+    setState({ healthDoctor: { ...slice, byProject } });
   };
 
   const writeAudit = (key, patch) => {
     const slice = getState().healthAudit || {};
     const byProject = { ...(slice.byProject || {}) };
     byProject[key] = { ...emptyAuditEntry(), ...byProject[key], ...patch };
-    setState({ healthAudit: { ...slice, byProject, scope: key } });
+    setState({ healthAudit: { ...slice, byProject } });
   };
 
   const pendingPreview = () => ({ ...pending });

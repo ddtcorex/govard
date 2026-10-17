@@ -71,12 +71,14 @@ test("switching project drops the previous banner and derives the new one", asyn
     onToast: noop,
   });
 
+  // Scope moves only through an explicit project-switch: point the slices
+  // at project-a before running, so the completion lands in view.
+  selectHealthProjectForTest(store.setState, store.getState, "project-a");
   await controller.runDoctor("project-a");
   assert.ok(
     deriveDoctorBanner(selectDoctorEntry(store.state).report),
     "project-a run shows no banner",
   );
-
   // Switch before project-b ever ran: loading/empty, never project-a's red.
   await controller.selectHealthProject("project-b");
   const during = selectDoctorEntry(store.state);
@@ -162,6 +164,9 @@ test("mount during a running audit recovers Cancel for the right op", async () =
     onToast: noop,
   });
 
+  // Scope moves only through an explicit project-switch: point the slices
+  // at project-a before recovering, so the op lands in view.
+  selectHealthProjectForTest(store.setState, store.getState, "project-a");
   const recovered = await controller.recoverAuditOp("project-a");
   assert.equal(recovered, "audit:7");
   assert.deepEqual(calls[0], ["runningAuditOp", "project-a"]);

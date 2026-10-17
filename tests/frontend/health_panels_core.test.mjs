@@ -14,6 +14,7 @@ import {
   pendingPreviewForTest,
   selectAuditEntry,
   selectDoctorEntry,
+  selectHealthProjectForTest,
 } from "../../desktop/frontend/modules/health.js";
 
 const islandSource = (name) =>
@@ -144,9 +145,11 @@ test("stale banner clears after a clean re-run", async () => {
     onStatus: () => {},
     onToast: () => {},
   });
+  // Scope moves only through an explicit project-switch: point the slices
+  // at the project before running, so the completion lands in view.
+  selectHealthProjectForTest(store.setState, store.getState, "sample-project");
   await controller.runDoctor("sample-project");
   assert.ok(deriveDoctorBanner(selectDoctorEntry(store.state).report), "red run shows no banner");
-
   const clean = createHealthController({
     bridge: {
       runDoctor: async () => ({ checks: [], passed: 3, warnings: 0, failures: 0, opId: "doctor:2" }),
