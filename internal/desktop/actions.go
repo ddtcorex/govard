@@ -31,8 +31,6 @@ func quickAction(p Platform, action string, project string) (string, error) {
 		return openDBClient(p, project)
 	case "toggle-xdebug":
 		return toggleXdebug(project)
-	case "check-health":
-		return checkHealth()
 	case "open-folder":
 		return openFolder(project)
 	case "open-ide":
@@ -392,14 +390,6 @@ func toggleXdebug(project string) (string, error) {
 		state = "disabled"
 	}
 	return withCommandOutput("Xdebug "+state+" for "+info.name, output), nil
-}
-
-func checkHealth() (string, error) {
-	dashboard, err := buildDashboardInternal()
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("Docker OK. %d environments, %d services running.", len(dashboard.Environments), dashboard.RunningServices), nil
 }
 
 func selectProject(project string) (*projectInfo, error) {

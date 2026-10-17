@@ -11,12 +11,24 @@ test("every route targets a known service", () => {
   const services = new Set([
     "SettingsService", "OnboardingService", "EnvironmentService", "RemoteService",
     "SystemService", "LogService", "GlobalServiceService", "UpdateService",
+    "HealthService",
   ]);
   for (const [name, [service, method]] of Object.entries(ROUTES)) {
     assert.ok(services.has(service), `${name} routes to unknown service ${service}`);
     assert.match(method, /^[A-Z][A-Za-z]+$/, `${name} has a bad method name`);
   }
-  assert.equal(Object.keys(ROUTES).length, 55);
+  assert.equal(Object.keys(ROUTES).length, 66);
+});
+
+test("health routes reach the HealthService bindings", () => {
+  assert.deepEqual(ROUTES.RunDoctor, ["HealthService", "RunDoctor"]);
+  assert.deepEqual(ROUTES.RunningDoctorOp, ["HealthService", "RunningDoctorOp"]);
+  assert.deepEqual(ROUTES.PreviewDoctorFix, ["HealthService", "PreviewDoctorFix"]);
+  assert.deepEqual(ROUTES.ApplyDoctorFix, ["HealthService", "ApplyDoctorFix"]);
+  assert.deepEqual(ROUTES.RunIntegrityAudit, ["HealthService", "RunIntegrityAudit"]);
+  assert.deepEqual(ROUTES.LastAuditResult, ["HealthService", "LastAuditResult"]);
+  assert.deepEqual(ROUTES.CancelAudit, ["HealthService", "CancelAudit"]);
+  assert.deepEqual(ROUTES.RunningAuditOp, ["HealthService", "RunningAuditOp"]);
 });
 
 test("renamed routes keep their frontend names", () => {

@@ -12,17 +12,19 @@ import * as desktop$0 from "../../../../../govard/internal/desktop/models.js";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
-        "onboarding:progress": $$createType0,
-        "operations:notification": $$createType1,
-        "sync:progress": $$createType2,
-        "sync:started": $$createType3,
+        "audit:progress": $$createType0,
+        "onboarding:progress": $$createType1,
+        "operations:notification": $$createType2,
+        "sync:progress": $$createType3,
+        "sync:started": $$createType4,
     }));
 }
 
 // Private type creation functions
-const $$createType0 = desktop$0.OnboardingProgressPayload.createFrom;
-const $$createType1 = desktop$0.OperationNotification.createFrom;
-const $$createType2 = desktop$0.SyncProgressPayload.createFrom;
-const $$createType3 = desktop$0.SyncStartedPayload.createFrom;
+const $$createType0 = desktop$0.AuditProgressPayload.createFrom;
+const $$createType1 = desktop$0.OnboardingProgressPayload.createFrom;
+const $$createType2 = desktop$0.OperationNotification.createFrom;
+const $$createType3 = desktop$0.SyncProgressPayload.createFrom;
+const $$createType4 = desktop$0.SyncStartedPayload.createFrom;
 
 configure();

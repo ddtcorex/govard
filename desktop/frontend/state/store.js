@@ -62,6 +62,18 @@ const state = {
    * @type {Record<string, string>}
    */
   busyEnvs: {},
+  // Doctor + audit health UX (Task 3): the health controller publishes here
+  // and GlobalHealthHeader/HealthPanels derive banners and panels from it.
+  // Banner state always derives from the latest report/result, never cached
+  // independently, so a clean re-run clears stale banners. Doctor and audit
+  // entries are keyed by normalized project scope with a current-scope
+  // pointer: switching projects shows that scope's loading/empty state,
+  // never another scope's banner. The preview slice is keyed the same way
+  // and carries no token: the preview id lives in module-local controller
+  // state only.
+  healthDoctor: { byProject: {}, scope: "" },
+  healthAudit: { byProject: {}, scope: "" },
+  healthPreview: { byProject: {}, scope: "" },
 };
 
 const listeners = new Set();

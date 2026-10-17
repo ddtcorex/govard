@@ -6,6 +6,7 @@ import {
   createGlobalServicesController,
   raiseActionFeedback,
 } from "./modules/global-services.js";
+import { createHealthController, selectDoctorEntry } from "./modules/health.js";
 import { resolveServiceTargets, shouldStopEnvLiveOnTabSwitch } from "./modules/logs.js";
 import { createOnboardingController } from "./modules/onboarding.js?v=20260302";
 import { resolveSyncPresetConfig } from "./modules/remotes.js";
@@ -525,10 +526,18 @@ const refreshServiceSelector = () => {
   setState({ selectedService: service });
 };
 
+// Assigned where the health controller is created below; null until then so
+// project switches during early init stay safe.
+let healthController = null;
 const setSelectedProject = (project) => {
   const value = String(project || "").trim();
   if (!value) return;
   setState({ selectedProject: value });
+  // Health banners are keyed per project: re-derive this project's banners
+  // (loading/empty meanwhile, never the previous project's).
+  if (healthController) {
+    void healthController.selectHealthProject(value);
+  }
   if (refs.logSelector && refs.logSelector.value !== value) {
     refs.logSelector.value = value;
   }
@@ -910,10 +919,52 @@ const globalServicesController = createGlobalServicesController({
 // into the controller, which stays the only thing that talks to the bridge for
 // these actions, so the routing-settle loop and the refresh cadence are
 // unchanged. The Logs panel is still vanilla markup in this change.
+healthController = createHealthController({
+  bridge: desktopBridge,
+  getState,
+  setState,
+  onStatus: setStatus,
+  onToast: showToast,
+});
+
+// Health actions scope to the selected project ("" when none). Banners are
+// keyed per project scope in the store; the Go side hard-refuses
+// project-touching fixes with no usable scope.
+const healthProject = () => String(getState().selectedProject || "");
+const healthCallbacks = {
+  project: "",
+  onRunDoctor: () => void healthController.runDoctor(healthProject()),
+  onCancelDoctor: () => void healthController.cancelDoctor(),
+  onApplySafeFix: (check) => void healthController.applySafeFix(healthProject(), check),
+  onPreviewFix: (check) => void healthController.previewFix(healthProject(), check),
+  onConfirmPreview: () => {
+    // The token lives in module-local controller state, never the store.
+    const pending = healthController.pendingPreview();
+    const report = selectDoctorEntry(getState()).report;
+    const check = (report?.checks || []).find((item) => item.id === pending.checkId);
+    if (!check) {
+      return;
+    }
+    void healthController.applyFix(healthProject(), check, pending.previewId, true);
+  },
+  onClosePreview: () => healthController.closePreview(),
+  onRunAudit: () => void healthController.runAudit(healthProject()),
+  onCancelAudit: () => void healthController.cancelAudit(),
+};
+onEvent("audit:progress", (payload = {}) => healthController.handleAuditProgress(payload));
+// Fill the audit banner from the persisted last result without running
+// anything; a miss is neutral (never-ran state), never an error toast.
+// Then recover any audit or doctor run that started before this panel
+// mounted, so its Cancel is available immediately.
+void healthController.refreshBanner(healthProject());
+void healthController.recoverAuditOp(healthProject());
+void healthController.recoverDoctorOp(healthProject());
+
 const globalHealthIsland = mountIsland(
   "globalHealthIsland",
   createElement(GlobalHealthHeader, {
     onBulkAction: (action) => globalServicesController.runBulkAction(action),
+    health: healthCallbacks,
   }),
 );
 

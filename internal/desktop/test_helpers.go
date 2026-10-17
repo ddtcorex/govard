@@ -2,12 +2,15 @@ package desktop
 
 import (
 	"context"
+	"crypto/rand"
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
+	"govard/internal/audit"
 	"govard/internal/deploy"
 	"govard/internal/engine"
 
@@ -831,4 +834,173 @@ func BrandTrayForTest(t interface {
 // CancelOp, FinishOp, ListOps) is exported, so no other seams are needed.
 func ResetOperationRegistryForTest() {
 	resetOperationRegistry()
+}
+
+// SetDoctorRunDiagnosticsForDesktopForTest overrides the doctor engine run
+// behind RunDoctor for the duration of a test and returns a func that
+// restores the real one, so doctor service tests never probe the host.
+func SetDoctorRunDiagnosticsForDesktopForTest(fn func() engine.DoctorReport) func() {
+	previous := doctorRunDiagnosticsForDesktop
+	if fn == nil {
+		doctorRunDiagnosticsForDesktop = func() engine.DoctorReport {
+			return engine.RunDoctorDiagnostics(engine.DoctorDependencies{})
+		}
+	} else {
+		doctorRunDiagnosticsForDesktop = fn
+	}
+	return func() {
+		doctorRunDiagnosticsForDesktop = previous
+	}
+}
+
+// SetDoctorFixExecutorForDesktopForTest overrides the per-check fix
+// executor behind Preview/ApplyDoctorFix for the duration of a test and
+// returns a func that restores the real one, so tests never mutate the
+// host (no mkdir, no docker, no config writes).
+func SetDoctorFixExecutorForDesktopForTest(fn DoctorFixExecutor) func() {
+	previous := doctorFixExecutorForDesktop
+	if fn == nil {
+		doctorFixExecutorForDesktop = defaultDoctorFixExecutor
+	} else {
+		doctorFixExecutorForDesktop = fn
+	}
+	return func() {
+		doctorFixExecutorForDesktop = previous
+	}
+}
+
+// ResetDoctorServiceForTest clears single-use preview tokens so doctor
+// service tests stay hermetic.
+func ResetDoctorServiceForTest() {
+	resetDoctorPreviewTokens()
+}
+
+// SetDoctorRandReadForDesktopForTest overrides the randomness source behind
+// preview-token minting for the duration of a test and returns a func that
+// restores crypto/rand, so minting failures are testable deterministically.
+func SetDoctorRandReadForDesktopForTest(fn func([]byte) (int, error)) func() {
+	previous := doctorRandRead
+	if fn == nil {
+		doctorRandRead = rand.Read
+	} else {
+		doctorRandRead = fn
+	}
+	return func() {
+		doctorRandRead = previous
+	}
+}
+
+// ResetAuditServiceForTest clears the last-result-per-project index so audit
+// service tests stay hermetic.
+func ResetAuditServiceForTest() {
+	resetLastAuditResults()
+}
+
+// SetAuditResolveForDesktopForTest overrides integrity target resolution
+// behind RunIntegrityAudit for the duration of a test and returns a func
+// that restores the real one, so audit service tests never probe the host
+// (no framework detection, no git, no config reads).
+func SetAuditResolveForDesktopForTest(fn func(projectRoot string) (audit.RunRequest, error)) func() {
+	previous := resolveAuditRunRequestForDesktop
+	if fn == nil {
+		resolveAuditRunRequestForDesktop = defaultResolveAuditRunRequest
+	} else {
+		resolveAuditRunRequestForDesktop = fn
+	}
+	return func() {
+		resolveAuditRunRequestForDesktop = previous
+	}
+}
+
+// SetAuditRunnerForDesktopForTest overrides audit runner execution behind
+// RunIntegrityAudit for the duration of a test and returns a func that
+// restores the real one, so tests never run real analyzers.
+func SetAuditRunnerForDesktopForTest(fn func(ctx context.Context, request audit.RunRequest) (audit.RunResult, error)) func() {
+	previous := runAuditRunnerForDesktop
+	if fn == nil {
+		runAuditRunnerForDesktop = defaultRunAuditRunner
+	} else {
+		runAuditRunnerForDesktop = fn
+	}
+	return func() {
+		runAuditRunnerForDesktop = previous
+	}
+}
+
+// SetAuditResultReaderForDesktopForTest overrides persisted-run reads behind
+// GetAuditResult for the duration of a test and returns a func that restores
+// the real store-backed one.
+func SetAuditResultReaderForDesktopForTest(fn func(projectID, sessionID, runID string) (audit.RunResult, error)) func() {
+	previous := readAuditRunResultForDesktop
+	if fn == nil {
+		readAuditRunResultForDesktop = defaultReadAuditRunResult
+	} else {
+		readAuditRunResultForDesktop = fn
+	}
+	return func() {
+		readAuditRunResultForDesktop = previous
+	}
+}
+
+// SetAuditRunListForDesktopForTest overrides the session run listing behind
+// GetAuditDiff for the duration of a test and returns a func that restores
+// the real store-backed one.
+func SetAuditRunListForDesktopForTest(fn func(projectID, sessionID string) ([]string, error)) func() {
+	previous := listAuditRunIDsForDesktop
+	if fn == nil {
+		listAuditRunIDsForDesktop = defaultListAuditRunIDs
+	} else {
+		listAuditRunIDsForDesktop = fn
+	}
+	return func() {
+		listAuditRunIDsForDesktop = previous
+	}
+}
+
+// SetAuditPreRecordHookForDesktopForTest installs a hook that RunIntegrityAudit
+// runs synchronously between its completion check and the banner record (nil
+// in production). Tests use it to deliver CancelAudit deterministically inside
+// that race window without sleeps, proving late completions are discarded.
+func SetAuditPreRecordHookForDesktopForTest(fn func(opID string)) func() {
+	previous := auditPreRecordHookForDesktop
+	auditPreRecordHookForDesktop = fn
+	return func() {
+		auditPreRecordHookForDesktop = previous
+	}
+}
+
+// AuditCancelledSetSizeForTest reports how many cancellation marks the banner
+// index currently holds, so tests can prove the set stays bounded.
+func AuditCancelledSetSizeForTest() int {
+	lastAuditResultsCache.Lock()
+	defer lastAuditResultsCache.Unlock()
+	return len(lastAuditResultsCache.cancelled)
+}
+
+// PlantAuditCancelledMarksForTest inserts stale marks directly (bypassing the
+// insert purge), simulating paths that predate it: unacked ones must be
+// purged on the next insert, won ones must survive. Age is measured back from
+// now.
+func PlantAuditCancelledMarksForTest(unacked, won int, age time.Duration) {
+	lastAuditResultsCache.Lock()
+	defer lastAuditResultsCache.Unlock()
+	at := time.Now().Add(-age)
+	for i := 0; i < unacked; i++ {
+		lastAuditResultsCache.cancelled["audit:stale-unacked-"+strconv.Itoa(i)] = auditCancelledMark{at: at}
+	}
+	for i := 0; i < won; i++ {
+		lastAuditResultsCache.cancelled["audit:stale-won-"+strconv.Itoa(i)] = auditCancelledMark{won: true, at: at}
+	}
+}
+
+// PlantAuditCancelledMarkForOpForTest inserts one mark for an explicit op id
+// (bypassing the insert purge), so tests can arm a stale won mark for exactly
+// the op under test.
+func PlantAuditCancelledMarkForOpForTest(opID string, won bool, age time.Duration) {
+	if opID == "" {
+		return
+	}
+	lastAuditResultsCache.Lock()
+	defer lastAuditResultsCache.Unlock()
+	lastAuditResultsCache.cancelled[opID] = auditCancelledMark{won: won, at: time.Now().Add(-age)}
 }

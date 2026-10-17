@@ -90,6 +90,50 @@ export const ROUTE_DEFAULTS = {
     "kind": "value",
     "value": ""
   },
+  "HealthService.ApplyDoctorFix": {
+    "kind": "model",
+    "model": "DoctorFixOutcome"
+  },
+  "HealthService.CancelAudit": {
+    "kind": "value",
+    "value": false
+  },
+  "HealthService.CancelDoctorRun": {
+    "kind": "value",
+    "value": false
+  },
+  "HealthService.GetAuditDiff": {
+    "kind": "model",
+    "model": "AuditDiffView"
+  },
+  "HealthService.GetAuditResult": {
+    "kind": "model",
+    "model": "AuditResultView"
+  },
+  "HealthService.LastAuditResult": {
+    "kind": "model",
+    "model": "AuditResultView"
+  },
+  "HealthService.PreviewDoctorFix": {
+    "kind": "model",
+    "model": "DoctorFixPreview"
+  },
+  "HealthService.RunDoctor": {
+    "kind": "model",
+    "model": "DoctorReportView"
+  },
+  "HealthService.RunIntegrityAudit": {
+    "kind": "model",
+    "model": "AuditResultView"
+  },
+  "HealthService.RunningAuditOp": {
+    "kind": "value",
+    "value": ""
+  },
+  "HealthService.RunningDoctorOp": {
+    "kind": "value",
+    "value": ""
+  },
   "LogService.GetGlobalServiceLogs": {
     "kind": "value",
     "value": ""

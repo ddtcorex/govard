@@ -21,4 +21,5 @@ func registerEvents() {
 	application.RegisterEvent[string](EventSyncCompleted)
 	application.RegisterEvent[OnboardingProgressPayload](EventOnboardingProgress)
 	application.RegisterEvent[OperationNotification](EventOperationsNotification)
+	application.RegisterEvent[AuditProgressPayload](EventAuditProgress)
 }

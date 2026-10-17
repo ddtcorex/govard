@@ -53,11 +53,17 @@ Bindings:
 Lightweight dashboard highlights:
 - Environment list with start/stop/open
 - Project workspace layout (environments, quick actions, onboarding)
-- Quick actions (PHPMyAdmin, Xdebug toggle, health)
+- Quick actions (PHPMyAdmin, Xdebug toggle)
 - Log viewer with service selection and live streaming
 - OS Terminal launcher for service shells
 - System tray: show/hide the window, start/stop/open projects, quit
 - Settings drawer (theme, proxy target, preferred browser, run in background)
+- Health: per-project doctor and audit banners plus Doctor/Audit panels below
+  the mesh snapshot. Doctor fixes are allowlisted (one-click `Fix` for safe
+  checks, `Preview fix` plus confirm for risky ones, no button otherwise);
+  audits run the container-free integrity check only, with the Docker-backed
+  lint/profiler rows shown disabled. Full table and banner meanings live in
+  `docs/workflows/desktop-app.md` under "Health: Doctor and Audit".
 
 Frontend file management:
 - `frontend/main.js` bootstrap + wiring
@@ -65,6 +71,6 @@ Frontend file management:
 - `frontend/services/events.js` backend event subscriptions
 - `frontend/bindings/` generated and committed; never edit by hand
 - `frontend/state/store.js` local state
-- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`)
+- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `health`)
 - `frontend/ui/toast.js` notifications
 - `frontend/utils/dom.js` DOM helpers
