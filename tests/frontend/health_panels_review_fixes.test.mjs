@@ -163,6 +163,9 @@ test("mount during a running audit recovers Cancel for the right op", async () =
     onToast: noop,
   });
 
+  // Production order is switch, then recover: the switch moves scope and
+  // the recovery only stores under its captured key, never moving scope.
+  selectHealthProjectForTest(store.setState, store.getState, "project-a");
   const recovered = await controller.recoverAuditOp("project-a");
   assert.equal(recovered, "audit:7");
   assert.deepEqual(calls[0], ["runningAuditOp", "project-a"]);
@@ -313,6 +316,9 @@ test("mount during a running doctor run recovers Cancel for the right op", async
     "function",
     "controller has no recoverDoctorOp, want the audit-style recovery",
   );
+  // Same production order as the audit recovery: switch first (moves
+  // scope), then recover (data-only write under its captured key).
+  selectHealthProjectForTest(store.setState, store.getState, "project-a");
   const recovered = await controller.recoverDoctorOp("project-a");
   assert.equal(recovered, "doctor:9");
   assert.deepEqual(calls[0], ["runningDoctorOp", "project-a"]);

@@ -347,18 +347,26 @@ export function createHealthController({ bridge, getState, setState, onStatus, o
 
   const scopeKey = (project) => normalizeHealthScope(project);
 
+  // Data writes store under their captured key ONLY and NEVER move the
+  // scope pointer: only the explicit user project-switch path
+  // (selectHealthProjectForTest) moves scope. A late async completion from
+  // an old scope must not yank the panel out from under the project being
+  // viewed. A run the user just started follows instead at intent time:
+  // runDoctor (non-silent), runAudit and previewFix point the slices at the
+  // run's scope synchronously before awaiting, so the completion itself
+  // stays a data-only write.
   const writeDoctor = (key, patch) => {
     const slice = getState().healthDoctor || {};
     const byProject = { ...(slice.byProject || {}) };
     byProject[key] = { ...emptyDoctorEntry(), ...byProject[key], ...patch };
-    setState({ healthDoctor: { ...slice, byProject, scope: key } });
+    setState({ healthDoctor: { ...slice, byProject } });
   };
 
   const writeAudit = (key, patch) => {
     const slice = getState().healthAudit || {};
     const byProject = { ...(slice.byProject || {}) };
     byProject[key] = { ...emptyAuditEntry(), ...byProject[key], ...patch };
-    setState({ healthAudit: { ...slice, byProject, scope: key } });
+    setState({ healthAudit: { ...slice, byProject } });
   };
 
   // Event-routed writes: same entry update as writeAudit but the
@@ -373,12 +381,12 @@ export function createHealthController({ bridge, getState, setState, onStatus, o
 
   // Preview writes always carry their scope: the dialog renders only for
   // the current scope's entry, so one scope's preview never leaks into
-  // another's panel.
+  // another's panel. Data-only like the doctor/audit writes above.
   const writePreview = (key, patch) => {
     const slice = getState().healthPreview || {};
     const byProject = { ...(slice.byProject || {}) };
     byProject[key] = { ...emptyPreviewEntry(), ...byProject[key], ...patch };
-    setState({ healthPreview: { ...slice, byProject, scope: key } });
+    setState({ healthPreview: { ...slice, byProject } });
   };
 
   // The event's project scope (normalized root, lowerCamel over the Wails
@@ -411,6 +419,10 @@ export function createHealthController({ bridge, getState, setState, onStatus, o
   const runDoctor = async (project, { silent = false } = {}) => {
     const key = scopeKey(project);
     if (!silent) {
+      // User-initiated run: the user just asked to see this project's
+      // health, so follow at intent time (synchronously, before the first
+      // await). Silent re-runs are background refreshes and stay data-only.
+      selectHealthProjectForTest(setState, getState, project);
       writeDoctor(key, { loading: true, error: "" });
     }
     // The backend diagnoses the passed scope and the report is stored under
@@ -490,6 +502,10 @@ export function createHealthController({ bridge, getState, setState, onStatus, o
       // Safe fixes stay 1-click even when reached through the preview path.
       return applySafeFix(project, check);
     }
+    // User-initiated preview: follow at intent time so the dialog opens
+    // under the project the user acted on; the async completion below only
+    // fills that key and never moves scope.
+    selectHealthProjectForTest(setState, getState, project);
     try {
       const preview = await bridge.previewDoctorFix(project, id);
       pending = {
@@ -568,6 +584,9 @@ export function createHealthController({ bridge, getState, setState, onStatus, o
 
   const runAudit = async (project) => {
     const key = scopeKey(project);
+    // User-initiated run: follow at intent time like runDoctor. The async
+    // completion below only stores under its captured key.
+    selectHealthProjectForTest(setState, getState, project);
     auditLaunched[key] = (auditLaunched[key] || 0) + 1;
     writeAudit(key, { loading: true, error: "", phase: "running" });
     try {
