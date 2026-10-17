@@ -16,6 +16,9 @@ function configure() {
         "operations:notification": $$createType1,
         "sync:progress": $$createType2,
         "sync:started": $$createType3,
+        "tool:completed": $$createType4,
+        "tool:failed": $$createType4,
+        "tool:output": $$createType5,
     }));
 }
 
@@ -24,5 +27,7 @@ const $$createType0 = desktop$0.OnboardingProgressPayload.createFrom;
 const $$createType1 = desktop$0.OperationNotification.createFrom;
 const $$createType2 = desktop$0.SyncProgressPayload.createFrom;
 const $$createType3 = desktop$0.SyncStartedPayload.createFrom;
+const $$createType4 = desktop$0.ToolResultPayload.createFrom;
+const $$createType5 = desktop$0.ToolOutputPayload.createFrom;
 
 configure();

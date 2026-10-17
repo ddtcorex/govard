@@ -19,6 +19,9 @@ func registerEvents() {
 	application.RegisterEvent[SyncProgressPayload](EventSyncProgress)
 	application.RegisterEvent[string](EventSyncFailed)
 	application.RegisterEvent[string](EventSyncCompleted)
+	application.RegisterEvent[ToolOutputPayload](EventToolOutput)
+	application.RegisterEvent[ToolResultPayload](EventToolCompleted)
+	application.RegisterEvent[ToolResultPayload](EventToolFailed)
 	application.RegisterEvent[OnboardingProgressPayload](EventOnboardingProgress)
 	application.RegisterEvent[OperationNotification](EventOperationsNotification)
 }

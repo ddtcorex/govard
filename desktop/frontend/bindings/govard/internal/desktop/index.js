@@ -9,6 +9,7 @@ import * as OnboardingService from "./onboardingservice.js";
 import * as RemoteService from "./remoteservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as SystemService from "./systemservice.js";
+import * as ToolService from "./toolservice.js";
 import * as UpdateService from "./updateservice.js";
 export {
     EnvironmentService,
@@ -18,6 +19,7 @@ export {
     RemoteService,
     SettingsService,
     SystemService,
+    ToolService,
     UpdateService
 };
 
@@ -37,6 +39,11 @@ export {
     SyncProgressPayload,
     SyncStartedPayload,
     SystemMetrics,
+    ToolArgSpec,
+    ToolHistoryEntry,
+    ToolOutputPayload,
+    ToolPreset,
+    ToolResultPayload,
     TrayStatus,
     UpdateCheckResult,
     UserInfo
