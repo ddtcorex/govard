@@ -105,6 +105,11 @@
                   Logs
                 </a>
                 <a class="border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-500 whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all"
+href="#" data-action="switch-tab" data-tab="deploy">
+                  <span class="material-symbols-outlined text-lg" aria-hidden="true">rocket_launch</span>
+                  Deploy
+                </a>
+                <a class="border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-500 whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all"
                   href="#" data-action="switch-tab" data-tab="operations">
                   <span class="material-symbols-outlined text-lg" aria-hidden="true">sync</span>
                   Operations
@@ -235,6 +240,9 @@
           </div>
           <div id="tab-logs" class="flex-1 flex flex-col overflow-hidden tab-content hidden">
             <div id="logsIsland" class="contents"></div>
+          </div>
+<div id="tab-deploy" class="flex-1 tab-content hidden">
+            <div id="deployIsland" class="contents"></div>
           </div>
           <div id="tab-operations" class="flex-1 tab-content hidden">
             <div id="operationCenterIsland" class="contents"></div>

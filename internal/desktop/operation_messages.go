@@ -38,11 +38,14 @@ const opMessageHintMax = 280
 // ops fall back to a capitalized passthrough so a new caller still reads
 // sensibly while its failures stay in the sanitized fallback.
 var opDisplayNames = map[string]string{
-	"sync":    "Sync",
-	"onboard": "Onboarding",
-	"up":      "Environment start",
-	"pull":    "Pull",
-	"restart": "Environment restart",
+	"sync":         "Sync",
+	"onboard":      "Onboarding",
+	"up":           "Environment start",
+	"pull":         "Pull",
+	"restart":      "Environment restart",
+	"rollback":     "Rollback",
+	"sandbox-up":   "Sandbox start",
+	"sandbox-down": "Sandbox removal",
 }
 
 // opFailureSeed is one known failure shape: the markers matched

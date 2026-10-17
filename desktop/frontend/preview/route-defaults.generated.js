@@ -35,6 +35,53 @@ export const ROUTE_DEFAULTS = {
     "kind": "model",
     "model": "DBQueryResult"
   },
+  "DeployService.ApplyRollback": {
+    "kind": "model",
+    "model": "RollbackResult"
+  },
+  "DeployService.DeployCheck": {
+    "kind": "model",
+    "model": "DeployCheckResult"
+  },
+  "DeployService.DeployPlan": {
+    "kind": "model",
+    "model": "DeployPlanResult"
+  },
+  "DeployService.DeployStatus": {
+    "kind": "model",
+    "model": "DeployStatusResult"
+  },
+  "DeployService.ListReleases": {
+    "kind": "slice"
+  },
+  "DeployService.OpenSandboxSSHInTerminal": {
+    "kind": "value",
+    "value": ""
+  },
+  "DeployService.PreviewRollback": {
+    "kind": "model",
+    "model": "RollbackPreview"
+  },
+  "DeployService.PreviewSandboxDown": {
+    "kind": "model",
+    "model": "SandboxDownPreview"
+  },
+  "DeployService.PreviewSandboxUp": {
+    "kind": "model",
+    "model": "SandboxUpPreview"
+  },
+  "DeployService.SandboxDown": {
+    "kind": "model",
+    "model": "SandboxDownResult"
+  },
+  "DeployService.SandboxSSHinfo": {
+    "kind": "model",
+    "model": "SandboxSSHInfo"
+  },
+  "DeployService.SandboxUp": {
+    "kind": "model",
+    "model": "SandboxUpResult"
+  },
   "EnvironmentService.DeleteProject": {
     "kind": "value",
     "value": ""

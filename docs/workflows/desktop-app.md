@@ -35,6 +35,7 @@ The desktop focuses on operational essentials:
 | **Project Workspace** | Environments list, quick actions, onboarding flow |
 | **Quick Actions** | PHPMyAdmin, Xdebug toggle, health check, Mailpit, DB client |
 | **Remotes Tab** | Add/test/open/sync-plan workflows for remote environments |
+| **Deploy Tab** | Read-only status/releases/plan/check plus preview-gated rollback and sandbox rehearse |
 | **Data Tab** | Masked DB fact sheet, guarded ad-hoc queries, dump/import, snapshots (see below) |
 | **Resource Monitor** | CPU, RAM, network, OOM hints |
 | **Logs** | Multi-service selection, severity filtering, text search, live streaming |
@@ -539,6 +540,67 @@ configured but no container is running, the row is left out and the reason comes
 back as a warning in the panel; a project with neither a block nor a container
 gets no row and no warning. See
 [Configuring the sandbox remote](/workflows/remotes-and-sync#configuring-the-sandbox-remote).
+
+---
+
+## Deploy Tab
+
+The Deploy tab reuses the same engine paths as the CLI, split into two
+milestones by blast radius.
+
+### M1: read-only visibility
+
+| Panel view | CLI equivalent |
+| :--- | :--- |
+| Status | `govard deploy status [remote]` |
+| Releases | `govard deploy releases [remote]` |
+| Plan | `govard deploy plan [remote]` |
+| Check | `govard deploy check [remote]` |
+
+These four calls never change target state, with one disclosed exception:
+on a symlink-strategy target the check performs a transient probe write to
+verify atomic swaps, then removes it. The panel shows a note whenever the
+check reports that probe ran, so the check is never presented as purely
+observational. Fetching stays gated behind the remote picker: with no remote
+picked, no call leaves the panel.
+
+### M2: guarded actions
+
+| Panel action | CLI equivalent |
+| :--- | :--- |
+| Rollback preview + apply | `govard deploy rollback [remote]` |
+| Sandbox start preview + apply | `govard sandbox up` |
+| Sandbox removal preview + apply | `govard sandbox down` |
+| Connection info + open shell | `govard sandbox ssh` |
+
+Every mutation runs the same preview-plus-confirm contract:
+
+1. **Preview** shows exactly what the apply would do (the rollback target
+   release and strategy, or the sandbox container) and mints a single-use
+   token bound to that action and those parameters.
+2. **Apply** spends the token and additionally requires an explicit confirm:
+   the panel keeps the apply button disabled until the preview is shown AND
+   a checkbox ("I have read the preview ...") is ticked, so no single click
+   can change target state.
+
+Tokens expire after 15 minutes; unknown, spent, foreign, or expired tokens
+are refused before any engine call runs. A preview that no longer matches
+the target (a deploy landed in between, or the sandbox container changed)
+is refused as stale, and the operator re-previews. Rollback with `--with-db`
+stays CLI-only: database restore is destructive and keeps its own
+confirmation there. The sandbox rehearse starts empty; seeding stays
+CLI-only.
+
+### Cancel truthfulness
+
+Stopping a run mid-flight reports what the engine left behind, never a bare
+"cancelled". An in-place rollback names whether the release record was
+restored and whether the maintenance window was closed; a symlink rollback
+names whether a release was activated before the stop; a sandbox start or
+removal names the container state it re-read afterwards (still running, not
+running, none left, or state that could not be determined). The panel renders
+a cancelled run as cancelled with those notes, never as a failure, and offers
+no retry prompt for it.
 
 ### Local Database Open
 

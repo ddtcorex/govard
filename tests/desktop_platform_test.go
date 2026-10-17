@@ -45,8 +45,8 @@ func TestDesktopNewAppWithPlatformWiresEveryService(t *testing.T) {
 	app := desktop.NewApp(desktop.WithPlatform(fake))
 
 	platforms := desktop.AppPlatformsForTest(app)
-	if len(platforms) != 11 { // App + 10 services
-		t.Fatalf("expected 11 platform holders, got %d", len(platforms))
+	if len(platforms) != 15 { // App + 14 services
+		t.Fatalf("expected 15 platform holders, got %d", len(platforms))
 	}
 	for i, p := range platforms {
 		if p != desktop.Platform(fake) {

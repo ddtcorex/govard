@@ -31,6 +31,22 @@ func ResetStateForTest() {
 	runGovardCommandForDesktop = defaultRunGovardCommandForDesktop
 	runGovardCommandForDesktopWithTimeout = defaultRunGovardCommandForDesktopWithTimeout
 	startGovardCommandForDesktop = defaultStartGovardCommandForDesktop
+	_ = SetDeployHostResolverForTest(nil)
+	_ = SetDeployListReleasesForTest(nil)
+	_ = SetDeployLiveReleaseForTest(nil)
+	_ = SetDeployPublishStrategyForTest(nil)
+	_ = SetDeployCoreCheckForTest(nil)
+	_ = SetDeployTimeoutsForTest(defaultDeployPlanTimeout, defaultDeployReadTimeout)
+	_ = SetDeployMutateTimeoutForTest(defaultDeployMutateTimeout)
+	_ = SetDeploySelectRollbackTargetForTest(nil)
+	_ = SetDeployRunStepForTest(nil)
+	_ = SetDeployExecutorRunForTest(nil)
+	_ = SetDeploySandboxRuntimeForTest(nil)
+	_ = SetDeploySandboxProbeForTest(nil)
+	_ = SetLaunchInTerminalForTest(nil)
+	_ = SetDeployPreviewTTLForTest(defaultDeployPreviewTTL)
+	_ = SetDeployPreviewRandForTest(nil)
+	resetDeployPreviewTokens()
 	startToolProcess = defaultStartToolProcess
 	validateGitConnectionForDesktop = defaultValidateGitConnectionForDesktop
 	cloneGitRepoForDesktop = defaultCloneGitRepoForDesktop
@@ -743,7 +759,7 @@ func desktopBoolPtr(v bool) *bool {
 
 // AppPlatformsForTest returns the platform held by the App and each service,
 // in the order App, Settings, Onboarding, Environment, Remote, System, Logs,
-// Global, Update, DB, Snapshot.
+// Global, Update, Deploy, Operations, Health, Tool, DB, Snapshot.
 func AppPlatformsForTest(app *App) []Platform {
 	return []Platform{
 		app.platform,
@@ -755,6 +771,10 @@ func AppPlatformsForTest(app *App) []Platform {
 		app.Logs.platform,
 		app.Global.platform,
 		app.Update.platform,
+		app.Deploy.platform,
+		app.Operations.platform,
+		app.Health.platform,
+		app.Tool.platform,
 		app.DB.platform,
 		app.Snapshot.platform,
 	}

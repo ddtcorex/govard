@@ -60,6 +60,7 @@ Lightweight dashboard highlights:
 - OS Terminal launcher for service shells
 - System tray: show/hide the window, start/stop/open projects, quit
 - Settings drawer (theme, proxy target, preferred browser, run in background)
+- Deploy tab: read-only status/releases/plan/check plus preview-gated rollback and sandbox rehearse
 - Operation Center: running ops with cancel plus terminal history with
   failed-only retry (`OperationService` via the `ListOps`, `ListHistory`,
   `CancelOp`, `RetryOp` bridge routes; one sync per project; history capped
@@ -72,6 +73,30 @@ Lightweight dashboard highlights:
   audits run the container-free integrity check only, with the Docker-backed
   lint/profiler rows shown disabled. Full table and banner meanings live in
   `docs/workflows/desktop-app.md` under "Health: Doctor and Audit".
+
+## Deploy tab: CLI mapping and contracts
+
+M1 is read-only: Status maps to `govard deploy status [remote]`, Releases to
+`govard deploy releases [remote]`, Plan to `govard deploy plan [remote]`, and
+Check to `govard deploy check [remote]`. One disclosed exception: on a
+symlink-strategy target the check performs a transient probe write to verify
+atomic swaps, then removes it, and the panel shows a note whenever that probe
+ran.
+
+M2 mutates through one contract: preview plus explicit confirm. Rollback
+preview/apply maps to `govard deploy rollback [remote]`, sandbox
+start preview/apply to `govard sandbox up`, sandbox removal preview/apply to
+`govard sandbox down`, and connection info plus the terminal shell to
+`govard sandbox ssh`. The preview shows exactly what the apply would do and
+mints a single-use token (15-minute TTL) bound to that action and parameters;
+the apply spends the token and requires a ticked checkbox confirm, so no
+single click changes target state. Stale previews (a deploy landed in
+between, or the sandbox container changed) are refused and need a fresh
+preview. Rollback with `--with-db` and sandbox seeding stay CLI-only.
+
+A cancelled run reports what the engine left behind (release record restore,
+maintenance window state, whether a release was activated, the re-read
+sandbox container state) and renders as cancelled, never as a failure.
 
 The Data tab is read-only by default: ad-hoc queries run only
 `SELECT`-style statements unless the write opt-in plus its per-project
@@ -88,7 +113,7 @@ Frontend file management:
 - `frontend/services/events.js` backend event subscriptions
 - `frontend/bindings/` generated and committed; never edit by hand
 - `frontend/state/store.js` local state
-- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `health`, `tool-palette`, `data-tab`)
+- `frontend/modules/*.js` feature modules (`dashboard`, `actions`, `logs`, `settings`, `health`, `tool-palette`, `data-tab`, `deploy`)
 - `frontend/ui/toast.js` notifications
 - `frontend/utils/dom.js` DOM helpers
 

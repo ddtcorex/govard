@@ -807,6 +807,426 @@ export class Dashboard {
     }
 }
 
+/**
+ * DeployCheckResult is the sanitized preflight report for one remote.
+ */
+export class DeployCheckResult {
+    /**
+     * Creates a new DeployCheckResult instance.
+     * @param {Partial<DeployCheckResult>} [$$source = {}] - The source object to create the DeployCheckResult.
+     */
+    constructor($$source = {}) {
+        if (!("remote" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["remote"] = "";
+        }
+        if (!("host" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["host"] = "";
+        }
+        if (!("deployPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["deployPath"] = "";
+        }
+        if (!("currentPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["currentPath"] = "";
+        }
+        if (!("publishStrategy" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["publishStrategy"] = "";
+        }
+        if (!("layout" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["layout"] = "";
+        }
+        if (!("deployable" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["deployable"] = false;
+        }
+        if (!("probePerformed" in $$source)) {
+            /**
+             * ProbePerformed reports whether the preflight ran its transient
+             * atomic-rename probe (symlink strategy only), so the panel can disclose
+             * the probe instead of presenting the check as purely observational.
+             * @member
+             * @type {boolean}
+             */
+            this["probePerformed"] = false;
+        }
+        if (!("warnings" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["warnings"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DeployCheckResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DeployCheckResult}
+     */
+    static createFrom($$source = {}) {
+        const $$createField8_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField8_0($$parsedSource["warnings"]);
+        }
+        return new DeployCheckResult(/** @type {Partial<DeployCheckResult>} */($$parsedSource));
+    }
+}
+
+/**
+ * DeployPlanResult is the sanitized, structured deploy plan for one remote.
+ */
+export class DeployPlanResult {
+    /**
+     * Creates a new DeployPlanResult instance.
+     * @param {Partial<DeployPlanResult>} [$$source = {}] - The source object to create the DeployPlanResult.
+     */
+    constructor($$source = {}) {
+        if (!("remote" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["remote"] = "";
+        }
+        if (!("branch" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["branch"] = "";
+        }
+        if (!("revision" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["revision"] = "";
+        }
+        if (!("buildMode" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["buildMode"] = "";
+        }
+        if (!("publishStrategy" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["publishStrategy"] = "";
+        }
+        if (!("steps" in $$source)) {
+            /**
+             * @member
+             * @type {DeployPlanStep[]}
+             */
+            this["steps"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DeployPlanResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DeployPlanResult}
+     */
+    static createFrom($$source = {}) {
+        const $$createField5_0 = $$createType8;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("steps" in $$parsedSource) {
+            $$parsedSource["steps"] = $$createField5_0($$parsedSource["steps"]);
+        }
+        return new DeployPlanResult(/** @type {Partial<DeployPlanResult>} */($$parsedSource));
+    }
+}
+
+/**
+ * DeployPlanStep is one sanitized row of a resolved deploy plan.
+ */
+export class DeployPlanStep {
+    /**
+     * Creates a new DeployPlanStep instance.
+     * @param {Partial<DeployPlanStep>} [$$source = {}] - The source object to create the DeployPlanStep.
+     */
+    constructor($$source = {}) {
+        if (!("index" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["index"] = 0;
+        }
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("stage" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["stage"] = "";
+        }
+        if (!("title" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["title"] = "";
+        }
+        if (!("command" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["command"] = "";
+        }
+        if (!("source" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["source"] = "";
+        }
+        if (!("implementation" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["implementation"] = "";
+        }
+        if (!("skipped" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["skipped"] = false;
+        }
+        if (!("skipReason" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["skipReason"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DeployPlanStep instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DeployPlanStep}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DeployPlanStep(/** @type {Partial<DeployPlanStep>} */($$parsedSource));
+    }
+}
+
+/**
+ * DeployReleaseEntry is one sanitized release row from the target.
+ */
+export class DeployReleaseEntry {
+    /**
+     * Creates a new DeployReleaseEntry instance.
+     * @param {Partial<DeployReleaseEntry>} [$$source = {}] - The source object to create the DeployReleaseEntry.
+     */
+    constructor($$source = {}) {
+        if (!("release" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["release"] = "";
+        }
+        if (!("revision" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["revision"] = "";
+        }
+        if (!("branch" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["branch"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["createdAt"] = "";
+        }
+        if (!("createdBy" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["createdBy"] = "";
+        }
+        if (!("live" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["live"] = false;
+        }
+        if (!("foreign" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["foreign"] = false;
+        }
+        if (!("number" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["number"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DeployReleaseEntry instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DeployReleaseEntry}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DeployReleaseEntry(/** @type {Partial<DeployReleaseEntry>} */($$parsedSource));
+    }
+}
+
+/**
+ * DeployStatusResult is the sanitized live-release row for one remote.
+ */
+export class DeployStatusResult {
+    /**
+     * Creates a new DeployStatusResult instance.
+     * @param {Partial<DeployStatusResult>} [$$source = {}] - The source object to create the DeployStatusResult.
+     */
+    constructor($$source = {}) {
+        if (!("remote" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["remote"] = "";
+        }
+        if (!("release" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["release"] = "";
+        }
+        if (!("revision" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["revision"] = "";
+        }
+        if (!("branch" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["branch"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("reachable" in $$source)) {
+            /**
+             * Reachable is false when the target answered nothing usable.
+             * @member
+             * @type {boolean}
+             */
+            this["reachable"] = false;
+        }
+        if (!("error" in $$source)) {
+            /**
+             * Error carries the sanitized reason when Reachable is false.
+             * @member
+             * @type {string}
+             */
+            this["error"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DeployStatusResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DeployStatusResult}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DeployStatusResult(/** @type {Partial<DeployStatusResult>} */($$parsedSource));
+    }
+}
+
 export class DesktopSettings {
     /**
      * Creates a new DesktopSettings instance.
@@ -1155,7 +1575,7 @@ export class DoctorReportView {
      * @returns {DoctorReportView}
      */
     static createFrom($$source = {}) {
-        const $$createField0_0 = $$createType8;
+        const $$createField0_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("checks" in $$parsedSource) {
             $$parsedSource["checks"] = $$createField0_0($$parsedSource["checks"]);
@@ -1280,9 +1700,9 @@ export class Environment {
     static createFrom($$source = {}) {
         const $$createField2_0 = $$createType6;
         const $$createField5_0 = $$createType6;
-        const $$createField8_0 = $$createType10;
+        const $$createField8_0 = $$createType12;
         const $$createField9_0 = $$createType6;
-        const $$createField13_0 = $$createType11;
+        const $$createField13_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("extraDomains" in $$parsedSource) {
             $$parsedSource["extraDomains"] = $$createField2_0($$parsedSource["extraDomains"]);
@@ -1545,7 +1965,7 @@ export class GlobalServicesSnapshot {
      * @returns {GlobalServicesSnapshot}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType13;
+        const $$createField3_0 = $$createType15;
         const $$createField4_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("services" in $$parsedSource) {
@@ -2036,7 +2456,7 @@ export class OperationNotification {
      * @returns {OperationNotification}
      */
     static createFrom($$source = {}) {
-        const $$createField8_0 = $$createType15;
+        const $$createField8_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("actions" in $$parsedSource) {
             $$parsedSource["actions"] = $$createField8_0($$parsedSource["actions"]);
@@ -2170,7 +2590,7 @@ export class RemoteSnapshot {
      * @returns {RemoteSnapshot}
      */
     static createFrom($$source = {}) {
-        const $$createField1_0 = $$createType17;
+        const $$createField1_0 = $$createType19;
         const $$createField2_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("remotes" in $$parsedSource) {
@@ -2180,6 +2600,575 @@ export class RemoteSnapshot {
             $$parsedSource["warnings"] = $$createField2_0($$parsedSource["warnings"]);
         }
         return new RemoteSnapshot(/** @type {Partial<RemoteSnapshot>} */($$parsedSource));
+    }
+}
+
+/**
+ * RollbackPreview describes the swap an apply would perform, plus the
+ * single-use token that authorises exactly that swap.
+ */
+export class RollbackPreview {
+    /**
+     * Creates a new RollbackPreview instance.
+     * @param {Partial<RollbackPreview>} [$$source = {}] - The source object to create the RollbackPreview.
+     */
+    constructor($$source = {}) {
+        if (!("token" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["token"] = "";
+        }
+        if (!("remote" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["remote"] = "";
+        }
+        if (!("target" in $$source)) {
+            /**
+             * @member
+             * @type {RollbackTargetInfo}
+             */
+            this["target"] = (new RollbackTargetInfo());
+        }
+        if (!("previous" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["previous"] = "";
+        }
+        if (!("strategy" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["strategy"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RollbackPreview instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RollbackPreview}
+     */
+    static createFrom($$source = {}) {
+        const $$createField2_0 = $$createType20;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("target" in $$parsedSource) {
+            $$parsedSource["target"] = $$createField2_0($$parsedSource["target"]);
+        }
+        return new RollbackPreview(/** @type {Partial<RollbackPreview>} */($$parsedSource));
+    }
+}
+
+/**
+ * RollbackResult reports what an apply did. Cancelled reads true when the
+ * operator stopped it mid-flight; Message then carries the honest cancel
+ * wording instead of a failure.
+ */
+export class RollbackResult {
+    /**
+     * Creates a new RollbackResult instance.
+     * @param {Partial<RollbackResult>} [$$source = {}] - The source object to create the RollbackResult.
+     */
+    constructor($$source = {}) {
+        if (!("remote" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["remote"] = "";
+        }
+        if (!("release" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["release"] = "";
+        }
+        if (!("revision" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["revision"] = "";
+        }
+        if (!("previous" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["previous"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (!("cancelled" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["cancelled"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RollbackResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RollbackResult}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RollbackResult(/** @type {Partial<RollbackResult>} */($$parsedSource));
+    }
+}
+
+/**
+ * RollbackTargetInfo is the sanitized release a preview resolves to.
+ */
+export class RollbackTargetInfo {
+    /**
+     * Creates a new RollbackTargetInfo instance.
+     * @param {Partial<RollbackTargetInfo>} [$$source = {}] - The source object to create the RollbackTargetInfo.
+     */
+    constructor($$source = {}) {
+        if (!("release" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["release"] = "";
+        }
+        if (!("revision" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["revision"] = "";
+        }
+        if (!("branch" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["branch"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RollbackTargetInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RollbackTargetInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RollbackTargetInfo(/** @type {Partial<RollbackTargetInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * SandboxDownPreview names the container an apply would remove, plus the
+ * single-use token that authorises exactly that removal.
+ */
+export class SandboxDownPreview {
+    /**
+     * Creates a new SandboxDownPreview instance.
+     * @param {Partial<SandboxDownPreview>} [$$source = {}] - The source object to create the SandboxDownPreview.
+     */
+    constructor($$source = {}) {
+        if (!("token" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["token"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("container" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["container"] = "";
+        }
+        if (!("profile" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["profile"] = "";
+        }
+        if (!("purge" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["purge"] = false;
+        }
+        if (!("volumes" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["volumes"] = false;
+        }
+        if (!("exists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["exists"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SandboxDownPreview instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SandboxDownPreview}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SandboxDownPreview(/** @type {Partial<SandboxDownPreview>} */($$parsedSource));
+    }
+}
+
+/**
+ * SandboxDownResult reports the removal. Cancelled reads true when the
+ * operator stopped it mid-flight.
+ */
+export class SandboxDownResult {
+    /**
+     * Creates a new SandboxDownResult instance.
+     * @param {Partial<SandboxDownResult>} [$$source = {}] - The source object to create the SandboxDownResult.
+     */
+    constructor($$source = {}) {
+        if (!("container" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["container"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (!("exists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["exists"] = false;
+        }
+        if (!("running" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["running"] = false;
+        }
+        if (!("cancelled" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["cancelled"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SandboxDownResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SandboxDownResult}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SandboxDownResult(/** @type {Partial<SandboxDownResult>} */($$parsedSource));
+    }
+}
+
+/**
+ * SandboxSSHInfo carries the connection facts for the existing terminal
+ * path. It holds the key path, never key material.
+ */
+export class SandboxSSHInfo {
+    /**
+     * Creates a new SandboxSSHInfo instance.
+     * @param {Partial<SandboxSSHInfo>} [$$source = {}] - The source object to create the SandboxSSHInfo.
+     */
+    constructor($$source = {}) {
+        if (!("user" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["user"] = "";
+        }
+        if (!("host" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["host"] = "";
+        }
+        if (!("keyPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["keyPath"] = "";
+        }
+        if (!("command" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["command"] = "";
+        }
+        if (!("port" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["port"] = 0;
+        }
+        if (!("exists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["exists"] = false;
+        }
+        if (!("running" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["running"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SandboxSSHInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SandboxSSHInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SandboxSSHInfo(/** @type {Partial<SandboxSSHInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * SandboxUpPreview describes the rehearse target an apply would create,
+ * plus the single-use token that authorises exactly that creation.
+ */
+export class SandboxUpPreview {
+    /**
+     * Creates a new SandboxUpPreview instance.
+     * @param {Partial<SandboxUpPreview>} [$$source = {}] - The source object to create the SandboxUpPreview.
+     */
+    constructor($$source = {}) {
+        if (!("token" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["token"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("profile" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["profile"] = "";
+        }
+        if (!("container" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["container"] = "";
+        }
+        if (!("currentProfile" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["currentProfile"] = "";
+        }
+        if (!("recreate" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["recreate"] = false;
+        }
+        if (!("exists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["exists"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SandboxUpPreview instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SandboxUpPreview}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SandboxUpPreview(/** @type {Partial<SandboxUpPreview>} */($$parsedSource));
+    }
+}
+
+/**
+ * SandboxUpResult is the sanitized state of the rehearsed sandbox.
+ * Cancelled reads true when the operator stopped the creation mid-flight;
+ * Message then carries the honest cancel wording instead of a failure.
+ */
+export class SandboxUpResult {
+    /**
+     * Creates a new SandboxUpResult instance.
+     * @param {Partial<SandboxUpResult>} [$$source = {}] - The source object to create the SandboxUpResult.
+     */
+    constructor($$source = {}) {
+        if (!("container" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["container"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("profile" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["profile"] = "";
+        }
+        if (!("php" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["php"] = "";
+        }
+        if (!("remoteName" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["remoteName"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (!("port" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["port"] = 0;
+        }
+        if (!("webPort" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["webPort"] = 0;
+        }
+        if (!("running" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["running"] = false;
+        }
+        if (!("exists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["exists"] = false;
+        }
+        if (!("cancelled" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["cancelled"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SandboxUpResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SandboxUpResult}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SandboxUpResult(/** @type {Partial<SandboxUpResult>} */($$parsedSource));
     }
 }
 
@@ -2748,7 +3737,7 @@ export class ToolHistoryEntry {
      * @returns {ToolHistoryEntry}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType11;
+        const $$createField3_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("args" in $$parsedSource) {
             $$parsedSource["args"] = $$createField3_0($$parsedSource["args"]);
@@ -2856,7 +3845,7 @@ export class ToolPreset {
      */
     static createFrom($$source = {}) {
         const $$createField3_0 = $$createType6;
-        const $$createField4_0 = $$createType19;
+        const $$createField4_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("argv" in $$parsedSource) {
             $$parsedSource["argv"] = $$createField3_0($$parsedSource["argv"]);
@@ -3148,7 +4137,7 @@ export class presetSyncOptions {
      * @returns {presetSyncOptions}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType21;
+        const $$createField2_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("options" in $$parsedSource) {
             $$parsedSource["options"] = $$createField2_0($$parsedSource["options"]);
@@ -3165,18 +4154,21 @@ const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = Environment.createFrom;
 const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = $Create.Array($Create.Any);
-const $$createType7 = DoctorCheckView.createFrom;
+const $$createType7 = DeployPlanStep.createFrom;
 const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = Service.createFrom;
+const $$createType9 = DoctorCheckView.createFrom;
 const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = $Create.Map($Create.Any, $Create.Any);
-const $$createType12 = GlobalService.createFrom;
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = OpMessageAction.createFrom;
+const $$createType11 = Service.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = $Create.Map($Create.Any, $Create.Any);
+const $$createType14 = GlobalService.createFrom;
 const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = RemoteEntry.createFrom;
+const $$createType16 = OpMessageAction.createFrom;
 const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = ToolArgSpec.createFrom;
+const $$createType18 = RemoteEntry.createFrom;
 const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = presetOptionDef.createFrom;
-const $$createType21 = $Create.Array($$createType20);
+const $$createType20 = RollbackTargetInfo.createFrom;
+const $$createType21 = ToolArgSpec.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = presetOptionDef.createFrom;
+const $$createType24 = $Create.Array($$createType23);

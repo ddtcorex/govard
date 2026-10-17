@@ -35,6 +35,7 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 | **Workspace dự án** | Danh sách các môi trường, các thao tác nhanh, quy trình onboard |
 | **Thao tác nhanh** | PHPMyAdmin, bật/tắt Xdebug, kiểm tra sức khỏe, Mailpit, DB client |
 | **Tab Remotes** | Quy trình thêm/kiểm tra/mở/lập kế hoạch đồng bộ cho môi trường remote |
+| **Tab Deploy** | Trạng thái/releases/plan/check chỉ đọc, kèm rollback và sandbox rehearse có cổng preview |
 | **Tab Data** | Thông tin DB đã che, query có kiểm soát, dump/import, snapshot (xem bên dưới) |
 | **Giám sát tài nguyên** | CPU, RAM, mạng, cảnh báo OOM |
 | **Nhật ký (Logs)** | Lọc logs theo dịch vụ, mức độ nghiêm trọng, tìm kiếm text, stream trực tiếp |
@@ -541,6 +542,66 @@ container thì không có dòng nào và không có warning nào. Xem thêm
 
 - Xác định host và port docker được publish trước.
 - Fallback về PHPMyAdmin nếu trình kết nối DB client được cấu hình bị thất bại.
+
+---
+
+## Tab Deploy
+
+Tab Deploy tái sử dụng cùng các đường engine với CLI, chia làm hai mốc theo
+mức độ ảnh hưởng.
+
+### M1: hiển thị chỉ đọc
+
+| Chế độ xem trong panel | Lệnh CLI tương đương |
+| :--- | :--- |
+| Status | `govard deploy status [remote]` |
+| Releases | `govard deploy releases [remote]` |
+| Plan | `govard deploy plan [remote]` |
+| Check | `govard deploy check [remote]` |
+
+Bốn lệnh gọi này không bao giờ thay đổi trạng thái target, với một ngoại lệ
+được công bố: trên target dùng chiến lược symlink, lệnh check thực hiện một
+lần ghi probe tạm thời để kiểm tra khả năng swap nguyên tử, rồi xóa nó. Panel
+luôn hiển thị ghi chú mỗi khi check báo probe đã chạy, để check không bao giờ
+bị trình bày như thuần quan sát. Việc tải dữ liệu bị chặn sau picker remote:
+khi chưa chọn remote, không lệnh gọi nào rời khỏi panel.
+
+### M2: thao tác có cổng bảo vệ
+
+| Thao tác trong panel | Lệnh CLI tương đương |
+| :--- | :--- |
+| Xem trước + áp dụng rollback | `govard deploy rollback [remote]` |
+| Xem trước + khởi động sandbox | `govard sandbox up` |
+| Xem trước + gỡ sandbox | `govard sandbox down` |
+| Thông tin kết nối + mở shell | `govard sandbox ssh` |
+
+Mọi thay đổi đều chạy đúng hợp đồng preview-plus-confirm:
+
+1. **Preview** cho thấy chính xác điều apply sẽ làm (release và chiến lược
+   của rollback, hoặc container của sandbox) và cấp một token dùng một lần
+   gắn với đúng thao tác và tham số đó.
+2. **Apply** tiêu thụ token và còn đòi confirm tường minh: nút apply trong
+   panel luôn bị vô hiệu cho tới khi preview đã hiện VÀ hộp kiểm ("Tôi đã
+   đọc preview ...") được tick, nên không một cú nhấp đơn nào có thể đổi
+   trạng thái target.
+
+Token hết hạn sau 15 phút; token lạ, đã dùng, sai chủ hoặc hết hạn đều bị từ
+chối trước mọi lệnh gọi engine. Preview không còn khớp target (có deploy mới
+xen vào, hoặc container sandbox đã đổi) bị từ chối là stale, và người dùng
+xem preview lại. Rollback kèm `--with-db` chỉ có trên CLI: khôi phục database
+mang tính hủy dữ liệu và giữ confirm riêng ở đó. Sandbox rehearse khởi đầu
+trống; seeding chỉ có trên CLI.
+
+### Tính trung thực khi cancel
+
+Dừng một lệnh đang chạy giữa chừng sẽ báo rõ engine đã để lại gì, không bao
+giờ chỉ nói "cancelled" trống. Rollback in-place nêu record release có được
+khôi phục không và cửa sổ maintenance có được đóng không; rollback symlink
+nêu có release nào đã được kích hoạt trước khi dừng không; khởi động hoặc gỡ
+sandbox nêu trạng thái container đọc lại sau đó (vẫn chạy, đã dừng, không còn
+gì, hoặc không xác định được). Panel hiển thị lệnh bị cancel đúng là
+cancelled kèm các ghi chú đó, không bao giờ như một lỗi, và không gợi nút
+thử lại cho nó.
 
 ---
 
