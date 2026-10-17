@@ -576,8 +576,11 @@ export const desktopBridge = {
   async restartDesktopApp() {
     return invoke("RestartDesktopApp");
   },
-  async runDoctor() {
-    return invoke("RunDoctor");
+  /**
+   * @param {string} project
+   */
+  async runDoctor(project) {
+    return invoke("RunDoctor", project);
   },
   /**
    * @param {string} project

@@ -144,6 +144,13 @@ var doctorRunDiagnosticsForDesktop = func() engine.DoctorReport {
 	return engine.RunDoctorDiagnostics(engine.DoctorDependencies{})
 }
 
+// doctorRunDiagnosticsForProjectForDesktop is the project-scoped doctor
+// engine run behind RunDoctorForProject: the project-bound checks read from
+// the given root instead of the process working directory.
+var doctorRunDiagnosticsForProjectForDesktop = func(projectRoot string) engine.DoctorReport {
+	return engine.RunDoctorDiagnosticsInRoot(engine.DoctorDependencies{}, projectRoot)
+}
+
 var doctorFixExecutorForDesktop DoctorFixExecutor = defaultDoctorFixExecutor
 
 // defaultDoctorFixExecutor is the production per-check fix executor used
@@ -300,6 +307,42 @@ func RunDoctor() (DoctorReportView, error) {
 		return DoctorReportView{}, doctorErrorf("doctor run was cancelled")
 	}
 
+	return buildDoctorReportView(raw, opID), nil
+}
+
+// RunDoctorForProject is RunDoctor scoped to a project root: the engine's
+// project-bound checks read from that root instead of the process working
+// directory, so the report the UI buckets under the selected project
+// actually describes that project. An empty root keeps the legacy
+// working-directory behavior.
+func RunDoctorForProject(projectRoot string) (DoctorReportView, error) {
+	opID := nextDoctorOpID("doctor")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	RegisterOp(opID, strings.TrimSpace(projectRoot), "doctor", cancel)
+	defer FinishOp(opID)
+
+	done := make(chan engine.DoctorReport, 1)
+	// Same capture rule as RunDoctor: re-reading the package var after a
+	// test's cleanup restored it is a data race.
+	runDiagnostics := doctorRunDiagnosticsForProjectForDesktop
+	root := strings.TrimSpace(projectRoot)
+	go func() { done <- runDiagnostics(root) }()
+
+	var raw engine.DoctorReport
+	select {
+	case raw = <-done:
+	case <-ctx.Done():
+		return DoctorReportView{}, doctorErrorf("doctor run was cancelled")
+	}
+
+	return buildDoctorReportView(raw, opID), nil
+}
+
+// buildDoctorReportView classifies every engine check into the fix
+// allowlist and counts the outcomes. Shared by the unscoped and
+// project-scoped runs so both surfaces classify identically.
+func buildDoctorReportView(raw engine.DoctorReport, opID string) DoctorReportView {
 	// OpID is the finished registry op: it lets the UI correlate the run,
 	// and a late cancel of it is a harmless no-op by registry contract.
 	report := DoctorReportView{Checks: make([]DoctorCheckView, 0, len(raw.Checks)), OpID: opID}
@@ -332,7 +375,7 @@ func RunDoctor() (DoctorReportView, error) {
 			report.Warnings++
 		}
 	}
-	return report, nil
+	return report
 }
 
 // PreviewDoctorFix returns the dry-run plan plus a single-use preview token

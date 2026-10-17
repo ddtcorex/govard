@@ -836,6 +836,36 @@ func ResetOperationRegistryForTest() {
 	resetOperationRegistry()
 }
 
+// SetDoctorRunDiagnosticsForProjectForDesktopForTest overrides the scoped
+// doctor engine run behind RunDoctorForProject for the duration of a test
+// and returns a func that restores the real one, so doctor scope tests
+// capture the threaded root without probing the host.
+func SetDoctorRunDiagnosticsForProjectForDesktopForTest(fn func(projectRoot string) engine.DoctorReport) func() {
+	previous := doctorRunDiagnosticsForProjectForDesktop
+	if fn == nil {
+		doctorRunDiagnosticsForProjectForDesktop = func(projectRoot string) engine.DoctorReport {
+			return engine.RunDoctorDiagnosticsInRoot(engine.DoctorDependencies{}, projectRoot)
+		}
+	} else {
+		doctorRunDiagnosticsForProjectForDesktop = fn
+	}
+	return func() {
+		doctorRunDiagnosticsForProjectForDesktop = previous
+	}
+}
+
+// AgeDoctorPreviewTokensForTest advances every stored preview token's age
+// by the given duration, so expiry tests pin the TTL refusal without
+// sleeping out the real 15-minute window.
+func AgeDoctorPreviewTokensForTest(age time.Duration) {
+	doctorPreviewTokens.Lock()
+	defer doctorPreviewTokens.Unlock()
+	for id, tok := range doctorPreviewTokens.byID {
+		tok.createdAt = tok.createdAt.Add(-age)
+		doctorPreviewTokens.byID[id] = tok
+	}
+}
+
 // SetDoctorRunDiagnosticsForDesktopForTest overrides the doctor engine run
 // behind RunDoctor for the duration of a test and returns a func that
 // restores the real one, so doctor service tests never probe the host.

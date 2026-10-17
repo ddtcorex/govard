@@ -126,6 +126,10 @@ export const ROUTE_DEFAULTS = {
     "kind": "model",
     "model": "AuditResultView"
   },
+  "HealthService.RunningAuditOp": {
+    "kind": "value",
+    "value": ""
+  },
   "LogService.GetGlobalServiceLogs": {
     "kind": "value",
     "value": ""

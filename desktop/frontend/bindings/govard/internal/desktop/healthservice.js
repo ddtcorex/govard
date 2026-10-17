@@ -93,10 +93,11 @@ export function PreviewDoctorFix(project, checkID) {
 }
 
 /**
+ * @param {string} project
  * @returns {$CancellablePromise<$models.DoctorReportView>}
  */
-export function RunDoctor() {
-    return $Call.ByID(1788071524).then(/** @type {($result: any) => any} */(($result) => {
+export function RunDoctor(project) {
+    return $Call.ByID(1788071524, project).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType4($result);
     }));
 }

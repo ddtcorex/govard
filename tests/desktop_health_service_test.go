@@ -35,10 +35,13 @@ func newHealthServiceForTest() *desktop.HealthService {
 // classified report the package function returns, not a stub error.
 func TestHealthService_RunDoctorDelegates(t *testing.T) {
 	setupHealthServiceTest(t)
-	stubDoctorDiagnostics(t)
+	t.Cleanup(desktop.SetDoctorRunDiagnosticsForProjectForDesktopForTest(
+		func(projectRoot string) engine.DoctorReport {
+			return stubDoctorServiceReport()
+		}))
 
 	svc := newHealthServiceForTest()
-	report, err := svc.RunDoctor()
+	report, err := svc.RunDoctor("")
 	if err != nil {
 		t.Fatalf("RunDoctor() error = %v, want a classified report", err)
 	}
@@ -342,14 +345,14 @@ func TestHealthService_CancelDelegates(t *testing.T) {
 // return with a cancellation error.
 func TestHealthService_CancelDoctorRunDelegates(t *testing.T) {
 	setupHealthServiceTest(t)
-	t.Cleanup(desktop.SetDoctorRunDiagnosticsForDesktopForTest(func() engine.DoctorReport {
+	t.Cleanup(desktop.SetDoctorRunDiagnosticsForProjectForDesktopForTest(func(projectRoot string) engine.DoctorReport {
 		select {}
 	}))
 
 	svc := newHealthServiceForTest()
 	done := make(chan error, 1)
 	go func() {
-		_, err := svc.RunDoctor()
+		_, err := svc.RunDoctor("")
 		done <- err
 	}()
 	// The blocking stub never returns, so the op must still register before

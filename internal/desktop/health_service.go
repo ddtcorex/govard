@@ -33,9 +33,20 @@ func resolveHealthProjectRoot(project string) (string, error) {
 	return root, nil
 }
 
-func (s *HealthService) RunDoctor() (res DoctorReportView, err error) {
+func (s *HealthService) RunDoctor(project string) (res DoctorReportView, err error) {
 	defer RecoverPanic(&err, "RunDoctor")
-	return RunDoctor()
+	root, err := resolveHealthProjectRoot(project)
+	if err != nil {
+		return DoctorReportView{}, err
+	}
+	// A non-empty project that resolves to no directory is refused with
+	// select guidance (same rule as the fix path): a working-directory run
+	// bucketed under a project key would misattribute host state to the
+	// project. An empty project keeps the legacy host-level run.
+	if root == "" && strings.TrimSpace(project) != "" {
+		return DoctorReportView{}, doctorErrorf("doctor run needs a project directory: %q did not resolve to one (select a project in the desktop app first)", strings.TrimSpace(project))
+	}
+	return RunDoctorForProject(root)
 }
 
 // resolveHealthFixRoot resolves the project scope for a doctor fix. A
@@ -82,6 +93,13 @@ func (s *HealthService) RunIntegrityAudit(project string) (res AuditResultView, 
 	root, err := resolveHealthProjectRoot(project)
 	if err != nil {
 		return AuditResultView{}, err
+	}
+	// A non-empty project that resolves to no directory is refused with
+	// select guidance instead of silently auditing the process working
+	// directory (same hard-error rule as the fix path). An empty project
+	// keeps the legacy working-directory run.
+	if root == "" && strings.TrimSpace(project) != "" {
+		return AuditResultView{}, auditErrorf("integrity audit needs a project directory: %q did not resolve to one (select a project in the desktop app first)", strings.TrimSpace(project))
 	}
 	return RunIntegrityAudit(s.platform, root)
 }

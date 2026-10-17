@@ -335,7 +335,7 @@ export function createHealthController({ bridge, getState, setState, onStatus, o
       writeDoctor(key, { loading: true, error: "" });
     }
     try {
-      const report = normalizeDoctorReport(await bridge.runDoctor());
+      const report = normalizeDoctorReport(await bridge.runDoctor(project));
       writeDoctor(key, { report, loading: false, error: "" });
       const banner = deriveDoctorBanner(report);
       if (!silent) {

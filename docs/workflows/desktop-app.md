@@ -33,7 +33,7 @@ The desktop focuses on operational essentials:
 | :--- | :--- |
 | **Environment Dashboard** | Start/stop/open/delete — including orphaned Docker project detection |
 | **Project Workspace** | Environments list, quick actions, onboarding flow |
-| **Quick Actions** | PHPMyAdmin, Xdebug toggle, health check, Mailpit, DB client |
+| **Quick Actions** | PHPMyAdmin, Xdebug toggle, Mailpit, DB client |
 | **Remotes Tab** | Add/test/open/sync-plan workflows for remote environments |
 | **Resource Monitor** | CPU, RAM, network, OOM hints |
 | **Logs** | Multi-service selection, severity filtering, text search, live streaming |
@@ -56,10 +56,18 @@ The health header at the top of the dashboard runs two read-only checks for
 the selected project: `RunDoctor` (host and project diagnostics with per-check
 fixes) and `RunIntegrityAudit` (container-free project integrity audit). Both
 are reached through `HealthService` routes in
-`desktop/frontend/services/bridge.js`; audit progress streams on the
+`desktop/frontend/services/bridge.js` (`runDoctor(project)`,
+`runIntegrityAudit(project)`); audit progress streams on the
 `audit:progress` event. Long runs can be cancelled (`CancelDoctorRun`,
 `CancelAudit`); cancelling an audit discards its late result and the banner
 keeps the last completed run.
+
+The doctor run is scoped to the selected project's root: project-bound
+checks read that project's files, and the report is bucketed under that
+project. A non-empty project that resolves to no directory is refused with
+a select-a-project error instead of auditing the working directory. With no
+project selected the run stays host-level (working directory) under the
+empty scope.
 
 ### Doctor fixes: what each button means
 

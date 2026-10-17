@@ -258,6 +258,32 @@ func TestDoctorService_PreviewTokenBoundToCheck(t *testing.T) {
 	}
 }
 
+// M1: a preview token older than the 15-minute TTL is refused as expired,
+// forcing a fresh preview (project or container state may have drifted
+// since the dry run). The consumed-token path stays intact: the aged token
+// is gone, so a replay is refused as unknown, not applied.
+func TestDoctorService_AgedPreviewTokenRefusedAsExpired(t *testing.T) {
+	setupDoctorServiceTest(t)
+	t.Cleanup(desktop.SetDoctorFixExecutorForDesktopForTest(
+		func(ctx context.Context, checkID string, dryRun bool) ([]string, string, error) {
+			if dryRun {
+				return []string{"sync php_version"}, "1 drift entry", nil
+			}
+			return []string{"synced drift"}, "drift synced", nil
+		}))
+
+	preview, err := desktop.PreviewDoctorFix("project.config.drift")
+	if err != nil {
+		t.Fatalf("PreviewDoctorFix error = %v", err)
+	}
+	desktop.AgeDoctorPreviewTokensForTest(16 * time.Minute)
+	if _, err := desktop.ApplyDoctorFix("project.config.drift", preview.PreviewID, true); err == nil {
+		t.Fatalf("ApplyDoctorFix(aged token) = nil error, want an expiry refusal")
+	} else if !strings.Contains(strings.ToLower(err.Error()), "expired") {
+		t.Fatalf("ApplyDoctorFix(aged token) error = %v, want an expiry refusal", err)
+	}
+}
+
 // Checks with no safe fix expose no fix path: neither preview nor apply.
 func TestDoctorService_NoneCheckHasNoFixPath(t *testing.T) {
 	setupDoctorServiceTest(t)

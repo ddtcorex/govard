@@ -33,7 +33,7 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 | :--- | :--- |
 | **Bảng điều khiển môi trường** | Start/stop/open/delete — bao gồm việc phát hiện các dự án Docker mồ côi |
 | **Workspace dự án** | Danh sách các môi trường, các thao tác nhanh, quy trình onboard |
-| **Thao tác nhanh** | PHPMyAdmin, bật/tắt Xdebug, kiểm tra sức khỏe, Mailpit, DB client |
+| **Thao tác nhanh** | PHPMyAdmin, bật/tắt Xdebug, Mailpit, DB client |
 | **Tab Remotes** | Quy trình thêm/kiểm tra/mở/lập kế hoạch đồng bộ cho môi trường remote |
 | **Giám sát tài nguyên** | CPU, RAM, mạng, cảnh báo OOM |
 | **Nhật ký (Logs)** | Lọc logs theo dịch vụ, mức độ nghiêm trọng, tìm kiếm text, stream trực tiếp |
@@ -54,10 +54,17 @@ Các panel log trực tiếp giữ 2.000 dòng gần nhất và tạm dừng pol
 Thanh sức khỏe ở đầu dashboard chạy hai kiểm tra chỉ đọc cho dự án đang
 chọn: `RunDoctor` (chẩn đoán máy và dự án, kèm nút sửa từng mục) và
 `RunIntegrityAudit` (audit toàn vẹn dự án không cần container). Cả hai đều đi
-qua các route `HealthService` trong `desktop/frontend/services/bridge.js`;
+qua các route `HealthService` trong `desktop/frontend/services/bridge.js`
+(`runDoctor(project)`, `runIntegrityAudit(project)`);
 tiến trình audit phát trên sự kiện `audit:progress`. Các lượt chạy dài có thể
 hủy (`CancelDoctorRun`, `CancelAudit`); hủy audit sẽ loại bỏ kết quả đến muộn
 và banner giữ nguyên kết quả hoàn tất gần nhất.
+
+Lượt chạy doctor bị giới hạn theo thư mục gốc của dự án đang chọn: các mục
+kiểm tra gắn với dự án đọc file của đúng dự án đó, và báo cáo được gom theo
+đúng dự án. Dự án có tên nhưng không phân giải được thành thư mục sẽ bị từ
+chối kèm hướng dẫn chọn dự án, thay vì audit nhầm thư mục làm việc hiện tại.
+Khi chưa chọn dự án, lượt chạy ở mức máy (thư mục làm việc) thuộc scope rỗng.
 
 ### Nút sửa của Doctor có ý nghĩa gì
 

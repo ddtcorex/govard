@@ -263,6 +263,10 @@ export const ID_MAP = {
     "service": "GlobalServiceService",
     "method": "StopGlobalServices"
   },
+  "4061846439": {
+    "service": "HealthService",
+    "method": "RunningAuditOp"
+  },
   "4117557808": {
     "service": "GlobalServiceService",
     "method": "RestartGlobalServices"

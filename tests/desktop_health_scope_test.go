@@ -10,6 +10,7 @@ import (
 
 	"govard/internal/audit"
 	"govard/internal/desktop"
+	"govard/internal/engine"
 )
 
 // Review fix 1: a project-touching fix with no project selected must hard
@@ -52,6 +53,40 @@ func TestHealthService_UnresolvableProjectFixRefused(t *testing.T) {
 	}
 	if _, err := svc.ApplyDoctorFix("does-not-exist-project-xyz", "project.config.audit", "", true); err == nil {
 		t.Fatalf("ApplyDoctorFix(unresolvable project) = nil error, want a refusal, never a CWD fallback")
+	}
+}
+
+// I2: a non-empty project that resolves to no directory must hard-error
+// with select guidance instead of silently auditing the process working
+// directory. This mirrors the fix-path hard error in resolveHealthFixRoot:
+// the seeded registry entry matches by name but its relative path is no
+// directory, so resolution yields no root ("",nil) and the run must refuse
+// before the runner ever starts.
+func TestHealthService_UnresolvableProjectAuditRefused(t *testing.T) {
+	setupHealthServiceTest(t)
+	if err := engine.UpsertProjectRegistryEntry(engine.ProjectRegistryEntry{
+		ProjectName: "ghost-project",
+		Path:        "relative/ghost-path",
+	}); err != nil {
+		t.Fatalf("seed registry with relative-path entry: %v", err)
+	}
+	runnerStarted := false
+	stubAuditResolve(t, "project-test")
+	t.Cleanup(desktop.SetAuditRunnerForDesktopForTest(
+		func(ctx context.Context, request audit.RunRequest) (audit.RunResult, error) {
+			runnerStarted = true
+			return passedIntegrityResult(), nil
+		}))
+
+	svc := newHealthServiceForTest()
+	if _, err := svc.RunIntegrityAudit("ghost-project"); err == nil {
+		t.Fatalf("RunIntegrityAudit(unresolvable project) = nil error, want a select-guidance refusal, never a CWD audit")
+	} else if !strings.Contains(strings.ToLower(err.Error()), "select a project") &&
+		!strings.Contains(strings.ToLower(err.Error()), "did not resolve") {
+		t.Fatalf("RunIntegrityAudit(unresolvable project) error = %v, want select/resolve guidance", err)
+	}
+	if runnerStarted {
+		t.Fatalf("audit runner started for an unresolvable project, want refusal before any run")
 	}
 }
 
