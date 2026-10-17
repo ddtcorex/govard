@@ -771,6 +771,36 @@ func NewCloseGateForTest() *closeGate { return &closeGate{} }
 // BuildTrayProjectsForTest exposes the tray menu model for tests.
 func BuildTrayProjectsForTest(d Dashboard) []trayProject { return buildTrayProjects(d) }
 
+// TrayTitleForTest exposes the tray label with its running-op count for tests.
+func TrayTitleForTest(runningOps int) string { return trayTitle(runningOps) }
+
+// OperationNotifyCursorPathForTest exposes the persisted notification cursor
+// location for tests.
+func OperationNotifyCursorPathForTest() string { return operationNotifyCursorPath() }
+
+// PollOperationNotificationsForTest runs one watcher iteration (collect,
+// emit, then persist) and reports the next cursor, so tests can drive crash
+// orderings deterministically without sleeping out the poll interval.
+func PollOperationNotificationsForTest(p Platform, cursor string) string {
+	return pollOperationNotifications(p, nil, cursor)
+}
+
+// WriteDesktopOperationEventForTest exposes the desktop operation-event
+// writer for tests, so the stored engine message scrub is pinnable without
+// driving a full service call. Tests only.
+func WriteDesktopOperationEventForTest(
+	operation string,
+	status engine.OperationStatus,
+	project string,
+	source string,
+	destination string,
+	message string,
+	category string,
+	duration time.Duration,
+) {
+	writeDesktopOperationEvent(operation, status, project, source, destination, message, category, duration)
+}
+
 // ServiceContextsForTest returns each bound service's lifecycle context.
 func ServiceContextsForTest(app *App) map[string]context.Context {
 	return map[string]context.Context{

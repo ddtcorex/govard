@@ -887,8 +887,19 @@ func runRemoteSyncBackgroundWithOptions(
 	// HOWEVER, the user also wants to be able to open the OS terminal.
 	// I will keep the background-with-events logic here, and add a SEPARATE bridge method for OS Terminal.
 
+	// Claim the project under one mutex hold: a separate guard check plus
+	// register lets two concurrent starters both pass and overwrite each
+	// other, so the claim itself is the guard here.
+	if !TryRegisterSyncingProject(project, remoteName) {
+		if remote := syncingRemoteForProject(project); remote != "" {
+			return fmt.Errorf("cannot start sync for %q while sync from %q is in progress", strings.TrimSpace(project), remote)
+		}
+		return fmt.Errorf("cannot start sync for %q: another sync is already in progress", strings.TrimSpace(project))
+	}
+
 	binary, err := exec.LookPath("govard")
 	if err != nil {
+		UnregisterSyncingProject(project)
 		return fmt.Errorf("govard CLI not found in PATH")
 	}
 
@@ -897,18 +908,20 @@ func runRemoteSyncBackgroundWithOptions(
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		UnregisterSyncingProject(project)
 		return fmt.Errorf("failed to pipe stdout: %w", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		UnregisterSyncingProject(project)
 		return fmt.Errorf("failed to pipe stderr: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
+		UnregisterSyncingProject(project)
 		return fmt.Errorf("failed to start background sync: %w", err)
 	}
 
-	RegisterSyncingProject(project, remoteName)
 	p.Emit(EventSyncStarted, SyncStartedPayload{
 		Project: project,
 		Remote:  remoteName,
@@ -1635,13 +1648,17 @@ func writeDesktopOperationEvent(
 	category string,
 	duration time.Duration,
 ) {
+	// The stored message passes the shared secret scrubber (idempotent with
+	// the args scrub, so double-scrubbed text is a fixed point): the
+	// operations log is durable state read by the notification toasts, and a
+	// raw secret there would reach the toast body and the log file alike.
 	_ = engine.WriteOperationEvent(engine.OperationEvent{
 		Operation:   operation,
 		Status:      status,
 		Project:     strings.TrimSpace(project),
 		Source:      strings.TrimSpace(source),
 		Destination: strings.TrimSpace(destination),
-		Message:     strings.TrimSpace(message),
+		Message:     scrubToolHistoryText(strings.TrimSpace(message)),
 		Category:    strings.TrimSpace(category),
 		DurationMS:  duration.Milliseconds(),
 	})

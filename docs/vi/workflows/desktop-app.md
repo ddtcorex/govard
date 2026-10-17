@@ -33,7 +33,7 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 | :--- | :--- |
 | **Bảng điều khiển môi trường** | Start/stop/open/delete — bao gồm việc phát hiện các dự án Docker mồ côi |
 | **Workspace dự án** | Danh sách các môi trường, các thao tác nhanh, quy trình onboard |
-| **Thao tác nhanh** | PHPMyAdmin, bật/tắt Xdebug, Mailpit, DB client |
+| **Thao tác nhanh** | PHPMyAdmin, bật/tắt Xdebug, kiểm tra sức khỏe, Mailpit, DB client |
 | **Tab Remotes** | Quy trình thêm/kiểm tra/mở/lập kế hoạch đồng bộ cho môi trường remote |
 | **Tab Data** | Thông tin DB đã che, query có kiểm soát, dump/import, snapshot (xem bên dưới) |
 | **Giám sát tài nguyên** | CPU, RAM, mạng, cảnh báo OOM |
@@ -48,6 +48,128 @@ govard desktop --background # Khởi động ẩn, tái sử dụng instance khi
 Các thao tác dài được chờ lâu hơn: `up`, `bootstrap`, restart và pull chờ tối đa 15 phút (10 phút cho global-services start) thay vì thất bại sau hai phút. Thông báo timeout nêu rõ thời lượng; khi thao tác có thể đã để lại container dở dang, thông báo sẽ nói rõ và chỉ tới chức năng phát hiện dự án mồ côi trên dashboard. Mỗi project chỉ chạy một thao tác thay đổi môi trường tại một thời điểm — bấm Start hai lần hay Start rồi Stop dồn dập sẽ báo thao tác đang chạy thay vì khởi động trùng lặp, và khóa chỉ được thả khi lệnh backend thực sự kết thúc kể cả khi bộ đếm dự phòng của UI đã hết trước.
 
 Các panel log trực tiếp giữ 2.000 dòng gần nhất và tạm dừng polling khi cửa sổ bị ẩn, rồi tải dữ liệu mới khi quay lại. Nếu một panel gặp lỗi, nó hiển thị thông báo kèm nút thử lại thay vì trắng trơn.
+
+---
+
+## Trung tâm điều hành (Operation Center)
+
+Tab Operations là nơi hiển thị các thao tác dài. Tab gồm hai danh sách, cả
+hai đều do `OperationService` phục vụ qua các route `ListOps`,
+`ListHistory`, `CancelOp` và `RetryOp` trong `bridge.js`, ánh xạ tới các
+method Go cùng tên (`internal/desktop/operation_service.go`). Bản thân tab
+là React island `OperationCenter` với các helper thuần trong
+`desktop/frontend/modules/operation-center.js`.
+
+| Danh sách | Nguồn | Thứ tự |
+| :--- | :--- | :--- |
+| Đang chạy (Running) | `ListOps` | Cũ nhất trước, mỗi op có nút Cancel |
+| Lịch sử (History) | `ListHistory` | Mới nhất trước; `ListHistory(limit)` giới hạn số bản ghi đọc, `limit <= 0` nghĩa là đọc tất cả |
+
+Island tải lại cả hai danh sách khi nhận sự kiện backend `sync:progress` và
+`operations:notification` (đăng ký qua `services/events.js`; hai hằng số
+`SYNC_PROGRESS_EVENT` và `OPERATIONS_NOTIFICATION_EVENT` nằm trong
+`modules/operation-center.js`).
+
+### Đồng thời: một sync mỗi project
+
+- Mỗi project chỉ chạy một sync nền tại một thời điểm. `RunRemoteSync`
+  giữ project qua `TryRegisterSyncingProject` trong một lần khóa mutex duy
+  nhất, và chính lần giữ đó là chốt chặn, nên hai lần khởi động đồng thời
+  không thể cùng vượt qua. Lần khởi động thứ hai bị từ chối với
+  `cannot start sync for "X" while sync from "Y" is in progress` (hoặc
+  `another sync is already in progress` khi không ghi nhận remote nào).
+  Khóa dùng ID project chuẩn hóa, nên một lần Start gọi bằng domain không
+  thể lọt qua một sync đã khởi động bằng đường dẫn.
+- Trong khi sync đang chạy, các thao tác thay đổi môi trường trên cùng
+  project (start, stop, restart, pull, toggle, delete) đều bị từ chối, vì
+  sync đang sở hữu các container.
+- Registry từ chối id op trùng lặp (`RegisterOp` và `RegisterOpWithArgs`
+  trả về false và giữ nguyên entry cũ), nên bản trùng không bao giờ đẩy
+  được hàm cancel ra và làm mồ côi context của nó.
+- Một `RetryOp` thứ hai cho bản ghi đã có retry đang chạy cũng bị từ chối;
+  hãy đợi lần chạy hiện tại kết thúc rồi mới retry.
+
+### Hủy (Cancel)
+
+- `CancelOp(id)` trên một op đang chạy bị theo dõi sẽ gỡ entry, ghi thêm
+  một bản ghi terminal `cancelled`, và kích hoạt hàm cancel đã lưu đúng một
+  lần (sau khi đã thả khóa, để hàm cancel có gọi ngược vào registry cũng
+  không deadlock). Một cancel đua với một finish chỉ ghi đúng một trạng
+  thái terminal. Id không tồn tại hoặc đã kết thúc trả về false, và UI coi
+  đó là thành công không cần báo (`<id> already finished`) chứ không phải
+  lỗi.
+- Giới hạn, nói rõ ràng: các sync nền (`RemoteService.RunRemoteSync`) và
+  các lệnh CLI môi trường một lần hiện chưa phải op được registry theo dõi,
+  nên chúng không xuất hiện trong Running và trung tâm không thể hủy chúng.
+  Chúng chạy tới khi xong và báo cáo qua các sự kiện `sync:failed` /
+  `sync:completed` cùng notification thao tác bên dưới. Các sync mở trong
+  terminal của hệ điều hành (`RunRemoteSyncInTerminal`) chạy hoàn toàn ngoài
+  ứng dụng. Luồng log trực tiếp là cơ chế riêng: `StopLogStream` và
+  `StopGlobalServiceLogStream` dừng luồng và kill tiến trình `docker logs`
+  bên dưới.
+
+### Lưu lịch sử và khôi phục sau crash
+
+- Các bản ghi terminal được lưu dạng JSONL trong
+  `<govard-home>/desktop/operation-history.jsonl` (tôn trọng
+  `GOVARD_HOME_DIR`), mỗi dòng một trạng thái terminal: `completed`,
+  `failed`, `cancelled`, `interrupted`. Tham số args được tẩy secret khi
+  ghi (secret thành placeholder `***`); message được làm sạch và cắt ở
+  2.000 ký tự. Dòng hỏng hoặc dòng trống bị bỏ qua và không bao giờ chiếm
+  ngân sách.
+- Trần: `OperationHistoryCap` là 200 bản ghi hợp lệ. Ghi vượt trần sẽ loại
+  các bản ghi cũ nhất, giữ nguyên các bản ghi mới nhất. Các lần ghi lại toàn
+  bộ xuất bản nguyên tử (file tạm rồi rename), nên crash giữa chừng không
+  bao giờ để lại file lịch sử cắt dở.
+- Khôi phục sau crash: mỗi op đã đăng ký được nhân bản vào sidecar
+  `operation-inflight.json` cho tới khi đạt trạng thái terminal.
+  `RecoverInterruptedOps` chạy khi khởi động và đánh dấu các entry mồ côi
+  thành `interrupted` với message `Interrupted by app restart`, khử trùng
+  theo cặp (id op, thời điểm start) để bản ghi terminal đã kịp ghi trước
+  crash không bao giờ bị trùng. Sidecar không đọc được sẽ bị cách ly sang
+  một bên (`operation-inflight.json.corrupt-<timestamp>`) để điều tra: không
+  bao giờ lặng lẽ xóa, cũng không bao giờ bịa bản ghi từ đó.
+
+### Chạy lại (Retry)
+
+- Nút Retry chỉ xuất hiện trên các bản ghi thất bại. `RetryOp` phát lại
+  args đã lưu qua đúng đường service gốc dưới một id op mới; bản ghi
+  terminal cũ không bao giờ bị sửa, nên ngữ nghĩa exactly-once của finish
+  và cancel được giữ nguyên.
+- Mọi từ chối đều fail-closed kèm lỗi có hướng xử lý: id không tồn tại hoặc
+  id không có bản ghi terminal; bản ghi đã kết thúc ở `completed`,
+  `cancelled` hoặc `interrupted`; args đã lưu mang placeholder tẩy `***`
+  (hãy chạy lại với credential mới thay vì phát lại, vì placeholder không
+  còn xác thực được); loại op chưa có handler phát lại đã đăng ký
+  (`RegisterOpRetryHandler`); đã có một retry đang chạy cho cùng bản ghi.
+- Các entry bị gián đoạn không bao giờ phát lại. Dòng lịch sử hiển thị gợi
+  ý chạy mới thay thế: `Interrupted by an app restart. Start a fresh run;
+  the stored args are kept for reference.`
+- Các handler phát lại cho các họ thao tác WS-A/B/C sẽ đi kèm các follow-up
+  đó. Cho tới khi một loại đăng ký handler của mình, `RetryOp` vẫn fail-closed
+  (`no replay path`) và nút Retry hướng dẫn chạy lại thao tác từ view gốc thay
+  vì phát lại tại đây.
+
+### Thông báo (Notifications)
+
+- Các thao tác terminal phát `operations:notification`
+  (`EventOperationsNotification`), được thăm dò mỗi 2 giây với giới hạn đọc
+  256 sự kiện. Phân phối là at-least-once: watcher phát trước rồi mới lưu
+  cursor sau, nên crash xen giữa hai bước sẽ gửi lại (trùng lặp hiển thị)
+  thay vì lặng lẽ mất notification.
+- Cài mới sẽ ẩn lịch sử log có sẵn từ trước. Khởi động lại tiếp tục từ
+  cursor đã lưu (`operation-notify-cursor` trong cùng thư mục state) và gửi
+  bù khoảng trống downtime ngay lần poll đầu. Nếu cursor đã mất (log xoay
+  vòng, hoặc cửa sổ đọc đã trượt qua trong lúc app tắt), toàn bộ cửa sổ sẽ
+  được gửi thay vì bị bỏ.
+- Toast thất bại mang các action trong catalog (`retry`, `open-logs`,
+  `copy` qua `OpActionRetry`, `OpActionOpenLogs`, `OpActionCopy`). Retry
+  gắn với đúng id bản ghi terminal nguồn (`retryId`): op id của sự kiện
+  phải trỏ tới một bản ghi lịch sử tồn tại và đã kết thúc ở `failed`, và
+  đúng id đó là thứ `RetryOp` phát lại. Không khớp thì không có nút Retry,
+  và một retry không có id gắn kèm sẽ fail-closed dạng record unavailable
+  thay vì quét tìm bản thay thế có thể phát lại nhầm lần chạy. Notification
+  thành công không mang action nào.
 
 ---
 
@@ -374,6 +496,9 @@ dump/import/export, không bao giờ tự bịa đường dẫn. Hộp thoại d
 
 ---
 
+
+---
+
 ## Phím tắt (Keyboard Shortcuts)
 
 | Phím tắt | Thao tác |
@@ -433,97 +558,6 @@ Các cấu hình ưu tiên hiện được ghi nhớ:
 - Trình duyệt ưa thích
 - Trình kết nối database client ưa thích
 
----
-
-## Sức khỏe: Doctor và Audit (Health)
-
-Header hiển thị một banner cho mỗi nguồn, mỗi banner thuộc về project đang
-chọn. Đổi project thì banner của project đó hiện ra; project chưa từng chạy
-không có banner. Cả hai banner đều chỉ suy từ kết quả mới nhất, nên chạy lại
-mà sạch sẽ xóa banner cũ thay vì để nó treo lại. Hai panel Doctor và Audit nằm
-ngay dưới ảnh chụp mesh trong cùng khung hình.
-
-### Banner Doctor
-
-Chạy doctor từ panel Doctor. Banner chỉ xuất hiện khi báo cáo mới nhất còn
-check trượt hoặc cảnh báo:
-
-| Banner | Ý nghĩa |
-| :--- | :--- |
-| Đỏ (error), `Doctor: N issues` | Có ít nhất một check trượt. Khi có ít nhất một check trượt hoặc cảnh báo kèm nút sửa, đoạn `, M fixable below` được thêm vào. |
-| Vàng (warning), cùng nội dung | Chỉ có cảnh báo, không có lỗi trượt. |
-| Không có banner | Lần chạy mới nhất đạt toàn bộ, hoặc project này chưa từng chạy doctor. |
-
-Nút `Re-run` trên banner chạy lại doctor. Lần chạy dài có thể hủy; lần chạy bị
-hủy giữ nguyên banner trước đó.
-
-### Sửa lỗi doctor: mỗi check làm được gì
-
-Mỗi check doctor thuộc một trong ba loại sửa. Nhãn nút cho biết loại nào
-trước khi bất cứ thứ gì chạy:
-
-| ID check | Bản sửa làm gì | Cách áp dụng |
-| :--- | :--- | :--- |
-| `host.govard.home` | Sửa thư mục runtime của Govard (quyền ghi) | Nút `Fix`, một lần bấm |
-| `host.compose.spam` | Dọn các file compose thừa | Nút `Fix`, một lần bấm |
-| `host.govard.registry` | Sửa đường dẫn registry project bị hỏng (đường dẫn đang là thư mục thì bị từ chối, không bao giờ xóa gì) | Nút `Fix`, một lần bấm |
-| `host.search.index_block` | Gỡ kẹt chỉ mục tìm kiếm (ghi vào container search đang chạy, nên không bao giờ một lần bấm) | `Preview fix`, rồi xác nhận |
-| `project.runtime.images` | Tải các image runtime còn thiếu (tải qua mạng) | `Preview fix`, rồi xác nhận |
-| `project.config.audit` | Chuyển các key cấu hình cũ (ghi cấu hình) | `Preview fix`, rồi xác nhận |
-| `project.config.drift` | Đồng bộ `.govard.yml` với profile phát hiện được (ghi cấu hình) | `Preview fix`, rồi xác nhận |
-| `project.profile.sync` | Đồng bộ profile mà không ghi đè các cài đặt người dùng đã chọn rõ ràng (ghi cấu hình) | `Preview fix`, rồi xác nhận |
-| `docker.daemon`, `docker.compose`, `host.port.80`, `host.port.443`, `host.disk.scratch`, `host.network.outbound`, `host.ssh.agent`, `host.deps.docker`, `host.deps.remote` | Không có đường sửa, làm theo gợi ý hoặc lệnh đề xuất của check | Không có nút sửa |
-
-ID check nào ứng dụng chưa biết sẽ bị từ chối kèm lỗi `unknown doctor
-check` thay vì lặng lẽ không đưa gì, để check mới của engine buộc phải được
-xét duyệt allowlist thay vì rơi nhầm nút.
-
-Các bản sửa thuộc project (mọi check `project.*` cộng `host.search.index_block`)
-đòi hỏi phải chọn project trước; chưa chọn gì thì cả xem trước lẫn áp dụng đều
-bị từ chối kèm hướng dẫn. Các bản sửa một lần bấm thuộc về máy (host-global)
-chạy được mà không cần project.
-
-### Xem trước và xác nhận, nói dễ hiểu
-
-Bản sửa rủi ro luôn mở xem trước. Bản xem trước là chạy thử: liệt kê những gì
-sẽ đổi mà không đổi gì cả. Bấm xác nhận (`Confirm and apply`) áp dụng đúng kế
-hoạch đã xem, rồi doctor chạy lại để các lỗi đã sửa biến khỏi kết quả mới.
-
-Mỗi lần xem trước tạo một lượt duyệt dùng một lần, hiệu lực 15 phút, chỉ cho
-check đó và đúng kế hoạch đó. Lượt duyệt dùng một lần: xác nhận thì hết, đóng
-hộp thoại thì mất, đổi project thì mất. Nếu có gì đổi khác giữa lúc xem và lúc
-xác nhận, lệnh áp dụng bị từ chối và yêu cầu xem lại thay vì áp dụng kế hoạch
-cũ. Bản thân lượt duyệt không bao giờ hiện lên màn hình; nó chỉ nằm trong bộ
-nhớ, nên khởi động lại ứng dụng là các lần xem trước đang dở hết hiệu lực. Các
-bản sửa một lần bấm bỏ qua toàn bộ bước này và áp dụng ngay.
-
-### Phạm vi audit và banner
-
-Nút `Run audit` trong panel Audit chỉ chạy kiểm tra toàn vẹn (integrity) không
-cần container, đúng các bộ phân tích của `govard audit run --checks integrity`.
-Nó không bao giờ cần Docker và không bao giờ chạm vào container.
-
-Kết quả liệt kê ba dòng. Dòng integrity chạy thật; hai dòng còn lại vẫn hiện
-nhưng bị tắt, không bao giờ giấu đi:
-
-| Dòng | Trạng thái | Lý do hiển thị |
-| :--- | :--- | :--- |
-| `integrity` | Chạy | Không cần container |
-| `lint` | Tắt | Đòi Docker nên không chạy từ desktop; chạy `govard audit run --checks lint` từ CLI |
-| `profiler` | Tắt | Đòi Docker nên không chạy từ desktop; chạy `govard audit run --checks profiler` từ CLI |
-
-Phiên không có lần chạy integrity nào hiển thị dòng integrity ở trạng thái tắt
-với lý do `Session has no integrity run` thay vì nhận đã chạy.
-
-Banner audit màu vàng (warning) với nội dung `Audit: N findings` và nút `Run
-audit`. Không có banner khi project này chưa từng chạy audit, hoặc lần chạy
-mới nhất đạt và không có finding nào. Hủy audit thì kết quả đang chạy bị bỏ:
-quá trình phân tích có thể chạy nốt trong nền, nhưng kết quả của nó không bao
-giờ được ghi nhận và banner trước đó giữ nguyên. Nút `Cancel` vẫn dùng được kể
-cả khi lần chạy bắt đầu trước lúc panel mở, nhờ tra cứu thao tác đang chạy khi
-gắn panel.
-
----
 
 ## Chế độ phát triển (Dev Mode)
 

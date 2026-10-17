@@ -35,6 +35,13 @@ type OperationEvent struct {
 	Destination string          `json:"destination,omitempty"`
 	DurationMS  int64           `json:"duration_ms,omitempty"`
 	Message     string          `json:"message,omitempty"`
+	// OpID links the event to its exact desktop history terminal record,
+	// so a failure notification's Retry button replays that record and no
+	// other. Empty when the writer has no record (CLI paths, older lines):
+	// notifications then offer no Retry rather than scanning for a
+	// substitute. Optional and omitempty, so old log lines read back
+	// unchanged.
+	OpID string `json:"op_id,omitempty"`
 }
 
 func operationsLogPath() string {
@@ -65,6 +72,7 @@ func WriteOperationEvent(event OperationEvent) (err error) {
 	event.Destination = strings.TrimSpace(event.Destination)
 	event.Category = strings.TrimSpace(event.Category)
 	event.Message = strings.TrimSpace(event.Message)
+	event.OpID = strings.TrimSpace(event.OpID)
 
 	payload, err := json.Marshal(event)
 	if err != nil {

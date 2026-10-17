@@ -16,6 +16,7 @@ type App struct {
 	Logs        *LogService
 	Global      *GlobalServiceService
 	Update      *UpdateService
+	Operations  *OperationService
 	Health      *HealthService
 	Tool        *ToolService
 	DB          *DBService
@@ -45,6 +46,7 @@ func NewApp(opts ...AppOption) *App {
 		Logs:        NewLogService(),
 		Global:      NewGlobalServiceService(),
 		Update:      NewUpdateService(),
+		Operations:  NewOperationService(),
 		Health:      NewHealthService(),
 		Tool:        NewToolService(),
 		DB:          NewDBService(),
@@ -62,6 +64,7 @@ func NewApp(opts ...AppOption) *App {
 	app.Logs.platform = app.platform
 	app.Global.platform = app.platform
 	app.Update.platform = app.platform
+	app.Operations.platform = app.platform
 	app.Health.platform = app.platform
 	app.Tool.platform = app.platform
 	app.DB.platform = app.platform

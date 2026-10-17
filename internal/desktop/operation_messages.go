@@ -108,8 +108,8 @@ var opFailureSeeds = []opFailureSeed{
 
 // humanOpMessage maps one operation failure to its human message. Known
 // failure shapes become an actionable title plus Retry/Open-logs; anything
-// else falls back to the sanitized raw error as the hint with a Copy
-// button. Every string passes through sanitizeUIText: error text can carry
+// else falls back to the sanitized, secret-scrubbed raw error as the hint
+// with a Copy button. Every string passes through sanitizeUIText: error text can carry
 // ANSI escapes and control bytes from CLI stderr, and the payload reaches
 // toasts as well as history entries.
 func humanOpMessage(op string, err error) OpMessage {
@@ -140,7 +140,7 @@ func humanOpMessage(op string, err error) OpMessage {
 	}
 	return OpMessage{
 		Title: sanitizeUIText(display+" failed", 0),
-		Hint:  sanitizeUIText(raw, opMessageHintMax),
+		Hint:  sanitizeUIText(scrubToolHistoryText(raw), opMessageHintMax),
 		Actions: []OpMessageAction{
 			{ID: OpActionCopy, Label: "Copy"},
 			{ID: OpActionOpenLogs, Label: "Open logs"},

@@ -8,6 +8,7 @@ import * as GlobalServiceService from "./globalserviceservice.js";
 import * as HealthService from "./healthservice.js";
 import * as LogService from "./logservice.js";
 import * as OnboardingService from "./onboardingservice.js";
+import * as OperationService from "./operationservice.js";
 import * as RemoteService from "./remoteservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as SnapshotService from "./snapshotservice.js";
@@ -21,6 +22,7 @@ export {
     HealthService,
     LogService,
     OnboardingService,
+    OperationService,
     RemoteService,
     SettingsService,
     SnapshotService,
@@ -54,6 +56,10 @@ export {
     GlobalServicesSnapshot,
     OnboardInput,
     OnboardingProgressPayload,
+    OpInfo,
+    OpMessageAction,
+    OpRecord,
+    OpStatus,
     OperationNotification,
     RemoteEntry,
     RemoteSnapshot,

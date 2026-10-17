@@ -1,17 +1,45 @@
 package tests
 
 import (
+	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"govard/internal/desktop"
+	"govard/internal/engine"
 )
+
+// seedRegistryProjectsForTest registers the probe names in an isolated
+// project registry so RegisterOp resolves at its fast exact-match branch.
+// Without entries every register would fall through to the orphan/Docker
+// probes and the suite would shell out to `docker compose ls` per op.
+func seedRegistryProjectsForTest(t *testing.T) {
+	t.Helper()
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+	for _, name := range []string{"proj-a", "proj-b", "proj"} {
+		root := t.TempDir()
+		writeDesktopProjectConfigForTest(t, root, name, "laravel", name+".test")
+		if err := engine.UpsertProjectRegistryEntry(engine.ProjectRegistryEntry{
+			Path:        root,
+			ProjectName: name,
+			Domain:      name + ".test",
+			Framework:   "laravel",
+			LastSeenAt:  time.Now().UTC(),
+			LastCommand: "desktop-test",
+		}); err != nil {
+			t.Fatalf("register project %s: %v", name, err)
+		}
+	}
+}
 
 // TestOperationRegistry_CancelFiresRegisteredFunc registers two ops and
 // cancels one: the cancelled op's func must fire exactly once while the
 // other op stays listed.
 func TestOperationRegistry_CancelFiresRegisteredFunc(t *testing.T) {
 	desktop.ResetOperationRegistryForTest()
+	seedRegistryProjectsForTest(t)
 
 	var fired int
 	if !desktop.RegisterOp("sync:proj-a", "proj-a", "sync", func() { fired++ }) {
@@ -58,6 +86,7 @@ func TestOperationRegistry_CancelUnknownReturnsFalse(t *testing.T) {
 // error toast.
 func TestOperationRegistry_CancelAfterFinishIsHarmlessNoOp(t *testing.T) {
 	desktop.ResetOperationRegistryForTest()
+	seedRegistryProjectsForTest(t)
 
 	var fired int
 	if !desktop.RegisterOp("sync:proj-a", "proj-a", "sync", func() { fired++ }) {
@@ -83,6 +112,7 @@ func TestOperationRegistry_CancelAfterFinishIsHarmlessNoOp(t *testing.T) {
 // running op fires the func once and reports false the second time.
 func TestOperationRegistry_CancelFiresExactlyOnce(t *testing.T) {
 	desktop.ResetOperationRegistryForTest()
+	seedRegistryProjectsForTest(t)
 
 	var fired int
 	if !desktop.RegisterOp("sync:proj-a", "proj-a", "sync", func() { fired++ }) {
@@ -105,6 +135,7 @@ func TestOperationRegistry_CancelFiresExactlyOnce(t *testing.T) {
 // untouched, so the displaced cancel func can never orphan its context.
 func TestOperationRegistry_DuplicateRegisterKeepsOriginal(t *testing.T) {
 	desktop.ResetOperationRegistryForTest()
+	seedRegistryProjectsForTest(t)
 
 	var first, second int
 	if !desktop.RegisterOp("sync:proj-a", "proj-a", "sync", func() { first++ }) {
@@ -130,6 +161,7 @@ func TestOperationRegistry_DuplicateRegisterKeepsOriginal(t *testing.T) {
 // ops, finished ids are not retained.
 func TestOperationRegistry_FinishCyclesDoNotGrowMap(t *testing.T) {
 	desktop.ResetOperationRegistryForTest()
+	seedRegistryProjectsForTest(t)
 
 	for i := 0; i < 50; i++ {
 		if !desktop.RegisterOp("sync:proj-a", "proj-a", "sync", func() {}) {
@@ -153,6 +185,7 @@ func TestOperationRegistry_FinishCyclesDoNotGrowMap(t *testing.T) {
 // fails here.
 func TestOperationRegistry_ConcurrentAccess(t *testing.T) {
 	desktop.ResetOperationRegistryForTest()
+	seedRegistryProjectsForTest(t)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {

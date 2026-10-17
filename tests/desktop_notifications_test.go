@@ -91,10 +91,12 @@ func TestDesktopPkgSelectOperationEventsSinceForTest(t *testing.T) {
 		{Timestamp: "2026-02-20T04:00:00Z", Operation: "remote.test", Status: engine.OperationStatusSuccess},
 	}
 	newEvents, nextCursor := desktop.SelectOperationEventsSinceForTest(rotated, "missing-cursor")
-	if len(newEvents) != 0 {
-		t.Fatalf("expected no replay on missing cursor, got %d events", len(newEvents))
+	// A missing cursor is a gap (rotation, downtime), never a reason to go
+	// silent: the window is delivered rather than dropped.
+	if len(newEvents) != len(rotated) {
+		t.Fatalf("expected gap delivery on missing cursor, got %d events", len(newEvents))
 	}
 	if nextCursor != desktop.OperationEventSignatureForTest(rotated[0]) {
-		t.Fatalf("expected cursor to reset to latest after rotation, got %q", nextCursor)
+		t.Fatalf("expected cursor to advance to latest after gap delivery, got %q", nextCursor)
 	}
 }

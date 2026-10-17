@@ -11,6 +11,7 @@ test("every route targets a known service", () => {
   const services = new Set([
     "SettingsService", "OnboardingService", "EnvironmentService", "RemoteService",
     "SystemService", "LogService", "GlobalServiceService", "UpdateService",
+    "OperationService",
     "HealthService",
     "ToolService", "DBService", "SnapshotService",
   ]);
@@ -18,7 +19,7 @@ test("every route targets a known service", () => {
     assert.ok(services.has(service), `${name} routes to unknown service ${service}`);
     assert.match(method, /^[A-Z][A-Za-z]+$/, `${name} has a bad method name`);
   }
-  assert.equal(Object.keys(ROUTES).length, 85);
+  assert.equal(Object.keys(ROUTES).length, 89);
 });
 
 test("health routes reach the HealthService bindings", () => {
@@ -48,6 +49,13 @@ test("data routes reach the DBService and SnapshotService bindings", () => {
   assert.deepEqual(ROUTES.CreateSnapshot, ["SnapshotService", "CreateSnapshot"]);
   assert.deepEqual(ROUTES.ApplySnapshotRestore, ["SnapshotService", "ApplySnapshotRestore"]);
   assert.deepEqual(ROUTES.CancelSnapshotOp, ["SnapshotService", "CancelSnapshotOp"]);
+});
+
+test("operation routes reach the OperationService bindings", () => {
+  assert.deepEqual(ROUTES.ListOps, ["OperationService", "ListOps"]);
+  assert.deepEqual(ROUTES.ListHistory, ["OperationService", "ListHistory"]);
+  assert.deepEqual(ROUTES.CancelOp, ["OperationService", "CancelOp"]);
+  assert.deepEqual(ROUTES.RetryOp, ["OperationService", "RetryOp"]);
 });
 
 test("renamed routes keep their frontend names", () => {

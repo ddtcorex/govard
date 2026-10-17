@@ -9,6 +9,11 @@ import {
 import { createHealthController, selectDoctorEntry } from "./modules/health.js";
 import { resolveServiceTargets, shouldStopEnvLiveOnTabSwitch } from "./modules/logs.js";
 import { createOnboardingController } from "./modules/onboarding.js?v=20260302";
+import {
+  normalizeNotification,
+  notificationActionTarget,
+  notificationLevel,
+} from "./modules/operation-center.js";
 import { resolveSyncPresetConfig } from "./modules/remotes.js";
 import { createSettingsController } from "./modules/settings.js";
 import { createUpdateNotifierModel } from "./modules/update-notifier.js";
@@ -26,6 +31,7 @@ import { OnboardingModal } from "./islands/OnboardingModal.tsx";
 import { GlobalLogsPanel } from "./islands/GlobalLogsPanel.tsx";
 import { GlobalServicesList } from "./islands/GlobalServicesList.tsx";
 import { RemotesList } from "./islands/RemotesList.tsx";
+import { OperationCenter } from "./islands/OperationCenter.tsx";
 import { SyncModal } from "./islands/SyncModal.tsx";
 import { ToolPalette } from "./islands/ToolPalette.tsx";
 import { DataTab } from "./islands/DataTab.tsx";
@@ -396,7 +402,7 @@ const switchTab = (tabId) => {
   const tabsInner = byId("tabsHeaderInner");
 
   if (scrollContainer && hero && tabs && tabsInner) {
-    const showHero = ["dashboard", "remotes", "logs", "tools", "data"].includes(tabId);
+    const showHero = ["dashboard", "remotes", "logs", "operations", "tools", "data"].includes(tabId);
     hero.classList.toggle("hidden", !showHero);
     const showPrimaryTabs = tabId !== "global-services";
 
@@ -414,6 +420,10 @@ const switchTab = (tabId) => {
       setState({ selectedService: "all" });
       refreshServiceSelector();
       void logsApi.refresh();
+    } else if (tabId === "operations") {
+      scrollContainer.classList.add("overflow-y-auto");
+      scrollContainer.classList.remove("overflow-hidden");
+      void operationCenterApi.refresh();
     } else if (tabId === "tools") {
       scrollContainer.classList.remove("overflow-y-auto");
       scrollContainer.classList.add("overflow-hidden");
@@ -484,23 +494,48 @@ const showSystemNotification = (title, body) => {
   }
 };
 
+// The toast buttons on an operation notification call back into the real
+// operation surface: Retry replays the exact record bound at notify time
+// through the OperationService, Open-logs opens the project's logs view.
+// An unbound Retry fails closed as record unavailable without dispatching;
+// backend refusals (no replay path, redacted args) surface as error toasts,
+// mirroring the Operation Center island's failed-only retry contract.
+const handleOperationNotificationAction = (id, note = {}) => {
+  const target = notificationActionTarget(id, note);
+  if (target.kind === "retry") {
+    desktopBridge
+      .retryOp(target.id)
+      .then(() => setStatus(`Retrying ${target.id}...`))
+      .catch((err) => showToast(`Could not retry ${target.id}: ${err}`, "error"));
+    return;
+  }
+  if (target.kind === "open-logs") {
+    if (!target.project) {
+      switchTab("logs");
+      return;
+    }
+    // "all" scope: the failure may come from any service, so open-logs shows the project's full log stream.
+    void openServiceContext(target.project, "all");
+    return;
+  }
+  showToast(target.reason || "Record unavailable for retry.", "error");
+};
+
 if (hasEventRuntime()) {
   onEvent("operations:notification", (payload = {}) => {
-    const title = String(payload.title || "Govard operation update");
-    const body = String(payload.body || "").trim();
-    let level = payload.level || "success";
-    if (
-      body.toLowerCase().includes("failed") ||
-      body.toLowerCase().includes("error")
-    ) {
-      level = "error";
-    } else if (
-      body.toLowerCase().includes("unable") ||
-      body.toLowerCase().includes("warning")
-    ) {
-      level = "warning";
+    const note = normalizeNotification(payload);
+    const title = note.title || "Govard operation update";
+    const body = note.body.trim() || title;
+    // The tone trusts the backend level (see notificationLevel): the watcher
+    // already classifies each event, so no body-substring override here.
+    const level = notificationLevel(note);
+    if (note.actions.length > 0) {
+      toast.showOpMessage({ title, hint: body, actions: note.actions }, level, (id) =>
+        handleOperationNotificationAction(id, note),
+      );
+    } else {
+      showToast(body || title, level);
     }
-    showToast(body || title, level);
     showSystemNotification(title, body || title);
   });
 }
@@ -697,6 +732,26 @@ const syncModalIsland = mountIsland(
     },
     registerApi: (api) => {
       syncModalApi = api || SYNC_MODAL_API_STUB;
+    },
+  }),
+);
+
+// The operations tab is an island over the OperationService surface: the
+// running list with real cancel plus history with failed-only retry. It
+// refreshes itself on sync:progress and operations:notification; main.js
+// keeps a refresh handle for tab switches, handed back on unmount.
+const OPERATIONS_API_STUB = {
+  refresh: async () => {},
+};
+let operationCenterApi = OPERATIONS_API_STUB;
+const operationCenterIsland = mountIsland(
+  "operationCenterIsland",
+  createElement(OperationCenter, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    registerApi: (api) => {
+      operationCenterApi = api || OPERATIONS_API_STUB;
     },
   }),
 );

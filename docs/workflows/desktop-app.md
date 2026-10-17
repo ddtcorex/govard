@@ -33,7 +33,7 @@ The desktop focuses on operational essentials:
 | :--- | :--- |
 | **Environment Dashboard** | Start/stop/open/delete — including orphaned Docker project detection |
 | **Project Workspace** | Environments list, quick actions, onboarding flow |
-| **Quick Actions** | PHPMyAdmin, Xdebug toggle, Mailpit, DB client |
+| **Quick Actions** | PHPMyAdmin, Xdebug toggle, health check, Mailpit, DB client |
 | **Remotes Tab** | Add/test/open/sync-plan workflows for remote environments |
 | **Data Tab** | Masked DB fact sheet, guarded ad-hoc queries, dump/import, snapshots (see below) |
 | **Resource Monitor** | CPU, RAM, network, OOM hints |
@@ -49,6 +49,125 @@ The desktop focuses on operational essentials:
 Long operations get long ceilings: `up`, `bootstrap`, restarts and pulls wait up to 15 minutes (10 for global-services start) instead of failing at two. A timeout names its duration; when the operation may have left containers half-started, the message says so and points at the dashboard's orphan detection. One mutating environment operation runs per project — a double-clicked Start or a Start-then-Stop race reports what is already running instead of starting a duplicate, and the lock is held until the backend call settles even if the UI's own backstop fires first.
 
 Live log panes keep the last 2,000 lines and pause their polling while the window is hidden, resuming with fresh data on return. If a panel crashes, it shows a notice with a retry button rather than going blank.
+
+---
+
+## Operation Center
+
+The Operations tab is the visible home for long operations. It shows two
+lists, both served by `OperationService` through the `bridge.js` routes
+`ListOps`, `ListHistory`, `CancelOp` and `RetryOp`, which map onto the Go
+methods of the same names (`internal/desktop/operation_service.go`). The
+tab itself is the `OperationCenter` React island with pure helpers in
+`desktop/frontend/modules/operation-center.js`.
+
+| List | Source | Order |
+| :--- | :--- | :--- |
+| Running | `ListOps` | Oldest first, with a Cancel button per op |
+| History | `ListHistory` | Newest first; `ListHistory(limit)` caps the read, `limit <= 0` means all |
+
+The island refreshes both lists on the `sync:progress` and
+`operations:notification` backend events (subscribed through
+`services/events.js`; the constants `SYNC_PROGRESS_EVENT` and
+`OPERATIONS_NOTIFICATION_EVENT` live in `modules/operation-center.js`).
+
+### Concurrency: one sync per project
+
+- One background sync runs per project. `RunRemoteSync` claims the project
+  through `TryRegisterSyncingProject` under a single mutex hold, where the
+  claim itself is the guard, so two concurrent starters cannot both pass. A
+  second start is refused with `cannot start sync for "X" while sync from
+  "Y" is in progress` (or `another sync is already in progress` when no
+  remote is recorded). Keys are canonical project IDs, so a start addressed
+  by domain cannot slip past a sync started by path.
+- While a sync runs, mutating environment actions on the same project
+  (start, stop, restart, pull, toggle, delete) are refused, because the sync
+  owns the containers.
+- The registry rejects a duplicate op id (`RegisterOp` and
+  `RegisterOpWithArgs` return false and keep the original entry), so a
+  duplicate can never displace a cancel func and orphan its context.
+- A second `RetryOp` for a record that already has a retry in flight is
+  refused; wait for the current run to finish before retrying.
+
+### Cancel
+
+- `CancelOp(id)` on a tracked running op removes the entry, appends one
+  `cancelled` terminal record, and fires the stored cancel func exactly once
+  (after releasing the lock, so a re-entrant cancel func cannot deadlock). A
+  cancel racing a finish records exactly one terminal state. An unknown or
+  already finished id returns false, which the UI treats as a harmless no-op
+  (`<id> already finished`) rather than an error.
+- Limits, stated plainly: background syncs (`RemoteService.RunRemoteSync`)
+  and one-shot environment CLI calls are not tracked registry ops in this
+  release, so they do not appear under Running and the center cannot cancel
+  them. They run to completion and report through the `sync:failed` /
+  `sync:completed` events and the operation notifications below. Syncs
+  launched in an OS terminal (`RunRemoteSyncInTerminal`) run outside the app
+  entirely. Live log streams are separate: `StopLogStream` and
+  `StopGlobalServiceLogStream` stop the stream and kill the underlying
+  `docker logs` process.
+
+### History retention and crash recovery
+
+- Terminal records persist as JSONL in `<govard-home>/desktop/operation-history.jsonl`
+  (honoring `GOVARD_HOME_DIR`), one line per terminal state: `completed`,
+  `failed`, `cancelled`, `interrupted`. Args are scrubbed at write (secrets
+  become `***` placeholders); messages are sanitized and capped at 2,000
+  characters. Corrupt or blank lines are skipped and never consume budget.
+- Cap: `OperationHistoryCap` is 200 valid records. Appending past the cap
+  evicts the oldest records while the newest stay intact. Full rewrites
+  publish atomically (temp file plus rename), so a crash mid-write never
+  leaves a half-truncated history.
+- Crash recovery: every registered op is mirrored to the
+  `operation-inflight.json` sidecar until it reaches a terminal state.
+  `RecoverInterruptedOps` runs at startup and marks orphan entries
+  `interrupted` with the message `Interrupted by app restart`, deduped by
+  (op id, start time) so a terminal record that landed before the crash is
+  never duplicated. An unreadable sidecar is quarantined aside
+  (`operation-inflight.json.corrupt-<timestamp>`) for forensics: never
+  silently dropped, never invented from.
+
+### Retry
+
+- The Retry button appears on failed records only. `RetryOp` replays the
+  stored args through the original service path under a fresh op id; the old
+  terminal record is never rewritten, so finish and cancel attribution keep
+  their exactly-once semantics.
+- Every refusal fails closed with an actionable error: an unknown id or an
+  id with no terminal record; a record that ended `completed`, `cancelled`
+  or `interrupted`; stored args carrying a `***` scrub placeholder (re-run
+  with fresh credentials instead of replaying, since the placeholder no
+  longer authenticates); an op kind with no registered replay handler
+  (`RegisterOpRetryHandler`); a retry already in progress for the same
+  record.
+- Interrupted entries never replay. The history row shows a fresh-run hint
+  instead: `Interrupted by an app restart. Start a fresh run; the stored
+  args are kept for reference.`
+- Replay handlers for the WS-A/B/C operation families land with those
+  follow-ups. Until a kind registers its handler, `RetryOp` keeps failing
+  closed (`no replay path`) and the Retry button explains re-running the op
+  from its original view instead of replaying it here.
+
+### Notifications
+
+- Terminal operations emit `operations:notification`
+  (`EventOperationsNotification`), polled every 2 seconds with a read limit
+  of 256 events. Delivery is at-least-once: the watcher emits first and
+  persists the cursor second, so a crash between the two redelivers (a
+  visible duplicate) instead of silently losing a notification.
+- A fresh install suppresses pre-existing log history. A restart resumes
+  from the persisted cursor (`operation-notify-cursor` in the same state
+  dir) and delivers the downtime gap on its first poll. If the cursor is
+  gone (log rotation, or the read window slid past it while the app was
+  down), the whole window is delivered rather than dropped.
+- Failure toasts carry catalog actions (`retry`, `open-logs`, `copy`
+  through `OpActionRetry`, `OpActionOpenLogs`, `OpActionCopy`). Retry is
+  bound to the exact source terminal record id (`retryId`): the event's op
+  id must name a history record that exists and ended `failed`, and that id
+  is what `RetryOp` replays. No match means no Retry button, and a retry
+  dispatched without a bound id fails closed as record unavailable instead
+  of scanning for a substitute that could replay the wrong run. Success
+  notifications carry no actions.
 
 ---
 
@@ -380,6 +499,9 @@ export dialog defaults to `<name>.tar.gz`, matching the CLI.
 
 ---
 
+
+---
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
@@ -438,97 +560,6 @@ Current persisted preferences:
 - Proxy target
 - Preferred browser
 - Database client preference
-
----
-
-## Health: Doctor and Audit
-
-The header shows one banner per source, each scoped to the selected project.
-Switching projects shows that project's banners; a scope that never ran shows
-none. Both banners derive from the latest result only, so a clean re-run
-clears a stale banner instead of letting it linger. The Doctor and Audit
-panels sit below the mesh snapshot in the same view.
-
-### Doctor banner
-
-Run doctor from the Doctor panel. The banner appears only when the latest
-report has a failing or warning check:
-
-| Banner | Meaning |
-| :--- | :--- |
-| Red (error), `Doctor: N issues` | At least one check failed. When at least one failing or warning check has a fix button, `, M fixable below` is appended. |
-| Yellow (warning), same text | Warnings only, no failures. |
-| No banner | The latest run passed everything, or doctor never ran for this project. |
-
-`Re-run` on the banner runs doctor again. Long runs can be cancelled; a
-cancelled run leaves the previous banner untouched.
-
-### Doctor fixes: what each check offers
-
-Every doctor check carries one of three fix kinds. The button label tells
-which one before anything runs:
-
-| Check ID | What the fix does | How it applies |
-| :--- | :--- | :--- |
-| `host.govard.home` | Repairs Govard runtime directories (permissions) | `Fix` button, one click |
-| `host.compose.spam` | Prunes stale compose files | `Fix` button, one click |
-| `host.govard.registry` | Repairs a corrupt project registry file path (a directory at that path is refused, nothing is ever deleted) | `Fix` button, one click |
-| `host.search.index_block` | Unblocks the search index (writes into the running search container, so it is never one click) | `Preview fix`, then confirm |
-| `project.runtime.images` | Pulls missing runtime images (network download) | `Preview fix`, then confirm |
-| `project.config.audit` | Migrates legacy config keys (config write) | `Preview fix`, then confirm |
-| `project.config.drift` | Syncs `.govard.yml` with the detected profile (config write) | `Preview fix`, then confirm |
-| `project.profile.sync` | Syncs the profile without overwriting explicit user settings (config write) | `Preview fix`, then confirm |
-| `docker.daemon`, `docker.compose`, `host.port.80`, `host.port.443`, `host.disk.scratch`, `host.network.outbound`, `host.ssh.agent`, `host.deps.docker`, `host.deps.remote` | No fix path, follow the check's hint or suggested command instead | No fix button |
-
-A check ID the desktop does not recognise is refused with an `unknown doctor
-check` error rather than silently offering nothing, so a new engine check
-forces an allowlist review instead of landing on the wrong button.
-
-Project fixes (every `project.*` check plus `host.search.index_block`) need a
-project selected first; with nothing selected the preview and the apply both
-refuse and say so. Host-global one-click fixes run without a project.
-
-### Preview and confirm, in plain terms
-
-Risky fixes always open a preview first. The preview is a dry run: it lists
-what would change and changes nothing. Confirming (`Confirm and apply`)
-applies exactly the previewed plan, then doctor re-runs so fixed issues
-disappear from fresh results.
-
-Each preview mints a one-time approval that is valid for 15 minutes, for that
-check and that plan only. It works once: confirming consumes it, cancelling
-the dialog drops it, and switching projects drops it. If anything changed
-between preview and confirm, the apply is refused and asks for a fresh
-preview instead of applying a stale plan. The approval itself is never shown
-on screen; it lives in memory only, so restarting the app invalidates pending
-previews. Safe one-click fixes skip all of this and apply immediately.
-
-### Audit scope and banner
-
-`Run audit` from the Audit panel runs the container-free integrity audit only,
-the same analyzers as `govard audit run --checks integrity`. It never needs
-Docker and never touches a container.
-
-The result lists three rows. The integrity row runs; the other two stay
-visible but disabled, never hidden:
-
-| Row | State | Reason shown |
-| :--- | :--- | :--- |
-| `integrity` | Runs | Container-free |
-| `lint` | Disabled | Requires Docker and is not run from the desktop; run `govard audit run --checks lint` from the CLI |
-| `profiler` | Disabled | Requires Docker and is not run from the desktop; run `govard audit run --checks profiler` from the CLI |
-
-A session with no integrity run shows the integrity row disabled with a `Session has no integrity run` reason instead of claiming a run.
-
-The audit banner is yellow (warning) with `Audit: N findings` and a `Run
-audit` button. There is no banner when the audit never ran for this project,
-or when the latest run passed with zero findings. Cancelling an audit
-discards the in-flight result: the analysis may finish in the background, but
-its result is never recorded and the previous banner stays. `Cancel` is also
-available when the run started before the panel did, via the running-operation
-lookup on mount.
-
----
 
 ## Dev Mode
 

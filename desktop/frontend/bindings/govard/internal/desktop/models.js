@@ -1717,6 +1717,231 @@ export class OnboardingProgressPayload {
 }
 
 /**
+ * OpInfo describes one cancellable desktop operation. WS-A/B/C/D/E register
+ * their long ops here so the UI can list and cancel them. Project is the
+ * canonical registry ID (see canonicalProjectIDForRegistry), never raw
+ * caller input, so guard, list, and history key one project under every
+ * identifier spelling. Args are scrubbed at register (see
+ * scrubToolHistoryArgv): the running snapshot never carries raw secrets.
+ */
+export class OpInfo {
+    /**
+     * Creates a new OpInfo instance.
+     * @param {Partial<OpInfo>} [$$source = {}] - The source object to create the OpInfo.
+     */
+    constructor($$source = {}) {
+        if (!("ID" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["ID"] = "";
+        }
+        if (!("Project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Project"] = "";
+        }
+        if (!("Kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Kind"] = "";
+        }
+        if (!("Args" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["Args"] = [];
+        }
+        if (!("StartedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["StartedAt"] = "0001-01-01T00:00:00.000Z";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new OpInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {OpInfo}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("Args" in $$parsedSource) {
+            $$parsedSource["Args"] = $$createField3_0($$parsedSource["Args"]);
+        }
+        return new OpInfo(/** @type {Partial<OpInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * OpMessageAction is one toast button: the id the caller switches on and
+ * the label the toast renders.
+ */
+export class OpMessageAction {
+    /**
+     * Creates a new OpMessageAction instance.
+     * @param {Partial<OpMessageAction>} [$$source = {}] - The source object to create the OpMessageAction.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("label" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["label"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new OpMessageAction instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {OpMessageAction}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new OpMessageAction(/** @type {Partial<OpMessageAction>} */($$parsedSource));
+    }
+}
+
+/**
+ * OpRecord is one terminal desktop operation: what ran, under which
+ * canonical project key (see canonicalProjectIDForRegistry), with which
+ * replay args, and how it ended. Args are scrubbed at write (see
+ * scrubToolHistoryArgv) so the history file never stores raw secrets; a
+ * scrubbed record carries "***" placeholders that no longer authenticate,
+ * so Task 3's RetryOp must refuse such records at arg validation (fail
+ * closed with an actionable error, asking for fresh credentials) instead
+ * of replaying a doomed invocation. Only Message is length-capped; Args
+ * stay element-complete so non-secret replays keep their exact shape.
+ */
+export class OpRecord {
+    /**
+     * Creates a new OpRecord instance.
+     * @param {Partial<OpRecord>} [$$source = {}] - The source object to create the OpRecord.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string[] | undefined}
+             */
+            this["args"] = undefined;
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {OpStatus}
+             */
+            this["status"] = OpStatus.$zero;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["message"] = undefined;
+        }
+        if (!("started_at" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["started_at"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("ended_at" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["ended_at"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("duration_ms" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["duration_ms"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new OpRecord instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {OpRecord}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("args" in $$parsedSource) {
+            $$parsedSource["args"] = $$createField3_0($$parsedSource["args"]);
+        }
+        return new OpRecord(/** @type {Partial<OpRecord>} */($$parsedSource));
+    }
+}
+
+/**
+ * OpStatus is the terminal state of a desktop operation history record.
+ * Retry (Task 3) replays the stored args of failed records only; every
+ * other status is informational.
+ * @readonly
+ * @enum {string}
+ */
+export const OpStatus = {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero: "",
+
+    OpStatusCompleted: "completed",
+    OpStatusFailed: "failed",
+    OpStatusCancelled: "cancelled",
+    OpStatusInterrupted: "interrupted",
+};
+
+/**
  * OperationNotification is emitted to the frontend when a tracked operation finishes.
  */
 export class OperationNotification {
@@ -1781,6 +2006,26 @@ export class OperationNotification {
              */
             this["timestamp"] = "";
         }
+        if (/** @type {any} */(false)) {
+            /**
+             * Actions carries the toast buttons for a failed operation, resolved
+             * through the humanOpMessage catalog (Retry/Open-logs). Success
+             * notifications carry none.
+             * @member
+             * @type {OpMessageAction[] | undefined}
+             */
+            this["actions"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * RetryID is the event's exact source terminal record id, which the Retry
+             * action replays through RetryOp. Empty when the event names no failed
+             * record, in which case the toast offers no Retry button.
+             * @member
+             * @type {string | undefined}
+             */
+            this["retryId"] = undefined;
+        }
 
         Object.assign(this, $$source);
     }
@@ -1791,7 +2036,11 @@ export class OperationNotification {
      * @returns {OperationNotification}
      */
     static createFrom($$source = {}) {
+        const $$createField8_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("actions" in $$parsedSource) {
+            $$parsedSource["actions"] = $$createField8_0($$parsedSource["actions"]);
+        }
         return new OperationNotification(/** @type {Partial<OperationNotification>} */($$parsedSource));
     }
 }
@@ -1921,7 +2170,7 @@ export class RemoteSnapshot {
      * @returns {RemoteSnapshot}
      */
     static createFrom($$source = {}) {
-        const $$createField1_0 = $$createType15;
+        const $$createField1_0 = $$createType17;
         const $$createField2_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("remotes" in $$parsedSource) {
@@ -2607,7 +2856,7 @@ export class ToolPreset {
      */
     static createFrom($$source = {}) {
         const $$createField3_0 = $$createType6;
-        const $$createField4_0 = $$createType17;
+        const $$createField4_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("argv" in $$parsedSource) {
             $$parsedSource["argv"] = $$createField3_0($$parsedSource["argv"]);
@@ -2899,7 +3148,7 @@ export class presetSyncOptions {
      * @returns {presetSyncOptions}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType19;
+        const $$createField2_0 = $$createType21;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("options" in $$parsedSource) {
             $$parsedSource["options"] = $$createField2_0($$parsedSource["options"]);
@@ -2923,9 +3172,11 @@ const $$createType10 = $Create.Array($$createType9);
 const $$createType11 = $Create.Map($Create.Any, $Create.Any);
 const $$createType12 = GlobalService.createFrom;
 const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = RemoteEntry.createFrom;
+const $$createType14 = OpMessageAction.createFrom;
 const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = ToolArgSpec.createFrom;
+const $$createType16 = RemoteEntry.createFrom;
 const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = presetOptionDef.createFrom;
+const $$createType18 = ToolArgSpec.createFrom;
 const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = presetOptionDef.createFrom;
+const $$createType21 = $Create.Array($$createType20);
