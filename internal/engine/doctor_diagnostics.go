@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -74,6 +75,19 @@ type DoctorDependencies struct {
 }
 
 func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
+	return RunDoctorDiagnosticsInRoot(dependencies, "")
+}
+
+// RunDoctorDiagnosticsInRoot is RunDoctorDiagnostics scoped to a project
+// root: the project-bound checks (search index, SSH container probe, legacy
+// config, config drift, profile sync, runtime images) read from that root
+// instead of the process working directory, so a desktop run bucketed under
+// the selected project actually describes that project. An empty root keeps
+// the legacy working-directory behavior exactly (like `govard doctor` run
+// from a project root). Host-global checks never read project files and are
+// unaffected by the root.
+func RunDoctorDiagnosticsInRoot(dependencies DoctorDependencies, projectRoot string) DoctorReport {
+	root := strings.TrimSpace(projectRoot)
 	if dependencies.CheckDockerStatus == nil {
 		dependencies.CheckDockerStatus = func() error { return CheckDockerStatus(context.Background()) }
 	}
@@ -93,10 +107,10 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 		dependencies.CheckNetworkConnectivity = CheckNetworkConnectivity
 	}
 	if dependencies.CheckSearchIndexBlock == nil {
-		dependencies.CheckSearchIndexBlock = CheckSearchIndexBlock
+		dependencies.CheckSearchIndexBlock = func() error { return CheckSearchIndexBlockInRoot(root) }
 	}
 	if dependencies.CheckSSHAgentStatus == nil {
-		dependencies.CheckSSHAgentStatus = CheckSSHAgentStatus
+		dependencies.CheckSSHAgentStatus = func() (string, error) { return CheckSSHAgentStatusInRoot(root) }
 	}
 	if dependencies.CheckComposeSpam == nil {
 		dependencies.CheckComposeSpam = func() error { return CheckComposeSpam(1000) }
@@ -105,19 +119,19 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 		dependencies.CheckGovardRegistry = checkGovardRegistry
 	}
 	if dependencies.CheckProfileSync == nil {
-		dependencies.CheckProfileSync = checkProfileSync
+		dependencies.CheckProfileSync = func() error { return checkProfileSyncInRoot(root) }
 	}
 	if dependencies.CheckSystemDependencies == nil {
 		dependencies.CheckSystemDependencies = checkSystemDependencies
 	}
 	if dependencies.CheckRuntimeImages == nil {
-		dependencies.CheckRuntimeImages = checkRuntimeImages
+		dependencies.CheckRuntimeImages = func() ([]string, error) { return checkRuntimeImagesInRoot(root) }
 	}
 	if dependencies.CheckLegacyConfig == nil {
-		dependencies.CheckLegacyConfig = checkLegacyConfig
+		dependencies.CheckLegacyConfig = func() error { return checkLegacyConfigInRoot(root) }
 	}
 	if dependencies.CheckConfigDrift == nil {
-		dependencies.CheckConfigDrift = checkConfigDrift
+		dependencies.CheckConfigDrift = func() error { return checkConfigDriftInRoot(root) }
 	}
 
 	report := DoctorReport{
@@ -333,7 +347,7 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 		})
 	} else {
 		// Only report pass if base config exists and is healthy
-		if _, err := os.Stat(BaseConfigFile); err == nil {
+		if _, err := os.Stat(doctorConfigFilePath(root)); err == nil {
 			report.Checks = append(report.Checks, DoctorCheck{
 				ID:      "project.config.audit",
 				Title:   "Configuration audit",
@@ -353,7 +367,7 @@ func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
 			SuggestedCommand: "govard doctor --fix",
 		})
 	} else {
-		if _, err := os.Stat(BaseConfigFile); err == nil {
+		if _, err := os.Stat(doctorConfigFilePath(root)); err == nil {
 			report.Checks = append(report.Checks, DoctorCheck{
 				ID:      "project.config.drift",
 				Title:   "Configuration drift",
@@ -550,6 +564,14 @@ func CheckNetworkConnectivity() error {
 }
 
 func CheckSSHAgentStatus() (string, error) {
+	return CheckSSHAgentStatusInRoot("")
+}
+
+// CheckSSHAgentStatusInRoot is CheckSSHAgentStatus scoped to a project
+// root: the project name for the container probe loads from that root
+// instead of the process working directory. An empty root keeps the legacy
+// behavior.
+func CheckSSHAgentStatusInRoot(projectRoot string) (string, error) {
 	// 1. Check host environment
 	sock := os.Getenv("SSH_AUTH_SOCK")
 	if sock == "" {
@@ -573,7 +595,7 @@ func CheckSSHAgentStatus() (string, error) {
 	}
 
 	// 3. Optional: Check inside the PHP container if running
-	config := loadConfig()
+	config := loadConfigInRoot(projectRoot)
 	if config.ProjectName != "" {
 		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)
 		// Only check if container is running
@@ -593,7 +615,14 @@ func CheckSSHAgentStatus() (string, error) {
 }
 
 func CheckSearchIndexBlock() error {
-	config := loadConfig()
+	return CheckSearchIndexBlockInRoot("")
+}
+
+// CheckSearchIndexBlockInRoot is CheckSearchIndexBlock scoped to a project
+// root: the project config loads from that root instead of the process
+// working directory. An empty root keeps the legacy behavior.
+func CheckSearchIndexBlockInRoot(projectRoot string) error {
+	config := loadConfigInRoot(projectRoot)
 	if config.Stack.Services.Search == "" || config.Stack.Services.Search == "none" {
 		return nil
 	}
@@ -623,22 +652,41 @@ func CheckSearchIndexBlock() error {
 	return nil
 }
 
-func loadConfig() Config {
-	wd, _ := os.Getwd()
-	config, err := LoadRawConfigFromDir(wd, false)
+// loadConfigInRoot loads the raw project config from a scoped root, or from
+// the process working directory for legacy unscoped runs (exactly like
+// `govard doctor` run from a project root).
+func loadConfigInRoot(projectRoot string) Config {
+	dir := strings.TrimSpace(projectRoot)
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	config, err := LoadRawConfigFromDir(dir, false)
 	if err != nil {
 		return Config{}
 	}
 	return config
 }
 
-func checkProfileSync() error {
-	config := loadConfig()
+// doctorConfigFilePath resolves the project config file a scoped run reads:
+// inside the project root, or the legacy working-directory-relative path
+// for unscoped runs.
+func doctorConfigFilePath(projectRoot string) string {
+	if strings.TrimSpace(projectRoot) == "" {
+		return BaseConfigFile
+	}
+	return filepath.Join(projectRoot, BaseConfigFile)
+}
+
+func checkProfileSyncInRoot(projectRoot string) error {
+	config := loadConfigInRoot(projectRoot)
 	if config.Framework == "" || config.Framework == "generic" || config.Framework == "custom" {
 		return nil
 	}
 
-	wd, _ := os.Getwd()
+	wd := strings.TrimSpace(projectRoot)
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
 	metadata := DetectFramework(wd)
 
 	warnings := CollectProfileSyncWarnings(config, metadata)
@@ -748,10 +796,14 @@ func checkSystemDependencies() []string {
 	return missing
 }
 
-func checkRuntimeImages() ([]string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("could not read working directory: %w", err)
+func checkRuntimeImagesInRoot(projectRoot string) ([]string, error) {
+	cwd := strings.TrimSpace(projectRoot)
+	if cwd == "" {
+		var err error
+		cwd, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("could not read working directory: %w", err)
+		}
 	}
 
 	config, _, err := LoadConfigFromDir(cwd, true)
@@ -776,8 +828,8 @@ func checkRuntimeImages() ([]string, error) {
 	return missing, nil
 }
 
-func checkLegacyConfig() error {
-	data, err := os.ReadFile(BaseConfigFile)
+func checkLegacyConfigInRoot(projectRoot string) error {
+	data, err := os.ReadFile(doctorConfigFilePath(projectRoot))
 	if err != nil {
 		return nil // skip if no config
 	}
@@ -824,9 +876,12 @@ func checkLegacyConfig() error {
 	return nil
 }
 
-func checkConfigDrift() error {
-	wd, _ := os.Getwd()
-	data, err := os.ReadFile(BaseConfigFile)
+func checkConfigDriftInRoot(projectRoot string) error {
+	wd := strings.TrimSpace(projectRoot)
+	if wd == "" {
+		wd, _ = os.Getwd()
+	}
+	data, err := os.ReadFile(doctorConfigFilePath(projectRoot))
 	if err != nil {
 		return nil
 	}

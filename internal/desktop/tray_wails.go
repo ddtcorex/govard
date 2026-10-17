@@ -42,6 +42,13 @@ func installTray(app *application.App, platform *wailsPlatform, desk *App) func(
 		refreshMu.Lock()
 		defer refreshMu.Unlock()
 
+		// The running-op count lives on the tray label and tooltip so a
+		// long op stays visible while the window is hidden. It tracks
+		// ListOps at rebuild time, like the environment states below.
+		opsTitle := trayTitle(len(ListOps()))
+		tray.SetLabel(opsTitle)
+		tray.SetTooltip(opsTitle)
+
 		menu.Clear()
 		menu.Add("Show / Hide Govard").OnClick(func(*application.Context) {
 			if _, w := platform.handles(); w != nil && w.IsVisible() {

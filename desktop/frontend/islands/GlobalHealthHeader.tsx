@@ -7,8 +7,16 @@ import {
   globalServiceIcon,
   statusStripTone,
 } from "../modules/global-services.js";
+import {
+  deriveAuditBanner,
+  deriveDoctorBanner,
+  selectAuditEntry,
+  selectDoctorEntry,
+} from "../modules/health.js";
 import { useStore } from "../state/useStore.js";
 import type { GlobalServiceRow } from "./GlobalServicesList.tsx";
+import { HealthPanels } from "./HealthPanels";
+import type { HealthPanelCallbacks } from "./HealthPanels.tsx";
 
 export type GlobalServiceSnapshot = {
   active: number;
@@ -22,6 +30,7 @@ export type GlobalBulkAction = "start" | "restart" | "stop" | "pull";
 
 type Props = {
   onBulkAction(action: GlobalBulkAction): Promise<void>;
+  health: HealthPanelCallbacks;
 };
 
 const INITIAL_BAR_CLASS =
@@ -87,7 +96,7 @@ const BULK_BUTTONS: Array<{
  * `dataset.busy`, and the feedback strip's classList.remove + rAF re-add - are
  * this island's own state and a `seq`-keyed effect.
  */
-export function GlobalHealthHeader({ onBulkAction }: Props) {
+export function GlobalHealthHeader({ onBulkAction, health }: Props) {
   // The controller publishes the snapshot and the feedback line into the store,
   // and the island derives everything it shows from them (D6); main.js creates
   // this element once, so a prop captured at mount would freeze the deck.
@@ -121,9 +130,16 @@ export function GlobalHealthHeader({ onBulkAction }: Props) {
     }
   };
 
-  const health = snapshot ? deriveHealthSummary(snapshot) : null;
+  const healthSummary = snapshot ? deriveHealthSummary(snapshot) : null;
   const buttons = bulkActionButtonStates(snapshot ?? {});
   const tone = feedbackTone(feedback.tone);
+
+  // Health banners derive from the current project scope's latest
+  // doctor/audit results, never from cached state and never from another
+  // scope: a clean re-run yields no banner, which is what clears stale red,
+  // and a scope that never ran yields none either.
+  const doctorBanner = deriveDoctorBanner(selectDoctorEntry(state).report);
+  const auditBanner = deriveAuditBanner(selectAuditEntry(state).result);
 
   return (
     <>
@@ -148,28 +164,28 @@ export function GlobalHealthHeader({ onBulkAction }: Props) {
               id="globalServiceHealthPercent"
               className="text-4xl font-black text-text-primary dark:text-white leading-none ops-kpi-value"
             >
-              {health ? health.percentLabel : "--%"}
+              {healthSummary ? healthSummary.percentLabel : "--%"}
             </span>
             <span id="globalServiceCount" className="text-xs font-semibold text-primary">
-              {health ? health.countLabel : "0/0 running"}
+              {healthSummary ? healthSummary.countLabel : "0/0 running"}
             </span>
           </div>
           <div className="mt-3 h-2 rounded-full bg-slate-200 dark:bg-white/5 relative">
             <div
               id="globalServiceHealthBar"
-              className={health ? health.barClass : INITIAL_BAR_CLASS}
-              style={health ? { width: `${health.percent}%` } : undefined}
+              className={healthSummary ? healthSummary.barClass : INITIAL_BAR_CLASS}
+              style={healthSummary ? { width: `${healthSummary.percent}%` } : undefined}
             ></div>
           </div>
           <div
             id="globalServiceHealthLabel"
-            className={health ? health.labelClass : INITIAL_LABEL_CLASS}
+            className={healthSummary ? healthSummary.labelClass : INITIAL_LABEL_CLASS}
           >
             <span id="globalServiceHealthLabelIcon" className="material-symbols-outlined text-[12px]">
-              {health ? health.labelIcon : "monitor_heart"}
+              {healthSummary ? healthSummary.labelIcon : "monitor_heart"}
             </span>
             <span id="globalServiceHealthLabelText">
-              {health ? health.labelText : "Health check pending"}
+              {healthSummary ? healthSummary.labelText : "Health check pending"}
             </span>
           </div>
         </section>
@@ -258,6 +274,69 @@ export function GlobalHealthHeader({ onBulkAction }: Props) {
           )}
         </div>
       </section>
+
+      {doctorBanner || auditBanner ? (
+        <section aria-label="Health alerts" className="space-y-2">
+          {doctorBanner ? (
+            <div
+              data-testid="doctor-banner"
+              role="alert"
+              className={`flex items-center justify-between gap-2 rounded-xl border p-2.5 ${
+                doctorBanner.tone === "error"
+                  ? "border-red-500/30 bg-red-500/10"
+                  : "border-amber-500/30 bg-amber-500/10"
+              }`}
+            >
+              <p className="text-[11px] font-semibold text-text-primary flex items-center gap-1.5 min-w-0">
+                <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
+                  {doctorBanner.tone === "error" ? "error" : "warning"}
+                </span>
+                <span className="truncate">
+                  Doctor: {doctorBanner.total} issue{doctorBanner.total === 1 ? "" : "s"}
+                  {doctorBanner.fixableCount > 0
+                    ? `, ${doctorBanner.fixableCount} fixable below`
+                    : ""}
+                  .
+                </span>
+              </p>
+              <button
+                type="button"
+                data-testid="doctor-banner-run"
+                onClick={() => health.onRunDoctor()}
+                className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold border border-current opacity-80 hover:opacity-100 transition-all"
+              >
+                Re-run
+              </button>
+            </div>
+          ) : null}
+          {auditBanner ? (
+            <div
+              data-testid="audit-banner"
+              role="alert"
+              className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5"
+            >
+              <p className="text-[11px] font-semibold text-text-primary flex items-center gap-1.5 min-w-0">
+                <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
+                  fact_check
+                </span>
+                <span className="truncate">
+                  Audit: {auditBanner.findingCount} finding{auditBanner.findingCount === 1 ? "" : "s"}.
+                </span>
+              </p>
+              <button
+                type="button"
+                data-testid="audit-banner-run"
+                onClick={() => health.onRunAudit()}
+                className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold border border-current opacity-80 hover:opacity-100 transition-all"
+              >
+                Run audit
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <HealthPanels callbacks={health} />
 
       <section
         id="globalActionFeedback"

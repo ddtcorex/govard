@@ -1117,7 +1117,7 @@ func TestMutatingSandboxDownRefusesWhenContainerChanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fixture config: %v", err)
 	}
-	renamed := strings.Replace(string(raw), "sample-project", "renamed-project", -1)
+	renamed := strings.ReplaceAll(string(raw), "sample-project", "renamed-project")
 	if err := os.WriteFile(configPath, []byte(renamed), 0o644); err != nil {
 		t.Fatalf("rename the fixture project: %v", err)
 	}

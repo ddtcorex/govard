@@ -204,11 +204,13 @@ export const createActionsController = ({
       return;
     }
 
+    // "check-health" is gone: the container-count stub behind it was replaced
+    // by the doctor/audit health panels (HealthPanels island), so the action
+    // no longer reaches the bridge.
     if (
       [
         "open-pma",
         "toggle-xdebug",
-        "check-health",
         "open-folder",
         "open-ide",
         "open-db-client",

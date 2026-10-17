@@ -36,9 +36,11 @@ The desktop focuses on operational essentials:
 | **Quick Actions** | PHPMyAdmin, Xdebug toggle, health check, Mailpit, DB client |
 | **Remotes Tab** | Add/test/open/sync-plan workflows for remote environments |
 | **Deploy Tab** | Read-only status/releases/plan/check plus preview-gated rollback and sandbox rehearse |
+| **Data Tab** | Masked DB fact sheet, guarded ad-hoc queries, dump/import, snapshots (see below) |
 | **Resource Monitor** | CPU, RAM, network, OOM hints |
 | **Logs** | Multi-service selection, severity filtering, text search, live streaming |
 | **Shell Launcher** | Service, user, and shell selection |
+| **Tool Runner** | Preset framework tool commands with streamed output (see below) |
 | **System Tray** | Show/hide the window, start/stop/open projects, quit |
 | **Native Notifications** | Operation success/failure alerts |
 | **Settings Drawer** | Theme, proxy target, preferred browser, database client |
@@ -48,6 +50,456 @@ The desktop focuses on operational essentials:
 Long operations get long ceilings: `up`, `bootstrap`, restarts and pulls wait up to 15 minutes (10 for global-services start) instead of failing at two. A timeout names its duration; when the operation may have left containers half-started, the message says so and points at the dashboard's orphan detection. One mutating environment operation runs per project — a double-clicked Start or a Start-then-Stop race reports what is already running instead of starting a duplicate, and the lock is held until the backend call settles even if the UI's own backstop fires first.
 
 Live log panes keep the last 2,000 lines and pause their polling while the window is hidden, resuming with fresh data on return. If a panel crashes, it shows a notice with a retry button rather than going blank.
+
+---
+
+## Operation Center
+
+The Operations tab is the visible home for long operations. It shows two
+lists, both served by `OperationService` through the `bridge.js` routes
+`ListOps`, `ListHistory`, `CancelOp` and `RetryOp`, which map onto the Go
+methods of the same names (`internal/desktop/operation_service.go`). The
+tab itself is the `OperationCenter` React island with pure helpers in
+`desktop/frontend/modules/operation-center.js`.
+
+| List | Source | Order |
+| :--- | :--- | :--- |
+| Running | `ListOps` | Oldest first, with a Cancel button per op |
+| History | `ListHistory` | Newest first; `ListHistory(limit)` caps the read, `limit <= 0` means all |
+
+The island refreshes both lists on the `sync:progress` and
+`operations:notification` backend events (subscribed through
+`services/events.js`; the constants `SYNC_PROGRESS_EVENT` and
+`OPERATIONS_NOTIFICATION_EVENT` live in `modules/operation-center.js`).
+
+### Concurrency: one sync per project
+
+- One background sync runs per project. `RunRemoteSync` claims the project
+  through `TryRegisterSyncingProject` under a single mutex hold, where the
+  claim itself is the guard, so two concurrent starters cannot both pass. A
+  second start is refused with `cannot start sync for "X" while sync from
+  "Y" is in progress` (or `another sync is already in progress` when no
+  remote is recorded). Keys are canonical project IDs, so a start addressed
+  by domain cannot slip past a sync started by path.
+- While a sync runs, mutating environment actions on the same project
+  (start, stop, restart, pull, toggle, delete) are refused, because the sync
+  owns the containers.
+- The registry rejects a duplicate op id (`RegisterOp` and
+  `RegisterOpWithArgs` return false and keep the original entry), so a
+  duplicate can never displace a cancel func and orphan its context.
+- A second `RetryOp` for a record that already has a retry in flight is
+  refused; wait for the current run to finish before retrying.
+
+### Cancel
+
+- `CancelOp(id)` on a tracked running op removes the entry, appends one
+  `cancelled` terminal record, and fires the stored cancel func exactly once
+  (after releasing the lock, so a re-entrant cancel func cannot deadlock). A
+  cancel racing a finish records exactly one terminal state. An unknown or
+  already finished id returns false, which the UI treats as a harmless no-op
+  (`<id> already finished`) rather than an error.
+- Limits, stated plainly: background syncs (`RemoteService.RunRemoteSync`)
+  and one-shot environment CLI calls are not tracked registry ops in this
+  release, so they do not appear under Running and the center cannot cancel
+  them. They run to completion and report through the `sync:failed` /
+  `sync:completed` events and the operation notifications below. Syncs
+  launched in an OS terminal (`RunRemoteSyncInTerminal`) run outside the app
+  entirely. Live log streams are separate: `StopLogStream` and
+  `StopGlobalServiceLogStream` stop the stream and kill the underlying
+  `docker logs` process.
+
+### History retention and crash recovery
+
+- Terminal records persist as JSONL in `<govard-home>/desktop/operation-history.jsonl`
+  (honoring `GOVARD_HOME_DIR`), one line per terminal state: `completed`,
+  `failed`, `cancelled`, `interrupted`. Args are scrubbed at write (secrets
+  become `***` placeholders); messages are sanitized and capped at 2,000
+  characters. Corrupt or blank lines are skipped and never consume budget.
+- Cap: `OperationHistoryCap` is 200 valid records. Appending past the cap
+  evicts the oldest records while the newest stay intact. Full rewrites
+  publish atomically (temp file plus rename), so a crash mid-write never
+  leaves a half-truncated history.
+- Crash recovery: every registered op is mirrored to the
+  `operation-inflight.json` sidecar until it reaches a terminal state.
+  `RecoverInterruptedOps` runs at startup and marks orphan entries
+  `interrupted` with the message `Interrupted by app restart`, deduped by
+  (op id, start time) so a terminal record that landed before the crash is
+  never duplicated. An unreadable sidecar is quarantined aside
+  (`operation-inflight.json.corrupt-<timestamp>`) for forensics: never
+  silently dropped, never invented from.
+
+### Retry
+
+- The Retry button appears on failed records only. `RetryOp` replays the
+  stored args through the original service path under a fresh op id; the old
+  terminal record is never rewritten, so finish and cancel attribution keep
+  their exactly-once semantics.
+- Every refusal fails closed with an actionable error: an unknown id or an
+  id with no terminal record; a record that ended `completed`, `cancelled`
+  or `interrupted`; stored args carrying a `***` scrub placeholder (re-run
+  with fresh credentials instead of replaying, since the placeholder no
+  longer authenticates); an op kind with no registered replay handler
+  (`RegisterOpRetryHandler`); a retry already in progress for the same
+  record.
+- Interrupted entries never replay. The history row shows a fresh-run hint
+  instead: `Interrupted by an app restart. Start a fresh run; the stored
+  args are kept for reference.`
+- Replay handlers for the WS-A/B/C operation families land with those
+  follow-ups. Until a kind registers its handler, `RetryOp` keeps failing
+  closed (`no replay path`) and the Retry button explains re-running the op
+  from its original view instead of replaying it here.
+
+### Notifications
+
+- Terminal operations emit `operations:notification`
+  (`EventOperationsNotification`), polled every 2 seconds with a read limit
+  of 256 events. Delivery is at-least-once: the watcher emits first and
+  persists the cursor second, so a crash between the two redelivers (a
+  visible duplicate) instead of silently losing a notification.
+- A fresh install suppresses pre-existing log history. A restart resumes
+  from the persisted cursor (`operation-notify-cursor` in the same state
+  dir) and delivers the downtime gap on its first poll. If the cursor is
+  gone (log rotation, or the read window slid past it while the app was
+  down), the whole window is delivered rather than dropped.
+- Failure toasts carry catalog actions (`retry`, `open-logs`, `copy`
+  through `OpActionRetry`, `OpActionOpenLogs`, `OpActionCopy`). Retry is
+  bound to the exact source terminal record id (`retryId`): the event's op
+  id must name a history record that exists and ended `failed`, and that id
+  is what `RetryOp` replays. No match means no Retry button, and a retry
+  dispatched without a bound id fails closed as record unavailable instead
+  of scanning for a substitute that could replay the wrong run. Success
+  notifications carry no actions.
+
+---
+
+## Health: Doctor and Integrity Audit
+
+The health header at the top of the dashboard runs two read-only checks for
+the selected project: `RunDoctor` (host and project diagnostics with per-check
+fixes) and `RunIntegrityAudit` (container-free project integrity audit). Both
+are reached through `HealthService` routes in
+`desktop/frontend/services/bridge.js` (`runDoctor(project)`,
+`runIntegrityAudit(project)`); audit progress streams on the
+`audit:progress` event. Long runs can be cancelled (`CancelDoctorRun`,
+`CancelAudit`); cancelling an audit discards its late result and the banner
+keeps the last completed run.
+
+The doctor run is scoped to the selected project's root: project-bound
+checks read that project's files, and the report is bucketed under that
+project. A non-empty project that resolves to no directory is refused with
+a select-a-project error instead of auditing the working directory. With no
+project selected the run stays host-level (working directory) under the
+empty scope.
+
+### Doctor fixes: what each button means
+
+Every doctor check carries one of three fix affordances. `Fix` applies in one
+click. `Preview fix` opens a dry-run plan that must be confirmed explicitly
+before anything changes. Checks with no safe fix show no fix button at all;
+follow the hint and the suggested CLI command instead. A check ID the
+allowlist has never seen is refused rather than given a button.
+
+| Check ID | Button | What the fix does |
+| :--- | :--- | :--- |
+| `host.govard.home` | Fix | Repairs Govard runtime directory permissions |
+| `host.compose.spam` | Fix | Purges stale compose files older than 7 days |
+| `host.govard.registry` | Fix | Repairs the project registry path (a directory at the file path is refused, never auto-deleted) |
+| `host.search.index_block` | Preview fix | Unblocks the search index with a write into the running search container |
+| `project.runtime.images` | Preview fix | Pulls missing Docker runtime images (network heavy) |
+| `project.config.audit` | Preview fix | Migrates legacy config keys to the services block in `.govard.yml` |
+| `project.config.drift` | Preview fix | Syncs `.govard.yml` with the detected framework profile |
+| `project.profile.sync` | Preview fix | Fills gaps from the framework profile, preserving explicit user settings |
+| `docker.daemon` | None | No fix in the desktop; follow the hint |
+| `docker.compose` | None | No fix in the desktop; follow the hint |
+| `host.port.80` | None | No fix in the desktop; follow the hint |
+| `host.port.443` | None | No fix in the desktop; follow the hint |
+| `host.disk.scratch` | None | No fix in the desktop; follow the hint |
+| `host.network.outbound` | None | No fix in the desktop; follow the hint |
+| `host.ssh.agent` | None | No fix in the desktop; follow the hint |
+| `host.deps.docker` | None | No fix in the desktop; follow the hint |
+| `host.deps.remote` | None | No fix in the desktop; follow the hint |
+
+Project-touching fixes (`host.search.index_block` and every `project.*`
+check) need a project selected in the desktop app; host-global fixes may run
+without one. After any applied fix the panel re-runs doctor silently, so the
+banner clears only when a fresh run is clean.
+
+### Risky fixes: preview, confirm, expiry
+
+`PreviewDoctorFix` returns a dry-run plan (summary plus actions) without
+changing anything; `ApplyDoctorFix` with explicit confirm applies it. In user
+terms: a preview stays valid for a short time (about 15 minutes) and can be
+used once. If project files or container state change between the preview and
+the apply, the apply is refused and the panel asks for a fresh preview, so
+confirm again on the new plan. Closing the preview or switching projects drops
+the pending preview.
+
+### Integrity audit scope
+
+The desktop runs exactly the container-free `integrity` check, the same
+analysis `govard audit run --checks integrity` executes. The `lint` and
+`profiler` rows stay visible in the result with `Enabled=false` and a reason
+pointing at the CLI (`govard audit run --checks lint`, `govard audit run
+--checks profiler`); they are never run from the desktop and never hidden.
+`GetAuditResult` reads one stored run, `GetAuditDiff` summarizes the finding
+delta between two stored runs, and `LastAuditResult` fills the banner from
+the last completed run without running anything. The panel queries
+`RunningAuditOp` on mount, so Cancel is offered even when the run started
+before the panel did.
+
+### Banners and per-project scoping
+
+Banners derive from the latest results for the currently selected project
+only. Switching projects re-derives that project's banners and shows
+loading or empty meanwhile, never another project's banner.
+
+| Banner | Meaning |
+| :--- | :--- |
+| Doctor, red (`error`) | The latest doctor report has at least one failing check. The banner names the issue count and how many are fixable below |
+| Doctor, amber (`warning`) | Warnings only, no failures |
+| No doctor banner | No report yet, or the latest report passes all checks. A clean re-run is what clears a stale banner |
+| Audit, amber (`warning`) | The latest integrity result has findings (or a non-passed status). The banner names the finding count; the panel lists each finding plus the disabled `lint` and `profiler` rows |
+| No audit banner | No audit ran yet for this project, or the latest run passed clean. Cancelled and failed runs never replace the last completed result |
+
+## Tool Runner
+
+The Tool Runner palette runs framework tool commands from a backend-owned
+preset allowlist. Pick a project, pick a preset, fill its arguments, then Run.
+Output streams into the pane (last 2,000 lines, same cap as the log panes).
+The Recent runs dropdown re-applies a past preset plus its arguments
+(scrubbed values shown as `***` are not re-applied). With no project selected
+the palette shows `Select a project to run tools.` and stays disabled.
+
+The UI lives in the React island `desktop/frontend/islands/ToolPalette.tsx`
+with pure helpers in `desktop/frontend/modules/tool-palette.js`. It talks to
+Go only through `services/bridge.js`:
+
+| Frontend wrapper | Backend route |
+| :--- | :--- |
+| `listToolPresets(project)` | `ToolService.ListToolPresets` |
+| `runTool(project, presetId, args)` | `ToolService.RunTool` |
+| `cancelToolRun(opId)` | `ToolService.CancelToolRun` |
+| `getToolHistory(project)` | `ToolService.GetToolHistory` |
+
+Progress streams on `tool:output`; the outcome arrives on `tool:completed` or
+`tool:failed`.
+
+### Presets
+
+Presets are defined in `internal/desktop/tool_runner.go`. The palette lists
+the framework-scoped presets for the selected project plus the generic set;
+an unknown or empty framework yields the generic set only.
+
+| Preset ID | Runs | Arguments | Applies to |
+| :--- | :--- | :--- | :--- |
+| `magento-cache-flush` | `bin/magento cache:flush` | `type` (optional, `^[a-z_]+$`) | Magento family |
+| `magento-cache-clean` | `bin/magento cache:clean` | `type` (optional, `^[a-z_]+$`) | Magento family |
+| `magento-setup-di-compile` | `bin/magento setup:di:compile` | none | Magento family |
+| `magento-indexer-reindex` | `bin/magento indexer:reindex` | `indexer` (optional, `^[a-z_]+$`) | Magento family |
+| `laravel-migrate` | `php artisan migrate` | `database` (optional flag), `force` (optional flag, `true/false/1/0`) | Laravel |
+| `laravel-cache-clear` | `php artisan cache:clear` | none | Laravel |
+| `laravel-config-clear` | `php artisan config:clear` | none | Laravel |
+| `composer-install` | `composer install` | `no-dev` (optional flag, `true/false/1/0`) | All projects |
+| `npm-install` | `npm install` | none | All projects |
+| `npm-run-build` | `npm run build` | none | All projects |
+
+Magento family covers `magento1`, `magento2`, `mageos` and `openmage`
+(including framework aliases registered as Magento-derived).
+
+Slow presets (`magento-setup-di-compile`, `magento-indexer-reindex`,
+`laravel-migrate`, `composer-install`, `npm-install`, `npm-run-build`) run
+with the 15-minute long ceiling; the fast cache clears keep the 2-minute
+default. A timeout reports its duration, and the history entry records the
+run as failed (timeout) or cancelled (cancel).
+
+### No-shell guarantee
+
+The palette sends a preset ID plus an args map only. The exec argv stays
+backend-owned: unknown preset IDs are refused before any process exists, and
+args are validated against the preset's `ArgSpec` (unknown names, missing
+required args, values over 256 characters, and values outside the arg
+pattern are rejected; args without an explicit pattern use
+`^[A-Za-z0-9_@+.,:/=-]+$`, which rejects whitespace and every shell
+metacharacter with no quoting exemption). Validated args render onto the
+preset argv in `ArgSpec` order (flag args become `--name` or
+`--name=value`), and the result runs via `exec.CommandContext` directly:
+no shell, no `sh -c`, no string joining, ever.
+
+### Cancel guarantee
+
+One tool run per project at a time. A second Run while one is active is
+refused with an already-running error, and the lock is freed on completion
+or cancel. `CancelToolRun` kills the running process through the op registry
+and frees the lock; cancelling an unknown or finished ID is a harmless no-op
+reporting `false`, and the synchronous return value is the cancelling
+caller's confirmation.
+
+Terminal events carry the run generation (`OpID`, `Gen` in
+`ToolResultPayload`). The palette applies a `tool:completed` or `tool:failed`
+receipt only when its generation is still current
+(`IsCurrentToolGeneration` on the backend, `applyToolTerminalEvent` in
+`modules/tool-palette.js`), and a finished run never flips back to running.
+Streamed `tool:output` batches from a cancelled, timed-out, or superseded
+run are dropped, so a fast rerun never mixes tails; the terminal receipt
+itself always arrives so history and status settle.
+
+### History and secret scrubbing
+
+Each admitted run is recorded in a per-project JSONL history file under
+`tool-history/` in the Govard home directory, capped at the most recent 50
+runs (the oldest entries evict first). The admission entry starts as
+`unknown` and is promoted to `success`, `failed`, or `cancelled` before its
+terminal event emits, so a run whose terminal never arrives (crash) reads
+`unknown`, never success. A history failure never fails the run itself.
+
+Args are scrubbed on write, so raw secrets never reach the file: values under
+secret key names (`password`, `passwd`, `passphrase`, `secret`, `token`,
+`apikey`, `accesskey`, `privatekey`, `pwd`, including suffix matches such as
+`db-password` or `apiKey`) become `***`, and secret-shaped value text
+(`KEY=value` pairs, `scheme://user:pass@` credentialed URLs, PEM private-key
+blocks) is masked the same way. One boundary applies: a bare secret value
+under a non-secret key name is indistinguishable from an innocent value and
+is not detectable, so only the key name and the value shape drive scrubbing.
+The file is written atomically with strict permissions.
+
+## Data Tab
+
+The Data tab manages the selected project database and its snapshots. It
+covers the masked connection fact sheet, guarded ad-hoc queries,
+dump/import with streaming progress, and snapshot list/create/export plus
+preview-gated restore.
+
+### Read-only queries by default, explicit opt-in for writes
+
+`DBService.RunDBQuery(project, sql, allowWrite, confirmToken)` classifies
+every statement before it touches anything:
+
+- Read-only openers are `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`,
+  `EXPLAIN`. Anything else takes the write path.
+- A read-looking opener is not enough on its own: the whole statement is
+  scanned for data-modifying words (`DELETE`, `UPDATE`, `INSERT`,
+  `INTO`, `UNION` and friends, locking reads such as `FOR UPDATE`), so a
+  write hidden in the body still takes the write path.
+- Multi-statement input is always refused. Refusal happens before project
+  discovery, so a refused statement touches nothing.
+
+A write needs two things together: `allowWrite=true` plus the per-project
+confirm token from `DBService.GetDBWriteConfirmToken(project)`. The UI
+flow is: the mode badge reads anything uncertain as "write", the write
+checkbox enables the confirm dialog, the dialog fetches the token and
+passes it back to `RunDBQuery`. The token format is
+`confirm-write:<lowercased-project>` and stays Go-owned; the island only
+carries it. The token guards against accidental clicks, not against
+malice: the desktop already holds the credentials.
+
+### Restore is preview plus confirm, never one-shot
+
+`SnapshotService.PreviewSnapshotRestore(project, name, dbOnly, mediaOnly)`
+writes nothing. It reports exactly what an apply would replace
+(`willReplaceDb`, `willReplaceMedia`, plus a human `summary` line) and
+returns a single-use `previewToken`. The confirm control stays disabled
+until that preview renders.
+
+`SnapshotService.ApplySnapshotRestore(project, name, previewToken,
+confirm, dbOnly, mediaOnly)` requires the token plus `confirm=true`.
+Either missing, the restore never starts. The token is bound to the
+project, snapshot, and scope, expires after 15 minutes, and is consumed by
+a validated apply, so a replay never reaches the engine. A refused apply
+consumes nothing, so confirming afterwards still works. Scope is `full`
+by default, or `dbOnly` / `mediaOnly` from the scope radio.
+
+### Scrubbing guarantees
+
+- `DBService.GetDBInfo` returns a struct with no password field by
+  construction. `hasPassword` only reports whether one is configured, and
+  `displayUrl` renders the password as `****`.
+- Query output passes through `sanitizeUIText`, capped at 20,000 runes,
+  which also strips ANSI escapes and control bytes.
+- The frontend renders DB info through the `pickDisplayDBInfo` allowlist
+  (`project`, `engine`, `host`, `port`, `database`, `user`,
+  `hasPassword`, `displayUrl`): any unexpected key, including a password
+  under any name, is dropped before it can reach the DOM.
+- There is deliberately no query history: nothing typed into the query
+  box is stored, so no secret can linger in one.
+
+### Cancel semantics
+
+`DBService.CancelDBOp(opId)` and
+`SnapshotService.CancelSnapshotOp(opId)` stop desktop tracking first: the
+op identity is dropped so late events from the dying goroutine never
+reach the UI, and the user gets a terminal `db:failed` /
+`snapshot:failed` event. What happens underneath differs:
+
+- Dump/import run the transfer through a `docker` process started with
+  the op context, so cancelling fires that context and kills the process.
+  A cancelled dump also removes its `.partial` sibling, and an earlier
+  file at the destination survives.
+- Snapshot restore calls the engine, which is not context-aware once the
+  import starts. Cancelling stops the desktop op and its events while the
+  underlying import may run to completion, the same as interrupting the
+  CLI. The message says exactly that: "`<Kind>` tracking stopped by user; the
+  underlying operation may run to completion" (for example "Snapshot restore
+  tracking stopped by user; ..."). It never claims a
+  cancellation that was not delivered.
+
+### Disk preflight
+
+- `DumpDB` estimates the database size, then probes free space against
+  the nearest existing ancestor of the destination before creating any
+  directory or starting any process. A refusal leaves no file, no
+  directory, and no started process behind.
+- `ImportDB` validates the file synchronously before the op is
+  registered: it must be a non-empty file (not a directory) carrying a
+  recognized dump header (`mysqldump`/`MariaDB` or PostgreSQL, gzip
+  handled transparently), and its engine must match the project database.
+  A refused file never opens the database writer.
+- `ExportSnapshot` refuses a destination that is a directory or whose
+  parent directory does not exist. Overwrite confirmation for an existing
+  file stays the UI job: the save dialogs return `{ path, exists }` so
+  the island can ask before calling dump or export.
+
+### Routes and events
+
+Bridge routes in `desktop/frontend/services/bridge.js` onto the generated
+bindings (verified against `DBService`, `SnapshotService`, and
+`data_dialog.go`):
+
+| Route | Go service.method |
+| :--- | :--- |
+| `GetDBInfo` | `DBService.GetDBInfo` |
+| `RunDBQuery` | `DBService.RunDBQuery` |
+| `DumpDB` | `DBService.DumpDB` |
+| `ImportDB` | `DBService.ImportDB` |
+| `CancelDBOp` | `DBService.CancelDBOp` |
+| `PickDumpDestination` | `DBService.PickDumpDestination` |
+| `PickImportSource` | `DBService.PickImportSource` |
+| `GetDBWriteConfirmToken` | `DBService.GetDBWriteConfirmToken` |
+| `ListSnapshots` | `SnapshotService.ListSnapshots` |
+| `CreateSnapshot` | `SnapshotService.CreateSnapshot` |
+| `PreviewSnapshotRestore` | `SnapshotService.PreviewSnapshotRestore` |
+| `ApplySnapshotRestore` | `SnapshotService.ApplySnapshotRestore` |
+| `ExportSnapshot` | `SnapshotService.ExportSnapshot` |
+| `CancelSnapshotOp` | `SnapshotService.CancelSnapshotOp` |
+| `PickExportDestination` | `SnapshotService.PickExportDestination` |
+
+Backend events in `internal/desktop/events.go`:
+
+| Event | Purpose |
+| :--- | :--- |
+| `db:progress` | Structured dump/import progress (`opId`, `generation`, byte counts, percent) |
+| `db:completed` | Finished dump/import |
+| `db:failed` | Failed or cancelled dump/import |
+| `snapshot:completed` | Finished snapshot create/restore/export |
+| `snapshot:failed` | Failed or cancelled snapshot op |
+
+Snapshot ops emit terminal events only, no progress events. An empty
+dialog pick (save or open) with no error means the user cancelled, and
+the island sends exactly the picked path to dump/import/export, never an
+invented one. The dump dialog defaults to `<project>-dump.sql`; the
+export dialog defaults to `<name>.tar.gz`, matching the CLI.
+
+---
+
 
 ---
 
@@ -170,8 +622,6 @@ Current persisted preferences:
 - Proxy target
 - Preferred browser
 - Database client preference
-
----
 
 ## Dev Mode
 

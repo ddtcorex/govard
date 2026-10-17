@@ -6,6 +6,722 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+/**
+ * AuditCheckView is one audit check row for the UI. Docker-backed checks
+ * render with Enabled=false and a DisabledReason, never hidden.
+ */
+export class AuditCheckView {
+    /**
+     * Creates a new AuditCheckView instance.
+     * @param {Partial<AuditCheckView>} [$$source = {}] - The source object to create the AuditCheckView.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("title" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["title"] = "";
+        }
+        if (!("enabled" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["enabled"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["disabledReason"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditCheckView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditCheckView}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuditCheckView(/** @type {Partial<AuditCheckView>} */($$parsedSource));
+    }
+}
+
+/**
+ * AuditDiffView is the previous-vs-current integrity finding summary over two
+ * stored runs. Findings are matched by tool, rule, path, line, and message:
+ * a finding that moved lines reads as one removal plus one addition, which is
+ * honest for a summary (the code did change under it).
+ */
+export class AuditDiffView {
+    /**
+     * Creates a new AuditDiffView instance.
+     * @param {Partial<AuditDiffView>} [$$source = {}] - The source object to create the AuditDiffView.
+     */
+    constructor($$source = {}) {
+        if (!("projectId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["projectId"] = "";
+        }
+        if (!("sessionId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["sessionId"] = "";
+        }
+        if (!("fromRunId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["fromRunId"] = "";
+        }
+        if (!("toRunId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["toRunId"] = "";
+        }
+        if (!("fromStatus" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["fromStatus"] = "";
+        }
+        if (!("toStatus" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["toStatus"] = "";
+        }
+        if (!("added" in $$source)) {
+            /**
+             * @member
+             * @type {AuditFindingView[]}
+             */
+            this["added"] = [];
+        }
+        if (!("removed" in $$source)) {
+            /**
+             * @member
+             * @type {AuditFindingView[]}
+             */
+            this["removed"] = [];
+        }
+        if (!("unchangedCount" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["unchangedCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditDiffView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditDiffView}
+     */
+    static createFrom($$source = {}) {
+        const $$createField6_0 = $$createType1;
+        const $$createField7_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("added" in $$parsedSource) {
+            $$parsedSource["added"] = $$createField6_0($$parsedSource["added"]);
+        }
+        if ("removed" in $$parsedSource) {
+            $$parsedSource["removed"] = $$createField7_0($$parsedSource["removed"]);
+        }
+        return new AuditDiffView(/** @type {Partial<AuditDiffView>} */($$parsedSource));
+    }
+}
+
+/**
+ * AuditFindingView is one sanitized integrity finding for the UI.
+ */
+export class AuditFindingView {
+    /**
+     * Creates a new AuditFindingView instance.
+     * @param {Partial<AuditFindingView>} [$$source = {}] - The source object to create the AuditFindingView.
+     */
+    constructor($$source = {}) {
+        if (!("tool" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["tool"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["rule"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["path"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {number | undefined}
+             */
+            this["line"] = undefined;
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditFindingView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditFindingView}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuditFindingView(/** @type {Partial<AuditFindingView>} */($$parsedSource));
+    }
+}
+
+/**
+ * AuditProgressPayload is the structured audit:progress event payload.
+ * ProjectRoot is the normalized project root (normalizeAuditProjectRoot,
+ * the same identity the banner index keys on) the run was launched for, so
+ * the UI can drop events from other scopes instead of showing project A's
+ * progress on project B's panel. It is always set on desktop emits; an
+ * empty value means a legacy or foreign sender the UI must handle by its
+ * documented unscoped rule.
+ */
+export class AuditProgressPayload {
+    /**
+     * Creates a new AuditProgressPayload instance.
+     * @param {Partial<AuditProgressPayload>} [$$source = {}] - The source object to create the AuditProgressPayload.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("phase" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["phase"] = "";
+        }
+        if (!("percent" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["percent"] = 0;
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["sessionId"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["projectRoot"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditProgressPayload instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditProgressPayload}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuditProgressPayload(/** @type {Partial<AuditProgressPayload>} */($$parsedSource));
+    }
+}
+
+/**
+ * AuditResultView is the sanitized integrity run result the health header
+ * renders and the banner reads back via LastAuditResult. ProjectRoot is the
+ * normalized (absolute, symlink-resolved, cleaned) project root the run was
+ * recorded under; OpID is the historical registry op of the finished run (a
+ * late CancelAudit for it is a harmless no-op).
+ */
+export class AuditResultView {
+    /**
+     * Creates a new AuditResultView instance.
+     * @param {Partial<AuditResultView>} [$$source = {}] - The source object to create the AuditResultView.
+     */
+    constructor($$source = {}) {
+        if (!("projectId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["projectId"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["projectRoot"] = undefined;
+        }
+        if (!("sessionId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["sessionId"] = "";
+        }
+        if (!("runId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["runId"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("findingCount" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["findingCount"] = 0;
+        }
+        if (!("finishedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["finishedAt"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("checks" in $$source)) {
+            /**
+             * @member
+             * @type {AuditCheckView[]}
+             */
+            this["checks"] = [];
+        }
+        if (!("findings" in $$source)) {
+            /**
+             * @member
+             * @type {AuditFindingView[]}
+             */
+            this["findings"] = [];
+        }
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuditResultView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AuditResultView}
+     */
+    static createFrom($$source = {}) {
+        const $$createField7_0 = $$createType3;
+        const $$createField8_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("checks" in $$parsedSource) {
+            $$parsedSource["checks"] = $$createField7_0($$parsedSource["checks"]);
+        }
+        if ("findings" in $$parsedSource) {
+            $$parsedSource["findings"] = $$createField8_0($$parsedSource["findings"]);
+        }
+        return new AuditResultView(/** @type {Partial<AuditResultView>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBInfo is the masked connection fact sheet for one project database. It
+ * deliberately has no password field: HasPassword only reports whether one
+ * is configured, and DisplayURL renders it as ****.
+ */
+export class DBInfo {
+    /**
+     * Creates a new DBInfo instance.
+     * @param {Partial<DBInfo>} [$$source = {}] - The source object to create the DBInfo.
+     */
+    constructor($$source = {}) {
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("engine" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["engine"] = "";
+        }
+        if (!("host" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["host"] = "";
+        }
+        if (!("port" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["port"] = "";
+        }
+        if (!("database" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["database"] = "";
+        }
+        if (!("user" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["user"] = "";
+        }
+        if (!("hasPassword" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["hasPassword"] = false;
+        }
+        if (!("displayUrl" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["displayUrl"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBInfo(/** @type {Partial<DBInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBQueryResult is one executed ad-hoc query: the classified first keyword,
+ * whether it ran under the read-only gate, and the sanitized output.
+ */
+export class DBQueryResult {
+    /**
+     * Creates a new DBQueryResult instance.
+     * @param {Partial<DBQueryResult>} [$$source = {}] - The source object to create the DBQueryResult.
+     */
+    constructor($$source = {}) {
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("statement" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["statement"] = "";
+        }
+        if (!("output" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["output"] = "";
+        }
+        if (!("readOnly" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["readOnly"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBQueryResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBQueryResult}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBQueryResult(/** @type {Partial<DBQueryResult>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBTransferCompleted is the db:completed payload for a finished transfer.
+ */
+export class DBTransferCompleted {
+    /**
+     * Creates a new DBTransferCompleted instance.
+     * @param {Partial<DBTransferCompleted>} [$$source = {}] - The source object to create the DBTransferCompleted.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBTransferCompleted instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBTransferCompleted}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBTransferCompleted(/** @type {Partial<DBTransferCompleted>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBTransferFailed is the db:failed payload for a failed or cancelled transfer.
+ */
+export class DBTransferFailed {
+    /**
+     * Creates a new DBTransferFailed instance.
+     * @param {Partial<DBTransferFailed>} [$$source = {}] - The source object to create the DBTransferFailed.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBTransferFailed instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBTransferFailed}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBTransferFailed(/** @type {Partial<DBTransferFailed>} */($$parsedSource));
+    }
+}
+
+/**
+ * DBTransferProgress is the structured db:progress payload: byte counts for
+ * the bar plus a short human message for the toast. Every transfer event
+ * carries the op identity so late events from a superseded op drop stale.
+ */
+export class DBTransferProgress {
+    /**
+     * Creates a new DBTransferProgress instance.
+     * @param {Partial<DBTransferProgress>} [$$source = {}] - The source object to create the DBTransferProgress.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("generation" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["generation"] = 0;
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("bytesWritten" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["bytesWritten"] = 0;
+        }
+        if (!("totalEstimate" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["totalEstimate"] = 0;
+        }
+        if (!("percent" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["percent"] = 0;
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DBTransferProgress instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DBTransferProgress}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DBTransferProgress(/** @type {Partial<DBTransferProgress>} */($$parsedSource));
+    }
+}
+
 export class Dashboard {
     /**
      * Creates a new Dashboard instance.
@@ -78,8 +794,8 @@ export class Dashboard {
      * @returns {Dashboard}
      */
     static createFrom($$source = {}) {
-        const $$createField6_0 = $$createType1;
-        const $$createField7_0 = $$createType2;
+        const $$createField6_0 = $$createType5;
+        const $$createField7_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("environments" in $$parsedSource) {
             $$parsedSource["environments"] = $$createField6_0($$parsedSource["environments"]);
@@ -176,7 +892,7 @@ export class DeployCheckResult {
      * @returns {DeployCheckResult}
      */
     static createFrom($$source = {}) {
-        const $$createField8_0 = $$createType2;
+        const $$createField8_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("warnings" in $$parsedSource) {
             $$parsedSource["warnings"] = $$createField8_0($$parsedSource["warnings"]);
@@ -246,7 +962,7 @@ export class DeployPlanResult {
      * @returns {DeployPlanResult}
      */
     static createFrom($$source = {}) {
-        const $$createField5_0 = $$createType4;
+        const $$createField5_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("steps" in $$parsedSource) {
             $$parsedSource["steps"] = $$createField5_0($$parsedSource["steps"]);
@@ -574,6 +1290,300 @@ export class DesktopSettings {
     }
 }
 
+/**
+ * DoctorCheckView is one engine check plus its fix affordance for the UI.
+ */
+export class DoctorCheckView {
+    /**
+     * Creates a new DoctorCheckView instance.
+     * @param {Partial<DoctorCheckView>} [$$source = {}] - The source object to create the DoctorCheckView.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("title" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["title"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["hint"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["suggestedCommand"] = undefined;
+        }
+        if (!("fixKind" in $$source)) {
+            /**
+             * @member
+             * @type {DoctorFixKind}
+             */
+            this["fixKind"] = DoctorFixKind.$zero;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["fixLabel"] = undefined;
+        }
+        if (!("needsPreview" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["needsPreview"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DoctorCheckView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DoctorCheckView}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DoctorCheckView(/** @type {Partial<DoctorCheckView>} */($$parsedSource));
+    }
+}
+
+/**
+ * @readonly
+ * @enum {string}
+ */
+export const DoctorFixKind = {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero: "",
+
+    DoctorFixKindSafe: "safe",
+    DoctorFixKindRisky: "risky",
+    DoctorFixKindNone: "none",
+};
+
+/**
+ * DoctorFixOutcome is the per-check result of one applied fix.
+ */
+export class DoctorFixOutcome {
+    /**
+     * Creates a new DoctorFixOutcome instance.
+     * @param {Partial<DoctorFixOutcome>} [$$source = {}] - The source object to create the DoctorFixOutcome.
+     */
+    constructor($$source = {}) {
+        if (!("checkId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["checkId"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string[] | undefined}
+             */
+            this["actions"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DoctorFixOutcome instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DoctorFixOutcome}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("actions" in $$parsedSource) {
+            $$parsedSource["actions"] = $$createField3_0($$parsedSource["actions"]);
+        }
+        return new DoctorFixOutcome(/** @type {Partial<DoctorFixOutcome>} */($$parsedSource));
+    }
+}
+
+/**
+ * DoctorFixPreview is the dry-run plan for a risky fix. PreviewID is a
+ * single-use token bound to CheckID; ApplyDoctorFix consumes it. OpID is
+ * the finished registry op of the preview computation: a late cancel of it
+ * is a harmless no-op by registry contract.
+ */
+export class DoctorFixPreview {
+    /**
+     * Creates a new DoctorFixPreview instance.
+     * @param {Partial<DoctorFixPreview>} [$$source = {}] - The source object to create the DoctorFixPreview.
+     */
+    constructor($$source = {}) {
+        if (!("previewId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["previewId"] = "";
+        }
+        if (!("checkId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["checkId"] = "";
+        }
+        if (!("summary" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["summary"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string[] | undefined}
+             */
+            this["actions"] = undefined;
+        }
+        if (!("requiresConfirm" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["requiresConfirm"] = false;
+        }
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DoctorFixPreview instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DoctorFixPreview}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("actions" in $$parsedSource) {
+            $$parsedSource["actions"] = $$createField3_0($$parsedSource["actions"]);
+        }
+        return new DoctorFixPreview(/** @type {Partial<DoctorFixPreview>} */($$parsedSource));
+    }
+}
+
+/**
+ * DoctorReportView is the sanitized run result the health header renders.
+ */
+export class DoctorReportView {
+    /**
+     * Creates a new DoctorReportView instance.
+     * @param {Partial<DoctorReportView>} [$$source = {}] - The source object to create the DoctorReportView.
+     */
+    constructor($$source = {}) {
+        if (!("checks" in $$source)) {
+            /**
+             * @member
+             * @type {DoctorCheckView[]}
+             */
+            this["checks"] = [];
+        }
+        if (!("passed" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["passed"] = 0;
+        }
+        if (!("warnings" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["warnings"] = 0;
+        }
+        if (!("failures" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["failures"] = 0;
+        }
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DoctorReportView instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {DoctorReportView}
+     */
+    static createFrom($$source = {}) {
+        const $$createField0_0 = $$createType10;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("checks" in $$parsedSource) {
+            $$parsedSource["checks"] = $$createField0_0($$parsedSource["checks"]);
+        }
+        return new DoctorReportView(/** @type {Partial<DoctorReportView>} */($$parsedSource));
+    }
+}
+
 export class Environment {
     /**
      * Creates a new Environment instance.
@@ -688,11 +1698,11 @@ export class Environment {
      * @returns {Environment}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType2;
-        const $$createField5_0 = $$createType2;
-        const $$createField8_0 = $$createType6;
-        const $$createField9_0 = $$createType2;
-        const $$createField13_0 = $$createType7;
+        const $$createField2_0 = $$createType6;
+        const $$createField5_0 = $$createType6;
+        const $$createField8_0 = $$createType12;
+        const $$createField9_0 = $$createType6;
+        const $$createField13_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("extraDomains" in $$parsedSource) {
             $$parsedSource["extraDomains"] = $$createField2_0($$parsedSource["extraDomains"]);
@@ -710,6 +1720,48 @@ export class Environment {
             $$parsedSource["envVars"] = $$createField13_0($$parsedSource["envVars"]);
         }
         return new Environment(/** @type {Partial<Environment>} */($$parsedSource));
+    }
+}
+
+/**
+ * FilePick is one native-dialog file choice handed back to the data tab: the
+ * dialog-picked path plus whether it already exists, so the island can show
+ * its overwrite-confirm before calling dump or export. The island never
+ * invents paths: every destination or source it sends backend-side came from
+ * one of these picks (controller binding decisions 1-2).
+ */
+export class FilePick {
+    /**
+     * Creates a new FilePick instance.
+     * @param {Partial<FilePick>} [$$source = {}] - The source object to create the FilePick.
+     */
+    constructor($$source = {}) {
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("exists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["exists"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FilePick instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {FilePick}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FilePick(/** @type {Partial<FilePick>} */($$parsedSource));
     }
 }
 
@@ -755,7 +1807,7 @@ export class FrameworkOption {
      * @returns {FrameworkOption}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType2;
+        const $$createField2_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("aliases" in $$parsedSource) {
             $$parsedSource["aliases"] = $$createField2_0($$parsedSource["aliases"]);
@@ -913,8 +1965,8 @@ export class GlobalServicesSnapshot {
      * @returns {GlobalServicesSnapshot}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType9;
-        const $$createField4_0 = $$createType2;
+        const $$createField3_0 = $$createType15;
+        const $$createField4_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("services" in $$parsedSource) {
             $$parsedSource["services"] = $$createField3_0($$parsedSource["services"]);
@@ -1085,6 +2137,231 @@ export class OnboardingProgressPayload {
 }
 
 /**
+ * OpInfo describes one cancellable desktop operation. WS-A/B/C/D/E register
+ * their long ops here so the UI can list and cancel them. Project is the
+ * canonical registry ID (see canonicalProjectIDForRegistry), never raw
+ * caller input, so guard, list, and history key one project under every
+ * identifier spelling. Args are scrubbed at register (see
+ * scrubToolHistoryArgv): the running snapshot never carries raw secrets.
+ */
+export class OpInfo {
+    /**
+     * Creates a new OpInfo instance.
+     * @param {Partial<OpInfo>} [$$source = {}] - The source object to create the OpInfo.
+     */
+    constructor($$source = {}) {
+        if (!("ID" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["ID"] = "";
+        }
+        if (!("Project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Project"] = "";
+        }
+        if (!("Kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Kind"] = "";
+        }
+        if (!("Args" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["Args"] = [];
+        }
+        if (!("StartedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["StartedAt"] = "0001-01-01T00:00:00.000Z";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new OpInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {OpInfo}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("Args" in $$parsedSource) {
+            $$parsedSource["Args"] = $$createField3_0($$parsedSource["Args"]);
+        }
+        return new OpInfo(/** @type {Partial<OpInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * OpMessageAction is one toast button: the id the caller switches on and
+ * the label the toast renders.
+ */
+export class OpMessageAction {
+    /**
+     * Creates a new OpMessageAction instance.
+     * @param {Partial<OpMessageAction>} [$$source = {}] - The source object to create the OpMessageAction.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("label" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["label"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new OpMessageAction instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {OpMessageAction}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new OpMessageAction(/** @type {Partial<OpMessageAction>} */($$parsedSource));
+    }
+}
+
+/**
+ * OpRecord is one terminal desktop operation: what ran, under which
+ * canonical project key (see canonicalProjectIDForRegistry), with which
+ * replay args, and how it ended. Args are scrubbed at write (see
+ * scrubToolHistoryArgv) so the history file never stores raw secrets; a
+ * scrubbed record carries "***" placeholders that no longer authenticate,
+ * so Task 3's RetryOp must refuse such records at arg validation (fail
+ * closed with an actionable error, asking for fresh credentials) instead
+ * of replaying a doomed invocation. Only Message is length-capped; Args
+ * stay element-complete so non-secret replays keep their exact shape.
+ */
+export class OpRecord {
+    /**
+     * Creates a new OpRecord instance.
+     * @param {Partial<OpRecord>} [$$source = {}] - The source object to create the OpRecord.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string[] | undefined}
+             */
+            this["args"] = undefined;
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {OpStatus}
+             */
+            this["status"] = OpStatus.$zero;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["message"] = undefined;
+        }
+        if (!("started_at" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["started_at"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("ended_at" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["ended_at"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("duration_ms" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["duration_ms"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new OpRecord instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {OpRecord}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("args" in $$parsedSource) {
+            $$parsedSource["args"] = $$createField3_0($$parsedSource["args"]);
+        }
+        return new OpRecord(/** @type {Partial<OpRecord>} */($$parsedSource));
+    }
+}
+
+/**
+ * OpStatus is the terminal state of a desktop operation history record.
+ * Retry (Task 3) replays the stored args of failed records only; every
+ * other status is informational.
+ * @readonly
+ * @enum {string}
+ */
+export const OpStatus = {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero: "",
+
+    OpStatusCompleted: "completed",
+    OpStatusFailed: "failed",
+    OpStatusCancelled: "cancelled",
+    OpStatusInterrupted: "interrupted",
+};
+
+/**
  * OperationNotification is emitted to the frontend when a tracked operation finishes.
  */
 export class OperationNotification {
@@ -1149,6 +2426,26 @@ export class OperationNotification {
              */
             this["timestamp"] = "";
         }
+        if (/** @type {any} */(false)) {
+            /**
+             * Actions carries the toast buttons for a failed operation, resolved
+             * through the humanOpMessage catalog (Retry/Open-logs). Success
+             * notifications carry none.
+             * @member
+             * @type {OpMessageAction[] | undefined}
+             */
+            this["actions"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * RetryID is the event's exact source terminal record id, which the Retry
+             * action replays through RetryOp. Empty when the event names no failed
+             * record, in which case the toast offers no Retry button.
+             * @member
+             * @type {string | undefined}
+             */
+            this["retryId"] = undefined;
+        }
 
         Object.assign(this, $$source);
     }
@@ -1159,7 +2456,11 @@ export class OperationNotification {
      * @returns {OperationNotification}
      */
     static createFrom($$source = {}) {
+        const $$createField8_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("actions" in $$parsedSource) {
+            $$parsedSource["actions"] = $$createField8_0($$parsedSource["actions"]);
+        }
         return new OperationNotification(/** @type {Partial<OperationNotification>} */($$parsedSource));
     }
 }
@@ -1243,7 +2544,7 @@ export class RemoteEntry {
      * @returns {RemoteEntry}
      */
     static createFrom($$source = {}) {
-        const $$createField8_0 = $$createType2;
+        const $$createField8_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField8_0($$parsedSource["capabilities"]);
@@ -1289,8 +2590,8 @@ export class RemoteSnapshot {
      * @returns {RemoteSnapshot}
      */
     static createFrom($$source = {}) {
-        const $$createField1_0 = $$createType11;
-        const $$createField2_0 = $$createType2;
+        const $$createField1_0 = $$createType19;
+        const $$createField2_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("remotes" in $$parsedSource) {
             $$parsedSource["remotes"] = $$createField1_0($$parsedSource["remotes"]);
@@ -1357,7 +2658,7 @@ export class RollbackPreview {
      * @returns {RollbackPreview}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType12;
+        const $$createField2_0 = $$createType20;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("target" in $$parsedSource) {
             $$parsedSource["target"] = $$createField2_0($$parsedSource["target"]);
@@ -1921,6 +3222,266 @@ export class Service {
 }
 
 /**
+ * SnapshotInfo is one listed snapshot: identity plus the size and creation
+ * facts the data tab shows. It carries no paths and no secrets.
+ */
+export class SnapshotInfo {
+    /**
+     * Creates a new SnapshotInfo instance.
+     * @param {Partial<SnapshotInfo>} [$$source = {}] - The source object to create the SnapshotInfo.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["createdAt"] = "";
+        }
+        if (!("sizeBytes" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["sizeBytes"] = 0;
+        }
+        if (!("sizeHuman" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["sizeHuman"] = "";
+        }
+        if (!("hasDb" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["hasDb"] = false;
+        }
+        if (!("hasMedia" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["hasMedia"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SnapshotInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotInfo(/** @type {Partial<SnapshotInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * SnapshotOpCompleted is the snapshot:completed payload for a finished op.
+ */
+export class SnapshotOpCompleted {
+    /**
+     * Creates a new SnapshotOpCompleted instance.
+     * @param {Partial<SnapshotOpCompleted>} [$$source = {}] - The source object to create the SnapshotOpCompleted.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotOpCompleted instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SnapshotOpCompleted}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotOpCompleted(/** @type {Partial<SnapshotOpCompleted>} */($$parsedSource));
+    }
+}
+
+/**
+ * SnapshotOpFailed is the snapshot:failed payload for a failed or cancelled op.
+ */
+export class SnapshotOpFailed {
+    /**
+     * Creates a new SnapshotOpFailed instance.
+     * @param {Partial<SnapshotOpFailed>} [$$source = {}] - The source object to create the SnapshotOpFailed.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotOpFailed instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SnapshotOpFailed}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotOpFailed(/** @type {Partial<SnapshotOpFailed>} */($$parsedSource));
+    }
+}
+
+/**
+ * SnapshotRestorePreview describes exactly what an apply would replace. The
+ * PreviewToken is single-use and bound to the project, snapshot, and scope:
+ * ApplySnapshotRestore replays nothing else.
+ */
+export class SnapshotRestorePreview {
+    /**
+     * Creates a new SnapshotRestorePreview instance.
+     * @param {Partial<SnapshotRestorePreview>} [$$source = {}] - The source object to create the SnapshotRestorePreview.
+     */
+    constructor($$source = {}) {
+        if (!("previewToken" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["previewToken"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("snapshot" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["snapshot"] = "";
+        }
+        if (!("dbOnly" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["dbOnly"] = false;
+        }
+        if (!("mediaOnly" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["mediaOnly"] = false;
+        }
+        if (!("willReplaceDb" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["willReplaceDb"] = false;
+        }
+        if (!("willReplaceMedia" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["willReplaceMedia"] = false;
+        }
+        if (!("summary" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["summary"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SnapshotRestorePreview instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SnapshotRestorePreview}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SnapshotRestorePreview(/** @type {Partial<SnapshotRestorePreview>} */($$parsedSource));
+    }
+}
+
+/**
  * SyncProgressPayload is the structured sync:progress event payload: a short
  * human message for toasts plus the phase and percent for spinners. Raw log
  * lines keep flowing through sync:output for the progress panel.
@@ -2045,6 +3606,318 @@ export class SystemMetrics {
     static createFrom($$source = {}) {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new SystemMetrics(/** @type {Partial<SystemMetrics>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolArgSpec describes one named argument a tool preset accepts. Pattern is
+ * a full-match regex for the value; empty means the default safe pattern.
+ * An optional arg (Required false) may also be omitted or empty.
+ * Flag renders the arg as a --name option instead of a positional value:
+ * present-empty/true/1 emits --name, false/0 omits it, any other validated
+ * value emits --name=value. Non-flag args render positionally (bare value)
+ * in ArgSpec order, or are omitted when empty.
+ */
+export class ToolArgSpec {
+    /**
+     * Creates a new ToolArgSpec instance.
+     * @param {Partial<ToolArgSpec>} [$$source = {}] - The source object to create the ToolArgSpec.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("label" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["label"] = "";
+        }
+        if (!("required" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["required"] = false;
+        }
+        if (!("pattern" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["pattern"] = "";
+        }
+        if (!("flag" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["flag"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolArgSpec instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolArgSpec}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ToolArgSpec(/** @type {Partial<ToolArgSpec>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolHistoryEntry is one recorded tool run: which op generation ran what,
+ * when, and how it ended. Consumers (palette UI, operation center) attribute
+ * terminal events idempotently keyed on (OpID, Gen).
+ */
+export class ToolHistoryEntry {
+    /**
+     * Creates a new ToolHistoryEntry instance.
+     * @param {Partial<ToolHistoryEntry>} [$$source = {}] - The source object to create the ToolHistoryEntry.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("gen" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["gen"] = 0;
+        }
+        if (!("preset" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["preset"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {{ [_ in string]?: string } | undefined}
+             */
+            this["args"] = undefined;
+        }
+        if (!("timestamp" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["timestamp"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("outcome" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["outcome"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolHistoryEntry instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolHistoryEntry}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType13;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("args" in $$parsedSource) {
+            $$parsedSource["args"] = $$createField3_0($$parsedSource["args"]);
+        }
+        return new ToolHistoryEntry(/** @type {Partial<ToolHistoryEntry>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolOutputPayload tags one streamed tool:output batch with its op so the
+ * palette can attribute lines when runs overlap, and the publish stage can
+ * drop batches from an op that is no longer current for the project.
+ */
+export class ToolOutputPayload {
+    /**
+     * Creates a new ToolOutputPayload instance.
+     * @param {Partial<ToolOutputPayload>} [$$source = {}] - The source object to create the ToolOutputPayload.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("text" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["text"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolOutputPayload instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolOutputPayload}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ToolOutputPayload(/** @type {Partial<ToolOutputPayload>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolPreset is one allowlisted tool invocation the desktop may run.
+ * Display is the human-readable form of the base command, never executed.
+ * Argv is the exec-ready base argv (no shell metacharacters by
+ * construction); Task 2 appends validated args and runs it with exec.Command
+ * and no shell.
+ */
+export class ToolPreset {
+    /**
+     * Creates a new ToolPreset instance.
+     * @param {Partial<ToolPreset>} [$$source = {}] - The source object to create the ToolPreset.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("label" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["label"] = "";
+        }
+        if (!("display" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["display"] = "";
+        }
+        if (!("argv" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["argv"] = [];
+        }
+        if (!("argSpec" in $$source)) {
+            /**
+             * @member
+             * @type {ToolArgSpec[]}
+             */
+            this["argSpec"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolPreset instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolPreset}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType6;
+        const $$createField4_0 = $$createType22;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("argv" in $$parsedSource) {
+            $$parsedSource["argv"] = $$createField3_0($$parsedSource["argv"]);
+        }
+        if ("argSpec" in $$parsedSource) {
+            $$parsedSource["argSpec"] = $$createField4_0($$parsedSource["argSpec"]);
+        }
+        return new ToolPreset(/** @type {Partial<ToolPreset>} */($$parsedSource));
+    }
+}
+
+/**
+ * ToolResultPayload is the tool:completed / tool:failed event payload: which
+ * op finished and how it ended. Gen is the admitted-run generation for the
+ * project lock: OpIDs are stable per project across reruns, so consumers
+ * apply a terminal event only when its Gen is still current (see
+ * IsCurrentToolGeneration); stale dead-run receipts are dropped, never
+ * allowed to mark the current run failed.
+ */
+export class ToolResultPayload {
+    /**
+     * Creates a new ToolResultPayload instance.
+     * @param {Partial<ToolResultPayload>} [$$source = {}] - The source object to create the ToolResultPayload.
+     */
+    constructor($$source = {}) {
+        if (!("opId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["opId"] = "";
+        }
+        if (!("project" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["project"] = "";
+        }
+        if (!("preset" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["preset"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (!("gen" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["gen"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ToolResultPayload instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ToolResultPayload}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ToolResultPayload(/** @type {Partial<ToolResultPayload>} */($$parsedSource));
     }
 }
 
@@ -2264,7 +4137,7 @@ export class presetSyncOptions {
      * @returns {presetSyncOptions}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType14;
+        const $$createField2_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("options" in $$parsedSource) {
             $$parsedSource["options"] = $$createField2_0($$parsedSource["options"]);
@@ -2274,18 +4147,28 @@ export class presetSyncOptions {
 }
 
 // Private type creation functions
-const $$createType0 = Environment.createFrom;
+const $$createType0 = AuditFindingView.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $Create.Array($Create.Any);
-const $$createType3 = DeployPlanStep.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = Service.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $Create.Map($Create.Any, $Create.Any);
-const $$createType8 = GlobalService.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = RemoteEntry.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = RollbackTargetInfo.createFrom;
-const $$createType13 = presetOptionDef.createFrom;
-const $$createType14 = $Create.Array($$createType13);
+const $$createType2 = AuditCheckView.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = Environment.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = DeployPlanStep.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = DoctorCheckView.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = Service.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = $Create.Map($Create.Any, $Create.Any);
+const $$createType14 = GlobalService.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = OpMessageAction.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = RemoteEntry.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = RollbackTargetInfo.createFrom;
+const $$createType21 = ToolArgSpec.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = presetOptionDef.createFrom;
+const $$createType24 = $Create.Array($$createType23);

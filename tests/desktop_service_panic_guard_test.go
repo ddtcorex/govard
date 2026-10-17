@@ -15,7 +15,8 @@ import (
 var boundServiceTypes = map[string]bool{
 	"SettingsService": true, "OnboardingService": true, "EnvironmentService": true,
 	"RemoteService": true, "SystemService": true, "LogService": true,
-	"GlobalServiceService": true, "UpdateService": true, "DeployService": true,
+	"GlobalServiceService": true, "UpdateService": true, "DeployService": true, "HealthService": true,
+	"ToolService": true, "DBService": true, "SnapshotService": true,
 }
 
 var lifecycleMethods = map[string]bool{"Setup": true, "ServiceStartup": true, "ServiceShutdown": true}

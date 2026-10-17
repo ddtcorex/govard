@@ -12,6 +12,10 @@ import type * as desktop$0 from "../../../../../govard/internal/desktop/models.j
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "audit:progress": desktop$0.AuditProgressPayload;
+            "db:completed": desktop$0.DBTransferCompleted;
+            "db:failed": desktop$0.DBTransferFailed;
+            "db:progress": desktop$0.DBTransferProgress;
             "global-logs:error": string;
             "global-logs:line": string;
             "global-logs:status": string;
@@ -20,11 +24,16 @@ declare module "@wailsio/runtime" {
             "logs:status": string;
             "onboarding:progress": desktop$0.OnboardingProgressPayload;
             "operations:notification": desktop$0.OperationNotification;
+            "snapshot:completed": desktop$0.SnapshotOpCompleted;
+            "snapshot:failed": desktop$0.SnapshotOpFailed;
             "sync:completed": string;
             "sync:failed": string;
             "sync:output": string;
             "sync:progress": desktop$0.SyncProgressPayload;
             "sync:started": desktop$0.SyncStartedPayload;
+            "tool:completed": desktop$0.ToolResultPayload;
+            "tool:failed": desktop$0.ToolResultPayload;
+            "tool:output": desktop$0.ToolOutputPayload;
         }
     }
 }

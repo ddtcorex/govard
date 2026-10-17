@@ -74,6 +74,40 @@ export const ROUTES = {
   SandboxDown: ["DeployService", "SandboxDown"],
   SandboxSSHinfo: ["DeployService", "SandboxSSHinfo"],
   OpenSandboxSSHInTerminal: ["DeployService", "OpenSandboxSSHInTerminal"],
+  ListOps: ["OperationService", "ListOps"],
+  ListHistory: ["OperationService", "ListHistory"],
+  CancelOp: ["OperationService", "CancelOp"],
+  RetryOp: ["OperationService", "RetryOp"],
+  RunDoctor: ["HealthService", "RunDoctor"],
+  PreviewDoctorFix: ["HealthService", "PreviewDoctorFix"],
+  ApplyDoctorFix: ["HealthService", "ApplyDoctorFix"],
+  CancelDoctorRun: ["HealthService", "CancelDoctorRun"],
+  RunningDoctorOp: ["HealthService", "RunningDoctorOp"],
+  RunIntegrityAudit: ["HealthService", "RunIntegrityAudit"],
+  GetAuditResult: ["HealthService", "GetAuditResult"],
+  GetAuditDiff: ["HealthService", "GetAuditDiff"],
+  LastAuditResult: ["HealthService", "LastAuditResult"],
+  CancelAudit: ["HealthService", "CancelAudit"],
+  RunningAuditOp: ["HealthService", "RunningAuditOp"],
+  ListToolPresets: ["ToolService", "ListToolPresets"],
+  RunTool: ["ToolService", "RunTool"],
+  CancelToolRun: ["ToolService", "CancelToolRun"],
+  GetToolHistory: ["ToolService", "GetToolHistory"],
+  GetDBInfo: ["DBService", "GetDBInfo"],
+  RunDBQuery: ["DBService", "RunDBQuery"],
+  DumpDB: ["DBService", "DumpDB"],
+  ImportDB: ["DBService", "ImportDB"],
+  CancelDBOp: ["DBService", "CancelDBOp"],
+  PickDumpDestination: ["DBService", "PickDumpDestination"],
+  PickImportSource: ["DBService", "PickImportSource"],
+  GetDBWriteConfirmToken: ["DBService", "GetDBWriteConfirmToken"],
+  ListSnapshots: ["SnapshotService", "ListSnapshots"],
+  CreateSnapshot: ["SnapshotService", "CreateSnapshot"],
+  PreviewSnapshotRestore: ["SnapshotService", "PreviewSnapshotRestore"],
+  ApplySnapshotRestore: ["SnapshotService", "ApplySnapshotRestore"],
+  ExportSnapshot: ["SnapshotService", "ExportSnapshot"],
+  CancelSnapshotOp: ["SnapshotService", "CancelSnapshotOp"],
+  PickExportDestination: ["SnapshotService", "PickExportDestination"],
 };
 
 /**
@@ -674,6 +708,282 @@ export const desktopBridge = {
    */
   async openSandboxSSHInTerminal(project) {
     return invoke("OpenSandboxSSHInTerminal", project);
+  },
+  async listOps() {
+    return invoke("ListOps");
+  },
+  /**
+   * @param {number} [limit=0] at most this many records, newest first; 0 means all.
+   */
+  async listHistory(limit = 0) {
+    return invoke("ListHistory", Number(limit) || 0);
+  },
+  /**
+   * @param {string} id
+   */
+  async cancelOp(id) {
+    return invoke("CancelOp", String(id || ""));
+  },
+  /**
+   * @param {string} id
+   */
+  async retryOp(id) {
+    return invoke("RetryOp", String(id || ""));
+  },
+  /**
+   * @param {string} project
+   */
+  async runDoctor(project) {
+    return invoke("RunDoctor", project);
+  },
+  /**
+   * @param {string} project
+   * @param {string} checkID
+   */
+  async previewDoctorFix(project, checkID) {
+    return invoke("PreviewDoctorFix", project, checkID);
+  },
+  /**
+   * @param {string} project
+   * @param {string} checkID
+   * @param {string} previewID
+   * @param {boolean} confirm
+   */
+  async applyDoctorFix(project, checkID, previewID, confirm) {
+    return invoke("ApplyDoctorFix", project, checkID, previewID, Boolean(confirm));
+  },
+  /**
+   * @param {string} opID
+   */
+  async cancelDoctorRun(opID) {
+    return invoke("CancelDoctorRun", opID);
+  },
+  /**
+   * The in-flight doctor run op id for a project scope, or "" when none is
+   * running. The doctor panel queries it on mount so Cancel is available
+   * even when the run started before the panel did.
+   * @param {string} project
+   */
+  async runningDoctorOp(project) {
+    return invoke("RunningDoctorOp", project);
+  },
+  /**
+   * @param {string} project
+   */
+  async listToolPresets(project) {
+    return invoke("ListToolPresets", project);
+  },
+  /**
+   * Runs a preset by ID with an args map. The palette never sends argv or a
+   * command line: the exec argv is backend-owned.
+   * @param {string} project
+   * @param {string} presetId
+   * @param {Record<string, string>} [args={}]
+   */
+  async runTool(project, presetId, args = {}) {
+    return invoke("RunTool", project, presetId, args || {});
+  },
+  /**
+   * Masked connection fact sheet for the project database. The backend
+   * carries no password field by construction, and the island renders it
+   * through the display allowlist, so secrets never reach the DOM.
+   * @param {string} project
+   */
+  async getDBInfo(project) {
+    return invoke("GetDBInfo", project);
+  },
+  /**
+   * Runs the user's own query text. Only the project id, the text and two
+   * explicit flags travel: the island never assembles SQL fragments, argv
+   * or command lines.
+   * @param {string} project
+   * @param {string} sql
+   * @param {boolean} [allowWrite=false]
+   * @param {string} [confirmToken=""]
+   */
+  async runDBQuery(project, sql, allowWrite = false, confirmToken = "") {
+    return invoke(
+      "RunDBQuery",
+      project,
+      String(sql ?? ""),
+      Boolean(allowWrite),
+      String(confirmToken ?? ""),
+    );
+  },
+  /**
+   * Starts an async dump to the dialog-picked destination, returns the op id.
+   * Progress arrives on db:progress keyed by (op, generation).
+   * @param {string} project
+   * @param {string} destPath dialog-picked destination
+   */
+  async dumpDB(project, destPath) {
+    return invoke("DumpDB", project, destPath);
+  },
+  /**
+   * Starts an async import of the dialog-picked source, returns the op id.
+   * @param {string} project
+   * @param {string} srcPath dialog-picked source
+   */
+  async importDB(project, srcPath) {
+    return invoke("ImportDB", project, srcPath);
+  },
+  /**
+   * @param {string} opId
+   */
+  async cancelToolRun(opId) {
+    return invoke("CancelToolRun", opId);
+  },
+  /**
+   * @param {string} opId
+   */
+  async cancelDBOp(opId) {
+    return invoke("CancelDBOp", opId);
+  },
+  /**
+   * Native save dialog for a dump destination. The island calls dumpDB with
+   * exactly the path this returns, never an invented one.
+   * @param {string} project
+   */
+  async pickDumpDestination(project) {
+    return invoke("PickDumpDestination", project);
+  },
+  /**
+   * Native open-file dialog for a dump to import. Empty means cancelled.
+   */
+  async pickImportSource() {
+    return invoke("PickImportSource");
+  },
+  /**
+   * The per-project write token the confirm dialog passes back to runDBQuery.
+   * The format stays backend-owned; the island only carries the token.
+   * @param {string} project
+   */
+  async getDBWriteConfirmToken(project) {
+    return invoke("GetDBWriteConfirmToken", project);
+  },
+  /**
+   * @param {string} project
+   */
+  async runIntegrityAudit(project) {
+    return invoke("RunIntegrityAudit", project);
+  },
+  /**
+   * @param {string} projectID
+   * @param {string} sessionID
+   * @param {string} runID
+   */
+  async getAuditResult(projectID, sessionID, runID) {
+    return invoke("GetAuditResult", projectID, sessionID, runID);
+  },
+  /**
+   * @param {string} projectID
+   * @param {string} sessionID
+   * @param {string} fromRunID
+   * @param {string} toRunID
+   */
+  async getAuditDiff(projectID, sessionID, fromRunID, toRunID) {
+    return invoke("GetAuditDiff", projectID, sessionID, fromRunID, toRunID);
+  },
+  /**
+   * @param {string} project
+   */
+  async lastAuditResult(project) {
+    return invoke("LastAuditResult", project);
+  },
+  /**
+   * @param {string} opID
+   */
+  async cancelAudit(opID) {
+    return invoke("CancelAudit", opID);
+  },
+  /**
+   * The in-flight integrity-audit op id for a project scope, or "" when
+   * none is running. The health panel queries it on mount so Cancel is
+   * available even when the run started before the panel did.
+   * @param {string} project
+   */
+  async runningAuditOp(project) {
+    return invoke("RunningAuditOp", project);
+  },
+  /**
+   * @param {string} project
+   */
+  async getToolHistory(project) {
+    return invoke("GetToolHistory", project);
+  },
+  /**
+   * @param {string} project
+   */
+  async listSnapshots(project) {
+    return invoke("ListSnapshots", project);
+  },
+  /**
+   * Starts an async snapshot create, returns the op id.
+   * @param {string} project
+   * @param {string} name
+   */
+  async createSnapshot(project, name) {
+    return invoke("CreateSnapshot", project, String(name ?? ""));
+  },
+  /**
+   * Describes what restoring name would replace and returns a single-use
+   * preview token. Writes nothing.
+   * @param {string} project
+   * @param {string} name snapshot id
+   * @param {{ dbOnly?: boolean, mediaOnly?: boolean }} [options={}]
+   */
+  async previewSnapshotRestore(project, name, options = {}) {
+    return invoke(
+      "PreviewSnapshotRestore",
+      project,
+      name,
+      Boolean(options.dbOnly),
+      Boolean(options.mediaOnly),
+    );
+  },
+  /**
+   * Runs the previewed restore. Requires the preview token plus explicit
+   * confirm; either missing, the restore never starts.
+   * @param {string} project
+   * @param {string} name snapshot id
+   * @param {string} previewToken
+   * @param {boolean} confirm
+   * @param {{ dbOnly?: boolean, mediaOnly?: boolean }} [options={}]
+   */
+  async applySnapshotRestore(project, name, previewToken, confirm, options = {}) {
+    return invoke(
+      "ApplySnapshotRestore",
+      project,
+      name,
+      previewToken,
+      Boolean(confirm),
+      Boolean(options.dbOnly),
+      Boolean(options.mediaOnly),
+    );
+  },
+  /**
+   * Starts an async export of name to the dialog-picked destination.
+   * @param {string} project
+   * @param {string} name snapshot id
+   * @param {string} destPath dialog-picked destination
+   */
+  async exportSnapshot(project, name, destPath) {
+    return invoke("ExportSnapshot", project, name, destPath);
+  },
+  /**
+   * @param {string} opId
+   */
+  async cancelSnapshotOp(opId) {
+    return invoke("CancelSnapshotOp", opId);
+  },
+  /**
+   * Native save dialog for a snapshot export destination. The result carries
+   * whether the path already exists, so the island can show its
+   * overwrite-confirm before calling exportSnapshot.
+   * @param {string} name snapshot id
+   */
+  async pickExportDestination(name) {
+    return invoke("PickExportDestination", name);
   },
   async quit() {
     return invoke("Quit");
