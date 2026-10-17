@@ -35,6 +35,7 @@ The desktop focuses on operational essentials:
 | **Project Workspace** | Environments list, quick actions, onboarding flow |
 | **Quick Actions** | PHPMyAdmin, Xdebug toggle, health check, Mailpit, DB client |
 | **Remotes Tab** | Add/test/open/sync-plan workflows for remote environments |
+| **Data Tab** | Masked DB fact sheet, guarded ad-hoc queries, dump/import, snapshots (see below) |
 | **Resource Monitor** | CPU, RAM, network, OOM hints |
 | **Logs** | Multi-service selection, severity filtering, text search, live streaming |
 | **Shell Launcher** | Service, user, and shell selection |
@@ -151,6 +152,142 @@ blocks) is masked the same way. One boundary applies: a bare secret value
 under a non-secret key name is indistinguishable from an innocent value and
 is not detectable, so only the key name and the value shape drive scrubbing.
 The file is written atomically with strict permissions.
+
+## Data Tab
+
+The Data tab manages the selected project database and its snapshots. It
+covers the masked connection fact sheet, guarded ad-hoc queries,
+dump/import with streaming progress, and snapshot list/create/export plus
+preview-gated restore.
+
+### Read-only queries by default, explicit opt-in for writes
+
+`DBService.RunDBQuery(project, sql, allowWrite, confirmToken)` classifies
+every statement before it touches anything:
+
+- Read-only openers are `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`,
+  `EXPLAIN`. Anything else takes the write path.
+- A read-looking opener is not enough on its own: the whole statement is
+  scanned for data-modifying words (`DELETE`, `UPDATE`, `INSERT`,
+  `INTO`, `UNION` and friends, locking reads such as `FOR UPDATE`), so a
+  write hidden in the body still takes the write path.
+- Multi-statement input is always refused. Refusal happens before project
+  discovery, so a refused statement touches nothing.
+
+A write needs two things together: `allowWrite=true` plus the per-project
+confirm token from `DBService.GetDBWriteConfirmToken(project)`. The UI
+flow is: the mode badge reads anything uncertain as "write", the write
+checkbox enables the confirm dialog, the dialog fetches the token and
+passes it back to `RunDBQuery`. The token format is
+`confirm-write:<lowercased-project>` and stays Go-owned; the island only
+carries it. The token guards against accidental clicks, not against
+malice: the desktop already holds the credentials.
+
+### Restore is preview plus confirm, never one-shot
+
+`SnapshotService.PreviewSnapshotRestore(project, name, dbOnly, mediaOnly)`
+writes nothing. It reports exactly what an apply would replace
+(`willReplaceDb`, `willReplaceMedia`, plus a human `summary` line) and
+returns a single-use `previewToken`. The confirm control stays disabled
+until that preview renders.
+
+`SnapshotService.ApplySnapshotRestore(project, name, previewToken,
+confirm, dbOnly, mediaOnly)` requires the token plus `confirm=true`.
+Either missing, the restore never starts. The token is bound to the
+project, snapshot, and scope, expires after 15 minutes, and is consumed by
+a validated apply, so a replay never reaches the engine. A refused apply
+consumes nothing, so confirming afterwards still works. Scope is `full`
+by default, or `dbOnly` / `mediaOnly` from the scope radio.
+
+### Scrubbing guarantees
+
+- `DBService.GetDBInfo` returns a struct with no password field by
+  construction. `hasPassword` only reports whether one is configured, and
+  `displayUrl` renders the password as `****`.
+- Query output passes through `sanitizeUIText`, capped at 20,000 runes,
+  which also strips ANSI escapes and control bytes.
+- The frontend renders DB info through the `pickDisplayDBInfo` allowlist
+  (`project`, `engine`, `host`, `port`, `database`, `user`,
+  `hasPassword`, `displayUrl`): any unexpected key, including a password
+  under any name, is dropped before it can reach the DOM.
+- There is deliberately no query history: nothing typed into the query
+  box is stored, so no secret can linger in one.
+
+### Cancel semantics
+
+`DBService.CancelDBOp(opId)` and
+`SnapshotService.CancelSnapshotOp(opId)` stop desktop tracking first: the
+op identity is dropped so late events from the dying goroutine never
+reach the UI, and the user gets a terminal `db:failed` /
+`snapshot:failed` event. What happens underneath differs:
+
+- Dump/import run the transfer through a `docker` process started with
+  the op context, so cancelling fires that context and kills the process.
+  A cancelled dump also removes its `.partial` sibling, and an earlier
+  file at the destination survives.
+- Snapshot restore calls the engine, which is not context-aware once the
+  import starts. Cancelling stops the desktop op and its events while the
+  underlying import may run to completion, the same as interrupting the
+  CLI. The message says exactly that: "`<Kind>` tracking stopped by user; the
+  underlying operation may run to completion" (for example "Snapshot restore
+  tracking stopped by user; ..."). It never claims a
+  cancellation that was not delivered.
+
+### Disk preflight
+
+- `DumpDB` estimates the database size, then probes free space against
+  the nearest existing ancestor of the destination before creating any
+  directory or starting any process. A refusal leaves no file, no
+  directory, and no started process behind.
+- `ImportDB` validates the file synchronously before the op is
+  registered: it must be a non-empty file (not a directory) carrying a
+  recognized dump header (`mysqldump`/`MariaDB` or PostgreSQL, gzip
+  handled transparently), and its engine must match the project database.
+  A refused file never opens the database writer.
+- `ExportSnapshot` refuses a destination that is a directory or whose
+  parent directory does not exist. Overwrite confirmation for an existing
+  file stays the UI job: the save dialogs return `{ path, exists }` so
+  the island can ask before calling dump or export.
+
+### Routes and events
+
+Bridge routes in `desktop/frontend/services/bridge.js` onto the generated
+bindings (verified against `DBService`, `SnapshotService`, and
+`data_dialog.go`):
+
+| Route | Go service.method |
+| :--- | :--- |
+| `GetDBInfo` | `DBService.GetDBInfo` |
+| `RunDBQuery` | `DBService.RunDBQuery` |
+| `DumpDB` | `DBService.DumpDB` |
+| `ImportDB` | `DBService.ImportDB` |
+| `CancelDBOp` | `DBService.CancelDBOp` |
+| `PickDumpDestination` | `DBService.PickDumpDestination` |
+| `PickImportSource` | `DBService.PickImportSource` |
+| `GetDBWriteConfirmToken` | `DBService.GetDBWriteConfirmToken` |
+| `ListSnapshots` | `SnapshotService.ListSnapshots` |
+| `CreateSnapshot` | `SnapshotService.CreateSnapshot` |
+| `PreviewSnapshotRestore` | `SnapshotService.PreviewSnapshotRestore` |
+| `ApplySnapshotRestore` | `SnapshotService.ApplySnapshotRestore` |
+| `ExportSnapshot` | `SnapshotService.ExportSnapshot` |
+| `CancelSnapshotOp` | `SnapshotService.CancelSnapshotOp` |
+| `PickExportDestination` | `SnapshotService.PickExportDestination` |
+
+Backend events in `internal/desktop/events.go`:
+
+| Event | Purpose |
+| :--- | :--- |
+| `db:progress` | Structured dump/import progress (`opId`, `generation`, byte counts, percent) |
+| `db:completed` | Finished dump/import |
+| `db:failed` | Failed or cancelled dump/import |
+| `snapshot:completed` | Finished snapshot create/restore/export |
+| `snapshot:failed` | Failed or cancelled snapshot op |
+
+Snapshot ops emit terminal events only, no progress events. An empty
+dialog pick (save or open) with no error means the user cancelled, and
+the island sends exactly the picked path to dump/import/export, never an
+invented one. The dump dialog defaults to `<project>-dump.sql`; the
+export dialog defaults to `<name>.tar.gz`, matching the CLI.
 
 ---
 

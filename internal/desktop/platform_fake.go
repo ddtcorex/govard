@@ -16,13 +16,15 @@ type DirectoryRequest struct {
 }
 
 // FakePlatform records every call. It is exported for tests in ./tests.
-// Configure DirectoryResult/DirectoryErr and SaveFileResult/SaveFileErr
-// before use.
+// Configure DirectoryResult/DirectoryErr, SaveFileResult/SaveFileErr and
+// OpenFileResult/OpenFileErr before use.
 type FakePlatform struct {
 	DirectoryResult string
 	DirectoryErr    error
 	SaveFileResult  string
 	SaveFileErr     error
+	OpenFileResult  string
+	OpenFileErr     error
 	OpenURLErr      error
 
 	mu        sync.Mutex
@@ -30,6 +32,7 @@ type FakePlatform struct {
 	urls      []string
 	dirReqs   []DirectoryRequest
 	saveReqs  []SaveFileOptions
+	openReqs  []DirectoryRequest
 	showCount int
 	hideCount int
 	quitCount int
@@ -60,6 +63,13 @@ func (f *FakePlatform) ChooseSaveFile(opts SaveFileOptions) (string, error) {
 	defer f.mu.Unlock()
 	f.saveReqs = append(f.saveReqs, opts)
 	return f.SaveFileResult, f.SaveFileErr
+}
+
+func (f *FakePlatform) ChooseOpenFile(title string, defaultDir string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.openReqs = append(f.openReqs, DirectoryRequest{Title: title, DefaultDir: defaultDir})
+	return f.OpenFileResult, f.OpenFileErr
 }
 
 func (f *FakePlatform) ShowWindow() { f.mu.Lock(); f.showCount++; f.mu.Unlock() }
@@ -101,6 +111,13 @@ func (f *FakePlatform) SaveFileRequests() []SaveFileOptions {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]SaveFileOptions(nil), f.saveReqs...)
+}
+
+// OpenFileRequests returns a copy of every recorded open-file dialog request.
+func (f *FakePlatform) OpenFileRequests() []DirectoryRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]DirectoryRequest(nil), f.openReqs...)
 }
 
 func (f *FakePlatform) ShowCount() int { f.mu.Lock(); defer f.mu.Unlock(); return f.showCount }

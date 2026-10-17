@@ -43,101 +43,22 @@ func quickAction(p Platform, action string, project string) (string, error) {
 }
 
 func openDBClient(p Platform, project string) (string, error) {
-	normalizedProject := strings.TrimSpace(project)
-	if normalizedProject == "" {
-		info, err := selectProject("")
-		if err != nil {
-			return "", err
-		}
-		normalizedProject = strings.TrimSpace(info.name)
-	}
-
 	settings, err := getSettingsInternal()
 	preferPMA := err == nil && settings.DBClientPreference == "pma"
 
-	info, err := loadProjectInfo(normalizedProject)
+	conn, err := discoverDBConnection(project)
 	if err != nil {
-		info = &projectInfo{name: normalizedProject}
-	}
-
-	containerProjectName := strings.TrimSpace(info.name)
-	if containerProjectName == "" {
-		containerProjectName = normalizedProject
-	}
-	containerName := containerProjectName + conventions.DBSuffix
-
-	user := conventions.DefaultMagentoDBUser
-	pass := conventions.DefaultMagentoDBPass
-	db := conventions.DefaultMagentoDBName
-
-	envCmd := exec.Command("docker", "inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", containerName)
-	if envOut, err := envCmd.Output(); err == nil {
-		lines := strings.Split(string(envOut), "\n")
-		for _, line := range lines {
-			parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
-			if len(parts) == 2 {
-				switch parts[0] {
-				case conventions.EnvMySQLUser, conventions.EnvPostgresUser:
-					if parts[1] != "" {
-						user = parts[1]
-					}
-				case conventions.EnvMySQLPassword, conventions.EnvPostgresPassword:
-					if parts[1] != "" {
-						pass = parts[1]
-					}
-				case conventions.EnvMySQLDatabase, conventions.EnvPostgresDatabase:
-					if parts[1] != "" {
-						db = parts[1]
-					}
-				}
-			}
-		}
+		return "", err
 	}
 
 	if preferPMA {
-		target := buildPMAOpenURL(containerProjectName, db)
+		target := buildPMAOpenURL(conn.project, conn.database)
 		return openDestination(p, target, "Opening PHPMyAdmin...")
 	}
 
-	scheme := "mysql"
-	internalPort := strconv.Itoa(conventions.MySQLPort)
-	if info.configLoaded {
-		dbType := strings.ToLower(info.config.Stack.Services.DB)
-		if strings.Contains(dbType, conventions.ServicePostgreSQL) {
-			scheme = "postgresql"
-			internalPort = defaultDatabasePortForType(info.config.Stack.Services.DB)
-		}
-	}
-
-	host := "127.0.0.1"
-	port := internalPort
-	portCmd := exec.Command("docker", "port", containerName, internalPort)
-	if portOut, err := portCmd.Output(); err == nil {
-		if mappedHost, mappedPort, ok := parseDockerPublishedPort(strings.TrimSpace(string(portOut))); ok {
-			host = mappedHost
-			port = mappedPort
-		}
-	}
-
-	if host == "127.0.0.1" && port == internalPort {
-		ipCmd := exec.Command(
-			"docker",
-			"inspect",
-			"-f",
-			"{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}",
-			containerName,
-		)
-		if ipOut, err := ipCmd.Output(); err == nil {
-			candidates := parseContainerIPAddresses(string(ipOut))
-			if resolvedHost := chooseReachableContainerHost(candidates, port); resolvedHost != "" {
-				host = resolvedHost
-			}
-		}
-	}
-
-	urlStr := buildDesktopDBClientURL(scheme, user, pass, host, port, db)
+	urlStr := buildDesktopDBClientURL(conn.scheme, conn.user, conn.password, conn.host, conn.port, conn.database)
 	if err := openExternalURLForDesktop(urlStr); err != nil {
-		fallbackTarget := buildPMAOpenURL(containerProjectName, db)
+		fallbackTarget := buildPMAOpenURL(conn.project, conn.database)
 		if _, fallbackErr := openDestination(
 			p,
 			fallbackTarget,
@@ -145,7 +66,7 @@ func openDBClient(p Platform, project string) (string, error) {
 		); fallbackErr != nil {
 			return "", fmt.Errorf("failed to open desktop DB client (%v) and fallback PMA (%w)", err, fallbackErr)
 		}
-		return fmt.Sprintf("Desktop DB client unavailable, opened PHPMyAdmin for %s.", db), nil
+		return fmt.Sprintf("Desktop DB client unavailable, opened PHPMyAdmin for %s.", conn.database), nil
 	}
 
 	return "Opening DB Client...", nil

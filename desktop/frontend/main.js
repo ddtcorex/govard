@@ -27,6 +27,7 @@ import { GlobalServicesList } from "./islands/GlobalServicesList.tsx";
 import { RemotesList } from "./islands/RemotesList.tsx";
 import { SyncModal } from "./islands/SyncModal.tsx";
 import { ToolPalette } from "./islands/ToolPalette.tsx";
+import { DataTab } from "./islands/DataTab.tsx";
 import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
@@ -352,6 +353,8 @@ const selectProject = async (project) => {
     remotesApi.refresh();
   } else if (activeTabId === "tools") {
     void toolPaletteApi.refresh();
+  } else if (activeTabId === "data") {
+    void dataTabApi.refresh();
   }
 };
 
@@ -392,7 +395,7 @@ const switchTab = (tabId) => {
   const tabsInner = byId("tabsHeaderInner");
 
   if (scrollContainer && hero && tabs && tabsInner) {
-    const showHero = ["dashboard", "remotes", "logs", "tools"].includes(tabId);
+    const showHero = ["dashboard", "remotes", "logs", "tools", "data"].includes(tabId);
     hero.classList.toggle("hidden", !showHero);
     const showPrimaryTabs = tabId !== "global-services";
 
@@ -414,6 +417,10 @@ const switchTab = (tabId) => {
       scrollContainer.classList.remove("overflow-y-auto");
       scrollContainer.classList.add("overflow-hidden");
       void toolPaletteApi.refresh();
+    } else if (tabId === "data") {
+      scrollContainer.classList.add("overflow-y-auto");
+      scrollContainer.classList.remove("overflow-hidden");
+      void dataTabApi.refresh();
     } else if (tabId === "global-services") {
       scrollContainer.classList.add("overflow-y-auto");
       scrollContainer.classList.remove("overflow-hidden");
@@ -681,6 +688,25 @@ const syncModalIsland = mountIsland(
     },
     registerApi: (api) => {
       syncModalApi = api || SYNC_MODAL_API_STUB;
+    },
+  }),
+);
+
+// The data tab is an island over the same seam the logs tab uses: it
+// registers the imperative API main.js still calls on tab switches and
+// project changes, and every control calls back through the bridge.
+const DATA_TAB_API_STUB = {
+  refresh: async () => {},
+};
+let dataTabApi = DATA_TAB_API_STUB;
+const dataTabIsland = mountIsland(
+  "dataTabIsland",
+  createElement(DataTab, {
+    bridge: desktopBridge,
+    onStatus: setStatus,
+    onToast: showToast,
+    registerApi: (api) => {
+      dataTabApi = api || DATA_TAB_API_STUB;
     },
   }),
 );
@@ -1185,6 +1211,7 @@ window.addEventListener("beforeunload", () => {
   envVarsIsland?.unmount();
   remotesIsland?.unmount();
   syncModalIsland?.unmount();
+  dataTabIsland?.unmount();
   globalHealthIsland?.unmount();
   globalServicesListIsland?.unmount();
   globalLogsIsland?.unmount();
