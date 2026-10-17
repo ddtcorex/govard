@@ -3,10 +3,12 @@ import { useSyncExternalStore } from "react";
 type Snapshot = {
   visible: boolean;
   installing: boolean;
+  restartFailed: boolean;
   currentVersion: string;
   latestVersion: string;
   message: string;
   changelog: string;
+  lastChecked: string;
 };
 
 type Model = {
@@ -14,6 +16,7 @@ type Model = {
   getSnapshot(): Snapshot;
   dismissPrompt(): void;
   installLatestUpdateFromPrompt(): Promise<unknown>;
+  retryRestart(): Promise<unknown>;
 };
 
 type Props = { model: Model };
@@ -30,6 +33,15 @@ type Props = { model: Model };
 export function UpdatePrompt({ model }: Props) {
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const hasChangelog = snapshot.changelog.trim() !== "";
+  const lastCheckedDisplay = (() => {
+    const raw = snapshot.lastChecked.trim();
+    if (raw === "") {
+      return "";
+    }
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? raw : parsed.toLocaleString();
+  })();
+  const hasLastChecked = lastCheckedDisplay !== "";
 
   return (
     <div
@@ -82,9 +94,26 @@ export function UpdatePrompt({ model }: Props) {
               </span>
             </div>
           </div>
+          <p
+            id="updatePromptLastChecked"
+            className={`${hasLastChecked ? "" : "hidden "}text-[11px] text-slate-500 dark:text-slate-400`}
+          >
+            {hasLastChecked ? `Last checked: ${lastCheckedDisplay}` : ""}
+          </p>
         </div>
 
         <div className="mt-5 flex items-center justify-end gap-3">
+          {snapshot.restartFailed ? (
+            <button
+              id="retryRestartPromptButton"
+              onClick={() => void model.retryRestart()}
+              className="px-5 py-2.5 text-xs font-black rounded-xl bg-primary text-slate-900 hover:scale-[1.02] active:scale-[0.98] inline-flex items-center justify-center gap-2 disabled:opacity-50 transition-all shadow-[0_12px_24px_rgba(var(--primary-rgb),0.2)]"
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[18px]">restart_alt</span>
+              <span>Retry Restart</span>
+            </button>
+          ) : null}
           <button
             onClick={() => model.dismissPrompt()}
             className="px-4 py-2.5 text-xs font-bold rounded-xl border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all active:scale-95"

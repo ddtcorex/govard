@@ -333,3 +333,325 @@ test("settings shows a hint when no tray host is available", async () => {
     "settings must render the tray hint",
   );
 });
+
+/* ---------- Task 8: explicit Save/Discard + proxy validation ---------- */
+
+const makeSettingsFieldRefs = (overrides = {}) => ({
+  themeSelect: { value: "system" },
+  proxyTarget: {
+    value: "",
+    setAttribute() {},
+    removeAttribute() {},
+  },
+  preferredBrowser: { value: "" },
+  codeEditor: { value: "" },
+  dbClientPreference: { value: "pma" },
+  runInBackgroundToggle: { checked: true },
+  proxyTargetError: { textContent: "", classList: createClassList() },
+  settingsDirtyDot: { classList: createClassList() },
+  saveSettingsButton: { disabled: true },
+  discardSettingsButton: { disabled: true },
+  ...overrides,
+});
+
+test("typing in settings fields fires no settings RPC until Save", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/SettingsDrawer.tsx", import.meta.url),
+    "utf8",
+  );
+  const autoSaves = (island.match(/onChange=\{\(\) => void controller\.save\(\)\}/g) || []).length;
+  assert.equal(autoSaves, 0, `expected no onChange autosave, found ${autoSaves}`);
+});
+
+test("settings drawer renders explicit Save/Discard plus a dirty indicator", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/SettingsDrawer.tsx", import.meta.url),
+    "utf8",
+  );
+  for (const marker of [
+    'data-testid="save-settings"',
+    'data-testid="discard-settings"',
+    'data-testid="settings-dirty-dot"',
+    'data-testid="proxy-target-error"',
+  ]) {
+    assert.equal(island.includes(marker), true, `expected ${marker} in settings drawer`);
+  }
+});
+
+test("settings drawer fits a 400px window", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/SettingsDrawer.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(island.includes("w-[460px]"), true, "drawer keeps its 460px width on wide windows");
+  assert.equal(
+    island.includes("max-w-full"),
+    true,
+    "drawer panel must cap at the viewport width so a 400px window fits",
+  );
+});
+
+test("settings module exports a proxy URL validator", async () => {
+  const mod = await import("../../desktop/frontend/modules/settings.js");
+  assert.equal(
+    typeof mod.validateProxyTarget,
+    "function",
+    "expected a validateProxyTarget export",
+  );
+  assert.equal(mod.validateProxyTarget(""), "", "empty proxy URL means unset, not invalid");
+  assert.equal(mod.validateProxyTarget("govard.test"), "", "bare hostname is valid");
+  assert.equal(mod.validateProxyTarget("https://govard.test:8443"), "", "full URL is valid");
+  assert.equal(mod.validateProxyTarget("localhost"), "", "localhost is valid");
+  assert.notEqual(mod.validateProxyTarget("not a url"), "", "spaces must be rejected");
+  assert.notEqual(mod.validateProxyTarget("ftp://govard.test"), "", "non-http scheme must be rejected");
+  assert.notEqual(mod.validateProxyTarget("http://"), "", "missing host must be rejected");
+});
+
+test("save with an invalid proxy URL fires no RPC and reports a field error", async () => {
+  const refs = makeSettingsFieldRefs();
+  let calls = 0;
+  const bridge = {
+    updateSettings: async () => {
+      calls += 1;
+      return "ok";
+    },
+  };
+  const controller = createSettingsController({
+    bridge,
+    refs,
+    onStatus: () => {},
+    onToast: () => {},
+  });
+
+  refs.proxyTarget.value = "not a url with spaces";
+  const result = await controller.save();
+
+  assert.equal(calls, 0, "invalid proxy URL must block the settings RPC");
+  assert.equal(result.ok, false, "save must report failure for an invalid proxy URL");
+  assert.match(refs.proxyTargetError.textContent, /hostname|URL/i, "field error must explain the problem");
+  assert.equal(
+    refs.proxyTargetError.classList.contains("hidden"),
+    false,
+    "field error must be visible",
+  );
+});
+
+test("editing a field marks the form dirty without any RPC", () => {
+  const refs = makeSettingsFieldRefs();
+  let calls = 0;
+  const bridge = {
+    updateSettings: async () => {
+      calls += 1;
+      return "ok";
+    },
+  };
+  const controller = createSettingsController({
+    bridge,
+    refs,
+    onStatus: () => {},
+    onToast: () => {},
+  });
+
+  assert.equal(controller.isDirty(), false, "fresh form must read clean");
+  refs.proxyTarget.value = "edited.test";
+  controller.handleFieldChange();
+
+  assert.equal(calls, 0, "editing a field must not fire updateSettings");
+  assert.equal(controller.isDirty(), true, "edited form must read dirty");
+  assert.equal(refs.settingsDirtyDot.classList.contains("hidden"), false, "dirty dot must show");
+  assert.equal(refs.saveSettingsButton.disabled, false, "Save must enable when dirty");
+  assert.equal(refs.discardSettingsButton.disabled, false, "Discard must enable when dirty");
+});
+
+test("save with a valid proxy URL fires one RPC and clears dirty", async () => {
+  globalThis.document = { documentElement: { classList: createClassList() } };
+  globalThis.window = { matchMedia: () => ({ matches: false }) };
+  try {
+    const refs = makeSettingsFieldRefs();
+    let calls = 0;
+    const bridge = {
+      updateSettings: async () => {
+        calls += 1;
+        return "ok";
+      },
+    };
+    const controller = createSettingsController({
+      bridge,
+      refs,
+      onStatus: () => {},
+      onToast: () => {},
+    });
+
+    refs.proxyTarget.value = "govard.test";
+    controller.handleFieldChange();
+    const result = await controller.save();
+
+    assert.equal(result.ok, true, "valid settings must save");
+    assert.equal(calls, 1, "one save must produce exactly one UpdateSettings call");
+    assert.equal(controller.isDirty(), false, "saved form must read clean");
+    assert.equal(refs.settingsDirtyDot.classList.contains("hidden"), true, "dirty dot must hide after save");
+    assert.equal(refs.saveSettingsButton.disabled, true, "Save must disable after save");
+    assert.equal(
+      refs.proxyTargetError.classList.contains("hidden"),
+      true,
+      "field error must stay hidden for valid input",
+    );
+  } finally {
+    delete globalThis.document;
+    delete globalThis.window;
+  }
+});
+
+test("discard restores saved values and clears dirty", async () => {
+  globalThis.document = { documentElement: { classList: createClassList() } };
+  globalThis.window = { matchMedia: () => ({ matches: false }) };
+  try {
+    const refs = makeSettingsFieldRefs();
+    const bridge = {
+      getSettings: async () => ({ proxyTarget: "saved.test", theme: "dark" }),
+      getUpdateChannel: async () => "stable",
+    };
+    const controller = createSettingsController({
+      bridge,
+      refs,
+      onStatus: () => {},
+      onToast: () => {},
+    });
+
+    await controller.load();
+    assert.equal(refs.proxyTarget.value, "saved.test", "load must populate the proxy field");
+
+    refs.proxyTarget.value = "edited.test";
+    controller.handleFieldChange();
+    assert.equal(controller.isDirty(), true, "edited form must read dirty");
+
+    controller.discard();
+
+    assert.equal(refs.proxyTarget.value, "saved.test", "discard must restore the saved proxy URL");
+    assert.equal(controller.isDirty(), false, "discarded form must read clean");
+    assert.equal(
+      refs.settingsDirtyDot.classList.contains("hidden"),
+      true,
+      "dirty dot must hide after discard",
+    );
+  } finally {
+    delete globalThis.document;
+    delete globalThis.window;
+  }
+});
+
+/* ---------- Task 10: lastChecked + restart retry ---------- */
+
+test("checkForUpdates records lastChecked and renders it in settings", async () => {
+  const refs = {
+    settingsUpdateStatus: { textContent: "" },
+    settingsUpdateLastChecked: { textContent: "" },
+    settingsUpdateBadge: { textContent: "", className: "" },
+    checkUpdatesButton: { disabled: false, innerHTML: "" },
+    installUpdateButton: {
+      disabled: false,
+      innerHTML: "",
+      classList: createClassList(),
+    },
+  };
+
+  const bridge = {
+    checkForUpdates: async () => ({
+      outdated: false,
+      currentVersion: "v1.1.0",
+      latestVersion: "v1.1.0",
+      message: "Govard Desktop is up to date (v1.1.0).",
+    }),
+  };
+
+  const controller = createSettingsController({
+    bridge,
+    refs,
+    onStatus: () => {},
+    onToast: () => {},
+  });
+
+  const result = await controller.checkForUpdates({ silent: true });
+
+  assert.ok(
+    typeof result.lastChecked === "string" && result.lastChecked !== "",
+    "the check result must carry a lastChecked timestamp",
+  );
+  assert.match(
+    refs.settingsUpdateLastChecked.textContent,
+    /Last checked/,
+    "settings must render the last-checked timestamp",
+  );
+});
+
+test("restart failure shows Retry Restart and retry clears it on success", async () => {
+  let restartCalls = 0;
+  let failRestart = true;
+  const refs = {
+    settingsUpdateStatus: { textContent: "" },
+    settingsUpdateBadge: { textContent: "", className: "" },
+    checkUpdatesButton: { disabled: false, innerHTML: "" },
+    installUpdateButton: {
+      disabled: false,
+      innerHTML: "",
+      classList: createClassList(),
+    },
+    retryRestartButton: { classList: createClassList() },
+  };
+  refs.retryRestartButton.classList.add("hidden");
+
+  const bridge = {
+    installLatestUpdate: async () => {},
+    restartDesktopApp: async () => {
+      restartCalls += 1;
+      if (failRestart) {
+        throw new Error("restart denied");
+      }
+    },
+  };
+
+  const controller = createSettingsController({
+    bridge,
+    refs,
+    onStatus: () => {},
+    onToast: () => {},
+  });
+
+  const outcome = await controller.installLatestUpdate();
+  assert.equal(outcome.restartFailed, true, "restart failure must be reported");
+  assert.equal(
+    refs.retryRestartButton.classList.contains("hidden"),
+    false,
+    "Retry Restart must show after a restart failure",
+  );
+
+  assert.equal(
+    typeof controller.retryRestart,
+    "function",
+    "expected a retryRestart method on the settings controller",
+  );
+  failRestart = false;
+  const retry = await controller.retryRestart();
+  assert.equal(retry.ok, true);
+  assert.equal(restartCalls, 2, "retry must call restartDesktopApp again");
+  assert.equal(
+    refs.retryRestartButton.classList.contains("hidden"),
+    true,
+    "a successful retry hides Retry Restart",
+  );
+});
+
+test("settings drawer renders retry-restart and last-checked elements", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/SettingsDrawer.tsx", import.meta.url),
+    "utf8",
+  );
+  for (const marker of [
+    'id="retryRestartButton"',
+    'data-testid="retry-restart"',
+    'id="settingsUpdateLastChecked"',
+    "retryRestart",
+  ]) {
+    assert.equal(island.includes(marker), true, `expected ${marker} in settings drawer`);
+  }
+});

@@ -322,3 +322,187 @@ test("every change publishes a new snapshot object", async () => {
   assert.equal(model.getSnapshot().visible, false);
   assert.equal(notified, seen, "an unsubscribed listener is not called");
 });
+
+/* ---------- Task 10: persistent dismissal + retry + lastChecked ---------- */
+
+const createMemoryStorage = (initial = {}) => {
+  const map = new Map(Object.entries(initial));
+  return {
+    getItem: (key) => (map.has(key) ? map.get(key) : null),
+    setItem: (key, value) => {
+      map.set(key, String(value));
+    },
+    removeItem: (key) => {
+      map.delete(key);
+    },
+  };
+};
+
+const outdatedResult = (latestVersion) => ({
+  skipped: false,
+  failed: false,
+  outdated: true,
+  currentVersion: "v1.0.0",
+  latestVersion,
+  message: `Update available: v1.0.0 -> ${latestVersion}`,
+});
+
+test("dismissed version persists across model recreation via storage", async () => {
+  const storage = createMemoryStorage();
+  const makeModel = () =>
+    createUpdateNotifierModel({
+      settingsController: {
+        async checkForUpdates() {
+          return outdatedResult("v1.1.0");
+        },
+      },
+      isSettingsDrawerOpen: () => false,
+      onStatus: () => {},
+      storage,
+    });
+
+  const first = makeModel();
+  await first.checkForUpdatesInBackground();
+  assert.equal(first.getSnapshot().visible, true);
+  first.dismissPrompt();
+  assert.equal(first.getSnapshot().visible, false);
+
+  const second = makeModel();
+  await second.checkForUpdatesInBackground();
+  assert.equal(
+    second.getSnapshot().visible,
+    false,
+    "dismissal must survive a restart",
+  );
+});
+
+test("a newer version still prompts after dismissing an older one", async () => {
+  const storage = createMemoryStorage();
+  let latest = "v1.1.0";
+  const makeModel = () =>
+    createUpdateNotifierModel({
+      settingsController: {
+        async checkForUpdates() {
+          return outdatedResult(latest);
+        },
+      },
+      isSettingsDrawerOpen: () => false,
+      onStatus: () => {},
+      storage,
+    });
+
+  const first = makeModel();
+  await first.checkForUpdatesInBackground();
+  first.dismissPrompt();
+
+  latest = "v1.2.0";
+  const second = makeModel();
+  await second.checkForUpdatesInBackground();
+  assert.equal(
+    second.getSnapshot().visible,
+    true,
+    "only the dismissed version stays silent",
+  );
+});
+
+test("restart failure keeps the prompt visible with a retry flag", async () => {
+  const model = createUpdateNotifierModel({
+    settingsController: {
+      async checkForUpdates() {
+        return outdatedResult("v1.1.0");
+      },
+      async installLatestUpdate() {
+        return {
+          ok: true,
+          skipped: false,
+          restartFailed: true,
+          message:
+            "Update installed but automatic restart failed. Please restart manually.",
+        };
+      },
+    },
+    isSettingsDrawerOpen: () => false,
+    onStatus: () => {},
+    storage: createMemoryStorage(),
+  });
+
+  await model.checkForUpdatesInBackground();
+  assert.equal(model.getSnapshot().visible, true);
+
+  const outcome = await model.installLatestUpdateFromPrompt();
+  assert.equal(outcome.restartFailed, true);
+  assert.equal(
+    model.getSnapshot().visible,
+    true,
+    "the prompt stays while the restart is still pending",
+  );
+  assert.equal(model.getSnapshot().restartFailed, true);
+});
+
+test("retryRestart delegates to the settings controller and clears the flag", async () => {
+  let restarts = 0;
+  const model = createUpdateNotifierModel({
+    settingsController: {
+      async checkForUpdates() {
+        return outdatedResult("v1.1.0");
+      },
+      async installLatestUpdate() {
+        return { ok: true, skipped: false, restartFailed: true, message: "restart failed" };
+      },
+      async retryRestart() {
+        restarts += 1;
+        return { ok: true };
+      },
+    },
+    isSettingsDrawerOpen: () => false,
+    onStatus: () => {},
+    storage: createMemoryStorage(),
+  });
+
+  await model.checkForUpdatesInBackground();
+  await model.installLatestUpdateFromPrompt();
+  assert.equal(model.getSnapshot().restartFailed, true);
+
+  assert.equal(typeof model.retryRestart, "function", "expected a retryRestart method");
+  const retry = await model.retryRestart();
+  assert.equal(retry.ok, true);
+  assert.equal(restarts, 1);
+  assert.equal(model.getSnapshot().restartFailed, false);
+});
+
+test("a background check records lastChecked in the snapshot", async () => {
+  const model = createUpdateNotifierModel({
+    settingsController: {
+      async checkForUpdates() {
+        return outdatedResult("v1.1.0");
+      },
+    },
+    isSettingsDrawerOpen: () => false,
+    onStatus: () => {},
+    storage: createMemoryStorage(),
+  });
+
+  await model.checkForUpdatesInBackground();
+  assert.ok(
+    typeof model.getSnapshot().lastChecked === "string" &&
+      model.getSnapshot().lastChecked !== "",
+    "expected a lastChecked timestamp in the snapshot",
+  );
+});
+
+test("update prompt island renders last-checked and retry-restart elements", async () => {
+  const tsx = await readFile(
+    new URL("../../desktop/frontend/islands/UpdatePrompt.tsx", import.meta.url),
+    "utf8",
+  );
+
+  for (const marker of [
+    'id="updatePromptLastChecked"',
+    "Retry Restart",
+    "restartFailed",
+    "lastChecked",
+    "retryRestart",
+  ]) {
+    assert.equal(tsx.includes(marker), true, `missing ${marker} in UpdatePrompt.tsx`);
+  }
+});

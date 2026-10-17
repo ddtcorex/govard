@@ -917,8 +917,8 @@ func runRemoteSyncBackgroundWithOptions(
 
 	// We use two scanners to emit events to the frontend
 	done := make(chan struct{}, 2)
-	go scanLogPipe(ctx, p, stdout, EventSyncOutput, done)
-	go scanLogPipe(ctx, p, stderr, EventSyncOutput, done)
+	go scanSyncPipe(ctx, p, stdout, done)
+	go scanSyncPipe(ctx, p, stderr, done)
 
 	go func() {
 		<-done
@@ -926,7 +926,7 @@ func runRemoteSyncBackgroundWithOptions(
 		err := cmd.Wait()
 		UnregisterSyncingProject(project)
 		if err != nil {
-			p.Emit(EventSyncFailed, fmt.Sprintf("Sync failed: %v", err))
+			p.Emit(EventSyncFailed, syncFailedMessage(err))
 		} else {
 			p.Emit(EventSyncCompleted, "Sync completed successfully")
 		}

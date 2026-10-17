@@ -43,7 +43,7 @@
           <div id="sidebarEnvActions" class="px-4 pb-4">
             <button data-action="open-onboarding"
               class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 text-primary transition-all text-sm font-bold shadow-xs">
-              <span class="material-symbols-outlined text-lg">add</span>
+              <span class="material-symbols-outlined text-lg" aria-hidden="true">add</span>
               New Environment
             </button>
           </div>
@@ -58,12 +58,12 @@
             <button
               class="h-8 w-8 inline-flex items-center justify-center text-text-tertiary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
               id="hardReset" title="Restart Application">
-              <span class="material-symbols-outlined leading-none">restart_alt</span>
+              <span class="material-symbols-outlined leading-none" aria-hidden="true">restart_alt</span>
             </button>
             <button
               class="h-8 w-8 inline-flex items-center justify-center text-text-tertiary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
               id="openSettings" data-action="open-settings" title="Settings">
-              <span class="material-symbols-outlined leading-none">settings</span>
+              <span class="material-symbols-outlined leading-none" aria-hidden="true">settings</span>
             </button>
             <div class="h-8 w-px bg-border-primary mx-1"></div>
             <button
@@ -91,17 +91,17 @@
               <nav class="-mb-px flex px-2 lg:px-6">
                 <a class="border-primary text-primary dark:text-white whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all active"
                   href="#" data-action="switch-tab" data-tab="dashboard">
-                  <span class="material-symbols-outlined text-lg">dashboard</span>
+                  <span class="material-symbols-outlined text-lg" aria-hidden="true">dashboard</span>
                   Dashboard
                 </a>
                 <a class="border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-500 whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all"
                   href="#" data-action="switch-tab" data-tab="remotes">
-                  <span class="material-symbols-outlined text-lg">cloud_sync</span>
+                  <span class="material-symbols-outlined text-lg" aria-hidden="true">cloud_sync</span>
                   Remotes
                 </a>
                 <a class="border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-500 whitespace-nowrap py-4 px-4 border-b-2 font-bold text-sm flex items-center gap-2 transition-all"
                   href="#" data-action="switch-tab" data-tab="logs">
-                  <span class="material-symbols-outlined text-lg">receipt_long</span>
+                  <span class="material-symbols-outlined text-lg" aria-hidden="true">receipt_long</span>
                   Logs
                 </a>
               </nav>
@@ -152,7 +152,7 @@
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-4">
                   <div class="lg:col-span-2 space-y-6">
                     <h3 class="text-slate-900 dark:text-white text-lg font-semibold flex items-center gap-2 pt-4">
-                      <span class="material-symbols-outlined text-primary">view_agenda</span>
+                      <span class="material-symbols-outlined text-primary" aria-hidden="true">view_agenda</span>
                       Active Services
                     </h3>
                     <div id="activeServicesList" class="space-y-4">
@@ -165,21 +165,21 @@
                   </div>
                   <div class="lg:col-span-1 space-y-6">
                     <h3 class="text-slate-900 dark:text-white text-lg font-semibold flex items-center gap-2">
-                      <span class="material-symbols-outlined text-primary">bolt</span>
+                      <span class="material-symbols-outlined text-primary" aria-hidden="true">bolt</span>
                       Quick Actions
                     </h3>
                     <div class="grid grid-cols-2 gap-3">
                       <button data-action="open-folder"
                         class="p-4 bg-surface-primary border border-border-primary rounded-xl hover:bg-background-secondary hover:border-primary/40 transition-all group text-left">
                         <span
-                          class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2">folder_open</span>
+                          class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2" aria-hidden="true">folder_open</span>
                         <span class="block text-slate-900 dark:text-slate-200 text-sm font-medium">Reveal File</span>
                         <span class="block text-text-secondary dark:text-slate-500 text-[10px] mt-1">Show in
                           Finder</span>
                       </button>
                       <button data-action="open-ide"
                         class="p-4 bg-surface-primary border border-border-primary rounded-xl hover:bg-background-secondary hover:border-primary/40 transition-all group text-left">
-                        <span class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2">code</span>
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2" aria-hidden="true">code</span>
                         <span class="block text-slate-900 dark:text-slate-200 text-sm font-medium">Open IDE</span>
                         <span class="block text-text-secondary dark:text-slate-500 text-[10px] mt-1">Launch VS
                           Code</span>
@@ -187,14 +187,14 @@
                       <button data-action="open-db-client"
                         class="p-4 bg-surface-primary border border-border-primary rounded-xl hover:bg-background-secondary hover:border-primary/40 transition-all group text-left">
                         <span
-                          class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2">database</span>
+                          class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2" aria-hidden="true">database</span>
                         <span class="block text-slate-900 dark:text-slate-200 text-sm font-medium">Open DB</span>
                         <span class="block text-text-secondary dark:text-slate-500 text-[10px] mt-1">Connect DB</span>
                       </button>
                       <button data-action="open-mail-client"
                         class="p-4 bg-surface-primary border border-border-primary rounded-xl hover:bg-background-secondary hover:border-primary/40 transition-all group text-left">
                         <span
-                          class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2">email</span>
+                          class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-2" aria-hidden="true">email</span>
                         <span class="block text-slate-900 dark:text-slate-200 text-sm font-medium">Mailpit</span>
                         <span class="block text-text-secondary dark:text-slate-500 text-[10px] mt-1">View Emails</span>
                       </button>
@@ -240,13 +240,14 @@
 
     <!-- Custom Confirmation Modal -->
     <div id="confirmModal"
+      role="dialog" aria-modal="true" aria-labelledby="confirmTitle"
       class="fixed inset-0 z-10001 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300">
       <div
         class="bg-background-secondary border border-border-primary rounded-2xl shadow-2xl w-full max-w-md transform scale-95 transition-all duration-300 overflow-hidden">
         <div class="p-6">
           <div class="flex items-center gap-4 mb-4">
             <div class="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span id="confirmIcon" class="material-symbols-outlined text-primary text-2xl">help</span>
+              <span id="confirmIcon" class="material-symbols-outlined text-primary text-2xl" aria-hidden="true">help</span>
             </div>
             <h3 id="confirmTitle" class="text-xl font-bold text-text-primary">
               Confirm Action
@@ -280,7 +281,7 @@
       </div>
       <div class="flex items-center gap-4 shrink-0">
         <div class="flex items-center gap-1.5 text-[10px] text-text-tertiary font-mono shrink-0">
-          <span class="material-symbols-outlined text-[14px]">terminal</span>
+          <span class="material-symbols-outlined text-[14px]" aria-hidden="true">terminal</span>
           Govard Engine <span id="footerVersion">v--</span>
         </div>
         <div class="h-3 w-px bg-border-primary shrink-0"></div>

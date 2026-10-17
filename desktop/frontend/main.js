@@ -1,11 +1,12 @@
 console.log("==> main.js top level loaded! <==");
 import { createActionsController } from "./modules/actions.js?v=20260301";
 import { normalizeDashboardPayload, projectKey } from "./modules/dashboard.js";
+import { createDashboardRefresher } from "./modules/dashboard-refresh.js";
 import {
   createGlobalServicesController,
   raiseActionFeedback,
 } from "./modules/global-services.js";
-import { resolveServiceTargets } from "./modules/logs.js";
+import { resolveServiceTargets, shouldStopEnvLiveOnTabSwitch } from "./modules/logs.js";
 import { createOnboardingController } from "./modules/onboarding.js?v=20260302";
 import { resolveSyncPresetConfig } from "./modules/remotes.js";
 import { createSettingsController } from "./modules/settings.js";
@@ -29,8 +30,10 @@ import { UpdatePrompt } from "./islands/UpdatePrompt.tsx";
 import { desktopBridge } from "./services/bridge.js";
 import { hasEventRuntime, onEvent } from "./services/events.js";
 import { getState, setState } from "./state/store.js";
-import { createToast } from "./ui/toast.js?v=20260301";
+import { createToast, toastKind } from "./ui/toast.js?v=20260301";
 import { byId, escapeHTML, setText } from "./utils/dom.js";
+import { sanitizeUIText } from "./utils/sanitize.js";
+import { focusFirstElement, rememberFocus } from "./utils/focus-trap.js";
 console.log("==> Finished imports <==");
 
 const initUI = () => {
@@ -70,8 +73,13 @@ const refreshRefs = () => {
 
 const toast = createToast(refs.toastContainer);
 
+// Status-line budget: bridge errors can carry long ANSI tails, so the line
+// keeps the toast-sized cap and truncates honestly instead of growing
+// unbounded. Every setStatus caller shares it.
+const STATUS_MAX_CHARS = 280;
+
 const setStatus = (message) => {
-  setText(refs.status, message);
+  setText(refs.status, sanitizeUIText(message, STATUS_MAX_CHARS));
 };
 
 const loadUser = async () => {
@@ -165,6 +173,9 @@ const showConfirm = ({
     refs.confirmConfirmBtn.textContent = confirmText;
     refs.confirmCancelBtn.textContent = cancelText;
 
+    // Baseline dialog focus contract, mirroring ui/modal.js's confirm path:
+    // opening moves focus into the dialog, closing hands it back.
+    const restoreConfirmFocus = rememberFocus();
     const onConfirm = () => {
       cleanup();
       resolve(true);
@@ -178,12 +189,18 @@ const showConfirm = ({
       refs.confirmModal.classList.remove("is-visible");
       refs.confirmConfirmBtn.removeEventListener("click", onConfirm);
       refs.confirmCancelBtn.removeEventListener("click", onCancel);
+      restoreConfirmFocus();
     };
 
     refs.confirmConfirmBtn.addEventListener("click", onConfirm);
     refs.confirmCancelBtn.addEventListener("click", onCancel);
     toggleModalBlur(true);
     refs.confirmModal.classList.add("is-visible");
+    if (refs.confirmCancelBtn) {
+      refs.confirmCancelBtn.focus();
+    } else {
+      focusFirstElement(refs.confirmModal);
+    }
   });
 };
 
@@ -203,8 +220,19 @@ const showLoadingToast = (
     return null;
   }
 
+  // Headless fallback: the toast module captured no container at startup, so
+  // this path builds the element by hand. It keeps the toast contract anyway:
+  // the kind goes through the shared allowlist and every string through the
+  // shared sanitizer, so ANSI/control bytes and hostile kinds cannot reach
+  // the DOM here either.
+  const safeKind = toastKind(type, "info");
+  const safeTitle =
+    sanitizeUIText(title, STATUS_MAX_CHARS).trim() || "Processing...";
+  const safeInitialLine =
+    sanitizeUIText(initialLine, STATUS_MAX_CHARS).trim() || "Please wait...";
+
   const item = document.createElement("div");
-  item.className = `toast toast--${type} group`;
+  item.className = `toast toast--${safeKind} group`;
   item.innerHTML = `
     <div class="toast-indicator"></div>
     <div class="toast-icon-wrapper">
@@ -212,10 +240,10 @@ const showLoadingToast = (
     </div>
     <div class="toast-content">
       <div style="display:flex; align-items:center; gap:8px;">
-        <p class="toast-message" style="font-weight:600; margin:0;">${escapeHTML(title)}</p>
+        <p class="toast-message" style="font-weight:600; margin:0;">${escapeHTML(safeTitle)}</p>
         <span class="toast-spinner inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
       </div>
-      <p class="toast-stream-line text-xs font-mono opacity-80 mt-1">${escapeHTML(initialLine || "Please wait...")}</p>
+      <p class="toast-stream-line text-xs font-mono opacity-80 mt-1">${escapeHTML(safeInitialLine)}</p>
     </div>
     <button class="toast-close" aria-label="Close">
       <span class="material-symbols-outlined">close</span>
@@ -250,14 +278,15 @@ const showLoadingToast = (
   return {
     update: (line) => {
       if (lineEl && line) {
-        lineEl.textContent = String(line);
+        lineEl.textContent = sanitizeUIText(line, STATUS_MAX_CHARS);
       }
     },
     close: (finalLabel, finalType = "success") => {
       if (spinnerEl) spinnerEl.style.display = "none";
       if (lineEl && finalLabel) {
-        lineEl.textContent = String(finalLabel);
+        lineEl.textContent = sanitizeUIText(finalLabel, STATUS_MAX_CHARS);
       }
+      const finalKind = toastKind(finalType, "success");
       const iconByType = {
         success: "check_circle",
         error: "report",
@@ -265,9 +294,9 @@ const showLoadingToast = (
         info: "info",
       };
       if (iconEl) {
-        iconEl.textContent = iconByType[finalType] || "check_circle";
+        iconEl.textContent = iconByType[finalKind] || "check_circle";
       }
-      item.className = `toast toast--${finalType} group is-visible`;
+      item.className = `toast toast--${finalKind} group is-visible`;
       setTimeout(remove, 4000);
     },
   };
@@ -324,6 +353,14 @@ const selectProject = async (project) => {
 };
 
 const switchTab = (tabId) => {
+  // Hiding the logs tab stops env live first: the island's stopLive flips its
+  // mode, whose effect cleanup stops the backend stream too, so no orphaned
+  // stream outlives the tab.
+  const activeTab = document.querySelector(".tab-content.active")?.id || "";
+  if (shouldStopEnvLiveOnTabSwitch({ nextTab: tabId, activeTab })) {
+    void logsApi.stopLive();
+  }
+
   const tabLinks = document.querySelectorAll('[data-action="switch-tab"]');
   const tabContents = document.querySelectorAll(".tab-content");
 
@@ -453,53 +490,13 @@ if (hasEventRuntime()) {
   });
 }
 
-const safeDashboard = {
-  ActiveEnvironments: 2,
-  RunningServices: 5,
-  QueuedTasks: 0,
-  ActiveSummary: "2 environments running",
-  ServicesSummary: "All systems healthy",
-  QueueSummary: "Queue idle",
-  Environments: [
-    {
-      Name: "Project Alpha",
-      Status: "running",
-      Domain: "project-alpha.test",
-      Url: "http://project-alpha.test",
-      Technologies: ["PHP 8.2", "MySQL 8.0", "Redis"],
-      EnvVars: {
-        APP_ENV: "local",
-        APP_DEBUG: "true",
-        DB_CONNECTION: "mysql",
-      },
-    },
-    {
-      Name: "Project Beta",
-      Status: "stopped",
-      Domain: "project-beta.test",
-      Url: "http://project-beta.test",
-      Technologies: ["Python 3.11", "Postgres 15", "RabbitMQ"],
-    },
-    {
-      Name: "Project Gamma",
-      Status: "warning",
-      Domain: "project-gamma.test",
-      Url: "http://project-gamma.test",
-      Technologies: ["Node.js 20", "MongoDB 6.0"],
-    },
-  ],
-  Warnings: ["Desktop bridge unavailable. Showing local fallback view."],
-};
-
 const loadDashboard = async () => {
   try {
     const data = await desktopBridge.getDashboard();
     return normalizeDashboardPayload(data);
-  } catch (_err) {
-    console.error("Dashboard fetch error caught!", _err);
-    const result = normalizeDashboardPayload(safeDashboard);
-    console.log("Returning safe payload:", result);
-    return result;
+  } catch (err) {
+    console.error("Dashboard fetch error caught!", err);
+    throw err;
   }
 };
 
@@ -593,6 +590,7 @@ if (window.__govardPreviewMetricsIntervalMs) window.__govardMetricsIsland = metr
 const LOGS_API_STUB = {
   refresh: async () => null,
   selectionChanged: async () => {},
+  stopLive: () => {},
 };
 let logsApi = LOGS_API_STUB;
 const logsIsland = mountIsland(
@@ -673,53 +671,26 @@ const renderAllSkeletons = () => {
   setState({ envListLoading: true });
 };
 
-const refreshDashboard = async (options = {}) => {
-  try {
-    setStatus("Status: syncing dashboard...");
-    if (!options.silent) {
-      renderAllSkeletons();
-    }
-
-    console.log("[refreshDashboard] Fetching dashboard...");
-    const dashboard = await loadDashboard();
-    console.log(
-      "[refreshDashboard] Got dashboard, environments:",
-      dashboard.environments?.length,
-    );
-
-    // The sidebar list, the hero, the service cards and the env vars all read
-    // this store now (spec D6), so publishing the environments is what renders
-    // them - there is nothing left to push into the DOM from here.
-    const selectedProject = getState().selectedProject || "";
-    // The list has its data now, so the loading frame is over either way: a
-    // silent refresh never showed one, and this is what closes the non-silent one
-    // and the boot frame the store starts with.
-    setState({
-      environments: dashboard.environments,
-      selectedProject,
-      envListLoading: false,
-    });
-    if (!selectedProject && dashboard.environments.length > 0) {
-      setState({ selectedProject: projectKey(dashboard.environments[0]) });
-    }
-
-    try {
-      refreshServiceSelector();
-    } catch (e) {
-      console.error("[refreshDashboard] refreshServiceSelector error:", e);
-    }
-    await refreshMetrics({ silent: true });
-    await remotesApi.refresh({ silent: true });
-    await globalServicesController.refresh({ silent: true });
-    await logsApi.refresh();
-    await loadFooterVersion();
-
-    setStatus(`Status: Ready`);
-  } catch (e) {
-    console.error("[refreshDashboard] error:", e);
-    setStatus(`Status: Error`);
-  }
-};
+// The orchestration lives in modules/dashboard-refresh.js (dependency-injected
+// for node tests); main.js only binds the production collaborators. The panel
+// closures read the `let` bindings at call time because islands re-register
+// them after mount.
+const refreshDashboard = createDashboardRefresher({
+  loadDashboard,
+  getState,
+  setState,
+  projectKey,
+  refreshServiceSelector,
+  renderAllSkeletons,
+  setStatus,
+  panels: {
+    refreshMetrics: (opts) => refreshMetrics(opts),
+    refreshRemotes: (opts) => remotesApi.refresh(opts),
+    refreshGlobalServices: (opts) => globalServicesController.refresh(opts),
+    refreshLogs: () => logsApi.refresh(),
+    loadFooterVersion: () => loadFooterVersion(),
+  },
+});
 
 const onboardingController = createOnboardingController({
   bridge: desktopBridge,
@@ -887,12 +858,16 @@ const environmentListIsland = mountIsland(
     onSelect: (project) => void selectProject(project),
     onToggle: (project) => void actionsController.handle("toggle-env", project),
     onSwitchSidebarMode: () => void switchSidebarMode("global-services"),
+    onRetry: () => void refreshDashboard(),
+    onOpenOnboarding: () => onboardingApi.open(),
   }),
 );
 const projectHeroIsland = mountIsland(
   "projectHero",
   createElement(ProjectHero, {
     onAction: (action, project) => void actionsController.handle(action, project),
+    onRetry: () => void refreshDashboard(),
+    onOpenOnboarding: () => onboardingApi.open(),
   }),
 );
 const activeServicesIsland = mountIsland(

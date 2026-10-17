@@ -4,6 +4,45 @@ const DEFAULT_STARTUP_DELAY_MS = 12000;
 const DEFAULT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_INTERVAL_JITTER_RATIO = 0.15;
 
+// The dismissed version survives a restart: only the dismissed version stays
+// silent, so a newer version still prompts on its first check.
+export const DISMISSED_VERSION_STORAGE_KEY = "govard.update.dismissedVersion";
+
+const resolveStorage = (storage) => {
+  if (storage !== undefined) {
+    return storage || null;
+  }
+  try {
+    return typeof globalThis !== "undefined"
+      ? (globalThis.localStorage ?? null)
+      : null;
+  } catch (_storageErr) {
+    return null;
+  }
+};
+
+const readPersistedDismissedVersion = (storage) => {
+  if (!storage || typeof storage.getItem !== "function") {
+    return "";
+  }
+  try {
+    return String(storage.getItem(DISMISSED_VERSION_STORAGE_KEY) || "").trim();
+  } catch (_readErr) {
+    return "";
+  }
+};
+
+const persistDismissedVersion = (storage, version) => {
+  if (!storage || typeof storage.setItem !== "function") {
+    return;
+  }
+  try {
+    storage.setItem(DISMISSED_VERSION_STORAGE_KEY, String(version || ""));
+  } catch (_writeErr) {
+    // Private-mode quota errors must never break the prompt itself.
+  }
+};
+
 /**
  * Headless update-prompt model. The React island (islands/UpdatePrompt.tsx)
  * reads it through useSyncExternalStore: every change publishes a new frozen
@@ -14,7 +53,9 @@ export const createUpdateNotifierModel = ({
   settingsController,
   onStatus,
   isSettingsDrawerOpen,
+  storage,
 }) => {
+  const store = resolveStorage(storage);
   const state = {
     checking: false,
     installing: false,
@@ -23,7 +64,9 @@ export const createUpdateNotifierModel = ({
     latestVersion: "",
     changelog: "",
     message: "",
-    dismissedVersion: "",
+    dismissedVersion: readPersistedDismissedVersion(store),
+    restartFailed: false,
+    lastChecked: "",
     startupTimerID: null,
     intervalTimerID: null,
   };
@@ -40,20 +83,24 @@ export const createUpdateNotifierModel = ({
   let snapshot = Object.freeze({
     visible: false,
     installing: false,
+    restartFailed: false,
     currentVersion: "",
     latestVersion: "",
     message: "",
     changelog: "",
+    lastChecked: "",
   });
 
   const render = () => {
     snapshot = Object.freeze({
       visible: state.visible,
       installing: state.installing,
+      restartFailed: state.restartFailed,
       currentVersion: state.currentVersion,
       latestVersion: state.latestVersion,
       message: state.message,
       changelog: state.changelog,
+      lastChecked: state.lastChecked,
     });
     for (const listener of listeners) listener();
   };
@@ -83,6 +130,7 @@ export const createUpdateNotifierModel = ({
   const dismissPrompt = () => {
     if (state.latestVersion) {
       state.dismissedVersion = state.latestVersion;
+      persistDismissedVersion(store, state.dismissedVersion);
     }
     setPromptVisibility(false);
   };
@@ -111,6 +159,8 @@ export const createUpdateNotifierModel = ({
       state.latestVersion = latestVersion;
       state.changelog = String(result.changelog || "").trim();
       state.message = formatUpdateMessage(result);
+      state.lastChecked = String(result.lastChecked || "").trim()
+        || new Date().toISOString();
       const promptVisible = syncWithSettingsDrawer();
       if (promptVisible) {
         onStatus("Update available.");
@@ -135,11 +185,14 @@ export const createUpdateNotifierModel = ({
 
     try {
       const outcome = await settingsController.installLatestUpdate();
-      if (outcome?.ok) {
+      if (outcome?.ok && !outcome?.restartFailed) {
         dismissPrompt();
         return outcome;
       }
 
+      if (outcome?.restartFailed) {
+        state.restartFailed = true;
+      }
       if (outcome?.message) {
         state.message = outcome.message;
       }
@@ -149,6 +202,23 @@ export const createUpdateNotifierModel = ({
       state.installing = false;
       render();
     }
+  };
+
+  const retryRestart = async () => {
+    const retry =
+      typeof settingsController.retryRestart === "function"
+        ? settingsController.retryRestart.bind(settingsController)
+        : null;
+    if (!retry) {
+      return { ok: false, message: "Restart retry is not available." };
+    }
+    const outcome = await retry();
+    state.restartFailed = !outcome?.ok;
+    if (outcome?.message) {
+      state.message = outcome.message;
+    }
+    render();
+    return outcome;
   };
 
   const scheduleBackgroundChecks = ({
@@ -193,6 +263,7 @@ export const createUpdateNotifierModel = ({
     syncWithSettingsDrawer,
     checkForUpdatesInBackground,
     installLatestUpdateFromPrompt,
+    retryRestart,
     scheduleBackgroundChecks,
     clearTimers,
   };

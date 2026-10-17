@@ -7,6 +7,12 @@ const state = {
   envListLoading: true,
   selectedProject: "",
   selectedService: "all",
+  // The dashboard fetch outcome: a non-empty dashboardError means the last
+  // refresh failed, and the hero and the sidebar list render their offline
+  // state (with its own Retry) instead of fake projects. lastRefreshed is the
+  // epoch ms of the last successful fetch, shown in the footer.
+  dashboardError: "",
+  lastRefreshed: 0,
   selectedSeverity: "all",
   logQuery: "",
   globalServices: [],
@@ -47,6 +53,15 @@ const state = {
   syncingProject: "",
   syncingRemote: "",
   syncingPreset: "",
+  /**
+   * Project-scoped env-operation locks, keyed by project to the label holding
+   * it (`env-start`, `env-stop`, ...). Published by modules/operations.js on
+   * every begin/end so the hero and the sidebar can disable visibly (with a
+   * spinner) instead of refusing through the status line. Other projects stay
+   * actionable while one entry is held.
+   * @type {Record<string, string>}
+   */
+  busyEnvs: {},
 };
 
 const listeners = new Set();

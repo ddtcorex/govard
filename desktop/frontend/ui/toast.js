@@ -1,4 +1,30 @@
 import { escapeHTML } from "../utils/dom.js";
+import { sanitizeUIText } from "../utils/sanitize.js";
+
+/** Toasts show short human messages: raw log tails stay in their panel. */
+const TOAST_MAX_CHARS = 280;
+
+// toastKind allowlists the style variant interpolated into the toast
+// className: only known kinds reach the DOM, anything else falls back to the
+// caller's default so a hostile or mistyped kind cannot inject markup.
+const TOAST_KINDS = ["success", "error", "warning", "info"];
+
+// toastKind is shared with main.js's headless loading-toast fallback so both
+// paths collapse unknown kinds to a default instead of interpolating them.
+export const toastKind = (type, fallback) =>
+  TOAST_KINDS.includes(type) ? type : fallback;
+
+// copyOpMessageText handles the toast "copy" action internally: the hint is
+// already on screen, so only the clipboard write is needed. Failures stay
+// silent on purpose, the hint remains visible either way.
+const copyOpMessageText = (text) => {
+  try {
+    const result = globalThis.navigator?.clipboard?.writeText?.(String(text ?? ""));
+    if (result?.catch) result.catch(() => {});
+  } catch {
+    // Clipboard unavailable (headless/WebKit context): hint stays visible.
+  }
+};
 
 export const createToast = (container) => {
   const activeMessages = new Set();
@@ -17,16 +43,18 @@ export const createToast = (container) => {
   };
 
   const show = (message, type = "success") => {
-    if (!container || !message) return;
+    if (!container) return;
 
-    const msg = String(message).trim();
+    const kind = toastKind(type, "success");
+    const msg = sanitizeUIText(message, TOAST_MAX_CHARS).trim();
+    if (!msg) return;
     if (activeMessages.has(msg)) return;
     activeMessages.add(msg);
 
     const item = document.createElement("div");
-    item.className = `toast toast--${type} group`;
+    item.className = `toast toast--${kind} group`;
 
-    const duration = type === "error" || type === "warning" ? 6000 : 4000;
+    const duration = kind === "error" || kind === "warning" ? 6000 : 4000;
 
     item.innerHTML = `
       <div class="toast-indicator"></div>
@@ -63,11 +91,15 @@ export const createToast = (container) => {
     setTimeout(close, duration);
   };
 
-  // showStreaming creates a persistent toast that can be updated externally for streams
+  // showStreaming creates a persistent toast that can be updated externally for streams.
+  // The stream line renders the latest short human message (e.g. a structured
+  // sync:progress message), never the raw tail: every update goes through the
+  // shared UI-text sanitizer, while full detail stays in the owning panel.
   const showStreaming = (title = "Syncing...", type = "info", options = {}) => {
     if (!container) return null;
 
-    const msg = String(title).trim();
+    const kind = toastKind(type, "info");
+    const msg = sanitizeUIText(title, TOAST_MAX_CHARS).trim() || "Syncing...";
     const dedupeKey =
       options?.dedupeKey === undefined ? msg : options?.dedupeKey;
     const shouldDedupe = dedupeKey !== false && dedupeKey !== null;
@@ -76,12 +108,12 @@ export const createToast = (container) => {
     if (shouldDedupe) activeMessages.add(dedupeKey);
 
     const item = document.createElement("div");
-    item.className = `toast toast--${type} group`;
+    item.className = `toast toast--${kind} group`;
 
     item.innerHTML = `
       <div class="toast-indicator"></div>
       <div class="toast-icon-wrapper">
-        <span class="material-symbols-outlined toast-icon">${getIcon(type)}</span>
+        <span class="material-symbols-outlined toast-icon">${getIcon(kind)}</span>
       </div>
       <div class="toast-content" style="max-height: 200px; overflow-y: auto; overflow-x: hidden;">
         <div style="display:flex;align-items:center;gap:6px;">
@@ -139,7 +171,7 @@ export const createToast = (container) => {
     return {
       update: (line) => {
         if (streamLineEl && line) {
-          streamLineEl.textContent = line;
+          streamLineEl.textContent = sanitizeUIText(line, TOAST_MAX_CHARS);
           // Auto-scroll to bottom of the content area inside the toast
           const contentArea = item.querySelector(".toast-content");
           if (contentArea) contentArea.scrollTop = contentArea.scrollHeight;
@@ -149,11 +181,12 @@ export const createToast = (container) => {
         // Hide the spinner once the process is done
         if (spinnerEl) spinnerEl.style.display = "none";
         if (streamLineEl && finalLabel) {
-          streamLineEl.textContent = finalLabel;
+          streamLineEl.textContent = sanitizeUIText(finalLabel, TOAST_MAX_CHARS);
         }
         if (finalType !== type) {
-          item.className = `toast toast--${finalType} group is-visible`;
-          item.querySelector(".toast-icon").textContent = getIcon(finalType);
+          const finalKind = toastKind(finalType, "success");
+          item.className = `toast toast--${finalKind} group is-visible`;
+          item.querySelector(".toast-icon").textContent = getIcon(finalKind);
         }
         // Auto-dismiss after 4 seconds once it reports completion
         setTimeout(close, 4000);
@@ -161,5 +194,88 @@ export const createToast = (container) => {
     };
   };
 
-  return { show, showStreaming };
+  // showOpMessage renders a human operation message (see humanOpMessage in
+  // internal/desktop/operation_messages.go): a bold title, a secondary hint,
+  // and one button per action. The "copy" action is handled internally by
+  // writing the hint to the clipboard; every other action id goes to
+  // onAction. All strings pass through the shared UI-text sanitizer and
+  // reach the DOM escaped, so CLI-controlled text cannot inject markup.
+  const showOpMessage = (msg = {}, type = "error", onAction) => {
+    if (!container) return null;
+
+    const kind = toastKind(type, "error");
+    const title = sanitizeUIText(msg?.title, TOAST_MAX_CHARS).trim();
+    const hint = sanitizeUIText(msg?.hint, TOAST_MAX_CHARS).trim();
+    if (!title && !hint) return null;
+    const actions = Array.isArray(msg?.actions) ? msg.actions : [];
+
+    const duration = 8000;
+
+    const item = document.createElement("div");
+    item.className = `toast toast--${kind} group`;
+
+    item.innerHTML = `
+      <div class="toast-indicator"></div>
+      <div class="toast-icon-wrapper">
+        <span class="material-symbols-outlined toast-icon">${getIcon(kind)}</span>
+      </div>
+      <div class="toast-content">
+        ${title ? `<p class="toast-message font-bold" style="margin:0;">${escapeHTML(title)}</p>` : ""}
+        ${hint ? `<p class="toast-hint text-xs opacity-80 mt-1 wrap-break-word" style="margin:4px 0 0;">${escapeHTML(hint)}</p>` : ""}
+        <div class="toast-actions" style="display:flex;gap:6px;margin-top:8px;"></div>
+      </div>
+      <button class="toast-close" aria-label="Close">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+      <div class="toast-progress" style="animation: toast-shrink ${duration}ms linear forwards"></div>
+    `;
+
+    const actionsEl = item.querySelector(".toast-actions");
+    const buttons = [];
+    for (const action of actions) {
+      const id = sanitizeUIText(action?.id, 64).trim();
+      const label = sanitizeUIText(action?.label, 64).trim();
+      if (!id || !label) continue;
+      const button = document.createElement("button");
+      button.className = "toast-action";
+      button.textContent = label;
+      button.dataset.action = id;
+      button.setAttribute?.("type", "button");
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (id === "copy") {
+          copyOpMessageText(hint || title);
+          return;
+        }
+        if (typeof onAction === "function") onAction(id);
+      });
+      actionsEl?.appendChild?.(button);
+      buttons.push(button);
+    }
+    if (typeof container.appendChild === "function") container.appendChild(item);
+
+    const close = () => {
+      if (item.classList.contains("is-removing")) return;
+      item.classList.add("is-removing");
+      item.classList.remove("is-visible");
+      setTimeout(() => {
+        item.remove();
+      }, 500);
+    };
+
+    item.querySelector(".toast-close").addEventListener("click", (e) => {
+      e.stopPropagation();
+      close();
+    });
+
+    requestAnimationFrame(() => item.classList.add("is-visible"));
+    setTimeout(close, duration);
+
+    return {
+      close,
+      actions: buttons.map((button) => button.dataset.action),
+    };
+  };
+
+  return { show, showStreaming, showOpMessage };
 };

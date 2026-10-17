@@ -237,7 +237,7 @@ test("the log pane renders, filters and opens one stream, and stops on unmount",
   // Live: the pane prefers the backend stream, so one click opens exactly one.
   const before = (await calls(session)).length;
   await session.evaluate(`document.querySelector("[data-testid='global-toggle-live']").click()`);
-  await session.waitFor(`document.getElementById("globalToggleLive").textContent`, "Live: On");
+  await session.waitFor(`document.getElementById("globalToggleLive").textContent`, "Live: Stream");
   await session.waitFor(
     `window.__govardPreview.getCalls().some((c) => c.method === "StartGlobalServiceLogStream")`,
     true,
@@ -287,7 +287,7 @@ test("a live pane whose stream is unavailable falls back to the poll, and unmoun
   });
 
   await session.evaluate(`document.querySelector("[data-testid='global-toggle-live']").click()`);
-  await session.waitFor(`document.getElementById("globalToggleLive").textContent`, "Live: On");
+  await session.waitFor(`document.getElementById("globalToggleLive").textContent`, "Live: Poll");
   const beforePoll = (await calls(session)).filter(
     (c) => c.method === "GetGlobalServiceLogs",
   ).length;

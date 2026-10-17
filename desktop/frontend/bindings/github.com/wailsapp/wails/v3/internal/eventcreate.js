@@ -14,13 +14,15 @@ function configure() {
     Object.freeze(Object.assign($Create.Events, {
         "onboarding:progress": $$createType0,
         "operations:notification": $$createType1,
-        "sync:started": $$createType2,
+        "sync:progress": $$createType2,
+        "sync:started": $$createType3,
     }));
 }
 
 // Private type creation functions
 const $$createType0 = desktop$0.OnboardingProgressPayload.createFrom;
 const $$createType1 = desktop$0.OperationNotification.createFrom;
-const $$createType2 = desktop$0.SyncStartedPayload.createFrom;
+const $$createType2 = desktop$0.SyncProgressPayload.createFrom;
+const $$createType3 = desktop$0.SyncStartedPayload.createFrom;
 
 configure();

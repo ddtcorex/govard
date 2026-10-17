@@ -40,9 +40,18 @@ export function EnvVars({ onCopy }: Props) {
             key={key}
             data-testid="env-var-row"
             data-text={value}
+            role="button"
+            tabIndex={0}
+            aria-label={`Copy ${key}`}
             className="flex justify-between items-center group cursor-pointer hover:bg-background-secondary/50 p-1.5 -mx-1.5 rounded-sm transition-colors"
             title="Click to copy"
             onClick={() => onCopy(value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onCopy(value);
+              }
+            }}
           >
             <span className="text-xs text-emerald-700 dark:text-primary font-mono font-bold">{key}</span>
             <span className="text-xs text-slate-800 dark:text-white font-mono bg-surface-secondary px-2 py-0.5 rounded-sm border border-border-primary break-all max-w-[60%] font-medium">

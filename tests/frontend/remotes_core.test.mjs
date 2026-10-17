@@ -7,11 +7,13 @@ import {
   canOpenRemoteTarget,
   canUseFilesCapability,
   canUseSyncPreset,
+  describeSyncProgress,
   formatAuthMethodLabel,
   normalizeRemotePreset,
   normalizeRemotesPayload,
   protectedWarningCopy,
   resolveSyncPresetConfig,
+  SYNC_PROGRESS_EVENT,
 } from "../../desktop/frontend/modules/remotes.js";
 
 const readIsland = (name) =>
@@ -282,7 +284,56 @@ test("the remote card keeps its control order and its loading markers", async ()
   );
 });
 
-test("the card renders the module's auth summary and capability gate", async () => {
+test("the toast renders the structured progress message, not raw log lines", () => {
+  assert.equal(SYNC_PROGRESS_EVENT, "sync:progress");
+  const desc = describeSyncProgress({
+    phase: "db",
+    percent: 60,
+    message: "[32mImporting database dump[0m",
+  });
+  assert.equal(desc.phase, "db");
+  assert.equal(desc.percent, 60);
+  assert.equal(desc.message.includes(""), false, "ansi escapes must not reach the toast");
+  assert.equal(desc.message.includes("Importing database dump"), true);
+});
+
+test("describeSyncProgress falls back to a short human message", () => {
+  assert.equal(
+    describeSyncProgress({ phase: "transfer", percent: 40, message: "" }).message,
+    "Transferring files...",
+  );
+  assert.equal(
+    describeSyncProgress({ phase: "nope", percent: NaN, message: "  " }).phase,
+    "working",
+  );
+  assert.equal(
+    describeSyncProgress({ phase: "working", percent: 0, message: "" }).message,
+    "Working...",
+  );
+  const capped = describeSyncProgress({ phase: "db", percent: 60, message: "x".repeat(500) });
+  assert.equal([...capped.message].length <= 140, true, "toast message must stay short");
+});
+
+test("the remotes island renders structured progress, keeping raw lines in the panel", async () => {
+  const list = await readIsland("RemotesList.tsx");
+  assert.equal(
+    list.includes("sync:progress"),
+    true,
+    "the island must subscribe to the structured progress event",
+  );
+  assert.equal(
+    list.includes("describeSyncProgress"),
+    true,
+    "the toast message must go through the progress helper",
+  );
+  assert.equal(
+    list.includes("sync:output"),
+    true,
+    "raw sync lines must stay wired to the progress panel",
+  );
+});
+
+test("the card renders the module's auth summary and its capability gate", async () => {
   const list = await readIsland("RemotesList.tsx");
   assert.equal(
     list.includes("formatAuthMethodLabel"),
@@ -309,5 +360,97 @@ test("the card renders the module's auth summary and capability gate", async () 
     list.includes("bridge.openRemoteURL"),
     true,
     "the open-URL button must call the bridge instead of sitting dead",
+  );
+});
+
+test("sync preset disable is scoped to the syncing (project, remote)", async () => {
+  const list = await readIsland("RemotesList.tsx");
+  assert.equal(
+    list.includes("isPresetBlockedBySync"),
+    true,
+    "the preset gate must go through the scoped helper, not an inline condition",
+  );
+  assert.equal(
+    list.includes("selectedProject"),
+    true,
+    "the preset gate must read the selected project for its scope",
+  );
+  assert.equal(
+    list.includes("isSyncingThisRemote"),
+    true,
+    "the card must derive a per-(project, remote) syncing flag",
+  );
+  assert.equal(
+    list.includes("isSyncingCard"),
+    false,
+    "the duplicate isSyncingCard alias must be gone",
+  );
+});
+
+test("isPresetBlockedBySync blocks only the syncing (project, remote)", async () => {
+  const { isPresetBlockedBySync } = await import(
+    "../../desktop/frontend/modules/remotes.js"
+  );
+  assert.equal(
+    typeof isPresetBlockedBySync,
+    "function",
+    "the scoped preset gate must be an exported helper",
+  );
+  assert.equal(
+    isPresetBlockedBySync({
+      syncingProject: "demo",
+      syncingRemote: "staging",
+      selectedProject: "demo",
+      remoteName: "staging",
+    }),
+    true,
+    "the syncing card itself must be blocked",
+  );
+  assert.equal(
+    isPresetBlockedBySync({
+      syncingProject: "demo",
+      syncingRemote: "staging",
+      selectedProject: "demo",
+      remoteName: "production",
+    }),
+    false,
+    "another remote in the same project must stay free",
+  );
+  assert.equal(
+    isPresetBlockedBySync({
+      syncingProject: "demo",
+      syncingRemote: "staging",
+      selectedProject: "other",
+      remoteName: "staging",
+    }),
+    false,
+    "the same remote name in another project must stay free",
+  );
+  assert.equal(
+    isPresetBlockedBySync({
+      syncingProject: "",
+      syncingRemote: "",
+      selectedProject: "demo",
+      remoteName: "staging",
+    }),
+    false,
+    "no preset is blocked when no sync is active",
+  );
+  assert.equal(
+    isPresetBlockedBySync({}),
+    false,
+    "an empty state must block nothing",
+  );
+});
+
+test("a second project stays actionable while another project syncs", async () => {
+  const list = await readIsland("RemotesList.tsx");
+  // The global gate disabled every preset while any sync ran
+  // (`!anySyncing || isSyncing` on the remote name alone): it must be gone,
+  // replaced by the scoped flag so a sync in project A leaves project B enabled.
+  assert.equal(
+    list.includes("!anySyncing || isSyncing"),
+    false,
+    "the global anySyncing gate must be replaced by the per-(project, remote) scope",
   );
 });

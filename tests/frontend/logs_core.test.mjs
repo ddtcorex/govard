@@ -114,3 +114,213 @@ test("appendCappedLogLines keeps the last N entries", async () => {
   assert.equal(appendCappedLogLines(big, "x")[maxLogLines - 1], "x");
   assert.deepEqual(appendCappedLogLines(["a"], "b", 0), []);
 });
+
+test("isViewportAtBottom tells a pinned pane from a scrolled-up one", async () => {
+  const { isViewportAtBottom } = await import(
+    "../../desktop/frontend/modules/logs.js"
+  );
+  assert.equal(
+    typeof isViewportAtBottom,
+    "function",
+    "the autoscroll gate must be an exported helper",
+  );
+  // Pinned to the bottom: no unread lines.
+  assert.equal(
+    isViewportAtBottom({ scrollTop: 976, scrollHeight: 1076, clientHeight: 100 }),
+    true,
+    "a pane within tolerance of the bottom must read as pinned",
+  );
+  assert.equal(
+    isViewportAtBottom({ scrollTop: 1000, scrollHeight: 1100, clientHeight: 100 }),
+    true,
+    "an exactly-bottom pane must read as pinned",
+  );
+  // Scrolled up: new lines must pile into the pill, not yank the pane.
+  assert.equal(
+    isViewportAtBottom({ scrollTop: 400, scrollHeight: 1076, clientHeight: 100 }),
+    false,
+    "a pane far from the bottom must read as scrolled up",
+  );
+  assert.equal(
+    isViewportAtBottom({ scrollTop: 0, scrollHeight: 5000, clientHeight: 100 }),
+    false,
+    "a pane at the top must read as scrolled up",
+  );
+});
+
+test("shouldStickToBottom needs the toggle on and the pane pinned", async () => {
+  const { shouldStickToBottom } = await import(
+    "../../desktop/frontend/modules/logs.js"
+  );
+  assert.equal(
+    typeof shouldStickToBottom,
+    "function",
+    "the stick decision must be an exported helper",
+  );
+  assert.equal(
+    shouldStickToBottom({ autoscroll: true, atBottom: true }),
+    true,
+    "toggle on plus pinned must stick",
+  );
+  assert.equal(
+    shouldStickToBottom({ autoscroll: true, atBottom: false }),
+    false,
+    "a scrolled-up pane must not yank even with the toggle on",
+  );
+  assert.equal(
+    shouldStickToBottom({ autoscroll: false, atBottom: true }),
+    false,
+    "an opted-out toggle must not stick even when pinned",
+  );
+  assert.equal(
+    shouldStickToBottom({ autoscroll: false, atBottom: false }),
+    false,
+    "an opted-out scrolled-up pane must not stick",
+  );
+});
+
+test("formatPendingLines renders the pill copy", async () => {
+  const { formatPendingLines } = await import(
+    "../../desktop/frontend/modules/logs.js"
+  );
+  assert.equal(
+    typeof formatPendingLines,
+    "function",
+    "the pill copy must come from an exported helper",
+  );
+  assert.equal(formatPendingLines(1), "1 new line");
+  assert.equal(formatPendingLines(3), "3 new lines");
+  assert.equal(formatPendingLines(2000), "2000 new lines");
+});
+
+test("liveModeLabel names the stream-vs-poll state", async () => {
+  const { liveModeLabel } = await import(
+    "../../desktop/frontend/modules/logs.js"
+  );
+  assert.equal(
+    typeof liveModeLabel,
+    "function",
+    "the Live button copy must come from an exported helper",
+  );
+  assert.equal(liveModeLabel("off"), "Live: Off");
+  assert.equal(liveModeLabel("stream"), "Live: Stream");
+  assert.equal(liveModeLabel("poll"), "Live: Poll");
+});
+
+test("shouldStopEnvLiveOnTabSwitch stops env live only when leaving logs", async () => {
+  const { shouldStopEnvLiveOnTabSwitch } = await import(
+    "../../desktop/frontend/modules/logs.js"
+  );
+  assert.equal(
+    typeof shouldStopEnvLiveOnTabSwitch,
+    "function",
+    "the tab-hide stop decision must be an exported helper",
+  );
+  assert.equal(
+    shouldStopEnvLiveOnTabSwitch({ nextTab: "dashboard", activeTab: "tab-logs" }),
+    true,
+    "leaving the logs tab must stop env live",
+  );
+  assert.equal(
+    shouldStopEnvLiveOnTabSwitch({ nextTab: "remotes", activeTab: "tab-logs" }),
+    true,
+    "leaving the logs tab for remotes must stop env live",
+  );
+  assert.equal(
+    shouldStopEnvLiveOnTabSwitch({ nextTab: "logs", activeTab: "tab-logs" }),
+    false,
+    "staying on the logs tab must not stop env live",
+  );
+  assert.equal(
+    shouldStopEnvLiveOnTabSwitch({ nextTab: "dashboard", activeTab: "tab-dashboard" }),
+    false,
+    "a switch that never showed logs must not stop anything",
+  );
+});
+
+test("the env logs island wires autoscroll, the pill, and the stream/poll label", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/LogsTab.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes('data-testid="autoscroll-toggle"'),
+    true,
+    "missing the autoscroll toggle control",
+  );
+  assert.equal(
+    island.includes('data-testid="new-lines-pill"'),
+    true,
+    'missing the "N new lines" pill',
+  );
+  assert.equal(
+    island.includes("data-live-mode"),
+    true,
+    "the Live button must expose the stream/poll mode for tests",
+  );
+  assert.equal(
+    island.includes("liveModeLabel"),
+    true,
+    "the Live button copy must go through the stream/poll helper",
+  );
+  assert.equal(
+    island.includes("shouldStickToBottom") || island.includes("isViewportAtBottom"),
+    true,
+    "the scroll effect must go through the autoscroll helpers, not an unconditional yank",
+  );
+  assert.equal(
+    island.includes("stopLive"),
+    true,
+    "the island must own a stopLive main.js can call on tab hide",
+  );
+  assert.equal(
+    island.includes("registerController({ refresh: load, selectionChanged, stopLive })") ||
+      (island.includes("stopLive") && island.includes("registerController")),
+    true,
+    "the registered controller must expose stopLive so tab hide stops the backend stream",
+  );
+});
+
+test("the global logs island wires autoscroll, the pill, and the stream/poll label", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/GlobalLogsPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes('data-testid="autoscroll-toggle"'),
+    true,
+    "missing the autoscroll toggle control",
+  );
+  assert.equal(
+    island.includes('data-testid="new-lines-pill"'),
+    true,
+    'missing the "N new lines" pill',
+  );
+  assert.equal(
+    island.includes("data-live-mode"),
+    true,
+    "the Live button must expose the stream/poll mode for tests",
+  );
+  assert.equal(
+    island.includes("stopGlobalServiceLogStream"),
+    true,
+    "hiding the pane must stop the backend global stream",
+  );
+});
+
+test("leaving the logs tab stops env live, including the backend stream", async () => {
+  const main = await readFile(
+    new URL("../../desktop/frontend/main.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    main.includes("shouldStopEnvLiveOnTabSwitch"),
+    true,
+    "the tab switch must go through the stop-on-hide helper",
+  );
+  assert.equal(
+    main.includes("logsApi.stopLive"),
+    true,
+    "leaving the logs tab must call the island stopLive so the backend stream dies with it",
+  );
+});

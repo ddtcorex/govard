@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { byId } from "../utils/dom.js";
+import { trapTabKey } from "../utils/focus-trap.js";
 
 type OnboardingController = {
   browseProject(): Promise<void>;
@@ -109,6 +110,24 @@ export function OnboardingModal({
     void controller.loadFrameworkOptions();
   }, [controller, registerRefs]);
 
+  // Baseline dialog keyboard contract: Escape closes, Tab cycles inside.
+  // The controller owns open/close state on the live node, so the listener
+  // reads that node instead of island state that would go stale.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const root = byId("onboardingModal");
+      if (!root || root.classList.contains("hidden")) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        controller.toggleModal(false);
+        return;
+      }
+      trapTabKey(root, event);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [controller]);
+
   // A separate effect owns the API registration, so unmounting can hand it back:
   // the island's own work dies with it, but the closure main.js kept would not.
   useEffect(() => {
@@ -119,16 +138,20 @@ export function OnboardingModal({
   return (
     <div
       id="onboardingModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboardingTitle"
+      tabIndex={-1}
       className="hidden fixed inset-0 z-100 bg-slate-900/60 dark:bg-background-primary/95 backdrop-blur-md flex items-center justify-center p-4 md:p-8 transition-all duration-500"
     >
       <div className="dark:bg-surface-secondary w-full max-w-6xl h-[85vh] rounded-3xl flex flex-col overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] relative border border-slate-200 dark:border-white/10 bg-white">
         <header className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 px-8 py-6 bg-slate-50 dark:bg-surface-primary shrink-0 relative z-20">
           <div className="flex items-center gap-4">
             <div className="size-12 text-primary flex items-center justify-center bg-primary/10 rounded-2xl border border-primary/20 shadow-lg shadow-primary/5">
-              <span className="material-symbols-outlined text-3xl">add_circle</span>
+              <span className="material-symbols-outlined text-3xl" aria-hidden="true">add_circle</span>
             </div>
             <div>
-              <h2 className="text-slate-900 dark:text-white text-2xl font-black leading-tight tracking-tight">
+              <h2 id="onboardingTitle" className="text-slate-900 dark:text-white text-2xl font-black leading-tight tracking-tight">
                 New Project Environment
               </h2>
               <p className="text-slate-500 dark:text-slate-400 text-xs mt-1 font-medium italic opacity-80">
@@ -143,7 +166,7 @@ export function OnboardingModal({
             aria-label="Close"
             onClick={() => controller.toggleModal(false)}
           >
-            <span className="material-symbols-outlined group-hover:rotate-90 transition-transform">
+            <span className="material-symbols-outlined group-hover:rotate-90 transition-transform" aria-hidden="true">
               close
             </span>
           </button>
@@ -155,7 +178,7 @@ export function OnboardingModal({
             <div className="p-8 flex flex-col gap-8">
               <section className="flex flex-col gap-4">
                 <div className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary/60 text-[20px]">
+                  <span className="material-symbols-outlined text-primary/60 text-[20px]" aria-hidden="true">
                     source
                   </span>
                   <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-300/60">
@@ -201,7 +224,7 @@ export function OnboardingModal({
                           <option value="ssh">SSH</option>
                           <option value="https">HTTPS</option>
                         </select>
-                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-lg">
+                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-lg" aria-hidden="true">
                           unfold_more
                         </span>
                       </div>
@@ -260,7 +283,7 @@ export function OnboardingModal({
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div className="size-10 rounded-xl bg-surface-secondary dark:bg-white/5 flex items-center justify-center text-text-tertiary dark:text-slate-400 group-hover:text-primary group-hover:bg-primary/10 transition-all">
-                        <span className="material-symbols-outlined text-[22px]">
+                        <span className="material-symbols-outlined text-[22px]" aria-hidden="true">
                           folder_open
                         </span>
                       </div>
@@ -287,7 +310,7 @@ export function OnboardingModal({
 
               <section className="flex flex-col gap-4 mt-2">
                 <div className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary/60 text-[20px]">
+                  <span className="material-symbols-outlined text-primary/60 text-[20px]" aria-hidden="true">
                     assignment_turned_in
                   </span>
                   <h3 className="text-xs font-black uppercase tracking-[0.2em] text-text-tertiary dark:text-slate-300/60">
@@ -336,7 +359,7 @@ export function OnboardingModal({
                 className="hidden flex items-center gap-3 px-5 py-4 bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-2xl text-primary animate-in fade-in slide-in-from-bottom-2 duration-500"
               >
                 <div className="size-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-[20px]">auto_fix_high</span>
+                  <span className="material-symbols-outlined text-[20px]" aria-hidden="true">auto_fix_high</span>
                 </div>
                 <div className="flex-1">
                   <p className="text-[10px] font-black uppercase tracking-widest leading-none">
@@ -378,7 +401,7 @@ export function OnboardingModal({
                       type="text"
                       onChange={() => controller.handleInputChange()}
                     />
-                    <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 text-xl font-light">
+                    <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 text-xl font-light" aria-hidden="true">
                       language
                     </span>
                   </div>
@@ -401,7 +424,7 @@ export function OnboardingModal({
                       <option value="auto">🔍 Auto-detect</option>
                       <option value="custom">Custom System</option>
                     </select>
-                    <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-500 pointer-events-none text-xl">
+                    <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-500 pointer-events-none text-xl" aria-hidden="true">
                       expand_more
                     </span>
                   </div>
@@ -422,7 +445,7 @@ export function OnboardingModal({
                       type="text"
                       onChange={() => controller.handleInputChange()}
                     />
-                    <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 text-xl font-light">
+                    <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-600 text-xl font-light" aria-hidden="true">
                       tune
                     </span>
                   </div>
@@ -520,7 +543,7 @@ export function OnboardingModal({
               </section>
 
               <div className="p-6 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-start gap-4">
-                <span className="material-symbols-outlined text-blue-500 text-[24px]">info</span>
+                <span className="material-symbols-outlined text-blue-500 text-[24px]" aria-hidden="true">info</span>
                 <div className="flex flex-col gap-1">
                   <div className="text-xs font-black text-blue-900 dark:text-blue-300 uppercase tracking-widest leading-none mt-1">
                     Note on Initialization
@@ -565,7 +588,7 @@ export function OnboardingModal({
               onClick={() => void controller.addProject()}
             >
               <span>Initialize Environment</span>
-              <span className="material-symbols-outlined text-[20px] group-hover:translate-x-1 transition-transform">
+              <span className="material-symbols-outlined text-[20px] group-hover:translate-x-1 transition-transform" aria-hidden="true">
                 arrow_forward
               </span>
             </button>
@@ -604,7 +627,7 @@ export function OnboardingModal({
                     id="onboardingBootstrapRemote"
                     className="w-full bg-surface-secondary dark:bg-slate-800 border border-border-primary dark:border-white/10 rounded-2xl px-5 py-4 text-text-primary dark:text-white font-black text-sm outline-hidden focus:ring-4 focus:ring-primary/15 transition-all appearance-none cursor-pointer"
                   ></select>
-                  <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-500 pointer-events-none text-xl font-light">
+                  <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-text-tertiary dark:text-slate-500 pointer-events-none text-xl font-light" aria-hidden="true">
                     database
                   </span>
                 </div>

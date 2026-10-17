@@ -6,9 +6,13 @@ import {
   buildLogFilename,
   downloadTextAsFile,
   filterLogsText,
+  formatPendingLines,
+  isViewportAtBottom,
+  liveModeLabel,
   maxLogLines,
   normalizeLogSeverity,
   severityChipClass,
+  shouldStickToBottom,
 } from "../modules/logs.js";
 import { buildEmptyGlobalLogMessage } from "../modules/global-services.js";
 import { getState, setState } from "../state/store.js";
@@ -73,9 +77,17 @@ export function GlobalLogsPanel({
   const [loading, setLoading] = useState(false);
   /** True only while the poll fallback is driving this pane. */
   const [polling, setPolling] = useState(false);
+  /** Autoscroll stays on unless the user opts out: the default preserves the old follow. */
+  const [autoscroll, setAutoscroll] = useState(true);
+  /** Lines that arrived while the pane was scrolled up (or autoscroll was off). */
+  const [pending, setPending] = useState(0);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const forceScroll = useRef(false);
+  /** Whether the pane reads as pinned to the bottom; scroll position, not state. */
+  const atBottomRef = useRef(true);
+  const prevLineCount = useRef(0);
+  /** Mirrors live-or-polling for the unmount cleanup, which cannot read render state. */
+  const liveRef = useRef(false);
   const firstSelection = useRef(true);
   /** Bumped by every refresh: only the newest request may write the pane or clear loading. */
   const refreshRequest = useRef(0);
@@ -86,6 +98,13 @@ export function GlobalLogsPanel({
   const severity = normalizeLogSeverity(state.globalLogSeverity || "all");
   const query = String(state.globalLogQuery || "");
   const live = Boolean(state.globalLiveLogsEnabled);
+  /** The mode live actually reached: the button names it so stream vs poll is visible. */
+  const liveMode = !live ? "off" : polling ? "poll" : "stream";
+  // The unmount cleanup below cannot read render state, so the live flag is
+  // mirrored into a ref from an effect, never as a write during render.
+  useEffect(() => {
+    liveRef.current = live || polling;
+  }, [live, polling]);
   const services = state.globalServices as GlobalServiceRow[];
   const serviceName =
     services.find((service) => service.id === selectedId)?.name || "Select service";
@@ -103,7 +122,9 @@ export function GlobalLogsPanel({
     if (!serviceID) {
       setRaw("");
       setLoading(false);
-      forceScroll.current = true;
+      prevLineCount.current = 0;
+      setPending(0);
+      atBottomRef.current = true;
       return;
     }
     setLoading(true);
@@ -124,7 +145,6 @@ export function GlobalLogsPanel({
     // Only the newest request reaches here, so `loading` clears when the latest
     // one settles and not when an older overlapping one does.
     setLoading(false);
-    forceScroll.current = true;
   }, [bridge]);
 
   const stopLive = useCallback(
@@ -184,7 +204,9 @@ export function GlobalLogsPanel({
     await stopLive();
     setRaw("");
     setLoaded(true);
-    forceScroll.current = true;
+    prevLineCount.current = 0;
+    setPending(0);
+    atBottomRef.current = true;
     onStatus("Global service logs cleared.");
     onFeedback("Global service logs cleared.", "info");
   }, [onFeedback, onStatus, stopLive]);
@@ -251,6 +273,18 @@ export function GlobalLogsPanel({
     return () => registerApi(null);
   }, [registerApi, refreshLogs, stopLive]);
 
+  // Unmounting with live on is what stops the backend stream: the poll effect
+  // below only owns the poll timer, and a stream has no other owner, so
+  // without this a hidden pane would orphan its stream.
+  useEffect(
+    () => () => {
+      if (liveRef.current) {
+        void Promise.resolve(bridge.stopGlobalServiceLogStream()).catch(() => {});
+      }
+    },
+    [bridge],
+  );
+
   // One effect owns the poll, so unmounting the pane is what stops it.
   // The poll pauses while the window is hidden and reloads once on return.
   useEffect(() => {
@@ -306,6 +340,9 @@ export function GlobalLogsPanel({
       firstSelection.current = false;
       return;
     }
+    // A new service owns a new buffer: the pill counted the old one's lines.
+    setPending(0);
+    atBottomRef.current = true;
     if (Boolean(getState().globalLiveLogsEnabled)) {
       void stopLive({ skipBridge: true }).then(() => startLive());
       return;
@@ -313,18 +350,40 @@ export function GlobalLogsPanel({
     void refreshLogs();
   }, [selectedId, refreshLogs, startLive, stopLive]);
 
-  // Only a forced reload or a live stream pulls the pane to the bottom.
-  useEffect(() => {
+  // The pane sticks to the bottom only while the autoscroll toggle is on (its
+  // default) and the user never scrolled up. Otherwise new lines pile into
+  // the pill counter and the viewport stays where the user left it.
+  const jumpToBottom = useCallback(() => {
     const viewport = viewportRef.current;
-    if (!viewport) {
+    if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    atBottomRef.current = true;
+    setPending(0);
+  }, []);
+
+  const handleViewportScroll = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const atBottom = isViewportAtBottom(viewport);
+    atBottomRef.current = atBottom;
+    if (atBottom) {
+      setPending((prev) => (prev === 0 ? prev : 0));
+    }
+  }, []);
+
+  useEffect(() => {
+    const lineCount = raw === "" ? 0 : raw.split("\n").length;
+    const added = lineCount - prevLineCount.current;
+    prevLineCount.current = lineCount;
+    if (shouldStickToBottom({ autoscroll, atBottom: atBottomRef.current })) {
+      const viewport = viewportRef.current;
+      if (viewport) viewport.scrollTop = viewport.scrollHeight;
+      setPending((prev) => (prev === 0 ? prev : 0));
       return;
     }
-    if (!forceScroll.current && !live) {
-      return;
+    if (added > 0) {
+      setPending((prev) => prev + added);
     }
-    forceScroll.current = false;
-    viewport.scrollTop = viewport.scrollHeight;
-  }, [raw, loading, live]);
+  }, [raw, autoscroll]);
 
   const filtered = filterLogsText(raw, severity, query).trim();
   const output = !loaded
@@ -338,7 +397,7 @@ export function GlobalLogsPanel({
   return (
     <>
       <h3 className="text-sm font-semibold text-primary">Logs</h3>
-      <div className="rounded-xl border border-border-primary bg-background-primary overflow-hidden flex-1 min-h-0 flex flex-col">
+      <div className="rounded-xl border border-border-primary bg-background-primary overflow-hidden flex-1 min-h-0 flex flex-col relative">
         <div className="p-3 border-b border-border-primary bg-surface-primary">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-4 min-w-0 font-bold">
@@ -419,10 +478,28 @@ export function GlobalLogsPanel({
                 type="button"
                 id="globalToggleLive"
                 data-testid="global-toggle-live"
+                data-live-mode={liveMode}
                 className="h-7 px-2.5 rounded-md text-[10px] font-semibold bg-primary/20 dark:bg-[#2e573a] text-primary dark:text-white hover:bg-primary-hover hover:text-white transition-colors"
+                title={
+                  liveMode === "stream"
+                    ? "Live log stream active"
+                    : liveMode === "poll"
+                      ? "Live log polling active (stream unavailable)"
+                      : "Start live log tail"
+                }
                 onClick={() => void toggleLive()}
               >
-                {live ? "Live: On" : "Live: Off"}
+                {liveModeLabel(liveMode)}
+              </button>
+              <button
+                type="button"
+                data-testid="autoscroll-toggle"
+                aria-pressed={autoscroll}
+                className="h-7 px-2.5 rounded-md text-[10px] font-semibold text-primary dark:text-primary hover:bg-primary/10 dark:hover:bg-[#2e573a] transition-colors"
+                title={autoscroll ? "Stop following new log lines" : "Follow new log lines"}
+                onClick={() => setAutoscroll((prev) => !prev)}
+              >
+                {autoscroll ? "Autoscroll: On" : "Autoscroll: Off"}
               </button>
               <button
                 type="button"
@@ -438,6 +515,7 @@ export function GlobalLogsPanel({
         <div
           id="globalLogViewport"
           ref={viewportRef}
+          onScroll={handleViewportScroll}
           className="flex-1 min-h-0 overflow-y-auto p-3 custom-scrollbar log-pane-scroll"
         >
           <pre
@@ -447,6 +525,17 @@ export function GlobalLogsPanel({
             {output}
           </pre>
         </div>
+        {pending > 0 && (
+          <button
+            type="button"
+            data-testid="new-lines-pill"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 h-7 px-3 rounded-full text-[10px] font-semibold bg-primary text-slate-900 hover:bg-primary-hover hover:text-white shadow-lg transition-colors"
+            title="Jump to the newest log lines"
+            onClick={jumpToBottom}
+          >
+            {formatPendingLines(pending)}
+          </button>
+        )}
       </div>
     </>
   );

@@ -407,6 +407,177 @@ test("classifyEnvironmentStatus labels a syncing environment as syncing", async 
   );
 });
 
+test("refreshDashboard never falls back to fake projects", async () => {
+  const main = await readFile(
+    new URL("../../desktop/frontend/main.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    main.includes("safeDashboard"),
+    false,
+    "the fake safeDashboard fallback must be deleted: a failed render must never show actionable fake projects",
+  );
+  for (const fake of ["Project Alpha", "Project Beta", "Project Gamma"]) {
+    assert.equal(
+      main.includes(fake),
+      false,
+      `fake project ${fake} must not ship in the dashboard path`,
+    );
+  }
+});
+
+test("refreshDashboard records a bridge failure as dashboard state", async () => {
+  // The orchestration lives in modules/dashboard-refresh.js; the runtime
+  // proof is dashboard_refresh_core.test.mjs. This pins the shape.
+  const module = await readFile(
+    new URL("../../desktop/frontend/modules/dashboard-refresh.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    module.includes("dashboardError"),
+    true,
+    "a failed dashboard fetch must publish dashboardError to the store for the offline state",
+  );
+});
+
+test("refreshDashboard refreshes panels concurrently and survives one panel failing", async () => {
+  // The orchestration lives in modules/dashboard-refresh.js (main.js only
+  // wires it); the runtime proof is dashboard_refresh_core.test.mjs, which
+  // drives it with deferred promises. This pins the shape where it lives.
+  const module = await readFile(
+    new URL("../../desktop/frontend/modules/dashboard-refresh.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    module.includes("Promise.allSettled"),
+    true,
+    "panel refreshes must go through Promise.allSettled so one failing panel leaves the others rendered",
+  );
+  for (const panel of [
+    "refreshMetrics",
+    "refreshRemotes",
+    "refreshGlobalServices",
+    "refreshLogs",
+    "loadFooterVersion",
+  ]) {
+    assert.equal(
+      module.includes(panel),
+      true,
+      `expected concurrent panel refresh to include ${panel}`,
+    );
+  }
+  const main = await readFile(
+    new URL("../../desktop/frontend/main.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    main.includes("createDashboardRefresher"),
+    true,
+    "main.js must wire the shared refresh orchestration",
+  );
+});
+
+test("store declares dashboard honesty fields", async () => {
+  const source = await readFile(
+    new URL("../../desktop/frontend/state/store.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    source.includes("dashboardError"),
+    true,
+    "store must declare dashboardError for the offline state",
+  );
+  assert.equal(
+    source.includes("lastRefreshed"),
+    true,
+    "store must declare lastRefreshed for the footer timestamp",
+  );
+  const { getState } = await import("../../desktop/frontend/state/store.js");
+  assert.ok("dashboardError" in getState(), "dashboardError missing at runtime");
+  assert.ok("lastRefreshed" in getState(), "lastRefreshed missing at runtime");
+});
+
+test("project hero renders an offline state with its own Retry control", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/ProjectHero.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes("dashboardError"),
+    true,
+    "the hero must read the dashboard error for its offline state",
+  );
+  assert.equal(
+    island.includes('data-testid="dashboard-retry"'),
+    true,
+    "the offline state needs its own Retry control",
+  );
+  assert.equal(
+    island.includes("onRetry"),
+    true,
+    "the hero must take an onRetry callback wired to refreshDashboard",
+  );
+});
+
+test("project hero empty state invites onboarding", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/ProjectHero.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes("onOpenOnboarding"),
+    true,
+    "the empty state must offer a CTA into onboarding",
+  );
+  const main = await readFile(
+    new URL("../../desktop/frontend/main.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    main.includes("onRetry") && main.includes("onOpenOnboarding"),
+    true,
+    "main.js must wire the hero Retry and onboarding CTA",
+  );
+});
+
+test("environment list renders offline and empty states with Retry and onboarding CTA", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/EnvironmentList.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes("dashboardError"),
+    true,
+    "the list must read the dashboard error for its offline state",
+  );
+  assert.equal(
+    island.includes('data-testid="env-list-retry"'),
+    true,
+    "the list offline state needs its own Retry control",
+  );
+  assert.equal(
+    island.includes("onOpenOnboarding"),
+    true,
+    "the list empty state must offer a CTA into onboarding",
+  );
+});
+
+test("footer shows the last dashboard refresh time", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/MetricsFooter.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes("lastRefreshed"),
+    true,
+    "the footer island must render the lastRefreshed timestamp",
+  );
+  assert.equal(
+    island.includes('data-testid="last-refreshed"'),
+    true,
+    "the refresh timestamp needs a stable test hook",
+  );
+});
 test("classifyEnvironmentStatus marks a partial environment as degraded", async () => {
   const { classifyEnvironmentStatus } = await import(
     "../../desktop/frontend/modules/dashboard.js"
@@ -414,4 +585,74 @@ test("classifyEnvironmentStatus marks a partial environment as degraded", async 
   const meta = classifyEnvironmentStatus({ Status: "degraded" });
   assert.equal(meta.active, true);
   assert.equal(meta.detailText, "Degraded");
+});
+
+test("store declares project-scoped busy env state", async () => {
+  const { getState } = await import("../../desktop/frontend/state/store.js");
+  assert.ok("busyEnvs" in getState(), "busyEnvs missing at runtime");
+});
+
+test("env lock surfaces into the store for visible busy states", async () => {
+  const ops = await import("../../desktop/frontend/modules/operations.js");
+  const { getState } = await import("../../desktop/frontend/state/store.js");
+  const token = ops.beginOperation("env:busy-probe", "env-start");
+  try {
+    assert.ok(token, "expected the env lock to be acquired");
+    assert.equal(
+      getState().busyEnvs?.["busy-probe"],
+      "env-start",
+      "holding env:busy-probe must publish busyEnvs[busy-probe] for the hero and sidebar",
+    );
+  } finally {
+    ops.endOperation(token);
+  }
+  assert.equal(
+    getState().busyEnvs?.["busy-probe"],
+    undefined,
+    "releasing the env lock must clear busyEnvs[busy-probe]",
+  );
+});
+
+test("project hero disables actions with a spinner while its env is busy", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/ProjectHero.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes("busyEnvs"),
+    true,
+    "the hero must read the project-scoped busy state from the store",
+  );
+  assert.equal(
+    island.includes("isEnvBusy"),
+    true,
+    "the hero must derive a per-project busy flag",
+  );
+  assert.equal(
+    island.includes("animate-spin"),
+    true,
+    "the busy hero must show a spinner, not just a dimmed button",
+  );
+});
+
+test("sidebar row disables with a spinner while its env is busy", async () => {
+  const island = await readFile(
+    new URL("../../desktop/frontend/islands/EnvironmentList.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    island.includes("busyEnvs"),
+    true,
+    "the sidebar must read the project-scoped busy state from the store",
+  );
+  assert.equal(
+    island.includes("animate-spin"),
+    true,
+    "the busy sidebar row must show a spinner",
+  );
+  assert.equal(
+    island.includes("disabled"),
+    true,
+    "the busy sidebar row must be visibly disabled so double-click is impossible",
+  );
 });

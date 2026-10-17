@@ -34,6 +34,7 @@ export {
     RemoteEntry,
     RemoteSnapshot,
     Service,
+    SyncProgressPayload,
     SyncStartedPayload,
     SystemMetrics,
     TrayStatus,

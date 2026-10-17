@@ -766,6 +766,12 @@ select::-ms-expand {
   display: none !important;
 }
 
+/* Settings dirty dot: Tailwind v4 orders `inline-block` after `hidden`, so
+   the utility alone cannot hide the dot - the id selector wins instead. */
+#settingsDirtyDot.hidden {
+  display: none !important;
+}
+
 /* Tabs */
 .tab-content {
   display: none;
