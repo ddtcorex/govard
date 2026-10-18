@@ -7,6 +7,7 @@ import {
   canOpenRemoteTarget,
   canUseFilesCapability,
   canUseSyncPreset,
+  deniesEverything,
   describeSyncProgress,
   formatAuthMethodLabel,
   normalizeRemotePreset,
@@ -119,6 +120,21 @@ test("canUseSyncPreset gates a preset on the capabilities the remote declares", 
     canUseSyncPreset({ capabilities: ["files"] }, "full"),
     true,
     "pull-everything has no capability of its own and is never gated",
+  );
+});
+
+test("a none-capability remote disables every pull and open", () => {
+  assert.equal(deniesEverything({ capabilities: ["none"] }), true);
+  assert.equal(deniesEverything({ capabilities: [] }), false);
+  assert.equal(deniesEverything({}), false);
+  assert.equal(deniesEverything({ capabilities: ["db"] }), false);
+  assert.equal(canUseSyncPreset({ capabilities: ["none"] }, "db"), false);
+  assert.equal(canUseSyncPreset({ capabilities: ["none"] }, "media"), false);
+  assert.equal(canUseSyncPreset({ capabilities: ["none"] }, "full"), false);
+  assert.equal(canUseFilesCapability({ capabilities: ["none"] }), false);
+  assert.equal(
+    canOpenRemoteTarget({ host: "stage.example.com", capabilities: ["none"] }),
+    false,
   );
 });
 

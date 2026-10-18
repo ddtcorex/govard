@@ -19,9 +19,9 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 	// A developer's global excludes must not decide what this test proves.
 	// GIT_CONFIG_GLOBAL alone does not neutralize them: core.excludesFile
 	// still defaults to ~/.config/git/ignore by path, so pin it to /dev/null.
-	command.Env = append(os.Environ(),
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.excludesFile", "GIT_CONFIG_VALUE_0=/dev/null",
+	// hermeticGitEnv keeps the suite-wide gc guards (COUNT=3): exec takes
+	// the last GIT_CONFIG_COUNT, so a COUNT=1 override would drop them.
+	command.Env = append(hermeticGitEnv(),
 		"GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.com",
 		"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.com",
 	)

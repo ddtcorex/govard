@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"govard/internal/engine"
@@ -25,6 +26,35 @@ import (
 )
 
 const remoteLastSyncReadLimit = 5000
+
+// backgroundSyncIdleTimeout bounds a background remote sync by silence,
+// not wall-clock: a sync that still streams output is working (DB imports
+// run long), one gone quiet past this ceiling has hung. Same 15 minutes as
+// the desktop long ceiling for bootstrap/pull.
+var backgroundSyncIdleTimeout = govardCommandLongTimeout
+
+// syncActivityTracker wraps a Platform and records the last Emit time, so
+// the background-sync waiter can tell a working sync from a hung one
+// without touching the pipe scanners' signatures.
+type syncActivityTracker struct {
+	Platform
+	lastEmit atomic.Int64 // UnixNano of the last Emit
+}
+
+func newSyncActivityTracker(p Platform) *syncActivityTracker {
+	t := &syncActivityTracker{Platform: p}
+	t.lastEmit.Store(time.Now().UnixNano())
+	return t
+}
+
+func (t *syncActivityTracker) Emit(event string, data any) {
+	t.lastEmit.Store(time.Now().UnixNano())
+	t.Platform.Emit(event, data)
+}
+
+func (t *syncActivityTracker) idleFor() time.Duration {
+	return time.Since(time.Unix(0, t.lastEmit.Load()))
+}
 
 var defaultRunGovardCommandForDesktop = func(root string, args []string) (string, error) {
 	return runGovardCommandForDesktopWithTimeout(root, args, govardCommandTimeout(args))
@@ -903,42 +933,94 @@ func runRemoteSyncBackgroundWithOptions(
 		return fmt.Errorf("govard CLI not found in PATH")
 	}
 
+	// The cancel below belongs to the waiter goroutine, not to this
+	// function: this function returns as soon as the process is started,
+	// so a deferred cancel here would kill every sync microseconds after
+	// Start. Every early return calls cancel explicitly.
+	ctx, cancel := context.WithCancel(ctx)
+
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = filepath.Clean(root)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		cancel()
 		UnregisterSyncingProject(project)
 		return fmt.Errorf("failed to pipe stdout: %w", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		cancel()
 		UnregisterSyncingProject(project)
 		return fmt.Errorf("failed to pipe stderr: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
+		cancel()
 		UnregisterSyncingProject(project)
 		return fmt.Errorf("failed to start background sync: %w", err)
 	}
 
+	// The atomic claim above registered the canonical project identity, so
+	// the badge, the guard and the flag below all share it regardless of
+	// whether the caller addressed the project by name, domain or path.
 	p.Emit(EventSyncStarted, SyncStartedPayload{
 		Project: project,
 		Remote:  remoteName,
 		Preset:  preset,
 	})
 
-	// We use two scanners to emit events to the frontend
+	// A hung sync must not hold the syncing flag until app restart. The
+	// bound is on silence, not wall-clock: a sync that still streams
+	// output is working (DB imports run long), one gone quiet has hung.
+	// The tracker starts at launch so the ceiling covers silent startups.
+	tracker := newSyncActivityTracker(p)
 	done := make(chan struct{}, 2)
-	go scanSyncPipe(ctx, p, stdout, done)
-	go scanSyncPipe(ctx, p, stderr, done)
+	go scanSyncPipe(ctx, tracker, stdout, done)
+	go scanSyncPipe(ctx, tracker, stderr, done)
 
 	go func() {
-		<-done
-		<-done
+		// Every exit path releases the flag and the context: a stuck
+		// waiter must never wedge start/stop/restart/pull/delete/toggle
+		// until app restart.
+		defer cancel()
+		defer UnregisterSyncingProject(project)
+		// Read once: the test seam rewrites the package var while a sync
+		// may still be reading it, which `go test -race` rightfully flags.
+		idleTimeout := backgroundSyncIdleTimeout
+		tick := idleTimeout / 4
+		if tick < 100*time.Millisecond {
+			tick = 100 * time.Millisecond
+		}
+		if tick > time.Minute {
+			tick = time.Minute
+		}
+		ticker := time.NewTicker(tick)
+		defer ticker.Stop()
+		timedOut := false
+		for finished := 0; finished < 2; {
+			select {
+			case <-done:
+				finished++
+			case <-ticker.C:
+				if !timedOut && tracker.idleFor() > idleTimeout {
+					// Gone quiet past the ceiling: kill the process and
+					// close our pipe ends so the scanners finish even
+					// when an orphaned grandchild (or a leftover rsync)
+					// keeps its copies open and EOF would never arrive.
+					// The scanners may log one expected read error each.
+					timedOut = true
+					cancel()
+					_ = stdout.Close()
+					_ = stderr.Close()
+				}
+			}
+		}
 		err := cmd.Wait()
 		UnregisterSyncingProject(project)
-		if err != nil {
+		if timedOut {
+			p.Emit(EventSyncFailed, fmt.Sprintf("Sync timed out after %s of no output; partial state may remain", idleTimeout))
+		} else if err != nil {
 			p.Emit(EventSyncFailed, syncFailedMessage(err))
 		} else {
 			p.Emit(EventSyncCompleted, "Sync completed successfully")
@@ -1099,10 +1181,18 @@ func findExactProjectMatch(query string) (engine.ProjectRegistryEntry, error) {
 		return engine.ProjectRegistryEntry{}, err
 	}
 
+	// Two passes: a project name always wins over a domain. A single pass
+	// matching either field returns whichever entry the registry happens
+	// to sort first, so a project sharing its name with another project's
+	// domain resolves nondeterministically.
 	lowerQuery := strings.ToLower(query)
 	for _, entry := range entries {
-		if strings.ToLower(entry.ProjectName) == lowerQuery ||
-			strings.ToLower(entry.Domain) == lowerQuery {
+		if strings.ToLower(entry.ProjectName) == lowerQuery {
+			return entry, nil
+		}
+	}
+	for _, entry := range entries {
+		if strings.ToLower(entry.Domain) == lowerQuery {
 			return entry, nil
 		}
 	}
@@ -1141,10 +1231,10 @@ func buildRemoteEntries(
 			port = 22
 		}
 
+		// RemoteCapabilityList reports ["none"] when every capability is
+		// disabled: the token stays on the wire so the frontend can tell
+		// "declares nothing" (legacy allow) apart from "denies everything".
 		capabilities := engine.RemoteCapabilityList(cfg)
-		if len(capabilities) == 1 && capabilities[0] == "none" {
-			capabilities = []string{}
-		}
 
 		effectiveProtected, _ := engine.RemoteWriteBlocked(name, cfg)
 

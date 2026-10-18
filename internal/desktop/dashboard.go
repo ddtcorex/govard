@@ -246,7 +246,7 @@ func buildDashboardInternal() (Dashboard, error) {
 					env.Framework = displayFramework(ent.Framework)
 				}
 
-				if remote := GetSyncingRemote(name); remote != "" {
+				if remote := syncingRemoteForProject(name); remote != "" {
 					env.Status = "syncing"
 					env.SyncingRemote = remote
 				}
@@ -627,7 +627,7 @@ func buildEnvironment(info *projectInfo) Environment {
 		Status:  rollupEnvironmentStatus(info.runningCount, info.totalCount),
 	}
 
-	if remote := GetSyncingRemote(info.name); remote != "" {
+	if remote := syncingRemoteForProject(info.name); remote != "" {
 		env.Status = "syncing"
 		env.SyncingRemote = remote
 	}

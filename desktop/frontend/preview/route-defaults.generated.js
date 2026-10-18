@@ -385,6 +385,10 @@ export const ROUTE_DEFAULTS = {
   "SystemService.Quit": {
     "kind": "void"
   },
+  "SystemService.ReportFrontendError": {
+    "kind": "value",
+    "value": ""
+  },
   "ToolService.CancelToolRun": {
     "kind": "value",
     "value": false

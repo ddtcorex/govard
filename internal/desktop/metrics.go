@@ -1,8 +1,11 @@
 package desktop
 
 import (
+	"fmt"
+	"log"
 	"math"
 	"os/user"
+	"strings"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
@@ -49,6 +52,31 @@ func (s *SystemService) GetResourceMetrics() (res string, err error) {
 
 func (s *SystemService) Quit() {
 	s.platform.Quit()
+}
+
+// frontendErrorMaxLength caps a reported island crash: the client caps too,
+// in its own units, so this is the second layer, not the only one.
+const frontendErrorMaxLength = 2000
+
+// ReportFrontendError records a render failure the desktop ErrorBoundary
+// caught: an island crash is otherwise visible only in the user's devtools,
+// which support cannot see. The message is trimmed and capped, never fatal.
+func (s *SystemService) ReportFrontendError(message string) (res string, err error) {
+	defer RecoverPanic(&err, "ReportFrontendError")
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return "", fmt.Errorf("message is required")
+	}
+	// Cut by rune, never by byte: a byte cut can split a multi-byte rune
+	// and write invalid UTF-8 to the log.
+	runes := []rune(trimmed)
+	if len(runes) > frontendErrorMaxLength {
+		runes = runes[:frontendErrorMaxLength]
+	}
+	// %q keeps a multi-line component stack on one log line: a raw %s would
+	// let a crafted message forge sibling log lines.
+	log.Printf("frontend island error: %q", string(runes))
+	return "Frontend error reported", nil
 }
 
 func getSystemMetrics() (float64, float64) {

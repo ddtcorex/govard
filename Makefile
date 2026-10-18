@@ -21,7 +21,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.3
 GOLANGCI_LINT_BIN ?= $(shell go env GOPATH)/bin/golangci-lint
 LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 
-.PHONY: help install install-release build-test-binary build-test-budget build frontend build-frontend bindings bindings-check clean test test-unit test-coverage test-integration test-integration-ci test-frontend test-frontend-behaviour lint lint-desktop lint-install fmt fmt-check vet generate generate-check images push
+.PHONY: help install install-release build-test-binary build-test-budget build frontend build-frontend bindings bindings-check font-check clean test test-unit test-coverage test-integration test-integration-ci test-frontend test-frontend-behaviour lint lint-desktop lint-install fmt fmt-check vet generate generate-check images push
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -65,6 +65,16 @@ bindings-check: bindings
 	@test -z "$$(git ls-files --others -- $(BINDINGS_DIR))" || (echo "Untracked bindings: run 'make bindings' and commit." && exit 1)
 	@node desktop/frontend/scripts/generate-preview-route-defaults.mjs
 	@git diff --exit-code -- desktop/frontend/preview/route-defaults.generated.js desktop/frontend/preview/id-map.generated.js || (echo "Preview route defaults are stale: run 'node desktop/frontend/scripts/generate-preview-route-defaults.mjs' and commit." && exit 1)
+
+# font-check fails when the committed icon subset does not match what the
+# scanner sees in source. It must run before `make frontend`: the build
+# regenerates the manifest from the same scanner, so the icon-coverage tests
+# run after a build compare the scanner against its own output and cannot
+# fail. Checked first, they pin the committed assets instead.
+font-check: ## Fail when the committed icon subset drifts from source
+	@cd desktop/frontend && pnpm install --frozen-lockfile && node scripts/subset-icons.mjs
+	@git diff --exit-code -- desktop/frontend/assets/ || (echo "Icon subset is stale: run 'make frontend' and commit the regenerated assets." && exit 1)
+	@test -z "$$(git status --porcelain --untracked-files=all -- desktop/frontend/assets/ | grep '^??')" || (echo "Untracked icon assets: commit or remove them." && git status --porcelain --untracked-files=all -- desktop/frontend/assets/ | grep '^??' && exit 1)
 
 build: generate ## Build Govard binary for the current platform
 	@echo "Building Govard..."
@@ -131,12 +141,11 @@ test-integration-ci: build-test-binary build-test-budget
 	@echo "Running integration tests (CI mode, time-budgeted)..."
 	$(TEST_BUDGET_BINARY) -suite integration -stale -- go test -tags integration ./tests/integration/... -json -timeout 30m -parallel 4
 
-test-frontend:
+test-frontend: font-check
 	@echo "Running frontend unit tests..."
 	node --test tests/frontend/*.test.mjs tests/frontend/preview/*.test.mjs
 	pnpm --dir desktop/frontend install --frozen-lockfile
 	pnpm --dir desktop/frontend typecheck
-
 # Behaviour scenarios drive the real UI over raw CDP, so they need a Chrome
 # binary; CHROME_BIN overrides the search.
 CHROME_BIN ?= $(shell command -v google-chrome || command -v chromium || command -v chromium-browser || echo /opt/google/chrome/chrome)

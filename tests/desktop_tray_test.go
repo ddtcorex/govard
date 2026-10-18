@@ -92,3 +92,27 @@ func TestDesktopBuildTrayProjectsSortsAndMarksRunning(t *testing.T) {
 		t.Fatalf("URL = %q", got[0].URL)
 	}
 }
+
+func TestDesktopBuildTrayProjectsTreatsDegradedAsRunning(t *testing.T) {
+	d := desktop.Dashboard{Environments: []desktop.Environment{
+		{Project: "half-up", Name: "Half", Domain: "half-up.test", Status: "degraded"},
+		{Project: "warned", Name: "Warned", Domain: "warned.test", Status: "warning"},
+		{Project: "down", Name: "Down", Domain: "down.test", Status: "stopped"},
+	}}
+	got := desktop.BuildTrayProjectsForTest(d)
+	byProject := map[string]bool{}
+	for _, p := range got {
+		byProject[p.Project] = p.Running
+	}
+	// Degraded and warning are still running: the tray must offer Stop,
+	// not Start-and-recreate.
+	if !byProject["half-up"] {
+		t.Fatal("degraded project must read as running in the tray")
+	}
+	if !byProject["warned"] {
+		t.Fatal("warning project must read as running in the tray")
+	}
+	if byProject["down"] {
+		t.Fatal("stopped project must not read as running in the tray")
+	}
+}

@@ -1,5 +1,6 @@
 // @ts-check
 import { Component, createElement } from "react";
+import { desktopBridge } from "../services/bridge.js";
 
 /**
  * @typedef {object} ErrorBoundaryProps
@@ -27,6 +28,27 @@ export class ErrorBoundary extends Component {
    */
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+
+  /**
+   * @param {Error} error
+   * @param {import("react").ErrorInfo} info
+   */
+  componentDidCatch(error, info) {
+    const detail = String(
+      (error && error.stack) || error || "unknown render error",
+    );
+    const stack = info && info.componentStack ? `\n${info.componentStack}` : "";
+    console.error("Island render failed:", detail, stack);
+    // Best-effort: reporting must never break recovery.
+    try {
+      const reported = desktopBridge.reportFrontendError(`${detail}${stack}`.slice(0, 2000));
+      if (reported && typeof reported.catch === "function") {
+        reported.catch(() => {});
+      }
+    } catch {
+      // The console line above already preserved the error.
+    }
   }
 
   retry = () => {

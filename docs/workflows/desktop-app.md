@@ -500,6 +500,17 @@ export dialog defaults to `<name>.tar.gz`, matching the CLI.
 
 ---
 
+## Environment States and Sync Safety
+
+An environment that is only partially up reports `degraded` (amber) instead of green: some containers run while others are stopped or crashed. A degraded project is still a running project — Stop stays enabled and the primary action stays Restart, never Start.
+
+Mutating environment actions (start, stop, restart, pull, delete, toggle) are refused while a sync is pulling into the same project, naming the remote that owns it. The guard resolves names, domains and paths through the project registry, so addressing the project any of those ways is guarded the same. Background syncs are bounded by silence, not wall-clock: a sync that still streams output is working, one gone quiet past 15 minutes fails with a `SyncFailed` timeout and releases the project instead of locking it until the app restarts.
+
+Desktop Start always recreates containers (`up` with `--force-recreate` and `--remove-orphans`), so a switched-off service or a changed image can never be left half applied. Volumes hold the data, so recreation is safe.
+
+Sync preset defaults: the `files` and `media` presets compress by default (rsync `-z`), matching the CLI and the `full` preset. A choice already made in the current session still wins. The `full` preset's "Delete Missing Files" toggle forwards `--delete` to `bootstrap`, so files absent on the remote are removed locally — a tick that used to be silently dropped now destroys data, which is why the toggle carries its warning.
+
+Onboarding detects a DDEV checkout and passes `--migrate-from ddev` to `init`, matching the existing Warden path. A `host:port` value keeps its port while the host gains the `.test` suffix (`myapp:8080` becomes `myapp.test:8080`).
 
 ---
 

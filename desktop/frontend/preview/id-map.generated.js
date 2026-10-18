@@ -347,6 +347,10 @@ export const ID_MAP = {
     "service": "DBService",
     "method": "DumpDB"
   },
+  "3519815951": {
+    "service": "SystemService",
+    "method": "ReportFrontendError"
+  },
   "3540647888": {
     "service": "EnvironmentService",
     "method": "ToggleEnvironment"

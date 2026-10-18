@@ -20,7 +20,7 @@ test("every route targets a known service", () => {
     assert.ok(services.has(service), `${name} routes to unknown service ${service}`);
     assert.match(method, /^[A-Z][A-Za-z]+$/, `${name} has a bad method name`);
   }
-  assert.equal(Object.keys(ROUTES).length, 101);
+  assert.equal(Object.keys(ROUTES).length, 102);
 });
 
 test("health routes reach the HealthService bindings", () => {
@@ -78,6 +78,7 @@ test("renamed routes keep their frontend names", () => {
   assert.deepEqual(ROUTES.OpenEnvironment, ["EnvironmentService", "OpenEnvironment"]);
   assert.deepEqual(ROUTES.RunRemoteSyncBackground, ["RemoteService", "RunRemoteSync"]);
   assert.deepEqual(ROUTES.GetSyncPresetOptions, ["RemoteService", "GetSyncOptions"]);
+  assert.deepEqual(ROUTES.ReportFrontendError, ["SystemService", "ReportFrontendError"]);
 });
 
 test("bridge methods call the routed service method with their arguments", async () => {

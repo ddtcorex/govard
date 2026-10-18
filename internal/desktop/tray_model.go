@@ -31,7 +31,10 @@ func trayTitle(runningOps int) string {
 func buildTrayProjects(d Dashboard) []trayProject {
 	out := make([]trayProject, 0, len(d.Environments))
 	for _, env := range d.Environments {
-		running := env.Status == "running" || env.Status == "syncing"
+		// Degraded and warning are still running: the tray must offer
+		// Stop, not Start-and-recreate.
+		running := env.Status == "running" || env.Status == "syncing" ||
+			env.Status == "degraded" || env.Status == "warning"
 		url := ""
 		if env.Domain != "" {
 			url = "https://" + env.Domain

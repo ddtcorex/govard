@@ -1,4 +1,4 @@
-import { domainLabel, localEnvironmentURL, projectKey } from "../modules/dashboard.js";
+import { domainLabel, dotTone, isStoppedStatus, localEnvironmentURL, projectKey, statusTone } from "../modules/dashboard.js";
 import { useStore } from "../state/useStore.js";
 
 type Env = Record<string, unknown>;
@@ -10,21 +10,6 @@ type Props = {
 
 const STATUS_BADGE_BASE =
   "px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wide neon-glow flex items-center gap-1.5";
-
-const statusTone = (status: string) => {
-  if (status === "running") return "bg-primary/20 border-primary/30 text-primary";
-  if (status === "warning" || status === "degraded")
-    return "bg-amber-500/20 border-amber-500/30 text-amber-500";
-  return "bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400";
-};
-
-const dotTone = (status: string) => {
-  if (status === "running") {
-    return "bg-primary shadow-[0_0_12px_rgba(13,242,89,0.9)] animate-pulse";
-  }
-  if (status === "warning" || status === "degraded") return "bg-amber-500";
-  return "bg-slate-500";
-};
 
 /** The technology dot palette renderProjectHero picked by name substring. */
 const technologyTone = (tech: string) => {
@@ -171,7 +156,7 @@ export function ProjectHero({ onAction, onRetry, onOpenOnboarding }: Props) {
     : Array.isArray(env.technologies)
       ? (env.technologies as string[])
       : [];
-  const isStopped = status !== "running" && status !== "warning";
+  const isStopped = isStoppedStatus(status);
   const isSyncing = status === "syncing";
   // The env lock for this project, published by modules/operations.js into
   // busyEnvs: while held, every hero action for this project is visibly

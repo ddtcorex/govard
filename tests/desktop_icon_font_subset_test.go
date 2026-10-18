@@ -28,6 +28,9 @@ func repoIconSourceFiles(t *testing.T) []string {
 		"desktop/frontend/ui",
 		"desktop/frontend/services",
 		"desktop/frontend/state",
+		"desktop/frontend/components",
+		"desktop/frontend/utils",
+		"desktop/frontend/lib",
 	}
 	var files []string
 	for _, root := range roots {
@@ -39,7 +42,7 @@ func repoIconSourceFiles(t *testing.T) []string {
 				return nil
 			}
 			ext := filepath.Ext(path)
-			if ext != ".js" && ext != ".tsx" {
+			if ext != ".js" && ext != ".tsx" && ext != ".ts" {
 				return nil
 			}
 			files = append(files, path)
@@ -111,8 +114,8 @@ func TestIconSubsetSizeCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat subset font: %v", err)
 	}
-	const ceiling = 256 * 1024
+	const ceiling = 288 * 1024 // raise deliberately: the failure below prints the live size
 	if info.Size() >= ceiling {
-		t.Fatalf("subset font is %d bytes, must stay under %d", info.Size(), ceiling)
+		t.Fatalf("subset font is %d bytes, must stay under %d (raise the ceiling deliberately, not to silence it)", info.Size(), ceiling)
 	}
 }

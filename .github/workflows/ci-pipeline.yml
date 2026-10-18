@@ -90,6 +90,12 @@ jobs:
 
       # Builds desktop/frontend/dist so the asset-root test runs instead of
       # skipping, and so the typecheck compares against the real output.
+      # The icon-coverage tests compare the scanner against the COMMITTED
+      # manifest, so font-check runs first: after the build below regenerates
+      # the manifest from that same scanner, they could not fail.
+      - name: Check committed icon subset
+        run: make font-check
+
       - name: Build desktop frontend
         run: make frontend
 
