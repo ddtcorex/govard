@@ -24,6 +24,50 @@ export const projectKey = (env = {}) =>
 export const domainLabel = (env = {}) =>
   env.Domain || env.domain || env.Name || env.name || projectKey(env);
 
+/**
+ * Only a stopped (or unknown) environment offers Start: degraded, warning
+ * and syncing are still running, so Stop stays enabled and the primary
+ * action stays Restart.
+ */
+export const isStoppedStatus = (status) => {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "stopped" || normalized === "";
+};
+
+/**
+ * Hero badge and dot tones, mirroring classifyEnvironmentStatus below:
+ * green while healthy, blue while transitioning, amber while degraded.
+ */
+export const statusTone = (status) => {
+  if (status === "running" || status === "healthy" || status === "up")
+    return "bg-primary/20 border-primary/30 text-primary";
+  if (
+    status === "syncing" ||
+    status === "starting" ||
+    status === "restarting" ||
+    status === "booting"
+  )
+    return "bg-blue-400/20 border-blue-400/30 text-blue-400";
+  if (status === "warning" || status === "degraded")
+    return "bg-amber-500/20 border-amber-500/30 text-amber-500";
+  return "bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400";
+};
+
+export const dotTone = (status) => {
+  if (status === "running" || status === "healthy" || status === "up") {
+    return "bg-primary shadow-[0_0_12px_rgba(13,242,89,0.9)] animate-pulse";
+  }
+  if (
+    status === "syncing" ||
+    status === "starting" ||
+    status === "restarting" ||
+    status === "booting"
+  )
+    return "bg-blue-400";
+  if (status === "warning" || status === "degraded") return "bg-amber-500";
+  return "bg-slate-500";
+};
+
 const withScheme = (value) => {
   const raw = String(value || "").trim();
   if (!raw) {

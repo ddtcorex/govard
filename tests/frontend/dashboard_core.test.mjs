@@ -376,6 +376,38 @@ test("the hero hides the project URL link when the environment has no URL", asyn
 });
 
 
+test("isStoppedStatus keeps Stop enabled for degraded and syncing", async () => {
+  const { isStoppedStatus } = await import(
+    "../../desktop/frontend/modules/dashboard.js"
+  );
+  for (const status of ["stopped", ""]) {
+    assert.equal(isStoppedStatus(status), true, `${status || '""'} must offer Start`);
+  }
+  for (const status of ["running", "warning", "degraded", "syncing"]) {
+    assert.equal(
+      isStoppedStatus(status),
+      false,
+      `${status} must keep Stop enabled and offer Restart, not Start`,
+    );
+  }
+});
+test("project hero tones match the dashboard palette per status", async () => {
+  const { statusTone, dotTone } = await import(
+    "../../desktop/frontend/modules/dashboard.js"
+  );
+  assert.equal(statusTone("running"), "bg-primary/20 border-primary/30 text-primary");
+  assert.equal(statusTone("healthy"), "bg-primary/20 border-primary/30 text-primary");
+  assert.equal(statusTone("up"), "bg-primary/20 border-primary/30 text-primary");
+  assert.equal(statusTone("syncing"), "bg-blue-400/20 border-blue-400/30 text-blue-400");
+  assert.equal(statusTone("starting"), "bg-blue-400/20 border-blue-400/30 text-blue-400");
+  assert.equal(statusTone("restarting"), "bg-blue-400/20 border-blue-400/30 text-blue-400");
+  assert.equal(statusTone("booting"), "bg-blue-400/20 border-blue-400/30 text-blue-400");
+  assert.equal(statusTone("warning"), "bg-amber-500/20 border-amber-500/30 text-amber-500");
+  assert.equal(statusTone("degraded"), "bg-amber-500/20 border-amber-500/30 text-amber-500");
+  assert.equal(dotTone("running").includes("bg-primary"), true);
+  assert.equal(dotTone("syncing"), "bg-blue-400");
+  assert.equal(dotTone("degraded"), "bg-amber-500");
+});
 test("project hero pauses environment actions while syncing", async () => {
   const island = await readFile(
     new URL("../../desktop/frontend/islands/ProjectHero.tsx", import.meta.url),

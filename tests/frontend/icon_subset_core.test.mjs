@@ -65,6 +65,31 @@ test("extractor keeps code-only icon map values and fallbacks", async () => {
   }
 });
 
+test("extractor keeps single-word icons assigned to *Icon identifiers", () => {
+  const names = extractMaterialIconNames([
+    'const themeIcon = isSyncing ? "sync" : isProtected ? "rocket_launch" : "science";',
+  ]);
+  for (const name of ["sync", "rocket_launch", "science"]) {
+    assert.ok(names.includes(name), `${name} must reach the subset`);
+  }
+});
+
+test("scan surface covers every first-party source dir and TS sources", async () => {
+  const { SCAN_SURFACE } = await import(
+    "../../desktop/frontend/scripts/subset-icons.mjs"
+  );
+  for (const dir of ["components", "utils", "lib"]) {
+    assert.ok(
+      SCAN_SURFACE.dirs.includes(dir),
+      `icons in ${dir}/ would ship as tofu: ${dir} must be scanned`,
+    );
+  }
+  assert.ok(
+    SCAN_SURFACE.exts.includes(".ts"),
+    "icons in .ts sources would ship as tofu: .ts must be scanned",
+  );
+});
+
 test("committed manifest covers every icon the scanner sees in source", async () => {
   const { readdir, readFile } = await import("node:fs/promises");
   const { join, extname, dirname } = await import("node:path");

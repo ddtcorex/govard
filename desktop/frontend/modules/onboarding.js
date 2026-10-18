@@ -90,6 +90,14 @@ export const normalizeOnboardingDomain = (domain = "", projectPath = "") => {
   if (!base) {
     return "";
   }
+  const portSplit = base.split(":");
+  if (portSplit.length === 2 && portSplit[0] && /^\d+$/.test(portSplit[1])) {
+    const host = portSplit[0];
+    if (!host.includes(".")) {
+      return `${host}.test:${portSplit[1]}`;
+    }
+    return base;
+  }
   if (!base.includes(".") && !base.includes(":")) {
     return `${base}.test`;
   }

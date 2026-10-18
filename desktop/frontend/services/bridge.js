@@ -36,6 +36,7 @@ export const ROUTES = {
   GetUserInfo: ["SystemService", "GetUserInfo"],
   GetVersion: ["SystemService", "GetVersion"],
   Quit: ["SystemService", "Quit"],
+  ReportFrontendError: ["SystemService", "ReportFrontendError"],
   StartServiceTerminalInOS: ["LogService", "StartServiceTerminalInOS"],
   GetLogsForService: ["LogService", "GetLogsForService"],
   StartLogStreamForService: ["LogService", "StartLogStreamForService"],
@@ -987,5 +988,13 @@ export const desktopBridge = {
   },
   async quit() {
     return invoke("Quit");
+  },
+  /**
+   * Records a caught island render failure in the backend log. Best-effort:
+   * callers must never let reporting break recovery.
+   * @param {string} message
+   */
+  async reportFrontendError(message) {
+    return invoke("ReportFrontendError", message);
   },
 };

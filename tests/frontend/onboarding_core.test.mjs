@@ -32,7 +32,7 @@ test("normalizeOnboardingDomain auto-appends .test for plain values", () => {
   );
   assert.equal(
     normalizeOnboardingDomain("shop:8080", "/tmp/ignored"),
-    "shop:8080",
+    "shop.test:8080",
   );
 });
 

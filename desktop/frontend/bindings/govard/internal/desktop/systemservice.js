@@ -54,6 +54,17 @@ export function Quit() {
     return $Call.ByID(1457209326);
 }
 
+/**
+ * ReportFrontendError records a render failure the desktop ErrorBoundary
+ * caught: an island crash is otherwise visible only in the user's devtools,
+ * which support cannot see. The message is trimmed and capped, never fatal.
+ * @param {string} message
+ * @returns {$CancellablePromise<string>}
+ */
+export function ReportFrontendError(message) {
+    return $Call.ByID(3519815951, message);
+}
+
 // Private type creation functions
 const $$createType0 = $models.SystemMetrics.createFrom;
 const $$createType1 = $models.UserInfo.createFrom;

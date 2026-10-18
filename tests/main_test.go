@@ -3,6 +3,7 @@ package tests
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -38,17 +39,24 @@ func chdirForTest(t *testing.T, dir string) {
 // binary starts, including the ones govard runs through its own runner, and it
 // applies to repositories created later, which a per-repo `git config` would not.
 func disableGitHousekeeping() {
-	for key, value := range map[string]string{
-		"GIT_CONFIG_COUNT":   "2",
-		"GIT_CONFIG_KEY_0":   "gc.auto",
-		"GIT_CONFIG_VALUE_0": "0",
-		"GIT_CONFIG_KEY_1":   "maintenance.auto",
-		"GIT_CONFIG_VALUE_1": "false",
-	} {
+	setGitConfig := func(key, value string) {
 		if err := os.Setenv(key, value); err != nil {
 			panic(err)
 		}
 	}
+	setGitConfig("GIT_CONFIG_COUNT", strconv.Itoa(len(gitHousekeepingBase)))
+	for i, pair := range gitHousekeepingBase {
+		setGitConfig("GIT_CONFIG_KEY_"+strconv.Itoa(i), pair[0])
+		setGitConfig("GIT_CONFIG_VALUE_"+strconv.Itoa(i), pair[1])
+	}
+}
+
+// gitHousekeepingBase is the single source for suite-wide git guards: TestMain
+// exports them process-wide, hermeticGitEnv layers per-test pins on top of the
+// same list. Add new guards here, never as a second literal.
+var gitHousekeepingBase = [][2]string{
+	{"gc.auto", "0"},
+	{"maintenance.auto", "false"},
 }
 
 func TestMain(m *testing.M) {

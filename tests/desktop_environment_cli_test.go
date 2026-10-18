@@ -175,6 +175,69 @@ func TestDesktopEnvironmentActionsRefuseDuringSyncForTest(t *testing.T) {
 	}
 }
 
+func TestDesktopEnvironmentActionsRefuseDuringSyncForDomainAndPathForTest(t *testing.T) {
+	desktop.ResetStateForTest()
+
+	root := t.TempDir()
+	writeDesktopProjectConfigForTest(t, root, "sample-project", "laravel", "sample-project.test")
+	registerDesktopProjectForTest(t, root, "sample-project", "sample-project.test", "laravel")
+
+	called := false
+	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+		called = true
+		return "should not run", nil
+	})
+	defer restore()
+
+	desktop.RegisterSyncingProject("sample-project", "staging")
+	defer desktop.UnregisterSyncingProject("sample-project")
+
+	app := desktop.NewApp()
+	for _, id := range []string{"sample-project.test", root, "SAMPLE-PROJECT.TEST"} {
+		if _, err := app.Environment.StopEnvironment(id); err == nil {
+			t.Fatalf("expected stop via %q to refuse during sync", id)
+		} else if !strings.Contains(err.Error(), "staging") || !strings.Contains(strings.ToLower(err.Error()), "sync") {
+			t.Fatalf("expected stop via %q to name the sync remote, got: %v", id, err)
+		}
+	}
+	if called {
+		t.Fatal("expected no CLI command to run during sync")
+	}
+}
+
+func TestDesktopEnvironmentActionsRefuseDuringSyncForSymlinkedPathForTest(t *testing.T) {
+	desktop.ResetStateForTest()
+
+	root := t.TempDir()
+	writeDesktopProjectConfigForTest(t, root, "sample-project", "laravel", "sample-project.test")
+	registerDesktopProjectForTest(t, root, "sample-project", "sample-project.test", "laravel")
+
+	link := filepath.Join(t.TempDir(), "linked-project")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	called := false
+	restore := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+		called = true
+		return "should not run", nil
+	})
+	defer restore()
+
+	desktop.RegisterSyncingProject("sample-project", "staging")
+	defer desktop.UnregisterSyncingProject("sample-project")
+
+	app := desktop.NewApp()
+	if _, err := app.Environment.StopEnvironment(link); err == nil {
+		t.Fatalf("expected stop via symlinked path %q to refuse during sync", link)
+	} else if !strings.Contains(err.Error(), "staging") || !strings.Contains(strings.ToLower(err.Error()), "sync") {
+		t.Fatalf("expected stop via symlinked path to name the sync remote, got: %v", err)
+	}
+	if called {
+		t.Fatal("expected no CLI command to run during sync")
+	}
+}
+
 func TestDesktopRestartEnvironmentNamesFallbackForTest(t *testing.T) {
 	desktop.ResetStateForTest()
 

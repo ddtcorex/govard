@@ -497,6 +497,17 @@ dump/import/export, không bao giờ tự bịa đường dẫn. Hộp thoại d
 
 ---
 
+## Trạng thái môi trường và an toàn đồng bộ
+
+Môi trường chỉ chạy một phần báo `degraded` (màu hổ phách) thay vì xanh: một số container chạy trong khi các container khác đã dừng hoặc crash. Project degraded vẫn là project đang chạy — nút Stop vẫn bật và thao tác chính vẫn là Restart, không bao giờ là Start.
+
+Các thao tác thay đổi môi trường (start, stop, restart, pull, delete, toggle) bị từ chối khi một lượt sync đang đổ vào cùng project, kèm tên remote đang giữ nó. Bộ chặn phân giải tên, domain và đường dẫn qua registry project, nên gọi project bằng cách nào cũng bị chặn như nhau. Sync nền bị giới hạn bởi sự im lặng, không phải thời gian tuyệt đối: sync còn stream output là sync đang chạy, sync im lặng quá 15 phút thất bại với timeout `SyncFailed` và nhả project thay vì khóa tới khi khởi động lại app.
+
+Nút Start trên Desktop luôn recreate container (`up` kèm `--force-recreate` và `--remove-orphans`), nên service bị tắt hay image đổi không bao giờ bị áp dụng dở dang. Dữ liệu nằm ở volume nên recreate an toàn.
+
+Mặc định preset sync: preset `files` và `media` bật nén mặc định (rsync `-z`), khớp CLI và preset `full`. Lựa chọn đã đổi trong phiên hiện tại vẫn thắng. Nút "Delete Missing Files" của preset `full` chuyển `--delete` tới `bootstrap`, nên file không có trên remote bị xóa local — dấu tick trước đây bị bỏ qua nay xóa dữ liệu thật, vì vậy nút này mang cảnh báo.
+
+Onboarding phát hiện checkout DDEV và truyền `--migrate-from ddev` cho `init`, khớp đường Warden hiện có. Giá trị `host:port` giữ port trong khi host được thêm hậu tố `.test` (`myapp:8080` thành `myapp.test:8080`).
 
 ---
 

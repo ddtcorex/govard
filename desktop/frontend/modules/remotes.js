@@ -141,11 +141,27 @@ export const isPresetBlockedBySync = ({
 };
 
 /**
+ * A list containing `none` denies everything: the backend reports ["none"]
+ * when every capability is disabled, and collapsing it to "allow all" would
+ * invert the remote's intent. Every gate below funnels through here so a
+ * third gate cannot silently reopen what `none` closed.
+ */
+export const deniesEverything = (remote) => {
+  const capabilities = Array.isArray(remote?.capabilities)
+    ? remote.capabilities
+    : [];
+  return capabilities.includes("none");
+};
+
+/**
  * A remote that declares no capabilities keeps every pull enabled; one that
  * declares a list is gated on the preset's own capability. Pull-everything has
  * no capability of its own and is therefore never gated.
  */
 export const canUseSyncPreset = (remote, preset) => {
+  if (deniesEverything(remote)) {
+    return false;
+  }
   const capabilities = Array.isArray(remote?.capabilities)
     ? remote.capabilities
     : [];
@@ -165,9 +181,13 @@ export const canUseSyncPreset = (remote, preset) => {
  * File operations (SSH/SFTP/URL opens) run against the remote's files, so a
  * remote that declares a capability list is gated on `files` the same way
  * pull buttons gate on their own capability. A remote that declares nothing
- * keeps every open enabled, mirroring canUseSyncPreset.
+ * keeps every open enabled, mirroring canUseSyncPreset, while ["none"]
+ * denies them all.
  */
 export const canUseFilesCapability = (remote) => {
+  if (deniesEverything(remote)) {
+    return false;
+  }
   const capabilities = Array.isArray(remote?.capabilities)
     ? remote.capabilities
     : [];
@@ -188,6 +208,7 @@ export const canOpenRemoteTarget = (remote) => {
   }
   return canUseFilesCapability(remote);
 };
+
 /**
  * The three pull buttons, in the order the card renders them. `capability` is
  * what canUseSyncPreset gates on; `disabledReason` is what the button's title

@@ -38,10 +38,17 @@ func TestDesktopPkgBuildRemoteEntriesForTest(t *testing.T) {
 				"db",
 			},
 		},
+		"dark": {
+			Host:       "dark.example.com",
+			User:       "deploy",
+			Path:       "/srv/www/dark",
+			Port:       2222,
+			AuthMethod: "ssh-agent",
+		},
 	})
 
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 remotes, got %d", len(entries))
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 remotes, got %d", len(entries))
 	}
 	// New sort order: staging (priority 20) before prod (priority 30)
 	if entries[0].Name != "staging" {
@@ -55,6 +62,14 @@ func TestDesktopPkgBuildRemoteEntriesForTest(t *testing.T) {
 	}
 	if !reflect.DeepEqual(entries[1].Capabilities, []string{"files", "db"}) {
 		t.Fatalf("unexpected capabilities for prod: %#v", entries[1].Capabilities)
+	}
+	for _, entry := range entries {
+		if entry.Name != "dark" {
+			continue
+		}
+		if !reflect.DeepEqual(entry.Capabilities, []string{"none"}) {
+			t.Fatalf("a remote with every capability disabled must keep [none] on the wire, got %#v", entry.Capabilities)
+		}
 	}
 }
 

@@ -2,6 +2,15 @@
 // writes a subset woff2 + manifest. Runs as `prebuild` so every
 // `make frontend` ships only the glyphs the UI actually uses.
 //
+// Subsetting is character-driven, not token-driven: subset-font keeps the
+// union of codepoints across all names, so adding a name spelled from
+// already-kept letters changes no byte (and the manifest is not the font's
+// source of truth). The real guard is verifyLigatures below: every listed
+// name must shape to exactly one glyph or the build fails instead of
+// shipping tofu. `make font-check` pins the committed assets before any
+// build regenerates them, because afterwards the coverage tests would
+// compare the scanner against its own output.
+//
 // Extraction rules:
 // - ligature usages (<span ...>settings</span>) are always kept;
 // - quoted snake_case literals (icon: maps, getIcon returns) are kept;
@@ -47,6 +56,7 @@ export const SINGLE_WORD_ICONS = [
   "php",
   "refresh",
   "report",
+  "science",
   "search",
   "settings",
   "stop",
@@ -89,9 +99,9 @@ export function extractMaterialIconNames(sources) {
   return [...names].sort();
 }
 
-const SCAN_DIRS = ["modules", "islands", "ui", "services", "state"];
+const SCAN_DIRS = ["modules", "islands", "ui", "services", "state", "components", "utils", "lib"];
 const SCAN_FILES = ["main.js", "index.html", "preview.html"];
-const SCAN_EXTS = new Set([".js", ".tsx"]);
+const SCAN_EXTS = new Set([".js", ".tsx", ".ts"]);
 
 // Exported so the coverage test walks exactly the surface the build scans:
 // a name the scanner cannot see is a name the test cannot pin.

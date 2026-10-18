@@ -895,6 +895,21 @@ func ScanLogPipeForTest(p Platform, r io.Reader, event string) {
 	<-done
 }
 
+// BackgroundSyncIdleTimeoutForTest exposes backgroundSyncIdleTimeout for tests in /tests.
+func BackgroundSyncIdleTimeoutForTest() time.Duration {
+	return backgroundSyncIdleTimeout
+}
+
+// SetBackgroundSyncIdleTimeoutForTest overrides the idle ceiling and
+// returns a restore func for defer.
+func SetBackgroundSyncIdleTimeoutForTest(d time.Duration) func() {
+	previous := backgroundSyncIdleTimeout
+	backgroundSyncIdleTimeout = d
+	return func() {
+		backgroundSyncIdleTimeout = previous
+	}
+}
+
 // BrandTrayForTest exposes brandTray for tests in /tests.
 func BrandTrayForTest(t interface {
 	SetLabel(label string)
