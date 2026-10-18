@@ -267,6 +267,7 @@ export function ProjectHero({ onAction, onRetry, onOpenOnboarding }: Props) {
               }
               disabled={isStopped || isLocked}
               title={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : isStopped ? "Environment is not running" : "Stop Environment"}
+              aria-label={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : isStopped ? "Environment is not running" : "Stop Environment"}
               onClick={() => onAction("env-stop", project)}
             >
               <span className={`material-symbols-outlined fill-1${isEnvBusy ? " animate-spin" : ""}`} style={{ fontVariationSettings: '"FILL" 1' }}>
@@ -280,6 +281,7 @@ export function ProjectHero({ onAction, onRetry, onOpenOnboarding }: Props) {
               data-env={project}
               className="h-12 w-12 bg-surface-secondary text-primary border border-border-primary rounded-lg hover:bg-surface-primary hover:text-primary transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-primary/10 disabled:opacity-50 disabled:cursor-not-allowed"
               title={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : "Pull Images"}
+              aria-label={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : "Pull Images"}
               disabled={isLocked}
               onClick={() => onAction("env-pull", project)}
             >
@@ -292,6 +294,7 @@ export function ProjectHero({ onAction, onRetry, onOpenOnboarding }: Props) {
               data-env={project}
               className="h-12 w-12 bg-surface-secondary text-red-500 border border-red-500/30 rounded-lg hover:bg-red-500 hover:text-white transition-all active:scale-95 flex items-center justify-center shadow-lg shadow-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
               title={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : `Delete ${title}`}
+              aria-label={isEnvBusy ? busyTitle : isSyncing ? pausedTitle : `Delete ${title}`}
               disabled={isLocked}
               onClick={() => onAction("env-delete", project)}
             >

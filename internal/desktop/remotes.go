@@ -964,8 +964,15 @@ func runRemoteSyncBackgroundWithOptions(
 	// The atomic claim above registered the canonical project identity, so
 	// the badge, the guard and the flag below all share it regardless of
 	// whether the caller addressed the project by name, domain or path.
+	// The event carries the canonical identity too: consumers keying on it
+	// (visual locks, notifications) agree with the guard instead of with
+	// whichever identifier this call happened to use.
+	startedProject := canonicalProjectID(project)
+	if startedProject == "" {
+		startedProject = project
+	}
 	p.Emit(EventSyncStarted, SyncStartedPayload{
-		Project: project,
+		Project: startedProject,
 		Remote:  remoteName,
 		Preset:  preset,
 	})

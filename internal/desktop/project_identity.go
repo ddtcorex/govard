@@ -28,23 +28,8 @@ func canonicalProjectID(input string) string {
 	if trimmed == "" {
 		return ""
 	}
-
-	// Registry name or domain, case-insensitive.
-	if entry, err := findExactProjectMatch(trimmed); err == nil {
-		if name := strings.TrimSpace(entry.ProjectName); name != "" {
-			return name
-		}
-	}
-
-	// Fuzzy registry match (prefix, substring, basename, path), gated on
-	// strength for the reason above.
-	if entry, score, err := engine.FindProjectByQuery(trimmed); err == nil && score < engine.ScoreAmbiguousThreshold {
-		if name := strings.TrimSpace(entry.ProjectName); name != "" {
-			return name
-		}
-		if path := strings.TrimSpace(entry.Path); path != "" {
-			return canonicalPathKey(path)
-		}
+	if id, ok := canonicalRegistryID(trimmed); ok {
+		return id
 	}
 
 	// Root path fallback: direct paths with config, orphans, Docker
@@ -74,28 +59,36 @@ func canonicalProjectIDForRegistry(input string) string {
 	if trimmed == "" {
 		return ""
 	}
-
-	// Registry name or domain, case-insensitive.
-	if entry, err := findExactProjectMatch(trimmed); err == nil {
-		if name := strings.TrimSpace(entry.ProjectName); name != "" {
-			return name
-		}
-	}
-
-	// Fuzzy registry match, gated on strength like canonicalProjectID.
-	if entry, score, err := engine.FindProjectByQuery(trimmed); err == nil && score < engine.ScoreAmbiguousThreshold {
-		if name := strings.TrimSpace(entry.ProjectName); name != "" {
-			return name
-		}
-		if path := strings.TrimSpace(entry.Path); path != "" {
-			return canonicalPathKey(path)
-		}
+	if id, ok := canonicalRegistryID(trimmed); ok {
+		return id
 	}
 
 	if filepath.IsAbs(trimmed) || strings.Contains(trimmed, string(filepath.Separator)) {
 		return canonicalPathKey(trimmed)
 	}
 	return strings.ToLower(trimmed)
+}
+
+// canonicalRegistryID resolves the registry-backed steps both canonicalizers
+// share: exact name or domain first, then a strong-only fuzzy match. The
+// fuzzy gate stays here so a weak subsequence hit never claims a project
+// name — it falls through to the path fallback, which never yields a name.
+func canonicalRegistryID(trimmed string) (string, bool) {
+	if entry, err := findExactProjectMatch(trimmed); err == nil {
+		if name := strings.TrimSpace(entry.ProjectName); name != "" {
+			return name, true
+		}
+	}
+
+	if entry, score, err := engine.FindProjectByQuery(trimmed); err == nil && score < engine.ScoreAmbiguousThreshold {
+		if name := strings.TrimSpace(entry.ProjectName); name != "" {
+			return name, true
+		}
+		if path := strings.TrimSpace(entry.Path); path != "" {
+			return canonicalPathKey(path), true
+		}
+	}
+	return "", false
 }
 
 // canonicalPathKey normalizes a path fallback to one stable key:

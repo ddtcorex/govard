@@ -470,3 +470,19 @@ test("a second project stays actionable while another project syncs", async () =
     "the global anySyncing gate must be replaced by the per-(project, remote) scope",
   );
 });
+
+test("isPresetBlockedBySync matches project identity case-insensitively", async () => {
+  const { isPresetBlockedBySync } = await import(
+    "../../desktop/frontend/modules/remotes.js"
+  );
+  assert.equal(
+    isPresetBlockedBySync({
+      syncingProject: "Demo",
+      syncingRemote: "staging",
+      selectedProject: "demo",
+      remoteName: "staging",
+    }),
+    true,
+    "project identity is case-insensitive everywhere else, the gate must match it",
+  );
+});

@@ -153,9 +153,7 @@ func (s *LogService) streamLogs(ctx context.Context, project string, service str
 
 	select {
 	case <-ctx.Done():
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+		reapLogStreamProcess(cmd)
 	case <-done:
 	}
 }
@@ -188,9 +186,7 @@ func (s *LogService) streamGlobalServiceLogs(ctx context.Context, spec globalSer
 
 	select {
 	case <-ctx.Done():
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+		reapLogStreamProcess(cmd)
 	case <-done:
 	}
 }
@@ -308,6 +304,20 @@ func streamSanitizedBatches(p Platform, pipe io.Reader, flush func(batch []strin
 	}
 }
 
+// reapLogStreamProcess stops a streaming child and reaps it. Kill without
+// Wait leaves a zombie behind per stop: every Start/Stop log cycle leaks
+// one until the app exits.
+func reapLogStreamProcess(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
+	// Wait reaps the child and unblocks once the pipe scanners drain the
+	// dead process's pipes to EOF; without it every stopped stream leaks a
+	// zombie.
+	_ = cmd.Wait()
+}
+
 func resolveLogContainer(info *projectInfo, service string) string {
 	if service != "" && service != "all" {
 		return info.name + "-" + service + conventions.ReplicaSuffix
@@ -316,8 +326,10 @@ func resolveLogContainer(info *projectInfo, service string) string {
 	if info.services["php"] {
 		return info.name + conventions.PHPSuffix
 	}
-	for s := range info.services {
-		return info.name + "-" + s + conventions.ReplicaSuffix
+	// Deterministic fallback (front-door order, then alphabetical): a map
+	// hit here flipped between services across calls.
+	if picked := stableServiceFallback(info.services); picked != "" {
+		return info.name + "-" + picked + conventions.ReplicaSuffix
 	}
 	return info.name
 }

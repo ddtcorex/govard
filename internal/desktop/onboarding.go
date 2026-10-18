@@ -90,12 +90,19 @@ func onboardProjectWithOptionsInternalWithContext(
 	category := "runtime"
 	message := ""
 	project := strings.TrimSpace(projectPath)
+	// The event source names where the project came from: the repo URL for
+	// a clone, empty for a local directory. The path is already the event's
+	// project field, so repeating it as source mislabels every onboard.
+	source := ""
+	if input.CloneFromGit {
+		source = strings.TrimSpace(input.GitURL)
+	}
 	defer func() {
 		writeDesktopOperationEvent(
 			"desktop.project.onboard",
 			status,
 			project,
-			project,
+			source,
 			"",
 			message,
 			category,

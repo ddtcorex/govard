@@ -62,7 +62,7 @@ func openDBClient(p Platform, project string) (string, error) {
 			fallbackTarget,
 			"Desktop DB client is unavailable. Opening PHPMyAdmin...",
 		); fallbackErr != nil {
-			return "", fmt.Errorf("failed to open desktop DB client (%v) and fallback PMA (%w)", err, fallbackErr)
+			return "", fmt.Errorf("failed to open desktop DB client (%v) and fallback PMA (%w)", scrubDBClientURLSecret(err.Error(), conn.user, conn.password), fallbackErr)
 		}
 		return fmt.Sprintf("Desktop DB client unavailable, opened PHPMyAdmin for %s.", conn.database), nil
 	}
@@ -87,6 +87,26 @@ func buildPMAOpenURL(project string, database string) string {
 		return target
 	}
 	return target + "/?" + encoded
+}
+
+// scrubDBClientURLSecret removes a DB password from UI-bound text. The
+// connection URL handed to the external client carries credentials by design
+// (one-click open), so an error quoting that URL must not leak them — in raw
+// form or in the percent-encoded form the URL string carries.
+func scrubDBClientURLSecret(text, user, password string) string {
+	if text == "" || password == "" {
+		return text
+	}
+	scrubbed := strings.ReplaceAll(text, password, "***")
+	// UserPassword encodes the password for the URL (spaces, @ and friends
+	// become percent-sequences the raw ReplaceAll cannot see). Scrub the
+	// credential half only: the username stays readable.
+	if userinfo := neturl.UserPassword(user, password).String(); userinfo != "" {
+		if encoded, ok := strings.CutPrefix(userinfo, user+":"); ok && encoded != "" {
+			scrubbed = strings.ReplaceAll(scrubbed, encoded, "***")
+		}
+	}
+	return scrubbed
 }
 
 func parseDockerPublishedPort(raw string) (string, string, bool) {
@@ -441,23 +461,30 @@ func defaultShellService(info *projectInfo) string {
 	if info == nil || len(info.services) == 0 {
 		return conventions.TargetPHP
 	}
+	if picked := stableServiceFallback(info.services); picked != "" {
+		return picked
+	}
+	return conventions.TargetPHP
+}
 
+// stableServiceFallback picks a deterministic service when the requested one
+// is missing: the front-door order (web, php, app) first, then alphabetical.
+// Returning the first map hit instead flips between services across calls.
+func stableServiceFallback(services map[string]bool) string {
 	for _, preferred := range []string{conventions.TargetWeb, conventions.TargetPHP, conventions.TargetApp} {
-		if info.services[preferred] {
+		if services[preferred] {
 			return preferred
 		}
 	}
-
-	candidates := make([]string, 0, len(info.services))
-	for name := range info.services {
-		candidates = append(candidates, name)
+	names := make([]string, 0, len(services))
+	for name := range services {
+		names = append(names, name)
 	}
-	sort.Strings(candidates)
-	if len(candidates) > 0 {
-		return candidates[0]
+	sort.Strings(names)
+	if len(names) > 0 {
+		return names[0]
 	}
-
-	return conventions.TargetPHP
+	return ""
 }
 
 func resolveServiceName(info *projectInfo, service string, fallback string) string {
@@ -471,8 +498,8 @@ func resolveServiceName(info *projectInfo, service string, fallback string) stri
 		if info.services[fallback] {
 			return fallback
 		}
-		for name := range info.services {
-			return name
+		if picked := stableServiceFallback(info.services); picked != "" {
+			return picked
 		}
 	}
 	return fallback

@@ -34,6 +34,14 @@ func govardCommandTimeout(args []string) time.Duration {
 		// Desktop database transfers stream whole dumps through docker exec;
 		// like `up` they must never be killed by the short default.
 		return govardCommandLongTimeout
+	case "init":
+		// Scaffolding plus migration scans over large checkouts outgrow the
+		// short default; the work is rerunnable, not instant.
+		return govardCommandServiceTimeout
+	case "debug":
+		// Toggling Xdebug recreates the PHP container, the same class of
+		// work as `svc up`, so it shares that ceiling.
+		return govardCommandServiceTimeout
 	case "snapshot":
 		// Snapshot create/restore/export move the same whole dumps (plus a
 		// media tree) through docker exec and tar, so they share the
@@ -62,12 +70,17 @@ func govardCommandTimeout(args []string) time.Duration {
 	}
 }
 
+// commandTimeoutOutputMax caps CLI output quoted in a timeout error: the
+// text reaches toasts, so it is sanitized like every other UI-bound error
+// and bounded even when the CLI dumps pages before dying.
+const commandTimeoutOutputMax = 2000
+
 // newGovardCommandTimeoutError builds the error the runner returns when the
 // context deadline fires. Long operations get an explicit partial-state hint
 // because killing `up` mid-flight leaves containers behind; short ones keep
 // the plain message.
 func newGovardCommandTimeoutError(timeout time.Duration, trimmedOutput string) error {
-	msg := fmt.Sprintf("command timed out after %v: %s", timeout, trimmedOutput)
+	msg := fmt.Sprintf("command timed out after %v: %s", timeout, sanitizeUIText(trimmedOutput, commandTimeoutOutputMax))
 	if timeout >= govardCommandTimeoutPartialStateAt {
 		msg += " The operation was stopped mid-flight; the environment may be partially started. Check the dashboard for orphaned resources."
 	}

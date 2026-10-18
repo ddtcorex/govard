@@ -688,3 +688,27 @@ test("sidebar row disables with a spinner while its env is busy", async () => {
     "the busy sidebar row must be visibly disabled so double-click is impossible",
   );
 });
+
+test("statusGroup is the single source behind every tone helper", async () => {
+  const { statusGroup } = await import(
+    "../../desktop/frontend/modules/dashboard.js"
+  );
+  assert.equal(typeof statusGroup, "function", "statusGroup must be exported");
+  const cases = [
+    ["running", "healthy"],
+    ["healthy", "healthy"],
+    ["up", "healthy"],
+    ["syncing", "transition"],
+    ["starting", "transition"],
+    ["restarting", "transition"],
+    ["booting", "transition"],
+    ["warning", "warn"],
+    ["degraded", "warn"],
+    ["stopped", "stopped"],
+    ["", "stopped"],
+    ["bogus", "stopped"],
+  ];
+  for (const [status, want] of cases) {
+    assert.equal(statusGroup(status), want, `statusGroup(${JSON.stringify(status)})`);
+  }
+});
