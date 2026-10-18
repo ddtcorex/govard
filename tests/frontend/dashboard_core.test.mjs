@@ -712,3 +712,23 @@ test("statusGroup is the single source behind every tone helper", async () => {
     assert.equal(statusGroup(status), want, `statusGroup(${JSON.stringify(status)})`);
   }
 });
+
+test("tone helpers normalize mixed-case statuses", async () => {
+  const { statusTone, dotTone, statusGroup } = await import(
+    "../../desktop/frontend/modules/dashboard.js"
+  );
+  assert.equal(statusGroup("Warning"), "warn");
+  assert.equal(
+    statusTone("Running"),
+    "bg-primary/20 border-primary/30 text-primary",
+    "hero badge must not go gray on a cased status",
+  );
+  assert.equal(
+    statusTone("SYNCING"),
+    "bg-blue-400/20 border-blue-400/30 text-blue-400",
+  );
+  assert.ok(
+    dotTone("Degraded").includes("bg-amber-500"),
+    "dot must not go gray on a cased status",
+  );
+});

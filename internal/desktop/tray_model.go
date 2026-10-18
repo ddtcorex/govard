@@ -26,15 +26,26 @@ func trayTitle(runningOps int) string {
 	return fmt.Sprintf("%s (%d ops)", trayName, runningOps)
 }
 
+// isTrayRunningStatus reports whether the tray treats an environment as
+// running. Degraded, warning and syncing are still running: the tray must
+// offer Stop, not Start-and-recreate. This is the menu face of the same
+// rule isActiveEnvironmentStatus applies to the header counter; the parity
+// test pins them together.
+func isTrayRunningStatus(status string) bool {
+	switch status {
+	case "running", "syncing", "degraded", "warning":
+		return true
+	default:
+		return false
+	}
+}
+
 // buildTrayProjects lists every environment for the tray menu: running ones
 // first, then by project name.
 func buildTrayProjects(d Dashboard) []trayProject {
 	out := make([]trayProject, 0, len(d.Environments))
 	for _, env := range d.Environments {
-		// Degraded and warning are still running: the tray must offer
-		// Stop, not Start-and-recreate.
-		running := env.Status == "running" || env.Status == "syncing" ||
-			env.Status == "degraded" || env.Status == "warning"
+		running := isTrayRunningStatus(env.Status)
 		url := ""
 		if env.Domain != "" {
 			url = "https://" + env.Domain

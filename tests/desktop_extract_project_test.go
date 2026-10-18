@@ -31,3 +31,24 @@ func TestDesktopPkgExtractProjectAndServiceFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopPkgFallbackServiceNamesTrackConventions(t *testing.T) {
+	names := desktop.FallbackServiceNamesForTest()
+	seen := map[string]bool{}
+	for i, name := range names {
+		if seen[name] {
+			t.Fatalf("duplicate service name %q in fallback list", name)
+		}
+		seen[name] = true
+		if i > 0 && len(name) > len(names[i-1]) {
+			t.Fatalf("fallback list not longest-first: %q after %q", name, names[i-1])
+		}
+	}
+	// Every framework service target must be recognizable: adding a Target
+	// without extending the list breaks this on purpose.
+	for _, target := range []string{"web", "php", "db", "redis", "valkey", "elasticsearch", "opensearch", "varnish", "rabbitmq", "mail", "pma", "app"} {
+		if !seen[target] {
+			t.Fatalf("conventions target %q missing from fallback list", target)
+		}
+	}
+}
