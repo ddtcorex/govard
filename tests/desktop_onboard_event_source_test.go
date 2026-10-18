@@ -3,6 +3,7 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"govard/internal/desktop"
@@ -80,6 +81,44 @@ func TestDesktopPkgOnboardEventSource(t *testing.T) {
 		}
 		if source := readOnboardSource(t); source != repoURL {
 			t.Fatalf("git onboard source = %q, want %q", source, repoURL)
+		}
+	})
+
+	t.Run("credentialed clone URL is scrubbed", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv(engine.ProjectRegistryPathEnvVar, filepath.Join(t.TempDir(), "projects.json"))
+		t.Setenv(engine.OperationsLogPathEnvVar, filepath.Join(t.TempDir(), "operations.log"))
+		t.Setenv("HOME", t.TempDir())
+
+		restoreValidate := desktop.SetValidateGitConnectionForDesktopForTest(func(protocol string, repoURL string) error {
+			return nil
+		})
+		defer restoreValidate()
+		restoreClone := desktop.SetCloneGitRepoForDesktopForTest(func(repoURL string, destination string) error {
+			return nil
+		})
+		defer restoreClone()
+		restoreInit := desktop.SetRunGovardCommandForDesktopForTest(func(dir string, args []string) (string, error) {
+			content := "project_name: patsrc\nframework: laravel\ndomain: patsrc.test\n"
+			if err := os.WriteFile(filepath.Join(dir, ".govard.yml"), []byte(content), 0o644); err != nil {
+				return "", err
+			}
+			return "ok", nil
+		})
+		defer restoreInit()
+
+		// A PAT pasted into the URL is a common workflow: the token must
+		// never reach the durable operations log.
+		const repoURL = "https://deploy:ghp_secrettoken123@example.com/acme/shop.git"
+		if _, err := desktop.OnboardProjectFromGitForPathForTest(root, "laravel", "https", repoURL); err != nil {
+			t.Fatalf("git onboard failed: %v", err)
+		}
+		source := readOnboardSource(t)
+		if strings.Contains(source, "ghp_secrettoken123") {
+			t.Fatalf("clone source leaks the token: %q", source)
+		}
+		if !strings.Contains(source, "example.com/acme/shop.git") {
+			t.Fatalf("scrubbed source lost the repo identity: %q", source)
 		}
 	})
 }

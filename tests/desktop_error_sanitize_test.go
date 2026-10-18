@@ -13,7 +13,7 @@ import (
 // escapes or control bytes and stay bounded even when the CLI dumps pages.
 func TestDesktopPkgTimeoutErrorSanitizesCommandOutput(t *testing.T) {
 	raw := "\x1b[31mconnection reset\x1b[0m\x00\x07" + strings.Repeat("x", 5000)
-	err := desktop.NewGovardCommandTimeoutErrorForTest(15*time.Minute, raw)
+	err := desktop.NewGovardCommandTimeoutErrorForTest([]string{"up"}, 15*time.Minute, raw)
 	if err == nil {
 		t.Fatal("expected a timeout error, got nil")
 	}
@@ -43,5 +43,18 @@ func TestDesktopPkgGitConnectionHelpSanitizesCause(t *testing.T) {
 	}
 	if !strings.Contains(message, "could not read") {
 		t.Fatalf("sanitizing dropped the readable text: %q", message)
+	}
+}
+
+func TestDesktopPkgGitConnectionHelpSanitizesSSHHost(t *testing.T) {
+	cause := errors.New("connection refused")
+	// The ssh host is sliced out of caller input: control bytes in it must
+	// not reach the rendered help.
+	message := desktop.BuildGitConnectionHelpForTest("ssh", "git@exa\x00mple.test:org/repo.git", cause)
+	if strings.ContainsAny(message, "\x00") {
+		t.Fatalf("git help carries control bytes from the host: %q", message)
+	}
+	if !strings.Contains(message, "git@example.test") {
+		t.Fatalf("sanitizing dropped the host: %q", message)
 	}
 }

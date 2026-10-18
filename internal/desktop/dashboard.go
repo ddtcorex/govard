@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -211,9 +210,10 @@ func buildDashboardInternal() (Dashboard, error) {
 		}
 
 		var (
-			mu           sync.Mutex
-			wg           sync.WaitGroup
-			registryEnvs []Environment
+			mu             sync.Mutex
+			wg             sync.WaitGroup
+			registryEnvs   []Environment
+			fanoutWarnings []string
 		)
 
 		// One goroutine per registry entry, but semaphore-bounded: every
@@ -235,16 +235,21 @@ func buildDashboardInternal() (Dashboard, error) {
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				env := buildRegistryEnvironmentEntry(ent, name)
+				env, warning := buildRegistryEnvironmentEntrySafe(ent, name)
 
 				mu.Lock()
-				registryEnvs = append(registryEnvs, env)
+				if warning != "" {
+					fanoutWarnings = append(fanoutWarnings, warning)
+				} else {
+					registryEnvs = append(registryEnvs, env)
+				}
 				mu.Unlock()
 			}(entry, projectName)
 
 			knownProjects[projectName] = true
 		}
 		wg.Wait()
+		warnings = append(warnings, fanoutWarnings...)
 		environments = append(environments, registryEnvs...)
 	} else {
 		warnings = append(warnings, "Project registry unavailable.")
@@ -296,6 +301,24 @@ func registryEnvFanoutLimit() int {
 		return 1
 	}
 	return registryEnvFanoutLimitValue
+}
+
+// buildRegistryEnvironmentEntryFunc is the seam the panic-recovery test
+// uses to simulate a corrupt entry; production always runs the real builder.
+var buildRegistryEnvironmentEntryFunc = buildRegistryEnvironmentEntry
+
+// buildRegistryEnvironmentEntrySafe renders one entry, converting a panic
+// into a skipped environment plus a dashboard warning. The fan-out runs on
+// worker goroutines where GetDashboard's RecoverPanic cannot reach, so one
+// corrupt entry must not take the whole dashboard (or app) down.
+func buildRegistryEnvironmentEntrySafe(ent engine.ProjectRegistryEntry, name string) (env Environment, warning string) {
+	defer func() {
+		if r := recover(); r != nil {
+			env = Environment{}
+			warning = sanitizeUIText(fmt.Sprintf("Skipped registry project %s: %v", name, r), 300)
+		}
+	}()
+	return buildRegistryEnvironmentEntryFunc(ent, name), ""
 }
 
 // buildRegistryEnvironmentEntry renders one registry entry into an
@@ -510,6 +533,45 @@ func init() {
 	projectstores.Register()
 }
 
+// deleteOutputMax caps captured delete output at the same 256 KiB the
+// deploy capture keeps: the tail explains the failure, the head is scrollback.
+const deleteOutputMax = 256 * 1024
+
+// lockedDeleteBuffer captures engine output for one deletion. The engine
+// wraps the stderr writer it receives (quietStderr) while stdout keeps our
+// value, so os/exec sees two distinct writers and runs two copier goroutines
+// on them: without the mutex those copies race on the buffer. Both writers
+// must be values over the same buffer (never two buffers), or warnings split
+// across streams and the extractor misses them.
+type lockedDeleteBuffer struct {
+	mu    sync.Mutex
+	limit int
+	data  []byte
+}
+
+func newLockedDeleteBuffer(limit int) *lockedDeleteBuffer {
+	if limit <= 0 {
+		limit = deleteOutputMax
+	}
+	return &lockedDeleteBuffer{limit: limit}
+}
+
+func (b *lockedDeleteBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.data = append(b.data, p...)
+	if len(b.data) > b.limit {
+		b.data = append([]byte{}, b.data[len(b.data)-b.limit:]...)
+	}
+	return len(p), nil
+}
+
+func (b *lockedDeleteBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.data)
+}
+
 // deleteWarningLinesMax caps the warnings quoted in a delete result: the
 // engine prints progress chatter to the same stream, and the message
 // reaches toasts.
@@ -559,8 +621,8 @@ func (s *EnvironmentService) DeleteProject(projectQuery string) (res string, err
 
 	// Check if it's an orphan (root is the name, not an absolute path)
 	if !filepath.IsAbs(root) && !strings.Contains(root, string(filepath.Separator)) {
-		var deleteOut bytes.Buffer
-		if err := engine.DeleteOrphanProject(s.lifecycleContext(), root, &deleteOut, &deleteOut); err != nil {
+		deleteOut := newLockedDeleteBuffer(deleteOutputMax)
+		if err := engine.DeleteOrphanProject(s.lifecycleContext(), root, deleteOut, deleteOut); err != nil {
 			return "", err
 		}
 		return appendDeleteWarnings("Orphaned project resources removed", deleteOut.String()), nil
@@ -569,8 +631,8 @@ func (s *EnvironmentService) DeleteProject(projectQuery string) (res string, err
 	// We use the application context for the deletion process. Output is
 	// captured, not pointed at the desktop's own stdout: warnings surface
 	// in the result instead of vanishing into the app log.
-	var deleteOut bytes.Buffer
-	if err := engine.DeleteProject(s.lifecycleContext(), root, &deleteOut, &deleteOut); err != nil {
+	deleteOut := newLockedDeleteBuffer(deleteOutputMax)
+	if err := engine.DeleteProject(s.lifecycleContext(), root, deleteOut, deleteOut); err != nil {
 		return "", err
 	}
 	return appendDeleteWarnings("Project deleted successfully", deleteOut.String()), nil
@@ -664,12 +726,14 @@ func splitContainerNameFallback(raw string) (string, string, bool) {
 		if strings.HasSuffix(lower, "-"+svc) {
 			project := strings.TrimSpace(clean[:len(clean)-len(svc)-1])
 			if project != "" {
-				return project, clean[len(clean)-len(svc):], true
+				// Services key lowercase everywhere else: fold the match
+				// rather than returning the container's casing.
+				return project, strings.ToLower(clean[len(clean)-len(svc):]), true
 			}
 		}
 	}
 	if i := strings.LastIndex(clean, "-"); i > 0 && i < len(clean)-1 {
-		return clean[:i], clean[i+1:], true
+		return clean[:i], strings.ToLower(clean[i+1:]), true
 	}
 	return "", "", false
 }

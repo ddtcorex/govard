@@ -68,3 +68,19 @@ func TestGovardCommandTimeoutErrorShortOpHasNoPartialStateHint(t *testing.T) {
 		t.Fatalf("timeout error %q must not warn about partial state for a short op", msg)
 	}
 }
+
+func TestGovardCommandTimeoutErrorInitHasNoPartialStateHint(t *testing.T) {
+	err := desktop.SimulateGovardCommandTimeoutForTest([]string{"init"})
+	if err == nil {
+		t.Fatal("expected a timeout error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "10m0s") {
+		t.Fatalf("timeout error %q does not name the duration", msg)
+	}
+	// init scaffolds files and starts no containers: the partial-state hint
+	// would send the operator hunting orphaned resources that cannot exist.
+	if strings.Contains(msg, "partially started") {
+		t.Fatalf("timeout error %q must not warn about partial state for init", msg)
+	}
+}

@@ -89,24 +89,20 @@ func buildPMAOpenURL(project string, database string) string {
 	return target + "/?" + encoded
 }
 
-// scrubDBClientURLSecret removes a DB password from UI-bound text. The
+// scrubDBClientURLSecret removes DB credentials from UI-bound text. The
 // connection URL handed to the external client carries credentials by design
-// (one-click open), so an error quoting that URL must not leak them — in raw
-// form or in the percent-encoded form the URL string carries.
+// (one-click open), so an error quoting that URL must not leak them. Only
+// the exact userinfo token the URL carries is redacted — in its
+// percent-encoded form, so raw-vs-encoded mismatches cannot defeat it, and a
+// short password can never mangle innocent substrings elsewhere in the text.
 func scrubDBClientURLSecret(text, user, password string) string {
 	if text == "" || password == "" {
 		return text
 	}
-	scrubbed := strings.ReplaceAll(text, password, "***")
-	// UserPassword encodes the password for the URL (spaces, @ and friends
-	// become percent-sequences the raw ReplaceAll cannot see). Scrub the
-	// credential half only: the username stays readable.
 	if userinfo := neturl.UserPassword(user, password).String(); userinfo != "" {
-		if encoded, ok := strings.CutPrefix(userinfo, user+":"); ok && encoded != "" {
-			scrubbed = strings.ReplaceAll(scrubbed, encoded, "***")
-		}
+		return strings.ReplaceAll(text, userinfo, "***")
 	}
-	return scrubbed
+	return text
 }
 
 func parseDockerPublishedPort(raw string) (string, string, bool) {

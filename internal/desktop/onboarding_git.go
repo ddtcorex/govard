@@ -75,6 +75,7 @@ var defaultCloneGitRepoForDesktop = func(repoURL string, destination string) err
 func runDesktopGitCommand(ctx context.Context, gitBinary, dir string, args ...string) (string, error) {
 	cmd := exec.Command(gitBinary, args...)
 	setDesktopProcessGroup(cmd)
+	cmd.WaitDelay = desktopGitWaitDelay
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -92,6 +93,13 @@ func runDesktopGitCommand(ctx context.Context, gitBinary, dir string, args ...st
 	}
 	return combined.String(), nil
 }
+
+// desktopGitWaitDelay bounds the wait after a kill: a grandchild that
+// escaped the process group (setsid ControlMaster, daemonizing helper)
+// still holds the pipes, and Wait would block until it exits on its own.
+// Same one-second precedent as the deploy runner; the tree kill above stays
+// the fast path that also reaps the grandchildren it can reach.
+const desktopGitWaitDelay = time.Second
 
 var cloneGitRepoForDesktop = defaultCloneGitRepoForDesktop
 
@@ -260,7 +268,7 @@ func buildGitConnectionHelp(protocol string, repoURL string, cause error) string
 	safeURL := strings.TrimSpace(sanitizeUIText(repoURL, commandTimeoutOutputMax))
 
 	if protocol == "ssh" {
-		host := inferGitSSHHost(repoURL)
+		host := strings.TrimSpace(sanitizeUIText(inferGitSSHHost(repoURL), commandTimeoutOutputMax))
 		return fmt.Sprintf(
 			"Git SSH connection validation failed: %s. Setup steps: 1) load key into ssh-agent (`ssh-add -l`), 2) add public key to your Git provider account, 3) verify access with `ssh -T git@%s`.",
 			detail,
