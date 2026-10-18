@@ -131,9 +131,13 @@ export const isPresetBlockedBySync = ({
   selectedProject = "",
   remoteName = "",
 } = {}) => {
-  const syncing = String(syncingProject || "").trim();
+  // Project identity is case-insensitive on the backend (EqualFold
+  // everywhere), so the visual gate lowercases before comparing: a sync
+  // started by name must still block the card addressed by domain-cased
+  // selection. Remote names stay exact.
+  const syncing = String(syncingProject || "").trim().toLowerCase();
   const active = String(syncingRemote || "").trim();
-  const current = String(selectedProject || "").trim();
+  const current = String(selectedProject || "").trim().toLowerCase();
   const remote = String(remoteName || "").trim();
   return (
     syncing !== "" && active !== "" && syncing === current && active === remote

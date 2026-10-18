@@ -35,37 +35,57 @@ export const isStoppedStatus = (status) => {
 };
 
 /**
+ * The single grouping behind every status presentation: hero badge tones,
+ * dots and the environment-list classification all branch on this, so a
+ * status can never read green in one view and amber in another.
+ */
+export const statusGroup = (status) => {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  if (
+    normalized === "running" ||
+    normalized === "healthy" ||
+    normalized === "up"
+  )
+    return "healthy";
+  if (
+    normalized === "syncing" ||
+    normalized === "starting" ||
+    normalized === "restarting" ||
+    normalized === "booting"
+  )
+    return "transition";
+  if (normalized === "warning" || normalized === "degraded") return "warn";
+  return "stopped";
+};
+
+/**
  * Hero badge and dot tones, mirroring classifyEnvironmentStatus below:
  * green while healthy, blue while transitioning, amber while degraded.
  */
 export const statusTone = (status) => {
-  if (status === "running" || status === "healthy" || status === "up")
-    return "bg-primary/20 border-primary/30 text-primary";
-  if (
-    status === "syncing" ||
-    status === "starting" ||
-    status === "restarting" ||
-    status === "booting"
-  )
-    return "bg-blue-400/20 border-blue-400/30 text-blue-400";
-  if (status === "warning" || status === "degraded")
-    return "bg-amber-500/20 border-amber-500/30 text-amber-500";
-  return "bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400";
+  switch (statusGroup(status)) {
+    case "healthy":
+      return "bg-primary/20 border-primary/30 text-primary";
+    case "transition":
+      return "bg-blue-400/20 border-blue-400/30 text-blue-400";
+    case "warn":
+      return "bg-amber-500/20 border-amber-500/30 text-amber-500";
+    default:
+      return "bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400";
+  }
 };
 
 export const dotTone = (status) => {
-  if (status === "running" || status === "healthy" || status === "up") {
-    return "bg-primary shadow-[0_0_12px_rgba(13,242,89,0.9)] animate-pulse";
+  switch (statusGroup(status)) {
+    case "healthy":
+      return "bg-primary shadow-[0_0_12px_rgba(13,242,89,0.9)] animate-pulse";
+    case "transition":
+      return "bg-blue-400";
+    case "warn":
+      return "bg-amber-500";
+    default:
+      return "bg-slate-500";
   }
-  if (
-    status === "syncing" ||
-    status === "starting" ||
-    status === "restarting" ||
-    status === "booting"
-  )
-    return "bg-blue-400";
-  if (status === "warning" || status === "degraded") return "bg-amber-500";
-  return "bg-slate-500";
 };
 
 const withScheme = (value) => {
@@ -252,56 +272,48 @@ export const classifyEnvironmentStatus = (env = {}) => {
     showPulseDot: false,
   };
 
-  if (status === "running" || status === "healthy" || status === "up") {
-    meta.iconName = "play_circle";
-    meta.iconClass = "text-primary fill-1";
-    meta.fill = true;
-    meta.detailClass = "text-primary";
-    meta.dotClass = "bg-primary";
-    meta.detailText =
-      serviceCount > 0 ? `Running • ${serviceCount} services` : "Running";
-    meta.showPulseDot = true;
-    return meta;
-  }
+  // Tone branches follow statusGroup: the list view keeps its own icon and
+  // copy vocabulary, but a status can never land in a different color group
+  // than the hero badge shows for it.
+  switch (statusGroup(status)) {
+    case "healthy": {
+      meta.iconName = "play_circle";
+      meta.iconClass = "text-primary fill-1";
+      meta.fill = true;
+      meta.detailClass = "text-primary";
+      meta.dotClass = "bg-primary";
+      meta.detailText =
+        serviceCount > 0 ? `Running • ${serviceCount} services` : "Running";
+      meta.showPulseDot = true;
+      return meta;
+    }
 
-  if (
-    status === "restarting" ||
-    status === "starting" ||
-    status === "booting" ||
-    status === "syncing"
-  ) {
-    meta.iconName = "sync";
-    meta.iconClass = "text-blue-400";
-    meta.detailClass = "text-blue-400";
-    meta.dotClass = "bg-blue-400";
-    meta.detailText =
-      status === "starting"
-        ? "Starting..."
-        : status === "syncing"
-          ? "Syncing..."
-          : "Restarting...";
-    return meta;
-  }
+    case "transition": {
+      meta.iconName = "sync";
+      meta.iconClass = "text-blue-400";
+      meta.detailClass = "text-blue-400";
+      meta.dotClass = "bg-blue-400";
+      meta.detailText =
+        status === "starting"
+          ? "Starting..."
+          : status === "syncing"
+            ? "Syncing..."
+            : "Restarting...";
+      return meta;
+    }
 
-  if (status === "warning") {
-    meta.iconName = "warning";
-    meta.iconClass = "text-amber-500";
-    meta.detailClass = "text-amber-500";
-    meta.dotClass = "bg-amber-500";
-    meta.detailText = "Warning";
-    return meta;
-  }
+    case "warn": {
+      meta.iconName = "warning";
+      meta.iconClass = "text-amber-500";
+      meta.detailClass = "text-amber-500";
+      meta.dotClass = "bg-amber-500";
+      meta.detailText = status === "warning" ? "Warning" : "Degraded";
+      return meta;
+    }
 
-  if (status === "degraded") {
-    meta.iconName = "warning";
-    meta.iconClass = "text-amber-500";
-    meta.detailClass = "text-amber-500";
-    meta.dotClass = "bg-amber-500";
-    meta.detailText = "Degraded";
-    return meta;
+    default:
+      return meta;
   }
-
-  return meta;
 };
 
 export const inferServiceTarget = (service = {}) => {

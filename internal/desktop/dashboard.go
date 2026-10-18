@@ -1,12 +1,14 @@
 package desktop
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -43,10 +45,10 @@ func UnregisterSyncingProject(project string) {
 	delete(syncingProjects, canonicalProjectID(project))
 }
 
+// GetSyncingRemote is the exported face of the sync guard lookup: one
+// shared implementation, so badge, guard and tests cannot drift apart.
 func GetSyncingRemote(project string) string {
-	syncingProjectsMu.Lock()
-	defer syncingProjectsMu.Unlock()
-	return syncingProjects[canonicalProjectID(project)]
+	return syncingRemoteForProject(project)
 }
 
 // syncingRemoteForProject reports the remote an in-flight sync is pulling
@@ -86,6 +88,19 @@ type projectInfo struct {
 	configPath   string
 	config       engine.Config
 	configLoaded bool
+}
+
+// isActiveEnvironmentStatus reports whether an environment counts as active
+// for the header counter: anything still running counts, including degraded,
+// warning and syncing — the same rule the tray and the hero follow. Only a
+// stopped (or unknown) environment does not.
+func isActiveEnvironmentStatus(status string) bool {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "running", "healthy", "up", "degraded", "warning", "syncing":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildDashboardInternal() (Dashboard, error) {
@@ -198,6 +213,10 @@ func buildDashboardInternal() (Dashboard, error) {
 			registryEnvs []Environment
 		)
 
+		// One goroutine per registry entry, but semaphore-bounded: every
+		// entry forks git for its branch label, so an unbounded fan-out on
+		// a large registry becomes a fork storm per dashboard refresh.
+		sem := make(chan struct{}, registryEnvFanoutLimit())
 		for _, entry := range entries {
 			projectName := strings.TrimSpace(entry.ProjectName)
 			if projectName == "" {
@@ -210,46 +229,10 @@ func buildDashboardInternal() (Dashboard, error) {
 			wg.Add(1)
 			go func(ent engine.ProjectRegistryEntry, name string) {
 				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
 
-				env := Environment{
-					Project:        name,
-					Domain:         ent.Domain,
-					Name:           name,
-					Framework:      "Unknown",
-					PHP:            "-",
-					Database:       "-",
-					Services:       []Service{},
-					ServiceTargets: []string{"web"},
-					Status:         "stopped",
-				}
-
-				// Try to load detailed info from path if available
-				if info, err := loadProjectInfoFromPath(ent.Path); err == nil {
-					env.Domain = info.config.Domain
-					env.Framework = displayFramework(info.config.Framework)
-					env.PHP = info.config.Stack.PHPVersion
-					env.Database = formatDatabase(info.config.Stack.Services.DB, info.config.Stack.DBVersion)
-					env.Services = deriveServices(info.config, info.serviceState)
-					env.ServiceTargets = collectServiceTargetsFromServices(info, env.Services)
-					env.GitBranch = getGitBranch(ent.Path)
-					env.Technologies = buildTechnologies(env)
-					if ent.Domain != "" {
-						env.Name = ent.Domain
-					}
-				}
-
-				if ent.Domain != "" {
-					env.Name = ent.Domain
-				}
-				env.ExtraDomains = ent.ExtraDomains
-				if env.Framework == "Unknown" && ent.Framework != "" {
-					env.Framework = displayFramework(ent.Framework)
-				}
-
-				if remote := syncingRemoteForProject(name); remote != "" {
-					env.Status = "syncing"
-					env.SyncingRemote = remote
-				}
+				env := buildRegistryEnvironmentEntry(ent, name)
 
 				mu.Lock()
 				registryEnvs = append(registryEnvs, env)
@@ -270,7 +253,7 @@ func buildDashboardInternal() (Dashboard, error) {
 
 	activeEnvs := 0
 	for _, env := range environments {
-		if env.Status == "running" || env.Status == "degraded" {
+		if isActiveEnvironmentStatus(env.Status) {
 			activeEnvs++
 		}
 	}
@@ -297,6 +280,65 @@ func buildDashboardInternal() (Dashboard, error) {
 		Environments:       environments,
 		Warnings:           uniqueStrings(warnings),
 	}, nil
+}
+
+// registryEnvFanoutDefault caps the per-entry goroutines building
+// registry-only environments: every entry forks git for its branch label.
+const registryEnvFanoutDefault = 8
+
+var registryEnvFanoutLimitValue = registryEnvFanoutDefault
+
+func registryEnvFanoutLimit() int {
+	if registryEnvFanoutLimitValue < 1 {
+		return 1
+	}
+	return registryEnvFanoutLimitValue
+}
+
+// buildRegistryEnvironmentEntry renders one registry entry into an
+// Environment without any Docker dependency: path config first, entry
+// metadata as fallback, stopped unless a sync owns the project.
+func buildRegistryEnvironmentEntry(ent engine.ProjectRegistryEntry, name string) Environment {
+	env := Environment{
+		Project:        name,
+		Domain:         ent.Domain,
+		Name:           name,
+		Framework:      "Unknown",
+		PHP:            "-",
+		Database:       "-",
+		Services:       []Service{},
+		ServiceTargets: []string{"web"},
+		Status:         "stopped",
+	}
+
+	// Try to load detailed info from path if available
+	if info, err := loadProjectInfoFromPath(ent.Path); err == nil {
+		env.Domain = info.config.Domain
+		env.Framework = displayFramework(info.config.Framework)
+		env.PHP = info.config.Stack.PHPVersion
+		env.Database = formatDatabase(info.config.Stack.Services.DB, info.config.Stack.DBVersion)
+		env.Services = deriveServices(info.config, info.serviceState)
+		env.ServiceTargets = collectServiceTargetsFromServices(info, env.Services)
+		env.GitBranch = getGitBranch(ent.Path)
+		env.Technologies = buildTechnologies(env)
+		if ent.Domain != "" {
+			env.Name = ent.Domain
+		}
+	}
+
+	if ent.Domain != "" {
+		env.Name = ent.Domain
+	}
+	env.ExtraDomains = ent.ExtraDomains
+	if env.Framework == "Unknown" && ent.Framework != "" {
+		env.Framework = displayFramework(ent.Framework)
+	}
+
+	if remote := syncingRemoteForProject(name); remote != "" {
+		env.Status = "syncing"
+		env.SyncingRemote = remote
+	}
+	return env
 }
 
 // EnvironmentService methods
@@ -341,6 +383,11 @@ func (s *EnvironmentService) StopEnvironment(project string) (res string, err er
 	return withCommandOutput("Environment stopped.", output), nil
 }
 
+// restartFallbackErrorMax caps the original restart failure quoted in a
+// fallback message: the text reaches toasts, so it stays short and
+// sanitized while the diagnosis survives.
+const restartFallbackErrorMax = 300
+
 func (s *EnvironmentService) RestartEnvironment(project string) (res string, err error) {
 	defer RecoverPanic(&err, "RestartEnvironment")
 	if err := refuseDuringSync("restart", project); err != nil {
@@ -352,13 +399,21 @@ func (s *EnvironmentService) RestartEnvironment(project string) (res string, err
 	}
 	output, err := runGovardCommandForDesktop(root, []string{"env", "restart"})
 	if err != nil {
+		restartErr := err
 		// Fallback if restart fails or is not implemented as expected
 		_, _ = runGovardCommandForDesktop(root, []string{"env", "stop"})
 		output, err = runGovardCommandForDesktop(root, []string{"up", "--force-recreate", "--remove-orphans"})
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf(
+				"environment restart failed (%s) and fallback recreate failed: %w",
+				sanitizeUIText(restartErr.Error(), restartFallbackErrorMax),
+				err,
+			)
 		}
-		return withCommandOutput("Environment restarted (fallback: stop + recreate).", output), nil
+		return withCommandOutput(fmt.Sprintf(
+			"Environment restarted (fallback: stop + recreate; restart failed: %s).",
+			sanitizeUIText(restartErr.Error(), restartFallbackErrorMax),
+		), output), nil
 	}
 	return withCommandOutput("Environment restarted.", output), nil
 }
@@ -452,6 +507,34 @@ func init() {
 	projectstores.Register()
 }
 
+// deleteWarningLinesMax caps the warnings quoted in a delete result: the
+// engine prints progress chatter to the same stream, and the message
+// reaches toasts.
+const deleteWarningLinesMax = 5
+const deleteWarningLineMax = 300
+
+// appendDeleteWarnings folds engine warnings printed during deletion into
+// the result message. Desktop output streams go nowhere visible (no
+// terminal), so without this hook and docker warnings are lost entirely;
+// plain progress lines stay out.
+func appendDeleteWarnings(base, output string) string {
+	var kept []string
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || !strings.Contains(trimmed, "Warning:") {
+			continue
+		}
+		kept = append(kept, sanitizeUIText(trimmed, deleteWarningLineMax))
+		if len(kept) >= deleteWarningLinesMax {
+			break
+		}
+	}
+	if len(kept) == 0 {
+		return base
+	}
+	return base + "\n" + strings.Join(kept, "\n")
+}
+
 func (s *EnvironmentService) DeleteProject(projectQuery string) (res string, err error) {
 	defer RecoverPanic(&err, "DeleteProject")
 	if projectQuery == "" {
@@ -473,17 +556,21 @@ func (s *EnvironmentService) DeleteProject(projectQuery string) (res string, err
 
 	// Check if it's an orphan (root is the name, not an absolute path)
 	if !filepath.IsAbs(root) && !strings.Contains(root, string(filepath.Separator)) {
-		if err := engine.DeleteOrphanProject(s.lifecycleContext(), root, os.Stdout, os.Stderr); err != nil {
+		var deleteOut bytes.Buffer
+		if err := engine.DeleteOrphanProject(s.lifecycleContext(), root, &deleteOut, &deleteOut); err != nil {
 			return "", err
 		}
-		return "Orphaned project resources removed", nil
+		return appendDeleteWarnings("Orphaned project resources removed", deleteOut.String()), nil
 	}
 
-	// We use the application context for the deletion process
-	if err := engine.DeleteProject(s.lifecycleContext(), root, os.Stdout, os.Stderr); err != nil {
+	// We use the application context for the deletion process. Output is
+	// captured, not pointed at the desktop's own stdout: warnings surface
+	// in the result instead of vanishing into the app log.
+	var deleteOut bytes.Buffer
+	if err := engine.DeleteProject(s.lifecycleContext(), root, &deleteOut, &deleteOut); err != nil {
 		return "", err
 	}
-	return "Project deleted successfully", nil
+	return appendDeleteWarnings("Project deleted successfully", deleteOut.String()), nil
 }
 
 // ListFrameworks returns every framework registered in internal/frameworks,
@@ -512,16 +599,51 @@ func extractProjectAndService(c container.Summary) (string, string) {
 	}
 
 	for _, name := range c.Names {
-		clean := strings.TrimPrefix(name, "/")
-		parts := strings.Split(clean, "-")
-		if len(parts) >= 3 {
-			project = strings.Join(parts[:len(parts)-2], "-")
-			service = parts[len(parts)-2]
+		if project, service, ok := splitContainerNameFallback(name); ok {
 			return project, service
 		}
 	}
 
 	return "", ""
+}
+
+// fallbackServiceNames are the compose service names the label-less parser
+// recognizes, longest first so a "-<service>" suffix match wins over a
+// shorter one. Desktop-only list: no other package parses container names.
+var fallbackServiceNames = []string{
+	"elasticsearch", "opensearch", "rabbitmq", "phpmyadmin", "mailpit",
+	"mailhog", "varnish", "valkey", "apache", "nginx", "mysql", "mariadb",
+	"postgres", "redis", "web", "php", "pma", "app", "mail", "db",
+}
+
+// splitContainerNameFallback parses "<project>-<service>[-<replica>]"
+// without compose labels: a trailing -<digits> replica is stripped, then
+// the service splits off the end (longest known-service suffix first, else
+// the last segment). Containers with a custom name carry no replica suffix,
+// which the old 3-parts-or-nothing split dropped entirely.
+func splitContainerNameFallback(raw string) (string, string, bool) {
+	clean := strings.TrimPrefix(strings.TrimSpace(raw), "/")
+	if clean == "" {
+		return "", "", false
+	}
+	if i := strings.LastIndex(clean, "-"); i > 0 {
+		if _, err := strconv.Atoi(clean[i+1:]); err == nil {
+			clean = clean[:i]
+		}
+	}
+	lower := strings.ToLower(clean)
+	for _, svc := range fallbackServiceNames {
+		if strings.HasSuffix(lower, "-"+svc) {
+			project := strings.TrimSpace(clean[:len(clean)-len(svc)-1])
+			if project != "" {
+				return project, clean[len(clean)-len(svc):], true
+			}
+		}
+	}
+	if i := strings.LastIndex(clean, "-"); i > 0 && i < len(clean)-1 {
+		return clean[:i], clean[i+1:], true
+	}
+	return "", "", false
 }
 
 func looksLikeGovard(info *projectInfo) bool {

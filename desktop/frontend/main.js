@@ -42,7 +42,7 @@ import { hasEventRuntime, onEvent } from "./services/events.js";
 import { getState, setState } from "./state/store.js";
 import { createToast, toastKind } from "./ui/toast.js?v=20260301";
 import { byId, escapeHTML, setText } from "./utils/dom.js";
-import { sanitizeUIText } from "./utils/sanitize.js";
+import { sanitizeUIText, sanitizeRichConfirmHTML } from "./utils/sanitize.js";
 import { focusFirstElement, rememberFocus } from "./utils/focus-trap.js";
 console.log("==> Finished imports <==");
 
@@ -177,8 +177,11 @@ const showConfirm = ({
     }
 
     refs.confirmTitle.textContent = title || "Confirm Action";
+    // The dialog renders rich markup (line breaks, muted notes), so the
+    // message goes through the br/small allowlist instead of raw innerHTML:
+    // a future caller interpolating dynamic text cannot smuggle a tag in.
     refs.confirmMessage.innerHTML =
-      message || "Are you sure you want to proceed?";
+      sanitizeRichConfirmHTML(message) || "Are you sure you want to proceed?";
     if (refs.confirmIcon) refs.confirmIcon.textContent = icon;
     refs.confirmConfirmBtn.textContent = confirmText;
     refs.confirmCancelBtn.textContent = cancelText;

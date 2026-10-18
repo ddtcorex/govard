@@ -84,11 +84,74 @@ func GovardCommandTimeoutForTest(args []string) time.Duration {
 	return govardCommandTimeout(args)
 }
 
+// NewGovardCommandTimeoutErrorForTest exposes the timeout error builder.
+func NewGovardCommandTimeoutErrorForTest(timeout time.Duration, output string) error {
+	return newGovardCommandTimeoutError(timeout, output)
+}
+
+// BuildGitConnectionHelpForTest exposes the git failure help builder.
+func BuildGitConnectionHelpForTest(protocol string, repoURL string, cause error) string {
+	return buildGitConnectionHelp(protocol, repoURL, cause)
+}
+
 // SimulateGovardCommandTimeoutForTest returns the exact error the desktop
 // runner produces when the given args hit their deadline, without spawning
 // a process.
 func SimulateGovardCommandTimeoutForTest(args []string) error {
 	return newGovardCommandTimeoutError(govardCommandTimeout(args), "")
+}
+
+// RunRemoteSyncBackgroundWithOptionsForTest exposes the background sync
+// starter with an injected platform so tests capture its events.
+func RunRemoteSyncBackgroundWithOptionsForTest(
+	ctx context.Context,
+	p Platform,
+	project string,
+	remoteName string,
+	preset string,
+	options map[string]bool,
+) error {
+	return runRemoteSyncBackgroundWithOptions(ctx, p, project, remoteName, preset, options)
+}
+
+// ExtractProjectAndServiceForTest exposes label-less container parsing.
+func ExtractProjectAndServiceForTest(names []string) (string, string) {
+	return extractProjectAndService(container.Summary{Names: names})
+}
+
+// ValidateSafeCloneDestinationForTest exposes clone destination safety.
+func ValidateSafeCloneDestinationForTest(cleanPath string) error {
+	return validateSafeCloneDestination(cleanPath)
+}
+
+// AppendDeleteWarningsForTest exposes delete-warning extraction.
+func AppendDeleteWarningsForTest(base, output string) string {
+	return appendDeleteWarnings(base, output)
+}
+
+// SetRegistryFanoutLimitForTest overrides the registry fan-out bound so
+// starvation tests run single-file.
+func SetRegistryFanoutLimitForTest(limit int) func() {
+	previous := registryEnvFanoutLimitValue
+	registryEnvFanoutLimitValue = limit
+	return func() {
+		registryEnvFanoutLimitValue = previous
+	}
+}
+
+// BuildRegistryEnvironmentEntryForTest exposes the registry entry renderer.
+func BuildRegistryEnvironmentEntryForTest(ent engine.ProjectRegistryEntry, name string) Environment {
+	return buildRegistryEnvironmentEntry(ent, name)
+}
+
+// IsActiveEnvironmentStatusForTest exposes the active-counter predicate.
+func IsActiveEnvironmentStatusForTest(status string) bool {
+	return isActiveEnvironmentStatus(status)
+}
+
+// ReapLogStreamProcessForTest exposes the log-stream reaper.
+func ReapLogStreamProcessForTest(cmd *exec.Cmd) {
+	reapLogStreamProcess(cmd)
 }
 
 // ResolveRequestedLogTargetsForTest exposes log target normalization for tests.
@@ -109,6 +172,17 @@ func SanitizeStreamLineForTest(raw []byte) string {
 // SanitizeUITextForTest exposes UI-bound text sanitization for tests.
 func SanitizeUITextForTest(s string, max int) string {
 	return sanitizeUIText(s, max)
+}
+
+// ResolveLogContainerForTest exposes log target container resolution.
+func ResolveLogContainerForTest(name string, services []string) string {
+	info := &projectInfo{name: name, services: map[string]bool{}}
+	for _, service := range services {
+		if trimmed := strings.TrimSpace(service); trimmed != "" {
+			info.services[trimmed] = true
+		}
+	}
+	return resolveLogContainer(info, "")
 }
 
 // ResolveShellServiceNameForTest exposes shell target service resolution for tests.
@@ -132,6 +206,11 @@ func NormalizeShellForTest(shell string) string {
 // ParseDockerPublishedPortForTest exposes docker port output parsing for tests.
 func ParseDockerPublishedPortForTest(raw string) (string, string, bool) {
 	return parseDockerPublishedPort(raw)
+}
+
+// ScrubDBClientURLSecretForTest exposes DB password scrubbing for errors.
+func ScrubDBClientURLSecretForTest(text, user, password string) string {
+	return scrubDBClientURLSecret(text, user, password)
 }
 
 // BuildDesktopDBClientURLForTest exposes local DB client URL formatting for tests.
@@ -526,6 +605,28 @@ func SetValidateGitConnectionForDesktopForTest(fn func(protocol string, repoURL 
 	return func() {
 		validateGitConnectionForDesktop = previous
 	}
+}
+
+// SetDesktopGitTimeoutsForTest overrides the git ls-remote and clone
+// ceilings so timeout tests run in milliseconds, not minutes.
+func SetDesktopGitTimeoutsForTest(validate, clone time.Duration) func() {
+	previousValidate, previousClone := desktopGitValidateTimeout, desktopGitCloneTimeout
+	desktopGitValidateTimeout, desktopGitCloneTimeout = validate, clone
+	return func() {
+		desktopGitValidateTimeout, desktopGitCloneTimeout = previousValidate, previousClone
+	}
+}
+
+// DefaultValidateGitConnectionForTest runs the production git validator,
+// bypassing any test override, so timeout tests exercise the real subprocess.
+func DefaultValidateGitConnectionForTest(protocol string, repoURL string) error {
+	return defaultValidateGitConnectionForDesktop(protocol, repoURL)
+}
+
+// DefaultCloneGitRepoForTest runs the production git clone, bypassing any
+// test override, so timeout tests exercise the real subprocess.
+func DefaultCloneGitRepoForTest(repoURL string, destination string) error {
+	return defaultCloneGitRepoForDesktop(repoURL, destination)
 }
 
 // SetCloneGitRepoForDesktopForTest overrides git clone behavior in onboarding flow.
