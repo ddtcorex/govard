@@ -85,8 +85,8 @@ func GovardCommandTimeoutForTest(args []string) time.Duration {
 }
 
 // NewGovardCommandTimeoutErrorForTest exposes the timeout error builder.
-func NewGovardCommandTimeoutErrorForTest(timeout time.Duration, output string) error {
-	return newGovardCommandTimeoutError(timeout, output)
+func NewGovardCommandTimeoutErrorForTest(args []string, timeout time.Duration, output string) error {
+	return newGovardCommandTimeoutError(args, timeout, output)
 }
 
 // BuildGitConnectionHelpForTest exposes the git failure help builder.
@@ -98,7 +98,7 @@ func BuildGitConnectionHelpForTest(protocol string, repoURL string, cause error)
 // runner produces when the given args hit their deadline, without spawning
 // a process.
 func SimulateGovardCommandTimeoutForTest(args []string) error {
-	return newGovardCommandTimeoutError(govardCommandTimeout(args), "")
+	return newGovardCommandTimeoutError(args, govardCommandTimeout(args), "")
 }
 
 // RunRemoteSyncBackgroundWithOptionsForTest exposes the background sync
@@ -129,6 +129,13 @@ func ValidateSafeCloneDestinationForTest(cleanPath string) error {
 	return validateSafeCloneDestination(cleanPath)
 }
 
+// NewLockedDeleteBufferForTest builds the delete-output buffer shared by
+// both engine streams in a deletion.
+func NewLockedDeleteBufferForTest(limit int) (io.Writer, func() string) {
+	buf := newLockedDeleteBuffer(limit)
+	return buf, buf.String
+}
+
 // AppendDeleteWarningsForTest exposes delete-warning extraction.
 func AppendDeleteWarningsForTest(base, output string) string {
 	return appendDeleteWarnings(base, output)
@@ -142,6 +149,21 @@ func SetRegistryFanoutLimitForTest(limit int) func() {
 	return func() {
 		registryEnvFanoutLimitValue = previous
 	}
+}
+
+// SetBuildRegistryEnvironmentEntryForTest overrides the entry renderer so
+// panic recovery tests can simulate a corrupt entry.
+func SetBuildRegistryEnvironmentEntryForTest(fn func(engine.ProjectRegistryEntry, string) Environment) func() {
+	previous := buildRegistryEnvironmentEntryFunc
+	buildRegistryEnvironmentEntryFunc = fn
+	return func() {
+		buildRegistryEnvironmentEntryFunc = previous
+	}
+}
+
+// BuildRegistryEnvironmentEntrySafeForTest exposes the recovering renderer.
+func BuildRegistryEnvironmentEntrySafeForTest(ent engine.ProjectRegistryEntry, name string) (Environment, string) {
+	return buildRegistryEnvironmentEntrySafe(ent, name)
 }
 
 // BuildRegistryEnvironmentEntryForTest exposes the registry entry renderer.
@@ -159,9 +181,19 @@ func IsActiveEnvironmentStatusForTest(status string) bool {
 	return isActiveEnvironmentStatus(status)
 }
 
+// SetLogStreamDrainTimeoutForTest overrides the scanner drain bound so
+// stuck-scanner tests run in milliseconds.
+func SetLogStreamDrainTimeoutForTest(timeout time.Duration) func() {
+	previous := logStreamDrainTimeout
+	logStreamDrainTimeout = timeout
+	return func() {
+		logStreamDrainTimeout = previous
+	}
+}
+
 // ReapLogStreamProcessForTest exposes the log-stream reaper.
-func ReapLogStreamProcessForTest(cmd *exec.Cmd) {
-	reapLogStreamProcess(cmd)
+func ReapLogStreamProcessForTest(cmd *exec.Cmd, done <-chan struct{}) {
+	reapLogStreamProcess(cmd, done)
 }
 
 // ResolveRequestedLogTargetsForTest exposes log target normalization for tests.

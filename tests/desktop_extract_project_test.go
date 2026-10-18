@@ -20,6 +20,7 @@ func TestDesktopPkgExtractProjectAndServiceFallback(t *testing.T) {
 		{"multi-dash project", "/my-shop-db-1", "my-shop", "db"},
 		{"custom name without replica", "/shop-web", "shop", "web"},
 		{"unknown service keeps last segment", "/shop-worker-1", "shop", "worker"},
+		{"service folds to lowercase", "/Proj-PHP-1", "Proj", "php"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -93,3 +93,21 @@ func TestDesktopPkgDashboardRegistryFanoutBounded(t *testing.T) {
 		}
 	}
 }
+
+// One corrupt entry must not take the dashboard down: the fan-out runs on
+// worker goroutines where GetDashboard's RecoverPanic cannot reach, so the
+// entry renderer converts panics into a skipped environment plus a warning.
+func TestDesktopPkgBuildRegistryEnvironmentEntrySafeRecovers(t *testing.T) {
+	restore := desktop.SetBuildRegistryEnvironmentEntryForTest(func(engine.ProjectRegistryEntry, string) desktop.Environment {
+		panic("simulated corrupt entry")
+	})
+	defer restore()
+
+	env, warning := desktop.BuildRegistryEnvironmentEntrySafeForTest(engine.ProjectRegistryEntry{Path: "nowhere"}, "broken")
+	if warning == "" {
+		t.Fatal("expected a warning for the recovered panic, got none")
+	}
+	if env.Project != "" {
+		t.Fatalf("expected the corrupt entry to be skipped, got %+v", env)
+	}
+}

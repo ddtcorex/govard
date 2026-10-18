@@ -153,7 +153,7 @@ func (s *LogService) streamLogs(ctx context.Context, project string, service str
 
 	select {
 	case <-ctx.Done():
-		reapLogStreamProcess(cmd)
+		reapLogStreamProcess(cmd, done)
 	case <-done:
 	}
 }
@@ -186,7 +186,7 @@ func (s *LogService) streamGlobalServiceLogs(ctx context.Context, spec globalSer
 
 	select {
 	case <-ctx.Done():
-		reapLogStreamProcess(cmd)
+		reapLogStreamProcess(cmd, done)
 	case <-done:
 	}
 }
@@ -304,17 +304,34 @@ func streamSanitizedBatches(p Platform, pipe io.Reader, flush func(batch []strin
 	}
 }
 
+// logStreamDrainTimeout bounds the scanner drain on stop: long enough for
+// pipes to reach EOF after the kill, short enough that a pipe-holding
+// grandchild cannot wedge Stop.
+var logStreamDrainTimeout = 5 * time.Second
+
 // reapLogStreamProcess stops a streaming child and reaps it. Kill without
 // Wait leaves a zombie behind per stop: every Start/Stop log cycle leaks
-// one until the app exits.
-func reapLogStreamProcess(cmd *exec.Cmd) {
+// one until the app exits. The drain comes first because Wait closes the
+// parent pipe ends: a scanner still reading would get "file already closed"
+// instead of EOF and surface a bogus error toast on every stop.
+func reapLogStreamProcess(cmd *exec.Cmd, done <-chan struct{}) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
 	_ = cmd.Process.Kill()
-	// Wait reaps the child and unblocks once the pipe scanners drain the
-	// dead process's pipes to EOF; without it every stopped stream leaks a
-	// zombie.
+	drain := time.NewTimer(logStreamDrainTimeout)
+	defer drain.Stop()
+	for drained := 0; drained < 2; {
+		select {
+		case <-done:
+			drained++
+		case <-drain.C:
+			// Scanners wedged (grandchild holds the pipes): Wait below
+			// still reaps the child; only the pipes stay open.
+			_ = cmd.Wait()
+			return
+		}
+	}
 	_ = cmd.Wait()
 }
 

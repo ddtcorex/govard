@@ -75,7 +75,7 @@ var defaultRunGovardCommandForDesktopWithTimeout = func(root string, args []stri
 	trimmed := strings.TrimSpace(string(output))
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return "", newGovardCommandTimeoutError(timeout, trimmed)
+			return "", newGovardCommandTimeoutError(args, timeout, trimmed)
 		}
 		if trimmed != "" {
 			return "", fmt.Errorf("%v: %s", err, trimmed)
@@ -919,8 +919,10 @@ func runRemoteSyncBackgroundWithOptions(
 
 	// Claim the project under one mutex hold: a separate guard check plus
 	// register lets two concurrent starters both pass and overwrite each
-	// other, so the claim itself is the guard here.
-	if !TryRegisterSyncingProject(project, remoteName) {
+	// other, so the claim itself is the guard here. The canonical ID is
+	// resolved once and reused for the claim, the event and the release.
+	syncID := canonicalProjectID(project)
+	if !tryRegisterSyncingProjectByID(syncID, remoteName) {
 		if remote := syncingRemoteForProject(project); remote != "" {
 			return fmt.Errorf("cannot start sync for %q while sync from %q is in progress", strings.TrimSpace(project), remote)
 		}
@@ -929,7 +931,7 @@ func runRemoteSyncBackgroundWithOptions(
 
 	binary, err := exec.LookPath("govard")
 	if err != nil {
-		UnregisterSyncingProject(project)
+		unregisterSyncingProjectByID(syncID)
 		return fmt.Errorf("govard CLI not found in PATH")
 	}
 
@@ -945,19 +947,19 @@ func runRemoteSyncBackgroundWithOptions(
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		UnregisterSyncingProject(project)
+		unregisterSyncingProjectByID(syncID)
 		return fmt.Errorf("failed to pipe stdout: %w", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		cancel()
-		UnregisterSyncingProject(project)
+		unregisterSyncingProjectByID(syncID)
 		return fmt.Errorf("failed to pipe stderr: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
 		cancel()
-		UnregisterSyncingProject(project)
+		unregisterSyncingProjectByID(syncID)
 		return fmt.Errorf("failed to start background sync: %w", err)
 	}
 
@@ -967,7 +969,7 @@ func runRemoteSyncBackgroundWithOptions(
 	// The event carries the canonical identity too: consumers keying on it
 	// (visual locks, notifications) agree with the guard instead of with
 	// whichever identifier this call happened to use.
-	startedProject := canonicalProjectID(project)
+	startedProject := syncID
 	if startedProject == "" {
 		startedProject = project
 	}
@@ -991,7 +993,7 @@ func runRemoteSyncBackgroundWithOptions(
 		// waiter must never wedge start/stop/restart/pull/delete/toggle
 		// until app restart.
 		defer cancel()
-		defer UnregisterSyncingProject(project)
+		defer unregisterSyncingProjectByID(syncID)
 		// Read once: the test seam rewrites the package var while a sync
 		// may still be reading it, which `go test -race` rightfully flags.
 		idleTimeout := backgroundSyncIdleTimeout
@@ -1024,7 +1026,7 @@ func runRemoteSyncBackgroundWithOptions(
 			}
 		}
 		err := cmd.Wait()
-		UnregisterSyncingProject(project)
+		unregisterSyncingProjectByID(syncID)
 		if timedOut {
 			p.Emit(EventSyncFailed, fmt.Sprintf("Sync timed out after %s of no output; partial state may remain", idleTimeout))
 		} else if err != nil {

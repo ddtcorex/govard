@@ -147,7 +147,15 @@ func CanonicalProjectIDForTest(input string) string {
 // other, so sync starters must claim through here, never through the
 // check and the register as two steps.
 func TryRegisterSyncingProject(project, remote string) bool {
-	id := canonicalProjectID(project)
+	return tryRegisterSyncingProjectByID(canonicalProjectID(project), remote)
+}
+
+// tryRegisterSyncingProjectByID claims an already-canonical project ID:
+// same atomic check-and-register as TryRegisterSyncingProject without
+// resolving again. Sync starters resolve once and reuse the ID for the
+// claim, the event and the release, so a registry miss (Docker-backed
+// probes) is paid once per sync, not three times.
+func tryRegisterSyncingProjectByID(id, remote string) bool {
 	if id == "" {
 		return false
 	}
@@ -158,6 +166,14 @@ func TryRegisterSyncingProject(project, remote string) bool {
 	}
 	syncingProjects[id] = remote
 	return true
+}
+
+// unregisterSyncingProjectByID releases a claim by canonical ID, the
+// release half of tryRegisterSyncingProjectByID.
+func unregisterSyncingProjectByID(id string) {
+	syncingProjectsMu.Lock()
+	defer syncingProjectsMu.Unlock()
+	delete(syncingProjects, id)
 }
 
 // ResetSyncingProjectsForTest clears the in-flight sync map so guard tests

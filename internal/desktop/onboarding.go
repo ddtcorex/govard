@@ -93,9 +93,12 @@ func onboardProjectWithOptionsInternalWithContext(
 	// The event source names where the project came from: the repo URL for
 	// a clone, empty for a local directory. The path is already the event's
 	// project field, so repeating it as source mislabels every onboard.
+	// A pasted PAT in the URL is a common workflow, so the source passes
+	// the same secret scrubber as the message: the operations log is
+	// durable state read by toasts.
 	source := ""
 	if input.CloneFromGit {
-		source = strings.TrimSpace(input.GitURL)
+		source = scrubToolHistoryText(strings.TrimSpace(input.GitURL))
 	}
 	defer func() {
 		writeDesktopOperationEvent(

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -48,5 +49,37 @@ func TestDesktopPkgDefaultGitValidatorsTimeOutOnHungRemote(t *testing.T) {
 	}
 	if elapsed > 5*time.Second {
 		t.Fatalf("hung git clone was not killed: took %v", elapsed)
+	}
+}
+
+// A grandchild that escapes the process group (setsid) still holds the
+// pipes after the tree kill: without WaitDelay the wait hangs until the
+// escapee exits on its own. The stray sleep below outlives the test by a
+// few seconds and is reaped by init; the assertion is on our wait, not it.
+func TestDesktopPkgGitCeilingHoldsAgainstSetsidEscape(t *testing.T) {
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("setsid unavailable")
+	}
+	binDir := t.TempDir()
+	gitShim := "#!/bin/sh\nsetsid sleep 8\n"
+	if err := os.WriteFile(filepath.Join(binDir, "git"), []byte(gitShim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	restore := desktop.SetDesktopGitTimeoutsForTest(300*time.Millisecond, 300*time.Millisecond)
+	defer restore()
+
+	started := time.Now()
+	err := desktop.DefaultValidateGitConnectionForTest("https", "https://example.test/repo.git")
+	elapsed := time.Since(started)
+	if err == nil {
+		t.Fatal("expected a timeout error, got nil")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "timed out") {
+		t.Fatalf("expected a timeout error, got: %v", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("ceiling did not hold against a setsid escapee: took %v", elapsed)
 	}
 }

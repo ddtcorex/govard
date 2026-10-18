@@ -76,13 +76,25 @@ func govardCommandTimeout(args []string) time.Duration {
 const commandTimeoutOutputMax = 2000
 
 // newGovardCommandTimeoutError builds the error the runner returns when the
-// context deadline fires. Long operations get an explicit partial-state hint
-// because killing `up` mid-flight leaves containers behind; short ones keep
-// the plain message.
-func newGovardCommandTimeoutError(timeout time.Duration, trimmedOutput string) error {
+// context deadline fires. Long container-mutating operations get an explicit
+// partial-state hint because killing `up` mid-flight leaves containers
+// behind; short ones keep the plain message, and so does `init`, which only
+// scaffolds files and starts nothing.
+func newGovardCommandTimeoutError(args []string, timeout time.Duration, trimmedOutput string) error {
 	msg := fmt.Sprintf("command timed out after %v: %s", timeout, sanitizeUIText(trimmedOutput, commandTimeoutOutputMax))
-	if timeout >= govardCommandTimeoutPartialStateAt {
+	if timeout >= govardCommandTimeoutPartialStateAt && govardCommandMayLeavePartialState(args) {
 		msg += " The operation was stopped mid-flight; the environment may be partially started. Check the dashboard for orphaned resources."
 	}
 	return fmt.Errorf("%s", msg)
+}
+
+// govardCommandMayLeavePartialState reports whether killing the command
+// mid-flight can strand containers or volumes. Everything with a long
+// ceiling mutates the runtime except `init`, which only writes config and
+// rendered files and reruns cleanly.
+func govardCommandMayLeavePartialState(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	return strings.TrimSpace(args[0]) != "init"
 }
