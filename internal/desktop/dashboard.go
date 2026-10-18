@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/frameworks"
 	"govard/internal/projectstores"
@@ -91,9 +92,11 @@ type projectInfo struct {
 }
 
 // isActiveEnvironmentStatus reports whether an environment counts as active
-// for the header counter: anything still running counts, including degraded,
-// warning and syncing — the same rule the tray and the hero follow. Only a
-// stopped (or unknown) environment does not.
+// for the header counter. Every entry is anchored: running and degraded come
+// from the rollup, syncing from the sync override, warning from the tray
+// contract (kept even though no producer emits it today, so a future warning
+// never reads as stopped), healthy/up from frontend ACTIVE parity. Only a
+// stopped (or unknown) environment does not count.
 func isActiveEnvironmentStatus(status string) bool {
 	switch strings.TrimSpace(strings.ToLower(status)) {
 	case "running", "healthy", "up", "degraded", "warning", "syncing":
@@ -608,12 +611,37 @@ func extractProjectAndService(c container.Summary) (string, string) {
 }
 
 // fallbackServiceNames are the compose service names the label-less parser
-// recognizes, longest first so a "-<service>" suffix match wins over a
-// shorter one. Desktop-only list: no other package parses container names.
-var fallbackServiceNames = []string{
-	"elasticsearch", "opensearch", "rabbitmq", "phpmyadmin", "mailpit",
-	"mailhog", "varnish", "valkey", "apache", "nginx", "mysql", "mariadb",
-	"postgres", "redis", "web", "php", "pma", "app", "mail", "db",
+// recognizes, longest first. The framework core comes from the conventions
+// targets so a new target cannot rot the list silently (the pin test fails
+// until it is added); the alias tail mirrors the service vocabulary the
+// frontend's inferServiceTarget knows (mailpit, nginx images and the like).
+var fallbackServiceNames = buildFallbackServiceNames()
+
+func buildFallbackServiceNames() []string {
+	names := []string{
+		conventions.TargetElasticsearch,
+		conventions.TargetOpenSearch,
+		conventions.TargetRabbitMQ,
+		conventions.TargetVarnish,
+		conventions.TargetRedis,
+		conventions.TargetValkey,
+		conventions.TargetWeb,
+		conventions.TargetPHP,
+		conventions.TargetDB,
+		conventions.TargetPMA,
+		conventions.TargetApp,
+		conventions.TargetMail,
+		"phpmyadmin",
+		"mailpit",
+		"mailhog",
+		"apache",
+		"nginx",
+		"mysql",
+		"mariadb",
+		"postgres",
+	}
+	sort.SliceStable(names, func(i, j int) bool { return len(names[i]) > len(names[j]) })
+	return names
 }
 
 // splitContainerNameFallback parses "<project>-<service>[-<replica>]"

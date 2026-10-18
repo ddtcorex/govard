@@ -114,6 +114,11 @@ func RunRemoteSyncBackgroundWithOptionsForTest(
 	return runRemoteSyncBackgroundWithOptions(ctx, p, project, remoteName, preset, options)
 }
 
+// FallbackServiceNamesForTest exposes the label-less parser vocabulary.
+func FallbackServiceNamesForTest() []string {
+	return append([]string{}, fallbackServiceNames...)
+}
+
 // ExtractProjectAndServiceForTest exposes label-less container parsing.
 func ExtractProjectAndServiceForTest(names []string) (string, string) {
 	return extractProjectAndService(container.Summary{Names: names})
@@ -142,6 +147,11 @@ func SetRegistryFanoutLimitForTest(limit int) func() {
 // BuildRegistryEnvironmentEntryForTest exposes the registry entry renderer.
 func BuildRegistryEnvironmentEntryForTest(ent engine.ProjectRegistryEntry, name string) Environment {
 	return buildRegistryEnvironmentEntry(ent, name)
+}
+
+// IsTrayRunningStatusForTest exposes the tray running predicate.
+func IsTrayRunningStatusForTest(status string) bool {
+	return isTrayRunningStatus(status)
 }
 
 // IsActiveEnvironmentStatusForTest exposes the active-counter predicate.
