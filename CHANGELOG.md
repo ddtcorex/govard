@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.80.0] - 2026-10-20
+
+### Added
+
+- **Govard Desktop application** (Wails v3): operation center with canonical
+  project IDs, history, retry and notifications (#626); data tab with guarded
+  queries, dump/import and snapshots (#622); tool runner palette with presets,
+  streaming runs and scrubbed history (#620); doctor and audit health UX
+  (#624); deploy visibility with read-only views, rollback and sandbox
+  rehearsal (#628); reliability batch with per-operation CLI timeouts,
+  build-time icon font subset (3.83 MB → 239 KB), React error boundary,
+  capped log buffers and a single in-flight operation registry (#602); trust
+  fixes batch with sanitized output, progress and honest states (#618).
+- **Update resilience**: stable version lookup for `install.sh` and
+  `govard self-update` no longer uses the GitHub REST API, so shared-NAT and
+  CI installs stop hitting the 60 req/h rate limit; the beta channel accepts
+  an optional `GOVARD_GITHUB_TOKEN`/`GITHUB_TOKEN` and reports an exhausted
+  quota with the reset time plus the `--version` escape hatch (#638).
+- `vscode setup` ensures the Gangway extension with an import hint (#616).
+
+### ⚠️ Behaviour Changes
+
+- Desktop environment Start keeps `--force-recreate`; remote presets are
+  gated while a sync runs for the project; dropped sync toggles are
+  forwarded and the compress default is unified (#610, #612, #614).
+- The operations log default path honors `GOVARD_HOME_DIR` (production is
+  unchanged when it is unset) and reads from the tail, so listing remotes
+  and starting a sync no longer pay for the full history (#638).
+
+### Security
+
+- Five open Dependabot alerts remediated: docs `vue`/`source-map-js`, a
+  desktop `pnpm` override, and Go OpenTelemetry SDK bumps (#608).
+
+### Fixed
+
+- Desktop review hardening across four batches: degraded hero, sync guard
+  and capability gates (#630); timeouts, guards and hygiene (#632);
+  deferred minors (#634); race, reaper, secrets and hardening (#636).
+- Onboarding skip repair and remotes gating alignment (#610); environment
+  lifecycle action hardening (#614).
+
 ## [1.79.0] - 2026-10-08
 
 ### ⚠️ Behaviour Changes
