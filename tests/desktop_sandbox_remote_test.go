@@ -13,15 +13,10 @@ import (
 )
 
 // isolateOperationsLog points the operations log at a per-test temp file.
-// `ListProjectRemotesByPathForTest` builds its last-sync labels from
-// engine.ReadOperationEvents(5000), and that reader walks the log to EOF and
-// JSON-parses every line before slicing the tail — so its cost scales with the
-// total size of the log it finds, not with the limit. operationsLogPath()
-// honours GOVARD_OPERATIONS_LOG_PATH but not GOVARD_HOME_DIR, so without this
-// the four listing tests below read the developer's real ~/.govard/operations.log
-// (40 MB / 200k lines on the machine this was measured on: 0.43s each, 3.4s each
-// under -race against a 7s budget) and the cost would grow on a host with a
-// longer history. It is the only thing those tests spend time on.
+// Belt and braces on top of TestMain's temp GOVARD_HOME_DIR (which
+// operationsLogPath() honours): the listing under test builds its last-sync
+// labels from engine.ReadOperationEvents, and an explicit path keeps those
+// tests independent of whatever else shares the suite home.
 func isolateOperationsLog(t *testing.T) {
 	t.Helper()
 	t.Setenv(engine.OperationsLogPathEnvVar, filepath.Join(t.TempDir(), "operations.log"))

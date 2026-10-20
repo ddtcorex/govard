@@ -582,7 +582,21 @@ install_go() {
 resolve_version() {
     if [[ -z "$SPECIFIC_VERSION" ]]; then
         info "Fetching latest version..."
-        SPECIFIC_VERSION=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        # github.com/.../releases/latest answers 302 -> .../releases/tag/<tag>;
+        # reading the tag from the redirect keeps installs outside the
+        # api.github.com rate limit (60 req/h/IP for unauthenticated calls).
+        local attempt=0
+        while (( attempt < 3 )); do
+            SPECIFIC_VERSION=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" | sed -e 's|.*/||' || true)
+            if [[ ! "$SPECIFIC_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
+                SPECIFIC_VERSION=""
+            fi
+            if [[ -n "$SPECIFIC_VERSION" ]]; then
+                break
+            fi
+            attempt=$((attempt + 1))
+            sleep 1
+        done
     fi
     if [[ -z "$SPECIFIC_VERSION" ]]; then
         error "Failed to resolve version for ${REPO}. Please check your internet connection or specify a version with --version."
