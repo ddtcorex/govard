@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,28 +166,59 @@ func TestDesktopOperationWatcherPersistsCursorAcrossRestart(t *testing.T) {
 		}
 	}
 
-	// Generation one: start the watcher, then write until one notification
-	// lands (each write carries a distinct message, so retries are distinct
-	// events rather than duplicates).
+	// Generation one: start the watcher, then write distinct events until
+	// at least one notification lands. A fresh watcher suppresses whatever
+	// its startup recovery sees first — possibly including early writes,
+	// when the watcher goroutine loses the scheduling race — so retries
+	// must be distinct events, and the count below must quiesce before the
+	// restart: generation two (correctly) redelivers anything written but
+	// not yet delivered, which would break its exactly-1 assertion.
 	fakeOne := &desktop.FakePlatform{}
 	appOne := desktop.NewApp(desktop.WithPlatform(fakeOne))
 	desktop.SetOperationWatcherPollIntervalForTest(appOne, pollInterval)
 	ctxOne, cancelOne := context.WithCancel(context.Background())
 	desktop.StartOperationWatcherForTest(appOne, ctxOne)
-	for i := 0; len(fakeOne.EventsNamed("operations:notification")) == 0; i++ {
-		if i > 40 {
+	notificationCount := func() int {
+		return len(fakeOne.EventsNamed("operations:notification"))
+	}
+	genOneDeadline := time.Now().Add(10 * time.Second)
+	for writes := 0; notificationCount() == 0; writes++ {
+		if time.Now().After(genOneDeadline) {
 			cancelOne()
 			t.Fatal("generation one emitted no notification")
 		}
-		writeEvent("gen-one-op", "gen-one-message")
+		writeEvent("gen-one-op", fmt.Sprintf("gen-one-message-%d", writes))
+		time.Sleep(pollInterval)
+	}
+	quiesceDeadline := time.Now().Add(10 * time.Second)
+	for stable, last := 0, -1; stable < 3; {
+		if count := notificationCount(); count == last {
+			stable++
+		} else {
+			stable, last = 0, count
+		}
+		if time.Now().After(quiesceDeadline) {
+			cancelOne()
+			t.Fatal("generation one notifications never quiesced")
+		}
 		time.Sleep(pollInterval)
 	}
 	desktop.StopOperationWatcherForTest(appOne)
 	cancelOne()
 
-	// The cursor must have reached disk while events were delivered.
-	if _, err := os.Stat(desktop.OperationNotifyCursorPathForTest()); err != nil {
-		t.Fatalf("notify cursor not persisted: %v", err)
+	// The cursor must reach disk once events are delivered. stop() only
+	// cancels the watcher goroutine without joining it, and production
+	// persists after emitting in the same poll (at-least-once by design),
+	// so the persist for the observed notification may still be in flight
+	// here: wait for the file instead of asserting it mid-race.
+	cursorDeadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(desktop.OperationNotifyCursorPathForTest()); err == nil {
+			break
+		} else if time.Now().After(cursorDeadline) {
+			t.Fatalf("notify cursor not persisted: %v", err)
+		}
+		time.Sleep(pollInterval / 4)
 	}
 
 	// Downtime: one event while no watcher runs.
