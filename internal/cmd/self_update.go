@@ -287,7 +287,10 @@ func selfUpdateLatestReleaseURL(repo string) string {
 	if override := strings.TrimSpace(os.Getenv(selfUpdateLatestURLEnvVar)); override != "" {
 		return strings.TrimRight(override, "/")
 	}
-	return fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	// github.com/.../releases/latest answers 302 -> .../releases/tag/<tag>
+	// without consuming REST-API quota (api.github.com allows 60 req/h/IP
+	// unauthenticated); the tag is parsed from the final URL, k3s-style.
+	return fmt.Sprintf("https://github.com/%s/releases/latest", repo)
 }
 
 func selfUpdateReleaseBaseURL(repo, releaseTag string) string {
@@ -299,15 +302,38 @@ func selfUpdateReleaseBaseURL(repo, releaseTag string) string {
 
 func fetchLatestReleaseTag(client *http.Client, repo string) (string, error) {
 	url := selfUpdateLatestReleaseURL(repo)
-	body, err := downloadText(client, url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("prepare request: %w", err)
+	}
+	req.Header.Set("User-Agent", "govard-self-update")
+	// No-op on github.com; honors API-shaped mirrors on api.github.com.
+	updater.ApplyGitHubAuth(req)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", updater.GitHubAPIError(url, resp.StatusCode, resp.Header, strings.TrimSpace(string(body)))
 	}
 
+	if tag, ok := releaseTagFromRedirectURL(resp); ok {
+		valid, err := validateReleaseTag(tag)
+		if err != nil {
+			return "", fmt.Errorf("invalid release tag received from upstream: %w", err)
+		}
+		return valid, nil
+	}
+
+	// Legacy mirrors serving API-shaped JSON without a redirect.
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
-	if err := json.Unmarshal([]byte(body), &release); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return "", fmt.Errorf("decode latest release payload: %w", err)
 	}
 
@@ -317,6 +343,23 @@ func fetchLatestReleaseTag(client *http.Client, repo string) (string, error) {
 	}
 
 	return tag, nil
+}
+
+// releaseTagFromRedirectURL extracts the release tag from the final URL of
+// the https://github.com/<repo>/releases/latest redirect chain, which ends
+// at .../releases/tag/<tag>. ok is false when the URL carries no such
+// segment (e.g. a JSON-serving mirror override).
+func releaseTagFromRedirectURL(resp *http.Response) (tag string, ok bool) {
+	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
+		return "", false
+	}
+	segments := strings.Split(strings.Trim(resp.Request.URL.Path, "/"), "/")
+	for i := 0; i+2 < len(segments); i++ {
+		if segments[i] == "releases" && segments[i+1] == "tag" && segments[i+2] != "" {
+			return segments[i+2], true
+		}
+	}
+	return "", false
 }
 
 func selfUpdateReleaseListURL(repo string) string {
@@ -432,6 +475,7 @@ func downloadText(client *http.Client, url string) (string, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "govard-self-update")
+	updater.ApplyGitHubAuth(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -444,7 +488,7 @@ func downloadText(client *http.Client, url string) (string, error) {
 		return "", fmt.Errorf("read %s: %w", url, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("request %s failed with status %d: %s", url, resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", updater.GitHubAPIError(url, resp.StatusCode, resp.Header, strings.TrimSpace(string(body)))
 	}
 
 	return string(body), nil

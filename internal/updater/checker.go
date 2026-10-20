@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
@@ -57,6 +58,7 @@ func FetchLatestRelease(client *http.Client) (LatestRelease, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "govard")
+	ApplyGitHubAuth(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -65,7 +67,8 @@ func FetchLatestRelease(client *http.Client) (LatestRelease, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return LatestRelease{}, fmt.Errorf("request latest release failed with status %d", resp.StatusCode)
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return LatestRelease{}, GitHubAPIError(LatestReleaseURL(), resp.StatusCode, resp.Header, string(snippet))
 	}
 
 	var release struct {
@@ -204,6 +207,7 @@ func fetchNewestRelease(client *http.Client) (LatestRelease, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "govard")
+	ApplyGitHubAuth(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -212,7 +216,8 @@ func fetchNewestRelease(client *http.Client) (LatestRelease, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return LatestRelease{}, fmt.Errorf("request release list failed with status %d", resp.StatusCode)
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return LatestRelease{}, GitHubAPIError(ReleasesListURL(), resp.StatusCode, resp.Header, string(snippet))
 	}
 
 	var releases []struct {

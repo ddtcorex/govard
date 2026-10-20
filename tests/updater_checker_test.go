@@ -3,6 +3,9 @@ package tests
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"govard/internal/updater"
@@ -286,5 +289,138 @@ func TestCheckForUpdatesUsesPersistedBetaChannel(t *testing.T) {
 	}
 	if gotLatestTag != "v9.9.9-beta.1" {
 		t.Fatalf("latest tag = %q, want %q", gotLatestTag, "v9.9.9-beta.1")
+	}
+}
+
+func TestGitHubAPIErrorRateLimitedNamesResetAndEscapeHatches(t *testing.T) {
+	header := http.Header{}
+	header.Set("X-RateLimit-Remaining", "0")
+	header.Set("X-RateLimit-Reset", "1780000000")
+
+	err := updater.GitHubAPIError("https://api.github.com/repos/x/y/releases", http.StatusForbidden, header, "API rate limit exceeded")
+	if err == nil {
+		t.Fatal("expected non-nil error")
+	}
+	msg := err.Error()
+	if !strings.Contains(strings.ToLower(msg), "rate limit") {
+		t.Fatalf("error = %q, want it to name the rate limit", msg)
+	}
+	if !strings.Contains(msg, "--version") {
+		t.Fatalf("error = %q, want the --version escape hatch", msg)
+	}
+	if !strings.Contains(msg, "GITHUB_TOKEN") {
+		t.Fatalf("error = %q, want the optional token mentioned", msg)
+	}
+}
+
+func TestGitHubAPIErrorRateLimitedWithoutResetHeader(t *testing.T) {
+	header := http.Header{}
+	header.Set("X-RateLimit-Remaining", "0")
+
+	err := updater.GitHubAPIError("https://api.github.com/repos/x/y/releases", http.StatusTooManyRequests, header, "")
+	if err == nil {
+		t.Fatal("expected non-nil error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "rate limit") {
+		t.Fatalf("error = %q, want it to name the rate limit", err)
+	}
+}
+
+func TestGitHubAPIErrorPlainStatusIsNotRateLimit(t *testing.T) {
+	err := updater.GitHubAPIError("https://api.github.com/repos/x/y/releases", http.StatusNotFound, http.Header{}, "Not Found")
+	if err == nil {
+		t.Fatal("expected non-nil error")
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "rate limit") {
+		t.Fatalf("error = %q, must not claim rate limit", err)
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Fatalf("error = %q, want the status surfaced", err)
+	}
+}
+
+func TestGitHubAuthTokenSpecificWinsOverGeneric(t *testing.T) {
+	t.Setenv("GOVARD_GITHUB_TOKEN", "specific-token")
+	t.Setenv("GITHUB_TOKEN", "generic-token")
+
+	if got := updater.GitHubAuthToken(); got != "specific-token" {
+		t.Fatalf("GitHubAuthToken() = %q, want %q", got, "specific-token")
+	}
+}
+
+func TestGitHubAuthTokenFallsBackToGeneric(t *testing.T) {
+	t.Setenv("GOVARD_GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "generic-token")
+
+	if got := updater.GitHubAuthToken(); got != "generic-token" {
+		t.Fatalf("GitHubAuthToken() = %q, want %q", got, "generic-token")
+	}
+}
+
+func TestGitHubAuthTokenEmptyWhenUnset(t *testing.T) {
+	t.Setenv("GOVARD_GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	if got := updater.GitHubAuthToken(); got != "" {
+		t.Fatalf("GitHubAuthToken() = %q, want empty", got)
+	}
+}
+
+func TestGitHubAuthTokenReadsAtFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(path, []byte("  file-token\n"), 0o600); err != nil {
+		t.Fatalf("write token file: %v", err)
+	}
+	t.Setenv("GOVARD_GITHUB_TOKEN", "@"+path)
+	t.Setenv("GITHUB_TOKEN", "")
+
+	if got := updater.GitHubAuthToken(); got != "file-token" {
+		t.Fatalf("GitHubAuthToken() = %q, want %q", got, "file-token")
+	}
+}
+
+func TestGitHubAuthTokenMissingAtFileIsEmpty(t *testing.T) {
+	t.Setenv("GOVARD_GITHUB_TOKEN", "@/nonexistent/govard-token-test")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	if got := updater.GitHubAuthToken(); got != "" {
+		t.Fatalf("GitHubAuthToken() = %q, want empty for missing file", got)
+	}
+}
+
+func TestApplyGitHubAuthAttachesOnlyOnAPIHost(t *testing.T) {
+	t.Setenv("GOVARD_GITHUB_TOKEN", "test-token")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	apiReq, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/x/y/releases", nil)
+	if err != nil {
+		t.Fatalf("new api request: %v", err)
+	}
+	updater.ApplyGitHubAuth(apiReq)
+	if got := apiReq.Header.Get("Authorization"); got != "Bearer test-token" {
+		t.Fatalf("api Authorization = %q, want bearer token", got)
+	}
+
+	webReq, err := http.NewRequest(http.MethodGet, "https://github.com/x/y/releases/latest", nil)
+	if err != nil {
+		t.Fatalf("new web request: %v", err)
+	}
+	updater.ApplyGitHubAuth(webReq)
+	if got := webReq.Header.Get("Authorization"); got != "" {
+		t.Fatalf("web Authorization = %q, want empty (token is useless outside api.github.com)", got)
+	}
+}
+
+func TestApplyGitHubAuthWithoutTokenSetsNothing(t *testing.T) {
+	t.Setenv("GOVARD_GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/x/y/releases", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	updater.ApplyGitHubAuth(req)
+	if got := req.Header.Get("Authorization"); got != "" {
+		t.Fatalf("Authorization = %q, want empty without token", got)
 	}
 }

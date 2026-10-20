@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"govard/internal/cmd"
 )
@@ -379,7 +382,33 @@ func TestFetchChannelReleaseTagForTestBetaPicksSemverMax(t *testing.T) {
 	}
 }
 
-func TestFetchChannelReleaseTagForTestStableDelegatesToLatest(t *testing.T) {
+func TestFetchChannelReleaseTagForTestStableFollowsRedirectToTag(t *testing.T) {
+	// Production resolves stable via https://github.com/<repo>/releases/latest,
+	// which answers 302 -> .../releases/tag/<tag> without consuming REST-API
+	// quota. The tag must come from the final URL, not from a response body.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/releases/tag/v2.0.0" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Redirect(w, r, "/releases/tag/v2.0.0", http.StatusFound)
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LATEST_URL", server.URL+"/latest")
+
+	tag, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "stable")
+	if err != nil {
+		t.Fatalf("FetchChannelReleaseTagForTest() error = %v", err)
+	}
+	if tag != "v2.0.0" {
+		t.Fatalf("tag = %q, want %q", tag, "v2.0.0")
+	}
+}
+
+func TestFetchChannelReleaseTagForTestStableJSONFallback(t *testing.T) {
+	// Legacy compat: a GOVARD_SELF_UPDATE_LATEST_URL mirror serving
+	// API-shaped JSON (no redirect) must keep working.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"tag_name":"v2.0.0"}`))
@@ -394,6 +423,120 @@ func TestFetchChannelReleaseTagForTestStableDelegatesToLatest(t *testing.T) {
 	}
 	if tag != "v2.0.0" {
 		t.Fatalf("tag = %q, want %q", tag, "v2.0.0")
+	}
+}
+
+func TestFetchChannelReleaseTagStableRedirectWithoutTagErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/final" {
+			_, _ = w.Write([]byte("not a release page"))
+			return
+		}
+		http.Redirect(w, r, "/final", http.StatusFound)
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LATEST_URL", server.URL+"/latest")
+
+	if tag, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "stable"); err == nil {
+		t.Fatalf("expected error for redirect without /releases/tag/, got tag %q", tag)
+	}
+}
+
+func TestFetchChannelReleaseTagBetaRateLimitErrorIsActionable(t *testing.T) {
+	reset := time.Now().Add(42 * time.Minute).Unix()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset, 10))
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"API rate limit exceeded"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LIST_URL", server.URL)
+
+	_, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "beta")
+	if err == nil {
+		t.Fatal("expected error for rate-limited release list, got nil")
+	}
+	lowered := strings.ToLower(err.Error())
+	if !strings.Contains(lowered, "rate limit") {
+		t.Fatalf("error = %q, want it to name the rate limit", err)
+	}
+	if !strings.Contains(err.Error(), "--version") {
+		t.Fatalf("error = %q, want it to point at the --version escape hatch", err)
+	}
+	if !strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Fatalf("error = %q, want it to mention the optional token", err)
+	}
+}
+
+func TestFetchChannelReleaseTagBetaTooManyRequestsIsRateLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10))
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"message":"You have exceeded a secondary rate limit"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LIST_URL", server.URL)
+
+	_, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "beta")
+	if err == nil {
+		t.Fatal("expected error for 429 release list, got nil")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "rate limit") {
+		t.Fatalf("error = %q, want it to name the rate limit", err)
+	}
+}
+
+func TestFetchChannelReleaseTagBetaPlainForbiddenIsNotRateLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"Resource not accessible"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LIST_URL", server.URL)
+
+	_, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "beta")
+	if err == nil {
+		t.Fatal("expected error for 403 release list, got nil")
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "rate limit") {
+		t.Fatalf("error = %q, must not claim rate limit without quota headers", err)
+	}
+	if !strings.Contains(err.Error(), "403") {
+		t.Fatalf("error = %q, want the status surfaced", err)
+	}
+}
+
+func TestFetchChannelReleaseTagBetaErrorNeverLeaksToken(t *testing.T) {
+	const token = "ghp_testtoken00leakcheck11"
+	t.Setenv("GOVARD_GITHUB_TOKEN", token)
+	t.Setenv("GITHUB_TOKEN", "")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The mock is not api.github.com, so the token must stay home.
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Errorf("Authorization = %q, want empty on non-API hosts", got)
+		}
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10))
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"API rate limit exceeded"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("GOVARD_SELF_UPDATE_LIST_URL", server.URL)
+
+	_, err := cmd.FetchChannelReleaseTagForTest(server.Client(), "ignored/repo", "beta")
+	if err == nil {
+		t.Fatal("expected error for rate-limited release list, got nil")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("error leaks the token: %q", err)
 	}
 }
 

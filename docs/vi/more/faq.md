@@ -314,6 +314,17 @@ DISPLAY=:1 govard desktop --dev
 
 Binary của desktop cũng được cập nhật bởi lệnh `self-update`. Nếu phiên bản cũ vẫn tồn tại, hãy khởi động lại hoàn toàn ứng dụng Desktop.
 
+### Q: Cài đặt hoặc `self-update` báo lỗi GitHub rate limit
+
+Tra cứu phiên bản của kênh stable không dùng GitHub API nên không bị giới hạn. Kênh beta vẫn resolve qua releases API (60 request/giờ/IP khi không đăng nhập), rất nhanh hết quota khi ngồi sau NAT chung hoặc chạy CI. Hai cách tránh:
+
+```bash
+govard self-update --version v1.79.0 --yes   # ghim version, bỏ qua bước tra cứu
+export GOVARD_GITHUB_TOKEN=ghp_...           # hoặc GITHUB_TOKEN; đọc release public không cần scope
+```
+
+`install.sh` có lối thoát tương tự: `bash install.sh --version v1.79.0`. Token là tùy chọn và chỉ được gửi tới `api.github.com`.
+
 ---
 
 ## Các mẹo chung (General Tips)

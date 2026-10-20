@@ -319,6 +319,21 @@ This is intentional — self-update detects non-interactive environments and ski
 
 The desktop binary is also updated by `self-update`. If the old version persists, restart the desktop app completely.
 
+### Q: Install or `self-update` fails with a GitHub rate limit error
+
+Version lookup for the stable channel does not use the GitHub API, so it is
+not rate-limited. The beta channel still resolves through the releases API
+(60 requests/hour/IP unauthenticated), which runs out fast behind shared NAT
+or in CI. Two ways around it:
+
+```bash
+govard self-update --version v1.79.0 --yes   # pin a version, skips the lookup entirely
+export GOVARD_GITHUB_TOKEN=ghp_...           # or GITHUB_TOKEN; public release reads need no scopes
+```
+
+`install.sh` accepts the same escape hatch: `bash install.sh --version v1.79.0`.
+The token is optional and is only ever sent to `api.github.com`.
+
 ---
 
 ## General Tips
