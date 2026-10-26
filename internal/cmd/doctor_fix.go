@@ -809,6 +809,10 @@ func confirmAction(message string) bool {
 	if os.Getenv("GOVARD_ASSUME_YES") == "true" {
 		return true
 	}
+	if !stdinIsTerminal() {
+		pterm.Warning.Printf("non-interactive stdin: declining confirmation: %s\n", message)
+		return false
+	}
 	confirmed, _ := pterm.DefaultInteractiveConfirm.
 		WithDefaultValue(true).
 		Show(message)
