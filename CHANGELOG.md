@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.81.0] - 2026-10-26
+
+### Added
+
+- Profiler preflight for `audit run --checks profiler`: an unwritable
+  profiler config dir fails with a `permission` error code naming the
+  directory, the owner uid and `govard doctor --fix` (#642).
+- Doctor check `project.govard.ownership` plus a sudo-free repair:
+  helper-container chown, write probe, mount read and HTTP post-checks
+  with rollback to the recorded owners on any failure (#642).
+- Root-run warning when govard runs as root on a user-owned project,
+  pointing at `govard doctor --fix` (#642).
+- `govard status` lists the current project first with its state,
+  including when it is down (#642).
+- Lint phase failure detail: `exit_code` and capped `stderr_tail` on
+  every phase, with host-side reclassification of empty failed phases
+  to `error` (#642).
+
+### Changed
+
+- The Xdebug gate now applies to the profiler container only, so
+  `audit run --checks lint` runs with xdebug enabled and without
+  `--allow-xdebug` (#642).
+- Restart paths prepare Govard-owned bind sources before compose up,
+  so a stale mount is no longer recreated root-owned by the daemon (#642).
+
+### Fixed
+
+- `doctor --fix` no longer deadlocks on interactive confirmations
+  without a terminal; it declines with a warning instead (#642).
+
 ## [1.80.0] - 2026-10-20
 
 ### Added
