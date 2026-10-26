@@ -291,6 +291,7 @@ func (runner *Runner) runInSession(ctx context.Context, manifest SessionManifest
 		return result, err
 	}
 
+	errorCode := ErrorCodeInfrastructure
 	jobs, err := runner.jobsFor(request, manifest, run.RunID)
 	if err == nil {
 		jobsResult, scheduleErr := NewScheduler(runner.resources).Run(ctx, jobs)
@@ -299,14 +300,14 @@ func (runner *Runner) runInSession(ctx context.Context, manifest SessionManifest
 		result.Artifacts = append(result.Artifacts, integrityArtifacts(jobsResult)...)
 		err = scheduleErr
 		if err == nil {
-			err = infrastructureError(jobsResult)
+			errorCode, err = infrastructureError(jobsResult)
 		}
 	}
 	result.StartedAt = runner.now().UTC()
 	result.FinishedAt = runner.now().UTC()
 	result.Status = resultStatus(result.Jobs, err, ctx)
 	if err != nil {
-		result.Errors = append(result.Errors, AuditError{Code: "infrastructure", Message: err.Error()})
+		result.Errors = append(result.Errors, AuditError{Code: errorCode, Message: err.Error()})
 	}
 	if writeErr := runner.store.WriteResult(result); writeErr != nil {
 		if err != nil {
@@ -483,6 +484,13 @@ func lintInfrastructureReason(report LintReport) string {
 			continue
 		}
 		for _, phase := range result.Phases {
+			if phase.Status == "error" && phase.ExitCode != nil {
+				reason := fmt.Sprintf("PHP %s %s: error (exit %d)", result.PHPVersion, phase.Name, *phase.ExitCode)
+				if line := lastNonEmptyLine(phase.StderrTail); line != "" {
+					reason += ": " + line
+				}
+				return reason
+			}
 			if phase.Status == "error" && phase.CacheReason != "" {
 				return fmt.Sprintf("PHP %s %s: %s", result.PHPVersion, phase.Name, phase.CacheReason)
 			}
@@ -495,13 +503,32 @@ func lintInfrastructureReason(report LintReport) string {
 	return "no PHP result carries the failing phase"
 }
 
-func infrastructureError(jobs []JobResult) error {
-	for _, job := range jobs {
-		if message, ok := job.Evidence["infrastructure_error"].(string); ok && message != "" {
-			return errors.New(message)
+func lastNonEmptyLine(text string) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			return line
 		}
 	}
-	return nil
+	return ""
+}
+
+// LintInfrastructureReasonForTest exposes lintInfrastructureReason.
+func LintInfrastructureReasonForTest(report LintReport) string {
+	return lintInfrastructureReason(report)
+}
+
+func infrastructureError(jobs []JobResult) (string, error) {
+	for _, job := range jobs {
+		if message, ok := job.Evidence["infrastructure_error"].(string); ok && message != "" {
+			code, _ := job.Evidence[InfrastructureErrorCodeKey].(string)
+			if code == "" {
+				code = ErrorCodeInfrastructure
+			}
+			return code, errors.New(message)
+		}
+	}
+	return ErrorCodeInfrastructure, nil
 }
 
 type lintFailureError struct{}

@@ -261,10 +261,16 @@ kèm gợi ý xoá lock cũ hoặc chạy `govard audit cleanup`.
 
 #### Guard Xdebug
 
-Khi `stack.features.xdebug: true`, lint audit thoát với thông báo
-`Xdebug enabled, ~10-20% tax; disable with govard debug off or pass --allow-xdebug`
-trừ khi truyền `--allow-xdebug`. Guard được thực thi trong command và trong backend
-lint của Govard.
+Chỉ check `profiler` bị chặn: request của nó đi tới container `php` của dự án,
+nơi duy nhất Xdebug có thể làm chậm. Lint chạy trong container glint ngắn hạn và
+`integrity` chỉ đọc file, nên cả hai không bị chặn. Khi
+`stack.features.xdebug: true`, check profiler chạy `php -m` trong container
+`php`: nếu Xdebug đang được nạp, audit thoát với thông báo
+`Xdebug enabled and loaded in the php container, ~10-20% tax on profiler captures; disable with govard debug off or pass --allow-xdebug`;
+nếu không, audit vẫn chạy và in một cảnh báo rằng request mang trigger Xdebug đi
+tới `php-debug` và không được đo. Khi không kết nối được container, guard chặn
+an toàn và nêu `govard env up` cùng `--allow-xdebug`. `--allow-xdebug` bỏ qua
+bước probe.
 
 #### Cache
 
@@ -457,6 +463,8 @@ và bản build local fallback sẽ nhắm đúng bản upstream thật gần nh
 - `~/.govard/apache/<project>/httpd.conf`
 - `~/.govard/nginx/<project>/mage-run-map.conf`
 
+`env up`, `env start` và `env restart` tạo thư mục `.govard/<nginx|apache>/custom` của web server dưới quyền người dùng đang chạy lệnh trước khi gọi `docker compose up`, nên một thư mục đã bị xóa từ lần render trước sẽ không bao giờ được Docker daemon tạo lại dưới quyền root. Khi chạy Govard bằng root trên một dự án thuộc người dùng thường, lệnh in một cảnh báo nêu `govard doctor --fix`; cảnh báo này không bao giờ chặn lệnh.
+
 **Các cờ của `govard env down`:**
 - `-v, --volumes` — xóa các docker volume dữ liệu đi kèm.
 - `--rmi local` — xóa các image local được dựng cho dự án.
@@ -523,7 +531,7 @@ govard domain list
 
 ### `govard status`
 
-Liệt kê tất cả các môi trường Govard đang chạy trong toàn bộ workspace của bạn.
+Liệt kê dự án của thư mục hiện tại trước, kèm trạng thái (`Running` hoặc `Down`), sau đó là mọi môi trường Govard khác đang chạy trong workspace. Khi ở ngoài một dự án và không có gì đang chạy, lệnh in `No running Govard environments found.`
 
 ```bash
 govard status
@@ -1427,6 +1435,10 @@ Các thành phần được kiểm tra bao gồm: Docker, Compose, các port k�
 
 - **`--fix`** — Tự động phát hiện và sửa các lỗi phổ biến được tìm thấy.
 - **`trust`** — Cài đặt Root CA vào keychain hệ thống + browser NSS store.
+
+**Quyền sở hữu `.govard` (`project.govard.ownership`).** Khi chạy trong một dự án, doctor duyệt `.govard/` mà không đi theo symlink và cảnh báo mọi đường dẫn không thuộc người dùng của bạn (nêu tối đa năm đường dẫn kèm tổng số). File thuộc root trong đó làm hỏng audit profiler và mọi file Govard ghi vào `.govard/`. Bước kiểm tra này không cần Docker.
+
+`govard doctor --fix` sửa lỗi này mà không cần sudo: lệnh ghi lại chủ sở hữu của từng đường dẫn được báo, rồi một container `alpine` chạy ngắn chạy một lệnh `chown -h` cho mỗi đường dẫn (không đệ quy, không đi theo symlink) để trả chúng về người dùng của bạn. Sau đó lệnh chứng minh dự án vẫn hoạt động: ghi thử một file trong thư mục cấu hình custom của web server và, khi môi trường đang chạy, kiểm tra container web vẫn đọc được mount custom và domain của dự án trả HTTP 200. Nếu một bước kiểm tra thất bại, chủ sở hữu ban đầu được khôi phục và kết quả là `failed`. Khi không có container runtime, kết quả là `unavailable`; khi môi trường đang tắt, các bước kiểm tra mount và HTTP được bỏ qua và kết quả ghi rõ điều đó.
 
 ---
 

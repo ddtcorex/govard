@@ -39,14 +39,15 @@ var doctorRunDiagnostics = engine.RunDoctorDiagnostics
 type doctorFixHandler func(check engine.DoctorCheck) DoctorFixResult
 
 var doctorFixHandlers = map[string]doctorFixHandler{
-	"host.govard.home":        fixGovardHomeDirectory,
-	"host.search.index_block": unblockSearchIndex,
-	"host.compose.spam":       purgeStaleComposeFiles,
-	"host.govard.registry":    fixGovardRegistry,
-	"project.profile.sync":    tuneProjectProfile,
-	"project.runtime.images":  pullRuntimeImages,
-	"project.config.audit":    fixLegacyConfig,
-	"project.config.drift":    fixConfigDrift,
+	"host.govard.home":         fixGovardHomeDirectory,
+	"host.search.index_block":  unblockSearchIndex,
+	"host.compose.spam":        purgeStaleComposeFiles,
+	"host.govard.registry":     fixGovardRegistry,
+	"project.profile.sync":     tuneProjectProfile,
+	"project.runtime.images":   pullRuntimeImages,
+	"project.config.audit":     fixLegacyConfig,
+	"project.config.drift":     fixConfigDrift,
+	"project.govard.ownership": fixGovardOwnership,
 }
 
 func runDoctorDiagnostics() engine.DoctorReport {

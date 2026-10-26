@@ -156,6 +156,21 @@ json_count() {
     ' "$1" "$2"
 }
 
+# Prints FIELD of the phase named NAME in php_results[INDEX], or <missing>.
+json_phase_field() {
+    "$TEST_PHP" -r '
+        $data = json_decode((string) @file_get_contents($argv[1]), true);
+        if (!is_array($data)) { echo "<invalid-json>"; exit(0); }
+        foreach ($data["php_results"][(int) $argv[2]]["phases"] ?? [] as $phase) {
+            if (($phase["name"] ?? "") === $argv[3]) {
+                echo array_key_exists($argv[4], $phase) ? (string) $phase[$argv[4]] : "<missing>";
+                exit(0);
+            }
+        }
+        echo "<missing>";
+    ' "$1" "$2" "$3" "$4"
+}
+
 # Collects one field from every php_results entry, in order.
 json_php_field() {
     "$TEST_PHP" -r '
@@ -345,6 +360,14 @@ if ($mode === 'sleep' && $sleep > 0) {
 }
 if ($mode === 'invalid') {
     echo "PHP Fatal error: stub phpstan crashed\n";
+    fwrite(STDERR, "PHP Fatal error: stub phpstan crashed\n");
+    exit(255);
+}
+if ($mode === 'noisy') {
+    // 200 stderr lines with bytes that are not valid UTF-8.
+    for ($i = 1; $i <= 200; $i++) {
+        fwrite(STDERR, "noise line $i \xff\xfe " . str_repeat('x', 100) . "\n");
+    }
     exit(255);
 }
 if ($mode === 'stale') {
@@ -774,6 +797,31 @@ case_infrastructure_failure_is_reported() {
     assert_equals "outcomes" "infra_error,infra_error" "$(json_php_field "$REPORT" outcome)"
 }
 
+case_tool_failure_carries_exit_code_and_stderr() {
+    new_case tool_failure_carries_exit_code_and_stderr
+    CASE_PHPSTAN_MODE="invalid"
+    invoke_runner --php 8.3
+    assert_equals "phpstan phase status" "error" "$(json_phase_field "$REPORT" 0 phpstan status)"
+    assert_equals "phpstan phase exit code" "255" "$(json_phase_field "$REPORT" 0 phpstan exit_code)"
+    assert_contains "phpstan stderr tail" "$(json_phase_field "$REPORT" 0 phpstan stderr_tail)" "stub phpstan crashed"
+}
+
+case_stderr_tail_is_bounded() {
+    new_case stderr_tail_is_bounded
+    CASE_PHPSTAN_MODE="noisy"
+    invoke_runner --php 8.3
+    local tail
+    tail=$(json_phase_field "$REPORT" 0 phpstan stderr_tail)
+    assert_not_contains "report is valid JSON" "$tail" "<invalid-json>"
+    assert_contains "keeps the last line" "$tail" "noise line 200"
+    assert_not_contains "drops early lines" "$tail" "noise line 100 "
+    local lines bytes
+    lines=$(printf '%s\n' "$tail" | wc -l | tr -d ' ')
+    bytes=$(printf '%s' "$tail" | wc -c | tr -d ' ')
+    [ "$lines" -le 50 ] || fail "stderr tail has $lines lines, want at most 50"
+    [ "$bytes" -le 8192 ] || fail "stderr tail has $bytes bytes, want at most 8192"
+}
+
 case_cache_state_transitions() {
     new_case cache_state_transitions
     invoke_runner --php 8.3
@@ -933,6 +981,8 @@ case_compatibility_pass_reports_version_findings
 case_compatibility_pass_skips_without_standard
 case_infrastructure_failure_is_reported
 case_infrastructure_failure_publishes_report
+case_tool_failure_carries_exit_code_and_stderr
+case_stderr_tail_is_bounded
 case_cache_state_transitions
 case_source_tree_is_unchanged
 case_report_is_written_atomically

@@ -329,6 +329,12 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 }
 
 func startProjectEnvironment(cmd *cobra.Command, config engine.Config, cwd string, composePath string, extraArgs []string) error {
+	warnRootOwnershipRisk(cmd.ErrOrStderr(), cwd)
+	// The compose file was rendered earlier; a bind source removed since then
+	// would be recreated by the Docker daemon as root.
+	if err := engine.PrepareGovardBindSources(cwd, config); err != nil {
+		return err
+	}
 	args := append([]string{"up", "-d"}, extraArgs...)
 	if err := envDeps.RunCompose(cmd.Context(), engine.ComposeOptions{
 		ProjectDir:  cwd,

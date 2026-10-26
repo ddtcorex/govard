@@ -312,6 +312,7 @@ func profilerRunRequest() audit.RunRequest {
 }
 
 type fakeProfilerRuntime struct {
+	preflightErr       error
 	events             []string
 	activateRequests   []audit.ProfilerRequest
 	csv                []byte
@@ -322,6 +323,13 @@ type fakeProfilerRuntime struct {
 	captureStarted     chan struct{}
 	restoreStarted     chan struct{}
 	restoreUntilCancel bool
+}
+
+func (runtime *fakeProfilerRuntime) Preflight(context.Context, audit.ProfilerRequest) error {
+	if runtime.preflightErr != nil {
+		runtime.events = append(runtime.events, "preflight")
+	}
+	return runtime.preflightErr
 }
 
 func (runtime *fakeProfilerRuntime) Activate(_ context.Context, request audit.ProfilerRequest) error {

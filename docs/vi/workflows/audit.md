@@ -74,6 +74,10 @@ audit một module mà không cần đổi thư mục trước. Chi tiết xem `
 
 ---
 
+### Trạng thái phase: failed và error
+
+Mỗi phase công cụ (`phpcs`, `compat`, `phpstan`) báo `failed` khi công cụ chạy xong và tìm thấy lỗi, và `error` khi chính công cụ bị lỗi. Phase `error` mang `exit_code` và `stderr_tail` (50 dòng cuối của stderr, tối đa 8 KiB) trong report JSON, và thông báo lỗi audit có dạng `PHP <version> phpstan: error (exit 255): <dòng stderr cuối>`. Phase `phpstan` mà finding duy nhất là lỗi crash của analyzer (`Internal error: ...`, được tách riêng thành giới hạn công cụ) cũng hiển thị là `error`, trong khi outcome của kết quả PHP vẫn do các finding còn lại quyết định.
+
 ## Phiên bản PHP (`--php`)
 
 Lint image cung cấp `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`.

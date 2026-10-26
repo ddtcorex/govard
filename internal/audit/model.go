@@ -9,6 +9,15 @@ const SchemaVersion = 1
 // independently from persisted audit sessions.
 const LintReportSchemaVersion = 2
 
+// Audit error codes. A job sets InfrastructureErrorCodeKey in its evidence to
+// refine the default infrastructure code; run status and exit codes are the
+// same for every code.
+const (
+	ErrorCodeInfrastructure    = "infrastructure"
+	ErrorCodePermission        = "permission"
+	InfrastructureErrorCodeKey = "infrastructure_error_code"
+)
+
 type Scope string
 
 const (

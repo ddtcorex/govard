@@ -98,6 +98,16 @@ function read_records(string $path): array
     return $records;
 }
 
+// Invalid UTF-8 would make json_encode fail and lose the whole report.
+function scrub_utf8(string $value): string
+{
+    if (function_exists('mb_scrub')) {
+        return mb_scrub($value, 'UTF-8');
+    }
+    $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $value);
+    return $clean === false ? '' : $clean;
+}
+
 function field(array $fields, int $index): string
 {
     return array_key_exists($index, $fields) ? $fields[$index] : '';
@@ -366,6 +376,15 @@ foreach ($records as $record) {
                 'cache_key' => field($fields, 5),
                 'cache_reason' => field($fields, 6),
             ];
+            // A tool phase that ended in error carries its exit status and
+            // stderr tail; other phases omit both keys.
+            $phaseIndex = count($phases[$version]) - 1;
+            if (field($fields, 7) !== '') {
+                $phases[$version][$phaseIndex]['exit_code'] = (int) field($fields, 7);
+            }
+            if (field($fields, 8) !== '') {
+                $phases[$version][$phaseIndex]['stderr_tail'] = scrub_utf8(field($fields, 8));
+            }
             break;
         case 'php':
             $version = field($fields, 0);

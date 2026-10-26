@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"govard/internal/audit"
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/frameworks/types"
 
@@ -278,10 +279,11 @@ func newAuditRunCommand(options *auditCommandOptions, dependencies auditCommandD
 		if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 			return err
 		}
-		// Only checks that execute PHP are gated; the container-free integrity
-		// check reads files and never starts a PHP process.
-		if auditChecksExecutePHP(options.Checks) {
-			if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
+		// Only the profiler is gated: its requests reach the php container, the
+		// one Xdebug can slow. Lint runs in the glint container and integrity
+		// reads files, so neither is affected.
+		if auditChecksNeedXdebugGate(options.Checks) {
+			if err := enforceXdebugGuard(cmd.Context(), resolvedTarget.Config, options.AllowXdebug); err != nil {
 				return err
 			}
 			warnXdebugGuard(cmd, resolvedTarget.Config)
@@ -414,8 +416,8 @@ func newAuditRerunCommand(options *auditCommandOptions, dependencies auditComman
 			if err := validateAuditOptions(options, resolvedTarget.Definition); err != nil {
 				return err
 			}
-			if auditChecksExecutePHP(effectiveChecks) {
-				if err := enforceXdebugGuard(resolvedTarget.Config, options.AllowXdebug); err != nil {
+			if auditChecksNeedXdebugGate(effectiveChecks) {
+				if err := enforceXdebugGuard(cmd.Context(), resolvedTarget.Config, options.AllowXdebug); err != nil {
 					return err
 				}
 			}
@@ -720,21 +722,6 @@ func validateAuditOutputOptions(options *auditCommandOptions) error {
 	return nil
 }
 
-// auditChecksExecutePHP reports whether any selected check starts PHP and is
-// therefore subject to the Xdebug gate. An empty selection runs the defaults,
-// which include lint.
-func auditChecksExecutePHP(checks []string) bool {
-	if len(checks) == 0 {
-		return true
-	}
-	for _, check := range checks {
-		if strings.TrimSpace(check) != audit.IntegrityCheck {
-			return true
-		}
-	}
-	return false
-}
-
 // verifyAuditBaseRef fails when the diff base does not resolve to a commit.
 func verifyAuditBaseRef(projectRoot, base string) error {
 	base = strings.TrimSpace(base)
@@ -745,25 +732,69 @@ func verifyAuditBaseRef(projectRoot, base string) error {
 	return nil
 }
 
+// auditChecksNeedXdebugGate reports whether any requested check sends
+// requests through the php container, which Xdebug can slow.
+func auditChecksNeedXdebugGate(checks []string) bool {
+	for _, check := range checks {
+		if strings.EqualFold(strings.TrimSpace(check), "profiler") {
+			return true
+		}
+	}
+	return false
+}
+
+// auditXdebugLoaded reports whether Xdebug is loaded in the project's php
+// container (requests carrying the Xdebug trigger go to php-debug instead).
+var auditXdebugLoaded = func(ctx context.Context, cfg *engine.Config) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	output, err := runAuditProfilerDocker(ctx, "exec", cfg.ProjectName+conventions.PHPSuffix, "php", "-m")
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.EqualFold(strings.TrimSpace(line), "xdebug") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// SetAuditXdebugProbeForTest replaces the php container probe.
+func SetAuditXdebugProbeForTest(probe func(context.Context, *engine.Config) (bool, error)) func() {
+	previous := auditXdebugLoaded
+	auditXdebugLoaded = probe
+	return func() { auditXdebugLoaded = previous }
+}
+
 // warnXdebugGuard prints on stderr so --format json stdout stays one document.
 func warnXdebugGuard(cmd *cobra.Command, cfg *engine.Config) {
 	if cfg == nil {
 		return
 	}
 	if engine.XdebugGuard(*cfg) {
-		pterm.Warning.WithWriter(cmd.ErrOrStderr()).Println("Xdebug enabled, ~10-20% performance tax; disable for bench fidelity (govard debug off)")
+		pterm.Warning.WithWriter(cmd.ErrOrStderr()).Println("Xdebug is enabled in .govard.yml; requests carrying the Xdebug trigger route to php-debug and are not measured")
 	}
 }
 
-func enforceXdebugGuard(cfg *engine.Config, allow bool) error {
+func enforceXdebugGuard(ctx context.Context, cfg *engine.Config, allow bool) error {
 	if cfg == nil {
 		// Standalone targets have no project config (target.Config is nil); there
 		// is no stack.features.xdebug to inspect, so the guard is intentionally
 		// skipped for standalone. Project targets always carry a config.
 		return nil
 	}
-	if engine.XdebugGuard(*cfg) && !allow {
-		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard debug off or pass --allow-xdebug") //nolint:staticcheck // ST1005: Xdebug is proper noun
+	if !engine.XdebugGuard(*cfg) || allow {
+		return nil
+	}
+	loaded, err := auditXdebugLoaded(ctx, cfg)
+	if err != nil {
+		// Fail safe: an unreachable php container cannot prove Xdebug is off.
+		return fmt.Errorf("cannot check whether Xdebug is loaded in the php container (%v); start the environment with govard env up, or pass --allow-xdebug", err)
+	}
+	if loaded {
+		return fmt.Errorf("Xdebug enabled and loaded in the php container, ~10-20%% tax on profiler captures; disable with govard debug off or pass --allow-xdebug") //nolint:staticcheck // ST1005: Xdebug is proper noun
 	}
 	return nil
 }
