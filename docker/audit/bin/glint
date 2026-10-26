@@ -224,8 +224,20 @@ record() {
 }
 
 record_phase() {
-    # record_phase VERSION NAME STATUS DURATION_MS [CACHE_STATE CACHE_KEY CACHE_REASON]
-    record "phase" "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}"
+    # record_phase VERSION NAME STATUS DURATION_MS [CACHE_STATE CACHE_KEY CACHE_REASON EXIT_CODE STDERR_TAIL]
+    record "phase" "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}" "${8:-}" "${9:-}"
+}
+
+# The last 50 lines of a tool's stderr, capped at 8 KiB, so a crashed tool
+# reports why without flooding the report.
+stderr_tail() {
+    [ -s "$1" ] || return 0
+    tail -n 50 "$1" 2>/dev/null | tail -c 8192
+}
+
+# Exit status and stderr tail for a phase that ended in error, else empty.
+error_detail_status() {
+    [ "$1" = "error" ] && printf '%s' "$2"
 }
 
 record_php() {
@@ -886,14 +898,18 @@ analyze_version() {
     local phase_started status phase_status
     if contains_word "phpcs" "$LINTERS"; then
         local phpcs_report="$raw_dir/phpcs.json"
+        local phpcs_stderr="$raw_dir/phpcs.stderr"
         phase_started=$(now_ms)
         run_phpcs_pass "$version" "$launcher" "$toolchain" "$CODING_STANDARD" \
-            "$phpcs_report" "$VERSION_CACHE_DIR/phpcs.json"
+            "$phpcs_report" "$VERSION_CACHE_DIR/phpcs.json" 2>"$phpcs_stderr"
         status=$?
+        [ -s "$phpcs_stderr" ] && { cat "$phpcs_stderr" >&2 2>/dev/null || true; }
         [ "$CANCELLED" -eq 1 ] && return 130
         phase_status=$(phpcs_phase_status "$status" "$phpcs_report")
         record_phase "$version" "phpcs" "$phase_status" "$(( $(now_ms) - phase_started ))" \
-            "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+            "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON" \
+            "$(error_detail_status "$phase_status" "$status")" \
+            "$([ "$phase_status" = "error" ] && stderr_tail "$phpcs_stderr")"
         if [ "$phase_status" != "error" ]; then
             record "artifact" "$version" "phpcs" "phpcs-json" "$phpcs_report" "$ANALYZE_DIR"
         else
@@ -910,13 +926,17 @@ analyze_version() {
         local compat_report="$raw_dir/phpcs-compat.json"
         phase_started=$(now_ms)
         if compat_standard_available "$toolchain"; then
+            local compat_stderr="$raw_dir/phpcs-compat.stderr"
             run_phpcs_pass "$version" "$launcher" "$toolchain" "$COMPAT_STANDARD" \
-                "$compat_report" "$VERSION_CACHE_DIR/phpcs-compat.json"
+                "$compat_report" "$VERSION_CACHE_DIR/phpcs-compat.json" 2>"$compat_stderr"
             status=$?
+            [ -s "$compat_stderr" ] && { cat "$compat_stderr" >&2 2>/dev/null || true; }
             [ "$CANCELLED" -eq 1 ] && return 130
             phase_status=$(phpcs_phase_status "$status" "$compat_report")
             record_phase "$version" "compat" "$phase_status" "$(( $(now_ms) - phase_started ))" \
-                "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+                "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON" \
+                "$(error_detail_status "$phase_status" "$status")" \
+                "$([ "$phase_status" = "error" ] && stderr_tail "$compat_stderr")"
             if [ "$phase_status" != "error" ]; then
                 record "artifact" "$version" "compat" "phpcs-compat-json" "$compat_report" "$ANALYZE_DIR"
             else
@@ -972,7 +992,9 @@ analyze_version() {
                 continue
             fi
             record_phase "$version" "phpstan" "$phase_status" "$(( $(now_ms) - phase_started ))" \
-                "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON"
+                "$CACHE_STATE" "$CACHE_KEY" "$CACHE_REASON" \
+                "$(error_detail_status "$phase_status" "$status")" \
+                "$([ "$phase_status" = "error" ] && stderr_tail "$phpstan_stderr")"
             if [ "$phase_status" != "error" ]; then
                 record "artifact" "$version" "phpstan" "phpstan-json" "$phpstan_report" "$ANALYZE_DIR"
             else

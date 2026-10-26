@@ -36,6 +36,9 @@ type ProfilerRequest struct {
 // implementation is deliberately injected: the generic audit runner never
 // mutates web-server configuration or assumes a particular framework runtime.
 type ProfilerRuntime interface {
+	// Preflight checks, before the lease and before any activation, that the
+	// runtime can apply its temporary configuration.
+	Preflight(context.Context, ProfilerRequest) error
 	Activate(context.Context, ProfilerRequest) error
 	Capture(context.Context, ProfilerRequest) error
 	Collect(context.Context, ProfilerRequest) ([]byte, error)
@@ -58,6 +61,9 @@ func ValidateProfilerURL(raw string) error {
 func (runner *Runner) profilerJob(request ProfilerRequest) JobFunc {
 	return func(ctx context.Context) (evidence map[string]any, runErr error) {
 		evidence = map[string]any{"profiler_settings": savedProfilerSettings{URL: request.URL, Target: request.Target}}
+		if err := runner.profilerRuntime.Preflight(ctx, request); err != nil {
+			return profilerFailure(evidence, ctx, err)
+		}
 		owner := request.SessionID + ":" + request.RunID
 		if _, err := runner.store.AcquireLease(request.ProjectID, profilerLeaseResource, owner); err != nil {
 			return profilerFailure(evidence, ctx, err)
@@ -117,8 +123,28 @@ func profilerCleanupFailure(evidence map[string]any, runErr *error, cleanupErr e
 func profilerFailure(evidence map[string]any, ctx context.Context, err error) (map[string]any, error) {
 	if ctx == nil || ctx.Err() == nil {
 		evidence["infrastructure_error"] = err.Error()
+		var permission *PermissionError
+		if errors.As(err, &permission) {
+			evidence[InfrastructureErrorCodeKey] = ErrorCodePermission
+		}
 	}
 	return evidence, err
+}
+
+// PermissionError reports a Govard-owned directory the invoking user cannot
+// write, typically a .govard/ tree created by root.
+type PermissionError struct {
+	Path     string
+	OwnerUID int
+	Err      error
+}
+
+func (e *PermissionError) Error() string {
+	return fmt.Sprintf("cannot write %s (owned by uid %d): %v; repair ownership with `govard doctor --fix`", e.Path, e.OwnerUID, e.Err)
+}
+
+func (e *PermissionError) Unwrap() error {
+	return e.Err
 }
 
 func wrapProfilerCleanupError(operation string, err error) error {

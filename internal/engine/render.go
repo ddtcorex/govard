@@ -410,19 +410,8 @@ func RenderBlueprintWithProfile(root string, config Config, profile string) erro
 	// creation is part of the same stable render, and before Compose rendering
 	// so providers never need to recreate a running container. Hybrid terminates
 	// FastCGI in Apache.
-	if FrameworkSupportsAuditProfiler(config.Framework) {
-		var auditCustomDir string
-		switch strings.ToLower(strings.TrimSpace(config.Stack.Services.WebServer)) {
-		case "nginx":
-			auditCustomDir = filepath.Join(root, ProjectNginxCustomDir)
-		case "apache", "hybrid":
-			auditCustomDir = filepath.Join(root, ProjectApacheCustomDir)
-		}
-		if auditCustomDir != "" {
-			if err := os.MkdirAll(auditCustomDir, 0o755); err != nil {
-				return fmt.Errorf("prepare audit profiler custom config directory: %w", err)
-			}
-		}
+	if err := PrepareGovardBindSources(root, config); err != nil {
+		return err
 	}
 
 	blueprintFingerprint, err := blueprintsFingerprint(blueprintsFS)

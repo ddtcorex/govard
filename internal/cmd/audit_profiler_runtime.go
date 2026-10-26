@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -248,6 +249,38 @@ func (runtime *govardAuditProfilerRuntime) Restore(ctx context.Context, request 
 		restoreErrors = append(restoreErrors, fmt.Errorf("remove Magento profiler CSV: %w", err))
 	}
 	return errors.Join(restoreErrors...)
+}
+
+// Preflight proves the invoking user can write the web server custom config
+// directory before any lease or activation: a root-owned .govard/ otherwise
+// fails late as an opaque infrastructure error.
+func (runtime *govardAuditProfilerRuntime) Preflight(_ context.Context, request audit.ProfilerRequest) error {
+	if err := runtime.validateRequest(request); err != nil {
+		return err
+	}
+	configPath, _ := runtime.profilerConfig(request)
+	directory := filepath.Dir(configPath)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return auditProfilerPermissionError(directory, err)
+	}
+	probe, err := os.CreateTemp(directory, ".govard-audit-preflight-*")
+	if err != nil {
+		return auditProfilerPermissionError(directory, err)
+	}
+	name := probe.Name()
+	_ = probe.Close()
+	return os.Remove(name)
+}
+
+func auditProfilerPermissionError(directory string, err error) error {
+	if !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	owner, ownerErr := engine.FileOwnerUID(directory)
+	if ownerErr != nil {
+		owner = -1
+	}
+	return &audit.PermissionError{Path: directory, OwnerUID: owner, Err: err}
 }
 
 func (runtime *govardAuditProfilerRuntime) validateRequest(request audit.ProfilerRequest) error {

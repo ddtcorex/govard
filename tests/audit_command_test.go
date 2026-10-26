@@ -895,6 +895,11 @@ func auditCommandProjectWithPHPVersion(t *testing.T, framework, phpVersion strin
 
 func executeAuditCommand(t *testing.T, project string, args []string) ([]byte, error) {
 	t.Helper()
+	return executeAuditCommandWithStderr(t, project, args, io.Discard)
+}
+
+func executeAuditCommandWithStderr(t *testing.T, project string, args []string, stderr io.Writer) ([]byte, error) {
+	t.Helper()
 	previousDirectory, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -923,7 +928,7 @@ func executeAuditCommand(t *testing.T, project string, args []string) ([]byte, e
 	})
 	output := &bytes.Buffer{}
 	root.SetOut(output)
-	root.SetErr(io.Discard)
+	root.SetErr(stderr)
 	root.SetArgs(args)
 	err = root.Execute()
 	return output.Bytes(), err

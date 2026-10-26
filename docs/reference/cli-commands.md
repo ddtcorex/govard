@@ -262,12 +262,17 @@ lock or run `govard audit cleanup`.
 
 #### Xdebug guard
 
-When `stack.features.xdebug: true` the lint audit exits with
-`Xdebug enabled, ~10-20% tax; disable with govard debug off or pass --allow-xdebug`
-unless `--allow-xdebug` is passed. The guard is enforced in the command and
-in the Govard lint backend. The container-free `--checks integrity` is exempt,
-and the `--allow-xdebug` warning goes to stderr so `--format json` stays one
-document.
+Only the `profiler` check is gated: its requests reach the project's `php`
+container, the one Xdebug can slow. Lint runs in the short-lived glint
+container and `integrity` reads files, so neither is gated. With
+`stack.features.xdebug: true` the profiler check runs `php -m` in the `php`
+container: when Xdebug is loaded there the audit exits with
+`Xdebug enabled and loaded in the php container, ~10-20% tax on profiler captures; disable with govard debug off or pass --allow-xdebug`;
+when it is not loaded the audit runs and prints one warning that requests
+carrying the Xdebug trigger route to `php-debug` and are not measured. When the
+container cannot be reached the gate fails safe and names `govard env up` and
+`--allow-xdebug`. `--allow-xdebug` skips the probe. Warnings go to stderr so
+`--format json` stays one document.
 
 #### Caching
 
@@ -462,6 +467,8 @@ fallback build targets the closest real upstream release.
 - `~/.govard/apache/<project>/httpd.conf`
 - `~/.govard/nginx/<project>/mage-run-map.conf`
 
+`env up`, `env start` and `env restart` create the web server's `.govard/<nginx|apache>/custom` directory as the invoking user before `docker compose up`, so a directory removed since the last render is never recreated by the Docker daemon as root. Running Govard as root on a project owned by a regular user prints one warning naming `govard doctor --fix`; it never blocks the command.
+
 **`govard env down` flags:**
 - `-v, --volumes` — remove volumes
 - `--rmi local` — remove local images
@@ -529,7 +536,7 @@ govard domain list
 
 ### `govard status`
 
-List running Govard environments across the workspace.
+List the current directory's project first, with its state (`Running` or `Down`), then every other running Govard environment across the workspace. Outside a project with nothing running it prints `No running Govard environments found.`
 
 ```bash
 govard status
@@ -1477,6 +1484,10 @@ Checks include: Docker, Compose, ports, disk sanity, Govard home, compose direct
 
 - **`--fix`** — Automatically detect and repair common issues
 - **`trust`** — Install Root CA into system trust store + browser NSS
+
+**`.govard` ownership (`project.govard.ownership`).** Inside a project, doctor walks `.govard/` without following symlinks and warns about every path not owned by your user (up to five are named, with the total). Root-owned files there break the audit profiler and any file Govard writes under `.govard/`. The check needs no Docker.
+
+`govard doctor --fix` repairs it without sudo: it records the owner of every reported path, then a short-lived `alpine` container runs one `chown -h` per path (never recursive, never through a symlink) to give them to your user. It then proves the project still works: a write probe in the web server custom config directory and, when the environment runs, the web container still reading its custom mount and the project domain answering HTTP 200. Any failed check puts the recorded owners back and reports `failed`. Without a container runtime the fix reports `unavailable`; with the environment down the mount and HTTP checks are skipped and the result says so.
 
 ---
 

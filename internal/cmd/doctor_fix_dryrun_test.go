@@ -53,7 +53,6 @@ func TestPullRuntimeImagesDryRunShortCircuits(t *testing.T) {
 func containsDryRun(s string) bool {
 	return len(s) >= 9 && (s[:9] == "[dry-run]" || (len(s) > 9 && containsSub(s, "[dry-run]")))
 }
-
 func containsSub(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {
@@ -61,4 +60,33 @@ func containsSub(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// TestConfirmActionDeclinesWithoutTerminal verifies a real --fix run never
+// deadlocks on an interactive prompt when stdin is not a terminal: without
+// --dry-run and without GOVARD_ASSUME_YES, confirmAction must decline promptly
+// instead of waiting on stdin forever.
+func TestConfirmActionDeclinesWithoutTerminal(t *testing.T) {
+	// Simulate non-interactive environment: no TTY and no GOVARD_ASSUME_YES.
+	t.Setenv("GOVARD_ASSUME_YES", "false")
+	oldDryRun := doctorDryRun
+	doctorDryRun = false
+	defer func() { doctorDryRun = oldDryRun }()
+	oldStdinIsTerminal := SetStdinIsTerminalForTest(func() bool { return false })
+	defer oldStdinIsTerminal()
+
+	done := make(chan bool, 1)
+	go func() {
+		if confirmAction("Do you want to automatically tune the framework runtime profile now?") {
+			t.Error("confirmAction must decline without a terminal, got accept")
+		}
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		// success: declined without deadlock
+	case <-time.After(3 * time.Second):
+		t.Fatal("confirmAction deadlocked without a terminal")
+	}
 }

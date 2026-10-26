@@ -47,10 +47,13 @@ func TestAuditProviderAliasProvider(t *testing.T) {
 	}
 }
 
-// TestAuditXdebugGuardRequiresAllow verifies that audit lint with xdebug enabled fails unless --allow-xdebug is set.
+// TestAuditXdebugGuardRequiresAllow verifies that the profiler check with
+// Xdebug loaded in the php container fails unless --allow-xdebug is set.
 func TestAuditXdebugGuardRequiresAllow(t *testing.T) {
 	project := auditCommandProjectWithXdebug(t, "magento2", true)
-	_, err := executeAuditCommand(t, project, []string{"audit", "run", "--format", "json"})
+	installFakeProfiler(t)
+	installXdebugProbe(t, true, nil)
+	_, err := executeAuditCommand(t, project, profilerAuditArgs())
 	if err == nil || !strings.Contains(err.Error(), "Xdebug enabled") {
 		t.Fatalf("expected Xdebug guard error, got %v", err)
 	}
@@ -58,15 +61,9 @@ func TestAuditXdebugGuardRequiresAllow(t *testing.T) {
 		t.Fatalf("Xdebug error should hint --allow-xdebug, got %v", err)
 	}
 	// With --allow-xdebug it should not fail on xdebug (may still succeed or fail on other grounds, but not Xdebug)
-	backend := &commandLintBackend{}
-	installAuditCommandDependencies(t, backend)
-	_, errWithAllow := executeAuditCommand(t, project, []string{"audit", "run", "--allow-xdebug", "--format", "json"})
-	// Should not be Xdebug error; either succeeds or other error, but not Xdebug.
-	if errWithAllow != nil && strings.Contains(errWithAllow.Error(), "Xdebug enabled") {
-		t.Fatalf("with --allow-xdebug still got Xdebug error: %v", errWithAllow)
-	}
-	if len(backend.requests) == 0 && errWithAllow == nil {
-		t.Fatal("expected backend request with allow-xdebug")
+	_, errWithAllow := executeAuditCommand(t, project, profilerAuditArgs("--allow-xdebug"))
+	if errWithAllow != nil {
+		t.Fatalf("with --allow-xdebug the profiler must run: %v", errWithAllow)
 	}
 }
 
@@ -182,16 +179,21 @@ func setupGitOriginMaster(t *testing.T, project string) {
 	}
 }
 
-func TestGovardLintBackendXdebugGuardBlocksWithoutAllow(t *testing.T) {
+// Lint runs static analysis in the short-lived glint container, which Xdebug
+// cannot slow, so the lint backend is never gated on Xdebug.
+func TestGovardLintBackendNeverGatedByXdebug(t *testing.T) {
 	project := auditCommandProject(t, "magento2")
 	patchGovardYmlXdebug(t, project, true)
-	// Create backend without AllowXdebug; it should block.
-	backend := newGovardLintBackendForTest(t, &fakeLintDocker{}, nil)
+	docker := &fakeLintDocker{}
+	backend := newGovardLintBackendForTest(t, docker, nil)
 	req := govardLintRequestForTest(t)
 	req.ProjectRoot = project
-	_, err := backend.Run(t.Context(), req)
-	if err == nil || !strings.Contains(err.Error(), "Xdebug enabled") {
-		t.Fatalf("expected Xdebug guard error from backend, got %v", err)
+	docker.run = func(_ context.Context, run audit.ContainerRunRequest, _ io.Writer) error {
+		writeGovardLintReportForTest(t, req, run, "passed")
+		return nil
+	}
+	if _, err := backend.Run(t.Context(), req); err != nil {
+		t.Fatalf("lint backend must not be gated by Xdebug: %v", err)
 	}
 }
 
@@ -237,7 +239,9 @@ func TestAuditDiffRejectsUnresolvableBase(t *testing.T) {
 // TestAuditXdebugHintIsActionable pins that the refusal names a remedy that exists.
 func TestAuditXdebugHintIsActionable(t *testing.T) {
 	project := auditCommandProjectWithXdebug(t, "magento2", true)
-	_, err := executeAuditCommand(t, project, []string{"audit", "run", "--format", "json"})
+	installFakeProfiler(t)
+	installXdebugProbe(t, true, nil)
+	_, err := executeAuditCommand(t, project, profilerAuditArgs())
 	if err == nil || !strings.Contains(err.Error(), "Xdebug enabled") {
 		t.Fatalf("expected Xdebug guard error, got %v", err)
 	}

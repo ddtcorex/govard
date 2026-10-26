@@ -19,7 +19,6 @@ import (
 
 	"github.com/pterm/pterm"
 	auditmagento "govard/docker/audit"
-	"govard/internal/engine"
 	"govard/internal/frameworks/types"
 )
 
@@ -189,29 +188,6 @@ func validateGovardLintContainerUser(options GovardLintOptions) error {
 	return nil
 }
 
-func enforceGovardLintXdebugGuard(request LintRequest, allowXdebug bool) error {
-	if allowXdebug {
-		return nil
-	}
-	// ProjectRoot is required: validateLintRequest already enforces non-empty
-	// absolute paths, so an empty root is a caller bug that must not silently
-	// bypass the Xdebug perf-tax guard.
-	root := strings.TrimSpace(request.ProjectRoot)
-	if root == "" {
-		return fmt.Errorf("govard lint xdebug guard requires project root")
-	}
-	// Probe for .govard.yml at project root via lightweight load.
-	candidate := filepath.Join(root, ".govard.yml")
-	cfg, err := engine.LoadConfig(candidate)
-	if err != nil || cfg == nil {
-		return nil
-	}
-	if engine.XdebugGuard(*cfg) {
-		return fmt.Errorf("Xdebug enabled, ~10-20%% tax; disable with govard debug off or pass --allow-xdebug") //nolint:staticcheck // ST1005: Xdebug is proper noun
-	}
-	return nil
-}
-
 func isMissingCodingStandardError(msg string) bool {
 	return strings.Contains(msg, "was not installed") || strings.Contains(msg, "ERROR: the")
 }
@@ -245,9 +221,6 @@ func (backend *GovardLintBackend) Run(ctx context.Context, request LintRequest) 
 		return LintReport{}, fmt.Errorf("govard lint request provider %q does not match provider %q", request.Provider, GovardLintProvider)
 	}
 	if err := validateLintRequest(request); err != nil {
-		return LintReport{}, err
-	}
-	if err := enforceGovardLintXdebugGuard(request, backend.allowXdebug); err != nil {
 		return LintReport{}, err
 	}
 	plan, err := govardLintTargetPlan(request)
@@ -413,6 +386,7 @@ func (backend *GovardLintBackend) acceptReport(request LintRequest, resolved Res
 	// rebuild.
 	filtered := filterGeneratedFindings(report)
 	limited := partitionToolingLimitations(report)
+	report = reclassifyEmptyFailedPhases(report)
 	applyLintRuleIDPrefix(&report, request.Profile.RuleIDPrefix)
 	if filtered || limited > 0 {
 		// Recompute aggregate status and per-PHP outcomes after filtering;
@@ -562,6 +536,43 @@ func partitionToolingLimitations(report LintReport) int {
 		}
 	}
 	return limited
+}
+
+// phaseTools maps a lint phase to the finding tool it produces.
+var phaseTools = map[string]string{"phpcs": "M2-LINT-PHPCS", "phpstan": "M2-LINT-PHPSTAN", "compat": "M2-LINT-COMPAT"}
+
+// reclassifyEmptyFailedPhases marks a tool phase that glint reported as
+// failed but that has no findings left after tooling-limitation partitioning
+// (a crash surfaced as "Internal error:" findings) as error, so a reader can
+// tell a tool failure from project findings. Only the phase label changes:
+// the PHP result outcome is left as partitioning computed it.
+func reclassifyEmptyFailedPhases(report LintReport) LintReport {
+	for idx := range report.PHPResults {
+		result := &report.PHPResults[idx]
+		for phaseIdx := range result.Phases {
+			phase := &result.Phases[phaseIdx]
+			tool, ok := phaseTools[phase.Name]
+			if !ok || phase.Status != "failed" {
+				continue
+			}
+			remaining := false
+			for _, finding := range result.Findings {
+				if finding.Tool == tool {
+					remaining = true
+					break
+				}
+			}
+			if !remaining {
+				phase.Status = "error"
+			}
+		}
+	}
+	return report
+}
+
+// ReclassifyEmptyFailedPhasesForTest exposes reclassifyEmptyFailedPhases.
+func ReclassifyEmptyFailedPhasesForTest(report LintReport) LintReport {
+	return reclassifyEmptyFailedPhases(report)
 }
 
 // PartitionToolingLimitationsForTest exposes partitionToolingLimitationFindings for external tests.

@@ -364,6 +364,7 @@ Case Studies:
 		}
 		pterm.Success.Println("✅ Generated .govard.yml")
 
+		warnRootOwnershipRisk(os.Stderr, cwd)
 		if err := engine.RenderBlueprint(cwd, config); err != nil {
 			pterm.Warning.Printf("Failed to render compose file: %v\n", err)
 			pterm.Info.Println("You can retry compose rendering later via `govard env up`.")

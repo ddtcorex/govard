@@ -67,6 +67,10 @@ type LintPhase struct {
 	CacheState  string `json:"cache_state,omitempty"`
 	CacheKey    string `json:"cache_key,omitempty"`
 	CacheReason string `json:"cache_reason,omitempty"`
+	// ExitCode and StderrTail are set only on a tool phase that ended in
+	// error: the tool's exit status and the last 50 lines (8 KiB) of stderr.
+	ExitCode   *int   `json:"exit_code,omitempty"`
+	StderrTail string `json:"stderr_tail,omitempty"`
 }
 
 // LintFinding is a provider-normalized static-analysis finding.

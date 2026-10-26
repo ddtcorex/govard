@@ -72,6 +72,7 @@ type DoctorDependencies struct {
 	CheckRuntimeImages       func() ([]string, error)
 	CheckLegacyConfig        func() error
 	CheckConfigDrift         func() error
+	CheckGovardOwnership     func() error
 }
 
 func RunDoctorDiagnostics(dependencies DoctorDependencies) DoctorReport {
@@ -126,6 +127,9 @@ func RunDoctorDiagnosticsInRoot(dependencies DoctorDependencies, projectRoot str
 	}
 	if dependencies.CheckRuntimeImages == nil {
 		dependencies.CheckRuntimeImages = func() ([]string, error) { return checkRuntimeImagesInRoot(root) }
+	}
+	if dependencies.CheckGovardOwnership == nil {
+		dependencies.CheckGovardOwnership = func() error { return checkGovardOwnershipInRoot(root) }
 	}
 	if dependencies.CheckLegacyConfig == nil {
 		dependencies.CheckLegacyConfig = func() error { return checkLegacyConfigInRoot(root) }
@@ -333,6 +337,26 @@ func RunDoctorDiagnosticsInRoot(dependencies DoctorDependencies, projectRoot str
 			Title:   "Project registry file",
 			Status:  DoctorStatusPass,
 			Message: "Project registry is healthy.",
+		})
+	}
+
+	// Root-owned files under .govard break the audit profiler and any write
+	// Govard makes there; the fix repairs them without sudo.
+	if err := dependencies.CheckGovardOwnership(); err != nil {
+		report.Checks = append(report.Checks, DoctorCheck{
+			ID:               "project.govard.ownership",
+			Title:            ".govard ownership",
+			Status:           DoctorStatusWarn,
+			Message:          err.Error(),
+			Hint:             "Run doctor --fix to give these paths back to your user through a short-lived container (no sudo).",
+			SuggestedCommand: "govard doctor --fix",
+		})
+	} else if _, err := os.Stat(doctorGovardDirPath(root)); err == nil {
+		report.Checks = append(report.Checks, DoctorCheck{
+			ID:      "project.govard.ownership",
+			Title:   ".govard ownership",
+			Status:  DoctorStatusPass,
+			Message: "Every path under .govard belongs to your user.",
 		})
 	}
 
@@ -670,6 +694,13 @@ func loadConfigInRoot(projectRoot string) Config {
 // doctorConfigFilePath resolves the project config file a scoped run reads:
 // inside the project root, or the legacy working-directory-relative path
 // for unscoped runs.
+func doctorGovardDirPath(projectRoot string) string {
+	if strings.TrimSpace(projectRoot) == "" {
+		return ".govard"
+	}
+	return filepath.Join(projectRoot, ".govard")
+}
+
 func doctorConfigFilePath(projectRoot string) string {
 	if strings.TrimSpace(projectRoot) == "" {
 		return BaseConfigFile

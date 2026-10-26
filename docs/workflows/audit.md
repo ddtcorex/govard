@@ -89,6 +89,10 @@ Govard-native lint (`govard audit run --checks lint --mode project`) matrix:
 
 Image `govard-glint` bundles WPCS 3.1 (`wp-coding-standards/wpcs`) + Symfony CS + `phpstan-symfony`/`phpstan-wordpress` so WordPress (classic `wp-includes/version.php` + Bedrock `web/wp`) and Symfony (`bin/console`) run natively — no fallback to PSR12.
 
+### Phase status: failed versus error
+
+Each tool phase (`phpcs`, `compat`, `phpstan`) reports `failed` when the tool ran and found issues, and `error` when the tool itself failed. An `error` phase carries `exit_code` and `stderr_tail` (the last 50 lines of stderr, at most 8 KiB) in the JSON report, and the audit error message reads `PHP <version> phpstan: error (exit 255): <last stderr line>`. A `phpstan` phase whose only findings were analyzer crashes (`Internal error: ...`, set aside as tooling limitations) is shown as `error` too, while the PHP result outcome stays what the remaining findings decide.
+
 ## PHP Versions (`--php`)
 
 Lint image provides `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`.
@@ -135,7 +139,7 @@ Runs for the same project are queued via `~/.govard/audit/<projectId>/lock` (und
 
 ## Xdebug guard
 
-With `stack.features.xdebug: true` the audit hard-fails unless `--allow-xdebug` is set (`Xdebug enabled, ~10-20% tax; disable with govard debug off or pass --allow-xdebug`).
+With `stack.features.xdebug: true`, only the `profiler` check is gated, and only when `php -m` in the project's `php` container shows Xdebug loaded: the audit then fails unless `--allow-xdebug` is set. Lint and integrity are never gated, since Xdebug cannot slow the glint container or a file read. An unreachable `php` container fails safe, naming `govard env up` and `--allow-xdebug`.
 
 ---
 

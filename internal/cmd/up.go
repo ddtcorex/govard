@@ -841,6 +841,7 @@ func refreshCrossProjectRuntimeHosts(ctx context.Context, currentProjectRoot str
 			continue
 		}
 
+		warnRootOwnershipRisk(os.Stderr, projectRoot)
 		if renderErr := upRefreshRenderBlueprint(projectRoot, projectConfig); renderErr != nil {
 			refreshErrors = append(refreshErrors, fmt.Sprintf("%s render blueprint: %v", projectName, renderErr))
 			continue
