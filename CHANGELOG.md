@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.82.0] - 2026-10-27
+
+### Added
+
+- Unified Govard admin credential `admin` / `AdminGovard123$` across the
+  application admin of every framework and Portainer, defined once in
+  `internal/conventions` (#644, #645).
+- Bootstrap completion output now prints the admin-panel URL for frameworks
+  with a stock admin route, and prints the shared login only when the
+  framework reported that it actually wrote the credential (#644, #645).
+- Magento 2 now distinguishes a successful clone admin creation from a cloned
+  database that already owns the `admin` username, with a supported remedy
+  for adding a second Govard administrator (#644, #645).
+- Regression coverage pinning the Portainer bcrypt hash in `proxy.yml` to the
+  shared credential constant, plus bootstrap reporting and banner coverage
+  (#644, #645).
+- English and Vietnamese “Application Admin” documentation, CLI flag notes,
+  and README coverage (#644, #645).
+
+### Changed
+
+- Newly bootstrapped application environments use `AdminGovard123$` rather
+  than the previous default application password. Existing project databases
+  and existing Portainer installations retain their current passwords
+  (#644, #645).
+- `--no-admin` documentation now states that it only skips the admin user
+  Govard creates during a Magento 2 or Mage-OS clone (#644, #645).
+
+### Fixed
+
+- `govard env up` now repairs the actual container `COMPOSER_HOME` directory
+  and existing `.htaccess` ownership instead of repairing `/root/.composer`.
+  This fixes Magento admin 500 errors from denied Composer-home writes
+  (#646, #647).
+
 ## [1.81.0] - 2026-10-26
 
 ### Added
