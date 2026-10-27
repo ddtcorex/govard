@@ -3,8 +3,12 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
+	"govard/internal/conventions"
 )
 
 func TestProxyBlueprintContainsCaddyResumeFlag(t *testing.T) {
@@ -78,5 +82,33 @@ func TestProxyBlueprintPublishesSSHGateway(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "../gateway:/govard-gateway:ro") {
 		t.Fatal("proxy.yml must mount the gateway registry read-only into the sshd container")
+	}
+}
+
+// The Portainer password is written into proxy.yml as a bcrypt hash, so the
+// plaintext in conventions is not the only artefact to keep correct. This test
+// is the binding between the two: change one without the other and it fails,
+// with the replacement hash in the failure message.
+func TestProxyBlueprintPortainerPasswordMatchesConvention(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "internal", "blueprints", "files", "proxy.yml"))
+	if err != nil {
+		t.Fatalf("read proxy blueprint: %v", err)
+	}
+
+	match := regexp.MustCompile(`--admin-password '([^']+)'`).FindStringSubmatch(string(content))
+	if len(match) != 2 {
+		t.Fatal("proxy.yml must set --admin-password so Portainer starts with the Govard admin credential")
+	}
+	// The blueprint is a compose file, so every dollar is doubled; undo that
+	// before asking bcrypt about it.
+	hash := strings.ReplaceAll(match[1], "$$", "$")
+
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(conventions.DefaultAdminPassword)); err != nil {
+		suggested, genErr := bcrypt.GenerateFromPassword([]byte(conventions.DefaultAdminPassword), 5)
+		if genErr != nil {
+			t.Fatalf("proxy.yml --admin-password does not match conventions.DefaultAdminPassword: %v", err)
+		}
+		t.Fatalf("proxy.yml --admin-password does not match conventions.DefaultAdminPassword (%v); paste this hash into proxy.yml: '%s'",
+			err, strings.ReplaceAll(string(suggested), "$", "$$"))
 	}
 }

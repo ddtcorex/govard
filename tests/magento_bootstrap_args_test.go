@@ -29,7 +29,7 @@ var magentoSetupInstallHead = []string{
 
 var magentoSetupInstallTail = []string{
 	"--admin-user=admin",
-	"--admin-password=Admin12345678$",
+	"--admin-password=AdminGovard123$",
 	"--admin-firstname=Admin",
 	"--admin-lastname=User",
 	"--admin-email=admin@sample.test",
