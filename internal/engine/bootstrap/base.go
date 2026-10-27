@@ -25,6 +25,14 @@ type Options struct {
 	// Magento 2/Mage-OS's PostCloneHook reads this today.
 	AdminCreate bool
 
+	// AdminApplied is the report back to the caller. A framework sets
+	// *AdminApplied = true only after it has actually written
+	// conventions.DefaultAdminUser/DefaultAdminPassword into the
+	// environment, so the bootstrap banner can print a login line without
+	// guessing. Nil means the caller is not collecting the report, which is
+	// the case for a --plan run that touches nothing.
+	AdminApplied *bool
+
 	// MetaPackage is the composer meta-package to create-project from
 	// (e.g. "magento/project-community-edition" or, after the mageos
 	// swap in runBootstrapFrameworkFreshInstall,

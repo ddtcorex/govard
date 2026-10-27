@@ -375,11 +375,42 @@ func RunReindex(helpers bootstrap.CmdHelpers) error {
 	return helpers.RunTool("magento", []string{"indexer:reindex"})
 }
 
-func RunAdminCreate(opts bootstrap.Options, helpers bootstrap.CmdHelpers) {
+// AdminCreateRemedyCommand is the command a user runs when a cloned Magento
+// database already owns the "admin" username with the source server's
+// password, so admin:user:create could not apply the Govard credential.
+func AdminCreateRemedyCommand() string {
+	return "govard tool magento admin:user:change-password --username " +
+		conventions.DefaultAdminUser + " --password '" + conventions.DefaultAdminPassword + "'"
+}
+
+// RunAdminCreate creates the shared Govard admin user and reports whether the
+// credential was actually written. A cloned Magento database usually already
+// contains a user named "admin", in which case admin:user:create fails and the
+// environment keeps the source server's password; the failure is printed with
+// the remedy instead of being swallowed, and the caller must not advertise the
+// shared credential for that run.
+func RunAdminCreate(opts bootstrap.Options, helpers bootstrap.CmdHelpers) bool {
 	if helpers.IsPHPContainerRunning != nil && !helpers.IsPHPContainerRunning() {
-		return
+		return false
 	}
-	if helpers.RunToolSilent != nil {
-		_ = helpers.RunToolSilent("magento", []string{"admin:user:create", "--admin-user=" + conventions.DefaultAdminUser, "--admin-password=" + conventions.DefaultAdminPassword, "--admin-firstname=Govard", "--admin-lastname=Admin", "--admin-email=" + conventions.AdminEmailForDomain(opts.Domain)})
+	if helpers.RunToolSilent == nil {
+		return false
 	}
+	err := helpers.RunToolSilent("magento", []string{
+		"admin:user:create",
+		"--admin-user=" + conventions.DefaultAdminUser,
+		"--admin-password=" + conventions.DefaultAdminPassword,
+		"--admin-firstname=Govard",
+		"--admin-lastname=Admin",
+		"--admin-email=" + conventions.AdminEmailForDomain(opts.Domain),
+	})
+	if err != nil {
+		pterm.Warning.Printf("Admin user '%s' was not created (a cloned database usually already has one). To reset it to the Govard credential, run: %s\n",
+			conventions.DefaultAdminUser, AdminCreateRemedyCommand())
+		return false
+	}
+	if opts.AdminApplied != nil {
+		*opts.AdminApplied = true
+	}
+	return true
 }
