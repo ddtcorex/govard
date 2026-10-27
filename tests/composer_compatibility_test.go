@@ -96,3 +96,55 @@ func TestResolveComposerVersionPrefersStackThenProfile(t *testing.T) {
 		}
 	}
 }
+
+// The container's COMPOSER_HOME is created by Docker as root, because compose
+// bind-mounts auth.json and config.json into a directory the image does not
+// ship. A `docker exec -u root` runs with HOME=/root, so the historical repair
+// (`chown -R www-data:www-data ~/.composer`) rewrote /root/.composer and left
+// the real directory root-owned; the error was swallowed by `2>/dev/null`. This
+// test pins the target to $COMPOSER_HOME by standing a fake chown in for the
+// container's own.
+func TestComposerHomeOwnershipScriptTargetsComposerHomeNotRootsHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("script targets POSIX sh, not available on windows")
+	}
+
+	binDir := t.TempDir()
+	recorded := filepath.Join(t.TempDir(), "chown-args")
+
+	chownScript := "#!/bin/sh\nprintf '%s\\n' \"$@\" >> '" + recorded + "'\n"
+	if err := os.WriteFile(filepath.Join(binDir, "chown"), []byte(chownScript), 0o755); err != nil {
+		t.Fatalf("write fake chown: %v", err)
+	}
+
+	root := t.TempDir()
+	composerHome := filepath.Join(root, "home", "www-data", ".composer")
+	rootHome := filepath.Join(root, "root")
+
+	script := engine.ComposerHomeOwnershipScriptForTest()
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = append(os.Environ(),
+		"PATH="+binDir+":"+os.Getenv("PATH"),
+		"HOME="+rootHome,
+		"COMPOSER_HOME="+composerHome,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ownership script failed: %v\noutput: %s", err, out)
+	}
+
+	raw, err := os.ReadFile(recorded)
+	if err != nil {
+		t.Fatalf("fake chown was never called: %v", err)
+	}
+	args := strings.Fields(string(raw))
+	if len(args) == 0 {
+		t.Fatal("fake chown was called without arguments")
+	}
+	target := args[len(args)-1]
+	if target != composerHome {
+		t.Fatalf("chown target = %q, want the container COMPOSER_HOME %q (a root exec has HOME=%q)", target, composerHome, rootHome)
+	}
+	if strings.Contains(script, "~/") {
+		t.Fatalf("ownership script must not rely on ~: a root exec resolves it to /root, script: %s", script)
+	}
+}
