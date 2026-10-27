@@ -394,6 +394,10 @@ hệt. Như với mọi tên không resolve được,
 | `--fix-deps` | Chạy hook `fix-deps` trước khi bootstrap |
 | `--framework-version` | Phiên bản framework cho cài mới (vd. `2.4.9` cho Magento) |
 
+Khi bước tạo admin chạy, tài khoản là `admin` / `AdminGovard123$` cho mọi
+framework, cũng là tài khoản Portainer đang dùng. Xem
+[Tài khoản quản trị ứng dụng](/vi/getting-started/getting-started#tai-khoan-quan-tri-ung-dung).
+
 Đối với các dự án Magento 2/Mage-OS, Magento 1/OpenMage hoặc PrestaShop có thiết lập `table_prefix`, các bộ lọc bảo mật DB sẽ tự động áp dụng chính xác cho các bảng có tiền tố tương ứng.
 
 **Các cờ đặc thù của Magento:**
