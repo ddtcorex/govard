@@ -24,6 +24,10 @@ type BootstrapRuntimeOptions struct {
 	SkipUp          bool
 	MetaPackage     string
 	MetaVersion     string
+	// AdminApplied collects the frameworks' report that the shared Govard admin
+	// credential was really written during this run. It is nil for a --plan run,
+	// which must not claim a login that no install produced.
+	AdminApplied *bool
 	// MetaVersionSource says where MetaVersion came from (one of the
 	// BootstrapVersionSource constants), so the plan and the log can name it.
 	MetaVersionSource string

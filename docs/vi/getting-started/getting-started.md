@@ -146,6 +146,34 @@ Govard định tuyến các domain dự án qua Caddy proxy dùng chung và cung
 | PHPMyAdmin | `https://pma.govard.test` | Sử dụng thông tin DB của dự án |
 | Mailpit | `https://mail.govard.test` | Không yêu cầu đăng nhập |
 
+### Tài khoản quản trị ứng dụng
+
+Govard tạo cùng một tài khoản admin ở mọi nơi, và bảng URL dự án ở trên mở đúng
+tài khoản đó:
+
+| Đích | Thông tin đăng nhập |
+| :--- | :--- |
+| Trang quản trị dự án | `admin` / `AdminGovard123$` |
+| Portainer | `admin` / `AdminGovard123$` |
+
+Tài khoản được tạo trong lúc chạy `govard bootstrap`, cho cả cài mới và clone,
+và banner kết thúc sẽ in ra khi tài khoản thực sự được áp dụng. Ba trường hợp
+làm thay đổi kết quả:
+
+- Database Magento 2 hoặc Mage-OS clone về thường đã có sẵn user tên `admin`.
+  Govard giữ nguyên user đó cùng mật khẩu của server nguồn, banner chỉ in URL
+  quản trị, và output của bootstrap in ra lệnh để đặt lại về thông tin dùng chung.
+- Dự án đã bootstrap trước khi có thông tin dùng chung này vẫn giữ mật khẩu cũ.
+  Không có bước nào ghi đè database đã tồn tại.
+- `govard bootstrap --no-admin` chỉ bỏ qua tài khoản mà Govard tạo cho một bản
+  clone Magento 2 hoặc Mage-OS. Cài mới vẫn tạo tài khoản qua `setup:install`,
+  còn Magento 1, OpenMage, WordPress và Drupal luôn tạo tài khoản.
+
+Banner in route mặc định của framework (`/admin` cho Magento, `/wp-admin` cho
+WordPress). Magento 2 và Mage-OS tự dò route đã đổi trong database khi bạn mở
+bằng `govard open admin`; riêng Magento 1 hoặc OpenMage đã đổi admin route
+trong `app/etc/local.xml` thì banner vẫn hiện route mặc định.
+
 ### Lệnh nhanh (Quick Commands)
 
 ```bash

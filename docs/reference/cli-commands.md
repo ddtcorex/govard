@@ -398,6 +398,10 @@ same way. As with any unresolvable name,
 | `--fix-deps` | Run project `fix-deps` hook before bootstrap |
 | `--framework-version` | Framework version for fresh install (e.g. `2.4.9` for Magento) |
 
+When admin creation runs, the account is `admin` / `AdminGovard123$` for every
+framework, the same account Portainer uses. See
+[Application Admin](/getting-started/getting-started#application-admin).
+
 For Magento 2/Mage-OS, Magento 1/OpenMage, or PrestaShop projects with `table_prefix` set, DB privacy filters target prefixed table names automatically.
 
 **Magento special flags:**

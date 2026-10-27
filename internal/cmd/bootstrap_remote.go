@@ -220,12 +220,13 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 	// the current two (MagentoFamilyPreConfigure/MagentoFamilyPostClone)
 	// only read AdminCreate.
 	hookOpts := bootstrap.Options{
-		Version:     opts.MetaVersion,
-		Env:         opts.Source,
-		ProjectName: config.ProjectName,
-		Domain:      config.Domain,
-		TablePrefix: config.TablePrefix,
-		AdminCreate: opts.AdminCreate,
+		Version:      opts.MetaVersion,
+		Env:          opts.Source,
+		ProjectName:  config.ProjectName,
+		Domain:       config.Domain,
+		TablePrefix:  config.TablePrefix,
+		AdminCreate:  opts.AdminCreate,
+		AdminApplied: opts.AdminApplied,
 		Runner: func(command string) error {
 			return runPHPContainerShellCommand(config, command)
 		},
@@ -276,15 +277,16 @@ func runBootstrapRemote(cmd *cobra.Command, config engine.Config, opts Bootstrap
 			Runner: func(command string) error {
 				return runPHPContainerShellCommand(config, command)
 			},
-			DBHost:      conventions.DefaultDBHost,
-			DBEngine:    config.Stack.Services.DB,
-			DBVersion:   config.Stack.DBVersion,
-			DBUser:      localDB.Username,
-			DBPass:      localDB.Password,
-			DBName:      localDB.Database,
-			TablePrefix: config.TablePrefix,
-			ProjectName: config.ProjectName,
-			Domain:      config.Domain,
+			DBHost:       conventions.DefaultDBHost,
+			DBEngine:     config.Stack.Services.DB,
+			DBVersion:    config.Stack.DBVersion,
+			DBUser:       localDB.Username,
+			DBPass:       localDB.Password,
+			DBName:       localDB.Database,
+			TablePrefix:  config.TablePrefix,
+			ProjectName:  config.ProjectName,
+			Domain:       config.Domain,
+			AdminApplied: opts.AdminApplied,
 		}
 
 		if def, ok := frameworks.Get(config.Framework); ok && def.ProbeRemoteBootstrapMetadata != nil {

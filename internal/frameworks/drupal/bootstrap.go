@@ -112,6 +112,8 @@ func (d *DrupalBootstrap) Install(projectDir string) error {
 
 	if err := d.runDrushCommand(projectDir, drupalCmd...); err != nil {
 		pterm.Warning.Printf("Site install warning: %v\n", err)
+	} else if d.Options.AdminApplied != nil {
+		*d.Options.AdminApplied = true
 	}
 
 	pterm.Success.Println("Drupal installation completed")

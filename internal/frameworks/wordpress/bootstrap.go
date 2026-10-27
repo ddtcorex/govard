@@ -128,6 +128,9 @@ func (w *WordPressBootstrap) Install(projectDir string) error {
 	if err := w.installWordPressSite(projectDir, siteURL); err != nil {
 		return err
 	}
+	if w.Options.AdminApplied != nil {
+		*w.Options.AdminApplied = true
+	}
 	if err := w.updateWordPressSiteURL(projectDir, siteURL); err != nil {
 		return err
 	}

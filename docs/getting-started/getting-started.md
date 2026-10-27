@@ -146,6 +146,36 @@ Govard routes project domains through the shared Caddy proxy and provides built-
 | PHPMyAdmin | `https://pma.govard.test` | Use project's DB credentials |
 | Mailpit | `https://mail.govard.test` | No login required |
 
+### Application Admin
+
+Govard seeds the same admin account everywhere, and the Project URLs table
+above opens it:
+
+| Target | Credential |
+| :--- | :--- |
+| Project admin panel | `admin` / `AdminGovard123$` |
+| Portainer | `admin` / `AdminGovard123$` |
+
+The account is written during `govard bootstrap`, both for a fresh install and
+for a clone, and the completion banner prints it whenever it was actually
+applied. Three situations change what you get:
+
+- A cloned Magento 2 or Mage-OS database usually already contains a user named
+  `admin`. Govard keeps that user and its source password, the banner prints
+  only the admin URL, and the bootstrap output names the command that resets it
+  to the shared credential.
+- A project bootstrapped before this credential existed keeps the password it
+  was created with. Nothing rewrites an existing database.
+- `govard bootstrap --no-admin` only skips the user Govard creates for a
+  Magento 2 or Mage-OS clone. A fresh install still seeds the account through
+  `setup:install`, and Magento 1, OpenMage, WordPress and Drupal always seed it.
+
+The banner prints the framework's default route (`/admin` for Magento,
+`/wp-admin` for WordPress). Magento 2 and Mage-OS resolve a route moved in the
+database when you open the panel with `govard open admin`; a Magento 1 or
+OpenMage project that moved its admin route in `app/etc/local.xml` still sees
+the default in the banner.
+
 ### Quick Commands
 
 ```bash

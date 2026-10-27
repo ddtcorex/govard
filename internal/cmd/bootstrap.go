@@ -156,6 +156,14 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 		if err != nil {
 			return err
 		}
+		// adminApplied collects the frameworks' report that the shared Govard
+		// admin credential was actually written into this environment. A --plan
+		// run gets no collector at all, so nothing can claim a login that no
+		// install produced.
+		adminApplied := false
+		if !opts.Plan {
+			opts.AdminApplied = &adminApplied
+		}
 		operationSource = opts.Source
 		inMemoryPlan = opts.Plan && !bootstrapHasProjectConfig(cwd)
 
@@ -292,10 +300,38 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 		pterm.Info.Printf("Framework: %s\n", config.Framework)
 		pterm.Info.Printf("Domain:    %s\n", config.Domain)
 		pterm.Info.Printf("URL:       https://%s\n", config.Domain)
+		for _, line := range bootstrapAdminLines(config.Framework, config.Domain, adminApplied) {
+			pterm.Info.Println(line)
+		}
 
 		pterm.Success.Printf("Bootstrap completed in %s.\n", time.Since(startedAt).Round(time.Second))
 		return nil
 	},
+}
+
+// bootstrapAdminLines renders the admin panel reminder printed when a bootstrap
+// finishes. The URL line appears for every framework that declares a stock admin
+// route. The login line appears only when a framework reported that it actually
+// wrote the Govard credential during this run, because a cloned environment
+// keeps the source database's admin password and must not be told otherwise.
+func bootstrapAdminLines(framework, domain string, adminApplied bool) []string {
+	domain = strings.TrimSpace(domain)
+	if domain == "" {
+		return nil
+	}
+	if def, ok := frameworks.Get(framework); ok && def.NoStockAdminRoute {
+		return nil
+	}
+	lines := []string{fmt.Sprintf("Admin:     https://%s/%s", domain, strings.Trim(frameworks.DefaultAdminPath(framework), "/"))}
+	if !adminApplied {
+		return lines
+	}
+	return append(lines, fmt.Sprintf("Login:     %s / %s", conventions.DefaultAdminUser, conventions.DefaultAdminPassword))
+}
+
+// BootstrapAdminLinesForTest exposes bootstrapAdminLines for tests in /tests.
+func BootstrapAdminLinesForTest(framework, domain string, adminApplied bool) []string {
+	return bootstrapAdminLines(framework, domain, adminApplied)
 }
 
 // bootstrapHasProjectConfig reports whether the directory already has a

@@ -296,6 +296,9 @@ func FreshInstall(variant FamilyVariant, opts bootstrap.Options, projectDir stri
 	if err := RunSetupInstall(helpers, setupArgs); err != nil {
 		return err
 	}
+	if opts.AdminApplied != nil {
+		*opts.AdminApplied = true
+	}
 
 	if err := helpers.ConfigureAuto(); err != nil {
 		return fmt.Errorf("framework configuration failed: %w", err)
@@ -375,11 +378,61 @@ func RunReindex(helpers bootstrap.CmdHelpers) error {
 	return helpers.RunTool("magento", []string{"indexer:reindex"})
 }
 
-func RunAdminCreate(opts bootstrap.Options, helpers bootstrap.CmdHelpers) {
+// SecondaryAdminUser is the username the remedy below creates. It cannot be
+// conventions.DefaultAdminUser: that name is exactly what is already taken in
+// the cloned database.
+const SecondaryAdminUser = "govard"
+
+// AdminCreateRemedyCommand is the command a user runs when a cloned Magento
+// database already owns the "admin" username with the source server's
+// password, so admin:user:create could not apply the Govard credential.
+//
+// Magento ships no command to change an existing admin password (module-user
+// registers only admin:user:unlock, and the setup module only
+// admin:user:create), so the remedy adds a second admin account with the shared
+// password rather than pretending a reset command exists. The options are the
+// ones AdminUserCreateCommand defines: --admin-user, --admin-password,
+// --admin-email, --admin-firstname, --admin-lastname.
+func AdminCreateRemedyCommand(domain string) string {
+	email := SecondaryAdminUser + "@local.test"
+	if trimmed := strings.TrimSpace(domain); trimmed != "" {
+		email = SecondaryAdminUser + "@" + trimmed
+	}
+	return "govard tool magento admin:user:create" +
+		" --admin-user=" + SecondaryAdminUser +
+		" --admin-password='" + conventions.DefaultAdminPassword + "'" +
+		" --admin-firstname=Govard --admin-lastname=Admin" +
+		" --admin-email=" + email
+}
+
+// RunAdminCreate creates the shared Govard admin user and reports whether the
+// credential was actually written. A cloned Magento database usually already
+// contains a user named "admin", in which case admin:user:create fails and the
+// environment keeps the source server's password; the failure is printed with
+// the remedy instead of being swallowed, and the caller must not advertise the
+// shared credential for that run.
+func RunAdminCreate(opts bootstrap.Options, helpers bootstrap.CmdHelpers) bool {
 	if helpers.IsPHPContainerRunning != nil && !helpers.IsPHPContainerRunning() {
-		return
+		return false
 	}
-	if helpers.RunToolSilent != nil {
-		_ = helpers.RunToolSilent("magento", []string{"admin:user:create", "--admin-user=" + conventions.DefaultAdminUser, "--admin-password=" + conventions.DefaultAdminPassword, "--admin-firstname=Govard", "--admin-lastname=Admin", "--admin-email=" + conventions.AdminEmailForDomain(opts.Domain)})
+	if helpers.RunToolSilent == nil {
+		return false
 	}
+	err := helpers.RunToolSilent("magento", []string{
+		"admin:user:create",
+		"--admin-user=" + conventions.DefaultAdminUser,
+		"--admin-password=" + conventions.DefaultAdminPassword,
+		"--admin-firstname=Govard",
+		"--admin-lastname=Admin",
+		"--admin-email=" + conventions.AdminEmailForDomain(opts.Domain),
+	})
+	if err != nil {
+		pterm.Warning.Printf("Admin user '%s' was not created, which means the cloned database already owns that username with the source server's password. To add a Govard admin with the shared password, run: %s\n",
+			conventions.DefaultAdminUser, AdminCreateRemedyCommand(opts.Domain))
+		return false
+	}
+	if opts.AdminApplied != nil {
+		*opts.AdminApplied = true
+	}
+	return true
 }

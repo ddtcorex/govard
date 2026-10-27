@@ -77,6 +77,10 @@ func (m *Magento1Bootstrap) PostClone(projectDir string) error {
 
 	if err := m.CreateAdmin(projectDir); err != nil {
 		pterm.Warning.Printf("Failed to create admin user: %v\n", err)
+	} else if m.Options.AdminApplied != nil {
+		// The SQL upsert above always rewrites the admin password, so the
+		// shared Govard credential is guaranteed after this point.
+		*m.Options.AdminApplied = true
 	}
 
 	pterm.Success.Println("Post-clone setup completed")

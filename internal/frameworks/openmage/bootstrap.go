@@ -92,7 +92,7 @@ func (o *OpenMageBootstrap) Install(projectDir string) error {
 
 // runCLIInstall runs OpenMage's non-interactive install.php CLI installer,
 // which creates the DB schema, writes app/etc/local.xml, and seeds the
-// default admin user (admin/Admin12345678$) in a single step - unlike PostClone's
+// default admin user (admin/AdminGovard123$) in a single step - unlike PostClone's
 // CreateAdmin, this is safe to run against a fresh, empty database because
 // install.php creates the schema itself before seeding the admin user.
 func (o *OpenMageBootstrap) runCLIInstall(projectDir string) error {
@@ -138,6 +138,9 @@ func (o *OpenMageBootstrap) runCLIInstall(projectDir string) error {
 	pterm.Info.Println("Running OpenMage CLI installer...")
 	if err := bootstrap.RunPHPProjectScript(projectDir, o.Options.Runner, installScript, args...); err != nil {
 		return fmt.Errorf("install.php failed: %w", err)
+	}
+	if o.Options.AdminApplied != nil {
+		*o.Options.AdminApplied = true
 	}
 
 	pterm.Success.Println("OpenMage installed via CLI installer (schema + admin user created)")
@@ -198,13 +201,17 @@ func (o *OpenMageBootstrap) PostClone(projectDir string) error {
 
 	if err := o.CreateAdmin(projectDir); err != nil {
 		pterm.Warning.Printf("Failed to create admin user: %v\n", err)
+	} else if o.Options.AdminApplied != nil {
+		// The SQL upsert above always rewrites the admin password, so the
+		// shared Govard credential is guaranteed after this point.
+		*o.Options.AdminApplied = true
 	}
 
 	pterm.Success.Println("Post-clone setup completed")
 	return nil
 }
 
-// CreateAdmin seeds the default admin user (admin/Admin12345678$) via direct SQL,
+// CreateAdmin seeds the default admin user (admin/AdminGovard123$) via direct SQL,
 // matching Magento1Bootstrap.CreateAdmin since OpenMage shares Magento 1's
 // admin_user schema. Only safe once the DB schema exists - used by PostClone
 // (schema comes from the imported dump). Fresh install seeds its own admin
