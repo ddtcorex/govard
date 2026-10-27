@@ -166,8 +166,9 @@ applied. Three situations change what you get:
   to the shared credential.
 - A project bootstrapped before this credential existed keeps the password it
   was created with. Nothing rewrites an existing database.
-- `govard bootstrap --no-admin` skips admin creation for the Magento family, so
-  the environment has no seeded admin user at all.
+- `govard bootstrap --no-admin` only skips the user Govard creates for a
+  Magento 2 or Mage-OS clone. A fresh install still seeds the account through
+  `setup:install`, and Magento 1, OpenMage, WordPress and Drupal always seed it.
 
 ### Quick Commands
 

@@ -39,12 +39,34 @@ func TestRunAdminCreateReportsNotAppliedWhenUserExists(t *testing.T) {
 	}
 }
 
-func TestAdminCreateRemedyCommandNamesTheSharedCredential(t *testing.T) {
-	got := magento2.AdminCreateRemedyCommand()
-	for _, want := range []string{"admin:user:change-password", "--username admin", "AdminGovard123$"} {
+// A cloned Magento database usually already owns the "admin" username, so the
+// remedy cannot reuse it and Magento ships no command to change an admin
+// password (only admin:user:create and admin:user:unlock exist). The remedy is
+// therefore a second admin account with a distinct username, built from the
+// option names AdminUserCreateCommand actually defines.
+func TestAdminCreateRemedyCommandCreatesASecondAdmin(t *testing.T) {
+	got := magento2.AdminCreateRemedyCommand("sample.test")
+	for _, want := range []string{
+		"admin:user:create",
+		"--admin-user=govard",
+		"--admin-password='AdminGovard123$'",
+		"--admin-email=govard@sample.test",
+	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("remedy command %q must contain %q", got, want)
 		}
+	}
+	if strings.Contains(got, "--username") {
+		t.Fatalf("remedy command %q must not use --username: admin:user:create has no such option", got)
+	}
+	if strings.Contains(got, "change-password") {
+		t.Fatalf("remedy command %q must not name change-password: Magento ships no such command", got)
+	}
+}
+
+func TestAdminCreateRemedyCommandFallsBackWithoutADomain(t *testing.T) {
+	if got := magento2.AdminCreateRemedyCommand(""); !strings.Contains(got, "--admin-email=govard@local.test") {
+		t.Fatalf("remedy command %q must fall back to a local email when the project has no domain", got)
 	}
 }
 

@@ -100,7 +100,12 @@ func TestProxyBlueprintPortainerPasswordMatchesConvention(t *testing.T) {
 		t.Fatal("proxy.yml must set --admin-password so Portainer starts with the Govard admin credential")
 	}
 	// The blueprint is a compose file, so every dollar is doubled; undo that
-	// before asking bcrypt about it.
+	// before asking bcrypt about it. An undoubled paste would still match
+	// bcrypt here, while compose would read $2a as a variable and hand
+	// Portainer a broken password, so the escaping is checked on its own.
+	if !strings.Contains(match[1], "$$") {
+		t.Fatalf("proxy.yml --admin-password must escape every dollar as $$ for compose, got %q", match[1])
+	}
 	hash := strings.ReplaceAll(match[1], "$$", "$")
 
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(conventions.DefaultAdminPassword)); err != nil {

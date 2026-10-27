@@ -165,8 +165,9 @@ làm thay đổi kết quả:
   quản trị, và output của bootstrap in ra lệnh để đặt lại về thông tin dùng chung.
 - Dự án đã bootstrap trước khi có thông tin dùng chung này vẫn giữ mật khẩu cũ.
   Không có bước nào ghi đè database đã tồn tại.
-- `govard bootstrap --no-admin` bỏ qua bước tạo admin cho nhóm Magento, nên môi
-  trường không có tài khoản admin nào được tạo sẵn.
+- `govard bootstrap --no-admin` chỉ bỏ qua tài khoản mà Govard tạo cho một bản
+  clone Magento 2 hoặc Mage-OS. Cài mới vẫn tạo tài khoản qua `setup:install`,
+  còn Magento 1, OpenMage, WordPress và Drupal luôn tạo tài khoản.
 
 ### Lệnh nhanh (Quick Commands)
 
