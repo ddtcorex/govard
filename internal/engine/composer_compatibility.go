@@ -52,15 +52,36 @@ func ensureComposerConfig(config Config) error {
 	containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.PHPSuffix)
 	// Fix: Composer 2.2+ blocks plugins by default. Enable them globally in the container for bootstrap.
 	// We also disable audit blocking to prevent failures on older versions with known vulnerabilities.
-	// Fix: .composer directory might be owned by root (e.g. if created during image build).
-	// We ensure it's owned by the www-data user so composer config -g works.
-	fixOwnership := "chown -R www-data:www-data ~/.composer 2>/dev/null || true"
+	// Fix: Docker creates .composer as root when it auto-creates the parent directory of the
+	// auth.json and config.json file mounts. Since this repair runs as root, it must address
+	// $COMPOSER_HOME explicitly: under root, ~/.composer is /root/.composer, not the
+	// application user's Composer home.
+	fixOwnership := composerHomeOwnershipScript()
 	_ = exec.Command("docker", "exec", "-u", "root", containerName, "sh", "-c", fixOwnership).Run()
 
 	globalScript := "composer config -g allow-plugins true && composer config -g audit.block-insecure false 2>/dev/null || true"
 	_ = exec.Command("docker", "exec", containerName, "sh", "-c", globalScript).Run()
 
 	return nil
+}
+
+// composerHomeOwnershipScript returns the in-container shell script that makes
+// the application user's Composer home writable. It deliberately avoids ~,
+// which resolves to /root when the script is executed by root.
+func composerHomeOwnershipScript() string {
+	return fmt.Sprintf(`if [ -n "${COMPOSER_HOME:-}" ]; then
+		mkdir -p "$COMPOSER_HOME"
+		chown %[1]s:%[1]s "$COMPOSER_HOME"
+		if [ -f "$COMPOSER_HOME/.htaccess" ]; then
+			chown %[1]s:%[1]s "$COMPOSER_HOME/.htaccess"
+		fi
+	fi`, conventions.UserWWWData)
+}
+
+// ComposerHomeOwnershipScriptForTest exposes composerHomeOwnershipScript for
+// tests in /tests.
+func ComposerHomeOwnershipScriptForTest() string {
+	return composerHomeOwnershipScript()
 }
 
 func ensureSpecificComposerVersion(config Config, version string) error {
