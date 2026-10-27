@@ -113,7 +113,11 @@ func TestProxyBlueprintPortainerPasswordMatchesConvention(t *testing.T) {
 		if genErr != nil {
 			t.Fatalf("proxy.yml --admin-password does not match conventions.DefaultAdminPassword: %v", err)
 		}
+		// bcrypt generates the $2a$ dialect; the blueprint carries $2y$ from
+		// PHP, and both verify the same password, so the suggestion keeps the
+		// shape of what is already there.
+		pasted := strings.Replace(string(suggested), "$2a$", "$2y$", 1)
 		t.Fatalf("proxy.yml --admin-password does not match conventions.DefaultAdminPassword (%v); paste this hash into proxy.yml: '%s'",
-			err, strings.ReplaceAll(string(suggested), "$", "$$"))
+			err, strings.ReplaceAll(pasted, "$", "$$"))
 	}
 }

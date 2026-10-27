@@ -170,6 +170,12 @@ applied. Three situations change what you get:
   Magento 2 or Mage-OS clone. A fresh install still seeds the account through
   `setup:install`, and Magento 1, OpenMage, WordPress and Drupal always seed it.
 
+The banner prints the framework's default route (`/admin` for Magento,
+`/wp-admin` for WordPress). Magento 2 and Mage-OS resolve a route moved in the
+database when you open the panel with `govard open admin`; a Magento 1 or
+OpenMage project that moved its admin route in `app/etc/local.xml` still sees
+the default in the banner.
+
 ### Quick Commands
 
 ```bash

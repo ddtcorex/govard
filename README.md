@@ -151,6 +151,11 @@ Shared across all projects (via `govard svc`):
 
 CLI shortcuts: `govard open mail|db|portainer`.
 
+Every project's admin panel uses the same account as Portainer:
+`admin` / `AdminGovard123$`. See
+[Application Admin](docs/getting-started/getting-started.md#application-admin)
+for what a clone or an older project actually gets.
+
 ---
 
 ## 📚 Documentation

@@ -169,6 +169,11 @@ làm thay đổi kết quả:
   clone Magento 2 hoặc Mage-OS. Cài mới vẫn tạo tài khoản qua `setup:install`,
   còn Magento 1, OpenMage, WordPress và Drupal luôn tạo tài khoản.
 
+Banner in route mặc định của framework (`/admin` cho Magento, `/wp-admin` cho
+WordPress). Magento 2 và Mage-OS tự dò route đã đổi trong database khi bạn mở
+bằng `govard open admin`; riêng Magento 1 hoặc OpenMage đã đổi admin route
+trong `app/etc/local.xml` thì banner vẫn hiện route mặc định.
+
 ### Lệnh nhanh (Quick Commands)
 
 ```bash
