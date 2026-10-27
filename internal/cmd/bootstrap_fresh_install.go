@@ -44,6 +44,7 @@ func runBootstrapRegistryFreshInstall(cmd *cobra.Command, config engine.Config, 
 		ProjectName:   config.ProjectName,
 		TablePrefix:   config.TablePrefix,
 		MetaPackage:   opts.MetaPackage,
+		AdminApplied:  opts.AdminApplied,
 		HyvaInstall:   opts.HyvaInstall,
 		IncludeSample: opts.IncludeSample,
 		// The runtime PHP and Composer versions let a framework pin
