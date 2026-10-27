@@ -296,6 +296,9 @@ func FreshInstall(variant FamilyVariant, opts bootstrap.Options, projectDir stri
 	if err := RunSetupInstall(helpers, setupArgs); err != nil {
 		return err
 	}
+	if opts.AdminApplied != nil {
+		*opts.AdminApplied = true
+	}
 
 	if err := helpers.ConfigureAuto(); err != nil {
 		return fmt.Errorf("framework configuration failed: %w", err)

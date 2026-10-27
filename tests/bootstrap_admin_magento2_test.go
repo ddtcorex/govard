@@ -47,3 +47,35 @@ func TestAdminCreateRemedyCommandNamesTheSharedCredential(t *testing.T) {
 		}
 	}
 }
+
+func TestPostClonePropagatesAdminApplied(t *testing.T) {
+	applied := false
+	helpers := bootstrap.CmdHelpers{
+		IsPHPContainerRunning: func() bool { return true },
+		RunToolSilent:         func(string, []string) error { return nil },
+		RunTool:               func(string, []string) error { return nil },
+	}
+
+	if err := magento2.PostClone(bootstrap.Options{AdminApplied: &applied, Domain: "sample.test", AdminCreate: true}, ".", helpers); err != nil {
+		t.Fatalf("PostClone returned an error: %v", err)
+	}
+	if !applied {
+		t.Fatal("PostClone must propagate the admin report from RunAdminCreate")
+	}
+}
+
+func TestPostCloneWithoutAdminCreateLeavesReportFalse(t *testing.T) {
+	applied := false
+	helpers := bootstrap.CmdHelpers{
+		IsPHPContainerRunning: func() bool { return true },
+		RunToolSilent:         func(string, []string) error { return nil },
+		RunTool:               func(string, []string) error { return nil },
+	}
+
+	if err := magento2.PostClone(bootstrap.Options{AdminApplied: &applied, Domain: "sample.test", AdminCreate: false}, ".", helpers); err != nil {
+		t.Fatalf("PostClone returned an error: %v", err)
+	}
+	if applied {
+		t.Fatal("--no-admin runs must not report the credential as applied")
+	}
+}

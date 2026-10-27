@@ -139,6 +139,9 @@ func (o *OpenMageBootstrap) runCLIInstall(projectDir string) error {
 	if err := bootstrap.RunPHPProjectScript(projectDir, o.Options.Runner, installScript, args...); err != nil {
 		return fmt.Errorf("install.php failed: %w", err)
 	}
+	if o.Options.AdminApplied != nil {
+		*o.Options.AdminApplied = true
+	}
 
 	pterm.Success.Println("OpenMage installed via CLI installer (schema + admin user created)")
 	return nil
@@ -198,6 +201,10 @@ func (o *OpenMageBootstrap) PostClone(projectDir string) error {
 
 	if err := o.CreateAdmin(projectDir); err != nil {
 		pterm.Warning.Printf("Failed to create admin user: %v\n", err)
+	} else if o.Options.AdminApplied != nil {
+		// The SQL upsert above always rewrites the admin password, so the
+		// shared Govard credential is guaranteed after this point.
+		*o.Options.AdminApplied = true
 	}
 
 	pterm.Success.Println("Post-clone setup completed")
