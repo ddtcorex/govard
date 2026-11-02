@@ -3,21 +3,27 @@ package try
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"net/http"
 	"time"
 )
 
 // ProbeClient returns a client that reaches the Govard proxy on addr while
-// presenting serverName as the TLS name.
+// presenting serverName as the TLS name, and verifies the proxy's certificate
+// against roots only.
 //
-// Readiness is a local liveness question, not a trust question: the proxy's
-// certificate is the local CA, which may or may not be in this process's trust
-// store, and the domain may not resolve in this process's resolver. Dialing the
-// loopback address directly with an explicit server name answers "is the app
-// up?" without depending on either. The client is never used for anything but
-// this probe, and certificate verification is intentionally skipped for it.
-func ProbeClient(addr, serverName string) *http.Client {
+// The domain may not resolve in this process's resolver, so the client dials
+// the loopback address directly with an explicit server name. The proxy's
+// certificate is issued by the Govard local CA, which may not be in this
+// process's system trust store, so the caller passes that CA as roots instead
+// (engine.LocalRootCAPool). Verification, including the server name, is never
+// skipped: a nil roots is treated as an empty pool rather than as "use the
+// system roots", so nothing but the given CA can vouch for the proxy.
+func ProbeClient(addr, serverName string, roots *x509.CertPool) *http.Client {
+	if roots == nil {
+		roots = x509.NewCertPool()
+	}
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 
 	return &http.Client{
@@ -26,8 +32,11 @@ func ProbeClient(addr, serverName string) *http.Client {
 			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 				return dialer.DialContext(ctx, network, addr)
 			},
-			//nolint:gosec // liveness probe for the local proxy, see the doc comment
-			TLSClientConfig: &tls.Config{ServerName: serverName, InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{
+				ServerName: serverName,
+				RootCAs:    roots,
+				MinVersion: tls.VersionTLS12,
+			},
 		},
 	}
 }

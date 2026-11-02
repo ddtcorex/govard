@@ -23,8 +23,9 @@ const (
 	minTryFreeBytes uint64 = 8 << 30
 
 	// proxyHTTPSAddr is where the Govard proxy terminates TLS. Readiness is
-	// measured against it directly, so neither the local resolver nor the local
-	// CA store can turn a healthy app into a reported failure.
+	// measured against it directly and verified against the Govard local CA
+	// alone, so neither the local resolver nor the system CA store can turn a
+	// healthy app into a reported failure.
 	proxyHTTPSAddr = "127.0.0.1:443"
 
 	tryProbeInterval = 2 * time.Second
@@ -275,7 +276,11 @@ func runSelfCommand(ctx context.Context, dir string, args ...string) error {
 }
 
 func probeOrigin(ctx context.Context, origin try.Origin, timeout time.Duration) error {
-	client := try.ProbeClient(proxyHTTPSAddr, origin.HostHeader)
+	roots, err := engine.LocalRootCAPool()
+	if err != nil {
+		return fmt.Errorf("cannot verify the Govard proxy certificate without its local CA (is the Govard proxy running? start it with: govard svc up): %w", err)
+	}
+	client := try.ProbeClient(proxyHTTPSAddr, origin.HostHeader, roots)
 
 	return try.WaitReady(ctx, client, origin, timeout, tryProbeInterval)
 }
