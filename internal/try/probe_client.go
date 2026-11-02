@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -39,4 +42,99 @@ func ProbeClient(addr, serverName string, roots *x509.CertPool) *http.Client {
 			},
 		},
 	}
+}
+
+// RootsLoader returns the CA pool the probe trusts. refresh asks for a fresh
+// copy from the source of truth rather than a cached one.
+type RootsLoader func(refresh bool) (*x509.CertPool, error)
+
+// staleCAHint tells the user how to recover when even a freshly extracted CA
+// does not verify the proxy certificate.
+const staleCAHint = "the Govard proxy certificate is not signed by the Govard local CA; " +
+	"restart the proxy and re-trust its CA with: govard svc restart"
+
+// RefreshingProbeClient is ProbeClient with one recovery step for a stale CA.
+//
+// The exported CA can outlive the proxy's own: recreating the proxy's data
+// volume makes Caddy mint a new one, and every probe would then fail with an
+// unknown authority until the readiness timeout. On the first such failure the
+// client reloads the roots with refresh set, rebuilds its transport and
+// retries the request once. If the fresh roots still do not verify the proxy,
+// that and every later unknown authority error carries a recovery hint. The
+// client never falls back to skipping verification or to the system roots.
+func RefreshingProbeClient(addr, serverName string, load RootsLoader) (*http.Client, error) {
+	roots, err := load(false)
+	if err != nil {
+		return nil, err
+	}
+
+	base := ProbeClient(addr, serverName, roots)
+	rt := &refreshingTransport{
+		current: base.Transport,
+		rebuild: func(roots *x509.CertPool) http.RoundTripper {
+			return ProbeClient(addr, serverName, roots).Transport
+		},
+		load: load,
+	}
+	base.Transport = rt
+	return base, nil
+}
+
+type refreshingTransport struct {
+	mu        sync.Mutex
+	current   http.RoundTripper
+	refreshed bool
+	rebuild   func(*x509.CertPool) http.RoundTripper
+	load      RootsLoader
+}
+
+func (t *refreshingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.mu.Lock()
+	current, refreshed := t.current, t.refreshed
+	t.mu.Unlock()
+
+	resp, err := current.RoundTrip(req)
+	if !isUnknownAuthority(err) {
+		return resp, err
+	}
+	if refreshed {
+		return nil, fmt.Errorf("%s: %w", staleCAHint, err)
+	}
+
+	next, err := t.refresh(current)
+	if err != nil {
+		return nil, err
+	}
+	// Readiness probes are bodiless GETs, so replaying the request is safe.
+	resp, err = next.RoundTrip(req.Clone(req.Context()))
+	if isUnknownAuthority(err) {
+		return nil, fmt.Errorf("%s: %w", staleCAHint, err)
+	}
+	return resp, err
+}
+
+// refresh swaps in a transport built from freshly loaded roots, once.
+func (t *refreshingTransport) refresh(stale http.RoundTripper) (http.RoundTripper, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.refreshed {
+		return t.current, nil
+	}
+	t.refreshed = true
+
+	roots, err := t.load(true)
+	if err != nil {
+		return nil, fmt.Errorf("%s: reload the CA: %w", staleCAHint, err)
+	}
+	if closer, ok := stale.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+	t.current = t.rebuild(roots)
+	return t.current, nil
+}
+
+func isUnknownAuthority(err error) bool {
+	var unknown x509.UnknownAuthorityError
+	return err != nil && errors.As(err, &unknown)
 }

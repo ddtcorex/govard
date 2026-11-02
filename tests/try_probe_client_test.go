@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"govard/internal/try"
@@ -87,5 +88,92 @@ func TestProbeClientChecksTheServerName(t *testing.T) {
 	var hostname x509.HostnameError
 	if !errors.As(err, &hostname) {
 		t.Fatalf("err = %v, want x509.HostnameError", err)
+	}
+}
+
+// rootsSequence is a probe roots loader: the first load returns initial, every
+// refresh returns refreshed and is counted.
+type rootsSequence struct {
+	initial, refreshed *x509.CertPool
+	refreshes          int
+}
+
+func (s *rootsSequence) load(refresh bool) (*x509.CertPool, error) {
+	if refresh {
+		s.refreshes++
+		return s.refreshed, nil
+	}
+	return s.initial, nil
+}
+
+func TestRefreshingProbeClientReExportsAStaleCAOnceAndSucceeds(t *testing.T) {
+	ca := newTestCA(t)
+	srv := newProxyStandIn(t, ca)
+	roots := &rootsSequence{initial: newTestCA(t).Pool(), refreshed: ca.Pool()}
+
+	client, err := try.RefreshingProbeClient(srv.Listener.Addr().String(), "shop.test", roots.load)
+	if err != nil {
+		t.Fatalf("RefreshingProbeClient: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		resp, err := client.Get("https://shop.test/")
+		if err != nil {
+			t.Fatalf("probe %d: %v", i, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("probe %d status = %d, want 200", i, resp.StatusCode)
+		}
+	}
+	if roots.refreshes != 1 {
+		t.Fatalf("refreshes = %d, want exactly 1", roots.refreshes)
+	}
+}
+
+func TestRefreshingProbeClientFailsWithAHintWhenTheFreshCAIsStillWrong(t *testing.T) {
+	srv := newProxyStandIn(t, newTestCA(t))
+	roots := &rootsSequence{initial: newTestCA(t).Pool(), refreshed: newTestCA(t).Pool()}
+
+	client, err := try.RefreshingProbeClient(srv.Listener.Addr().String(), "shop.test", roots.load)
+	if err != nil {
+		t.Fatalf("RefreshingProbeClient: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		resp, err := client.Get("https://shop.test/")
+		if err == nil {
+			_ = resp.Body.Close()
+			t.Fatalf("probe %d succeeded against an untrusted certificate", i)
+		}
+		var unknown x509.UnknownAuthorityError
+		if !errors.As(err, &unknown) {
+			t.Fatalf("probe %d err = %v, want x509.UnknownAuthorityError", i, err)
+		}
+		if !strings.Contains(err.Error(), "govard svc restart") {
+			t.Fatalf("probe %d err = %v, want a hint naming govard svc restart", i, err)
+		}
+	}
+	if roots.refreshes != 1 {
+		t.Fatalf("refreshes = %d, want exactly 1", roots.refreshes)
+	}
+}
+
+func TestRefreshingProbeClientNeverRefreshesForOtherErrors(t *testing.T) {
+	ca := newTestCA(t)
+	srv := newProxyStandIn(t, ca)
+	roots := &rootsSequence{initial: ca.Pool(), refreshed: ca.Pool()}
+
+	client, err := try.RefreshingProbeClient(srv.Listener.Addr().String(), "other.test", roots.load)
+	if err != nil {
+		t.Fatalf("RefreshingProbeClient: %v", err)
+	}
+	resp, err := client.Get("https://other.test/")
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("probe succeeded for a name the certificate does not cover")
+	}
+	if roots.refreshes != 0 {
+		t.Fatalf("refreshes = %d, want 0 for a hostname mismatch", roots.refreshes)
 	}
 }

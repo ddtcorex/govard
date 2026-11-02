@@ -51,6 +51,18 @@ func LocalRootCAPool() (*x509.CertPool, error) {
 		localPath, localErr, exportErr)
 }
 
+// RefreshLocalRootCAPool re-extracts the root CA from the running proxy even
+// when the exported copy parses, for when that copy is stale: the proxy's data
+// volume was recreated and Caddy minted a new CA. The fresh copy replaces the
+// exported one, and the returned pool holds only it.
+func RefreshLocalRootCAPool() (*x509.CertPool, error) {
+	exportedPath, err := rootCAExporter()
+	if err != nil {
+		return nil, fmt.Errorf("re-extract the Govard root CA from the proxy: %w", err)
+	}
+	return rootCAPoolFromFile(exportedPath)
+}
+
 func rootCAPoolFromFile(path string) (*x509.CertPool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

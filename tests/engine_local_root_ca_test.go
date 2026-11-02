@@ -2,6 +2,7 @@ package tests
 
 import (
 	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"os"
 	"path/filepath"
@@ -99,6 +100,54 @@ func TestLocalRootCAPoolReExportsWhenTheFileIsGarbage(t *testing.T) {
 		t.Fatalf("LocalRootCAPool: %v", err)
 	}
 	assertPoolTrusts(t, pool, ca)
+}
+
+func TestLocalRootCAPoolRejectsALeafCertificate(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	issuer := newTestCA(t)
+	leaf := issuer.Leaf(t, "shop.test")
+	writeHomeRootCA(t, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leaf.Certificate[0]}))
+	ca := newTestCA(t)
+	exported := filepath.Join(t.TempDir(), "root.crt")
+
+	calls := 0
+	restore := engine.SetRootCAExporterForTest(func() (string, error) {
+		calls++
+		return exported, os.WriteFile(exported, ca.PEM(), 0o644)
+	})
+	defer restore()
+
+	pool, err := engine.LocalRootCAPool()
+	if err != nil {
+		t.Fatalf("LocalRootCAPool: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("exporter calls = %d, want 1 for a non CA root.crt", calls)
+	}
+	assertPoolTrusts(t, pool, ca)
+}
+
+func TestRefreshLocalRootCAPoolExportsEvenWhenTheFileParses(t *testing.T) {
+	t.Setenv("GOVARD_HOME_DIR", t.TempDir())
+	writeHomeRootCA(t, newTestCA(t).PEM())
+	fresh := newTestCA(t)
+	exported := filepath.Join(t.TempDir(), "root.crt")
+
+	calls := 0
+	restore := engine.SetRootCAExporterForTest(func() (string, error) {
+		calls++
+		return exported, os.WriteFile(exported, fresh.PEM(), 0o644)
+	})
+	defer restore()
+
+	pool, err := engine.RefreshLocalRootCAPool()
+	if err != nil {
+		t.Fatalf("RefreshLocalRootCAPool: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("exporter calls = %d, want 1", calls)
+	}
+	assertPoolTrusts(t, pool, fresh)
 }
 
 func TestLocalRootCAPoolFailsWhenNeitherSourceWorks(t *testing.T) {

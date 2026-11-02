@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"os/exec"
@@ -276,13 +277,21 @@ func runSelfCommand(ctx context.Context, dir string, args ...string) error {
 }
 
 func probeOrigin(ctx context.Context, origin try.Origin, timeout time.Duration) error {
-	roots, err := engine.LocalRootCAPool()
+	client, err := try.RefreshingProbeClient(proxyHTTPSAddr, origin.HostHeader, loadProxyRoots)
 	if err != nil {
 		return fmt.Errorf("cannot verify the Govard proxy certificate without its local CA (is the Govard proxy running? start it with: govard svc up): %w", err)
 	}
-	client := try.ProbeClient(proxyHTTPSAddr, origin.HostHeader, roots)
 
 	return try.WaitReady(ctx, client, origin, timeout, tryProbeInterval)
+}
+
+// loadProxyRoots trusts the Govard local CA only, re-extracting it from the
+// proxy when asked to refresh a stale exported copy.
+func loadProxyRoots(refresh bool) (*x509.CertPool, error) {
+	if refresh {
+		return engine.RefreshLocalRootCAPool()
+	}
+	return engine.LocalRootCAPool()
 }
 
 func deleteProject(ctx context.Context, dir string) error {
