@@ -121,12 +121,14 @@ func (t *refreshingTransport) refresh(stale http.RoundTripper) (http.RoundTrippe
 	if t.refreshed {
 		return t.current, nil
 	}
-	t.refreshed = true
 
 	roots, err := t.load(true)
 	if err != nil {
+		// Leave refreshed false: a transient export failure must not
+		// permanently downgrade every later probe to the hint error.
 		return nil, fmt.Errorf("%s: reload the CA: %w", staleCAHint, err)
 	}
+	t.refreshed = true
 	if closer, ok := stale.(interface{ CloseIdleConnections() }); ok {
 		closer.CloseIdleConnections()
 	}

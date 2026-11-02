@@ -439,12 +439,15 @@ govard try --setup         # run the one-time domain and CA setup first
 | `--timeout <duration>` | `20m` | how long to wait for the storefront |
 | `--no-open` | off | do not open a browser |
 
-The trial needs 8 GiB free, Docker, and a working network connection. The
-storefront is served on `https://<project>.test`; without a trusted local CA the
-browser shows a certificate warning until you run `govard try --setup`, and a
-name that does not resolve is reported instead of printed as a link. If it fails
-after the workspace exists, the message names the path and the exact
-`govard project delete` command that cleans it up.
+The trial needs 8 GiB free, Docker, a working network connection, and the Govard
+proxy with its local CA. A missing proxy is reported before anything is
+downloaded, with `govard try --setup` as the remedy. The storefront is served on
+`https://<project>.test`; without a trusted local CA the browser shows a
+certificate warning until `govard doctor trust` runs, and a name that does not
+resolve prints the exact hosts command instead of a dead link. A workspace
+created by the trial is deleted on exit; a directory you named with `--dir` is
+left in place. If it fails after the workspace exists, the message names the
+path and the `govard project delete` command that cleans it up.
 
 ### `govard env`
 

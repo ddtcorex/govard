@@ -434,12 +434,14 @@ govard try --setup         # chạy thiết lập domain và CA một lần trư
 | `--timeout <duration>` | `20m` | thời gian chờ storefront trả lời |
 | `--no-open` | tắt | không mở trình duyệt |
 
-Lần chạy cần 8 GiB trống, Docker và kết nối mạng. Storefront được phục vụ trên
-`https://<project>.test`; nếu chưa có CA cục bộ được tin cậy, trình duyệt sẽ cảnh
-báo chứng chỉ cho tới khi bạn chạy `govard try --setup`, còn tên miền không phân
-giải được sẽ được báo rõ thay vì in ra một liên kết chết. Nếu lỗi xảy ra sau khi
-workspace đã tạo, thông báo sẽ nêu đường dẫn và đúng lệnh `govard project delete`
-để dọn.
+Lần chạy cần 8 GiB trống, Docker, kết nối mạng, và Govard proxy cùng CA cục bộ.
+Thiếu proxy sẽ được báo trước khi tải bất cứ thứ gì, kèm cách xử lý
+`govard try --setup`. Storefront được phục vụ trên `https://<project>.test`; nếu
+chưa tin cậy CA cục bộ, trình duyệt cảnh báo chứng chỉ cho tới khi chạy
+`govard doctor trust`, còn tên miền không phân giải được sẽ in đúng lệnh hosts
+thay vì một liên kết chết. Workspace do lần chạy tạo ra sẽ bị xoá khi thoát; thư
+mục bạn chỉ định bằng `--dir` thì được giữ nguyên. Nếu lỗi xảy ra sau khi
+workspace đã tạo, thông báo nêu đường dẫn và lệnh `govard project delete` để dọn.
 
 ### `govard env`
 

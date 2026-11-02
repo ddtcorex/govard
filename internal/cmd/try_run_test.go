@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"govard/internal/cli"
 	"govard/internal/engine"
 	"govard/internal/try"
 )
@@ -25,25 +26,170 @@ func hugeDisk(string) (uint64, error) { return 100 << 30, nil }
 
 func noDelete(context.Context, string) error { return nil }
 
+func noArtifacts(string, string, []string) engine.ProjectArtifacts {
+	return engine.ProjectArtifacts{}
+}
+
+// useTryDeps installs the given dependencies, filling the side effects a unit
+// test must never perform (a real proxy dial, a real docker listing) with
+// inert stand-ins, and restores the previous set when the test ends.
+func useTryDeps(t *testing.T, deps TryDependenciesForTest) {
+	t.Helper()
+
+	if deps.ProxyUp == nil {
+		deps.ProxyUp = func() error { return nil }
+	}
+	if deps.CollectArtifacts == nil {
+		deps.CollectArtifacts = noArtifacts
+	}
+	if deps.FreeDisk == nil {
+		deps.FreeDisk = hugeDisk
+	}
+	if deps.Signal == nil {
+		deps.Signal = closedSignal()
+	}
+	if deps.Stdin == nil {
+		deps.Stdin = strings.NewReader("")
+	}
+	if deps.RunSelf == nil {
+		deps.RunSelf = func(context.Context, string, ...string) error { return nil }
+	}
+	if deps.Probe == nil {
+		deps.Probe = func(context.Context, try.Origin, time.Duration) error { return nil }
+	}
+	if deps.DeleteProject == nil {
+		deps.DeleteProject = noDelete
+	}
+
+	t.Cleanup(SetTryDependenciesForTest(deps))
+}
+
+// --- flag mapping -----------------------------------------------------------
+
+func TestResolveTryOptionsInstallsSampleDataByDefault(t *testing.T) {
+	resetTryFlags(t)
+
+	opts, err := resolveTryOptions(nil)
+	if err != nil {
+		t.Fatalf("resolveTryOptions: %v", err)
+	}
+	if !opts.Sample {
+		t.Fatalf("Sample = false, want sample data installed by default")
+	}
+}
+
+func TestResolveTryOptionsHonoursTheNoSampleFlag(t *testing.T) {
+	resetTryFlags(t)
+	if err := tryCmd.Flags().Set("no-sample", "true"); err != nil {
+		t.Fatalf("set flag: %v", err)
+	}
+	t.Cleanup(func() { _ = tryCmd.Flags().Set("no-sample", "false") })
+
+	opts, err := resolveTryOptions(nil)
+	if err != nil {
+		t.Fatalf("resolveTryOptions: %v", err)
+	}
+	if opts.Sample {
+		t.Fatalf("Sample = true with --no-sample, want false")
+	}
+}
+
+func TestResolveTryOptionsRejectsAnUnknownFrameworkAsUsageError(t *testing.T) {
+	resetTryFlags(t)
+
+	_, err := resolveTryOptions([]string{"wordpress2"})
+	if err == nil {
+		t.Fatalf("resolveTryOptions accepted an unknown framework")
+	}
+
+	var usage *cli.UsageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("error = %T, want *cli.UsageError so the exit code is 2", err)
+	}
+}
+
+func resetTryFlags(t *testing.T) {
+	t.Helper()
+
+	tryDir = ""
+	tryKeep = false
+	tryNoSample = false
+	trySetup = false
+	tryTimeout = 20 * time.Minute
+	tryNoOpen = false
+}
+
+// --- preflight --------------------------------------------------------------
+
+func TestNearestExistingDirWalksUpToAParent(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(root, "a", "b", "c")
+
+	got, err := nearestExistingDir(missing)
+	if err != nil {
+		t.Fatalf("nearestExistingDir: %v", err)
+	}
+	if got != root {
+		t.Fatalf("nearestExistingDir = %q, want %q", got, root)
+	}
+}
+
+func TestEnsureTryFreeSpaceMeasuresAnExistingAncestor(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(root, "workspace")
+
+	var measured string
+	useTryDeps(t, TryDependenciesForTest{
+		FreeDisk: func(path string) (uint64, error) {
+			measured = path
+			return 100 << 30, nil
+		},
+	})
+
+	if err := ensureTryFreeSpace(missing); err != nil {
+		t.Fatalf("ensureTryFreeSpace: %v", err)
+	}
+	if measured != root {
+		t.Fatalf("measured %q, want the existing ancestor %q", measured, root)
+	}
+}
+
+func TestTryRefusesWhenTheProxyIsNotRunning(t *testing.T) {
+	workspace := t.TempDir()
+
+	ran := false
+	useTryDeps(t, TryDependenciesForTest{
+		ProxyUp: func() error { return errors.New("connection refused") },
+		RunSelf: func(context.Context, string, ...string) error { ran = true; return nil },
+	})
+
+	err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Timeout: time.Second})
+	if err == nil {
+		t.Fatalf("runTry ran without a proxy")
+	}
+	if !strings.Contains(err.Error(), "--setup") {
+		t.Fatalf("error = %v, want the --setup remedy", err)
+	}
+	if ran {
+		t.Fatalf("bootstrap ran despite the missing proxy")
+	}
+}
+
+// --- orchestration ----------------------------------------------------------
+
 func TestTryRunsBootstrapInsideWorkspace(t *testing.T) {
 	workspace := t.TempDir()
 
 	var gotDir string
 	var gotArgs []string
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk: hugeDisk,
+	useTryDeps(t, TryDependenciesForTest{
 		RunSelf: func(_ context.Context, dir string, args ...string) error {
 			if len(args) > 0 && args[0] == "bootstrap" {
 				gotDir, gotArgs = dir, args
 			}
 			return nil
 		},
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
 	})
-	defer restore()
 
 	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second}); err != nil {
 		t.Fatalf("runTry: %v", err)
@@ -62,18 +208,12 @@ func TestTryRunsEnvUpAfterBootstrap(t *testing.T) {
 	workspace := t.TempDir()
 
 	var calls []string
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk: hugeDisk,
+	useTryDeps(t, TryDependenciesForTest{
 		RunSelf: func(_ context.Context, _ string, args ...string) error {
 			calls = append(calls, strings.Join(args, " "))
 			return nil
 		},
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
 	})
-	defer restore()
 
 	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second}); err != nil {
 		t.Fatalf("runTry: %v", err)
@@ -84,24 +224,18 @@ func TestTryRunsEnvUpAfterBootstrap(t *testing.T) {
 	}
 }
 
-func TestTrySkipsSampleDataWithFlag(t *testing.T) {
+func TestTrySkipsSampleDataWhenSampleIsFalse(t *testing.T) {
 	workspace := t.TempDir()
 
 	var gotArgs []string
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk: hugeDisk,
+	useTryDeps(t, TryDependenciesForTest{
 		RunSelf: func(_ context.Context, _ string, args ...string) error {
 			if len(args) > 0 && args[0] == "bootstrap" {
 				gotArgs = args
 			}
 			return nil
 		},
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
 	})
-	defer restore()
 
 	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: false, Timeout: time.Second}); err != nil {
 		t.Fatalf("runTry: %v", err)
@@ -114,22 +248,45 @@ func TestTrySkipsSampleDataWithFlag(t *testing.T) {
 	}
 }
 
+func TestTryKeepsAnExplicitDirAndRemovesAGeneratedWorkspace(t *testing.T) {
+	explicit := t.TempDir()
+	useTryDeps(t, TryDependenciesForTest{})
+
+	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: explicit, Sample: true, Timeout: time.Second}); err != nil {
+		t.Fatalf("runTry with --dir: %v", err)
+	}
+	if _, err := os.Stat(explicit); err != nil {
+		t.Fatalf("--dir workspace %s was removed: %v", explicit, err)
+	}
+
+	var generated string
+	useTryDeps(t, TryDependenciesForTest{
+		RunSelf: func(_ context.Context, dir string, _ ...string) error {
+			generated = dir
+			return nil
+		},
+	})
+	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Sample: true, Timeout: time.Second}); err != nil {
+		t.Fatalf("runTry without --dir: %v", err)
+	}
+	if generated == "" {
+		t.Fatalf("bootstrap never ran for the generated workspace")
+	}
+	if _, err := os.Stat(generated); !os.IsNotExist(err) {
+		t.Fatalf("generated workspace %s survived teardown", generated)
+	}
+}
+
 func TestTryRemovesWorkspaceByDefaultAndKeepsWithFlag(t *testing.T) {
 	for _, keep := range []bool{false, true} {
 		workspace := t.TempDir()
 
 		var deleted string
-		restore := SetTryDependenciesForTest(TryDependenciesForTest{
-			FreeDisk:      hugeDisk,
-			RunSelf:       func(context.Context, string, ...string) error { return nil },
-			Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
+		useTryDeps(t, TryDependenciesForTest{
 			DeleteProject: func(_ context.Context, dir string) error { deleted = dir; return nil },
-			Signal:        closedSignal(),
-			Stdin:         strings.NewReader(""),
 		})
 
 		err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Keep: keep, Timeout: time.Second})
-		restore()
 		if err != nil {
 			t.Fatalf("keep=%v runTry: %v", keep, err)
 		}
@@ -146,17 +303,9 @@ func TestTryRemovesWorkspaceByDefaultAndKeepsWithFlag(t *testing.T) {
 func TestTryInterruptedDuringBootstrapPrintsCleanup(t *testing.T) {
 	workspace := t.TempDir()
 
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk: hugeDisk,
-		RunSelf: func(context.Context, string, ...string) error {
-			return errors.New("interrupted")
-		},
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
+	useTryDeps(t, TryDependenciesForTest{
+		RunSelf: func(context.Context, string, ...string) error { return errors.New("interrupted") },
 	})
-	defer restore()
 
 	err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second})
 	if err == nil {
@@ -167,19 +316,39 @@ func TestTryInterruptedDuringBootstrapPrintsCleanup(t *testing.T) {
 	}
 }
 
+func TestTryInterruptedDuringTheWaitStillTearsDown(t *testing.T) {
+	workspace := t.TempDir()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	deleted := false
+	useTryDeps(t, TryDependenciesForTest{
+		Probe: func(context.Context, try.Origin, time.Duration) error {
+			cancel()
+			return context.Canceled
+		},
+		DeleteProject: func(context.Context, string) error { deleted = true; return nil },
+		Signal:        make(chan os.Signal),
+	})
+
+	err := runTry(ctx, tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("runTry: %v", err)
+	}
+	if !deleted {
+		t.Fatalf("teardown did not run after an interrupt during the wait")
+	}
+}
+
 func TestTryRefusesWhenFreeDiskIsLow(t *testing.T) {
 	workspace := t.TempDir()
 
 	ran := false
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk:      func(string) (uint64, error) { return 1 << 30, nil },
-		RunSelf:       func(context.Context, string, ...string) error { ran = true; return nil },
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
+	useTryDeps(t, TryDependenciesForTest{
+		FreeDisk: func(string) (uint64, error) { return 1 << 30, nil },
+		RunSelf:  func(context.Context, string, ...string) error { ran = true; return nil },
 	})
-	defer restore()
 
 	err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second})
 	if err == nil {
@@ -214,15 +383,7 @@ func TestTryWorksFromAnotherProjectDirectory(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(previous) })
 
 	workspace := t.TempDir()
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk:      hugeDisk,
-		RunSelf:       func(context.Context, string, ...string) error { return nil },
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
-	})
-	defer restore()
+	useTryDeps(t, TryDependenciesForTest{})
 
 	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second}); err != nil {
 		t.Fatalf("runTry: %v", err)
@@ -241,18 +402,12 @@ func TestTryReportsUnreachableProxyWhenProbeFails(t *testing.T) {
 	workspace := t.TempDir()
 
 	var probed try.Origin
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk: hugeDisk,
-		RunSelf:  func(context.Context, string, ...string) error { return nil },
+	useTryDeps(t, TryDependenciesForTest{
 		Probe: func(_ context.Context, origin try.Origin, _ time.Duration) error {
 			probed = origin
 			return try.ErrNotReady
 		},
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
 	})
-	defer restore()
 
 	err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: 5 * time.Second})
 	if err == nil {
@@ -269,22 +424,90 @@ func TestTryReportsUnreachableProxyWhenProbeFails(t *testing.T) {
 	}
 }
 
+func TestTryTeardownRunsWithLiveContextAfterInterrupt(t *testing.T) {
+	workspace := t.TempDir()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sawCanceled := true
+	deleted := false
+	useTryDeps(t, TryDependenciesForTest{
+		Probe: func(context.Context, try.Origin, time.Duration) error {
+			cancel()
+			return nil
+		},
+		DeleteProject: func(cleanupCtx context.Context, _ string) error {
+			deleted = true
+			sawCanceled = cleanupCtx.Err() != nil
+			return nil
+		},
+	})
+
+	if err := runTry(ctx, tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second}); err != nil {
+		t.Fatalf("runTry: %v", err)
+	}
+	if !deleted {
+		t.Fatalf("teardown never ran")
+	}
+	if sawCanceled {
+		t.Fatalf("teardown ran on a cancelled context; docker compose down would be a no-op")
+	}
+}
+
+func TestTryTeardownFailsWhenDockerResourcesSurvive(t *testing.T) {
+	workspace := t.TempDir()
+
+	useTryDeps(t, TryDependenciesForTest{
+		CollectArtifacts: func(string, string, []string) engine.ProjectArtifacts {
+			return engine.ProjectArtifacts{Name: "trial", Docker: true}
+		},
+	})
+
+	err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second})
+	if err == nil {
+		t.Fatalf("runTry reported success while Docker resources survived")
+	}
+	if !strings.Contains(err.Error(), "Docker resources") {
+		t.Fatalf("error = %v, want it to name the surviving resources", err)
+	}
+}
+
+func TestTryRefusesWorkspaceThatIsARegisteredProject(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv(engine.ProjectRegistryPathEnvVar, filepath.Join(t.TempDir(), "projects.json"))
+	if err := engine.UpsertProjectRegistryEntry(engine.ProjectRegistryEntry{
+		Path:        workspace,
+		ProjectName: "existing",
+		Framework:   "magento2",
+	}); err != nil {
+		t.Fatalf("seed registry: %v", err)
+	}
+
+	ran := false
+	useTryDeps(t, TryDependenciesForTest{
+		RunSelf: func(context.Context, string, ...string) error { ran = true; return nil },
+	})
+
+	err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second})
+	if err == nil || !strings.Contains(err.Error(), "already a registered Govard project") {
+		t.Fatalf("error = %v, want a refusal naming the registered project", err)
+	}
+	if ran {
+		t.Fatalf("bootstrap ran on an already registered project")
+	}
+}
+
 func TestTryWithoutSetupRunsNoPrivilegedStep(t *testing.T) {
 	workspace := t.TempDir()
 
 	var calls []string
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk: hugeDisk,
+	useTryDeps(t, TryDependenciesForTest{
 		RunSelf: func(_ context.Context, _ string, args ...string) error {
 			calls = append(calls, strings.Join(args, " "))
 			return nil
 		},
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
 	})
-	defer restore()
 
 	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second}); err != nil {
 		t.Fatalf("runTry: %v", err)
@@ -301,21 +524,14 @@ func TestTryWithSetupRunsServiceSetupBeforeBootstrap(t *testing.T) {
 	workspace := t.TempDir()
 
 	var calls []string
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk: hugeDisk,
+	useTryDeps(t, TryDependenciesForTest{
 		RunSelf: func(_ context.Context, _ string, args ...string) error {
 			calls = append(calls, strings.Join(args, " "))
 			return nil
 		},
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
 	})
-	defer restore()
 
-	err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Setup: true, Timeout: time.Second})
-	if err != nil {
+	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Setup: true, Timeout: time.Second}); err != nil {
 		t.Fatalf("runTry: %v", err)
 	}
 
@@ -324,93 +540,9 @@ func TestTryWithSetupRunsServiceSetupBeforeBootstrap(t *testing.T) {
 	}
 }
 
-func TestTryTeardownRunsWithLiveContextAfterInterrupt(t *testing.T) {
-	workspace := t.TempDir()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sawCanceled := true
-	deleted := false
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk: hugeDisk,
-		RunSelf:  func(context.Context, string, ...string) error { return nil },
-		Probe: func(context.Context, try.Origin, time.Duration) error {
-			cancel() // the user hits Ctrl-C while the trial is up
-			return nil
-		},
-		DeleteProject: func(cleanupCtx context.Context, _ string) error {
-			deleted = true
-			sawCanceled = cleanupCtx.Err() != nil
-			return nil
-		},
-		Signal: closedSignal(),
-		Stdin:  strings.NewReader(""),
-	})
-	defer restore()
-
-	if err := runTry(ctx, tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second}); err != nil {
-		t.Fatalf("runTry: %v", err)
-	}
-	if !deleted {
-		t.Fatalf("teardown never ran")
-	}
-	if sawCanceled {
-		t.Fatalf("teardown ran on a cancelled context; docker compose down would be a no-op")
-	}
-}
-
-func TestTryRemovesTheWorkspaceDirectory(t *testing.T) {
-	workspace := filepath.Join(t.TempDir(), "trial")
-	if err := os.Mkdir(workspace, 0o700); err != nil {
-		t.Fatalf("mkdir workspace: %v", err)
-	}
-
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk:      hugeDisk,
-		RunSelf:       func(context.Context, string, ...string) error { return nil },
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
-	})
-	defer restore()
-
-	if err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second}); err != nil {
-		t.Fatalf("runTry: %v", err)
-	}
-	if _, err := os.Stat(workspace); !os.IsNotExist(err) {
-		t.Fatalf("workspace %s survived teardown", workspace)
-	}
-}
-
-func TestTryRefusesWorkspaceThatIsARegisteredProject(t *testing.T) {
-	workspace := t.TempDir()
-	t.Setenv(engine.ProjectRegistryPathEnvVar, filepath.Join(t.TempDir(), "projects.json"))
-	if err := engine.UpsertProjectRegistryEntry(engine.ProjectRegistryEntry{
-		Path:        workspace,
-		ProjectName: "existing",
-		Framework:   "magento2",
-	}); err != nil {
-		t.Fatalf("seed registry: %v", err)
-	}
-
-	ran := false
-	restore := SetTryDependenciesForTest(TryDependenciesForTest{
-		FreeDisk:      hugeDisk,
-		RunSelf:       func(context.Context, string, ...string) error { ran = true; return nil },
-		Probe:         func(context.Context, try.Origin, time.Duration) error { return nil },
-		DeleteProject: noDelete,
-		Signal:        closedSignal(),
-		Stdin:         strings.NewReader(""),
-	})
-	defer restore()
-
-	err := runTry(context.Background(), tryOptions{Framework: "mageos", Dir: workspace, Sample: true, Timeout: time.Second})
-	if err == nil || !strings.Contains(err.Error(), "already a registered Govard project") {
-		t.Fatalf("error = %v, want a refusal naming the registered project", err)
-	}
-	if ran {
-		t.Fatalf("bootstrap ran on an already registered project")
+func TestTryHostsHintNamesTheDomain(t *testing.T) {
+	hint := tryHostsHint("shop.test")
+	if !strings.Contains(hint, "127.0.0.1 shop.test") || !strings.Contains(hint, "/etc/hosts") {
+		t.Fatalf("hint = %q, want an exact hosts command", hint)
 	}
 }

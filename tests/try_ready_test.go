@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -78,5 +79,29 @@ func TestWaitReadySendsProjectHostHeader(t *testing.T) {
 	}
 	if seenHost != "shop.test" {
 		t.Fatalf("server saw Host %q, want shop.test", seenHost)
+	}
+}
+
+func TestWaitReadyStopsOnACertificateItCannotVerify(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := try.ProbeClient(srv.Listener.Addr().String(), "shop.test", x509.NewCertPool())
+	origin := try.Origin{URL: "https://shop.test", HostHeader: "shop.test", TLS: true}
+
+	started := time.Now()
+	err := try.WaitReady(context.Background(), client, origin, 5*time.Second, 10*time.Millisecond)
+	elapsed := time.Since(started)
+
+	if err == nil {
+		t.Fatalf("WaitReady accepted a certificate it cannot verify")
+	}
+	if !errors.Is(err, try.ErrTLSVerification) {
+		t.Fatalf("error = %v, want it to wrap try.ErrTLSVerification", err)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("WaitReady spent %s on a permanent failure, want it to stop immediately", elapsed)
 	}
 }

@@ -2,6 +2,7 @@ package try
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +12,10 @@ import (
 // ErrNotReady marks a timeout: the stack answered, with something other than
 // a ready status, for the whole wait.
 var ErrNotReady = errors.New("origin did not become ready")
+
+// ErrTLSVerification marks a certificate the probe cannot accept. Retrying
+// cannot fix it, so the wait stops instead of burning the whole timeout.
+var ErrTLSVerification = errors.New("the proxy certificate could not be verified")
 
 // WaitReady polls origin until the stack answers with a 2xx or 3xx status.
 //
@@ -34,6 +39,9 @@ func WaitReady(ctx context.Context, client *http.Client, o Origin, timeout, inte
 			return nil
 		}
 		if err != nil {
+			if isCertificateError(err) {
+				return fmt.Errorf("%w: %w", ErrTLSVerification, err)
+			}
 			last = err.Error()
 		} else {
 			last = fmt.Sprintf("status %d", status)
@@ -52,6 +60,21 @@ func WaitReady(ctx context.Context, client *http.Client, o Origin, timeout, inte
 		case <-time.After(interval):
 		}
 	}
+}
+
+// isCertificateError reports whether an error is a TLS trust failure, which
+// waiting cannot resolve.
+func isCertificateError(err error) bool {
+	var unknownAuthority x509.UnknownAuthorityError
+	if errors.As(err, &unknownAuthority) {
+		return true
+	}
+	var hostname x509.HostnameError
+	if errors.As(err, &hostname) {
+		return true
+	}
+	var invalid x509.CertificateInvalidError
+	return errors.As(err, &invalid)
 }
 
 // probeOnce issues one readiness request and returns the status code.
