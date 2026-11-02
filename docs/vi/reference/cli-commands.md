@@ -434,6 +434,9 @@ govard try --setup         # chạy thiết lập domain và CA một lần trư
 | `--timeout <duration>` | `20m` | thời gian chờ storefront trả lời |
 | `--no-open` | tắt | không mở trình duyệt |
 
+Trên máy đã ấm, một lần chạy mất khoảng mười phút nếu có dữ liệu mẫu và khoảng
+năm phút nếu không.
+
 Lần chạy cần 8 GiB trống, Docker, kết nối mạng, và Govard proxy cùng CA cục bộ.
 Thiếu proxy sẽ được báo trước khi tải bất cứ thứ gì, kèm cách xử lý
 `govard try --setup`. Storefront được phục vụ trên `https://<project>.test`; nếu

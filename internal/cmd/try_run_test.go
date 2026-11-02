@@ -546,3 +546,17 @@ func TestTryHostsHintNamesTheDomain(t *testing.T) {
 		t.Fatalf("hint = %q, want an exact hosts command", hint)
 	}
 }
+
+func TestTryETALineStatesTheMeasuredDurations(t *testing.T) {
+	withSample := tryETALine(true)
+	for _, want := range []string{"10 minutes", "--no-sample", "5 minutes"} {
+		if !strings.Contains(withSample, want) {
+			t.Fatalf("sampled ETA = %q, want it to mention %q", withSample, want)
+		}
+	}
+
+	withoutSample := tryETALine(false)
+	if !strings.Contains(withoutSample, "5 minutes") || strings.Contains(withoutSample, "--no-sample") {
+		t.Fatalf("unsampled ETA = %q, want only the shorter duration", withoutSample)
+	}
+}

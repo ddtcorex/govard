@@ -87,6 +87,8 @@ func runTrySteps(ctx context.Context, o tryOptions, ws tryWorkspace) error {
 		}
 	}
 
+	fmt.Println(tryETALine(o.Sample))
+
 	bootstrapArgs := []string{"bootstrap", "--fresh", "--framework", o.Framework, "--yes"}
 	if o.Sample {
 		bootstrapArgs = append(bootstrapArgs, "--include-sample")
@@ -178,6 +180,17 @@ func printTryOrigins(origin try.Origin) {
 		fmt.Printf("Admin:      %s/admin\n", origin.URL)
 	}
 	fmt.Printf("Login:      %s / %s\n", conventions.DefaultAdminUser, conventions.DefaultAdminPassword)
+}
+
+// tryETALine states the time the two paths actually take, measured on a warm
+// machine with a warm image cache, so a long first run reads as expected work
+// instead of a hang.
+func tryETALine(sample bool) string {
+	if sample {
+		return "This takes about 10 minutes on a warm machine with sample data. Add --no-sample for a faster, empty storefront (about 5 minutes)."
+	}
+
+	return "This takes about 5 minutes on a warm machine without sample data."
 }
 
 // tryHostsHint is the exact command that makes a trial reachable when the
