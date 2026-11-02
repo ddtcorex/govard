@@ -147,6 +147,9 @@ func finishTrial(ctx context.Context, o tryOptions, ws tryWorkspace) error {
 		return err
 	}
 	fmt.Println("\nTrial removed.")
+	if !ws.generated {
+		fmt.Printf("Workspace kept at %s (you named this directory, so Govard leaves it in place).\n", ws.path)
+	}
 
 	return nil
 }
@@ -357,7 +360,6 @@ func removeTrial(ctx context.Context, ws tryWorkspace) error {
 	}
 
 	if !ws.generated {
-		fmt.Printf("\nWorkspace kept at %s (you named this directory, so Govard leaves it in place).\n", ws.path)
 		return nil
 	}
 	if err := os.RemoveAll(ws.path); err != nil {
