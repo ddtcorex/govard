@@ -74,6 +74,20 @@ Contributors build from source (`./install.sh --source -y`, needs Go 1.25+, Node
 govard try             # throwaway Mage-OS storefront, removed on exit
 ```
 
+Real output from a run on a warm machine (trimmed to the last lines):
+
+```text
+Bootstrap completed in 6m25s.
+Storefront: https://govard-try-final-iox1gp.test
+Admin:      https://govard-try-final-iox1gp.test/admin
+Login:      admin / AdminGovard123$
+
+Keep this trial? [y/N]
+
+Trial removed.
+```
+
+
 ### 1. Initialize and start
 
 ```bash
