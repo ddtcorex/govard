@@ -235,6 +235,12 @@ func extractRootCAFromContainer(destinationPath string) error {
 // hardcoded to loopback, no data is sent or read, and the connection is
 // closed immediately after the handshake, so InsecureSkipVerify carries no
 // meaningful risk here — there is nothing yet to verify against.
+//
+// This is the only intentional skipped verification in the tree. It is not a
+// pattern to copy: it exists because the CA it would check against is created
+// by that very handshake. Static analysis flags it as CWE-295 when it reaches
+// this path; the answer is a documented dismissal, not a rewrite that hides
+// the skip behind VerifyConnection.
 func warmupCaddyCA() {
 	dialer := &net.Dialer{Timeout: 2 * time.Second}
 	conn, err := tls.DialWithDialer(dialer, "tcp", "127.0.0.1:443", &tls.Config{
