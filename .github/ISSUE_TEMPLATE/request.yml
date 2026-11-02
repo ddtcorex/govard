@@ -1,0 +1,43 @@
+name: Framework or Blueprint Request
+description: Ask for a stack to be supported, or offer a blueprint presets others can install.
+labels: [framework]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for stack coverage: a framework Govard does not detect, or a
+        blueprint preset you want to publish or see published.
+        For everything else, use the Feature Request form.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you asking for?
+      options:
+        - Framework support (Govard should detect and run this stack)
+        - Blueprint preset (a stack variant others can install)
+    validations:
+      required: true
+
+  - type: input
+    id: stack
+    attributes:
+      label: Stack and version
+      description: Framework and version, for example Magento 2.4.7, Laravel 11, WordPress 6.7
+      placeholder: Magento 2.4.7
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocked
+    attributes:
+      label: What Govard does today
+      description: The command you ran, what happened, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: links
+    attributes:
+      label: Reference links
+      description: Framework docs, a compose file, or a repository Govard could use as a reference.

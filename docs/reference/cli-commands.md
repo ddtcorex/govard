@@ -415,6 +415,37 @@ For Magento 2/Mage-OS, Magento 1/OpenMage, or PrestaShop projects with `table_pr
 - `--plan` — print plan and exit without executing
 - `-y, --yes` — skip interactive confirmation (CI/non-interactive)
 
+### `govard try`
+
+Creates a throwaway Mage-OS project, starts it, and prints the URL. Nothing is
+written into the current directory and no Adobe credentials are needed, so it is
+the fastest way to see Govard running on a machine that has never hosted a
+Magento project.
+
+```bash
+govard try                 # Mage-OS with sample data, removed when you exit
+govard try laravel         # any framework in the registry
+govard try --keep          # keep the workspace and print how to resume it
+govard try --no-sample     # skip sample data, faster on a slow connection
+govard try --setup         # run the one-time domain and CA setup first
+```
+
+| Flag | Default | Meaning |
+| :--- | :--- | :--- |
+| `--dir <path>` | `~/.govard/try/<framework>-<timestamp>` | use this directory as the workspace; it must be empty |
+| `--keep` | off | keep the workspace instead of removing it |
+| `--no-sample` | off | skip sample data |
+| `--setup` | off | run `govard svc up` (privileged) before the trial |
+| `--timeout <duration>` | `20m` | how long to wait for the storefront |
+| `--no-open` | off | do not open a browser |
+
+The trial needs 8 GiB free, Docker, and a working network connection. The
+storefront is served on `https://<project>.test`; without a trusted local CA the
+browser shows a certificate warning until you run `govard try --setup`, and a
+name that does not resolve is reported instead of printed as a link. If it fails
+after the workspace exists, the message names the path and the exact
+`govard project delete` command that cleans it up.
+
 ### `govard env`
 
 Project lifecycle and Docker Compose wrapper.

@@ -68,6 +68,12 @@ Contributors build from source (`./install.sh --source -y`, needs Go 1.25+, Node
 
 ## 💻 Usage
 
+### 0. Try it without a project
+
+```bash
+govard try             # throwaway Mage-OS storefront, removed on exit
+```
+
 ### 1. Initialize and start
 
 ```bash

@@ -411,6 +411,36 @@ framework, cũng là tài khoản Portainer đang dùng. Xem
 - `--plan` — hiển thị kế hoạch thực thi rồi thoát, không chạy thực tế.
 - `-y, --yes` — bỏ qua bước xác nhận tương tác (tiện lợi cho CI/non-interactive).
 
+### `govard try`
+
+Tạo một dự án Mage-OS dùng một lần, khởi động nó và in ra URL. Không ghi gì vào
+thư mục hiện tại và không cần thông tin đăng nhập Adobe, nên đây là cách nhanh
+nhất để thấy Govard chạy trên một máy chưa từng dựng dự án Magento.
+
+```bash
+govard try                 # Mage-OS kèm dữ liệu mẫu, xoá khi bạn thoát
+govard try laravel         # bất kỳ framework nào có trong registry
+govard try --keep          # giữ lại workspace và in cách chạy tiếp
+govard try --no-sample     # bỏ dữ liệu mẫu, nhanh hơn khi mạng chậm
+govard try --setup         # chạy thiết lập domain và CA một lần trước
+```
+
+| Cờ | Mặc định | Ý nghĩa |
+| :--- | :--- | :--- |
+| `--dir <path>` | `~/.govard/try/<framework>-<timestamp>` | dùng thư mục này làm workspace; thư mục phải rỗng |
+| `--keep` | tắt | giữ workspace thay vì xoá |
+| `--no-sample` | tắt | bỏ qua dữ liệu mẫu |
+| `--setup` | tắt | chạy `govard svc up` (cần quyền) trước khi thử |
+| `--timeout <duration>` | `20m` | thời gian chờ storefront trả lời |
+| `--no-open` | tắt | không mở trình duyệt |
+
+Lần chạy cần 8 GiB trống, Docker và kết nối mạng. Storefront được phục vụ trên
+`https://<project>.test`; nếu chưa có CA cục bộ được tin cậy, trình duyệt sẽ cảnh
+báo chứng chỉ cho tới khi bạn chạy `govard try --setup`, còn tên miền không phân
+giải được sẽ được báo rõ thay vì in ra một liên kết chết. Nếu lỗi xảy ra sau khi
+workspace đã tạo, thông báo sẽ nêu đường dẫn và đúng lệnh `govard project delete`
+để dọn.
+
 ### `govard env`
 
 Quản lý lifecycle của dự án và là wrapper của Docker Compose.

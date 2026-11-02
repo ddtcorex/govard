@@ -67,6 +67,7 @@ type DoctorDependencies struct {
 	CheckSSHAgentStatus      func() (string, error)
 	CheckComposeSpam         func() error
 	CheckGovardRegistry      func() error
+	CheckProjectRegistry     func() error
 	CheckProfileSync         func() error
 	CheckSystemDependencies  func() []string
 	CheckRuntimeImages       func() ([]string, error)
@@ -118,6 +119,9 @@ func RunDoctorDiagnosticsInRoot(dependencies DoctorDependencies, projectRoot str
 	}
 	if dependencies.CheckGovardRegistry == nil {
 		dependencies.CheckGovardRegistry = checkGovardRegistry
+	}
+	if dependencies.CheckProjectRegistry == nil {
+		dependencies.CheckProjectRegistry = CheckProjectRegistryHealth
 	}
 	if dependencies.CheckProfileSync == nil {
 		dependencies.CheckProfileSync = func() error { return checkProfileSyncInRoot(root) }
@@ -340,6 +344,10 @@ func RunDoctorDiagnosticsInRoot(dependencies DoctorDependencies, projectRoot str
 		})
 	}
 
+	if check, ok := DoctorStaleRegistryCheck(dependencies.CheckProjectRegistry); ok {
+		report.Checks = append(report.Checks, check)
+	}
+
 	// Root-owned files under .govard break the audit profiler and any write
 	// Govard makes there; the fix repairs them without sudo.
 	if err := dependencies.CheckGovardOwnership(); err != nil {
@@ -558,6 +566,41 @@ func CheckGovardHomeWritable() error {
 		return err
 	}
 	return file.Close()
+}
+
+// DoctorStaleRegistryCheck turns the stale-registration probe into a warning
+// check. A dead entry is untidy, not broken: it must never make doctor exit
+// non-zero, which is what folding it into the required registry check did.
+func DoctorStaleRegistryCheck(check func() error) (DoctorCheck, bool) {
+	if check == nil {
+		return DoctorCheck{}, false
+	}
+	if err := check(); err != nil {
+		return DoctorCheck{
+			ID:               "host.govard.registry.stale",
+			Title:            "Registered project directories",
+			Status:           DoctorStatusWarn,
+			Message:          err.Error(),
+			Hint:             "These paths were deleted outside Govard. Remove each entry with: govard project delete <path>",
+			SuggestedCommand: "govard project list",
+		}, true
+	}
+
+	return DoctorCheck{}, false
+}
+
+// CheckProjectRegistryHealth reports registry entries whose project directory
+// is gone. The entries are harmless but they keep a dead project listed.
+func CheckProjectRegistryHealth() error {
+	stale, err := StaleProjectRegistryEntries()
+	if err != nil {
+		return err
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("registry lists %d project path(s) that no longer exist: %s", len(stale), strings.Join(stale, ", "))
 }
 
 func checkGovardRegistry() error {

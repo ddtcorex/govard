@@ -48,6 +48,15 @@ body:
       required: true
 
   - type: textarea
+    id: doctor
+    attributes:
+      label: govard doctor output
+      description: Output of `govard doctor` (paste the summary block; redact host names you do not want public)
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce

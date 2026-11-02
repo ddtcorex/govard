@@ -45,6 +45,31 @@ func ProjectRegistryPath() string {
 	return filepath.Join(GovardHomeDir(), "projects.json")
 }
 
+// StaleProjectRegistryEntries returns the registered project paths whose
+// directory no longer exists. A trial workspace removed by hand, or a checkout
+// deleted outside Govard, leaves one behind; doctor reports them instead of
+// letting `project list` show a project that cannot be opened.
+func StaleProjectRegistryEntries() ([]string, error) {
+	entries, err := ReadProjectRegistryEntries()
+	if err != nil {
+		return nil, err
+	}
+
+	stale := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		path := strings.TrimSpace(entry.Path)
+		if path == "" {
+			continue
+		}
+		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+			stale = append(stale, path)
+		}
+	}
+	sort.Strings(stale)
+
+	return stale, nil
+}
+
 func ReadProjectRegistryEntries() ([]ProjectRegistryEntry, error) {
 	path := ProjectRegistryPath()
 	data, err := os.ReadFile(path)
