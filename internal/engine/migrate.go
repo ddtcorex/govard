@@ -2,8 +2,10 @@ package engine
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -31,38 +33,155 @@ type MigrationResult struct {
 	TablePrefix     string
 	WebRoot         string
 	Remotes         RemoteConfigMap
+
+	// ExtraDomains are the hostnames the source tool served besides the primary
+	// one; Govard keeps them as extra domains.
+	ExtraDomains []string
+	// WebServer is the front end the source tool used, when it named one.
+	WebServer string
+	// XdebugEnabled reports whether the source had debugging switched on.
+	XdebugEnabled bool
+	// VarnishSpecified reports whether the source said anything about Varnish. A
+	// source that stays silent must leave the project's profile default alone.
+	VarnishSpecified bool
+	// Sources lists the configuration files that were read, in the order they
+	// were applied. A layered DDEV project can answer from several files.
+	Sources []string
+	// Unmapped names every source key that has no Govard equivalent, with the
+	// reason. Nothing is dropped silently.
+	Unmapped []string
 }
 
+// ddevConfig is the union of the keys this importer understands. Anything it
+// does not read is reported by ddevUnmappedKeys below.
+type ddevConfig struct {
+	Name       string `yaml:"name"`
+	Type       string `yaml:"type"`
+	PHPVersion string `yaml:"php_version"`
+	WebServer  string `yaml:"webserver_type"`
+	NodeJS     string `yaml:"nodejs_version"`
+	Composer   string `yaml:"composer_version"`
+	Database   struct {
+		Type    string `yaml:"type"`
+		Version string `yaml:"version"`
+	} `yaml:"database"`
+	AdditionalHostnames []string `yaml:"additional_hostnames"`
+	AdditionalFQDNs     []string `yaml:"additional_fqdns"`
+	XdebugEnabled       bool     `yaml:"xdebug_enabled"`
+
+	UploadDirs            []string `yaml:"upload_dirs"`
+	WebImageExtraPackages []string `yaml:"webimage_extra_packages"`
+	OmitContainers        []string `yaml:"omit_containers"`
+	Hooks                 any      `yaml:"hooks"`
+	PerformanceMode       string   `yaml:"performance_mode"`
+	MutagenEnabled        bool     `yaml:"mutagen_enabled"`
+	WebExtraExposedPorts  any      `yaml:"web_extra_exposed_ports"`
+	DatabaseSnapshot      bool     `yaml:"database_snapshot"`
+	Timeout               string   `yaml:"timeout"`
+	DisableSettingsMgmt   bool     `yaml:"disable_settings_management"`
+	RouterHTTPSPort       string   `yaml:"router_https_port"`
+	RouterHTTPPort        string   `yaml:"router_http_port"`
+	ComposerRoot          string   `yaml:"composer_root"`
+}
+
+// MigrateFromDDEV reads .ddev/config.yaml followed by every .ddev/config.*.yaml
+// in lexical order, later files winning, the way DDEV itself layers them. A key
+// it cannot express is reported instead of being dropped.
 func MigrateFromDDEV(root string) (MigrationResult, error) {
-	configPath := filepath.Join(root, ".ddev", "config.yaml")
-	data, err := os.ReadFile(configPath)
+	dir := filepath.Join(root, ".ddev")
+	base := filepath.Join(dir, "config.yaml")
+	if _, err := os.Stat(base); err != nil {
+		return MigrationResult{}, err
+	}
+
+	paths := []string{base}
+	overrides, err := filepath.Glob(filepath.Join(dir, "config.*.yaml"))
 	if err != nil {
 		return MigrationResult{}, err
 	}
+	sort.Strings(overrides)
+	paths = append(paths, overrides...)
 
-	var ddev struct {
-		Name       string `yaml:"name"`
-		Type       string `yaml:"type"`
-		PHPVersion string `yaml:"php_version"`
-		Database   struct {
-			Type    string `yaml:"type"`
-			Version string `yaml:"version"`
-		} `yaml:"database"`
-	}
-
-	if err := yaml.Unmarshal(data, &ddev); err != nil {
-		return MigrationResult{}, err
+	merged := ddevConfig{}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return MigrationResult{}, err
+		}
+		if err := yaml.Unmarshal(data, &merged); err != nil {
+			return MigrationResult{}, err
+		}
 	}
 
 	result := MigrationResult{
-		ProjectName: ddev.Name,
-		Framework:   mapDDEVTypeToFramework(ddev.Type),
-		PHPVersion:  ddev.PHPVersion,
-		DB:          ddev.Database.Type,
-		DBVersion:   ddev.Database.Version,
+		ProjectName:     merged.Name,
+		Framework:       mapDDEVTypeToFramework(merged.Type),
+		PHPVersion:      merged.PHPVersion,
+		NodeVersion:     merged.NodeJS,
+		ComposerVersion: merged.Composer,
+		DB:              merged.Database.Type,
+		DBVersion:       merged.Database.Version,
+		WebServer:       mapDDEVWebServer(merged.WebServer),
+		XdebugEnabled:   merged.XdebugEnabled,
+		Sources:         paths,
 	}
 
+	// DDEV's additional_hostnames are short names under the project domain, so
+	// they expand to <host>.<project>.test; additional_fqdns are already whole.
+	for _, host := range merged.AdditionalHostnames {
+		host = strings.TrimSpace(host)
+		if host == "" {
+			continue
+		}
+		if strings.Contains(host, ".") {
+			result.ExtraDomains = append(result.ExtraDomains, host)
+			continue
+		}
+		result.ExtraDomains = append(result.ExtraDomains, fmt.Sprintf("%s.%s.test", host, merged.Name))
+	}
+	result.ExtraDomains = append(result.ExtraDomains, merged.AdditionalFQDNs...)
+
+	result.Unmapped = ddevUnmappedKeys(merged)
+
 	return result, nil
+}
+
+// mapDDEVWebServer reduces a DDEV webserver_type to the web server Govard runs.
+func mapDDEVWebServer(raw string) string {
+	switch {
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "apache"):
+		return "apache"
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "nginx"):
+		return "nginx"
+	default:
+		return ""
+	}
+}
+
+// ddevUnmappedKeys reports every key this importer saw but cannot express, so a
+// migration summary can name them instead of pretending the project moved whole.
+func ddevUnmappedKeys(cfg ddevConfig) []string {
+	var unmapped []string
+	add := func(present bool, key, reason string) {
+		if present {
+			unmapped = append(unmapped, key+": "+reason)
+		}
+	}
+
+	add(len(cfg.UploadDirs) > 0, "upload_dirs", "Govard syncs media through remotes and snapshots, not upload directories")
+	add(len(cfg.WebImageExtraPackages) > 0, "webimage_extra_packages", "Govard images are fixed per PHP version; add the extension to a blueprint instead")
+	add(len(cfg.OmitContainers) > 0, "omit_containers", "Govard decides the service set from the profile, not from an omit list")
+	add(cfg.Hooks != nil, "hooks", "Govard hooks are declared in .govard.yml; re-add them there")
+	add(strings.TrimSpace(cfg.PerformanceMode) != "", "performance_mode", "Govard mounts the project directly on Linux")
+	add(cfg.MutagenEnabled, "mutagen_enabled", "Govard does not use Mutagen")
+	add(cfg.WebExtraExposedPorts != nil, "web_extra_exposed_ports", "expose the port through the proxy config instead")
+	add(cfg.DatabaseSnapshot, "database_snapshot", "use govard snapshot for local database checkpoints")
+	add(strings.TrimSpace(cfg.Timeout) != "", "timeout", "Govard waits per command, not per project")
+	add(cfg.DisableSettingsMgmt, "disable_settings_management", "Govard always manages .govard.yml and the container settings it renders")
+	add(strings.TrimSpace(cfg.RouterHTTPPort) != "" || strings.TrimSpace(cfg.RouterHTTPSPort) != "", "router_http_port/router_https_port", "Govard serves through its shared proxy on 80 and 443")
+	add(strings.TrimSpace(cfg.ComposerRoot) != "", "composer_root", "Govard expects the application at the project root")
+
+	return unmapped
 }
 
 func MigrateFromWarden(root string) (MigrationResult, error) {
