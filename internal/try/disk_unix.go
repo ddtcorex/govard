@@ -1,11 +1,11 @@
 //go:build !windows
 
-package cmd
+package try
 
 import "syscall"
 
-// diskFreeBytes reports the bytes available on the filesystem holding path.
-func diskFreeBytes(path string) (uint64, error) {
+// freeBytes reports the bytes available on the filesystem holding path.
+func freeBytes(path string) (uint64, error) {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(path, &stat); err != nil {
 		return 0, err

@@ -1,16 +1,12 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"govard/internal/cli"
-	"govard/internal/engine"
 	"govard/internal/frameworks"
 	"govard/internal/runtime"
 	"govard/internal/try"
@@ -20,17 +16,6 @@ import (
 // Mage-OS is chosen because it installs without Adobe credentials, so the
 // trial works on a machine that has never built a Magento project.
 const defaultTryFramework = "mageos"
-
-// tryOptions is what the command line resolved, passed to the runner.
-type tryOptions struct {
-	Framework string
-	Dir       string
-	Keep      bool
-	Sample    bool
-	Setup     bool
-	Timeout   time.Duration
-	Open      bool
-}
 
 var (
 	tryDir      string
@@ -74,7 +59,7 @@ command stops before downloading anything and says which piece is missing.`,
 			return err
 		}
 
-		return runTry(cmd.Context(), opts)
+		return try.Run(cmd.Context(), opts, try.Dependencies{OpenURL: openURL})
 	},
 }
 
@@ -90,7 +75,7 @@ func init() {
 // resolveTryOptions turns the parsed flags into the options the runner needs.
 // It exists so the flag-to-behaviour mapping can be tested without running a
 // trial, which is how the inverted --no-sample binding went unnoticed.
-func resolveTryOptions(args []string) (tryOptions, error) {
+func resolveTryOptions(args []string) (try.Options, error) {
 	arg := ""
 	if len(args) > 0 {
 		arg = args[0]
@@ -98,10 +83,10 @@ func resolveTryOptions(args []string) (tryOptions, error) {
 
 	framework, err := resolveTryFramework(arg)
 	if err != nil {
-		return tryOptions{}, err
+		return try.Options{}, err
 	}
 
-	return tryOptions{
+	return try.Options{
 		Framework: framework,
 		Dir:       tryDir,
 		Keep:      tryKeep,
@@ -132,68 +117,14 @@ func resolveTryFramework(arg string) (string, error) {
 	return def.Name, nil
 }
 
-// TryDependenciesForTest replaces the side effects of a trial so the command
-// can be exercised without Docker, git or a network. A nil field keeps the real
-// implementation, mirroring SetEnvDependenciesForTest.
-type TryDependenciesForTest struct {
-	RunSelf          func(ctx context.Context, dir string, args ...string) error
-	Probe            func(ctx context.Context, origin try.Origin, timeout time.Duration) error
-	DeleteProject    func(ctx context.Context, dir string) error
-	CollectArtifacts func(name, root string, profiles []string) engine.ProjectArtifacts
-	ProxyUp          func() error
-	FreeDisk         func(path string) (uint64, error)
-	Now              func() time.Time
-	Signal           <-chan os.Signal
-	Stdin            io.Reader
-	OpenURL          func(url string) error
+// ResolveTryOptionsForTest exposes the flag-to-options mapping to the tests
+// package, which cannot reach the command's unexported internals.
+func ResolveTryOptionsForTest(args []string) (try.Options, error) {
+	return resolveTryOptions(args)
 }
 
-var tryDeps = TryDependenciesForTest{
-	RunSelf:          runSelfCommand,
-	Probe:            probeOrigin,
-	DeleteProject:    deleteProject,
-	CollectArtifacts: engine.CollectProjectArtifacts,
-	ProxyUp:          checkProxyReachable,
-	FreeDisk:         diskFreeBytes,
-	Now:              time.Now,
-	OpenURL:          openURL,
-}
-
-// SetTryDependenciesForTest applies the given dependencies and returns a
-// function that restores the previous set.
-func SetTryDependenciesForTest(deps TryDependenciesForTest) func() {
-	previous := tryDeps
-
-	if deps.RunSelf != nil {
-		tryDeps.RunSelf = deps.RunSelf
-	}
-	if deps.Probe != nil {
-		tryDeps.Probe = deps.Probe
-	}
-	if deps.DeleteProject != nil {
-		tryDeps.DeleteProject = deps.DeleteProject
-	}
-	if deps.CollectArtifacts != nil {
-		tryDeps.CollectArtifacts = deps.CollectArtifacts
-	}
-	if deps.ProxyUp != nil {
-		tryDeps.ProxyUp = deps.ProxyUp
-	}
-	if deps.FreeDisk != nil {
-		tryDeps.FreeDisk = deps.FreeDisk
-	}
-	if deps.Now != nil {
-		tryDeps.Now = deps.Now
-	}
-	if deps.Signal != nil {
-		tryDeps.Signal = deps.Signal
-	}
-	if deps.Stdin != nil {
-		tryDeps.Stdin = deps.Stdin
-	}
-	if deps.OpenURL != nil {
-		tryDeps.OpenURL = deps.OpenURL
-	}
-
-	return func() { tryDeps = previous }
+// TryCommandForTest exposes the command so tests can read its annotations and
+// flip its flags.
+func TryCommandForTest() *cobra.Command {
+	return tryCmd
 }

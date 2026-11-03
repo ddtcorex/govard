@@ -1,4 +1,4 @@
-package cmd
+package try
 
 import (
 	"bufio"
@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -18,8 +19,73 @@ import (
 	"govard/internal/cli"
 	"govard/internal/conventions"
 	"govard/internal/engine"
-	"govard/internal/try"
 )
+
+// Options is everything a trial needs from the command line.
+type Options struct {
+	Framework string
+	Dir       string
+	Keep      bool
+	Sample    bool
+	Setup     bool
+	Timeout   time.Duration
+	Open      bool
+}
+
+// Dependencies are the side effects a trial performs. Every field is optional:
+// a nil field keeps the production implementation, so a test overrides only the
+// one it is about.
+type Dependencies struct {
+	RunSelf          func(ctx context.Context, dir string, args ...string) error
+	Probe            func(ctx context.Context, origin Origin, timeout time.Duration) error
+	DeleteProject    func(ctx context.Context, dir string) error
+	CollectArtifacts func(name, root string, profiles []string) engine.ProjectArtifacts
+	ProxyUp          func() error
+	FreeDisk         func(path string) (uint64, error)
+	Now              func() time.Time
+	Signal           <-chan os.Signal
+	Stdin            io.Reader
+	OpenURL          func(url string) error
+}
+
+// runner carries the resolved dependencies through one trial.
+type runner struct {
+	deps Dependencies
+}
+
+// Run creates a throwaway workspace, runs the real bootstrap and env up inside
+// it, waits for the storefront, then keeps or removes it.
+func Run(ctx context.Context, o Options, d Dependencies) error {
+	r := &runner{deps: withDefaults(d)}
+
+	return r.run(ctx, o)
+}
+
+func withDefaults(d Dependencies) Dependencies {
+	if d.RunSelf == nil {
+		d.RunSelf = runSelfCommand
+	}
+	if d.Probe == nil {
+		d.Probe = probeOrigin
+	}
+	if d.DeleteProject == nil {
+		d.DeleteProject = deleteProject
+	}
+	if d.CollectArtifacts == nil {
+		d.CollectArtifacts = engine.CollectProjectArtifacts
+	}
+	if d.ProxyUp == nil {
+		d.ProxyUp = checkProxyReachable
+	}
+	if d.FreeDisk == nil {
+		d.FreeDisk = freeBytes
+	}
+	if d.Now == nil {
+		d.Now = time.Now
+	}
+
+	return d
+}
 
 const (
 	// minTryFreeBytes is the floor a trial needs before it is allowed to pull
@@ -40,49 +106,49 @@ const (
 	tryCleanupTimeout = 2 * time.Minute
 )
 
-// tryWorkspace is where a trial builds, and whether Govard created it.
+// workspace is where a trial builds, and whether Govard created it.
 // A workspace the user named with --dir is never deleted: Govard did not make
 // it, so it is not Govard's to remove.
-type tryWorkspace struct {
+type workspace struct {
 	path      string
 	generated bool
 }
 
 // runTry creates a throwaway workspace, runs the real bootstrap and env up
 // inside it, waits for the storefront, then keeps or removes it.
-func runTry(ctx context.Context, o tryOptions) error {
-	ws, err := prepareWorkspace(o)
+func (r *runner) run(ctx context.Context, o Options) error {
+	ws, err := r.prepareWorkspace(o)
 	if err != nil {
 		return err
 	}
 
-	if err := ensureTryFreeSpace(ws.path); err != nil {
+	if err := r.ensureTryFreeSpace(ws.path); err != nil {
 		return err
 	}
 
 	// The proxy, its CA and the local domain all come from one `svc up`. Check
 	// before downloading a storefront, not after: the decisive failure on a
 	// machine that has never run Govard used to arrive minutes later.
-	if err := tryDeps.ProxyUp(); err != nil {
+	if err := r.deps.ProxyUp(); err != nil {
 		return fmt.Errorf("the Govard proxy is not answering on %s: %w\n\n"+
 			"Start the proxy, its local CA and the local domains with:\n"+
 			"  govard try --setup\n"+
 			"(the same step is available as: govard svc up)", proxyHTTPSAddr, err)
 	}
 
-	if err := runTrySteps(ctx, o, ws); err != nil {
+	if err := r.steps(ctx, o, ws); err != nil {
 		return fmt.Errorf("%w\n\nworkspace kept at %s\nremove it with: govard project delete %s", err, ws.path, ws.path)
 	}
 
 	return nil
 }
 
-func runTrySteps(ctx context.Context, o tryOptions, ws tryWorkspace) error {
+func (r *runner) steps(ctx context.Context, o Options, ws workspace) error {
 	if o.Setup {
 		fmt.Println("Running the one-time setup:")
 		fmt.Println("  starts the Govard proxy, exports its root CA and trusts it in the system store (sudo),")
 		fmt.Println("  and configures local .test resolution.")
-		if err := tryDeps.RunSelf(ctx, ws.path, "svc", "up"); err != nil {
+		if err := r.deps.RunSelf(ctx, ws.path, "svc", "up"); err != nil {
 			return fmt.Errorf("run the one-time setup: %w", err)
 		}
 	}
@@ -93,25 +159,25 @@ func runTrySteps(ctx context.Context, o tryOptions, ws tryWorkspace) error {
 	if o.Sample {
 		bootstrapArgs = append(bootstrapArgs, "--include-sample")
 	}
-	if err := tryDeps.RunSelf(ctx, ws.path, bootstrapArgs...); err != nil {
+	if err := r.deps.RunSelf(ctx, ws.path, bootstrapArgs...); err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
 
-	if err := tryDeps.RunSelf(ctx, ws.path, "env", "up"); err != nil {
+	if err := r.deps.RunSelf(ctx, ws.path, "env", "up"); err != nil {
 		return fmt.Errorf("start the environment: %w", err)
 	}
 
 	domain := tryDomain(ws.path)
-	origin := try.ResolveOrigin(domain, engine.IsDomainResolvableLocally, caFilePresent)
+	origin := ResolveOrigin(domain, engine.IsDomainResolvableLocally, caFilePresent)
 
 	fmt.Printf("Waiting for %s to answer ...\n", domain)
-	if err := tryDeps.Probe(ctx, origin, o.Timeout); err != nil {
+	if err := r.deps.Probe(ctx, origin, o.Timeout); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			fmt.Println("\nInterrupted while waiting for the storefront.")
 
-			return finishTrial(ctx, o, ws)
+			return r.finishTrial(ctx, o, ws)
 		}
-		if errors.Is(err, try.ErrTLSVerification) {
+		if errors.Is(err, ErrTLSVerification) {
 			return fmt.Errorf("%w\n\nre-trust the Govard CA and retry: govard doctor trust", err)
 		}
 
@@ -121,31 +187,31 @@ func runTrySteps(ctx context.Context, o tryOptions, ws tryWorkspace) error {
 
 	printTryOrigins(origin)
 
-	if o.Open && origin.Resolvable {
-		if err := tryDeps.OpenURL(origin.URL); err != nil {
+	if o.Open && origin.Resolvable && r.deps.OpenURL != nil {
+		if err := r.deps.OpenURL(origin.URL); err != nil {
 			fmt.Printf("Could not open a browser: %v\n", err)
 		}
 	}
 
-	if interrupted := waitForExit(ctx, o.Timeout); interrupted {
+	if interrupted := r.waitForExit(ctx, o.Timeout); interrupted {
 		fmt.Println("\nInterrupted.")
 	} else {
 		fmt.Printf("\nTrial timeout (%s) reached.\n", o.Timeout)
 	}
 
-	return finishTrial(ctx, o, ws)
+	return r.finishTrial(ctx, o, ws)
 }
 
 // finishTrial asks whether to keep the workspace and, unless told to keep it,
 // tears the trial down. It runs on every exit path including Ctrl-C, because a
 // trial the user interrupted still owns containers and a workspace.
-func finishTrial(ctx context.Context, o tryOptions, ws tryWorkspace) error {
-	if keepTrial(o) {
+func (r *runner) finishTrial(ctx context.Context, o Options, ws workspace) error {
+	if r.keepTrial(o) {
 		fmt.Printf("\nKept at %s\nresume with: cd %s && govard env up\n", ws.path, ws.path)
 		return nil
 	}
 
-	if err := removeTrial(ctx, ws); err != nil {
+	if err := r.removeTrial(ctx, ws); err != nil {
 		return err
 	}
 	fmt.Println("\nTrial removed.")
@@ -168,7 +234,7 @@ func tryDomain(workspace string) string {
 	return filepath.Base(workspace) + ".test"
 }
 
-func printTryOrigins(origin try.Origin) {
+func printTryOrigins(origin Origin) {
 	if !origin.Resolvable {
 		fmt.Printf("\nThe storefront is running, but %s does not resolve on this machine.\n", origin.HostHeader)
 		fmt.Println(tryHostsHint(origin.HostHeader))
@@ -210,8 +276,8 @@ func caFilePresent(string) bool {
 // waitForExit blocks until the user interrupts, the command context is
 // cancelled, or the trial timeout expires. It reports whether the exit was an
 // interruption; a timeout is a normal end of trial.
-func waitForExit(ctx context.Context, timeout time.Duration) bool {
-	sig := tryDeps.Signal
+func (r *runner) waitForExit(ctx context.Context, timeout time.Duration) bool {
+	sig := r.deps.Signal
 	if sig == nil {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
@@ -234,12 +300,12 @@ func waitForExit(ctx context.Context, timeout time.Duration) bool {
 
 // keepTrial asks whether to keep the workspace. An empty answer removes it:
 // the default for a trial is leaving nothing behind.
-func keepTrial(o tryOptions) bool {
+func (r *runner) keepTrial(o Options) bool {
 	if o.Keep {
 		return true
 	}
 
-	stdin := tryDeps.Stdin
+	stdin := r.deps.Stdin
 	if stdin == nil {
 		stdin = os.Stdin
 	}
@@ -257,13 +323,13 @@ func keepTrial(o tryOptions) bool {
 // ensureTryFreeSpace measures the filesystem that will hold the workspace,
 // resolving the nearest directory that exists: on a machine that has never run
 // Govard, the workspace parent does not exist yet and statfs refuses it.
-func ensureTryFreeSpace(path string) error {
+func (r *runner) ensureTryFreeSpace(path string) error {
 	existing, err := nearestExistingDir(path)
 	if err != nil {
 		return fmt.Errorf("check free space under %s: %w", path, err)
 	}
 
-	free, err := tryDeps.FreeDisk(existing)
+	free, err := r.deps.FreeDisk(existing)
 	if err != nil {
 		return fmt.Errorf("check free space under %s: %w", path, err)
 	}
@@ -296,35 +362,35 @@ func nearestExistingDir(path string) (string, error) {
 	}
 }
 
-func prepareWorkspace(o tryOptions) (tryWorkspace, error) {
+func (r *runner) prepareWorkspace(o Options) (workspace, error) {
 	if o.Dir != "" {
 		abs, err := filepath.Abs(o.Dir)
 		if err != nil {
-			return tryWorkspace{}, fmt.Errorf("resolve try workspace: %w", err)
+			return workspace{}, fmt.Errorf("resolve try workspace: %w", err)
 		}
 		// Checked before touching the directory: a registered project must be
 		// reported as such, not as "not empty".
 		if err := assertNotRegistered(abs); err != nil {
-			return tryWorkspace{}, err
+			return workspace{}, err
 		}
-		if err := try.PrepareDir(abs); err != nil {
-			return tryWorkspace{}, &cli.UsageError{Err: err}
+		if err := PrepareDir(abs); err != nil {
+			return workspace{}, &cli.UsageError{Err: err}
 		}
 
-		return tryWorkspace{path: abs, generated: false}, nil
+		return workspace{path: abs, generated: false}, nil
 	}
 
 	parent := filepath.Join(engine.GovardHomeDir(), "try")
 	if err := os.MkdirAll(parent, 0o700); err != nil {
-		return tryWorkspace{}, fmt.Errorf("create try workspace root: %w", err)
+		return workspace{}, fmt.Errorf("create try workspace root: %w", err)
 	}
 
-	path, err := try.CreateWorkspace(parent, o.Framework, tryDeps.Now())
+	path, err := CreateWorkspace(parent, o.Framework, r.deps.Now())
 	if err != nil {
-		return tryWorkspace{}, err
+		return workspace{}, err
 	}
 
-	return tryWorkspace{path: path, generated: true}, nil
+	return workspace{path: path, generated: true}, nil
 }
 
 // assertNotRegistered refuses a workspace that is already a Govard project, or
@@ -352,11 +418,11 @@ func assertNotRegistered(path string) error {
 // resource survived, and deletes a workspace Govard created. Ctrl-C cancels the
 // command context, so teardown runs detached from it: a cancelled context would
 // make `docker compose down` a no-op and leave everything behind.
-func removeTrial(ctx context.Context, ws tryWorkspace) error {
+func (r *runner) removeTrial(ctx context.Context, ws workspace) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tryCleanupTimeout)
 	defer cancel()
 
-	if err := tryDeps.DeleteProject(cleanupCtx, ws.path); err != nil {
+	if err := r.deps.DeleteProject(cleanupCtx, ws.path); err != nil {
 		return fmt.Errorf("remove the trial: %w", err)
 	}
 
@@ -368,7 +434,7 @@ func removeTrial(ctx context.Context, ws tryWorkspace) error {
 	if entry, ok := engine.GetProjectRegistryEntry(ws.path); ok && entry.ProjectName != "" {
 		name = entry.ProjectName
 	}
-	if artifacts := tryDeps.CollectArtifacts(name, ws.path, nil); artifacts.Docker {
+	if artifacts := r.deps.CollectArtifacts(name, ws.path, nil); artifacts.Docker {
 		return fmt.Errorf("remove the trial: Docker resources for %s survived teardown; run: govard project delete %s", name, ws.path)
 	}
 
@@ -408,13 +474,13 @@ func runSelfCommand(ctx context.Context, dir string, args ...string) error {
 	return cmd.Run()
 }
 
-func probeOrigin(ctx context.Context, origin try.Origin, timeout time.Duration) error {
-	client, err := try.RefreshingProbeClient(proxyHTTPSAddr, origin.HostHeader, loadProxyRoots)
+func probeOrigin(ctx context.Context, origin Origin, timeout time.Duration) error {
+	client, err := RefreshingProbeClient(proxyHTTPSAddr, origin.HostHeader, loadProxyRoots)
 	if err != nil {
 		return fmt.Errorf("cannot verify the Govard proxy certificate without its local CA (is the Govard proxy running? start it with: govard svc up): %w", err)
 	}
 
-	return try.WaitReady(ctx, client, origin, timeout, tryProbeInterval)
+	return WaitReady(ctx, client, origin, timeout, tryProbeInterval)
 }
 
 // loadProxyRoots trusts the Govard local CA only, re-extracting it from the
