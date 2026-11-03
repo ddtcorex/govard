@@ -11,6 +11,56 @@ This guide walks you through migrating an existing project (e.g., from Warden) t
 
 ---
 
+## Migrating from DDEV to Govard
+
+DDEV stores its settings in `.ddev/config.yaml` plus any `.ddev/config.*.yaml`
+overrides. Govard reads all of them, in order, with the later file winning, the
+same way DDEV does.
+
+```bash
+govard init --migrate-from ddev
+```
+
+The command prints one line per key it handled, so the result is inspectable
+before you boot anything:
+
+- `mapped ...` for values carried into `.govard.yml`;
+- `defaulted ...` for services the DDEV file never mentions, which keep the
+  framework profile's default rather than being switched off;
+- `not migrated ...` for keys Govard has no equivalent for, with the reason.
+
+### What carries over
+
+| DDEV key | Govard field |
+| :--- | :--- |
+| `name` | `project_name` and the `*.test` domain |
+| `type` | `framework` |
+| `docroot` | `stack.web_root` |
+| `php_version`, `nodejs_version`, `composer_version` | the matching `stack.*` versions |
+| `webserver_type` | `stack.services.web_server` |
+| `database.type`, `database.version` | `stack.services.db`, `stack.db_version` |
+| `additional_hostnames` | `extra_domains`, expanded to `<host>.<project>.test` |
+| `additional_fqdns` | `extra_domains`, unchanged |
+| `xdebug_enabled` | `stack.features.xdebug` |
+
+### What is reported, not applied
+
+`upload_dirs`, `webimage_extra_packages`, `omit_containers`, `hooks`,
+`performance_mode`, `mutagen_enabled`, `web_extra_exposed_ports`,
+`database_snapshot`, `timeout`, `disable_settings_management`, the router ports
+and `composer_root` are named in the output with the reason each one has no
+equivalent. Nothing is dropped silently.
+
+Services DDEV does not manage (`search`, `cache`, `queue`, `varnish`) keep the
+profile default, so a migrated Magento project still gets OpenSearch, Redis and
+RabbitMQ. `govard doctor` is the check: a correct migration reports the runtime
+as synced with the profile instead of warning that search and cache are `none`.
+
+One deliberate exception: the framework profile pins PHP, Node and Composer
+versions, so a profile pin can override a version DDEV declared. That override is
+printed as a drift line (`Synced stack.node_version 20→24`) rather than happening
+silently.
+
 ## Migrating from Warden to Govard
 
 When moving a project from Warden, the primary goals are:
