@@ -75,7 +75,7 @@ export BENCH_BINARY BENCH_FIXTURE BENCH_REPO_ROOT BENCH_RUNS
 
 bench_log "wrote $result"
 
-if [[ -x "$SCRIPT_DIR/summarize.sh" ]]; then
-    "$SCRIPT_DIR/summarize.sh" "$result" "$summary"
-    bench_log "wrote $summary"
-fi
+(cd "$REPO_ROOT" && go run ./scripts/bench/report summarize "$result" "$summary") ||
+    bench_die "could not summarise $result"
+bench_log "wrote $summary"
+
