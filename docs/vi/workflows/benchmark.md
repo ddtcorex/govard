@@ -28,6 +28,47 @@ Thời gian kéo image không nằm trong số đo start. Khối provenance bên
 - Hai nhánh không chạy cùng một stack. Govard chạy profile mặc định của dự án, gồm Varnish, Redis và OpenSearch; DDEV chạy mặc định Magento của nó, chỉ web và database. Phần lớn chênh lệch bộ nhớ đến từ đó, và trang này nói rõ thay vì gộp thành một điểm số.
 - DDEV chạy trên cổng router khác (8080/8443) để không giành 80/443 với Govard proxy; request tới DDEV vì thế đi qua cổng khác request tới Govard.
 
+## Vì sao các con số khác nhau
+
+Hai nhánh không chạy cùng một stack, và hai dòng trong bảng đo lớp bọc lệnh chứ
+không đo công việc thật. Đọc phần này trước khi so hai cột; không câu nào ở đây
+nói tool nào nhanh hơn.
+
+**Bộ container.** Govard dựng bảy container (nginx, php, php-debug, Varnish,
+Redis, OpenSearch, MariaDB). DDEV dựng hai (web, database) cộng router dùng
+chung. Bộ nhớ đỉnh gần như bằng đúng phần chênh đó, và riêng search engine đã
+chiếm phần lớn.
+
+**Page cache.** Govard đặt Varnish phía trước, nên request vào storefront thường
+là cache hit: response mang `age` và `x-magento-cache-debug: HIT`. DDEV không có
+Varnish nên cùng request đó phải render PHP. Vì vậy dòng TTFB so một lần trúng
+proxy với một lần render PHP, không phải hai lần render PHP. Muốn ép miss trên
+Govard phải ban cache hoặc dùng session cookie, vì VCL ở đây bỏ qua query string
+khi tính cache key.
+
+**Chi phí lớp bọc CLI.** Static deploy và DI compile chạy qua lớp exec của từng
+tool. Đo trực tiếp trên máy này: `docker exec` thô 1,1 s, `ddev exec` 2,4 đến 3,2
+s, `govard tool` 5,1 đến 5,4 s. Phần lớn dòng static deploy là chi phí wrapper,
+không phải Magento.
+
+**Dùng chung một cây mã nguồn.** Hai nhánh đo trên cùng một thư mục, nên
+`pub/static` đã được bên chạy trước sinh sẵn, và `env up` của Govard xoá
+`generated/code` cùng `var/cache`. Đó là lý do lần deploy đầu của Govard mất 58 s
+còn các lần sau 5 s, trong khi DDEV bắt đầu ở trạng thái ấm. Harness phải tách
+mỗi nhánh một bản sao trước khi dòng này so sánh được.
+
+**Nhiễu.** Cùng một trang, mẫu TTFB trên máy này dao động 16 đến 111 ms trong lúc
+khảo sát. Hai lượt hai mẫu không đủ tách một khác biệt 1,5 lần khỏi nhiễu.
+
+## Đọc các con số này thế nào
+
+Một lần đo trên máy đang làm việc khác chỉ là nhiễu: hai lần chạy cùng harness
+trên cùng máy đã lệch nhau gấp đôi ở chỉ số biên dịch, và hơn năm lần ở static
+deploy của govard. Hãy chạy ít nhất ba lần và công bố trung vị, đúng như bảng
+bên dưới; khoảng trong ngoặc là nhỏ nhất và lớn nhất quan sát được, khoảng càng
+rộng nghĩa là máy đang bận chứ không phải tool chậm. Coi các con số là bậc độ
+lượng, không phải đồng hồ bấm giây.
+
 ## Kết quả
 
 <!-- bench:start -->

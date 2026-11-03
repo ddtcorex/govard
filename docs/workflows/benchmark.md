@@ -22,6 +22,39 @@ Each run measures one tool against one prepared project, from a stopped state:
 
 Image pulls are excluded from the start number. The provenance block below says so, and a run that includes pulls is labelled `cold`.
 
+## Why the numbers differ
+
+The two arms do not run the same stack, and two rows measure the wrapper rather
+than the work. Read this before comparing columns; none of it is a claim about
+which tool is faster.
+
+**Container set.** Govard starts seven containers (nginx, php, php-debug,
+Varnish, Redis, OpenSearch, MariaDB). DDEV starts two (web, database) plus a
+shared router. Peak memory tracks that difference almost exactly, and the search
+engine alone is most of it.
+
+**Page cache.** Govard puts Varnish in front, so a storefront request is normally
+a cache hit: the response carries `age` and `x-magento-cache-debug: HIT`. DDEV has
+no Varnish, so the same request renders PHP. The TTFB rows therefore compare a
+proxy hit against a PHP render, not two PHP renders. Forcing a miss on Govard
+needs a cache ban or a session cookie, because its VCL ignores query strings in
+the cache key.
+
+**CLI overhead.** Static deploy and DI compile run through each tool's exec
+wrapper. Measured directly on this machine: raw `docker exec` 1.1 s, `ddev exec`
+2.4 to 3.2 s, `govard tool` 5.1 to 5.4 s. Most of the static deploy row is
+wrapper overhead, not Magento.
+
+**A shared project tree.** Both arms measured the same directory, so `pub/static`
+was already populated by whichever ran first, and Govard's `env up` clears
+`generated/code` and `var/cache`. That is why Govard's first deploy took 58 s and
+the next ones 5 s, while DDEV started warm. The harness must give each arm its
+own copy before this row can be compared.
+
+**Noise.** TTFB samples for the same page ranged from 16 to 111 ms on this host
+during the investigation. Two runs of two samples cannot separate a 1.5x
+difference from noise.
+
 ## How to read the numbers
 
 A single measurement on a shared workstation is noise: two runs of this harness
