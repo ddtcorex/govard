@@ -180,6 +180,7 @@ func init() {
 
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(bootstrapCmd)
+	rootCmd.AddCommand(tryCmd)
 	rootCmd.AddCommand(envCmd)
 	rootCmd.AddCommand(frontendCmd)
 	rootCmd.AddCommand(svcCmd)

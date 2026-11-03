@@ -9,6 +9,19 @@ Hướng dẫn này sẽ dẫn dắt bạn qua con đường ngắn nhất từ 
 
 ---
 
+## Thử trước khi có dự án của riêng bạn
+
+```bash
+govard try
+```
+
+Lệnh này tạo một dự án Mage-OS tạm, khởi động nó và in ra URL. Trên máy đã ấm,
+lần chạy đầu mất vài phút, phần lớn là lượt kéo image đầu tiên và cài Composer.
+Không có gì được ghi vào thư mục hiện tại, và bản thử được xoá khi bạn thoát,
+trừ khi bạn truyền `--keep`.
+
+---
+
 ## 1. Khởi tạo một dự án
 
 Di chuyển tới thư mục gốc của dự án và chạy:

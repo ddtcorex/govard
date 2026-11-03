@@ -204,6 +204,7 @@ function sidebarEn() {
         text: 'More',
         items: [
           { text: 'FAQ & Troubleshooting', link: '/more/faq' },
+          { text: 'Windows & WSL2', link: '/more/windows' },
           { text: 'Changelog', link: '/more/changelog' },
         ],
       },
@@ -266,6 +267,7 @@ function sidebarVi() {
         text: 'Thêm',
         items: [
           { text: 'FAQ & Khắc phục sự cố', link: '/vi/more/faq' },
+          { text: 'Windows & WSL2', link: '/vi/more/windows' },
           { text: 'Nhật ký thay đổi', link: '/vi/more/changelog' },
         ],
       },

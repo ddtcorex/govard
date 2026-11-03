@@ -9,6 +9,19 @@ This guide walks you through the shortest path from installation to a working lo
 
 ---
 
+## Try it without your own project
+
+```bash
+govard try
+```
+
+It creates a temporary Mage-OS project, starts it, and prints the URL. On a warm
+machine the first run takes a few minutes, most of it the first image pull and
+the Composer install. Nothing is written into your current directory, and the
+trial is removed when you exit unless you pass `--keep`.
+
+---
+
 ## 1. Initialize a Project
 
 Navigate to your project root and run:
