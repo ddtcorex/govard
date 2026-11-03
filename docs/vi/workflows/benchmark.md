@@ -19,24 +19,26 @@ Thời gian kéo image không nằm trong số đo start. Khối provenance bên
 
 ## Không đo gì
 
-- Chưa đo đối thủ nào. Nhánh DDEV cần dừng Govard proxy vì `ddev-router` và Govard proxy cùng giành cổng 80 và 443; adapter đó là thay đổi riêng.
 - Không đo công việc song song, độ trễ editor hay thời gian deploy.
+- Hai nhánh không chạy cùng một stack. Govard chạy profile mặc định của dự án, gồm Varnish, Redis và OpenSearch; DDEV chạy mặc định Magento của nó, chỉ web và database. Phần lớn chênh lệch bộ nhớ đến từ đó, và trang này nói rõ thay vì gộp thành một điểm số.
+- DDEV chạy trên cổng router khác (8080/8443) để không giành 80/443 với Govard proxy; request tới DDEV vì thế đi qua cổng khác request tới Govard.
 
 ## Kết quả
 
 <!-- bench:start -->
 
-| Metric | govard |
-| --- | --- |
-| Start (up to first 200) | 19202 ms |
-| Stop | 5872 ms |
-| TTFB p50 | 26.1 ms |
-| TTFB p95 | 38.4 ms |
-| Static deploy | 7817.5 ms |
-| DI compile | 37504 ms |
-| Peak memory | 1644 MB |
+| Metric | govard | ddev |
+| --- | --- | --- |
+| Start (up to first 200) | 12626.5 ms | 15041 ms |
+| Stop | 11349.5 ms | 1261 ms |
+| TTFB p50 | 16.8 ms | 91.4 ms |
+| TTFB p95 | 21.3 ms | 108.1 ms |
+| Static deploy | 5898 ms | 9571.5 ms |
+| DI compile | 35090 ms | 17133.5 ms |
+| Peak memory | 1624.5 MB | 506.5 MB |
 
-- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-2-g85e6bc95 at commit 41bb66c8, measured 2026-11-03T05:14:25Z.
+- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-5-gf71a9892 at commit f71a9892, measured 2026-11-03T06:46:03Z.
+- **ddev**: 2 run(s), images warm (pulls excluded); stack: web+db (ddev magento default; no varnish, redis or search). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-5-gf71a9892 at commit f71a9892, measured 2026-11-03T06:30:36Z.
 
 <!-- bench:end -->
 

@@ -200,6 +200,14 @@ function sidebarEn() {
         ],
       },
     ],
+    '/compare/': [
+      {
+        text: 'Compare',
+        items: [
+          { text: 'Govard and DDEV', link: '/compare/ddev' },
+        ],
+      },
+    ],
     '/more/': [
       {
         text: 'More',
@@ -261,6 +269,14 @@ function sidebarVi() {
           { text: 'Kiến trúc', link: '/vi/developer/architecture' },
           { text: 'Thêm Framework', link: '/vi/developer/adding-a-framework' },
           { text: 'Đóng góp', link: '/vi/developer/contributing' },
+        ],
+      },
+    ],
+    '/vi/compare/': [
+      {
+        text: 'So sánh',
+        items: [
+          { text: 'Govard và DDEV', link: '/vi/compare/ddev' },
         ],
       },
     ],

@@ -44,6 +44,7 @@ type Run struct {
 // RunsFile is one adapter's output.
 type RunsFile struct {
 	Target     string `json:"target"`
+	Stack      string `json:"stack,omitempty"`
 	ImagesWarm bool   `json:"images_warm"`
 	Meta       Meta   `json:"meta"`
 	Runs       []Run  `json:"runs"`
@@ -52,6 +53,7 @@ type RunsFile struct {
 // Summary is the median of one adapter's runs.
 type Summary struct {
 	Target     string             `json:"target"`
+	Stack      string             `json:"stack,omitempty"`
 	ImagesWarm bool               `json:"images_warm"`
 	Runs       int                `json:"runs"`
 	Meta       Meta               `json:"meta"`
@@ -78,6 +80,7 @@ var metricOrder = []struct {
 func Summarize(data RunsFile) Summary {
 	summary := Summary{
 		Target:     data.Target,
+		Stack:      data.Stack,
 		ImagesWarm: data.ImagesWarm,
 		Runs:       len(data.Runs),
 		Meta:       data.Meta,
@@ -143,6 +146,18 @@ func Latest(summaries []Summary) []Summary {
 		}
 	}
 
+	// govard leads the table; every other target follows alphabetically, so the
+	// column order never depends on directory listing order.
+	sort.Slice(order, func(i, j int) bool {
+		if order[i] == "govard" {
+			return true
+		}
+		if order[j] == "govard" {
+			return false
+		}
+		return order[i] < order[j]
+	})
+
 	latest := make([]Summary, 0, len(order))
 	for _, target := range order {
 		latest = append(latest, byTarget[target])
@@ -196,10 +211,11 @@ func Render(summaries []Summary) string {
 
 	b.WriteString("\n")
 	for _, summary := range measured {
-		fmt.Fprintf(&b, "- **%s**: %d run(s), images %s. %s, %d cores, %d GiB RAM, disk %s, %s, Docker %s, govard %s at commit %s, measured %s.\n",
+		fmt.Fprintf(&b, "- **%s**: %d run(s), images %s%s. %s, %d cores, %d GiB RAM, disk %s, %s, Docker %s, govard %s at commit %s, measured %s.\n",
 			summary.Target,
 			summary.Runs,
 			warmLabel(summary.ImagesWarm),
+			stackLabel(summary.Stack),
 			summary.Meta.Machine.CPU,
 			summary.Meta.Machine.Cores,
 			summary.Meta.Machine.RAMGB,
@@ -213,6 +229,16 @@ func Render(summaries []Summary) string {
 	}
 
 	return b.String()
+}
+
+// stackLabel names the services an arm actually ran, because the two tools do
+// not start the same stack by default and the difference is part of the result.
+func stackLabel(stack string) string {
+	if stack == "" {
+		return ""
+	}
+
+	return "; stack: " + stack
 }
 
 func warmLabel(warm bool) string {

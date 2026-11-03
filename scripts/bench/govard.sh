@@ -92,6 +92,20 @@ time_ms() {
     printf '%d\n' $((end - start))
 }
 
+# The DDEV arm writes app/etc/env.php too. Each arm keeps its own snapshot so a
+# measurement never runs against the other tool's database by accident.
+restore_env_snapshot() {
+    local snapshot="$fixture/.bench-env-govard.php" env_file="$fixture/app/etc/env.php"
+    if [[ -f "$snapshot" ]]; then
+        cp "$snapshot" "$env_file"
+    elif [[ -f "$env_file" ]]; then
+        cp "$env_file" "$snapshot"
+    fi
+}
+
+bench_log "restoring this arm's app/etc/env.php"
+restore_env_snapshot
+
 bench_log "stopping any running fixture"
 govard env down >/dev/null 2>&1 || true
 wait_for_stop || bench_die "could not stop the fixture before measuring"
