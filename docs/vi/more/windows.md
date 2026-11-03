@@ -1,3 +1,8 @@
+---
+title: Windows và WSL2
+description: Cái gì chạy được khi dùng Govard trên Windows, cái gì không, và vì sao WSL2 là đường được hỗ trợ.
+---
+
 # Windows và WSL2
 
 Govard được phát triển và kiểm thử trên Linux, và chạy được trên macOS. Trên

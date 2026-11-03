@@ -61,3 +61,41 @@ test('transformHeadSeo adds SoftwareApplication + WebSite JSON-LD only on the ho
   const viTypes = viScripts.map((t) => JSON.parse(t[2])['@type']).sort()
   assert.deepEqual(viTypes, ['SoftwareApplication', 'WebSite'])
 })
+
+// New pages are easy to publish without the metadata the rest of the site
+// carries, and nothing else in CI notices. Walk the docs tree so the next page
+// that skips its frontmatter fails here instead of shipping without a
+// description or a canonical tag.
+test('every docs page carries a title and a description', async () => {
+  const { readdir, readFile } = await import('node:fs/promises')
+  const { join } = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const root = fileURLToPath(new URL('..', import.meta.url))
+
+  const walk = async (dir) => {
+    const entries = await readdir(dir, { withFileTypes: true })
+    const files = []
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === 'superpowers' || entry.name === 'public') continue
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) files.push(...(await walk(full)))
+      else if (entry.name.endsWith('.md')) files.push(full)
+    }
+    return files
+  }
+
+  const missing = []
+  for (const file of await walk(root)) {
+    const body = await readFile(file, 'utf8')
+    const match = body.match(/^---\n([\s\S]*?)\n---/)
+    if (!match) {
+      missing.push(`${file}: no frontmatter`)
+      continue
+    }
+    for (const key of ['title', 'description']) {
+      if (!new RegExp(`^${key}:`, 'm').test(match[1])) missing.push(`${file}: no ${key}`)
+    }
+  }
+
+  assert.deepEqual(missing, [], `pages missing SEO frontmatter:\n${missing.join('\n')}`)
+})

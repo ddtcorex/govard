@@ -1,3 +1,8 @@
+---
+title: Govard và DDEV
+description: Govard và DDEV khác nhau ở đâu với một dự án Magento; mặc định mỗi bên khởi động gì, Govard tự động hoá gì ngoài container, và khi nào nên chọn bên kia.
+---
+
 # Govard và DDEV
 
 Cả hai công cụ đều chạy một dự án Magento trong container và cấp cho nó một tên

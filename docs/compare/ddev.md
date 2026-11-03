@@ -1,3 +1,8 @@
+---
+title: Govard and DDEV
+description: How Govard and DDEV differ for a Magento project; what each starts by default, what Govard automates outside the container, and when to choose the other tool.
+---
+
 # Govard and DDEV
 
 Both tools run a Magento project in containers and give it a local domain. They

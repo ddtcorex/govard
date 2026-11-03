@@ -1,3 +1,8 @@
+---
+title: Benchmark của Govard
+description: Số đo hiệu năng Govard có thể tái lập từ harness nằm trong repo; start, stop, thời gian phản hồi đầu tiên, static deploy, DI compile và bộ nhớ, đo trên một máy được nêu tên.
+---
+
 # Benchmark
 
 Các tuyên bố về hiệu năng của Govard chỉ đáng tin bằng chính harness sinh ra chúng. Trang này công bố số đo do `scripts/bench/` tạo ra, trên một máy được nêu tên, từ một commit được nêu tên, kèm đúng lệnh đã chạy. Nếu bạn chạy lại các lệnh đó trên máy tương đương, bạn sẽ nhận được con số trong cùng khoảng.

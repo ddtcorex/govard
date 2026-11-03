@@ -1,3 +1,8 @@
+---
+title: Govard Benchmark
+description: Reproducible Govard performance numbers from a committed harness; start, stop, time to first byte, static deploy, DI compile and memory, measured on a named machine.
+---
+
 # Benchmark
 
 Govard's performance claims are worth exactly as much as the harness behind them. This page publishes numbers produced by `scripts/bench/`, on a named machine, from a named commit, with the commands that produced them. If you can run the same commands on a comparable machine, you should get numbers in the same range.

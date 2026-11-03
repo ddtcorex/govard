@@ -28,6 +28,10 @@ jobs:
         run: npm ci
         working-directory: docs
 
+      - name: SEO and page metadata tests
+        run: npm run docs:test
+        working-directory: docs
+
       - name: Build VitePress
         run: npm run docs:build
         working-directory: docs
