@@ -31,14 +31,17 @@ type Meta struct {
 
 // Run is one measurement of one target.
 type Run struct {
-	Run            int     `json:"run"`
-	StartMS        float64 `json:"start_ms"`
-	StopMS         float64 `json:"stop_ms"`
-	TTFBP50MS      float64 `json:"ttfb_p50_ms"`
-	TTFBP95MS      float64 `json:"ttfb_p95_ms"`
-	StaticDeployMS float64 `json:"static_deploy_ms"`
-	DICompileMS    float64 `json:"di_compile_ms"`
-	PeakMemMB      float64 `json:"peak_mem_mb"`
+	Run               int     `json:"run"`
+	StartMS           float64 `json:"start_ms"`
+	StopMS            float64 `json:"stop_ms"`
+	TTFBP50MS         float64 `json:"ttfb_p50_ms"`
+	TTFBP95MS         float64 `json:"ttfb_p95_ms"`
+	TTFBUncachedP50MS float64 `json:"ttfb_uncached_p50_ms"`
+	TTFBUncachedP95MS float64 `json:"ttfb_uncached_p95_ms"`
+	CLIOverheadMS     float64 `json:"cli_overhead_ms"`
+	StaticDeployMS    float64 `json:"static_deploy_ms"`
+	DICompileMS       float64 `json:"di_compile_ms"`
+	PeakMemMB         float64 `json:"peak_mem_mb"`
 }
 
 // RunsFile is one adapter's output.
@@ -70,11 +73,14 @@ var metricOrder = []struct {
 }{
 	{"start_ms", "Start (up to first 200)", "ms"},
 	{"stop_ms", "Stop", "ms"},
-	{"ttfb_p50_ms", "TTFB p50", "ms"},
-	{"ttfb_p95_ms", "TTFB p95", "ms"},
+	{"ttfb_p50_ms", "TTFB p50 (cached)", "ms"},
+	{"ttfb_p95_ms", "TTFB p95 (cached)", "ms"},
+	{"ttfb_uncached_p50_ms", "TTFB p50 (cache bypassed)", "ms"},
+	{"ttfb_uncached_p95_ms", "TTFB p95 (cache bypassed)", "ms"},
 	{"static_deploy_ms", "Static deploy", "ms"},
 	{"di_compile_ms", "DI compile", "ms"},
 	{"peak_mem_mb", "Peak memory", "MB"},
+	{"cli_overhead_ms", "CLI wrapper overhead", "ms"},
 }
 
 // Summarize reduces the runs to their median, which is what the page publishes.
@@ -107,6 +113,12 @@ func Summarize(data RunsFile) Summary {
 				values = append(values, run.DICompileMS)
 			case "peak_mem_mb":
 				values = append(values, run.PeakMemMB)
+			case "ttfb_uncached_p50_ms":
+				values = append(values, run.TTFBUncachedP50MS)
+			case "ttfb_uncached_p95_ms":
+				values = append(values, run.TTFBUncachedP95MS)
+			case "cli_overhead_ms":
+				values = append(values, run.CLIOverheadMS)
 			}
 		}
 		if len(values) > 0 {

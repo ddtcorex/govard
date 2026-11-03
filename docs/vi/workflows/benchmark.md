@@ -30,35 +30,46 @@ Thời gian kéo image không nằm trong số đo start. Khối provenance bên
 
 ## Vì sao các con số khác nhau
 
-Hai nhánh không chạy cùng một stack, và hai dòng trong bảng đo lớp bọc lệnh chứ
-không đo công việc thật. Đọc phần này trước khi so hai cột; không câu nào ở đây
-nói tool nào nhanh hơn.
+Mỗi nhánh đo trên bản sao riêng của cùng một dự án và cùng một database, và một
+lượt chạy đầu bị bỏ để làm nóng. Dù vậy, hai cột vẫn không đo cùng một công việc.
+Đọc phần này trước khi kết luận.
 
 **Bộ container.** Govard dựng bảy container (nginx, php, php-debug, Varnish,
 Redis, OpenSearch, MariaDB). DDEV dựng hai (web, database) cộng router dùng
 chung. Bộ nhớ đỉnh gần như bằng đúng phần chênh đó, và riêng search engine đã
 chiếm phần lớn.
 
-**Page cache.** Govard đặt Varnish phía trước, nên request vào storefront thường
-là cache hit: response mang `age` và `x-magento-cache-debug: HIT`. DDEV không có
-Varnish nên cùng request đó phải render PHP. Vì vậy dòng TTFB so một lần trúng
-proxy với một lần render PHP, không phải hai lần render PHP. Muốn ép miss trên
-Govard phải ban cache hoặc dùng session cookie, vì VCL ở đây bỏ qua query string
-khi tính cache key.
+**Page cache, và điều gì xảy ra khi không có nó.** Govard đặt Varnish phía trước
+nên request bình thường là cache hit: response mang `age` và
+`x-magento-cache-debug: HIT`. DDEV không có cache ở reverse proxy nên cùng request
+đó phải render PHP. Đo cả hai chiều trên máy này thì hướng đảo nhau:
 
-**Chi phí lớp bọc CLI.** Static deploy và DI compile chạy qua lớp exec của từng
-tool. Đo trực tiếp trên máy này: `docker exec` thô 1,1 s, `ddev exec` 2,4 đến 3,2
-s, `govard tool` 5,1 đến 5,4 s. Phần lớn dòng static deploy là chi phí wrapper,
-không phải Magento.
+- để cache như mặc định: Govard 17 ms, DDEV 174 ms;
+- xoá cache trước mỗi mẫu (ban Varnish ở một bên, `cache:flush full_page` ở bên
+  kia): Govard 342 ms, DDEV 185 ms.
 
-**Dùng chung một cây mã nguồn.** Hai nhánh đo trên cùng một thư mục, nên
-`pub/static` đã được bên chạy trước sinh sẵn, và `env up` của Govard xoá
-`generated/code` cùng `var/cache`. Đó là lý do lần deploy đầu của Govard mất 58 s
-còn các lần sau 5 s, trong khi DDEV bắt đầu ở trạng thái ấm. Harness phải tách
-mỗi nhánh một bản sao trước khi dòng này so sánh được.
+Nghĩa là Govard thắng ở request đã có cache và thua ở lần render lạnh, vì đường
+đi của nó nhiều hơn một chặng (Varnish rồi nginx rồi php-fpm) so với nginx cộng
+php-fpm của DDEV. Cái nào quan trọng tuỳ vào việc lượt truy cập của bạn có trúng
+cache ấm hay không.
 
-**Nhiễu.** Cùng một trang, mẫu TTFB trên máy này dao động 16 đến 111 ms trong lúc
-khảo sát. Hai lượt hai mẫu không đủ tách một khác biệt 1,5 lần khỏi nhiễu.
+**Chi phí lớp bọc CLI.** Chạy cùng một lệnh vô nghĩa (`php -r 'echo 1;'`) trực
+tiếp và qua lớp bọc của từng tool: `govard tool` 40 ms, `ddev exec` 331 ms. Dòng
+này đính chính một khẳng định trước đó trên trang rằng lớp bọc của Govard cộng
+thêm khoảng bốn giây: con số đó đến từ một lệnh `docker exec` thô đã thất bại
+trong 1,1 giây chứ không hề chạy. Đo một lệnh rỗng theo cả hai đường là cách
+chốt đúng, và harness giờ làm việc đó ở mọi lượt.
+
+**Static deploy và DI compile.** Với cây mã nguồn riêng và một lượt làm nóng bị
+bỏ, static deploy là 4,9 s cho Govard và 5,1 s cho DDEV, DI compile là 31,8 s so
+với 46,0 s. Các con số công bố trước đó (16,4 s so với 2,8 s) là lỗi đo: hai
+nhánh dùng chung một cây, nên nhánh chạy trước sinh `pub/static` cho nhánh sau,
+và `env up` của Govard xoá `generated/code` cùng `var/cache` khiến lần deploy đầu
+phải sinh lại toàn bộ.
+
+**Nhiễu.** Khoảng min-max được in cạnh mỗi trung vị. Thời gian start của DDEV dao
+động 21,5 s đến 51,3 s qua ba lượt trên máy đang làm việc khác; một lượt đơn lẻ
+là nhiễu.
 
 ## Đọc các con số này thế nào
 
@@ -75,16 +86,19 @@ lượng, không phải đồng hồ bấm giây.
 
 | Metric | govard | ddev |
 | --- | --- | --- |
-| Start (up to first 200) | 8958 ms (7209-10707 ms) | 22113 ms (17880-26346 ms) |
-| Stop | 11348.5 ms (11188-11509 ms) | 2519.5 ms (1604-3435 ms) |
-| TTFB p50 | 17.5 ms (16.4-18.6 ms) | 108.6 ms (97.2-120.0 ms) |
-| TTFB p95 | 21.4 ms (20.6-22.2 ms) | 144.5 ms (133.9-155.0 ms) |
-| Static deploy | 16433.5 ms (5015-27852 ms) | 2771.5 ms (2441-3102 ms) |
-| DI compile | 24425.5 ms (18888-29963 ms) | 23280.5 ms (20697-25864 ms) |
-| Peak memory | 1695.5 MB (1644-1747 MB) | 430 MB (416-444 MB) |
+| Start (up to first 200) | 14713 ms (14667-15316 ms) | 26061 ms (21469-51303 ms) |
+| Stop | 11262 ms (5329-11828 ms) | 2641 ms (2341-4987 ms) |
+| TTFB p50 (cached) | 16.7 ms (15.8-21.8 ms) | 173.9 ms (114.7-196.0 ms) |
+| TTFB p95 (cached) | 21.5 ms (17.5-31.7 ms) | 266.2 ms (147.6-289.5 ms) |
+| TTFB p50 (cache bypassed) | 341.6 ms (244.3-405.6 ms) | 184.9 ms (107.3-221.0 ms) |
+| TTFB p95 (cache bypassed) | 343.7 ms (255.3-407.9 ms) | 251.1 ms (109.9-286.2 ms) |
+| Static deploy | 4875 ms (4608-6156 ms) | 5055 ms (4381-10160 ms) |
+| DI compile | 31837 ms (31816-33068 ms) | 46028 ms (35882-73548 ms) |
+| Peak memory | 1696 MB (1666-1788 MB) | 446 MB (444-463 MB) |
+| CLI wrapper overhead | 40 ms (34-95 ms) | 331 ms (152-812 ms) |
 
-- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-6-g85a08e53 at commit 85a08e53, measured 2026-11-03T07:22:37Z.
-- **ddev**: 2 run(s), images warm (pulls excluded); stack: web+db (ddev magento default; no varnish, redis or search). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-6-g85a08e53 at commit 85a08e53, measured 2026-11-03T07:30:39Z.
+- **govard**: 3 run(s), images warm (pulls excluded); stack: nginx, php, php-debug, varnish, redis, opensearch, mariadb. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-10-gea2e9648-dirty at commit ea2e9648, measured 2026-11-03T09:52:08Z.
+- **ddev**: 3 run(s), images warm (pulls excluded); stack: web (nginx + php-fpm), database; ddev magento default, no varnish, redis or search. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-10-gea2e9648-dirty at commit ea2e9648, measured 2026-11-03T10:12:53Z.
 
 <!-- bench:end -->
 

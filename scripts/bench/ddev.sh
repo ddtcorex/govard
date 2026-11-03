@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # DDEV adapter for the benchmark harness.
 #
-# Measures the same metrics as the govard adapter against a DDEV project that
-# serves the same code and database. DDEV runs its own router on alternate ports
-# (8080/8443) so it never fights the Govard proxy for 80/443.
+# Measures the same metrics as the govard adapter, on its own copy of the same
+# project and database. DDEV runs its own router on alternate ports (8080/8443)
+# so it never fights the Govard proxy for 80/443.
 #
 # DDEV is never installed by this script: a missing binary is a clear error, not
-# a download. The stack this adapter measures is DDEV's Magento default (web and
-# db); the govard arm runs the project's full default stack. The JSON records
-# that difference so the published table can state it.
+# a download. The stack measured here is DDEV's Magento default (web and db);
+# the govard arm runs the project's full default stack, and both JSON files
+# record their stack so the published table can say so.
 
 set -euo pipefail
 
@@ -26,6 +26,7 @@ command -v ddev >/dev/null 2>&1 ||
 
 fixture="${BENCH_FIXTURE:?BENCH_FIXTURE is not set}"
 runs="${BENCH_RUNS:-1}"
+warmup="${BENCH_WARMUP:-1}"
 
 config="$fixture/.ddev/config.yaml"
 [[ -f "$config" ]] || bench_die "$fixture has no .ddev/config.yaml; configure DDEV in that project first"
@@ -48,10 +49,16 @@ app_status() {
         --resolve "$domain:$https_port:127.0.0.1" "$base_url/" || printf '000 0'
 }
 
+# flush_page_cache empties Magento's full page cache. DDEV has no reverse proxy
+# cache, so this is what "cold render" means on that arm.
+flush_page_cache() {
+    (cd "$fixture" && ddev exec bin/magento cache:flush full_page >/dev/null 2>&1) || true
+}
+
 wait_for_app() {
     local deadline=$((SECONDS + readiness_timeout_s)) status
     while ((SECONDS < deadline)); do
-        status=$(app_status | awk '{print $1}')
+        status=$(app_status cached | awk '{print $1}')
         [[ "$status" == "200" ]] && return 0
         sleep 0.5
     done
@@ -74,6 +81,10 @@ percentile() {
     sort -n "$file" | awk -v p="$p" '{a[NR]=$1} END {if (NR==0) {print 0; exit} print a[int((NR-1)*p)+1]}'
 }
 
+median() {
+    sort -n | awk '{a[NR]=$1} END {if (NR==0) {print 0; exit} if (NR%2) print a[(NR+1)/2]; else printf "%.1f\n", (a[NR/2]+a[NR/2+1])/2}'
+}
+
 peak_mem_mb() {
     docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' 2>/dev/null |
         awk -v prefix="ddev-${project}-" '
@@ -94,6 +105,43 @@ time_ms() {
     fi
     end=$(bench_now_ms)
     printf '%d\n' $((end - start))
+}
+
+sample_ttfb() {
+    local mode="$1" count="$2" sample code seconds file
+    file=$(mktemp)
+    for _ in $(seq 1 "$count"); do
+        [[ "$mode" == "uncached" ]] && flush_page_cache
+        sample=$(app_status)
+        code=${sample%% *}
+        seconds=${sample##* }
+        [[ "$code" == "200" ]] || bench_die "ttfb $mode sample returned $code, refusing to record it"
+        awk -v s="$seconds" 'BEGIN {printf "%.3f\n", s * 1000}' >>"$file"
+    done
+    printf '%s %s\n' "$(percentile "$file" 0.50)" "$(percentile "$file" 0.95)"
+    rm -f "$file"
+}
+
+# cli_overhead_ms: the same trivial command through `ddev exec` and through a raw
+# `docker exec` into the web container.
+cli_overhead_ms() {
+    local container raw_vals=() wrap_vals=() raw wrap value
+    container="ddev-${project}-web"
+    docker inspect "$container" >/dev/null 2>&1 || { printf '0\n'; return 0; }
+
+    for _ in 1 2 3; do
+        if value=$(time_ms docker exec "$container" php -r 'echo 1;'); then
+            raw_vals+=("$value")
+        fi
+        if value=$(time_ms bash -c "cd '$fixture' && ddev exec php -r 'echo 1;'"); then
+            wrap_vals+=("$value")
+        fi
+    done
+    [[ ${#raw_vals[@]} -gt 0 && ${#wrap_vals[@]} -gt 0 ]] || { printf '0\n'; return 0; }
+
+    raw=$(printf '%s\n' "${raw_vals[@]}" | median)
+    wrap=$(printf '%s\n' "${wrap_vals[@]}" | median)
+    awk -v w="$wrap" -v r="$raw" 'BEGIN {d=w-r; if (d<0) d=0; printf "%.1f\n", d}'
 }
 
 # DDEV and Govard both write app/etc/env.php. Before measuring DDEV, point the
@@ -122,58 +170,55 @@ wait_for_app || bench_die "ddev project never answered before the timed runs"
 ddev_cmd stop >/dev/null 2>&1 || true
 wait_for_stop || bench_die "could not stop the ddev project after warming"
 
-tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
+total=$((warmup + runs))
+bench_log "running $total iteration(s), the first $warmup discarded as warm-up"
 
 runs_json="["
-for i in $(seq 1 "$runs"); do
-    bench_log "run $i/$runs: start"
+recorded=0
+for i in $(seq 1 "$total"); do
+    measuring=0
+    ((i > warmup)) && measuring=1
+    label="iteration $i/$total"
+    ((measuring)) || label="$label (warm-up, discarded)"
+    bench_log "$label: start"
+
     start_begin=$(bench_now_ms)
-    ddev_cmd start >/dev/null 2>&1 || bench_die "ddev start failed on run $i"
-    wait_for_app || bench_die "ddev storefront never answered on run $i"
+    ddev_cmd start >/dev/null 2>&1 || bench_die "ddev start failed on $label"
+    wait_for_app || bench_die "ddev storefront never answered on $label"
     start_end=$(bench_now_ms)
     start_ms=$((start_end - start_begin))
 
-    bench_log "run $i/$runs: ttfb"
-    : >"$tmpdir/ttfb"
-    for _ in $(seq 1 50); do
-        sample=$(app_status)
-        code=${sample%% *}
-        seconds=${sample##* }
-        [[ "$code" == "200" ]] || bench_die "ttfb sample returned $code, refusing to record it"
-        awk -v s="$seconds" 'BEGIN {printf "%.3f\n", s * 1000}' >>"$tmpdir/ttfb"
-    done
-    p50=$(percentile "$tmpdir/ttfb" 0.50)
-    p95=$(percentile "$tmpdir/ttfb" 0.95)
+    bench_log "$label: ttfb"
+    read -r ttfb_p50 ttfb_p95 <<<"$(sample_ttfb cached 50)"
+    read -r ttfb_uncached_p50 ttfb_uncached_p95 <<<"$(sample_ttfb uncached 5)"
 
-    bench_log "run $i/$runs: static deploy"
+    bench_log "$label: static deploy"
     static_ms=$(time_ms bash -c "cd '$fixture' && ddev exec bin/magento setup:static-content:deploy -f --no-interaction") ||
-        bench_die "static-content:deploy failed on run $i"
+        bench_die "static-content:deploy failed on $label"
 
-    bench_log "run $i/$runs: di compile"
+    bench_log "$label: di compile"
     di_ms=$(time_ms bash -c "cd '$fixture' && ddev exec bin/magento setup:di:compile") ||
-        bench_die "setup:di:compile failed on run $i"
+        bench_die "setup:di:compile failed on $label"
 
     mem_mb=$(peak_mem_mb)
+    overhead_ms=$(cli_overhead_ms)
 
-    bench_log "run $i/$runs: stop"
+    bench_log "$label: stop"
     stop_begin=$(bench_now_ms)
-    ddev_cmd stop >/dev/null 2>&1 || bench_die "ddev stop failed on run $i"
-    wait_for_stop || bench_die "ddev containers did not stop on run $i"
+    ddev_cmd stop >/dev/null 2>&1 || bench_die "ddev stop failed on $label"
+    wait_for_stop || bench_die "ddev containers did not stop on $label"
     stop_end=$(bench_now_ms)
     stop_ms=$((stop_end - stop_begin))
 
-    ddev_cmd start >/dev/null 2>&1 || true
-    ddev_cmd exec bin/magento cache:flush >/dev/null 2>&1 || true
-    ddev_cmd stop >/dev/null 2>&1 || true
-    wait_for_stop || true
-
-    [[ "$i" -gt 1 ]] && runs_json+=","
-    runs_json+=$(printf '{"run":%d,"start_ms":%d,"stop_ms":%d,"ttfb_p50_ms":%s,"ttfb_p95_ms":%s,"static_deploy_ms":%d,"di_compile_ms":%d,"peak_mem_mb":%d}' \
-        "$i" "$start_ms" "$stop_ms" "$p50" "$p95" "$static_ms" "$di_ms" "$mem_mb")
+    if ((measuring)); then
+        recorded=$((recorded + 1))
+        [[ "$recorded" -gt 1 ]] && runs_json+=","
+        runs_json+=$(printf '{"run":%d,"start_ms":%d,"stop_ms":%d,"ttfb_p50_ms":%s,"ttfb_p95_ms":%s,"ttfb_uncached_p50_ms":%s,"ttfb_uncached_p95_ms":%s,"static_deploy_ms":%d,"di_compile_ms":%d,"peak_mem_mb":%d,"cli_overhead_ms":%s}' \
+            "$recorded" "$start_ms" "$stop_ms" "$ttfb_p50" "$ttfb_p95" "$ttfb_uncached_p50" "$ttfb_uncached_p95" "$static_ms" "$di_ms" "$mem_mb" "$overhead_ms")
+    fi
 done
 runs_json+="]"
 
 meta=$(bench_meta_json "${BENCH_BINARY:-/bin/true}" "$REPO_ROOT" "$fixture")
-printf '{"target":"ddev","images_warm":true,"readiness_timeout_s":%d,"stack":"web+db (ddev magento default; no varnish, redis or search)","meta":%s,"runs":%s}\n' \
-    "$readiness_timeout_s" "$meta" "$runs_json" >"$result"
+printf '{"target":"ddev","stack":"web (nginx + php-fpm), database; ddev magento default, no varnish, redis or search","images_warm":true,"warmup_discarded":%d,"readiness_timeout_s":%d,"meta":%s,"runs":%s}\n' \
+    "$warmup" "$readiness_timeout_s" "$meta" "$runs_json" >"$result"

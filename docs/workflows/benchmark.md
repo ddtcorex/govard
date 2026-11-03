@@ -24,36 +24,45 @@ Image pulls are excluded from the start number. The provenance block below says 
 
 ## Why the numbers differ
 
-The two arms do not run the same stack, and two rows measure the wrapper rather
-than the work. Read this before comparing columns; none of it is a claim about
-which tool is faster.
+Each arm measures its own copy of the same project and database, and one warm-up
+iteration is discarded before timing. Even so, the two columns do not measure the
+same work. Read this before drawing a conclusion.
 
 **Container set.** Govard starts seven containers (nginx, php, php-debug,
 Varnish, Redis, OpenSearch, MariaDB). DDEV starts two (web, database) plus a
-shared router. Peak memory tracks that difference almost exactly, and the search
+shared router. Peak memory follows that difference almost exactly, and the search
 engine alone is most of it.
 
-**Page cache.** Govard puts Varnish in front, so a storefront request is normally
-a cache hit: the response carries `age` and `x-magento-cache-debug: HIT`. DDEV has
-no Varnish, so the same request renders PHP. The TTFB rows therefore compare a
-proxy hit against a PHP render, not two PHP renders. Forcing a miss on Govard
-needs a cache ban or a session cookie, because its VCL ignores query strings in
-the cache key.
+**Page cache, and what happens without it.** Govard puts Varnish in front, so a
+normal request is a cache hit: the response carries `age` and
+`x-magento-cache-debug: HIT`. DDEV has no reverse-proxy cache, so the same
+request renders PHP. Measured both ways on this machine, the direction flips:
 
-**CLI overhead.** Static deploy and DI compile run through each tool's exec
-wrapper. Measured directly on this machine: raw `docker exec` 1.1 s, `ddev exec`
-2.4 to 3.2 s, `govard tool` 5.1 to 5.4 s. Most of the static deploy row is
-wrapper overhead, not Magento.
+- with the cache as it ships: Govard 17 ms, DDEV 174 ms;
+- with the cache emptied before every sample (a Varnish ban on one side, a
+  `cache:flush full_page` on the other): Govard 342 ms, DDEV 185 ms.
 
-**A shared project tree.** Both arms measured the same directory, so `pub/static`
-was already populated by whichever ran first, and Govard's `env up` clears
-`generated/code` and `var/cache`. That is why Govard's first deploy took 58 s and
-the next ones 5 s, while DDEV started warm. The harness must give each arm its
-own copy before this row can be compared.
+So Govard wins the cached request and loses the cold render, because its path has
+one more hop (Varnish to nginx to php-fpm) than DDEV's nginx plus php-fpm. Which
+one matters depends on whether your visits hit a warm cache.
 
-**Noise.** TTFB samples for the same page ranged from 16 to 111 ms on this host
-during the investigation. Two runs of two samples cannot separate a 1.5x
-difference from noise.
+**CLI wrapper overhead.** Running the same trivial command (`php -r 'echo 1;'`)
+directly and through each tool's wrapper gives 40 ms for `govard tool` and 331 ms
+for `ddev exec`. This row corrects an earlier claim on this page that Govard's
+wrapper added about four seconds: that number came from a raw `docker exec` that
+had failed in 1.1 s rather than run. Measuring a no-op both ways is what settles
+it, and the harness now does that on every run.
+
+**Static deploy and DI compile.** With separate trees and a discarded warm-up,
+static deploy lands at 4.9 s for Govard and 5.1 s for DDEV, and DI compile at
+31.8 s against 46.0 s. Earlier published numbers (16.4 s against 2.8 s) were an
+artifact: both arms shared one tree, so the first arm generated `pub/static` for
+the second, and Govard's `env up` clears `generated/code` and `var/cache`, which
+made its first deploy pay for a full regeneration.
+
+**Noise.** Ranges are published next to each median. DDEV's start ranged from
+21.5 s to 51.3 s across three runs on an otherwise busy workstation; treat a
+single run as noise.
 
 ## How to read the numbers
 
@@ -77,16 +86,19 @@ not a stopwatch.
 
 | Metric | govard | ddev |
 | --- | --- | --- |
-| Start (up to first 200) | 8958 ms (7209-10707 ms) | 22113 ms (17880-26346 ms) |
-| Stop | 11348.5 ms (11188-11509 ms) | 2519.5 ms (1604-3435 ms) |
-| TTFB p50 | 17.5 ms (16.4-18.6 ms) | 108.6 ms (97.2-120.0 ms) |
-| TTFB p95 | 21.4 ms (20.6-22.2 ms) | 144.5 ms (133.9-155.0 ms) |
-| Static deploy | 16433.5 ms (5015-27852 ms) | 2771.5 ms (2441-3102 ms) |
-| DI compile | 24425.5 ms (18888-29963 ms) | 23280.5 ms (20697-25864 ms) |
-| Peak memory | 1695.5 MB (1644-1747 MB) | 430 MB (416-444 MB) |
+| Start (up to first 200) | 14713 ms (14667-15316 ms) | 26061 ms (21469-51303 ms) |
+| Stop | 11262 ms (5329-11828 ms) | 2641 ms (2341-4987 ms) |
+| TTFB p50 (cached) | 16.7 ms (15.8-21.8 ms) | 173.9 ms (114.7-196.0 ms) |
+| TTFB p95 (cached) | 21.5 ms (17.5-31.7 ms) | 266.2 ms (147.6-289.5 ms) |
+| TTFB p50 (cache bypassed) | 341.6 ms (244.3-405.6 ms) | 184.9 ms (107.3-221.0 ms) |
+| TTFB p95 (cache bypassed) | 343.7 ms (255.3-407.9 ms) | 251.1 ms (109.9-286.2 ms) |
+| Static deploy | 4875 ms (4608-6156 ms) | 5055 ms (4381-10160 ms) |
+| DI compile | 31837 ms (31816-33068 ms) | 46028 ms (35882-73548 ms) |
+| Peak memory | 1696 MB (1666-1788 MB) | 446 MB (444-463 MB) |
+| CLI wrapper overhead | 40 ms (34-95 ms) | 331 ms (152-812 ms) |
 
-- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-6-g85a08e53 at commit 85a08e53, measured 2026-11-03T07:22:37Z.
-- **ddev**: 2 run(s), images warm (pulls excluded); stack: web+db (ddev magento default; no varnish, redis or search). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-6-g85a08e53 at commit 85a08e53, measured 2026-11-03T07:30:39Z.
+- **govard**: 3 run(s), images warm (pulls excluded); stack: nginx, php, php-debug, varnish, redis, opensearch, mariadb. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-10-gea2e9648-dirty at commit ea2e9648, measured 2026-11-03T09:52:08Z.
+- **ddev**: 3 run(s), images warm (pulls excluded); stack: web (nginx + php-fpm), database; ddev magento default, no varnish, redis or search. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-10-gea2e9648-dirty at commit ea2e9648, measured 2026-11-03T10:12:53Z.
 
 <!-- bench:end -->
 

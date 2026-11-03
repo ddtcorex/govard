@@ -21,9 +21,9 @@ func sampleRuns() render.RunsFile {
 			StartedAt:     "2026-11-03T04:00:00Z",
 		},
 		Runs: []render.Run{
-			{Run: 1, StartMS: 1000, StopMS: 300, TTFBP50MS: 10, TTFBP95MS: 20, StaticDeployMS: 21000, DICompileMS: 9000, PeakMemMB: 900},
-			{Run: 2, StartMS: 3000, StopMS: 500, TTFBP50MS: 30, TTFBP95MS: 40, StaticDeployMS: 23000, DICompileMS: 11000, PeakMemMB: 1100},
-			{Run: 3, StartMS: 2000, StopMS: 400, TTFBP50MS: 20, TTFBP95MS: 30, StaticDeployMS: 22000, DICompileMS: 10000, PeakMemMB: 1000},
+			{Run: 1, StartMS: 1000, StopMS: 300, TTFBP50MS: 10, TTFBP95MS: 20, TTFBUncachedP50MS: 200, TTFBUncachedP95MS: 260, StaticDeployMS: 21000, DICompileMS: 9000, PeakMemMB: 900, CLIOverheadMS: 40},
+			{Run: 2, StartMS: 3000, StopMS: 500, TTFBP50MS: 30, TTFBP95MS: 40, TTFBUncachedP50MS: 300, TTFBUncachedP95MS: 360, StaticDeployMS: 23000, DICompileMS: 11000, PeakMemMB: 1100, CLIOverheadMS: 60},
+			{Run: 3, StartMS: 2000, StopMS: 400, TTFBP50MS: 20, TTFBP95MS: 30, TTFBUncachedP50MS: 250, TTFBUncachedP95MS: 300, StaticDeployMS: 22000, DICompileMS: 10000, PeakMemMB: 1000, CLIOverheadMS: 50},
 		},
 	}
 }
@@ -54,7 +54,7 @@ func TestRenderProducesOneColumnPerTool(t *testing.T) {
 
 	table := render.Render([]render.Summary{govard, ddev})
 
-	for _, want := range []string{"| Metric | govard | ddev |", "| Start", "| TTFB p50", "Test CPU", "8964d620"} {
+	for _, want := range []string{"| Metric | govard | ddev |", "| Start", "| TTFB p50 (cached)", "Test CPU", "8964d620"} {
 		if !strings.Contains(table, want) {
 			t.Fatalf("table is missing %q:\n%s", want, table)
 		}
