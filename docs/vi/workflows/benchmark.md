@@ -29,16 +29,16 @@ Thời gian kéo image không nằm trong số đo start. Khối provenance bên
 
 | Metric | govard | ddev |
 | --- | --- | --- |
-| Start (up to first 200) | 12626.5 ms | 15041 ms |
-| Stop | 11349.5 ms | 1261 ms |
-| TTFB p50 | 16.8 ms | 91.4 ms |
-| TTFB p95 | 21.3 ms | 108.1 ms |
-| Static deploy | 5898 ms | 9571.5 ms |
-| DI compile | 35090 ms | 17133.5 ms |
-| Peak memory | 1624.5 MB | 506.5 MB |
+| Start (up to first 200) | 8958 ms (7209-10707 ms) | 22113 ms (17880-26346 ms) |
+| Stop | 11348.5 ms (11188-11509 ms) | 2519.5 ms (1604-3435 ms) |
+| TTFB p50 | 17.5 ms (16.4-18.6 ms) | 108.6 ms (97.2-120.0 ms) |
+| TTFB p95 | 21.4 ms (20.6-22.2 ms) | 144.5 ms (133.9-155.0 ms) |
+| Static deploy | 16433.5 ms (5015-27852 ms) | 2771.5 ms (2441-3102 ms) |
+| DI compile | 24425.5 ms (18888-29963 ms) | 23280.5 ms (20697-25864 ms) |
+| Peak memory | 1695.5 MB (1644-1747 MB) | 430 MB (416-444 MB) |
 
-- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-5-gf71a9892 at commit f71a9892, measured 2026-11-03T06:46:03Z.
-- **ddev**: 2 run(s), images warm (pulls excluded); stack: web+db (ddev magento default; no varnish, redis or search). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-5-gf71a9892 at commit f71a9892, measured 2026-11-03T06:30:36Z.
+- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-6-g85a08e53 at commit 85a08e53, measured 2026-11-03T07:22:37Z.
+- **ddev**: 2 run(s), images warm (pulls excluded); stack: web+db (ddev magento default; no varnish, redis or search). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-6-g85a08e53 at commit 85a08e53, measured 2026-11-03T07:30:39Z.
 
 <!-- bench:end -->
 

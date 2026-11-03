@@ -57,7 +57,8 @@ type Summary struct {
 	ImagesWarm bool               `json:"images_warm"`
 	Runs       int                `json:"runs"`
 	Meta       Meta               `json:"meta"`
-	Metrics    map[string]float64 `json:"metrics"`
+	Metrics    map[string]float64    `json:"metrics"`
+	Ranges     map[string][2]float64 `json:"metric_range,omitempty"`
 }
 
 // metricOrder is the row order of the published table, so two runs of the tool
@@ -85,6 +86,7 @@ func Summarize(data RunsFile) Summary {
 		Runs:       len(data.Runs),
 		Meta:       data.Meta,
 		Metrics:    map[string]float64{},
+		Ranges:     map[string][2]float64{},
 	}
 
 	for _, metric := range metricOrder {
@@ -109,10 +111,33 @@ func Summarize(data RunsFile) Summary {
 		}
 		if len(values) > 0 {
 			summary.Metrics[metric.key] = median(values)
+			summary.Ranges[metric.key] = [2]float64{minOf(values), maxOf(values)}
 		}
 	}
 
 	return summary
+}
+
+func minOf(values []float64) float64 {
+	lowest := values[0]
+	for _, value := range values[1:] {
+		if value < lowest {
+			lowest = value
+		}
+	}
+
+	return lowest
+}
+
+func maxOf(values []float64) float64 {
+	highest := values[0]
+	for _, value := range values[1:] {
+		if value > highest {
+			highest = value
+		}
+	}
+
+	return highest
 }
 
 func median(values []float64) float64 {
@@ -201,7 +226,7 @@ func Render(summaries []Summary) string {
 				continue
 			}
 			wrote = true
-			fmt.Fprintf(&b, " %s %s |", formatValue(value), metric.unit)
+			fmt.Fprintf(&b, " %s %s%s |", formatValue(value), metric.unit, spread(summary, metric.key, metric.unit))
 		}
 		if !wrote {
 			continue
@@ -239,6 +264,17 @@ func stackLabel(stack string) string {
 	}
 
 	return "; stack: " + stack
+}
+
+// spread renders the observed min-max range next to the median, so a reader sees
+// dispersion instead of a single number that hides it.
+func spread(summary Summary, key, unit string) string {
+	bounds, ok := summary.Ranges[key]
+	if !ok || bounds[0] == bounds[1] {
+		return ""
+	}
+
+	return fmt.Sprintf(" (%s-%s %s)", formatValue(bounds[0]), formatValue(bounds[1]), unit)
 }
 
 func warmLabel(warm bool) string {

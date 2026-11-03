@@ -95,3 +95,20 @@ func TestLatestKeepsOneSummaryPerTarget(t *testing.T) {
 		t.Fatalf("Latest kept the summary with %d runs, want the most recent (5)", latest[0].Runs)
 	}
 }
+
+func TestSummarizeRecordsTheObservedRange(t *testing.T) {
+	summary := render.Summarize(sampleRuns())
+
+	bounds, ok := summary.Ranges["start_ms"]
+	if !ok {
+		t.Fatalf("no range recorded for start_ms")
+	}
+	if bounds[0] != 1000 || bounds[1] != 3000 {
+		t.Fatalf("range = %v..%v, want 1000..3000", bounds[0], bounds[1])
+	}
+
+	table := render.Render([]render.Summary{summary})
+	if !strings.Contains(table, "(1000-3000 ms)") {
+		t.Fatalf("table does not show the range:\n%s", table)
+	}
+}

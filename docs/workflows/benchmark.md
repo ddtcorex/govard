@@ -20,9 +20,12 @@ Image pulls are excluded from the start number. The provenance block below says 
 ## How to read the numbers
 
 A single measurement on a shared workstation is noise: two runs of this harness
-on the same machine have differed by a factor of two on the compile metric. Run
-the harness at least three times and publish the median, which is what the table
-below does. Treat the numbers as an order of magnitude, not a stopwatch.
+on the same machine have differed by a factor of two on the compile metric, and
+by more than five on the govard static deploy. Run the harness at least three
+times and publish the median, which is what the table below does; the range next
+to each median is the min and max observed, and a wide range means the machine
+was busy, not that the tool was slow. Treat the numbers as an order of magnitude,
+not a stopwatch.
 
 ## What is not measured
 
@@ -36,16 +39,16 @@ below does. Treat the numbers as an order of magnitude, not a stopwatch.
 
 | Metric | govard | ddev |
 | --- | --- | --- |
-| Start (up to first 200) | 12626.5 ms | 15041 ms |
-| Stop | 11349.5 ms | 1261 ms |
-| TTFB p50 | 16.8 ms | 91.4 ms |
-| TTFB p95 | 21.3 ms | 108.1 ms |
-| Static deploy | 5898 ms | 9571.5 ms |
-| DI compile | 35090 ms | 17133.5 ms |
-| Peak memory | 1624.5 MB | 506.5 MB |
+| Start (up to first 200) | 8958 ms (7209-10707 ms) | 22113 ms (17880-26346 ms) |
+| Stop | 11348.5 ms (11188-11509 ms) | 2519.5 ms (1604-3435 ms) |
+| TTFB p50 | 17.5 ms (16.4-18.6 ms) | 108.6 ms (97.2-120.0 ms) |
+| TTFB p95 | 21.4 ms (20.6-22.2 ms) | 144.5 ms (133.9-155.0 ms) |
+| Static deploy | 16433.5 ms (5015-27852 ms) | 2771.5 ms (2441-3102 ms) |
+| DI compile | 24425.5 ms (18888-29963 ms) | 23280.5 ms (20697-25864 ms) |
+| Peak memory | 1695.5 MB (1644-1747 MB) | 430 MB (416-444 MB) |
 
-- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-5-gf71a9892 at commit f71a9892, measured 2026-11-03T06:46:03Z.
-- **ddev**: 2 run(s), images warm (pulls excluded); stack: web+db (ddev magento default; no varnish, redis or search). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-5-gf71a9892 at commit f71a9892, measured 2026-11-03T06:30:36Z.
+- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-6-g85a08e53 at commit 85a08e53, measured 2026-11-03T07:22:37Z.
+- **ddev**: 2 run(s), images warm (pulls excluded); stack: web+db (ddev magento default; no varnish, redis or search). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-6-g85a08e53 at commit 85a08e53, measured 2026-11-03T07:30:39Z.
 
 <!-- bench:end -->
 
