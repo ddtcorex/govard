@@ -17,6 +17,13 @@ Each run measures one tool against one prepared project, from a stopped state:
 
 Image pulls are excluded from the start number. The provenance block below says so, and a run that includes pulls is labelled `cold`.
 
+## How to read the numbers
+
+A single measurement on a shared workstation is noise: two runs of this harness
+on the same machine have differed by a factor of two on the compile metric. Run
+the harness at least three times and publish the median, which is what the table
+below does. Treat the numbers as an order of magnitude, not a stopwatch.
+
 ## What is not measured
 
 - No competitor is measured yet. The DDEV arm needs the Govard proxy stopped, because `ddev-router` and the Govard proxy both want ports 80 and 443; that adapter is a separate change.
@@ -25,7 +32,19 @@ Image pulls are excluded from the start number. The provenance block below says 
 ## Results
 
 <!-- bench:start -->
-No benchmark results yet.
+
+| Metric | govard |
+| --- | --- |
+| Start (up to first 200) | 19202 ms |
+| Stop | 5872 ms |
+| TTFB p50 | 26.1 ms |
+| TTFB p95 | 38.4 ms |
+| Static deploy | 7817.5 ms |
+| DI compile | 37504 ms |
+| Peak memory | 1644 MB |
+
+- **govard**: 2 run(s), images warm (pulls excluded). 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-2-g85e6bc95 at commit 41bb66c8, measured 2026-11-03T05:14:25Z.
+
 <!-- bench:end -->
 
 ## Reproducing it

@@ -75,6 +75,7 @@ export BENCH_BINARY BENCH_FIXTURE BENCH_REPO_ROOT BENCH_RUNS
 
 bench_log "wrote $result"
 
+command -v go >/dev/null 2>&1 || bench_die "summarising needs Go on PATH, the same toolchain that built govard"
 (cd "$REPO_ROOT" && go run ./scripts/bench/report summarize "$result" "$summary") ||
     bench_die "could not summarise $result"
 bench_log "wrote $summary"

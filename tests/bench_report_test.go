@@ -78,3 +78,20 @@ func TestRenderStatesThatImagesWereWarm(t *testing.T) {
 		t.Fatalf("table does not say whether images were warm:\n%s", table)
 	}
 }
+
+func TestLatestKeepsOneSummaryPerTarget(t *testing.T) {
+	older := render.Summarize(sampleRuns())
+	older.Meta.StartedAt = "2026-11-03T04:00:00Z"
+
+	newer := older
+	newer.Meta.StartedAt = "2026-11-03T06:00:00Z"
+	newer.Runs = 5
+
+	latest := render.Latest([]render.Summary{older, newer})
+	if len(latest) != 1 {
+		t.Fatalf("Latest kept %d summaries, want 1", len(latest))
+	}
+	if latest[0].Runs != 5 {
+		t.Fatalf("Latest kept the summary with %d runs, want the most recent (5)", latest[0].Runs)
+	}
+}

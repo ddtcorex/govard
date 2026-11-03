@@ -61,18 +61,14 @@ bench_ram_gb() {
 
 # bench_disk_type reports rot or ssd for the filesystem holding path.
 bench_disk_type() {
-    local path="$1"
-    local device rotational
-    device=$(df --output=source "$path" 2>/dev/null | tail -1 || true)
-    device=$(basename "$device" 2>/dev/null | sed -E 's/p?[0-9]+$//')
-    rotational=$(cat "/sys/block/$device/queue/rotational" 2>/dev/null || true)
-    if [[ "$rotational" == "0" ]]; then
-        printf 'ssd\n'
-    elif [[ "$rotational" == "1" ]]; then
-        printf 'hdd\n'
-    else
-        printf 'unknown\n'
-    fi
+    local path="$1" source device rotational
+    source=$(findmnt -no SOURCE --target "$path" 2>/dev/null || df --output=source "$path" 2>/dev/null | tail -1 || true)
+    rotational=$(lsblk -dno ROTA "$source" 2>/dev/null | tr -d ' ' | head -1 || true)
+    case "$rotational" in
+        0) printf 'ssd\n' ;;
+        1) printf 'hdd\n' ;;
+        *) printf 'unknown\n' ;;
+    esac
 }
 
 # bench_domain_of prints the primary domain recorded in a fixture's config.

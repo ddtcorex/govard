@@ -124,6 +124,33 @@ func median(values []float64) float64 {
 	return (sorted[n/2-1] + sorted[n/2]) / 2
 }
 
+// Latest keeps one summary per target: the one measured most recently. Without
+// this, running the harness twice into the same results directory would render
+// two columns with the same headline, which reads as two different tools.
+func Latest(summaries []Summary) []Summary {
+	byTarget := map[string]Summary{}
+	order := []string{}
+
+	for _, summary := range summaries {
+		previous, seen := byTarget[summary.Target]
+		if !seen {
+			order = append(order, summary.Target)
+			byTarget[summary.Target] = summary
+			continue
+		}
+		if summary.Meta.StartedAt >= previous.Meta.StartedAt {
+			byTarget[summary.Target] = summary
+		}
+	}
+
+	latest := make([]Summary, 0, len(order))
+	for _, target := range order {
+		latest = append(latest, byTarget[target])
+	}
+
+	return latest
+}
+
 // Render builds the markdown table. A target with no measured metric is left
 // out entirely, so a page never shows an empty column for a tool whose adapter
 // has not run yet.

@@ -80,10 +80,14 @@ peak_mem_mb() {
             END { printf "%d\n", total }'
 }
 
+# time_ms runs one measured command and fails loudly when it fails: a command
+# that errors in 20ms is not a fast build, and must never reach the table.
 time_ms() {
     local start end
     start=$(bench_now_ms)
-    "$@" >/dev/null 2>&1 || true
+    if ! "$@" >/dev/null 2>&1; then
+        return 1
+    fi
     end=$(bench_now_ms)
     printf '%d\n' $((end - start))
 }
@@ -124,10 +128,12 @@ for i in $(seq 1 "$runs"); do
     p95=$(percentile "$tmpdir/ttfb" 0.95)
 
     bench_log "run $i/$runs: static deploy"
-    static_ms=$(time_ms env bash -c "cd '$fixture' && '$binary' tool bin/magento setup:static-content:deploy -f --no-interaction")
+    static_ms=$(time_ms bash -c "cd '$fixture' && '$binary' tool magento setup:static-content:deploy -f --no-interaction") ||
+        bench_die "static-content:deploy failed on run $i"
 
     bench_log "run $i/$runs: di compile"
-    di_ms=$(time_ms env bash -c "cd '$fixture' && '$binary' tool bin/magento setup:di:compile")
+    di_ms=$(time_ms bash -c "cd '$fixture' && '$binary' tool magento setup:di:compile") ||
+        bench_die "setup:di:compile failed on run $i"
 
     mem_mb=$(peak_mem_mb)
 
@@ -140,7 +146,7 @@ for i in $(seq 1 "$runs"); do
 
     # Drop any warm page cache so the next run starts cold.
     govard env up >/dev/null 2>&1 || true
-    govard tool bin/magento cache:flush >/dev/null 2>&1 || true
+    govard tool magento cache:flush >/dev/null 2>&1 || true
     govard env down >/dev/null 2>&1 || true
     wait_for_stop || true
 

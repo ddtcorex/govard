@@ -65,7 +65,7 @@ func renderDocs(resultsDir, docsPath string) {
 		summaries = append(summaries, summary)
 	}
 
-	table := render.Render(summaries)
+	table := render.Render(render.Latest(summaries))
 	page, err := os.ReadFile(docsPath)
 	if err != nil {
 		fail("read " + docsPath + ": " + err.Error())
