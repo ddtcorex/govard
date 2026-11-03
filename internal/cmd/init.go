@@ -207,6 +207,10 @@ Case Studies:
 			Varnish:         enableVarnish,
 		})
 
+		// ApplyMigration owns the merge policy: a source that never mentions a
+		// setting leaves the project default alone. The summary is printed once
+		// the whole config has settled, so it reports what actually landed.
+		config = engine.ApplyMigration(config, migrated)
 		if migrated.ProjectName != "" {
 			config.ProjectName = engine.NormalizeProjectName(migrated.ProjectName)
 			if strings.HasSuffix(strings.ToLower(strings.TrimSpace(migrated.ProjectName)), ".test") {
@@ -214,68 +218,6 @@ Case Studies:
 			} else {
 				config.Domain = fmt.Sprintf("%s.test", config.ProjectName)
 			}
-		}
-		if migrated.PHPVersion != "" {
-			config.Stack.PHPVersion = migrated.PHPVersion
-		}
-		if migrated.NodeVersion != "" {
-			config.Stack.NodeVersion = migrated.NodeVersion
-		}
-		if migrated.ComposerVersion != "" {
-			config.Stack.ComposerVersion = migrated.ComposerVersion
-		}
-		if migrated.DB != "" {
-			config.Stack.Services.DB = migrated.DB
-		}
-		if migrated.DBVersion != "" {
-			config.Stack.DBVersion = migrated.DBVersion
-		}
-		if migrated.WebRoot != "" {
-			config.Stack.WebRoot = migrated.WebRoot
-		}
-		if migrated.TablePrefix != "" && engine.FrameworkSupportsTablePrefix(config.Framework) {
-			config.TablePrefix = migrated.TablePrefix
-		}
-		if migrateFrom != "" {
-			// Search
-			if migrated.SearchService != "" {
-				config.Stack.Services.Search = migrated.SearchService
-				config.Stack.SearchVersion = migrated.SearchVersion
-				config.Stack.Features.Search = migrated.SearchService != "none"
-			} else {
-				config.Stack.Services.Search = "none"
-				config.Stack.Features.Search = false
-			}
-
-			// Cache
-			if migrated.CacheService != "" {
-				config.Stack.Services.Cache = migrated.CacheService
-				config.Stack.CacheVersion = migrated.CacheVersion
-				config.Stack.Features.Cache = migrated.CacheService != "none"
-			} else {
-				config.Stack.Services.Cache = "none"
-				config.Stack.Features.Cache = false
-			}
-
-			// Queue
-			if migrated.QueueService != "" {
-				config.Stack.Services.Queue = migrated.QueueService
-				config.Stack.QueueVersion = migrated.QueueVersion
-				config.Stack.Features.Queue = migrated.QueueService != "none"
-			} else {
-				config.Stack.Services.Queue = "none"
-				config.Stack.Features.Queue = false
-			}
-
-			// Varnish
-			config.Stack.Features.Varnish = migrated.VarnishEnabled
-			if migrated.VarnishVersion != "" {
-				config.Stack.VarnishVersion = migrated.VarnishVersion
-			}
-		}
-
-		if len(migrated.Remotes) > 0 {
-			config.Remotes = migrated.Remotes
 		}
 
 		if config.Stack.Services.DB == "none" {
@@ -351,6 +293,12 @@ Case Studies:
 		}
 		if err := engine.ValidateProjectIdentityUniqueness(cwd, config); err != nil {
 			return err
+		}
+
+		if migrateFrom != "" {
+			for _, line := range engine.MigrationSummary(migrated, config) {
+				pterm.Info.Println(line)
+			}
 		}
 
 		writableConfig := engine.PrepareConfigForWrite(config)

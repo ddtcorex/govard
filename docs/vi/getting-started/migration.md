@@ -11,6 +11,54 @@ Tài liệu này hướng dẫn bạn cách di chuyển một dự án hiện c�
 
 ---
 
+## Di chuyển từ DDEV sang Govard
+
+DDEV lưu cấu hình trong `.ddev/config.yaml` và các tệp ghi đè `.ddev/config.*.yaml`.
+Govard đọc tất cả theo thứ tự, tệp sau thắng, đúng như DDEV làm.
+
+```bash
+govard init --migrate-from ddev
+```
+
+Lệnh in ra một dòng cho mỗi khoá đã xử lý, nên xem được kết quả trước khi khởi
+động bất cứ thứ gì:
+
+- `mapped ...` cho giá trị đã mang sang `.govard.yml`;
+- `defaulted ...` cho service mà tệp DDEV không nhắc tới, giữ mặc định của profile
+  thay vì bị tắt đi;
+- `not migrated ...` cho khoá Govard không có tương đương, kèm lý do.
+
+### Những gì được mang sang
+
+| Khoá DDEV | Trường Govard |
+| :--- | :--- |
+| `name` | `project_name` và tên miền `*.test` |
+| `type` | `framework` |
+| `docroot` | `stack.web_root` |
+| `php_version`, `nodejs_version`, `composer_version` | các trường `stack.*` tương ứng |
+| `webserver_type` | `stack.services.web_server` |
+| `database.type`, `database.version` | `stack.services.db`, `stack.db_version` |
+| `additional_hostnames` | `extra_domains`, mở rộng thành `<host>.<project>.test` |
+| `additional_fqdns` | `extra_domains`, giữ nguyên |
+| `xdebug_enabled` | `stack.features.xdebug` |
+
+### Những gì được báo cáo chứ không áp dụng
+
+`upload_dirs`, `webimage_extra_packages`, `omit_containers`, `hooks`,
+`performance_mode`, `mutagen_enabled`, `web_extra_exposed_ports`,
+`database_snapshot`, `timeout`, `disable_settings_management`, cổng router và
+`composer_root` đều được nêu tên trong output kèm lý do không có tương đương.
+Không có khoá nào bị bỏ im lặng.
+
+Những service DDEV không quản lý (`search`, `cache`, `queue`, `varnish`) giữ mặc
+định của profile, nên dự án Magento sau khi migrate vẫn có OpenSearch, Redis và
+RabbitMQ. Kiểm tra bằng `govard doctor`: migrate đúng thì runtime được báo là đã
+đồng bộ với profile, thay vì cảnh báo search và cache đang là `none`.
+
+Một ngoại lệ có chủ ý: profile của framework ghim phiên bản PHP, Node và Composer,
+nên ghim của profile có thể đè lên phiên bản DDEV đã khai. Việc đè đó được in
+thành dòng drift (`Synced stack.node_version 20→24`) chứ không xảy ra im lặng.
+
 ## Di chuyển từ Warden sang Govard
 
 Khi chuyển đổi một dự án từ Warden, các mục tiêu chính là:
