@@ -20,7 +20,7 @@ func magentoConfig() engine.Config {
 func TestApplyMigrationKeepsProfileDefaultsWhenDDEVSaysNothing(t *testing.T) {
 	cfg := magentoConfig()
 
-	got, notes := engine.ApplyMigration(cfg, engine.MigrationResult{ProjectName: "acme-shop"})
+	got := engine.ApplyMigration(cfg, engine.MigrationResult{ProjectName: "acme-shop"})
 
 	if got.Stack.Services.Search != "opensearch" || !got.Stack.Features.Search {
 		t.Fatalf("search = %q (enabled %t), want the profile default kept", got.Stack.Services.Search, got.Stack.Features.Search)
@@ -35,16 +35,16 @@ func TestApplyMigrationKeepsProfileDefaultsWhenDDEVSaysNothing(t *testing.T) {
 		t.Fatalf("varnish = false, want the profile default kept when the source is silent")
 	}
 
-	joined := strings.Join(notes, " | ")
-	if !strings.Contains(joined, "defaulted search: opensearch") {
-		t.Fatalf("notes = %v, want a defaulted search entry", notes)
+	summary := strings.Join(engine.MigrationSummary(engine.MigrationResult{ProjectName: "acme-shop"}, got), " | ")
+	if !strings.Contains(summary, "defaulted search: opensearch") {
+		t.Fatalf("summary = %q, want a defaulted search entry", summary)
 	}
 }
 
 func TestApplyMigrationAppliesWhatTheSourceSays(t *testing.T) {
 	cfg := magentoConfig()
 
-	got, notes := engine.ApplyMigration(cfg, engine.MigrationResult{
+	got := engine.ApplyMigration(cfg, engine.MigrationResult{
 		SearchService:    "elasticsearch",
 		SearchVersion:    "8.11",
 		CacheService:     "none",
@@ -61,15 +61,16 @@ func TestApplyMigrationAppliesWhatTheSourceSays(t *testing.T) {
 	if got.Stack.Features.Varnish {
 		t.Fatalf("varnish = true, want it disabled because the source said so")
 	}
-	if joined := strings.Join(notes, " | "); !strings.Contains(joined, "mapped search: elasticsearch") {
-		t.Fatalf("notes = %v, want a mapped search entry", notes)
+	summary := strings.Join(engine.MigrationSummary(engine.MigrationResult{SearchService: "elasticsearch"}, got), " | ")
+	if !strings.Contains(summary, "mapped search: elasticsearch") {
+		t.Fatalf("summary = %q, want a mapped search entry", summary)
 	}
 }
 
 func TestApplyMigrationCarriesDomainsAndToolchain(t *testing.T) {
 	cfg := magentoConfig()
 
-	got, notes := engine.ApplyMigration(cfg, engine.MigrationResult{
+	got := engine.ApplyMigration(cfg, engine.MigrationResult{
 		PHPVersion:    "8.3",
 		NodeVersion:   "20",
 		WebServer:     "apache",
@@ -89,19 +90,23 @@ func TestApplyMigrationCarriesDomainsAndToolchain(t *testing.T) {
 	if len(got.ExtraDomains) != 2 {
 		t.Fatalf("ExtraDomains = %v, want both domains with the duplicate dropped", got.ExtraDomains)
 	}
-	if joined := strings.Join(notes, " | "); !strings.Contains(joined, "mapped additional domain: shop.local") {
-		t.Fatalf("notes = %v, want the extra domain named", notes)
+	summary := strings.Join(engine.MigrationSummary(engine.MigrationResult{ExtraDomains: []string{"shop.local"}}, got), " | ")
+	if !strings.Contains(summary, "mapped additional domain: shop.local") {
+		t.Fatalf("summary = %q, want the extra domain named", summary)
 	}
 }
 
 func TestApplyMigrationReportsWhatItCannotCarry(t *testing.T) {
 	cfg := magentoConfig()
 
-	_, notes := engine.ApplyMigration(cfg, engine.MigrationResult{
+	got := engine.ApplyMigration(cfg, engine.MigrationResult{
 		Unmapped: []string{"hooks: Govard hooks are declared in .govard.yml; re-add them there"},
 	})
 
-	if joined := strings.Join(notes, " | "); !strings.Contains(joined, "not migrated hooks:") {
-		t.Fatalf("notes = %v, want the dropped key named in the summary", notes)
+	summary := strings.Join(engine.MigrationSummary(engine.MigrationResult{
+		Unmapped: []string{"hooks: Govard hooks are declared in .govard.yml; re-add them there"},
+	}, got), " | ")
+	if !strings.Contains(summary, "not migrated hooks:") {
+		t.Fatalf("summary = %q, want the dropped key named", summary)
 	}
 }

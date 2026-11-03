@@ -88,7 +88,6 @@ Case Studies:
 		}()
 		existingConfig, hasExistingConfig := loadExistingInitConfig(cwd)
 		var migrated engine.MigrationResult
-		var migrationNotes []string
 		if migrateFrom != "" {
 			var migrateErr error
 			handled := false
@@ -209,9 +208,9 @@ Case Studies:
 		})
 
 		// ApplyMigration owns the merge policy: a source that never mentions a
-		// setting leaves the project default alone. The notes below are what the
-		// summary prints, so nothing is dropped without being named.
-		config, migrationNotes = engine.ApplyMigration(config, migrated)
+		// setting leaves the project default alone. The summary is printed once
+		// the whole config has settled, so it reports what actually landed.
+		config = engine.ApplyMigration(config, migrated)
 		if migrated.ProjectName != "" {
 			config.ProjectName = engine.NormalizeProjectName(migrated.ProjectName)
 			if strings.HasSuffix(strings.ToLower(strings.TrimSpace(migrated.ProjectName)), ".test") {
@@ -219,9 +218,6 @@ Case Studies:
 			} else {
 				config.Domain = fmt.Sprintf("%s.test", config.ProjectName)
 			}
-		}
-		for _, note := range migrationNotes {
-			pterm.Info.Println(note)
 		}
 
 		if config.Stack.Services.DB == "none" {
@@ -297,6 +293,12 @@ Case Studies:
 		}
 		if err := engine.ValidateProjectIdentityUniqueness(cwd, config); err != nil {
 			return err
+		}
+
+		if migrateFrom != "" {
+			for _, line := range engine.MigrationSummary(migrated, config) {
+				pterm.Info.Println(line)
+			}
 		}
 
 		writableConfig := engine.PrepareConfigForWrite(config)
