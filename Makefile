@@ -21,7 +21,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.3
 GOLANGCI_LINT_BIN ?= $(shell go env GOPATH)/bin/golangci-lint
 LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 
-.PHONY: help install install-release build-test-binary build-test-budget build frontend build-frontend bindings bindings-check font-check clean test test-unit test-coverage test-integration test-integration-ci test-frontend test-frontend-behaviour lint lint-desktop lint-install fmt fmt-check vet generate generate-check images push
+.PHONY: help install install-release build-test-binary build-test-budget build frontend build-frontend bindings bindings-check font-check clean test test-unit test-coverage bench bench-report test-integration test-integration-ci test-frontend test-frontend-behaviour lint lint-desktop lint-install fmt fmt-check vet generate generate-check images push
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -132,6 +132,13 @@ test-coverage:
 	go test ./tests -coverprofile=coverage.out -covermode=atomic -coverpkg=$(COVER_PACKAGES)
 	go tool cover -func=coverage.out
 	@echo "Coverage profile written to coverage.out"
+
+bench: ## Measure one tool against a prepared fixture (see docs/workflows/benchmark.md)
+	@scripts/bench/run.sh $(BENCH_ARGS)
+
+bench-report: ## Rewrite the docs benchmark table from JSON results (OUT=/tmp/govard-bench)
+	@go run ./scripts/bench/report render $(or $(OUT),/tmp/govard-bench) docs/workflows/benchmark.md
+	@go run ./scripts/bench/report render $(or $(OUT),/tmp/govard-bench) docs/vi/workflows/benchmark.md
 
 test-integration: build-test-binary build-test-budget
 	@echo "Running integration tests (time-budgeted)..."

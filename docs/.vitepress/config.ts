@@ -186,6 +186,7 @@ function sidebarEn() {
           { text: 'CI Pipelines', link: '/workflows/ci-pipeline' },
           { text: 'Deployment', link: '/workflows/deployment' },
           { text: 'Deployment Case Studies', link: '/workflows/deploy-case-studies' },
+          { text: 'Benchmark', link: '/workflows/benchmark' },
         ],
       },
     ],
@@ -196,6 +197,14 @@ function sidebarEn() {
           { text: 'Architecture', link: '/developer/architecture' },
           { text: 'Adding a Framework', link: '/developer/adding-a-framework' },
           { text: 'Contributing', link: '/developer/contributing' },
+        ],
+      },
+    ],
+    '/compare/': [
+      {
+        text: 'Compare',
+        items: [
+          { text: 'Govard and DDEV', link: '/compare/ddev' },
         ],
       },
     ],
@@ -248,6 +257,7 @@ function sidebarVi() {
           { text: 'Tunnel', link: '/vi/workflows/tunnel' },
           { text: 'Triển khai', link: '/vi/workflows/deployment' },
           { text: 'Case study triển khai', link: '/vi/workflows/deploy-case-studies' },
+          { text: 'Benchmark', link: '/vi/workflows/benchmark' },
           { text: 'Pipeline CI', link: '/vi/workflows/ci-pipeline' },
         ],
       },
@@ -259,6 +269,14 @@ function sidebarVi() {
           { text: 'Kiến trúc', link: '/vi/developer/architecture' },
           { text: 'Thêm Framework', link: '/vi/developer/adding-a-framework' },
           { text: 'Đóng góp', link: '/vi/developer/contributing' },
+        ],
+      },
+    ],
+    '/vi/compare/': [
+      {
+        text: 'So sánh',
+        items: [
+          { text: 'Govard và DDEV', link: '/vi/compare/ddev' },
         ],
       },
     ],
