@@ -248,15 +248,15 @@ func printTryOrigins(origin Origin) {
 	fmt.Printf("Login:      %s / %s\n", conventions.DefaultAdminUser, conventions.DefaultAdminPassword)
 }
 
-// tryETALine states the time the two paths actually take, measured on a warm
-// machine with a warm image cache, so a long first run reads as expected work
-// instead of a hang.
+// tryETALine states the time the two paths actually take. Measured runs vary
+// with Composer download speed (6m25s to 9m11s without sample data, 10m47s to
+// 10m54s with it), so the estimate is a range rather than a promise.
 func tryETALine(sample bool) string {
 	if sample {
-		return "This takes about 10 minutes on a warm machine with sample data. Add --no-sample for a faster, empty storefront (about 5 minutes)."
+		return "This takes about 10 minutes on a warm machine, sometimes 15 when Composer is slow. --no-sample skips the sample data and saves a few minutes."
 	}
 
-	return "This takes about 5 minutes on a warm machine without sample data."
+	return "This takes about 6 to 10 minutes on a warm machine; Composer download speed decides most of it."
 }
 
 // tryHostsHint is the exact command that makes a trial reachable when the

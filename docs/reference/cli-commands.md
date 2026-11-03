@@ -439,8 +439,8 @@ govard try --setup         # run the one-time domain and CA setup first
 | `--timeout <duration>` | `20m` | how long to wait for the storefront |
 | `--no-open` | off | do not open a browser |
 
-On a warm machine a run takes about ten minutes with sample data and about five
-without.
+On a warm machine a run takes about ten minutes with sample data, sometimes
+fifteen when Composer is slow; without sample data it lands between six and ten.
 
 The trial needs 8 GiB free, Docker, a working network connection, and the Govard
 proxy with its local CA. A missing proxy is reported before anything is
