@@ -52,11 +52,11 @@ type RunsFile struct {
 
 // Summary is the median of one adapter's runs.
 type Summary struct {
-	Target     string             `json:"target"`
-	Stack      string             `json:"stack,omitempty"`
-	ImagesWarm bool               `json:"images_warm"`
-	Runs       int                `json:"runs"`
-	Meta       Meta               `json:"meta"`
+	Target     string                `json:"target"`
+	Stack      string                `json:"stack,omitempty"`
+	ImagesWarm bool                  `json:"images_warm"`
+	Runs       int                   `json:"runs"`
+	Meta       Meta                  `json:"meta"`
 	Metrics    map[string]float64    `json:"metrics"`
 	Ranges     map[string][2]float64 `json:"metric_range,omitempty"`
 }
