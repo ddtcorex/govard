@@ -23,8 +23,15 @@ còn tối đa một giây. Lượt chạy đầy đủ mất 7 phút 45 giây.
 
 ![Storefront Luma của Mage-OS do govard try phục vụ](/try-storefront.png)
 
-Storefront mà lượt chạy đó tạo ra, chụp bằng trình duyệt: Mage-OS kèm dữ liệu mẫu,
-phục vụ qua HTTPS trên tên miền `*.test` bởi Govard proxy.
+Storefront mà lượt chạy đó tạo ra, chụp bằng trình duyệt: slider CMS, các khối
+khuyến mãi và lưới Hot Sellers, tất cả đều có style từ `static/`. Chụp lại bằng:
+
+```bash
+google-chrome --headless=new --window-size=1200,1920 \
+  --virtual-time-budget=20000 --screenshot=storefront.png https://<trial-domain>/
+```
+
+Phải cho trang đủ thời gian, nếu không slider chưa khởi tạo lúc chụp.
 
 ## Một lượt chạy làm gì
 

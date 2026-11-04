@@ -23,8 +23,17 @@ capped at one second. The full run took 7 minutes 45 seconds.
 
 ![Mage-OS Luma storefront served by govard try](/try-storefront.png)
 
-The storefront that run produced, captured in a browser: Mage-OS with sample
-data, served over HTTPS on a `*.test` domain by the Govard proxy.
+The storefront that run produced, captured in a browser: the CMS slider, the
+promo blocks and the Hot Sellers grid, all styled from `static/`. Reproduce the
+capture with:
+
+```bash
+google-chrome --headless=new --window-size=1200,1920 \
+  --virtual-time-budget=20000 --screenshot=storefront.png https://<trial-domain>/
+```
+
+Give the page the time budget, or the slider has not initialised when the
+screenshot is taken.
 
 ## What the run does
 
