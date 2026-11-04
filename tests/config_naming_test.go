@@ -4,7 +4,7 @@ import (
 	"govard/internal/engine"
 	"testing"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/assert"
 )
 

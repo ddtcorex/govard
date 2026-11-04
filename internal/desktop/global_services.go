@@ -15,8 +15,8 @@ import (
 
 	"govard/internal/engine"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 const globalServicesComposeProjectName = "proxy"
@@ -173,14 +173,14 @@ func (s *GlobalServiceService) GetGlobalServices() (res GlobalServicesSnapshot, 
 	containersByName := map[string]container.Summary{}
 	allContainers := []container.Summary{}
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		snapshot.Warnings = append(snapshot.Warnings, "Docker client error: "+err.Error())
-	} else if containers, listErr := cli.ContainerList(ctx, container.ListOptions{All: true}); listErr != nil {
+	} else if res, listErr := cli.ContainerList(ctx, client.ContainerListOptions{All: true}); listErr != nil {
 		snapshot.Warnings = append(snapshot.Warnings, "Docker unavailable: "+listErr.Error())
 	} else {
-		allContainers = containers
-		for _, c := range containers {
+		allContainers = res.Items
+		for _, c := range res.Items {
 			for _, rawName := range c.Names {
 				name := strings.TrimSpace(strings.TrimPrefix(rawName, "/"))
 				if name == "" {
@@ -209,9 +209,9 @@ func (s *GlobalServiceService) GetGlobalServices() (res GlobalServicesSnapshot, 
 		}
 
 		if c, ok := containersByName[spec.ContainerName]; ok {
-			status, health, running := deriveGlobalContainerStatus(c.State, c.Status)
+			status, health, running := deriveGlobalContainerStatus(string(c.State), c.Status)
 			service.Status = status
-			service.State = strings.TrimSpace(c.State)
+			service.State = strings.TrimSpace(string(c.State))
 			if service.State == "" {
 				service.State = "unknown"
 			}
@@ -533,7 +533,7 @@ func detectDockerPortConflictWarnings(containers []container.Summary) []string {
 
 	warnings := []string{}
 	for _, c := range containers {
-		if strings.ToLower(strings.TrimSpace(c.State)) != "running" {
+		if strings.ToLower(strings.TrimSpace(string(c.State))) != "running" {
 			continue
 		}
 
@@ -822,7 +822,7 @@ func routingPortTargetSet() map[string]bool {
 	return targets
 }
 
-func buildPublishedPortKeySet(ports []container.Port) map[string]bool {
+func buildPublishedPortKeySet(ports []container.PortSummary) map[string]bool {
 	published := map[string]bool{}
 	for _, port := range ports {
 		if port.PublicPort <= 0 {

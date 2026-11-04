@@ -14,8 +14,7 @@ import (
 
 	"govard/internal/engine"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 	"github.com/pterm/pterm"
 )
 
@@ -155,18 +154,18 @@ func clearSleepState() error {
 
 func discoverRunningGovardProjects() ([]string, error) {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("connect Docker: %w", err)
 	}
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{})
+	res, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list running containers: %w", err)
 	}
 
 	projects := map[string]bool{}
-	for _, item := range containers {
+	for _, item := range res.Items {
 		projectName := strings.TrimSpace(item.Labels["com.docker.compose.project"])
 		if projectName == "" {
 			projectName = parseProjectFromContainerNames(item.Names)

@@ -9,7 +9,7 @@ import (
 
 	"govard/internal/desktop"
 
-	dockertypes "github.com/docker/docker/api/types/container"
+	dockertypes "github.com/moby/moby/api/types/container"
 )
 
 func TestDesktopGlobalServiceDefinitionsIncludeDNSMasqForTest(t *testing.T) {
@@ -196,7 +196,7 @@ func TestDesktopDockerPortConflictWarningsForTest(t *testing.T) {
 				"com.docker.compose.project": "warden",
 				"com.docker.compose.service": "nginx",
 			},
-			Ports: []dockertypes.Port{
+			Ports: []dockertypes.PortSummary{
 				{PublicPort: 80, Type: "tcp"},
 			},
 		},
@@ -207,7 +207,7 @@ func TestDesktopDockerPortConflictWarningsForTest(t *testing.T) {
 				"com.docker.compose.project": "proxy",
 				"com.docker.compose.service": "caddy",
 			},
-			Ports: []dockertypes.Port{
+			Ports: []dockertypes.PortSummary{
 				{PublicPort: 80, Type: "tcp"},
 			},
 		},
@@ -276,12 +276,12 @@ func TestDesktopRoutingBindingWarningsForRunningServicesForTest(t *testing.T) {
 
 	containersByName := map[string]dockertypes.Summary{
 		"govard-proxy-caddy": {
-			Ports: []dockertypes.Port{
+			Ports: []dockertypes.PortSummary{
 				{PublicPort: 2019, Type: "tcp"},
 			},
 		},
 		"govard-proxy-dnsmasq": {
-			Ports: []dockertypes.Port{
+			Ports: []dockertypes.PortSummary{
 				{PublicPort: 53, Type: "tcp"},
 			},
 		},
