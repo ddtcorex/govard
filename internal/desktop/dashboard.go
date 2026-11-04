@@ -16,9 +16,8 @@ import (
 	"govard/internal/frameworks"
 	"govard/internal/projectstores"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"gopkg.in/yaml.v3"
 )
 
@@ -115,8 +114,9 @@ func buildDashboardInternal() (Dashboard, error) {
 	containersByName := map[string]container.Summary{}
 
 	// Docker connectivity is optional — if unavailable, fall back to registry-only mode
-	if cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation()); err == nil {
-		if containers, err := cli.ContainerList(ctx, container.ListOptions{All: true}); err == nil {
+	if cli, err := client.New(client.FromEnv); err == nil {
+		if res, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true}); err == nil {
+			containers := res.Items
 			allContainers = containers
 			for _, c := range containers {
 				for _, rawName := range c.Names {
@@ -151,7 +151,7 @@ func buildDashboardInternal() (Dashboard, error) {
 				}
 				if serviceName != "" {
 					info.services[serviceName] = true
-					info.serviceState[serviceName] = mergeServiceState(info.serviceState[serviceName], c.State)
+					info.serviceState[serviceName] = mergeServiceState(info.serviceState[serviceName], string(c.State))
 				}
 
 				if info.workingDir == "" {
@@ -919,9 +919,9 @@ func buildEnvironmentRoutingWarnings(
 			Running:       false,
 		}
 		if c, ok := containersByName[spec.ContainerName]; ok {
-			status, _, running := deriveGlobalContainerStatus(c.State, c.Status)
+			status, _, running := deriveGlobalContainerStatus(string(c.State), c.Status)
 			service.Status = status
-			service.State = strings.TrimSpace(c.State)
+			service.State = strings.TrimSpace(string(c.State))
 			if service.State == "" {
 				service.State = "unknown"
 			}
@@ -954,26 +954,28 @@ func environmentURL(project string) (string, error) {
 
 func loadProjectInfo(project string) (*projectInfo, error) {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 
 	projectName := project
-	args := filters.NewArgs(filters.Arg("label", "com.docker.compose.project="+projectName))
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true, Filters: args})
+	args := client.Filters{}.Add("label", "com.docker.compose.project="+projectName)
+	res, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true, Filters: args})
 	if err != nil {
 		return nil, err
 	}
+	containers := res.Items
 
 	// If no containers found, try stripping .test suffix if present
 	if len(containers) == 0 && strings.HasSuffix(projectName, ".test") {
 		projectName = strings.TrimSuffix(projectName, ".test")
-		args = filters.NewArgs(filters.Arg("label", "com.docker.compose.project="+projectName))
-		containers, err = cli.ContainerList(ctx, container.ListOptions{All: true, Filters: args})
+		args = client.Filters{}.Add("label", "com.docker.compose.project="+projectName)
+		res, err = cli.ContainerList(ctx, client.ContainerListOptions{All: true, Filters: args})
 		if err != nil {
 			return nil, err
 		}
+		containers = res.Items
 	}
 
 	if len(containers) == 0 {
@@ -990,7 +992,7 @@ func loadProjectInfo(project string) (*projectInfo, error) {
 		_, service := extractProjectAndService(c)
 		if service != "" {
 			info.services[service] = true
-			info.serviceState[service] = mergeServiceState(info.serviceState[service], c.State)
+			info.serviceState[service] = mergeServiceState(info.serviceState[service], string(c.State))
 		}
 		if c.State == "running" {
 			info.runningCount++

@@ -7,7 +7,7 @@ import (
 
 	"govard/internal/engine"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
 )
 
 func TestActiveProjectNamesFromContainersForTest(t *testing.T) {

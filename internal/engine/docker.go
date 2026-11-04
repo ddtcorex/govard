@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 func CheckDockerStatus(ctx context.Context) error {
@@ -26,7 +27,7 @@ func CheckDockerStatus(ctx context.Context) error {
 		return err
 	}
 
-	_, err = cli.Ping(ctx)
+	_, err = cli.Ping(ctx, client.PingOptions{})
 	return err
 }
 
@@ -100,7 +101,12 @@ func getRunningContainers(ctx context.Context) ([]container.Summary, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	return cli.ContainerList(ctx, container.ListOptions{})
+	res, err := cli.ContainerList(ctx, client.ContainerListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return res.Items, nil
 }
 
 func isPortBoundByOtherContainerFromList(containers []container.Summary, port string) bool {
@@ -161,12 +167,12 @@ func IsContainerRunning(ctx context.Context, name string) bool {
 		return false
 	}
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{})
+	res, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		return false
 	}
 
-	for _, c := range containers {
+	for _, c := range res.Items {
 		for _, cname := range c.Names {
 			if strings.TrimPrefix(cname, "/") == name {
 				return true
@@ -201,12 +207,12 @@ func IsContainerTCPPortPublished(ctx context.Context, name string, publicPort in
 		return false
 	}
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{})
+	res, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		return false
 	}
 
-	return containerPublishesTCPPort(containers, name, publicPort)
+	return containerPublishesTCPPort(res.Items, name, publicPort)
 }
 
 // containerPublishesTCPPort is the pure scan behind
@@ -308,12 +314,12 @@ func GetRunningProjectNames(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to connect to Docker: %w", err)
 	}
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{})
+	res, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	return runningProjectNamesFromContainers(containers), nil
+	return runningProjectNamesFromContainers(res.Items), nil
 }
 
 func runningProjectNamesFromContainers(containers []container.Summary) []string {

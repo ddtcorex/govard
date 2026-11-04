@@ -15,10 +15,8 @@ import (
 
 	"govard/internal/proxy"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/pterm/pterm"
 )
 
@@ -59,20 +57,20 @@ func ensureGatewayMountDir() error {
 
 func EnsureGlobalProxy() error {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 
 	// 1. Ensure network exists
 	netName := "govard-proxy"
-	nets, _ := cli.NetworkList(ctx, network.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("name", netName)),
+	nets, _ := cli.NetworkList(ctx, client.NetworkListOptions{
+		Filters: client.Filters{}.Add("name", netName),
 	})
 
-	if len(nets) == 0 {
+	if len(nets.Items) == 0 {
 		pterm.Info.Println("Creating global govard-proxy network...")
-		_, err := cli.NetworkCreate(ctx, netName, network.CreateOptions{
+		_, err := cli.NetworkCreate(ctx, netName, client.NetworkCreateOptions{
 			Driver: "bridge",
 		})
 		if err != nil {
@@ -82,8 +80,8 @@ func EnsureGlobalProxy() error {
 
 	// 2. Check if caddy container exists (running or stopped)
 	caddyFound := false
-	containers, _ := cli.ContainerList(ctx, container.ListOptions{All: true})
-	for _, c := range containers {
+	containersRes, _ := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
+	for _, c := range containersRes.Items {
 		for _, name := range c.Names {
 			if strings.Contains(name, "govard-proxy-caddy") || strings.Contains(name, "proxy-caddy-1") {
 				caddyFound = true
@@ -191,19 +189,19 @@ type pmaActiveProjectsDocument struct {
 
 func RefreshPMAActiveProjects() error {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return err
 	}
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	containersRes, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return fmt.Errorf("list containers: %w", err)
 	}
 
 	tempDir := filepath.Join(GovardHomeDir(), "proxy")
 	activeProjectsPath := filepath.Join(tempDir, "..", "active-projects.json")
-	activeProjects := activeProjectNamesFromContainers(containers)
+	activeProjects := activeProjectNamesFromContainers(containersRes.Items)
 
 	return writePMAActiveProjectsFile(activeProjectsPath, activeProjects)
 }

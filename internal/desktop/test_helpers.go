@@ -14,7 +14,7 @@ import (
 	"govard/internal/deploy"
 	"govard/internal/engine"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
 )
 
 // ResetStateForTest clears process-level caches used by desktop package.
