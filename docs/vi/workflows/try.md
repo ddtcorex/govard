@@ -14,10 +14,17 @@ bộ stack mặc định, cài dữ liệu mẫu, in ra địa chỉ storefront 
 khi bạn thoát. Thư mục hiện tại của bạn không bị đụng tới, và không cần tài khoản
 Magento nào.
 
+![govard try chạy đến khi storefront phục vụ](/try-demo.gif)
+
+Ghi ngày 2026-11-04 bằng asciinema trên chính máy dựng dự án này. Bản ghi là thật,
+chỉ cắt phần cài dependency ở giữa, chỗ có dòng
+`... 7 minutes of dependency install and Magento setup ...`; thời gian chờ được nén
+còn tối đa một giây. Lượt chạy đầy đủ mất 7 phút 45 giây.
+
 ![Storefront Luma của Mage-OS do govard try phục vụ](/try-storefront.png)
 
-Storefront thật từ một lượt chạy ngày 2026-11-04: Mage-OS kèm dữ liệu mẫu, phục vụ
-qua HTTPS trên tên miền `*.test` bởi Govard proxy.
+Storefront mà lượt chạy đó tạo ra, chụp bằng trình duyệt: Mage-OS kèm dữ liệu mẫu,
+phục vụ qua HTTPS trên tên miền `*.test` bởi Govard proxy.
 
 ## Một lượt chạy làm gì
 
@@ -84,8 +91,16 @@ govard init          # nhận diện framework, viết .govard.yml
 govard env up        # khởi động
 ```
 
-## Ghi hình demo
+## Ghi lại demo
 
-Ảnh trên là ảnh chụp thật. Một GIF ngắn thì nên có nhưng phải từ lượt chạy thật: cài
-[asciinema](https://asciinema.org/) và [agg](https://github.com/asciinema/agg), ghi
-lại `govard try`, rồi tự chuyển thành GIF. Hình vẽ sẽ tệ hơn là không có gì.
+Bản ghi trên được làm bằng [asciinema](https://asciinema.org/) và
+[agg](https://github.com/asciinema/agg):
+
+```bash
+asciinema rec run.cast --idle-time-limit 1 --cols 100 --rows 28 \
+  --command "govard try --keep --no-open"
+agg --speed 2 --font-size 14 --theme asciinema --cols 100 --rows 28 \
+  run.cast try-demo.gif
+```
+
+Tệp cast là nguồn gốc: giữ nó cùng bản ghi để người đọc phát lại đúng lượt chạy đó.

@@ -74,10 +74,11 @@ Contributors build from source (`./install.sh --source -y`, needs Go 1.25+, Node
 govard try             # throwaway Mage-OS storefront, removed on exit
 ```
 
-![Mage-OS storefront served by govard try](docs/public/try-storefront.png)
+![govard try running to a serving storefront](docs/public/try-demo.gif)
 
-A real storefront from a run on 2026-11-04: Mage-OS with sample data behind the
-Govard proxy. What the command costs, its flags and its limits are on the
+Recorded on 2026-11-04 from a real run on the machine this project is built on;
+the dependency install in the middle is cut and idle time is capped at one
+second. What the command costs, its flags and its limits are on the
 [try page](https://govard.ddtcorex.com/workflows/try).
 
 Real output from a run on a warm machine (trimmed to the last lines):

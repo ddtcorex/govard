@@ -14,10 +14,17 @@ directory of its own, starts the full default stack, installs sample data, print
 the storefront and admin URLs, and removes everything when you exit. Your current
 directory is never touched, and no Magento credentials are needed.
 
+![govard try running to a serving storefront](/try-demo.gif)
+
+Recorded on 2026-11-04 with asciinema on the machine this project is built on.
+The recording is real and uncut except for the dependency install in the middle,
+marked `... 7 minutes of dependency install and Magento setup ...`; idle time is
+capped at one second. The full run took 7 minutes 45 seconds.
+
 ![Mage-OS Luma storefront served by govard try](/try-storefront.png)
 
-A real storefront from a run on 2026-11-04: Mage-OS with sample data, served over
-HTTPS on a `*.test` domain by the Govard proxy.
+The storefront that run produced, captured in a browser: Mage-OS with sample
+data, served over HTTPS on a `*.test` domain by the Govard proxy.
 
 ## What the run does
 
@@ -87,9 +94,17 @@ govard init          # detect the framework, write .govard.yml
 govard env up        # start it
 ```
 
-## Recording the demo
+## Re-recording the demo
 
-The screenshot above is a real capture. A short GIF is welcome but must come from
-a real run: install [asciinema](https://asciinema.org/) and
-[agg](https://github.com/asciinema/agg), record `govard try`, and the cast is
-yours to convert. A drawing would be worse than no asset.
+The recording above was made with [asciinema](https://asciinema.org/) and
+[agg](https://github.com/asciinema/agg):
+
+```bash
+asciinema rec run.cast --idle-time-limit 1 --cols 100 --rows 28 \
+  --command "govard try --keep --no-open"
+agg --speed 2 --font-size 14 --theme asciinema --cols 100 --rows 28 \
+  run.cast try-demo.gif
+```
+
+The cast file is the source of truth: keep it with the recording so a reader can
+replay the exact run.
