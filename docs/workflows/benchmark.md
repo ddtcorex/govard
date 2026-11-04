@@ -22,6 +22,10 @@ Each run measures one tool against one prepared project, from a stopped state:
 
 Image pulls are excluded from the start number. The provenance block below says so, and a run that includes pulls is labelled `cold`.
 
+Each arm drives its own tool: `govard env up`, `ddev start`, `warden env up`
+(through the container described below). The command behind every number is in
+`scripts/bench/<tool>.sh`.
+
 ## Why the numbers differ
 
 Each arm measures its own copy of the same project and database, and one warm-up
@@ -60,6 +64,41 @@ artifact: both arms shared one tree, so the first arm generated `pub/static` for
 the second, and Govard's `env up` clears `generated/code` and `var/cache`, which
 made its first deploy pay for a full regeneration.
 
+**Warden.** Two things about how this arm runs, because they change how to read
+its column. Its installer needs root: it chowns an SSH tunnel key, rewrites
+`/etc/ssh/ssh_config` and installs a CA into the system trust store. Rather than
+patch Warden or ask for sudo, the arm runs the untouched CLI in a container that
+mounts the Docker socket, so the stack it starts is still the real one on this
+host; the cost of that arrangement is the 213 ms wrapper overhead the table
+reports. Its traefik publishes 80 and 443 with no way to move them, so the Govard
+proxy is stopped for this arm, and traefik only discovers containers on a network
+named `warden`, which the project network is attached to. The stack it runs is the
+full one from its own `env-init`: nginx, php-fpm, php-debug, Varnish, Redis,
+OpenSearch, RabbitMQ and MariaDB, which is why its memory sits between the other
+two.
+
+::: details Reproducing the Warden arm
+
+```bash
+# the CLI image: root inside, Docker socket mounted, nothing else from the host
+docker build -f scripts/bench/warden-cli.Dockerfile -t warden-cli:bench .
+
+# the environment, once
+warden env-init warden-bench magento2      # inside the container, from the project dir
+warden env up
+warden db import < dump.sql
+
+# the measurement, three timed runs after one discarded warm-up
+scripts/bench/run.sh --target warden \
+  --fixture "$WARDEN_PROJECT_DIR" --runs 3 --warmup 1 --no-copy \
+  --out /tmp/govard-bench
+```
+
+`--no-copy` is there because a containerised CLI can only reach the paths it
+mounts, so copying the project would measure a tree Warden cannot see.
+
+:::
+
 **Noise.** Ranges are published next to each median. DDEV's start ranged from
 21.5 s to 51.3 s across three runs on an otherwise busy workstation; treat a
 single run as noise.
@@ -79,26 +118,28 @@ not a stopwatch.
 - Nothing here measures parallel work, editor latency or deploy time.
 - The two arms do not run the same stack. Govard ran the project's default profile, which includes Varnish, Redis and OpenSearch; DDEV ran its Magento default, which is web and database only. The memory difference is mostly that, and the page says so rather than presenting a single score.
 - DDEV runs on alternate router ports (8080/8443) so it never fights the Govard proxy for 80/443; a request to DDEV therefore crosses a different port than a request to Govard.
+- Warden's traefik cannot move off 80 and 443, so the Govard proxy is stopped while that arm runs, and its CLI runs from a container because its installer needs root. Both are stated above and on the row itself.
 
 ## Results
 
 <!-- bench:start -->
 
-| Metric | govard | ddev |
-| --- | --- | --- |
-| Start (up to first 200) | 14713 ms (14667-15316 ms) | 26061 ms (21469-51303 ms) |
-| Stop | 11262 ms (5329-11828 ms) | 2641 ms (2341-4987 ms) |
-| TTFB p50 (cached) | 16.7 ms (15.8-21.8 ms) | 173.9 ms (114.7-196.0 ms) |
-| TTFB p95 (cached) | 21.5 ms (17.5-31.7 ms) | 266.2 ms (147.6-289.5 ms) |
-| TTFB p50 (cache bypassed) | 341.6 ms (244.3-405.6 ms) | 184.9 ms (107.3-221.0 ms) |
-| TTFB p95 (cache bypassed) | 343.7 ms (255.3-407.9 ms) | 251.1 ms (109.9-286.2 ms) |
-| Static deploy | 4875 ms (4608-6156 ms) | 5055 ms (4381-10160 ms) |
-| DI compile | 31837 ms (31816-33068 ms) | 46028 ms (35882-73548 ms) |
-| Peak memory | 1696 MB (1666-1788 MB) | 446 MB (444-463 MB) |
-| CLI wrapper overhead | 40 ms (34-95 ms) | 331 ms (152-812 ms) |
+| Metric | govard | ddev | warden |
+| --- | --- | --- | --- |
+| Start (up to first 200) | 11044 ms (10756-11766 ms) | 14744 ms (14676-15955 ms) | 11570 ms (10624-12065 ms) |
+| Stop | 11239 ms (11200-11297 ms) | 1169 ms (1105-1175 ms) | 3706 ms (3678-3779 ms) |
+| TTFB p50 (cached) | 14.2 ms (14.1-15.1 ms) | 65.7 ms (64.6-67.0 ms) | 13.5 ms (12.2-13.6 ms) |
+| TTFB p95 (cached) | 17.4 ms (16.5-17.7 ms) | 78.6 ms (75.6-79.1 ms) | 14.8 ms (14.0-17.5 ms) |
+| TTFB p50 (cache bypassed) | 250.6 ms (245.4-277.3 ms) | 75.4 ms (71.8-81.2 ms) | 495.7 ms (465.6-541.8 ms) |
+| TTFB p95 (cache bypassed) | 273.2 ms (259.2-277.7 ms) | 80.2 ms (72.4-81.4 ms) | 516.9 ms (497.1-567.1 ms) |
+| Static deploy | 4266 ms (3480-4473 ms) | 1932 ms (1929-2689 ms) | 7739 ms (6654-8329 ms) |
+| DI compile | 21031 ms (20155-22949 ms) | 15726 ms (15057-16362 ms) | 25548 ms (24061-27513 ms) |
+| Peak memory | 1601 MB (1586-1683 MB) | 445 MB (444-446 MB) | 1020 MB (1011-1061 MB) |
+| CLI wrapper overhead | 46 ms (40-48 ms) | 123 ms (115-138 ms) | 213 ms (192-244 ms) |
 
-- **govard**: 3 run(s), images warm (pulls excluded); stack: nginx, php, php-debug, varnish, redis, opensearch, mariadb. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-10-gea2e9648-dirty at commit ea2e9648, measured 2026-11-03T09:52:08Z.
-- **ddev**: 3 run(s), images warm (pulls excluded); stack: web (nginx + php-fpm), database; ddev magento default, no varnish, redis or search. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.2, govard v1.82.0-10-gea2e9648-dirty at commit ea2e9648, measured 2026-11-03T10:12:53Z.
+- **govard**: 3 run(s), images warm (pulls excluded); stack: nginx, php, php-debug, varnish, redis, opensearch, mariadb. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.3, govard v1.82.0-4-ga76c1fca at commit a76c1fca, measured 2026-11-04T05:06:56Z.
+- **ddev**: 3 run(s), images warm (pulls excluded); stack: web (nginx + php-fpm), database; ddev magento default, no varnish, redis or search. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.3, govard v1.82.0-4-ga76c1fca at commit a76c1fca, measured 2026-11-04T05:17:43Z.
+- **warden**: 3 run(s), images warm (pulls excluded); stack: traefik, nginx, php-fpm, php-debug, varnish, redis, opensearch, rabbitmq, mariadb; cli in a container. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.3, govard v1.82.0-4-ga76c1fca at commit a76c1fca, measured 2026-11-04T04:59:34Z.
 
 <!-- bench:end -->
 
