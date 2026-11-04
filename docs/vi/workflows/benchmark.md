@@ -27,6 +27,7 @@ Thời gian kéo image không nằm trong số đo start. Khối provenance bên
 - Không đo công việc song song, độ trễ editor hay thời gian deploy.
 - Hai nhánh không chạy cùng một stack. Govard chạy profile mặc định của dự án, gồm Varnish, Redis và OpenSearch; DDEV chạy mặc định Magento của nó, chỉ web và database. Phần lớn chênh lệch bộ nhớ đến từ đó, và trang này nói rõ thay vì gộp thành một điểm số.
 - DDEV chạy trên cổng router khác (8080/8443) để không giành 80/443 với Govard proxy; request tới DDEV vì thế đi qua cổng khác request tới Govard.
+- Lando không có cột, vì Lando không có recipe Magento chính thức: dự án Magento ở đó là Landofile do người dùng viết, nên con số sẽ mô tả tệp đó chứ không mô tả công cụ. [Govard và Lando](/vi/compare/lando) nói rõ điều gì sẽ thay đổi kết luận này.
 
 ## Vì sao các con số khác nhau
 
@@ -83,7 +84,7 @@ và MariaDB, nên bộ nhớ của nó nằm giữa hai nhánh còn lại.
 là nhiễu.
 
 Trang so sánh từng công cụ, nêu những gì mỗi bên làm ngoài các con số này:
-[Govard và DDEV](/vi/compare/ddev), [Govard và Warden](/vi/compare/warden).
+[Govard và DDEV](/vi/compare/ddev), [Govard và Warden](/vi/compare/warden), [Govard và Lando](/vi/compare/lando).
 
 ## Đọc các con số này thế nào
 

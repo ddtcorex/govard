@@ -104,7 +104,7 @@ mounts, so copying the project would measure a tree Warden cannot see.
 single run as noise.
 
 Per-tool difference pages, which state what each tool does beyond these numbers:
-[Govard and DDEV](/compare/ddev), [Govard and Warden](/compare/warden).
+[Govard and DDEV](/compare/ddev), [Govard and Warden](/compare/warden), [Govard and Lando](/compare/lando).
 
 ## How to read the numbers
 
@@ -122,6 +122,7 @@ not a stopwatch.
 - The two arms do not run the same stack. Govard ran the project's default profile, which includes Varnish, Redis and OpenSearch; DDEV ran its Magento default, which is web and database only. The memory difference is mostly that, and the page says so rather than presenting a single score.
 - DDEV runs on alternate router ports (8080/8443) so it never fights the Govard proxy for 80/443; a request to DDEV therefore crosses a different port than a request to Govard.
 - Warden's traefik cannot move off 80 and 443, so the Govard proxy is stopped while that arm runs, and its CLI runs from a container because its installer needs root. Both are stated above and on the row itself.
+- Lando has no column, because Lando has no official Magento recipe: a Magento project there is a Landofile the user writes, so a number would describe that file rather than the tool. [Govard and Lando](/compare/lando) explains what would change that.
 
 ## Results
 
