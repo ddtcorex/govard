@@ -175,6 +175,7 @@ function sidebarEn() {
       {
         text: 'Workflows',
         items: [
+          { text: 'Try Without a Project', link: '/workflows/try' },
           { text: 'Remotes & Sync', link: '/workflows/remotes-and-sync' },
           { text: 'SSL & Domains', link: '/workflows/ssl-and-domains' },
           { text: 'Global Services', link: '/workflows/global-services' },
@@ -248,6 +249,7 @@ function sidebarVi() {
       {
         text: 'Quy trình',
         items: [
+          { text: 'Thử không cần dự án', link: '/vi/workflows/try' },
           { text: 'Remote & Đồng bộ', link: '/vi/workflows/remotes-and-sync' },
           { text: 'SSL & Tên miền', link: '/vi/workflows/ssl-and-domains' },
           { text: 'Dịch vụ toàn cục', link: '/vi/workflows/global-services' },

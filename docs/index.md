@@ -12,6 +12,9 @@ hero:
       text: Get Started
       link: /getting-started/installation
     - theme: alt
+      text: Try it now
+      link: /workflows/try
+    - theme: alt
       text: View on GitHub
       link: https://github.com/ddtcorex/govard
 
