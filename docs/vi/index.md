@@ -12,6 +12,9 @@ hero:
       text: Bắt đầu
       link: /vi/getting-started/installation
     - theme: alt
+      text: Thử ngay
+      link: /vi/workflows/try
+    - theme: alt
       text: Xem trên GitHub
       link: https://github.com/ddtcorex/govard
 
