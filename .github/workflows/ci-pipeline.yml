@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main, master, develop]
   workflow_dispatch:
+  # A nightly run exists for the checks a pull request does not pay for: the
+  # integration suite boots real containers on a clean machine, which is the one
+  # thing no unit test proves. Pull requests stay fast; the signal arrives here
+  # once a day and in the Actions history.
+  schedule:
+    - cron: "30 2 * * *"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -22,6 +28,8 @@ env:
   #   gh variable set GOVARD_CI_FULL --body true -R ddtcorex/govard
   # when more contributors need the full gate. The Verify gate treats a skipped
   # job as passing, so branch protection keeps working either way.
+  # Integration Tests also run on the nightly schedule and on a manual dispatch,
+  # so a broken environment still surfaces within a day without slowing a PR.
 
 jobs:
   quality_checks:
@@ -117,7 +125,7 @@ jobs:
 
   integration_tests:
     name: Integration Tests
-    if: ${{ vars.GOVARD_CI_FULL == 'true' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || vars.GOVARD_CI_FULL == 'true' }}
     runs-on: ubuntu-latest
     needs: fast_tests
     steps:
