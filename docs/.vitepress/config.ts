@@ -206,6 +206,7 @@ function sidebarEn() {
         text: 'Compare',
         items: [
           { text: 'Govard and DDEV', link: '/compare/ddev' },
+          { text: 'Govard and Warden', link: '/compare/warden' },
         ],
       },
     ],
@@ -279,6 +280,7 @@ function sidebarVi() {
         text: 'So sánh',
         items: [
           { text: 'Govard và DDEV', link: '/vi/compare/ddev' },
+          { text: 'Govard và Warden', link: '/vi/compare/warden' },
         ],
       },
     ],

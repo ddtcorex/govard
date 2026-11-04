@@ -82,6 +82,9 @@ và MariaDB, nên bộ nhớ của nó nằm giữa hai nhánh còn lại.
 động 21,5 s đến 51,3 s qua ba lượt trên máy đang làm việc khác; một lượt đơn lẻ
 là nhiễu.
 
+Trang so sánh từng công cụ, nêu những gì mỗi bên làm ngoài các con số này:
+[Govard và DDEV](/vi/compare/ddev), [Govard và Warden](/vi/compare/warden).
+
 ## Đọc các con số này thế nào
 
 Một lần đo trên máy đang làm việc khác chỉ là nhiễu: hai lần chạy cùng harness

@@ -103,6 +103,9 @@ mounts, so copying the project would measure a tree Warden cannot see.
 21.5 s to 51.3 s across three runs on an otherwise busy workstation; treat a
 single run as noise.
 
+Per-tool difference pages, which state what each tool does beyond these numbers:
+[Govard and DDEV](/compare/ddev), [Govard and Warden](/compare/warden).
+
 ## How to read the numbers
 
 A single measurement on a shared workstation is noise: two runs of this harness
