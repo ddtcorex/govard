@@ -922,7 +922,7 @@ func runRemoteSyncBackgroundWithOptions(
 	// other, so the claim itself is the guard here. The canonical ID is
 	// resolved once and reused for the claim, the event and the release.
 	syncID := canonicalProjectID(project)
-	if !tryRegisterSyncingProjectByID(syncID, remoteName) {
+	if !tryRegisterSyncingProjectByID(syncID, remoteName, syncingAliasCandidateKeys(project)...) {
 		if remote := syncingRemoteForProject(project); remote != "" {
 			return fmt.Errorf("cannot start sync for %q while sync from %q is in progress", strings.TrimSpace(project), remote)
 		}

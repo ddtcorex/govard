@@ -22,26 +22,35 @@ import (
 )
 
 var (
-	syncingProjects   = make(map[string]string) // projectName -> remoteName
+	syncingProjects   = make(map[string]string) // canonical project ID -> remoteName
+	syncingAliases    = make(map[string]string) // alias key -> primary ID, set at claim time
 	syncingProjectsMu sync.Mutex
 )
 
 // RegisterSyncingProject records an in-flight sync outside the atomic
 // claim. Production starters must use TryRegisterSyncingProject (check and
 // register under one mutex hold); this export stays for test setup only,
-// where a fresh map makes the claim trivially succeed.
+// where a fresh map makes the claim trivially succeed. It registers the
+// same alias candidates a claim does, so lookups reach the entry the same
+// way production ones do.
 func RegisterSyncingProject(project, remote string) {
 	syncingProjectsMu.Lock()
 	defer syncingProjectsMu.Unlock()
 	if id := canonicalProjectID(project); id != "" {
 		syncingProjects[id] = remote
+		for _, alias := range syncingAliasCandidateKeys(project) {
+			if alias != id {
+				syncingAliases[alias] = id
+			}
+		}
 	}
 }
 
 func UnregisterSyncingProject(project string) {
-	syncingProjectsMu.Lock()
-	defer syncingProjectsMu.Unlock()
-	delete(syncingProjects, canonicalProjectID(project))
+	// Release through the shared sweeper so the alias candidates this
+	// identifier produces (registered at claim time) do not outlive the
+	// claim: resolve first, then sweep once under the release mutex.
+	unregisterSyncingProjectByID(canonicalProjectID(project))
 }
 
 // GetSyncingRemote is the exported face of the sync guard lookup: one
@@ -51,17 +60,53 @@ func GetSyncingRemote(project string) string {
 }
 
 // syncingRemoteForProject reports the remote an in-flight sync is pulling
-// from for a project. Both sides key on the canonical project ID, so names,
-// domains and paths that resolve to the same project share one map entry
-// and a single lookup suffices.
+// from for a project. Claims key on the docker-backed canonical ID and also
+// register the cheap alias candidates the starter's identifier can produce
+// (registry-canonical ID plus the plain lowercase input, see
+// syncingAliasCandidateKeys), so a lookup reaches the same entry through
+// registry reads and string work only: one docker shell of
+// `docker compose ls` per dashboard refresh per unresolvable project was
+// measured at 46-82 ms each (2026-11-06 diagnosis), which is why the lookup
+// here must never shell docker itself. First candidate hit wins.
 func syncingRemoteForProject(project string) string {
-	id := canonicalProjectID(strings.TrimSpace(project))
-	if id == "" {
+	candidates := syncingAliasCandidateKeys(project)
+	if len(candidates) == 0 {
 		return ""
 	}
 	syncingProjectsMu.Lock()
 	defer syncingProjectsMu.Unlock()
-	return syncingProjects[id]
+	for _, id := range candidates {
+		if remote, ok := syncingProjects[id]; ok {
+			return remote
+		}
+		if primary, ok := syncingAliases[id]; ok {
+			if remote, ok := syncingProjects[primary]; ok {
+				return remote
+			}
+		}
+	}
+	return ""
+}
+
+// syncingAliasCandidateKeys lists the sync-map candidates a lookup can
+// derive from one identifier without any Docker-backed probe: the
+// registry-only canonical ID (exact and strong-fuzzy registry reads plus a
+// path syscall fallback) and the plain lowercase input. Claims register the
+// same candidates from the starter's identifier string, so both badge and
+// guard resolve to the claim without shelling docker.
+func syncingAliasCandidateKeys(project string) []string {
+	trimmed := strings.TrimSpace(project)
+	if trimmed == "" {
+		return nil
+	}
+	var keys []string
+	if id := canonicalProjectIDForRegistry(trimmed); id != "" {
+		keys = append(keys, id)
+	}
+	if lower := strings.ToLower(trimmed); lower != "" {
+		keys = append(keys, lower)
+	}
+	return uniqueStrings(keys)
 }
 
 // refuseDuringSync rejects a mutating environment action while a sync is

@@ -147,15 +147,18 @@ func CanonicalProjectIDForTest(input string) string {
 // other, so sync starters must claim through here, never through the
 // check and the register as two steps.
 func TryRegisterSyncingProject(project, remote string) bool {
-	return tryRegisterSyncingProjectByID(canonicalProjectID(project), remote)
+	return tryRegisterSyncingProjectByID(canonicalProjectID(project), remote, syncingAliasCandidateKeys(project)...)
 }
 
 // tryRegisterSyncingProjectByID claims an already-canonical project ID:
 // same atomic check-and-register as TryRegisterSyncingProject without
 // resolving again. Sync starters resolve once and reuse the ID for the
 // claim, the event and the release, so a registry miss (Docker-backed
-// probes) is paid once per sync, not three times.
-func tryRegisterSyncingProjectByID(id, remote string) bool {
+// probes) is paid once per sync, not three times. The alias candidates
+// (see syncingAliasCandidateKeys) are stored by the same mutex hold so a
+// lookup through GetSyncingRemote reaches this claim without resolving
+// anything Docker-backed itself.
+func tryRegisterSyncingProjectByID(id, remote string, aliases ...string) bool {
 	if id == "" {
 		return false
 	}
@@ -164,22 +167,59 @@ func tryRegisterSyncingProjectByID(id, remote string) bool {
 	if _, ok := syncingProjects[id]; ok {
 		return false
 	}
+	for _, alias := range aliases {
+		if alias == id {
+			continue
+		}
+		if primary, ok := syncingAliases[alias]; ok && primary != id {
+			// An alias another live claim owns means the two identifiers
+			// resolve to the same project: the claim is a conflict, same
+			// as an existing entry would be. Leave both entries untouched.
+			return false
+		}
+	}
 	syncingProjects[id] = remote
+	for _, alias := range aliases {
+		if alias != id {
+			syncingAliases[alias] = id
+		}
+	}
 	return true
 }
 
 // unregisterSyncingProjectByID releases a claim by canonical ID, the
-// release half of tryRegisterSyncingProjectByID.
+// release half of tryRegisterSyncingProjectByID. The sweep removes the
+// aliases this claim owns (alias -> this primary ID), never a sibling
+// claim's entries.
 func unregisterSyncingProjectByID(id string) {
 	syncingProjectsMu.Lock()
 	defer syncingProjectsMu.Unlock()
 	delete(syncingProjects, id)
+	for alias, primary := range syncingAliases {
+		if primary == id {
+			delete(syncingAliases, alias)
+		}
+	}
 }
 
-// ResetSyncingProjectsForTest clears the in-flight sync map so guard tests
+// ResetSyncingProjectsForTest clears the in-flight sync maps so guard tests
 // stay hermetic.
 func ResetSyncingProjectsForTest() {
 	syncingProjectsMu.Lock()
 	defer syncingProjectsMu.Unlock()
 	syncingProjects = make(map[string]string)
+	syncingAliases = make(map[string]string)
+}
+
+// SyncingAliasesForTest returns a copy of the alias map so tests can
+// pin alias hygiene (a release must sweep its own aliases) through the
+// tests/ package without exposing the live maps to mutation.
+func SyncingAliasesForTest() map[string]string {
+	syncingProjectsMu.Lock()
+	defer syncingProjectsMu.Unlock()
+	out := make(map[string]string, len(syncingAliases))
+	for alias, primary := range syncingAliases {
+		out[alias] = primary
+	}
+	return out
 }

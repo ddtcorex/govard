@@ -81,6 +81,14 @@ Island tải lại cả hai danh sách khi nhận sự kiện backend `sync:prog
   `another sync is already in progress` khi không ghi nhận remote nào).
   Khóa dùng ID project chuẩn hóa, nên một lần Start gọi bằng domain không
   thể lọt qua một sync đã khởi động bằng đường dẫn.
+- Lần giữ này giải ID chuẩn hóa phụ thuộc Docker đúng một lần cho mỗi sync,
+  đồng thời lưu sẵn các alias khóa rẻ mà chuỗi identifier của nó sinh ra
+  (ID chuẩn hóa qua registry và dạng thường viết thường). Mọi lần dò sau
+  đó, badge "syncing" của dashboard lẫn chốt chặn refuse-during-sync, đều
+  giải bằng registry và phép xử lý chuỗi, không hề gọi Docker. Trước đó,
+  mỗi lần dò lập lại `docker compose ls` cho từng project mà registry không
+  giải được, đo được 46-82 ms mỗi project trên máy chẩn đoán, tổng ~560 ms
+  cho mỗi lần làm mới dashboard (2026-11-06).
 - Trong khi sync đang chạy, các thao tác thay đổi môi trường trên cùng
   project (start, stop, restart, pull, toggle, delete) đều bị từ chối, vì
   sync đang sở hữu các container.
