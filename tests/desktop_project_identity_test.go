@@ -266,3 +266,184 @@ func TestCanonicalProjectID_ConcurrentClaimSingleWinner(t *testing.T) {
 	}
 	desktop.UnregisterSyncingProject("sample-project")
 }
+
+// TestSyncingRemoteLookupUsesCheapAliasKeysNoDocker pins the dashboard perf
+// contract: once a sync is claimed, every sync-status lookup resolves from
+// registry/alias keys and strings only, and shells docker zero times. The
+// claim itself may shell docker once; the lookups may not.
+func TestSyncingRemoteLookupUsesCheapAliasKeysNoDocker(t *testing.T) {
+	desktop.ResetStateForTest()
+	desktop.ResetSyncingProjectsForTest()
+
+	// Fresh empty registry: nothing is registered here.
+	t.Setenv(engine.ProjectRegistryPathEnvVar, filepath.Join(t.TempDir(), "projects.json"))
+
+	// Docker shim: every invocation appends a line to the marker and fails
+	// fast, so any docker shelling is observable and harmless.
+	marker := filepath.Join(t.TempDir(), "docker-shim-marker.log")
+	shimDir := t.TempDir()
+	shim := filepath.Join(shimDir, "docker")
+	script := "#!/bin/sh\necho invoke >> \"$GOVARD_TEST_DOCKER_SHIM_MARKER\"\nexit 1\n"
+	if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
+		t.Fatalf("write docker shim: %v", err)
+	}
+	t.Setenv("GOVARD_TEST_DOCKER_SHIM_MARKER", marker)
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	const project = "sample-orphan"
+	if !desktop.TryRegisterSyncingProject(project, "staging") {
+		t.Fatalf("TryRegisterSyncingProject(%q) = false, want true", project)
+	}
+	defer desktop.UnregisterSyncingProject(project)
+
+	rowsAfterClaim := readShimMarkerRows(t, marker)
+
+	// The lookups must find the guard state without touching docker.
+	for _, query := range []string{project, "  " + project + "  "} {
+		if got := desktop.GetSyncingRemote(query); got != "staging" {
+			t.Fatalf("GetSyncingRemote(%q) = %q, want %q", query, got, "staging")
+		}
+	}
+
+	if rows := readShimMarkerRows(t, marker); rows != rowsAfterClaim {
+		t.Fatalf("sync lookups shelled docker: %d new invocation rows (shim) after %d at claim", rows-rowsAfterClaim, rowsAfterClaim)
+	}
+}
+
+func readShimMarkerRows(t *testing.T, marker string) int {
+	t.Helper()
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		return 0
+	}
+	return len(strings.Split(strings.TrimSpace(string(data)), "\n"))
+}
+
+// TestSyncingAliasUnregisterScopesToItsOwnClaim pins alias ownership: a
+// claim registers the alias keys it can produce cheaply, and unregister of
+// one project sweeps only that claim's aliases, never a sibling project's.
+func TestSyncingAliasUnregisterScopesToItsOwnClaim(t *testing.T) {
+	desktop.ResetStateForTest()
+	desktop.ResetSyncingProjectsForTest()
+
+	rootOne, rootTwo := t.TempDir(), t.TempDir()
+	writeDesktopProjectConfigForTest(t, rootOne, "proj-one", "laravel", "proj-one.test")
+	writeDesktopProjectConfigForTest(t, rootTwo, "proj-two", "laravel", "proj-two.test")
+	registerTwoDesktopProjectsForTest(t, rootOne, rootTwo)
+
+	for project, remote := range map[string]string{"proj-one": "staging", "proj-two": "qa"} {
+		if !desktop.TryRegisterSyncingProject(project, remote) {
+			t.Fatalf("TryRegisterSyncingProject(%q) = false, want true", project)
+		}
+	}
+	desktop.UnregisterSyncingProject("proj-one")
+
+	if got := desktop.GetSyncingRemote("proj-one"); got != "" {
+		t.Fatalf("GetSyncingRemote(proj-one) after unregister = %q, want empty", got)
+	}
+	for _, query := range []string{"proj-two", "proj-two.test"} {
+		if got := desktop.GetSyncingRemote(query); got != "qa" {
+			t.Fatalf("GetSyncingRemote(%q) = %q, want sibling sync intact (%q)", query, got, "qa")
+		}
+	}
+	// proj-one is claimable again after its unregister.
+	if !desktop.TryRegisterSyncingProject("proj-one.test", "reclaim") {
+		t.Fatalf("TryRegisterSyncingProject(proj-one.test) after unregister = false, want true")
+	}
+	desktop.UnregisterSyncingProject("proj-one")
+}
+
+// TestSyncingExportedUnregisterSweepsAliasesForReclaim closes the review
+// finding: the claim side differs from the lookup candidates (claim by an
+// absolute path yields a path primary while the lookup walks the lowercase
+// alias), a lookup without docker finds the claim through the alias branch,
+// and the exported UnregisterSyncingProject sweeps that alias so a later
+// identifier view of the same project can claim again. Pre-fix the stale
+// alias blocked the reclaim: the conflict check reads it as another live
+// claim's, which is exactly the regression this pins.
+func TestSyncingExportedUnregisterSweepsAliasesForReclaim(t *testing.T) {
+	desktop.ResetStateForTest()
+	desktop.ResetSyncingProjectsForTest()
+
+	// Fresh empty registry and a docker shim that never succeeds, so any
+	// docker shelling beyond the claim itself is traceable through the
+	// marker; the claim here resolves without docker (path with config).
+	t.Setenv(engine.ProjectRegistryPathEnvVar, filepath.Join(t.TempDir(), "projects.json"))
+	marker := filepath.Join(t.TempDir(), "docker-shim-marker.log")
+	shimDir := t.TempDir()
+	shim := filepath.Join(shimDir, "docker")
+	script := "#!/bin/sh\necho invoke >> \"$GOVARD_TEST_DOCKER_SHIM_MARKER\"\nexit 1\n"
+	if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
+		t.Fatalf("write docker shim: %v", err)
+	}
+	t.Setenv("GOVARD_TEST_DOCKER_SHIM_MARKER", marker)
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := t.TempDir()
+	claimPath := filepath.Join(root, "OrphanProj")
+	if err := os.MkdirAll(claimPath, 0o755); err != nil {
+		t.Fatalf("mkdir claim path: %v", err)
+	}
+	writeDesktopProjectConfigForTest(t, claimPath, "orphan-project", "laravel", "orphan-project.test")
+
+	// Claim by path: primary is the canonical path key; the lowercase
+	// candidate ends up in the alias map (it differs from the primary).
+	if !desktop.TryRegisterSyncingProject(claimPath, "staging") {
+		t.Fatalf("TryRegisterSyncingProject(%q) = false, want true", claimPath)
+	}
+	defer desktop.UnregisterSyncingProject(claimPath)
+
+	rowsAfterClaim := readShimMarkerRows(t, marker)
+
+	// Path view: primary hit. Lowercase view: alias hit. Both without
+	// touching docker.
+	for _, query := range []string{claimPath, strings.ToLower(claimPath)} {
+		if got := desktop.GetSyncingRemote(query); got != "staging" {
+			t.Fatalf("GetSyncingRemote(%q) = %q, want %q", query, got, "staging")
+		}
+	}
+	if rows := readShimMarkerRows(t, marker); rows != rowsAfterClaim {
+		t.Fatalf("lookups shelled docker: %d new shim rows after %d at claim", rows-rowsAfterClaim, rowsAfterClaim)
+	}
+
+	desktop.UnregisterSyncingProject(claimPath)
+
+	// The lowercase view must be reclaimable now that the claim released.
+	if !desktop.TryRegisterSyncingProject(strings.ToLower(claimPath), "reclaim") {
+		t.Fatalf("TryRegisterSyncingProject(lowercase path) after unregister = false, want true (registry/alias scoping)")
+	}
+	desktop.UnregisterSyncingProject(strings.ToLower(claimPath))
+	if got := desktop.GetSyncingRemote(strings.ToLower(claimPath)); got != "" {
+		t.Fatalf("GetSyncingRemote(lowercase path) after release = %q, want empty", got)
+	}
+}
+
+// TestSyncingUnregisterSweepsItsAliases pins alias hygiene: a claim that
+// writes alias candidates (claim by path yields a path primary and a
+// lowercase alias) leaves no alias behind after the exported
+// UnregisterSyncingProject release. A stale alias cannot misdirect a
+// lookup's result today, but it keeps claiming session state for a project
+// whose sync is long gone.
+func TestSyncingUnregisterSweepsItsAliases(t *testing.T) {
+	desktop.ResetStateForTest()
+	desktop.ResetSyncingProjectsForTest()
+
+	root := t.TempDir()
+	claimPath := root + "/OrphanProj"
+	if err := os.MkdirAll(claimPath, 0o755); err != nil {
+		t.Fatalf("mkdir claim path: %v", err)
+	}
+	writeDesktopProjectConfigForTest(t, claimPath, "orphan-project", "laravel", "orphan-project.test")
+
+	if !desktop.TryRegisterSyncingProject(claimPath, "staging") {
+		t.Fatalf("TryRegisterSyncingProject(%q) = false, want true", claimPath)
+	}
+	if len(desktop.SyncingAliasesForTest()) == 0 {
+		t.Fatalf("expected the claim to register an alias candidate (path primary plus lowercase alias)")
+	}
+
+	desktop.UnregisterSyncingProject(claimPath)
+	if len(desktop.SyncingAliasesForTest()) != 0 {
+		t.Fatalf("UnregisterSyncingProject left aliases behind: %v", desktop.SyncingAliasesForTest())
+	}
+}

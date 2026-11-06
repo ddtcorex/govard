@@ -81,6 +81,14 @@ The island refreshes both lists on the `sync:progress` and
   "Y" is in progress` (or `another sync is already in progress` when no
   remote is recorded). Keys are canonical project IDs, so a start addressed
   by domain cannot slip past a sync started by path.
+- The claim resolves the Docker-backed canonical ID once per sync; it also
+  stores the cheap alias candidates its identifier produces (registry
+  canonical ID and the plain lowercase input). Every later lookup, the
+  dashboard syncing badge and the refuse-during-sync guard, resolves through
+  those registry reads and string work only and never shells Docker. Before
+  that, every lookup re-probed `docker compose ls` per project the registry
+  could not resolve, measured at 46-82 ms each on the diagnosis machine,
+  about 560 ms of every dashboard refresh (2026-11-06).
 - While a sync runs, mutating environment actions on the same project
   (start, stop, restart, pull, toggle, delete) are refused, because the sync
   owns the containers.

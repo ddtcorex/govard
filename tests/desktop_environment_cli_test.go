@@ -278,3 +278,35 @@ func TestDesktopComposeProjectNameForTogglePrefersRegistryForTest(t *testing.T) 
 		t.Fatalf("expected fallback to input, got %q", got)
 	}
 }
+
+// registerTwoDesktopProjectsForTest registers two projects into ONE shared
+// temp registry, so alias parity tests can exercise sibling-claim scoping
+// without clobbering each other's registry env var.
+func registerTwoDesktopProjectsForTest(t *testing.T, rootOne, rootTwo string) {
+	t.Helper()
+	registryPath := filepath.Join(t.TempDir(), "projects.json")
+	t.Setenv(engine.ProjectRegistryPathEnvVar, registryPath)
+	entries := []engine.ProjectRegistryEntry{
+		{
+			Path:        rootOne,
+			ProjectName: "proj-one",
+			Domain:      "proj-one.test",
+			Framework:   "laravel",
+			LastSeenAt:  time.Now().UTC(),
+			LastCommand: "desktop-test",
+		},
+		{
+			Path:        rootTwo,
+			ProjectName: "proj-two",
+			Domain:      "proj-two.test",
+			Framework:   "laravel",
+			LastSeenAt:  time.Now().UTC(),
+			LastCommand: "desktop-test",
+		},
+	}
+	for _, entry := range entries {
+		if err := engine.UpsertProjectRegistryEntry(entry); err != nil {
+			t.Fatalf("register project %s: %v", entry.ProjectName, err)
+		}
+	}
+}
