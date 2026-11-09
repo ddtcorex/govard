@@ -97,3 +97,10 @@ suites:
           rebuilds). A warm-up that fails leaves the build inside the first test
           and shows up here, which is the intended failure: it means the
           pre-build step broke, not that a deploy got slow.
+      TestInitWithMigrateFrom:
+        budget: 60s
+        reason: >-
+          copies a DDEV fixture, runs `init --migrate-from ddev` and asserts the
+          migrated configuration, which does real file copies and a git checkout.
+          Measured 21.05s on CI and 40.54s on a loaded 12-CPU laptop, so the 30s
+          default failed the laptop run this entry was derived from.
