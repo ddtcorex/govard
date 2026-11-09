@@ -21,6 +21,14 @@ import (
 // cleanup unrun.
 const warmupTimeout = 15 * time.Minute
 
+// sandboxFixtureProjects names the projects the suite owns. Cleanup is scoped to
+// them in both directions: an artifact this run created AND that belongs to one of
+// these projects is removed. The ownership test is the one that protects a
+// developer's machine, because a snapshot taken while the Docker daemon was
+// starting returns nothing, and "everything is new" would otherwise mean "delete
+// every sandbox image, container and database volume on this host".
+var sandboxFixtureProjects = []string{"deploy-magento-stub", "deploy-code-only"}
+
 // sandboxWarmups lists the fixture and profile pairs the suite's tests ask for.
 // The image tag carries the project, the profile and a hash of the definition, so
 // each pair is its own image and a pair missing here is a build inside a timed
@@ -206,17 +214,23 @@ func copyTree(source, destination string) error {
 	})
 }
 
-// purgeSandboxArtifacts removes the sandbox images, containers and database
-// volumes this run created, leaving anything that was already on the machine.
-// Best effort by design: a machine without Docker, or a Docker that is already
-// stopping, must not turn a suite result into a cleanup error.
+// purgeSandboxArtifacts removes the sandbox artifacts this run created and that
+// belong to the suite's own fixtures. Best effort by design: a machine without
+// Docker, or a Docker that is already stopping, must not turn a suite result into
+// a cleanup error.
 func purgeSandboxArtifacts(preExisting map[string]bool) {
-	for _, container := range sandboxContainerIDs() {
+	// A snapshot that came back empty because Docker was unreachable says nothing
+	// about what was already on the machine, so nothing is safe to delete.
+	if preExisting == nil {
+		fmt.Fprintln(os.Stderr, "sandbox cleanup skipped: the pre-run Docker snapshot was unavailable")
+		return
+	}
+	for _, container := range ownedSandboxContainers() {
 		if !preExisting["container:"+container] {
 			_ = exec.Command("docker", "rm", "-f", container).Run()
 		}
 	}
-	for _, image := range sandboxImageTags() {
+	for _, image := range ownedSandboxImages() {
 		if !preExisting["image:"+image] {
 			_ = exec.Command("docker", "rmi", "-f", image).Run()
 		}
@@ -225,7 +239,7 @@ func purgeSandboxArtifacts(preExisting map[string]bool) {
 	// developer can inspect what a failed case left. The suite discards the ones
 	// it made: they are named per project, so the next run would silently reuse a
 	// database an earlier test wrote to.
-	for _, volume := range sandboxVolumeNames() {
+	for _, volume := range ownedSandboxVolumes() {
 		if !preExisting["volume:"+volume] {
 			_ = exec.Command("docker", "volume", "rm", "-f", volume).Run()
 		}
@@ -233,35 +247,78 @@ func purgeSandboxArtifacts(preExisting map[string]bool) {
 }
 
 // snapshotSandboxArtifacts records what is already on the machine, keyed so an
-// image, a container and a volume cannot shadow each other.
+// image, a container and a volume cannot shadow each other. It answers nil when
+// the Docker daemon cannot be reached, which is the signal the cleanup uses to
+// stay away entirely.
 func snapshotSandboxArtifacts() map[string]bool {
+	if !dockerReachable() {
+		return nil
+	}
 	existing := make(map[string]bool)
-	for _, container := range sandboxContainerIDs() {
+	for _, container := range ownedSandboxContainers() {
 		existing["container:"+container] = true
 	}
-	for _, image := range sandboxImageTags() {
+	for _, image := range ownedSandboxImages() {
 		existing["image:"+image] = true
 	}
-	for _, volume := range sandboxVolumeNames() {
+	for _, volume := range ownedSandboxVolumes() {
 		existing["volume:"+volume] = true
 	}
 	return existing
 }
 
-// sandboxContainerIDs lists the sandbox containers on this machine, and answers
-// nil when Docker cannot be reached at all.
-func sandboxContainerIDs() []string {
-	return dockerLines("ps", "-a", "--filter", "label=govard.sandbox=1", "--format", "{{.ID}}")
+func dockerReachable() bool {
+	return exec.Command("docker", "version", "--format", "{{.Server.Version}}").Run() == nil
 }
 
-// sandboxImageTags lists the sandbox images on this machine.
-func sandboxImageTags() []string {
-	return dockerLines("image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "govard-sandbox")
+// ownedSandboxContainers lists the sandbox containers of the suite's fixtures.
+// The project label is the ownership test: a container another project created
+// carries another project's name and is never listed here.
+func ownedSandboxContainers() []string {
+	ids := make([]string, 0)
+	for _, project := range sandboxFixtureProjects {
+		ids = append(ids, dockerLines("ps", "-a",
+			"--filter", "label=govard.sandbox.project="+project,
+			"--format", "{{.ID}}")...)
+	}
+	return ids
 }
 
-// sandboxVolumeNames lists the sandbox database volumes on this machine.
-func sandboxVolumeNames() []string {
-	return dockerLines("volume", "ls", "--filter", "label=govard.sandbox.db-volume", "--format", "{{.Name}}")
+// ownedSandboxImages lists the sandbox images of the suite's fixtures. The tag is
+// govard-sandbox:<project-slug>-<profile>-<definition hash>, so the project's
+// padded slug is the ownership test.
+func ownedSandboxImages() []string {
+	tags := make([]string, 0)
+	for _, tag := range dockerLines("image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "govard-sandbox") {
+		for _, project := range sandboxFixtureProjects {
+			if strings.HasPrefix(tag, "govard-sandbox:"+project+"-") {
+				tags = append(tags, tag)
+				break
+			}
+		}
+	}
+	return tags
+}
+
+// ownedSandboxVolumes lists the database volumes whose recorded owner is one of
+// the suite's containers.
+func ownedSandboxVolumes() []string {
+	names := make([]string, 0)
+	for _, line := range dockerLines("volume", "ls",
+		"--filter", "label=govard.sandbox.db-volume",
+		"--format", `{{.Name}}	{{.Label "govard.sandbox.db-volume"}}`) {
+		name, owner, found := strings.Cut(line, "\t")
+		if !found {
+			continue
+		}
+		for _, project := range sandboxFixtureProjects {
+			if strings.HasPrefix(owner, "govard-"+project+"-sandbox") {
+				names = append(names, name)
+				break
+			}
+		}
+	}
+	return names
 }
 
 func dockerLines(args ...string) []string {
