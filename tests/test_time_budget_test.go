@@ -287,3 +287,58 @@ func TestTestTimeBudgetFileIsValidAndEveryOverrideIsJustified(t *testing.T) {
 		}
 	}
 }
+
+// An override written against a parent test must cover its subtests. The budget
+// file's own allowance for the sandbox recipe names one parent and explains that
+// it covers "five layouts", but go test reports each layout as
+// `Parent/single`, `Parent/split` and so on: an exact-name lookup silently
+// budgeted those layouts at the suite default, so the allowance the author wrote
+// never applied to the tests it was written for.
+func TestTestBudgetParentOverrideCoversItsSubtests(t *testing.T) {
+	budget, err := testbudget.Load(writeBudgetFile(t, validBudgetYAML), 1)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	suite, err := budget.Suite("unit")
+	if err != nil {
+		t.Fatalf("Suite() error = %v", err)
+	}
+
+	for _, name := range []string{"TestSlowOne/single", "TestSlowOne/split", "TestSlowOne/a/b"} {
+		limit, reason := suite.LimitFor(name)
+		if limit != 5*time.Second {
+			t.Fatalf("LimitFor(%q) = %v, want the parent's 5s allowance", name, limit)
+		}
+		if reason != "it waits on a real poll interval" {
+			t.Fatalf("LimitFor(%q) reason = %q, want the parent's reason", name, reason)
+		}
+	}
+
+	// The nearest ancestor wins, so a subtest can carry its own tighter or wider
+	// allowance without the parent's shadowing it.
+	nested := testbudget.Suite{
+		Default: testbudget.Duration(time.Second),
+		Overrides: map[string]testbudget.Override{
+			"TestParent":     {Budget: testbudget.Duration(10 * time.Second), Reason: "parent"},
+			"TestParent/one": {Budget: testbudget.Duration(20 * time.Second), Reason: "child"},
+		},
+	}
+	if limit, reason := nested.LimitFor("TestParent/one/deep"); limit != 20*time.Second || reason != "child" {
+		t.Fatalf("deepest matching ancestor = (%v, %q), want (20s, child)", limit, reason)
+	}
+
+	// A sibling that merely shares a prefix is a different test: TestParentTwo is
+	// not a subtest of TestParent and must keep the suite default.
+	if limit, _ := nested.LimitFor("TestParentTwo"); limit != time.Second {
+		t.Fatalf("TestParentTwo limit = %v, want the suite default: a shared prefix is not a subtest", limit)
+	}
+
+	// The walk itself is not allowed to invent a match: an empty name, a name with
+	// a trailing slash and a segment that merely starts with a parent's name all
+	// have to fall through to the default rather than inherit something.
+	for _, name := range []string{"", "/", "TestParentTwo/one", "TestParentX"} {
+		if limit, reason := suite.LimitFor(name); limit != 2*time.Second || reason != "" {
+			t.Fatalf("LimitFor(%q) = (%v, %q), want the suite default and no reason", name, limit, reason)
+		}
+	}
+}

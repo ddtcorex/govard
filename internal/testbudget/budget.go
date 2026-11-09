@@ -152,9 +152,23 @@ func (b *Budget) SuiteNames() []string {
 
 // LimitFor returns the budget a test is held to, plus the reason when that
 // budget came from an override rather than the suite default.
+//
+// A subtest inherits the nearest allowance on its parent chain: go test reports
+// `Parent/sub`, and an allowance written for the parent describes the work every
+// one of its subtests does, which is how the sandbox recipe's single entry covers
+// its five layouts. The walk moves up one `/` at a time, so a test that merely
+// shares a prefix (`TestParentTwo` next to `TestParent`) is not a subtest of it
+// and keeps the suite default.
 func (s Suite) LimitFor(test string) (time.Duration, string) {
-	if override, ok := s.Overrides[test]; ok {
-		return time.Duration(override.Budget), override.Reason
+	for name := test; ; {
+		if override, ok := s.Overrides[name]; ok {
+			return time.Duration(override.Budget), override.Reason
+		}
+		index := strings.LastIndex(name, "/")
+		if index <= 0 {
+			break
+		}
+		name = name[:index]
 	}
 	return time.Duration(s.Default), ""
 }
