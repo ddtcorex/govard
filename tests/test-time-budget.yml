@@ -86,13 +86,21 @@ suites:
     default: 30s
     overrides:
       TestDeploySandboxRunsTheMagentoRecipeOverRealSSH:
-        budget: 90s
+        budget: 60s
         reason: >-
-          boots a real sandbox container and runs the Magento recipe over real SSH
-          for five layouts (single, split, hyva, hyva-multi, in-place), roughly 7-10s
-          each. Measured 41.25s, 41.61s and 41.50s on three isolated runs, so the
-          old 45s cap left 8% headroom and failed on host load alone (45-157s seen
-          in the field). 90s is about twice the quiet-host time: it still fails a
-          layout that doubles, but not a busy laptop. A cold sandbox image build
-          (157s seen) is outside this budget by design; pre-pull or pre-build the
-          image before a timed run.
+          runs five real deploys against one sandbox over real SSH and rsync:
+          static content single and split, two Hyva frontend builds, and the
+          in-place activation. Measured 24.31s and 25.09s on a quiet host. The
+          sandbox image build is not part of this budget: TestMain builds the
+          fixture images once, before any test is timed, and the tests reuse them
+          (the tag hashes the definition, so an unchanged definition never
+          rebuilds). A warm-up that fails leaves the build inside the first test
+          and shows up here, which is the intended failure: it means the
+          pre-build step broke, not that a deploy got slow.
+      TestInitWithMigrateFrom:
+        budget: 60s
+        reason: >-
+          copies a DDEV fixture, runs `init --migrate-from ddev` and asserts the
+          migrated configuration, which does real file copies and a git checkout.
+          Measured 21.05s on CI and 40.54s on a loaded 12-CPU laptop, so the 30s
+          default failed the laptop run this entry was derived from.
