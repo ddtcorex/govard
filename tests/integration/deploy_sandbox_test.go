@@ -35,7 +35,7 @@ func TestDeploySandboxEndToEnd(t *testing.T) {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
 	t.Cleanup(func() {
-		env.RunGovard(t, projectDir, "sandbox", "down", "--purge")
+		env.RunGovard(t, projectDir, "sandbox", "down")
 	})
 
 	// The sandbox remote is synthetic now: nothing is written into
@@ -111,7 +111,7 @@ func TestIntegrationRemoteExecAgainstTheSandbox(t *testing.T) {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
 	t.Cleanup(func() {
-		env.RunGovard(t, projectDir, "sandbox", "down", "--purge")
+		env.RunGovard(t, projectDir, "sandbox", "down")
 	})
 
 	executed := env.RunGovard(t, projectDir, "remote", "exec", "sandbox", "--", "echo", "hello-from-sandbox")
@@ -138,7 +138,7 @@ func TestIntegrationSandboxSSHRunsACommandAndReturnsItsStatus(t *testing.T) {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
 	t.Cleanup(func() {
-		env.RunGovard(t, projectDir, "sandbox", "down", "--purge")
+		env.RunGovard(t, projectDir, "sandbox", "down")
 	})
 
 	ok := env.RunGovard(t, projectDir, "sandbox", "ssh", "--", "echo", "hello-from-ssh")
@@ -170,7 +170,7 @@ func TestDeploySandboxInPlaceAndDeployerLayout(t *testing.T) {
 		t.Fatalf("sandbox up --docroot=real failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
 	t.Cleanup(func() {
-		env.RunGovard(t, projectDir, "sandbox", "down", "--purge")
+		env.RunGovard(t, projectDir, "sandbox", "down")
 	})
 
 	deployed := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revisions[0], "--yes")
@@ -240,6 +240,94 @@ func seedOriginFromProject(t *testing.T, projectDir string) (string, string) {
 // is taken from Magento's option definition (Magento_Deploy\Console\
 // DeployStaticOptions) and the reference deploy tool's recipe.
 func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
+	// One project, one image and one container serve all five layouts. Each
+	// layout used to create its own project, and because the image tag carries
+	// the project name (SandboxImageTag), that meant one Docker image build per
+	// layout: 130s for the table, of which roughly 60s was the first base-image
+	// pull and ~13s each was a rebuild. Reusing the sandbox turns the table into
+	// what it is testing — five deploys against one target — and a later deploy
+	// landing on a target that already holds a release is the more realistic
+	// arrangement of the two.
+	env := NewTestEnvironment(t)
+	projectDir := env.CreateProjectFromFixture(t, "deploy/magento-stub", "deploy-magento-stub")
+
+	// Where the site is served from, so the stub can assert that the maintenance
+	// window was opened there. It is the sandbox's own configured current path,
+	// and it has to be committed before `up` because that is what seeds the
+	// mirror the target deploys from. Unlike the per-layout files below it is the
+	// same for every layout, so it is written once.
+	if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
+		t.Fatalf("write the served path: %v", err)
+	}
+
+	origin, _ := seedOriginFromProject(t, projectDir)
+	seedSandboxCheckout(t, projectDir, origin)
+	// The local settings layer is per layout and never part of a revision.
+	if err := os.WriteFile(filepath.Join(projectDir, ".git", "info", "exclude"), []byte(".govard.local.yml\n"), 0o644); err != nil {
+		t.Fatalf("exclude the local settings layer: %v", err)
+	}
+
+	// Every layout commits its own expectation files onto the same checkout, and
+	// each commit is a revision the target can deploy. The origin has to carry
+	// them too: `sandbox up` refreshes the container's mirror from it.
+	commitLayout := func(t *testing.T, testCase struct {
+		name     string
+		static   string
+		frontend string
+		settings string
+		docroot  string
+		sync     string
+	}) string {
+		t.Helper()
+		// The expectation files are the stub's instructions, so a layout that does
+		// not want one must not inherit the previous layout's copy: `single` has no
+		// frontend, and leaving `hyva`'s file behind would make the stub assert a
+		// frontend build that was never requested.
+		for _, name := range []string{"deploy-expectation.txt", "frontend-expectation.txt", "sync-expectation.txt"} {
+			if err := os.Remove(filepath.Join(projectDir, name)); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("clear %s: %v", name, err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(projectDir, "deploy-expectation.txt"), []byte(testCase.static+"\n"), 0o644); err != nil {
+			t.Fatalf("write the expectation: %v", err)
+		}
+		if testCase.frontend != "" {
+			if err := os.WriteFile(filepath.Join(projectDir, "frontend-expectation.txt"), []byte(testCase.frontend+"\n"), 0o644); err != nil {
+				t.Fatalf("write the frontend expectation: %v", err)
+			}
+		}
+		if testCase.sync != "" {
+			if err := os.WriteFile(filepath.Join(projectDir, "sync-expectation.txt"), []byte(testCase.sync+"\n"), 0o644); err != nil {
+				t.Fatalf("write the sync expectation: %v", err)
+			}
+		}
+		// Where the stub keeps the records this test asserts on (the calls it saw,
+		// the frontend builds it ran). They cannot live inside either tree: the
+		// build runs in the release and the verification runs in the served path,
+		// which on an in-place target is a different directory. One absolute path
+		// both can reach, named once and committed before the deploy.
+		if err := os.WriteFile(filepath.Join(projectDir, "stub-state-dir.txt"), []byte(stubStateDir(testCase.name)+"\n"), 0o644); err != nil {
+			t.Fatalf("write the stub state directory: %v", err)
+		}
+
+		// The settings layer written for the previous layout sits untracked in the
+		// same checkout, and sweeping it into this revision would make each
+		// revision carry the previous layout's settings. The repository excludes it
+		// (see the exclude file written next to the seed), so `git add -A` can
+		// stage the whole tree without dragging it along.
+		runGitIn(t, projectDir, "add", "-A")
+		runGitIn(t, projectDir, "commit", "-q", "-m", "layout "+testCase.name)
+		return runGitIn(t, projectDir, "rev-parse", "HEAD")
+	}
+
+	// The cleanup belongs to the parent: a t.Cleanup registered inside a subtest
+	// runs when that subtest ends, which would drop the sandbox between layouts and
+	// put the image build back on every one of them. It is registered before the
+	// first `up` so a layout that leaves a half-created container is still torn
+	// down, and it drops the container without --purge because the image is what
+	// the next layout reuses.
+	parent := t
+	parent.Cleanup(func() { env.RunGovard(parent, projectDir, "sandbox", "down") })
 	for _, testCase := range []struct {
 		name     string
 		static   string
@@ -296,50 +384,30 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			sync:    "generated",
 		},
 	} {
-		expectation := testCase.name
-		t.Run(expectation, func(t *testing.T) {
-			env := NewTestEnvironment(t)
-			projectDir := env.CreateProjectFromFixture(t, "deploy/magento-stub", "deploy-magento-stub-"+expectation)
+		testCase := testCase
+		if !t.Run(testCase.name, func(t *testing.T) {
+			revision := commitLayout(t, testCase)
 
-			// The stub reads these from the release, so they have to be committed.
-			if err := os.WriteFile(filepath.Join(projectDir, "deploy-expectation.txt"), []byte(testCase.static+"\n"), 0o644); err != nil {
-				t.Fatalf("write the expectation: %v", err)
-			}
-			if testCase.frontend != "" {
-				if err := os.WriteFile(filepath.Join(projectDir, "frontend-expectation.txt"), []byte(testCase.frontend+"\n"), 0o644); err != nil {
-					t.Fatalf("write the frontend expectation: %v", err)
+			// The settings land in a local layer the test owns outright, and it is
+			// settled before `up`: a leftover key from the previous layout would
+			// otherwise shape the sandbox the next one is testing.
+			localLayer := filepath.Join(projectDir, ".govard.local.yml")
+			if testCase.settings == "" {
+				if err := os.Remove(localLayer); err != nil && !os.IsNotExist(err) {
+					t.Fatalf("clear the local layer: %v", err)
+				}
+			} else {
+				withSettings := "\ndeploy:\n  settings:\n" + testCase.settings
+				if err := os.WriteFile(localLayer, []byte(withSettings), 0o644); err != nil {
+					t.Fatalf("write the local layer: %v", err)
 				}
 			}
-			// Where the site is served from, so the stub can assert that the
-			// maintenance window was opened there. It is the sandbox's own
-			// configured current path, and it has to be committed before `up`
-			// because that is what seeds the mirror the target deploys from.
-			if err := os.WriteFile(filepath.Join(projectDir, "served-path.txt"), []byte(deploy.SandboxDefaultPaths().Current+"\n"), 0o644); err != nil {
-				t.Fatalf("write the served path: %v", err)
-			}
-			// Where the stub keeps the records this test asserts on (the calls it
-			// saw, the frontend builds it ran). They cannot live inside either
-			// tree: the build runs in the release and the verification runs in
-			// the served path, which on an in-place target is a different
-			// directory. One absolute path both can reach, named once and
-			// committed before `up` builds the mirror.
-			if err := os.WriteFile(filepath.Join(projectDir, "stub-state-dir.txt"), []byte(stubStateDir(expectation)+"\n"), 0o644); err != nil {
-				t.Fatalf("write the stub state directory: %v", err)
-			}
-			if testCase.sync != "" {
-				// The stub checks, at verify time, that the served docroot holds what
-				// the build produced: an in-place activation that copies nothing
-				// leaves the previous deployment's directories in place.
-				if err := os.WriteFile(filepath.Join(projectDir, "sync-expectation.txt"), []byte(testCase.sync+"\n"), 0o644); err != nil {
-					t.Fatalf("write the sync expectation: %v", err)
-				}
-			}
-			origin, revision := seedOriginFromProject(t, projectDir)
-			seedSandboxCheckout(t, projectDir, origin)
 
 			// The `php` profile: the recipe runs `{{php_bin}} bin/magento`, and
-			// the stub is a PHP script so the target can execute it the way a
-			// real Magento would be executed.
+			// the stub is a PHP script so the target can execute it the way a real
+			// Magento would be executed. `up` reuses the container and only
+			// refreshes the mirror, so this costs a git push rather than an image
+			// build.
 			upArgs := []string{"sandbox", "up", "--profile", "php", "--no-seed"}
 			if testCase.docroot != "" {
 				upArgs = append(upArgs, "--docroot", testCase.docroot)
@@ -348,8 +416,6 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 			if up.ExitCode != 0 {
 				t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 			}
-			t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
-
 			// The `php` profile ships the web tier, so `up` advertises the HTTP
 			// half of `deploy:verify`. The verdict below is an exit code, so
 			// without this the run would prove nothing about the check happening at
@@ -362,30 +428,22 @@ func TestDeploySandboxRunsTheMagentoRecipeOverRealSSH(t *testing.T) {
 				t.Fatalf("the sandbox advertises no web URL, so the HTTP check never runs:\n%s", sandboxStatus.Stdout)
 			}
 
-			if testCase.settings != "" {
-				// `up` no longer writes .govard.local.yml, so the settings land in
-				// a local layer the test owns outright.
-				content, err := os.ReadFile(filepath.Join(projectDir, ".govard.local.yml"))
-				if err != nil && !os.IsNotExist(err) {
-					t.Fatalf("read the local layer: %v", err)
-				}
-				withSettings := string(content) + "\ndeploy:\n  settings:\n" + testCase.settings
-				if err := os.WriteFile(filepath.Join(projectDir, ".govard.local.yml"), []byte(withSettings), 0o644); err != nil {
-					t.Fatalf("write the local layer: %v", err)
-				}
-			}
-
-			deploy := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revision, "--yes")
-			if deploy.ExitCode != 0 {
+			deployRun := env.RunGovard(t, projectDir, "deploy", "--remote", "sandbox", "--revision", revision, "--yes")
+			if deployRun.ExitCode != 0 {
 				t.Fatalf("the sandbox deploy failed (%d) — the stub's assertion is the verdict\nstdout: %s\nstderr: %s",
-					deploy.ExitCode, deploy.Stdout, deploy.Stderr)
+					deployRun.ExitCode, deployRun.Stdout, deployRun.Stderr)
 			}
 			// The stub fails the deploy if a pass is missing or out of order, so a
 			// green deploy is the assertion. Assert the deploy really published.
 			status := env.RunGovard(t, projectDir, "deploy", "status", "sandbox")
 			status.AssertSuccess(t)
 			status.AssertOutputContains(t, revision[:8])
-		})
+		}) {
+			// The layouts share one target, so a failed one leaves the sandbox in
+			// the state that broke it: the rest of the table would report a
+			// consequence of the first failure instead of its own verdict.
+			t.Fatalf("layout %s failed; the remaining layouts share its sandbox and would not be independent", testCase.name)
+		}
 	}
 }
 
@@ -421,7 +479,7 @@ func TestDeploySandboxRollsBackWithTheDatabaseDump(t *testing.T) {
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
-	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
+	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down") })
 	container := deploy.SandboxContainerName(stubProjectName, projectDir)
 	provisionStubDatabase(t, container, 0)
 	// A target that has run Magento before already has `shared/var/backups`, which
@@ -572,7 +630,7 @@ func TestDeploySandboxDBBackupWritesAPrivatePlainDump(t *testing.T) {
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
-	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
+	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down") })
 	container := deploy.SandboxContainerName(stubProjectName, projectDir)
 	provisionStubDatabase(t, container, 400000)
 
@@ -657,7 +715,7 @@ func TestDeploySandboxDBBackupRefusesATargetWithoutADumpClient(t *testing.T) {
 	if up.ExitCode != 0 {
 		t.Fatalf("sandbox up failed (%d)\nstdout: %s\nstderr: %s", up.ExitCode, up.Stdout, up.Stderr)
 	}
-	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down", "--purge") })
+	t.Cleanup(func() { env.RunGovard(t, projectDir, "sandbox", "down") })
 	container := deploy.SandboxContainerName(stubProjectName, projectDir)
 	dockerExec(t, container, "sh", "-c", "rm -f \"$(command -v mariadb-dump)\" \"$(command -v mysqldump)\"")
 	if out := dockerExec(t, container, "sh", "-c", "command -v mariadb-dump || command -v mysqldump || echo none"); strings.TrimSpace(out) != "none" {
