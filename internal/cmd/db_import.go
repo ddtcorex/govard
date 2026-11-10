@@ -13,6 +13,7 @@ import (
 	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
+	"govard/internal/ui"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -68,7 +69,7 @@ func runStreamDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 	destinationImportCmd := buildLocalDBImportCommand(containerName, localCredentials)
 	sanitizeStreamDump := options.StreamDB
 	var totalSize int64
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching remote database size for '%s'...", options.Environment))
+	spinner := ui.StartSpinner(cmd.ErrOrStderr(), fmt.Sprintf("Fetching remote database size for '%s'...", options.Environment))
 	if size, sizeErr := GetDatabaseSize(config, options.Environment, remoteCfg, remoteCredentials, options.NoNoise, options.NoPII); sizeErr == nil {
 		totalSize = size
 		spinner.Success()

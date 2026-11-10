@@ -2,15 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"govard/internal/conventions"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
-
-	"github.com/pterm/pterm"
+	"govard/internal/ui"
 )
 
 func buildRsyncForEndpoints(
@@ -112,7 +112,7 @@ func ensureTrailingSlash(path string) string {
 	return path + "/"
 }
 
-func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destination SyncEndpoint, noNoise bool, noPII bool, planOnly bool) (string, func() error, error) {
+func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destination SyncEndpoint, noNoise bool, noPII bool, planOnly bool, stderr io.Writer) (string, func() error, error) {
 	localDBContainer := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
 	localCredentials := resolveLocalDBCredentials(config, localDBContainer)
 
@@ -153,7 +153,7 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 				return err
 			}
 
-			spinner, _ := pterm.DefaultSpinner.Start("Fetching remote database size...")
+			spinner := ui.StartSpinner(stderr, "Fetching remote database size...")
 			totalSize, _ := GetDatabaseSize(config, source.Name, source.RemoteCfg, remoteCredentials, noNoise, noPII)
 			spinner.Success()
 
@@ -194,7 +194,7 @@ func buildDatabaseSyncAction(config engine.Config, source SyncEndpoint, destinat
 				return err
 			}
 
-			spinner, _ := pterm.DefaultSpinner.Start("Fetching local database size...")
+			spinner := ui.StartSpinner(stderr, "Fetching local database size...")
 			totalSize, _ := GetDatabaseSize(config, "local", engine.RemoteConfig{}, localCredentials, noNoise, noPII)
 			spinner.Success()
 

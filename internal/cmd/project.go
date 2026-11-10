@@ -191,7 +191,7 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 	pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Printf(" DELETING PROJECT: %s \n", match.ProjectName)
 	fmt.Println()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Cleaning up resources...")
+	spinner := ui.StartSpinner(cmd.ErrOrStderr(), "Cleaning up resources...")
 	cleanupProjectSandbox(cmd.Context(), match.ProjectName, match.Path, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
 	err = engine.DeleteProject(cmd.Context(), match.Path, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
 	if err != nil {
@@ -228,7 +228,7 @@ func runUnregisteredDelete(cmd *cobra.Command, art engine.ProjectArtifacts) erro
 	pterm.NewStyle(pterm.BgLightRed, pterm.FgWhite, pterm.Bold).Printf(" DELETING UNREGISTERED PROJECT: %s \n", art.Name)
 	fmt.Println()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Cleaning up leftover resources...")
+	spinner := ui.StartSpinner(cmd.ErrOrStderr(), "Cleaning up leftover resources...")
 	cleanupProjectSandbox(cmd.Context(), art.Name, art.Root, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
 	if err := engine.DeleteProjectByName(cmd.Context(), art, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error)); err != nil {
 		spinner.Fail(err.Error())
@@ -278,7 +278,7 @@ func runOrphanDelete(cmd *cobra.Command, orphan engine.OrphanProject) error {
 	pterm.NewStyle(pterm.BgLightRed, pterm.FgWhite, pterm.Bold).Printf(" DELETING ORPHAN PROJECT: %s \n", orphan.Name)
 	fmt.Println()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Cleaning up orphaned resources...")
+	spinner := ui.StartSpinner(cmd.ErrOrStderr(), "Cleaning up orphaned resources...")
 	err := engine.DeleteOrphanProject(cmd.Context(), orphan.Name, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
 	if err != nil {
 		spinner.Fail(err.Error())

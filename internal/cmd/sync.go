@@ -268,7 +268,7 @@ Case Studies:
 			return err
 		}
 
-		executionPlan, err := buildSyncExecutionPlan(config, endpoints, execOpts)
+		executionPlan, err := buildSyncExecutionPlan(config, endpoints, execOpts, cmd.ErrOrStderr())
 		if err != nil {
 			return err
 		}

@@ -1645,3 +1645,23 @@ func SnapshotRestorePreviewCountForTest() int {
 	defer snapshotRestorePreviews.Unlock()
 	return len(snapshotRestorePreviews.byToken)
 }
+
+// ToolRunGenerationForTest reports the latest admitted generation for a tool op
+// id, so a test can replay a superseded watcher's deferred finish.
+func ToolRunGenerationForTest(opID string) uint64 {
+	toolRunMu.Lock()
+	defer toolRunMu.Unlock()
+	return toolRunGenerations[opID]
+}
+
+// FinishToolRunForTest runs the deferred finish a watcher performs when it
+// returns, which is how a test makes a superseded watcher's cleanup land at a
+// chosen moment instead of racing for it.
+func FinishToolRunForTest(opID string, gen uint64) {
+	finishToolRun(opID, gen)
+}
+
+// IsOpRegisteredForTest reports whether an operation is still tracked.
+func IsOpRegisteredForTest(id string) bool {
+	return isOpRegistered(id)
+}

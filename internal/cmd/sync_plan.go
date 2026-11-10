@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"govard/internal/conventions"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
 
@@ -56,7 +57,9 @@ type SyncExecutionPlan struct {
 	DatabaseActions []func() error
 }
 
-func buildSyncExecutionPlan(config engine.Config, endpoints ResolvedSyncEndpoints, opts SyncExecutionOptions) (SyncExecutionPlan, error) {
+// stderr is where the decorated progress output goes; stdout carries the
+// machine-readable plan.
+func buildSyncExecutionPlan(config engine.Config, endpoints ResolvedSyncEndpoints, opts SyncExecutionOptions, stderr io.Writer) (SyncExecutionPlan, error) {
 	plan := SyncExecutionPlan{
 		Descriptions: []string{},
 	}
@@ -130,7 +133,7 @@ func buildSyncExecutionPlan(config engine.Config, endpoints ResolvedSyncEndpoint
 	}
 
 	if opts.DB {
-		dbDesc, action, err := buildDatabaseSyncAction(config, endpoints.Source, endpoints.Destination, opts.NoNoise, opts.NoPII, opts.PlanOnly)
+		dbDesc, action, err := buildDatabaseSyncAction(config, endpoints.Source, endpoints.Destination, opts.NoNoise, opts.NoPII, opts.PlanOnly, stderr)
 		if err != nil {
 			return SyncExecutionPlan{}, err
 		}
@@ -388,7 +391,7 @@ func isSyncingDirectory(path, sourcePath, destinationPath string, sourceIsLocal,
 
 // BuildSyncExecutionPlanForTest exposes buildSyncExecutionPlan for tests in /tests.
 func BuildSyncExecutionPlanForTest(config engine.Config, endpoints ResolvedSyncEndpoints, opts SyncExecutionOptions) (SyncExecutionPlan, error) {
-	return buildSyncExecutionPlan(config, endpoints, opts)
+	return buildSyncExecutionPlan(config, endpoints, opts, os.Stderr)
 }
 
 // SyncExecutionOptionsForTest creates a SyncExecutionOptions for testing.
