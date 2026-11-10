@@ -50,6 +50,20 @@ Documentation: https://github.com/ddtcorex/govard`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// A pass-through command disables flag parsing so Docker Compose flags reach
+		// compose untouched, which means cobra never fills in govard's own global
+		// flags for it. Read them off the raw arguments here, before anything prints.
+		if cmd.DisableFlagParsing {
+			if globals := splitPassthroughGlobals(args); globals.SawErrorJSON || globals.SawVerbose {
+				if globals.SawErrorJSON {
+					errorJSON = globals.ErrorJSON
+				}
+				if globals.SawVerbose {
+					verbose = globals.Verbose
+				}
+			}
+		}
+
 		// A caller who asked for a document gets a clean stdout: every human line
 		// (banners, progress, warnings) moves to stderr before any of them prints.
 		if machineReadableOutput(cmd) {
