@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -171,29 +172,31 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 	}
 
 	if !projectDeleteForce {
-		pterm.Warning.Printf("You are about to delete project: %s\n", match.ProjectName)
-		pterm.Warning.Println("This will remove all Docker containers and VOLUMES (database data).")
-		pterm.Warning.Printf("Project path: %s\n", match.Path)
-		printProjectArtifactList(projectArtifactsForEntry(cmd, match))
-		fmt.Println()
+		human := cmd.ErrOrStderr()
+		pterm.Warning.WithWriter(human).Printf("You are about to delete project: %s\n", match.ProjectName)
+		pterm.Warning.WithWriter(human).Println("This will remove all Docker containers and VOLUMES (database data).")
+		pterm.Warning.WithWriter(human).Printf("Project path: %s\n", match.Path)
+		printProjectArtifactList(human, projectArtifactsForEntry(cmd, match))
+		fmt.Fprintln(human)
 
 		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
 		if confirmErr != nil {
 			return confirmErr
 		}
 		if !result {
-			pterm.Info.Println("Deletion cancelled.")
+			pterm.Info.WithWriter(cmd.ErrOrStderr()).Println("Deletion cancelled.")
 			return nil
 		}
 	}
 
-	fmt.Println()
-	pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Printf(" DELETING PROJECT: %s \n", match.ProjectName)
-	fmt.Println()
+	human := cmd.ErrOrStderr()
+	fmt.Fprintln(human)
+	fmt.Fprint(human, pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Sprintf(" DELETING PROJECT: %s \n", match.ProjectName))
+	fmt.Fprintln(human)
 
-	spinner := ui.StartSpinner(cmd.ErrOrStderr(), "Cleaning up resources...")
-	cleanupProjectSandbox(cmd.Context(), match.ProjectName, match.Path, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
-	err = engine.DeleteProject(cmd.Context(), match.Path, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
+	spinner := ui.StartSpinner(human, "Cleaning up resources...")
+	cleanupProjectSandbox(cmd.Context(), match.ProjectName, match.Path, ui.NewPtermWriter(pterm.Info.WithWriter(human)), ui.NewPtermWriter(pterm.Error.WithWriter(human)))
+	err = engine.DeleteProject(cmd.Context(), match.Path, ui.NewPtermWriter(pterm.Info.WithWriter(human)), ui.NewPtermWriter(pterm.Error.WithWriter(human)))
 	if err != nil {
 		spinner.Fail(err.Error())
 		return err
@@ -207,30 +210,31 @@ func runProjectDelete(cmd *cobra.Command, query string) error {
 // files or Docker resources behind (for example after `env down`, or after the
 // registry entry was already dropped).
 func runUnregisteredDelete(cmd *cobra.Command, art engine.ProjectArtifacts) error {
+	human := cmd.ErrOrStderr()
 	if !projectDeleteForce {
-		pterm.Warning.Printf("You are about to delete an UNREGISTERED project: %s\n", art.Name)
-		pterm.Warning.Println("It is not in the Govard registry, but it left these behind:")
-		printProjectArtifactList(art)
-		pterm.Warning.Println("This will remove its Docker containers and VOLUMES (database data).")
-		fmt.Println()
+		pterm.Warning.WithWriter(human).Printf("You are about to delete an UNREGISTERED project: %s\n", art.Name)
+		pterm.Warning.WithWriter(human).Println("It is not in the Govard registry, but it left these behind:")
+		printProjectArtifactList(human, art)
+		pterm.Warning.WithWriter(human).Println("This will remove its Docker containers and VOLUMES (database data).")
+		fmt.Fprintln(human)
 
 		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
 		if confirmErr != nil {
 			return confirmErr
 		}
 		if !result {
-			pterm.Info.Println("Deletion cancelled.")
+			pterm.Info.WithWriter(human).Println("Deletion cancelled.")
 			return nil
 		}
 	}
 
-	fmt.Println()
-	pterm.NewStyle(pterm.BgLightRed, pterm.FgWhite, pterm.Bold).Printf(" DELETING UNREGISTERED PROJECT: %s \n", art.Name)
-	fmt.Println()
+	fmt.Fprintln(human)
+	fmt.Fprint(human, pterm.NewStyle(pterm.BgLightRed, pterm.FgWhite, pterm.Bold).Sprintf(" DELETING UNREGISTERED PROJECT: %s \n", art.Name))
+	fmt.Fprintln(human)
 
-	spinner := ui.StartSpinner(cmd.ErrOrStderr(), "Cleaning up leftover resources...")
-	cleanupProjectSandbox(cmd.Context(), art.Name, art.Root, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
-	if err := engine.DeleteProjectByName(cmd.Context(), art, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error)); err != nil {
+	spinner := ui.StartSpinner(human, "Cleaning up leftover resources...")
+	cleanupProjectSandbox(cmd.Context(), art.Name, art.Root, ui.NewPtermWriter(pterm.Info.WithWriter(human)), ui.NewPtermWriter(pterm.Error.WithWriter(human)))
+	if err := engine.DeleteProjectByName(cmd.Context(), art, ui.NewPtermWriter(pterm.Info.WithWriter(human)), ui.NewPtermWriter(pterm.Error.WithWriter(human))); err != nil {
 		spinner.Fail(err.Error())
 		return err
 	}
@@ -247,9 +251,9 @@ func projectArtifactsForEntry(cmd *cobra.Command, entry engine.ProjectRegistryEn
 	return art
 }
 
-func printProjectArtifactList(art engine.ProjectArtifacts) {
+func printProjectArtifactList(human io.Writer, art engine.ProjectArtifacts) {
 	for _, line := range art.Lines() {
-		pterm.Warning.Printf("  - %s\n", line)
+		pterm.Warning.WithWriter(human).Printf("  - %s\n", line)
 	}
 }
 
@@ -258,28 +262,29 @@ func runOrphanDelete(cmd *cobra.Command, orphan engine.OrphanProject) error {
 		art.Docker = true
 		return runUnregisteredDelete(cmd, art)
 	}
+	human := cmd.ErrOrStderr()
 	if !projectDeleteForce {
-		pterm.Warning.Printf("You are about to delete an UNREGISTERED project: %s\n", orphan.Name)
-		pterm.Warning.Println("This project was found in Docker but is not in the Govard registry.")
-		pterm.Warning.Println("This will remove all Docker containers and VOLUMES (database data).")
-		fmt.Println()
+		pterm.Warning.WithWriter(human).Printf("You are about to delete an UNREGISTERED project: %s\n", orphan.Name)
+		pterm.Warning.WithWriter(human).Println("This project was found in Docker but is not in the Govard registry.")
+		pterm.Warning.WithWriter(human).Println("This will remove all Docker containers and VOLUMES (database data).")
+		fmt.Fprintln(human)
 
 		result, confirmErr := confirmDestructive("Are you sure you want to proceed?", "--force")
 		if confirmErr != nil {
 			return confirmErr
 		}
 		if !result {
-			pterm.Info.Println("Deletion cancelled.")
+			pterm.Info.WithWriter(human).Println("Deletion cancelled.")
 			return nil
 		}
 	}
 
-	fmt.Println()
-	pterm.NewStyle(pterm.BgLightRed, pterm.FgWhite, pterm.Bold).Printf(" DELETING ORPHAN PROJECT: %s \n", orphan.Name)
-	fmt.Println()
+	fmt.Fprintln(human)
+	fmt.Fprint(human, pterm.NewStyle(pterm.BgLightRed, pterm.FgWhite, pterm.Bold).Sprintf(" DELETING ORPHAN PROJECT: %s \n", orphan.Name))
+	fmt.Fprintln(human)
 
-	spinner := ui.StartSpinner(cmd.ErrOrStderr(), "Cleaning up orphaned resources...")
-	err := engine.DeleteOrphanProject(cmd.Context(), orphan.Name, ui.NewPtermWriter(&pterm.Info), ui.NewPtermWriter(&pterm.Error))
+	spinner := ui.StartSpinner(human, "Cleaning up orphaned resources...")
+	err := engine.DeleteOrphanProject(cmd.Context(), orphan.Name, ui.NewPtermWriter(pterm.Info.WithWriter(human)), ui.NewPtermWriter(pterm.Error.WithWriter(human)))
 	if err != nil {
 		spinner.Fail(err.Error())
 		return err
