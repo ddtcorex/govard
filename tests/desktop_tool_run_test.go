@@ -496,3 +496,58 @@ func TestToolRunTimeoutCeilings(t *testing.T) {
 		t.Errorf("timeout for cache:flush = %v, want 2m", got)
 	}
 }
+
+// TestToolRunStaleFinishNeverUnregistersASuccessor pins the invariant a rerun
+// depends on: while a new run owns the op id, the superseded run's deferred
+// finish must not unregister it. Admission (registering the op and claiming its
+// generation) is one step, and the finish decides and acts under the same lock,
+// so the stale finish either lands before admission (and touches only its own
+// registration) or waits for it and then does nothing.
+//
+// The window is microseconds wide, which is why the suite hit it once in CI and
+// once locally instead of on demand; the loop below races the two paths directly
+// rather than waiting for the scheduler to find it.
+func TestToolRunStaleFinishNeverUnregistersASuccessor(t *testing.T) {
+	project := seedToolRunnerProject(t, "custom")
+	desktop.ResetOperationRegistryForTest()
+	t.Cleanup(desktop.ResetOperationRegistryForTest)
+
+	t.Cleanup(desktop.SetStartToolProcessForTest(func(ctx context.Context, dir string, argv []string) (io.Reader, io.Reader, func() error, error) {
+		return strings.NewReader(""), strings.NewReader(""), func() error {
+			<-ctx.Done()
+			return ctx.Err()
+		}, nil
+	}))
+	p := &desktop.FakePlatform{}
+
+	for round := 0; round < 200; round++ {
+		op, err := desktop.RunTool(context.Background(), p, project, "npm-install", nil)
+		if err != nil {
+			t.Fatalf("round %d: RunTool error: %v", round, err)
+		}
+		staleGen := desktop.ToolRunGenerationForTest(op)
+		if !desktop.CancelToolRun(op) {
+			t.Fatalf("round %d: CancelToolRun(%q) = false, want true", round, op)
+		}
+
+		// The superseded watcher's finish races the next admission.
+		finished := make(chan struct{})
+		go func() {
+			desktop.FinishToolRunForTest(op, staleGen)
+			close(finished)
+		}()
+
+		next, err := desktop.RunTool(context.Background(), p, project, "npm-install", nil)
+		if err != nil {
+			t.Fatalf("round %d: rerun error: %v", round, err)
+		}
+		<-finished
+
+		if !desktop.IsOpRegisteredForTest(next) {
+			t.Fatalf("round %d: the superseded run's finish unregistered its successor", round)
+		}
+		if !desktop.CancelToolRun(next) {
+			t.Fatalf("round %d: the successor was not cancellable after a stale finish", round)
+		}
+	}
+}

@@ -202,22 +202,32 @@ var toolRunGenerations = map[string]uint64{}
 
 // nextToolRunGeneration records a newly admitted run for opID. Call only
 // after RegisterOp succeeds: refused runs must not advance the sequence.
-func nextToolRunGeneration(opID string) uint64 {
+// admitToolRun registers the op and claims its generation in one step, so a
+// superseded watcher's finish cannot land between the two. Split apart, that
+// finish saw its own generation as current, released the lock, and unregistered
+// the op the new run had just taken: the rerun's output batches then failed the
+// publish gate while its completed receipt still arrived.
+func admitToolRun(opID, project string, cancel context.CancelFunc) (uint64, bool) {
 	toolRunMu.Lock()
 	defer toolRunMu.Unlock()
+	if !RegisterOp(opID, project, "tool", cancel) {
+		return 0, false
+	}
 	toolRunGenerations[opID]++
-	return toolRunGenerations[opID]
+	return toolRunGenerations[opID], true
 }
 
 // isCurrentToolRun reports whether gen is still the latest admitted run for
 // opID and the op is still registered. A cancelled op is unregistered;
 // a superseded op is registered but stale. Either way its tail is dropped.
 func isCurrentToolRun(opID string, gen uint64) bool {
+	// toolRunMu first, then the op registry: the same order finishToolRun and
+	// admitToolRun take, so the two cannot deadlock against each other.
+	toolRunMu.Lock()
+	defer toolRunMu.Unlock()
 	if !isOpRegistered(opID) {
 		return false
 	}
-	toolRunMu.Lock()
-	defer toolRunMu.Unlock()
 	return toolRunGenerations[opID] == gen
 }
 
@@ -227,10 +237,11 @@ func isCurrentToolRun(opID string, gen uint64) bool {
 // the generation guard, A's stale watcher would unregister B and B's own
 // lines would then fail the publish gate.
 func finishToolRun(opID string, gen uint64) {
+	// Decide and act under one hold: a stale read followed by an unlocked
+	// FinishOp removed a successor's registration in the window above.
 	toolRunMu.Lock()
-	current := toolRunGenerations[opID] == gen
-	toolRunMu.Unlock()
-	if current {
+	defer toolRunMu.Unlock()
+	if toolRunGenerations[opID] == gen {
 		FinishOp(opID)
 	}
 }
@@ -276,11 +287,11 @@ func RunTool(ctx context.Context, p Platform, project string, presetID string, a
 
 	opID := toolOpIDForRoot(root)
 	runCtx, cancel := context.WithTimeout(ctx, toolRunTimeout(trimmedPreset))
-	if !RegisterOp(opID, strings.TrimSpace(project), "tool", cancel) {
+	gen, ok := admitToolRun(opID, strings.TrimSpace(project), cancel)
+	if !ok {
 		cancel()
 		return "", fmt.Errorf("tool run for project %q is already running", strings.TrimSpace(project))
 	}
-	gen := nextToolRunGeneration(opID)
 	stdout, stderr, wait, err := startToolProcess(runCtx, root, argv)
 	if err != nil {
 		FinishOp(opID)
