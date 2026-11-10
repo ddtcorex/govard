@@ -50,6 +50,12 @@ Documentation: https://github.com/ddtcorex/govard`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// A caller who asked for a document gets a clean stdout: every human line
+		// (banners, progress, warnings) moves to stderr before any of them prints.
+		if machineReadableOutput(cmd) {
+			ui.RouteHumanOutputTo(cmd.ErrOrStderr())
+		}
+
 		if verbose {
 			pterm.EnableDebugMessages()
 			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -167,6 +173,20 @@ func Execute() {
 	// makes that output unparseable.
 	pterm.Error.WithWriter(os.Stderr).Println(err)
 	os.Exit(cli.Code(err))
+}
+
+// machineReadableOutput reports whether the caller asked for output to parse: the
+// global --error-json envelope, or the command's own --json document. Both put a
+// document on stdout, so neither may be preceded by human-facing decoration.
+func machineReadableOutput(cmd *cobra.Command) bool {
+	if errorJSON {
+		return true
+	}
+	if cmd.Flags().Lookup("json") == nil {
+		return false
+	}
+	enabled, err := cmd.Flags().GetBool("json")
+	return err == nil && enabled
 }
 
 func init() {
