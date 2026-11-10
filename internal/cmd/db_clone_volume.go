@@ -5,9 +5,11 @@ import (
 	"os/exec"
 	"strings"
 
+	"govard/internal/engine"
+	"govard/internal/ui"
+
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"govard/internal/engine"
 )
 
 func runDBCloneVolume(cmd *cobra.Command, config engine.Config, options dbCommandOptions, extraArgs []string) error {
@@ -83,7 +85,7 @@ func runDBCloneVolume(cmd *cobra.Command, config engine.Config, options dbComman
 		_ = createVol.Run()
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Copying raw volume files (this may take a moment)")
+	spinner := ui.StartSpinner(cmd.ErrOrStderr(), "Copying raw volume files (this may take a moment)")
 
 	if err := engine.CloneVolume(sourceVolume, targetVolume); err != nil {
 		spinner.Fail("Volume clone failed")
