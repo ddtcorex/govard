@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.83.0] - 2026-11-12
+
+### Added
+
+- `govard try [framework]`: a throwaway trial that creates a Mage-OS project
+  under `~/.govard/try`, runs the real bootstrap and `env up`, waits for the
+  storefront, then removes everything unless `--keep` is given (#650).
+- A reproducible benchmark harness (`bench`) with published numbers for Govard,
+  DDEV and Warden measured in one window, and comparison pages for Warden and
+  Lando (#653, #659, #664, #666).
+- The integration suite now also runs nightly and on manual dispatch (#667),
+  and the benchmark scripts are smoke-tested in CI (#665).
+
+### Changed
+
+- With `--error-json` (or a command's own `--json`), stdout carries only the
+  document: every human-facing line (banners, progress, spinner verdicts,
+  warnings) moves to stderr. A successful `govard doctor --error-json` now
+  prints its report on stderr and leaves stdout empty; `govard version` still
+  prints on stdout. Scripts that read the human report of these commands from
+  stdout must read stderr or drop the flag (#673, #674, #675).
+- Progress spinners animate only on an interactive terminal and write to stderr;
+  elsewhere they print one plain `SUCCESS`, `WARNING` or `ERROR` line (#672).
+- The Docker client moved from `github.com/docker/docker` to the
+  `github.com/moby/moby` split modules (#660).
+
+### Fixed
+
+- `govard up`, `down`, `restart`, `ps` and `logs` now honor `--error-json` and
+  `--verbose` instead of forwarding them to Docker Compose, which rejected them
+  as unknown flags (#674).
+- A failed Docker Compose run now reports Compose's own reason in the error and
+  in the `--error-json` envelope instead of only `exit status 1`. A long line
+  keeps its end, where the cause is, and the text form no longer prints the
+  reason twice (#675, #677).
+- `govard project delete` no longer writes its banners and progress to stdout
+  (#673).
+- `govard init --migrate-from ddev` reads layered DDEV configuration files, maps
+  additional hostnames to extra domains, and keeps the profile default for
+  anything the DDEV file does not state, instead of reading silence as "none"
+  (#654).
+- The desktop sync-status guard no longer probes Docker for every project on each
+  dashboard build, cutting a warm dashboard load from about 560 ms of probing to
+  tens of milliseconds (#669).
+- A desktop tool rerun could lose its registration to a superseded watcher; the
+  admission and the generation claim are now one step under one lock (#672).
+
+### Documentation
+
+- The `--error-json` stream contract and the lifecycle shortcut flag handling
+  are documented in the CLI reference and the Docker-free page, in English and
+  Vietnamese (#677). The `govard try` trial and DDEV import are documented
+  (#657, #654).
+
 ## [1.82.0] - 2026-10-27
 
 ### Added
