@@ -29,9 +29,9 @@ var configAutoCmd = &cobra.Command{
 	Short: "Auto-configure framework runtime files",
 	Long:  "Auto-configure framework runtime files inside the project container. Only frameworks that provide an auto-configuration routine are affected; other frameworks warn and do nothing.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Govard Auto-Configuration ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 
 		config, err := loadFullConfig()
 		if err != nil {

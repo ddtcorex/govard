@@ -121,9 +121,9 @@ func runGlobalProxyCompose(cmd *cobra.Command, args ...string) error {
 	case "down":
 		return handleSvcDown(cmd, args)
 	case "restart":
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Restarting Govard Global Services ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		_ = handleSvcDown(cmd, []string{"down"})
 		return handleSvcUp(cmd, append([]string{"up"}, args[1:]...))
 	}
@@ -140,9 +140,9 @@ func runGlobalProxyCompose(cmd *cobra.Command, args ...string) error {
 }
 
 func handleSvcUp(cmd *cobra.Command, args []string) error {
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 	pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Starting Govard Global Services ")
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 
 	ctx := cmd.Context()
 	if !engine.CheckPortForGovardProxy(ctx, "80") {
@@ -212,9 +212,9 @@ func handleSvcUp(cmd *cobra.Command, args []string) error {
 }
 
 func handleSvcDown(cmd *cobra.Command, args []string) error {
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 	pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Stopping Govard Global Services ")
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 	err := engine.RunCompose(cmd.Context(), engine.ComposeOptions{
 		ProjectDir:  globalProxyComposeDirPath(),
 		ProjectName: globalProxyProjectName,

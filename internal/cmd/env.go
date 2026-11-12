@@ -115,9 +115,9 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 
 	switch subcommand {
 	case "start":
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Starting Govard Project ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		if config.Profile != "" {
 			pterm.Info.Printf("Using profile: %s\n", config.Profile)
 		}
@@ -127,9 +127,9 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 		pterm.Success.Println("✅ Environment started.")
 		return nil
 	case "restart":
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Restarting Govard Project ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		if config.Profile != "" {
 			pterm.Info.Printf("Using profile: %s\n", config.Profile)
 		}
@@ -146,9 +146,9 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 		if subcommand == "down" {
 			action = "Tearing Down"
 		}
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Printf(" %s Govard Environment \n", action)
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 
 		if err := envDeps.RunHooks(config, engine.HookPreStop, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
 			return fmt.Errorf("pre-stop hooks failed: %w", err)
@@ -215,9 +215,9 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 		}
 
 		if hasErrorFilter {
-			fmt.Println()
+			fmt.Fprintln(humanStream)
 			pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Govard Log Stream (Errors Only) ")
-			fmt.Println()
+			fmt.Fprintln(humanStream)
 			pterm.Info.Println("Filtering for errors...")
 
 			// Rebuild args without --errors
@@ -244,9 +244,9 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 		}
 
 	case "pull":
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Pulling Project Images ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		fallbackLocal := !hasFlag("--no-fallback")
 		extraPullArgs := make([]string, 0, len(args))
 		for _, arg := range args[1:] {
@@ -305,9 +305,9 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 		pterm.Success.Println("✅ Images pulled.")
 		return nil
 	case "cleanup":
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Cleaning Up Compose Cache ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		count, err := engine.CleanupStaleComposeFiles(7 * 24 * time.Hour)
 		if err != nil {
 			return fmt.Errorf("cleanup compose cache: %w", err)

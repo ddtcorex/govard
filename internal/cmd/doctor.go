@@ -72,9 +72,9 @@ func doctorFixEnabled(fixFlag, commitFlag bool) bool {
 // ExecuteDoctor runs the doctor logic. It can be invoked programmatically from other commands.
 func ExecuteDoctor(cmd *cobra.Command, outputJSON bool, fixEnabled bool, packEnabled bool, packDir string, preSkipped map[string]bool) error {
 	if !outputJSON {
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Govard System Doctor ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.Info.Printf("Install source: %s\n", updater.InstallSource())
 	}
 

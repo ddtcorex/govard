@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 	"testing"
 
 	"github.com/pterm/pterm"
@@ -57,8 +58,10 @@ func TestDownShortcutHonoursErrorJSONInsteadOfForwardingIt(t *testing.T) {
 	stubEnvDependencies(t, &composedArgs)
 
 	stdout := &bytes.Buffer{}
+	processStdout, restoreStdout := captureProcessStdout(t)
+	t.Cleanup(restoreStdout)
 	pterm.SetDefaultOutput(stdout)
-	t.Cleanup(func() { pterm.SetDefaultOutput(stdout) })
+	t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
 
 	stderr := &bytes.Buffer{}
 	root := cmd.RootCommandForTest()
@@ -79,8 +82,13 @@ func TestDownShortcutHonoursErrorJSONInsteadOfForwardingIt(t *testing.T) {
 	if got, want := composedArgs[0], "down"; got != want {
 		t.Fatalf("first compose argument = %q, want %q", got, want)
 	}
-	if bytes.Contains(stdout.Bytes(), []byte("Tearing Down Govard Environment")) {
-		t.Fatalf("the banner belongs on stderr in machine mode, got it on stdout:\n%q", stdout.String())
+	// Byte-exact, not "no banner": the blank lines the banner is wrapped in were
+	// still written to stdout, so a consumer saw two stray newlines before the
+	// document it was told to parse. fmt.Println reaches os.Stdout directly, so the
+	// capture has to cover both writers.
+	written := append(processStdout(), stdout.Bytes()...)
+	if len(written) != 0 {
+		t.Fatalf("machine mode left %d bytes on stdout: %q", len(written), string(written))
 	}
 	if !bytes.Contains(stderr.Bytes(), []byte("Tearing Down Govard Environment")) {
 		t.Fatalf("the banner should be readable on stderr, got:\n%q", stderr.String())

@@ -66,9 +66,9 @@ Documentation: https://github.com/ddtcorex/govard`,
 
 		// A caller who asked for a document gets a clean stdout: every human line
 		// (banners, progress, warnings) moves to stderr before any of them prints.
-		if machineReadableOutput(cmd) {
-			ui.RouteHumanOutputTo(cmd.ErrOrStderr())
-		}
+		// Reset on every run, not only in machine mode, so an in-process caller that
+		// runs several commands cannot inherit the previous one's stream.
+		routeHumanStream(cmd)
 
 		if verbose {
 			pterm.EnableDebugMessages()
@@ -187,6 +187,26 @@ func Execute() {
 	// makes that output unparseable.
 	pterm.Error.WithWriter(os.Stderr).Println(err)
 	os.Exit(cli.Code(err))
+}
+
+// humanStream is where human-facing lines go: banners, the blank lines that frame
+// them, hints. It is a package variable because helpers that print those lines
+// (the project test runners, for one) take no command, and threading a writer
+// through every one of them would be a larger change than the problem.
+//
+// routeHumanStream sets it before each command runs, so it is never stale: on
+// stdout while a person is reading, on stderr once the caller asked for a document
+// to parse.
+var humanStream io.Writer = os.Stdout
+
+// routeHumanStream points the human-facing output at the right stream for this
+// command. Machine mode moves both pterm and the plain prints off stdout.
+func routeHumanStream(cmd *cobra.Command) {
+	humanStream = cmd.OutOrStdout()
+	if machineReadableOutput(cmd) {
+		humanStream = cmd.ErrOrStderr()
+		ui.RouteHumanOutputTo(cmd.ErrOrStderr())
+	}
 }
 
 // machineReadableOutput reports whether the caller asked for output to parse: the

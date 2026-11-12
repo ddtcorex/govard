@@ -77,3 +77,50 @@ func TestMachineModeRoutesHumanOutputToStderr(t *testing.T) {
 		}
 	}
 }
+
+// TestMachineModeLeavesNoWhitespaceOnStdout extends the byte-exact rule to every
+// command the audit found decorating stdout with blank lines: the envelope is the
+// whole document, so even the newlines that used to frame a banner belong on
+// stderr.
+func TestMachineModeLeavesNoWhitespaceOnStdout(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"init refuses an unknown framework", []string{"init", "--framework", "nosuch-framework"}},
+		{"test finds nothing to run", []string{"test"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			chdirForTest(t, dir)
+			writeRuntimeConfig(t, dir, "project_name: blank-demo\ndomain: blank-demo.test\nframework: wordpress\n")
+
+			// Two paths reach stdout: pterm's default writer and fmt.Print*, which
+			// goes straight to os.Stdout and ignores cobra's writer.
+			stdout := &bytes.Buffer{}
+			processStdout, restoreStdout := captureProcessStdout(t)
+			t.Cleanup(restoreStdout)
+			pterm.SetDefaultOutput(stdout)
+			t.Cleanup(func() { pterm.SetDefaultOutput(os.Stdout) })
+
+			stderr := &bytes.Buffer{}
+			root := cmd.RootCommandForTest()
+			t.Cleanup(func() { _ = root.PersistentFlags().Set("error-json", "false") })
+			root.SetOut(stdout)
+			root.SetErr(stderr)
+			if err := root.PersistentFlags().Set("error-json", "true"); err != nil {
+				t.Fatalf("set --error-json: %v", err)
+			}
+			root.SetArgs(append(tc.args, "--error-json"))
+
+			_ = root.Execute()
+
+			written := append(processStdout(), stdout.Bytes()...)
+			if len(written) != 0 {
+				t.Fatalf("machine mode left %d bytes on stdout: %q", len(written), string(written))
+			}
+		})
+	}
+}

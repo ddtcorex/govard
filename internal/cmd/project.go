@@ -349,7 +349,7 @@ func runProjectOrphans(cmd *cobra.Command) error {
 	}
 
 	pterm.NewStyle(pterm.BgLightYellow, pterm.FgBlack, pterm.Bold).Println(" ORPHANED PROJECTS (IN DOCKER BUT NOT REGISTRY) ")
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 
 	orphanData := [][]string{
 		{"Project", "Status", "ConfigFiles"},
