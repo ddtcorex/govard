@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // ComposeOptions defines the parameters for running a Docker Compose command.
@@ -94,7 +95,12 @@ func (b *tailBuffer) lastLine() string {
 	}
 	text = strings.TrimSpace(text)
 	if len(text) > composeErrorDetailMax {
-		text = text[:composeErrorDetailMax] + "..."
+		// Keep the end: compose names the offending path first and the reason last.
+		start := len(text) - composeErrorDetailMax
+		for start < len(text) && !utf8.RuneStart(text[start]) {
+			start++
+		}
+		text = "..." + text[start:]
 	}
 	return text
 }
