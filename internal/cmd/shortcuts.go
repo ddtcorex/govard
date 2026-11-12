@@ -1,10 +1,13 @@
 package cmd
 
 import (
-	"govard/internal/runtime"
-)
+	"strconv"
+	"strings"
 
-import "github.com/spf13/cobra"
+	"govard/internal/runtime"
+
+	"github.com/spf13/cobra"
+)
 
 var upShortcutCmd = &cobra.Command{
 	Annotations: map[string]string{
@@ -60,7 +63,11 @@ func newEnvShortcutCommand(use string, short string, long string, example string
 			if shouldShowShortcutHelp(args) {
 				return cmd.Help()
 			}
-			return proxyEnvToCompose(cmd, append([]string{use}, args...))
+			// The global flags govard owns never belong to compose: forwarding them
+			// made compose answer "unknown flag: --error-json" instead of govard
+			// emitting its envelope.
+			forwarded := splitPassthroughGlobals(args).Forwarded
+			return proxyEnvToCompose(cmd, append([]string{use}, forwarded...))
 		},
 	}
 }
@@ -76,4 +83,71 @@ func shouldShowShortcutHelp(args []string) bool {
 
 func init() {
 	addUpFlags(upShortcutCmd)
+}
+
+// passthroughGlobals is what a pass-through command learned from its own argument
+// list, and what it should hand on to the wrapped command.
+type passthroughGlobals struct {
+	// Forwarded is args with govard's global flags removed. Everything else,
+	// including Docker Compose's own flags and service names, keeps its order.
+	Forwarded []string
+	// ErrorJSON and Verbose report the value the caller asked for, when given.
+	ErrorJSON bool
+	Verbose   bool
+	// SawErrorJSON and SawVerbose distinguish "unset" from an explicit false.
+	SawErrorJSON bool
+	SawVerbose   bool
+}
+
+// splitPassthroughGlobals separates the global flags govard owns from the
+// arguments that belong to the wrapped command.
+//
+// The root environment shortcuts set DisableFlagParsing so Docker Compose flags
+// reach compose untouched, which also means cobra never parses govard's own
+// persistent flags for them: `govard ps --error-json` forwarded the flag and
+// compose rejected it, so the documented flag did nothing on four commands.
+// Consuming exactly the two flags govard owns keeps the pass-through intact.
+// Everything after a `--` is forwarded verbatim, so a caller can still push a
+// literal --verbose through to compose.
+func splitPassthroughGlobals(args []string) passthroughGlobals {
+	var result passthroughGlobals
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			result.Forwarded = append(result.Forwarded, args[i:]...)
+			return result
+		}
+		if value, ok := flagValue(arg, "--error-json"); ok {
+			if parsed, err := strconv.ParseBool(value); err == nil {
+				result.SawErrorJSON, result.ErrorJSON = true, parsed
+				continue
+			}
+		}
+		if value, ok := flagValue(arg, "--verbose"); ok {
+			if parsed, err := strconv.ParseBool(value); err == nil {
+				result.SawVerbose, result.Verbose = true, parsed
+				continue
+			}
+		}
+		result.Forwarded = append(result.Forwarded, arg)
+	}
+	return result
+}
+
+// flagValue reports the value of name, both as a bare flag (true) and as
+// name=value. A malformed value is left alone so the wrapped command reports it.
+func flagValue(arg, name string) (string, bool) {
+	if arg == name {
+		return "true", true
+	}
+	if strings.HasPrefix(arg, name+"=") {
+		return strings.TrimPrefix(arg, name+"="), true
+	}
+	return "", false
+}
+
+// SplitPassthroughGlobalsForTest exposes the splitter so a test can pin the
+// boundary without driving a whole command.
+func SplitPassthroughGlobalsForTest(args []string) passthroughGlobals {
+	return splitPassthroughGlobals(args)
 }

@@ -59,7 +59,7 @@ Case Studies:
 		fmt.Println()
 		startedAt := time.Now()
 
-		fmt.Println("🔍 Detecting project framework...")
+		pterm.Println("🔍 Detecting project framework...")
 		if initAssumeYes {
 			_ = os.Setenv("GOVARD_ASSUME_YES", "true")
 		}

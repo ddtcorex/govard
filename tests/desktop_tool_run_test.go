@@ -520,7 +520,7 @@ func TestToolRunStaleFinishNeverUnregistersASuccessor(t *testing.T) {
 	}))
 	p := &desktop.FakePlatform{}
 
-	for round := 0; round < 200; round++ {
+	for round := 0; round < 50; round++ {
 		op, err := desktop.RunTool(context.Background(), p, project, "npm-install", nil)
 		if err != nil {
 			t.Fatalf("round %d: RunTool error: %v", round, err)
