@@ -66,8 +66,10 @@ Documentation: https://github.com/ddtcorex/govard`,
 
 		// A caller who asked for a document gets a clean stdout: every human line
 		// (banners, progress, warnings) moves to stderr before any of them prints.
-		// Reset on every run, not only in machine mode, so an in-process caller that
-		// runs several commands cannot inherit the previous one's stream.
+		// humanStream is reset on every run, so an in-process caller that runs
+		// several commands cannot inherit the previous one's stream. pterm's own
+		// default output is only ever redirected, never restored: Execute runs one
+		// command per process, and tests that capture pterm restore it themselves.
 		routeHumanStream(cmd)
 
 		if verbose {
