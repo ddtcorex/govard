@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,5 +82,37 @@ func TestRunComposeErrorKeepsTheCauseOfALongLine(t *testing.T) {
 	}
 	if len(message) > 300 {
 		t.Fatalf("the detail must stay bounded, got %d bytes", len(message))
+	}
+}
+
+// TestComposeErrorFlagsDetailThatAlreadyReachedTheTerminal pins the metadata the
+// human error line needs: compose's stderr went to the process stderr (so the
+// reason is already on screen) only when the caller did not redirect it.
+func TestComposeErrorFlagsDetailThatAlreadyReachedTheTerminal(t *testing.T) {
+	bin := t.TempDir()
+	script := "#!/bin/sh\necho 'boom: reason' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write the fake docker: %v", err)
+	}
+	t.Setenv("PATH", bin+":/usr/bin:/bin")
+
+	run := func(stderr *bytes.Buffer) error {
+		opts := engine.ComposeOptions{ProjectDir: t.TempDir(), ProjectName: "demo", Args: []string{"ps"}, Stdout: &bytes.Buffer{}}
+		if stderr != nil {
+			opts.Stderr = stderr
+		}
+		return engine.RunCompose(context.Background(), opts)
+	}
+
+	var composeErr *engine.ComposeError
+	if err := run(&bytes.Buffer{}); !errors.As(err, &composeErr) || composeErr.Streamed {
+		t.Fatalf("a redirected stderr must not count as shown: %#v", err)
+	}
+	if composeErr.Detail != "boom: reason" {
+		t.Fatalf("detail = %q", composeErr.Detail)
+	}
+	// The default stream is the process stderr, which a person is reading.
+	if err := run(nil); !errors.As(err, &composeErr) || !composeErr.Streamed {
+		t.Fatalf("the default stderr is shown to the user: %#v", err)
 	}
 }
