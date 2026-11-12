@@ -160,7 +160,9 @@ The gate refuses before the command does any work, and names what is missing:
 
 `--error-json` prints the failure as a machine-readable envelope on stdout
 (`schema_version`, `code`, `capability`, `command`, `message`, `hint`), so a
-script never has to parse the text form:
+script never has to parse the text form. Under the flag every human-facing line
+moves to stderr, so stdout holds only the document (see Global Flags in the
+CLI reference):
 
 ```bash
 govard tunnel start --error-json
