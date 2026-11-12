@@ -1591,6 +1591,19 @@ Tất cả các lệnh của Govard đều hỗ trợ:
   (`schema_version`, `code`, `capability`, `command`, `message`, `hint`) thay vì
   text, để script không phải parse dạng người đọc
 
+Với `--error-json` (hoặc `--json` riêng của từng lệnh), stdout chỉ chứa
+document: mọi dòng dành cho người đọc (banner, dòng trống bao quanh, tiến trình,
+kết quả spinner, cảnh báo) chuyển sang stderr, nên `govard doctor --error-json`
+thành công in báo cáo ra stderr và để stdout trống. Lệnh mà output chính là
+document, như `govard version`, vẫn in ra stdout. Hãy đọc stderr, hoặc bỏ cờ,
+khi cần bản báo cáo cho người đọc.
+
+Các shortcut vòng đời `govard up`, `down`, `restart`, `ps` và `logs` nhận
+`--error-json` và `--verbose` ở bất kỳ vị trí nào và không bao giờ chuyển chúng
+cho Docker Compose. Sau dấu `--` mọi tham số được chuyển nguyên vẹn. Khi Compose
+thất bại, `message` của envelope mang lý do của chính Compose (dòng cuối nó in,
+giới hạn 240 byte và cắt từ đầu), còn dạng text không lặp lại điều Compose đã in.
+
 Các lệnh forward tham số cho tool khác (`govard tool php ...`,
 `govard redis cli ...`) không parse được `--error-json`; lỗi của chúng vẫn giữ
 đúng mã thoát đã tài liệu hóa.

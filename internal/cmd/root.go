@@ -66,8 +66,10 @@ Documentation: https://github.com/ddtcorex/govard`,
 
 		// A caller who asked for a document gets a clean stdout: every human line
 		// (banners, progress, warnings) moves to stderr before any of them prints.
-		// Reset on every run, not only in machine mode, so an in-process caller that
-		// runs several commands cannot inherit the previous one's stream.
+		// humanStream is reset on every run, so an in-process caller that runs
+		// several commands cannot inherit the previous one's stream. pterm's own
+		// default output is only ever redirected, never restored: Execute runs one
+		// command per process, and tests that capture pterm restore it themselves.
 		routeHumanStream(cmd)
 
 		if verbose {
@@ -185,9 +187,25 @@ func Execute() {
 	// deploy result document under `--json`, the error envelope under
 	// `--error-json` — and a decorated error line printed into the same stream
 	// makes that output unparseable.
-	pterm.Error.WithWriter(os.Stderr).Println(err)
+	pterm.Error.WithWriter(os.Stderr).Println(humanErrorMessage(err))
 	os.Exit(cli.Code(err))
 }
+
+// humanErrorMessage is the text of err for a person at a terminal. A compose
+// failure carries the reason compose gave, and when that reason was already
+// streamed to this terminal the final line must not repeat it. The envelope
+// keeps the full text: nobody read the stream above it.
+func humanErrorMessage(err error) string {
+	message := err.Error()
+	var composeErr *engine.ComposeError
+	if errors.As(err, &composeErr) && composeErr.Streamed {
+		message = strings.Replace(message, composeErr.Error(), composeErr.Err.Error(), 1)
+	}
+	return message
+}
+
+// HumanErrorMessageForTest exposes humanErrorMessage for tests in /tests.
+func HumanErrorMessageForTest(err error) string { return humanErrorMessage(err) }
 
 // humanStream is where human-facing lines go: banners, the blank lines that frame
 // them, hints. It is a package variable because helpers that print those lines

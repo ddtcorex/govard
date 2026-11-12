@@ -156,7 +156,9 @@ Gate từ chối trước khi lệnh làm bất cứ việc gì, và nói rõ th
 
 `--error-json` in lỗi ra stdout dưới dạng envelope machine-readable
 (`schema_version`, `code`, `capability`, `command`, `message`, `hint`), nên
-script không phải parse dạng text:
+script không phải parse dạng text. Khi dùng cờ này, mọi dòng dành cho người đọc
+chuyển sang stderr, stdout chỉ chứa document (xem Global Flags trong tài liệu
+CLI):
 
 ```bash
 govard tunnel start --error-json

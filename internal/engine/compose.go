@@ -2,13 +2,13 @@ package engine
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // ComposeOptions defines the parameters for running a Docker Compose command.
@@ -45,6 +45,9 @@ func RunCompose(ctx context.Context, opts ComposeOptions) error {
 	if stderr == nil {
 		stderr = os.Stderr
 	}
+	// Compose's own message reached a person only when it went to the process
+	// stderr; the error line printed at the end of the run can then leave it out.
+	streamed := stderr == io.Writer(os.Stderr)
 	cmd.Stderr = io.MultiWriter(stderr, tail)
 
 	if opts.Stdin != nil {
@@ -55,12 +58,25 @@ func RunCompose(ctx context.Context, opts ComposeOptions) error {
 
 	if err := cmd.Run(); err != nil {
 		if detail := tail.lastLine(); detail != "" {
-			return fmt.Errorf("%w: %s", err, detail)
+			return &ComposeError{Err: err, Detail: detail, Streamed: streamed}
 		}
 		return err
 	}
 	return nil
 }
+
+// ComposeError is a failed compose run with the reason compose gave for it.
+// Streamed records that the same text already reached the process stderr, so a
+// terminal error line can omit it while a machine envelope keeps it.
+type ComposeError struct {
+	Err      error
+	Detail   string
+	Streamed bool
+}
+
+func (e *ComposeError) Error() string { return e.Err.Error() + ": " + e.Detail }
+
+func (e *ComposeError) Unwrap() error { return e.Err }
 
 // composeErrorTailBytes bounds how much of compose's stderr is kept for the error
 // message. The last line is what names the cause; the buffer only has to survive
@@ -94,7 +110,12 @@ func (b *tailBuffer) lastLine() string {
 	}
 	text = strings.TrimSpace(text)
 	if len(text) > composeErrorDetailMax {
-		text = text[:composeErrorDetailMax] + "..."
+		// Keep the end: compose names the offending path first and the reason last.
+		start := len(text) - composeErrorDetailMax
+		for start < len(text) && !utf8.RuneStart(text[start]) {
+			start++
+		}
+		text = "..." + text[start:]
 	}
 	return text
 }

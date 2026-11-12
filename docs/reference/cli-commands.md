@@ -1644,6 +1644,20 @@ All commands support:
   (`schema_version`, `code`, `capability`, `command`, `message`, `hint`)
   instead of text, so scripts never parse the human form
 
+With `--error-json` (or a command's own `--json`), stdout carries only the
+document: every human-facing line (banners, blank lines that frame them, progress,
+spinner verdicts, warnings) moves to stderr, so a successful `govard doctor
+--error-json` prints its report on stderr and leaves stdout empty. A command
+whose output *is* the document, such as `govard version`, still prints it on
+stdout. Read stderr, or omit the flag, when you want the human report.
+
+The lifecycle shortcuts `govard up`, `down`, `restart`, `ps` and `logs` accept
+`--error-json` and `--verbose` anywhere in their arguments and never forward
+them to Docker Compose. After a literal `--` every argument is forwarded as
+given. A failed Compose run reports its own reason in the envelope `message`
+(the last line Compose printed, bounded to 240 bytes and cut from the front),
+and the text form does not repeat what Compose already printed.
+
 Commands that forward their arguments to a tool (`govard tool php ...`,
 `govard redis cli ...`) cannot parse `--error-json`; their failures still carry
 the documented exit codes.
