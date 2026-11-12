@@ -39,6 +39,9 @@ var sandboxWarmups = []struct {
 }{
 	{"deploy/magento-stub", "php"},
 	{"deploy/magento-stub", "full"},
+	// The DB-backup refusal test runs the same stub fixture on the lightest
+	// profile, which is a different image because the tag carries the profile.
+	{"deploy/magento-stub", "basic"},
 	{"deploy/code-only", "basic"},
 }
 

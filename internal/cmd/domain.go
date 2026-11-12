@@ -106,7 +106,7 @@ var domainListCmd = &cobra.Command{
 		config := loadConfig()
 		pterm.DefaultSection.Println("Project Domains")
 		pterm.Info.Printfln("Primary: %s", pterm.Cyan(config.Domain))
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 
 		if len(config.ExtraDomains) > 0 {
 			pterm.DefaultSection.WithLevel(2).Println("Extra Domains")

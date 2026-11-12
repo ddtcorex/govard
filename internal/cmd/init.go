@@ -54,9 +54,9 @@ Case Studies:
   # Specify framework version during init
   govard init --framework laravel --framework-version 11`,
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Govard Initialization ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		startedAt := time.Now()
 
 		pterm.Println("🔍 Detecting project framework...")
@@ -322,7 +322,7 @@ Case Studies:
 		pterm.Success.Printf("✅ Rendered compose file at %s\n", composePath)
 
 		if migrateFrom != "" {
-			fmt.Println()
+			fmt.Fprintln(humanStream)
 			var assumedSourceVolume string
 			switch strings.ToLower(migrateFrom) {
 			case "warden":
@@ -355,7 +355,7 @@ Case Studies:
 				}
 			}
 
-			fmt.Println()
+			fmt.Fprintln(humanStream)
 			pterm.Info.Printf("Running environment diagnostics to finalize migration from %s...\n", migrateFrom)
 
 			// Auto-run doctor --fix but explicitly skip the interactive framework tune profile check

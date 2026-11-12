@@ -34,9 +34,9 @@ var statusCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Govard Environments ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		for i := 1; i < len(data); i++ {
 			data[i][0] = pterm.Magenta(data[i][0])
 			if data[i][1] == "Running" {

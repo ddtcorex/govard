@@ -291,7 +291,7 @@ Case Studies:
 			for _, line := range buildSyncPlanSummary(endpoints, executionPlan, execOpts, policyWarnings) {
 				fmt.Fprintln(cmd.OutOrStdout(), line)
 			}
-			fmt.Println()
+			fmt.Fprintln(humanStream)
 			confirmed, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(true).WithDefaultText("Do you want to proceed with this synchronization?").Show()
 			if !confirmed {
 				return fmt.Errorf("synchronization cancelled by user")
@@ -326,7 +326,7 @@ Case Studies:
 
 			if err := rsyncCmd.Run(); err != nil {
 				_ = area.Stop()
-				fmt.Println()
+				fmt.Fprintln(humanStream)
 				cont, err := handleRsyncErrorWithOutput(err, executionPlan.RsyncScopes[i], output.String())
 				if !cont {
 					return err
@@ -335,7 +335,7 @@ Case Studies:
 			}
 
 			_ = area.Stop()
-			fmt.Println()
+			fmt.Fprintln(humanStream)
 			pterm.Success.Printf("%s completed.\n", description)
 		}
 

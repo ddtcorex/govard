@@ -63,9 +63,9 @@ var profileCmd = &cobra.Command{
 		out := cmd.OutOrStdout()
 
 		// Header with active profile
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Profile Status ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 
 		// Show current active profile from registry
 		if entry, ok := engine.GetProjectRegistryEntry(cwd); ok {
@@ -392,7 +392,7 @@ func runProfileSwitch(cmd *cobra.Command, args []string) error {
 	// Warn user to restart environment if profile actually changed
 	// Show warning when switching to/from default (empty) profile, or between profiles
 	if previousProfile != profileName {
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.Warning.Println("Profile changed. Run 'govard env up' to apply the new environment.")
 	}
 	return nil
@@ -420,7 +420,7 @@ func runProfileClear(cmd *cobra.Command, args []string) error {
 	pterm.Success.Println("Profile reset to default")
 
 	// Warn user to restart environment
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 	pterm.Warning.Println("Profile changed. Run 'govard env up' to apply the new environment.")
 	return nil
 }

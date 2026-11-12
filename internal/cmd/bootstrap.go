@@ -266,7 +266,7 @@ Note: -e/--environment accepts remote name aliases (e.g. 'dev' matches a remote 
 				for _, line := range buildBootstrapPlanSummary(config, opts.Source, plan) {
 					fmt.Fprintln(cmd.OutOrStdout(), line)
 				}
-				fmt.Println()
+				fmt.Fprintln(humanStream)
 				confirmed, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(true).WithDefaultText("Do you want to proceed with this bootstrap?").Show()
 				if !confirmed {
 					return fmt.Errorf("bootstrap cancelled by user")

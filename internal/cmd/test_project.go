@@ -60,9 +60,9 @@ func runDefaultTests(config engine.Config) error {
 }
 
 func runPHPUnit(config engine.Config, args []string) error {
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 	pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Running PHPUnit Tests ")
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 	binaryPath := "vendor/bin/phpunit"
 	if hasConfigFlag(args) {
 		cmdArgs := []string{"-d", "memory_limit=-1", binaryPath}
@@ -119,9 +119,9 @@ func runPHPUnit(config engine.Config, args []string) error {
 }
 
 func runPHPStan(config engine.Config, args []string) error {
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 	pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Running PHPStan Static Analysis ")
-	fmt.Println()
+	fmt.Fprintln(humanStream)
 	binaryPath := "vendor/bin/phpstan"
 	cmdArgs := []string{binaryPath, "analyze"}
 	if len(args) > 0 {
@@ -185,9 +185,9 @@ func runFrameworkTestSuite(config engine.Config, suite string, args []string) er
 		return fmt.Errorf("%s tests not configured for framework: %s", suite, config.Framework)
 	}
 	if command.Label != "" {
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Println(" Running " + command.Label + " ")
-		fmt.Println()
+		fmt.Fprintln(humanStream)
 	}
 	// For integration, the framework command embeds "-c dev/tests/integration/phpunit.xml".
 	// Fresh Magento only has phpunit.xml.dist and install-config-mysql.php.dist.
