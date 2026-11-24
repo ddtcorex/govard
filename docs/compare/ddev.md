@@ -1,5 +1,5 @@
 ---
-title: Govard and DDEV
+title: "Govard vs DDEV: a faster DDEV alternative"
 description: How Govard and DDEV differ for a Magento project; what each starts by default, what Govard automates outside the container, and when to choose the other tool.
 ---
 
@@ -9,7 +9,8 @@ Both tools run a Magento project in containers and give it a local domain. They
 differ in what they start, what they automate outside the container, and how the
 project is configured. This page states the differences; the numbers live on the
 [benchmark page](/workflows/benchmark), so they cannot drift apart from the
-method that produced them.
+method that produced them. If you are looking for a DDEV alternative, the
+sections below say what differs and where DDEV still wins.
 
 ## What starts, by default
 

@@ -1,5 +1,5 @@
 ---
-title: Govard Architecture
+title: "Govard architecture: how it runs a project"
 description: A high-level look at Govard's internal architecture — the Go engine, blueprint rendering, Docker Compose generation, and CLI/desktop parity.
 ---
 

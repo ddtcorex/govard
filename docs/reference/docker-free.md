@@ -1,6 +1,6 @@
 ---
 title: Commands That Run Without Docker — Govard
-description: Every Govard command whose manifest requirement excludes Docker — container-free audit analysis, host diagnostics, remote and tunnel workflows — plus the capability gate and its exit codes.
+description: "Every Govard command that runs without Docker: container-free audit analysis, host diagnostics, remote and tunnel workflows, and the capability gate."
 ---
 
 # Runs Without Docker

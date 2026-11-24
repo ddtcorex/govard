@@ -1,5 +1,5 @@
 ---
-title: Govard Changelog
+title: Govard release changelog
 description: Full version history of Govard, following Semantic Versioning, with details on new features, fixes, and blueprint changes.
 ---
 

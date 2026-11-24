@@ -1,6 +1,6 @@
 ---
 title: Try Govard Without a Project
-description: One command that creates a throwaway Mage-OS storefront, starts it behind the Govard proxy and removes it when you exit, with the flags, the cost and the limits stated.
+description: One command that creates a throwaway Mage-OS storefront, starts it behind the Govard proxy and removes it on exit, with the flags, cost and limits stated.
 ---
 
 # Try Govard Without a Project
