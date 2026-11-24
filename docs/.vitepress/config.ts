@@ -1,8 +1,8 @@
 import { defineConfig } from 'vitepress'
-import { SITE_HOSTNAME, transformSitemapItems, transformPageDataSeo, transformHeadSeo } from './seo'
+import { SITE_HOSTNAME, SITE_TITLE, transformSitemapItems, transformPageDataSeo, transformHeadSeo } from './seo'
 
 export default defineConfig({
-  title: 'Govard',
+  title: SITE_TITLE,
   description: 'Go-based Versatile Runtime & Development',
 
   srcExclude: ['plans/**', 'superpowers/**'],
