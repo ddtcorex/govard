@@ -17,10 +17,11 @@ Go-based local development orchestrator for PHP and web projects (Magento, Larav
 ## Workflow: Superpowers skills are mandatory
 
 Multi-step changes MUST follow the Superpowers skill workflow, in order:
-brainstorming (design recorded locally under `docs/superpowers/specs/`),
-writing-plans (`docs/superpowers/plans/`), then executing-plans with strict TDD.
-Per existing repo policy these artifacts stay **local-only and gitignored**;
-describe durable outcomes in the PR body instead of committing them. When a
+brainstorming (design kept under `docs/specs/` when this checkout is your
+workspace, otherwise in the workspace you work from),
+writing-plans (`docs/plans/`, same rule), then executing-plans with strict TDD.
+Neither artifact is ever committed here, since both directories are gitignored;
+describe durable outcomes in the PR body instead. When a
 superpowers-executed task completes, squash its per-task commits into one
 commit before considering the work done.
 
@@ -396,7 +397,7 @@ reference, VI counterpart).
 
 ## Superpowers Workflow Preferences
 
-- `docs/superpowers/**` (specs, plans) are local-only working artifacts — gitignored (see `.gitignore`). Never `git add`/commit them; keep them on disk for reference within the session.
+- Design records and plans stay out of git: `docs/specs/` and `docs/plans/` are gitignored. When this checkout is your workspace, write them there; when you work from a coordination workspace, write them there. Never `git add` them either way, and write nowhere else in this repository.
 - When a task executed via superpowers (subagent-driven-development, executing-plans, or any multi-commit implementation) is complete, proactively squash all commits made for that task into a single commit before considering the work done — don't leave the per-step/per-task commit history in place unless the user asks to keep it granular.
 
 ## Pre-Completion Checklist

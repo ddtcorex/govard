@@ -27,8 +27,8 @@ Thank you for contributing to **Govard** (`github.com/ddtcorex/govard`) — a Go
 
 Every multi-step change to this repository **MUST** follow the Superpowers skill workflow defined in `AGENTS.md`, in order:
 
-1. **brainstorming** — explore intent, requirements, and design before writing code. Record the outcome locally under `docs/superpowers/specs/` (gitignored).
-2. **writing-plans** — turn the approved design into a task-by-task plan with exact test and implementation sketches under `docs/superpowers/plans/` (gitignored, transient — delete once the batch ships).
+1. **brainstorming**: explore intent, requirements, and design before writing code. Record the design under `docs/specs/` when this checkout is your workspace, or in the workspace you work from; both are ignored, and nothing dated is committed here.
+2. **writing-plans**: turn the approved design into a task-by-task plan with exact test and implementation sketches, under `docs/plans/` by the same rule. The plan is transient: delete it once the batch ships.
 3. **executing-plans** — implement task by task with strict **TDD**: write a failing test first, verify RED, implement, verify GREEN, then commit that task before starting the next. Do not commit while tests are red.
 
 Describe durable outcomes in the PR body instead of committing dated spec/plan files. When a superpowers-executed task completes, squash its per-task commits into one commit.

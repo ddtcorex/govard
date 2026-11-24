@@ -5,7 +5,7 @@ export default defineConfig({
   title: SITE_TITLE,
   description: 'Go-based Versatile Runtime & Development',
 
-  srcExclude: ['plans/**', 'superpowers/**'],
+  srcExclude: ['specs/**', 'plans/**'],
 
   cleanUrls: true,
   lastUpdated: true,
