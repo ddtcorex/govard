@@ -72,4 +72,5 @@
 .worktrees/
 .playwright-mcp/
 .superpowers/
-docs/superpowers/
+docs/specs/
+docs/plans/
