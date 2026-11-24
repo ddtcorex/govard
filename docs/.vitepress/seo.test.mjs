@@ -1,7 +1,7 @@
 // docs/.vitepress/seo.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { relativePathToUrl, transformSitemapItems, SITEMAP_PRIORITIES, transformPageDataSeo, transformHeadSeo, resolveTitleTemplate, renderTitle, breadcrumbLd } from './seo.ts'
+import { relativePathToUrl, transformSitemapItems, SITEMAP_PRIORITIES, transformPageDataSeo, transformHeadSeo, resolveTitleTemplate, renderTitle, breadcrumbLd, SITE_TITLE } from './seo.ts'
 
 test('relativePathToUrl handles home, locale home, and nested pages', () => {
   assert.equal(relativePathToUrl('index.md'), '/')
@@ -273,19 +273,36 @@ test('every section root redirects to a page that exists', async () => {
 
   const sources = rules.map((rule) => rule[0])
   const sectionRoots = ['workflows', 'developer', 'reference', 'getting-started', 'compare', 'more']
+  // Pages only adds or strips the trailing slash when a matching index exists,
+  // and these sections have none, so both forms need a rule.
   for (const section of sectionRoots) {
-    assert.ok(sources.includes(`/${section}/`), `missing redirect for /${section}/`)
-    assert.ok(sources.includes(`/vi/${section}/`), `missing redirect for /vi/${section}/`)
+    for (const prefix of ['', '/vi']) {
+      assert.ok(sources.includes(`${prefix}/${section}/`), `missing redirect for ${prefix}/${section}/`)
+      assert.ok(sources.includes(`${prefix}/${section}`), `missing redirect for ${prefix}/${section} without the slash`)
+    }
   }
 
   const favicon = rules.find((rule) => rule[0] === '/favicon.ico')
   assert.deepEqual(favicon, ['/favicon.ico', '/favicon.svg', '301'])
 
-  for (const [, target] of rules) {
+  // A redirect is followed even when a real page exists at the source, so a page
+  // under a redirected source is published and unreachable. Both forms matter:
+  // `/workflows/` maps to a directory index, `/workflows` to a sibling page.
+  for (const [source] of rules) {
+    const bare = source.replace(/^\//, '')
+    if (!bare) continue
+    const shadowedFile = bare.endsWith('/') ? `${bare}index.md` : `${bare}.md`
+    const shadowed = await access(join(root, shadowedFile)).then(() => true, () => false)
+    assert.ok(!shadowed, `redirect shadows a real page: ${source} (found ${shadowedFile})`)
+  }
+
+  for (const [source, target] of rules) {
     const relative = target.replace(/^\//, '')
-    const candidates = [join(root, `${relative}.md`), join(root, relative, 'index.md'), join(root, 'public', relative.replace(/^public\//, ''))]
+    const candidates = [join(root, `${relative}.md`), join(root, relative, 'index.md')]
+    // Only the icon may resolve to a static asset; every other target is a page.
+    if (source === '/favicon.ico') candidates.push(join(root, 'public', relative))
     const exists = await Promise.all(candidates.map((file) => access(file).then(() => true, () => false)))
-    assert.ok(exists.some(Boolean), `redirect target has no page: ${target}`)
+    assert.ok(exists.some(Boolean), `redirect target is not a page (only /favicon.ico may target a static asset): ${target}`)
   }
 })
 
@@ -369,4 +386,61 @@ test('frontmatter title and description are valid YAML scalars when they contain
     }
   }
   assert.deepEqual(offences, [], `frontmatter that breaks the YAML parse:\n${offences.join('\n')}`)
+})
+
+test('a page with no counterpart is advertised in its own locale, not always en-US', () => {
+  const out = transformSitemapItems([{ url: 'vi/workflows/only-vi' }, { url: 'workflows/ci-integration' }])
+  assert.deepEqual(out[0].links, [{ url: 'vi/workflows/only-vi', lang: 'vi-VN' }, { url: 'vi/workflows/only-vi', lang: 'x-default' }])
+  assert.deepEqual(out[1].links[0], { url: 'workflows/ci-integration', lang: 'en-US' })
+})
+
+test('the title rule reads the site title from the config rather than a second literal', () => {
+  assert.equal(resolveTitleTemplate('Acme architecture', 'Acme'), ':title')
+  assert.equal(renderTitle('Deployment', resolveTitleTemplate('Deployment', 'Acme'), 'Acme'), 'Deployment | Acme')
+  const siteConfig = { srcDir: new URL('.', import.meta.url).pathname.replace(/\.vitepress\/$/, ''), site: { title: 'Acme' } }
+  const page = { relativePath: 'developer/architecture.md', title: 'Acme architecture', frontmatter: {} }
+  transformPageDataSeo(page, { siteConfig })
+  assert.equal(page.titleTemplate, ':title')
+})
+
+test('the breadcrumb root name comes from the same site title as the page title', () => {
+  const ld = breadcrumbLd('workflows/tunnel.md', 'Public Tunnel', 'Acme')
+  assert.equal(ld.itemListElement[0].name, 'Acme')
+})
+
+test('the English title guard measures against the site title config.ts publishes', async () => {
+  const { readdir, readFile } = await import('node:fs/promises')
+  const { join, relative } = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const root = fileURLToPath(new URL('..', import.meta.url))
+
+  // config.ts imports './seo' without an extension, which Vite resolves and Node
+  // does not, so the invariant is asserted on the source: the config consumes the
+  // constant instead of holding a second literal.
+  const configSource = await readFile(join(root, '.vitepress/config.ts'), 'utf8')
+  assert.match(configSource, /^\s*title: SITE_TITLE,/m, 'config.ts must publish SITE_TITLE, not a literal')
+
+  const walk = async (dir) => {
+    const entries = await readdir(dir, { withFileTypes: true })
+    const files = []
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === 'superpowers' || entry.name === 'public') continue
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) files.push(...(await walk(full)))
+      else if (entry.name.endsWith('.md')) files.push(full)
+    }
+    return files
+  }
+
+  const offences = []
+  for (const file of await walk(root)) {
+    if (relative(root, file).startsWith('vi/')) continue
+    const body = await readFile(file, 'utf8')
+    const block = body.match(/^---\n([\s\S]*?)\n---/)?.[1]
+    const title = block?.match(/^title:\s*(.*)$/m)?.[1]?.trim().replace(/^["']|["']$/g, '')
+    if (!title) continue
+    const rendered = renderTitle(title, resolveTitleTemplate(title, SITE_TITLE), SITE_TITLE)
+    if (rendered.length > 60) offences.push(`${relative(root, file)}: ${rendered.length} characters`)
+  }
+  assert.deepEqual(offences, [], `English titles that break the rule:\n${offences.join('\n')}`)
 })

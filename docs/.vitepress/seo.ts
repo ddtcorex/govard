@@ -5,7 +5,6 @@ import path from 'node:path'
 export const SITE_HOSTNAME = 'https://govard.ddtcorex.com'
 
 export const SITE_TITLE = 'Govard'
-const TITLE_SUFFIX = ` | ${SITE_TITLE}`
 const MAX_TITLE_LENGTH = 60
 
 /**
@@ -15,15 +14,16 @@ const MAX_TITLE_LENGTH = 60
  * (case-insensitive) or when the suffix would push the title past the length a
  * search result shows.
  */
-export function resolveTitleTemplate(title: string): string | undefined {
-  if (title.toLowerCase().includes(SITE_TITLE.toLowerCase())) return ':title'
-  if (`${title}${TITLE_SUFFIX}`.length > MAX_TITLE_LENGTH) return ':title'
+export function resolveTitleTemplate(title: string, siteTitle: string = SITE_TITLE): string | undefined {
+  const suffix = ` | ${siteTitle}`
+  if (title.toLowerCase().includes(siteTitle.toLowerCase())) return ':title'
+  if (`${title}${suffix}`.length > MAX_TITLE_LENGTH) return ':title'
   return undefined
 }
 
 /** The title exactly as the document will publish it. */
-export function renderTitle(title: string, template: string | undefined): string {
-  return template === ':title' ? title : `${title}${TITLE_SUFFIX}`
+export function renderTitle(title: string, template: string | undefined, siteTitle: string = SITE_TITLE): string {
+  return template === ':title' ? title : `${title} | ${siteTitle}`
 }
 
 /**
@@ -76,7 +76,8 @@ export function transformSitemapItems(items: any[]): any[] {
     // VitePress fills `links` only for a locale group of two or more, so a lone
     // page gets its own English entry plus x-default here. Both methods are
     // emitted on every page, so they have to agree.
-    const links = item.links?.length ? [...item.links] : [{ url: item.url, lang: 'en-US' }]
+    const selfLang = item.url.startsWith('vi/') ? 'vi-VN' : 'en-US'
+    const links = item.links?.length ? [...item.links] : [{ url: item.url, lang: selfLang }]
     const englishUrl = links.find((link: any) => link.lang === 'en-US')?.url ?? item.url
     const alternates = links.filter((link: any) => link.lang !== 'x-default')
     return {
@@ -147,7 +148,7 @@ export function transformHeadSeo(ctx: {
  * page, so a middle crumb would have to point at a URL that answers with a
  * redirect, which does not belong inside structured data.
  */
-export function breadcrumbLd(page: string, title: string): any | null {
+export function breadcrumbLd(page: string, title: string, siteTitle: string = SITE_TITLE): any | null {
   const url = relativePathToUrl(page)
   if (url === '/' || url === '/vi/') return null
   const isVi = page.startsWith('vi/')
@@ -155,7 +156,7 @@ export function breadcrumbLd(page: string, title: string): any | null {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: SITE_TITLE, item: `${SITE_HOSTNAME}${isVi ? '/vi/' : '/'}` },
+      { '@type': 'ListItem', position: 1, name: siteTitle, item: `${SITE_HOSTNAME}${isVi ? '/vi/' : '/'}` },
       { '@type': 'ListItem', position: 2, name: title, item: `${SITE_HOSTNAME}${url}` },
     ],
   }
@@ -166,13 +167,14 @@ export function transformPageDataSeo(pageData: any, ctx: { siteConfig: any }): v
   const isVi = relativePath.startsWith('vi/')
   const counterpartRelativePath = isVi ? relativePath.slice('vi/'.length) : `vi/${relativePath}`
   const counterpartExists = fs.existsSync(path.join(ctx.siteConfig.srcDir, counterpartRelativePath))
+  const siteTitle = ctx.siteConfig?.site?.title ?? SITE_TITLE
 
   const url = relativePathToUrl(relativePath)
   const head = pageData.frontmatter.head ?? (pageData.frontmatter.head = [])
 
   // A page may pin its own template in frontmatter; only fill the gap.
   if (pageData.titleTemplate === undefined) {
-    pageData.titleTemplate = resolveTitleTemplate(pageData.title ?? SITE_TITLE)
+    pageData.titleTemplate = resolveTitleTemplate(pageData.title ?? siteTitle, siteTitle)
   }
 
   head.push(['link', { rel: 'canonical', href: `${SITE_HOSTNAME}${url}` }])
@@ -188,6 +190,6 @@ export function transformPageDataSeo(pageData: any, ctx: { siteConfig: any }): v
   const englishUrl = isVi && counterpartExists ? relativePathToUrl(counterpartRelativePath) : url
   head.push(['link', { rel: 'alternate', hreflang: 'x-default', href: `${SITE_HOSTNAME}${englishUrl}` }])
 
-  const breadcrumb = breadcrumbLd(relativePath, pageData.title ?? SITE_TITLE)
+  const breadcrumb = breadcrumbLd(relativePath, pageData.title ?? SITE_TITLE, siteTitle)
   if (breadcrumb) head.push(['script', { type: 'application/ld+json' }, JSON.stringify(breadcrumb)])
 }
