@@ -2,7 +2,13 @@ name: CloudSmith Retention
 
 # Free-tier CloudSmith has no Retention UI section (owner-confirmed), so this
 # workflow enforces keep-last-N per package instead: monthly cron + manual
-# dispatch. Dry-run by default — pass live=true to actually delete.
+# dispatch.
+#
+# The cron prunes for real; a manual dispatch is a dry-run unless live=true is
+# passed, so a hand-run can always be inspected first. It has to be that way
+# round: the schedule carries no inputs, and a run that is dry by default on the
+# schedule is a retention policy that never deletes, which is exactly how the
+# three package repos reached 1.1 GB and a 100% storage alert (2026-11-24).
 # Deletes address individual versions by their immutable slug_perm, never by
 # package name, so a bug can at worst remove one version, not a package.
 
@@ -95,5 +101,5 @@ jobs:
           EOF
         env:
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
-          LIVE: ${{ inputs.live || 'false' }}
+          LIVE: ${{ github.event_name == 'schedule' || inputs.live }}
           KEEP_LAST: ${{ inputs.keep_last || '5' }}
