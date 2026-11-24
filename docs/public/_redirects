@@ -1,0 +1,19 @@
+# Section roots Google still requests (Search Console reported each as 404).
+# Cloudflare Pages applies these before the file system, so a section without an
+# index page answers with a permanent redirect instead of a not-found.
+/workflows/       /workflows/remotes-and-sync     301
+/developer/       /developer/architecture         301
+/reference/       /reference/cli-commands         301
+/getting-started/ /getting-started/installation   301
+/compare/         /compare/ddev                   301
+/more/            /more/faq                        301
+
+/vi/workflows/       /vi/workflows/remotes-and-sync     301
+/vi/developer/       /vi/developer/architecture         301
+/vi/reference/       /vi/reference/cli-commands         301
+/vi/getting-started/ /vi/getting-started/installation   301
+/vi/compare/         /vi/compare/ddev                   301
+/vi/more/            /vi/more/faq                        301
+
+# The site ships favicon.svg only; browsers and crawlers still ask for the .ico.
+/favicon.ico      /favicon.svg                    301

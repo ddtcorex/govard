@@ -1,5 +1,5 @@
 ---
-title: CI pipelines
+title: Run Govard in a CI pipeline
 description: Hand-written GitLab pipeline pattern for govard projects — integrity, lint, single-job ships and manual rollbacks using existing commands.
 ---
 

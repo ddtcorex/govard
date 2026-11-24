@@ -1,6 +1,6 @@
 ---
-title: Deployment
-description: Deploy a git revision to a remote with govard — the neutral task pipeline, framework recipes, hooks, the two-job CI shape with artifacts, rollback, and the sandbox that rehearses the whole thing on your machine.
+title: Deploy a project over SSH with rsync
+description: "Deploy a git revision over SSH with govard: the task pipeline, framework recipes, hooks, the two-job CI shape, rollback, and a local sandbox rehearsal."
 ---
 
 # Deployment

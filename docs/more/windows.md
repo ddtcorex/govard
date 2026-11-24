@@ -1,5 +1,5 @@
 ---
-title: Windows and WSL2
+title: Govard on Windows through WSL2
 description: What works when you run Govard on Windows, what does not, and why WSL2 is the supported path.
 ---
 

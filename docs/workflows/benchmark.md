@@ -1,6 +1,6 @@
 ---
 title: Govard Benchmark
-description: Reproducible Govard performance numbers from a committed harness; start, stop, time to first byte, static deploy, DI compile and memory, measured on a named machine.
+description: "Reproducible Govard performance numbers from a committed harness: start, stop, time to first byte, static deploy, DI compile and memory, on a named machine."
 ---
 
 # Benchmark

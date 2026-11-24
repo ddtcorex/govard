@@ -1,6 +1,6 @@
 ---
 title: Deployment case studies
-description: Concrete govard deployment setups for Magento projects — Luma, Hyvä, multiple themes and store views, developer and production mode, a symlinked or a real webroot — each with the configuration, the sandbox rehearsal and the failure it prevents.
+description: "govard deploy setups for Magento: Luma, Hyvä, several themes and store views, developer vs production mode, symlinked or real webroot, with a sandbox run."
 ---
 
 # Deployment case studies

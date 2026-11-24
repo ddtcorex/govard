@@ -1,16 +1,18 @@
 ---
 title: Govard and Warden
-description: How Govard and Warden differ for a Magento project; what each starts by default, what the installer touches on the host, and how a migration carries the project over.
+description: "How Govard and Warden differ for a Magento project: what each starts by default, what the installer touches on the host, and what a migration carries over."
 ---
 
 # Govard and Warden
 
 Both start a Magento stack in containers and route it to a local domain. Warden
 predates Govard: it pairs an opinionated `env-init` stack with a traefik router
-and keeps its configuration in environment files. Govard ships a single binary, a
-Caddy proxy and a declared profile in `.govard.yml`. This page states the
+and keeps its configuration in environment files. Govard ships a single binary,
+a Caddy proxy and a declared profile in `.govard.yml`. This page states the
 differences; the numbers live on the [benchmark page](/workflows/benchmark), so
-they cannot drift away from the method that produced them.
+they cannot drift away from the method that produced them. If you are looking
+for a Warden alternative, the sections below say what differs and where Warden
+still wins.
 
 ## What starts, by default
 

@@ -1,7 +1,7 @@
 ---
 layout: home
-title: Govard — DDEV & Warden Alternative for Magento, Laravel, Symfony, WordPress
-description: Govard is a native Go local dev orchestrator — a faster, more stable alternative to DDEV, Warden, and bash-based tools. Auto-detects Magento, Laravel, Symfony, WordPress. Built-in HTTPS, Docker SDK, safe remote sync.
+title: "Govard: the DDEV alternative for Magento and Laravel"
+description: "Native Go local dev orchestrator for Magento, Laravel, Symfony and WordPress: a faster, more stable DDEV and Warden alternative with built-in HTTPS and sync."
 
 hero:
   name: Govard

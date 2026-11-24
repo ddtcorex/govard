@@ -1,0 +1,21 @@
+# Cloudflare Pages header rules. Redirects run before headers, so a request
+# that matches _redirects never reaches these.
+/*
+  Cache-Control: public, max-age=0, s-maxage=600, stale-while-revalidate=86400
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# The detach is required: Pages comma-joins a header that two rules set, the
+# first max-age would win, and the hashed bundle would cache for zero seconds.
+# A detach removes only what earlier rules added, so this block follows /*.
+/assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+
+# Every deployment is reachable on an unbranded pages.dev host while the
+# canonical, robots.txt and hreflang all point at govard.ddtcorex.com.
+https://:project.pages.dev/*
+  X-Robots-Tag: noindex
+
+https://:version.:project.pages.dev/*
+  X-Robots-Tag: noindex

@@ -5,12 +5,14 @@ description: Why the benchmark page has no Lando column, what Lando ships for Ma
 
 # Govard and Lando
 
-Lando is a general-purpose local development tool: a Landofile describes services
-and tooling, a proxy routes local names, and recipes package common stacks.
-Govard is narrower: one CLI, a declared stack per framework, and a Magento profile
-that ships Varnish, Redis, OpenSearch, RabbitMQ and the `env.php` wiring. This
-page explains why the [benchmark page](/workflows/benchmark) has no Lando column,
-and what would have to change for it to get one.
+Lando is a general-purpose local development tool: a Landofile describes
+services and tooling, a proxy routes local names, and recipes package common
+stacks. Govard is narrower: one CLI, a declared stack per framework, and a
+Magento profile that ships Varnish, Redis, OpenSearch, RabbitMQ and the
+`env.php` wiring. This page explains why the
+[benchmark page](/workflows/benchmark) has no Lando column, and what would have
+to change for it to get one. If you are looking for a Lando alternative, the
+sections below say what overlaps and where Lando still wins.
 
 ## Why there is no measured column
 
