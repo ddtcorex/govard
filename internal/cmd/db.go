@@ -18,6 +18,7 @@ import (
 	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/remote"
+	"govard/internal/ui"
 
 	"github.com/docker/go-units"
 	"github.com/pterm/pterm"
@@ -1318,7 +1319,7 @@ func formatProcessListTable(raw string) (string, error) {
 		data = append(data, parts)
 	}
 
-	table, err := pterm.DefaultTable.WithHasHeader().WithData(data).Srender()
+	table, err := ui.Table().WithData(data).Srender()
 	if err != nil {
 		return "", err
 	}

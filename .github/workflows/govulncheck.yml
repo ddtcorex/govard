@@ -1,4 +1,4 @@
-name: Go Vulnerability Check
+name: Go Vulnerability and Dependency Audit
 
 on:
   schedule:
@@ -35,27 +35,37 @@ jobs:
       # repository; the imported-but-uncalled ones are counted at the end.
       #
       # govulncheck is PINNED, and the pin is load-bearing rather than tidiness.
-      # `@latest` is x/vuln v1.8.0, which requires go >= 1.26.0; Go's automatic
-      # toolchain switching then downloads 1.26.0 — the minimum that satisfies it
-      # — and govulncheck reports the standard-library CVEs of the toolchain it
-      # RUNS ON, not of this module's floor. 1.26.0 is unpatched, so the job was
-      # red for 19 stdlib CVEs that pinning `go` in go.mod alone could not fix:
-      # v1.8.0 would still have pulled 1.26.0. v1.7.0 requires only go 1.25.0, so
-      # the scan runs on the patched toolchain go.mod asks for. Bump the pin only
-      # together with the go directive, and check `go` in x/vuln's own go.mod.
+      # It reports the standard-library CVEs of the toolchain it RUNS ON, not of
+      # this module's floor, and Go's automatic toolchain switching hands it the
+      # minimum that satisfies x/vuln's own `go` requirement. x/vuln v1.10.0
+      # requires go 1.26.0 while this module's floor is 1.27.4, so the scan runs
+      # on the patched toolchain go.mod asks for. A pin whose requirement is
+      # newer than our floor would drag in that unpatched minimum instead, which
+      # is how this job once went red for 19 stdlib CVEs. Bump the pin together
+      # with the go directive, and check `go` in x/vuln's own go.mod.
       - name: Run govulncheck
         run: |
-          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 -format text ./... \
+          go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 -format text ./... \
             > govulncheck.txt 2>&1 || true
           cat govulncheck.txt
 
       - name: Gate on findings
         run: bash scripts/govulncheck-gate.sh govulncheck.txt
 
+      # The dependency audit rides on this weekly run because it needs the module
+      # proxy and answers the same question from the other side: is the stack
+      # still at the newest stable release, and does every hold still suppress
+      # something? It fails only when a declared hold has gone stale, so an
+      # upstream outage or a genuinely outdated dependency is a report, not a red
+      # job. A hold that no longer holds fails loudly here, because that is the
+      # moment someone has to re-read internal/depsaudit/holds.json.
+      - name: Audit dependency holds
+        run: go run ./scripts/depsaudit
+
       - name: Build SARIF report
         if: always()
         run: |
-          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 -format sarif ./... \
+          go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 -format sarif ./... \
             > govulncheck.sarif || true
 
       # Uploaded even when the gate failed, so an accepted or newly discovered

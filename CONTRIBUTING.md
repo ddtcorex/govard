@@ -5,7 +5,7 @@ Thank you for contributing to **Govard** (`github.com/ddtcorex/govard`) — a Go
 ## Getting Started
 
 1. **Fork and clone** `github.com/ddtcorex/govard`.
-2. Install prerequisites (Go 1.25+, Node.js 20+, Docker for integration tests, Make):
+2. Install prerequisites (Go 1.27.4+, Node.js 20+, Docker for integration tests, Make):
 
    ```bash
    go version

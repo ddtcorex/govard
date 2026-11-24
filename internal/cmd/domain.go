@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"govard/internal/ui"
 	"sort"
 	"strings"
 
@@ -132,7 +133,7 @@ var domainListCmd = &cobra.Command{
 				m := config.StoreDomains[host]
 				tableData = append(tableData, []string{host, m.Code, m.Type})
 			}
-			_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			_ = ui.Table().WithData(tableData).Render()
 		}
 
 		return nil

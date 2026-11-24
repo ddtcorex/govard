@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.25.x"
+  GO_VERSION: "1.27.x"
   # The slowest checks (Integration Tests ~5 min, Release Snapshot ~6 min and the
   # Frontend behaviour step of Fast Tests) run only when the repository variable GOVARD_CI_FULL is "true". They are paused
   # while one maintainer ships; re-enable with

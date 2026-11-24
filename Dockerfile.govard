@@ -6,7 +6,7 @@ ARG GOVARD_VERSION=dev
 ARG GLINT_DIGEST=
 # Single knob for the Go toolchain image (tracks go.mod; release may
 # override with --build-arg without editing this file).
-ARG GO_IMAGE=golang:1.25-alpine
+ARG GO_IMAGE=golang:1.27-alpine
 
 FROM ${GO_IMAGE} AS build
 ARG GOVARD_VERSION

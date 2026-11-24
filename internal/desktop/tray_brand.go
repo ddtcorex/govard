@@ -11,9 +11,11 @@ type trayBrander interface {
 	SetTooltip(tooltip string)
 }
 
-// brandTray names the tray on every platform. On Linux, Wails v3's SetTooltip
-// is a no-op and the StatusNotifierItem Title defaults to "Wails"; SetLabel is
-// what sets that Title.
+// brandTray names the tray on every platform. On Linux the two calls write two
+// different StatusNotifierItem properties, both measured on Wails v3.1.0:
+// SetLabel sets Title (without it the Title reads "Wails"), and SetTooltip sets
+// the descriptive line a host shows under that title. Dropping SetLabel loses
+// the name; dropping SetTooltip only loses the line.
 func brandTray(t trayBrander) {
 	t.SetLabel(trayName)
 	t.SetTooltip(trayName)

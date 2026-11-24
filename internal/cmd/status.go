@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"govard/internal/engine"
+	"govard/internal/ui"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -46,7 +47,7 @@ var statusCmd = &cobra.Command{
 			}
 			data[i][3] = pterm.Cyan(data[i][3])
 		}
-		_ = pterm.DefaultTable.WithHasHeader().WithData(data).Render()
+		_ = ui.Table().WithData(data).Render()
 	},
 }
 

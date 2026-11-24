@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"govard/internal/ui"
 	"os"
 	"strings"
 
@@ -133,7 +134,7 @@ var profileCmd = &cobra.Command{
 			addRow("Queue Version", result.Profile.QueueVersion)
 		}
 
-		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		_ = ui.Table().WithData(tableData).Render()
 
 		if len(result.Notes) > 0 {
 			fmt.Fprintln(out, "")

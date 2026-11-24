@@ -33,7 +33,7 @@ wget -qO- https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | 
 # Install to ~/.local/bin (no sudo required)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --local
 
-# Build from source (auto-installs Go 1.25 if needed)
+# Build from source (auto-installs Go 1.27.4 if needed)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --source
 
 # Install CLI only (required on Ubuntu 20.04)
@@ -86,10 +86,10 @@ Ensure you have the following installed:
 
 | Tool | Required Version |
 | :--- | :--- |
-| Go | `1.25+` |
+| Go | `1.27.4+` |
 | Node.js | `20+` |
 | pnpm | 11.x (desktop frontend only) |
-| golangci-lint | v2.11+ |
+| golangci-lint | v2.15+ |
 | Docker + Docker Compose | latest (stack commands only — the CLI itself has no Docker dependency) |
 | Wails | `v3` as a Go module tool (desktop development only, no global install) |
 
@@ -103,7 +103,7 @@ cd govard
 
 ### Local Developer Setup
 
-1. **Install Go 1.25+** from [go.dev](https://go.dev/dl/)
+1. **Install Go 1.27.4+** from [go.dev](https://go.dev/dl/)
 
 2. **Enable pnpm** via Corepack:
    ```bash
