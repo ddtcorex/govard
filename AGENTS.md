@@ -12,7 +12,7 @@ Go-based local development orchestrator for PHP and web projects (Magento, Larav
 | `make build` | Build CLI for current platform |
 | `make test-integration` | Integration tests (requires Docker) |
 
-**Runtime:** Go 1.25+, Node.js 24 and pnpm (desktop frontend), Docker (for integration tests)
+**Runtime:** Go 1.27.4+, Node.js 24 and pnpm (desktop frontend), Docker (for integration tests)
 
 ## Workflow: Superpowers skills are mandatory
 

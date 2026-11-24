@@ -1,0 +1,14 @@
+[
+  {
+    "Path": "github.com/gobwas/glob",
+    "Version": "v0.2.3",
+    "Reason": "v1.1.0 removed the syntax/ast and syntax/lexer packages that goreleaser/fileglob imports (it also drops util/*, which nothing here imports), reached through the wails3 packager",
+    "Retry": "when goreleaser/fileglob ships a release that imports the new glob API, or wails3 stops using nfpm"
+  },
+  {
+    "Path": "github.com/wailsapp/task/v3",
+    "Version": "v3.40.1-patched3",
+    "Reason": "the advertised update v3.40.1 declares its module path as github.com/go-task/task/v3, so it cannot be required under the fork path",
+    "Retry": "when wails republishes the fork under a matching module path or drops it"
+  }
+]

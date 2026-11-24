@@ -17,11 +17,11 @@ Tài liệu này hướng dẫn quy trình đóng góp mã nguồn cho dự án 
 
 | Công cụ | Phiên bản yêu cầu | Lệnh kiểm tra |
 | :--- | :--- | :--- |
-| Go | `1.25+` | `go version` |
+| Go | `1.27.4+` | `go version` |
 | Node.js | `20+` | `node --version` |
 | Docker Engine + Compose | Mới nhất | `docker --version` |
-| Wails | `v3.0.0-beta.25`, là Go module: `go tool wails3 version` (chỉ cho desktop) |
-| golangci-lint | `v2.11+` | `golangci-lint --version` |
+| Wails | `v3.1.0`, là Go module: `go tool wails3 version` (chỉ cho desktop) |
+| golangci-lint | `v2.15+` | `golangci-lint --version` |
 
 ```bash
 # Kiểm tra nhanh tất cả công cụ
@@ -33,6 +33,36 @@ golangci-lint --version
 ```
 
 ---
+
+## Ghim phiên bản phụ thuộc (Dependency Holds)
+
+Stack Go bám bản stable mới nhất. Hai module nằm dưới bản mới nhất vì upstream
+khiến việc nâng cấp bất khả thi, và cả hai được khai báo trong
+`internal/depsaudit/holds.json`:
+
+| Module | Ghim tại | Vì sao không dùng được bản mới nhất | Bỏ ghim khi |
+| :--- | :--- | :--- | :--- |
+| `github.com/gobwas/glob` | `v0.2.3` | `v1.1.0` bỏ hai package `syntax/ast` và `syntax/lexer` mà `goreleaser/fileglob`, đi qua packager của `wails3`, vẫn import; ép lên thì build fail với `no required module provides package github.com/gobwas/glob/syntax/ast` | `goreleaser/fileglob` có bản dùng API glob mới, hoặc `wails3` thôi dùng `nfpm` |
+| `github.com/wailsapp/task/v3` | `v3.40.1-patched3` | bản `v3.40.1` khai module path là `github.com/go-task/task/v3` nên không thể require dưới path của fork | wails phát hành lại fork với path khớp, hoặc bỏ nó |
+
+`go run ./scripts/depsaudit` in ra ba nhóm (bị ghim, do module khác quyết định,
+có thể nâng) và exit code là hợp đồng: `0` nghĩa là mọi ghim vẫn còn chặn, `1`
+nghĩa là một ghim không còn chặn gì (phải đọc lại bảng), `2` nghĩa là không kiểm
+chứng được, hoặc vì không tới được module proxy, hoặc vì có module không phân
+loại được. Với `2` thì các ghim chưa được đánh giá và không được sửa. Lệnh này
+chạy hàng tuần trong workflow bảo mật và chạy tay, song song với đợt grep phiên
+bản hàng quý.
+
+Nhóm "do module khác quyết định" được xét với build tag desktop
+(`desktop,production`), vì một dependency chỉ được import bởi code desktop không
+được phép đọc như module không dùng.
+
+Muốn thử bỏ một ghim, chạy lệnh trong dòng của nó: fail tức là ghim vẫn cần, thành
+công tức là bỏ được và nâng lên. Module mà phiên bản do module khác quyết định thì
+chỉ được báo cáo, không ghim: `go mod tidy` xoá require không ai import, nên ghim
+ở đó chỉ tạo cảm giác được thực thi. Ghim thứ hai thử bằng
+`go get github.com/wailsapp/task/v3@v3.40.1`, lỗi trả về là `module declares its
+path as: github.com/go-task/task/v3`.
 
 ## Bản đồ thư mục mã nguồn (Repository Map)
 

@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -66,7 +67,12 @@ func TestVerboseOutputStreamsBeforeTheCommandFinishes(t *testing.T) {
 	}
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		// A cancelled command may legitimately report the cancellation; anything
+		// else means the runner failed for a reason this test is not about.
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("stream ended with %v, want nil or context.Canceled", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the command did not stop after its context expired")
 	}

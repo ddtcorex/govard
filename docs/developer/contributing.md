@@ -17,11 +17,11 @@ This guide covers the expected workflow for contributors working on Govard.
 
 | Tool | Required Version | Check |
 | :--- | :--- | :--- |
-| Go | `1.25+` | `go version` |
+| Go | `1.27.4+` | `go version` |
 | Node.js | `20+` | `node --version` |
 | Docker Engine + Compose | latest | `docker --version` |
-| Wails | `v3.0.0-beta.25`, a Go module: `go tool wails3 version` (desktop only) |
-| golangci-lint | `v2.11+` | `golangci-lint --version` |
+| Wails | `v3.1.0`, a Go module: `go tool wails3 version` (desktop only) |
+| golangci-lint | `v2.15+` | `golangci-lint --version` |
 
 ```bash
 # Verify all tools
@@ -33,6 +33,37 @@ golangci-lint --version
 ```
 
 ---
+
+## Dependency holds
+
+The Go stack tracks the newest stable release. Two modules stay below their
+latest release because upstream makes the move impossible, and both are declared
+in `internal/depsaudit/holds.json`:
+
+| Module | Held at | Why the latest release cannot be used | Retire the hold when |
+| :--- | :--- | :--- | :--- |
+| `github.com/gobwas/glob` | `v0.2.3` | `v1.1.0` removed the `syntax/ast` and `syntax/lexer` packages that `goreleaser/fileglob`, reached through the `wails3` packager, still imports; forcing it fails the build with `no required module provides package github.com/gobwas/glob/syntax/ast` | `goreleaser/fileglob` ships a release on the new glob API, or `wails3` stops using `nfpm` |
+| `github.com/wailsapp/task/v3` | `v3.40.1-patched3` | the advertised update `v3.40.1` declares its module path as `github.com/go-task/task/v3`, so it cannot be required under the fork path | wails republishes the fork under a matching path, or drops it |
+
+`go run ./scripts/depsaudit` prints three buckets (held, upstream-owned, movable)
+and its exit code is the contract: `0` means every hold still holds, `1` means a
+declared hold no longer suppresses anything (re-read the table), and `2` means the
+run could not be verified, either because the module proxy was unreachable or
+because a module could not be classified. On `2` the holds were not evaluated and
+must not be edited. It runs weekly inside the vulnerability workflow and by hand,
+alongside the quarterly version drift grep.
+
+The "upstream-owned" bucket is decided with the desktop build tags
+(`desktop,production`) in force, because a dependency imported only by
+desktop-tagged code must not read as unused.
+
+To retry a hold, run the command in its row: a failure there is the proof the hold
+is still needed, and success is the signal to drop it and bump. A module whose
+version is owned by the module that requires it is reported, never pinned:
+`go mod tidy` deletes a requirement nothing imports, so a pin there would only
+look enforced. The second hold is retried with
+`go get github.com/wailsapp/task/v3@v3.40.1`, which fails with `module declares
+its path as: github.com/go-task/task/v3`.
 
 ## Repository Map
 

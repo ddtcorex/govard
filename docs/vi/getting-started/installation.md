@@ -33,7 +33,7 @@ wget -qO- https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | 
 # Cài vào ~/.local/bin (không cần sudo)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --local
 
-# Build từ source (tự động cài Go 1.25 nếu cần)
+# Build từ source (tự động cài Go 1.27.4 nếu cần)
 curl -fsSL https://raw.githubusercontent.com/ddtcorex/govard/master/install.sh | bash -s -- --source
 
 # Chỉ cài CLI (bắt buộc với Ubuntu 20.04)
@@ -102,10 +102,10 @@ sudo installer -pkg govard_<version>_Darwin_arm64.pkg -target /
 
 | Công cụ | Phiên bản yêu cầu |
 | :--- | :--- |
-| Go | `1.25+` |
+| Go | `1.27.4+` |
 | Node.js | `20+` |
 | pnpm | 11.x (chỉ cho frontend desktop) |
-| golangci-lint | v2.11+ |
+| golangci-lint | v2.15+ |
 | Docker + Docker Compose | Bản mới nhất (chỉ cho lệnh stack — bản thân CLI không phụ thuộc Docker) |
 | Wails | `v3` dưới dạng Go module tool (chỉ khi phát triển desktop, không cần cài global) |
 
@@ -119,7 +119,7 @@ cd govard
 
 ### Thiết lập cho local development
 
-1. **Cài đặt Go 1.25+** từ [go.dev](https://go.dev/dl/)
+1. **Cài đặt Go 1.27.4+** từ [go.dev](https://go.dev/dl/)
 
 2. **Kích hoạt pnpm** qua Corepack:
    ```bash

@@ -227,6 +227,13 @@ test("the sync modal is a two-step machine whose confirm starts the sync", async
   assert.equal(syncCall.args[3].noNoise, true, "the toggled option reaches the backend");
 
   // Escape closes the modal from outside it, and reopening resets to step 1.
+  // The backend signals completion; the card keeps every preset disabled until
+  // it does, so the reopen below needs that event or it clicks a dead button.
+  await session.evaluate(`window.__govardPreview.pushEvent("sync:completed", "Sync completed")`);
+  await session.waitFor(
+    `document.querySelector("#remotesList [data-testid='open-sync-modal'][data-preset='full']").disabled === false`,
+    true,
+  );
   await openModal(session, "full");
   assert.equal(
     await session.evaluate(`document.getElementById("syncModalStep2").classList.contains("hidden")`),

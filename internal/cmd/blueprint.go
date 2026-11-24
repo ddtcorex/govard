@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"govard/internal/engine"
+	"govard/internal/ui"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -51,7 +52,7 @@ var blueprintCacheListCmd = &cobra.Command{
 			})
 		}
 
-		if err := pterm.DefaultTable.WithHasHeader().WithData(table).Render(); err != nil {
+		if err := ui.Table().WithData(table).Render(); err != nil {
 			return err
 		}
 

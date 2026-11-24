@@ -88,14 +88,14 @@ func TestDBService_ReadOnlyVariantsPass(t *testing.T) {
 
 	svc := desktop.NewDBService()
 	queries := map[string]string{
-		"  select 1":                      "SELECT",
-		"-- leading comment\nSHOW TABLES": "SHOW",
+		"  select 1":                                       "SELECT",
+		"-- leading comment\nSHOW TABLES":                  "SHOW",
 		"/* block */ WITH x AS (SELECT 1) SELECT * FROM x": "WITH",
-		"DESCRIBE users":              "DESCRIBE",
-		"desc users":                  "DESC",
-		"EXPLAIN SELECT * FROM users": "EXPLAIN",
-		"SELECT ';'":                  "SELECT",
-		"SELECT 1;":                   "SELECT",
+		"DESCRIBE users":                                   "DESCRIBE",
+		"desc users":                                       "DESC",
+		"EXPLAIN SELECT * FROM users":                      "EXPLAIN",
+		"SELECT ';'":                                       "SELECT",
+		"SELECT 1;":                                        "SELECT",
 	}
 	for sql, wantStmt := range queries {
 		res, err := svc.RunDBQuery("sample-project", sql, false, "")

@@ -17,7 +17,7 @@ UNIT_PACKAGES=$(shell go list ./... | grep -v '^govard/tests/integration$$')
 COVER_PACKAGES=$(shell go list ./internal/... | tr '\n' ',' | sed 's/,$$//')
 VERSION_RAW ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo 1.0.0)
 VERSION ?= $(patsubst v%,%,$(VERSION_RAW))
-GOLANGCI_LINT_VERSION ?= v2.11.3
+GOLANGCI_LINT_VERSION ?= v2.15.0
 GOLANGCI_LINT_BIN ?= $(shell go env GOPATH)/bin/golangci-lint
 LDFLAGS ?= -s -w -X govard/internal/cmd.Version=$(VERSION) -X govard/internal/desktop.Version=$(VERSION)
 

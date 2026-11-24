@@ -326,7 +326,7 @@ func runProjectList(cmd *cobra.Command) error {
 	}
 	tableData = append(tableData, rows...)
 
-	err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+	err = ui.Table().WithData(tableData).Render()
 	if err != nil {
 		return err
 	}
@@ -357,7 +357,7 @@ func runProjectOrphans(cmd *cobra.Command) error {
 	for _, o := range orphans {
 		orphanData = append(orphanData, []string{o.Name, o.Status, o.ConfigFiles})
 	}
-	return pterm.DefaultTable.WithHasHeader().WithData(orphanData).Render()
+	return ui.Table().WithData(orphanData).Render()
 }
 
 func init() {

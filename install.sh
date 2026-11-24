@@ -27,7 +27,7 @@ DESKTOP_BINARY_NAME="govard-desktop"
 REPO="ddtcorex/govard"
 INSTALL_DIR="/usr/local/bin"
 GOVARD_DIR="/opt/govard"
-MIN_GO_VERSION="1.25.0"
+MIN_GO_VERSION="1.27.4"
 # Fallback only: go.mod is the truth for the Go toolchain floor.
 # govard_go_floor() below reads it whenever a source tree is at hand.
 
@@ -41,7 +41,7 @@ govard_go_floor() {
         if [[ -n "${candidate:-}" && -f "$mod" ]]; then
             floor="$(grep -E '^go [0-9]+\.[0-9]+' "$mod" | awk '{print $2}')"
             if [[ -n "$floor" ]]; then
-                # go.mod may pin major.minor (1.25) or full (1.25.0);
+                # go.mod may pin major.minor (1.27) or full (1.27.4);
                 # normalize to full semver for sort -V comparisons.
                 if [[ "$floor" =~ ^[0-9]+\.[0-9]+$ ]]; then
                     floor="${floor}.0"
