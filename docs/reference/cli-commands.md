@@ -1287,7 +1287,7 @@ section when none is set); the database client is handed the full URL.
 
 ### `govard tunnel`
 
-Manage public tunnels (`start` requires `cloudflared`; `stop` and `status` do not). Govard registers the tunnel domain in Caddy as an alias, keeps the original `Host` header intact, and rewrites the framework base URL (Magento, Laravel, etc.) for the session — restoring it on `tunnel stop` or `Ctrl+C`.
+Manage public tunnels (`start` requires `cloudflared`; `stop` and `status` do not). Govard registers the tunnel domain in Caddy as an alias, keeps the original `Host` header intact, and rewrites the framework base URL (Magento, Laravel, etc.) for the session — restoring it on `tunnel stop` or `Ctrl+C`. The alias points at the same upstream the project's own domain uses, so the tunnel takes the same path through the stack: with Varnish in front, a route straight to the web container would skip the page cache and Magento would answer with its ESI placeholders unresolved, dropping every hole-punched block (the storefront menu among them) from the page.
 
 ```bash
 govard tunnel start

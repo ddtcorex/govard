@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"govard/internal/conventions"
 	"govard/internal/engine"
 	"govard/internal/engine/tunnel"
 	"govard/internal/frameworks"
@@ -69,6 +68,16 @@ type TunnelDependenciesForTest struct {
 	// reset to production), so a test host that really runs cloudflared can be
 	// hidden once for a whole test.
 	ListProcesses func() []TunnelHostProcess
+}
+
+// ResolveTunnelAliasTarget resolves the upstream container a tunnel hostname proxies to.
+//
+// It is the same target the project's own domain uses, because the tunnel has to take the
+// same path through the stack. A route straight to the web container skips Varnish, so
+// Magento's page cache answers with its ESI placeholders unresolved and every hole-punched
+// block, the storefront menu among them, disappears from the page.
+func ResolveTunnelAliasTarget(config engine.Config) string {
+	return ResolveUpProxyTarget(config)
 }
 
 var tunnelCmd = &cobra.Command{
@@ -277,9 +286,9 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 							pterm.Success.Printf("Tunnel URL detected: %s\n", p)
 							if parsed, perr := url.Parse(p); perr == nil {
 								tunnelHost = parsed.Host
-								webContainer := fmt.Sprintf("%s%s", config.ProjectName, conventions.WebSuffix)
-								pterm.Info.Printf("Registering tunnel alias %s -> %s...\n", tunnelHost, webContainer)
-								_ = proxy.RegisterDomain(tunnelHost, webContainer)
+								aliasTarget := ResolveTunnelAliasTarget(config)
+								pterm.Info.Printf("Registering tunnel alias %s -> %s...\n", tunnelHost, aliasTarget)
+								_ = proxy.RegisterDomain(tunnelHost, aliasTarget)
 							}
 
 							pterm.Info.Println("Updating application base URL...")

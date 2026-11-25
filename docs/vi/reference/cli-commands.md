@@ -1241,7 +1241,7 @@ chưa đặt); database client nhận URL đầy đủ.
 
 ### `govard tunnel`
 
-Quản lý các đường link public tunnel (`start` yêu cầu `cloudflared`; `stop` và `status` thì không). Govard đăng ký domain tunnel trong Caddy như alias, giữ nguyên `Host` header, và tự động rewrite base URL của framework (Magento, Laravel, …) — khôi phục khi `tunnel stop` hoặc `Ctrl+C`.
+Quản lý các đường link public tunnel (`start` yêu cầu `cloudflared`; `stop` và `status` thì không). Govard đăng ký domain tunnel trong Caddy như alias, giữ nguyên `Host` header, và tự động rewrite base URL của framework (Magento, Laravel, …) — khôi phục khi `tunnel stop` hoặc `Ctrl+C`. Alias trỏ tới đúng upstream mà domain của project dùng, nên tunnel đi cùng một đường qua stack: khi có Varnish phía trước, đi thẳng vào container web sẽ bỏ qua page cache và Magento trả về nguyên các placeholder ESI, làm mất mọi block hole-punch (trong đó có menu storefront) khỏi trang.
 
 ```bash
 govard tunnel start
