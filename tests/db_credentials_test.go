@@ -88,7 +88,7 @@ func TestBuildLocalDBImportCommandSupportsMariaDBClient(t *testing.T) {
 		"DB_CLI",
 		"--max-allowed-packet=512M -u 'etl'",
 		"'etl_dev' -f",
-		"MYSQL_PWD=secret",
+		"-e MYSQL_PWD",
 		"SET FOREIGN_KEY_CHECKS=0",
 	} {
 		if !strings.Contains(joined, expected) {

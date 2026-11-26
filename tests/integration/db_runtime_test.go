@@ -39,7 +39,10 @@ func TestDBCommandValidationAndRuntime(t *testing.T) {
 
 		logs := shim.ReadLog(t)
 		assertContains(t, logs, "ssh|")
-		assertContains(t, logs, "mysqldump")
+		// The dump script travels on stdin now, so the argv carries `sh -s` and the
+		// credential and dump flags are deliberately absent from it.
+		assertContains(t, logs, "sh -s")
+		assertNotContains(t, logs, "mysqldump")
 	})
 
 	t.Run("RemoteImportFromFileUsesSSHShim", func(t *testing.T) {
@@ -55,7 +58,11 @@ func TestDBCommandValidationAndRuntime(t *testing.T) {
 
 		logs := shim.ReadLog(t)
 		assertContains(t, logs, "ssh|")
-		assertContains(t, logs, "mysql")
+		// stdin carries the SQL, so the import script is staged on the remote and
+		// the argv carries only its path and the cleanup tail.
+		assertContains(t, logs, "sh '/tmp/govard-")
+		assertContains(t, logs, "rm -f '/tmp/govard-")
+		assertNotContains(t, logs, "MYSQL_PWD")
 	})
 
 	t.Run("LocalDumpUsesDockerShim", func(t *testing.T) {
@@ -67,6 +74,6 @@ func TestDBCommandValidationAndRuntime(t *testing.T) {
 
 		logs := shim.ReadLog(t)
 		assertContains(t, logs, "docker|inspect -f {{.State.Running}} m2-clone-basic-db-1")
-		assertContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 sh -lc if command -v mariadb-dump")
+		assertContains(t, logs, "docker|exec -i -e MYSQL_PWD m2-clone-basic-db-1 sh -lc if command -v mariadb-dump")
 	})
 }

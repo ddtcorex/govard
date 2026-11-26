@@ -131,7 +131,7 @@ func TestSyncRuntimeDBPipelineWithShims(t *testing.T) {
 
 	logs := shim.ReadLog(t)
 	assertContains(t, logs, "ssh|")
-	assertContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 sh -lc if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb;")
+	assertContains(t, logs, "docker|exec -i -e MYSQL_PWD m2-clone-basic-db-1 sh -lc if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb;")
 }
 
 func assertContains(t *testing.T, haystack string, needle string) {

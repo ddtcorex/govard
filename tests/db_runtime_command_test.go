@@ -53,7 +53,7 @@ framework: laravel
 	if !strings.Contains(logs, "docker|inspect -f {{.State.Running}} sample-project-db-1") {
 		t.Fatalf("missing running inspect in docker log:\n%s", logs)
 	}
-	if !strings.Contains(logs, "docker|exec -i -e MYSQL_PWD=dbpass sample-project-db-1 sh -lc") {
+	if !strings.Contains(logs, "docker|exec -i -e MYSQL_PWD sample-project-db-1 sh -lc") {
 		t.Fatalf("missing query exec invocation in docker log:\n%s", logs)
 	}
 }
@@ -90,7 +90,7 @@ framework: laravel
 	}
 
 	logs := readRuntimeLog(t, logPath)
-	if !strings.Contains(logs, "docker|exec -i -e MYSQL_PWD=dbpass sample-project-db-1 sh -lc if command -v mariadb-dump") {
+	if !strings.Contains(logs, "docker|exec -i -e MYSQL_PWD sample-project-db-1 sh -lc if command -v mariadb-dump") {
 		t.Fatalf("missing dump exec invocation in docker log:\n%s", logs)
 	}
 }

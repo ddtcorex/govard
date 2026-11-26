@@ -19,6 +19,16 @@ func BuildSSHExecCommand(remoteName string, remoteCfg engine.RemoteConfig, forwa
 	return exec.Command("ssh", args...)
 }
 
+// BuildSSHStdinCommand runs the remote command read from stdin (`sh -s`) instead
+// of from argv. A script that carries a secret then never appears in the local
+// ssh argument list, which any user on the host can read, nor in the remote
+// shell's own command line.
+func BuildSSHStdinCommand(remoteName string, remoteCfg engine.RemoteConfig, forwardAgent bool) *exec.Cmd {
+	args := BuildSSHArgs(remoteName, remoteCfg, forwardAgent, false)
+	args = append(args, RemoteTarget(remoteCfg), "sh -s")
+	return exec.Command("ssh", args...)
+}
+
 func BuildSSHInteractiveArgs(remoteName string, remoteCfg engine.RemoteConfig, forwardAgent bool) []string {
 	return BuildSSHArgs(remoteName, remoteCfg, forwardAgent, true)
 }

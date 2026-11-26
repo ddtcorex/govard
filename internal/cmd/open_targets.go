@@ -262,11 +262,15 @@ func readLocalFrameworkAdminDBValues(config engine.Config, query string) map[str
 	credentials := resolveLocalDBCredentials(config, containerName)
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
-		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
+		args = append(args, "-e", "MYSQL_PWD")
 	}
 	args = append(args, containerName, "mysql", "-u", credentials.Username, "-N", "-B", credentials.Database, "-e", query)
 
-	output, err := exec.Command("docker", args...).Output()
+	command := exec.Command("docker", args...)
+	if strings.TrimSpace(credentials.Password) != "" {
+		command.Env = append(os.Environ(), "MYSQL_PWD="+credentials.Password)
+	}
+	output, err := command.Output()
 	if err != nil {
 		return map[string]string{}
 	}

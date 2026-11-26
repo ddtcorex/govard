@@ -72,7 +72,7 @@ func TestBootstrapOptionsMatrixWithSimulatedEnvironments(t *testing.T) {
 
 		logs := shim.ReadLog(t)
 		assertMatrixContains(t, logs, "deploy@staging.example.com:'/srv/www/staging/'")
-		assertMatrixContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 sh -lc if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb;")
+		assertMatrixContains(t, logs, "docker|exec -i -e MYSQL_PWD m2-clone-basic-db-1 sh -lc if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb;")
 		assertMatrixNotContains(t, logs, "DROP DATABASE IF EXISTS")
 	})
 
@@ -108,7 +108,7 @@ func TestBootstrapOptionsMatrixWithSimulatedEnvironments(t *testing.T) {
 		result.AssertSuccess(t)
 
 		logs := shim.ReadLog(t)
-		assertMatrixContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 sh -lc if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb;")
+		assertMatrixContains(t, logs, "docker|exec -i -e MYSQL_PWD m2-clone-basic-db-1 sh -lc if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb;")
 		assertMatrixNotContains(t, logs, "DROP DATABASE IF EXISTS")
 	})
 
@@ -367,7 +367,7 @@ func TestSyncOptionsMatrixWithSimulatedEnvironments(t *testing.T) {
 			logs := shim.ReadLog(t)
 			assertMatrixContains(t, logs, "ssh|")
 			assertMatrixContains(t, logs, "deploy@dev.example.com")
-			assertMatrixContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 sh -lc if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb;")
+			assertMatrixContains(t, logs, "docker|exec -i -e MYSQL_PWD m2-clone-basic-db-1 sh -lc if command -v mysql >/dev/null 2>&1; then DB_CLI=mysql; elif command -v mariadb >/dev/null 2>&1; then DB_CLI=mariadb;")
 		})
 
 		t.Run("LocalToRemote", func(t *testing.T) {
@@ -391,7 +391,7 @@ func TestSyncOptionsMatrixWithSimulatedEnvironments(t *testing.T) {
 			result.AssertSuccess(t)
 
 			logs := shim.ReadLog(t)
-			assertMatrixContains(t, logs, "docker|exec -i -e MYSQL_PWD=magento m2-clone-basic-db-1 sh -lc if command -v mariadb-dump")
+			assertMatrixContains(t, logs, "docker|exec -i -e MYSQL_PWD m2-clone-basic-db-1 sh -lc if command -v mariadb-dump")
 			assertMatrixContains(t, logs, "ssh|")
 			assertMatrixContains(t, logs, "deploy@staging.example.com")
 		})

@@ -71,6 +71,10 @@ func RemoteDumpSuccessMessageForTest(environment string, remotePath string) stri
 // the file (and its gzip trailer) is fully written. A failed dump therefore
 // never leaves a stub that looks like a dump, and an earlier file at targetPath
 // survives a failed run.
+// writeDumpStream is the dump step every writer uses, as a seam: a test can fail
+// or complete a dump without an ssh connection or a container.
+var writeDumpStream = runDumpToWriter
+
 func writeDumpFile(dumpCommand *exec.Cmd, targetPath string, stderr io.Writer) (err error) {
 	if err := os.MkdirAll(filepath.Dir(targetPath), conventions.DefaultDirPerm); err != nil {
 		return fmt.Errorf("create dump directory: %w", err)
@@ -104,7 +108,7 @@ func writeDumpFile(dumpCommand *exec.Cmd, targetPath string, stderr io.Writer) (
 		writer = gzWriter
 	}
 
-	if runErr := runDumpToWriter(dumpCommand, writer, true, stderr); runErr != nil {
+	if runErr := writeDumpStream(dumpCommand, writer, true, stderr); runErr != nil {
 		return fmt.Errorf("db dump failed: %w", runErr)
 	}
 	if gzWriter != nil {

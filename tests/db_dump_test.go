@@ -108,11 +108,16 @@ func TestRemoteDumpCommandSetsUmaskAndQuotesDirname(t *testing.T) {
 			},
 		},
 	}
-	args, err := cmd.BuildDBDumpCommandForTest(config, cmd.DBCommandOptions{Environment: "dev", File: "~/my backups/x.sql.gz"})
+	args, remoteCmd, err := cmd.BuildDBDumpCommandWithScriptForTest(config, cmd.DBCommandOptions{Environment: "dev", File: "~/my backups/x.sql.gz"})
 	if err != nil {
-		t.Fatalf("BuildDBDumpCommandForTest: %v", err)
+		t.Fatalf("BuildDBDumpCommandWithScriptForTest: %v", err)
 	}
-	remoteCmd := args[len(args)-1]
+	if !strings.HasSuffix(strings.Join(args, " "), "sh -s") {
+		t.Fatalf("the remote script must travel on stdin, got args: %v", args)
+	}
+	if remoteCmd == "" {
+		t.Fatal("no remote script on stdin")
+	}
 
 	if !strings.HasPrefix(remoteCmd, "umask 077; ") {
 		t.Fatalf("remote command must set the umask before anything else: %s", remoteCmd)

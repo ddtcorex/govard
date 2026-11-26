@@ -131,7 +131,7 @@ func runRemoteSnapshotCreate(cmd *cobra.Command, config engine.Config, envName s
 	createCmdStr := remote.BuildRemoteSnapshotCreateCommandAtRoot(snapshotRoot, name, config.Framework, dbDumpCommandStr, mediaPath)
 
 	pterm.Info.Printf("Creating snapshot %s on remote %s...\n", name, remoteName)
-	sshCmd := remote.BuildSSHExecCommand(remoteName, remoteCfg, true, createCmdStr)
+	sshCmd := sshScriptCommand(remoteName, remoteCfg, createCmdStr)
 	sshCmd.Stdout = os.Stdout
 	sshCmd.Stderr = os.Stderr
 

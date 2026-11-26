@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -83,8 +84,11 @@ func TestBuildDBDumpCommandForTestLocalUsesDockerInspectAndCredentials(t *testin
 	}
 
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "docker exec -i -e MYSQL_PWD=devpass sample-project-db-1 sh -lc") {
+	if !strings.Contains(joined, "docker exec -i -e MYSQL_PWD sample-project-db-1 sh -lc") {
 		t.Fatalf("unexpected local dump command (missing sh -lc): %s", joined)
+	}
+	if strings.Contains(joined, "devpass") {
+		t.Fatalf("the dump command carries the password in its argv: %s", joined)
 	}
 	if !strings.Contains(joined, "DUMP_BIN=mariadb-dump") {
 		t.Fatalf("expected DUMP_BIN detection in command: %s", joined)
@@ -110,8 +114,11 @@ func TestBuildDBImportCommandForTestLocalUsesDockerExecWithForceMode(t *testing.
 	}
 
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "docker exec -i -e MYSQL_PWD=devpass sample-project-db-1 sh -lc") {
+	if !strings.Contains(joined, "docker exec -i -e MYSQL_PWD sample-project-db-1 sh -lc") {
 		t.Fatalf("unexpected local import command: %s", joined)
+	}
+	if strings.Contains(joined, "devpass") {
+		t.Fatalf("the import command carries the password in its argv: %s", joined)
 	}
 	if !strings.Contains(joined, "-u 'devuser' 'devdb' -f") {
 		t.Fatalf("expected mysql force import flags in command: %s", joined)
@@ -144,8 +151,13 @@ func TestBuildDBDumpCommandForTestRemoteBuildsSSHCommand(t *testing.T) {
 	if !strings.Contains(joined, "deploy@example.com") {
 		t.Fatalf("expected remote target in ssh command, got: %s", joined)
 	}
-	if !strings.Contains(joined, "mysqldump") {
-		t.Fatalf("expected mysqldump command, got: %s", joined)
+	// The dump script now travels on stdin (sh -s), so the password inside it is
+	// not in any argument list.
+	if !strings.HasSuffix(joined, "sh -s") {
+		t.Fatalf("expected the remote script on stdin, got: %s", joined)
+	}
+	if strings.Contains(joined, "mysqldump") || strings.Contains(joined, "MYSQL_PWD") {
+		t.Fatalf("the remote script leaked into argv: %s", joined)
 	}
 }
 
@@ -163,6 +175,11 @@ func TestBuildDBImportCommandForTestRemoteBuildsSSHCommand(t *testing.T) {
 		},
 	}
 
+	// The import script is staged on the remote over stdin before the command is
+	// returned, so the staging call is stubbed here.
+	restoreStager := cmd.SetRemoteScriptStagerForTest(func(*exec.Cmd) ([]byte, error) { return nil, nil })
+	defer restoreStager()
+
 	args, err := cmd.BuildDBImportCommandForTest(config, cmd.DBCommandOptions{Environment: "dev"})
 	if err != nil {
 		t.Fatalf("BuildDBImportCommandForTest() error = %v", err)
@@ -175,8 +192,13 @@ func TestBuildDBImportCommandForTestRemoteBuildsSSHCommand(t *testing.T) {
 	if !strings.Contains(joined, "deploy@example.com") {
 		t.Fatalf("expected remote target in ssh command, got: %s", joined)
 	}
-	if !strings.Contains(joined, "mysql") {
-		t.Fatalf("expected mysql import command, got: %s", joined)
+	// The SQL owns stdin, so the script is staged on the remote and the ssh argv
+	// carries only its path plus the cleanup tail.
+	if !strings.Contains(joined, "sh '/tmp/govard-") || !strings.Contains(joined, "rm -f '/tmp/govard-") {
+		t.Fatalf("expected the staged remote script path, got: %s", joined)
+	}
+	if strings.Contains(joined, "mysql") || strings.Contains(joined, "MYSQL_PWD") {
+		t.Fatalf("the import script leaked into argv: %s", joined)
 	}
 }
 
