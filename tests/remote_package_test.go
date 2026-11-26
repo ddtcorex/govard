@@ -27,13 +27,6 @@ func TestRemotePkgBuildSSHArgs(t *testing.T) {
 	}
 }
 
-func TestRemotePkgBuildSyncPlan(t *testing.T) {
-	plan := remote.BuildSyncPlan(remote.SyncOptions{Delete: true, Resume: true, Include: []string{"pub/media/**"}, Exclude: []string{"var/cache/**"}})
-	if !strings.Contains(plan.Command, "--delete") || !strings.Contains(plan.Command, "--partial --append-verify") {
-		t.Fatalf("expected delete+resume flags, got %s", plan.Command)
-	}
-}
-
 func TestRemotePkgClassifyFailure(t *testing.T) {
 	cases := []struct {
 		name     string

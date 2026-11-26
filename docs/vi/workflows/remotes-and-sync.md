@@ -290,6 +290,8 @@ Sử dụng `--media all` để tải về toàn bộ media. Sử dụng `--medi
 Sử dụng `--delete` kết hợp với `--db` sẽ hiển thị cảnh báo chính sách an toàn. Các remote thuộc môi trường Production được bảo vệ chống ghi đè và sẽ chặn các thao tác phá hủy này. Lớp bảo vệ chỉ áp dụng cho **thao tác ghi**, không áp dụng cho thao tác đọc: `db info` hoặc `db top` trên remote được bảo vệ vẫn được phép (`db dump` cũng vẫn được phép — lệnh này chỉ tạo một tệp archive mới trên remote), và chỉ thao tác ghi vào remote đó — `db import` không dùng `--stream-db` (bản dùng cờ đó chỉ đọc dump của remote rồi ghi vào database **cục bộ** của bạn), `db query`, `db connect`, `snapshot push` — mới bị từ chối.
 :::
 
+`--delete` không bao giờ xóa những thứ không thể tạo lại từ một release deploy: `.git/`, `.idea/`, `.vscode/`, `node_modules/`, `.DS_Store`, `thumbs.db`, `.env`, `*.pem`, `*.key` và `auth.json` luôn được truyền cho rsync dưới dạng exclude khi bật xóa, theo cả hai chiều. Danh sách này còn có các đường dẫn mà chính framework khai báo là chỉ tồn tại cục bộ (với Magento là `app/etc/env.php`, `generated`, `pub/static` và `var`; với WordPress là `wp-config.php`) cùng với các tệp của chính Govard (`.govard*.yml` và thư mục trạng thái `.govard/`), vì release deploy không bao giờ có chúng, và không cần `--no-noise`; các bộ lọc noise và PII vẫn phải bật thủ công.
+
 ### Tích hợp với lệnh `bootstrap`
 
 Lệnh `govard bootstrap` sử dụng chung các cờ đồng bộ và bộ lọc khi khởi tạo môi trường mới:

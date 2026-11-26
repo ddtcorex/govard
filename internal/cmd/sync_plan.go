@@ -10,7 +10,6 @@ import (
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
-	"govard/internal/engine/remote"
 
 	"github.com/pterm/pterm"
 )
@@ -76,9 +75,17 @@ func buildSyncExecutionPlan(config engine.Config, endpoints ResolvedSyncEndpoint
 				}
 			}
 		}
-		excludes := opts.Exclude
+		excludes := append([]string{}, opts.Exclude...)
 		if opts.NoNoise {
 			excludes = append(excludes, getSyncNoiseExcludes(config.Framework)...)
+		}
+		if opts.Delete {
+			// --delete removes anything the source does not have, and a deploy
+			// release has no .git/, .env or node_modules/. The protected list is
+			// framework independent and holds on either endpoint: wiping a
+			// laptop's history and wiping a server's auth.json are both
+			// unrecoverable.
+			excludes = append(excludes, engine.GetSyncProtectedExcludes(config.Framework)...)
 		}
 
 		rsyncCmd, _, err := buildRsyncForEndpoints(
@@ -110,6 +117,12 @@ func buildSyncExecutionPlan(config engine.Config, endpoints ResolvedSyncEndpoint
 
 		excludes := append([]string{}, opts.Exclude...)
 		excludes = append(excludes, engine.GetFrameworkMediaExcludes(config.Framework, opts.Media)...)
+		if opts.Delete {
+			// Media has the same destructive mode as files, so it carries the same
+			// protection: a media --delete pull must not remove the project's
+			// source control, secrets or local-only framework files either.
+			excludes = append(excludes, engine.GetSyncProtectedExcludes(config.Framework)...)
+		}
 
 		rsyncCmd, _, err := buildRsyncForEndpoints(
 			endpoints.Source,
@@ -250,7 +263,7 @@ func buildSyncPlanSummary(endpoints ResolvedSyncEndpoints, execution SyncExecuti
 	return lines
 }
 
-func buildFallbackSyncPlanSummary(source, destination string, opts SyncExecutionOptions, legacy remote.SyncPlan, resolveErr error) []string {
+func buildFallbackSyncPlanSummary(source, destination string, opts SyncExecutionOptions, resolveErr error) []string {
 	lines := []string{
 		"",
 		pterm.NewStyle(pterm.BgLightBlue, pterm.FgBlack, pterm.Bold).Sprint(" Synchronization Plan Review (Fallback) "),
@@ -269,7 +282,12 @@ func buildFallbackSyncPlanSummary(source, destination string, opts SyncExecution
 		"",
 		"Planned Actions:",
 		"",
-		fmt.Sprintf(" 1. %s", legacy.Command),
+		// No rsync command is printed here on purpose. The display-only builder that
+		// used to fill this line had drifted from the argv the real builder produces,
+		// so a "planned" command that cannot be executed is worse than none: say what
+		// the plan would cover and why the command itself is not available.
+		" 1. The exact rsync command needs resolved endpoints; fix the remote",
+		"    configuration above and re-run, or use --path to narrow the sync.",
 	}
 	return lines
 }

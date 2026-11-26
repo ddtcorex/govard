@@ -203,6 +203,47 @@ func GetFrameworkSyncNoiseExcludes(framework string) []string {
 	return appendStrings(excludes, frameworkManifest.Shared.Sync.FallbackNoiseExcludes)
 }
 
+// GetSyncProtectedExcludes returns the paths a destructive sync must never
+// remove from either endpoint: source control, local secrets, installed
+// dependencies, and the paths the framework itself declares as local only
+// (its clone excludes: env.php and its crypt key for Magento, wp-config.php for
+// WordPress). None of them can be regenerated from a deploy release.
+//
+// Unlike GetFrameworkSyncNoiseExcludes it carries none of the framework noise
+// filters -- those are what `--no-noise` is for, and they stay opt in.
+var govardOwnedSyncPaths = []string{".govard*.yml", ".govard/"}
+
+func GetSyncProtectedExcludes(framework string) []string {
+	loadFrameworkTablesManifest()
+
+	shared := frameworkManifest.Shared.Sync
+	patterns := append([]string{}, shared.GlobalNoiseExcludes...)
+	patterns = append(patterns, shared.SensitivePathExcludes...)
+	// Govard's own project files belong to no framework and are not framework
+	// data, so they are listed here rather than in the manifest. A deploy release
+	// never carries them (the config is ignored on most machines, the state
+	// directory always is), which makes them deletion candidates on every pull.
+	patterns = append(patterns, govardOwnedSyncPaths...)
+	if config, ok := getFrameworkManifestConfig(framework); ok {
+		patterns = append(patterns, config.Sync.CloneExcludes...)
+	}
+
+	excludes := make([]string, 0, len(patterns))
+	seen := make(map[string]struct{}, len(patterns))
+	for _, pattern := range patterns {
+		trimmed := strings.TrimSpace(pattern)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		excludes = append(excludes, trimmed)
+	}
+	return excludes
+}
+
 func GetFrameworkMediaExcludes(framework string, mode string) []string {
 	loadFrameworkTablesManifest()
 
