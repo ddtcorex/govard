@@ -30,7 +30,6 @@ var reservedUsers = map[string]bool{
 // with an error that names the type.
 var allowedKeyTypes = map[string]bool{
 	"ssh-rsa":                            true,
-	"ssh-dss":                            true,
 	"ecdsa-sha2-nistp256":                true,
 	"ecdsa-sha2-nistp384":                true,
 	"ecdsa-sha2-nistp521":                true,
@@ -264,7 +263,7 @@ func (r *Registry) AllowKey(pubLine string) (string, error) {
 	comment := strings.Join(fields[2:], " ")
 
 	if !allowedKeyTypes[keyType] {
-		return "", fmt.Errorf("unsupported key type %q (want one of ssh-rsa, ssh-dss, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521, ssh-ed25519, sk-ssh-ed25519@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com)", keyType)
+		return "", fmt.Errorf("unsupported key type %q (want one of ssh-rsa, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521, ssh-ed25519, sk-ssh-ed25519@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com; ssh-dss is refused because OpenSSH disables DSA by default)", keyType)
 	}
 
 	fingerprint, err := Fingerprint(keyData)

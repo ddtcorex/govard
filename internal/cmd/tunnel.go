@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"govard/internal/engine"
@@ -232,7 +233,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 		startedPID := process.Process.Pid
 
 		// Handle Revert on exit
-		var tunnelHost string
+		hostSlot := &tunnelHostSlot{}
 		// claimed is set once this start owns the record. Until then the base
 		// URL and the proxy alias belong to whichever start does own it, so a
 		// start that lost the race must not revert or unalias them.
@@ -246,9 +247,9 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 			if !claimed {
 				return
 			}
-			if tunnelHost != "" {
-				pterm.Info.Printf("Cleaning up tunnel alias for %s...\n", tunnelHost)
-				_ = proxy.UnregisterDomain(tunnelHost)
+			if host := hostSlot.get(); host != "" {
+				pterm.Info.Printf("Cleaning up tunnel alias for %s...\n", host)
+				_ = proxy.UnregisterDomain(host)
 			}
 			pterm.Info.Println("Reverting base URL...")
 			if rerr := mgr.Revert(cwd, config); rerr != nil {
@@ -285,15 +286,28 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 						if strings.HasPrefix(p, "https://") && strings.Contains(p, ".trycloudflare.com") {
 							pterm.Success.Printf("Tunnel URL detected: %s\n", p)
 							if parsed, perr := url.Parse(p); perr == nil {
-								tunnelHost = parsed.Host
+								hostSlot.set(parsed.Host)
 								aliasTarget := ResolveTunnelAliasTarget(config)
-								pterm.Info.Printf("Registering tunnel alias %s -> %s...\n", tunnelHost, aliasTarget)
-								_ = proxy.RegisterDomain(tunnelHost, aliasTarget)
+								pterm.Info.Printf("Registering tunnel alias %s -> %s...\n", parsed.Host, aliasTarget)
+								_ = proxy.RegisterDomain(parsed.Host, aliasTarget)
 							}
 
 							pterm.Info.Println("Updating application base URL...")
 							if uerr := mgr.Update(cwd, config, p); uerr != nil {
 								pterm.Warning.Printf("Failed to update base URL: %v\n", uerr)
+							} else {
+								// The rewrite is what makes the local admin 404 for the
+								// whole session, and the storefront keeps working, which
+								// hides it. Say where the admin moved to, using the
+								// framework's own declared admin path.
+								adminPath := frameworks.DefaultAdminPath(config.Framework)
+								pterm.Info.Printf("While the tunnel runs, open the admin at https://%s/%s; the local domain serves the storefront only.\n",
+									hostSlot.get(), adminPath)
+								// Frameworks with no stock admin route say so instead of
+								// sending the operator to a path that 404s.
+								if notice := frameworks.AdminPathNotice(config.Framework, adminPath); notice != "" {
+									pterm.Info.Println(notice)
+								}
 							}
 							break
 						}
@@ -371,7 +385,7 @@ base URL, and exits 1.`,
 		cwd, _ := os.Getwd()
 		mgr := frameworks.NewBaseURLManager(config.Framework)
 		pterm.Info.Println("Reverting base URL...")
-		_ = mgr.Revert(cwd, config)
+		revertTunnelBaseURLOnStop(func() error { return mgr.Revert(cwd, config) })
 
 		if recorded {
 			pterm.Success.Printf("Tunnel stopped (pid %d).\n", record.PID)
@@ -645,5 +659,50 @@ func printLegacyTunnelWarning(processes []TunnelHostProcess) {
 				"It was probably started by an older govard that kept no record; govard never stops a process it did not start. "+
 				"Stop it yourself: kill %d\n",
 			process.PID, process.Argv, process.PID)
+	}
+}
+
+// tunnelHostSlot carries the detected tunnel host from the stderr monitor
+// goroutine to the deferred cleanup, which runs on the command goroutine. A
+// plain string there is a data race: the detector reports it once the scanner
+// assigns it and the cleanup reads it.
+type tunnelHostSlot struct {
+	mu   sync.Mutex
+	host string
+}
+
+func (s *tunnelHostSlot) set(host string) {
+	s.mu.Lock()
+	s.host = host
+	s.mu.Unlock()
+}
+
+func (s *tunnelHostSlot) get() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.host
+}
+
+// tunnelContainerRuntimeAvailable reports whether a revert can reach the
+// project's container. It is a seam so the skip path is testable.
+var tunnelContainerRuntimeAvailable = func() bool { return runtime.Probe(runtime.CapDocker) == nil }
+
+// revertTunnelBaseURLOnStop runs the revert and reports a failure instead of
+// discarding it. The start path already warns on its deferred revert; the stop
+// path used to drop the error with _ =. A base URL that was not reverted
+// outlives the tunnel and breaks every absolute URL the store emits, so silence
+// there is the one outcome the operator cannot diagnose.
+//
+// The revert runs `docker exec` inside the project container, while `tunnel
+// stop` declares no requirement of its own: on a host with no container runtime
+// there is nothing to reach, and surfacing that as a raw runtime error would
+// read as a failure of the command instead of a state it cannot change.
+func revertTunnelBaseURLOnStop(revert func() error) {
+	if !tunnelContainerRuntimeAvailable() {
+		pterm.Info.Println("No container runtime available on this host; the application base URL was left unchanged.")
+		return
+	}
+	if err := revert(); err != nil {
+		pterm.Warning.Printf("base URL was not reverted: %v\n", err)
 	}
 }

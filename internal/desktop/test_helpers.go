@@ -1330,38 +1330,6 @@ func SetPublishedDBContainerPortForDesktopForTest(
 	}
 }
 
-// SetInspectDBContainerIPsForDesktopForTest overrides docker inspect IP
-// sampling in DB discovery.
-func SetInspectDBContainerIPsForDesktopForTest(
-	fn func(container string) (string, error),
-) func() {
-	previous := inspectDBContainerIPsForDesktop
-	if fn == nil {
-		inspectDBContainerIPsForDesktop = defaultInspectDBContainerIPsForDesktop
-	} else {
-		inspectDBContainerIPsForDesktop = fn
-	}
-	return func() {
-		inspectDBContainerIPsForDesktop = previous
-	}
-}
-
-// SetProbeReachableDBHostForDesktopForTest overrides container-IP reachability
-// probing in DB discovery (the production probe dials TCP).
-func SetProbeReachableDBHostForDesktopForTest(
-	fn func(candidates []string, port string) string,
-) func() {
-	previous := probeReachableDBHostForDesktop
-	if fn == nil {
-		probeReachableDBHostForDesktop = defaultProbeReachableDBHostForDesktop
-	} else {
-		probeReachableDBHostForDesktop = fn
-	}
-	return func() {
-		probeReachableDBHostForDesktop = previous
-	}
-}
-
 // SetEstimateDBSizeForDesktopForTest overrides the dump size estimator. The
 // recording target carries no password by construction.
 func SetEstimateDBSizeForDesktopForTest(fn func(target DBTransferTarget) (int64, error)) func() {

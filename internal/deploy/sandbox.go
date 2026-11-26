@@ -574,11 +574,6 @@ CMD ["/usr/sbin/sshd", "-D", "-e"]
 	return builder.String(), nil
 }
 
-// SandboxDockerfileForTest exposes SandboxDockerfile to the tests/ package.
-func SandboxDockerfileForTest(spec SandboxSpec) (string, error) {
-	return SandboxDockerfile(spec)
-}
-
 // SandboxImageTag is the local image name for one spec. The hash of the
 // rendered Dockerfile is part of the tag, which is what makes "rebuild only when
 // the definition changes" a property of the name rather than of a cache check.
@@ -601,9 +596,6 @@ func SandboxImageTag(spec SandboxSpec) (string, error) {
 	return fmt.Sprintf("govard-sandbox:%s-%s-%s",
 		sandboxSlug(spec.Project), resolved, hex.EncodeToString(digest[:])[:12]), nil
 }
-
-// SandboxImageTagForTest exposes SandboxImageTag to the tests/ package.
-func SandboxImageTagForTest(spec SandboxSpec) (string, error) { return SandboxImageTag(spec) }
 
 // SandboxContainerName is the container one project's sandbox runs in.
 //
