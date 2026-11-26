@@ -343,9 +343,9 @@ func TestWaitForUpRuntimeReadinessReturnsErrorAfterTimeout(t *testing.T) {
 }
 
 func TestWaitForUpRuntimeReadinessFailsFastWhenContainerExited(t *testing.T) {
-	// The loop tolerates three consecutive abort states before giving up, so
-	// without this it slept the poll interval twice on the way to the answer it
-	// already had. The attempt count is unchanged.
+	// A container that is still exited on the inspection after its kickstart is
+	// terminal, so the loop reports it instead of burning the whole timeout. The
+	// attempt count is unchanged.
 	defer cmd.SetUpReadinessPollDelayForTest()()
 
 	restoreState := cmd.SetUpContainerStateRunnerForTest(func(containerName string) (string, error) {

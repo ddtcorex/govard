@@ -38,6 +38,36 @@ func CheckForUpdates(current string) {
 	}
 }
 
+// StartUpdateCheck starts the release fetch in the background and returns at
+// once with a finish function. `env up` must not wait on the network before it
+// touches a single container: on a filtered network the synchronous check spent
+// its whole 2s timeout before the first useful step.
+//
+// finish reports an update only when the result has already arrived, and never
+// blocks. A result that lands after the command finished is dropped, because the
+// warning would print after the shell prompt and read as a stray error.
+func StartUpdateCheck(current string) (finish func()) {
+	releases := make(chan LatestRelease, 1)
+	go func() {
+		release, err := FetchChannelRelease(updateCheckHTTPClient, GetChannel())
+		if err != nil {
+			releases <- LatestRelease{}
+			return
+		}
+		releases <- release
+	}()
+
+	return func() {
+		select {
+		case release := <-releases:
+			if release.Tag != "" && shouldNotifyUpdate(current, release.Tag) {
+				updateCheckNotifier(release.Tag, current)
+			}
+		default:
+		}
+	}
+}
+
 // LatestRelease is the subset of the GitHub releases API response callers need.
 type LatestRelease struct {
 	Tag  string
