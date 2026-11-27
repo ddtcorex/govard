@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"govard/internal/conventions"
@@ -77,22 +78,8 @@ func ValidateConfig(cfg Config) error {
 		return fmt.Errorf("stack.features.frontend_sync is not supported for framework %q", cfg.Framework)
 	}
 
-	for host, mapping := range cfg.StoreDomains {
-		trimmedHost := strings.TrimSpace(host)
-		if trimmedHost == "" {
-			return fmt.Errorf("store_domains host cannot be empty")
-		}
-		if strings.ContainsAny(trimmedHost, " \t\r\n") {
-			return fmt.Errorf("store_domains host '%s' cannot contain whitespace", host)
-		}
-		if strings.TrimSpace(mapping.Code) == "" {
-			return fmt.Errorf("store_domains host '%s' is missing code", host)
-		}
-		switch mapping.ScopeType() {
-		case "", "store", "website":
-		default:
-			return fmt.Errorf("store_domains host '%s' has unsupported type '%s' (allowed: store, website)", host, mapping.Type)
-		}
+	if err := validateStoreDomains(cfg.StoreDomains); err != nil {
+		return err
 	}
 
 	if err := validateService("stack.services.web_server", cfg.Stack.Services.WebServer, validWebServers); err != nil {
@@ -265,4 +252,44 @@ func isValidStackVersion(v string) bool {
 		return false
 	}
 	return true
+}
+
+// storeDomainHostPattern is the host allowlist for store_domains. The value is
+// interpolated into generated nginx and Apache map blocks, so anything that
+// could end a directive (';'), open a block ('{', '}') or expand a variable ('$')
+// has to be rejected here rather than produce broken or misleading routing.
+var storeDomainHostPattern = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
+
+// storeDomainCodePattern is Magento's store code rule: a leading letter, then
+// letters, digits and underscores.
+var storeDomainCodePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+
+func validateStoreDomains(mappings StoreDomainMappings) error {
+	for host, mapping := range mappings {
+		trimmedHost := strings.TrimSpace(host)
+		if trimmedHost == "" {
+			return fmt.Errorf("store_domains host cannot be empty")
+		}
+		if strings.ContainsAny(trimmedHost, " \t\r\n") {
+			return fmt.Errorf("store_domains host '%s' cannot contain whitespace", host)
+		}
+		if !storeDomainHostPattern.MatchString(trimmedHost) {
+			return fmt.Errorf("store_domains host '%s' may only contain letters, digits, dots and hyphens", host)
+		}
+
+		code := strings.TrimSpace(mapping.Code)
+		if code == "" {
+			return fmt.Errorf("store_domains host '%s' is missing code", host)
+		}
+		if !storeDomainCodePattern.MatchString(code) {
+			return fmt.Errorf("store_domains code '%s' for host '%s' must start with a letter and contain only letters, digits and underscores", mapping.Code, host)
+		}
+
+		switch mapping.ScopeType() {
+		case "", "store", "website":
+		default:
+			return fmt.Errorf("store_domains host '%s' has unsupported type '%s' (allowed: store, website)", host, mapping.Type)
+		}
+	}
+	return nil
 }

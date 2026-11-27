@@ -228,16 +228,7 @@ func proxyEnvToCompose(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			// Construct manual grep command
-			composeCmd := fmt.Sprintf("docker compose --project-directory %s -p %s -f %s",
-				engine.ShellQuote(cwd), engine.ShellQuote(config.ProjectName), engine.ShellQuote(composePath))
-
-			logArgs := strings.Join(filteredArgs, " ")
-			if !strings.Contains(logArgs, "-f") && !strings.Contains(logArgs, "--follow") {
-				logArgs += " -f --tail=100"
-			}
-
-			filterCommand := fmt.Sprintf("%s %s | grep -iE 'error|critical|fail|exception'", composeCmd, logArgs)
+			filterCommand := buildErrorLogsCommand(cwd, config.ProjectName, composePath, filteredArgs)
 			c := exec.Command("sh", "-c", filterCommand)
 			c.Stdout, c.Stderr = os.Stdout, os.Stderr
 			return c.Run()
@@ -500,6 +491,37 @@ var envCleanupCmd = &cobra.Command{
 func containsString(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+// buildErrorLogsCommand renders the errors-only log pipeline. Every argument is
+// single-quoted because the pipeline runs through `sh -c`: an argument a user
+// passes after --errors ("php; touch /tmp/x") would otherwise be re-parsed by
+// the shell. Follow is detected on the exact token, not on a substring, so
+// --no-log-prefix no longer suppresses the -f --tail=100 that makes the filter
+// print anything at all.
+func buildErrorLogsCommand(cwd, project, composePath string, args []string) string {
+	parts := []string{
+		"docker", "compose",
+		"--project-directory", engine.ShellQuote(cwd),
+		"-p", engine.ShellQuote(project),
+		"-f", engine.ShellQuote(composePath),
+	}
+	for _, arg := range args {
+		parts = append(parts, engine.ShellQuote(arg))
+	}
+	if !logArgsFollow(args) {
+		parts = append(parts, "-f", "--tail=100")
+	}
+	return strings.Join(parts, " ") + " | grep -iE 'error|critical|fail|exception'"
+}
+
+func logArgsFollow(args []string) bool {
+	for _, arg := range args {
+		if arg == "-f" || arg == "--follow" || strings.HasPrefix(arg, "--follow=") {
 			return true
 		}
 	}

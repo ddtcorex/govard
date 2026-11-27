@@ -4,11 +4,23 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"govard/internal/engine"
 
 	"github.com/pterm/pterm"
 )
+
+// describeLockReadError turns the raw read failure into the instruction the
+// operator needs. The exit code stays non-zero on purpose: a check that could
+// not check must not pass in CI, but "read lock file: open ... no such file or
+// directory" leaves out the one thing they have to do next.
+func describeLockReadError(lockPath string, err error) error {
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("no govard.lock in %s; run 'govard lock generate' to create one", filepath.Dir(lockPath))
+	}
+	return err
+}
 
 func evaluateUpLockPolicy(cwd string, config engine.Config, update bool) ([]string, error) {
 	lockPath := engine.LockFilePath(cwd)

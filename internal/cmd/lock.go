@@ -141,7 +141,7 @@ var lockCheckCmd = &cobra.Command{
 
 		expected, err := engine.ReadLockFile(lockPath)
 		if err != nil {
-			return err
+			return describeLockReadError(lockPath, err)
 		}
 		current, err := engine.BuildLockFileFromConfig(cwd, config, Version, lockDependencies)
 		if err != nil {
@@ -180,7 +180,7 @@ var lockDiffCmd = &cobra.Command{
 
 		expected, err := engine.ReadLockFile(lockPath)
 		if err != nil {
-			return err
+			return describeLockReadError(lockPath, err)
 		}
 		current, err := engine.BuildLockFileFromConfig(cwd, config, Version, lockDependencies)
 		if err != nil {

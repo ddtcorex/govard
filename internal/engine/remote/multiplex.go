@@ -47,9 +47,3 @@ func multiplexArgs() []string {
 		"-o", "ControlPersist=" + multiplexPersist,
 	}
 }
-
-// MultiplexArgsForTest exposes the connection-sharing options to the tests/
-// package.
-func MultiplexArgsForTest() []string {
-	return multiplexArgs()
-}

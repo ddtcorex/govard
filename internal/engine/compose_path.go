@@ -2,6 +2,7 @@ package engine
 
 import (
 	"crypto/sha1"
+	"encoding/hex"
 	"govard/internal/conventions"
 	"os"
 	"path/filepath"
@@ -54,7 +55,7 @@ func ComposeFilePathWithProfile(projectRoot string, projectName string, profile 
 	}
 
 	sum := sha1.Sum([]byte(hashSource))
-	fileName := name + "-" + strings.ToLower(strings.TrimSpace(hexPrefix(sum[:]))) + ".yml"
+	fileName := name + "-" + hex.EncodeToString(sum[:6]) + ".yml"
 	return filepath.Join(GovardHomeDir(), "compose", fileName)
 }
 
@@ -90,18 +91,4 @@ func NormalizeProjectName(name string) string {
 	name = projectNameSanitizer.ReplaceAllString(name, "-")
 	name = strings.Trim(name, "-_")
 	return strings.ToLower(name)
-}
-
-func hexPrefix(raw []byte) string {
-	const maxBytes = 6
-	if len(raw) > maxBytes {
-		raw = raw[:maxBytes]
-	}
-	hex := make([]byte, len(raw)*2)
-	const digits = "0123456789abcdef"
-	for i, b := range raw {
-		hex[i*2] = digits[b>>4]
-		hex[i*2+1] = digits[b&0x0f]
-	}
-	return string(hex)
 }
