@@ -115,3 +115,73 @@ func firstLineContaining(text, want string) string {
 	}
 	return "(no line mentions " + want + ")"
 }
+
+// sandboxServicesEnv returns the ENV line that tells the entrypoint what to
+// start, so a test asserts on the list rather than on a substring of the image.
+func sandboxServicesEnv(t *testing.T, dockerfile string) string {
+	t.Helper()
+	for _, line := range strings.Split(dockerfile, "\n") {
+		if strings.Contains(line, "GOVARD_SANDBOX_SERVICES=") {
+			return line
+		}
+	}
+	t.Fatalf("the rendered image carries no GOVARD_SANDBOX_SERVICES line:\n%s", dockerfile)
+	return ""
+}
+
+// The `full` profile installs a database server and a cache. The entrypoint
+// starts only what it is named, so naming nothing but the web tier is how a
+// sandbox came up with both packages installed and neither server running:
+// `sandbox up` then waited out its database timeout and failed, while sshd
+// answered the whole time.
+//
+// Found live: an image rendered for a project whose framework declares no
+// sandbox services (the default recipe) carried
+// GOVARD_SANDBOX_SERVICES="govard-sandbox-web" in a full-profile build.
+func TestSandboxFullProfileStartsTheDatabaseAndCacheItInstalls(t *testing.T) {
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{
+		Profile: deploy.SandboxProfileFull,
+		PHP:     "8.2",
+	})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	env := sandboxServicesEnv(t, dockerfile)
+	for _, want := range []string{"mariadb", "redis-server"} {
+		if !strings.Contains(env, want) {
+			t.Errorf("the full profile installs %s but does not start it: %s", want, env)
+		}
+	}
+}
+
+// A project that sets `sandbox_services` itself, including to an empty list,
+// has said what to start; the profile adds nothing on top.
+func TestSandboxExplicitServiceListIsNotExtendedByTheProfile(t *testing.T) {
+	dockerfile, err := deploy.SandboxDockerfile(deploy.SandboxSpec{
+		Profile:      deploy.SandboxProfileFull,
+		PHP:          "8.2",
+		Requirements: deploy.SandboxRequirements{ServicesExplicit: true},
+	})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	env := sandboxServicesEnv(t, dockerfile)
+	for _, unwanted := range []string{"mariadb", "redis-server"} {
+		if strings.Contains(env, unwanted) {
+			t.Errorf("an explicit service list was extended with %s: %s", unwanted, env)
+		}
+	}
+}
+
+// The settings layer is what knows a list was set by the project rather than
+// defaulted by the recipe.
+func TestSandboxSettingsMarkAnExplicitServiceList(t *testing.T) {
+	withKey := deploy.SandboxRequirementsWithSettings(deploy.SandboxRequirements{}, map[string]any{"sandbox_services": []any{}})
+	if !withKey.ServicesExplicit {
+		t.Error("sandbox_services present as an empty list must count as explicit")
+	}
+	withoutKey := deploy.SandboxRequirementsWithSettings(deploy.SandboxRequirements{}, map[string]any{})
+	if withoutKey.ServicesExplicit {
+		t.Error("no sandbox_services key must not count as explicit")
+	}
+}

@@ -1322,10 +1322,12 @@ check đang làm việc, không phải lỗi. Sandbox đã seed thì có sẵn �
 `--no-verify` để tắt cho lần diễn tập chỉ cần dừng ở mức file, còn `--no-seed`
 là lần diễn tập tự lo ứng dụng.
 
-Profile `full` start sẵn database và cache, và recipe Magento khai cả hai, nên
-`env.php` của target có thể trỏ `127.0.0.1` cho MariaDB và Redis/Valkey — đúng hình
-dạng server thật — thay vì phải sửa tay sang file cache. Profile `basic` không có
-gì trong số đó và không quảng cáo verify URL.
+Profile `full` start sẵn database và cache. Recipe của framework khai cả hai; với
+dự án mà framework không khai sandbox service nào, profile tự thêm MariaDB và cache,
+trừ khi chính dự án đặt `sandbox_services`. `env.php` của target sau đó có thể trỏ
+`127.0.0.1` cho MariaDB và Redis/Valkey, đúng hình dạng server thật, thay vì phải
+sửa tay sang file cache. Profile `basic` không có gì trong số đó và không quảng cáo
+verify URL.
 
 Khi dự án bật queue service RabbitMQ, management UI của nó truy cập được tại
 `project.test:15672` qua proxy dùng chung. Cổng đó chỉ publish trên
