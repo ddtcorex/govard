@@ -58,11 +58,12 @@ func TestDBCommandValidationAndRuntime(t *testing.T) {
 
 		logs := shim.ReadLog(t)
 		assertContains(t, logs, "ssh|")
-		// stdin carries the SQL, so the import script is staged on the remote and
-		// the argv carries only its path and the cleanup tail.
-		assertContains(t, logs, "sh '/tmp/govard-")
-		assertContains(t, logs, "rm -f '/tmp/govard-")
-		assertNotContains(t, logs, "MYSQL_PWD")
+		// stdin carries the SQL, so the credential is the first stdin line, read by
+		// the remote shell into the client's environment: the argv names the
+		// variable but never carries a value, and no script is staged on the remote.
+		assertContains(t, logs, "read -r MYSQL_PWD")
+		assertNotContains(t, logs, "MYSQL_PWD=")
+		assertNotContains(t, logs, "/tmp/govard-")
 	})
 
 	t.Run("LocalDumpUsesDockerShim", func(t *testing.T) {

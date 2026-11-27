@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -175,11 +174,6 @@ func TestBuildDBImportCommandForTestRemoteBuildsSSHCommand(t *testing.T) {
 		},
 	}
 
-	// The import script is staged on the remote over stdin before the command is
-	// returned, so the staging call is stubbed here.
-	restoreStager := cmd.SetRemoteScriptStagerForTest(func(*exec.Cmd) ([]byte, error) { return nil, nil })
-	defer restoreStager()
-
 	args, err := cmd.BuildDBImportCommandForTest(config, cmd.DBCommandOptions{Environment: "dev"})
 	if err != nil {
 		t.Fatalf("BuildDBImportCommandForTest() error = %v", err)
@@ -192,13 +186,13 @@ func TestBuildDBImportCommandForTestRemoteBuildsSSHCommand(t *testing.T) {
 	if !strings.Contains(joined, "deploy@example.com") {
 		t.Fatalf("expected remote target in ssh command, got: %s", joined)
 	}
-	// The SQL owns stdin, so the script is staged on the remote and the ssh argv
-	// carries only its path plus the cleanup tail.
-	if !strings.Contains(joined, "sh '/tmp/govard-") || !strings.Contains(joined, "rm -f '/tmp/govard-") {
-		t.Fatalf("expected the staged remote script path, got: %s", joined)
+	// The SQL owns stdin, so the credential is read from the first stdin line by
+	// the remote shell; nothing is staged on the remote and no value is in argv.
+	if !strings.Contains(joined, "sh -c ") || !strings.Contains(joined, "mysql") {
+		t.Fatalf("expected the import to run as one remote sh -c command, got: %s", joined)
 	}
-	if strings.Contains(joined, "mysql") || strings.Contains(joined, "MYSQL_PWD") {
-		t.Fatalf("the import script leaked into argv: %s", joined)
+	if strings.Contains(joined, "MYSQL_PWD=") || strings.Contains(joined, "/tmp/govard-") {
+		t.Fatalf("the import must carry no password value and stage no file: %s", joined)
 	}
 }
 
