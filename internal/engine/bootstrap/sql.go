@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 
@@ -19,13 +20,18 @@ func RunSQLViaDockerExec(containerName string, dbUser string, dbPassword string,
 
 	args := []string{"exec", "-i"}
 	if dbPassword != "" {
-		args = append(args, "-e", "MYSQL_PWD="+dbPassword)
+		// By name: docker takes the value from its own environment, so the
+		// password is not in the argument list.
+		args = append(args, "-e", "MYSQL_PWD")
 	}
 	args = append(args, containerName, "sh", "-lc", script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "docker", args...)
+	if dbPassword != "" {
+		cmd.Env = append(os.Environ(), "MYSQL_PWD="+dbPassword)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("SQL exec failed: %w: %s", err, out)

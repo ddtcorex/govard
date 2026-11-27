@@ -46,6 +46,12 @@ func runDBConnect(cmd *cobra.Command, config engine.Config, options dbCommandOpt
 		}
 		connectCmd := remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, remoteScriptCleanup(scriptPath))
 		connectCmd.Stdin, connectCmd.Stdout, connectCmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		return connectCmd.Run()
+		if err := connectCmd.Run(); err != nil {
+			// The cleanup tail runs only once the second connection exists; if it
+			// never did, the staged file holding the credential is still there.
+			discardRemoteScript(options.Environment, remoteCfg, scriptPath)
+			return err
+		}
+		return nil
 	})
 }

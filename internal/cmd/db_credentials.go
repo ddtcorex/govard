@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -557,28 +558,65 @@ func (c dbCredentials) withoutPassword() dbCredentials {
 // remote script without a server.
 var runSSHStdin = func(cmd *exec.Cmd) ([]byte, error) { return cmd.CombinedOutput() }
 
+// remoteImportCommand returns the command a remote import runs and the line its
+// stdin must start with. The SQL owns stdin, so the credential cannot arrive as
+// the script; instead the remote shell reads it from the first stdin line into
+// the client's environment variable and the client then reads the SQL. The
+// password is therefore in no argument list and on no disk, and there is no
+// staged file to clean up when the import is cancelled. The caller attaches the
+// line as the command's Stdin; RunImportFromReaderWithProgress writes it first.
+func remoteImportCommand(credentials dbCredentials) (command string, stdinLine string, err error) {
+	credentials = credentials.withDefaults()
+	script := buildRemoteMySQLImportCommandString(credentials.withoutPassword())
+	password := credentials.Password
+	if strings.TrimSpace(password) == "" {
+		return "sh -c " + engine.ShellQuote(script), "", nil
+	}
+	// A newline would end the credential line early and the rest of the password
+	// would be read as SQL.
+	if strings.ContainsAny(password, "\r\n") {
+		return "", "", errors.New("the database password contains a line break and cannot be handed to the remote import")
+	}
+	variable := "MYSQL_PWD"
+	if credentials.Engine == conventions.ServicePostgreSQL {
+		variable = "PGPASSWORD"
+	}
+	read := fmt.Sprintf("IFS= read -r %s || exit 1; export %s; ", variable, variable)
+	return "sh -c " + engine.ShellQuote(read+script), password + "\n", nil
+}
+
+// stagedScriptDelimiter ends the heredoc that carries a staged script. A script
+// containing it would end the copy early and run its tail as commands.
+const stagedScriptDelimiter = "GOVARD_SCRIPT_EOF"
+
 // stageRemoteScript copies a script to a private file on the remote over stdin
-// and returns its path, so a command whose own stdin carries data (an import
-// stream) or a terminal (an interactive session) can run the script without the
-// credential ever appearing in an argument list.
+// and returns its path, for the one caller whose own stdin is a terminal (the
+// interactive connect session). The script travels inside a quoted heredoc so
+// the file holds it byte for byte; appending it after the copy command and
+// letting `cat` read it from the same stdin does not work, because dash reads
+// the whole pipe into its own buffer and `cat` then sees nothing.
 func stageRemoteScript(remoteName string, remoteCfg engine.RemoteConfig, script string) (string, error) {
+	if strings.Contains(script, stagedScriptDelimiter) {
+		return "", errors.New("stage remote script: the script contains the staging delimiter")
+	}
 	path := fmt.Sprintf("/tmp/govard-%d-%s.sh", os.Getpid(), randomScriptSuffix())
 	keep := remote.BuildSSHStdinCommand(remoteName, remoteCfg, true)
-	keep.Stdin = strings.NewReader("umask 077 && cat > " + engine.ShellQuote(path))
+	keep.Stdin = strings.NewReader("umask 077 && cat > " + engine.ShellQuote(path) +
+		" <<'" + stagedScriptDelimiter + "'\n" + strings.TrimRight(script, "\n") + "\n" + stagedScriptDelimiter + "\n")
 	if output, err := runSSHStdin(keep); err != nil {
 		return "", fmt.Errorf("stage remote script: %w (%s)", err, strings.TrimSpace(string(output)))
 	}
 	return path, nil
 }
 
-// SetRemoteScriptStagerForTest replaces the staging call so a test does not need
-// an ssh server. It returns a restore func.
-func SetRemoteScriptStagerForTest(fn func(cmd *exec.Cmd) ([]byte, error)) func() {
-	previous := runSSHStdin
-	if fn != nil {
-		runSSHStdin = fn
-	}
-	return func() { runSSHStdin = previous }
+// discardRemoteScript removes a staged script when the connection that would
+// have run it failed, so a file holding the credential does not wait on the
+// remote. Best effort: if the remote is unreachable the removal cannot run
+// either, and /tmp is cleared on the remote's next reboot.
+func discardRemoteScript(remoteName string, remoteCfg engine.RemoteConfig, path string) {
+	cleanup := remote.BuildSSHStdinCommand(remoteName, remoteCfg, true)
+	cleanup.Stdin = strings.NewReader("rm -f " + engine.ShellQuote(path) + "\n")
+	_, _ = runSSHStdin(cleanup)
 }
 
 // remoteScriptCleanup is the remote tail that removes a staged script whatever

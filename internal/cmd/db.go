@@ -703,14 +703,19 @@ func buildDBImportCommand(config engine.Config, options dbCommandOptions) (*exec
 	}
 	poller := &finalizePoller{config: config, remoteName: options.Environment, remoteCfg: remoteCfg, credentials: credentials, noNoise: options.NoNoise, noPII: options.NoPII}
 
-	// The import reads the SQL from stdin, so the script cannot travel there: it
-	// is staged on the remote first and removed when it finishes, which keeps the
-	// credential out of the argument list of both commands.
-	scriptPath, err := stageRemoteScript(options.Environment, remoteCfg, buildRemoteMySQLImportCommandString(credentials))
+	// The SQL owns stdin, so the credential travels as its first line and the
+	// remote shell reads it into the client's environment (see remoteImportCommand).
+	// Nothing is staged on the remote, so building this command has no side effect
+	// and a cancelled import leaves nothing behind.
+	command, credentialLine, err := remoteImportCommand(credentials)
 	if err != nil {
 		return nil, nil, err
 	}
-	return remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, remoteScriptCleanup(scriptPath)), poller, nil
+	importCmd := remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, command)
+	if credentialLine != "" {
+		importCmd.Stdin = strings.NewReader(credentialLine)
+	}
+	return importCmd, poller, nil
 }
 
 func dbContainerName(config engine.Config) string {
@@ -921,6 +926,11 @@ func renderFinalizeOnBar(bar *pterm.ProgressbarPrinter, label string, startedAt 
 // poll, when non-nil, is called periodically while waiting for importCmd to
 // finish, to report the target database's growing size.
 func RunImportFromReaderWithProgress(importCmd *exec.Cmd, reader io.Reader, totalSize int64, sanitize bool, stdout io.Writer, stderr io.Writer, poll func() (int64, error)) error {
+	// A command that arrives with Stdin set carries a prefix the stream must start
+	// with: for a remote import, the credential line its shell reads before the
+	// SQL. StdinPipe refuses a command whose Stdin is already set, so take it out.
+	stdinPrefix := importCmd.Stdin
+	importCmd.Stdin = nil
 	stdin, err := importCmd.StdinPipe()
 	if err != nil {
 		return err
@@ -991,6 +1001,17 @@ func RunImportFromReaderWithProgress(importCmd *exec.Cmd, reader io.Reader, tota
 
 	if err := importCmd.Start(); err != nil {
 		return err
+	}
+
+	// The prefix goes out before the SQL and outside the sanitizer and the
+	// progress accounting: it is a credential line, not part of the dump.
+	if stdinPrefix != nil {
+		if _, err := io.Copy(stdin, stdinPrefix); err != nil {
+			_ = stdin.Close()
+			_ = importCmd.Process.Kill()
+			_ = importCmd.Wait()
+			return fmt.Errorf("write the import stdin prefix: %w", err)
+		}
 	}
 
 	importPrefix := "SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET AUTOCOMMIT=0; SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n"
