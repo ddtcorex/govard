@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"govard/internal/conventions"
 	"govard/internal/engine"
@@ -9,6 +11,7 @@ import (
 	"govard/internal/proxy"
 	"govard/internal/updater"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,7 +73,35 @@ Case Studies:
 
 const defaultUpReadinessTimeout = 90 * time.Second
 
-var upReadinessProbeInterval = 1500 * time.Millisecond
+// upReadinessProbeInterval is short on purpose: the checks run concurrently, so
+// the interval is the resolution at which a service that becomes ready early is
+// noticed, not the cost of a sequential walk.
+var upReadinessProbeInterval = 250 * time.Millisecond
+
+// upReadinessAbortWindow is how long a container may stay in an abort state
+// right after creation before startup gives up on it. It is measured as elapsed
+// time from the first observed abort, not counted in polls: a poll also costs a
+// `docker inspect`, so a count would describe a window that is never the one the
+// operator waits through.
+const upReadinessAbortWindow = 4500 * time.Millisecond
+
+// upReadinessAbortObservations is how many abort inspections are tolerated: the
+// first one kickstarts the container, the second one decides.
+const upReadinessAbortObservations = 2
+
+// upReadinessStatePollEvery is how many probe attempts share one container
+// state inspection. The probe is the cheap part and the inspection is a process
+// per call, so at a 250ms interval inspecting every attempt would spawn about
+// twenty `docker inspect` processes per second per service for up to 90s, to
+// answer a question whose answer changes on a scale of seconds.
+var upReadinessStatePollEvery = 4
+
+// upReadinessContainerStart kicks a container that exited during startup. It is
+// a seam so a unit test does not shell out to a real container name.
+var upReadinessContainerStart = func(containerName string) {
+	_ = exec.Command("docker", "start", containerName).Run()
+}
+
 var upReadinessSleep = time.Sleep
 var upReadinessProbeRunner = func(containerName string, probeArgs []string) error {
 	args := append([]string{"exec", containerName}, probeArgs...)
@@ -476,6 +507,10 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 				}
 				wg.Wait()
 
+				if err := waitForUpStorefrontReadiness(context.Config); err != nil {
+					pterm.Warning.Printf("%v\n", err)
+				}
+
 				if err := engine.RunHooks(context.Config, engine.HookPostUp, context.Out, context.Err); err != nil {
 					return fmt.Errorf("post-up hooks failed: %w", err)
 				}
@@ -677,58 +712,187 @@ func waitForUpRuntimeReadiness(projectRoot string, config engine.Config, service
 	}
 
 	maxAttempts := readinessProbeAttempts(timeout)
+
+	// Announce every check before any of them starts, so the output reads as
+	// "waiting for these" instead of interleaved announcements, and let each
+	// completion report itself as it happens.
+	upReadinessOutputMu.Lock()
 	for _, check := range checks {
 		pterm.Info.Printf("Waiting for %s runtime readiness...\n", check.Service)
+	}
+	upReadinessOutputMu.Unlock()
 
-		var lastErr error
-		abortConsecutiveCount := 0
-		maxAbortTolerations := 3 // Tolerate transient exit states right after container creation/recreation
-
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			state, stateErr := inspectUpContainerState(check.ContainerName)
-			if stateErr == nil && shouldAbortReadinessForContainerState(state) {
-				abortConsecutiveCount++
-
-				// If it crashed, try to kickstart it once (handles entrypoint identity change crashes)
-				if abortConsecutiveCount == 1 {
-					_ = exec.Command("docker", "start", check.ContainerName).Run()
+	var (
+		waitGroup sync.WaitGroup
+		firstErr  error
+	)
+	for _, check := range checks {
+		check := check
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			if checkErr := waitForSingleUpReadinessCheck(check, maxAttempts, timeout); checkErr != nil {
+				upReadinessOutputMu.Lock()
+				if firstErr == nil {
+					firstErr = checkErr
 				}
+				upReadinessOutputMu.Unlock()
+			}
+		}()
+	}
+	waitGroup.Wait()
 
-				if abortConsecutiveCount >= maxAbortTolerations {
-					return fmt.Errorf("%s container %s is %s (exit code %s, oom=%s): %s", check.Service, check.ContainerName, state.Status, state.ExitCode, state.OOMKilled, engine.FirstNonEmpty(state.Error, "container stopped during startup"))
-				}
+	return firstErr
+}
 
-				lastErr = fmt.Errorf("container is in state %s", state.Status)
-			} else {
-				abortConsecutiveCount = 0 // Reset if it's not in an abort state
+// upReadinessOutputMu serialises terminal output and the first-error capture:
+// the checks run concurrently but the messages must not interleave inside a
+// line, and pterm's global printer is shared state.
+var upReadinessOutputMu sync.Mutex
 
-				switch {
-				case check.RequireHealthy && stateErr != nil:
-					lastErr = fmt.Errorf("inspect container health: %w", stateErr)
-				case check.RequireHealthy && !strings.EqualFold(strings.TrimSpace(state.Health), "healthy"):
-					lastErr = fmt.Errorf("container health is %s", engine.FirstNonEmpty(state.Health, "unknown"))
-				case len(check.ProbeArgs) == 0:
-					lastErr = nil
-				default:
-					lastErr = upReadinessProbeRunner(check.ContainerName, check.ProbeArgs)
-				}
-				if lastErr == nil {
-					pterm.Success.Printf("%s runtime is ready\n", check.Service)
-					break
-				}
+func waitForSingleUpReadinessCheck(check upReadinessCheck, maxAttempts int, timeout time.Duration) error {
+	var (
+		lastErr       error
+		lastState     upContainerState
+		stateErr      error
+		abortFrom     time.Time
+		abortObserved int
+	)
+
+	statePollEvery := upReadinessStatePollEvery
+	if statePollEvery < 1 {
+		statePollEvery = 1
+	}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if attempt == 1 || attempt%statePollEvery == 0 {
+			lastState, stateErr = inspectUpContainerState(check.ContainerName)
+		}
+
+		if stateErr == nil && shouldAbortReadinessForContainerState(lastState) {
+			if abortObserved == 0 {
+				abortFrom = time.Now()
+				// A container that crashed on creation is worth one kickstart:
+				// this covers the entrypoint identity change crash.
+				upReadinessContainerStart(check.ContainerName)
+			}
+			abortObserved++
+
+			// Still aborting on the inspection after the kickstart is terminal: a
+			// restarting container reports "restarting", not "exited", so this one
+			// is not coming back on its own. The elapsed window is the backstop for
+			// a host where inspections are sparse.
+			if abortObserved >= upReadinessAbortObservations || time.Since(abortFrom) >= upReadinessAbortWindow {
+				return fmt.Errorf("%s container %s is %s (exit code %s, oom=%s): %s", check.Service, check.ContainerName, lastState.Status, lastState.ExitCode, lastState.OOMKilled, engine.FirstNonEmpty(lastState.Error, "container stopped during startup"))
 			}
 
-			if attempt < maxAttempts {
-				upReadinessSleep(upReadinessProbeInterval)
+			lastErr = fmt.Errorf("container is in state %s", lastState.Status)
+		} else {
+			abortObserved = 0
+			abortFrom = time.Time{} // Reset once the container is not aborting
+
+			switch {
+			case check.RequireHealthy && stateErr != nil:
+				lastErr = fmt.Errorf("inspect container health: %w", stateErr)
+			case check.RequireHealthy && !strings.EqualFold(strings.TrimSpace(lastState.Health), "healthy"):
+				lastErr = fmt.Errorf("container health is %s", engine.FirstNonEmpty(lastState.Health, "unknown"))
+			case len(check.ProbeArgs) == 0:
+				lastErr = nil
+			default:
+				lastErr = upReadinessProbeRunner(check.ContainerName, check.ProbeArgs)
+			}
+			if lastErr == nil {
+				upReadinessOutputMu.Lock()
+				pterm.Success.Printf("%s runtime is ready\n", check.Service)
+				upReadinessOutputMu.Unlock()
+				return nil
 			}
 		}
 
-		if lastErr != nil {
-			return fmt.Errorf("%s runtime did not become ready after %s: %w", check.Service, timeout, lastErr)
+		if attempt < maxAttempts {
+			upReadinessSleep(upReadinessProbeInterval)
 		}
 	}
 
-	return nil
+	if lastErr == nil {
+		lastErr = errors.New("readiness was not confirmed")
+	}
+	return fmt.Errorf("%s runtime did not become ready after %s: %w", check.Service, timeout, lastErr)
+}
+
+// upStorefrontProbeInterval and upStorefrontTimeout bound the wait for the
+// project's own domain to answer after the stack is up. A var so a test can
+// shorten it; the wait never fails the command, it warns.
+var (
+	upStorefrontProbeInterval = 250 * time.Millisecond
+	upStorefrontTimeout       = 20 * time.Second
+	// upStorefrontRootCAs returns the pool that trusts the Govard proxy and only
+	// the Govard proxy. A seam so a test can aim the probe at its own TLS server.
+	upStorefrontRootCAs = engine.LocalRootCAPool
+	upStorefrontProbe   = func(url string) error {
+		// The proxy issues every project certificate from the Govard local CA, so
+		// the probe verifies against that authority instead of disabling
+		// verification. When the CA cannot be loaded the probe falls back to plain
+		// HTTP on the same host: the proxy redirects it to HTTPS, and a redirect is
+		// an answer, which is all this wait needs.
+		pool, poolErr := upStorefrontRootCAs()
+		scheme := "https"
+		if poolErr != nil {
+			scheme = "http"
+		}
+
+		client := &http.Client{Timeout: 3 * time.Second}
+		if poolErr == nil {
+			client.Transport = &http.Transport{
+				TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+			}
+		}
+
+		if scheme == "http" {
+			url = strings.Replace(url, "https://", "http://", 1)
+		}
+
+		response, err := client.Get(url)
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+		// Anything below 500 means the stack is serving: a redirect, 403 or 404 is
+		// an application answer, while 502/503 come from a backend that is not up.
+		if response.StatusCode >= 500 {
+			return fmt.Errorf("storefront answered HTTP %d", response.StatusCode)
+		}
+		return nil
+	}
+)
+
+// waitForUpStorefrontReadiness waits until the project's own domain answers, so
+// `env up` does not return success while the first request still hits a 503.
+// It gives up quietly after the timeout: a wait that cannot succeed must not
+// turn a working environment into a failed command.
+func waitForUpStorefrontReadiness(config engine.Config) error {
+	domain := strings.TrimSpace(config.Domain)
+	if domain == "" {
+		return nil
+	}
+
+	url := "https://" + domain + "/"
+	attempts := int(upStorefrontTimeout / upStorefrontProbeInterval)
+	if attempts < 1 {
+		attempts = 1
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		lastErr = upStorefrontProbe(url)
+		if lastErr == nil {
+			return nil
+		}
+		if attempt < attempts {
+			upReadinessSleep(upStorefrontProbeInterval)
+		}
+	}
+	return fmt.Errorf("storefront at %s did not answer within %s: %w", url, upStorefrontTimeout, lastErr)
 }
 
 func inspectUpContainerState(containerName string) (upContainerState, error) {
@@ -925,8 +1089,23 @@ func compareNumericDotVersions(left, right string) (int, bool) {
 	return engine.CompareNumericDotVersions(left, right)
 }
 
+// startUpUpdateCheck starts the background release check unless stdout must stay
+// a single JSON envelope: with --error-json the notice would interleave with the
+// machine-readable output the caller parses.
+func startUpUpdateCheck(writeJSON bool) (finish func()) {
+	if writeJSON {
+		return func() {}
+	}
+	return updater.StartUpdateCheck(Version)
+}
+
 func runUpCommand(cmd *cobra.Command, args []string) (err error) {
-	updater.CheckForUpdates(Version)
+	// The update check runs in the background and reports only if its result is
+	// already in hand when the command returns: env up must not wait on the
+	// network before it starts the first container.
+	finishUpdateCheck := startUpUpdateCheck(errorJSON)
+	defer finishUpdateCheck()
+
 	startedAt := time.Now()
 
 	quickstart, _ := cmd.Flags().GetBool("quickstart")
