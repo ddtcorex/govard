@@ -203,16 +203,25 @@ func GetFrameworkSyncNoiseExcludes(framework string) []string {
 	return appendStrings(excludes, frameworkManifest.Shared.Sync.FallbackNoiseExcludes)
 }
 
+// govardOwnedSyncPaths are Govard's own project files. They belong to no
+// framework, so they are listed here rather than in the manifest.
+var govardOwnedSyncPaths = []string{".govard*.yml", ".govard/"}
+
 // GetSyncProtectedExcludes returns the paths a destructive sync must never
 // remove from either endpoint: source control, local secrets, installed
 // dependencies, and the paths the framework itself declares as local only
 // (its clone excludes: env.php and its crypt key for Magento, wp-config.php for
 // WordPress). None of them can be regenerated from a deploy release.
 //
+// They are passed to rsync as excludes, which both protects them from deletion
+// and keeps them out of the transfer, so a run with --delete does not copy them
+// either. The framework paths are anchored to the transfer root ("/var"): they
+// name the project's own directories, and an unanchored "var" would also exclude
+// every nested directory that merely shares the name. Source control and secrets
+// stay unanchored on purpose, since a nested checkout or .env is as unrecoverable.
+//
 // Unlike GetFrameworkSyncNoiseExcludes it carries none of the framework noise
 // filters -- those are what `--no-noise` is for, and they stay opt in.
-var govardOwnedSyncPaths = []string{".govard*.yml", ".govard/"}
-
 func GetSyncProtectedExcludes(framework string) []string {
 	loadFrameworkTablesManifest()
 
@@ -225,7 +234,13 @@ func GetSyncProtectedExcludes(framework string) []string {
 	// directory always is), which makes them deletion candidates on every pull.
 	patterns = append(patterns, govardOwnedSyncPaths...)
 	if config, ok := getFrameworkManifestConfig(framework); ok {
-		patterns = append(patterns, config.Sync.CloneExcludes...)
+		for _, path := range config.Sync.CloneExcludes {
+			path = strings.TrimSpace(path)
+			if path != "" && !strings.HasPrefix(path, "/") {
+				path = "/" + path
+			}
+			patterns = append(patterns, path)
+		}
 	}
 
 	excludes := make([]string, 0, len(patterns))
