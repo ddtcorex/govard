@@ -306,6 +306,8 @@ To download everything, use `--media all`. To sync only CSS/JS/Fonts, use `--med
 `--delete` combined with `--db` surfaces policy warnings. Production remotes are write-protected by default and will block destructive writes. Protection covers **writes**, not reads: `db info` or `db top` from a protected remote are still allowed (`db dump` stays allowed too — it only creates a new archive file on the remote), and only a write into it — `db import` without `--stream-db` (it writes into the remote; the variant with that flag only reads the remote's dump and writes **your local** database), `db query`, `db connect`, `snapshot push` — is refused.
 :::
 
+`--delete` never removes what a project cannot regenerate from a deploy release: `.git/`, `.idea/`, `.vscode/`, `node_modules/`, `.DS_Store`, `thumbs.db`, `.env`, `*.pem`, `*.key` and `auth.json` are always passed to rsync as excludes when deletion is enabled, in both directions, together with the paths the framework itself declares as local only (for Magento that is `app/etc/env.php`, `generated`, `pub/static` and `var`; for WordPress `wp-config.php`). Govard's own project files (`.govard*.yml` and the `.govard/` state directory) are on the list as well, because a deploy release never carries them. The list does not need `--no-noise`; the noise and PII filters stay opt-in.
+
 ### Integration with `bootstrap`
 
 `govard bootstrap` uses the same sync/filter flags for environment initialization:

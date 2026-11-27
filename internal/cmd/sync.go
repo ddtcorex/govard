@@ -218,21 +218,6 @@ Case Studies:
 			files = true
 		}
 
-		plan := remote.BuildSyncPlan(remote.SyncOptions{
-			Source:      source,
-			Destination: destination,
-			Files:       files,
-			Media:       mediaMode,
-			DB:          database,
-			Delete:      deleteFiles,
-			Resume:      resumeTransfers,
-			NoCompress:  noCompress,
-			NoNoise:     noNoise,
-			NoPII:       noPII,
-			Path:        path,
-			Include:     includePatterns,
-			Exclude:     excludePatterns,
-		})
 		execOpts := SyncExecutionOptions{
 			Files:      files,
 			Media:      mediaMode,
@@ -251,7 +236,7 @@ Case Studies:
 		endpoints, err := resolveSyncEndpoints(config, source, destination)
 		if err != nil {
 			if planOnly {
-				for _, line := range buildFallbackSyncPlanSummary(source, destination, execOpts, plan, err) {
+				for _, line := range buildFallbackSyncPlanSummary(source, destination, execOpts, err) {
 					fmt.Fprintln(cmd.OutOrStdout(), line)
 				}
 				auditStatus = remote.RemoteAuditStatusPlan
