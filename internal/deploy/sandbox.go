@@ -85,6 +85,11 @@ type SandboxRequirements struct {
 	// Services are init services started inside the container before sshd
 	// (a database a migration step needs, a cache a cache-flush needs).
 	Services []string
+	// ServicesExplicit reports that the project set `sandbox_services` itself,
+	// including to an empty list. The `full` profile names the database and the
+	// cache it installs, but only when the project has not answered the question
+	// already: an explicit list is the project saying what to start.
+	ServicesExplicit bool
 	// Tools are binaries the image installs on top of the distribution's
 	// packages, from the engine's closed table (`wp-cli`). The name is data: it
 	// arrives from a recipe and from project configuration, which is exactly why
@@ -115,6 +120,7 @@ func SandboxRequirementsWithSettings(base SandboxRequirements, settings map[stri
 	}
 	if _, ok := settings["sandbox_services"]; ok {
 		resolved.Services = settingsStringList(settings, "sandbox_services")
+		resolved.ServicesExplicit = true
 	}
 	if _, ok := settings["sandbox_tools"]; ok {
 		resolved.Tools = settingsStringList(settings, "sandbox_tools")
@@ -245,6 +251,14 @@ type sandboxService struct {
 	InitScript string
 }
 
+// sandboxFullProfileServices are the init services the `full` profile installs
+// and must therefore start. The database is always MariaDB because a MySQL stack
+// is refused when the request is parsed and rehearsed on that engine instead.
+// The cache is installed by the same profile and a server-written environment
+// file names a cache server for cache and sessions, so a cache that is installed
+// but not running stops the application's own CLI on the target.
+var sandboxFullProfileServices = []string{"mariadb", "redis-server"}
+
 var sandboxServices = map[string]sandboxService{
 	"postgresql": {
 		Package: "postgresql",
@@ -366,6 +380,16 @@ func SandboxDockerfile(spec SandboxSpec) (string, error) {
 	}
 
 	services := sortedSandboxWords(requirements.Services)
+	// `full` installs a database and a cache, and the entrypoint starts only what
+	// it is named. A framework recipe names them itself; a project on the default
+	// recipe has nothing to name them, which is how a full sandbox came up with
+	// mariadb-server and redis-server installed and neither running, sshd
+	// answering while `sandbox up` waited out its database timeout. The names are
+	// the distribution's init scripts (`/etc/init.d/mariadb`, not `mariadb-server`),
+	// and an explicit `sandbox_services` list is the project's own answer.
+	if resolved == SandboxProfileFull && !requirements.ServicesExplicit {
+		services = sortedSandboxWords(append(services, sandboxFullProfileServices...))
+	}
 	if servesWeb {
 		services = sortedSandboxWords(append(services, sandboxWebService))
 	}

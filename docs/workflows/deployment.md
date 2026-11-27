@@ -1517,10 +1517,12 @@ passes with no hand provisioning; `--no-verify` turns it off for a rehearsal
 that stops at the files, and `--no-seed` is the rehearsal that provides its own
 application instead.
 
-The `full` profile starts a database and a cache, and the Magento recipe names
-both, so a target's `env.php` can point at `127.0.0.1` for MariaDB and Redis/Valkey
-— the shape a server has — instead of being hand-edited to use files. The `basic`
-profile ships neither and advertises no verify URL.
+The `full` profile starts a database and a cache. A framework recipe names both;
+a project whose framework declares no sandbox services gets MariaDB and the cache
+added by the profile, unless its own `sandbox_services` list says otherwise. A
+target's `env.php` can then point at `127.0.0.1` for MariaDB and Redis/Valkey, the
+shape a server has, instead of being hand-edited to use files. The `basic` profile
+ships neither and advertises no verify URL.
 
 When the project enables the RabbitMQ queue service, its management UI is
 reachable at `project.test:15672` through the shared proxy. That port is
