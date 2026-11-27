@@ -435,24 +435,23 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 				target := ResolveUpProxyTarget(context.Config)
 				allDomains := context.Config.AllDomains()
 
-				var proxyErr error
-				if len(allDomains) > 0 {
-					proxyErr = proxy.RegisterDomains(allDomains, target)
+				registration := proxy.EnvironmentRegistration{
+					Domains:      allDomains,
+					DomainTarget: target,
+				}
+				if context.Config.Stack.Features.Search {
+					registration.SearchDomains = allDomains
+					registration.SearchTarget = ResolveUpSearchProxyTarget(context.Config)
+				}
+				if context.Config.Stack.Services.Queue == conventions.ServiceRabbitMQ {
+					registration.RabbitMQDomains = allDomains
+					registration.RabbitMQTarget = ResolveUpRabbitMQProxyTarget(context.Config)
 				}
 
-				if context.Config.Stack.Features.Search && len(allDomains) > 0 {
-					searchTarget := ResolveUpSearchProxyTarget(context.Config)
-					if searchErr := proxy.RegisterSearchDomains(allDomains, searchTarget); searchErr != nil {
-						pterm.Warning.Printf("Could not register search proxy route: %v\n", searchErr)
-					}
-				}
-
-				if context.Config.Stack.Services.Queue == conventions.ServiceRabbitMQ && len(allDomains) > 0 {
-					rabbitmqTarget := ResolveUpRabbitMQProxyTarget(context.Config)
-					if rabbitmqErr := proxy.RegisterRabbitMQDomains(allDomains, rabbitmqTarget); rabbitmqErr != nil {
-						pterm.Warning.Printf("Could not register RabbitMQ proxy route: %v\n", rabbitmqErr)
-					}
-				}
+				// One read and one write for every route family: each Caddy Admin API
+				// trip is a `docker exec` round, and three separate calls also meant a
+				// failure in one family still left the others written.
+				proxyErr := proxy.RegisterEnvironment(registration)
 
 				var wg sync.WaitGroup
 				for _, domain := range allDomains {

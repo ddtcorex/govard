@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"govard/internal/conventions"
 	"os/exec"
@@ -38,6 +40,12 @@ type FrontendRegistration struct {
 
 var caddyExecRunner = runCaddyExec
 
+// caddyExecRunnerWithStdin is the seam every config read and write uses: the
+// JSON payload travels on stdin, so it never appears in a process argument
+// list (argv is world readable for the life of the process) and never has to be
+// escaped for a shell.
+var caddyExecRunnerWithStdin = runCaddyExecWithStdin
+
 var initCaddyCommandRunner = func(container string, initJSON string) error {
 	_, err := caddyExecRunner(container, "curl", "-sS", "--fail", "-X", "POST",
 		fmt.Sprintf("%s/load", caddyAdminAPI),
@@ -50,6 +58,10 @@ var initCaddyCommandRunner = func(container string, initJSON string) error {
 }
 
 func runCaddyExec(container string, args ...string) ([]byte, error) {
+	return runCaddyExecWithStdin(container, nil, args...)
+}
+
+func runCaddyExecWithStdin(container string, stdin []byte, args ...string) ([]byte, error) {
 	dockerArgs := []string{"exec", "-i", container}
 	dockerArgs = append(dockerArgs, args...)
 
@@ -58,6 +70,9 @@ func runCaddyExec(container string, args ...string) ([]byte, error) {
 
 	for attempt := 1; attempt <= caddyExecRetryAttempts; attempt++ {
 		cmd := exec.Command("docker", dockerArgs...)
+		if len(stdin) > 0 {
+			cmd.Stdin = bytes.NewReader(stdin)
+		}
 		output, err := cmd.CombinedOutput()
 		if err == nil {
 			return output, nil
@@ -110,131 +125,134 @@ func RegisterDomain(domain string, targetContainer string) error {
 }
 
 func RegisterDomains(domains []string, targetContainer string) error {
-	proxyContainer := "govard-proxy-caddy"
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil || len(config) == 0 {
-		if err := initCaddy(proxyContainer); err != nil {
-			return err
+	return updateCaddyConfig("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		changed := ensureTLSConfig(config)
+		for _, domain := range domains {
+			if strings.HasSuffix(domain, ".test") {
+				policies, ok := config["apps"].(map[string]interface{})["tls"].(map[string]interface{})["automation"].(map[string]interface{})["policies"].([]interface{})
+				if ok {
+					newPolicies, policyChanged := ensurePolicySubject(policies, domain, changed)
+					if policyChanged {
+						config["apps"].(map[string]interface{})["tls"].(map[string]interface{})["automation"].(map[string]interface{})["policies"] = newPolicies
+						changed = true
+					}
+				}
+			}
+
+			if upsertDomainRoute(config, domain, targetContainer) {
+				changed = true
+			}
 		}
-		config, err = fetchCaddyConfig(proxyContainer)
-		if err != nil {
-			return err
-		}
+		return changed
+	})
+}
+
+// EnvironmentRegistration is every route family one `env up` registers for a
+// project. Applying them in one update means one config read and one write
+// instead of three of each: each trip costs a `docker exec` round to the proxy.
+type EnvironmentRegistration struct {
+	Domains         []string
+	DomainTarget    string
+	SearchDomains   []string
+	SearchTarget    string
+	RabbitMQDomains []string
+	RabbitMQTarget  string
+}
+
+// RegisterEnvironment applies the TLS policy, the application routes, the search
+// route and the queue route in a single guarded write. A failure in one family
+// fails the whole registration, which is what the previous three independent
+// calls silently did not: one failing family still left the others written.
+func RegisterEnvironment(registration EnvironmentRegistration) error {
+	if len(registration.Domains) == 0 && len(registration.SearchDomains) == 0 && len(registration.RabbitMQDomains) == 0 {
+		return nil
 	}
 
-	changed := ensureTLSConfig(config)
-	for _, domain := range domains {
-		if strings.HasSuffix(domain, ".test") {
-			policies, ok := config["apps"].(map[string]interface{})["tls"].(map[string]interface{})["automation"].(map[string]interface{})["policies"].([]interface{})
-			if ok {
-				newPolicies, policyChanged := ensurePolicySubject(policies, domain, changed)
-				if policyChanged {
-					config["apps"].(map[string]interface{})["tls"].(map[string]interface{})["automation"].(map[string]interface{})["policies"] = newPolicies
+	return updateCaddyConfig("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		changed := ensureTLSConfig(config)
+
+		for _, domain := range registration.Domains {
+			if strings.HasSuffix(domain, ".test") {
+				policies, ok := config["apps"].(map[string]interface{})["tls"].(map[string]interface{})["automation"].(map[string]interface{})["policies"].([]interface{})
+				if ok {
+					newPolicies, policyChanged := ensurePolicySubject(policies, domain, changed)
+					if policyChanged {
+						config["apps"].(map[string]interface{})["tls"].(map[string]interface{})["automation"].(map[string]interface{})["policies"] = newPolicies
+						changed = true
+					}
+				}
+			}
+			if upsertDomainRoute(config, domain, registration.DomainTarget) {
+				changed = true
+			}
+		}
+
+		if len(registration.SearchDomains) > 0 {
+			if ensureSearchServerConfig(config) {
+				changed = true
+			}
+			for _, domain := range registration.SearchDomains {
+				if upsertSearchRoute(config, domain, registration.SearchTarget) {
 					changed = true
 				}
 			}
 		}
 
-		if upsertDomainRoute(config, domain, targetContainer) {
-			changed = true
+		if len(registration.RabbitMQDomains) > 0 {
+			if ensureRabbitMQServerConfig(config) {
+				changed = true
+			}
+			for _, domain := range registration.RabbitMQDomains {
+				if upsertRabbitMQRoute(config, domain, registration.RabbitMQTarget) {
+					changed = true
+				}
+			}
 		}
-	}
 
-	if !changed {
-		return nil
-	}
-	return loadCaddyConfig(proxyContainer, config)
+		return changed
+	})
 }
 
 func UnregisterDomain(domain string) error {
-	proxyContainer := "govard-proxy-caddy"
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil {
-		return nil
-	}
-
-	if !removeDomainRoute(config, domain) {
-		return nil
-	}
-	return loadCaddyConfig(proxyContainer, config)
+	return updateCaddyConfigIfAvailable("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		return removeDomainRoute(config, domain)
+	})
 }
 
 func RegisterSearchDomains(domains []string, targetContainer string) error {
-	proxyContainer := "govard-proxy-caddy"
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil || len(config) == 0 {
-		if err := initCaddy(proxyContainer); err != nil {
-			return err
+	return updateCaddyConfig("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		changed := ensureSearchServerConfig(config)
+		for _, domain := range domains {
+			if upsertSearchRoute(config, domain, targetContainer) {
+				changed = true
+			}
 		}
-		config, err = fetchCaddyConfig(proxyContainer)
-		if err != nil {
-			return err
-		}
-	}
-
-	changed := ensureSearchServerConfig(config)
-	for _, domain := range domains {
-		if upsertSearchRoute(config, domain, targetContainer) {
-			changed = true
-		}
-	}
-
-	if !changed {
-		return nil
-	}
-	return loadCaddyConfig(proxyContainer, config)
+		return changed
+	})
 }
 
 func UnregisterSearchDomain(domain string) error {
-	proxyContainer := "govard-proxy-caddy"
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil {
-		return nil
-	}
-
-	if !removeSearchRoute(config, domain) {
-		return nil
-	}
-	return loadCaddyConfig(proxyContainer, config)
+	return updateCaddyConfigIfAvailable("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		return removeSearchRoute(config, domain)
+	})
 }
 
 func RegisterRabbitMQDomains(domains []string, targetContainer string) error {
-	proxyContainer := "govard-proxy-caddy"
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil || len(config) == 0 {
-		if err := initCaddy(proxyContainer); err != nil {
-			return err
+	return updateCaddyConfig("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		changed := ensureRabbitMQServerConfig(config)
+		for _, domain := range domains {
+			if upsertRabbitMQRoute(config, domain, targetContainer) {
+				changed = true
+			}
 		}
-		config, err = fetchCaddyConfig(proxyContainer)
-		if err != nil {
-			return err
-		}
-	}
-
-	changed := ensureRabbitMQServerConfig(config)
-	for _, domain := range domains {
-		if upsertRabbitMQRoute(config, domain, targetContainer) {
-			changed = true
-		}
-	}
-
-	if !changed {
-		return nil
-	}
-	return loadCaddyConfig(proxyContainer, config)
+		return changed
+	})
 }
 
 func UnregisterRabbitMQDomain(domain string) error {
-	proxyContainer := "govard-proxy-caddy"
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil {
-		return nil
-	}
-
-	if !removeRabbitMQRoute(config, domain) {
-		return nil
-	}
-	return loadCaddyConfig(proxyContainer, config)
+	return updateCaddyConfigIfAvailable("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		return removeRabbitMQRoute(config, domain)
+	})
 }
 
 // RegisterFrontend installs the active runtime's path route and optional HTML
@@ -244,15 +262,9 @@ func RegisterFrontend(registration FrontendRegistration) error {
 	if err := validateFrontendRegistration(registration); err != nil {
 		return err
 	}
-	proxyContainer := "govard-proxy-caddy"
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil {
-		return err
-	}
-	if upsertFrontendRegistration(config, registration) {
-		return loadCaddyConfig(proxyContainer, config)
-	}
-	return nil
+	return updateCaddyConfig("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		return upsertFrontendRegistration(config, registration)
+	})
 }
 
 // UnregisterFrontend removes every Caddy route owned by a project frontend
@@ -261,65 +273,178 @@ func UnregisterFrontend(projectName string) error {
 	if strings.TrimSpace(projectName) == "" {
 		return fmt.Errorf("frontend proxy project name cannot be empty")
 	}
-	proxyContainer := "govard-proxy-caddy"
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil {
-		return err
-	}
-	if removeFrontendRegistration(config, projectName) {
-		return loadCaddyConfig(proxyContainer, config)
-	}
-	return nil
+	return updateCaddyConfig("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		return removeFrontendRegistration(config, projectName)
+	})
 }
 
 func EnsureTLS() error {
-	proxyContainer := "govard-proxy-caddy"
-
-	config, err := fetchCaddyConfig(proxyContainer)
-	if err != nil || len(config) == 0 {
-		return initCaddy(proxyContainer)
-	}
-
-	changed := ensureTLSConfig(config)
-	if !changed {
-		return nil
-	}
-
-	return loadCaddyConfig(proxyContainer, config)
+	return updateCaddyConfig("govard-proxy-caddy", func(config map[string]interface{}) bool {
+		return ensureTLSConfig(config)
+	})
 }
 
-func fetchCaddyConfig(container string) (map[string]interface{}, error) {
-	output, err := caddyExecRunner(container, "curl", "-sS", "--fail", fmt.Sprintf("%s/config/", caddyAdminAPI))
+// caddyUpdateAttempts bounds the write retries. Two writers racing on the same
+// document must not loop forever: five conflicts in a row is a stuck proxy or a
+// third party rewriting the config, and that is reported rather than retried.
+const caddyUpdateAttempts = 5
+
+// errCaddyConfigConflict marks a write Caddy refused because the ETag it was
+// given no longer matches the live config.
+var errCaddyConfigConflict = errors.New("caddy config changed concurrently")
+
+// caddyUpdateBackoff waits before the next write attempt. Jittered by attempt
+// count so two retrying writers do not line up again.
+var caddyUpdateBackoff = func(attempt int) {
+	time.Sleep(time.Duration(attempt) * 10 * time.Millisecond)
+}
+
+// errCaddyConfigUnavailable marks a fetch that could not read the proxy. The
+// unregister paths treat it as "nothing to remove" so a teardown does not fail
+// because the proxy is already gone.
+var errCaddyConfigUnavailable = errors.New("caddy admin api unavailable")
+
+// fetchCaddyConfigWithETag reads the whole Caddy config together with the ETag
+// Caddy computed for it. That ETag is the version token the next write has to
+// match, and it is what makes a read-modify-write safe against two projects
+// registering a route at the same time.
+func fetchCaddyConfigWithETag(container string) (map[string]interface{}, string, error) {
+	output, err := caddyExecRunnerWithStdin(container, nil, "curl", "-sS", "--fail", "-i", fmt.Sprintf("%s/config/", caddyAdminAPI))
 	if err != nil {
-		return nil, fmt.Errorf("fetch caddy config: %w", err)
-	}
-	if len(output) == 0 {
-		return map[string]interface{}{}, nil
+		return nil, "", fmt.Errorf("%w: fetch caddy config: %w", errCaddyConfigUnavailable, err)
 	}
 
-	var config map[string]interface{}
-	if err := json.Unmarshal(output, &config); err != nil {
-		return nil, err
+	headers, body := splitCaddyHTTPResponse(output)
+	config := map[string]interface{}{}
+	if len(bytes.TrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &config); err != nil {
+			return nil, "", fmt.Errorf("decode caddy config: %w", err)
+		}
 	}
 	if config == nil {
 		config = map[string]interface{}{}
 	}
-	return config, nil
+	return config, headers["etag"], nil
 }
 
-func loadCaddyConfig(container string, config map[string]interface{}) error {
+// splitCaddyHTTPResponse separates the header block curl -i printed from the
+// body. Header names are lower-cased; the body is returned untouched.
+func splitCaddyHTTPResponse(raw []byte) (map[string]string, []byte) {
+	headers := map[string]string{}
+	separator := []byte("\r\n\r\n")
+	index := bytes.Index(raw, separator)
+	headerBlock := raw
+	var body []byte
+	if index >= 0 {
+		headerBlock = raw[:index]
+		body = raw[index+len(separator):]
+	}
+
+	for i, line := range strings.Split(string(headerBlock), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if i == 0 || line == "" {
+			continue
+		}
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		headers[strings.ToLower(strings.TrimSpace(name))] = strings.TrimSpace(value)
+	}
+	return headers, body
+}
+
+// postCaddyConfig writes the whole config to /config/, which is the endpoint
+// that honours If-Match (/load ignores it and always replaces the document).
+// The status code is read from curl rather than from --fail so a 412, which is
+// the expected outcome of a lost race, is distinguishable from a real failure.
+func postCaddyConfig(container string, config map[string]interface{}, etag string) error {
 	payload, err := json.Marshal(config)
 	if err != nil {
 		return err
 	}
 
-	if _, err := caddyExecRunner(container, "curl", "-sS", "--fail", "-X", "POST",
-		fmt.Sprintf("%s/load", caddyAdminAPI),
-		"-H", "Content-Type: application/json",
-		"-d", string(payload)); err != nil {
-		return fmt.Errorf("caddy load failed: %w", err)
+	args := []string{"curl", "-sS", "-X", "POST",
+		fmt.Sprintf("%s/config/", caddyAdminAPI),
+		"-H", "Content-Type: application/json"}
+	// Without an ETag there is nothing to guard against, so the write degrades to
+	// last writer wins rather than refusing: a proxy that returns no ETag (an old
+	// build, or a config served by something in front of it) would otherwise never
+	// register a route at all.
+	if etag != "" {
+		args = append(args, "-H", "If-Match: "+etag)
 	}
-	return nil
+	args = append(args, "-d", "@-", "-o", "/dev/null", "-w", "%{http_code}")
+
+	output, err := caddyExecRunnerWithStdin(container, payload, args...)
+	if err != nil {
+		return fmt.Errorf("caddy config write failed: %w", err)
+	}
+
+	status := strings.TrimSpace(string(output))
+	switch {
+	case status == "" || strings.HasPrefix(status, "2"):
+		return nil
+	case status == "412":
+		return errCaddyConfigConflict
+	default:
+		return fmt.Errorf("caddy config write rejected with HTTP %s", status)
+	}
+}
+
+// updateCaddyConfig applies mutate to the live config and writes it back only
+// when mutate reports a change, guarded by the ETag of the document it read. On
+// 412 another writer won the race, so the fetch and the mutation are repeated
+// against the new document, at most caddyUpdateAttempts times.
+func updateCaddyConfig(container string, mutate func(map[string]interface{}) bool) error {
+	for attempt := 1; attempt <= caddyUpdateAttempts; attempt++ {
+		config, etag, err := fetchCaddyConfigWithETag(container)
+		if err != nil {
+			return err
+		}
+
+		if len(config) == 0 {
+			// A proxy that has never been configured: the initial full /load is
+			// the only way to seed it, and that is what initCaddy is for.
+			if initErr := initCaddy(container); initErr != nil {
+				return initErr
+			}
+			config, etag, err = fetchCaddyConfigWithETag(container)
+			if err != nil {
+				return err
+			}
+		}
+
+		if !mutate(config) {
+			return nil
+		}
+
+		err = postCaddyConfig(container, config, etag)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errCaddyConfigConflict) {
+			return err
+		}
+		// Back off between attempts: without it the five retries are a spin, and a
+		// writer that is a millisecond behind never gets a clear window.
+		if attempt < caddyUpdateAttempts {
+			caddyUpdateBackoff(attempt)
+		}
+	}
+
+	return fmt.Errorf("caddy config changed concurrently on all %d attempts", caddyUpdateAttempts)
+}
+
+// updateCaddyConfigIfAvailable is updateCaddyConfig for the unregister paths: a
+// proxy that cannot be read has no route to remove, and a teardown must not
+// fail because of it.
+func updateCaddyConfigIfAvailable(container string, mutate func(map[string]interface{}) bool) error {
+	err := updateCaddyConfig(container, mutate)
+	if errors.Is(err, errCaddyConfigUnavailable) {
+		return nil
+	}
+	return err
 }
 
 func upsertRoute(config map[string]interface{}, serverName string, domain string, targetContainer string, defaultPort int, idPrefix string) bool {
@@ -1062,9 +1187,4 @@ func SetCaddyExecRunnerForTest(fn func(container string, args ...string) ([]byte
 		caddyExecRunner = fn
 	}
 	return func() { caddyExecRunner = previous }
-}
-
-// LoadCaddyConfigForTest invokes a Caddy Admin API config load.
-func LoadCaddyConfigForTest(container string, config map[string]interface{}) error {
-	return loadCaddyConfig(container, config)
 }
