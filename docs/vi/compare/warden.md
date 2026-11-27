@@ -28,14 +28,15 @@ benchmark phải chạy CLI của Warden trong container thay vì xin sudo trên
 
 ## Hai bên đo ra sao
 
-Cùng một fixture, cùng một máy, cùng một khung giờ, mỗi bên ba lần sau một lần
-warm-up bị loại bỏ. Bảng đầy đủ và các khoảng min-max nằm ở
-[trang benchmark](/vi/workflows/benchmark).
+Cùng công thức fixture, cùng một máy, mỗi bên ba lần sau một lần warm-up bị loại
+bỏ. Mọi dòng trừ Stop là mốc 2026-11-04; Stop được đo lại ngày 2026-11-27 sau bản
+sửa teardown, và ghi chú dưới bảng nói rõ vì sao. Bảng đầy đủ và các khoảng
+min-max nằm ở [trang benchmark](/vi/workflows/benchmark).
 
 | Chỉ số | Govard | Warden | Đọc thế nào |
 | :--- | ---: | ---: | :--- |
 | Start, tới khi storefront trả lời | 11,0 s | 11,6 s | gần nhau |
-| Stop | 11,2 s | 3,7 s | Warden nhanh hơn khoảng ba lần |
+| Stop | 4,0 s | 3,7 s | ngang nhau, xem ghi chú |
 | TTFB p50, cache như mặc định | 14,2 ms | 13,5 ms | gần nhau |
 | TTFB p50, bỏ qua cache | 250,6 ms | 495,7 ms | Govard nhanh hơn khoảng hai lần ở lượt render nguội |
 | Static deploy | 4,3 s | 7,7 s | Govard nhanh hơn |
@@ -43,10 +44,17 @@ warm-up bị loại bỏ. Bảng đầy đủ và các khoảng min-max nằm �
 | Bộ nhớ đỉnh, trạng thái ổn định | 1.601 MB | 1.020 MB | Warden dùng ít hơn |
 | Chi phí wrapper CLI | 46 ms | 213 ms | xem lưu ý bên dưới |
 
-Hai dòng cần lưu ý trước khi trích dẫn:
+**Stop, đính chính.** Con số 11,2 s mà dòng này từng mang đo một lỗi, không phải
+cái giá của việc dọn nhiều thứ hơn: một container, varnish, treo trong đường
+shutdown cho tới khi Docker giết nó ở grace mặc định 10 s. Blueprint giới hạn
+grace đó ở 2 s (#695, v1.84.0-beta.3), và nhánh govard đo lại ngày 2026-11-27 bằng
+cùng harness, cùng máy cho 3.978 ms (2.961-4.122 ms), so với 3.706 ms của Warden.
+Start không đổi theo chiều nào: 10.627 ms so với 11.044 ms vẫn nằm trong khoảng.
+Các dòng của Warden không được đo lại, vì máy này không cài CLI của nó; khung đo
+lệch mốc được nói rõ chứ không giấu.
 
-- **Stop.** `env down` của Govard mất 11,2 s so với 3,7 s của Warden. Nó dọn
-  nhiều thứ hơn, và trang này không tô hồng con số đó.
+Một dòng cần lưu ý trước khi trích dẫn:
+
 - **Chi phí CLI.** 213 ms của Warden bao gồm việc chạy CLI trong container, cách
   duy nhất để nhánh này hoạt động mà không cần root trên máy đo. Cài native sẽ
   không phải trả khoản đó.
