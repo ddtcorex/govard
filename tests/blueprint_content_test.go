@@ -1278,3 +1278,28 @@ func setTestGovardHome(t *testing.T, root string) string {
 	t.Setenv("GOVARD_HOME_DIR", homeDir)
 	return homeDir
 }
+
+// The varnish 8.x child does not release its references after serving traffic
+// ("shutdown waiting for 1 reference on boot") and never finishes shutting
+// down, so every teardown paid Docker's default 10s grace period and then a
+// SIGKILL. Storage is malloc, so the kill discards cache only.
+func TestVarnishBlueprintCapsStopGracePeriod(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "internal", "blueprints", "files", "includes", "varnish.yml"))
+	if err != nil {
+		t.Fatalf("read varnish blueprint: %v", err)
+	}
+	content := string(raw)
+
+	varnishStart := strings.Index(content, "  varnish:")
+	if varnishStart < 0 {
+		t.Fatal("varnish blueprint has no varnish service")
+	}
+	end := strings.Index(content[varnishStart:], "{{ end }}")
+	if end < 0 {
+		t.Fatal("varnish blueprint has no closing template action")
+	}
+	service := content[varnishStart : varnishStart+end]
+	if !strings.Contains(service, "\n    stop_grace_period: 2s\n") {
+		t.Fatalf("varnish service does not cap its stop grace period:\n%s", service)
+	}
+}
