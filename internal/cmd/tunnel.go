@@ -301,8 +301,7 @@ Prerequisite: You must have 'cloudflared' installed and available in your PATH.`
 								// hides it. Say where the admin moved to, using the
 								// framework's own declared admin path.
 								adminPath := frameworks.DefaultAdminPath(config.Framework)
-								pterm.Info.Printf("While the tunnel runs, open the admin at https://%s/%s; the local domain serves the storefront only.\n",
-									hostSlot.get(), adminPath)
+								pterm.Info.Println(tunnelAdminNotice(hostSlot.get(), adminPath))
 								// Frameworks with no stock admin route say so instead of
 								// sending the operator to a path that 404s.
 								if notice := frameworks.AdminPathNotice(config.Framework, adminPath); notice != "" {
@@ -705,4 +704,12 @@ func revertTunnelBaseURLOnStop(revert func() error) {
 	if err := revert(); err != nil {
 		pterm.Warning.Printf("base URL was not reverted: %v\n", err)
 	}
+}
+
+// tunnelAdminNotice says where the admin is reachable while the tunnel's base URL
+// rewrite is active. The path is the framework's declared default: a store with a
+// custom admin URL (Magento's backend front name) is not detected, so the notice
+// says so instead of sending the operator to a path that may 404.
+func tunnelAdminNotice(tunnelHost, adminPath string) string {
+	return fmt.Sprintf("While the tunnel runs, open the admin at https://%s/%s (the framework's default admin path; a custom admin URL is not detected). The local domain serves the storefront only.", tunnelHost, adminPath)
 }
