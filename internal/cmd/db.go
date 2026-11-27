@@ -673,10 +673,10 @@ func buildDBDumpCommand(config engine.Config, options dbCommandOptions) (*exec.C
 		// dirname substitution is double-quoted so a path with spaces stays a
 		// single argument.
 		remoteCmd := fmt.Sprintf("umask 077; mkdir -p \"$(dirname %s)\" && { %s; } > %s", quotedFile, dumpStr, quotedFile)
-		return remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, remoteCmd), remoteFile, nil
+		return sshScriptCommand(options.Environment, remoteCfg, remoteCmd), remoteFile, nil
 	}
 
-	return remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, dumpStr), "", nil
+	return sshScriptCommand(options.Environment, remoteCfg, dumpStr), "", nil
 }
 
 // buildDBImportCommand also returns a finalizePoller for the resolved import
@@ -702,7 +702,15 @@ func buildDBImportCommand(config engine.Config, options dbCommandOptions) (*exec
 		pterm.Warning.Println(formatRemoteDBProbeWarning(options.Environment, probeErr))
 	}
 	poller := &finalizePoller{config: config, remoteName: options.Environment, remoteCfg: remoteCfg, credentials: credentials, noNoise: options.NoNoise, noPII: options.NoPII}
-	return remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, buildRemoteMySQLImportCommandString(credentials)), poller, nil
+
+	// The import reads the SQL from stdin, so the script cannot travel there: it
+	// is staged on the remote first and removed when it finishes, which keeps the
+	// credential out of the argument list of both commands.
+	scriptPath, err := stageRemoteScript(options.Environment, remoteCfg, buildRemoteMySQLImportCommandString(credentials))
+	if err != nil {
+		return nil, nil, err
+	}
+	return remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, remoteScriptCleanup(scriptPath)), poller, nil
 }
 
 func dbContainerName(config engine.Config) string {
@@ -1193,6 +1201,24 @@ func BuildDBDumpCommandForTest(config engine.Config, options DBCommandOptions) (
 		return nil, err
 	}
 	return command.Args, nil
+}
+
+// BuildDBDumpCommandWithScriptForTest exposes the dump command args together with
+// the remote script when it travels on stdin, so a test can assert on both.
+func BuildDBDumpCommandWithScriptForTest(config engine.Config, options DBCommandOptions) ([]string, string, error) {
+	command, _, err := buildDBDumpCommand(config, options)
+	if err != nil {
+		return nil, "", err
+	}
+	script := ""
+	if command.Stdin != nil {
+		contents, readErr := io.ReadAll(command.Stdin)
+		if readErr != nil {
+			return nil, "", readErr
+		}
+		script = string(contents)
+	}
+	return command.Args, script, nil
 }
 
 // BuildDBImportCommandForTest exposes buildDBImportCommand args for tests in /tests.

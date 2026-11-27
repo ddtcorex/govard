@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
@@ -302,7 +306,7 @@ func getPostgresDatabaseSize(config engine.Config, remoteName string, remoteCfg 
 		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
 		output, err = exec.Command("docker", "exec", containerName, "sh", "-c", cmdStr).CombinedOutput()
 	} else {
-		sshCmd := remote.BuildSSHExecCommand(remoteName, remoteCfg, true, cmdStr)
+		sshCmd := sshScriptCommand(remoteName, remoteCfg, cmdStr)
 		output, err = sshCmd.CombinedOutput()
 	}
 	if err != nil {
@@ -531,6 +535,75 @@ func buildRemoteMySQLImportCommandString(credentials dbCredentials) string {
 	return credentials.mysqlPasswordPrefix() + strings.Join(args, " ")
 }
 
+// withPasswordInEnv is the docker exec form of the credential hand-off: the
+// variable is passed by name and its value comes from the docker CLI's own
+// environment, so the secret is never in the argument list.
+func withPasswordInEnv(cmd *exec.Cmd, credentials dbCredentials) *exec.Cmd {
+	if strings.TrimSpace(credentials.Password) == "" {
+		return cmd
+	}
+	cmd.Env = append(os.Environ(), "MYSQL_PWD="+credentials.Password)
+	return cmd
+}
+
+// withoutPassword strips the credential from the struct so a script rendered from
+// it carries no secret; the value travels in the process environment instead.
+func (c dbCredentials) withoutPassword() dbCredentials {
+	c.Password = ""
+	return c
+}
+
+// runSSHStdin executes a prepared ssh command. A seam so a test can stage a
+// remote script without a server.
+var runSSHStdin = func(cmd *exec.Cmd) ([]byte, error) { return cmd.CombinedOutput() }
+
+// stageRemoteScript copies a script to a private file on the remote over stdin
+// and returns its path, so a command whose own stdin carries data (an import
+// stream) or a terminal (an interactive session) can run the script without the
+// credential ever appearing in an argument list.
+func stageRemoteScript(remoteName string, remoteCfg engine.RemoteConfig, script string) (string, error) {
+	path := fmt.Sprintf("/tmp/govard-%d-%s.sh", os.Getpid(), randomScriptSuffix())
+	keep := remote.BuildSSHStdinCommand(remoteName, remoteCfg, true)
+	keep.Stdin = strings.NewReader("umask 077 && cat > " + engine.ShellQuote(path))
+	if output, err := runSSHStdin(keep); err != nil {
+		return "", fmt.Errorf("stage remote script: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	return path, nil
+}
+
+// SetRemoteScriptStagerForTest replaces the staging call so a test does not need
+// an ssh server. It returns a restore func.
+func SetRemoteScriptStagerForTest(fn func(cmd *exec.Cmd) ([]byte, error)) func() {
+	previous := runSSHStdin
+	if fn != nil {
+		runSSHStdin = fn
+	}
+	return func() { runSSHStdin = previous }
+}
+
+// remoteScriptCleanup is the remote tail that removes a staged script whatever
+// its exit status, and keeps that status.
+func remoteScriptCleanup(path string) string {
+	quoted := engine.ShellQuote(path)
+	return fmt.Sprintf("sh %s; rc=$?; rm -f %s; exit $rc", quoted, quoted)
+}
+
+func randomScriptSuffix() string {
+	buffer := make([]byte, 6)
+	if _, err := rand.Read(buffer); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(buffer)
+}
+
+// sshScriptCommand runs a remote shell script over stdin. Any credential inside
+// the script stays out of both argument lists.
+func sshScriptCommand(remoteName string, remoteCfg engine.RemoteConfig, script string) *exec.Cmd {
+	cmd := remote.BuildSSHStdinCommand(remoteName, remoteCfg, true)
+	cmd.Stdin = strings.NewReader(script)
+	return cmd
+}
+
 func buildLocalDBConnectCommand(containerName string, credentials dbCredentials) *exec.Cmd {
 	if credentials.Engine == conventions.ServicePostgreSQL {
 		return buildLocalPostgresConnectCommand(containerName, credentials)
@@ -538,10 +611,10 @@ func buildLocalDBConnectCommand(containerName string, credentials dbCredentials)
 	credentials = credentials.withDefaults()
 	args := []string{"exec", "-it"}
 	if strings.TrimSpace(credentials.Password) != "" {
-		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
+		args = append(args, "-e", "MYSQL_PWD")
 	}
-	args = append(args, containerName, "sh", "-lc", buildLocalMySQLClientCommandScript(credentials, false))
-	return exec.Command("docker", args...)
+	args = append(args, containerName, "sh", "-lc", buildLocalMySQLClientCommandScript(credentials.withoutPassword(), false))
+	return withPasswordInEnv(exec.Command("docker", args...), credentials)
 }
 
 func buildLocalDBImportCommand(containerName string, credentials dbCredentials) *exec.Cmd {
@@ -551,10 +624,10 @@ func buildLocalDBImportCommand(containerName string, credentials dbCredentials) 
 	credentials = credentials.withDefaults()
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
-		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
+		args = append(args, "-e", "MYSQL_PWD")
 	}
-	args = append(args, containerName, "sh", "-lc", buildLocalMySQLClientCommandScript(credentials, true))
-	return exec.Command("docker", args...)
+	args = append(args, containerName, "sh", "-lc", buildLocalMySQLClientCommandScript(credentials.withoutPassword(), true))
+	return withPasswordInEnv(exec.Command("docker", args...), credentials)
 }
 
 func buildLocalDBDumpCommand(containerName string, credentials dbCredentials, noNoise bool, noPII bool, framework string) *exec.Cmd {
@@ -564,10 +637,10 @@ func buildLocalDBDumpCommand(containerName string, credentials dbCredentials, no
 	credentials = credentials.withDefaults()
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
-		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
+		args = append(args, "-e", "MYSQL_PWD")
 	}
-	args = append(args, containerName, "sh", "-lc", buildLocalMySQLDumpCommandScript(credentials, noNoise, noPII, framework))
-	return exec.Command("docker", args...)
+	args = append(args, containerName, "sh", "-lc", buildLocalMySQLDumpCommandScript(credentials.withoutPassword(), noNoise, noPII, framework))
+	return withPasswordInEnv(exec.Command("docker", args...), credentials)
 }
 
 func buildLocalMySQLDumpCommandScript(credentials dbCredentials, noNoise bool, noPII bool, framework string) string {
@@ -730,10 +803,10 @@ func buildLocalDBQueryCommand(containerName string, credentials dbCredentials, q
 	credentials = credentials.withDefaults()
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
-		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
+		args = append(args, "-e", "MYSQL_PWD")
 	}
-	args = append(args, containerName, "sh", "-lc", buildLocalMySQLQueryCommandScript(credentials, query))
-	return exec.Command("docker", args...)
+	args = append(args, containerName, "sh", "-lc", buildLocalMySQLQueryCommandScript(credentials.withoutPassword(), query))
+	return withPasswordInEnv(exec.Command("docker", args...), credentials)
 }
 
 func buildLocalMySQLQueryCommandScript(credentials dbCredentials, query string) string {
@@ -814,7 +887,7 @@ func GetDatabaseSize(config engine.Config, remoteName string, remoteCfg engine.R
 		containerName := fmt.Sprintf("%s%s", config.ProjectName, conventions.DBSuffix)
 		output, err = exec.Command("docker", "exec", containerName, "sh", "-c", cmdStr).CombinedOutput()
 	} else {
-		sshCmd := remote.BuildSSHExecCommand(remoteName, remoteCfg, true, cmdStr)
+		sshCmd := sshScriptCommand(remoteName, remoteCfg, cmdStr)
 		output, err = sshCmd.CombinedOutput()
 	}
 

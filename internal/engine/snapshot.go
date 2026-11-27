@@ -318,7 +318,7 @@ func buildSnapshotDumpCommand(containerName string, credentials snapshotDBCreden
 	credentials = normalizeSnapshotDBCredentials(credentials)
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
-		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
+		args = append(args, "-e", "MYSQL_PWD")
 	}
 	// Use shell detection for mariadb-dump/mysqldump (mariadb:12.3 only has mariadb-dump).
 	dbArg := "--all-databases"
@@ -327,14 +327,14 @@ func buildSnapshotDumpCommand(containerName string, credentials snapshotDBCreden
 	}
 	dumpCmd := fmt.Sprintf("%s; \"$DUMP_BIN\" -u %s %s", conventions.MySQLDumpBinDetect, credentials.Username, dbArg)
 	args = append(args, containerName, "sh", "-lc", dumpCmd)
-	return exec.Command("docker", args...)
+	return withSnapshotPassword(exec.Command("docker", args...), credentials)
 }
 
 func buildSnapshotImportCommand(containerName string, credentials snapshotDBCredentials) *exec.Cmd {
 	credentials = normalizeSnapshotDBCredentials(credentials)
 	args := []string{"exec", "-i"}
 	if strings.TrimSpace(credentials.Password) != "" {
-		args = append(args, "-e", "MYSQL_PWD="+credentials.Password)
+		args = append(args, "-e", "MYSQL_PWD")
 	}
 	dbArg := ""
 	if strings.TrimSpace(credentials.Database) != "" {
@@ -342,7 +342,18 @@ func buildSnapshotImportCommand(containerName string, credentials snapshotDBCred
 	}
 	importCmd := fmt.Sprintf("%s; \"$DB_CLI\" -u %s%s", conventions.MySQLClientBinDetect, credentials.Username, dbArg)
 	args = append(args, containerName, "sh", "-lc", importCmd)
-	return exec.Command("docker", args...)
+	return withSnapshotPassword(exec.Command("docker", args...), credentials)
+}
+
+// withSnapshotPassword hands the credential to `docker exec -e MYSQL_PWD`
+// through the docker CLI's own environment, so it never appears in the argument
+// list of the dump or import command.
+func withSnapshotPassword(cmd *exec.Cmd, credentials snapshotDBCredentials) *exec.Cmd {
+	if strings.TrimSpace(credentials.Password) == "" {
+		return cmd
+	}
+	cmd.Env = append(os.Environ(), "MYSQL_PWD="+credentials.Password)
+	return cmd
 }
 
 func normalizeSnapshotDBCredentials(credentials snapshotDBCredentials) snapshotDBCredentials {

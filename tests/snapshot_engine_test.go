@@ -59,7 +59,7 @@ func TestBuildSnapshotDumpCommandUsesEnvPassword(t *testing.T) {
 
 	for _, expected := range []string{
 		"docker exec -i",
-		"MYSQL_PWD=secret",
+		"-e MYSQL_PWD",
 		"mariadb-dump",
 		"mysqldump",
 		"DUMP_BIN",
@@ -71,8 +71,8 @@ func TestBuildSnapshotDumpCommandUsesEnvPassword(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(joined, "-psecret") {
-		t.Fatalf("did not expect password to be passed in CLI args: %s", joined)
+	if strings.Contains(joined, "-psecret") || strings.Contains(joined, "secret") {
+		t.Fatalf("did not expect the password in the argument list: %s", joined)
 	}
 }
 
@@ -96,7 +96,7 @@ func TestBuildSnapshotImportCommandUsesEnvPassword(t *testing.T) {
 
 	for _, expected := range []string{
 		"docker exec -i",
-		"MYSQL_PWD=secret",
+		"-e MYSQL_PWD",
 		"DB_CLI",
 		"-u app shop",
 		"sh -lc",

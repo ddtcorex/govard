@@ -12,7 +12,6 @@ import (
 
 	"govard/internal/conventions"
 	"govard/internal/engine"
-	"govard/internal/engine/remote"
 	"govard/internal/ui"
 
 	"github.com/pterm/pterm"
@@ -48,24 +47,7 @@ func runStreamDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 	}
 	localCredentials := resolveLocalDBCredentials(config, containerName)
 	localPoller := &finalizePoller{config: config, remoteName: "local", credentials: localCredentials, noNoise: options.NoNoise, noPII: options.NoPII}
-	if options.Drop {
-		if !options.AssumeYes {
-			if !stdinIsTerminal() {
-				return errors.New("confirmation required to drop and recreate the local database; use -y to assume yes in non-interactive environments")
-			}
-			confirmed, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(true).WithDefaultText("Are you sure you want to drop and recreate the local database?").Show()
-			if !confirmed {
-				return errors.New("stream-db import cancelled by user")
-			}
-		}
-
-		if err := resetLocalDatabase(containerName, localCredentials); err != nil {
-			return err
-		}
-		pterm.Success.Println("Local database reset successful.")
-	}
-
-	sourceDumpCmd := remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, buildRemoteMySQLDumpCommandString(remoteCredentials, options.NoNoise, options.NoPII, config.Framework, true))
+	sourceDumpCmd := sshScriptCommand(options.Environment, remoteCfg, buildRemoteMySQLDumpCommandString(remoteCredentials, options.NoNoise, options.NoPII, config.Framework, true))
 	destinationImportCmd := buildLocalDBImportCommand(containerName, localCredentials)
 	sanitizeStreamDump := options.StreamDB
 	var totalSize int64
@@ -77,38 +59,85 @@ func runStreamDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 		spinner.Warning(fmt.Sprintf("could not determine remote database size: %v", sizeErr))
 	}
 
-	if options.File != "" {
-		targetPath := filepath.Clean(options.File)
-		dumpFile, err := createPrivateDumpFile(targetPath)
-		if err != nil {
-			return fmt.Errorf("create stream dump file: %w", err)
+	// A reset destroys the database this import is about to fill, and --file
+	// overwrites a backup. Neither may depend on a dump that has not arrived
+	// yet, so both are staged through a file: the dump completes first, then the
+	// target file or the reset touches local data, then the import reads it.
+	if !options.Drop && options.File == "" {
+		if err := RunDumpToImportWithProgress(sourceDumpCmd, destinationImportCmd, totalSize, sanitizeStreamDump, cmd.OutOrStdout(), cmd.ErrOrStderr(), localPoller.size); err != nil {
+			return fmt.Errorf("stream-db import failed: %w", err)
 		}
-		if err := runDumpToWriter(sourceDumpCmd, dumpFile, sanitizeStreamDump, cmd.ErrOrStderr()); err != nil {
-			_ = dumpFile.Close()
-			return fmt.Errorf("stream-db dump step failed: %w", err)
-		}
-		if err := dumpFile.Close(); err != nil {
-			return fmt.Errorf("close stream dump file: %w", err)
-		}
-
-		fileReader, err := os.Open(targetPath)
-		if err != nil {
-			return fmt.Errorf("open stream dump file: %w", err)
-		}
-		defer fileReader.Close()
-
-		if err := RunImportFromReaderWithProgress(destinationImportCmd, fileReader, totalSize, false, cmd.OutOrStdout(), cmd.ErrOrStderr(), localPoller.size); err != nil {
-			return fmt.Errorf("stream-db local import step failed: %w", err)
-		}
-
-		pterm.Success.Printf("stream import completed from remote '%s' via file %s.\n", options.Environment, targetPath)
+		pterm.Success.Printf("stream import completed from remote '%s' into local database.\n", options.Environment)
 		return nil
 	}
 
-	if err := RunDumpToImportWithProgress(sourceDumpCmd, destinationImportCmd, totalSize, sanitizeStreamDump, cmd.OutOrStdout(), cmd.ErrOrStderr(), localPoller.size); err != nil {
-		return fmt.Errorf("stream-db import failed: %w", err)
+	// The prompt comes before the download: asking after a full transfer spends
+	// the transfer on an operator who may then say no.
+	if options.Drop && !options.AssumeYes {
+		if !stdinIsTerminal() {
+			return errors.New("confirmation required to drop and recreate the local database; use -y to assume yes in non-interactive environments")
+		}
+		confirmed, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(true).WithDefaultText("Are you sure you want to drop and recreate the local database?").Show()
+		if !confirmed {
+			return errors.New("stream-db import cancelled by user")
+		}
 	}
-	pterm.Success.Printf("stream import completed from remote '%s' into local database.\n", options.Environment)
+
+	targetPath := filepath.Clean(options.File)
+	temporary := options.File == ""
+	if temporary {
+		// The staged dump holds a full database, so it goes under govard's own
+		// temporary directory rather than the OS temp: on most Linux hosts /tmp
+		// is a tmpfs, and a database written there is RAM.
+		tempDir := filepath.Join(engine.GovardHomeDir(), "tmp")
+		if err := os.MkdirAll(tempDir, conventions.SecretDirPerm); err != nil {
+			return fmt.Errorf("create stream dump directory: %w", err)
+		}
+		tempFile, tempErr := os.CreateTemp(tempDir, "stream-db-*.sql")
+		if tempErr != nil {
+			return fmt.Errorf("create temporary stream dump file: %w", tempErr)
+		}
+		targetPath = tempFile.Name()
+		if closeErr := tempFile.Close(); closeErr != nil {
+			return fmt.Errorf("close temporary stream dump file: %w", closeErr)
+		}
+		defer os.Remove(targetPath)
+	}
+
+	// A staged dump left behind by a killed run is harmless and short lived: the
+	// next run truncates its own .partial before writing, and the target file keeps
+	// its previous contents until a dump completes.
+	if err := stageDumpThenReset(
+		func() error { return writeDumpFile(sourceDumpCmd, targetPath, cmd.ErrOrStderr()) },
+		func() error {
+			if !options.Drop {
+				return nil
+			}
+			if err := resetLocalDatabase(containerName, localCredentials); err != nil {
+				return err
+			}
+			pterm.Success.Println("Local database reset successful.")
+			return nil
+		},
+	); err != nil {
+		return err
+	}
+
+	fileReader, err := os.Open(targetPath)
+	if err != nil {
+		return fmt.Errorf("open stream dump file: %w", err)
+	}
+	defer fileReader.Close()
+
+	if err := RunImportFromReaderWithProgress(destinationImportCmd, fileReader, totalSize, false, cmd.OutOrStdout(), cmd.ErrOrStderr(), localPoller.size); err != nil {
+		return fmt.Errorf("stream-db local import step failed: %w", err)
+	}
+
+	if temporary {
+		pterm.Success.Printf("stream import completed from remote '%s' into local database.\n", options.Environment)
+		return nil
+	}
+	pterm.Success.Printf("stream import completed from remote '%s' via file %s.\n", options.Environment, targetPath)
 	return nil
 }
 
@@ -191,6 +220,29 @@ func runDirectDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 		}
 	}
 
+	// The reader comes before the command: buildDBImportCommand probes the local
+	// container (or the remote credentials), and probing first meant a typo in
+	// --file surfaced only after the database had already been dropped.
+	reader, closer, totalSize, err := resolveDBImportReader(options)
+	if err != nil {
+		return err
+	}
+	if closer != nil {
+		defer closer.Close()
+	}
+
+	importCommand, poller, err := buildDBImportCommand(config, options)
+	if err != nil {
+		return err
+	}
+
+	if reader == os.Stdin {
+		pterm.Description.Println("Tip: cat backup.sql | govard db import")
+	}
+
+	// The reset runs last, after every check that can fail without side effects:
+	// the input file is open, the import command and its credentials are built.
+	// Anything that can fail before this point does so with the database intact.
 	if options.Drop {
 		if !options.AssumeYes {
 			if !stdinIsTerminal() {
@@ -220,26 +272,23 @@ func runDirectDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 		pterm.Success.Println("Database reset successful.")
 	}
 
-	importCommand, poller, err := buildDBImportCommand(config, options)
-	if err != nil {
-		return err
-	}
-
-	reader, closer, totalSize, err := resolveDBImportReader(options)
-	if err != nil {
-		return err
-	}
-	if closer != nil {
-		defer closer.Close()
-	}
-
-	if reader == os.Stdin {
-		pterm.Description.Println("Tip: cat backup.sql | govard db import")
-	}
-
 	if err := RunImportFromReaderWithProgress(importCommand, reader, totalSize, false, cmd.OutOrStdout(), cmd.ErrOrStderr(), poller.size); err != nil {
 		return fmt.Errorf("db import failed: %w", err)
 	}
 	pterm.Success.Println("Database import completed.")
 	return nil
+}
+
+// stageDumpThenReset encodes the one ordering rule of the stream path: the dump
+// completes before anything destructive runs, so a failed or dropped dump leaves
+// the existing database untouched. reset may be nil, which is the --file case
+// without --drop.
+func stageDumpThenReset(dump func() error, reset func() error) error {
+	if err := dump(); err != nil {
+		return err
+	}
+	if reset == nil {
+		return nil
+	}
+	return reset()
 }

@@ -147,7 +147,7 @@ func TestMagentoThreeEnvironmentInitBootstrapAndSyncOptions(t *testing.T) {
 	bootstrapLogs := shim.ReadLog(t)
 	assertContains(t, bootstrapLogs, "deploy@dev.example.com:'/var/www/html/'")
 	assertContains(t, bootstrapLogs, "deploy@staging.example.com:'/srv/www/staging/'")
-	assertContains(t, bootstrapLogs, "docker|exec -i -e MYSQL_PWD=magento")
+	assertContains(t, bootstrapLogs, "docker|exec -i -e MYSQL_PWD")
 
 	syncPlan := env.RunGovardWithEnv(
 		t,

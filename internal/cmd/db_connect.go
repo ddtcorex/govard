@@ -38,7 +38,13 @@ func runDBConnect(cmd *cobra.Command, config engine.Config, options dbCommandOpt
 		if probeErr != nil {
 			pterm.Warning.Println(formatRemoteDBProbeWarning(options.Environment, probeErr))
 		}
-		connectCmd := remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, buildRemoteMySQLConnectCommandString(credentials))
+		// The session owns the terminal, so the script is staged on the remote and
+		// the credential stays out of the ssh argument list.
+		scriptPath, err := stageRemoteScript(options.Environment, remoteCfg, buildRemoteMySQLConnectCommandString(credentials))
+		if err != nil {
+			return err
+		}
+		connectCmd := remote.BuildSSHExecCommand(options.Environment, remoteCfg, true, remoteScriptCleanup(scriptPath))
 		connectCmd.Stdin, connectCmd.Stdout, connectCmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		return connectCmd.Run()
 	})
