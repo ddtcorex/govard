@@ -507,7 +507,7 @@ func buildUpPipelineStages(cmd *cobra.Command, context *upRuntimeContext) []upPi
 				}
 				wg.Wait()
 
-				if err := waitForUpStorefrontReadiness(context.Config); err != nil {
+				if err := waitForUpStorefrontReadiness(context.Config, context.Services); err != nil {
 					pterm.Warning.Printf("%v\n", err)
 				}
 
@@ -765,7 +765,11 @@ func waitForSingleUpReadinessCheck(check upReadinessCheck, maxAttempts int, time
 	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if attempt == 1 || attempt%statePollEvery == 0 {
+		// While a container is in an abort state every poll inspects it: the
+		// reduced cadence reuses the previous answer, and counting a reused
+		// "exited" as a second observation failed a kickstarted container on the
+		// very next poll, before it could have restarted.
+		if attempt == 1 || attempt%statePollEvery == 0 || abortObserved > 0 {
 			lastState, stateErr = inspectUpContainerState(check.ContainerName)
 		}
 
@@ -829,7 +833,13 @@ var (
 	// upStorefrontRootCAs returns the pool that trusts the Govard proxy and only
 	// the Govard proxy. A seam so a test can aim the probe at its own TLS server.
 	upStorefrontRootCAs = engine.LocalRootCAPool
-	upStorefrontProbe   = func(url string) error {
+	// upStorefrontRefreshCA re-extracts the root CA from the proxy when the
+	// exported copy is stale. A seam so a test does not touch a container.
+	upStorefrontRefreshCA = func() error {
+		_, err := engine.RefreshLocalRootCAPool()
+		return err
+	}
+	upStorefrontProbe = func(url string) error {
 		// The proxy issues every project certificate from the Govard local CA, so
 		// the probe verifies against that authority instead of disabling
 		// verification. When the CA cannot be loaded the probe falls back to plain
@@ -841,7 +851,12 @@ var (
 			scheme = "http"
 		}
 
-		client := &http.Client{Timeout: 3 * time.Second}
+		client := &http.Client{
+			Timeout: 3 * time.Second,
+			// The redirect is the answer: following it would land on an HTTPS
+			// certificate the plain-HTTP fallback has no CA for and fail.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
 		if poolErr == nil {
 			client.Transport = &http.Transport{
 				TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
@@ -870,9 +885,14 @@ var (
 // `env up` does not return success while the first request still hits a 503.
 // It gives up quietly after the timeout: a wait that cannot succeed must not
 // turn a working environment into a failed command.
-func waitForUpStorefrontReadiness(config engine.Config) error {
+//
+// A partial start (`env up redis`) does not start the storefront, so it does not
+// wait for it. A certificate the Govard CA does not vouch for is not a stack that
+// is still starting: the exported CA is refreshed once, and if the certificate is
+// still untrusted the wait stops instead of running out its timeout.
+func waitForUpStorefrontReadiness(config engine.Config, services []string) error {
 	domain := strings.TrimSpace(config.Domain)
-	if domain == "" {
+	if domain == "" || len(services) > 0 {
 		return nil
 	}
 
@@ -883,10 +903,20 @@ func waitForUpStorefrontReadiness(config engine.Config) error {
 	}
 
 	var lastErr error
+	refreshed := false
 	for attempt := 1; attempt <= attempts; attempt++ {
 		lastErr = upStorefrontProbe(url)
 		if lastErr == nil {
 			return nil
+		}
+		var untrusted *tls.CertificateVerificationError
+		if errors.As(lastErr, &untrusted) {
+			if refreshed {
+				return fmt.Errorf("storefront at %s presented a certificate the Govard CA does not vouch for (run `govard doctor trust`): %w", url, lastErr)
+			}
+			refreshed = true
+			_ = upStorefrontRefreshCA()
+			continue
 		}
 		if attempt < attempts {
 			upReadinessSleep(upStorefrontProbeInterval)

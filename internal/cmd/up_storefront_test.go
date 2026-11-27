@@ -43,7 +43,7 @@ func TestUpStorefrontReadinessWaitsForTheFirstAnswer(t *testing.T) {
 		return nil
 	})
 
-	if err := waitForUpStorefrontReadiness(engine.Config{Domain: "sample-project.test"}); err != nil {
+	if err := waitForUpStorefrontReadiness(engine.Config{Domain: "sample-project.test"}, nil); err != nil {
 		t.Fatalf("waitForUpStorefrontReadiness: %v", err)
 	}
 	if calls != 3 {
@@ -55,7 +55,7 @@ func TestUpStorefrontReadinessIsBoundedAndNonFatal(t *testing.T) {
 	stubStorefrontProbe(t, func(string) error { return errors.New("storefront answered HTTP 503") })
 	upStorefrontTimeout = 50 * time.Millisecond
 
-	err := waitForUpStorefrontReadiness(engine.Config{Domain: "sample-project.test"})
+	err := waitForUpStorefrontReadiness(engine.Config{Domain: "sample-project.test"}, nil)
 	if err == nil {
 		t.Fatal("readiness reported success although the storefront never answered")
 	}
@@ -68,7 +68,7 @@ func TestUpStorefrontReadinessSkipsProjectsWithoutADomain(t *testing.T) {
 	probed := false
 	stubStorefrontProbe(t, func(string) error { probed = true; return nil })
 
-	if err := waitForUpStorefrontReadiness(engine.Config{}); err != nil {
+	if err := waitForUpStorefrontReadiness(engine.Config{}, nil); err != nil {
 		t.Fatalf("waitForUpStorefrontReadiness: %v", err)
 	}
 	if probed {
