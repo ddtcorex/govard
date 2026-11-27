@@ -16,7 +16,7 @@ var protectedSyncPatterns = []string{".git/", "node_modules/", ".env", "auth.jso
 // frameworkProtectedSyncPatterns are the paths the framework itself declares as
 // local only (its clone excludes). app/etc/env.php holds the database
 // credentials and the crypt key, which no deploy release can give back.
-var frameworkProtectedSyncPatterns = []string{"app/etc/env.php"}
+var frameworkProtectedSyncPatterns = []string{"/app/etc/env.php"}
 
 func syncEndpointsForDeleteTest(destinationLocal bool) ResolvedSyncEndpoints {
 	remoteEndpoint := SyncEndpoint{Name: "staging", IsLocal: false, RootPath: "/var/www/sample-project/current"}

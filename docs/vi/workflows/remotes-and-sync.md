@@ -292,6 +292,8 @@ Sử dụng `--delete` kết hợp với `--db` sẽ hiển thị cảnh báo ch
 
 `--delete` không bao giờ xóa những thứ không thể tạo lại từ một release deploy: `.git/`, `.idea/`, `.vscode/`, `node_modules/`, `.DS_Store`, `thumbs.db`, `.env`, `*.pem`, `*.key` và `auth.json` luôn được truyền cho rsync dưới dạng exclude khi bật xóa, theo cả hai chiều. Danh sách này còn có các đường dẫn mà chính framework khai báo là chỉ tồn tại cục bộ (với Magento là `app/etc/env.php`, `generated`, `pub/static` và `var`; với WordPress là `wp-config.php`) cùng với các tệp của chính Govard (`.govard*.yml` và thư mục trạng thái `.govard/`), vì release deploy không bao giờ có chúng, và không cần `--no-noise`; các bộ lọc noise và PII vẫn phải bật thủ công.
 
+Các đường dẫn này được truyền dưới dạng exclude, nên vừa được bảo vệ khỏi việc xóa vừa không được truyền đi: khi chạy với `--delete`, `.env` hay `auth.json` trên nguồn sẽ không bị kéo đè lên bản cục bộ. Các đường dẫn của framework chỉ khớp từ thư mục gốc dự án (`/var`, `/app/etc/env.php`), nên một thư mục lồng nhau chỉ trùng tên như `lib/var` vẫn được đồng bộ bình thường. Source control và secret được khớp ở mọi độ sâu.
+
 ### Tích hợp với lệnh `bootstrap`
 
 Lệnh `govard bootstrap` sử dụng chung các cờ đồng bộ và bộ lọc khi khởi tạo môi trường mới:

@@ -308,6 +308,8 @@ To download everything, use `--media all`. To sync only CSS/JS/Fonts, use `--med
 
 `--delete` never removes what a project cannot regenerate from a deploy release: `.git/`, `.idea/`, `.vscode/`, `node_modules/`, `.DS_Store`, `thumbs.db`, `.env`, `*.pem`, `*.key` and `auth.json` are always passed to rsync as excludes when deletion is enabled, in both directions, together with the paths the framework itself declares as local only (for Magento that is `app/etc/env.php`, `generated`, `pub/static` and `var`; for WordPress `wp-config.php`). Govard's own project files (`.govard*.yml` and the `.govard/` state directory) are on the list as well, because a deploy release never carries them. The list does not need `--no-noise`; the noise and PII filters stay opt-in.
 
+These paths are passed as excludes, which protects them from deletion and also keeps them out of the transfer, so a run with `--delete` does not copy them either: a `.env` or `auth.json` on the source is not pulled over the local one. The framework paths are matched from the project root only (`/var`, `/app/etc/env.php`), so a nested directory that merely shares the name, such as `lib/var`, is synced normally. Source control and secrets are matched at any depth.
+
 ### Integration with `bootstrap`
 
 `govard bootstrap` uses the same sync/filter flags for environment initialization:
