@@ -30,14 +30,15 @@ the measured machine.
 
 ## How the two measured
 
-Same fixture, same machine, same window, three runs each after a discarded
-warm-up. The full table and the ranges are on the
-[benchmark page](/workflows/benchmark).
+Same fixture recipe and same machine, three runs each after a discarded warm-up.
+Every row except Stop is the 2026-11-04 window; Stop was re-measured on
+2026-11-27 after the teardown fix, and the note below the table says why. The full
+table and the ranges are on the [benchmark page](/workflows/benchmark).
 
 | Metric | Govard | Warden | Read |
 | :--- | ---: | ---: | :--- |
 | Start, until the storefront answers | 11.0 s | 11.6 s | close |
-| Stop | 11.2 s | 3.7 s | Warden is about three times faster |
+| Stop | 4.0 s | 3.7 s | level, see the note |
 | TTFB p50, cache as it ships | 14.2 ms | 13.5 ms | close |
 | TTFB p50, cache bypassed | 250.6 ms | 495.7 ms | Govard is about twice as fast on the cold render |
 | Static deploy | 4.3 s | 7.7 s | Govard is faster |
@@ -45,10 +46,17 @@ warm-up. The full table and the ranges are on the
 | Peak memory, steady state | 1,601 MB | 1,020 MB | Warden uses less |
 | CLI wrapper overhead | 46 ms | 213 ms | see the caveat below |
 
-Two rows need the caveat before they are quoted:
+**Stop, corrected.** The 11.2 s this row used to carry measured a defect, not the
+cost of removing more: one container, varnish, hung in its shutdown path until
+Docker's default 10 s grace killed it. The blueprint caps that grace at 2 s (#695,
+v1.84.0-beta.3), and the govard arm re-run on 2026-11-27 with the same harness and
+the same machine gives 3,978 ms (2,961-4,122 ms) against Warden's 3,706 ms. Start
+did not move either way: 10,627 ms against 11,044 ms is inside the range. Warden's
+rows were not re-measured, because its CLI is not installed on this machine; the
+mixed window is stated rather than hidden.
 
-- **Stop.** Govard's `env down` takes 11.2 s against Warden's 3.7 s. It removes
-  more, and this page does not dress that up.
+One row needs the caveat before it is quoted:
+
 - **CLI overhead.** Warden's 213 ms includes running its CLI inside a container,
   which is how this arm had to work without root on the measured host. A native
   install would not pay that.

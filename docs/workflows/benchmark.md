@@ -42,24 +42,24 @@ normal request is a cache hit: the response carries `age` and
 `x-magento-cache-debug: HIT`. DDEV has no reverse-proxy cache, so the same
 request renders PHP. Measured both ways on this machine, the direction flips:
 
-- with the cache as it ships: Govard 17 ms, DDEV 174 ms;
+- with the cache as it ships: Govard 14 ms, DDEV 66 ms;
 - with the cache emptied before every sample (a Varnish ban on one side, a
-  `cache:flush full_page` on the other): Govard 342 ms, DDEV 185 ms.
+  `cache:flush full_page` on the other): Govard 251 ms, DDEV 75 ms.
 
 So Govard wins the cached request and loses the cold render, because its path has
 one more hop (Varnish to nginx to php-fpm) than DDEV's nginx plus php-fpm. Which
 one matters depends on whether your visits hit a warm cache.
 
 **CLI wrapper overhead.** Running the same trivial command (`php -r 'echo 1;'`)
-directly and through each tool's wrapper gives 40 ms for `govard tool` and 331 ms
+directly and through each tool's wrapper gives 46 ms for `govard tool` and 123 ms
 for `ddev exec`. This row corrects an earlier claim on this page that Govard's
 wrapper added about four seconds: that number came from a raw `docker exec` that
 had failed in 1.1 s rather than run. Measuring a no-op both ways is what settles
 it, and the harness now does that on every run.
 
 **Static deploy and DI compile.** With separate trees and a discarded warm-up,
-static deploy lands at 4.9 s for Govard and 5.1 s for DDEV, and DI compile at
-31.8 s against 46.0 s. Earlier published numbers (16.4 s against 2.8 s) were an
+static deploy lands at 4.3 s for Govard and 1.9 s for DDEV, and DI compile at
+21.0 s against 15.7 s. Earlier published numbers (16.4 s against 2.8 s) were an
 artifact: both arms shared one tree, so the first arm generated `pub/static` for
 the second, and Govard's `env up` clears `generated/code` and `var/cache`, which
 made its first deploy pay for a full regeneration.
@@ -100,7 +100,7 @@ mounts, so copying the project would measure a tree Warden cannot see.
 :::
 
 **Noise.** Ranges are published next to each median. DDEV's start ranged from
-21.5 s to 51.3 s across three runs on an otherwise busy workstation; treat a
+14.7 s to 16.0 s across three runs on this machine; treat a
 single run as noise.
 
 Per-tool difference pages, which state what each tool does beyond these numbers:
@@ -146,6 +146,47 @@ not a stopwatch.
 - **warden**: 3 run(s), images warm (pulls excluded); stack: traefik, nginx, php-fpm, php-debug, varnish, redis, opensearch, rabbitmq, mariadb; cli in a container. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.3, govard v1.82.0-4-ga76c1fca at commit a76c1fca, measured 2026-11-04T04:59:34Z.
 
 <!-- bench:end -->
+
+### Re-measured after the v1.84 teardown fix
+
+The govard column above was measured on 2026-11-04 at `a76c1fca`. v1.84.0-beta.3
+changed the teardown path (#695 caps the varnish stop grace at 2 s), so the arm was
+re-run on 2026-11-27 at `9e4d1f26`, same harness, same machine (12th Gen Intel
+i7-1255U, 12 cores, 30 GiB, Docker 29.10.1), three runs after one discarded
+warm-up, against a fixture rebuilt from `scripts/bench/fixture.sh`:
+
+| Metric | 2026-11-04 (`a76c1fca`) | 2026-11-27 (`9e4d1f26`) | Read |
+| :--- | ---: | ---: | :--- |
+| Start (up to first 200) | 11044 ms (10756-11766 ms) | 10627 ms (10506-10802 ms) | inside the range |
+| Stop | 11239 ms (11200-11297 ms) | 3978 ms (2961-4122 ms) | 2.8 times shorter |
+| TTFB p50 (cached) | 14.2 ms (14.1-15.1 ms) | 13.0 ms (11.7-16.1 ms) | close |
+| TTFB p50 (cache bypassed) | 250.6 ms (245.4-277.3 ms) | 215.8 ms (207.5-278.1 ms) | close |
+| Static deploy | 4266 ms (3480-4473 ms) | 5207 ms (3801-5552 ms) | see below |
+| DI compile | 21031 ms (20155-22949 ms) | 23874 ms (19602-28190 ms) | see below |
+| Peak memory | 1601 MB (1586-1683 MB) | 1657 MB (1646-1661 MB) | close |
+| CLI wrapper overhead | 46 ms (40-48 ms) | 36 ms (0-55 ms) | close |
+
+Stop is the row the change was for, measured the same way on both dates: `env down`
+until no container of the project remains. In the old window one container
+dominated it: varnish hung in its shutdown path until Docker's default 10 s grace
+killed it. With the grace capped at 2 s the same teardown finishes in 4.0 s, and
+the two ranges do not overlap.
+
+Start did not move, which is what the other change predicts: the readiness work
+shortens a second `env up` of an already running project (about 2.3 s down to 1.5 s
+on a different project with 8 containers), and a cold start waits for Magento to
+answer either way.
+
+The compile and deploy rows moved in opposite directions across the two dates.
+Part of that is the rebuilt fixture: Mage-OS resolved newer packages on 2026-11-27
+than on 2026-11-04, so those two rows carry that release as well as the code
+change. Read them as the order of magnitude the section above describes, not as a
+before and after.
+
+The ddev and warden columns were not re-run: neither CLI is installed on this
+machine, and the harness never installs another tool. Their rows keep the
+2026-11-04 window, which is why the table above compares one column at two dates
+instead of three columns at one date.
 
 ## Reproducing it
 

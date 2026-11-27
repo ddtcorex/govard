@@ -45,9 +45,9 @@ nên request bình thường là cache hit: response mang `age` và
 `x-magento-cache-debug: HIT`. DDEV không có cache ở reverse proxy nên cùng request
 đó phải render PHP. Đo cả hai chiều trên máy này thì hướng đảo nhau:
 
-- để cache như mặc định: Govard 17 ms, DDEV 174 ms;
+- để cache như mặc định: Govard 14 ms, DDEV 66 ms;
 - xoá cache trước mỗi mẫu (ban Varnish ở một bên, `cache:flush full_page` ở bên
-  kia): Govard 342 ms, DDEV 185 ms.
+  kia): Govard 251 ms, DDEV 75 ms.
 
 Nghĩa là Govard thắng ở request đã có cache và thua ở lần render lạnh, vì đường
 đi của nó nhiều hơn một chặng (Varnish rồi nginx rồi php-fpm) so với nginx cộng
@@ -55,15 +55,15 @@ php-fpm của DDEV. Cái nào quan trọng tuỳ vào việc lượt truy cập 
 cache ấm hay không.
 
 **Chi phí lớp bọc CLI.** Chạy cùng một lệnh vô nghĩa (`php -r 'echo 1;'`) trực
-tiếp và qua lớp bọc của từng tool: `govard tool` 40 ms, `ddev exec` 331 ms. Dòng
+tiếp và qua lớp bọc của từng tool: `govard tool` 46 ms, `ddev exec` 123 ms. Dòng
 này đính chính một khẳng định trước đó trên trang rằng lớp bọc của Govard cộng
 thêm khoảng bốn giây: con số đó đến từ một lệnh `docker exec` thô đã thất bại
 trong 1,1 giây chứ không hề chạy. Đo một lệnh rỗng theo cả hai đường là cách
 chốt đúng, và harness giờ làm việc đó ở mọi lượt.
 
 **Static deploy và DI compile.** Với cây mã nguồn riêng và một lượt làm nóng bị
-bỏ, static deploy là 4,9 s cho Govard và 5,1 s cho DDEV, DI compile là 31,8 s so
-với 46,0 s. Các con số công bố trước đó (16,4 s so với 2,8 s) là lỗi đo: hai
+bỏ, static deploy là 4,3 s cho Govard và 1,9 s cho DDEV, DI compile là 21,0 s so
+với 15,7 s. Các con số công bố trước đó (16,4 s so với 2,8 s) là lỗi đo: hai
 nhánh dùng chung một cây, nên nhánh chạy trước sinh `pub/static` cho nhánh sau,
 và `env up` của Govard xoá `generated/code` cùng `var/cache` khiến lần deploy đầu
 phải sinh lại toàn bộ.
@@ -80,7 +80,7 @@ nên network của dự án được nối vào đó. Stack nó chạy là stack
 và MariaDB, nên bộ nhớ của nó nằm giữa hai nhánh còn lại.
 
 **Nhiễu.** Khoảng min-max được in cạnh mỗi trung vị. Thời gian start của DDEV dao
-động 21,5 s đến 51,3 s qua ba lượt trên máy đang làm việc khác; một lượt đơn lẻ
+động 14,7 s đến 16,0 s qua ba lượt trên máy này; một lượt đơn lẻ
 là nhiễu.
 
 Trang so sánh từng công cụ, nêu những gì mỗi bên làm ngoài các con số này:
@@ -117,6 +117,44 @@ lượng, không phải đồng hồ bấm giây.
 - **warden**: 3 run(s), images warm (pulls excluded); stack: traefik, nginx, php-fpm, php-debug, varnish, redis, opensearch, rabbitmq, mariadb; cli in a container. 12th Gen Intel(R) Core(TM) i7-1255U, 12 cores, 30 GiB RAM, disk ssd, Linux 7.0.0-42-generic, Docker 29.9.3, govard v1.82.0-4-ga76c1fca at commit a76c1fca, measured 2026-11-04T04:59:34Z.
 
 <!-- bench:end -->
+
+### Đo lại sau bản sửa teardown của v1.84
+
+Cột govard ở trên đo ngày 2026-11-04 tại `a76c1fca`. v1.84.0-beta.3 đổi đường
+teardown (#695 giới hạn grace lúc dừng của varnish ở 2 s), nên nhánh này được đo
+lại ngày 2026-11-27 tại `9e4d1f26`, cùng harness, cùng máy (12th Gen Intel
+i7-1255U, 12 nhân, 30 GiB, Docker 29.10.1), ba lượt sau một lượt làm nóng bị bỏ,
+trên fixture dựng lại bằng `scripts/bench/fixture.sh`:
+
+| Chỉ số | 2026-11-04 (`a76c1fca`) | 2026-11-27 (`9e4d1f26`) | Đọc thế nào |
+| :--- | ---: | ---: | :--- |
+| Start (tới 200 đầu tiên) | 11044 ms (10756-11766 ms) | 10627 ms (10506-10802 ms) | nằm trong khoảng cũ |
+| Stop | 11239 ms (11200-11297 ms) | 3978 ms (2961-4122 ms) | ngắn hơn 2,8 lần |
+| TTFB p50 (có cache) | 14,2 ms (14,1-15,1 ms) | 13,0 ms (11,7-16,1 ms) | gần nhau |
+| TTFB p50 (bỏ cache) | 250,6 ms (245,4-277,3 ms) | 215,8 ms (207,5-278,1 ms) | gần nhau |
+| Static deploy | 4266 ms (3480-4473 ms) | 5207 ms (3801-5552 ms) | xem bên dưới |
+| DI compile | 21031 ms (20155-22949 ms) | 23874 ms (19602-28190 ms) | xem bên dưới |
+| Bộ nhớ đỉnh | 1601 MB (1586-1683 MB) | 1657 MB (1646-1661 MB) | gần nhau |
+| Chi phí wrapper CLI | 46 ms (40-48 ms) | 36 ms (0-55 ms) | gần nhau |
+
+Stop là dòng mà thay đổi nhắm tới, và được đo giống nhau ở cả hai mốc: `env down`
+cho tới khi không còn container nào của dự án. Ở mốc cũ, một container chi phối
+con số: varnish treo trong đường shutdown cho tới khi Docker giết nó ở grace mặc
+định 10 s. Với grace hạ còn 2 s, cùng phép teardown đó xong trong 4,0 s, và hai
+khoảng không chồng lên nhau.
+
+Start không đổi, đúng như thay đổi còn lại dự đoán: phần readiness rút ngắn lần
+`env up` thứ hai trên dự án đã chạy (khoảng 2,3 s xuống 1,5 s, đo trên dự án khác
+có 8 container), còn khởi động nguội thì vẫn phải chờ Magento trả lời.
+
+Hai dòng compile và deploy đi ngược chiều nhau giữa hai mốc. Một phần do fixture
+được dựng lại: Mage-OS lấy package mới hơn vào 2026-11-27 so với 2026-11-04, nên
+hai dòng đó mang cả bản release mới lẫn thay đổi code. Hãy đọc chúng như bậc độ
+lượng mà phần trên đã nói, không phải before/after.
+
+Hai cột ddev và warden không được đo lại: máy này không cài CLI của hai bên, và
+harness không bao giờ tự cài tool khác. Hai cột đó giữ mốc 2026-11-04, nên bảng
+trên so một cột ở hai mốc chứ không so ba cột ở cùng một mốc.
 
 ## Chạy lại
 
