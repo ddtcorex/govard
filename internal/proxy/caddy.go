@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"govard/internal/conventions"
+	"math/rand/v2"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -284,19 +285,25 @@ func EnsureTLS() error {
 	})
 }
 
-// caddyUpdateAttempts bounds the write retries. Two writers racing on the same
-// document must not loop forever: five conflicts in a row is a stuck proxy or a
-// third party rewriting the config, and that is reported rather than retried.
-const caddyUpdateAttempts = 5
+// caddyUpdateAttempts bounds the write retries. Writers racing on the same
+// document must not loop forever: that many conflicts in a row is a stuck proxy
+// or a third party rewriting the config, and it is reported rather than retried.
+// Each retry lets one of the remaining writers through, so this is also how many
+// projects can register at the same moment: ten covers a team starting its
+// stacks together, where five failed the sixth with an explicit error.
+const caddyUpdateAttempts = 10
 
 // errCaddyConfigConflict marks a write Caddy refused because the ETag it was
 // given no longer matches the live config.
 var errCaddyConfigConflict = errors.New("caddy config changed concurrently")
 
-// caddyUpdateBackoff waits before the next write attempt. Jittered by attempt
-// count so two retrying writers do not line up again.
+// caddyUpdateBackoff waits before the next write attempt: a delay that grows
+// with the attempt plus random jitter, so retrying writers do not line up again.
+// A read-modify-write round costs about 130 ms of `docker exec`, so the delay is
+// kept small against it rather than turned into a long wait.
 var caddyUpdateBackoff = func(attempt int) {
-	time.Sleep(time.Duration(attempt) * 10 * time.Millisecond)
+	jitter := time.Duration(rand.IntN(40)) * time.Millisecond
+	time.Sleep(time.Duration(attempt)*10*time.Millisecond + jitter)
 }
 
 // errCaddyConfigUnavailable marks a fetch that could not read the proxy. The

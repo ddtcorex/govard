@@ -93,6 +93,7 @@ func runStreamDBImport(cmd *cobra.Command, config engine.Config, options dbComma
 		if err := os.MkdirAll(tempDir, conventions.SecretDirPerm); err != nil {
 			return fmt.Errorf("create stream dump directory: %w", err)
 		}
+		sweepStaleStreamDumps(tempDir, staleStreamDumpAge)
 		tempFile, tempErr := os.CreateTemp(tempDir, "stream-db-*.sql")
 		if tempErr != nil {
 			return fmt.Errorf("create temporary stream dump file: %w", tempErr)
@@ -291,4 +292,35 @@ func stageDumpThenReset(dump func() error, reset func() error) error {
 		return nil
 	}
 	return reset()
+}
+
+// staleStreamDumpAge is how old a staged stream dump must be before the next
+// stream import treats it as an orphan. A live import finishes in minutes; a day
+// leaves room for the largest databases without keeping a dead run's dump for long.
+const staleStreamDumpAge = 24 * time.Hour
+
+// sweepStaleStreamDumps removes staged stream dumps older than olderThan from dir.
+// A normal exit and an error return remove their own dump through a defer, but a
+// process that dies without running defers (SIGHUP, SIGKILL, power loss) leaves a
+// full database behind under a random name no later run would reuse. Best effort:
+// a file that cannot be removed is left for the next run.
+func sweepStaleStreamDumps(dir string, olderThan time.Duration) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-olderThan)
+	for _, entry := range entries {
+		name := entry.Name()
+		stagedDump := strings.HasPrefix(name, "stream-db-") &&
+			(strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".sql.partial"))
+		if entry.IsDir() || !stagedDump {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 }
